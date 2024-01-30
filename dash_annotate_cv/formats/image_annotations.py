@@ -114,7 +114,6 @@ class ImageAnnotations(DataClassDictMixin):
 
         @dataclass
         class BboxHistory(DataClassDictMixin):
-
             class Operation(Enum):
                 ADD = "add"
                 DELETE = "delete"

@@ -58,12 +58,6 @@ class AnnotateImageBboxsAIO(html.Div):
             "aio_id": aio_id,
             "idx": idx,
         }
-        dropdown = lambda aio_id, idx: {
-            "component": "AnnotateImageBboxsAIO",
-            "subcomponent": "dropdown",
-            "aio_id": aio_id,
-            "idx": idx,
-        }
         alert = lambda aio_id: {
             "component": "AnnotateImageBboxsAIO",
             "subcomponent": "alert",
@@ -122,21 +116,20 @@ class AnnotateImageBboxsAIO(html.Div):
             self.options.instructions_custom
             or "Draw bounding boxes on the image, and label the classes."
         )
-        instructions = html.P(instructions_txt)
 
         return dbc.Row(
             [
                 dbc.Col(
-                    [html.Div(curr_image_layout, id=self.ids.image(self.aio_id))], md=6
+                    [html.Div(curr_image_layout, id=self.ids.image(self.aio_id))], md=11
                 ),
                 dbc.Col(
                     [
                         html.Div(id=self.ids.alert(self.aio_id)),
-                        instructions,
+                        html.Div(style={"margin-bottom": "20px"}),
                         html.Div(id=self.ids.bbox_labeling(self.aio_id)),
                     ],
-                    md=6,
-                    class_name="align-self-center",
+                    md=1,
+                    
                 ),
             ]
         )
@@ -149,9 +142,24 @@ class AnnotateImageBboxsAIO(html.Div):
         fig = px.imshow(image)
         rgb = self.options.default_bbox_color
         line_color = "rgba(%d,%d,%d,1)" % rgb
-        fig.update_layout(dragmode="drawrect", newshape=dict(line_color=line_color))
-        fig.update_layout(margin=dict(l=0, r=0, b=0, t=0))
-        return dcc.Graph(id=self.ids.graph_picture(self.aio_id), figure=fig)
+        fig.update_layout(
+            dragmode="drawrect",
+            newshape=dict(line_color=line_color),
+            margin=dict(l=0, r=0, t=0, b=0),  # Remove margins
+            autosize=True,
+            # Make the plot responsive to the window size
+      
+            template=None,  # Remove default Plotly styling
+        )
+
+        for trace in fig.data:
+            trace.update(hoverinfo="none", hovertemplate=None)
+
+        return dcc.Graph(
+            id=self.ids.graph_picture(self.aio_id),
+            figure=fig,
+            style={"height": "calc(100vh - 120px)"},
+        )
 
     def _create_bbox_layout(self):
         if self.controller.curr is None:
@@ -173,15 +181,8 @@ class AnnotateImageBboxsAIO(html.Div):
         return dbc.ListGroup(bbox_list_group)
 
     def _create_list_group_for_bbox_layout(self, bbox: Bbox, bbox_idx: int):
-        xyxy_label = "(%s)" % ",".join([str(int(x)) for x in bbox.xyxy])
-        dropdown = dcc.Dropdown(
-            self.controller.labels,
-            value=bbox.class_name,
-            id=self.ids.dropdown(self.aio_id, bbox_idx),
-        )
-
         button_delete = dbc.Button(
-            "Delete",
+            "D",
             color="danger",
             size="sm",
             className="mr-1",
@@ -189,41 +190,44 @@ class AnnotateImageBboxsAIO(html.Div):
         )
 
         button_highlight = dbc.Button(
-            "Highlight",
+            "H",
             color="primary",
             size="sm",
             className="mr-1",
             id=self.ids.highlight_bbox(self.aio_id, bbox_idx),
         )
 
+        bbox_index_label = dbc.Label(
+            f"{bbox_idx}",
+            color="secondary",
+            className="mr-1",
+        )
+
         return dbc.ListGroupItem(
             [
                 dbc.Row(
                     [
-                        dbc.Col(dropdown, lg=4, md=6),
-                        dbc.Col(xyxy_label, lg=4, md=6),
-                        dbc.Col(button_highlight, lg=2, md=6),
-                        dbc.Col(button_delete, lg=2, md=6),
-                    ]
+                        dbc.Col(
+                            bbox_index_label, width={"size": 1}
+                        ),  # Adjust the size as needed
+                        dbc.Col(
+                            button_highlight,
+                            width={"size": 1},
+                            className="mx-1",  # Adds a margin on the left and right
+                        ),
+                        dbc.Col(
+                            button_delete,
+                            width={"size": 1},
+                            className="mx-1",  # Adds a margin on the left and right
+                        ),
+                    ],
                 )
             ]
         )
 
     def _create_alert_layout(self):
         alerts = []
-
-        # No bboxs
-        if len(self.controller.curr_bboxs) == 0:
-            alerts.append(dbc.Alert("Start by drawing a bounding box", color="primary"))
-
-        # Bboxs without labels
-        for bbox in self.controller.curr_bboxs:
-            if bbox.class_name is None:
-                alerts.append(
-                    dbc.Alert("All bounding boxes must have labels", color="warning")
-                )
-                break
-
+        
         return alerts
 
     def _define_callbacks(self):
@@ -237,11 +241,11 @@ class AnnotateImageBboxsAIO(html.Div):
             Input(self.ids.graph_picture(MATCH), "relayoutData"),
             Input(self.ids.delete_button(MATCH, ALL), "n_clicks"),
             Input(self.ids.highlight_bbox(MATCH, ALL), "n_clicks"),
-            Input(self.ids.dropdown(MATCH, ALL), "value"),
+
             State(self.ids.graph_picture(MATCH), "figure"),
         )
         def update(
-            relayout_data, n_clicks_delete, n_clicks_select, dropdown_value, figure
+            relayout_data, n_clicks_delete, n_clicks_select, figure
         ):
 
             trigger_id, idx = get_trigger_id()
@@ -257,10 +261,6 @@ class AnnotateImageBboxsAIO(html.Div):
                 assert idx is not None, "idx should not be None"
                 update = self._handle_highlight_button_pressed(idx, figure)
 
-            elif trigger_id == "dropdown":
-                logger.debug(f"Changed dropdown to {dropdown_value}")
-                assert idx is not None, "idx should not be None"
-                update = self._handle_dropdown_changed(idx, dropdown_value[idx], figure)
 
             elif trigger_id == "graph_picture":
 
@@ -317,20 +317,7 @@ class AnnotateImageBboxsAIO(html.Div):
             no_update, figure, self._create_alert_layout()
         )
 
-    def _handle_dropdown_changed(
-        self, idx: int, dropdown_value_new: str, figure: Dict
-    ) -> Update:
-        if type(dropdown_value_new) == list:
-            logger.warning("Dropdown value is list, expected string")
-            return AnnotateImageBboxsAIO.Update(
-                no_update, no_update, self._create_alert_layout()
-            )
-        assert idx is not None, "idx should not be None"
-        self.controller.update_bbox(BboxUpdate(idx, class_name_new=dropdown_value_new))
-        self.converter.refresh_figure_shapes(figure, self.controller.curr_bboxs)
-        return AnnotateImageBboxsAIO.Update(
-            no_update, figure, self._create_alert_layout()
-        )
+
 
     def _handle_new_box_drawn(self, relayout_data: Dict) -> Update:
         new_shape = relayout_data["shapes"][-1]

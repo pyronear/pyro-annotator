@@ -20,7 +20,6 @@ def write_to_coco(anns: ImageAnnotations, fname_output_json: str):
     cat_id_next = 1
     coco_dct: Dict = {"images": [], "annotations": [], "categories": []}
     for ann in anns.image_to_entry.values():
-
         # Only write if width and height specified
         if ann.image_width is None or ann.image_height is None:
             logger.warning(
@@ -41,7 +40,6 @@ def write_to_coco(anns: ImageAnnotations, fname_output_json: str):
 
         # Add annotations
         for bbox in ann.bboxs or []:
-
             # Skip bboxs with no class name
             if bbox.class_name is None:
                 logger.warning(
@@ -108,7 +106,6 @@ def load_from_coco_if_exist(fname_json: str) -> Optional[ImageAnnotations]:
         )
 
     for ann in coco_dct["annotations"]:
-
         # Get image obj
         image_id = ann["image_id"]
         img_dct_cands = [img for img in coco_dct["images"] if img["id"] == image_id]

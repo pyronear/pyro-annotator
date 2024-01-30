@@ -10,7 +10,6 @@ logger = logging.getLogger(__name__)
 
 
 def write_default_json(anns: ImageAnnotations, fname_output_json: str):
-
     if os.path.dirname(fname_output_json) != "":
         os.makedirs(os.path.dirname(fname_output_json), exist_ok=True)
         logger.debug(f"Created directory {os.path.dirname(fname_output_json)}")

@@ -93,7 +93,7 @@ class AnnotateImageOptions(DataClassDictMixin):
     class_to_color: Optional[Dict[str, Tuple[int, int, int]]] = None
 
     # Default color
-    default_bbox_color: Tuple[int, int, int] = (64, 64, 88)
+    default_bbox_color: Tuple[int, int, int] = (255, 0, 0)
 
     def check_valid(self):
         """Check options are valid"""
@@ -484,6 +484,7 @@ class AnnotateImageController:
         self._curr = ImageAnn(
             image_idx, image_name, image, label_single, label_multiple, bboxs
         )
+        print("bbox", bboxs)
         logger.debug(f"Updated curr: {self._curr}")
 
     def _check_fix_xyxy_valid(self, xyxy: Xyxy):

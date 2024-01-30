@@ -52,7 +52,6 @@ class Conf(DataClassDictMixin):
 
 
 def cli():
-
     parser = argparse.ArgumentParser(
         description="Command line utility to launch a simple dash app to annotate images"
     )
