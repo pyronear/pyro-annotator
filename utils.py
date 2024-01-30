@@ -6,8 +6,42 @@
 
 import cv2  # type: ignore[import-untyped]
 import numpy as np
+import torch
 
-__all__ = ["letterbox", "nms", "xywh2xyxy"]
+
+__all__ = ["letterbox", "nms", "xywh2xyxy", "find_box_sam"]
+
+
+def load_image_embedding(predictor, path):
+    res = torch.load(path, predictor.device)
+    for k, v in res.items():
+        setattr(predictor, k, v)
+
+
+def find_box_sam(predictor, bbox, name):
+
+    try:
+        load_image_embedding(
+            predictor,
+            f"/home/mateo/pyronear/vision/dataset/dash-annotate-cv/annotations/embeddings/{name}_vit_h.pth",
+        )
+
+        masks, _, _ = predictor.predict(
+            point_coords=None,
+            point_labels=None,
+            box=bbox[None, :],
+            multimask_output=False,
+        )
+
+        Y, X = np.where(masks[0])
+        Y, X = Y.astype("float"), X.astype("float")
+        x_min, x_max = np.min(X), np.max(X)
+        y_min, y_max = np.min(Y), np.max(Y)
+
+        return [x_min, y_min, x_max, y_max]
+    except:
+        print("error with ", name)
+        return [None, None, None, None]
 
 
 def xywh2xyxy(x: np.ndarray):

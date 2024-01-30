@@ -17,14 +17,8 @@ import copy
 import logging
 
 import numpy as np
-import torch
+from utils import find_box_sam
 from segment_anything import SamPredictor, sam_model_registry
-
-
-def load_image_embedding(predictor, path):
-    res = torch.load(path, predictor.device)
-    for k, v in res.items():
-        setattr(predictor, k, v)
 
 
 logger = logging.getLogger(__name__)
@@ -260,23 +254,34 @@ class AnnotateImageController:
             else None
         )
 
-    def add_bbox(self, bbox: Bbox):
+    def add_bbox(self, bbox: Bbox, target_image=None):
         """Add bounding box
 
         Args:
             bbox (Bbox): Bounding box
+            target_image (tuple, Optional): image_name, width, height (update other image)
 
         Raises:
             InvalidLabelError: Invalid label
         """
         logger.debug(f"Adding bbox: {bbox}")
 
-        # Store the annotation
-        ann = self.annotations.get_or_add_image(
-            image_name=self._curr_image_name,
-            img_width=self._curr.image.width if self._curr is not None else None,
-            img_height=self._curr.image.height if self._curr is not None else None,
-        )
+        if target_image is None:
+
+            # Store the annotation
+            ann = self.annotations.get_or_add_image(
+                image_name=self._curr_image_name,
+                img_width=self._curr.image.width if self._curr is not None else None,
+                img_height=self._curr.image.height if self._curr is not None else None,
+            )
+        else:
+            image_name, width, height = target_image
+            ann = self.annotations.get_or_add_image(
+                image_name=image_name,
+                img_width=width,
+                img_height=height,
+            )
+
         ann.bboxs = ann.bboxs or []
 
         # Check labels are allowed
@@ -350,48 +355,77 @@ class AnnotateImageController:
     def fit_bbox(
         self,
     ):
-        print("fit bbox !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         ann = self.annotations.get_or_add_image(
             image_name=self._curr_image_name,
             img_width=self._curr.image.width if self._curr is not None else None,
             img_height=self._curr.image.height if self._curr is not None else None,
         )
 
-        print("current boxes", ann)
-
-        print("last box", ann.bboxs[-1].xyxy, type(ann.bboxs[-1].xyxy[0]))
-
         bbox = np.array(ann.bboxs[-1].xyxy).reshape((-1, 4)).astype("int")
 
-        print(bbox)
-        print(ann.image_name)
         name = ann.image_name.split(".")[0]
 
-        load_image_embedding(
-            self.predictor,
-            f"/home/mateo/pyronear/vision/dataset/dash-annotate-cv/annotations/embeddings/{name}_vit_h.pth",
-        )
-
-        masks, _, _ = self.predictor.predict(
-            point_coords=None,
-            point_labels=None,
-            box=bbox[None, :],
-            multimask_output=False,
-        )
-
-        Y, X = np.where(masks[0])
-        Y, X = Y.astype("float"), X.astype("float")
-        x_min, x_max = np.min(X), np.max(X)
-        y_min, y_max = np.min(Y), np.max(Y)
-
-        bbox = Bbox([x_min, y_min, x_max, y_max], None)
-        self.delete_bbox(len(ann.bboxs) - 1)
-        self.add_bbox(bbox)
+        [x_min, y_min, x_max, y_max] = find_box_sam(self.predictor, bbox, name)
+        if x_min is not None:
+            self.delete_bbox(len(ann.bboxs) - 1)
+            self.add_bbox(Bbox([x_min, y_min, x_max, y_max], None))
 
     def propagate_bbox(
         self,
     ):
         print("propagate bbox !!!!!!!!!!!!!!!!!!!!!!!!!")
+
+        print(self.annotations.image_to_entry.keys())
+
+        print(self.image_source)
+
+        ann = self.annotations.get_or_add_image(
+            image_name=self._curr_image_name,
+            img_width=self._curr.image.width if self._curr is not None else None,
+            img_height=self._curr.image.height if self._curr is not None else None,
+        )
+
+        coeff = 0.05
+
+        for current_box in ann.bboxs:
+
+            bbox = np.array(current_box.xyxy).reshape((-1, 4)).astype("int")
+
+            current_image_reached = False
+
+            for image_name, image in self.image_source.images:
+
+                print("image name", image_name, self._curr_image_name)
+                if self._curr_image_name == image_name:
+                    current_image_reached = True
+
+                else:
+                    if current_image_reached:
+                        print("propagate")
+                        name = image_name.split(".")[0]
+                        [x_min, y_min, x_max, y_max] = bbox[0]
+                        dx = (x_max - x_min) * coeff
+                        dy = (y_max - y_min) * coeff
+                        bbox = (
+                            np.array((x_min - dx, y_min - dy, x_max + dx, y_max + dy))
+                            .reshape((-1, 4))
+                            .astype("int")
+                        )
+
+                        [x_min, y_min, x_max, y_max] = find_box_sam(
+                            self.predictor, bbox, name
+                        )
+                        if x_min is not None:
+                            bbox = (
+                                np.array((x_min, y_min, x_max, y_max))
+                                .reshape((-1, 4))
+                                .astype("int")
+                            )
+                            target_image = image_name, image.width, image.height
+
+                            self.add_bbox(
+                                Bbox([x_min, y_min, x_max, y_max], None), target_image
+                            )
 
     def update_bbox(self, update: BboxUpdate):
         """Update bounding box

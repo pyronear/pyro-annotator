@@ -48,7 +48,7 @@ for file in imgs:
     t0 = t
 
 
-images_files = fires[0]
+images_files = fires[1]
 
 
 if __name__ == "__main__":
