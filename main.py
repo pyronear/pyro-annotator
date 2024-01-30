@@ -5,22 +5,15 @@ import dash_annotate_cv as dacv
 # Other imports
 from dash import Dash, html
 import dash_bootstrap_components as dbc
-from skimage import data
 import logging
 import sys
 import os
-import cv2
-import numpy as np
-import glob
-from typing import Any, Dict, Optional
-import requests
-from dotenv import load_dotenv
-import shutil
-from tqdm import tqdm
 from datetime import datetime
-from utils import box_iou, nms, xywh2xyxy
-from collections import deque
+import glob
 from PIL import Image
+from dash import callback_context
+from dash.dependencies import Input, Output, State
+from dash.exceptions import PreventUpdate
 
 
 # Set up logging
@@ -55,12 +48,7 @@ for file in imgs:
     t0 = t
 
 
-# for k, images_files in fires.items():
-#     if len(images_files)>10:
-#         print(len(images_files))
-#         break
-
-images_files = fires[203]
+images_files = fires[0]
 
 
 if __name__ == "__main__":
@@ -88,13 +76,21 @@ if __name__ == "__main__":
         annotations_existing=annotations_existing,
         options=dacv.AnnotateImageOptions(),
     )
+
+    print("aiiiiiiiiiiiiiiiiiio", type(aio))
     app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 
     app.layout = html.Div(
         [
-            aio,
+            # Row for the aio component
+            dbc.Row(
+                [
+                    dbc.Col(html.Div(id="aio_container", children=aio), md=12),
+                ]
+            ),
+            # Hidden Div for storing state
+            html.Div(id="dummy-output"),
         ],
         style={"width": "100%", "display": "inline-block"},
     )
-
     app.run(debug=True)

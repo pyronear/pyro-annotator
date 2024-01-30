@@ -112,11 +112,6 @@ class AnnotateImageBboxsAIO(html.Div):
 
         curr_image_layout = self._create_layout_for_curr_image()
 
-        instructions_txt = (
-            self.options.instructions_custom
-            or "Draw bounding boxes on the image, and label the classes."
-        )
-
         return dbc.Row(
             [
                 dbc.Col(
@@ -129,7 +124,6 @@ class AnnotateImageBboxsAIO(html.Div):
                         html.Div(id=self.ids.bbox_labeling(self.aio_id)),
                     ],
                     md=1,
-                    
                 ),
             ]
         )
@@ -148,7 +142,6 @@ class AnnotateImageBboxsAIO(html.Div):
             margin=dict(l=0, r=0, t=0, b=0),  # Remove margins
             autosize=True,
             # Make the plot responsive to the window size
-      
             template=None,  # Remove default Plotly styling
         )
 
@@ -227,7 +220,7 @@ class AnnotateImageBboxsAIO(html.Div):
 
     def _create_alert_layout(self):
         alerts = []
-        
+
         return alerts
 
     def _define_callbacks(self):
@@ -241,12 +234,9 @@ class AnnotateImageBboxsAIO(html.Div):
             Input(self.ids.graph_picture(MATCH), "relayoutData"),
             Input(self.ids.delete_button(MATCH, ALL), "n_clicks"),
             Input(self.ids.highlight_bbox(MATCH, ALL), "n_clicks"),
-
             State(self.ids.graph_picture(MATCH), "figure"),
         )
-        def update(
-            relayout_data, n_clicks_delete, n_clicks_select, figure
-        ):
+        def update(relayout_data, n_clicks_delete, n_clicks_select, figure):
 
             trigger_id, idx = get_trigger_id()
             logger.debug(f"Update: trigger ID: {trigger_id} idx: {idx}")
@@ -260,7 +250,6 @@ class AnnotateImageBboxsAIO(html.Div):
                 logger.debug("Pressed highlight_bbox")
                 assert idx is not None, "idx should not be None"
                 update = self._handle_highlight_button_pressed(idx, figure)
-
 
             elif trigger_id == "graph_picture":
 
@@ -316,8 +305,6 @@ class AnnotateImageBboxsAIO(html.Div):
         return AnnotateImageBboxsAIO.Update(
             no_update, figure, self._create_alert_layout()
         )
-
-
 
     def _handle_new_box_drawn(self, relayout_data: Dict) -> Update:
         new_shape = relayout_data["shapes"][-1]

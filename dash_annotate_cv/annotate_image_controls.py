@@ -33,21 +33,21 @@ class AnnotateImageControlsAIO(html.Div):
             "subcomponent": "next_submit",
             "aio_id": aio_id,
         }
-        # next_skip = lambda aio_id: {
-        #     "component": "AnnotateImageLabelsAIO",
-        #     "subcomponent": "next_skip",
-        #     "aio_id": aio_id,
-        # }
         prev = lambda aio_id: {
             "component": "AnnotateImageLabelsAIO",
             "subcomponent": "prev",
             "aio_id": aio_id,
         }
-        # next_missing_ann = lambda aio_id: {
-        #     "component": "AnnotateImageLabelsAIO",
-        #     "subcomponent": "next_missing_ann",
-        #     "aio_id": aio_id,
-        # }
+        fit = lambda aio_id: {
+            "component": "AnnotateImageLabelsAIO",
+            "subcomponent": "fit",
+            "aio_id": aio_id,
+        }
+        propagate = lambda aio_id: {
+            "component": "AnnotateImageLabelsAIO",
+            "subcomponent": "propagate",
+            "aio_id": aio_id,
+        }
         content = lambda aio_id: {
             "component": "AnnotateImageLabelsAIO",
             "subcomponent": "content",
@@ -89,11 +89,13 @@ class AnnotateImageControlsAIO(html.Div):
             Output(self.ids.content(MATCH), "children"),
             Output(self.ids.alert(MATCH), "children"),
             Input(self.ids.next_submit(MATCH), "n_clicks"),
-            # Input(self.ids.next_skip(MATCH), "n_clicks"),
             Input(self.ids.prev(MATCH), "n_clicks"),
-            # Input(self.ids.next_missing_ann(MATCH), "n_clicks"),
+            Input(self.ids.fit(MATCH), "n_clicks"),
+            Input(self.ids.propagate(MATCH), "n_clicks"),
         )
-        def button_press(submit_n_clicks, prev_n_clicks):
+        def button_press(
+            submit_n_clicks, prev_n_clicks, fit_n_clicks, propagate_n_clicks
+        ):
             trigger_id, _ = get_trigger_id()
             logger.debug(f"Trigger: '{trigger_id}'")
 
@@ -110,20 +112,20 @@ class AnnotateImageControlsAIO(html.Div):
                     self.controller.next_image()
                     content_layout = self._refresh_layout_callback()
 
-                # elif trigger_id == self.ids.next_skip(MATCH)["subcomponent"]:
-                #     # Skip button was pressed
-                #     self.controller.next_image()
-                #     content_layout = self._refresh_layout_callback()
-
                 elif trigger_id == self.ids.prev(MATCH)["subcomponent"]:
                     # Previous button was pressed
                     self.controller.previous_image()
                     content_layout = self._refresh_layout_callback()
 
-                # elif trigger_id == self.ids.next_missing_ann(MATCH)["subcomponent"]:
-                #     # Next missing annotation button was pressed
-                #     self.controller.skip_to_next_missing_ann()
-                #     content_layout = self._refresh_layout_callback()
+                elif trigger_id == self.ids.fit(MATCH)["subcomponent"]:
+                    # Skip button was pressed
+                    self.controller.fit_bbox()
+                    content_layout = self._refresh_layout_callback()
+
+                elif trigger_id == self.ids.propagate(MATCH)["subcomponent"]:
+                    # Skip button was pressed
+                    self.controller.propagate_bbox()
+                    content_layout = self._refresh_layout_callback()
 
                 else:
                     logger.debug(f"Unknown button pressed: {trigger_id}")
@@ -167,18 +169,30 @@ class AnnotateImageControlsAIO(html.Div):
         self, aio_id: str, enable: EnableButtons = EnableButtons()
     ):
         """Create layout for buttons"""
-        style_prev = {"width": "100%"}
-        style_next_save = {"width": "100%"}
-        # style_skip = {"width": "100%"}
-        # style_next_missing_annotation = {"width": "100%"}
+        style_prev = {
+            "backgroundColor": "#FD5252",
+            "width": "100%",
+            "border": "none",
+        }
+        style_next_save = {
+            "backgroundColor": "#FEBA6A",
+            "width": "100%",
+            "border": "none",
+        }
+        style_fit = {
+            "backgroundColor": "#2C796E",
+            "width": "100%",
+            "border": "none",
+        }
+        style_propagate = {
+            "backgroundColor": "#054546",
+            "width": "100%",
+            "border": "none",
+        }
         if not enable.prev_btn:
             style_prev["display"] = "none"
         if not enable.next_btn:
             style_next_save["display"] = "none"
-        # if not enable.skip_btn:
-        #     style_skip["display"] = "none"
-        # if not enable.skip_to_next_btn:
-        #     style_next_missing_annotation["display"] = "none"
 
         # Create components
         prev_button = dbc.Button(
@@ -190,19 +204,26 @@ class AnnotateImageControlsAIO(html.Div):
             id=self.ids.next_submit(aio_id),
             style=style_next_save,
         )
-        # skip_button = dbc.Button(
-        #     "Skip", color="dark", id=self.ids.next_skip(aio_id), style=style_skip
-        # )
-        # skip_to_next_button = dbc.Button(
-        #     "Skip to next missing annotation",
-        #     color="warning",
-        #     id=self.ids.next_missing_ann(aio_id),
-        #     style=style_next_missing_annotation,
-        # )
+        fit_button = dbc.Button(
+            "Fit Bbox", color="dark", id=self.ids.fit(aio_id), style=style_fit
+        )
+        propagate_button = dbc.Button(
+            "Propagate",
+            color="dark",
+            id=self.ids.propagate(aio_id),
+            style=style_propagate,
+        )
 
         return dbc.Col(
             [
-                dbc.Row([dbc.Col(prev_button, md=6), dbc.Col(next_button, md=6)]),
+                dbc.Row(
+                    [
+                        dbc.Col(prev_button, md=3),
+                        dbc.Col(next_button, md=3),
+                        dbc.Col(fit_button, md=3),
+                        dbc.Col(propagate_button, md=3),
+                    ]
+                ),
             ]
         )
 

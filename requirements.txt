@@ -12,3 +12,6 @@ pyyaml
 opencv-python
 python-dotenv
 tqdm
+torch
+torchvision
+git+https://github.com/facebookresearch/segment-anything.git

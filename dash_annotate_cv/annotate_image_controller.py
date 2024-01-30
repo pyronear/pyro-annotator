@@ -16,6 +16,16 @@ from enum import Enum
 import copy
 import logging
 
+import numpy as np
+import torch
+from segment_anything import SamPredictor, sam_model_registry
+
+
+def load_image_embedding(predictor, path):
+    res = torch.load(path, predictor.device)
+    for k, v in res.items():
+        setattr(predictor, k, v)
+
 
 logger = logging.getLogger(__name__)
 
@@ -178,6 +188,15 @@ class AnnotateImageController:
         self.annotations = annotations_existing or ImageAnnotations.new()
         self._image_iterator = ImageIterator(self.image_source)
 
+        # Load Sam
+        sam_checkpoint = "sam_vit_h_4b8939.pth"
+        model_type = "vit_h"
+        device = "cpu"
+        sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
+        sam.to(device=device)
+
+        self.predictor = SamPredictor(sam)
+
         # Load the first image
         try:
             image_idx, image_name, image = self._image_iterator.next()
@@ -328,6 +347,52 @@ class AnnotateImageController:
         # Refresh
         self._refresh_curr()
 
+    def fit_bbox(
+        self,
+    ):
+        print("fit bbox !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        ann = self.annotations.get_or_add_image(
+            image_name=self._curr_image_name,
+            img_width=self._curr.image.width if self._curr is not None else None,
+            img_height=self._curr.image.height if self._curr is not None else None,
+        )
+
+        print("current boxes", ann)
+
+        print("last box", ann.bboxs[-1].xyxy, type(ann.bboxs[-1].xyxy[0]))
+
+        bbox = np.array(ann.bboxs[-1].xyxy).reshape((-1, 4)).astype("int")
+
+        print(bbox)
+        print(ann.image_name)
+        name = ann.image_name.split(".")[0]
+
+        load_image_embedding(
+            self.predictor,
+            f"/home/mateo/pyronear/vision/dataset/dash-annotate-cv/annotations/embeddings/{name}_vit_h.pth",
+        )
+
+        masks, _, _ = self.predictor.predict(
+            point_coords=None,
+            point_labels=None,
+            box=bbox[None, :],
+            multimask_output=False,
+        )
+
+        Y, X = np.where(masks[0])
+        Y, X = Y.astype("float"), X.astype("float")
+        x_min, x_max = np.min(X), np.max(X)
+        y_min, y_max = np.min(Y), np.max(Y)
+
+        bbox = Bbox([x_min, y_min, x_max, y_max], None)
+        self.delete_bbox(len(ann.bboxs) - 1)
+        self.add_bbox(bbox)
+
+    def propagate_bbox(
+        self,
+    ):
+        print("propagate bbox !!!!!!!!!!!!!!!!!!!!!!!!!")
+
     def update_bbox(self, update: BboxUpdate):
         """Update bounding box
 
@@ -465,12 +530,18 @@ class AnnotateImageController:
             logger.debug("No curr to refresh")
 
     def _update_curr(self, image_idx: int, image_name: str, image: Image.Image):
+
+        print("update")
         label_single: Optional[str] = None
         label_multiple: Optional[List[str]] = None
         bboxs: Optional[List[Bbox]] = None
 
         # Retrieve the label if it exists
         if image_name in self.annotations.image_to_entry:
+            print(
+                "bbox self.annotations self.annotations",
+                self.annotations.image_to_entry.keys(),
+            )
             entry = self.annotations.image_to_entry[image_name]
             if entry.label is not None:
                 label_single = entry.label.single
