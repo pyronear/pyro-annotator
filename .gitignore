@@ -120,4 +120,4 @@ pyroengine/version.py
 conda-dist/
 
 annotations
-example_bboxs.default
+example_bboxs.default.json
