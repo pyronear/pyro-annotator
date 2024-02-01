@@ -17,7 +17,7 @@ import copy
 import logging
 
 import numpy as np
-from utils import find_box_sam
+from utils import find_box_sam, box_iou
 from segment_anything import SamPredictor, sam_model_registry
 
 
@@ -315,21 +315,29 @@ class AnnotateImageController:
         # Refresh
         self._refresh_curr()
 
-    def delete_bbox(self, idx: int):
+    def delete_bbox(self, idx: int, target_image=None):
         """Delete bounding box
 
         Args:
             idx (int): Index of bounding box to delete
+            target_image (tuple, Optional): image_name, width, height (update other image)
 
         Raises:
             UnknownError: Unknown error
         """
-        # Update annotation
-        ann = self.annotations.get_or_add_image(
-            image_name=self._curr_image_name,
-            img_width=self._curr.image.width if self._curr is not None else None,
-            img_height=self._curr.image.height if self._curr is not None else None,
-        )
+        if target_image is None:
+            ann = self.annotations.get_or_add_image(
+                image_name=self._curr_image_name,
+                img_width=self._curr.image.width if self._curr is not None else None,
+                img_height=self._curr.image.height if self._curr is not None else None,
+            )
+        else:
+            image_name, width, height = target_image
+            ann = self.annotations.get_or_add_image(
+                image_name=image_name,
+                img_width=width,
+                img_height=height,
+            )
         ann.bboxs = ann.bboxs or []
         if ann.bboxs is None:
             raise UnknownError("Bboxs must be set")
@@ -366,6 +374,7 @@ class AnnotateImageController:
         name = ann.image_name.split(".")[0]
 
         [x_min, y_min, x_max, y_max] = find_box_sam(self.predictor, bbox, name)
+
         if x_min is not None:
             self.delete_bbox(len(ann.bboxs) - 1)
             self.add_bbox(Bbox([x_min, y_min, x_max, y_max], None))
@@ -373,17 +382,57 @@ class AnnotateImageController:
     def propagate_bbox(
         self,
     ):
-        print("propagate bbox !!!!!!!!!!!!!!!!!!!!!!!!!")
-
-        print(self.annotations.image_to_entry.keys())
-
-        print(self.image_source)
 
         ann = self.annotations.get_or_add_image(
             image_name=self._curr_image_name,
             img_width=self._curr.image.width if self._curr is not None else None,
             img_height=self._curr.image.height if self._curr is not None else None,
         )
+
+        deleted_boxes = []
+
+        for h in ann.history_bboxs:
+            if h.operation.name == "DELETE":
+
+                deleted_boxes.append(
+                    np.array(h.bbox.xyxy).reshape((-1, 4)).astype("int")
+                )
+
+        deleted_boxes = np.array(deleted_boxes)
+
+        if len(deleted_boxes):
+            deleted_boxes = deleted_boxes[:,0,:]
+
+        current_image_reached = False
+
+        for image_name, image in self.image_source.images:
+
+            if self._curr_image_name == image_name:
+                current_image_reached = True
+
+            else:
+                if current_image_reached:
+
+                    ann_next = self.annotations.get_or_add_image(
+                        image_name=image_name,
+                        img_width=image.width,
+                        img_height=image.height,
+                    )
+                    to_del = []
+
+                    if ann_next.bboxs is not None:
+                        for idx, box in enumerate(ann_next.bboxs):
+
+                            np_box = np.array(box.xyxy).reshape((-1, 4)).astype("int")
+
+                            iou = box_iou(np_box, deleted_boxes)
+                            if np.max(iou) > 0:
+                                to_del.append(idx)
+
+                        for idx in to_del:
+                            target_image = image_name, image.width, image.height
+
+                            self.delete_bbox(idx, target_image)
 
         coeff = 0.05
 
@@ -395,13 +444,11 @@ class AnnotateImageController:
 
             for image_name, image in self.image_source.images:
 
-                print("image name", image_name, self._curr_image_name)
                 if self._curr_image_name == image_name:
                     current_image_reached = True
 
                 else:
                     if current_image_reached:
-                        print("propagate")
                         name = image_name.split(".")[0]
                         [x_min, y_min, x_max, y_max] = bbox[0]
                         dx = (x_max - x_min) * coeff
@@ -565,17 +612,12 @@ class AnnotateImageController:
 
     def _update_curr(self, image_idx: int, image_name: str, image: Image.Image):
 
-        print("update")
         label_single: Optional[str] = None
         label_multiple: Optional[List[str]] = None
         bboxs: Optional[List[Bbox]] = None
 
         # Retrieve the label if it exists
         if image_name in self.annotations.image_to_entry:
-            print(
-                "bbox self.annotations self.annotations",
-                self.annotations.image_to_entry.keys(),
-            )
             entry = self.annotations.image_to_entry[image_name]
             if entry.label is not None:
                 label_single = entry.label.single
@@ -589,7 +631,6 @@ class AnnotateImageController:
         self._curr = ImageAnn(
             image_idx, image_name, image, label_single, label_multiple, bboxs
         )
-        print("bbox", bboxs)
         logger.debug(f"Updated curr: {self._curr}")
 
     def _check_fix_xyxy_valid(self, xyxy: Xyxy):
