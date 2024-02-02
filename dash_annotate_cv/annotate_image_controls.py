@@ -9,6 +9,7 @@ import dash_bootstrap_components as dbc
 from dataclasses import dataclass
 import logging
 
+from dash.exceptions import PreventUpdate
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +54,6 @@ class AnnotateImageControlsAIO(html.Div):
             "subcomponent": "content",
             "aio_id": aio_id,
         }
-
-    ids = ids
 
     def __init__(
         self,

@@ -48,7 +48,7 @@ for file in imgs:
     t0 = t
 
 
-images_files = fires[1]
+images_files = fires[57]
 
 
 if __name__ == "__main__":
@@ -77,20 +77,18 @@ if __name__ == "__main__":
         options=dacv.AnnotateImageOptions(),
     )
 
-    print("aiiiiiiiiiiiiiiiiiio", type(aio))
     app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 
     app.layout = html.Div(
         [
-            # Row for the aio component
+            # Row for the aio componenth
             dbc.Row(
                 [
                     dbc.Col(html.Div(id="aio_container", children=aio), md=12),
                 ]
             ),
-            # Hidden Div for storing state
-            html.Div(id="dummy-output"),
         ],
         style={"width": "100%", "display": "inline-block"},
     )
+
     app.run(debug=True)

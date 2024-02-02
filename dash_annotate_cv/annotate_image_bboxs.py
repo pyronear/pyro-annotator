@@ -21,7 +21,7 @@ import plotly.express as px
 import dash_bootstrap_components as dbc
 from dataclasses import dataclass
 import logging
-
+from dash.exceptions import PreventUpdate
 
 logger = logging.getLogger(__name__)
 
@@ -136,9 +136,10 @@ class AnnotateImageBboxsAIO(html.Div):
         fig = px.imshow(image)
         rgb = self.options.default_bbox_color
         line_color = "rgba(%d,%d,%d,1)" % rgb
+        line_width = 1
         fig.update_layout(
             dragmode="drawrect",
-            newshape=dict(line_color=line_color),
+            newshape=dict(line_color=line_color, line_width=line_width),
             margin=dict(l=0, r=0, t=0, b=0),  # Remove margins
             autosize=True,
             # Make the plot responsive to the window size

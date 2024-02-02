@@ -401,7 +401,7 @@ class AnnotateImageController:
         deleted_boxes = np.array(deleted_boxes)
 
         if len(deleted_boxes):
-            deleted_boxes = deleted_boxes[:,0,:]
+            deleted_boxes = deleted_boxes[:, 0, :]
 
         current_image_reached = False
 
