@@ -10,6 +10,7 @@ from dataclasses import dataclass
 import logging
 
 from dash.exceptions import PreventUpdate
+from dash import callback_context
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +84,30 @@ class AnnotateImageControlsAIO(html.Div):
     def _define_callbacks(self):
         """Define callbacks, called in constructor"""
 
+        # @callback(
+        #     Output('output-div', 'children'),
+        #     [Input('hidden-button-prev', 'n_clicks'), Input('hidden-button-next', 'n_clicks')]
+        # )
+        # def handle_click(n_clicks_prev, n_clicks_next):
+        #     # Use callback_context to find out which button was pressed
+        #     triggered_id = callback_context.triggered[0]['prop_id'].split('.')[0]
+        #     print(triggered_id)
+
+        #     if 'hidden-button-prev' in triggered_id:
+        #         # Logic for previous button click
+        #         print("clicked prev")
+
+        #         return ""
+
+        #     elif 'hidden-button-next' in triggered_id:
+        #         # Logic for next button click
+        #         print("clicked next")
+        #         return ""
+
+        #     # If the callback was triggered but doesn't match the above,
+        #     # it prevents the update without changing anything.
+        #     raise PreventUpdate
+
         @callback(
             Output(self.ids.title(MATCH), "children"),
             Output(self.ids.content(MATCH), "children"),
@@ -91,9 +116,20 @@ class AnnotateImageControlsAIO(html.Div):
             Input(self.ids.prev(MATCH), "n_clicks"),
             Input(self.ids.fit(MATCH), "n_clicks"),
             Input(self.ids.propagate(MATCH), "n_clicks"),
+            Input("hidden-button-prev", "n_clicks"),
+            Input("hidden-button-next", "n_clicks"),
+            Input("hidden-button-fit", "n_clicks"),
+            Input("hidden-button-propagate", "n_clicks"),
         )
         def button_press(
-            submit_n_clicks, prev_n_clicks, fit_n_clicks, propagate_n_clicks
+            submit_n_clicks,
+            prev_n_clicks,
+            fit_n_clicks,
+            propagate_n_clicks,
+            n_clicks_prev,
+            n_clicks_next,
+            n_clicks_fit,
+            n_clicks_propagate,
         ):
             trigger_id, _ = get_trigger_id()
             logger.debug(f"Trigger: '{trigger_id}'")
@@ -106,22 +142,34 @@ class AnnotateImageControlsAIO(html.Div):
                     # Initial state
                     content_layout = self._refresh_layout_callback()
 
-                elif trigger_id == self.ids.next_submit(MATCH)["subcomponent"]:
+                elif (
+                    trigger_id == self.ids.next_submit(MATCH)["subcomponent"]
+                    or trigger_id == "hidden-button-next"
+                ):
                     # Submit button was pressed
                     self.controller.next_image()
                     content_layout = self._refresh_layout_callback()
 
-                elif trigger_id == self.ids.prev(MATCH)["subcomponent"]:
+                elif (
+                    trigger_id == self.ids.prev(MATCH)["subcomponent"]
+                    or trigger_id == "hidden-button-prev"
+                ):
                     # Previous button was pressed
                     self.controller.previous_image()
                     content_layout = self._refresh_layout_callback()
 
-                elif trigger_id == self.ids.fit(MATCH)["subcomponent"]:
+                elif (
+                    trigger_id == self.ids.fit(MATCH)["subcomponent"]
+                    or trigger_id == "hidden-button-fit"
+                ):
                     # Skip button was pressed
                     self.controller.fit_bbox()
                     content_layout = self._refresh_layout_callback()
 
-                elif trigger_id == self.ids.propagate(MATCH)["subcomponent"]:
+                elif (
+                    trigger_id == self.ids.propagate(MATCH)["subcomponent"]
+                    or trigger_id == "hidden-button-propagate"
+                ):
                     # Skip button was pressed
                     self.controller.propagate_bbox()
                     content_layout = self._refresh_layout_callback()

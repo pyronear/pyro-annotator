@@ -8,12 +8,11 @@ import dash_bootstrap_components as dbc
 import logging
 import sys
 import os
-from datetime import datetime
-import glob
+
+
 from PIL import Image
-from dash import callback_context
-from dash.dependencies import Input, Output, State
-from dash.exceptions import PreventUpdate
+
+from dash.dependencies import Input, Output
 
 
 # Set up logging
@@ -25,31 +24,6 @@ formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(messag
 handler.setFormatter(formatter)
 root.addHandler(handler)
 
-imgs = glob.glob("annotations/images/*")
-imgs.sort()
-len(imgs)
-
-t0 = datetime.now()
-fires = {}
-current_fire = []
-for file in imgs:
-    t = os.path.basename(file).split(".")[0].split("2023")[1]
-    t = datetime.strptime("2023" + t, "%Y_%m_%dT%H_%M_%S")
-
-    if abs((t - t0).total_seconds()) < 30 * 60:  # 30mn
-        current_fire.append(file)
-    else:
-        if len(current_fire):
-            fires[len(fires)] = current_fire
-            current_fire = []
-        else:
-            current_fire.append(file)
-
-    t0 = t
-
-
-images_files = fires[57]
-
 
 if __name__ == "__main__":
     # Load some images
@@ -58,7 +32,7 @@ if __name__ == "__main__":
 
     # Set up the image and label sources
     image_source = dacv.ImageSource(images=images_pil)
-    label_source = dacv.LabelSource(labels=["face", "eye", "body"])
+    label_source = dacv.LabelSource(labels=["smoke"])
 
     # Set up writing
     storage = dacv.AnnotationStorage(
@@ -84,11 +58,89 @@ if __name__ == "__main__":
             # Row for the aio componenth
             dbc.Row(
                 [
+                    dbc.Col(
+                        html.Button(id="hidden-button-prev", style={"display": "none"})
+                    ),
+                    dbc.Col(
+                        html.Button(id="hidden-button-next", style={"display": "none"})
+                    ),
+                    dbc.Col(
+                        html.Button(id="hidden-button-fit", style={"display": "none"})
+                    ),
+                    dbc.Col(
+                        html.Button(
+                            id="hidden-button-propagate", style={"display": "none"}
+                        )
+                    ),
                     dbc.Col(html.Div(id="aio_container", children=aio), md=12),
                 ]
             ),
+            html.Div(id="prev-div"),
+            html.Div(id="next-div"),
+            html.Div(id="fit-div"),
+            html.Div(id="propagate-div"),
+            html.Div(id="output-div"),
         ],
         style={"width": "100%", "display": "inline-block"},
+    )
+
+    app.clientside_callback(
+        """
+        function(n_clicks) {
+            document.addEventListener('keydown', function(event) {
+                if (event.code === 'KeyQ') { 
+                    document.getElementById('hidden-button-prev').click();
+                }
+            });
+            return "";
+        }
+        """,
+        Output("prev-div", "children"),
+        Input("hidden-button-prev", "n_clicks"),
+    )
+    app.clientside_callback(
+        """
+        function(n_clicks) {
+            document.addEventListener('keydown', function(event) {
+                if (event.code === 'KeyW') { 
+                    document.getElementById('hidden-button-next').click();
+                }
+            });
+            return "";
+        }
+        """,
+        Output("next-div", "children"),
+        Input("hidden-button-next", "n_clicks"),
+    )
+
+    app.clientside_callback(
+        """
+        function(n_clicks) {
+            document.addEventListener('keydown', function(event) {
+                if (event.code === 'KeyE') { 
+                    document.getElementById('hidden-button-fit').click();
+                }
+            });
+            return "";
+        }
+        """,
+        Output("fit-div", "children"),
+        Input("hidden-button-fit", "n_clicks"),
+    )
+
+    app.clientside_callback(
+        """
+        function(n_clicks) {
+            document.addEventListener('keydown', function(event) {
+                if (event.code === 'KeyR') { 
+                    document.getElementById('hidden-button-propagate').click();
+                }
+            });
+            return "";
+        }
+        """,
+        Output("propagate-div", "children"),
+        Input("hidden-button-propagate", "n_clicks"),
     )
 
     app.run(debug=True)

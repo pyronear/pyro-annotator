@@ -19,7 +19,7 @@ import logging
 import numpy as np
 from utils import find_box_sam, box_iou
 from segment_anything import SamPredictor, sam_model_registry
-
+from dash.exceptions import PreventUpdate
 
 logger = logging.getLogger(__name__)
 
@@ -342,7 +342,7 @@ class AnnotateImageController:
         if ann.bboxs is None:
             raise UnknownError("Bboxs must be set")
         if idx >= len(ann.bboxs):
-            raise UnknownError("Bbox idx must be less than number of bboxs")
+            raise PreventUpdate
         bbox_old = ann.bboxs[idx]
         del ann.bboxs[idx]
 
