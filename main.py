@@ -3,17 +3,18 @@ import dash_annotate_cv as dacv
 
 
 # Other imports
-from dash import Dash, html
+import dash
+from dash import Dash, html, dcc
 import dash_bootstrap_components as dbc
 import logging
 import sys
 import os
-
-
+import glob
+import random
 from PIL import Image
-
+from dash.exceptions import PreventUpdate
 from dash.dependencies import Input, Output
-
+from datetime import datetime
 
 # Set up logging
 root = logging.getLogger()
@@ -26,35 +27,18 @@ root.addHandler(handler)
 
 
 if __name__ == "__main__":
-    # Load some images
-
-    images_pil = [(os.path.basename(file), Image.open(file)) for file in images_files]
-
-    # Set up the image and label sources
-    image_source = dacv.ImageSource(images=images_pil)
-    label_source = dacv.LabelSource(labels=["smoke"])
-
-    # Set up writing
-    storage = dacv.AnnotationStorage(
-        storage_types=[
-            dacv.StorageType.JSON,  # Default storage type
-        ],
-        json_file="example_bboxs.default.json",
-    )
-    annotations_existing = dacv.load_image_anns_from_storage(storage)
-
-    aio = dacv.AnnotateImageBboxsAIO(
-        label_source=label_source,
-        image_source=image_source,
-        annotation_storage=storage,
-        annotations_existing=annotations_existing,
-        options=dacv.AnnotateImageOptions(),
-    )
 
     app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
+    server = app.server
 
     app.layout = html.Div(
         [
+            dcc.Store(id="trigger"),
+            dbc.Row(
+                [
+                    dbc.Col(html.Button("Reload App", id="reload-button"), md=12),
+                ]
+            ),
             # Row for the aio componenth
             dbc.Row(
                 [
@@ -72,7 +56,12 @@ if __name__ == "__main__":
                             id="hidden-button-propagate", style={"display": "none"}
                         )
                     ),
-                    dbc.Col(html.Div(id="aio_container", children=aio), md=12),
+                    dbc.Col(
+                        html.Div(
+                            id="aio_container", children=dacv.AnnotateImageBboxsAIO()
+                        ),
+                        md=12,
+                    ),
                 ]
             ),
             html.Div(id="prev-div"),
@@ -83,6 +72,21 @@ if __name__ == "__main__":
         ],
         style={"width": "100%", "display": "inline-block"},
     )
+
+    app.clientside_callback(
+        """
+        function(n_clicks) {
+            if(n_clicks > 0) {
+                window.location.reload();
+            }
+        }
+        """,
+        output=dash.dependencies.Output("dummy-div", "children"),  # Dummy output
+        inputs=[dash.dependencies.Input("reload-button", "n_clicks")],
+    )
+
+    # Add a dummy div to the layout that serves as the target for the clientside callback's output
+    app.layout.children.append(html.Div(id="dummy-div", style={"display": "none"}))
 
     app.clientside_callback(
         """

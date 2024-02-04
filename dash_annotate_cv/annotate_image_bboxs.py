@@ -11,7 +11,7 @@ from dash_annotate_cv.image_source import ImageSource
 from dash_annotate_cv.label_source import LabelSource
 from dash_annotate_cv.formats.image_annotations import ImageAnnotations
 from dash_annotate_cv.annotation_storage import AnnotationStorage
-
+import dash_annotate_cv as dacv
 from typing import Optional
 import plotly.express as px
 from dash import dcc, html, Input, Output, no_update, callback, State
@@ -22,6 +22,10 @@ import dash_bootstrap_components as dbc
 from dataclasses import dataclass
 import logging
 from dash.exceptions import PreventUpdate
+import os
+import glob
+import random
+from PIL import Image
 
 logger = logging.getLogger(__name__)
 
@@ -68,41 +72,48 @@ class AnnotateImageBboxsAIO(html.Div):
 
     def __init__(
         self,
-        label_source: LabelSource,
-        image_source: ImageSource,
-        annotation_storage: AnnotationStorage = AnnotationStorage(),
-        annotations_existing: Optional[ImageAnnotations] = None,
-        aio_id: Optional[str] = None,
-        options: AnnotateImageOptions = AnnotateImageOptions(),
     ):
-        """Constructor
 
-        Args:
-            label_source (LabelSource): Label source
-            image_source (ImageSource): Image source
-            annotation_storage (AnnotationStorage, optional): Storage. Defaults to AnnotationStorage().
-            annotations_existing (Optional[ImageAnnotations], optional): Existing annotations. Defaults to None.
-            aio_id (Optional[str], optional): AIO Id to use for components. Defaults to None.
-            options (AnnotateImageOptions, optional): Options. Defaults to AnnotateImageOptions().
-        """
-        options.check_valid()
+        self._pick_fire()
 
-        self.options = options
+    def _pick_fire(self):
+        fires = glob.glob("Data/to_do/*")
+        fire = random.choice(fires)
+        images_files = glob.glob(f"{fire}/images/*")
+
+        images_pil = [
+            (os.path.basename(file), Image.open(file)) for file in images_files
+        ]
+
+        print(fire, len(images_files))
+        self.options = dacv.AnnotateImageOptions()
+
+        # Set up the image and label sources
+        image_source = dacv.ImageSource(images=images_pil)
+        label_source = dacv.LabelSource(labels=["smoke"])
+
+        # Set up writing
+        storage = dacv.AnnotationStorage(
+            storage_types=[
+                dacv.StorageType.JSON,  # Default storage type
+            ],
+            json_file=f"{fire}.json",
+        )
+        annotations_existing = dacv.load_image_anns_from_storage(storage)
         self.controller = AnnotateImageController(
             label_source=label_source,
             image_source=image_source,
-            annotation_storage=annotation_storage,
+            annotation_storage=storage,
             annotations_existing=annotations_existing,
-            options=options,
+            options=self.options,
         )
-        self.converter = BboxToShapeConverter(options=options)
+        self.converter = BboxToShapeConverter(options=self.options)
         self.controls = AnnotateImageControlsAIO(
             controller=self.controller,
             refresh_layout_callback=self._create_layout,
-            aio_id=aio_id,
         )
         self.aio_id = self.controls.aio_id
-
+        print("self.aio_id", self.aio_id)
         super().__init__(self.controls)  # Equivalent to `html.Div([...])`
         self._define_callbacks()
 
@@ -110,23 +121,31 @@ class AnnotateImageBboxsAIO(html.Div):
         """Create layout for component"""
         logger.debug("Creating layout for component")
 
+        # Generate a unique key based on self.aio_id
+        unique_key = f"layout-{self.aio_id}"
+
         curr_image_layout = self._create_layout_for_curr_image()
 
         return dbc.Row(
             [
                 dbc.Col(
-                    [html.Div(curr_image_layout, id=self.ids.image(self.aio_id))], md=11
+                    [
+                        # Use the unique_key as the key property for the div
+                        html.Div(curr_image_layout, id=self.ids.image(self.aio_id), key=unique_key)
+                    ], 
+                    md=11
                 ),
                 dbc.Col(
                     [
-                        html.Div(id=self.ids.alert(self.aio_id)),
+                        html.Div(id=self.ids.alert(self.aio_id), key=f"alert-{unique_key}"),
                         html.Div(style={"margin-bottom": "20px"}),
-                        html.Div(id=self.ids.bbox_labeling(self.aio_id)),
-                    ],
+                        html.Div(id=self.ids.bbox_labeling(self.aio_id), key=f"labeling-{unique_key}"),
+                    ], 
                     md=1,
                 ),
             ]
         )
+
 
     def _create_layout_for_curr_image(self):
         """Create layout for the image"""
@@ -235,9 +254,18 @@ class AnnotateImageBboxsAIO(html.Div):
             Input(self.ids.graph_picture(MATCH), "relayoutData"),
             Input(self.ids.delete_button(MATCH, ALL), "n_clicks"),
             Input(self.ids.highlight_bbox(MATCH, ALL), "n_clicks"),
+            Input("skip", "n_clicks"),
+            Input("done", "n_clicks"),
             State(self.ids.graph_picture(MATCH), "figure"),
         )
-        def update(relayout_data, n_clicks_delete, n_clicks_select, figure):
+        def update(
+            relayout_data,
+            n_clicks_delete,
+            n_clicks_select,
+            n_clicks_skip,
+            n_clicks_done,
+            figure,
+        ):
 
             trigger_id, idx = get_trigger_id()
             logger.debug(f"Update: trigger ID: {trigger_id} idx: {idx}")
@@ -272,6 +300,21 @@ class AnnotateImageBboxsAIO(html.Div):
                     update = AnnotateImageBboxsAIO.Update(
                         self._create_bbox_layout(), figure, self._create_alert_layout()
                     )
+
+            elif trigger_id == "skip":
+                print("skip")
+                self._pick_fire()
+                update = AnnotateImageBboxsAIO.Update(
+                    self._create_bbox_layout(), figure, self._create_alert_layout()
+                )
+
+            elif trigger_id == "done":
+                print("done")
+                self._pick_fire()
+                update = AnnotateImageBboxsAIO.Update(
+                    self._create_bbox_layout(), figure, self._create_alert_layout()
+                )
+
             else:
                 logger.warning(f"Unrecognized trigger ID: {trigger_id}")
                 # Just draw latest

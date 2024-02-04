@@ -84,30 +84,6 @@ class AnnotateImageControlsAIO(html.Div):
     def _define_callbacks(self):
         """Define callbacks, called in constructor"""
 
-        # @callback(
-        #     Output('output-div', 'children'),
-        #     [Input('hidden-button-prev', 'n_clicks'), Input('hidden-button-next', 'n_clicks')]
-        # )
-        # def handle_click(n_clicks_prev, n_clicks_next):
-        #     # Use callback_context to find out which button was pressed
-        #     triggered_id = callback_context.triggered[0]['prop_id'].split('.')[0]
-        #     print(triggered_id)
-
-        #     if 'hidden-button-prev' in triggered_id:
-        #         # Logic for previous button click
-        #         print("clicked prev")
-
-        #         return ""
-
-        #     elif 'hidden-button-next' in triggered_id:
-        #         # Logic for next button click
-        #         print("clicked next")
-        #         return ""
-
-        #     # If the callback was triggered but doesn't match the above,
-        #     # it prevents the update without changing anything.
-        #     raise PreventUpdate
-
         @callback(
             Output(self.ids.title(MATCH), "children"),
             Output(self.ids.content(MATCH), "children"),
@@ -146,7 +122,7 @@ class AnnotateImageControlsAIO(html.Div):
                     trigger_id == self.ids.next_submit(MATCH)["subcomponent"]
                     or trigger_id == "hidden-button-next"
                 ):
-                    # Submit button was pressed
+
                     self.controller.next_image()
                     content_layout = self._refresh_layout_callback()
 
@@ -154,7 +130,7 @@ class AnnotateImageControlsAIO(html.Div):
                     trigger_id == self.ids.prev(MATCH)["subcomponent"]
                     or trigger_id == "hidden-button-prev"
                 ):
-                    # Previous button was pressed
+
                     self.controller.previous_image()
                     content_layout = self._refresh_layout_callback()
 
@@ -162,7 +138,7 @@ class AnnotateImageControlsAIO(html.Div):
                     trigger_id == self.ids.fit(MATCH)["subcomponent"]
                     or trigger_id == "hidden-button-fit"
                 ):
-                    # Skip button was pressed
+
                     self.controller.fit_bbox()
                     content_layout = self._refresh_layout_callback()
 
@@ -170,7 +146,7 @@ class AnnotateImageControlsAIO(html.Div):
                     trigger_id == self.ids.propagate(MATCH)["subcomponent"]
                     or trigger_id == "hidden-button-propagate"
                 ):
-                    # Skip button was pressed
+
                     self.controller.propagate_bbox()
                     content_layout = self._refresh_layout_callback()
 
@@ -193,8 +169,8 @@ class AnnotateImageControlsAIO(html.Div):
             [
                 dbc.Row(
                     [
-                        dbc.Col(html.Div(id=self.ids.title(self.aio_id)), md=6),
-                        dbc.Col(self._create_layout_buttons(self.aio_id), md=6),
+                        dbc.Col(html.Div(id=self.ids.title(self.aio_id)), md=2),
+                        dbc.Col(self._create_layout_buttons(self.aio_id), md=10),
                     ]
                 ),
                 dbc.Col(html.Hr(), xs=12),
@@ -216,8 +192,18 @@ class AnnotateImageControlsAIO(html.Div):
         self, aio_id: str, enable: EnableButtons = EnableButtons()
     ):
         """Create layout for buttons"""
-        style_prev = {
+        style_skip = {
             "backgroundColor": "#FD5252",
+            "width": "100%",
+            "border": "none",
+        }
+        style_done = {
+            "backgroundColor": "#FD5252",
+            "width": "100%",
+            "border": "none",
+        }
+        style_prev = {
+            "backgroundColor": "#F28C28",
             "width": "100%",
             "border": "none",
         }
@@ -240,6 +226,9 @@ class AnnotateImageControlsAIO(html.Div):
             style_prev["display"] = "none"
         if not enable.next_btn:
             style_next_save["display"] = "none"
+
+        skip_button = dbc.Button("Skip", id="skip", style=style_skip)
+        done_button = dbc.Button("Done", id="done", style=style_done)
 
         # Create components
         prev_button = dbc.Button(
@@ -265,16 +254,19 @@ class AnnotateImageControlsAIO(html.Div):
             [
                 dbc.Row(
                     [
-                        dbc.Col(prev_button, md=3),
-                        dbc.Col(next_button, md=3),
-                        dbc.Col(fit_button, md=3),
-                        dbc.Col(propagate_button, md=3),
+                        dbc.Col(skip_button, md=2),
+                        dbc.Col(done_button, md=2),
+                        dbc.Col(prev_button, md=2),
+                        dbc.Col(next_button, md=2),
+                        dbc.Col(fit_button, md=2),
+                        dbc.Col(propagate_button, md=2),
                     ]
                 ),
             ]
         )
 
     def _create_title_layout(self):
+        print("Title")
         if self.controller.curr is not None:
             no_images = self.controller.no_images
             title = f"Image {self.controller.curr.image_idx+1}/{no_images}"
