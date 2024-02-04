@@ -131,21 +131,29 @@ class AnnotateImageBboxsAIO(html.Div):
                 dbc.Col(
                     [
                         # Use the unique_key as the key property for the div
-                        html.Div(curr_image_layout, id=self.ids.image(self.aio_id), key=unique_key)
-                    ], 
-                    md=11
+                        html.Div(
+                            curr_image_layout,
+                            id=self.ids.image(self.aio_id),
+                            key=unique_key,
+                        )
+                    ],
+                    md=11,
                 ),
                 dbc.Col(
                     [
-                        html.Div(id=self.ids.alert(self.aio_id), key=f"alert-{unique_key}"),
+                        html.Div(
+                            id=self.ids.alert(self.aio_id), key=f"alert-{unique_key}"
+                        ),
                         html.Div(style={"margin-bottom": "20px"}),
-                        html.Div(id=self.ids.bbox_labeling(self.aio_id), key=f"labeling-{unique_key}"),
-                    ], 
+                        html.Div(
+                            id=self.ids.bbox_labeling(self.aio_id),
+                            key=f"labeling-{unique_key}",
+                        ),
+                    ],
                     md=1,
                 ),
             ]
         )
-
 
     def _create_layout_for_curr_image(self):
         """Create layout for the image"""
