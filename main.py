@@ -13,7 +13,7 @@ import glob
 import random
 from PIL import Image
 from dash.exceptions import PreventUpdate
-from dash.dependencies import Input, Output
+from dash.dependencies import Input, Output, State
 from datetime import datetime
 
 # Set up logging
@@ -33,11 +33,13 @@ if __name__ == "__main__":
 
     app.layout = html.Div(
         [
-            dcc.Store(id="trigger"),
+            dcc.Store(id="aio-visibility", data={"visible": True}),
             dbc.Row(
-                [
-                    dbc.Col(html.Button("Reload App", id="reload-button"), md=12),
-                ]
+                dbc.Col(
+                    html.Button("Recreate AIO", id="recreate-aio-button"),
+                    width=12,
+                    className="mb-3",
+                )
             ),
             # Row for the aio componenth
             dbc.Row(
@@ -58,7 +60,9 @@ if __name__ == "__main__":
                     ),
                     dbc.Col(
                         html.Div(
-                            id="aio_container", children=dacv.AnnotateImageBboxsAIO()
+                            id="aio_container",
+                            children=dacv.AnnotateImageBboxsAIO(),
+                            style={"display": "block"},  # Default to visible
                         ),
                         md=12,
                     ),
@@ -73,20 +77,30 @@ if __name__ == "__main__":
         style={"width": "100%", "display": "inline-block"},
     )
 
-    app.clientside_callback(
-        """
-        function(n_clicks) {
-            if(n_clicks > 0) {
-                window.location.reload();
-            }
-        }
-        """,
-        output=dash.dependencies.Output("dummy-div", "children"),  # Dummy output
-        inputs=[dash.dependencies.Input("reload-button", "n_clicks")],
+    # Callback to toggle visibility state
+    @app.callback(
+        Output("aio-visibility", "data"),
+        Input("recreate-aio-button", "n_clicks"),
+        State("aio-visibility", "data"),
     )
+    def toggle_visibility(n_clicks, visibility_data):
+        if n_clicks is None or n_clicks == 0:
+            raise PreventUpdate
 
-    # Add a dummy div to the layout that serves as the target for the clientside callback's output
-    app.layout.children.append(html.Div(id="dummy-div", style={"display": "none"}))
+        # Toggle the visibility
+        new_visibility = not visibility_data["visible"]
+        return {"visible": new_visibility}
+
+    # Callback to recreate the AIO component based on visibility toggle
+    @app.callback(Output("aio_container", "children"), Input("aio-visibility", "data"))
+    def recreate_aio(visibility_data):
+        if visibility_data["visible"]:
+            # Recreate the AIO component when visibility is toggled back to True
+            new_aio = dacv.AnnotateImageBboxsAIO()
+            return new_aio
+        else:
+            # Optionally, manage the invisible state
+            raise PreventUpdate
 
     app.clientside_callback(
         """
