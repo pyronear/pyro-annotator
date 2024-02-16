@@ -14,11 +14,11 @@ import dash_bootstrap_components as dbc
 import json
 import os
 
+
 @app.callback(
     [Output("images_files", "data"), Output("fire_progress", "children")],
     [Input("skip_btn", "n_clicks"), Input("done_btn", "n_clicks")],
-    [State("images_files", "data"),
-    State("bbox_dict", "data")]
+    [State("images_files", "data"), State("bbox_dict", "data")],
 )
 def load_fire(n_clicks_skip, n_clicks_done, images_files, bbox_dict):
     # Determine which button was clicked last
@@ -37,13 +37,13 @@ def load_fire(n_clicks_skip, n_clicks_done, images_files, bbox_dict):
             print("Clicked done")
             shutil.move(fire, fire.replace("to_do", "done"))
             label_file = os.path.join(fire.replace("to_do", "done"), "labels.json")
-            with open(label_file, 'w') as file:
+            with open(label_file, "w") as file:
                 json.dump(bbox_dict, file)
         elif button_id == "skip_btn":
             print("Clicked skip")
             shutil.move(fire, fire.replace("to_do", "skip"))
             label_file = os.path.join(fire.replace("to_do", "skip"), "labels.json")
-            with open(label_file, 'w') as file:
+            with open(label_file, "w") as file:
                 json.dump(bbox_dict, file)
 
     # Common logic to load images (can adjust based on button clicked if needed)
@@ -81,7 +81,7 @@ def change_image_idx(n_clicks_next, n_clicks_prev, images_files, current_index):
     changed_id = [p["prop_id"] for p in dash.callback_context.triggered][0]
     if "next_btn" in changed_id:
         # Move to the next image, wrap if at the end
-        current_index = min(current_index + 1, len(images_files) -1)
+        current_index = min(current_index + 1, len(images_files) - 1)
     elif "prev_btn" in changed_id:
         # Move to the previous image, wrap if at the beginning
         current_index = max(current_index - 1, 0)
