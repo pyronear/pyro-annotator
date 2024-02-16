@@ -23,6 +23,6 @@ def get_main_layout():
             ),
             dcc.Store(id="images_files", data=[]),
             dcc.Store(id="image_idx", data=0),
-            dcc.Store(id="bbox", data={}),
+            dcc.Store(id="bbox_dict", data={}),
         ]
     )

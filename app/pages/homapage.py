@@ -96,6 +96,8 @@ def homepage_layout():
                     ),
                     dbc.Col(
                         [
+                            html.Div(id="fire_progress", children=""),
+                            html.Div(id="image_progress", children=""),
                             html.Div(id="bbox_list"),  # Empty container
                         ],
                         md=1,
