@@ -7,7 +7,13 @@ from app_instance import app
 import plotly.express as px
 from PIL import Image
 from dash.exceptions import PreventUpdate
-from utils.utils import shape_to_bbox, bboxs_to_shapes, find_box_sam, box_iou
+from utils.utils import (
+    shape_to_bbox,
+    bboxs_to_shapes,
+    find_box_sam,
+    box_iou,
+    filter_overlapping_bboxes,
+)
 from dash import callback_context
 import shutil
 import dash_bootstrap_components as dbc
@@ -133,7 +139,6 @@ def update_figure(
 ):
     ctx = dash.callback_context
     triggered_id = ctx.triggered[0]["prop_id"]
-    print("ctx", ctx.triggered)
 
     images_file = images_files[image_idx]
     # Check the action to perform based on the button clicked
@@ -327,6 +332,13 @@ def update_bbox_dict(
                             bbox_dict[image_name] = []
 
                         bbox_dict[image_name].append([x_min, y_min, x_max, y_max])
+
+            # Drop duplicate
+            bboxes = np.array(bbox_dict[image_name]).reshape((-1, 4)).astype("int")
+            iou_matrix = box_iou(bboxes, bboxes)
+            index = filter_overlapping_bboxes(iou_matrix)
+
+            bbox_dict[image_name] = [bbox_dict[image_name][i] for i in index]
 
         print("propagation done")
 

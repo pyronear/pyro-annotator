@@ -149,3 +149,21 @@ def box_iou(box1: np.ndarray, box2: np.ndarray, eps: float = 1e-7):
 
     # IoU = inter / (area1 + area2 - inter)
     return inter / ((a2 - a1).prod(1) + (b2 - b1).prod(1)[:, None] - inter + eps)
+
+
+# Function to determine which bboxes to keep based on overlaps
+def filter_overlapping_bboxes(iou_matrix):
+    n = iou_matrix.shape[0]
+    to_remove = set()
+
+    # Iterate through the lower triangle of the matrix
+    for i in range(n):
+        for j in range(i + 1, n):
+            if iou_matrix[i, j] > 0:
+                to_remove.add(
+                    i
+                )  # Keep the last one, remove the first one in any overlapping pair
+
+    # Calculate the indices to keep
+    to_keep = set(range(n)) - to_remove
+    return sorted(list(to_keep))
