@@ -7,13 +7,32 @@ from app_instance import app
 import plotly.express as px
 from PIL import Image
 from dash.exceptions import PreventUpdate
-from utils.utils import shape_to_bbox, bboxs_to_shapes, find_box_sam
+from utils.utils import shape_to_bbox, bboxs_to_shapes, find_box_sam, box_iou
 from dash import callback_context
 import shutil
 import dash_bootstrap_components as dbc
 import json
 import os
 import numpy as np
+
+
+@app.callback(
+    Output("modal-loading", "is_open"),
+    [Input("propagate_btn", "n_clicks"), Input("bbox_dict", "data")],
+    prevent_initial_call=True,
+)
+def toggle_modal(n_clicks, bbox_dict):
+    """
+    Toggles the visibility of the loading modal during propagation
+    """
+    ctx = dash.callback_context
+    triggered_id = ctx.triggered[0]["prop_id"]
+    print(triggered_id)
+
+    if "propagate_btn" in triggered_id:
+        return True
+    else:
+        return False
 
 
 @app.callback(
@@ -35,13 +54,13 @@ def load_fire(n_clicks_skip, n_clicks_done, images_files, bbox_dict):
 
         # Based on the button clicked, perform the action
         if button_id == "done_btn":
-            print("Clicked done")
+
             shutil.move(fire, fire.replace("to_do", "done"))
             label_file = os.path.join(fire.replace("to_do", "done"), "labels.json")
             with open(label_file, "w") as file:
                 json.dump(bbox_dict, file)
         elif button_id == "skip_btn":
-            print("Clicked skip")
+
             shutil.move(fire, fire.replace("to_do", "skip"))
             label_file = os.path.join(fire.replace("to_do", "skip"), "labels.json")
             with open(label_file, "w") as file:
@@ -103,17 +122,21 @@ def update_text(image_idx, images_files):
 
 
 @app.callback(
-    [Output("graph", "figure"), Output("trigger_update_bbox_dict", "data")],
+    [
+        Output("graph", "figure"),
+        Output("trigger_update_bbox_dict", "data"),
+        Output("bbox_deleted", "data"),
+    ],
     [
         Input("image_idx", "data"),
         Input({"type": "bbox_highlight_button", "index": ALL}, "n_clicks"),
         Input({"type": "bbox_delete_button", "index": ALL}, "n_clicks"),
         Input("fit_btn", "n_clicks"),
-        Input("propagate_btn", "n_clicks"),
     ],
     [
         State("images_files", "data"),
         State("bbox_dict", "data"),
+        State("bbox_deleted", "data"),
         State("graph", "figure"),
     ],
 )
@@ -122,16 +145,15 @@ def update_figure(
     bbox_highlight_clicks,
     bbox_delete_clicks,
     fit_btn_cliks,
-    propagate_btn_cliks,
     images_files,
     bbox_dict,
+    bbox_deleted,
     current_figure,
 ):
     ctx = dash.callback_context
     triggered_id = ctx.triggered[0]["prop_id"]
 
-    print(triggered_id)
-
+    images_file = images_files[image_idx]
     # Check the action to perform based on the button clicked
     if "bbox_highlight_button" in triggered_id or "bbox_delete_button" in triggered_id:
 
@@ -151,7 +173,10 @@ def update_figure(
         if btn_type == "bbox_delete_button":
             # Deleting BBox
             if 0 <= btn_index < len(bbox_dict[images_files[image_idx]]):
-                bbox_dict[images_files[image_idx]].pop(btn_index)
+                box = bbox_dict[images_files[image_idx]].pop(btn_index)
+                if not images_file in bbox_deleted.keys():
+                    bbox_deleted[images_file] = []
+                bbox_deleted[images_file].append(box)
 
         # Update the shapes based on bbox_dict
         updated_bboxs = bbox_dict[images_files[image_idx]]
@@ -168,7 +193,7 @@ def update_figure(
 
         # Check the action to perform based on the button clicked
         if btn_type == "bbox_highlight_button":
-            print("highlight")
+
             # Highlighting BBox
             if 0 <= btn_index < len(updated_bboxs):
                 for shape in current_figure["layout"]["shapes"]:
@@ -178,32 +203,27 @@ def update_figure(
                         "fillcolor"
                     ] = "rgba(255,0,0,0.45)"
 
-        print("layout", len(current_figure["layout"]["shapes"]))
-        return current_figure, len(updated_bboxs)
+        return current_figure, len(updated_bboxs), bbox_deleted
 
-    images_file = images_files[image_idx]
     if "fit_btn" in triggered_id:
-        print("fit")
+
         fitted_bbox = []
-        print(bbox_dict[images_file])
+
         bbox_list = bbox_dict[images_file]
         for bbox in bbox_list:
-            print("doing ", bbox)
+
             bbox_array = np.array(bbox).reshape((-1, 4)).astype("int")
 
             name = os.path.basename(images_file).split(".")[0]
 
             [x_min, y_min, x_max, y_max] = find_box_sam(bbox_array, name)
 
-            print("done", bbox, [x_min, y_min, x_max, y_max])
             if x_min is not None:
                 fitted_bbox.append([x_min, y_min, x_max, y_max])
             else:
                 fitted_bbox.append(bbox)
 
         bbox_dict[images_file] = fitted_bbox
-
-    # elif "propagate_btn" in triggered_id:
 
     if images_files is None or image_idx is None:
         raise PreventUpdate
@@ -228,7 +248,7 @@ def update_figure(
 
     for trace in fig.data:
         trace.update(hoverinfo="none", hovertemplate=None)
-    return fig, 0
+    return fig, 0, bbox_deleted
 
 
 @app.callback(
@@ -236,36 +256,104 @@ def update_figure(
     [
         Input("graph", "relayoutData"),
         Input("trigger_update_bbox_dict", "data"),
+        Input("propagate_btn", "n_clicks"),
     ],
     [
         State("image_idx", "data"),
         State("images_files", "data"),
         State("bbox_dict", "data"),
         State("graph", "figure"),
+        State("bbox_deleted", "data"),
     ],
 )
 def update_bbox_dict(
     relayoutData,
     trigger_update_bbox_dict,
+    propagate_btn_cliks,
     image_idx,
     images_files,
     bbox_dict,
     figure,
+    bbox_deleted,
 ):
 
     ctx = dash.callback_context
     triggered_id = ctx.triggered[0]["prop_id"]
+
+    # Get the current image file path
+    images_file = images_files[image_idx]
+
+    if "propagate_btn" in triggered_id:
+        print("propagate")
+
+        # propagate deleted boxes
+        if images_file in bbox_deleted.keys():
+
+            curr_bbox_deleted = bbox_deleted[images_file]
+            curr_bbox_deleted_np = (
+                np.array(curr_bbox_deleted).reshape((-1, 4)).astype("int")
+            )
+
+            idx = images_files.index(images_file)
+
+            for image_name in images_files[idx + 1 :]:
+
+                if image_name in bbox_dict.keys():
+                    new_boxes = []
+                    for box in bbox_dict[image_name]:
+                        np_box = np.array(box).reshape((-1, 4)).astype("int")
+                        iou = box_iou(np_box, curr_bbox_deleted_np)
+
+                        if np.max(iou) == 0:
+                            new_boxes.append(box)
+
+                    bbox_dict[image_name] = new_boxes
+
+        else:
+            curr_bbox_deleted = []
+
+        # propagate new boxes
+        coeff = 0.05
+        if images_file in bbox_dict.keys():
+
+            for current_box in bbox_dict[images_file]:
+                bbox = np.array(current_box).reshape((-1, 4)).astype("int")
+
+                idx = images_files.index(images_file)
+                for image_name in images_files[idx + 1 :]:
+
+                    name = os.path.basename(image_name).split(".")[0]
+                    [x_min, y_min, x_max, y_max] = bbox[0]
+                    dx = (x_max - x_min) * coeff
+                    dy = (y_max - y_min) * coeff
+                    bbox = (
+                        np.array((x_min - dx, y_min - dy, x_max + dx, y_max + dy))
+                        .reshape((-1, 4))
+                        .astype("int")
+                    )
+
+                    [x_min, y_min, x_max, y_max] = find_box_sam(bbox, name)
+
+                    if x_min is not None:
+                        bbox = (
+                            np.array((x_min, y_min, x_max, y_max))
+                            .reshape((-1, 4))
+                            .astype("int")
+                        )
+
+                        if image_name not in bbox_dict.keys():
+                            bbox_dict[image_name] = []
+
+                        bbox_dict[image_name].append([x_min, y_min, x_max, y_max])
+
+        return bbox_dict
+
     if "trigger_update_bbox_dict" in triggered_id:
-        print("triger trigger_update_bbox_dict")
+
         relayoutData = figure["layout"]
     # If relayoutData is None or doesn't contain shapes, do nothing
     if relayoutData is None or "shapes" not in relayoutData:
         raise PreventUpdate
-
-    print("update dict", len(relayoutData["shapes"]), trigger_update_bbox_dict)
-
-    # Get the current image file path
-    images_file = images_files[image_idx]
 
     # Ensure this image file is in the bbox_dict
     if images_file not in bbox_dict:

@@ -25,6 +25,7 @@ def load_image_embedding(path):
 def find_box_sam(bbox, name):
 
     try:
+
         load_image_embedding(
             f"/home/mateo/pyronear/vision/dataset/annotator/pyro-annotator/annotations/embeddings/{name}.pth",
         )
@@ -43,7 +44,7 @@ def find_box_sam(bbox, name):
 
         return [x_min, y_min, x_max, y_max]
     except:
-        print("error with ", name)
+        print("error with ", name, bbox)
         return [None, None, None, None]
 
 
@@ -66,7 +67,9 @@ def shape_to_bbox(shape):
     Returns:
         Bbox: Bbox
     """
-    xyxy = [shape[c] for c in ["x0", "y0", "x1", "y1"]]
+    x = [shape[c] for c in ["x0", "x1"]]
+    y = [shape[c] for c in ["y0", "y1"]]
+    xyxy = [min(x), min(y), max(x), max(y)]
     return xyxy
 
 
@@ -120,3 +123,29 @@ def bbox_to_shape(bbox, is_highlighted=False):
         "x1": bbox[2],
         "y1": bbox[3],
     }
+
+
+def box_iou(box1: np.ndarray, box2: np.ndarray, eps: float = 1e-7):
+    """
+    Calculate intersection-over-union (IoU) of boxes.
+    Both sets of boxes are expected to be in (x1, y1, x2, y2) format.
+    Based on https://github.com/pytorch/vision/blob/master/torchvision/ops/boxes.py
+
+    Args:
+        box1 (np.ndarray): A numpy array of shape (N, 4) representing N bounding boxes.
+        box2 (np.ndarray): A numpy array of shape (M, 4) representing M bounding boxes.
+        eps (float, optional): A small value to avoid division by zero. Defaults to 1e-7.
+
+    Returns:
+        (np.ndarray): An NxM numpy array containing the pairwise IoU values for every element in box1 and box2.
+    """
+
+    (a1, a2), (b1, b2) = np.split(box1, 2, 1), np.split(box2, 2, 1)
+    inter = (
+        (np.minimum(a2, b2[:, None, :]) - np.maximum(a1, b1[:, None, :]))
+        .clip(0)
+        .prod(2)
+    )
+
+    # IoU = inter / (area1 + area2 - inter)
+    return inter / ((a2 - a1).prod(1) + (b2 - b1).prod(1)[:, None] - inter + eps)
