@@ -25,5 +25,6 @@ def get_main_layout():
             dcc.Store(id="image_idx", data=0),
             dcc.Store(id="bbox_dict", data={}),
             dcc.Store(id="trigger_update_bbox_dict", data=0),
+            html.Div(id="hidden-div"),
         ]
     )
