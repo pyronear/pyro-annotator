@@ -17,25 +17,6 @@ import numpy as np
 
 
 @app.callback(
-    Output("modal-loading", "is_open"),
-    [Input("propagate_btn", "n_clicks"), Input("bbox_dict", "data")],
-    prevent_initial_call=True,
-)
-def toggle_modal(n_clicks, bbox_dict):
-    """
-    Toggles the visibility of the loading modal during propagation
-    """
-    ctx = dash.callback_context
-    triggered_id = ctx.triggered[0]["prop_id"]
-    print(triggered_id)
-
-    if "propagate_btn" in triggered_id:
-        return True
-    else:
-        return False
-
-
-@app.callback(
     [Output("images_files", "data"), Output("fire_progress", "children")],
     [Input("skip_btn", "n_clicks"), Input("done_btn", "n_clicks")],
     [State("images_files", "data"), State("bbox_dict", "data")],
@@ -152,6 +133,7 @@ def update_figure(
 ):
     ctx = dash.callback_context
     triggered_id = ctx.triggered[0]["prop_id"]
+    print("ctx", ctx.triggered)
 
     images_file = images_files[image_idx]
     # Check the action to perform based on the button clicked
@@ -174,6 +156,7 @@ def update_figure(
             # Deleting BBox
             if 0 <= btn_index < len(bbox_dict[images_files[image_idx]]):
                 box = bbox_dict[images_files[image_idx]].pop(btn_index)
+                # print("box_to_delete", box)
                 if not images_file in bbox_deleted.keys():
                     bbox_deleted[images_file] = []
                 bbox_deleted[images_file].append(box)
@@ -181,11 +164,6 @@ def update_figure(
         # Update the shapes based on bbox_dict
         updated_bboxs = bbox_dict[images_files[image_idx]]
         current_figure["layout"]["shapes"] = bboxs_to_shapes(updated_bboxs)
-
-        if btn_type == "bbox_delete_button":
-            # Deleting BBox
-            if 0 <= btn_index < len(bbox_dict[images_files[image_idx]]):
-                bbox_dict[images_files[image_idx]].pop(btn_index)
 
         # Update the shapes based on bbox_dict
         updated_bboxs = bbox_dict[images_files[image_idx]]
@@ -198,10 +176,14 @@ def update_figure(
             if 0 <= btn_index < len(updated_bboxs):
                 for shape in current_figure["layout"]["shapes"]:
                     shape["fillcolor"] = "rgba(0,0,0,0)"  # reset other shapes
+
+                print(shape["fillcolor"], button_clicks)
                 if button_clicks % 2 == 1:
                     current_figure["layout"]["shapes"][btn_index][
                         "fillcolor"
                     ] = "rgba(255,0,0,0.45)"
+
+                print(shape["fillcolor"])
 
         return current_figure, len(updated_bboxs), bbox_deleted
 
@@ -284,7 +266,7 @@ def update_bbox_dict(
     images_file = images_files[image_idx]
 
     if "propagate_btn" in triggered_id:
-        print("propagate")
+        print("propagation ...")
 
         # propagate deleted boxes
         if images_file in bbox_deleted.keys():
@@ -345,6 +327,8 @@ def update_bbox_dict(
                             bbox_dict[image_name] = []
 
                         bbox_dict[image_name].append([x_min, y_min, x_max, y_max])
+
+        print("propagation done")
 
         return bbox_dict
 
