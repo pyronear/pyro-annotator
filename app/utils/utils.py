@@ -1,3 +1,52 @@
+import cv2  # type: ignore[import-untyped]
+import numpy as np
+import torch
+
+import numpy as np
+
+from segment_anything import SamPredictor, sam_model_registry
+from dash.exceptions import PreventUpdate
+
+# Load Sam
+sam_checkpoint = "sam_vit_h_4b8939.pth"
+model_type = "vit_h"
+device = "cpu"
+sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
+sam.to(device=device)
+sam_predictor = SamPredictor(sam)
+
+
+def load_image_embedding(path):
+    res = torch.load(path, sam_predictor.device)
+    for k, v in res.items():
+        setattr(sam_predictor, k, v)
+
+
+def find_box_sam(bbox, name):
+
+    try:
+        load_image_embedding(
+            f"/home/mateo/pyronear/vision/dataset/annotator/pyro-annotator/annotations/embeddings/{name}.pth",
+        )
+
+        masks, _, _ = sam_predictor.predict(
+            point_coords=None,
+            point_labels=None,
+            box=bbox[None, :],
+            multimask_output=False,
+        )
+
+        Y, X = np.where(masks[0])
+        Y, X = Y.astype("float"), X.astype("float")
+        x_min, x_max = np.min(X), np.max(X)
+        y_min, y_max = np.min(Y), np.max(Y)
+
+        return [x_min, y_min, x_max, y_max]
+    except:
+        print("error with ", name)
+        return [None, None, None, None]
+
+
 def refresh_figure_shapes(figure, bboxs):
     """Set shapes in the given figure dict from the provided bboxs
 

@@ -7,12 +7,13 @@ from app_instance import app
 import plotly.express as px
 from PIL import Image
 from dash.exceptions import PreventUpdate
-from utils.utils import shape_to_bbox, bboxs_to_shapes
+from utils.utils import shape_to_bbox, bboxs_to_shapes, find_box_sam
 from dash import callback_context
 import shutil
 import dash_bootstrap_components as dbc
 import json
 import os
+import numpy as np
 
 
 @app.callback(
@@ -107,6 +108,8 @@ def update_text(image_idx, images_files):
         Input("image_idx", "data"),
         Input({"type": "bbox_highlight_button", "index": ALL}, "n_clicks"),
         Input({"type": "bbox_delete_button", "index": ALL}, "n_clicks"),
+        Input("fit_btn", "n_clicks"),
+        Input("propagate_btn", "n_clicks"),
     ],
     [
         State("images_files", "data"),
@@ -118,6 +121,8 @@ def update_figure(
     image_idx,
     bbox_highlight_clicks,
     bbox_delete_clicks,
+    fit_btn_cliks,
+    propagate_btn_cliks,
     images_files,
     bbox_dict,
     current_figure,
@@ -125,32 +130,11 @@ def update_figure(
     ctx = dash.callback_context
     triggered_id = ctx.triggered[0]["prop_id"]
 
-    if "image_idx" in triggered_id:
-        if images_files is None or image_idx is None:
-            raise PreventUpdate
+    print(triggered_id)
 
-        # Load the image and create the figure
-        image = Image.open(images_files[image_idx])
-        fig = px.imshow(image)
-        line_color = "rgba(255,0,0,1)"
-        line_width = 1
-        fig.update_layout(
-            dragmode="drawrect",
-            newshape=dict(line_color=line_color, line_width=line_width),
-            margin=dict(l=0, r=0, t=0, b=0),
-            autosize=True,
-            template=None,
-        )
+    # Check the action to perform based on the button clicked
+    if "bbox_highlight_button" in triggered_id or "bbox_delete_button" in triggered_id:
 
-        # Update the shapes based on bbox_dict
-        if images_files[image_idx] in bbox_dict:
-            bboxs = bbox_dict[images_files[image_idx]]
-            fig["layout"]["shapes"] = bboxs_to_shapes(bboxs)
-
-        for trace in fig.data:
-            trace.update(hoverinfo="none", hovertemplate=None)
-        return fig, 0
-    else:
         # If the callback was not triggered by image_idx, it must be one of the buttons
         if not current_figure or not bbox_dict:
             raise PreventUpdate
@@ -163,6 +147,15 @@ def update_figure(
         btn_dict = json.loads(triggered_id.split(".")[0])
         btn_type = btn_dict["type"]
         btn_index = btn_dict["index"]
+
+        if btn_type == "bbox_delete_button":
+            # Deleting BBox
+            if 0 <= btn_index < len(bbox_dict[images_files[image_idx]]):
+                bbox_dict[images_files[image_idx]].pop(btn_index)
+
+        # Update the shapes based on bbox_dict
+        updated_bboxs = bbox_dict[images_files[image_idx]]
+        current_figure["layout"]["shapes"] = bboxs_to_shapes(updated_bboxs)
 
         if btn_type == "bbox_delete_button":
             # Deleting BBox
@@ -188,10 +181,62 @@ def update_figure(
         print("layout", len(current_figure["layout"]["shapes"]))
         return current_figure, len(updated_bboxs)
 
+    images_file = images_files[image_idx]
+    if "fit_btn" in triggered_id:
+        print("fit")
+        fitted_bbox = []
+        print(bbox_dict[images_file])
+        bbox_list = bbox_dict[images_file]
+        for bbox in bbox_list:
+            print("doing ", bbox)
+            bbox_array = np.array(bbox).reshape((-1, 4)).astype("int")
+
+            name = os.path.basename(images_file).split(".")[0]
+
+            [x_min, y_min, x_max, y_max] = find_box_sam(bbox_array, name)
+
+            print("done", bbox, [x_min, y_min, x_max, y_max])
+            if x_min is not None:
+                fitted_bbox.append([x_min, y_min, x_max, y_max])
+            else:
+                fitted_bbox.append(bbox)
+
+        bbox_dict[images_file] = fitted_bbox
+
+    # elif "propagate_btn" in triggered_id:
+
+    if images_files is None or image_idx is None:
+        raise PreventUpdate
+
+    # Load the image and create the figure
+    image = Image.open(images_files[image_idx])
+    fig = px.imshow(image)
+    line_color = "rgba(255,0,0,1)"
+    line_width = 1
+    fig.update_layout(
+        dragmode="drawrect",
+        newshape=dict(line_color=line_color, line_width=line_width),
+        margin=dict(l=0, r=0, t=0, b=0),
+        autosize=True,
+        template=None,
+    )
+
+    # Update the shapes based on bbox_dict
+    if images_files[image_idx] in bbox_dict:
+        bboxs = bbox_dict[images_files[image_idx]]
+        fig["layout"]["shapes"] = bboxs_to_shapes(bboxs)
+
+    for trace in fig.data:
+        trace.update(hoverinfo="none", hovertemplate=None)
+    return fig, 0
+
 
 @app.callback(
     Output("bbox_dict", "data"),
-    [Input("graph", "relayoutData"), Input("trigger_update_bbox_dict", "data")],
+    [
+        Input("graph", "relayoutData"),
+        Input("trigger_update_bbox_dict", "data"),
+    ],
     [
         State("image_idx", "data"),
         State("images_files", "data"),
@@ -200,12 +245,16 @@ def update_figure(
     ],
 )
 def update_bbox_dict(
-    relayoutData, trigger_update_bbox_dict, image_idx, images_files, bbox_dict, figure
+    relayoutData,
+    trigger_update_bbox_dict,
+    image_idx,
+    images_files,
+    bbox_dict,
+    figure,
 ):
 
     ctx = dash.callback_context
     triggered_id = ctx.triggered[0]["prop_id"]
-
     if "trigger_update_bbox_dict" in triggered_id:
         print("triger trigger_update_bbox_dict")
         relayoutData = figure["layout"]
