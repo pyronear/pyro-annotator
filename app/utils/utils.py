@@ -5,7 +5,7 @@ import torch
 from segment_anything import SamPredictor, sam_model_registry
 
 # Load Sam
-sam_checkpoint = "sam_vit_h_4b8939.pth"
+sam_checkpoint = "data/sam_vit_h_4b8939.pth"
 model_type = "vit_h"
 device = "cpu"
 sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
