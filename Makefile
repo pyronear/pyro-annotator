@@ -18,3 +18,7 @@ run:
 # Run the docker
 stop:
 	docker compose down
+
+
+push:
+	python push_labels.py 
