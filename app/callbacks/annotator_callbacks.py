@@ -21,6 +21,18 @@ import json
 import os
 import numpy as np
 
+from flask_caching import Cache
+
+
+# Configure Flask Caching
+cache = Cache(
+    app.server,
+    config={
+        "CACHE_TYPE": "filesystem",
+        "CACHE_DIR": "cache-directory",
+    },
+)
+
 
 @app.callback(
     [Output("images_files", "data"), Output("fire_progress", "children")],
@@ -37,26 +49,27 @@ def load_fire(n_clicks_skip, n_clicks_done, images_files, bbox_dict):
 
     if len(images_files):
 
-        fire = images_files[0].split("/images")[0]
+        fire = os.path.dirname(images_files[0])
 
         # Based on the button clicked, perform the action
         if button_id == "done_btn":
 
             shutil.move(fire, fire.replace("to_do", "done"))
-            label_file = os.path.join(fire.replace("to_do", "done"), "labels.json")
+            label_file = fire.replace("to_do", "done") + ".json"
             with open(label_file, "w") as file:
                 json.dump(bbox_dict, file)
         elif button_id == "skip_btn":
 
             shutil.move(fire, fire.replace("to_do", "skip"))
-            label_file = os.path.join(fire.replace("to_do", "skip"), "labels.json")
+            label_file = fire.replace("to_do", "skip") + ".json"
+
             with open(label_file, "w") as file:
                 json.dump(bbox_dict, file)
 
     # Common logic to load images (can adjust based on button clicked if needed)
-    fires = glob.glob("Data/to_do/*")
+    fires = glob.glob("data/to_do/*")
     fire = random.choice(fires)
-    images_files = glob.glob(f"{fire}/images/*")
+    images_files = glob.glob(f"{fire}/*.jpg")
     images_files.sort()
 
     return images_files, f"Fires to do: {len(fires)}"
@@ -238,6 +251,7 @@ def update_figure(
     return fig, 0, bbox_deleted
 
 
+@cache.memoize(timeout=50)  # Cache the result for 50 seconds
 @app.callback(
     Output("bbox_dict", "data"),
     [
@@ -334,11 +348,12 @@ def update_bbox_dict(
                         bbox_dict[image_name].append([x_min, y_min, x_max, y_max])
 
             # Drop duplicate
-            bboxes = np.array(bbox_dict[image_name]).reshape((-1, 4)).astype("int")
-            iou_matrix = box_iou(bboxes, bboxes)
-            index = filter_overlapping_bboxes(iou_matrix)
+            if image_name in bbox_dict.keys():
+                bboxes = np.array(bbox_dict[image_name]).reshape((-1, 4)).astype("int")
+                iou_matrix = box_iou(bboxes, bboxes)
+                index = filter_overlapping_bboxes(iou_matrix)
 
-            bbox_dict[image_name] = [bbox_dict[image_name][i] for i in index]
+                bbox_dict[image_name] = [bbox_dict[image_name][i] for i in index]
 
         print("propagation done")
 
@@ -364,6 +379,7 @@ def update_bbox_dict(
     return bbox_dict
 
 
+@cache.memoize(timeout=50)  # Cache the result for 50 seconds
 @app.callback(
     Output("bbox_list", "children"),
     [Input("bbox_dict", "data")],

@@ -27,7 +27,7 @@ def find_box_sam(bbox, name):
     try:
 
         load_image_embedding(
-            f"/home/mateo/pyronear/vision/dataset/annotator/pyro-annotator/annotations/embeddings/{name}.pth",
+            f"data/embeddings/{name}.pth",
         )
 
         masks, _, _ = sam_predictor.predict(
