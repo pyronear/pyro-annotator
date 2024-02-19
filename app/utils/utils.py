@@ -1,11 +1,8 @@
-import cv2  # type: ignore[import-untyped]
 import numpy as np
 import torch
 
-import numpy as np
 
 from segment_anything import SamPredictor, sam_model_registry
-from dash.exceptions import PreventUpdate
 
 # Load Sam
 sam_checkpoint = "sam_vit_h_4b8939.pth"

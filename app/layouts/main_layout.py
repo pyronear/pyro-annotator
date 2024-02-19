@@ -3,10 +3,7 @@
 # This program is licensed under the Apache License 2.0.
 # See LICENSE or go to <https://www.apache.org/licenses/LICENSE-2.0> for full license details.
 
-import json
 
-import dash_bootstrap_components as dbc
-import pandas as pd
 from dash import dcc, html
 from components.navbar import Navbar
 

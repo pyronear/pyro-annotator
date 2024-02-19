@@ -3,13 +3,10 @@
 # This program is licensed under the Apache License 2.0.
 # See LICENSE or go to <https://www.apache.org/licenses/LICENSE-2.0> for full license details.
 
-import logging
 
-import dash
-import dash_bootstrap_components as dbc
 import callbacks.annotator_callbacks  # noqa: F401
 from dash import html
-from dash.dependencies import Input, Output, State
+from dash.dependencies import Input, Output
 from layouts.main_layout import get_main_layout
 from app_instance import app
 from pages.homapage import homepage_layout

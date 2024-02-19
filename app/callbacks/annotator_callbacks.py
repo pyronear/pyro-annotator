@@ -1,5 +1,5 @@
 import dash
-from dash import html, dcc
+from dash import html
 from dash.dependencies import ALL, Input, Output, State
 import glob
 import random
@@ -175,7 +175,7 @@ def update_figure(
             if 0 <= btn_index < len(bbox_dict[images_files[image_idx]]):
                 box = bbox_dict[images_files[image_idx]].pop(btn_index)
                 # print("box_to_delete", box)
-                if not images_file in bbox_deleted.keys():
+                if images_file not in bbox_deleted.keys():
                     bbox_deleted[images_file] = []
                 bbox_deleted[images_file].append(box)
 
