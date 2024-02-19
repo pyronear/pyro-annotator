@@ -120,6 +120,6 @@ pyroengine/version.py
 # Release
 conda-dist/
 
-annotations
-Data
+data
 example_bboxs.default.json
+cache-directory
