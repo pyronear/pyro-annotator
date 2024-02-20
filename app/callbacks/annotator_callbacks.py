@@ -21,17 +21,17 @@ import json
 import os
 import numpy as np
 
-from flask_caching import Cache
+#from flask_caching import Cache
 
 
-# Configure Flask Caching
-cache = Cache(
-    app.server,
-    config={
-        "CACHE_TYPE": "filesystem",
-        "CACHE_DIR": "cache-directory",
-    },
-)
+# # Configure Flask Caching
+# cache = Cache(
+#     app.server,
+#     config={
+#         "CACHE_TYPE": "filesystem",
+#         "CACHE_DIR": "cache-directory",
+#     },
+# )
 
 
 @app.callback(
@@ -251,7 +251,7 @@ def update_figure(
     return fig, 0, bbox_deleted
 
 
-@cache.memoize(timeout=50)  # Cache the result for 50 seconds
+#@cache.memoize(timeout=50)  # Cache the result for 50 seconds
 @app.callback(
     Output("bbox_dict", "data"),
     [
@@ -379,7 +379,7 @@ def update_bbox_dict(
     return bbox_dict
 
 
-@cache.memoize(timeout=50)  # Cache the result for 50 seconds
+#@cache.memoize(timeout=50)  # Cache the result for 50 seconds
 @app.callback(
     Output("bbox_list", "children"),
     [Input("bbox_dict", "data")],

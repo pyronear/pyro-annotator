@@ -12,4 +12,3 @@ pyyaml
 opencv-python
 python-dotenv
 tqdm
-flask_caching
