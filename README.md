@@ -28,6 +28,24 @@ After annotation, push your labels back to the repository or designated storage.
 make push
 ```
 
+### 5. Make yolo dataset
+After annotation, create a dataset with yolo annotation
+
+```shell
+python make_dataset.py
+```
+
+### 6. Observe resulting dataset using fiftyone
+Observe the created dataset using fiftyone, you need to install fiftyone first 
+
+```shell
+pip install fiftyone
+```
+
+```shell
+python run_fiftyone.py
+```
+
 ## Additional Information
 
 For any issues or further instructions, please refer to the documentation or contact the repository maintainer.
