@@ -10,7 +10,7 @@ from dash import dcc, html
 def homepage_layout():
     # Define buttons
     skip_button = dbc.Button(
-        "Skip (S)",
+        "Skip (P)",
         id="skip_btn",
         style={
             "backgroundColor": "#FD5252",

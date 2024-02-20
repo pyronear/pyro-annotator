@@ -74,7 +74,7 @@ app.clientside_callback(
     """
         function(n_clicks) {
             document.addEventListener('keydown', function(event) {
-                if (event.code === 'KeyA') { 
+                if (event.code === 'KeyP') { 
                     document.getElementById('skip_btn').click();
                 }
             });
