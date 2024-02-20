@@ -2,6 +2,7 @@ import boto3
 import os
 import random
 import argparse
+from tqdm import tqdm
 
 
 def download_folders(bucket_name, prefix, local_dir, n):
@@ -12,8 +13,9 @@ def download_folders(bucket_name, prefix, local_dir, n):
 
     random.shuffle(folders)
     selected_folders = folders[:n]
+    print(f"There is {len(folders)} fires availables ! Donwloading {n}")
 
-    for folder in selected_folders:
+    for folder in tqdm(selected_folders):
 
         for obj in s3.list_objects_v2(Bucket=bucket_name, Prefix=folder)["Contents"]:
             file_name = obj["Key"]
