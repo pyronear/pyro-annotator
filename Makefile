@@ -19,6 +19,9 @@ run:
 stop:
 	docker compose down
 
+log:
+	docker logs --tail 50 -f pyro-annotator-annotator-1
+
 
 push:
 	python push_labels.py 
