@@ -40,8 +40,8 @@ def find_box_sam(bbox, name):
         y_min, y_max = np.min(Y), np.max(Y)
 
         return [x_min, y_min, x_max, y_max]
-    except:
-        print("error with ", name, bbox)
+    except Exception as e:
+        print(f"Error with {name}, {bbox}: {e}")
         return [None, None, None, None]
 
 
