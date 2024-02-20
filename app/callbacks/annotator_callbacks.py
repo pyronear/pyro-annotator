@@ -50,18 +50,21 @@ def load_fire(n_clicks_skip, n_clicks_done, images_files, bbox_dict):
     if len(images_files):
 
         fire = os.path.dirname(images_files[0])
+        print(fire)
 
         # Based on the button clicked, perform the action
         if button_id == "done_btn":
 
             shutil.move(fire, fire.replace("to_do", "done"))
-            label_file = fire.replace("to_do", "done") + ".json"
+            label_file = fire.replace("to_do", "labels/done") + ".json"
+            os.makedirs(os.path.dirname(label_file), exist_ok=True)
             with open(label_file, "w") as file:
                 json.dump(bbox_dict, file)
         elif button_id == "skip_btn":
 
             shutil.move(fire, fire.replace("to_do", "skip"))
-            label_file = fire.replace("to_do", "skip") + ".json"
+            label_file = fire.replace("to_do", "labels/skip") + ".json"
+            os.makedirs(os.path.dirname(label_file), exist_ok=True)
 
             with open(label_file, "w") as file:
                 json.dump(bbox_dict, file)
