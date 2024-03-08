@@ -14,6 +14,12 @@ Use the `dl_tasks` script to download the data. You can specify the number of ta
 python dl_tasks.py --num_tasks=<number_of_tasks>
 ```
 
+Download Sam weights
+
+```shell
+wget https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
+```
+
 ### 3. Starting the Annotator
 Launch the annotator tool with the following command:
 
