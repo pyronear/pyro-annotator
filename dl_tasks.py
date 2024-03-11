@@ -3,7 +3,8 @@ import os
 import random
 import argparse
 from tqdm import tqdm
-
+import botocore
+import shutil
 
 def download_folders(bucket_name, prefix, local_dir, n):
     s3 = boto3.client("s3")
@@ -26,7 +27,17 @@ def download_folders(bucket_name, prefix, local_dir, n):
             s3_embed_file = os.path.join(
                 "embeddings", os.path.basename(file_name).split(".jpg")[0] + ".pth"
             )
-            s3.download_file(bucket_name, s3_embed_file, local_dir + s3_embed_file)
+            os.makedirs(os.path.dirname(local_dir + s3_embed_file), exist_ok=True)
+            try:
+                s3.download_file(bucket_name, s3_embed_file, local_dir + s3_embed_file)
+            except botocore.exceptions.ClientError as e:
+                if e.response['Error']['Code'] == "404":
+                    print(f"The file {s3_embed_file} does not exist in the bucket.")
+                    shutil.rmtree(os.path.dirname(local_dir + file_name))
+                    shutil.rmtree(os.path.dirname(local_dir + s3_embed_file))
+                    break
+                else:
+                    raise  # Re-raise the exception if it's not a 404 error
 
 
 if __name__ == "__main__":

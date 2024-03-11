@@ -8,10 +8,10 @@ To begin annotating with Pyro-Annotator, follow these steps:
 Request AWS credentials from Mateo to access necessary data.
 
 ### 2. Pulling Data
-Use the `dl_tasks` script to download the data. You can specify the number of tasks to download:
+Use the `dl_tasks` script to download the data. You must specify the number of tasks to download:
 
 ```shell
-python dl_tasks.py --num_tasks=<number_of_tasks>
+python dl_tasks.py 5
 ```
 
 Download Sam weights
