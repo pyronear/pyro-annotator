@@ -104,7 +104,7 @@ def change_image_idx(n_clicks_next, n_clicks_prev, images_files, current_index):
     changed_id = [p["prop_id"] for p in dash.callback_context.triggered][0]
     if "next_btn" in changed_id:
         # Move to the next image, wrap if at the end
-        current_index = min(current_index + 1, len(images_files) - 1)
+        current_index = min(current_index + 1, len(images_files))
     elif "prev_btn" in changed_id:
         # Move to the previous image, wrap if at the beginning
         current_index = max(current_index - 1, 0)
@@ -156,9 +156,14 @@ def update_figure(
     ctx = dash.callback_context
     triggered_id = ctx.triggered[0]["prop_id"]
 
-    images_file = images_files[image_idx]
+    if image_idx < len(images_files):
+        images_file = images_files[image_idx]
+    else:
+        images_file = None
     # Check the action to perform based on the button clicked
-    if "bbox_highlight_button" in triggered_id or "bbox_delete_button" in triggered_id:
+    if images_file and (
+        "bbox_highlight_button" in triggered_id or "bbox_delete_button" in triggered_id
+    ):
 
         # If the callback was not triggered by image_idx, it must be one of the buttons
         if not current_figure or not bbox_dict:
@@ -208,7 +213,7 @@ def update_figure(
 
         return current_figure, len(updated_bboxs), bbox_deleted
 
-    if "fit_btn" in triggered_id:
+    if images_file and "fit_btn" in triggered_id:
 
         fitted_bbox = []
 
@@ -231,18 +236,38 @@ def update_figure(
     if images_files is None or image_idx is None:
         raise PreventUpdate
 
-    # Load the image and create the figure
-    image = Image.open(images_files[image_idx])
-    fig = px.imshow(image)
-    line_color = "rgba(255,0,0,1)"
-    line_width = 1
-    fig.update_layout(
-        dragmode="drawrect",
-        newshape=dict(line_color=line_color, line_width=line_width),
-        margin=dict(l=0, r=0, t=0, b=0),
-        autosize=True,
-        template=None,
-    )
+    # Check if all images have been annotated
+    if images_files and image_idx >= len(images_files):
+        # Display completion message instead of an image
+        fig = {
+            "layout": {
+                "xaxis": {"visible": False},
+                "yaxis": {"visible": False},
+                "annotations": [
+                    {
+                        "text": "Annotation task is done",
+                        "xref": "paper",
+                        "yref": "paper",
+                        "showarrow": False,
+                        "font": {"size": 20},
+                    }
+                ],
+            }
+        }
+        return fig, 0, bbox_deleted
+    else:
+        # Load the image and create the figure
+        image = Image.open(images_files[image_idx])
+        fig = px.imshow(image)
+        line_color = "rgba(255,0,0,1)"
+        line_width = 1
+        fig.update_layout(
+            dragmode="drawrect",
+            newshape=dict(line_color=line_color, line_width=line_width),
+            margin=dict(l=0, r=0, t=0, b=0),
+            autosize=True,
+            template=None,
+        )
 
     # Update the shapes based on bbox_dict
     if images_files[image_idx] in bbox_dict:
@@ -283,6 +308,8 @@ def update_bbox_dict(
 
     ctx = dash.callback_context
     triggered_id = ctx.triggered[0]["prop_id"]
+    if image_idx >= len(images_files):
+        raise PreventUpdate
 
     # Get the current image file path
     images_file = images_files[image_idx]
