@@ -27,6 +27,8 @@ Launch the annotator tool with the following command:
 make run
 ```
 
+Then go to http://localhost:8050/
+
 ### 4. Pushing Labels
 After annotation, push your labels back to the repository or designated storage.
 
@@ -34,14 +36,16 @@ After annotation, push your labels back to the repository or designated storage.
 make push
 ```
 
-### 5. Make yolo dataset
+Then these tow steps are optional
+
+### 5. Make yolo dataset (Optional)
 After annotation, create a dataset with yolo annotation
 
 ```shell
 python make_dataset.py
 ```
 
-### 6. Observe resulting dataset using fiftyone
+### 6. Observe resulting dataset using fiftyone (Optional)
 Observe the created dataset using fiftyone, you need to install fiftyone first 
 
 ```shell
