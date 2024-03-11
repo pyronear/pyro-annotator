@@ -22,6 +22,9 @@ def upload_files(local_dir, bucket_name, s3_folder):
     s3 = boto3.client("s3")
     for subdir, dirs, files in os.walk(local_dir):
         for file in files:
+            if file.startswith("."):  # Skip system files like .DS_Store on macOS
+                continue
+
             full_path = os.path.join(subdir, file)
             with open(full_path, "rb") as data:
                 file_path_s3 = os.path.join(
@@ -30,12 +33,15 @@ def upload_files(local_dir, bucket_name, s3_folder):
                 s3.upload_fileobj(data, bucket_name, file_path_s3)
                 print(f"Uploaded {file} to s3://{bucket_name}/{file_path_s3}")
 
-                _, action, folder = file_path_s3.split("/")
-                folder = folder.split(".")[0]
-                source_folder = os.path.join("to_do", folder)
-                target_folder = source_folder.replace("to_do", action)
-
-                move_s3_folder(bucket_name, source_folder, target_folder)
+                parts = file_path_s3.split("/")
+                if len(parts) > 2:
+                    action = parts[1]
+                    folder = parts[2].split(".")[0]
+                    source_folder = os.path.join("to_do", folder)
+                    target_folder = source_folder.replace("to_do", action)
+                    move_s3_folder(bucket_name, source_folder, target_folder)
+                else:
+                    print("Error: Unexpected file path structure:", file_path_s3)
 
 
 if __name__ == "__main__":
