@@ -6,6 +6,7 @@ from tqdm import tqdm
 import botocore
 import shutil
 
+
 def download_folders(bucket_name, prefix, local_dir, n):
     s3 = boto3.client("s3")
 
@@ -31,7 +32,7 @@ def download_folders(bucket_name, prefix, local_dir, n):
             try:
                 s3.download_file(bucket_name, s3_embed_file, local_dir + s3_embed_file)
             except botocore.exceptions.ClientError as e:
-                if e.response['Error']['Code'] == "404":
+                if e.response["Error"]["Code"] == "404":
                     print(f"The file {s3_embed_file} does not exist in the bucket.")
                     shutil.rmtree(os.path.dirname(local_dir + file_name))
                     shutil.rmtree(os.path.dirname(local_dir + s3_embed_file))
