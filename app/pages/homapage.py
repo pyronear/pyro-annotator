@@ -50,7 +50,7 @@ def homepage_layout():
         "Skip (P)",
         id="skip_btn",
         style={
-            "backgroundColor": "#FD5252",
+            "backgroundColor": "#F28C28",
             "width": "100%",
             "border": "none",
         },
@@ -59,7 +59,7 @@ def homepage_layout():
         "Done (D)",
         id="done_btn",
         style={
-            "backgroundColor": "#F28C28",
+            "backgroundColor": "#2C796E",
             "width": "100%",
             "border": "none",
         },
@@ -68,12 +68,13 @@ def homepage_layout():
     # Buttons container
     buttons_container = dbc.Row(
         [
-            dbc.Col(skip_button, width=2),
-            dbc.Col(done_button, width=2),
+            
             dbc.Col(prev_button, width=2),
             dbc.Col(next_button, width=2),
             dbc.Col(fit_button, width=2),
             dbc.Col(propagate_button, width=2),
+            dbc.Col(skip_button, width=2),
+            dbc.Col(done_button, width=2),
         ],
         className="mb-2",  # Add margin bottom
         style={"margin-top": "5px"},
