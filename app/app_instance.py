@@ -133,9 +133,9 @@ app.clientside_callback(
                 window.addedKeyListeners = {}; // Initialize an object to track added listeners
             }
 
-            if (!window.addedKeyListeners['KeyS']) { 
+            if (!window.addedKeyListeners['KeyD']) { 
                 document.addEventListener('keydown', function(event) {
-                    if (event.code === 'KeyS') {
+                    if (event.code === 'KeyD') {
                         document.getElementById('done_btn').click();
                     }
                 });

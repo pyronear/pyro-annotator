@@ -9,24 +9,7 @@ from dash import dcc, html
 
 def homepage_layout():
     # Define buttons
-    skip_button = dbc.Button(
-        "Skip (P)",
-        id="skip_btn",
-        style={
-            "backgroundColor": "#FD5252",
-            "width": "100%",
-            "border": "none",
-        },
-    )
-    done_button = dbc.Button(
-        "Done (D)",
-        id="done_btn",
-        style={
-            "backgroundColor": "#F28C28",
-            "width": "100%",
-            "border": "none",
-        },
-    )
+
     prev_button = dbc.Button(
         "Prev (A)",
         id="prev_btn",
@@ -59,6 +42,24 @@ def homepage_layout():
         id="propagate_btn",
         style={
             "backgroundColor": "#FD5252",  # Consider choosing another color if you prefer distinct colors for all.
+            "width": "100%",
+            "border": "none",
+        },
+    )
+    skip_button = dbc.Button(
+        "Skip (P)",
+        id="skip_btn",
+        style={
+            "backgroundColor": "#FD5252",
+            "width": "100%",
+            "border": "none",
+        },
+    )
+    done_button = dbc.Button(
+        "Done (D)",
+        id="done_btn",
+        style={
+            "backgroundColor": "#F28C28",
             "width": "100%",
             "border": "none",
         },
