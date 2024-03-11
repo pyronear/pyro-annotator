@@ -12,3 +12,4 @@ pyyaml
 opencv-python
 python-dotenv
 tqdm
+boto3
