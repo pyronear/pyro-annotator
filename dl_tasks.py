@@ -24,7 +24,7 @@ def download_folders(bucket_name, local_dir, n):
             if dt.days > 15:  # free task after 15 days
                 to_free.append(k)
 
-    for task in selected_tasks:
+    for task in list(task_status.keys()):
         task_status[task]["status"] = "to_do"
         task_status[task]["last_update"] = datetime.now().isoformat()
 
