@@ -5,19 +5,44 @@ import argparse
 from tqdm import tqdm
 import botocore
 import shutil
+import json
+from datetime import datetime
 
 
-def download_folders(bucket_name, prefix, local_dir, n):
+def download_folders(bucket_name, local_dir, n):
     s3 = boto3.client("s3")
 
-    response = s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix, Delimiter="/")
-    folders = [cp["Prefix"] for cp in response.get("CommonPrefixes", [])]
+    s3.download_file(bucket_name, "task_status.json", "data/task_status.json")
+    with open("data/task_status.json", "r") as file:
+        task_status = json.load(file)
 
-    random.shuffle(folders)
-    selected_folders = folders[:n]
-    print(f"There is {len(folders)} fires availables ! Donwloading {n}")
+    to_free = []
+    for k, v in task_status.items():
+        if v["status"] == "ongoing":
+            t = datetime.strptime(v["last_update"].split(".")[0], "%Y-%m-%dT%H:%M:%S")
+            dt = datetime.now() - t
+            if dt.days > 15:  # free task after 15 days
+                to_free.append(k)
 
-    for folder in tqdm(selected_folders):
+    for task in selected_tasks:
+        task_status[task]["status"] = "to_do"
+        task_status[task]["last_update"] = datetime.now().isoformat()
+
+    task_available = [k for k, v in task_status.items() if v["status"] == "to_do"]
+
+    random.shuffle(task_available)
+    selected_tasks = task_available[:n]
+    print(f"There is {len(task_available)} fires availables ! Donwloading {n}")
+
+    for task in selected_tasks:
+        task_status[task]["status"] = "ongoing"
+        task_status[task]["last_update"] = datetime.now().isoformat()
+
+    s3.upload_file("data/task_status.json", bucket_name, "task_status.json")
+
+    for task in tqdm(selected_tasks):
+
+        folder = os.path.join("to_do", task)
 
         for obj in s3.list_objects_v2(Bucket=bucket_name, Prefix=folder)["Contents"]:
             file_name = obj["Key"]
@@ -47,8 +72,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     bucket_name = "pyro-annotator"
-    prefix = "to_do/"
     local_dir = "data/"
     print("downloading data ...")
 
-    download_folders(bucket_name, prefix, local_dir, args.n)
+    download_folders(bucket_name, local_dir, args.n)
