@@ -7,10 +7,45 @@ import botocore
 import shutil
 import json
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+
+def download_file(s3_client, bucket_name, s3_object_key, local_file_path):
+    try:
+        s3_client.download_file(bucket_name, s3_object_key, local_file_path)
+    except botocore.exceptions.ClientError as e:
+        if e.response["Error"]["Code"] == "404":
+            print(f"The file {s3_object_key} does not exist.")
+        else:
+            raise
+
+
+def download_folder(s3, bucket_name, prefix, local_dir):
+    keys_to_download = []
+    response = s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
+    if "Contents" in response:
+        for obj in response["Contents"]:
+            s3_object_key = obj["Key"]
+            local_file_path = os.path.join(local_dir, s3_object_key)
+            os.makedirs(os.path.dirname(local_file_path), exist_ok=True)
+            keys_to_download.append((s3_object_key, local_file_path))
+
+    with ThreadPoolExecutor(max_workers=12) as executor:
+        future_to_key = {
+            executor.submit(download_file, s3, bucket_name, key, path): key
+            for key, path in keys_to_download
+        }
+        for future in tqdm(as_completed(future_to_key), total=len(keys_to_download)):
+            s3_object_key = future_to_key[future]
+            try:
+                data = future.result()
+            except Exception as exc:
+                print(f"There was an error downloading {s3_object_key}: {exc}")
 
 
 def download_folders(bucket_name, local_dir, n):
     s3 = boto3.client("s3")
+    os.makedirs("data", exist_ok=True)
 
     s3.download_file(bucket_name, "task_status.json", "data/task_status.json")
     with open("data/task_status.json", "r") as file:
@@ -44,29 +79,7 @@ def download_folders(bucket_name, local_dir, n):
     s3.upload_file("data/task_status.json", bucket_name, "task_status.json")
 
     for task in tqdm(selected_tasks):
-
-        folder = os.path.join("to_do", task)
-
-        for obj in s3.list_objects_v2(Bucket=bucket_name, Prefix=folder)["Contents"]:
-            file_name = obj["Key"]
-            if not os.path.exists(os.path.dirname(local_dir + file_name)):
-                os.makedirs(os.path.dirname(local_dir + file_name))
-            s3.download_file(bucket_name, file_name, local_dir + file_name)
-            # print(f"Downloaded {file_name} to {local_dir + file_name}")
-            s3_embed_file = os.path.join(
-                "embeddings", os.path.basename(file_name).split(".jpg")[0] + ".pth"
-            )
-            os.makedirs(os.path.dirname(local_dir + s3_embed_file), exist_ok=True)
-            try:
-                s3.download_file(bucket_name, s3_embed_file, local_dir + s3_embed_file)
-            except botocore.exceptions.ClientError as e:
-                if e.response["Error"]["Code"] == "404":
-                    print(f"The file {s3_embed_file} does not exist in the bucket.")
-                    shutil.rmtree(os.path.dirname(local_dir + file_name))
-                    shutil.rmtree(os.path.dirname(local_dir + s3_embed_file))
-                    break
-                else:
-                    raise  # Re-raise the exception if it's not a 404 error
+        download_folder(s3, bucket_name, os.path.join("to_do", task), local_dir)
 
 
 if __name__ == "__main__":
