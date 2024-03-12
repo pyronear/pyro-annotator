@@ -17,7 +17,7 @@ python dl_tasks.py 5
 Download Sam weights
 
 ```shell
-wget https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
+wget -P data/ https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
 ```
 
 ### 3. Starting the Annotator
