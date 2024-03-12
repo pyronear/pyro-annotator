@@ -14,6 +14,7 @@ style:
 run:
 	docker build . -t pyronear/pyro-annotator:latest
 	docker compose -f docker-compose.yml up -d --build
+	docker logs --tail 50 -f pyro-annotator-annotator-1
 
 # Run the docker
 stop:
