@@ -68,7 +68,6 @@ def homepage_layout():
     # Buttons container
     buttons_container = dbc.Row(
         [
-            
             dbc.Col(prev_button, width=2),
             dbc.Col(next_button, width=2),
             dbc.Col(fit_button, width=2),
