@@ -38,6 +38,9 @@ def download_folders(bucket_name, local_dir, n):
         task_status[task]["status"] = "ongoing"
         task_status[task]["last_update"] = datetime.now().isoformat()
 
+    with open("data/task_status.json", "w") as file:
+        json.dump(task_status, file)
+
     s3.upload_file("data/task_status.json", bucket_name, "task_status.json")
 
     for task in tqdm(selected_tasks):
