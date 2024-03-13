@@ -9,6 +9,10 @@ import json
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from PIL import Image
+from app.utils.utils import find_box_sam, xywh2xyxy
+import numpy as np
+import glob
+import subprocess
 
 
 def download_file(s3_client, bucket_name, s3_object_key, local_file_path):
@@ -70,7 +74,7 @@ def download_folders(bucket_name, local_dir, n):
             if dt.days > 15:  # free task after 15 days
                 to_free.append(k)
 
-    for task in list(task_status.keys()):
+    for task in to_free:
         task_status[task]["status"] = "to_do"
         task_status[task]["last_update"] = datetime.now().isoformat()
 
@@ -93,6 +97,46 @@ def download_folders(bucket_name, local_dir, n):
         download_folder(s3, bucket_name, os.path.join("to_do", task), local_dir)
 
 
+def auto_labels():
+    folders = glob.glob("data/to_do/*")
+    folders.sort()
+
+    weight = "data/legendary-field-19.pt"
+    for folder in folders:
+        name = folder.split("/")[-1]
+        if not os.path.isdir(f"runs/{name}/"):
+            cmd = f"yolo predict model={weight} conf=0.2 source={folder} save=False save_txt save_conf name={name} project=runs verbose=False"
+            print(f"* Command:\n{cmd}")
+            subprocess.call(cmd, shell=True)
+            label_files = glob.glob(f"runs/{name}/labels/*")
+            w, h = 1280, 720
+            coeff = 0.05
+            bbox_dict = {}
+            for file_path in label_files:
+                with open(file_path, "r") as file:
+                    boxes = file.readlines()
+
+                images_file = (
+                    file_path.replace("runs", "data/to_do")
+                    .replace("labels/", "")
+                    .replace("txt", "jpg")
+                )
+                bbox_dict[images_file] = []
+                for box in boxes:
+                    box = np.array(box.split(" "))[1:5].astype("float")
+                    box[::2] *= w
+                    box[1::2] *= h
+                    box = xywh2xyxy(box)
+                    box = [int(x) for x in box]
+
+                    bbox_dict[images_file].append(box)
+
+            auto_label_file = f"data/auto_labels/{name}.json"
+            os.makedirs("data/auto_labels", exist_ok=True)
+            with open(auto_label_file, "w") as file:
+                json.dump(bbox_dict, file)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Download folders from S3")
     parser.add_argument("n", type=int, default=10, help="Number of folders to download")
@@ -103,3 +147,4 @@ if __name__ == "__main__":
     print("downloading data ...")
 
     download_folders(bucket_name, local_dir, args.n)
+    auto_labels()

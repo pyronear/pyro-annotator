@@ -4,6 +4,16 @@ import torch
 
 from segment_anything import SamPredictor, sam_model_registry
 
+__all__ = [
+    "xywh2xyxy",
+    "load_image_embedding",
+    "shape_to_bbox",
+    "bboxs_to_shapes",
+    "find_box_sam",
+    "box_iou",
+    "filter_overlapping_bboxes",
+]
+
 # Load Sam
 sam_checkpoint = "data/sam_vit_h_4b8939.pth"
 model_type = "vit_h"
@@ -11,6 +21,15 @@ device = "cpu"
 sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
 sam.to(device=device)
 sam_predictor = SamPredictor(sam)
+
+
+def xywh2xyxy(x: np.ndarray):
+    y = np.copy(x)
+    y[..., 0] = x[..., 0] - x[..., 2] / 2  # top left x
+    y[..., 1] = x[..., 1] - x[..., 3] / 2  # top left y
+    y[..., 2] = x[..., 0] + x[..., 2] / 2  # bottom right x
+    y[..., 3] = x[..., 1] + x[..., 3] / 2  # bottom right y
+    return y
 
 
 def load_image_embedding(path):
@@ -70,7 +89,7 @@ def shape_to_bbox(shape):
     return xyxy
 
 
-def bboxs_to_shapes(bboxs):
+def bboxs_to_shapes(bboxs, legendrank=1000, line_color="rgba(255,0,0,1)"):
     """Convert bboxs to shapes
 
     Args:
@@ -81,10 +100,10 @@ def bboxs_to_shapes(bboxs):
     """
     if bboxs is None:
         return []
-    return [bbox_to_shape(bbox) for bbox in bboxs]
+    return [bbox_to_shape(bbox, legendrank, line_color) for bbox in bboxs]
 
 
-def bbox_to_shape(bbox, is_highlighted=False):
+def bbox_to_shape(bbox, legendrank, line_color):
     """Convert bbox to shape
 
     Args:
@@ -93,8 +112,6 @@ def bbox_to_shape(bbox, is_highlighted=False):
     Returns:
         Dict: Shape
     """
-
-    line_color = "rgba(255,0,0,1)"
 
     fill_color = "rgba(0,0,0,0)"
 
@@ -105,7 +122,7 @@ def bbox_to_shape(bbox, is_highlighted=False):
         "legend": "legend",
         "legendgroup": "",
         "legendgrouptitle": {"text": ""},
-        "legendrank": 1000,
+        "legendrank": legendrank,
         "label": {"text": "", "texttemplate": ""},
         "xref": "x",
         "yref": "y",
