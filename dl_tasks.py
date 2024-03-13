@@ -105,7 +105,7 @@ def auto_labels():
     for folder in folders:
         name = folder.split("/")[-1]
         if not os.path.isdir(f"runs/{name}/"):
-            cmd = f"yolo predict model={weight} conf=0.2 source={folder} save=False save_txt save_conf name={name} project=runs verbose=False"
+            cmd = f"yolo predict model={weight} conf=0.2 iou=0 source={folder} save=False save_txt save_conf name={name} project=runs verbose=False"
             print(f"* Command:\n{cmd}")
             subprocess.call(cmd, shell=True)
             label_files = glob.glob(f"runs/{name}/labels/*")
