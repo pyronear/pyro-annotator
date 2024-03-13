@@ -35,7 +35,11 @@ import numpy as np
 
 
 @app.callback(
-    [Output("images_files", "data"), Output("fire_progress", "children")],
+    [
+        Output("images_files", "data"),
+        Output("model_prediction_dict", "data"),
+        Output("fire_progress", "children"),
+    ],
     [Input("skip_btn", "n_clicks"), Input("done_btn", "n_clicks")],
     [State("images_files", "data"), State("bbox_dict", "data")],
 )
@@ -75,7 +79,16 @@ def load_fire(n_clicks_skip, n_clicks_done, images_files, bbox_dict):
     images_files = glob.glob(f"{fire}/*.jpg")
     images_files.sort()
 
-    return images_files, f"Fires to do: {len(fires)}"
+    name = fire.split("/")[-1]
+
+    label_file = f"data/auto_labels/{name}.json"
+
+    model_prediction_dict = {}
+    if os.path.isfile(label_file):
+        with open(label_file, "r") as file:
+            model_prediction_dict = json.load(file)
+
+    return images_files, model_prediction_dict, f"Fires to do: {len(fires)}"
 
 
 @app.callback(
@@ -139,6 +152,7 @@ def update_text(image_idx, images_files):
     [
         State("images_files", "data"),
         State("bbox_dict", "data"),
+        State("model_prediction_dict", "data"),
         State("bbox_deleted", "data"),
         State("graph", "figure"),
     ],
@@ -150,6 +164,7 @@ def update_figure(
     fit_btn_cliks,
     images_files,
     bbox_dict,
+    model_prediction_dict,
     bbox_deleted,
     current_figure,
 ):
@@ -273,6 +288,17 @@ def update_figure(
     if images_files[image_idx] in bbox_dict:
         bboxs = bbox_dict[images_files[image_idx]]
         fig["layout"]["shapes"] = bboxs_to_shapes(bboxs)
+
+    if images_file in model_prediction_dict.keys():
+        bboxs = model_prediction_dict[images_file]
+        if fig["layout"]["shapes"]:
+            fig["layout"]["shapes"] = list(fig["layout"]["shapes"]) + bboxs_to_shapes(
+                bboxs, legendrank=999, line_color="rgba(255,0,255,1)"
+            )
+        else:
+            fig["layout"]["shapes"] = bboxs_to_shapes(
+                bboxs, legendrank=999, line_color="rgba(255,0,255,1)"
+            )
 
     for trace in fig.data:
         trace.update(hoverinfo="none", hovertemplate=None)
@@ -401,7 +427,11 @@ def update_bbox_dict(
         bbox_dict[images_file] = []
 
     # Convert shapes in relayoutData to bbox format
-    relayout_bboxes = [shape_to_bbox(shape) for shape in relayoutData["shapes"]]
+    relayout_bboxes = [
+        shape_to_bbox(shape)
+        for shape in relayoutData["shapes"]
+        if shape["legendrank"] == 1000
+    ]
 
     # Update bbox_dict only with the bboxes that exist in relayoutData
     bbox_dict[images_file] = relayout_bboxes
