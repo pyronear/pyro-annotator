@@ -312,6 +312,8 @@ def update_figure(
         Input("graph", "relayoutData"),
         Input("trigger_update_bbox_dict", "data"),
         Input("propagate_btn", "n_clicks"),
+        Input("skip_btn", "n_clicks"),
+        Input("done_btn", "n_clicks"),
     ],
     [
         State("image_idx", "data"),
@@ -325,6 +327,8 @@ def update_bbox_dict(
     relayoutData,
     trigger_update_bbox_dict,
     propagate_btn_cliks,
+    n_clicks_skip,
+    n_clicks_done,
     image_idx,
     images_files,
     bbox_dict,
@@ -334,6 +338,13 @@ def update_bbox_dict(
 
     ctx = dash.callback_context
     triggered_id = ctx.triggered[0]["prop_id"]
+
+    button_id = ctx.triggered[0]["prop_id"].split(".")[0]
+
+    # Based on the button clicked, perform the action
+    if button_id == "done_btn" or button_id == "skip_btn":
+        return {}
+
     if image_idx >= len(images_files):
         raise PreventUpdate
 
