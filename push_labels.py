@@ -7,17 +7,17 @@ import json
 from PIL import Image
 
 
-def normalize_labels(labels_file):
+def normalize_labels(labels_file, cat="done"):
     with open(labels_file, "r") as file:
         labels = json.load(file)
 
     for k in list(labels.keys()):
-        im = Image.open(k)
+        im = Image.open(k.replace("to_do", cat))
         w, h = im.size
         box = labels[k]
         new_box = []
         for b in box:
-            if b.max() <= 1:
+            if max(b) <= 1:
                 b[::2] = [x / w for x in b[::2]]
                 b[1::2] = [y / h for y in b[1::2]]
                 new_box.append(b)
@@ -47,10 +47,11 @@ if __name__ == "__main__":
                 task_status[name]["last_update"] = datetime.now().isoformat()
 
                 s3.upload_file(task, bucket_name, task.split("data/")[1])
-                os.remove(file)
+                os.remove(task)
 
     done_tasks = glob.glob("data/labels/skip/*.json")
     for task in tqdm(done_tasks, desc="Upload skip tasks"):
+        normalize_labels(task, cat="skip")
         name = os.path.basename(task).split(".")[0]
         if name in task_status.keys():
             if task_status[name]["status"] != "skip":
@@ -58,7 +59,7 @@ if __name__ == "__main__":
                 task_status[name]["last_update"] = datetime.now().isoformat()
 
                 s3.upload_file(task, bucket_name, task.split("data/")[1])
-                os.remove(file)
+                os.remove(task)
 
     with open("data/task_status.json", "w") as file:
         json.dump(task_status, file)
