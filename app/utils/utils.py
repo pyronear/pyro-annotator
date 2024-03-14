@@ -38,7 +38,10 @@ def load_image_embedding(path):
         setattr(sam_predictor, k, v)
 
 
-def find_box_sam(bbox, name):
+def find_box_sam(bbox, name, w=1280, h=720):
+
+    bbox[::2] = np.clip(bbox[::2], 0, w)
+    bbox[1::2] = np.clip(bbox[1::2], 0, h)
 
     try:
 
@@ -58,7 +61,12 @@ def find_box_sam(bbox, name):
         x_min, x_max = np.min(X), np.max(X)
         y_min, y_max = np.min(Y), np.max(Y)
 
-        return [x_min, y_min, x_max, y_max]
+        bbox = np.array([x_min, y_min, x_max, y_max])
+
+        bbox[::2] = np.clip(bbox[::2], 0, w)
+        bbox[1::2] = np.clip(bbox[1::2], 0, h)
+
+        return bbox
     except Exception as e:
         print(f"Error with {name}, {bbox}: {e}")
         return [None, None, None, None]
