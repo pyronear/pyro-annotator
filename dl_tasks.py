@@ -20,8 +20,10 @@ def download_file(s3_client, bucket_name, s3_object_key, local_file_path):
         s3_client.download_file(bucket_name, s3_object_key, local_file_path)
         # Resize images
         if local_file_path[-3:] == "jpg":
-            im = Image.open(local_file_path).resize((1280, 720))
-            im.save(local_file_path)
+            im = Image.open(local_file_path)
+            image_size = im.size
+            im.resize((1280, 720)).save(local_file_path)
+            return image_size
     except botocore.exceptions.ClientError as e:
         if e.response["Error"]["Code"] == "404":
             print(f"The file {s3_object_key} does not exist.")
@@ -44,6 +46,24 @@ def download_folder(s3, bucket_name, prefix, local_dir):
             embed_s3_object_key = os.path.join("embeddings", name)
             embed_local_file_path = os.path.join("data/embeddings", name)
             keys_to_download.append((embed_s3_object_key, embed_local_file_path))
+
+    key, path = keys_to_download[0]
+
+    image_size = download_file(s3, bucket_name, key, path)
+    folder = key.split("/")[1]
+
+    if os.path.isfile("data/image_size.json"):
+        with open("data/image_size.json", "r") as file:
+            image_size_dict = json.load(file)
+    else:
+        image_size_dict = {}
+
+    image_size_dict[folder] = image_size
+
+    with open("data/image_size.json", "w") as file:
+        json.dump(image_size_dict, file)
+
+    print(s3, bucket_name, key, path, image_size)
 
     with ThreadPoolExecutor(max_workers=12) as executor:
         future_to_key = {
@@ -147,4 +167,4 @@ if __name__ == "__main__":
     print("downloading data ...")
 
     download_folders(bucket_name, local_dir, args.n)
-    auto_labels()
+    # auto_labels()

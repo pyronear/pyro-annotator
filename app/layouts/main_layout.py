@@ -20,6 +20,7 @@ def get_main_layout():
             ),
             dcc.Store(id="images_files", data=[]),
             dcc.Store(id="image_idx", data=0),
+            dcc.Store(id="image_size", data=(1280, 720)),
             dcc.Store(id="bbox_dict", data={}),
             dcc.Store(id="model_prediction_dict", data={}),
             dcc.Store(id="bbox_deleted", data={}),

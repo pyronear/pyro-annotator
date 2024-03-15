@@ -27,6 +27,7 @@ import numpy as np
         Output("images_files", "data"),
         Output("model_prediction_dict", "data"),
         Output("fire_progress", "children"),
+        Output("image_size", "data"),
     ],
     [Input("skip_btn", "n_clicks"), Input("done_btn", "n_clicks")],
     [State("images_files", "data"), State("bbox_dict", "data")],
@@ -76,7 +77,18 @@ def load_fire(n_clicks_skip, n_clicks_done, images_files, bbox_dict):
         with open(label_file, "r") as file:
             model_prediction_dict = json.load(file)
 
-    return images_files, model_prediction_dict, f"Fires to do: {len(fires)}"
+    if os.path.isfile("data/image_size.json"):
+        with open("data/image_size.json", "r") as file:
+            image_size_dict = json.load(file)
+    else:
+        raise ValueError("Can't find data/image_size.json")
+
+    return (
+        images_files,
+        model_prediction_dict,
+        f"Fires to do: {len(fires)}",
+        image_size_dict[name],
+    )
 
 
 @app.callback(
@@ -143,6 +155,7 @@ def update_text(image_idx, images_files):
         State("model_prediction_dict", "data"),
         State("bbox_deleted", "data"),
         State("graph", "figure"),
+        State("image_size", "data"),
     ],
 )
 def update_figure(
@@ -155,6 +168,7 @@ def update_figure(
     model_prediction_dict,
     bbox_deleted,
     current_figure,
+    image_size,
 ):
     ctx = dash.callback_context
     triggered_id = ctx.triggered[0]["prop_id"]
@@ -227,7 +241,7 @@ def update_figure(
 
             name = os.path.basename(images_file).split(".")[0]
 
-            [x_min, y_min, x_max, y_max] = find_box_sam(bbox_array, name)
+            [x_min, y_min, x_max, y_max] = find_box_sam(bbox_array, name, image_size)
 
             if x_min is not None:
                 fitted_bbox.append([x_min, y_min, x_max, y_max])
@@ -309,6 +323,7 @@ def update_figure(
         State("bbox_dict", "data"),
         State("graph", "figure"),
         State("bbox_deleted", "data"),
+        State("image_size", "data"),
     ],
 )
 def update_bbox_dict(
@@ -322,6 +337,7 @@ def update_bbox_dict(
     bbox_dict,
     figure,
     bbox_deleted,
+    image_size,
 ):
 
     ctx = dash.callback_context
@@ -390,7 +406,7 @@ def update_bbox_dict(
                         .astype("int")
                     )
 
-                    [x_min, y_min, x_max, y_max] = find_box_sam(bbox, name)
+                    [x_min, y_min, x_max, y_max] = find_box_sam(bbox, name, image_size)
 
                     if x_min is not None:
                         bbox = (
