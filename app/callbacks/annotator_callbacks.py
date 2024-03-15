@@ -234,19 +234,23 @@ def update_figure(
 
         fitted_bbox = []
 
-        bbox_list = bbox_dict[images_file]
-        for bbox in bbox_list:
+        if images_file in bbox_dict.keys():
 
-            bbox_array = np.array(bbox).reshape((-1, 4)).astype("int")
+            bbox_list = bbox_dict[images_file]
+            for bbox in bbox_list:
 
-            name = os.path.basename(images_file).split(".")[0]
+                bbox_array = np.array(bbox).reshape((-1, 4)).astype("int")
 
-            [x_min, y_min, x_max, y_max] = find_box_sam(bbox_array, name, image_size)
+                name = os.path.basename(images_file).split(".")[0]
 
-            if x_min is not None:
-                fitted_bbox.append([x_min, y_min, x_max, y_max])
-            else:
-                fitted_bbox.append(bbox)
+                [x_min, y_min, x_max, y_max] = find_box_sam(
+                    bbox_array, name, image_size
+                )
+
+                if x_min is not None:
+                    fitted_bbox.append([x_min, y_min, x_max, y_max])
+                else:
+                    fitted_bbox.append(bbox)
 
         bbox_dict[images_file] = fitted_bbox
 

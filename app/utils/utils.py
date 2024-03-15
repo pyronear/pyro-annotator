@@ -45,6 +45,8 @@ def find_box_sam(bbox, name, image_size=(1280, 720)):
     bbox[::2] = np.clip(bbox[::2], 0, w)
     bbox[1::2] = np.clip(bbox[1::2], 0, h)
 
+    bbox = bbox.astype("float")
+
     bbox[::2] *= w / 1280
     bbox[1::2] *= h / 720
 
