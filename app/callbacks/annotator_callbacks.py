@@ -21,18 +21,6 @@ import json
 import os
 import numpy as np
 
-# from flask_caching import Cache
-
-
-# # Configure Flask Caching
-# cache = Cache(
-#     app.server,
-#     config={
-#         "CACHE_TYPE": "filesystem",
-#         "CACHE_DIR": "cache-directory",
-#     },
-# )
-
 
 @app.callback(
     [
