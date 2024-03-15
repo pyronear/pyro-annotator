@@ -388,7 +388,9 @@ def update_bbox_dict(
                 bbox = np.array(current_box).reshape((-1, 4)).astype("int")
 
                 idx = images_files.index(images_file)
-                for image_name in images_files[idx + 1 :]:
+                for image_name in images_files[
+                    idx + 1 : idx + 21
+                ]:  # Max 20 boxes propagations
 
                     name = os.path.basename(image_name).split(".")[0]
                     [x_min, y_min, x_max, y_max] = bbox[0]
@@ -414,13 +416,14 @@ def update_bbox_dict(
 
                         bbox_dict[image_name].append([x_min, y_min, x_max, y_max])
 
-            # Drop duplicate
-            if image_name in bbox_dict.keys():
-                bboxes = np.array(bbox_dict[image_name]).reshape((-1, 4)).astype("int")
-                iou_matrix = box_iou(bboxes, bboxes)
-                index = filter_overlapping_bboxes(iou_matrix)
+                    # Drop duplicate
+                    bboxes = (
+                        np.array(bbox_dict[image_name]).reshape((-1, 4)).astype("int")
+                    )
+                    iou_matrix = box_iou(bboxes, bboxes)
+                    index = filter_overlapping_bboxes(iou_matrix)
 
-                bbox_dict[image_name] = [bbox_dict[image_name][i] for i in index]
+                    bbox_dict[image_name] = [bbox_dict[image_name][i] for i in index]
 
         print("propagation done")
 
