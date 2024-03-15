@@ -476,7 +476,10 @@ def update_bbox_list(bbox_dict, image_idx, images_files):
 
     images_file = images_files[image_idx]
 
-    bboxs = bbox_dict[images_file]
+    if images_file in bbox_dict.keys():
+        bboxs = bbox_dict[images_file]
+    else:
+        return []
 
     # Initialize an empty list to hold button pairs with labels
     buttons_with_labels = []
