@@ -167,4 +167,4 @@ if __name__ == "__main__":
     print("downloading data ...")
 
     download_folders(bucket_name, local_dir, args.n)
-    # auto_labels()
+    auto_labels()
