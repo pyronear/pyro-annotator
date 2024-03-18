@@ -328,6 +328,8 @@ def update_figure(
         State("graph", "figure"),
         State("bbox_deleted", "data"),
         State("image_size", "data"),
+        State("propagation_width_growth", "value"),
+        State("propagation_height_growth", "value"),
     ],
 )
 def update_bbox_dict(
@@ -342,7 +344,13 @@ def update_bbox_dict(
     figure,
     bbox_deleted,
     image_size,
+    propagation_width_growth,
+    propagation_height_growth,
 ):
+
+    print(
+        "propagation_width_growth", propagation_width_growth, propagation_height_growth
+    )
 
     ctx = dash.callback_context
     triggered_id = ctx.triggered[0]["prop_id"]
@@ -402,8 +410,8 @@ def update_bbox_dict(
 
                     name = os.path.basename(image_name).split(".")[0]
                     [x_min, y_min, x_max, y_max] = bbox[0]
-                    dx = (x_max - x_min) * coeff
-                    dy = (y_max - y_min) * coeff
+                    dx = (x_max - x_min) * propagation_width_growth / 100
+                    dy = (y_max - y_min) * propagation_height_growth / 100
                     bbox = (
                         np.array((x_min - dx, y_min - dy, x_max + dx, y_max + dy))
                         .reshape((-1, 4))
