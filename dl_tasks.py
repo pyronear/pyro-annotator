@@ -21,9 +21,10 @@ def download_file(s3_client, bucket_name, s3_object_key, local_file_path):
         # Resize images
         if local_file_path[-3:] == "jpg":
             im = Image.open(local_file_path)
-            image_size = im.size
-            im.resize((1280, 720)).save(local_file_path)
-            return image_size
+            w, h = im.size
+            r = 720 / h
+            im.resize((int(r * w), 720)).save(local_file_path)
+            return (w, h)
     except botocore.exceptions.ClientError as e:
         if e.response["Error"]["Code"] == "404":
             print(f"The file {s3_object_key} does not exist.")

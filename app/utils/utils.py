@@ -41,14 +41,17 @@ def load_image_embedding(path):
 def find_box_sam(bbox, name, image_size=(1280, 720)):
 
     w, h = image_size
+    r = 720 / h
+    w2 = int(r * w)
+    h2 = 720
 
-    bbox[::2] = np.clip(bbox[::2], 0, w)
-    bbox[1::2] = np.clip(bbox[1::2], 0, h)
+    bbox[::2] = np.clip(bbox[::2], 0, w2)
+    bbox[1::2] = np.clip(bbox[1::2], 0, h2)
 
     bbox = bbox.astype("float")
 
-    bbox[::2] *= w / 1280
-    bbox[1::2] *= h / 720
+    bbox[::2] *= 1 / r
+    bbox[1::2] *= 1 / r
 
     bbox = bbox.astype("int")
 
@@ -75,8 +78,8 @@ def find_box_sam(bbox, name, image_size=(1280, 720)):
         bbox[::2] = np.clip(bbox[::2], 0, w)
         bbox[1::2] = np.clip(bbox[1::2], 0, h)
 
-        bbox[::2] *= 1280 / w
-        bbox[1::2] *= 720 / h
+        bbox[::2] *= r
+        bbox[1::2] *= r
 
         return bbox.astype("int")
 

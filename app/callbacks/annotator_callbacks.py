@@ -348,10 +348,6 @@ def update_bbox_dict(
     propagation_height_growth,
 ):
 
-    print(
-        "propagation_width_growth", propagation_width_growth, propagation_height_growth
-    )
-
     ctx = dash.callback_context
     triggered_id = ctx.triggered[0]["prop_id"]
 
