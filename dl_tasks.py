@@ -125,12 +125,18 @@ def auto_labels():
     weight = "data/legendary-field-19.pt"
     for folder in folders:
         name = folder.split("/")[-1]
+        if os.path.isfile("data/image_size.json"):
+            with open("data/image_size.json", "r") as file:
+                image_size_dict = json.load(file)
+
+        image_size = image_size_dict[name]
+        r = 720 / image_size[1]
         if not os.path.isdir(f"runs/{name}/"):
             cmd = f"yolo predict model={weight} conf=0.2 iou=0 source={folder} save=False save_txt save_conf name={name} project=runs verbose=False"
             print(f"* Command:\n{cmd}")
             subprocess.call(cmd, shell=True)
             label_files = glob.glob(f"runs/{name}/labels/*")
-            w, h = 1280, 720
+            w, h = int(image_size[0] * r), 720
             coeff = 0.05
             bbox_dict = {}
             for file_path in label_files:
