@@ -17,7 +17,7 @@ def normalize_labels(labels_file, cat="done"):
         image_size_dict = json.load(file)
 
     name = os.path.basename(task).split(".")[0]
-    w, h = image_size_dict[name]
+    _, h = image_size_dict[name]
     r = 720 / h
 
     for k in list(labels.keys()):
@@ -26,11 +26,10 @@ def normalize_labels(labels_file, cat="done"):
         box = labels[k]
         new_box = []
         for b in box:
-            bbox = np.array(b)
+            bbox = np.array(b).astype("float")
             bbox[::2] *= 1 / r
             bbox[1::2] *= 1 / r
 
-            bbox = bbox.astype("int")
             new_box.append(list(bbox))
 
         labels[k] = new_box
