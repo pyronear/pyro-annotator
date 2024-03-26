@@ -5,11 +5,20 @@ import glob
 from datetime import datetime
 import json
 from PIL import Image
+import numpy as np
+import shutil
 
 
 def normalize_labels(labels_file, cat="done"):
     with open(labels_file, "r") as file:
         labels = json.load(file)
+
+    with open("data/image_size.json", "r") as file:
+        image_size_dict = json.load(file)
+
+    name = os.path.basename(task).split(".")[0]
+    w, h = image_size_dict[name]
+    r = 720 / h
 
     for k in list(labels.keys()):
         im = Image.open(k.replace("to_do", cat))
@@ -17,10 +26,12 @@ def normalize_labels(labels_file, cat="done"):
         box = labels[k]
         new_box = []
         for b in box:
-            if max(b) <= 1:
-                b[::2] = [x / w for x in b[::2]]
-                b[1::2] = [y / h for y in b[1::2]]
-                new_box.append(b)
+            bbox = np.array(b)
+            bbox[::2] *= 1 / r
+            bbox[1::2] *= 1 / r
+
+            bbox = bbox.astype("int")
+            new_box.append(list(bbox))
 
         labels[k] = new_box
 
@@ -47,7 +58,9 @@ if __name__ == "__main__":
                 task_status[name]["last_update"] = datetime.now().isoformat()
 
                 s3.upload_file(task, bucket_name, task.split("data/")[1])
-                os.remove(task)
+                backuped_task = task.replace("labels", "backup/labels")
+                os.makedirs(os.path.dirname(backuped_task), exist_ok=True)
+                shutil.move(task, backuped_task)
 
     done_tasks = glob.glob("data/labels/skip/*.json")
     for task in tqdm(done_tasks, desc="Upload skip tasks"):
@@ -59,7 +72,9 @@ if __name__ == "__main__":
                 task_status[name]["last_update"] = datetime.now().isoformat()
 
                 s3.upload_file(task, bucket_name, task.split("data/")[1])
-                os.remove(task)
+                backuped_task = task.replace("labels", "backup/labels")
+                os.makedirs(os.path.dirname(backuped_task), exist_ok=True)
+                shutil.move(task, backuped_task)
 
     with open("data/task_status.json", "w") as file:
         json.dump(task_status, file)
