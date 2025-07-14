@@ -1,18 +1,19 @@
-import boto3
-import os
-import random
 import argparse
-from tqdm import tqdm
-import botocore
-import shutil
-import json
-from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from PIL import Image
-from app.utils.utils import find_box_sam, xywh2xyxy
-import numpy as np
 import glob
+import json
+import os
+import pathlib
+import random
 import subprocess
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
+
+import boto3
+import botocore
+import numpy as np
+from app.utils.utils import xywh2xyxy
+from PIL import Image
+from tqdm import tqdm
 
 
 def download_file(s3_client, bucket_name, s3_object_key, local_file_path):
@@ -40,10 +41,10 @@ def download_folder(s3, bucket_name, prefix, local_dir):
         for obj in response["Contents"]:
             s3_object_key = obj["Key"]
             local_file_path = os.path.join(local_dir, s3_object_key)
-            os.makedirs(os.path.dirname(local_file_path), exist_ok=True)
+            os.makedirs(pathlib.Path(local_file_path).parent, exist_ok=True)
             keys_to_download.append((s3_object_key, local_file_path))
             # Download embeddings
-            name = os.path.basename(s3_object_key).replace("jpg", "pth")
+            name = pathlib.Path(s3_object_key).name.replace("jpg", "pth")
             embed_s3_object_key = os.path.join("embeddings", name)
             embed_local_file_path = os.path.join("data/embeddings", name)
             keys_to_download.append((embed_s3_object_key, embed_local_file_path))
@@ -53,7 +54,7 @@ def download_folder(s3, bucket_name, prefix, local_dir):
     image_size = download_file(s3, bucket_name, key, path)
     folder = key.split("/")[1]
 
-    if os.path.isfile("data/image_size.json"):
+    if pathlib.Path("data/image_size.json").is_file():
         with open("data/image_size.json", "r") as file:
             image_size_dict = json.load(file)
     else:
@@ -68,8 +69,7 @@ def download_folder(s3, bucket_name, prefix, local_dir):
 
     with ThreadPoolExecutor(max_workers=12) as executor:
         future_to_key = {
-            executor.submit(download_file, s3, bucket_name, key, path): key
-            for key, path in keys_to_download
+            executor.submit(download_file, s3, bucket_name, key, path): key for key, path in keys_to_download
         }
         for future in tqdm(as_completed(future_to_key), total=len(keys_to_download)):
             s3_object_key = future_to_key[future]
@@ -125,13 +125,13 @@ def auto_labels():
     weight = "data/legendary-field-19.pt"
     for folder in folders:
         name = folder.split("/")[-1]
-        if os.path.isfile("data/image_size.json"):
+        if pathlib.Path("data/image_size.json").is_file():
             with open("data/image_size.json", "r") as file:
                 image_size_dict = json.load(file)
 
         image_size = image_size_dict[name]
         r = 720 / image_size[1]
-        if not os.path.isdir(f"runs/{name}/"):
+        if not pathlib.Path(f"runs/{name}/").is_dir():
             cmd = f"yolo predict model={weight} conf=0.2 iou=0 source={folder} save=False save_txt save_conf name={name} project=runs verbose=False"
             print(f"* Command:\n{cmd}")
             subprocess.call(cmd, shell=True)
@@ -143,11 +143,7 @@ def auto_labels():
                 with open(file_path, "r") as file:
                     boxes = file.readlines()
 
-                images_file = (
-                    file_path.replace("runs", "data/to_do")
-                    .replace("labels/", "")
-                    .replace("txt", "jpg")
-                )
+                images_file = file_path.replace("runs", "data/to_do").replace("labels/", "").replace("txt", "jpg")
                 bbox_dict[images_file] = []
                 for box in boxes:
                     box = np.array(box.split(" "))[1:5].astype("float")

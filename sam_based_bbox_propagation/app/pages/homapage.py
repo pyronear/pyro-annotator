@@ -84,27 +84,25 @@ def homepage_layout():
     return dbc.Container(
         [
             buttons_container,  # Insert buttons container at the top
-            dbc.Row(
-                [
-                    dbc.Col(
-                        [
-                            dcc.Graph(
-                                id="graph",
-                                style={"height": "calc(100vh - 120px)"},
-                            )
-                        ],
-                        md=11,
-                    ),
-                    dbc.Col(
-                        [
-                            html.Div(id="fire_progress", children=""),
-                            html.Div(id="image_progress", children=""),
-                            html.Div(id="bbox_list"),  # Empty container
-                        ],
-                        md=1,
-                    ),
-                ]
-            ),
+            dbc.Row([
+                dbc.Col(
+                    [
+                        dcc.Graph(
+                            id="graph",
+                            style={"height": "calc(100vh - 120px)"},
+                        )
+                    ],
+                    md=11,
+                ),
+                dbc.Col(
+                    [
+                        html.Div(id="fire_progress", children=""),
+                        html.Div(id="image_progress", children=""),
+                        html.Div(id="bbox_list"),  # Empty container
+                    ],
+                    md=1,
+                ),
+            ]),
         ],
         fluid=True,
     )

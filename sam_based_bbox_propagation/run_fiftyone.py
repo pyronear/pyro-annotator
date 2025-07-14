@@ -1,6 +1,7 @@
 import glob
+import pathlib
+
 import fiftyone as fo
-import os
 
 img_folder = "data/Dataset/images"
 
@@ -22,12 +23,11 @@ for ds in ds_list:
 
 samples = []
 for img_file in imgs:
-
     label_file = img_file.replace("images", "labels").replace(".jpg", ".txt")
 
     sample = fo.Sample(filepath=img_file)
 
-    if os.path.isfile(label_file):
+    if pathlib.Path(label_file).is_file():
         with open(label_file) as f:
             lines = f.readlines()
 
@@ -43,9 +43,7 @@ for img_file in imgs:
                 bounding_box[0] -= bounding_box[2] / 2
                 bounding_box[1] -= bounding_box[3] / 2
 
-                detections.append(
-                    fo.Detection(label="smoke", bounding_box=bounding_box)
-                )
+                detections.append(fo.Detection(label="smoke", bounding_box=bounding_box))
 
         # Store detections in a field name of your choice
         sample[label_name] = fo.Detections(detections=detections)

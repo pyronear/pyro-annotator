@@ -1,25 +1,26 @@
-import dash
-from dash import html
-from dash.dependencies import ALL, Input, Output, State
 import glob
-import random
-from app_instance import app
-import plotly.express as px
-from PIL import Image
-from dash.exceptions import PreventUpdate
-from utils.utils import (
-    shape_to_bbox,
-    bboxs_to_shapes,
-    find_box_sam,
-    box_iou,
-    filter_overlapping_bboxes,
-)
-from dash import callback_context
-import shutil
-import dash_bootstrap_components as dbc
 import json
 import os
+import pathlib
+import random
+import shutil
+
+import dash
+import dash_bootstrap_components as dbc
 import numpy as np
+import plotly.express as px
+from app_instance import app
+from dash import callback_context, html
+from dash.dependencies import ALL, Input, Output, State
+from dash.exceptions import PreventUpdate
+from PIL import Image
+from utils.utils import (
+    bboxs_to_shapes,
+    box_iou,
+    filter_overlapping_bboxes,
+    find_box_sam,
+    shape_to_bbox,
+)
 
 
 @app.callback(
@@ -41,23 +42,20 @@ def load_fire(n_clicks_skip, n_clicks_done, images_files, bbox_dict):
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
 
     if len(images_files):
-
-        fire = os.path.dirname(images_files[0])
+        fire = pathlib.Path(images_files[0]).parent
         print(fire)
 
         # Based on the button clicked, perform the action
         if button_id == "done_btn":
-
             shutil.move(fire, fire.replace("to_do", "done"))
             label_file = fire.replace("to_do", "labels/done") + ".json"
-            os.makedirs(os.path.dirname(label_file), exist_ok=True)
+            os.makedirs(pathlib.Path(label_file).parent, exist_ok=True)
             with open(label_file, "w") as file:
                 json.dump(bbox_dict, file)
         elif button_id == "skip_btn":
-
             shutil.move(fire, fire.replace("to_do", "skip"))
             label_file = fire.replace("to_do", "labels/skip") + ".json"
-            os.makedirs(os.path.dirname(label_file), exist_ok=True)
+            os.makedirs(pathlib.Path(label_file).parent, exist_ok=True)
 
             with open(label_file, "w") as file:
                 json.dump(bbox_dict, file)
@@ -73,11 +71,11 @@ def load_fire(n_clicks_skip, n_clicks_done, images_files, bbox_dict):
     label_file = f"data/auto_labels/{name}.json"
 
     model_prediction_dict = {}
-    if os.path.isfile(label_file):
+    if pathlib.Path(label_file).is_file():
         with open(label_file, "r") as file:
             model_prediction_dict = json.load(file)
 
-    if os.path.isfile("data/image_size.json"):
+    if pathlib.Path("data/image_size.json").is_file():
         with open("data/image_size.json", "r") as file:
             image_size_dict = json.load(file)
     else:
@@ -134,7 +132,7 @@ def change_image_idx(n_clicks_next, n_clicks_prev, images_files, current_index):
     State("images_files", "data"),
 )
 def update_text(image_idx, images_files):
-    return f"Image: {image_idx}/{len(images_files)-1}"
+    return f"Image: {image_idx}/{len(images_files) - 1}"
 
 
 @app.callback(
@@ -178,10 +176,7 @@ def update_figure(
     else:
         images_file = None
     # Check the action to perform based on the button clicked
-    if images_file and (
-        "bbox_highlight_button" in triggered_id or "bbox_delete_button" in triggered_id
-    ):
-
+    if images_file and ("bbox_highlight_button" in triggered_id or "bbox_delete_button" in triggered_id):
         # If the callback was not triggered by image_idx, it must be one of the buttons
         if not current_figure or not bbox_dict:
             raise PreventUpdate
@@ -214,7 +209,6 @@ def update_figure(
 
         # Check the action to perform based on the button clicked
         if btn_type == "bbox_highlight_button":
-
             # Highlighting BBox
             if 0 <= btn_index < len(updated_bboxs):
                 for shape in current_figure["layout"]["shapes"]:
@@ -222,30 +216,23 @@ def update_figure(
 
                 print(shape["fillcolor"], button_clicks)
                 if button_clicks % 2 == 1:
-                    current_figure["layout"]["shapes"][btn_index][
-                        "fillcolor"
-                    ] = "rgba(255,0,0,0.45)"
+                    current_figure["layout"]["shapes"][btn_index]["fillcolor"] = "rgba(255,0,0,0.45)"
 
                 print(shape["fillcolor"])
 
         return current_figure, len(updated_bboxs), bbox_deleted
 
     if images_file and "fit_btn" in triggered_id:
-
         fitted_bbox = []
 
         if images_file in bbox_dict.keys():
-
             bbox_list = bbox_dict[images_file]
             for bbox in bbox_list:
-
                 bbox_array = np.array(bbox).reshape((-1, 4)).astype("int")
 
-                name = os.path.basename(images_file).split(".")[0]
+                name = pathlib.Path(images_file).name.split(".")[0]
 
-                [x_min, y_min, x_max, y_max] = find_box_sam(
-                    bbox_array, name, image_size
-                )
+                [x_min, y_min, x_max, y_max] = find_box_sam(bbox_array, name, image_size)
 
                 if x_min is not None:
                     fitted_bbox.append([x_min, y_min, x_max, y_max])
@@ -276,19 +263,18 @@ def update_figure(
             }
         }
         return fig, 0, bbox_deleted
-    else:
-        # Load the image and create the figure
-        image = Image.open(images_files[image_idx])
-        fig = px.imshow(image)
-        line_color = "rgba(255,0,0,1)"
-        line_width = 1
-        fig.update_layout(
-            dragmode="drawrect",
-            newshape=dict(line_color=line_color, line_width=line_width),
-            margin=dict(l=0, r=0, t=0, b=0),
-            autosize=True,
-            template=None,
-        )
+    # Load the image and create the figure
+    image = Image.open(images_files[image_idx])
+    fig = px.imshow(image)
+    line_color = "rgba(255,0,0,1)"
+    line_width = 1
+    fig.update_layout(
+        dragmode="drawrect",
+        newshape=dict(line_color=line_color, line_width=line_width),
+        margin=dict(l=0, r=0, t=0, b=0),
+        autosize=True,
+        template=None,
+    )
 
     # Update the shapes based on bbox_dict
     if images_files[image_idx] in bbox_dict:
@@ -302,9 +288,7 @@ def update_figure(
                 bboxs, legendrank=999, line_color="rgba(255,0,255,1)"
             )
         else:
-            fig["layout"]["shapes"] = bboxs_to_shapes(
-                bboxs, legendrank=999, line_color="rgba(255,0,255,1)"
-            )
+            fig["layout"]["shapes"] = bboxs_to_shapes(bboxs, legendrank=999, line_color="rgba(255,0,255,1)")
 
     for trace in fig.data:
         trace.update(hoverinfo="none", hovertemplate=None)
@@ -347,7 +331,6 @@ def update_bbox_dict(
     propagation_width_growth,
     propagation_height_growth,
 ):
-
     ctx = dash.callback_context
     triggered_id = ctx.triggered[0]["prop_id"]
 
@@ -368,16 +351,12 @@ def update_bbox_dict(
 
         # propagate deleted boxes
         if images_file in bbox_deleted.keys():
-
             curr_bbox_deleted = bbox_deleted[images_file]
-            curr_bbox_deleted_np = (
-                np.array(curr_bbox_deleted).reshape((-1, 4)).astype("int")
-            )
+            curr_bbox_deleted_np = np.array(curr_bbox_deleted).reshape((-1, 4)).astype("int")
 
             idx = images_files.index(images_file)
 
             for image_name in images_files[idx + 1 :]:
-
                 if image_name in bbox_dict.keys():
                     new_boxes = []
                     for box in bbox_dict[image_name]:
@@ -395,33 +374,21 @@ def update_bbox_dict(
         # propagate new boxes
         coeff = 0.05
         if images_file in bbox_dict.keys():
-
             for current_box in bbox_dict[images_file]:
                 bbox = np.array(current_box).reshape((-1, 4)).astype("int")
 
                 idx = images_files.index(images_file)
-                for image_name in images_files[
-                    idx + 1 : idx + 21
-                ]:  # Max 20 boxes propagations
-
-                    name = os.path.basename(image_name).split(".")[0]
+                for image_name in images_files[idx + 1 : idx + 21]:  # Max 20 boxes propagations
+                    name = pathlib.Path(image_name).name.split(".")[0]
                     [x_min, y_min, x_max, y_max] = bbox[0]
                     dx = (x_max - x_min) * propagation_width_growth / 100
                     dy = (y_max - y_min) * propagation_height_growth / 100
-                    bbox = (
-                        np.array((x_min - dx, y_min - dy, x_max + dx, y_max + dy))
-                        .reshape((-1, 4))
-                        .astype("int")
-                    )
+                    bbox = np.array((x_min - dx, y_min - dy, x_max + dx, y_max + dy)).reshape((-1, 4)).astype("int")
 
                     [x_min, y_min, x_max, y_max] = find_box_sam(bbox, name, image_size)
 
                     if x_min is not None:
-                        bbox = (
-                            np.array((x_min, y_min, x_max, y_max))
-                            .reshape((-1, 4))
-                            .astype("int")
-                        )
+                        bbox = np.array((x_min, y_min, x_max, y_max)).reshape((-1, 4)).astype("int")
 
                         if image_name not in bbox_dict.keys():
                             bbox_dict[image_name] = []
@@ -429,9 +396,7 @@ def update_bbox_dict(
                         bbox_dict[image_name].append([x_min, y_min, x_max, y_max])
 
                     # Drop duplicate
-                    bboxes = (
-                        np.array(bbox_dict[image_name]).reshape((-1, 4)).astype("int")
-                    )
+                    bboxes = np.array(bbox_dict[image_name]).reshape((-1, 4)).astype("int")
                     iou_matrix = box_iou(bboxes, bboxes)
                     index = filter_overlapping_bboxes(iou_matrix)
 
@@ -442,7 +407,6 @@ def update_bbox_dict(
         return bbox_dict
 
     if "trigger_update_bbox_dict" in triggered_id:
-
         relayoutData = figure["layout"]
     # If relayoutData is None or doesn't contain shapes, do nothing
     if relayoutData is None or "shapes" not in relayoutData:
@@ -453,11 +417,7 @@ def update_bbox_dict(
         bbox_dict[images_file] = []
 
     # Convert shapes in relayoutData to bbox format
-    relayout_bboxes = [
-        shape_to_bbox(shape)
-        for shape in relayoutData["shapes"]
-        if shape["legendrank"] == 1000
-    ]
+    relayout_bboxes = [shape_to_bbox(shape) for shape in relayoutData["shapes"] if shape["legendrank"] == 1000]
 
     # Update bbox_dict only with the bboxes that exist in relayoutData
     bbox_dict[images_file] = relayout_bboxes
@@ -489,9 +449,7 @@ def update_bbox_list(bbox_dict, image_idx, images_files):
     buttons_with_labels = []
     for bbox_id in range(len(bboxs)):
         # Label for the bounding box
-        bbox_label = html.Div(
-            f"{bbox_id} ", className="mb-1"
-        )  # Adjust the class as needed for styling
+        bbox_label = html.Div(f"{bbox_id} ", className="mb-1")  # Adjust the class as needed for styling
 
         # Highlight button
         highlight_button = dbc.Button(
@@ -499,9 +457,7 @@ def update_bbox_list(bbox_dict, image_idx, images_files):
             id={"type": "bbox_highlight_button", "index": bbox_id},
             className="mb-2",  # Margin at the bottom
             color="primary",
-            style={
-                "width": "40px"
-            },  # Ensure width is sufficient to make buttons square
+            style={"width": "40px"},  # Ensure width is sufficient to make buttons square
         )
 
         # Delete button
@@ -510,9 +466,7 @@ def update_bbox_list(bbox_dict, image_idx, images_files):
             id={"type": "bbox_delete_button", "index": bbox_id},
             className="mb-2",
             color="danger",
-            style={
-                "width": "40px"
-            },  # Ensure width is sufficient to make buttons square
+            style={"width": "40px"},  # Ensure width is sufficient to make buttons square
         )
 
         # Flex container for each pair of buttons and the label
@@ -523,9 +477,7 @@ def update_bbox_list(bbox_dict, image_idx, images_files):
                     width=2,
                     className="d-flex justify-content-end align-items-center",
                 ),  # Adjust width as needed
-                dbc.Col(
-                    highlight_button, width="auto", className="me-1"
-                ),  # Margin to the right for space
+                dbc.Col(highlight_button, width="auto", className="me-1"),  # Margin to the right for space
                 dbc.Col(delete_button, width="auto"),
             ],
             className="d-flex align-items-center mb-2",  # Flex container with vertical alignment and margin at the bottom
@@ -533,6 +485,4 @@ def update_bbox_list(bbox_dict, image_idx, images_files):
 
         buttons_with_labels.append(button_pair_with_label)
 
-    return html.Div(
-        buttons_with_labels
-    )  # Wrap the list of buttons with labels in a Div for the entire group
+    return html.Div(buttons_with_labels)  # Wrap the list of buttons with labels in a Div for the entire group

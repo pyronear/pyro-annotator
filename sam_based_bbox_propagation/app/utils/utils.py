@@ -1,17 +1,15 @@
 import numpy as np
 import torch
-
-
 from segment_anything import SamPredictor, sam_model_registry
 
 __all__ = [
-    "xywh2xyxy",
-    "load_image_embedding",
-    "shape_to_bbox",
     "bboxs_to_shapes",
-    "find_box_sam",
     "box_iou",
     "filter_overlapping_bboxes",
+    "find_box_sam",
+    "load_image_embedding",
+    "shape_to_bbox",
+    "xywh2xyxy",
 ]
 
 # Load Sam
@@ -39,7 +37,6 @@ def load_image_embedding(path):
 
 
 def find_box_sam(bbox, name, image_size=(1280, 720)):
-
     w, h = image_size
     r = 720 / h
     w2 = int(r * w)
@@ -56,7 +53,6 @@ def find_box_sam(bbox, name, image_size=(1280, 720)):
     bbox = bbox.astype("int")
 
     try:
-
         load_image_embedding(
             f"data/embeddings/{name}.pth",
         )
@@ -136,7 +132,6 @@ def bbox_to_shape(bbox, legendrank, line_color):
     Returns:
         Dict: Shape
     """
-
     fill_color = "rgba(0,0,0,0)"
 
     return {
@@ -177,13 +172,8 @@ def box_iou(box1: np.ndarray, box2: np.ndarray, eps: float = 1e-7):
     Returns:
         (np.ndarray): An NxM numpy array containing the pairwise IoU values for every element in box1 and box2.
     """
-
     (a1, a2), (b1, b2) = np.split(box1, 2, 1), np.split(box2, 2, 1)
-    inter = (
-        (np.minimum(a2, b2[:, None, :]) - np.maximum(a1, b1[:, None, :]))
-        .clip(0)
-        .prod(2)
-    )
+    inter = (np.minimum(a2, b2[:, None, :]) - np.maximum(a1, b1[:, None, :])).clip(0).prod(2)
 
     # IoU = inter / (area1 + area2 - inter)
     return inter / ((a2 - a1).prod(1) + (b2 - b1).prod(1)[:, None] - inter + eps)
@@ -198,9 +188,7 @@ def filter_overlapping_bboxes(iou_matrix):
     for i in range(n):
         for j in range(i + 1, n):
             if iou_matrix[i, j] > 0:
-                to_remove.add(
-                    i
-                )  # Keep the last one, remove the first one in any overlapping pair
+                to_remove.add(i)  # Keep the last one, remove the first one in any overlapping pair
 
     # Calculate the indices to keep
     to_keep = set(range(n)) - to_remove

@@ -1,12 +1,14 @@
-import boto3
-import os
-from tqdm import tqdm
 import glob
-from datetime import datetime
 import json
-from PIL import Image
-import numpy as np
+import os
+import pathlib
 import shutil
+from datetime import datetime
+
+import boto3
+import numpy as np
+from PIL import Image
+from tqdm import tqdm
 
 
 def normalize_labels(labels_file, cat="done"):
@@ -16,7 +18,7 @@ def normalize_labels(labels_file, cat="done"):
     with open("data/image_size.json", "r") as file:
         image_size_dict = json.load(file)
 
-    name = os.path.basename(task).split(".")[0]
+    name = pathlib.Path(task).name.split(".")[0]
     _, h = image_size_dict[name]
     r = 720 / h
 
@@ -50,32 +52,32 @@ if __name__ == "__main__":
     done_tasks = glob.glob("data/labels/done/*.json")
     for task in tqdm(done_tasks, desc="Upload done tasks"):
         backuped_task = task.replace("labels", "backup/labels")
-        os.makedirs(os.path.dirname(backuped_task), exist_ok=True)
+        os.makedirs(pathlib.Path(backuped_task).parent, exist_ok=True)
         shutil.copy(task, backuped_task)
         normalize_labels(task)
-        name = os.path.basename(task).split(".")[0]
+        name = pathlib.Path(task).name.split(".")[0]
         if name in task_status.keys():
             if task_status[name]["status"] != "done":
                 task_status[name]["status"] = "done"
                 task_status[name]["last_update"] = datetime.now().isoformat()
 
                 s3.upload_file(task, bucket_name, task.split("data/")[1])
-                os.remove(task)
+                pathlib.Path(task).unlink()
 
     done_tasks = glob.glob("data/labels/skip/*.json")
     for task in tqdm(done_tasks, desc="Upload skip tasks"):
         backuped_task = task.replace("labels", "backup/labels")
-        os.makedirs(os.path.dirname(backuped_task), exist_ok=True)
+        os.makedirs(pathlib.Path(backuped_task).parent, exist_ok=True)
         shutil.copy(task, backuped_task)
         normalize_labels(task, cat="skip")
-        name = os.path.basename(task).split(".")[0]
+        name = pathlib.Path(task).name.split(".")[0]
         if name in task_status.keys():
             if task_status[name]["status"] != "skip":
                 task_status[name]["status"] = "skip"
                 task_status[name]["last_update"] = datetime.now().isoformat()
 
                 s3.upload_file(task, bucket_name, task.split("data/")[1])
-                os.remove(task)
+                pathlib.Path(task).unlink()
 
     with open("data/task_status.json", "w") as file:
         json.dump(task_status, file)

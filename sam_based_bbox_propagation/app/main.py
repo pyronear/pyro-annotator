@@ -5,12 +5,11 @@
 
 
 import callbacks.annotator_callbacks  # noqa: F401
+from app_instance import app
 from dash import html
 from dash.dependencies import Input, Output
 from layouts.main_layout import get_main_layout
-from app_instance import app
 from pages.homapage import homepage_layout
-
 
 # Set the app layout
 app.layout = get_main_layout()
@@ -22,13 +21,9 @@ app.layout = get_main_layout()
     Input("url", "pathname"),
 )
 def display_page(pathname):
-
     if pathname == "/" or pathname is None:
         return homepage_layout()
-    else:
-        return html.Div(
-            [html.P("Unable to find this page.", className="alert alert-warning")]
-        )
+    return html.Div([html.P("Unable to find this page.", className="alert alert-warning")])
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -42,12 +37,8 @@ if __name__ == "__main__":
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
-    parser.add_argument(
-        "--host", type=str, default="127.0.0.1", help="Host of the server"
-    )
-    parser.add_argument(
-        "--port", type=int, default=8050, help="Port to run the server on"
-    )
+    parser.add_argument("--host", type=str, default="127.0.0.1", help="Host of the server")
+    parser.add_argument("--port", type=int, default=8050, help="Port to run the server on")
     args = parser.parse_args()
 
     app.run_server(host=args.host, port=args.port, debug=True)

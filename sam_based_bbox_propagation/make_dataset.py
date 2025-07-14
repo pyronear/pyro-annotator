@@ -1,10 +1,11 @@
-import json
 import glob
+import json
 import os
+import pathlib
 import shutil
-from PIL import Image
-import numpy as np
 
+import numpy as np
+from PIL import Image
 
 done_taks = glob.glob("data/labels/done/*.json")
 print(f"There is {len(done_taks)} done task")
@@ -30,20 +31,16 @@ for label_file in done_taks:
             xc = x1 + bw / 2
             yc = y1 + bh / 2
 
-            label += f"0 {np.round(xc/w, 6)} {np.round(yc/h, 6)} {np.round(bw/w, 6)} {np.round(bh/h, 6)}\n"
+            label += f"0 {np.round(xc / w, 6)} {np.round(yc / h, 6)} {np.round(bw / w, 6)} {np.round(bh / h, 6)}\n"
 
-        new_label_file = os.path.join(
-            f"{dataset_folder}/labels", os.path.basename(k).split(".")[0] + ".txt"
-        )
+        new_label_file = os.path.join(f"{dataset_folder}/labels", pathlib.Path(k).name.split(".")[0] + ".txt")
         with open(new_label_file, "w") as file:
             file.write(label)
 
     img_folder = label_file.replace("labels/", "").split(".")[0]
     imgs = glob.glob(f"{img_folder}/*")
     for file in imgs:
-        shutil.copy(
-            file, os.path.join(f"{dataset_folder}/images", os.path.basename(file))
-        )
+        shutil.copy(file, os.path.join(f"{dataset_folder}/images", pathlib.Path(file).name))
 
 
 images = glob.glob(f"{dataset_folder}/images/*.jpg")

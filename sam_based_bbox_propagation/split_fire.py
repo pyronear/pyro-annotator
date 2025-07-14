@@ -1,14 +1,13 @@
 import glob
 import os
-from datetime import datetime
-import shutil
+import pathlib
 import re
+import shutil
+from datetime import datetime
+
 from tqdm import tqdm
 
-
-imgs = glob.glob(
-    "/home/mateo/pyronear/vision/dataset/dataset/pyro-dataset/frames_processed/**/*.jpg"
-)
+imgs = glob.glob("/home/mateo/pyronear/vision/dataset/dataset/pyro-dataset/frames_processed/**/*.jpg")
 imgs.sort()
 print(len(imgs))
 
@@ -34,14 +33,12 @@ for file in tqdm(imgs, desc="Split fires"):
 
 for k, images_files in tqdm(fires.items(), desc="Save folders"):
     if len(images_files) > 4:
-        fire_name = os.path.basename(images_files[0]).split(".")[0]
+        fire_name = pathlib.Path(images_files[0]).name.split(".")[0]
 
         for file in images_files:
             os.makedirs(f"data/images_no_embeddings/{fire_name}", exist_ok=True)
 
             shutil.copy(
                 file,
-                os.path.join(
-                    f"data/images_no_embeddings/{fire_name}", os.path.basename(file)
-                ),
+                os.path.join(f"data/images_no_embeddings/{fire_name}", pathlib.Path(file).name),
             )
