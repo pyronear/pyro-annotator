@@ -16,7 +16,7 @@ st.markdown(scroll_to_top, unsafe_allow_html=True)
 st.title("Automatic Image Annotation Review")
 
 # === Chemins
-all_sequences_folder_path = "../pyro-dataset/data/raw/pyronear-platform/sequences/sis-67_test2/sis-67"
+all_sequences_folder_path = "../arthur/pyro-dataset/data/raw/pyronear-platform/sequences/sis-67_test2/sis-67"
 json_path = pathlib.Path(all_sequences_folder_path).parent
 json_file = os.path.join(json_path, "all_sequences.json")
 
