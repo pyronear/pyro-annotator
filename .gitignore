@@ -124,3 +124,4 @@ data
 example_bboxs.default.json
 cache-directory
 runs
+.DS_Store

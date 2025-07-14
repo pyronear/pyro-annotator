@@ -1,0 +1,15 @@
+git+https://github.com/facebookresearch/segment-anything.git
+torch
+torchvision
+dash
+plotly
+dash_bootstrap_components
+dataclasses
+mashumaro
+pandas
+Pillow
+pyyaml
+opencv-python
+python-dotenv
+tqdm
+boto3
