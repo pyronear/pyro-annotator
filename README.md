@@ -2,7 +2,7 @@ Got it — here's a revised `README.md` section that makes it clear this is for 
 
 ---
 
-# Pyro Dataset
+# Pyro Annotator
 
 This repository contains tools to annotate Pyronear wildfire detection data.
 
