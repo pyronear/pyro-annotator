@@ -9,3 +9,8 @@ authors = [
 license = "Apache-2.0"
 requires-python = ">=3.11"
 
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+preview = true
