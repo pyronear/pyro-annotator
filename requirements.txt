@@ -3,4 +3,4 @@ pillow
 streamlit
 watchdog
 imageio
-
+tqdm
