@@ -65,6 +65,6 @@ sequences_folders.sort()
 st = time.time()
 
 for folder in sequences_folders:
-    print(folder)
+    process_sequence(folder)
 
 print(f"Done all {len(sequences_folders)} fodlers in {time.time()-st}")
