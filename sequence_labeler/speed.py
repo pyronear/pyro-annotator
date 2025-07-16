@@ -59,7 +59,7 @@ def process_sequence(sequences_folder):
         return None
 
 
-sequences_folders = glob.glob(f"{"../aa_test"}/*")
+sequences_folders = glob.glob(f"../aa_test/*")
 sequences_folders.sort()
 
 st = time.time()
