@@ -12,6 +12,7 @@ from sqlmodel import SQLModel, create_engine
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.config import settings
+from app.models import * # noqa
 
 __all__ = ["get_session", "init_db"]
 
