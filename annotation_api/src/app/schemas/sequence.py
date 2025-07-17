@@ -23,7 +23,7 @@ class Azimuth(BaseModel):
 
 
 class SequenceCreate(Azimuth):
-    source_api: str 
+    source_api: str
     alert_api_id: int
     # recorded_at: datetime = Field(nullable=False)
     last_seen_at: datetime

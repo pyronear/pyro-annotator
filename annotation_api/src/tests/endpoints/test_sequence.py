@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import pytest
 from httpx import AsyncClient
@@ -74,6 +74,7 @@ async def test_create_sequence_missing_azimuth(async_client: AsyncClient):
     # Optionnel : vérifie le contenu de l'erreur si connu
     error = response.json()
     assert "azimuth" in str(error).lower() or "not null" in str(error).lower()
+
 
 @pytest.mark.asyncio
 async def test_get_sequence(async_client: AsyncClient):

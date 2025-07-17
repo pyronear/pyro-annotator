@@ -172,4 +172,3 @@ def pytest_configure():
         {k: datetime.strftime(v, dt_format) if isinstance(v, datetime) else v for k, v in entry.items()}
         for entry in DET_TABLE
     ]
-

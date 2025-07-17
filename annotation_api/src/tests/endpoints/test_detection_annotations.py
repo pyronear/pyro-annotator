@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import pytest
 from httpx import AsyncClient
@@ -10,7 +10,6 @@ now = datetime.utcnow()
 
 @pytest.mark.asyncio
 async def test_create_detection_annotation(async_client: AsyncClient, detection_session: AsyncSession, mock_img: bytes):
-
     detection_id = 1
 
     annotation_payload = {
