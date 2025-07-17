@@ -52,10 +52,10 @@ class Sequence(SQLModel, table=True):
     camera_id: int = Field(nullable=False)
     lat: float = Field(nullable=False)
     lon: float = Field(nullable=False)
-    azimuth: Optional[int] = Field(default=None)
-    is_wildfire_alertapi: bool = Field(nullable=False)
-    organisation_name: str = Field(nullable=False)
-    organisation_id: int = Field(nullable=False)
+    azimuth: int = Field(default=None)
+    is_wildfire_alertapi: Optional[bool] = Field(default=None)
+    organisation_name: Optional[str] = Field(default=None)
+    organisation_id: Optional[int] = Field(default=None)
 
     # algo_prediction: Optional[dict] = Field(default=None, sa_column=Column(JSONB))
     # {

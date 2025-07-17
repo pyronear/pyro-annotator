@@ -47,7 +47,7 @@ DET_TABLE = [
     {
         "id": 3,
         "created_at": now,
-        "sequence_id": 2,
+        "sequence_id": 1,
         "alert_api_id": 1,
         "recorded_at": now - timedelta(days=2),
         "bucket_key": "seq2_img1.jpg",
@@ -73,6 +73,7 @@ SEQ_TABLE = [
         "organisation_name": "habile",
         "lat": 0.0,
         "lon": 0.0,
+        "azimuth": 90.0,
         "organisation_id": 1,
     }
 ]
@@ -118,23 +119,23 @@ def mock_img():
 
 
 @pytest_asyncio.fixture(scope="function")
-async def detection_session(async_session: AsyncSession):
+async def detection_session(sequence_session: AsyncSession):
     for entry in DET_TABLE:
-        async_session.add(Detection(**entry))
-    await async_session.commit()
+        sequence_session.add(Detection(**entry))
+    await sequence_session.commit()
     # Update the detection index count
-    await async_session.exec(
+    await sequence_session.exec(
         text(
             f"ALTER SEQUENCE {Detection.__tablename__}_id_seq RESTART WITH {max(entry['id'] for entry in DET_TABLE) + 1}"
         )
     )
-    await async_session.commit()
+    await sequence_session.commit()
     # Create bucket files
     for entry in DET_TABLE:
         bucket = s3_service.get_bucket(s3_service.resolve_bucket_name())
         bucket.upload_file(entry["bucket_key"], io.BytesIO(b""))
-    yield async_session
-    await async_session.rollback()
+    yield sequence_session
+    await sequence_session.rollback()
     # Delete bucket files
     try:
         for entry in DET_TABLE:
@@ -163,11 +164,12 @@ async def sequence_session(async_session: AsyncSession):
 
 def pytest_configure():
     # Table
-    pytest.detection_table = [
-        {k: datetime.strftime(v, dt_format) if isinstance(v, datetime) else v for k, v in entry.items()}
-        for entry in DET_TABLE
-    ]
     pytest.sequence_table = [
         {k: datetime.strftime(v, dt_format) if isinstance(v, datetime) else v for k, v in entry.items()}
         for entry in SEQ_TABLE
     ]
+    pytest.detection_table = [
+        {k: datetime.strftime(v, dt_format) if isinstance(v, datetime) else v for k, v in entry.items()}
+        for entry in DET_TABLE
+    ]
+

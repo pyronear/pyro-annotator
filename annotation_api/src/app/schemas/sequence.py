@@ -23,18 +23,18 @@ class Azimuth(BaseModel):
 
 
 class SequenceCreate(Azimuth):
-    source_api: str = Field(nullable=False)
-    alert_api_id: int = Field(nullable=False)
+    source_api: str 
+    alert_api_id: int
     # recorded_at: datetime = Field(nullable=False)
-    last_seen_at: datetime = Field(nullable=False)
-    camera_name: str = Field(nullable=False)
-    camera_id: int = Field(nullable=False)
-    lat: float = Field(nullable=False)
-    lon: float = Field(nullable=False)
-    azimuth: Optional[int] = Field(default=None)
-    is_wildfire_alertapi: bool = Field(nullable=False)
-    organisation_name: str = Field(nullable=False)
-    organisation_id: int = Field(nullable=False)
+    last_seen_at: datetime
+    camera_name: str
+    camera_id: int
+    lat: float
+    lon: float
+    azimuth: int
+    is_wildfire_alertapi: Optional[bool]
+    organisation_name: Optional[str]
+    organisation_id: Optional[int]
 
 
 class SequenceRead(Azimuth):
@@ -48,10 +48,10 @@ class SequenceRead(Azimuth):
     camera_id: int
     lat: float
     lon: float
-    azimuth: Optional[int]
-    is_wildfire_alertapi: bool
-    organisation_name: str
-    organisation_id: int
+    azimuth: int
+    is_wildfire_alertapi: Optional[bool]
+    organisation_name: Optional[str]
+    organisation_id: Optional[int]
 
 
 class SequenceUpdateBboxAuto(BaseModel):
