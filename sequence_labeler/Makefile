@@ -1,5 +1,5 @@
 # This target auto-fixes lint issues where possible
-style:
+lint:
 	uv run ruff format .
 
 run_annotation_app:
