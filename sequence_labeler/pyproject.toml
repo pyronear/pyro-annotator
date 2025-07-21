@@ -20,3 +20,8 @@ dependencies = [
 line-length = 120
 target-version = "py311"
 preview = true
+
+[dependency-groups]
+dev = [
+    "ruff>=0.12.4",
+]
