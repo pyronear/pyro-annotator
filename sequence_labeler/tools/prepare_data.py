@@ -5,7 +5,7 @@ import pathlib
 from multiprocessing import Pool, cpu_count
 
 from tqdm import tqdm
-from utils import generate_candidate_gifs, prepare_candidates_with_context
+from sequence_labeler.utils import generate_candidate_gifs, prepare_candidates_with_context
 
 # ✏️ Update this to your root folder of all sequences
 all_sequences_folder_path = "../arthur/pyro-dataset/data/raw/pyronear-platform/sequences/sis-67_test2/sis-67"

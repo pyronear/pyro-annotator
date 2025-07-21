@@ -8,6 +8,12 @@ authors = [
 ]
 license = "Apache-2.0"
 requires-python = ">=3.11"
+dependencies = [
+    "imageio>=2.37.0",
+    "streamlit>=1.47.0",
+    "ultralytics>=8.3.168",
+    "watchdog>=6.0.0",
+]
 
 
 [tool.ruff]
