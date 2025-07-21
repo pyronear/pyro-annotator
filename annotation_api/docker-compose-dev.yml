@@ -4,6 +4,8 @@ services:
     image: postgres:15-alpine
     expose:
       - 5432
+    ports:
+      - 5432:5432
     environment:
       - POSTGRES_USER=dummy_pg_user
       - POSTGRES_PASSWORD=dummy_pg_pwd
@@ -26,7 +28,11 @@ services:
     volumes:
       - ./scripts/localstack:/etc/localstack/init/ready.d
     healthcheck:
-      test: ["CMD-SHELL", "awslocal --endpoint-url=http://localhost:4566 s3 ls s3://admin"]
+      test:
+        [
+          "CMD-SHELL",
+          "awslocal --endpoint-url=http://localhost:4566 s3 ls s3://admin",
+        ]
       interval: 10s
       timeout: 20s
       retries: 10
