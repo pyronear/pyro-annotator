@@ -27,15 +27,14 @@ async def create_sequence(
     alert_api_id: int = Form(...),
     camera_name: str = Form(...),
     camera_id: int = Form(...),
-    organisation_name: str = Form(...),
-    organisation_id: int = Form(...),
-    is_wildfire_alertapi: bool = Form(...),
+    organisation_name: Optional[str] = Form(None),
+    organisation_id: Optional[int] = Form(None),
+    is_wildfire_alertapi: Optional[bool] = Form(None),
     lat: float = Form(...),
     lon: float = Form(...),
-    azimuth: Optional[int] = Form(None),
-    created_at: Optional[datetime] = Form(None),
+    azimuth: int = Form(),
     # recorded_at: datetime = Form(None),
-    last_seen_at: Optional[datetime] = Form(None),
+    last_seen_at: datetime = Form(),
     sequences: SequenceCRUD = Depends(get_sequence_crud),
 ) -> SequenceRead:
     payload = SequenceCreate(
@@ -50,8 +49,7 @@ async def create_sequence(
         lat=lat,
         lon=lon,
         azimuth=azimuth,
-        created_at=created_at or datetime.utcnow(),
-        last_seen_at=last_seen_at or datetime.utcnow(),
+        last_seen_at=last_seen_at,
     )
     return await sequences.create(payload)
 
