@@ -1,5 +1,0 @@
-ultralytics
-streamlit
-watchdog
-imageio
-
