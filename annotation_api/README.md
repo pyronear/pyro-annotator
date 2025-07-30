@@ -15,7 +15,8 @@ The building blocks of our annotations and model predictions as an API.
 #### 1 - Clone the repository
 
 ```bash
-git clone https://github.com/pyronear/pyro-api.git && cd pyro-api
+git clone https://github.com/pyronear/pyro-annotator.git && cd pyro-annotator
+cd annotation_api
 ```
 #### 2 - Set an acme.json file
 
