@@ -68,7 +68,7 @@ class Sequence(SQLModel, table=True):
 
 
 class SequenceAnnotation(SQLModel, table=True):
-    __tablename__ = "labels_sequence_annotation"
+    __tablename__ = "sequences_annotations"
     id: int = Field(default=None, primary_key=True)
     sequence_id: int = Field(sa_column=Column(ForeignKey("sequences.id")))
     has_smoke: bool
@@ -96,14 +96,16 @@ class Detection(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     recorded_at: datetime
     alert_api_id: int
-    sequence_id: Optional[int] = Field(default=None, sa_column=Column(ForeignKey("sequences.id")))
+    sequence_id: Optional[int] = Field(
+        default=None, sa_column=Column(ForeignKey("sequences.id"))
+    )
     bucket_key: str
     algo_predictions: Optional[dict] = Field(default=None, sa_column=Column(JSONB))
     # {predictions: [{xyxyn: [x1n y1n x2n y2n], confidence: float, class_name: 'smoke'}, ...]}
 
 
 class DetectionAnnotation(SQLModel, table=True):
-    __tablename__ = "labels_detection_annotation"
+    __tablename__ = "detections_annotations"
     id: int = Field(default=None, primary_key=True)
     detection_id: int = Field(sa_column=Column(ForeignKey("detections.id")))
     annotation: dict = Field(default=None, sa_column=Column(JSONB))
