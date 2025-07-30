@@ -42,11 +42,13 @@ make stop
 
 You can now access your backend API at [http://localhost:5050/docs](http://localhost:5050/docs)
 
-## More goodies
+### Install locally
 
-### Python client
+Install python and its dependencies:
 
-This project is a REST-API, and you can interact with the service through HTTP requests. However, if you want to ease the integration into a Python project, take a look at our [Python client](client).
+```bash
+uv sync
+```
 
 ## Contributing
 
