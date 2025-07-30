@@ -1,6 +1,6 @@
-# Pyronear API
+# Pyronear Annotation API
 
-The building blocks of our wildfire detection & monitoring API.
+The building blocks of our annotations and model predictions as an API.
 
 ## Installation
 
