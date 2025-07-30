@@ -26,10 +26,10 @@ touch acme.json
 chmod 600 acme.json
 ```
 
-#### 3 - Start the services
+#### 3 - Start/Stop the services
 
 ```bash
-make run
+make start
 make stop
 ```
 
