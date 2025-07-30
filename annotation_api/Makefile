@@ -1,13 +1,13 @@
 # this target runs checks on all files
 quality:
-	ruff format --check .
-	ruff check .
-	mypy
+	uv run ruff format --check .
+	uv run ruff check .
+	uv run mypy
 
 # this target runs checks on all files and potentially modifies some of them
 style:
-	ruff format .
-	ruff check --fix .
+	uv run ruff format .
+	uv run ruff check --fix .
 
 # Build the docker
 build:
