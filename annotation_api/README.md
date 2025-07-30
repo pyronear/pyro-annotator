@@ -34,6 +34,12 @@ The building blocks of our wildfire detection & monitoring API.
 
 ## Quick Tour
 
+### Setting the env variables
+
+```bash
+cp .env.template .env
+```
+
 ### Running/stopping the service
 
 You can run the API containers using this command:
@@ -41,6 +47,8 @@ You can run the API containers using this command:
 ```shell
 make run
 ```
+
+One needs to set the following env variables prior to
 
 You can now navigate to `http://localhost:8080/docs` to interact with the API (or do it through HTTP requests) and explore the documentation.
 
