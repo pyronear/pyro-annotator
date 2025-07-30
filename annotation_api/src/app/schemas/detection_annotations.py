@@ -15,9 +15,9 @@ __all__ = ["DetectionAnnotationCreate", "DetectionAnnotationRead", "DetectionAnn
 
 
 class DetectionAnnotationCreate(BaseModel):
-    detection_id: int = Field(foreign_key="detections.id", nullable=False)
-    annotation: Dict = Field(nullable=False, sa_column_kwargs={"type_": "jsonb"})
-    processing_stages: DetectionAnnotationProcessingStage = Field(nullable=False, sa_column_kwargs={"type_": "jsonb"})
+    detection_id: int
+    annotation: Dict
+    processing_stages: DetectionAnnotationProcessingStage
 
 
 class DetectionAnnotationRead(BaseModel):
@@ -30,6 +30,6 @@ class DetectionAnnotationRead(BaseModel):
 
 
 class DetectionAnnotationUpdate(BaseModel):
-    annotation: Dict = Field(nullable=False, sa_column_kwargs={"type_": "jsonb"})
-    processing_stages: DetectionAnnotationProcessingStage = Field(nullable=False, sa_column_kwargs={"type_": "jsonb"})
+    annotation: Dict
+    processing_stages: DetectionAnnotationProcessingStage
     updated_at: Optional[datetime]
