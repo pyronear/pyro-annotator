@@ -37,6 +37,12 @@ make stop
 
 You can now access your backend API at [http://localhost:5050/docs](http://localhost:5050/docs)
 
+#### Run the tests
+
+```bash
+make test
+```
+
 ### Install locally
 
 1. **Install `uv` with `pipx`:**
