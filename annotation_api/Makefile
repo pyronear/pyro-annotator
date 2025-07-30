@@ -15,17 +15,15 @@ lock:
 
 # Build the docker
 build:
-	poetry export -f requirements.txt --without-hashes --output requirements.txt
 	docker build -f src/Dockerfile . -t pyronear/annotation-api:latest
 
 # Run the docker
 run:
-	poetry export -f requirements.txt --without-hashes --output requirements.txt
-	docker compose up -d --build --wait
+	docker compose -f docker-compose-dev.yml up --build
 
 # Run the docker
 stop:
-	docker compose down
+	docker compose -f docker-compose-dev.yml down
 
 # Run tests for the library
 # the "-" are used to launch the next command even if a command fail
