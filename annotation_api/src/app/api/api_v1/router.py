@@ -5,11 +5,24 @@
 
 from fastapi import APIRouter
 
-from app.api.api_v1.endpoints import detection_annotations, detections, sequence_annotations, sequences
+from app.api.api_v1.endpoints import (
+    detection_annotations,
+    detections,
+    sequence_annotations,
+    sequences,
+)
 
 api_router = APIRouter(redirect_slashes=True)
 
 api_router.include_router(detections.router, prefix="/detections", tags=["detections"])
-api_router.include_router(detection_annotations.router, prefix="/dannotations", tags=["detection_annotation"])
+api_router.include_router(
+    detection_annotations.router,
+    prefix="/annotations/detections",
+    tags=["detection_annotation"],
+)
 api_router.include_router(sequences.router, prefix="/sequences", tags=["sequences"])
-api_router.include_router(sequence_annotations.router, prefix="/sannotations", tags=["sequence_annotations"])
+api_router.include_router(
+    sequence_annotations.router,
+    prefix="/annotations/sequences",
+    tags=["sequence_annotations"],
+)
