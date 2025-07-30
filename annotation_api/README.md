@@ -17,12 +17,7 @@ The building blocks of our wildfire detection & monitoring API.
 ```bash
 git clone https://github.com/pyronear/pyro-api.git && cd pyro-api
 ```
-#### 2 - Set your environment variables
-
-First copy the example environment setup
-```bash
-cp .env.template .env
-```
+#### 2 - Set an acme.json file
 
 Create an empty acme.json file:
 
