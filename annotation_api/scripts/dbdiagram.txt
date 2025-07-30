@@ -1,60 +1,152 @@
-Table "Annotation" as A {
-  "id" int [not null]
-  "gif_url" string [not null]
-  "label" label [null]
-  Indexes {
-    (id) [pk]
+Table sequences as S {
+  // New id tracked by the annotation api
+  id int pk [not null]
+  // The id from the alert_api
+  alert_api_id int [not null]
+  source_api source_api [not null]
+  created_at timestamp [not null]
+  recorded_at timestamp [not null]
+  last_seen_at timestamp [not null]
+  camera_name string [not null]
+  camera_id int [not null]
+  azimuth float [not null]
+  lat float [not null]
+  lon float [not null]
+  organization_name string [not null]
+  organization_id int [not null]
+  is_wildfire_alert_api bool [not null]  // annotation from platform API
+  model_predictions jsonb [not null]
+  // {
+  //   version: int,
+  //   sequences_bbox: [{
+  //     bboxes: [{detection_id: int, xyxyn: [x1n y1n x2n y2n], confidence: float}]
+  //   }, ...]
+  // }
+  // version is initally set to 0. We will use it if we need to evolve the jsonb schema in the future. One use case may be once we have a temporal model that also predicts on the full sequence of detections.
+  // x1n, x2n, y1n, y2n are floats between 0 and 1 with the constraint x1n <= x2n and y1n <= y2n
+  // if we have multiple bboxes per image, they are flattened out as a list.
+  // detection_id refers to the detections.id field
+  // confidence is a float between 0 and 1
+
+  indexes {
+    id [pk]
+    (alert_api_id, source_api) [unique]
+  }
+
+  Note: "Sequences from the platform API"
+}
+
+enum source_api {
+  pyronear_french_api
+  alert_wildfire
+  api_cenia
+}
+
+
+Table sequences_annotations {
+  id int pk
+  sequence_id int [ref: - S.id, not null]
+  // Derived from the annotation (if one is a smoke)  - this field should be read only from the API (it can only be changed via the jsonb annotation)
+  has_smoke bool [not null]
+  // Derived from the annotation (if one is a false_positive) - this field should be read only from the API (it can only be changed via the jsonb annotation)
+  has_false_positives bool [not null]
+   // Derived from the annotation (flat list of all false_positive_types) - this field should be read only from the API (it can only be changed via the jsonb annotation)
+  false_positive_types "text[]"
+  // Set by human reviewers
+  has_missed_smoke bool [not null]
+  // can be null, empty list, or list with types of false positives ['lens_flare', ...]
+  
+  annotation jsonb [not null]
+  // {
+  //   version: int, 
+  //   sequences_bbox: [{ 
+  //     is_smoke: bool, 
+  //     gif_url_main : str,
+  //     gif_url_crop : str,
+  //     false_positive_types: list[str] -- eg. ['lens_flare', 'high_cloud', ...], 
+  //     bboxes: [{detection_id: int, xyxyn: [x1n y1n x2n y2n]}]
+  //   }, ...]
+  // }
+  // x1n, x2n, y1n, y2n are floats between 0 and 1 with the constraint x1n <= x2n and y1n <= y2n
+  // detection_id refers to the detections.id field
+  // when no false positives in the sequence, the false_positive_types are empty lists.
+  // version is initally set to 0. We will use it if we need to evolve the jsonb schema in the future. One use case may be once we have a temporal model that also predicts on the full sequence of detections.
+  created_at timestamp [not null]
+  updated_at timestamp
+  processing_stage sequence_annotation_processing_stage [not null]
+  processing_stage_created_at timestamp [not null]
+  processing_stage_history jsonb [not null]
+  // [{stage: sequence_annotation_processing_stage, created_at: timestamp}, ...]
+  // It could be better to track this in the future in another table named history_sequence_annotations
+  indexes {
+    id [pk]
+    sequence_id [unique]
+    has_missed_smoke 
+    has_false_positives 
+    has_smoke
+  }
+  Note: "Store the annotations for the sequence of detections."
+}
+
+Enum sequence_annotation_processing_stage
+{
+  imported
+  ready_to_annotate
+  annotated
+}
+
+Table detections as D {
+  // New id tracked by the annotation api
+  id int pk [not null]
+  // id from the alert api 
+  alert_api_id int [not null]
+  created_at timestamp [not null]
+  recorded_at timestamp [not null]
+  sequence_id int [ref: > S.id, not null]
+  img_url string [not null]
+  model_predictions jsonb [not null]
+  // {
+  //    version: int, 
+  //    predictions: [{xyxyn: [x1n y1n x2n y2n], confidence: float, class_name: 'smoke'}, ...]
+  // }
+  // x1n, x2n, y1n, y2n are floats between 0 and 1 with the constraint x1n <= x2n and y1n <= y2n
+  // confidence is a float between 0 and 1
+  // version is initally set to 0.
+  indexes {
+    id [pk]
+    (alert_api_id, sequence_id) [unique]
+    sequence_id 
+  }
+  Note: "Detections from the platform API"
+}
+
+
+Table detections_annotations {
+  id int pk [not null]
+  detection_id int [ref: - D.id, not null]
+  created_at timestamp [not null]
+  updated_at timestamp
+  annotation jsonb [not null]
+  // {version: int, annotation: [{xyxyn: [x1n y1n x2n y2n], class_name: 'smoke'}, ...]}
+  // x1n, x2n, y1n, y2n are floats between 0 and 1 with the constraint x1n <= x2n and y1n <= y2n
+  // version is initally set to 0.
+  processing_stage detection_annotation_processing_stage [not null]
+  processing_stage_created_at timestamp [not null]
+  processing_stage_history jsonb [not null]
+  // [{stage: detection_annotation_processing_stage, created_at: timestamp}, ...]
+  // It could be better to track this in the future in another table named history_detection_annotations
+
+  Note: "Stores the annotations the given detections"
+
+  indexes {
+    id [pk]
+    detection_id [unique]
   }
 }
 
-Table "Detection" as D{
-  "id" int [not null]
-  "created_at" timestamp [not null]
-  "source_id" int [ref: > S.id]
-  "annotation_id" int [ref: > A.id]
-  "azimuth" int
-  "img_url" string [not null]
-  "prediction" string [null]
-  "bbox_detection" string [null]
-  "bbox_auto" bool [null]
-  "bbox_verified" bool [null]
-  Indexes {
-    (id) [pk]
-  }
-}
-
-Table "User" as U {
-  "id" int [not null]
-  "sources_id" Array [ref: > S.id, not null]
-  "role" userrole [not null]
-  "login" varchar [not null]
-  "hashed_password" varchar [not null]
-  "created_at" timestamp [not null] 
-  Indexes {
-    (id, login) [pk]
-  }
-}
-
-Table "Sources" as S {
-  "id" int [not null]
-  "name" varchar [not null]
-  "camera_id" int [null]
-  "origin" origin [not null]
-  "origin_url" varchar [null]
-  "angle_of_view" float [null]
-  "elevation" float [null]
-  "lat" float [null]
-  "lon"float [null]
-  "created_at" timestamp [not null] 
-}
-
-Enum "origin" {
-  "alertAPI"
-  "alertwildfire"
-}
-
-Enum "label" {
-  "wildfire"
-  "nothing"
-  "unsure"
+Enum detection_annotation_processing_stage {
+  imported
+  visual_check
+  label_studio_check
+  annotated
 }
