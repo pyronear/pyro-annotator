@@ -9,10 +9,6 @@ style:
 	ruff format .
 	ruff check --fix .
 
-# Pin the dependencies
-lock:
-	poetry lock --no-update
-
 # Build the docker
 build:
 	docker build -f src/Dockerfile . -t pyronear/annotation-api:latest
