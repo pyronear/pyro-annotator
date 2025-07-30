@@ -25,7 +25,7 @@ stop:
 # the "-" are used to launch the next command even if a command fail
 test:
 	docker compose -f docker-compose-dev.yml up -d --build --wait
-	- docker compose -f docker-compose-dev.yml exec -T backend pytest -s --cov=app
+	- docker compose -f docker-compose-dev.yml exec -T backend /app/.venv/bin/python -m pytest src/tests/ -s --cov=app
 	docker compose -f docker-compose-dev.yml down
 
 test_e2e:
