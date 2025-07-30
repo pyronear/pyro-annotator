@@ -39,10 +39,22 @@ You can now access your backend API at [http://localhost:5050/docs](http://local
 
 ### Install locally
 
-Install python and its dependencies:
+1. **Install `uv` with `pipx`:**
+
+```bash
+pipx install uv
+```
+
+2. **Install dependencies:**
 
 ```bash
 uv sync
+```
+
+3. **Activate the `uv` virtual environment:**
+
+```bash
+source .venv/bin/activate
 ```
 
 ## Contributing
