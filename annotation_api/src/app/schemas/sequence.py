@@ -23,18 +23,18 @@ class Azimuth(BaseModel):
 
 
 class SequenceCreate(Azimuth):
-    source_api: str = Field(nullable=False)
-    alert_api_id: int = Field(nullable=False)
-    # recorded_at: datetime = Field(nullable=False)
-    last_seen_at: datetime = Field(nullable=False)
-    camera_name: str = Field(nullable=False)
-    camera_id: int = Field(nullable=False)
-    lat: float = Field(nullable=False)
-    lon: float = Field(nullable=False)
+    source_api: str
+    alert_api_id: int
+    # recorded_at: datetime
+    last_seen_at: datetime
+    camera_name: str
+    camera_id: int
+    lat: float
+    lon: float
     azimuth: Optional[int] = Field(default=None)
-    is_wildfire_alertapi: bool = Field(nullable=False)
-    organisation_name: str = Field(nullable=False)
-    organisation_id: int = Field(nullable=False)
+    is_wildfire_alertapi: bool
+    organisation_name: str
+    organisation_id: int
 
 
 class SequenceRead(Azimuth):
@@ -55,8 +55,8 @@ class SequenceRead(Azimuth):
 
 
 class SequenceUpdateBboxAuto(BaseModel):
-    algo_prediction: Optional[Dict] = Field(default=None, sa_column_kwargs={"type_": "jsonb"})
+    algo_prediction: Optional[Dict] = Field(default=None)
 
 
 class SequenceUpdateBboxVerified(BaseModel):
-    algo_prediction: Optional[Dict] = Field(default=None, sa_column_kwargs={"type_": "jsonb"})
+    algo_prediction: Optional[Dict] = Field(default=None)

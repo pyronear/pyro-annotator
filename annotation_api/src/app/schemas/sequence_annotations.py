@@ -15,13 +15,13 @@ __all__ = ["SequenceAnnotationCreate", "SequenceAnnotationRead", "SequenceAnnota
 
 
 class SequenceAnnotationCreate(BaseModel):
-    sequence_id: int = Field(foreign_key="sequences.id", nullable=False)
-    has_smoke: bool = Field(nullable=False)
-    has_false_positives: bool = Field(nullable=False)
-    false_positive_types: str = Field(nullable=False)
-    has_missed_smoke: bool = Field(nullable=False)
+    sequence_id: int
+    has_smoke: bool
+    has_false_positives: bool
+    false_positive_types: str
+    has_missed_smoke: bool
     # annotation: Optional[Dict] = Field(default=None, sa_column_kwargs={"type_": "jsonb"})
-    processing_stage: SequenceAnnotationProcessingStage = Field(nullable=False)
+    processing_stage: SequenceAnnotationProcessingStage
     created_at: datetime
 
 
@@ -39,10 +39,10 @@ class SequenceAnnotationRead(BaseModel):
 
 
 class SequenceAnnotationUpdate(BaseModel):
-    has_smoke: bool = Field(nullable=False)
-    has_false_positives: bool = Field(nullable=False)
-    false_positive_types: str = Field(nullable=False)
-    has_missed_smoke: bool = Field(nullable=False)
+    has_smoke: bool
+    has_false_positives: bool
+    false_positive_types: str
+    has_missed_smoke: bool
     # annotation: Optional[Dict] = Field(default=None, sa_column_kwargs={"type_": "jsonb"})
-    processing_stage: SequenceAnnotationProcessingStage = Field(nullable=False)
+    processing_stage: SequenceAnnotationProcessingStage
     updated_at: Optional[datetime]

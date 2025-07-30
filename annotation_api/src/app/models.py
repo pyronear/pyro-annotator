@@ -7,7 +7,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import Column
+from sqlalchemy import Column, ForeignKey
 
 # from sqlalchemy.sql.sqltypes import JSON
 from sqlalchemy.dialects.postgresql import JSONB
@@ -43,19 +43,19 @@ class SourceApi(str, Enum):
 class Sequence(SQLModel, table=True):
     __tablename__ = "sequences"
     id: int = Field(default=None, primary_key=True)
-    source_api: SourceApi = Field(nullable=False)
-    alert_api_id: int = Field(nullable=False)
-    created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
-    # recorded_at: datetime = Field(nullable=False)
-    last_seen_at: datetime = Field(nullable=False)
-    camera_name: str = Field(nullable=False)
-    camera_id: int = Field(nullable=False)
-    lat: float = Field(nullable=False)
-    lon: float = Field(nullable=False)
+    source_api: SourceApi
+    alert_api_id: int
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    # recorded_at: datetime
+    last_seen_at: datetime
+    camera_name: str
+    camera_id: int
+    lat: float
+    lon: float
     azimuth: Optional[int] = Field(default=None)
-    is_wildfire_alertapi: bool = Field(nullable=False)
-    organisation_name: str = Field(nullable=False)
-    organisation_id: int = Field(nullable=False)
+    is_wildfire_alertapi: bool
+    organisation_name: str
+    organisation_id: int
 
     # algo_prediction: Optional[dict] = Field(default=None, sa_column=Column(JSONB))
     # {
@@ -70,11 +70,11 @@ class Sequence(SQLModel, table=True):
 class SequenceAnnotation(SQLModel, table=True):
     __tablename__ = "labels_sequence_annotation"
     id: int = Field(default=None, primary_key=True)
-    sequence_id: int = Field(foreign_key="sequences.id", nullable=False)
-    has_smoke: bool = Field(nullable=False)
-    has_false_positives: bool = Field(nullable=False)
-    false_positive_types: str = Field(nullable=False)
-    has_missed_smoke: bool = Field(nullable=False)
+    sequence_id: int = Field(sa_column=Column(ForeignKey("sequences.id")))
+    has_smoke: bool
+    has_false_positives: bool
+    false_positive_types: str
+    has_missed_smoke: bool
     # annotation: Optional[dict] = Field(default=None, sa_column=Column(JSONB))
     # {
     #   sequences_bbox: [{
@@ -85,19 +85,19 @@ class SequenceAnnotation(SQLModel, table=True):
     #   bboxes: [{detection_id: int, xyxyn: [x1n y1n x2n y2n]}]
     #   }, ...]
     # }
-    created_at: Optional[datetime] = Field(default_factory=datetime.utcnow, nullable=False)
+    created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
     updated_at: Optional[datetime] = Field(default=None)
-    processing_stage: SequenceAnnotationProcessingStage = Field(nullable=False)
+    processing_stage: SequenceAnnotationProcessingStage
 
 
 class Detection(SQLModel, table=True):
     __tablename__ = "detections"
     id: int = Field(default=None, primary_key=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
-    recorded_at: datetime = Field(nullable=False)
-    alert_api_id: int = Field(nullable=False)
-    sequence_id: Optional[int] = Field(foreign_key="sequences.id", nullable=True)
-    bucket_key: str = Field(nullable=False)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    recorded_at: datetime
+    alert_api_id: int
+    sequence_id: Optional[int] = Field(default=None, sa_column=Column(ForeignKey("sequences.id")))
+    bucket_key: str
     algo_predictions: Optional[dict] = Field(default=None, sa_column=Column(JSONB))
     # {predictions: [{xyxyn: [x1n y1n x2n y2n], confidence: float, class_name: 'smoke'}, ...]}
 
@@ -105,9 +105,9 @@ class Detection(SQLModel, table=True):
 class DetectionAnnotation(SQLModel, table=True):
     __tablename__ = "labels_detection_annotation"
     id: int = Field(default=None, primary_key=True)
-    detection_id: int = Field(foreign_key="detections.id", nullable=False)
+    detection_id: int = Field(sa_column=Column(ForeignKey("detections.id")))
     annotation: dict = Field(default=None, sa_column=Column(JSONB))
     # {predictions: [{xyxyn: [x1n y1n x2n y2n], confidence: float, class_name: 'smoke'}, ...]}
-    processing_stages: DetectionAnnotationProcessingStage = Field(default=None, nullable=False)
-    created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
+    processing_stages: DetectionAnnotationProcessingStage = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: Optional[datetime] = Field(default=None)

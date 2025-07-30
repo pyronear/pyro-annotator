@@ -33,6 +33,27 @@ COPY src/app /app/app
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
+# Test stage (includes dev dependencies)
+FROM base AS test
+
+# Copy uv from official image
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH="/app" \
+    PATH="/app/.venv/bin:$PATH"
+
+WORKDIR /app
+
+# Copy virtual environment and app from builder, then install dev dependencies
+COPY --from=builder /app /app
+
+# Install dev dependencies for testing
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --group dev
+
 # Runtime stage
 FROM base
 
