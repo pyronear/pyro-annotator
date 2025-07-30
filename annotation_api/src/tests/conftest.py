@@ -79,16 +79,18 @@ SEQ_TABLE = [
 
 
 @pytest.fixture(scope="session")
-def event_loop(request) -> Generator:
-    loop = asyncio.get_event_loop_policy().new_event_loop()
+def event_loop() -> Generator:
+    policy = asyncio.get_event_loop_policy()
+    loop = policy.new_event_loop()
     yield loop
     loop.close()
 
 
 @pytest_asyncio.fixture(scope="function")
 async def async_client() -> AsyncGenerator[AsyncClient, None]:
+    from httpx import ASGITransport
     async with AsyncClient(
-        app=app, base_url=f"http://api.localhost:8050{settings.API_V1_STR}", follow_redirects=True, timeout=5
+        transport=ASGITransport(app=app), base_url=f"http://api.localhost:8050{settings.API_V1_STR}", follow_redirects=True, timeout=5
     ) as client:
         yield client
 

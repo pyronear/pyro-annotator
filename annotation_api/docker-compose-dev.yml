@@ -64,7 +64,6 @@ services:
       - S3_REGION=us-east-1
       - SERVER_NAME=habile
     volumes:
-      - ./src:/app/src
       - ./src/app:/app/app
       - ./src/alembic.ini:/app/alembic.ini
       - ./src/tests:/app/tests
