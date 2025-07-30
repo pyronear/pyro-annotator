@@ -28,7 +28,6 @@ stop:
 # Run tests for the library
 # the "-" are used to launch the next command even if a command fail
 test:
-	poetry export -f requirements.txt --without-hashes --with test --output requirements.txt
 	docker compose -f docker-compose-dev.yml up -d --build --wait
 	- docker compose -f docker-compose-dev.yml exec -T backend pytest -s --cov=app
 	docker compose -f docker-compose-dev.yml down
