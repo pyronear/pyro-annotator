@@ -8,8 +8,6 @@ from enum import Enum
 from typing import Optional
 
 from sqlalchemy import Column, ForeignKey
-
-# from sqlalchemy.sql.sqltypes import JSON
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
