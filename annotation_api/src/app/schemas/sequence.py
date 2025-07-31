@@ -9,7 +9,13 @@ from typing import Dict, Optional
 
 from pydantic import BaseModel, Field
 
-__all__ = ["Azimuth", "SequenceCreate", "SequenceRead", "SequenceUpdateBboxAuto", "SequenceUpdateBboxVerified"]
+__all__ = [
+    "Azimuth",
+    "SequenceCreate",
+    "SequenceRead",
+    "SequenceUpdateBboxAuto",
+    "SequenceUpdateBboxVerified",
+]
 
 
 class Azimuth(BaseModel):

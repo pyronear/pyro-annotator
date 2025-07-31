@@ -30,7 +30,13 @@ DET_TABLE = [
         "recorded_at": now - timedelta(days=4),
         "bucket_key": "seq1_img1.jpg",
         "algo_predictions": {
-            "predictions": [{"xyxyn": [0.12, 0.13, 0.45, 0.48], "confidence": 0.87, "class_name": "smoke"}]
+            "predictions": [
+                {
+                    "xyxyn": [0.12, 0.13, 0.45, 0.48],
+                    "confidence": 0.87,
+                    "class_name": "smoke",
+                }
+            ]
         },
     },
     {
@@ -41,7 +47,13 @@ DET_TABLE = [
         "recorded_at": now - timedelta(days=3),
         "bucket_key": "seq1_img2.jpg",
         "algo_predictions": {
-            "predictions": [{"xyxyn": [0.2, 0.25, 0.5, 0.55], "confidence": 0.91, "class_name": "fire"}]
+            "predictions": [
+                {
+                    "xyxyn": [0.2, 0.25, 0.5, 0.55],
+                    "confidence": 0.91,
+                    "class_name": "fire",
+                }
+            ]
         },
     },
     {
@@ -53,8 +65,16 @@ DET_TABLE = [
         "bucket_key": "seq2_img1.jpg",
         "algo_predictions": {
             "predictions": [
-                {"xyxyn": [0.05, 0.05, 0.3, 0.35], "confidence": 0.76, "class_name": "smoke"},
-                {"xyxyn": [0.6, 0.65, 0.85, 0.9], "confidence": 0.80, "class_name": "fire"},
+                {
+                    "xyxyn": [0.05, 0.05, 0.3, 0.35],
+                    "confidence": 0.76,
+                    "class_name": "smoke",
+                },
+                {
+                    "xyxyn": [0.6, 0.65, 0.85, 0.9],
+                    "confidence": 0.80,
+                    "class_name": "fire",
+                },
             ]
         },
     },
@@ -89,8 +109,12 @@ def event_loop() -> Generator:
 @pytest_asyncio.fixture(scope="function")
 async def async_client() -> AsyncGenerator[AsyncClient, None]:
     from httpx import ASGITransport
+
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url=f"http://api.localhost:8050{settings.API_V1_STR}", follow_redirects=True, timeout=5
+        transport=ASGITransport(app=app),
+        base_url=f"http://api.localhost:8050{settings.API_V1_STR}",
+        follow_redirects=True,
+        timeout=5,
     ) as client:
         yield client
 
@@ -100,14 +124,18 @@ async def async_session() -> AsyncSession:
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
 
-    async_session_maker = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async_session_maker = sessionmaker(
+        engine, class_=AsyncSession, expire_on_commit=False
+    )
 
     async with async_session_maker() as session:
         async with session.begin():
             for table in reversed(SQLModel.metadata.sorted_tables):
                 await session.exec(table.delete())
                 if hasattr(table.c, "id"):
-                    await session.exec(text(f"ALTER SEQUENCE {table.name}_id_seq RESTART WITH 1"))
+                    await session.exec(
+                        text(f"ALTER SEQUENCE {table.name}_id_seq RESTART WITH 1")
+                    )
 
         yield session
         await session.rollback()
@@ -116,7 +144,9 @@ async def async_session() -> AsyncSession:
 @pytest.fixture(scope="session")
 def mock_img():
     # Get Pyronear logo
-    return requests.get("https://avatars.githubusercontent.com/u/61667887?s=200&v=4", timeout=5).content
+    return requests.get(
+        "https://avatars.githubusercontent.com/u/61667887?s=200&v=4", timeout=5
+    ).content
 
 
 @pytest_asyncio.fixture(scope="function")
@@ -166,10 +196,16 @@ async def sequence_session(async_session: AsyncSession):
 def pytest_configure():
     # Table
     pytest.detection_table = [
-        {k: datetime.strftime(v, dt_format) if isinstance(v, datetime) else v for k, v in entry.items()}
+        {
+            k: datetime.strftime(v, dt_format) if isinstance(v, datetime) else v
+            for k, v in entry.items()
+        }
         for entry in DET_TABLE
     ]
     pytest.sequence_table = [
-        {k: datetime.strftime(v, dt_format) if isinstance(v, datetime) else v for k, v in entry.items()}
+        {
+            k: datetime.strftime(v, dt_format) if isinstance(v, datetime) else v
+            for k, v in entry.items()
+        }
         for entry in SEQ_TABLE
     ]

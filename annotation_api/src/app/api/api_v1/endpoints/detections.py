@@ -30,7 +30,11 @@ from app.services.storage import s3_service, upload_file
 router = APIRouter()
 
 
-@router.post("/", status_code=status.HTTP_201_CREATED, summary="Register a new wildfire detection")
+@router.post(
+    "/",
+    status_code=status.HTTP_201_CREATED,
+    summary="Register a new wildfire detection",
+)
 async def create_detection(
     algo_predictions: str = Form(...),
     alert_api_id: int = Form(...),
@@ -73,7 +77,9 @@ async def get_detection_url(
     if detection is None:
         raise HTTPException(status_code=404, detail="Detection not found")
 
-    bucket = s3_service.get_bucket(s3_service.resolve_bucket_name())  # Use your bucket naming convention here
+    bucket = s3_service.get_bucket(
+        s3_service.resolve_bucket_name()
+    )  # Use your bucket naming convention here
     return DetectionUrl(url=bucket.get_public_url(detection.bucket_key))
 
 

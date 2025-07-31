@@ -5,22 +5,24 @@
 
 
 from datetime import datetime
-from typing import Optional
+from typing import Dict, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from app.models import SequenceAnnotationProcessingStage
+from app.schemas.annotation_validation import SequenceAnnotationData
 
-__all__ = ["SequenceAnnotationCreate", "SequenceAnnotationRead", "SequenceAnnotationUpdate"]
+__all__ = [
+    "SequenceAnnotationCreate",
+    "SequenceAnnotationRead",
+    "SequenceAnnotationUpdate",
+]
 
 
 class SequenceAnnotationCreate(BaseModel):
     sequence_id: int
-    has_smoke: bool
-    has_false_positives: bool
-    false_positive_types: str
     has_missed_smoke: bool
-    # annotation: Optional[Dict] = Field(default=None, sa_column_kwargs={"type_": "jsonb"})
+    annotation: SequenceAnnotationData
     processing_stage: SequenceAnnotationProcessingStage
     created_at: datetime
 
@@ -32,17 +34,14 @@ class SequenceAnnotationRead(BaseModel):
     has_false_positives: bool
     false_positive_types: str
     has_missed_smoke: bool
-    # annotation: Optional[Dict]
+    annotation: Dict
     processing_stage: SequenceAnnotationProcessingStage
     created_at: datetime
     updated_at: Optional[datetime]
 
 
 class SequenceAnnotationUpdate(BaseModel):
-    has_smoke: bool
-    has_false_positives: bool
-    false_positive_types: str
-    has_missed_smoke: bool
-    # annotation: Optional[Dict] = Field(default=None, sa_column_kwargs={"type_": "jsonb"})
-    processing_stage: SequenceAnnotationProcessingStage
-    updated_at: Optional[datetime]
+    has_missed_smoke: Optional[bool] = None
+    annotation: Optional[SequenceAnnotationData] = None
+    processing_stage: Optional[SequenceAnnotationProcessingStage] = None
+    updated_at: Optional[datetime] = None

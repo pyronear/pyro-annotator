@@ -7,11 +7,15 @@
 from datetime import datetime
 from typing import Dict, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from app.models import DetectionAnnotationProcessingStage
 
-__all__ = ["DetectionAnnotationCreate", "DetectionAnnotationRead", "DetectionAnnotationUpdate"]
+__all__ = [
+    "DetectionAnnotationCreate",
+    "DetectionAnnotationRead",
+    "DetectionAnnotationUpdate",
+]
 
 
 class DetectionAnnotationCreate(BaseModel):
