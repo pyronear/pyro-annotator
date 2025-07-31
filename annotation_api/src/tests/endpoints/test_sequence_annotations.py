@@ -28,7 +28,7 @@ async def test_create_sequence_annotation(async_client: AsyncClient, sequence_se
         "false_positive_types": "[]",
     }
 
-    response = await async_client.post("/sannotations", data=payload)
+    response = await async_client.post("/annotations/sequences/", data=payload)
     assert response.status_code == 201, response.text
     result = response.json()
     assert "id" in result
@@ -39,7 +39,7 @@ async def test_create_sequence_annotation(async_client: AsyncClient, sequence_se
 @pytest.mark.asyncio
 async def test_get_sequence_annotation(async_client: AsyncClient):
     annotation_id = 1
-    response = await async_client.get(f"/sannotations/{annotation_id}")
+    response = await async_client.get(f"/annotations/sequences/{annotation_id}")
     if response.status_code == 200:
         data = response.json()
         assert data["id"] == annotation_id
@@ -50,7 +50,7 @@ async def test_get_sequence_annotation(async_client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_list_sequence_annotations(async_client: AsyncClient):
-    response = await async_client.get("/sannotations")
+    response = await async_client.get("/annotations/sequences/")
     assert response.status_code == 200
     assert isinstance(response.json(), list)
 
@@ -79,7 +79,7 @@ async def test_patch_sequence_annotation(async_client: AsyncClient):
     }
 
     response = await async_client.patch(
-        f"/sannotations/{annotation_id}",
+        f"/annotations/sequences/{annotation_id}",
         json=payload,
     )
     if response.status_code == 200:
@@ -111,12 +111,12 @@ async def test_delete_sequence_annotation(async_client: AsyncClient, sequence_se
         "false_positive_types": "[]",
     }
 
-    create_resp = await async_client.post("/sannotations", data=payload)
+    create_resp = await async_client.post("/annotations/sequences/", data=payload)
     assert create_resp.status_code == 201
     annotation_id = create_resp.json()["id"]
 
-    del_resp = await async_client.delete(f"/sannotations/{annotation_id}")
+    del_resp = await async_client.delete(f"/annotations/sequences/{annotation_id}")
     assert del_resp.status_code == 204
 
-    get_resp = await async_client.get(f"/sannotations/{annotation_id}")
+    get_resp = await async_client.get(f"/annotations/sequences/{annotation_id}")
     assert get_resp.status_code == 404

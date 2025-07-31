@@ -9,14 +9,24 @@ now = datetime.utcnow()
 
 
 @pytest.mark.asyncio
-async def test_create_detection_annotation(async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes):
+async def test_create_detection_annotation(
+    async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+):
     detection_payload = {
         "sequence_id": "1",
         "alert_api_id": "1",
         "recorded_at": (now - timedelta(days=2)).isoformat(),
-        "algo_predictions": json.dumps({
-            "predictions": [{"xyxyn": [0.15, 0.15, 0.3, 0.3], "confidence": 0.88, "class_name": "smoke"}]
-        }),
+        "algo_predictions": json.dumps(
+            {
+                "predictions": [
+                    {
+                        "xyxyn": [0.15, 0.15, 0.3, 0.3],
+                        "confidence": 0.88,
+                        "class_name": "smoke",
+                    }
+                ]
+            }
+        ),
     }
 
     detection_response = await async_client.post(
@@ -31,13 +41,23 @@ async def test_create_detection_annotation(async_client: AsyncClient, sequence_s
         "detection_id": str(detection_id),
         "source_api": "pyronear_french",
         "alert_api_id": "1",
-        "annotation": json.dumps({
-            "predictions": [{"xyxyn": [0.1, 0.1, 0.2, 0.2], "confidence": 0.9, "class_name": "smoke"}]
-        }),
+        "annotation": json.dumps(
+            {
+                "annotation": [
+                    {
+                        "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                        "confidence": 0.9,
+                        "class_name": "smoke",
+                    }
+                ]
+            }
+        ),
         "processing_stages": "visual_check",  # Enum sous forme de str
     }
 
-    response = await async_client.post("/dannotations", data=annotation_payload)
+    response = await async_client.post(
+        "/annotations/detections/", data=annotation_payload
+    )
     assert response.status_code == 201
     json_response = response.json()
     assert json_response["detection_id"] == detection_id
@@ -47,7 +67,7 @@ async def test_create_detection_annotation(async_client: AsyncClient, sequence_s
 
 @pytest.mark.asyncio
 async def test_list_detection_annotations(async_client: AsyncClient):
-    response = await async_client.get("/dannotations")
+    response = await async_client.get("/annotations/detections/")
     assert response.status_code == 200
     assert isinstance(response.json(), list)
 
@@ -55,7 +75,7 @@ async def test_list_detection_annotations(async_client: AsyncClient):
 @pytest.mark.asyncio
 async def test_get_detection_annotation(async_client: AsyncClient):
     annotation_id = 1
-    response = await async_client.get(f"/dannotations/{annotation_id}")
+    response = await async_client.get(f"/annotations/detections/{annotation_id}")
     if response.status_code == 200:
         annotation = response.json()
         assert annotation["id"] == annotation_id
@@ -68,11 +88,21 @@ async def test_get_detection_annotation(async_client: AsyncClient):
 async def test_update_detection_annotation(async_client: AsyncClient):
     annotation_id = 1
     update_payload = {
-        "annotation": {"predictions": [{"xyxyn": [0.2, 0.2, 0.3, 0.3], "confidence": 0.95, "class_name": "fire"}]},
+        "annotation": {
+            "predictions": [
+                {
+                    "xyxyn": [0.2, 0.2, 0.3, 0.3],
+                    "confidence": 0.95,
+                    "class_name": "fire",
+                }
+            ]
+        },
         "processing_stages": "annotated",
     }
 
-    response = await async_client.patch(f"/dannotations/{annotation_id}", json=update_payload)
+    response = await async_client.patch(
+        f"/annotations/detections/{annotation_id}", json=update_payload
+    )
 
     if response.status_code == 200:
         json_response = response.json()
@@ -85,8 +115,10 @@ async def test_update_detection_annotation(async_client: AsyncClient):
 @pytest.mark.asyncio
 async def test_delete_detection_annotation(async_client: AsyncClient):
     annotation_id = 1
-    delete_response = await async_client.delete(f"/dannotations/{annotation_id}")
+    delete_response = await async_client.delete(
+        f"/annotations/detections/{annotation_id}"
+    )
     assert delete_response.status_code in (204, 404)
 
-    get_response = await async_client.get(f"/dannotations/{annotation_id}")
+    get_response = await async_client.get(f"/annotations/detections/{annotation_id}")
     assert get_response.status_code == 404
