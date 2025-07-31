@@ -11,7 +11,7 @@ fix:
 
 # Build the docker
 docker-build:
-	docker build -f src/Dockerfile . -t pyronear/annotation-api:latest
+	docker build -f Dockerfile . -t pyronear/annotation-api:latest
 
 # Run the docker
 start:

@@ -74,7 +74,7 @@ services:
   backend:
     build:
       context: .
-      dockerfile: ./src/Dockerfile
+      dockerfile: ./Dockerfile
     depends_on:
       db:
         condition: service_healthy
