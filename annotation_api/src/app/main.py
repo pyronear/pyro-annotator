@@ -25,6 +25,24 @@ app = FastAPI(
     version=settings.VERSION,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     docs_url=None,
+    openapi_tags=[
+        {
+            "name": "detections",
+            "description": "Wildfire detection data with algo predictions",
+        },
+        {
+            "name": "sequences",
+            "description": "Image sequences from the pyronear platform",
+        },
+        {
+            "name": "detection annotations",
+            "description": "Manual annotations for detection data with smoke type classification",
+        },
+        {
+            "name": "sequence annotations",
+            "description": "Manual annotations for sequences.",
+        },
+    ],
 )
 
 

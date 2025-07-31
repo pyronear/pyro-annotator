@@ -18,11 +18,11 @@ api_router.include_router(detections.router, prefix="/detections", tags=["detect
 api_router.include_router(
     detection_annotations.router,
     prefix="/annotations/detections",
-    tags=["detection_annotation"],
+    tags=["detection annotations"],
 )
 api_router.include_router(sequences.router, prefix="/sequences", tags=["sequences"])
 api_router.include_router(
     sequence_annotations.router,
     prefix="/annotations/sequences",
-    tags=["sequence_annotations"],
+    tags=["sequence annotations"],
 )
