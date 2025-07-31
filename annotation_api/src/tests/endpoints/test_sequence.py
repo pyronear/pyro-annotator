@@ -87,7 +87,9 @@ async def test_create_sequence_without_is_wildfire_alertapi(async_client: AsyncC
 
 
 @pytest.mark.asyncio
-async def test_create_sequence_with_is_wildfire_alertapi_true(async_client: AsyncClient):
+async def test_create_sequence_with_is_wildfire_alertapi_true(
+    async_client: AsyncClient,
+):
     payload = {
         "source_api": "pyronear_french",
         "alert_api_id": "102",
@@ -113,7 +115,9 @@ async def test_create_sequence_with_is_wildfire_alertapi_true(async_client: Asyn
 
 
 @pytest.mark.asyncio
-async def test_create_sequence_with_is_wildfire_alertapi_false(async_client: AsyncClient):
+async def test_create_sequence_with_is_wildfire_alertapi_false(
+    async_client: AsyncClient,
+):
     payload = {
         "source_api": "pyronear_french",
         "alert_api_id": "103",

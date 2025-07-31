@@ -105,7 +105,9 @@ async def test_update_detection_annotation(async_client: AsyncClient):
     if response.status_code == 200:
         json_response = response.json()
         assert json_response["processing_stage"] == "annotated"
-        assert json_response["annotation"]["annotation"][0]["smoke_type"] == "industrial"
+        assert (
+            json_response["annotation"]["annotation"][0]["smoke_type"] == "industrial"
+        )
     else:
         assert response.status_code in (404, 422)
 

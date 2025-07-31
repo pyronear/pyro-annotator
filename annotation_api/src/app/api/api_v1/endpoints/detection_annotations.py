@@ -11,7 +11,6 @@ from app.api.dependencies import get_detection_annotation_crud
 from app.crud import DetectionAnnotationCRUD
 from app.models import DetectionAnnotationProcessingStage
 from app.schemas.detection_annotations import (
-    DetectionAnnotationCreate,
     DetectionAnnotationRead,
     DetectionAnnotationUpdate,
 )
@@ -31,29 +30,30 @@ async def create_detection_annotation(
 ) -> DetectionAnnotationRead:
     # Parse and validate annotation
     parsed_annotation = json.loads(annotation)
-    
+
     try:
         validated_annotation = DetectionAnnotationData(**parsed_annotation)
     except ValidationError as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Invalid annotation format: {e.errors()}"
+            detail=f"Invalid annotation format: {e.errors()}",
         )
-    
+
     # Create database model with validated data
     from app.models import DetectionAnnotation
+
     detection_annotation = DetectionAnnotation(
         detection_id=detection_id,
         annotation=validated_annotation.model_dump(),
         processing_stage=processing_stage,
         created_at=datetime.utcnow(),
     )
-    
+
     # Add and commit directly
     annotations.session.add(detection_annotation)
     await annotations.session.commit()
     await annotations.session.refresh(detection_annotation)
-    
+
     return detection_annotation
 
 
@@ -80,27 +80,29 @@ async def update_annotation(
 ) -> DetectionAnnotationRead:
     # Get existing annotation
     existing = await annotations.get(annotation_id, strict=True)
-    
+
     # Start with existing data
     update_dict = {"updated_at": datetime.utcnow()}
-    
+
     # If annotation is being updated, validate it
     if payload.annotation is not None:
-        update_dict.update({
-            "annotation": payload.annotation.model_dump(),
-        })
-    
+        update_dict.update(
+            {
+                "annotation": payload.annotation.model_dump(),
+            }
+        )
+
     # Add other updateable fields
     if payload.processing_stage is not None:
         update_dict["processing_stage"] = payload.processing_stage
-    
+
     # Update the model
     for key, value in update_dict.items():
         setattr(existing, key, value)
-    
+
     await annotations.session.commit()
     await annotations.session.refresh(existing)
-    
+
     return existing
 
 

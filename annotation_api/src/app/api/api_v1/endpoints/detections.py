@@ -47,14 +47,14 @@ async def create_detection(
 ) -> DetectionRead:
     # Parse string JSON -> dict
     parsed_predictions = json.loads(algo_predictions)
-    
+
     # Validate the parsed predictions using Pydantic model
     try:
         validated_predictions = AlgoPredictions(**parsed_predictions)
     except ValidationError as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Invalid algo_predictions format: {e.errors()}"
+            detail=f"Invalid algo_predictions format: {e.errors()}",
         )
 
     # Upload image to S3
@@ -68,9 +68,10 @@ async def create_detection(
         bucket_key=bucket_key,
         algo_predictions=validated_predictions,
     )
-    
+
     # Create database model directly to store as dict
     from app.models import Detection
+
     detection = Detection(
         sequence_id=sequence_id,
         alert_api_id=alert_api_id,
@@ -79,12 +80,12 @@ async def create_detection(
         algo_predictions=validated_predictions.model_dump(),  # Store as dict
         created_at=datetime.utcnow(),
     )
-    
+
     # Add and commit directly
     detections.session.add(detection)
     await detections.session.commit()
     await detections.session.refresh(detection)
-    
+
     return detection
 
 

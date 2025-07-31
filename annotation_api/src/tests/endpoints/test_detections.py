@@ -113,7 +113,7 @@ async def test_create_detection_invalid_xyxyn_values(
 ):
     payload = {
         "sequence_id": "1",
-        "alert_api_id": "1", 
+        "alert_api_id": "1",
         "recorded_at": (now - timedelta(days=2)).isoformat(),
         "algo_predictions": json.dumps(
             {
@@ -174,7 +174,7 @@ async def test_create_detection_invalid_confidence(
     async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
 ):
     payload = {
-        "sequence_id": "1", 
+        "sequence_id": "1",
         "alert_api_id": "1",
         "recorded_at": (now - timedelta(days=2)).isoformat(),
         "algo_predictions": json.dumps(
@@ -257,7 +257,9 @@ async def test_get_detection_url_invalid_id(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_create_detection_without_file(async_client: AsyncClient, sequence_session: AsyncSession):
+async def test_create_detection_without_file(
+    async_client: AsyncClient, sequence_session: AsyncSession
+):
     payload = {
         "sequence_id": "1",
         "alert_api_id": "1",
