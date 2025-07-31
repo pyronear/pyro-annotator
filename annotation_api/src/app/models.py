@@ -123,7 +123,6 @@ class DetectionAnnotation(SQLModel, table=True):
     id: int = Field(default=None, primary_key=True)
     detection_id: int = Field(sa_column=Column(ForeignKey("detections.id")))
     annotation: dict = Field(default=None, sa_column=Column(JSONB))
-    # {annotation: [{xyxyn: [x1n y1n x2n y2n], class_name: 'smoke', smoke_type: 'wildfire'}, ...]}
-    processing_stages: DetectionAnnotationProcessingStage = Field(default=None)
+    processing_stage: DetectionAnnotationProcessingStage = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: Optional[datetime] = Field(default=None)

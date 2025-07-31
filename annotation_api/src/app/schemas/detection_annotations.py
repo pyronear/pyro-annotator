@@ -22,7 +22,7 @@ __all__ = [
 class DetectionAnnotationCreate(BaseModel):
     detection_id: int
     annotation: DetectionAnnotationData
-    processing_stages: DetectionAnnotationProcessingStage
+    processing_stage: DetectionAnnotationProcessingStage
     created_at: datetime
 
 
@@ -30,12 +30,12 @@ class DetectionAnnotationRead(BaseModel):
     id: int
     detection_id: int
     annotation: Dict  # Keep as Dict for read operations to maintain compatibility
-    processing_stages: DetectionAnnotationProcessingStage
+    processing_stage: DetectionAnnotationProcessingStage
     created_at: datetime
     updated_at: Optional[datetime]
 
 
 class DetectionAnnotationUpdate(BaseModel):
     annotation: Optional[DetectionAnnotationData] = None
-    processing_stages: Optional[DetectionAnnotationProcessingStage] = None
+    processing_stage: Optional[DetectionAnnotationProcessingStage] = None
     updated_at: Optional[datetime] = None

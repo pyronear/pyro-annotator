@@ -50,7 +50,7 @@ async def test_create_detection_annotation(
                 ]
             }
         ),
-        "processing_stages": "visual_check",  # Enum sous forme de str
+        "processing_stage": "visual_check",  # Enum sous forme de str
     }
 
     response = await async_client.post(
@@ -59,7 +59,7 @@ async def test_create_detection_annotation(
     assert response.status_code == 201
     json_response = response.json()
     assert json_response["detection_id"] == detection_id
-    assert json_response["processing_stages"] == "visual_check"
+    assert json_response["processing_stage"] == "visual_check"
     assert "annotation" in json_response
 
 
@@ -95,7 +95,7 @@ async def test_update_detection_annotation(async_client: AsyncClient):
                 }
             ]
         },
-        "processing_stages": "annotated",
+        "processing_stage": "annotated",
     }
 
     response = await async_client.patch(
@@ -104,7 +104,7 @@ async def test_update_detection_annotation(async_client: AsyncClient):
 
     if response.status_code == 200:
         json_response = response.json()
-        assert json_response["processing_stages"] == "annotated"
+        assert json_response["processing_stage"] == "annotated"
         assert json_response["annotation"]["annotation"][0]["smoke_type"] == "industrial"
     else:
         assert response.status_code in (404, 422)
@@ -166,7 +166,7 @@ async def test_create_detection_annotation_invalid_xyxyn(
                 ]
             }
         ),
-        "processing_stages": "visual_check",
+        "processing_stage": "visual_check",
     }
 
     response = await async_client.post(
@@ -221,7 +221,7 @@ async def test_create_detection_annotation_invalid_smoke_type(
                 ]
             }
         ),
-        "processing_stages": "visual_check",
+        "processing_stage": "visual_check",
     }
 
     response = await async_client.post(
@@ -276,7 +276,7 @@ async def test_create_detection_annotation_invalid_json_structure(
                 ]
             }
         ),
-        "processing_stages": "visual_check",
+        "processing_stage": "visual_check",
     }
 
     response = await async_client.post(

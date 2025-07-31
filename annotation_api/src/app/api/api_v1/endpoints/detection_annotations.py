@@ -24,7 +24,7 @@ router = APIRouter()
 async def create_detection_annotation(
     detection_id: int = Form(...),
     annotation: str = Form(..., description="JSON string of annotation object"),
-    processing_stages: DetectionAnnotationProcessingStage = Form(
+    processing_stage: DetectionAnnotationProcessingStage = Form(
         ..., description="Processing stage for annotation"
     ),
     annotations: DetectionAnnotationCRUD = Depends(get_detection_annotation_crud),
@@ -45,7 +45,7 @@ async def create_detection_annotation(
     detection_annotation = DetectionAnnotation(
         detection_id=detection_id,
         annotation=validated_annotation.model_dump(),
-        processing_stages=processing_stages,
+        processing_stage=processing_stage,
         created_at=datetime.utcnow(),
     )
     
@@ -91,8 +91,8 @@ async def update_annotation(
         })
     
     # Add other updateable fields
-    if payload.processing_stages is not None:
-        update_dict["processing_stages"] = payload.processing_stages
+    if payload.processing_stage is not None:
+        update_dict["processing_stage"] = payload.processing_stage
     
     # Update the model
     for key, value in update_dict.items():
