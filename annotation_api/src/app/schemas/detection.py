@@ -28,7 +28,8 @@ class DetectionRead(BaseModel):
     recorded_at: datetime
     alert_api_id: int
     bucket_key: str
-    algo_predictions: Dict  # Keep as Dict for read operations to maintain compatibility
+    algo_predictions: AlgoPredictions
+    created_at: datetime
 
 
 class DetectionUrl(BaseModel):

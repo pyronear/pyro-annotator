@@ -34,7 +34,7 @@ class SequenceAnnotationRead(BaseModel):
     has_false_positives: bool
     false_positive_types: str
     has_missed_smoke: bool
-    annotation: Dict
+    annotation: SequenceAnnotationData
     processing_stage: SequenceAnnotationProcessingStage
     created_at: datetime
     updated_at: Optional[datetime]

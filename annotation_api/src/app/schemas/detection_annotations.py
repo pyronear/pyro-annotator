@@ -29,7 +29,7 @@ class DetectionAnnotationCreate(BaseModel):
 class DetectionAnnotationRead(BaseModel):
     id: int
     detection_id: int
-    annotation: Dict  # Keep as Dict for read operations to maintain compatibility
+    annotation: DetectionAnnotationData
     processing_stage: DetectionAnnotationProcessingStage
     created_at: datetime
     updated_at: Optional[datetime]

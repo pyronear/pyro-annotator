@@ -9,7 +9,15 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.models import FalsePositiveType, SmokeType
 
-__all__ = ["BoundingBox", "SequenceBBox", "SequenceAnnotationData", "AlgoPrediction", "AlgoPredictions", "DetectionAnnotationItem", "DetectionAnnotationData"]
+__all__ = [
+    "BoundingBox",
+    "SequenceBBox",
+    "SequenceAnnotationData",
+    "AlgoPrediction",
+    "AlgoPredictions",
+    "DetectionAnnotationItem",
+    "DetectionAnnotationData",
+]
 
 
 class BoundingBox(BaseModel):
@@ -60,20 +68,20 @@ class AlgoPrediction(BaseModel):
     def validate_xyxyn(cls, v: List[float]) -> List[float]:
         if len(v) != 4:
             raise ValueError("xyxyn must contain exactly 4 values")
-        
+
         x1, y1, x2, y2 = v
-        
+
         # Check values are between 0 and 1
         for val in v:
             if not (0 <= val <= 1):
                 raise ValueError("All xyxyn values must be between 0 and 1")
-        
+
         # Check constraints: x1 <= x2 and y1 <= y2
         if x1 > x2:
             raise ValueError("x1 must be <= x2")
         if y1 > y2:
             raise ValueError("y1 must be <= y2")
-        
+
         return v
 
 
@@ -91,20 +99,20 @@ class DetectionAnnotationItem(BaseModel):
     def validate_xyxyn(cls, v: List[float]) -> List[float]:
         if len(v) != 4:
             raise ValueError("xyxyn must contain exactly 4 values")
-        
+
         x1, y1, x2, y2 = v
-        
+
         # Check values are between 0 and 1
         for val in v:
             if not (0 <= val <= 1):
                 raise ValueError("All xyxyn values must be between 0 and 1")
-        
+
         # Check constraints: x1 <= x2 and y1 <= y2
         if x1 > x2:
             raise ValueError("x1 must be <= x2")
         if y1 > y2:
             raise ValueError("y1 must be <= y2")
-        
+
         return v
 
 
