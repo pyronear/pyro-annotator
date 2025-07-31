@@ -7,7 +7,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import Column, ForeignKey
+from sqlalchemy import Column, ForeignKey, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
@@ -74,7 +74,12 @@ class FalsePositiveType(str, Enum):
 
 class Sequence(SQLModel, table=True):
     __tablename__ = "sequences"
-    id: int = Field(default=None, primary_key=True)
+    __table_args__ = (
+        UniqueConstraint("alert_api_id", "source_api", name="uq_sequence_alert_source"),
+    )
+    id: int = Field(
+        default=None, primary_key=True, sa_column_kwargs={"autoincrement": True}
+    )
     source_api: SourceApi
     alert_api_id: int
     created_at: datetime = Field(default_factory=datetime.utcnow)
