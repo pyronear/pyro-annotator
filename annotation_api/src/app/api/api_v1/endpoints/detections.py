@@ -21,12 +21,11 @@ from app.api.dependencies import get_detection_crud
 from app.crud import DetectionCRUD
 from app.db import get_session
 from app.models import Detection
+from app.schemas.annotation_validation import AlgoPredictions
 from app.schemas.detection import (
-    DetectionCreate,
     DetectionRead,
     DetectionUrl,
 )
-from app.schemas.annotation_validation import AlgoPredictions
 from app.services.storage import s3_service, upload_file
 
 router = APIRouter()
@@ -59,18 +58,6 @@ async def create_detection(
 
     # Upload image to S3
     bucket_key = await upload_file(file)
-
-    # Create detection in DB - create with validated data but store as dict for compatibility
-    payload = DetectionCreate(
-        sequence_id=sequence_id,
-        alert_api_id=alert_api_id,
-        recorded_at=recorded_at,
-        bucket_key=bucket_key,
-        algo_predictions=validated_predictions,
-    )
-
-    # Create database model directly to store as dict
-    from app.models import Detection
 
     detection = Detection(
         sequence_id=sequence_id,
