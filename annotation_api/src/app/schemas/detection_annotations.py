@@ -10,6 +10,7 @@ from typing import Dict, Optional
 from pydantic import BaseModel
 
 from app.models import DetectionAnnotationProcessingStage
+from app.schemas.annotation_validation import DetectionAnnotationData
 
 __all__ = [
     "DetectionAnnotationCreate",
@@ -20,20 +21,21 @@ __all__ = [
 
 class DetectionAnnotationCreate(BaseModel):
     detection_id: int
-    annotation: Dict
+    annotation: DetectionAnnotationData
     processing_stages: DetectionAnnotationProcessingStage
+    created_at: datetime
 
 
 class DetectionAnnotationRead(BaseModel):
     id: int
     detection_id: int
-    annotation: Dict
+    annotation: Dict  # Keep as Dict for read operations to maintain compatibility
     processing_stages: DetectionAnnotationProcessingStage
     created_at: datetime
     updated_at: Optional[datetime]
 
 
 class DetectionAnnotationUpdate(BaseModel):
-    annotation: Dict
-    processing_stages: DetectionAnnotationProcessingStage
-    updated_at: Optional[datetime]
+    annotation: Optional[DetectionAnnotationData] = None
+    processing_stages: Optional[DetectionAnnotationProcessingStage] = None
+    updated_at: Optional[datetime] = None

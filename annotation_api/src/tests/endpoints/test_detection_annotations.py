@@ -39,15 +39,13 @@ async def test_create_detection_annotation(
 
     annotation_payload = {
         "detection_id": str(detection_id),
-        "source_api": "pyronear_french",
-        "alert_api_id": "1",
         "annotation": json.dumps(
             {
                 "annotation": [
                     {
                         "xyxyn": [0.1, 0.1, 0.2, 0.2],
-                        "confidence": 0.9,
                         "class_name": "smoke",
+                        "smoke_type": "wildfire",
                     }
                 ]
             }
@@ -89,11 +87,11 @@ async def test_update_detection_annotation(async_client: AsyncClient):
     annotation_id = 1
     update_payload = {
         "annotation": {
-            "predictions": [
+            "annotation": [
                 {
                     "xyxyn": [0.2, 0.2, 0.3, 0.3],
-                    "confidence": 0.95,
-                    "class_name": "fire",
+                    "class_name": "smoke",
+                    "smoke_type": "industrial",
                 }
             ]
         },
@@ -107,7 +105,7 @@ async def test_update_detection_annotation(async_client: AsyncClient):
     if response.status_code == 200:
         json_response = response.json()
         assert json_response["processing_stages"] == "annotated"
-        assert json_response["annotation"]["predictions"][0]["class_name"] == "fire"
+        assert json_response["annotation"]["annotation"][0]["smoke_type"] == "industrial"
     else:
         assert response.status_code in (404, 422)
 
@@ -122,3 +120,168 @@ async def test_delete_detection_annotation(async_client: AsyncClient):
 
     get_response = await async_client.get(f"/annotations/detections/{annotation_id}")
     assert get_response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_create_detection_annotation_invalid_xyxyn(
+    async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+):
+    # First create a detection
+    detection_payload = {
+        "sequence_id": "1",
+        "alert_api_id": "1",
+        "recorded_at": (now - timedelta(days=2)).isoformat(),
+        "algo_predictions": json.dumps(
+            {
+                "predictions": [
+                    {
+                        "xyxyn": [0.15, 0.15, 0.3, 0.3],
+                        "confidence": 0.88,
+                        "class_name": "smoke",
+                    }
+                ]
+            }
+        ),
+    }
+
+    detection_response = await async_client.post(
+        "/detections",
+        data=detection_payload,
+        files={"file": ("image.jpg", mock_img, "image/jpeg")},
+    )
+    assert detection_response.status_code == 201
+    detection_id = detection_response.json()["id"]
+
+    # Test invalid xyxyn constraints
+    annotation_payload = {
+        "detection_id": str(detection_id),
+        "annotation": json.dumps(
+            {
+                "annotation": [
+                    {
+                        "xyxyn": [0.3, 0.3, 0.2, 0.2],  # x1 > x2, y1 > y2
+                        "class_name": "smoke",
+                        "smoke_type": "wildfire",
+                    }
+                ]
+            }
+        ),
+        "processing_stages": "visual_check",
+    }
+
+    response = await async_client.post(
+        "/annotations/detections/", data=annotation_payload
+    )
+    assert response.status_code == 422
+    error_data = response.json()
+    assert "detail" in error_data
+
+
+@pytest.mark.asyncio
+async def test_create_detection_annotation_invalid_smoke_type(
+    async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+):
+    # First create a detection
+    detection_payload = {
+        "sequence_id": "1",
+        "alert_api_id": "1",
+        "recorded_at": (now - timedelta(days=2)).isoformat(),
+        "algo_predictions": json.dumps(
+            {
+                "predictions": [
+                    {
+                        "xyxyn": [0.15, 0.15, 0.3, 0.3],
+                        "confidence": 0.88,
+                        "class_name": "smoke",
+                    }
+                ]
+            }
+        ),
+    }
+
+    detection_response = await async_client.post(
+        "/detections",
+        data=detection_payload,
+        files={"file": ("image.jpg", mock_img, "image/jpeg")},
+    )
+    assert detection_response.status_code == 201
+    detection_id = detection_response.json()["id"]
+
+    # Test invalid smoke_type enum
+    annotation_payload = {
+        "detection_id": str(detection_id),
+        "annotation": json.dumps(
+            {
+                "annotation": [
+                    {
+                        "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                        "class_name": "smoke",
+                        "smoke_type": "invalid_smoke_type_not_in_enum",
+                    }
+                ]
+            }
+        ),
+        "processing_stages": "visual_check",
+    }
+
+    response = await async_client.post(
+        "/annotations/detections/", data=annotation_payload
+    )
+    assert response.status_code == 422
+    error_data = response.json()
+    assert "detail" in error_data
+
+
+@pytest.mark.asyncio
+async def test_create_detection_annotation_invalid_json_structure(
+    async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+):
+    # First create a detection
+    detection_payload = {
+        "sequence_id": "1",
+        "alert_api_id": "1",
+        "recorded_at": (now - timedelta(days=2)).isoformat(),
+        "algo_predictions": json.dumps(
+            {
+                "predictions": [
+                    {
+                        "xyxyn": [0.15, 0.15, 0.3, 0.3],
+                        "confidence": 0.88,
+                        "class_name": "smoke",
+                    }
+                ]
+            }
+        ),
+    }
+
+    detection_response = await async_client.post(
+        "/detections",
+        data=detection_payload,
+        files={"file": ("image.jpg", mock_img, "image/jpeg")},
+    )
+    assert detection_response.status_code == 201
+    detection_id = detection_response.json()["id"]
+
+    # Test invalid JSON structure
+    annotation_payload = {
+        "detection_id": str(detection_id),
+        "annotation": json.dumps(
+            {
+                "wrong_field": [  # Should be "annotation"
+                    {
+                        "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                        "class_name": "smoke",
+                        "smoke_type": "wildfire",
+                    }
+                ]
+            }
+        ),
+        "processing_stages": "visual_check",
+    }
+
+    response = await async_client.post(
+        "/annotations/detections/", data=annotation_payload
+    )
+    assert response.status_code == 422
+    error_data = response.json()
+    assert "detail" in error_data

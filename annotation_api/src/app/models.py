@@ -80,7 +80,6 @@ class Sequence(SQLModel, table=True):
     source_api: SourceApi
     alert_api_id: int
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    # recorded_at: datetime
     last_seen_at: datetime
     camera_name: str
     camera_id: int
@@ -90,15 +89,6 @@ class Sequence(SQLModel, table=True):
     is_wildfire_alertapi: bool
     organisation_name: str
     organisation_id: int
-
-    # algo_prediction: Optional[dict] = Field(default=None, sa_column=Column(JSONB))
-    # {
-    #   sequences_bbox: [{
-    #   is_smoke: bool,
-    #   false_positive_types: [lens_flare|high_cloud|lens_droplet|..., ...],
-    #   bboxes: [{detection_id: int, xyxyn: [x1n y1n x2n y2n]}]
-    #   }, ...]
-    # }
 
 
 class SequenceAnnotation(SQLModel, table=True):
@@ -110,15 +100,6 @@ class SequenceAnnotation(SQLModel, table=True):
     false_positive_types: str
     has_missed_smoke: bool
     annotation: dict = Field(sa_column=Column(JSONB))
-    # {
-    #   sequences_bbox: [{
-    #   is_smoke: bool,
-    #   gif_url_main : str,
-    #   gif_url_crop : str,
-    #   false_positive_types: [lens_flare|high_cloud|lens_droplet|..., ...],
-    #   bboxes: [{detection_id: int, xyxyn: [x1n y1n x2n y2n]}]
-    #   }, ...]
-    # }
     created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
     updated_at: Optional[datetime] = Field(default=None)
     processing_stage: SequenceAnnotationProcessingStage
@@ -135,7 +116,6 @@ class Detection(SQLModel, table=True):
     )
     bucket_key: str
     algo_predictions: Optional[dict] = Field(default=None, sa_column=Column(JSONB))
-    # {predictions: [{xyxyn: [x1n y1n x2n y2n], confidence: float, class_name: 'smoke'}, ...]}
 
 
 class DetectionAnnotation(SQLModel, table=True):
@@ -143,7 +123,7 @@ class DetectionAnnotation(SQLModel, table=True):
     id: int = Field(default=None, primary_key=True)
     detection_id: int = Field(sa_column=Column(ForeignKey("detections.id")))
     annotation: dict = Field(default=None, sa_column=Column(JSONB))
-    # {annotation: [{xyxyn: [x1n y1n x2n y2n], class_name: 'smoke_wildfire'}, ...]}
+    # {annotation: [{xyxyn: [x1n y1n x2n y2n], class_name: 'smoke', smoke_type: 'wildfire'}, ...]}
     processing_stages: DetectionAnnotationProcessingStage = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: Optional[datetime] = Field(default=None)
