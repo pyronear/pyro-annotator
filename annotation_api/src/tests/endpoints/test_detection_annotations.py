@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.exc import IntegrityError
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 now = datetime.utcnow()
@@ -287,3 +288,201 @@ async def test_create_detection_annotation_invalid_json_structure(
     assert response.status_code == 422
     error_data = response.json()
     assert "detail" in error_data
+
+
+@pytest.mark.asyncio
+async def test_create_detection_annotation_unique_constraint_violation(
+    async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+):
+    """Test that creating multiple annotations for the same detection fails due to unique constraint."""
+    # First create a detection
+    detection_payload = {
+        "sequence_id": "1",
+        "alert_api_id": "999",
+        "recorded_at": (now - timedelta(days=2)).isoformat(),
+        "algo_predictions": json.dumps(
+            {
+                "predictions": [
+                    {
+                        "xyxyn": [0.15, 0.15, 0.3, 0.3],
+                        "confidence": 0.88,
+                        "class_name": "smoke",
+                    }
+                ]
+            }
+        ),
+    }
+
+    detection_response = await async_client.post(
+        "/detections",
+        data=detection_payload,
+        files={"file": ("image.jpg", mock_img, "image/jpeg")},
+    )
+    assert detection_response.status_code == 201
+    detection_id = detection_response.json()["id"]
+
+    # Create first annotation - should succeed
+    annotation_payload1 = {
+        "detection_id": str(detection_id),
+        "annotation": json.dumps(
+            {
+                "annotation": [
+                    {
+                        "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                        "class_name": "smoke",
+                        "smoke_type": "wildfire",
+                    }
+                ]
+            }
+        ),
+        "processing_stage": "visual_check",
+    }
+
+    response1 = await async_client.post(
+        "/annotations/detections/", data=annotation_payload1
+    )
+    assert response1.status_code == 201
+    annotation1 = response1.json()
+    assert annotation1["detection_id"] == detection_id
+
+    # Try to create second annotation for same detection - should fail
+    annotation_payload2 = {
+        "detection_id": str(detection_id),  # Same detection_id
+        "annotation": json.dumps(
+            {
+                "annotation": [
+                    {
+                        "xyxyn": [0.2, 0.2, 0.3, 0.3],
+                        "class_name": "smoke",
+                        "smoke_type": "industrial",
+                    }
+                ]
+            }
+        ),
+        "processing_stage": "annotated",
+    }
+
+    # Try to create second annotation for same detection - should fail with IntegrityError
+    with pytest.raises(IntegrityError) as exc_info:
+        await async_client.post("/annotations/detections/", data=annotation_payload2)
+
+    # Verify it's specifically the unique constraint violation
+    assert "uq_detection_annotation_detection_id" in str(exc_info.value)
+
+    # Verify first annotation still exists and is accessible
+    annotation1_id = annotation1["id"]
+    get_response = await async_client.get(f"/annotations/detections/{annotation1_id}")
+    assert get_response.status_code == 200
+    retrieved_annotation = get_response.json()
+    assert retrieved_annotation["detection_id"] == detection_id
+
+
+@pytest.mark.asyncio
+async def test_create_detection_annotation_different_detections_allowed(
+    async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+):
+    """Test that creating annotations for different detections succeeds."""
+    # Create first detection
+    detection_payload1 = {
+        "sequence_id": "1",
+        "alert_api_id": "777",
+        "recorded_at": (now - timedelta(days=2)).isoformat(),
+        "algo_predictions": json.dumps(
+            {
+                "predictions": [
+                    {
+                        "xyxyn": [0.15, 0.15, 0.3, 0.3],
+                        "confidence": 0.88,
+                        "class_name": "smoke",
+                    }
+                ]
+            }
+        ),
+    }
+
+    detection_response1 = await async_client.post(
+        "/detections",
+        data=detection_payload1,
+        files={"file": ("image1.jpg", mock_img, "image/jpeg")},
+    )
+    assert detection_response1.status_code == 201
+    detection_id1 = detection_response1.json()["id"]
+
+    # Create second detection
+    detection_payload2 = {
+        "sequence_id": "1",
+        "alert_api_id": "888",
+        "recorded_at": (now - timedelta(days=2)).isoformat(),
+        "algo_predictions": json.dumps(
+            {
+                "predictions": [
+                    {
+                        "xyxyn": [0.25, 0.25, 0.4, 0.4],
+                        "confidence": 0.92,
+                        "class_name": "smoke",
+                    }
+                ]
+            }
+        ),
+    }
+
+    detection_response2 = await async_client.post(
+        "/detections",
+        data=detection_payload2,
+        files={"file": ("image2.jpg", mock_img, "image/jpeg")},
+    )
+    assert detection_response2.status_code == 201
+    detection_id2 = detection_response2.json()["id"]
+
+    # Create annotation for first detection
+    annotation_payload1 = {
+        "detection_id": str(detection_id1),
+        "annotation": json.dumps(
+            {
+                "annotation": [
+                    {
+                        "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                        "class_name": "smoke",
+                        "smoke_type": "wildfire",
+                    }
+                ]
+            }
+        ),
+        "processing_stage": "visual_check",
+    }
+
+    response1 = await async_client.post(
+        "/annotations/detections/", data=annotation_payload1
+    )
+    assert response1.status_code == 201
+    annotation1 = response1.json()
+    assert annotation1["detection_id"] == detection_id1
+
+    # Create annotation for second detection - should succeed
+    annotation_payload2 = {
+        "detection_id": str(detection_id2),
+        "annotation": json.dumps(
+            {
+                "annotation": [
+                    {
+                        "xyxyn": [0.2, 0.2, 0.3, 0.3],
+                        "class_name": "smoke",
+                        "smoke_type": "industrial",
+                    }
+                ]
+            }
+        ),
+        "processing_stage": "annotated",
+    }
+
+    response2 = await async_client.post(
+        "/annotations/detections/", data=annotation_payload2
+    )
+    assert response2.status_code == 201
+    annotation2 = response2.json()
+    assert annotation2["detection_id"] == detection_id2
+
+    # Both annotations should exist with different detection_ids
+    assert annotation1["detection_id"] != annotation2["detection_id"]
+    assert annotation1["detection_id"] == detection_id1
+    assert annotation2["detection_id"] == detection_id2
