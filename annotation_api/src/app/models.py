@@ -7,7 +7,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import Column, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, ForeignKey, Index, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
@@ -110,7 +110,13 @@ class SequenceAnnotation(SQLModel, table=True):
 
 class Detection(SQLModel, table=True):
     __tablename__ = "detections"
-    id: int = Field(default=None, primary_key=True)
+    __table_args__ = (
+        UniqueConstraint("alert_api_id", "id", name="uq_detection_alert_id"),
+        Index("ix_detection_sequence_id", "sequence_id"),
+    )
+    id: int = Field(
+        default=None, primary_key=True, sa_column_kwargs={"autoincrement": True}
+    )
     created_at: datetime = Field(default_factory=datetime.utcnow)
     recorded_at: datetime
     alert_api_id: int
@@ -123,7 +129,12 @@ class Detection(SQLModel, table=True):
 
 class DetectionAnnotation(SQLModel, table=True):
     __tablename__ = "detections_annotations"
-    id: int = Field(default=None, primary_key=True)
+    __table_args__ = (
+        UniqueConstraint("detection_id", name="uq_detection_annotation_detection_id"),
+    )
+    id: int = Field(
+        default=None, primary_key=True, sa_column_kwargs={"autoincrement": True}
+    )
     detection_id: int = Field(sa_column=Column(ForeignKey("detections.id")))
     annotation: dict = Field(default=None, sa_column=Column(JSONB))
     processing_stage: DetectionAnnotationProcessingStage = Field(default=None)
