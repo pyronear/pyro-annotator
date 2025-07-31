@@ -25,11 +25,34 @@ app = FastAPI(
     version=settings.VERSION,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     docs_url=None,
+    openapi_tags=[
+        {
+            "name": "detections",
+            "description": "Wildfire detection data with algo predictions",
+        },
+        {
+            "name": "sequences",
+            "description": "Image sequences from the pyronear platform",
+        },
+        {
+            "name": "detection annotations",
+            "description": "Manual annotations for detection data with smoke type classification",
+        },
+        {
+            "name": "sequence annotations",
+            "description": "Manual annotations for sequences.",
+        },
+    ],
 )
 
 
 # Healthcheck
-@app.get("/status", status_code=status.HTTP_200_OK, summary="Healthcheck for the API", include_in_schema=False)
+@app.get(
+    "/status",
+    status_code=status.HTTP_200_OK,
+    summary="Healthcheck for the API",
+    include_in_schema=False,
+)
 def get_status() -> Status:
     return Status(status="ok")
 
@@ -80,14 +103,19 @@ def custom_openapi():
         version=settings.VERSION,
         description=settings.PROJECT_DESCRIPTION,
         routes=app.routes,
-        license_info={"name": "Apache 2.0", "url": "http://www.apache.org/licenses/LICENSE-2.0.html"},
+        license_info={
+            "name": "Apache 2.0",
+            "url": "http://www.apache.org/licenses/LICENSE-2.0.html",
+        },
         contact={
             "name": "API support",
             "email": settings.SUPPORT_EMAIL,
             "url": "https://github.com/pyronear/pyro-annotator/issues",
         },
     )
-    openapi_schema["info"]["x-logo"] = {"url": "https://pyronear.org/img/logo_letters.png"}
+    openapi_schema["info"]["x-logo"] = {
+        "url": "https://pyronear.org/img/logo_letters.png"
+    }
     app.openapi_schema = openapi_schema
     return app.openapi_schema
 

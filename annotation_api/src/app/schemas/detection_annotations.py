@@ -5,31 +5,37 @@
 
 
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from app.models import DetectionAnnotationProcessingStage
+from app.schemas.annotation_validation import DetectionAnnotationData
 
-__all__ = ["DetectionAnnotationCreate", "DetectionAnnotationRead", "DetectionAnnotationUpdate"]
+__all__ = [
+    "DetectionAnnotationCreate",
+    "DetectionAnnotationRead",
+    "DetectionAnnotationUpdate",
+]
 
 
 class DetectionAnnotationCreate(BaseModel):
     detection_id: int
-    annotation: Dict
-    processing_stages: DetectionAnnotationProcessingStage
+    annotation: DetectionAnnotationData
+    processing_stage: DetectionAnnotationProcessingStage
+    created_at: datetime
 
 
 class DetectionAnnotationRead(BaseModel):
     id: int
     detection_id: int
-    annotation: Dict
-    processing_stages: DetectionAnnotationProcessingStage
+    annotation: DetectionAnnotationData
+    processing_stage: DetectionAnnotationProcessingStage
     created_at: datetime
     updated_at: Optional[datetime]
 
 
 class DetectionAnnotationUpdate(BaseModel):
-    annotation: Dict
-    processing_stages: DetectionAnnotationProcessingStage
-    updated_at: Optional[datetime]
+    annotation: Optional[DetectionAnnotationData] = None
+    processing_stage: Optional[DetectionAnnotationProcessingStage] = None
+    updated_at: Optional[datetime] = None

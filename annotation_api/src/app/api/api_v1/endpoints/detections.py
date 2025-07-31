@@ -14,6 +14,7 @@ from fastapi import (
     UploadFile,
     status,
 )
+from pydantic import ValidationError
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.dependencies import get_detection_crud
@@ -25,12 +26,17 @@ from app.schemas.detection import (
     DetectionRead,
     DetectionUrl,
 )
+from app.schemas.annotation_validation import AlgoPredictions
 from app.services.storage import s3_service, upload_file
 
 router = APIRouter()
 
 
-@router.post("/", status_code=status.HTTP_201_CREATED, summary="Register a new wildfire detection")
+@router.post(
+    "/",
+    status_code=status.HTTP_201_CREATED,
+    summary="Register a new wildfire detection",
+)
 async def create_detection(
     algo_predictions: str = Form(...),
     alert_api_id: int = Form(...),
@@ -41,19 +47,45 @@ async def create_detection(
 ) -> DetectionRead:
     # Parse string JSON -> dict
     parsed_predictions = json.loads(algo_predictions)
+    
+    # Validate the parsed predictions using Pydantic model
+    try:
+        validated_predictions = AlgoPredictions(**parsed_predictions)
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid algo_predictions format: {e.errors()}"
+        )
 
     # Upload image to S3
     bucket_key = await upload_file(file)
 
-    # Create detection in DB
+    # Create detection in DB - create with validated data but store as dict for compatibility
     payload = DetectionCreate(
         sequence_id=sequence_id,
         alert_api_id=alert_api_id,
         recorded_at=recorded_at,
         bucket_key=bucket_key,
-        algo_predictions=parsed_predictions,
+        algo_predictions=validated_predictions,
     )
-    return await detections.create(payload)
+    
+    # Create database model directly to store as dict
+    from app.models import Detection
+    detection = Detection(
+        sequence_id=sequence_id,
+        alert_api_id=alert_api_id,
+        recorded_at=recorded_at,
+        bucket_key=bucket_key,
+        algo_predictions=validated_predictions.model_dump(),  # Store as dict
+        created_at=datetime.utcnow(),
+    )
+    
+    # Add and commit directly
+    detections.session.add(detection)
+    await detections.session.commit()
+    await detections.session.refresh(detection)
+    
+    return detection
 
 
 @router.get("/{detection_id}")
@@ -73,7 +105,9 @@ async def get_detection_url(
     if detection is None:
         raise HTTPException(status_code=404, detail="Detection not found")
 
-    bucket = s3_service.get_bucket(s3_service.resolve_bucket_name())  # Use your bucket naming convention here
+    bucket = s3_service.get_bucket(
+        s3_service.resolve_bucket_name()
+    )  # Use your bucket naming convention here
     return DetectionUrl(url=bucket.get_public_url(detection.bucket_key))
 
 

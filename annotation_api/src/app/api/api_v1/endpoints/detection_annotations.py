@@ -4,7 +4,8 @@ import json
 from datetime import datetime
 from typing import List
 
-from fastapi import APIRouter, Depends, Form, Path, status
+from fastapi import APIRouter, Body, Depends, Form, HTTPException, Path, status
+from pydantic import ValidationError
 
 from app.api.dependencies import get_detection_annotation_crud
 from app.crud import DetectionAnnotationCRUD
@@ -14,6 +15,7 @@ from app.schemas.detection_annotations import (
     DetectionAnnotationRead,
     DetectionAnnotationUpdate,
 )
+from app.schemas.annotation_validation import DetectionAnnotationData
 
 router = APIRouter()
 
@@ -21,24 +23,38 @@ router = APIRouter()
 @router.post("/", status_code=status.HTTP_201_CREATED)
 async def create_detection_annotation(
     detection_id: int = Form(...),
-    source_api: str = Form(...),
-    alert_api_id: int = Form(...),
     annotation: str = Form(..., description="JSON string of annotation object"),
-    processing_stages: DetectionAnnotationProcessingStage = Form(
-        ..., description="JSON string tracking annotation stages"
+    processing_stage: DetectionAnnotationProcessingStage = Form(
+        ..., description="Processing stage for annotation"
     ),
     annotations: DetectionAnnotationCRUD = Depends(get_detection_annotation_crud),
 ) -> DetectionAnnotationRead:
+    # Parse and validate annotation
     parsed_annotation = json.loads(annotation)
-    payload = DetectionAnnotationCreate(
+    
+    try:
+        validated_annotation = DetectionAnnotationData(**parsed_annotation)
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid annotation format: {e.errors()}"
+        )
+    
+    # Create database model with validated data
+    from app.models import DetectionAnnotation
+    detection_annotation = DetectionAnnotation(
         detection_id=detection_id,
-        source_api=source_api,
-        alert_api_id=alert_api_id,
-        annotation=parsed_annotation,
-        processing_stages=processing_stages,
+        annotation=validated_annotation.model_dump(),
+        processing_stage=processing_stage,
         created_at=datetime.utcnow(),
     )
-    return await annotations.create(payload)
+    
+    # Add and commit directly
+    annotations.session.add(detection_annotation)
+    await annotations.session.commit()
+    await annotations.session.refresh(detection_annotation)
+    
+    return detection_annotation
 
 
 @router.get("/")
@@ -59,11 +75,33 @@ async def get_annotation(
 @router.patch("/{annotation_id}")
 async def update_annotation(
     annotation_id: int = Path(..., gt=0),
-    payload: DetectionAnnotationUpdate = ...,
+    payload: DetectionAnnotationUpdate = Body(...),
     annotations: DetectionAnnotationCRUD = Depends(get_detection_annotation_crud),
 ) -> DetectionAnnotationRead:
-    updated_payload = payload.copy(update={"updated_at": datetime.utcnow()})
-    return await annotations.update(annotation_id, updated_payload)
+    # Get existing annotation
+    existing = await annotations.get(annotation_id, strict=True)
+    
+    # Start with existing data
+    update_dict = {"updated_at": datetime.utcnow()}
+    
+    # If annotation is being updated, validate it
+    if payload.annotation is not None:
+        update_dict.update({
+            "annotation": payload.annotation.model_dump(),
+        })
+    
+    # Add other updateable fields
+    if payload.processing_stage is not None:
+        update_dict["processing_stage"] = payload.processing_stage
+    
+    # Update the model
+    for key, value in update_dict.items():
+        setattr(existing, key, value)
+    
+    await annotations.session.commit()
+    await annotations.session.refresh(existing)
+    
+    return existing
 
 
 @router.delete("/{annotation_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -8,8 +8,6 @@ from enum import Enum
 from typing import Optional
 
 from sqlalchemy import Column, ForeignKey
-
-# from sqlalchemy.sql.sqltypes import JSON
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
@@ -37,6 +35,40 @@ class SourceApi(str, Enum):
     CENIA = "api_cenia"
 
 
+class SmokeType(str, Enum):
+    """
+    Smoke types.
+    """
+
+    WILDFIRE = "wildfire"
+    INDUSTRIAL = "industrial"
+    OTHER = "other"
+
+
+class FalsePositiveType(str, Enum):
+    """
+    False positive types.
+    """
+
+    ANTENNA = "antenna"
+    BUILDING = "building"
+    CLIFF = "cliff"
+    DARK = "dark"
+    DUST = "dust"
+    HIGH_CLOUD = "high_cloud"
+    LOW_CLOUD = "low_cloud"
+    LENS_FLARE = "lens_flare"
+    LENS_DROPLET = "lens_droplet"
+    LIGHT = "light"
+    RAIN = "rain"
+    TRAIL = "trail"
+    ROAD = "road"
+    SKY = "sky"
+    TREE = "tree"
+    WATER_BODY = "water_body"
+    OTHER = "other"
+
+
 # -------------------- TABLES --------------------
 
 
@@ -46,7 +78,6 @@ class Sequence(SQLModel, table=True):
     source_api: SourceApi
     alert_api_id: int
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    # recorded_at: datetime
     last_seen_at: datetime
     camera_name: str
     camera_id: int
@@ -57,15 +88,6 @@ class Sequence(SQLModel, table=True):
     organisation_name: str
     organisation_id: int
 
-    # algo_prediction: Optional[dict] = Field(default=None, sa_column=Column(JSONB))
-    # {
-    #   sequences_bbox: [{
-    #   is_smoke: bool,
-    #   false_positive_types: [lens_flare|high_cloud|lens_droplet|..., ...],
-    #   bboxes: [{detection_id: int, xyxyn: [x1n y1n x2n y2n]}]
-    #   }, ...]
-    # }
-
 
 class SequenceAnnotation(SQLModel, table=True):
     __tablename__ = "sequences_annotations"
@@ -75,16 +97,7 @@ class SequenceAnnotation(SQLModel, table=True):
     has_false_positives: bool
     false_positive_types: str
     has_missed_smoke: bool
-    # annotation: Optional[dict] = Field(default=None, sa_column=Column(JSONB))
-    # {
-    #   sequences_bbox: [{
-    #   is_smoke: bool,
-    #   gif_url_main : str,
-    #   gif_url_crop : str,
-    #   false_positive_types: [lens_flare|high_cloud|lens_droplet|..., ...],
-    #   bboxes: [{detection_id: int, xyxyn: [x1n y1n x2n y2n]}]
-    #   }, ...]
-    # }
+    annotation: dict = Field(sa_column=Column(JSONB))
     created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
     updated_at: Optional[datetime] = Field(default=None)
     processing_stage: SequenceAnnotationProcessingStage
@@ -101,7 +114,6 @@ class Detection(SQLModel, table=True):
     )
     bucket_key: str
     algo_predictions: Optional[dict] = Field(default=None, sa_column=Column(JSONB))
-    # {predictions: [{xyxyn: [x1n y1n x2n y2n], confidence: float, class_name: 'smoke'}, ...]}
 
 
 class DetectionAnnotation(SQLModel, table=True):
@@ -109,7 +121,6 @@ class DetectionAnnotation(SQLModel, table=True):
     id: int = Field(default=None, primary_key=True)
     detection_id: int = Field(sa_column=Column(ForeignKey("detections.id")))
     annotation: dict = Field(default=None, sa_column=Column(JSONB))
-    # {predictions: [{xyxyn: [x1n y1n x2n y2n], confidence: float, class_name: 'smoke'}, ...]}
-    processing_stages: DetectionAnnotationProcessingStage = Field(default=None)
+    processing_stage: DetectionAnnotationProcessingStage = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: Optional[datetime] = Field(default=None)

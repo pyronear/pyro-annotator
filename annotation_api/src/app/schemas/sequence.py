@@ -5,11 +5,19 @@
 
 
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Optional
 
 from pydantic import BaseModel, Field
 
-__all__ = ["Azimuth", "SequenceCreate", "SequenceRead", "SequenceUpdateBboxAuto", "SequenceUpdateBboxVerified"]
+from app.schemas.annotation_validation import SequenceAnnotationData
+
+__all__ = [
+    "Azimuth",
+    "SequenceCreate",
+    "SequenceRead",
+    "SequenceUpdateBboxAuto",
+    "SequenceUpdateBboxVerified",
+]
 
 
 class Azimuth(BaseModel):
@@ -55,8 +63,8 @@ class SequenceRead(Azimuth):
 
 
 class SequenceUpdateBboxAuto(BaseModel):
-    algo_prediction: Optional[Dict] = Field(default=None)
+    algo_prediction: Optional[SequenceAnnotationData] = Field(default=None)
 
 
 class SequenceUpdateBboxVerified(BaseModel):
-    algo_prediction: Optional[Dict] = Field(default=None)
+    algo_prediction: Optional[SequenceAnnotationData] = Field(default=None)

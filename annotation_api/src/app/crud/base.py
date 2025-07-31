@@ -47,7 +47,9 @@ class BaseCRUD(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             )
         return entry
 
-    async def get_by(self, field_name: str, val: Union[str, int], strict: bool = False) -> Union[ModelType, None]:
+    async def get_by(
+        self, field_name: str, val: Union[str, int], strict: bool = False
+    ) -> Union[ModelType, None]:
         statement = select(self.model).where(getattr(self.model, field_name) == val)  # type: ignore[var-annotated]
         results = await self.session.exec(statement=statement)
         entry = results.one_or_none()
@@ -68,7 +70,9 @@ class BaseCRUD(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
     ) -> List[ModelType]:
         statement = select(self.model)  # type: ignore[var-annotated]
         if isinstance(filter_pair, tuple):
-            statement = statement.where(getattr(self.model, filter_pair[0]) == filter_pair[1])
+            statement = statement.where(
+                getattr(self.model, filter_pair[0]) == filter_pair[1]
+            )
 
         if isinstance(in_pair, tuple):
             statement = statement.where(getattr(self.model, in_pair[0]).in_(in_pair[1]))
