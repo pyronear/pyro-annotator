@@ -229,3 +229,52 @@ async def test_create_detection_invalid_json_structure(
     assert response.status_code == 422
     error_data = response.json()
     assert "detail" in error_data
+
+
+# Additional error scenario tests
+@pytest.mark.asyncio
+async def test_get_detection_not_found(async_client: AsyncClient):
+    response = await async_client.get("/detections/99999")
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_detection_invalid_id(async_client: AsyncClient):
+    response = await async_client.get("/detections/invalid")
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_get_detection_url_not_found(async_client: AsyncClient):
+    response = await async_client.get("/detections/99999/url")
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_detection_url_invalid_id(async_client: AsyncClient):
+    response = await async_client.get("/detections/invalid/url")
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_create_detection_without_file(async_client: AsyncClient, sequence_session: AsyncSession):
+    payload = {
+        "sequence_id": "1",
+        "alert_api_id": "1",
+        "recorded_at": now.isoformat(),
+    }
+
+    response = await async_client.post("/detections", data=payload)
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_delete_detection_not_found(async_client: AsyncClient):
+    response = await async_client.delete("/detections/99999")
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_detection_invalid_id(async_client: AsyncClient):
+    response = await async_client.delete("/detections/invalid")
+    assert response.status_code == 422
