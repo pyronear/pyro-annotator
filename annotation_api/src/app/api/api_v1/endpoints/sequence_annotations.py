@@ -14,7 +14,11 @@ from fastapi import (
 from app.api.dependencies import get_sequence_annotation_crud
 from app.crud import SequenceAnnotationCRUD
 from app.models import SequenceAnnotationProcessingStage
-from app.schemas.sequence_annotations import SequenceAnnotationCreate, SequenceAnnotationRead, SequenceAnnotationUpdate
+from app.schemas.sequence_annotations import (
+    SequenceAnnotationCreate,
+    SequenceAnnotationRead,
+    SequenceAnnotationUpdate,
+)
 
 router = APIRouter()
 
@@ -65,7 +69,7 @@ async def update_sequence_annotation(
     payload: SequenceAnnotationUpdate = ...,
     annotations: SequenceAnnotationCRUD = Depends(get_sequence_annotation_crud),
 ) -> SequenceAnnotationRead:
-    updated_payload = payload.copy(update={"updated_at": datetime.utcnow()})
+    updated_payload = payload.model_copy(update={"updated_at": datetime.utcnow()})
     return await annotations.update(annotation_id, updated_payload)
 
 

@@ -37,6 +37,40 @@ class SourceApi(str, Enum):
     CENIA = "api_cenia"
 
 
+class SmokeType(str, Enum):
+    """
+    Smoke types.
+    """
+
+    WILDFIRE = "wildfire"
+    INDUSTRIAL = "industrial"
+    OTHER = "other"
+
+
+class FalsePositiveType(str, Enum):
+    """
+    False positive types.
+    """
+
+    ANTENNA = "antenna"
+    BUILDING = "building"
+    CLIFF = "cliff"
+    DARK = "dark"
+    DUST = "dust"
+    HIGH_CLOUD = "high_cloud"
+    LOW_CLOUD = "low_cloud"
+    LENS_FLARE = "lens_flare"
+    LENS_DROPLET = "lens_droplet"
+    LIGHT = "light"
+    RAIN = "rain"
+    TRAIL = "trail"
+    ROAD = "road"
+    SKY = "sky"
+    TREE = "tree"
+    WATER_BODY = "water_body"
+    OTHER = "other"
+
+
 # -------------------- TABLES --------------------
 
 
@@ -75,7 +109,7 @@ class SequenceAnnotation(SQLModel, table=True):
     has_false_positives: bool
     false_positive_types: str
     has_missed_smoke: bool
-    # annotation: Optional[dict] = Field(default=None, sa_column=Column(JSONB))
+    annotation: dict = Field(sa_column=Column(JSONB))
     # {
     #   sequences_bbox: [{
     #   is_smoke: bool,
@@ -109,7 +143,7 @@ class DetectionAnnotation(SQLModel, table=True):
     id: int = Field(default=None, primary_key=True)
     detection_id: int = Field(sa_column=Column(ForeignKey("detections.id")))
     annotation: dict = Field(default=None, sa_column=Column(JSONB))
-    # {predictions: [{xyxyn: [x1n y1n x2n y2n], confidence: float, class_name: 'smoke'}, ...]}
+    # {annotation: [{xyxyn: [x1n y1n x2n y2n], class_name: 'smoke_wildfire'}, ...]}
     processing_stages: DetectionAnnotationProcessingStage = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: Optional[datetime] = Field(default=None)

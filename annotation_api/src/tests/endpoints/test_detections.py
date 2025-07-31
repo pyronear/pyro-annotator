@@ -9,14 +9,24 @@ now = datetime.utcnow()
 
 
 @pytest.mark.asyncio
-async def test_create_detection(async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes):
+async def test_create_detection(
+    async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+):
     payload = {
         "sequence_id": "1",  # en multipart/form-data, tout est str
         "alert_api_id": "1",
         "recorded_at": (now - timedelta(days=2)).isoformat(),
-        "algo_predictions": json.dumps({
-            "predictions": [{"xyxyn": [0.1, 0.1, 0.2, 0.2], "confidence": 0.95, "class_name": "smoke"}]
-        }),
+        "algo_predictions": json.dumps(
+            {
+                "predictions": [
+                    {
+                        "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                        "confidence": 0.95,
+                        "class_name": "smoke",
+                    }
+                ]
+            }
+        ),
     }
 
     response = await async_client.post(
@@ -62,14 +72,24 @@ async def test_list_detections(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_delete_detection(async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes):
+async def test_delete_detection(
+    async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+):
     payload = {
         "sequence_id": "1",  # en multipart/form-data, tout est str
         "alert_api_id": "1",
         "recorded_at": (now - timedelta(days=2)).isoformat(),
-        "algo_predictions": json.dumps({
-            "predictions": [{"xyxyn": [0.1, 0.1, 0.2, 0.2], "confidence": 0.95, "class_name": "smoke"}]
-        }),
+        "algo_predictions": json.dumps(
+            {
+                "predictions": [
+                    {
+                        "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                        "confidence": 0.95,
+                        "class_name": "smoke",
+                    }
+                ]
+            }
+        ),
     }
 
     response = await async_client.post(
