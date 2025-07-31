@@ -2,7 +2,7 @@
 lint:
 	uv run ruff format --check .
 	uv run ruff check .
-	uv run mypy
+	uv run mypy .
 
 # this target runs checks on all files and potentially modifies some of them
 fix:
