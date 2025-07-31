@@ -29,7 +29,7 @@ async def create_sequence(
     camera_id: int = Form(...),
     organisation_name: str = Form(...),
     organisation_id: int = Form(...),
-    is_wildfire_alertapi: bool = Form(...),
+    is_wildfire_alertapi: Optional[bool] = Form(None),
     lat: float = Form(...),
     lon: float = Form(...),
     azimuth: Optional[int] = Form(None),

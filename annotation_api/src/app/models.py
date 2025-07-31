@@ -84,7 +84,7 @@ class Sequence(SQLModel, table=True):
     lat: float
     lon: float
     azimuth: Optional[int] = Field(default=None)
-    is_wildfire_alertapi: bool
+    is_wildfire_alertapi: Optional[bool] = Field(default=None)
     organisation_name: str
     organisation_id: int
 

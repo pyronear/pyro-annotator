@@ -40,7 +40,7 @@ class SequenceCreate(Azimuth):
     lat: float
     lon: float
     azimuth: Optional[int] = Field(default=None)
-    is_wildfire_alertapi: bool
+    is_wildfire_alertapi: Optional[bool] = Field(default=None)
     organisation_name: str
     organisation_id: int
 
@@ -57,7 +57,7 @@ class SequenceRead(Azimuth):
     lat: float
     lon: float
     azimuth: Optional[int]
-    is_wildfire_alertapi: bool
+    is_wildfire_alertapi: Optional[bool]
     organisation_name: str
     organisation_id: int
 
