@@ -96,7 +96,15 @@ class Sequence(SQLModel, table=True):
 
 class SequenceAnnotation(SQLModel, table=True):
     __tablename__ = "sequences_annotations"
-    id: int = Field(default=None, primary_key=True)
+    __table_args__ = (
+        UniqueConstraint("sequence_id", name="uq_sequence_annotation_sequence_id"),
+        Index("ix_sequence_annotation_has_smoke", "has_smoke"),
+        Index("ix_sequence_annotation_has_false_positives", "has_false_positives"),
+        Index("ix_sequence_annotation_has_missed_smoke", "has_missed_smoke"),
+    )
+    id: int = Field(
+        default=None, primary_key=True, sa_column_kwargs={"autoincrement": True}
+    )
     sequence_id: int = Field(sa_column=Column(ForeignKey("sequences.id")))
     has_smoke: bool
     has_false_positives: bool

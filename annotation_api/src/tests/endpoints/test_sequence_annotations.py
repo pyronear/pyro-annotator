@@ -2,6 +2,7 @@ from datetime import datetime
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.exc import IntegrityError
 
 from app import models
 
@@ -189,3 +190,145 @@ async def test_create_sequence_annotation_invalid_false_positive_type(
     assert response.status_code == 422
     error_data = response.json()
     assert "detail" in error_data
+
+
+@pytest.mark.asyncio
+async def test_create_sequence_annotation_unique_constraint_violation(
+    async_client: AsyncClient, sequence_session
+):
+    """Test that creating multiple annotations for the same sequence fails due to unique constraint."""
+    payload1 = {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": True,
+                    "gif_url_main": "http://example.com/main1.gif",
+                    "gif_url_crop": "http://example.com/crop1.gif",
+                    "false_positive_types": [],
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                }
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
+        "created_at": datetime.utcnow().isoformat(),
+    }
+
+    # First annotation should be created successfully
+    response1 = await async_client.post("/annotations/sequences/", json=payload1)
+    assert response1.status_code == 201
+    annotation1 = response1.json()
+    assert annotation1["sequence_id"] == 1
+
+    # Try to create second annotation for same sequence - should fail
+    payload2 = {
+        "sequence_id": 1,  # Same sequence_id
+        "has_missed_smoke": True,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": False,
+                    "gif_url_main": "http://example.com/main2.gif",
+                    "gif_url_crop": "http://example.com/crop2.gif",
+                    "false_positive_types": [models.FalsePositiveType.LENS_FLARE.value],
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.2, 0.2, 0.3, 0.3]}],
+                }
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
+        "created_at": datetime.utcnow().isoformat(),
+    }
+
+    # Try to create second annotation for same sequence - should fail with IntegrityError
+    with pytest.raises(IntegrityError) as exc_info:
+        await async_client.post("/annotations/sequences/", json=payload2)
+
+    # Verify it's specifically the unique constraint violation
+    assert "uq_sequence_annotation_sequence_id" in str(exc_info.value)
+
+    # Verify first annotation still exists and is accessible
+    annotation1_id = annotation1["id"]
+    get_response = await async_client.get(f"/annotations/sequences/{annotation1_id}")
+    assert get_response.status_code == 200
+    retrieved_annotation = get_response.json()
+    assert retrieved_annotation["sequence_id"] == 1
+
+
+@pytest.mark.asyncio
+async def test_create_sequence_annotation_different_sequences_allowed(
+    async_client: AsyncClient, sequence_session
+):
+    """Test that creating annotations for different sequences succeeds."""
+    # This test assumes we have at least two sequences available (sequence_id 1 exists from sequence_session)
+    # We'll use sequence_id 1 for the first annotation and create a different sequence for the second
+
+    # Create annotation for sequence 1
+    payload1 = {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": True,
+                    "gif_url_main": "http://example.com/seq1.gif",
+                    "false_positive_types": [],
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                }
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
+        "created_at": datetime.utcnow().isoformat(),
+    }
+
+    response1 = await async_client.post("/annotations/sequences/", json=payload1)
+    assert response1.status_code == 201
+    annotation1 = response1.json()
+    assert annotation1["sequence_id"] == 1
+
+    # First, create a new sequence for the second annotation
+    sequence_payload = {
+        "source_api": "pyronear_french",
+        "alert_api_id": "999",
+        "camera_name": "test_seq_annotation",
+        "camera_id": "999",
+        "organisation_name": "test_org",
+        "organisation_id": "1",
+        "azimuth": "90",
+        "lat": "0.0",
+        "lon": "0.0",
+        "created_at": datetime.utcnow().isoformat(),
+        "last_seen_at": datetime.utcnow().isoformat(),
+    }
+
+    sequence_response = await async_client.post("/sequences", data=sequence_payload)
+    assert sequence_response.status_code == 201
+    sequence2_id = sequence_response.json()["id"]
+
+    # Create annotation for the new sequence
+    payload2 = {
+        "sequence_id": sequence2_id,
+        "has_missed_smoke": True,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": False,
+                    "gif_url_main": "http://example.com/seq2.gif",
+                    "false_positive_types": [models.FalsePositiveType.LENS_FLARE.value],
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.2, 0.2, 0.3, 0.3]}],
+                }
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
+        "created_at": datetime.utcnow().isoformat(),
+    }
+
+    response2 = await async_client.post("/annotations/sequences/", json=payload2)
+    assert response2.status_code == 201
+    annotation2 = response2.json()
+    assert annotation2["sequence_id"] == sequence2_id
+
+    # Both annotations should exist with different sequence_ids
+    assert annotation1["sequence_id"] != annotation2["sequence_id"]
+    assert annotation1["sequence_id"] == 1
+    assert annotation2["sequence_id"] == sequence2_id
