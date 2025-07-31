@@ -15,8 +15,8 @@ __all__ = ["settings"]
 
 class Settings(BaseSettings):
     # State
-    PROJECT_NAME: str = "Pyronear - Wildfire Alert API"
-    PROJECT_DESCRIPTION: str = "API for wildfire prevention, detection and monitoring"
+    PROJECT_NAME: str = "pyro-annoator - Annotation API"
+    PROJECT_DESCRIPTION: str = "API for managing platform annotations"
     VERSION: str = "0.1.0"
     API_V1_STR: str = "/api/v1"
     CORS_ORIGIN: str = "*"

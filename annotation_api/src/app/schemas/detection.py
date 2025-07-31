@@ -9,6 +9,8 @@ from typing import Dict, Optional
 
 from pydantic import BaseModel, Field
 
+from app.schemas.annotation_validation import AlgoPredictions
+
 __all__ = ["DetectionCreate", "DetectionRead", "DetectionUrl", "DetectionWithUrl"]
 
 
@@ -17,7 +19,7 @@ class DetectionCreate(BaseModel):
     recorded_at: datetime
     alert_api_id: int
     bucket_key: str
-    algo_predictions: Dict
+    algo_predictions: AlgoPredictions
 
 
 class DetectionRead(BaseModel):
@@ -26,7 +28,7 @@ class DetectionRead(BaseModel):
     recorded_at: datetime
     alert_api_id: int
     bucket_key: str
-    algo_predictions: Dict
+    algo_predictions: Dict  # Keep as Dict for read operations to maintain compatibility
 
 
 class DetectionUrl(BaseModel):

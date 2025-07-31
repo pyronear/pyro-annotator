@@ -105,3 +105,127 @@ async def test_delete_detection(
 
     get_resp = await async_client.get(f"/detections/{detection_id}")
     assert get_resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_create_detection_invalid_xyxyn_values(
+    async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+):
+    payload = {
+        "sequence_id": "1",
+        "alert_api_id": "1", 
+        "recorded_at": (now - timedelta(days=2)).isoformat(),
+        "algo_predictions": json.dumps(
+            {
+                "predictions": [
+                    {
+                        "xyxyn": [0.3, 0.3, 0.2, 0.2],  # x1 > x2, y1 > y2
+                        "confidence": 0.95,
+                        "class_name": "smoke",
+                    }
+                ]
+            }
+        ),
+    }
+
+    response = await async_client.post(
+        "/detections",
+        data=payload,
+        files={"file": ("image.jpg", mock_img, "image/jpeg")},
+    )
+    assert response.status_code == 422
+    error_data = response.json()
+    assert "detail" in error_data
+
+
+@pytest.mark.asyncio
+async def test_create_detection_invalid_xyxyn_range(
+    async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+):
+    payload = {
+        "sequence_id": "1",
+        "alert_api_id": "1",
+        "recorded_at": (now - timedelta(days=2)).isoformat(),
+        "algo_predictions": json.dumps(
+            {
+                "predictions": [
+                    {
+                        "xyxyn": [0.1, 0.1, 1.5, 0.9],  # x2 > 1.0
+                        "confidence": 0.95,
+                        "class_name": "smoke",
+                    }
+                ]
+            }
+        ),
+    }
+
+    response = await async_client.post(
+        "/detections",
+        data=payload,
+        files={"file": ("image.jpg", mock_img, "image/jpeg")},
+    )
+    assert response.status_code == 422
+    error_data = response.json()
+    assert "detail" in error_data
+
+
+@pytest.mark.asyncio
+async def test_create_detection_invalid_confidence(
+    async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+):
+    payload = {
+        "sequence_id": "1", 
+        "alert_api_id": "1",
+        "recorded_at": (now - timedelta(days=2)).isoformat(),
+        "algo_predictions": json.dumps(
+            {
+                "predictions": [
+                    {
+                        "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                        "confidence": 1.5,  # confidence > 1.0
+                        "class_name": "smoke",
+                    }
+                ]
+            }
+        ),
+    }
+
+    response = await async_client.post(
+        "/detections",
+        data=payload,
+        files={"file": ("image.jpg", mock_img, "image/jpeg")},
+    )
+    assert response.status_code == 422
+    error_data = response.json()
+    assert "detail" in error_data
+
+
+@pytest.mark.asyncio
+async def test_create_detection_invalid_json_structure(
+    async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+):
+    payload = {
+        "sequence_id": "1",
+        "alert_api_id": "1",
+        "recorded_at": (now - timedelta(days=2)).isoformat(),
+        "algo_predictions": json.dumps(
+            {
+                "wrong_field": [  # Should be "predictions"
+                    {
+                        "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                        "confidence": 0.95,
+                        "class_name": "smoke",
+                    }
+                ]
+            }
+        ),
+    }
+
+    response = await async_client.post(
+        "/detections",
+        data=payload,
+        files={"file": ("image.jpg", mock_img, "image/jpeg")},
+    )
+    assert response.status_code == 422
+    error_data = response.json()
+    assert "detail" in error_data

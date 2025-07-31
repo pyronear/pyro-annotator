@@ -67,7 +67,7 @@ async def test_patch_sequence_annotation(async_client: AsyncClient):
                     "is_smoke": False,
                     "gif_url_main": "http://updated.com/main.gif",
                     "gif_url_crop": "http://updated.com/crop.gif",
-                    "false_positive_types": ["lens_flare"],
+                    "false_positive_types": [models.FalsePositiveType.LENS_FLARE.value],
                     "bboxes": [{"detection_id": 1, "xyxyn": [0.2, 0.2, 0.3, 0.3]}],
                 }
             ]
