@@ -15,7 +15,7 @@ __all__ = ["settings"]
 
 class Settings(BaseSettings):
     # State
-    PROJECT_NAME: str = "pyro-annoator - Annotation API"
+    PROJECT_NAME: str = "pyro-annotator - Annotation API"
     PROJECT_DESCRIPTION: str = "API for managing platform annotations"
     VERSION: str = "0.1.0"
     API_V1_STR: str = "/api/v1"
