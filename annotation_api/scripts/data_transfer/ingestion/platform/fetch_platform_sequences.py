@@ -364,7 +364,7 @@ if __name__ == "__main__":
             "Succesfully fetched an admin access token to authenticate API requests ✔️"
         )
         headers = platform_client.make_request_headers(access_token=access_token)
-        df = fetch_all_sequences_within(
+        records = fetch_all_sequences_within(
             date_from=date_from,
             date_end=date_end,
             detections_limit=detections_limit,
@@ -374,25 +374,6 @@ if __name__ == "__main__":
             access_token_admin=access_token_admin,
         )
 
-        # filepath_api_results_csv = save_dir / "api_results.csv"
-        # logger.info(f"Save API results to {filepath_api_results_csv}")
-        # save_dir.mkdir(parents=True, exist_ok=True)
-        # platform_utils.append_dataframe_to_csv(
-        #     df=df, filepath_csv=filepath_api_results_csv
-        # )
-        #
-        # logger.info("Processing all the detections")
-        # platform_utils.process_dataframe(df=df, save_dir=save_dir)
-        # args_content = {
-        #     "date-from": str(args["date_from"]),
-        #     "date-end": str(args["date_end"]),
-        #     "date-now": datetime.now().strftime("%Y-%m-%d"),
-        #     "save-dir": str(args["save_dir"]),
-        #     "platform-login": platform_login,
-        #     "platform-admin-login": platform_admin_login,
-        # }
-        # filepath_args_yaml = save_dir / "args.yaml"
-        # logger.info(f"Saving args run in {filepath_args_yaml}")
-        # platform_utils.append_yaml_run(filepath=filepath_args_yaml, data=args_content)
+        logger.info(f"records: {records}")
         logger.info("Done ✅")
         exit(0)

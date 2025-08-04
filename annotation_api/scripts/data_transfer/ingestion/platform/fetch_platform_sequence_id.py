@@ -2,17 +2,17 @@
 CLI script to fetch one sequence from the Pyronear platform API.
 
 Usage:
-  uv run python -m scripts.data_transfer.ingestion.platform.fetch_platform_sequence_id --save-dir <directory> --sequence-id <int> [--detections-limit <int>] [--detections-order-by <asc|desc>] [-log <loglevel>]
+  uv run python -m scripts.data_transfer.ingestion.platform.fetch_platform_sequence_id --sequence-id <int> [--detections-limit <int>] [--detections-order-by <asc|desc>] [-log <loglevel>]
 
 Arguments:
-  --save-dir (Path): Directory to save the sequences.
+  --url-api-platform (url): url of the Platform API
+  --url-api-annotation (url): url of the Annotation API
   --sequence-id (int): Sequence ID to fetch.
   --detections-limit (int): Maximum number of detections to fetch (default: 10).
   --detections-order-by (str): Order the detections by created_at in descending or ascending order (default: asc).
   -log, --loglevel (str): Provide logging level for the script (default: info).
 
 Environment variables required:
-  PLATFORM_API_ENDPOINT (str): API url endpoint. eg https://alertapi.pyronear.org
   PLATFORM_LOGIN (str): Login.
   PLATFORM_PASSWORD (str): Password.
   PLATFORM_ADMIN_LOGIN (str): Admin login - useful to access /api/v1/organizations endpoints.
@@ -25,10 +25,6 @@ Example:
 import argparse
 import logging
 import os
-from datetime import datetime
-from pathlib import Path
-
-import pandas as pd
 
 from . import client as platform_client
 from . import utils as platform_utils
@@ -40,10 +36,16 @@ def make_cli_parser() -> argparse.ArgumentParser:
     """
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--save-dir",
-        help="Directory to save the sequences",
-        type=Path,
-        default=Path("./data/raw/pyronear-platform/sequences/"),
+        "--url-api-annotation",
+        help="Annotation API url",
+        type=str,
+        default="http://localhost:5050",
+    )
+    parser.add_argument(
+        "--url-api-platform",
+        help="Platform API url",
+        type=str,
+        default="https://alertapi.pyronear.org",
     )
     parser.add_argument(
         "--sequence-id",
@@ -85,23 +87,16 @@ def validate_available_env_variables() -> bool:
     Check whether the environment variables required for
     hitting the API are properly set.
 
-    PLATFORM_API_ENDPOINT (str): API url endpoint
     PLATFORM_LOGIN (str): login
     PLATFORM_PASSWORD (str): password
     PLATFORM_ADMIN_LOGIN (str): admin login
     PLATFORM_ADMIN_PASSWORD (str): admin password
     """
-    platform_api_endpoint = os.getenv("PLATFORM_API_ENDPOINT")
     platform_login = os.getenv("PLATFORM_LOGIN")
     platform_password = os.getenv("PLATFORM_LOGIN")
     platform_admin_login = os.getenv("PLATFORM_ADMIN_LOGIN")
     platform_admin_password = os.getenv("PLATFORM_ADMIN_PASSWORD")
-    if not platform_api_endpoint:
-        logging.error(
-            "PLATFORM_API_ENDPOINT is not set. eg. https://alertapi.pyronear.org"
-        )
-        return False
-    elif not platform_login:
+    if not platform_login:
         logging.error("PLATFORM_LOGIN is not set")
         return False
     elif not platform_password:
@@ -181,7 +176,7 @@ if __name__ == "__main__":
         exit(1)
     else:
         logger.info(args)
-        platform_api_endpoint = os.getenv("PLATFORM_API_ENDPOINT")
+        platform_api_endpoint = args["url_api_platform"]
         api_url = f"{platform_api_endpoint}/api/v1"
         platform_login = os.getenv("PLATFORM_LOGIN")
         platform_password = os.getenv("PLATFORM_PASSWORD")
@@ -197,12 +192,11 @@ if __name__ == "__main__":
             logger.error("Missing platform credentials...")
             exit(1)
 
-        save_dir = args["save_dir"]
         sequence_id = args["sequence_id"]
         detections_limit = args["detections_limit"]
         detections_order_by = args["detections_order_by"]
         logger.info(
-            f"Fetching sequence id {sequence_id}  and storing data in {save_dir} from the platform API {api_url}"
+            f"Fetching sequence id {sequence_id} from the platform API {api_url}"
         )
         logger.info("Fetching an access token to authenticate API requests...")
         access_token = platform_client.get_api_access_token(
@@ -220,25 +214,15 @@ if __name__ == "__main__":
             "Succesfully fetched an admin acess token to authenticate API requests ✔️"
         )
         headers = platform_client.make_request_headers(access_token=access_token)
-        df = pd.DataFrame(
-            fetch_sequence(
-                sequence_id=sequence_id,
-                detections_limit=detections_limit,
-                detections_order_by=detections_order_by,
-                api_endpoint=platform_api_endpoint,
-                access_token=access_token,
-                access_token_admin=access_token_admin,
-            )
+        sequence = fetch_sequence(
+            sequence_id=sequence_id,
+            detections_limit=detections_limit,
+            detections_order_by=detections_order_by,
+            api_endpoint=platform_api_endpoint,
+            access_token=access_token,
+            access_token_admin=access_token_admin,
         )
-        platform_utils.process_dataframe(df=df, save_dir=save_dir)
-        args_content = {
-            "sequence-id": args["sequence_id"],
-            "save-dir": str(args["save_dir"]),
-            "date-now": datetime.now().strftime("%Y-%m-%d"),
-            "platform-login": platform_login,
-            "platform-admin-login": platform_admin_login,
-        }
-        filepath_args_yaml = save_dir / "args.yaml"
-        logger.info(f"Saving args run in {filepath_args_yaml}")
-        platform_utils.append_yaml_run(filepath=filepath_args_yaml, data=args_content)
+
+        logger.info(f"sequence: {sequence}")
         logger.info("Done ✅")
+        exit(0)
