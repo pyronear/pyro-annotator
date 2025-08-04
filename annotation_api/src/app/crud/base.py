@@ -31,26 +31,30 @@ class BaseCRUD(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             await self.session.commit()
         except exc.IntegrityError as error:
             await self.session.rollback()
+            # Log full error for debugging
+            print(f"Database integrity error (full): {error}")
+            
             # Check if this is an enum validation error
             if isinstance(error.orig, asyncpg.InvalidTextRepresentationError):
-                # Extract field name and invalid value from error message
                 error_msg = str(error.orig)
                 if "invalid input value for enum" in error_msg:
                     raise HTTPException(
                         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                        detail=f"Validation error: {error_msg}",
+                        detail="Invalid field value provided",
                     )
-            # Handle other constraint violations
+            # Handle other constraint violations (unique, foreign key, etc.)
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"An entry with the same index already exists : {error!s}",
+                detail="Resource already exists",
             )
         except exc.DataError as error:
             await self.session.rollback()
+            # Log full error for debugging
+            print(f"Database data error (full): {error}")
             # Handle data type validation errors
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Data validation error: {error!s}",
+                detail="Invalid data format provided",
             )
         await self.session.refresh(entry)
 

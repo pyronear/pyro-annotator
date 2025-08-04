@@ -61,15 +61,13 @@ async def integrity_error_handler(request: Request, exc_: exc.IntegrityError):
         if "invalid input value for enum" in error_msg:
             return JSONResponse(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                content={"detail": f"Validation error: {error_msg}"},
+                content={"detail": "Invalid field value provided"},
             )
 
     # Other integrity errors (unique constraints, foreign keys, etc.)
     return JSONResponse(
         status_code=status.HTTP_409_CONFLICT,
-        content={
-            "detail": "Resource conflict: this data violates database constraints"
-        },
+        content={"detail": "Resource already exists"},
     )
 
 
@@ -79,7 +77,7 @@ async def data_error_handler(request: Request, exc_: exc.DataError):
     logger.error(f"Database data error: {exc_}")
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={"detail": f"Data validation error: {exc_}"},
+        content={"detail": "Invalid data format provided"},
     )
 
 
@@ -91,7 +89,7 @@ async def asyncpg_enum_error_handler(
     logger.error(f"AsyncPG enum validation error: {exc_}")
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={"detail": f"Validation error: {exc_}"},
+        content={"detail": "Invalid field value provided"},
     )
 
 
