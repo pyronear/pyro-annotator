@@ -18,23 +18,38 @@ The building blocks of our annotations and model predictions as an API.
 git clone https://github.com/pyronear/pyro-annotator.git && cd pyro-annotator
 cd annotation_api
 ```
-#### 2 - Set an acme.json file
 
-Create an empty acme.json file:
+#### 2 - Setup and start the services
 
-```bash
-touch acme.json
-chmod 600 acme.json
-```
-
-#### 3 - Start/Stop the services
+The setup is now automated! Simply run:
 
 ```bash
+# For development (recommended)
 make start
-make stop
+
+# For production
+make start-prod
+
+# Or run setup separately
+make setup
 ```
 
-#### 4 - Check how what you've deployed
+The setup automatically:
+- Creates the required `acme.json` file for Let's Encrypt certificates
+- Sets proper file permissions (600)
+- Checks prerequisites (Docker, Docker Compose)
+
+#### 3 - Stop the services
+
+```bash
+# Stop development environment
+make stop
+
+# Stop production environment  
+make stop-prod
+```
+
+#### 4 - Check what you've deployed
 
 You can now access your backend API at [http://localhost:5050/docs](http://localhost:5050/docs)
 
