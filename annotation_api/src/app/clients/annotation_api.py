@@ -25,6 +25,16 @@ __all__ = [
     "list_detections", 
     "get_detection_url",
     "delete_detection",
+    "create_detection_annotation",
+    "get_detection_annotation",
+    "list_detection_annotations",
+    "update_detection_annotation",
+    "delete_detection_annotation",
+    "create_sequence_annotation",
+    "get_sequence_annotation",
+    "list_sequence_annotations",
+    "update_sequence_annotation",
+    "delete_sequence_annotation",
 ]
 
 
@@ -245,4 +255,208 @@ def delete_detection(base_url: str, detection_id: int) -> None:
         requests.RequestException: If the request fails
     """
     url = f"{base_url.rstrip('/')}/api/v1/detections/{detection_id}"
+    _make_request("DELETE", url)
+
+
+# -------------------- DETECTION ANNOTATION OPERATIONS --------------------
+
+def create_detection_annotation(base_url: str, detection_id: int, annotation: Dict, processing_stage: str) -> Dict:
+    """
+    Create a new detection annotation.
+    
+    Args:
+        base_url: Base URL of the annotation API
+        detection_id: ID of the detection to annotate
+        annotation: Dictionary containing annotation data
+        processing_stage: Processing stage enum value (e.g., "imported", "annotated")
+        
+    Returns:
+        Dictionary containing the created detection annotation data
+        
+    Raises:
+        requests.RequestException: If the request fails
+    """
+    url = f"{base_url.rstrip('/')}/api/v1/annotations/detections/"
+    
+    # Prepare form data (detection annotations use form data for creation)
+    data = {
+        "detection_id": detection_id,
+        "annotation": json.dumps(annotation),
+        "processing_stage": processing_stage,
+    }
+    
+    response = _make_request("POST", url, data=data)
+    return _handle_response(response)
+
+
+def get_detection_annotation(base_url: str, annotation_id: int) -> Dict:
+    """
+    Get a specific detection annotation by ID.
+    
+    Args:
+        base_url: Base URL of the annotation API
+        annotation_id: ID of the detection annotation to retrieve
+        
+    Returns:
+        Dictionary containing the detection annotation data
+        
+    Raises:
+        requests.RequestException: If the request fails
+    """
+    url = f"{base_url.rstrip('/')}/api/v1/annotations/detections/{annotation_id}"
+    response = _make_request("GET", url)
+    return _handle_response(response)
+
+
+def list_detection_annotations(base_url: str) -> List[Dict]:
+    """
+    List all detection annotations.
+    
+    Args:
+        base_url: Base URL of the annotation API
+        
+    Returns:
+        List of dictionaries containing detection annotation data
+        
+    Raises:
+        requests.RequestException: If the request fails
+    """
+    url = f"{base_url.rstrip('/')}/api/v1/annotations/detections/"
+    response = _make_request("GET", url)
+    return _handle_response(response)
+
+
+def update_detection_annotation(base_url: str, annotation_id: int, update_data: Dict) -> Dict:
+    """
+    Update a detection annotation by ID.
+    
+    Args:
+        base_url: Base URL of the annotation API
+        annotation_id: ID of the detection annotation to update
+        update_data: Dictionary containing fields to update (annotation, processing_stage)
+        
+    Returns:
+        Dictionary containing the updated detection annotation data
+        
+    Raises:
+        requests.RequestException: If the request fails
+    """
+    url = f"{base_url.rstrip('/')}/api/v1/annotations/detections/{annotation_id}"
+    response = _make_request("PATCH", url, json=update_data)
+    return _handle_response(response)
+
+
+def delete_detection_annotation(base_url: str, annotation_id: int) -> None:
+    """
+    Delete a detection annotation by ID.
+    
+    Args:
+        base_url: Base URL of the annotation API
+        annotation_id: ID of the detection annotation to delete
+        
+    Raises:
+        requests.RequestException: If the request fails
+    """
+    url = f"{base_url.rstrip('/')}/api/v1/annotations/detections/{annotation_id}"
+    _make_request("DELETE", url)
+
+
+# -------------------- SEQUENCE ANNOTATION OPERATIONS --------------------
+
+def create_sequence_annotation(base_url: str, annotation_data: Dict) -> Dict:
+    """
+    Create a new sequence annotation.
+    
+    Args:
+        base_url: Base URL of the annotation API
+        annotation_data: Dictionary containing sequence annotation data including:
+            - sequence_id: ID of the sequence to annotate
+            - has_missed_smoke: Boolean indicating if smoke was missed
+            - annotation: Dictionary containing annotation data
+            - processing_stage: Processing stage enum value
+            - created_at: Creation datetime (ISO format string)
+        
+    Returns:
+        Dictionary containing the created sequence annotation data
+        
+    Raises:
+        requests.RequestException: If the request fails
+    """
+    url = f"{base_url.rstrip('/')}/api/v1/annotations/sequences/"
+    response = _make_request("POST", url, json=annotation_data)
+    return _handle_response(response)
+
+
+def get_sequence_annotation(base_url: str, annotation_id: int) -> Dict:
+    """
+    Get a specific sequence annotation by ID.
+    
+    Args:
+        base_url: Base URL of the annotation API
+        annotation_id: ID of the sequence annotation to retrieve
+        
+    Returns:
+        Dictionary containing the sequence annotation data
+        
+    Raises:
+        requests.RequestException: If the request fails
+    """
+    url = f"{base_url.rstrip('/')}/api/v1/annotations/sequences/{annotation_id}"
+    response = _make_request("GET", url)
+    return _handle_response(response)
+
+
+def list_sequence_annotations(base_url: str) -> List[Dict]:
+    """
+    List all sequence annotations.
+    
+    Args:
+        base_url: Base URL of the annotation API
+        
+    Returns:
+        List of dictionaries containing sequence annotation data
+        
+    Raises:
+        requests.RequestException: If the request fails
+    """
+    url = f"{base_url.rstrip('/')}/api/v1/annotations/sequences/"
+    response = _make_request("GET", url)
+    return _handle_response(response)
+
+
+def update_sequence_annotation(base_url: str, annotation_id: int, update_data: Dict) -> Dict:
+    """
+    Update a sequence annotation by ID.
+    
+    Args:
+        base_url: Base URL of the annotation API
+        annotation_id: ID of the sequence annotation to update
+        update_data: Dictionary containing fields to update:
+            - has_missed_smoke: Optional boolean
+            - annotation: Optional annotation data dictionary
+            - processing_stage: Optional processing stage enum value
+        
+    Returns:
+        Dictionary containing the updated sequence annotation data
+        
+    Raises:
+        requests.RequestException: If the request fails
+    """
+    url = f"{base_url.rstrip('/')}/api/v1/annotations/sequences/{annotation_id}"
+    response = _make_request("PATCH", url, json=update_data)
+    return _handle_response(response)
+
+
+def delete_sequence_annotation(base_url: str, annotation_id: int) -> None:
+    """
+    Delete a sequence annotation by ID.
+    
+    Args:
+        base_url: Base URL of the annotation API
+        annotation_id: ID of the sequence annotation to delete
+        
+    Raises:
+        requests.RequestException: If the request fails
+    """
+    url = f"{base_url.rstrip('/')}/api/v1/annotations/sequences/{annotation_id}"
     _make_request("DELETE", url)
