@@ -65,8 +65,7 @@ def transform_sequence_data(record: dict) -> dict:
         "camera_id": record["camera_id"],
         "organisation_name": record["organization_name"],
         "organisation_id": record["organization_id"],
-        # FIXME:: grab it from sequence data (add it there)
-        "is_wildfire_alertapi": None,  # Could map from sequence data if available
+        "is_wildfire_alertapi": record["sequence_is_wildfire"],
         "lat": record["camera_lat"],
         "lon": record["camera_lon"],
         "azimuth": record["sequence_azimuth"],
