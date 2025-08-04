@@ -33,6 +33,7 @@ dependencies = [
     "boto3>=1.26.0",
     "httpx>=0.24.0",
     "tqdm>=4.67.1",
+    "fastapi-pagination>=0.13.3",
 ]
 
 [dependency-groups]

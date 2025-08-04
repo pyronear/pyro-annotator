@@ -121,6 +121,9 @@ class Detection(SQLModel, table=True):
     __table_args__ = (
         UniqueConstraint("alert_api_id", "id", name="uq_detection_alert_id"),
         Index("ix_detection_sequence_id", "sequence_id"),
+        Index("ix_detection_created_at", "created_at"),
+        Index("ix_detection_recorded_at", "recorded_at"),
+        Index("ix_detection_sequence_created", "sequence_id", "created_at"),
     )
     id: int = Field(
         default=None, primary_key=True, sa_column_kwargs={"autoincrement": True}
