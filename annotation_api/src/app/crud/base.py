@@ -33,7 +33,7 @@ class BaseCRUD(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             await self.session.rollback()
             # Log full error for debugging
             print(f"Database integrity error (full): {error}")
-            
+
             # Check if this is an enum validation error
             if isinstance(error.orig, asyncpg.InvalidTextRepresentationError):
                 error_msg = str(error.orig)

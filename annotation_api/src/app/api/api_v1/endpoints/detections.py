@@ -38,12 +38,14 @@ router = APIRouter()
 
 class OrderByField(str, Enum):
     """Valid fields for ordering detections."""
+
     created_at = "created_at"
     recorded_at = "recorded_at"
 
 
 class OrderDirection(str, Enum):
     """Valid directions for ordering."""
+
     asc = "asc"
     desc = "desc"
 
@@ -119,14 +121,18 @@ async def get_detection_url(
 @router.get("/")
 async def list_detections(
     sequence_id: Optional[int] = Query(None, description="Filter by sequence ID"),
-    order_by: OrderByField = Query(OrderByField.created_at, description="Order by field"),
-    order_direction: OrderDirection = Query(OrderDirection.desc, description="Order direction"),
+    order_by: OrderByField = Query(
+        OrderByField.created_at, description="Order by field"
+    ),
+    order_direction: OrderDirection = Query(
+        OrderDirection.desc, description="Order direction"
+    ),
     session: AsyncSession = Depends(get_session),
     params: Params = Depends(),
 ) -> Page[DetectionRead]:
     """
     List detections with filtering, pagination and ordering.
-    
+
     - **sequence_id**: Filter detections by sequence ID
     - **order_by**: Order by created_at or recorded_at (default: created_at)
     - **order_direction**: asc or desc (default: desc)
@@ -135,18 +141,18 @@ async def list_detections(
     """
     # Build base query
     query = select(Detection)
-    
+
     # Apply filtering
     if sequence_id is not None:
         query = query.where(Detection.sequence_id == sequence_id)
-    
+
     # Apply ordering
     order_field = getattr(Detection, order_by.value)
     if order_direction == OrderDirection.desc:
         query = query.order_by(desc(order_field))
     else:
         query = query.order_by(asc(order_field))
-    
+
     # Apply pagination
     return await paginate(session, query, params)
 

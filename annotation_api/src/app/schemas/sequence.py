@@ -34,7 +34,7 @@ class Azimuth(BaseModel):
 class SequenceCreate(Azimuth):
     source_api: SourceApi
     alert_api_id: int
-    # recorded_at: datetime
+    recorded_at: datetime
     last_seen_at: datetime
     camera_name: str
     camera_id: int
@@ -51,7 +51,7 @@ class SequenceRead(Azimuth):
     source_api: SourceApi
     alert_api_id: int
     created_at: datetime
-    # recorded_at: datetime
+    recorded_at: datetime
     last_seen_at: datetime
     camera_name: str
     camera_id: int

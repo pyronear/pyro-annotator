@@ -34,14 +34,14 @@ async def create_sequence(
     lon: float = Form(...),
     azimuth: Optional[int] = Form(None),
     created_at: Optional[datetime] = Form(None),
-    # recorded_at: datetime = Form(None),
+    recorded_at: datetime = Form(...),
     last_seen_at: Optional[datetime] = Form(None),
     sequences: SequenceCRUD = Depends(get_sequence_crud),
 ) -> SequenceRead:
     payload = SequenceCreate(
         source_api=source_api,
         alert_api_id=alert_api_id,
-        # recorded_at=recorded_at,
+        recorded_at=recorded_at,
         camera_name=camera_name,
         camera_id=camera_id,
         organisation_name=organisation_name,

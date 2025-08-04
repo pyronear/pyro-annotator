@@ -71,6 +71,7 @@ def transform_sequence_data(record: dict) -> dict:
         "lat": record["camera_lat"],
         "lon": record["camera_lon"],
         "azimuth": record["sequence_azimuth"],
+        "recorded_at": record["sequence_started_at"],
         "last_seen_at": record["sequence_last_seen_at"],
     }
 
@@ -339,4 +340,3 @@ def post_records_to_annotation_api(
         "failed_detections": total_failed_detections,
         "total_detections": len(records),
     }
-

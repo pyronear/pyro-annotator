@@ -35,26 +35,9 @@ import argparse
 import logging
 import os
 
-
 from . import client as platform_client
-from . import utils as platform_utils
 from . import shared
-
-
-# Use shared function
-transform_sequence_data = shared.transform_sequence_data
-
-
-# Use shared function
-parse_platform_bboxes = shared.parse_platform_bboxes
-
-
-# Use shared function
-transform_detection_data = shared.transform_detection_data
-
-
-# Use shared function
-download_image = shared.download_image
+from . import utils as platform_utils
 
 
 def make_cli_parser() -> argparse.ArgumentParser:
@@ -112,10 +95,6 @@ def validate_parsed_args(args: dict) -> bool:
     Return whether the parsed args are valid.
     """
     return True
-
-
-# Use shared function
-validate_available_env_variables = shared.validate_available_env_variables
 
 
 def fetch_sequence(
@@ -178,7 +157,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=args["loglevel"].upper())
     if not validate_parsed_args(args):
         exit(1)
-    elif not validate_available_env_variables():
+    elif not shared.validate_available_env_variables():
         exit(1)
     else:
         logger.info(args)
@@ -252,17 +231,21 @@ if __name__ == "__main__":
         # Use shared function to post to annotation API
         try:
             result = shared.post_records_to_annotation_api(annotation_api_url, records)
-            
+
             logger.info("Processing complete:")
-            logger.info(f"  Sequences: {result['successful_sequences']}/{result['total_sequences']} successful")
-            logger.info(f"  Detections: {result['successful_detections']}/{result['total_detections']} successful")
+            logger.info(
+                f"  Sequences: {result['successful_sequences']}/{result['total_sequences']} successful"
+            )
+            logger.info(
+                f"  Detections: {result['successful_detections']}/{result['total_detections']} successful"
+            )
             logger.info("Done ✅")
-            
-            if result['failed_sequences'] > 0 or result['failed_detections'] > 0:
+
+            if result["failed_sequences"] > 0 or result["failed_detections"] > 0:
                 exit(1)
             else:
                 exit(0)
-                
+
         except Exception as e:
             logger.error(f"Unexpected error during annotation API processing: {e}")
             exit(1)

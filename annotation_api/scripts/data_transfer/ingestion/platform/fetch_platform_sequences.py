@@ -32,8 +32,8 @@ from datetime import date, datetime, timedelta
 from tqdm import tqdm
 
 from . import client as platform_client
-from . import utils as platform_utils
 from . import shared
+from . import utils as platform_utils
 
 
 def valid_date(s: str):
@@ -111,10 +111,6 @@ def validate_parsed_args(args: dict) -> bool:
         logging.error("Invalid combination of --date-from and --date-end parameters")
         return False
     return True
-
-
-# Use shared function
-validate_available_env_variables = shared.validate_available_env_variables
 
 
 def get_dates_within(date_from: date, date_end: date) -> list[date]:
@@ -298,7 +294,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=args["loglevel"].upper())
     if not validate_parsed_args(args):
         exit(1)
-    elif not validate_available_env_variables():
+    elif not shared.validate_available_env_variables():
         exit(1)
     else:
         logger.info(args)
@@ -355,34 +351,38 @@ if __name__ == "__main__":
         )
 
         logger.info(f"Fetched {len(records)} detection records from platform API")
-        
+
         if args["skip_posting"]:
             logger.info("Skipping annotation API posting (--skip-posting flag set)")
             logger.info(f"Records: {records}")
             logger.info("Done ✅")
             exit(0)
-        
+
         # Post to annotation API
         annotation_api_url = args["url_api_annotation"]
         logger.info(f"Posting data to annotation API at {annotation_api_url}")
-        
+
         if not records:
             logger.warning("No records to post")
             exit(0)
-        
+
         try:
             result = shared.post_records_to_annotation_api(annotation_api_url, records)
-            
+
             logger.info("Processing complete:")
-            logger.info(f"  Sequences: {result['successful_sequences']}/{result['total_sequences']} successful")
-            logger.info(f"  Detections: {result['successful_detections']}/{result['total_detections']} successful")
+            logger.info(
+                f"  Sequences: {result['successful_sequences']}/{result['total_sequences']} successful"
+            )
+            logger.info(
+                f"  Detections: {result['successful_detections']}/{result['total_detections']} successful"
+            )
             logger.info("Done ✅")
-            
-            if result['failed_sequences'] > 0 or result['failed_detections'] > 0:
+
+            if result["failed_sequences"] > 0 or result["failed_detections"] > 0:
                 exit(1)
             else:
                 exit(0)
-                
+
         except Exception as e:
             logger.error(f"Unexpected error during annotation API processing: {e}")
             exit(1)
