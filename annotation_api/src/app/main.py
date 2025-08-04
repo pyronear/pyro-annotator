@@ -6,10 +6,13 @@
 import logging
 import time
 
+import asyncpg
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
+from fastapi.responses import JSONResponse
+from sqlalchemy import exc
 
 from app.api.api_v1.router import api_router
 from app.core.config import settings
@@ -44,6 +47,48 @@ app = FastAPI(
         },
     ],
 )
+
+
+# Exception handlers
+@app.exception_handler(exc.IntegrityError)
+async def integrity_error_handler(request: Request, exc_: exc.IntegrityError):
+    """Handle database integrity constraint violations."""
+    logger.error(f"Database integrity error: {exc_}")
+    
+    # Check if this is an enum validation error
+    if isinstance(exc_.orig, asyncpg.InvalidTextRepresentationError):
+        error_msg = str(exc_.orig)
+        if "invalid input value for enum" in error_msg:
+            return JSONResponse(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                content={"detail": f"Validation error: {error_msg}"}
+            )
+    
+    # Other integrity errors (unique constraints, foreign keys, etc.)
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content={"detail": "Resource conflict: this data violates database constraints"}
+    )
+
+
+@app.exception_handler(exc.DataError)
+async def data_error_handler(request: Request, exc_: exc.DataError):
+    """Handle database data validation errors."""
+    logger.error(f"Database data error: {exc_}")
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"detail": f"Data validation error: {exc_}"}
+    )
+
+
+@app.exception_handler(asyncpg.InvalidTextRepresentationError)
+async def asyncpg_enum_error_handler(request: Request, exc_: asyncpg.InvalidTextRepresentationError):
+    """Handle asyncpg enum validation errors that slip through."""
+    logger.error(f"AsyncPG enum validation error: {exc_}")
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"detail": f"Validation error: {exc_}"}
+    )
 
 
 # Healthcheck

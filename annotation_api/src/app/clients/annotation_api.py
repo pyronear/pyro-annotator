@@ -15,7 +15,49 @@ from typing import Dict, List, Optional
 
 import requests
 
+
+# -------------------- CUSTOM EXCEPTIONS --------------------
+
+class AnnotationAPIError(Exception):
+    """Base exception for annotation API errors."""
+    
+    def __init__(self, message: str, status_code: int = None, response_data: dict = None, operation: str = None):
+        self.message = message
+        self.status_code = status_code
+        self.response_data = response_data or {}
+        self.operation = operation
+        super().__init__(message)
+
+
+class ValidationError(AnnotationAPIError):
+    """API validation error (422)."""
+    
+    def __init__(self, message: str, field_errors: list = None, operation: str = None):
+        self.field_errors = field_errors or []
+        super().__init__(message, 422, operation=operation)
+
+
+class NotFoundError(AnnotationAPIError):
+    """Resource not found (404)."""
+    
+    def __init__(self, message: str, operation: str = None):
+        super().__init__(message, 404, operation=operation)
+
+
+class ServerError(AnnotationAPIError):
+    """Server error (5xx)."""
+    
+    def __init__(self, message: str, status_code: int = 500, response_data: dict = None, operation: str = None):
+        super().__init__(message, status_code, response_data, operation=operation)
+
+
 __all__ = [
+    # Exceptions
+    "AnnotationAPIError",
+    "ValidationError", 
+    "NotFoundError",
+    "ServerError",
+    # Functions
     "create_sequence",
     "get_sequence", 
     "list_sequences",
@@ -38,42 +80,110 @@ __all__ = [
 ]
 
 
-def _make_request(method: str, url: str, **kwargs) -> requests.Response:
+def _make_request(method: str, url: str, operation: str = None, **kwargs) -> requests.Response:
     """
-    Make an HTTP request and return the response.
+    Make an HTTP request with enhanced error handling.
     
     Args:
         method: HTTP method (GET, POST, DELETE, etc.)
         url: Full URL to make the request to
+        operation: Description of the operation for error context
         **kwargs: Additional arguments to pass to requests
         
     Returns:
         requests.Response: The HTTP response
         
     Raises:
-        requests.RequestException: If the request fails
+        AnnotationAPIError: For various API errors with detailed messages
     """
-    response = requests.request(method, url, **kwargs)
-    response.raise_for_status()
-    return response
+    try:
+        response = requests.request(method, url, **kwargs)
+        
+        # Don't raise for status here - we'll handle it in _handle_response
+        return response
+        
+    except requests.RequestException as e:
+        operation_context = f" during {operation}" if operation else ""
+        raise AnnotationAPIError(
+            f"Network error{operation_context}: {str(e)}", 
+            operation=operation
+        ) from e
 
 
-def _handle_response(response: requests.Response) -> Optional[Dict]:
+def _handle_response(response: requests.Response, operation: str = None) -> Optional[Dict]:
     """
-    Parse JSON response and handle errors.
+    Parse response and raise appropriate exceptions for errors.
     
     Args:
         response: HTTP response object
+        operation: Description of the operation for error context
         
     Returns:
         Parsed JSON as dict, or None for 204 responses
         
     Raises:
-        requests.HTTPError: If response indicates an HTTP error
+        ValidationError: For 422 validation errors
+        NotFoundError: For 404 not found errors  
+        ServerError: For 5xx server errors
+        AnnotationAPIError: For other HTTP errors
     """
     if response.status_code == 204:
         return None
-    return response.json()
+        
+    if response.ok:
+        try:
+            return response.json()
+        except ValueError as e:
+            raise AnnotationAPIError(
+                f"Invalid JSON response{' during ' + operation if operation else ''}: {str(e)}",
+                response.status_code,
+                operation=operation
+            ) from e
+    
+    # Handle error responses
+    try:
+        error_data = response.json()
+    except ValueError:
+        # No JSON in error response
+        error_data = {"detail": response.text or "Unknown error"}
+    
+    operation_context = f" during {operation}" if operation else ""
+    status_code = response.status_code
+    
+    if status_code == 422:
+        # Validation error - extract field details
+        detail = error_data.get("detail", [])
+        field_errors = []
+        error_messages = []
+        
+        if isinstance(detail, list):
+            for error in detail:
+                if isinstance(error, dict):
+                    field = ".".join(str(loc) for loc in error.get("loc", []))
+                    msg = error.get("msg", "Invalid value")
+                    field_errors.append({"field": field, "message": msg})
+                    error_messages.append(f"Field '{field}': {msg}")
+        else:
+            error_messages.append(str(detail))
+            
+        message = f"Validation error{operation_context}: " + "; ".join(error_messages)
+        raise ValidationError(message, field_errors, operation=operation)
+        
+    elif status_code == 404:
+        detail = error_data.get("detail", "Resource not found")
+        message = f"Not found{operation_context}: {detail}"
+        raise NotFoundError(message, operation=operation)
+        
+    elif status_code >= 500:
+        detail = error_data.get("detail", "Internal server error")
+        message = f"Server error{operation_context}: {detail}"
+        raise ServerError(message, status_code, error_data, operation=operation)
+        
+    else:
+        # Other HTTP errors (400, 401, 403, etc.)
+        detail = error_data.get("detail", f"HTTP {status_code} error")
+        message = f"API error{operation_context}: {detail}"
+        raise AnnotationAPIError(message, status_code, error_data, operation=operation)
 
 
 # -------------------- SEQUENCE OPERATIONS --------------------
@@ -90,11 +200,13 @@ def create_sequence(base_url: str, sequence_data: Dict) -> Dict:
         Dictionary containing the created sequence data
         
     Raises:
-        requests.RequestException: If the request fails
+        ValidationError: If sequence data is invalid
+        AnnotationAPIError: For other API errors
     """
     url = f"{base_url.rstrip('/')}/api/v1/sequences/"
-    response = _make_request("POST", url, data=sequence_data)
-    return _handle_response(response)
+    operation = f"create sequence with alert_api_id={sequence_data.get('alert_api_id', 'unknown')}"
+    response = _make_request("POST", url, operation=operation, data=sequence_data)
+    return _handle_response(response, operation=operation)
 
 
 def get_sequence(base_url: str, sequence_id: int) -> Dict:
@@ -109,11 +221,13 @@ def get_sequence(base_url: str, sequence_id: int) -> Dict:
         Dictionary containing the sequence data
         
     Raises:
-        requests.RequestException: If the request fails
+        NotFoundError: If sequence not found
+        AnnotationAPIError: For other API errors
     """
     url = f"{base_url.rstrip('/')}/api/v1/sequences/{sequence_id}"
-    response = _make_request("GET", url)
-    return _handle_response(response)
+    operation = f"get sequence {sequence_id}"
+    response = _make_request("GET", url, operation=operation)
+    return _handle_response(response, operation=operation)
 
 
 def list_sequences(base_url: str) -> List[Dict]:
@@ -127,11 +241,12 @@ def list_sequences(base_url: str) -> List[Dict]:
         List of dictionaries containing sequence data
         
     Raises:
-        requests.RequestException: If the request fails
+        AnnotationAPIError: If the request fails
     """
     url = f"{base_url.rstrip('/')}/api/v1/sequences/"
-    response = _make_request("GET", url)
-    return _handle_response(response)
+    operation = "list sequences"
+    response = _make_request("GET", url, operation=operation)
+    return _handle_response(response, operation=operation)
 
 
 def delete_sequence(base_url: str, sequence_id: int) -> None:
@@ -143,10 +258,13 @@ def delete_sequence(base_url: str, sequence_id: int) -> None:
         sequence_id: ID of the sequence to delete
         
     Raises:
-        requests.RequestException: If the request fails
+        NotFoundError: If sequence not found
+        AnnotationAPIError: For other API errors
     """
     url = f"{base_url.rstrip('/')}/api/v1/sequences/{sequence_id}"
-    _make_request("DELETE", url)
+    operation = f"delete sequence {sequence_id}"
+    response = _make_request("DELETE", url, operation=operation)
+    _handle_response(response, operation=operation)
 
 
 # -------------------- DETECTION OPERATIONS --------------------
@@ -165,7 +283,8 @@ def create_detection(base_url: str, detection_data: Dict, image_file: bytes, fil
         Dictionary containing the created detection data
         
     Raises:
-        requests.RequestException: If the request fails
+        ValidationError: If detection data is invalid
+        AnnotationAPIError: For other API errors
     """
     url = f"{base_url.rstrip('/')}/api/v1/detections/"
     
@@ -182,8 +301,9 @@ def create_detection(base_url: str, detection_data: Dict, image_file: bytes, fil
         "file": (filename, image_file, "image/jpeg")
     }
     
-    response = _make_request("POST", url, data=data, files=files)
-    return _handle_response(response)
+    operation = f"create detection with alert_api_id={detection_data.get('alert_api_id', 'unknown')}"
+    response = _make_request("POST", url, operation=operation, data=data, files=files)
+    return _handle_response(response, operation=operation)
 
 
 def get_detection(base_url: str, detection_id: int) -> Dict:
@@ -198,11 +318,13 @@ def get_detection(base_url: str, detection_id: int) -> Dict:
         Dictionary containing the detection data
         
     Raises:
-        requests.RequestException: If the request fails
+        NotFoundError: If detection not found
+        AnnotationAPIError: For other API errors
     """
     url = f"{base_url.rstrip('/')}/api/v1/detections/{detection_id}"
-    response = _make_request("GET", url)
-    return _handle_response(response)
+    operation = f"get detection {detection_id}"
+    response = _make_request("GET", url, operation=operation)
+    return _handle_response(response, operation=operation)
 
 
 def list_detections(base_url: str) -> List[Dict]:
@@ -216,11 +338,12 @@ def list_detections(base_url: str) -> List[Dict]:
         List of dictionaries containing detection data
         
     Raises:
-        requests.RequestException: If the request fails
+        AnnotationAPIError: If the request fails
     """
     url = f"{base_url.rstrip('/')}/api/v1/detections/"
-    response = _make_request("GET", url)
-    return _handle_response(response)
+    operation = "list detections"
+    response = _make_request("GET", url, operation=operation)
+    return _handle_response(response, operation=operation)
 
 
 def get_detection_url(base_url: str, detection_id: int) -> str:
@@ -235,11 +358,13 @@ def get_detection_url(base_url: str, detection_id: int) -> str:
         Temporary URL string for accessing the detection image
         
     Raises:
-        requests.RequestException: If the request fails
+        NotFoundError: If detection not found
+        AnnotationAPIError: For other API errors
     """
     url = f"{base_url.rstrip('/')}/api/v1/detections/{detection_id}/url"
-    response = _make_request("GET", url)
-    result = _handle_response(response)
+    operation = f"get detection {detection_id} URL"
+    response = _make_request("GET", url, operation=operation)
+    result = _handle_response(response, operation=operation)
     return result["url"]
 
 
@@ -252,10 +377,13 @@ def delete_detection(base_url: str, detection_id: int) -> None:
         detection_id: ID of the detection to delete
         
     Raises:
-        requests.RequestException: If the request fails
+        NotFoundError: If detection not found
+        AnnotationAPIError: For other API errors
     """
     url = f"{base_url.rstrip('/')}/api/v1/detections/{detection_id}"
-    _make_request("DELETE", url)
+    operation = f"delete detection {detection_id}"
+    response = _make_request("DELETE", url, operation=operation)
+    _handle_response(response, operation=operation)
 
 
 # -------------------- DETECTION ANNOTATION OPERATIONS --------------------
@@ -274,7 +402,8 @@ def create_detection_annotation(base_url: str, detection_id: int, annotation: Di
         Dictionary containing the created detection annotation data
         
     Raises:
-        requests.RequestException: If the request fails
+        ValidationError: If annotation data is invalid
+        AnnotationAPIError: For other API errors
     """
     url = f"{base_url.rstrip('/')}/api/v1/annotations/detections/"
     
@@ -285,8 +414,9 @@ def create_detection_annotation(base_url: str, detection_id: int, annotation: Di
         "processing_stage": processing_stage,
     }
     
-    response = _make_request("POST", url, data=data)
-    return _handle_response(response)
+    operation = f"create annotation for detection {detection_id}"
+    response = _make_request("POST", url, operation=operation, data=data)
+    return _handle_response(response, operation=operation)
 
 
 def get_detection_annotation(base_url: str, annotation_id: int) -> Dict:
