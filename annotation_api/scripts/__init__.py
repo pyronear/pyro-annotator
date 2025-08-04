@@ -1,1 +1,0 @@
-# Data transfer scripts for Pyronear annotation API
