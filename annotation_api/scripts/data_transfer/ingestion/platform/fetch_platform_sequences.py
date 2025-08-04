@@ -33,6 +33,7 @@ from tqdm import tqdm
 
 from . import client as platform_client
 from . import utils as platform_utils
+from . import shared
 
 
 def valid_date(s: str):
@@ -94,6 +95,11 @@ def make_cli_parser() -> argparse.ArgumentParser:
         default="info",
         help="Provide logging level. Example --loglevel debug, default=warning",
     )
+    parser.add_argument(
+        "--skip-posting",
+        action="store_true",
+        help="Skip posting to annotation API (fetch and transform only, for testing)",
+    )
     return parser
 
 
@@ -107,34 +113,8 @@ def validate_parsed_args(args: dict) -> bool:
     return True
 
 
-def validate_available_env_variables() -> bool:
-    """
-    Check whether the environment variables required for
-    hitting the API are properly set.
-
-    PLATFORM_LOGIN (str): login
-    PLATFORM_PASSWORD (str): password
-    PLATFORM_ADMIN_LOGIN (str): admin login
-    PLATFORM_ADMIN_PASSWORD (str): admin password
-    """
-    platform_login = os.getenv("PLATFORM_LOGIN")
-    platform_password = os.getenv("PLATFORM_LOGIN")
-    platform_admin_login = os.getenv("PLATFORM_ADMIN_LOGIN")
-    platform_admin_password = os.getenv("PLATFORM_ADMIN_PASSWORD")
-    if not platform_login:
-        logging.error("PLATFORM_LOGIN is not set")
-        return False
-    elif not platform_password:
-        logging.error("PLATFORM_PASSWORD is not set")
-        return False
-    elif not platform_admin_login:
-        logging.error("PLATFORM_ADMIN_LOGIN is not set")
-        return False
-    elif not platform_admin_password:
-        logging.error("PLATFORM_ADMIN_PASSWORD is not set")
-        return False
-    else:
-        return True
+# Use shared function
+validate_available_env_variables = shared.validate_available_env_variables
 
 
 def get_dates_within(date_from: date, date_end: date) -> list[date]:
@@ -374,6 +354,35 @@ if __name__ == "__main__":
             access_token_admin=access_token_admin,
         )
 
-        logger.info(f"records: {records}")
-        logger.info("Done ✅")
-        exit(0)
+        logger.info(f"Fetched {len(records)} detection records from platform API")
+        
+        if args["skip_posting"]:
+            logger.info("Skipping annotation API posting (--skip-posting flag set)")
+            logger.info(f"Records: {records}")
+            logger.info("Done ✅")
+            exit(0)
+        
+        # Post to annotation API
+        annotation_api_url = args["url_api_annotation"]
+        logger.info(f"Posting data to annotation API at {annotation_api_url}")
+        
+        if not records:
+            logger.warning("No records to post")
+            exit(0)
+        
+        try:
+            result = shared.post_records_to_annotation_api(annotation_api_url, records)
+            
+            logger.info("Processing complete:")
+            logger.info(f"  Sequences: {result['successful_sequences']}/{result['total_sequences']} successful")
+            logger.info(f"  Detections: {result['successful_detections']}/{result['total_detections']} successful")
+            logger.info("Done ✅")
+            
+            if result['failed_sequences'] > 0 or result['failed_detections'] > 0:
+                exit(1)
+            else:
+                exit(0)
+                
+        except Exception as e:
+            logger.error(f"Unexpected error during annotation API processing: {e}")
+            exit(1)
