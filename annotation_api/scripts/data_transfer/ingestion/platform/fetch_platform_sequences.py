@@ -259,7 +259,6 @@ def fetch_all_sequences_within(
     logging.info(
         f"Fetching all detections for the {len(sequences)} sequences between {date_from:%Y-%m-%d} and {date_end:%Y-%m-%d}"
     )
-    # Creating records for making the dataframe
     records = []
 
     with concurrent.futures.ProcessPoolExecutor() as executor:
