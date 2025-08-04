@@ -610,4 +610,3 @@ def delete_sequence_annotation(base_url: str, annotation_id: int) -> None:
     """
     url = f"{base_url.rstrip('/')}/api/v1/annotations/sequences/{annotation_id}"
     _make_request("DELETE", url)
-
