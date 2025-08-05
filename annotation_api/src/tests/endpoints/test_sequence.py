@@ -20,6 +20,7 @@ async def test_create_sequence(async_client: AsyncClient):
         "lat": "0.0",
         "lon": "0.0",
         "created_at": (now - timedelta(days=1)).isoformat(),
+        "recorded_at": (now - timedelta(days=1)).isoformat(),
         "last_seen_at": now.isoformat(),
     }
 
@@ -48,7 +49,13 @@ async def test_get_sequence(async_client: AsyncClient):
 async def test_list_sequences(async_client: AsyncClient):
     response = await async_client.get("/sequences")
     assert response.status_code == 200
-    assert isinstance(response.json(), list)
+    data = response.json()
+    assert isinstance(data, dict)
+    assert "items" in data
+    assert "page" in data
+    assert "pages" in data
+    assert "size" in data
+    assert isinstance(data["items"], list)
 
 
 @pytest.mark.asyncio
@@ -74,6 +81,7 @@ async def test_create_sequence_without_is_wildfire_alertapi(async_client: AsyncC
         "lat": "0.0",
         "lon": "0.0",
         "created_at": (now - timedelta(days=1)).isoformat(),
+        "recorded_at": (now - timedelta(days=1)).isoformat(),
         "last_seen_at": now.isoformat(),
     }
 
@@ -102,6 +110,7 @@ async def test_create_sequence_with_is_wildfire_alertapi_true(
         "lat": "0.0",
         "lon": "0.0",
         "created_at": (now - timedelta(days=1)).isoformat(),
+        "recorded_at": (now - timedelta(days=1)).isoformat(),
         "last_seen_at": now.isoformat(),
     }
 
@@ -130,6 +139,7 @@ async def test_create_sequence_with_is_wildfire_alertapi_false(
         "lat": "0.0",
         "lon": "0.0",
         "created_at": (now - timedelta(days=1)).isoformat(),
+        "recorded_at": (now - timedelta(days=1)).isoformat(),
         "last_seen_at": now.isoformat(),
     }
 
@@ -156,6 +166,7 @@ async def test_create_duplicate_sequence_unique_constraint(async_client: AsyncCl
         "lat": "0.0",
         "lon": "0.0",
         "created_at": (now - timedelta(days=1)).isoformat(),
+        "recorded_at": (now - timedelta(days=1)).isoformat(),
         "last_seen_at": now.isoformat(),
     }
 
@@ -204,6 +215,7 @@ async def test_create_sequence_different_source_api_same_alert_id(
         "lat": "0.0",
         "lon": "0.0",
         "created_at": (now - timedelta(days=1)).isoformat(),
+        "recorded_at": (now - timedelta(days=1)).isoformat(),
         "last_seen_at": now.isoformat(),
     }
 

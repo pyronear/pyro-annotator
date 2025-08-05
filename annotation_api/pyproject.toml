@@ -32,6 +32,8 @@ dependencies = [
     "python-magic>=0.4.17",
     "boto3>=1.26.0",
     "httpx>=0.24.0",
+    "tqdm>=4.67.1",
+    "fastapi-pagination>=0.13.3",
 ]
 
 [dependency-groups]
@@ -49,6 +51,7 @@ dev = [
     "pytest-pretty>=1.0.0",
     "httpx>=0.23.0",
     "aiosqlite>=0.16.0,<1.0.0",
+    "pyyaml>=6.0",
 ]
 
 [tool.coverage.run]

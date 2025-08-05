@@ -5,6 +5,7 @@
 
 from typing import Any, Generic, List, Optional, Tuple, Type, TypeVar, Union, cast
 
+import asyncpg
 from fastapi import HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import exc
@@ -30,9 +31,28 @@ class BaseCRUD(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             await self.session.commit()
         except exc.IntegrityError as error:
             await self.session.rollback()
+            # Handle integrity constraint violations
+
+            # Check if this is an enum validation error
+            if isinstance(error.orig, asyncpg.InvalidTextRepresentationError):
+                error_msg = str(error.orig)
+                if "invalid input value for enum" in error_msg:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail="Invalid field value provided",
+                    )
+            # Handle other constraint violations (unique, foreign key, etc.)
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"An entry with the same index already exists : {error!s}",
+                detail="Resource already exists",
+            )
+        except exc.DataError as error:
+            await self.session.rollback()
+            # Handle data type validation errors
+            # Handle data type validation errors
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Invalid data format provided",
             )
         await self.session.refresh(entry)
 

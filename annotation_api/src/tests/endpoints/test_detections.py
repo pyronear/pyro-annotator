@@ -68,7 +68,13 @@ async def test_get_detection_url(async_client: AsyncClient, detection_id: int = 
 async def test_list_detections(async_client: AsyncClient):
     response = await async_client.get("/detections")
     assert response.status_code == 200
-    assert isinstance(response.json(), list)
+    data = response.json()
+    assert isinstance(data, dict)
+    assert "items" in data
+    assert "page" in data
+    assert "pages" in data
+    assert "size" in data
+    assert isinstance(data["items"], list)
 
 
 @pytest.mark.asyncio

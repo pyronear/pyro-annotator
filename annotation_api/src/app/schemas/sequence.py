@@ -9,6 +9,7 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
+from app.models import SourceApi
 from app.schemas.annotation_validation import SequenceAnnotationData
 
 __all__ = [
@@ -31,9 +32,9 @@ class Azimuth(BaseModel):
 
 
 class SequenceCreate(Azimuth):
-    source_api: str
+    source_api: SourceApi
     alert_api_id: int
-    # recorded_at: datetime
+    recorded_at: datetime
     last_seen_at: datetime
     camera_name: str
     camera_id: int
@@ -47,10 +48,10 @@ class SequenceCreate(Azimuth):
 
 class SequenceRead(Azimuth):
     id: int
-    source_api: str
+    source_api: SourceApi
     alert_api_id: int
     created_at: datetime
-    # recorded_at: datetime
+    recorded_at: datetime
     last_seen_at: datetime
     camera_name: str
     camera_id: int

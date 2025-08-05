@@ -76,6 +76,13 @@ class Sequence(SQLModel, table=True):
     __tablename__ = "sequences"
     __table_args__ = (
         UniqueConstraint("alert_api_id", "source_api", name="uq_sequence_alert_source"),
+        Index("ix_sequence_created_at", "created_at"),
+        Index("ix_sequence_recorded_at", "recorded_at"),
+        Index("ix_sequence_last_seen_at", "last_seen_at"),
+        Index("ix_sequence_source_api", "source_api"),
+        Index("ix_sequence_camera_id", "camera_id"),
+        Index("ix_sequence_organisation_id", "organisation_id"),
+        Index("ix_sequence_is_wildfire", "is_wildfire_alertapi"),
     )
     id: int = Field(
         default=None, primary_key=True, sa_column_kwargs={"autoincrement": True}
@@ -83,6 +90,7 @@ class Sequence(SQLModel, table=True):
     source_api: SourceApi
     alert_api_id: int
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    recorded_at: datetime
     last_seen_at: datetime
     camera_name: str
     camera_id: int
@@ -105,7 +113,9 @@ class SequenceAnnotation(SQLModel, table=True):
     id: int = Field(
         default=None, primary_key=True, sa_column_kwargs={"autoincrement": True}
     )
-    sequence_id: int = Field(sa_column=Column(ForeignKey("sequences.id")))
+    sequence_id: int = Field(
+        sa_column=Column(ForeignKey("sequences.id", ondelete="CASCADE"))
+    )
     has_smoke: bool
     has_false_positives: bool
     false_positive_types: str
@@ -121,6 +131,9 @@ class Detection(SQLModel, table=True):
     __table_args__ = (
         UniqueConstraint("alert_api_id", "id", name="uq_detection_alert_id"),
         Index("ix_detection_sequence_id", "sequence_id"),
+        Index("ix_detection_created_at", "created_at"),
+        Index("ix_detection_recorded_at", "recorded_at"),
+        Index("ix_detection_sequence_created", "sequence_id", "created_at"),
     )
     id: int = Field(
         default=None, primary_key=True, sa_column_kwargs={"autoincrement": True}
@@ -129,7 +142,7 @@ class Detection(SQLModel, table=True):
     recorded_at: datetime
     alert_api_id: int
     sequence_id: Optional[int] = Field(
-        default=None, sa_column=Column(ForeignKey("sequences.id"))
+        default=None, sa_column=Column(ForeignKey("sequences.id", ondelete="CASCADE"))
     )
     bucket_key: str
     algo_predictions: Optional[dict] = Field(default=None, sa_column=Column(JSONB))
@@ -143,7 +156,9 @@ class DetectionAnnotation(SQLModel, table=True):
     id: int = Field(
         default=None, primary_key=True, sa_column_kwargs={"autoincrement": True}
     )
-    detection_id: int = Field(sa_column=Column(ForeignKey("detections.id")))
+    detection_id: int = Field(
+        sa_column=Column(ForeignKey("detections.id", ondelete="CASCADE"))
+    )
     annotation: dict = Field(default=None, sa_column=Column(JSONB))
     processing_stage: DetectionAnnotationProcessingStage = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.utcnow)

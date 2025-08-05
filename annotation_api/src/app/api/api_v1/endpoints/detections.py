@@ -2,7 +2,8 @@
 
 import json
 from datetime import datetime
-from typing import List
+from enum import Enum
+from typing import Optional
 
 from fastapi import (
     APIRouter,
@@ -11,10 +12,14 @@ from fastapi import (
     Form,
     HTTPException,
     Path,
+    Query,
     UploadFile,
     status,
 )
+from fastapi_pagination import Page, Params
+from fastapi_pagination.ext.sqlalchemy import apaginate
 from pydantic import ValidationError
+from sqlalchemy import asc, desc, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.dependencies import get_detection_crud
@@ -29,6 +34,20 @@ from app.schemas.detection import (
 from app.services.storage import s3_service, upload_file
 
 router = APIRouter()
+
+
+class OrderByField(str, Enum):
+    """Valid fields for ordering detections."""
+
+    created_at = "created_at"
+    recorded_at = "recorded_at"
+
+
+class OrderDirection(str, Enum):
+    """Valid directions for ordering."""
+
+    asc = "asc"
+    desc = "desc"
 
 
 @router.post(
@@ -101,9 +120,41 @@ async def get_detection_url(
 
 @router.get("/")
 async def list_detections(
-    detections: DetectionCRUD = Depends(get_detection_crud),
-) -> List[DetectionRead]:
-    return await detections.fetch_all()
+    sequence_id: Optional[int] = Query(None, description="Filter by sequence ID"),
+    order_by: OrderByField = Query(
+        OrderByField.created_at, description="Order by field"
+    ),
+    order_direction: OrderDirection = Query(
+        OrderDirection.desc, description="Order direction"
+    ),
+    session: AsyncSession = Depends(get_session),
+    params: Params = Depends(),
+) -> Page[DetectionRead]:
+    """
+    List detections with filtering, pagination and ordering.
+
+    - **sequence_id**: Filter detections by sequence ID
+    - **order_by**: Order by created_at or recorded_at (default: created_at)
+    - **order_direction**: asc or desc (default: desc)
+    - **page**: Page number (default: 1)
+    - **size**: Page size (default: 50, max: 100)
+    """
+    # Build base query
+    query = select(Detection)
+
+    # Apply filtering
+    if sequence_id is not None:
+        query = query.where(Detection.sequence_id == sequence_id)
+
+    # Apply ordering
+    order_field = getattr(Detection, order_by.value)
+    if order_direction == OrderDirection.desc:
+        query = query.order_by(desc(order_field))
+    else:
+        query = query.order_by(asc(order_field))
+
+    # Apply pagination
+    return await apaginate(session, query, params)
 
 
 @router.delete("/{detection_id}", status_code=status.HTTP_204_NO_CONTENT)
