@@ -3,7 +3,7 @@
 import json
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional
+from typing import Optional
 
 from fastapi import (
     APIRouter,
@@ -22,7 +22,12 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.api.dependencies import get_sequence_annotation_crud
 from app.crud import SequenceAnnotationCRUD
 from app.db import get_session
-from app.models import Detection, Sequence, SequenceAnnotation, SequenceAnnotationProcessingStage
+from app.models import (
+    Detection,
+    Sequence,
+    SequenceAnnotation,
+    SequenceAnnotationProcessingStage,
+)
 from app.schemas.annotation_validation import SequenceAnnotationData
 from app.schemas.sequence_annotations import (
     SequenceAnnotationCreate,
@@ -71,11 +76,11 @@ async def validate_detection_ids(
     annotation_data: SequenceAnnotationData, session: AsyncSession
 ) -> None:
     """Validate that all detection_ids in annotation data reference existing detections.
-    
+
     Args:
         annotation_data: The sequence annotation data containing detection_ids
         session: Database session for querying detections
-        
+
     Raises:
         HTTPException: 422 status with details about missing detection_ids
     """
@@ -84,20 +89,22 @@ async def validate_detection_ids(
     for seq_bbox in annotation_data.sequences_bbox:
         for bbox in seq_bbox.bboxes:
             detection_ids.add(bbox.detection_id)
-    
+
     # If no detection_ids to validate, return early
     if not detection_ids:
         return
-    
+
     # Query database to find existing detection_ids
     detection_ids_list = list(detection_ids)
     query = select(Detection.id).where(Detection.id.in_(detection_ids_list))
     result = await session.exec(query)
-    existing_ids = set(row[0] for row in result.all())  # Extract first element from tuples
-    
+    existing_ids = set(
+        row[0] for row in result.all()
+    )  # Extract first element from tuples
+
     # Find missing detection_ids
     missing_ids = detection_ids - existing_ids
-    
+
     if missing_ids:
         # Sort for consistent error messages
         missing_ids_sorted = sorted(list(missing_ids))
@@ -114,7 +121,7 @@ async def create_sequence_annotation(
 ) -> SequenceAnnotationRead:
     # Validate that all detection_ids exist in the database
     await validate_detection_ids(create_data.annotation, annotations.session)
-    
+
     # Derive values from annotation data
     has_smoke = derive_has_smoke(create_data.annotation)
     has_false_positives = derive_has_false_positives(create_data.annotation)
@@ -145,9 +152,15 @@ async def create_sequence_annotation(
 @router.get("/")
 async def list_sequence_annotations(
     has_smoke: Optional[bool] = Query(None, description="Filter by has_smoke"),
-    has_false_positives: Optional[bool] = Query(None, description="Filter by has_false_positives"),
-    false_positive_type: Optional[str] = Query(None, description="Filter by specific false positive type"),
-    has_missed_smoke: Optional[bool] = Query(None, description="Filter by has_missed_smoke"),
+    has_false_positives: Optional[bool] = Query(
+        None, description="Filter by has_false_positives"
+    ),
+    false_positive_type: Optional[str] = Query(
+        None, description="Filter by specific false positive type"
+    ),
+    has_missed_smoke: Optional[bool] = Query(
+        None, description="Filter by has_missed_smoke"
+    ),
     processing_stage: Optional[SequenceAnnotationProcessingStage] = Query(
         None, description="Filter by processing stage"
     ),
@@ -162,7 +175,7 @@ async def list_sequence_annotations(
 ) -> Page[SequenceAnnotationRead]:
     """
     List sequence annotations with filtering, pagination and ordering.
-    
+
     - **has_smoke**: Filter by has_smoke boolean
     - **has_false_positives**: Filter by has_false_positives boolean
     - **false_positive_type**: Filter by specific false positive type (searches within JSON array)
@@ -175,42 +188,48 @@ async def list_sequence_annotations(
     """
     # Build base query
     query = select(SequenceAnnotation)
-    
+
     # Determine if we need to join with Sequence table for ordering
-    needs_sequence_join = order_by == SequenceAnnotationOrderByField.sequence_recorded_at
-    
+    needs_sequence_join = (
+        order_by == SequenceAnnotationOrderByField.sequence_recorded_at
+    )
+
     # Apply join if needed for ordering by sequence recorded_at
     if needs_sequence_join:
         query = query.join(Sequence)
-    
+
     # Apply filtering conditions
     if has_smoke is not None:
         query = query.where(SequenceAnnotation.has_smoke == has_smoke)
-    
+
     if has_false_positives is not None:
-        query = query.where(SequenceAnnotation.has_false_positives == has_false_positives)
-    
+        query = query.where(
+            SequenceAnnotation.has_false_positives == has_false_positives
+        )
+
     if false_positive_type is not None:
         # Use PostgreSQL JSONB contains operator to search within JSON array
-        query = query.where(text("false_positive_types::jsonb ? :fp_type")).params(fp_type=false_positive_type)
-    
+        query = query.where(text("false_positive_types::jsonb ? :fp_type")).params(
+            fp_type=false_positive_type
+        )
+
     if has_missed_smoke is not None:
         query = query.where(SequenceAnnotation.has_missed_smoke == has_missed_smoke)
-    
+
     if processing_stage is not None:
         query = query.where(SequenceAnnotation.processing_stage == processing_stage)
-    
+
     # Apply ordering
     if order_by == SequenceAnnotationOrderByField.sequence_recorded_at:
         order_field = Sequence.recorded_at
     else:
         order_field = getattr(SequenceAnnotation, order_by.value)
-    
+
     if order_direction == OrderDirection.desc:
         query = query.order_by(desc(order_field))
     else:
         query = query.order_by(asc(order_field))
-    
+
     # Apply pagination
     return await apaginate(session, query, params)
 
@@ -239,7 +258,7 @@ async def update_sequence_annotation(
     if payload.annotation is not None:
         # Validate that all detection_ids exist in the database
         await validate_detection_ids(payload.annotation, annotations.session)
-        
+
         update_dict.update(
             {
                 "has_smoke": derive_has_smoke(payload.annotation),

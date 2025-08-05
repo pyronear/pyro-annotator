@@ -110,7 +110,7 @@ SEQ_TABLE = [
         "lat": 1.0,
         "lon": 1.0,
         "organisation_id": 2,
-    }
+    },
 ]
 
 
@@ -123,13 +123,15 @@ def event_loop() -> Generator:
 
 
 @pytest_asyncio.fixture(scope="function")
-async def async_client(async_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
+async def async_client(
+    async_session: AsyncSession,
+) -> AsyncGenerator[AsyncClient, None]:
     from httpx import ASGITransport
-    
+
     # Override the get_session dependency to use the test session
     async def get_test_session():
         yield async_session
-    
+
     app.dependency_overrides[get_session] = get_test_session
 
     async with AsyncClient(
@@ -139,7 +141,7 @@ async def async_client(async_session: AsyncSession) -> AsyncGenerator[AsyncClien
         timeout=5,
     ) as client:
         yield client
-    
+
     # Clean up the override
     app.dependency_overrides.clear()
 
@@ -164,7 +166,7 @@ async def async_session() -> AsyncSession:
         await session.commit()
 
         yield session
-        
+
         # Clean up after test
         for table in reversed(SQLModel.metadata.sorted_tables):
             await session.exec(table.delete())

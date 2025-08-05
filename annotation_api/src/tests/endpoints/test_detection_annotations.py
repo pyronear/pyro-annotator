@@ -368,9 +368,11 @@ async def test_create_detection_annotation_unique_constraint_violation(
     }
 
     # Try to create second annotation for same detection - should fail with 409 Conflict
-    response2 = await async_client.post("/annotations/detections/", data=annotation_payload2)
+    response2 = await async_client.post(
+        "/annotations/detections/", data=annotation_payload2
+    )
     assert response2.status_code == 409  # Conflict due to unique constraint violation
-    
+
     # Note: After an integrity error, the database session becomes unusable for further operations
     # The important test here is that the second request correctly returns 409 Conflict
 
@@ -496,13 +498,17 @@ async def test_list_detection_annotations_filter_by_camera_id(
         "sequence_id": "1",  # This sequence has camera_id=1
         "alert_api_id": "1001",
         "recorded_at": (now - timedelta(days=2)).isoformat(),
-        "algo_predictions": json.dumps({
-            "predictions": [{
-                "xyxyn": [0.15, 0.15, 0.3, 0.3],
-                "confidence": 0.88,
-                "class_name": "smoke",
-            }]
-        }),
+        "algo_predictions": json.dumps(
+            {
+                "predictions": [
+                    {
+                        "xyxyn": [0.15, 0.15, 0.3, 0.3],
+                        "confidence": 0.88,
+                        "class_name": "smoke",
+                    }
+                ]
+            }
+        ),
     }
 
     detection_response1 = await async_client.post(
@@ -516,13 +522,17 @@ async def test_list_detection_annotations_filter_by_camera_id(
     # Create annotation for first detection
     annotation_payload1 = {
         "detection_id": str(detection_id1),
-        "annotation": json.dumps({
-            "annotation": [{
-                "xyxyn": [0.1, 0.1, 0.2, 0.2],
-                "class_name": "smoke",
-                "smoke_type": "wildfire",
-            }]
-        }),
+        "annotation": json.dumps(
+            {
+                "annotation": [
+                    {
+                        "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                        "class_name": "smoke",
+                        "smoke_type": "wildfire",
+                    }
+                ]
+            }
+        ),
         "processing_stage": "visual_check",
     }
 
@@ -559,13 +569,17 @@ async def test_list_detection_annotations_filter_by_organisation_id(
         "sequence_id": "1",  # This sequence has organisation_id=1
         "alert_api_id": "1002",
         "recorded_at": (now - timedelta(days=2)).isoformat(),
-        "algo_predictions": json.dumps({
-            "predictions": [{
-                "xyxyn": [0.15, 0.15, 0.3, 0.3],
-                "confidence": 0.88,
-                "class_name": "smoke",
-            }]
-        }),
+        "algo_predictions": json.dumps(
+            {
+                "predictions": [
+                    {
+                        "xyxyn": [0.15, 0.15, 0.3, 0.3],
+                        "confidence": 0.88,
+                        "class_name": "smoke",
+                    }
+                ]
+            }
+        ),
     }
 
     detection_response = await async_client.post(
@@ -579,13 +593,17 @@ async def test_list_detection_annotations_filter_by_organisation_id(
     # Create annotation for detection
     annotation_payload = {
         "detection_id": str(detection_id),
-        "annotation": json.dumps({
-            "annotation": [{
-                "xyxyn": [0.1, 0.1, 0.2, 0.2],
-                "class_name": "smoke",
-                "smoke_type": "wildfire",
-            }]
-        }),
+        "annotation": json.dumps(
+            {
+                "annotation": [
+                    {
+                        "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                        "class_name": "smoke",
+                        "smoke_type": "wildfire",
+                    }
+                ]
+            }
+        ),
         "processing_stage": "visual_check",
     }
 
@@ -619,13 +637,17 @@ async def test_list_detection_annotations_combined_filtering(
         "sequence_id": "1",  # camera_id=1, organisation_id=1
         "alert_api_id": "1003",
         "recorded_at": (now - timedelta(days=2)).isoformat(),
-        "algo_predictions": json.dumps({
-            "predictions": [{
-                "xyxyn": [0.15, 0.15, 0.3, 0.3],
-                "confidence": 0.88,
-                "class_name": "smoke",
-            }]
-        }),
+        "algo_predictions": json.dumps(
+            {
+                "predictions": [
+                    {
+                        "xyxyn": [0.15, 0.15, 0.3, 0.3],
+                        "confidence": 0.88,
+                        "class_name": "smoke",
+                    }
+                ]
+            }
+        ),
     }
 
     detection_response = await async_client.post(
@@ -639,13 +661,17 @@ async def test_list_detection_annotations_combined_filtering(
     # Create annotation with specific processing stage
     annotation_payload = {
         "detection_id": str(detection_id),
-        "annotation": json.dumps({
-            "annotation": [{
-                "xyxyn": [0.1, 0.1, 0.2, 0.2],
-                "class_name": "smoke",
-                "smoke_type": "wildfire",
-            }]
-        }),
+        "annotation": json.dumps(
+            {
+                "annotation": [
+                    {
+                        "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                        "class_name": "smoke",
+                        "smoke_type": "wildfire",
+                    }
+                ]
+            }
+        ),
         "processing_stage": "annotated",
     }
 
@@ -682,19 +708,23 @@ async def test_list_detection_annotations_filter_by_detection_recorded_at_gte(
     # Define test dates
     base_date = now - timedelta(days=5)
     recent_date = now - timedelta(days=1)
-    
+
     # Create detection with specific recorded_at date
     detection_payload = {
         "sequence_id": "1",
         "alert_api_id": "2001",
         "recorded_at": recent_date.isoformat(),
-        "algo_predictions": json.dumps({
-            "predictions": [{
-                "xyxyn": [0.15, 0.15, 0.3, 0.3],
-                "confidence": 0.88,
-                "class_name": "smoke",
-            }]
-        }),
+        "algo_predictions": json.dumps(
+            {
+                "predictions": [
+                    {
+                        "xyxyn": [0.15, 0.15, 0.3, 0.3],
+                        "confidence": 0.88,
+                        "class_name": "smoke",
+                    }
+                ]
+            }
+        ),
     }
 
     detection_response = await async_client.post(
@@ -708,13 +738,17 @@ async def test_list_detection_annotations_filter_by_detection_recorded_at_gte(
     # Create annotation for this detection
     annotation_payload = {
         "detection_id": str(detection_id),
-        "annotation": json.dumps({
-            "annotation": [{
-                "xyxyn": [0.1, 0.1, 0.2, 0.2],
-                "class_name": "smoke",
-                "smoke_type": "wildfire",
-            }]
-        }),
+        "annotation": json.dumps(
+            {
+                "annotation": [
+                    {
+                        "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                        "class_name": "smoke",
+                        "smoke_type": "wildfire",
+                    }
+                ]
+            }
+        ),
         "processing_stage": "visual_check",
     }
 
@@ -736,7 +770,9 @@ async def test_list_detection_annotations_filter_by_detection_recorded_at_gte(
         if annotation["detection_id"] == detection_id:
             found_annotation = True
             break
-    assert found_annotation, "Should find annotation with detection recorded after base_date"
+    assert (
+        found_annotation
+    ), "Should find annotation with detection recorded after base_date"
 
     # Test filtering by detection_recorded_at_gte with future date (should not find annotation)
     future_date = now + timedelta(days=1)
@@ -752,7 +788,9 @@ async def test_list_detection_annotations_filter_by_detection_recorded_at_gte(
         if annotation["detection_id"] == detection_id:
             found_annotation = True
             break
-    assert not found_annotation, "Should not find annotation with detection recorded before future_date"
+    assert (
+        not found_annotation
+    ), "Should not find annotation with detection recorded before future_date"
 
 
 @pytest.mark.asyncio
@@ -762,19 +800,23 @@ async def test_list_detection_annotations_filter_by_detection_recorded_at_lte(
     """Test filtering detection annotations by detection_recorded_at_lte."""
     # Define test dates
     old_date = now - timedelta(days=10)
-    
+
     # Create detection with specific recorded_at date
     detection_payload = {
         "sequence_id": "1",
         "alert_api_id": "2002",
         "recorded_at": old_date.isoformat(),
-        "algo_predictions": json.dumps({
-            "predictions": [{
-                "xyxyn": [0.15, 0.15, 0.3, 0.3],
-                "confidence": 0.88,
-                "class_name": "smoke",
-            }]
-        }),
+        "algo_predictions": json.dumps(
+            {
+                "predictions": [
+                    {
+                        "xyxyn": [0.15, 0.15, 0.3, 0.3],
+                        "confidence": 0.88,
+                        "class_name": "smoke",
+                    }
+                ]
+            }
+        ),
     }
 
     detection_response = await async_client.post(
@@ -788,13 +830,17 @@ async def test_list_detection_annotations_filter_by_detection_recorded_at_lte(
     # Create annotation for this detection
     annotation_payload = {
         "detection_id": str(detection_id),
-        "annotation": json.dumps({
-            "annotation": [{
-                "xyxyn": [0.1, 0.1, 0.2, 0.2],
-                "class_name": "smoke",
-                "smoke_type": "wildfire",
-            }]
-        }),
+        "annotation": json.dumps(
+            {
+                "annotation": [
+                    {
+                        "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                        "class_name": "smoke",
+                        "smoke_type": "wildfire",
+                    }
+                ]
+            }
+        ),
         "processing_stage": "visual_check",
     }
 
@@ -816,7 +862,9 @@ async def test_list_detection_annotations_filter_by_detection_recorded_at_lte(
         if annotation["detection_id"] == detection_id:
             found_annotation = True
             break
-    assert found_annotation, "Should find annotation with detection recorded before current date"
+    assert (
+        found_annotation
+    ), "Should find annotation with detection recorded before current date"
 
     # Test filtering by detection_recorded_at_lte with very old date (should not find annotation)
     very_old_date = now - timedelta(days=20)
@@ -832,7 +880,9 @@ async def test_list_detection_annotations_filter_by_detection_recorded_at_lte(
         if annotation["detection_id"] == detection_id:
             found_annotation = True
             break
-    assert not found_annotation, "Should not find annotation with detection recorded after very_old_date"
+    assert (
+        not found_annotation
+    ), "Should not find annotation with detection recorded after very_old_date"
 
 
 @pytest.mark.asyncio
@@ -844,19 +894,23 @@ async def test_list_detection_annotations_filter_by_detection_recorded_at_range(
     start_date = now - timedelta(days=10)
     target_date = now - timedelta(days=5)
     end_date = now - timedelta(days=1)
-    
+
     # Create detection within the date range
     detection_payload = {
         "sequence_id": "1",
         "alert_api_id": "2003",
         "recorded_at": target_date.isoformat(),
-        "algo_predictions": json.dumps({
-            "predictions": [{
-                "xyxyn": [0.15, 0.15, 0.3, 0.3],
-                "confidence": 0.88,
-                "class_name": "smoke",
-            }]
-        }),
+        "algo_predictions": json.dumps(
+            {
+                "predictions": [
+                    {
+                        "xyxyn": [0.15, 0.15, 0.3, 0.3],
+                        "confidence": 0.88,
+                        "class_name": "smoke",
+                    }
+                ]
+            }
+        ),
     }
 
     detection_response = await async_client.post(
@@ -870,13 +924,17 @@ async def test_list_detection_annotations_filter_by_detection_recorded_at_range(
     # Create annotation for this detection
     annotation_payload = {
         "detection_id": str(detection_id),
-        "annotation": json.dumps({
-            "annotation": [{
-                "xyxyn": [0.1, 0.1, 0.2, 0.2],
-                "class_name": "smoke",
-                "smoke_type": "wildfire",
-            }]
-        }),
+        "annotation": json.dumps(
+            {
+                "annotation": [
+                    {
+                        "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                        "class_name": "smoke",
+                        "smoke_type": "wildfire",
+                    }
+                ]
+            }
+        ),
         "processing_stage": "visual_check",
     }
 
@@ -898,7 +956,9 @@ async def test_list_detection_annotations_filter_by_detection_recorded_at_range(
         if annotation["detection_id"] == detection_id:
             found_annotation = True
             break
-    assert found_annotation, "Should find annotation with detection recorded within date range"
+    assert (
+        found_annotation
+    ), "Should find annotation with detection recorded within date range"
 
     # Test filtering by narrow date range that excludes the detection (should not find annotation)
     narrow_start = now - timedelta(days=3)
@@ -915,7 +975,9 @@ async def test_list_detection_annotations_filter_by_detection_recorded_at_range(
         if annotation["detection_id"] == detection_id:
             found_annotation = True
             break
-    assert not found_annotation, "Should not find annotation with detection recorded outside narrow date range"
+    assert (
+        not found_annotation
+    ), "Should not find annotation with detection recorded outside narrow date range"
 
 
 @pytest.mark.asyncio
@@ -925,19 +987,23 @@ async def test_list_detection_annotations_combined_date_filtering(
     """Test combined filtering by detection_recorded_at and annotation created_at."""
     # Define test dates
     detection_recorded_date = now - timedelta(days=5)
-    
+
     # Create detection with specific recorded_at date
     detection_payload = {
         "sequence_id": "1",
         "alert_api_id": "2004",
         "recorded_at": detection_recorded_date.isoformat(),
-        "algo_predictions": json.dumps({
-            "predictions": [{
-                "xyxyn": [0.15, 0.15, 0.3, 0.3],
-                "confidence": 0.88,
-                "class_name": "smoke",
-            }]
-        }),
+        "algo_predictions": json.dumps(
+            {
+                "predictions": [
+                    {
+                        "xyxyn": [0.15, 0.15, 0.3, 0.3],
+                        "confidence": 0.88,
+                        "class_name": "smoke",
+                    }
+                ]
+            }
+        ),
     }
 
     detection_response = await async_client.post(
@@ -951,13 +1017,17 @@ async def test_list_detection_annotations_combined_date_filtering(
     # Create annotation for this detection
     annotation_payload = {
         "detection_id": str(detection_id),
-        "annotation": json.dumps({
-            "annotation": [{
-                "xyxyn": [0.1, 0.1, 0.2, 0.2],
-                "class_name": "smoke",
-                "smoke_type": "wildfire",
-            }]
-        }),
+        "annotation": json.dumps(
+            {
+                "annotation": [
+                    {
+                        "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                        "class_name": "smoke",
+                        "smoke_type": "wildfire",
+                    }
+                ]
+            }
+        ),
         "processing_stage": "annotated",
     }
 
