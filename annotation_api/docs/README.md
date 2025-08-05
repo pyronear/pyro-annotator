@@ -37,6 +37,14 @@ Welcome to the Pyronear Annotation API documentation. This API provides a compre
 - Batch processing and automation
 - Troubleshooting and error handling
 
+### 🤖 [Sequence Annotation Guide](sequence-annotation-guide.md)
+**Automatic annotation generation from AI predictions**
+- Temporal clustering of bounding boxes across time frames
+- Confidence and IoU threshold configuration
+- Batch processing and parameter tuning
+- Integration with human review workflows
+- Quality control and troubleshooting
+
 ## Quick Start
 
 ```python
