@@ -57,7 +57,11 @@ The API provides enhanced endpoints with pagination, filtering, and ordering:
   - Supports filtering by sequence_id, alert_api_id, recorded_at ranges
   - Ordering by created_at, recorded_at (asc/desc)
   - Paginated responses with items, page, pages, size, total
-- **Detection Annotations** (`/api/v1/annotations/detections/`) - Annotations for detections
+- **Detection Annotations** (`/api/v1/annotations/detections/`) - Human annotations for detections
+  - Supports filtering by sequence_id, camera_id, organisation_id (through detection -> sequence relationships), processing_stage, created_at ranges
+  - Ordering by created_at, processing_stage (asc/desc)
+  - Paginated responses with comprehensive database indexing for performance
+  - Optimized JOIN strategy: conditionally joins Detection and/or Sequence tables based on filtering needs
 - **Sequences** (`/api/v1/sequences/`) - Image/video sequences with enhanced functionality
   - Supports filtering by source_api, camera_id, organisation_id, is_wildfire_alertapi
   - Ordering by created_at, recorded_at (asc/desc)

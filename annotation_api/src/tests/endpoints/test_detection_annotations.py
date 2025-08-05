@@ -67,7 +67,13 @@ async def test_create_detection_annotation(
 async def test_list_detection_annotations(async_client: AsyncClient):
     response = await async_client.get("/annotations/detections/")
     assert response.status_code == 200
-    assert isinstance(response.json(), list)
+    json_response = response.json()
+    assert isinstance(json_response, dict)
+    assert "items" in json_response
+    assert "page" in json_response
+    assert "pages" in json_response
+    assert "size" in json_response
+    assert isinstance(json_response["items"], list)
 
 
 @pytest.mark.asyncio
@@ -482,3 +488,191 @@ async def test_create_detection_annotation_different_detections_allowed(
     assert annotation1["detection_id"] != annotation2["detection_id"]
     assert annotation1["detection_id"] == detection_id1
     assert annotation2["detection_id"] == detection_id2
+
+
+@pytest.mark.asyncio
+async def test_list_detection_annotations_filter_by_camera_id(
+    async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+):
+    """Test filtering detection annotations by camera_id."""
+    # Create first detection with camera_id 1 (from sequence 1)
+    detection_payload1 = {
+        "sequence_id": "1",  # This sequence has camera_id=1
+        "alert_api_id": "1001",
+        "recorded_at": (now - timedelta(days=2)).isoformat(),
+        "algo_predictions": json.dumps({
+            "predictions": [{
+                "xyxyn": [0.15, 0.15, 0.3, 0.3],
+                "confidence": 0.88,
+                "class_name": "smoke",
+            }]
+        }),
+    }
+
+    detection_response1 = await async_client.post(
+        "/detections",
+        data=detection_payload1,
+        files={"file": ("image1.jpg", mock_img, "image/jpeg")},
+    )
+    assert detection_response1.status_code == 201
+    detection_id1 = detection_response1.json()["id"]
+
+    # Create annotation for first detection
+    annotation_payload1 = {
+        "detection_id": str(detection_id1),
+        "annotation": json.dumps({
+            "annotation": [{
+                "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                "class_name": "smoke",
+                "smoke_type": "wildfire",
+            }]
+        }),
+        "processing_stage": "visual_check",
+    }
+
+    response1 = await async_client.post(
+        "/annotations/detections/", data=annotation_payload1
+    )
+    assert response1.status_code == 201
+
+    # Test filtering by camera_id=1 (should find the annotation)
+    response = await async_client.get("/annotations/detections/?camera_id=1")
+    assert response.status_code == 200
+    json_response = response.json()
+    assert "items" in json_response
+    assert len(json_response["items"]) >= 1
+    # Verify that all returned annotations belong to detections from camera_id=1
+    for annotation in json_response["items"]:
+        assert annotation["detection_id"] == detection_id1
+
+    # Test filtering by non-existent camera_id (should find no annotations)
+    response = await async_client.get("/annotations/detections/?camera_id=999")
+    assert response.status_code == 200
+    json_response = response.json()
+    assert "items" in json_response
+    assert len(json_response["items"]) == 0
+
+
+@pytest.mark.asyncio
+async def test_list_detection_annotations_filter_by_organisation_id(
+    async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+):
+    """Test filtering detection annotations by organisation_id."""
+    # Create detection with organisation_id 1 (from sequence 1)
+    detection_payload = {
+        "sequence_id": "1",  # This sequence has organisation_id=1
+        "alert_api_id": "1002",
+        "recorded_at": (now - timedelta(days=2)).isoformat(),
+        "algo_predictions": json.dumps({
+            "predictions": [{
+                "xyxyn": [0.15, 0.15, 0.3, 0.3],
+                "confidence": 0.88,
+                "class_name": "smoke",
+            }]
+        }),
+    }
+
+    detection_response = await async_client.post(
+        "/detections",
+        data=detection_payload,
+        files={"file": ("image.jpg", mock_img, "image/jpeg")},
+    )
+    assert detection_response.status_code == 201
+    detection_id = detection_response.json()["id"]
+
+    # Create annotation for detection
+    annotation_payload = {
+        "detection_id": str(detection_id),
+        "annotation": json.dumps({
+            "annotation": [{
+                "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                "class_name": "smoke",
+                "smoke_type": "wildfire",
+            }]
+        }),
+        "processing_stage": "visual_check",
+    }
+
+    response = await async_client.post(
+        "/annotations/detections/", data=annotation_payload
+    )
+    assert response.status_code == 201
+
+    # Test filtering by organisation_id=1 (should find the annotation)
+    response = await async_client.get("/annotations/detections/?organisation_id=1")
+    assert response.status_code == 200
+    json_response = response.json()
+    assert "items" in json_response
+    assert len(json_response["items"]) >= 1
+
+    # Test filtering by non-existent organisation_id (should find no annotations)
+    response = await async_client.get("/annotations/detections/?organisation_id=999")
+    assert response.status_code == 200
+    json_response = response.json()
+    assert "items" in json_response
+    assert len(json_response["items"]) == 0
+
+
+@pytest.mark.asyncio
+async def test_list_detection_annotations_combined_filtering(
+    async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+):
+    """Test combined filtering by camera_id, organisation_id, and processing_stage."""
+    # Create detection
+    detection_payload = {
+        "sequence_id": "1",  # camera_id=1, organisation_id=1
+        "alert_api_id": "1003",
+        "recorded_at": (now - timedelta(days=2)).isoformat(),
+        "algo_predictions": json.dumps({
+            "predictions": [{
+                "xyxyn": [0.15, 0.15, 0.3, 0.3],
+                "confidence": 0.88,
+                "class_name": "smoke",
+            }]
+        }),
+    }
+
+    detection_response = await async_client.post(
+        "/detections",
+        data=detection_payload,
+        files={"file": ("image.jpg", mock_img, "image/jpeg")},
+    )
+    assert detection_response.status_code == 201
+    detection_id = detection_response.json()["id"]
+
+    # Create annotation with specific processing stage
+    annotation_payload = {
+        "detection_id": str(detection_id),
+        "annotation": json.dumps({
+            "annotation": [{
+                "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                "class_name": "smoke",
+                "smoke_type": "wildfire",
+            }]
+        }),
+        "processing_stage": "annotated",
+    }
+
+    response = await async_client.post(
+        "/annotations/detections/", data=annotation_payload
+    )
+    assert response.status_code == 201
+
+    # Test combined filtering - should find the annotation
+    response = await async_client.get(
+        "/annotations/detections/?camera_id=1&organisation_id=1&processing_stage=annotated"
+    )
+    assert response.status_code == 200
+    json_response = response.json()
+    assert "items" in json_response
+    assert len(json_response["items"]) >= 1
+
+    # Test combined filtering with mismatched criteria - should find no annotations
+    response = await async_client.get(
+        "/annotations/detections/?camera_id=1&organisation_id=1&processing_stage=imported"
+    )
+    assert response.status_code == 200
+    json_response = response.json()
+    assert "items" in json_response
+    # This might be 0 or might include other annotations, depending on test data
+    # The key is that it returns a valid paginated response

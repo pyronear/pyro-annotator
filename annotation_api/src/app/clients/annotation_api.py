@@ -241,22 +241,38 @@ def get_sequence(base_url: str, sequence_id: int) -> Dict:
     return _handle_response(response, operation=operation)
 
 
-def list_sequences(base_url: str) -> List[Dict]:
+def list_sequences(base_url: str, **params) -> Dict:
     """
-    List all sequences.
+    List sequences with pagination and filtering.
 
     Args:
         base_url: Base URL of the annotation API
+        **params: Query parameters for filtering and pagination:
+            - source_api: Filter by source API
+            - camera_id: Filter by camera ID
+            - organisation_id: Filter by organisation ID
+            - is_wildfire_alertapi: Filter by wildfire flag
+            - recorded_at_gte: Filter by recorded_at >= this date
+            - recorded_at_lte: Filter by recorded_at <= this date
+            - order_by: Order by field (created_at, recorded_at, last_seen_at)
+            - order_direction: Order direction (asc, desc)
+            - page: Page number (default: 1)
+            - size: Page size (default: 50, max: 100)
 
     Returns:
-        List of dictionaries containing sequence data
+        Dictionary containing paginated sequence data with keys:
+        - items: List of sequences
+        - page: Current page number
+        - pages: Total number of pages
+        - size: Page size
+        - total: Total number of items
 
     Raises:
         AnnotationAPIError: If the request fails
     """
     url = f"{base_url.rstrip('/')}/api/v1/sequences/"
     operation = "list sequences"
-    response = _make_request("GET", url, operation=operation)
+    response = _make_request("GET", url, operation=operation, params=params)
     return _handle_response(response, operation=operation)
 
 
@@ -339,22 +355,33 @@ def get_detection(base_url: str, detection_id: int) -> Dict:
     return _handle_response(response, operation=operation)
 
 
-def list_detections(base_url: str) -> List[Dict]:
+def list_detections(base_url: str, **params) -> Dict:
     """
-    List all detections.
+    List detections with pagination and filtering.
 
     Args:
         base_url: Base URL of the annotation API
+        **params: Query parameters for filtering and pagination:
+            - sequence_id: Filter by sequence ID
+            - order_by: Order by field (created_at, recorded_at)
+            - order_direction: Order direction (asc, desc)
+            - page: Page number (default: 1)
+            - size: Page size (default: 50, max: 100)
 
     Returns:
-        List of dictionaries containing detection data
+        Dictionary containing paginated detection data with keys:
+        - items: List of detections
+        - page: Current page number
+        - pages: Total number of pages
+        - size: Page size
+        - total: Total number of items
 
     Raises:
         AnnotationAPIError: If the request fails
     """
     url = f"{base_url.rstrip('/')}/api/v1/detections/"
     operation = "list detections"
-    response = _make_request("GET", url, operation=operation)
+    response = _make_request("GET", url, operation=operation, params=params)
     return _handle_response(response, operation=operation)
 
 
@@ -453,22 +480,39 @@ def get_detection_annotation(base_url: str, annotation_id: int) -> Dict:
     return _handle_response(response)
 
 
-def list_detection_annotations(base_url: str) -> List[Dict]:
+def list_detection_annotations(base_url: str, **params) -> Dict:
     """
-    List all detection annotations.
+    List detection annotations with pagination and filtering.
 
     Args:
         base_url: Base URL of the annotation API
+        **params: Query parameters for filtering and pagination:
+            - sequence_id: Filter by sequence ID (through detection relationship)
+            - camera_id: Filter by camera ID (through detection -> sequence relationship)
+            - organisation_id: Filter by organisation ID (through detection -> sequence relationship)
+            - processing_stage: Filter by processing stage (imported, visual_check, etc.)
+            - created_at_gte: Filter by created_at >= this date
+            - created_at_lte: Filter by created_at <= this date
+            - order_by: Order by field (created_at, processing_stage)
+            - order_direction: Order direction (asc, desc)
+            - page: Page number (default: 1)
+            - size: Page size (default: 50, max: 100)
 
     Returns:
-        List of dictionaries containing detection annotation data
+        Dictionary containing paginated detection annotation data with keys:
+        - items: List of detection annotations
+        - page: Current page number
+        - pages: Total number of pages
+        - size: Page size
+        - total: Total number of items
 
     Raises:
-        requests.RequestException: If the request fails
+        AnnotationAPIError: If the request fails
     """
     url = f"{base_url.rstrip('/')}/api/v1/annotations/detections/"
-    response = _make_request("GET", url)
-    return _handle_response(response)
+    operation = "list detection annotations"
+    response = _make_request("GET", url, operation=operation, params=params)
+    return _handle_response(response, operation=operation)
 
 
 def update_detection_annotation(
