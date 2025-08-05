@@ -607,6 +607,7 @@ def list_sequence_annotations(base_url: str, **params) -> Dict:
     Args:
         base_url: Base URL of the annotation API
         **params: Query parameters for filtering and pagination:
+            - sequence_id: Filter by sequence ID
             - has_smoke: Filter by has_smoke boolean
             - has_false_positives: Filter by has_false_positives boolean
             - false_positive_type: Filter by specific false positive type (searches within JSON array)

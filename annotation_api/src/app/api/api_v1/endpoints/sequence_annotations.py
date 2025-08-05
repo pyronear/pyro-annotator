@@ -151,6 +151,7 @@ async def create_sequence_annotation(
 
 @router.get("/")
 async def list_sequence_annotations(
+    sequence_id: Optional[int] = Query(None, description="Filter by sequence ID"),
     has_smoke: Optional[bool] = Query(None, description="Filter by has_smoke"),
     has_false_positives: Optional[bool] = Query(
         None, description="Filter by has_false_positives"
@@ -178,6 +179,7 @@ async def list_sequence_annotations(
     """
     List sequence annotations with filtering, pagination and ordering.
 
+    - **sequence_id**: Filter by sequence ID
     - **has_smoke**: Filter by has_smoke boolean
     - **has_false_positives**: Filter by has_false_positives boolean
     - **false_positive_type**: Filter by specific false positive type (searches within JSON array)
@@ -201,6 +203,9 @@ async def list_sequence_annotations(
         query = query.join(Sequence)
 
     # Apply filtering conditions
+    if sequence_id is not None:
+        query = query.where(SequenceAnnotation.sequence_id == sequence_id)
+
     if has_smoke is not None:
         query = query.where(SequenceAnnotation.has_smoke == has_smoke)
 
