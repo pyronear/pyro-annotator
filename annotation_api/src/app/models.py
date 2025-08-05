@@ -109,6 +109,9 @@ class SequenceAnnotation(SQLModel, table=True):
         Index("ix_sequence_annotation_has_smoke", "has_smoke"),
         Index("ix_sequence_annotation_has_false_positives", "has_false_positives"),
         Index("ix_sequence_annotation_has_missed_smoke", "has_missed_smoke"),
+        Index("ix_sequence_annotation_processing_stage", "processing_stage"),
+        Index("ix_sequence_annotation_created_at", "created_at"),
+        Index("ix_sequence_annotation_stage_date", "processing_stage", "created_at"),
     )
     id: int = Field(
         default=None, primary_key=True, sa_column_kwargs={"autoincrement": True}
@@ -152,6 +155,10 @@ class DetectionAnnotation(SQLModel, table=True):
     __tablename__ = "detections_annotations"
     __table_args__ = (
         UniqueConstraint("detection_id", name="uq_detection_annotation_detection_id"),
+        Index("ix_detection_annotation_processing_stage", "processing_stage"),
+        Index("ix_detection_annotation_created_at", "created_at"),
+        Index("ix_detection_annotation_stage_date", "processing_stage", "created_at"),
+        Index("ix_detection_annotation_detection_date", "detection_id", "created_at"),
     )
     id: int = Field(
         default=None, primary_key=True, sa_column_kwargs={"autoincrement": True}

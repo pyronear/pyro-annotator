@@ -2,14 +2,20 @@
 
 import json
 from datetime import datetime
-from typing import List
+from enum import Enum
+from typing import List, Optional
 
-from fastapi import APIRouter, Body, Depends, Form, HTTPException, Path, status
+from fastapi import APIRouter, Body, Depends, Form, HTTPException, Path, Query, status
+from fastapi_pagination import Page, Params
+from fastapi_pagination.ext.sqlalchemy import apaginate
 from pydantic import ValidationError
+from sqlalchemy import asc, desc, select
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.dependencies import get_detection_annotation_crud
 from app.crud import DetectionAnnotationCRUD
-from app.models import DetectionAnnotationProcessingStage
+from app.db import get_session
+from app.models import Detection, DetectionAnnotation, DetectionAnnotationProcessingStage, Sequence
 from app.schemas.detection_annotations import (
     DetectionAnnotationRead,
     DetectionAnnotationUpdate,
@@ -17,6 +23,20 @@ from app.schemas.detection_annotations import (
 from app.schemas.annotation_validation import DetectionAnnotationData
 
 router = APIRouter()
+
+
+class DetectionAnnotationOrderByField(str, Enum):
+    """Valid fields for ordering detection annotations."""
+
+    created_at = "created_at"
+    processing_stage = "processing_stage"
+
+
+class OrderDirection(str, Enum):
+    """Valid directions for ordering."""
+
+    asc = "asc"
+    desc = "desc"
 
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
@@ -59,9 +79,93 @@ async def create_detection_annotation(
 
 @router.get("/")
 async def list_annotations(
-    annotations: DetectionAnnotationCRUD = Depends(get_detection_annotation_crud),
-) -> List[DetectionAnnotationRead]:
-    return await annotations.fetch_all()
+    sequence_id: Optional[int] = Query(None, description="Filter by sequence ID"),
+    camera_id: Optional[int] = Query(None, description="Filter by camera ID"),
+    organisation_id: Optional[int] = Query(None, description="Filter by organisation ID"),
+    processing_stage: Optional[DetectionAnnotationProcessingStage] = Query(
+        None, description="Filter by processing stage"
+    ),
+    created_at_gte: Optional[datetime] = Query(None, description="Filter by created_at >= this date"),
+    created_at_lte: Optional[datetime] = Query(None, description="Filter by created_at <= this date"),
+    detection_recorded_at_gte: Optional[datetime] = Query(None, description="Filter by detection recorded_at >= this date"),
+    detection_recorded_at_lte: Optional[datetime] = Query(None, description="Filter by detection recorded_at <= this date"),
+    order_by: DetectionAnnotationOrderByField = Query(
+        DetectionAnnotationOrderByField.created_at, description="Order by field"
+    ),
+    order_direction: OrderDirection = Query(
+        OrderDirection.desc, description="Order direction"
+    ),
+    session: AsyncSession = Depends(get_session),
+    params: Params = Depends(),
+) -> Page[DetectionAnnotationRead]:
+    """
+    List detection annotations with filtering, pagination and ordering.
+    
+    - **sequence_id**: Filter annotations by sequence ID (through detection relationship)
+    - **camera_id**: Filter annotations by camera ID (through detection -> sequence relationship)
+    - **organisation_id**: Filter annotations by organisation ID (through detection -> sequence relationship)
+    - **processing_stage**: Filter by processing stage (imported, visual_check, etc.)
+    - **created_at_gte**: Filter by annotation created_at >= this date
+    - **created_at_lte**: Filter by annotation created_at <= this date
+    - **detection_recorded_at_gte**: Filter by detection recorded_at >= this date (when image was captured)
+    - **detection_recorded_at_lte**: Filter by detection recorded_at <= this date (when image was captured)
+    - **order_by**: Order by created_at or processing_stage (default: created_at)
+    - **order_direction**: asc or desc (default: desc)
+    - **page**: Page number (default: 1)
+    - **size**: Page size (default: 50, max: 100)
+    """
+    # Build base query with conditional joins based on filtering needs
+    query = select(DetectionAnnotation)
+    
+    # Determine if we need to join with Sequence table
+    needs_sequence_join = camera_id is not None or organisation_id is not None
+    needs_detection_join = (sequence_id is not None or 
+                           detection_recorded_at_gte is not None or 
+                           detection_recorded_at_lte is not None or 
+                           needs_sequence_join)
+    
+    # Apply joins based on filtering requirements
+    if needs_sequence_join:
+        # Join through Detection to Sequence for camera/organisation filtering
+        query = query.join(Detection).join(Sequence)
+    elif needs_detection_join:
+        # Join only with Detection for sequence_id filtering
+        query = query.join(Detection)
+    
+    # Apply filtering conditions
+    if sequence_id is not None:
+        query = query.where(Detection.sequence_id == sequence_id)
+    
+    if camera_id is not None:
+        query = query.where(Sequence.camera_id == camera_id)
+    
+    if organisation_id is not None:
+        query = query.where(Sequence.organisation_id == organisation_id)
+    
+    if processing_stage is not None:
+        query = query.where(DetectionAnnotation.processing_stage == processing_stage)
+    
+    if created_at_gte is not None:
+        query = query.where(DetectionAnnotation.created_at >= created_at_gte)
+    
+    if created_at_lte is not None:
+        query = query.where(DetectionAnnotation.created_at <= created_at_lte)
+    
+    if detection_recorded_at_gte is not None:
+        query = query.where(Detection.recorded_at >= detection_recorded_at_gte)
+    
+    if detection_recorded_at_lte is not None:
+        query = query.where(Detection.recorded_at <= detection_recorded_at_lte)
+    
+    # Apply ordering
+    order_field = getattr(DetectionAnnotation, order_by.value)
+    if order_direction == OrderDirection.desc:
+        query = query.order_by(desc(order_field))
+    else:
+        query = query.order_by(asc(order_field))
+    
+    # Apply pagination
+    return await apaginate(session, query, params)
 
 
 @router.get("/{annotation_id}")
