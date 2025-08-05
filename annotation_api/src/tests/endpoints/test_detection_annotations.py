@@ -3,7 +3,6 @@ from datetime import datetime, timedelta
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy.exc import IntegrityError
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 now = datetime.utcnow()
@@ -362,12 +361,9 @@ async def test_create_detection_annotation_unique_constraint_violation(
         "processing_stage": "annotated",
     }
 
-    # Try to create second annotation for same detection - should fail with IntegrityError
-    with pytest.raises(IntegrityError) as exc_info:
-        await async_client.post("/annotations/detections/", data=annotation_payload2)
-
-    # Verify it's specifically the unique constraint violation
-    assert "uq_detection_annotation_detection_id" in str(exc_info.value)
+    # Try to create second annotation for same detection - should fail with 409 Conflict
+    response2 = await async_client.post("/annotations/detections/", data=annotation_payload2)
+    assert response2.status_code == 409  # Conflict due to unique constraint violation
 
     # Verify first annotation still exists and is accessible
     annotation1_id = annotation1["id"]
