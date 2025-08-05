@@ -87,6 +87,8 @@ async def list_annotations(
     ),
     created_at_gte: Optional[datetime] = Query(None, description="Filter by created_at >= this date"),
     created_at_lte: Optional[datetime] = Query(None, description="Filter by created_at <= this date"),
+    detection_recorded_at_gte: Optional[datetime] = Query(None, description="Filter by detection recorded_at >= this date"),
+    detection_recorded_at_lte: Optional[datetime] = Query(None, description="Filter by detection recorded_at <= this date"),
     order_by: DetectionAnnotationOrderByField = Query(
         DetectionAnnotationOrderByField.created_at, description="Order by field"
     ),
@@ -103,8 +105,10 @@ async def list_annotations(
     - **camera_id**: Filter annotations by camera ID (through detection -> sequence relationship)
     - **organisation_id**: Filter annotations by organisation ID (through detection -> sequence relationship)
     - **processing_stage**: Filter by processing stage (imported, visual_check, etc.)
-    - **created_at_gte**: Filter by created_at >= this date
-    - **created_at_lte**: Filter by created_at <= this date
+    - **created_at_gte**: Filter by annotation created_at >= this date
+    - **created_at_lte**: Filter by annotation created_at <= this date
+    - **detection_recorded_at_gte**: Filter by detection recorded_at >= this date (when image was captured)
+    - **detection_recorded_at_lte**: Filter by detection recorded_at <= this date (when image was captured)
     - **order_by**: Order by created_at or processing_stage (default: created_at)
     - **order_direction**: asc or desc (default: desc)
     - **page**: Page number (default: 1)
@@ -115,7 +119,10 @@ async def list_annotations(
     
     # Determine if we need to join with Sequence table
     needs_sequence_join = camera_id is not None or organisation_id is not None
-    needs_detection_join = sequence_id is not None or needs_sequence_join
+    needs_detection_join = (sequence_id is not None or 
+                           detection_recorded_at_gte is not None or 
+                           detection_recorded_at_lte is not None or 
+                           needs_sequence_join)
     
     # Apply joins based on filtering requirements
     if needs_sequence_join:
@@ -143,6 +150,12 @@ async def list_annotations(
     
     if created_at_lte is not None:
         query = query.where(DetectionAnnotation.created_at <= created_at_lte)
+    
+    if detection_recorded_at_gte is not None:
+        query = query.where(Detection.recorded_at >= detection_recorded_at_gte)
+    
+    if detection_recorded_at_lte is not None:
+        query = query.where(Detection.recorded_at <= detection_recorded_at_lte)
     
     # Apply ordering
     order_field = getattr(DetectionAnnotation, order_by.value)

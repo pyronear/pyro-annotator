@@ -58,15 +58,21 @@ The API provides enhanced endpoints with pagination, filtering, and ordering:
   - Ordering by created_at, recorded_at (asc/desc)
   - Paginated responses with items, page, pages, size, total
 - **Detection Annotations** (`/api/v1/annotations/detections/`) - Human annotations for detections
-  - Supports filtering by sequence_id, camera_id, organisation_id (through detection -> sequence relationships), processing_stage, created_at ranges
+  - Supports filtering by sequence_id, camera_id, organisation_id (through detection -> sequence relationships), processing_stage, created_at ranges, detection_recorded_at ranges
   - Ordering by created_at, processing_stage (asc/desc)
   - Paginated responses with comprehensive database indexing for performance
   - Optimized JOIN strategy: conditionally joins Detection and/or Sequence tables based on filtering needs
+  - Temporal filtering: supports both annotation timestamps (created_at) and detection image capture timestamps (detection_recorded_at)
 - **Sequences** (`/api/v1/sequences/`) - Image/video sequences with enhanced functionality
   - Supports filtering by source_api, camera_id, organisation_id, is_wildfire_alertapi
   - Ordering by created_at, recorded_at (asc/desc)
   - Paginated responses with comprehensive metadata
-- **Sequence Annotations** (`/api/v1/annotations/sequences/`) - Annotations for sequences with derived has_smoke/has_false_positives fields
+- **Sequence Annotations** (`/api/v1/annotations/sequences/`) - Annotations for sequences with comprehensive filtering and ordering
+  - Supports filtering by has_smoke, has_false_positives, false_positive_type (JSON search), has_missed_smoke, processing_stage
+  - Ordering by created_at, sequence_recorded_at (through Sequence JOIN) (asc/desc)
+  - Paginated responses with advanced database indexing for performance
+  - JSON filtering: searches within false_positive_types array using PostgreSQL JSONB operators
+  - Derived field computation: automatically calculates has_smoke/has_false_positives from annotation data
 
 ## Development Commands
 

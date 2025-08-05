@@ -2,18 +2,26 @@
 
 import json
 from datetime import datetime
-from typing import List
+from enum import Enum
+from typing import List, Optional
 
 from fastapi import (
     APIRouter,
     Body,
     Depends,
     Path,
+    Query,
     status,
 )
+from fastapi_pagination import Page, Params
+from fastapi_pagination.ext.sqlalchemy import apaginate
+from sqlalchemy import asc, desc, select, text
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.dependencies import get_sequence_annotation_crud
 from app.crud import SequenceAnnotationCRUD
+from app.db import get_session
+from app.models import Sequence, SequenceAnnotation, SequenceAnnotationProcessingStage
 from app.schemas.annotation_validation import SequenceAnnotationData
 from app.schemas.sequence_annotations import (
     SequenceAnnotationCreate,
@@ -22,6 +30,20 @@ from app.schemas.sequence_annotations import (
 )
 
 router = APIRouter()
+
+
+class SequenceAnnotationOrderByField(str, Enum):
+    """Valid fields for ordering sequence annotations."""
+
+    created_at = "created_at"
+    sequence_recorded_at = "sequence_recorded_at"
+
+
+class OrderDirection(str, Enum):
+    """Valid directions for ordering."""
+
+    asc = "asc"
+    desc = "desc"
 
 
 def derive_has_smoke(annotation_data: SequenceAnnotationData) -> bool:
@@ -78,9 +100,75 @@ async def create_sequence_annotation(
 
 @router.get("/")
 async def list_sequence_annotations(
-    annotations: SequenceAnnotationCRUD = Depends(get_sequence_annotation_crud),
-) -> List[SequenceAnnotationRead]:
-    return await annotations.fetch_all()
+    has_smoke: Optional[bool] = Query(None, description="Filter by has_smoke"),
+    has_false_positives: Optional[bool] = Query(None, description="Filter by has_false_positives"),
+    false_positive_type: Optional[str] = Query(None, description="Filter by specific false positive type"),
+    has_missed_smoke: Optional[bool] = Query(None, description="Filter by has_missed_smoke"),
+    processing_stage: Optional[SequenceAnnotationProcessingStage] = Query(
+        None, description="Filter by processing stage"
+    ),
+    order_by: SequenceAnnotationOrderByField = Query(
+        SequenceAnnotationOrderByField.created_at, description="Order by field"
+    ),
+    order_direction: OrderDirection = Query(
+        OrderDirection.desc, description="Order direction"
+    ),
+    session: AsyncSession = Depends(get_session),
+    params: Params = Depends(),
+) -> Page[SequenceAnnotationRead]:
+    """
+    List sequence annotations with filtering, pagination and ordering.
+    
+    - **has_smoke**: Filter by has_smoke boolean
+    - **has_false_positives**: Filter by has_false_positives boolean
+    - **false_positive_type**: Filter by specific false positive type (searches within JSON array)
+    - **has_missed_smoke**: Filter by has_missed_smoke boolean
+    - **processing_stage**: Filter by processing stage (imported, ready_to_annotate, annotated)
+    - **order_by**: Order by created_at or sequence_recorded_at (default: created_at)
+    - **order_direction**: asc or desc (default: desc)
+    - **page**: Page number (default: 1)
+    - **size**: Page size (default: 50, max: 100)
+    """
+    # Build base query
+    query = select(SequenceAnnotation)
+    
+    # Determine if we need to join with Sequence table for ordering
+    needs_sequence_join = order_by == SequenceAnnotationOrderByField.sequence_recorded_at
+    
+    # Apply join if needed for ordering by sequence recorded_at
+    if needs_sequence_join:
+        query = query.join(Sequence)
+    
+    # Apply filtering conditions
+    if has_smoke is not None:
+        query = query.where(SequenceAnnotation.has_smoke == has_smoke)
+    
+    if has_false_positives is not None:
+        query = query.where(SequenceAnnotation.has_false_positives == has_false_positives)
+    
+    if false_positive_type is not None:
+        # Use PostgreSQL JSONB contains operator to search within JSON array
+        query = query.where(text("false_positive_types::jsonb ? :fp_type")).params(fp_type=false_positive_type)
+    
+    if has_missed_smoke is not None:
+        query = query.where(SequenceAnnotation.has_missed_smoke == has_missed_smoke)
+    
+    if processing_stage is not None:
+        query = query.where(SequenceAnnotation.processing_stage == processing_stage)
+    
+    # Apply ordering
+    if order_by == SequenceAnnotationOrderByField.sequence_recorded_at:
+        order_field = Sequence.recorded_at
+    else:
+        order_field = getattr(SequenceAnnotation, order_by.value)
+    
+    if order_direction == OrderDirection.desc:
+        query = query.order_by(desc(order_field))
+    else:
+        query = query.order_by(asc(order_field))
+    
+    # Apply pagination
+    return await apaginate(session, query, params)
 
 
 @router.get("/{annotation_id}")

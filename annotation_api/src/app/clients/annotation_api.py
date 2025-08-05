@@ -491,8 +491,10 @@ def list_detection_annotations(base_url: str, **params) -> Dict:
             - camera_id: Filter by camera ID (through detection -> sequence relationship)
             - organisation_id: Filter by organisation ID (through detection -> sequence relationship)
             - processing_stage: Filter by processing stage (imported, visual_check, etc.)
-            - created_at_gte: Filter by created_at >= this date
-            - created_at_lte: Filter by created_at <= this date
+            - created_at_gte: Filter by annotation created_at >= this date
+            - created_at_lte: Filter by annotation created_at <= this date
+            - detection_recorded_at_gte: Filter by detection recorded_at >= this date (when image was captured)
+            - detection_recorded_at_lte: Filter by detection recorded_at <= this date (when image was captured)
             - order_by: Order by field (created_at, processing_stage)
             - order_direction: Order direction (asc, desc)
             - page: Page number (default: 1)
@@ -598,22 +600,38 @@ def get_sequence_annotation(base_url: str, annotation_id: int) -> Dict:
     return _handle_response(response)
 
 
-def list_sequence_annotations(base_url: str) -> List[Dict]:
+def list_sequence_annotations(base_url: str, **params) -> Dict:
     """
-    List all sequence annotations.
+    List sequence annotations with pagination and filtering.
 
     Args:
         base_url: Base URL of the annotation API
+        **params: Query parameters for filtering and pagination:
+            - has_smoke: Filter by has_smoke boolean
+            - has_false_positives: Filter by has_false_positives boolean
+            - false_positive_type: Filter by specific false positive type (searches within JSON array)
+            - has_missed_smoke: Filter by has_missed_smoke boolean
+            - processing_stage: Filter by processing stage (imported, ready_to_annotate, annotated)
+            - order_by: Order by field (created_at, sequence_recorded_at)
+            - order_direction: Order direction (asc, desc)
+            - page: Page number (default: 1)
+            - size: Page size (default: 50, max: 100)
 
     Returns:
-        List of dictionaries containing sequence annotation data
+        Dictionary containing paginated sequence annotation data with keys:
+        - items: List of sequence annotations
+        - page: Current page number
+        - pages: Total number of pages
+        - size: Page size
+        - total: Total number of items
 
     Raises:
-        requests.RequestException: If the request fails
+        AnnotationAPIError: If the request fails
     """
     url = f"{base_url.rstrip('/')}/api/v1/annotations/sequences/"
-    response = _make_request("GET", url)
-    return _handle_response(response)
+    operation = "list sequence annotations"
+    response = _make_request("GET", url, operation=operation, params=params)
+    return _handle_response(response, operation=operation)
 
 
 def update_sequence_annotation(

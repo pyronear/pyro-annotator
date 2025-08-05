@@ -53,7 +53,13 @@ async def test_get_sequence_annotation(async_client: AsyncClient):
 async def test_list_sequence_annotations(async_client: AsyncClient):
     response = await async_client.get("/annotations/sequences/")
     assert response.status_code == 200
-    assert isinstance(response.json(), list)
+    json_response = response.json()
+    assert isinstance(json_response, dict)
+    assert "items" in json_response
+    assert "page" in json_response
+    assert "pages" in json_response
+    assert "size" in json_response
+    assert isinstance(json_response["items"], list)
 
 
 @pytest.mark.asyncio
@@ -329,3 +335,422 @@ async def test_create_sequence_annotation_different_sequences_allowed(
     assert annotation1["sequence_id"] != annotation2["sequence_id"]
     assert annotation1["sequence_id"] == 1
     assert annotation2["sequence_id"] == sequence2_id
+
+
+@pytest.mark.asyncio
+async def test_list_sequence_annotations_filter_by_has_smoke(
+    async_client: AsyncClient, sequence_session
+):
+    """Test filtering sequence annotations by has_smoke."""
+    # Create annotation with has_smoke=True
+    payload = {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": True,  # This will set has_smoke to True
+                    "gif_url_main": "http://example.com/main.gif",
+                    "false_positive_types": [],
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                }
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
+        "created_at": datetime.utcnow().isoformat(),
+    }
+
+    response = await async_client.post("/annotations/sequences/", json=payload)
+    assert response.status_code == 201
+    annotation_id = response.json()["id"]
+
+    # Test filtering by has_smoke=true (should find the annotation)
+    response = await async_client.get("/annotations/sequences/?has_smoke=true")
+    assert response.status_code == 200
+    json_response = response.json()
+    assert "items" in json_response
+    # Should find at least one annotation with has_smoke=true
+    found_annotation = False
+    for annotation in json_response["items"]:
+        if annotation["id"] == annotation_id:
+            found_annotation = True
+            assert annotation["has_smoke"] is True
+            break
+    assert found_annotation, "Should find annotation with has_smoke=true"
+
+    # Test filtering by has_smoke=false (should not find this annotation)
+    response = await async_client.get("/annotations/sequences/?has_smoke=false")
+    assert response.status_code == 200
+    json_response = response.json()
+    assert "items" in json_response
+    # Should not find our annotation since it has has_smoke=true
+    found_annotation = False
+    for annotation in json_response["items"]:
+        if annotation["id"] == annotation_id:
+            found_annotation = True
+            break
+    assert not found_annotation, "Should not find annotation with has_smoke=true when filtering for has_smoke=false"
+
+
+@pytest.mark.asyncio
+async def test_list_sequence_annotations_filter_by_has_false_positives(
+    async_client: AsyncClient, sequence_session
+):
+    """Test filtering sequence annotations by has_false_positives."""
+    # Create annotation with has_false_positives=True
+    payload = {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": False,
+                    "gif_url_main": "http://example.com/main.gif",
+                    "false_positive_types": [models.FalsePositiveType.LENS_FLARE.value],  # This will set has_false_positives to True
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                }
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
+        "created_at": datetime.utcnow().isoformat(),
+    }
+
+    response = await async_client.post("/annotations/sequences/", json=payload)
+    assert response.status_code == 201
+    annotation_id = response.json()["id"]
+    annotation_data = response.json()
+    assert annotation_data["has_false_positives"] is True
+
+    # Test filtering by has_false_positives=true (should find the annotation)
+    response = await async_client.get("/annotations/sequences/?has_false_positives=true")
+    assert response.status_code == 200
+    json_response = response.json()
+    assert "items" in json_response
+    # Should find our annotation
+    found_annotation = False
+    for annotation in json_response["items"]:
+        if annotation["id"] == annotation_id:
+            found_annotation = True
+            assert annotation["has_false_positives"] is True
+            break
+    assert found_annotation, "Should find annotation with has_false_positives=true"
+
+
+@pytest.mark.asyncio
+async def test_list_sequence_annotations_filter_by_false_positive_type(
+    async_client: AsyncClient, sequence_session
+):
+    """Test filtering sequence annotations by specific false_positive_type using JSON search."""
+    # Create annotation with specific false positive type
+    payload = {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": False,
+                    "gif_url_main": "http://example.com/main.gif",
+                    "false_positive_types": [
+                        models.FalsePositiveType.ANTENNA.value,
+                        models.FalsePositiveType.BUILDING.value
+                    ],
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                }
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
+        "created_at": datetime.utcnow().isoformat(),
+    }
+
+    response = await async_client.post("/annotations/sequences/", json=payload)
+    assert response.status_code == 201
+    annotation_id = response.json()["id"]
+
+    # Test filtering by false_positive_type="antenna" (should find the annotation)
+    response = await async_client.get("/annotations/sequences/?false_positive_type=antenna")
+    assert response.status_code == 200
+    json_response = response.json()
+    assert "items" in json_response
+    # Should find our annotation since it contains "antenna" in false_positive_types
+    found_annotation = False
+    for annotation in json_response["items"]:
+        if annotation["id"] == annotation_id:
+            found_annotation = True
+            # Verify the false_positive_types contains "antenna"
+            import json
+            fp_types = json.loads(annotation["false_positive_types"])
+            assert "antenna" in fp_types
+            break
+    assert found_annotation, "Should find annotation containing false_positive_type 'antenna'"
+
+    # Test filtering by false_positive_type="building" (should also find the annotation)
+    response = await async_client.get("/annotations/sequences/?false_positive_type=building")
+    assert response.status_code == 200
+    json_response = response.json()
+    assert "items" in json_response
+    # Should find our annotation since it contains "building" in false_positive_types
+    found_annotation = False
+    for annotation in json_response["items"]:
+        if annotation["id"] == annotation_id:
+            found_annotation = True
+            break
+    assert found_annotation, "Should find annotation containing false_positive_type 'building'"
+
+    # Test filtering by false_positive_type="cliff" (should not find the annotation)
+    response = await async_client.get("/annotations/sequences/?false_positive_type=cliff")
+    assert response.status_code == 200
+    json_response = response.json()
+    assert "items" in json_response
+    # Should not find our annotation since it doesn't contain "cliff"
+    found_annotation = False
+    for annotation in json_response["items"]:
+        if annotation["id"] == annotation_id:
+            found_annotation = True
+            break
+    assert not found_annotation, "Should not find annotation when filtering for false_positive_type 'cliff'"
+
+
+@pytest.mark.asyncio
+async def test_list_sequence_annotations_filter_by_processing_stage(
+    async_client: AsyncClient, sequence_session
+):
+    """Test filtering sequence annotations by processing_stage."""
+    # Create annotation with specific processing stage
+    payload = {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": True,
+                    "gif_url_main": "http://example.com/main.gif",
+                    "false_positive_types": [],
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                }
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
+        "created_at": datetime.utcnow().isoformat(),
+    }
+
+    response = await async_client.post("/annotations/sequences/", json=payload)
+    assert response.status_code == 201
+    annotation_id = response.json()["id"]
+
+    # Test filtering by processing_stage="annotated" (should find the annotation)
+    response = await async_client.get("/annotations/sequences/?processing_stage=annotated")
+    assert response.status_code == 200
+    json_response = response.json()
+    assert "items" in json_response
+    # Should find our annotation
+    found_annotation = False
+    for annotation in json_response["items"]:
+        if annotation["id"] == annotation_id:
+            found_annotation = True
+            assert annotation["processing_stage"] == "annotated"
+            break
+    assert found_annotation, "Should find annotation with processing_stage='annotated'"
+
+    # Test filtering by processing_stage="imported" (should not find this annotation)
+    response = await async_client.get("/annotations/sequences/?processing_stage=imported")
+    assert response.status_code == 200
+    json_response = response.json()
+    assert "items" in json_response
+    # Should not find our annotation since it has processing_stage="annotated"
+    found_annotation = False
+    for annotation in json_response["items"]:
+        if annotation["id"] == annotation_id:
+            found_annotation = True
+            break
+    assert not found_annotation, "Should not find annotation with processing_stage='annotated' when filtering for 'imported'"
+
+
+@pytest.mark.asyncio
+async def test_list_sequence_annotations_order_by_created_at(
+    async_client: AsyncClient, sequence_session
+):
+    """Test ordering sequence annotations by created_at."""
+    # Create two annotations with different created_at times
+    import time
+    from datetime import timedelta
+    
+    base_time = datetime.utcnow()
+    
+    # First annotation (older)
+    payload1 = {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": True,
+                    "gif_url_main": "http://example.com/main1.gif",
+                    "false_positive_types": [],
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                }
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
+        "created_at": (base_time - timedelta(minutes=10)).isoformat(),
+    }
+
+    response1 = await async_client.post("/annotations/sequences/", json=payload1)
+    assert response1.status_code == 201
+    annotation1_id = response1.json()["id"]
+
+    # Give a small delay to ensure different created_at times
+    time.sleep(0.1)
+    
+    # Create a new sequence for the second annotation to avoid unique constraint
+    sequence_payload = {
+        "source_api": "pyronear_french",
+        "alert_api_id": "888",
+        "camera_name": "test_ordering",
+        "camera_id": "888",
+        "organisation_name": "test_org_order",
+        "organisation_id": "1",
+        "azimuth": "90",
+        "lat": "0.0",
+        "lon": "0.0",
+        "created_at": datetime.utcnow().isoformat(),
+        "recorded_at": datetime.utcnow().isoformat(),
+        "last_seen_at": datetime.utcnow().isoformat(),
+    }
+
+    sequence_response = await async_client.post("/sequences", data=sequence_payload)
+    assert sequence_response.status_code == 201
+    sequence2_id = sequence_response.json()["id"]
+
+    # Second annotation (newer)
+    payload2 = {
+        "sequence_id": sequence2_id,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": True,
+                    "gif_url_main": "http://example.com/main2.gif",
+                    "false_positive_types": [],
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                }
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
+        "created_at": (base_time - timedelta(minutes=5)).isoformat(),
+    }
+
+    response2 = await async_client.post("/annotations/sequences/", json=payload2)
+    assert response2.status_code == 201
+    annotation2_id = response2.json()["id"]
+
+    # Test ordering by created_at desc (default)
+    response = await async_client.get("/annotations/sequences/?order_by=created_at&order_direction=desc")
+    assert response.status_code == 200
+    json_response = response.json()
+    assert "items" in json_response
+    items = json_response["items"]
+    
+    # Find our annotations in the result
+    annotation1_pos = None
+    annotation2_pos = None
+    for i, annotation in enumerate(items):
+        if annotation["id"] == annotation1_id:
+            annotation1_pos = i
+        elif annotation["id"] == annotation2_id:
+            annotation2_pos = i
+    
+    # Both annotations should be found
+    assert annotation1_pos is not None, "Should find first annotation"
+    assert annotation2_pos is not None, "Should find second annotation"
+    # annotation2 (newer) should come before annotation1 (older) in desc order
+    assert annotation2_pos < annotation1_pos, "Newer annotation should come first in desc order"
+
+    # Test ordering by created_at asc
+    response = await async_client.get("/annotations/sequences/?order_by=created_at&order_direction=asc")
+    assert response.status_code == 200
+    json_response = response.json()
+    assert "items" in json_response
+    items = json_response["items"]
+    
+    # Find our annotations in the result
+    annotation1_pos = None
+    annotation2_pos = None
+    for i, annotation in enumerate(items):
+        if annotation["id"] == annotation1_id:
+            annotation1_pos = i
+        elif annotation["id"] == annotation2_id:
+            annotation2_pos = i
+    
+    # Both annotations should be found
+    assert annotation1_pos is not None, "Should find first annotation"
+    assert annotation2_pos is not None, "Should find second annotation"
+    # annotation1 (older) should come before annotation2 (newer) in asc order
+    assert annotation1_pos < annotation2_pos, "Older annotation should come first in asc order"
+
+
+@pytest.mark.asyncio
+async def test_list_sequence_annotations_combined_filtering(
+    async_client: AsyncClient, sequence_session
+):
+    """Test combined filtering by multiple parameters."""
+    # Create annotation with specific characteristics
+    payload = {
+        "sequence_id": 1,
+        "has_missed_smoke": True,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": True,
+                    "gif_url_main": "http://example.com/main.gif",
+                    "false_positive_types": [models.FalsePositiveType.ANTENNA.value],
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                }
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
+        "created_at": datetime.utcnow().isoformat(),
+    }
+
+    response = await async_client.post("/annotations/sequences/", json=payload)
+    assert response.status_code == 201
+    annotation_id = response.json()["id"]
+    annotation_data = response.json()
+    
+    # Verify the annotation has the expected derived fields
+    assert annotation_data["has_smoke"] is True
+    assert annotation_data["has_false_positives"] is True
+    assert annotation_data["has_missed_smoke"] is True
+
+    # Test combined filtering - should find the annotation
+    response = await async_client.get(
+        "/annotations/sequences/?has_smoke=true&has_false_positives=true&has_missed_smoke=true&processing_stage=annotated"
+    )
+    assert response.status_code == 200
+    json_response = response.json()
+    assert "items" in json_response
+    # Should find our annotation since it matches all criteria
+    found_annotation = False
+    for annotation in json_response["items"]:
+        if annotation["id"] == annotation_id:
+            found_annotation = True
+            assert annotation["has_smoke"] is True
+            assert annotation["has_false_positives"] is True
+            assert annotation["has_missed_smoke"] is True
+            assert annotation["processing_stage"] == "annotated"
+            break
+    assert found_annotation, "Should find annotation matching all filtering criteria"
+
+    # Test combined filtering with one mismatched criterion - should not find the annotation
+    response = await async_client.get(
+        "/annotations/sequences/?has_smoke=true&has_false_positives=true&has_missed_smoke=false&processing_stage=annotated"
+    )
+    assert response.status_code == 200
+    json_response = response.json()
+    assert "items" in json_response
+    # Should not find our annotation since has_missed_smoke doesn't match
+    found_annotation = False
+    for annotation in json_response["items"]:
+        if annotation["id"] == annotation_id:
+            found_annotation = True
+            break
+    assert not found_annotation, "Should not find annotation when one filter criterion doesn't match"
