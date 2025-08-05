@@ -2,14 +2,20 @@
 
 import json
 from datetime import datetime
-from typing import List
+from enum import Enum
+from typing import Optional
 
-from fastapi import APIRouter, Body, Depends, Form, HTTPException, Path, status
+from fastapi import APIRouter, Body, Depends, Form, HTTPException, Path, Query, status
+from fastapi_pagination import Page, Params
+from fastapi_pagination.ext.sqlalchemy import apaginate
 from pydantic import ValidationError
+from sqlalchemy import asc, desc, select
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.dependencies import get_detection_annotation_crud
 from app.crud import DetectionAnnotationCRUD
-from app.models import DetectionAnnotationProcessingStage
+from app.db import get_session
+from app.models import Detection, DetectionAnnotation, DetectionAnnotationProcessingStage
 from app.schemas.detection_annotations import (
     DetectionAnnotationRead,
     DetectionAnnotationUpdate,
@@ -17,6 +23,20 @@ from app.schemas.detection_annotations import (
 from app.schemas.annotation_validation import DetectionAnnotationData
 
 router = APIRouter()
+
+
+class DetectionAnnotationOrderByField(str, Enum):
+    """Valid fields for ordering detection annotations."""
+
+    created_at = "created_at"
+    processing_stage = "processing_stage"
+
+
+class OrderDirection(str, Enum):
+    """Valid directions for ordering."""
+
+    asc = "asc"
+    desc = "desc"
 
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
