@@ -79,6 +79,16 @@ uv sync
 source .venv/bin/activate
 ```
 
+## Documentation
+
+For comprehensive documentation including API client guides, examples, and data ingestion instructions, see the [**docs/** directory](docs/README.md).
+
+Key documentation includes:
+- [API Client Guide](docs/api-client-guide.md) - Practical usage and integration patterns
+- [Data Ingestion Guide](docs/data-ingestion-guide.md) - Platform data transfer scripts
+- [API Reference](docs/api-reference.md) - Complete technical reference
+- [Examples & Recipes](docs/examples.md) - Real-world implementation patterns
+
 ## Contributing
 
 Any sort of contribution is greatly appreciated!

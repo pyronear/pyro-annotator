@@ -29,6 +29,14 @@ Welcome to the Pyronear Annotation API documentation. This API provides a compre
 - Background task processing
 - Utility functions and helpers
 
+### 🔄 [Data Ingestion Guide](data-ingestion-guide.md)
+**Platform data transfer and ingestion**
+- Pyronear platform API data fetching
+- Environment setup and credentials
+- Date range and sequence-specific ingestion
+- Batch processing and automation
+- Troubleshooting and error handling
+
 ## Quick Start
 
 ```python
