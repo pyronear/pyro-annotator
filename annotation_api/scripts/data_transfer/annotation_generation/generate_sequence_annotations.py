@@ -64,6 +64,7 @@ from app.clients.annotation_api import (
     ValidationError,
     NotFoundError,
     create_sequence_annotation,
+    update_sequence_annotation,
     list_sequences,
     list_sequence_annotations,
 )
@@ -274,7 +275,7 @@ def get_sequences_from_date_range(base_url: str, date_from: date, date_end: date
         return []
 
 
-def check_existing_annotation(base_url: str, sequence_id: int) -> bool:
+def check_existing_annotation(base_url: str, sequence_id: int) -> Optional[int]:
     """
     Check if a sequence already has an annotation.
 
@@ -283,7 +284,7 @@ def check_existing_annotation(base_url: str, sequence_id: int) -> bool:
         sequence_id: Sequence ID to check
 
     Returns:
-        True if annotation exists, False otherwise
+        Annotation ID if annotation exists, None otherwise
     """
     try:
         response = list_sequence_annotations(base_url, sequence_id=sequence_id)
@@ -294,47 +295,69 @@ def check_existing_annotation(base_url: str, sequence_id: int) -> bool:
         else:
             annotations = response
 
-        return len(annotations) > 0
+        if len(annotations) > 0:
+            return annotations[0]['id']  # Return the annotation ID
+        return None
 
     except Exception as e:
         logging.debug(f"Error checking existing annotation for sequence {sequence_id}: {e}")
-        return False
+        return None
 
 
-def create_annotation_from_data(base_url: str, sequence_id: int, annotation_data, dry_run: bool = False) -> bool:
+def create_annotation_from_data(base_url: str, sequence_id: int, annotation_data, dry_run: bool = False, existing_annotation_id: Optional[int] = None) -> bool:
     """
-    Create a sequence annotation from analyzed data.
+    Create or update a sequence annotation from analyzed data.
 
     Args:
         base_url: API base URL
         sequence_id: Sequence ID
         annotation_data: SequenceAnnotationData object
-        dry_run: If True, don't actually create the annotation
+        dry_run: If True, don't actually create/update the annotation
+        existing_annotation_id: If provided, update existing annotation via PATCH instead of creating new one
 
     Returns:
         True if successful, False otherwise
     """
     try:
-        # Convert to dictionary format expected by API
-        annotation_dict = {
-            "sequence_id": sequence_id,
-            "annotation": annotation_data.model_dump(),
-            "processing_stage": SequenceAnnotationProcessingStage.READY_TO_ANNOTATE.value,
-            "has_smoke": any(seq_bbox.is_smoke for seq_bbox in annotation_data.sequences_bbox),
-            "has_false_positives": any(len(seq_bbox.false_positive_types) > 0 for seq_bbox in annotation_data.sequences_bbox),
-            "has_missed_smoke": False,  # Default to False, can be updated during human review
-            "false_positive_types": "",  # Will be populated during human review
-        }
+        if existing_annotation_id:
+            # Update existing annotation (PATCH)
+            update_dict = {
+                "annotation": annotation_data.model_dump(),
+                "processing_stage": SequenceAnnotationProcessingStage.READY_TO_ANNOTATE.value,
+                "has_missed_smoke": False,  # Default to False, can be updated during human review
+            }
 
-        if dry_run:
-            logging.info(f"DRY RUN: Would create annotation for sequence {sequence_id}")
-            logging.debug(f"Annotation data: {annotation_dict}")
+            if dry_run:
+                logging.info(f"DRY RUN: Would update annotation {existing_annotation_id} for sequence {sequence_id}")
+                logging.debug(f"Update data: {update_dict}")
+                return True
+
+            # Update the annotation
+            result = update_sequence_annotation(base_url, existing_annotation_id, update_dict)
+            logging.info(f"Updated annotation for sequence {sequence_id}: annotation_id={existing_annotation_id}")
             return True
 
-        # Create the annotation
-        result = create_sequence_annotation(base_url, annotation_dict)
-        logging.info(f"Created annotation for sequence {sequence_id}: annotation_id={result.get('id')}")
-        return True
+        else:
+            # Create new annotation (POST)
+            annotation_dict = {
+                "sequence_id": sequence_id,
+                "annotation": annotation_data.model_dump(),
+                "processing_stage": SequenceAnnotationProcessingStage.READY_TO_ANNOTATE.value,
+                "has_smoke": any(seq_bbox.is_smoke for seq_bbox in annotation_data.sequences_bbox),
+                "has_false_positives": any(len(seq_bbox.false_positive_types) > 0 for seq_bbox in annotation_data.sequences_bbox),
+                "has_missed_smoke": False,  # Default to False, can be updated during human review
+                "false_positive_types": "",  # Will be populated during human review
+            }
+
+            if dry_run:
+                logging.info(f"DRY RUN: Would create annotation for sequence {sequence_id}")
+                logging.debug(f"Annotation data: {annotation_dict}")
+                return True
+
+            # Create the annotation
+            result = create_sequence_annotation(base_url, annotation_dict)
+            logging.info(f"Created annotation for sequence {sequence_id}: annotation_id={result.get('id')}")
+            return True
 
     except ValidationError as e:
         logging.error(f"Validation error creating annotation for sequence {sequence_id}: {e.message}")
@@ -398,8 +421,10 @@ def main():
     for sequence_id in tqdm(sequence_ids, desc="Processing sequences"):
         logger.info(f"Processing sequence {sequence_id}")
 
-        # Check for existing annotation (unless force is specified)
-        if not args.force and check_existing_annotation(args.url_api_annotation, sequence_id):
+        # Check for existing annotation
+        existing_annotation_id = check_existing_annotation(args.url_api_annotation, sequence_id)
+        
+        if existing_annotation_id and not args.force:
             logger.info(f"Sequence {sequence_id} already has annotation, skipping (use --force to overwrite)")
             skipped_existing += 1
             continue
@@ -411,8 +436,8 @@ def main():
             failed_annotations += 1
             continue
 
-        # Create annotation
-        if create_annotation_from_data(args.url_api_annotation, sequence_id, annotation_data, args.dry_run):
+        # Create or update annotation
+        if create_annotation_from_data(args.url_api_annotation, sequence_id, annotation_data, args.dry_run, existing_annotation_id):
             successful_annotations += 1
         else:
             failed_annotations += 1
