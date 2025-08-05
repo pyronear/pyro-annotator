@@ -46,7 +46,7 @@ class BaseCRUD(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Resource already exists",
             )
-        except exc.DataError as error:
+        except exc.DataError:
             await self.session.rollback()
             # Handle data type validation errors
             # Handle data type validation errors

@@ -5,8 +5,6 @@ This module tests all functionality of the synchronous annotation API client,
 including HTTP utilities, exception handling, and CRUD operations for all resource types.
 """
 
-import json
-from datetime import datetime, timedelta
 from unittest.mock import Mock
 
 import pytest
@@ -48,6 +46,7 @@ API_BASE = f"{BASE_URL}/api/v1"
 
 # ==================== FIXTURES ====================
 
+
 @pytest.fixture
 def mock_sequence_data():
     """Sample sequence data for testing."""
@@ -78,10 +77,10 @@ def mock_detection_data():
                 {
                     "xyxyn": [0.1, 0.2, 0.4, 0.6],
                     "confidence": 0.87,
-                    "class_name": "smoke"
+                    "class_name": "smoke",
                 }
             ]
-        }
+        },
     }
 
 
@@ -120,10 +119,10 @@ def mock_detection_response():
                 {
                     "xyxyn": [0.1, 0.2, 0.4, 0.6],
                     "confidence": 0.87,
-                    "class_name": "smoke"
+                    "class_name": "smoke",
                 }
             ]
-        }
+        },
     }
 
 
@@ -135,9 +134,9 @@ def mock_detection_annotation_data():
         "annotation": {
             "is_smoke": True,
             "confidence": 0.9,
-            "notes": "Clear smoke visible"
+            "notes": "Clear smoke visible",
         },
-        "processing_stage": "annotated"
+        "processing_stage": "annotated",
     }
 
 
@@ -154,29 +153,18 @@ def mock_sequence_annotation_data():
                     "gif_url_main": "http://example.com/main.gif",
                     "gif_url_crop": "http://example.com/crop.gif",
                     "false_positive_types": [],
-                    "bboxes": [
-                        {
-                            "detection_id": 1,
-                            "xyxyn": [0.1, 0.2, 0.4, 0.6]
-                        }
-                    ]
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.2, 0.4, 0.6]}],
                 }
             ]
         },
-        "processing_stage": "annotated"
+        "processing_stage": "annotated",
     }
 
 
 @pytest.fixture
 def mock_paginated_response():
     """Mock paginated API response."""
-    return {
-        "items": [],
-        "page": 1,
-        "pages": 1,
-        "size": 50,
-        "total": 0
-    }
+    return {"items": [], "page": 1, "pages": 1, "size": 50, "total": 0}
 
 
 @pytest.fixture
@@ -186,6 +174,7 @@ def mock_image_file():
 
 
 # ==================== HTTP UTILITIES TESTS ====================
+
 
 class TestHTTPUtilities:
     """Test HTTP utility functions."""
@@ -202,17 +191,24 @@ class TestHTTPUtilities:
         """Test HTTP request with operation context."""
         with requests_mock.Mocker() as m:
             m.get("http://example.com/test", json={"data": "test"})
-            response = _make_request("GET", "http://example.com/test", operation="test operation")
+            response = _make_request(
+                "GET", "http://example.com/test", operation="test operation"
+            )
             assert response.status_code == 200
 
     def test_make_request_network_error(self):
         """Test network error handling."""
         with requests_mock.Mocker() as m:
-            m.get("http://example.com/test", exc=requests.ConnectionError("Connection failed"))
-            
+            m.get(
+                "http://example.com/test",
+                exc=requests.ConnectionError("Connection failed"),
+            )
+
             with pytest.raises(AnnotationAPIError) as exc_info:
-                _make_request("GET", "http://example.com/test", operation="test operation")
-            
+                _make_request(
+                    "GET", "http://example.com/test", operation="test operation"
+                )
+
             assert "Network error during test operation" in str(exc_info.value)
             assert exc_info.value.operation == "test operation"
 
@@ -220,10 +216,10 @@ class TestHTTPUtilities:
         """Test timeout error handling."""
         with requests_mock.Mocker() as m:
             m.get("http://example.com/test", exc=requests.Timeout("Request timed out"))
-            
+
             with pytest.raises(AnnotationAPIError) as exc_info:
                 _make_request("GET", "http://example.com/test")
-            
+
             assert "Network error" in str(exc_info.value)
 
     def test_handle_response_success_json(self):
@@ -232,7 +228,7 @@ class TestHTTPUtilities:
         mock_response.status_code = 200
         mock_response.ok = True
         mock_response.json.return_value = {"id": 1, "name": "test"}
-        
+
         result = _handle_response(mock_response)
         assert result == {"id": 1, "name": "test"}
 
@@ -240,7 +236,7 @@ class TestHTTPUtilities:
         """Test 204 No Content response handling."""
         mock_response = Mock()
         mock_response.status_code = 204
-        
+
         result = _handle_response(mock_response)
         assert result is None
 
@@ -250,10 +246,10 @@ class TestHTTPUtilities:
         mock_response.status_code = 200
         mock_response.ok = True
         mock_response.json.side_effect = ValueError("Invalid JSON")
-        
+
         with pytest.raises(AnnotationAPIError) as exc_info:
             _handle_response(mock_response, operation="test operation")
-        
+
         assert "Invalid JSON response during test operation" in str(exc_info.value)
         assert exc_info.value.status_code == 200
 
@@ -267,19 +263,19 @@ class TestHTTPUtilities:
                 {
                     "loc": ["body", "email"],
                     "msg": "field required",
-                    "type": "value_error.missing"
+                    "type": "value_error.missing",
                 },
                 {
                     "loc": ["body", "age"],
                     "msg": "ensure this value is greater than 0",
-                    "type": "value_error.number.not_gt"
-                }
+                    "type": "value_error.number.not_gt",
+                },
             ]
         }
-        
+
         with pytest.raises(ValidationError) as exc_info:
             _handle_response(mock_response, operation="create user")
-        
+
         error = exc_info.value
         assert error.status_code == 422
         assert error.operation == "create user"
@@ -294,10 +290,10 @@ class TestHTTPUtilities:
         mock_response.status_code = 422
         mock_response.ok = False
         mock_response.json.return_value = {"detail": "Invalid data provided"}
-        
+
         with pytest.raises(ValidationError) as exc_info:
             _handle_response(mock_response)
-        
+
         error = exc_info.value
         assert "Invalid data provided" in str(error)
         assert len(error.field_errors) == 0
@@ -308,10 +304,10 @@ class TestHTTPUtilities:
         mock_response.status_code = 404
         mock_response.ok = False
         mock_response.json.return_value = {"detail": "Sequence not found"}
-        
+
         with pytest.raises(NotFoundError) as exc_info:
             _handle_response(mock_response, operation="get sequence")
-        
+
         error = exc_info.value
         assert error.status_code == 404
         assert error.operation == "get sequence"
@@ -323,10 +319,10 @@ class TestHTTPUtilities:
         mock_response.status_code = 500
         mock_response.ok = False
         mock_response.json.return_value = {"detail": "Internal server error"}
-        
+
         with pytest.raises(ServerError) as exc_info:
             _handle_response(mock_response, operation="create detection")
-        
+
         error = exc_info.value
         assert error.status_code == 500
         assert error.operation == "create detection"
@@ -339,10 +335,10 @@ class TestHTTPUtilities:
         mock_response.status_code = 403
         mock_response.ok = False
         mock_response.json.return_value = {"detail": "Forbidden"}
-        
+
         with pytest.raises(AnnotationAPIError) as exc_info:
             _handle_response(mock_response, operation="access resource")
-        
+
         error = exc_info.value
         assert error.status_code == 403
         assert error.operation == "access resource"
@@ -355,16 +351,17 @@ class TestHTTPUtilities:
         mock_response.ok = False
         mock_response.json.side_effect = ValueError("Invalid JSON")
         mock_response.text = "Bad Request"
-        
+
         with pytest.raises(AnnotationAPIError) as exc_info:
             _handle_response(mock_response)
-        
+
         error = exc_info.value
         assert error.status_code == 400
         assert "Bad Request" in str(error)
 
 
 # ==================== EXCEPTION TESTS ====================
+
 
 class TestExceptions:
     """Test custom exception classes."""
@@ -385,7 +382,7 @@ class TestExceptions:
             "Test error",
             status_code=400,
             response_data=response_data,
-            operation="test operation"
+            operation="test operation",
         )
         assert str(error) == "Test error"
         assert error.message == "Test error"
@@ -397,12 +394,10 @@ class TestExceptions:
         """Test ValidationError creation."""
         field_errors = [
             {"field": "email", "message": "Invalid email format"},
-            {"field": "password", "message": "Password too short"}
+            {"field": "password", "message": "Password too short"},
         ]
         error = ValidationError(
-            "Validation failed",
-            field_errors=field_errors,
-            operation="create user"
+            "Validation failed", field_errors=field_errors, operation="create user"
         )
         assert str(error) == "Validation failed"
         assert error.status_code == 422
@@ -423,7 +418,7 @@ class TestExceptions:
             "Internal server error",
             status_code=503,
             response_data=response_data,
-            operation="save data"
+            operation="save data",
         )
         assert str(error) == "Internal server error"
         assert error.status_code == 503
@@ -433,17 +428,20 @@ class TestExceptions:
 
 # ==================== SEQUENCE OPERATIONS TESTS ====================
 
+
 class TestSequenceOperations:
     """Test sequence CRUD operations."""
 
     def test_create_sequence_success(self, mock_sequence_data, mock_sequence_response):
         """Test successful sequence creation."""
         with requests_mock.Mocker() as m:
-            m.post(f"{API_BASE}/sequences/", json=mock_sequence_response, status_code=201)
-            
+            m.post(
+                f"{API_BASE}/sequences/", json=mock_sequence_response, status_code=201
+            )
+
             result = create_sequence(BASE_URL, mock_sequence_data)
             assert result == mock_sequence_response
-            
+
             # Verify request was made correctly
             assert m.last_request.method == "POST"
             assert m.last_request.url == f"{API_BASE}/sequences/"
@@ -455,31 +453,35 @@ class TestSequenceOperations:
                 {
                     "loc": ["body", "recorded_at"],
                     "msg": "field required",
-                    "type": "value_error.missing"
+                    "type": "value_error.missing",
                 }
             ]
         }
-        
+
         with requests_mock.Mocker() as m:
             m.post(f"{API_BASE}/sequences/", json=error_response, status_code=422)
-            
+
             with pytest.raises(ValidationError) as exc_info:
                 create_sequence(BASE_URL, mock_sequence_data)
-            
+
             error = exc_info.value
             assert error.status_code == 422
             assert len(error.field_errors) == 1
             assert error.field_errors[0]["field"] == "body.recorded_at"
 
-    def test_create_sequence_base_url_handling(self, mock_sequence_data, mock_sequence_response):
+    def test_create_sequence_base_url_handling(
+        self, mock_sequence_data, mock_sequence_response
+    ):
         """Test base URL handling with trailing slash."""
         with requests_mock.Mocker() as m:
-            m.post(f"{API_BASE}/sequences/", json=mock_sequence_response, status_code=201)
-            
+            m.post(
+                f"{API_BASE}/sequences/", json=mock_sequence_response, status_code=201
+            )
+
             # Test with trailing slash
             result = create_sequence(f"{BASE_URL}/", mock_sequence_data)
             assert result == mock_sequence_response
-            
+
             # Verify URL was constructed correctly
             assert m.last_request.url == f"{API_BASE}/sequences/"
 
@@ -488,7 +490,7 @@ class TestSequenceOperations:
         sequence_id = 1
         with requests_mock.Mocker() as m:
             m.get(f"{API_BASE}/sequences/{sequence_id}", json=mock_sequence_response)
-            
+
             result = get_sequence(BASE_URL, sequence_id)
             assert result == mock_sequence_response
 
@@ -496,12 +498,15 @@ class TestSequenceOperations:
         """Test sequence retrieval with not found error."""
         sequence_id = 999
         with requests_mock.Mocker() as m:
-            m.get(f"{API_BASE}/sequences/{sequence_id}", 
-                  json={"detail": "Sequence not found"}, status_code=404)
-            
+            m.get(
+                f"{API_BASE}/sequences/{sequence_id}",
+                json={"detail": "Sequence not found"},
+                status_code=404,
+            )
+
             with pytest.raises(NotFoundError) as exc_info:
                 get_sequence(BASE_URL, sequence_id)
-            
+
             error = exc_info.value
             assert error.status_code == 404
             assert "Sequence not found" in str(error)
@@ -510,7 +515,7 @@ class TestSequenceOperations:
         """Test successful sequence listing."""
         with requests_mock.Mocker() as m:
             m.get(f"{API_BASE}/sequences/", json=mock_paginated_response)
-            
+
             result = list_sequences(BASE_URL)
             assert result == mock_paginated_response
 
@@ -522,15 +527,15 @@ class TestSequenceOperations:
             "page": 2,
             "size": 25,
             "order_by": "recorded_at",
-            "order_direction": "desc"
+            "order_direction": "desc",
         }
-        
+
         with requests_mock.Mocker() as m:
             m.get(f"{API_BASE}/sequences/", json=mock_paginated_response)
-            
+
             result = list_sequences(BASE_URL, **params)
             assert result == mock_paginated_response
-            
+
             # Verify query parameters were passed
             request_params = m.last_request.qs
             assert request_params["source_api"] == ["pyronear_french"]
@@ -542,7 +547,7 @@ class TestSequenceOperations:
         sequence_id = 1
         with requests_mock.Mocker() as m:
             m.delete(f"{API_BASE}/sequences/{sequence_id}", status_code=204)
-            
+
             # Should not raise any exception
             delete_sequence(BASE_URL, sequence_id)
 
@@ -550,53 +555,67 @@ class TestSequenceOperations:
         """Test sequence deletion with not found error."""
         sequence_id = 999
         with requests_mock.Mocker() as m:
-            m.delete(f"{API_BASE}/sequences/{sequence_id}", 
-                     json={"detail": "Sequence not found"}, status_code=404)
-            
+            m.delete(
+                f"{API_BASE}/sequences/{sequence_id}",
+                json={"detail": "Sequence not found"},
+                status_code=404,
+            )
+
             with pytest.raises(NotFoundError):
                 delete_sequence(BASE_URL, sequence_id)
 
 
 # ==================== DETECTION OPERATIONS TESTS ====================
 
+
 class TestDetectionOperations:
     """Test detection CRUD operations."""
 
-    def test_create_detection_success(self, mock_detection_data, mock_detection_response, mock_image_file):
+    def test_create_detection_success(
+        self, mock_detection_data, mock_detection_response, mock_image_file
+    ):
         """Test successful detection creation with file upload."""
         with requests_mock.Mocker() as m:
-            m.post(f"{API_BASE}/detections/", json=mock_detection_response, status_code=201)
-            
-            result = create_detection(BASE_URL, mock_detection_data, mock_image_file, "test.jpg")
+            m.post(
+                f"{API_BASE}/detections/", json=mock_detection_response, status_code=201
+            )
+
+            result = create_detection(
+                BASE_URL, mock_detection_data, mock_image_file, "test.jpg"
+            )
             assert result == mock_detection_response
-            
+
             # Verify multipart form data was sent
             assert m.last_request.method == "POST"
 
-    def test_create_detection_validation_error(self, mock_detection_data, mock_image_file):
+    def test_create_detection_validation_error(
+        self, mock_detection_data, mock_image_file
+    ):
         """Test detection creation with validation error."""
         error_response = {
             "detail": [
                 {
                     "loc": ["body", "sequence_id"],
                     "msg": "Sequence does not exist",
-                    "type": "value_error"
+                    "type": "value_error",
                 }
             ]
         }
-        
+
         with requests_mock.Mocker() as m:
             m.post(f"{API_BASE}/detections/", json=error_response, status_code=422)
-            
+
             with pytest.raises(ValidationError):
-                create_detection(BASE_URL, mock_detection_data, mock_image_file, "test.jpg")
+                create_detection(
+                    BASE_URL, mock_detection_data, mock_image_file, "test.jpg"
+                )
 
     def test_get_detection_success(self, mock_detection_response):
         """Test successful detection retrieval."""
         detection_id = 1
         with requests_mock.Mocker() as m:
             m.get(f"{API_BASE}/detections/{detection_id}", json=mock_detection_response)
-            
+
             result = get_detection(BASE_URL, detection_id)
             assert result == mock_detection_response
 
@@ -604,9 +623,12 @@ class TestDetectionOperations:
         """Test detection retrieval with not found error."""
         detection_id = 999
         with requests_mock.Mocker() as m:
-            m.get(f"{API_BASE}/detections/{detection_id}", 
-                  json={"detail": "Detection not found"}, status_code=404)
-            
+            m.get(
+                f"{API_BASE}/detections/{detection_id}",
+                json={"detail": "Detection not found"},
+                status_code=404,
+            )
+
             with pytest.raises(NotFoundError):
                 get_detection(BASE_URL, detection_id)
 
@@ -614,21 +636,17 @@ class TestDetectionOperations:
         """Test successful detection listing."""
         with requests_mock.Mocker() as m:
             m.get(f"{API_BASE}/detections/", json=mock_paginated_response)
-            
+
             result = list_detections(BASE_URL)
             assert result == mock_paginated_response
 
     def test_list_detections_with_params(self, mock_paginated_response):
         """Test detection listing with query parameters."""
-        params = {
-            "sequence_id": 1,
-            "order_by": "recorded_at",
-            "order_direction": "asc"
-        }
-        
+        params = {"sequence_id": 1, "order_by": "recorded_at", "order_direction": "asc"}
+
         with requests_mock.Mocker() as m:
             m.get(f"{API_BASE}/detections/", json=mock_paginated_response)
-            
+
             result = list_detections(BASE_URL, **params)
             assert result == mock_paginated_response
 
@@ -636,11 +654,12 @@ class TestDetectionOperations:
         """Test successful detection URL retrieval."""
         detection_id = 1
         expected_url = "https://s3.amazonaws.com/bucket/detection_1.jpg?expires=3600"
-        
+
         with requests_mock.Mocker() as m:
-            m.get(f"{API_BASE}/detections/{detection_id}/url", 
-                  json={"url": expected_url})
-            
+            m.get(
+                f"{API_BASE}/detections/{detection_id}/url", json={"url": expected_url}
+            )
+
             result = get_detection_url(BASE_URL, detection_id)
             assert result == expected_url
 
@@ -648,9 +667,12 @@ class TestDetectionOperations:
         """Test detection URL retrieval with not found error."""
         detection_id = 999
         with requests_mock.Mocker() as m:
-            m.get(f"{API_BASE}/detections/{detection_id}/url", 
-                  json={"detail": "Detection not found"}, status_code=404)
-            
+            m.get(
+                f"{API_BASE}/detections/{detection_id}/url",
+                json={"detail": "Detection not found"},
+                status_code=404,
+            )
+
             with pytest.raises(NotFoundError):
                 get_detection_url(BASE_URL, detection_id)
 
@@ -659,21 +681,25 @@ class TestDetectionOperations:
         detection_id = 1
         with requests_mock.Mocker() as m:
             m.delete(f"{API_BASE}/detections/{detection_id}", status_code=204)
-            
+
             delete_detection(BASE_URL, detection_id)
 
     def test_delete_detection_not_found(self):
         """Test detection deletion with not found error."""
         detection_id = 999
         with requests_mock.Mocker() as m:
-            m.delete(f"{API_BASE}/detections/{detection_id}", 
-                     json={"detail": "Detection not found"}, status_code=404)
-            
+            m.delete(
+                f"{API_BASE}/detections/{detection_id}",
+                json={"detail": "Detection not found"},
+                status_code=404,
+            )
+
             with pytest.raises(NotFoundError):
                 delete_detection(BASE_URL, detection_id)
 
 
 # ==================== ANNOTATION OPERATIONS TESTS ====================
+
 
 class TestDetectionAnnotationOperations:
     """Test detection annotation CRUD operations."""
@@ -683,17 +709,21 @@ class TestDetectionAnnotationOperations:
         response_data = {
             "id": 1,
             **mock_detection_annotation_data,
-            "created_at": "2024-01-15T10:30:00.000000"
+            "created_at": "2024-01-15T10:30:00.000000",
         }
-        
+
         with requests_mock.Mocker() as m:
-            m.post(f"{API_BASE}/annotations/detections/", json=response_data, status_code=201)
-            
+            m.post(
+                f"{API_BASE}/annotations/detections/",
+                json=response_data,
+                status_code=201,
+            )
+
             result = create_detection_annotation(
                 BASE_URL,
                 mock_detection_annotation_data["detection_id"],
                 mock_detection_annotation_data["annotation"],
-                mock_detection_annotation_data["processing_stage"]
+                mock_detection_annotation_data["processing_stage"],
             )
             assert result == response_data
 
@@ -704,12 +734,14 @@ class TestDetectionAnnotationOperations:
             "id": annotation_id,
             "detection_id": 1,
             "annotation": {"is_smoke": True},
-            "processing_stage": "annotated"
+            "processing_stage": "annotated",
         }
-        
+
         with requests_mock.Mocker() as m:
-            m.get(f"{API_BASE}/annotations/detections/{annotation_id}", json=response_data)
-            
+            m.get(
+                f"{API_BASE}/annotations/detections/{annotation_id}", json=response_data
+            )
+
             result = get_detection_annotation(BASE_URL, annotation_id)
             assert result == response_data
 
@@ -717,7 +749,7 @@ class TestDetectionAnnotationOperations:
         """Test successful detection annotation listing."""
         with requests_mock.Mocker() as m:
             m.get(f"{API_BASE}/annotations/detections/", json=mock_paginated_response)
-            
+
             result = list_detection_annotations(BASE_URL)
             assert result == mock_paginated_response
 
@@ -728,12 +760,12 @@ class TestDetectionAnnotationOperations:
             "processing_stage": "annotated",
             "created_at_gte": "2024-01-01T00:00:00",
             "page": 1,
-            "size": 20
+            "size": 20,
         }
-        
+
         with requests_mock.Mocker() as m:
             m.get(f"{API_BASE}/annotations/detections/", json=mock_paginated_response)
-            
+
             result = list_detection_annotations(BASE_URL, **params)
             assert result == mock_paginated_response
 
@@ -742,18 +774,20 @@ class TestDetectionAnnotationOperations:
         annotation_id = 1
         update_data = {
             "annotation": {"is_smoke": False, "notes": "Updated annotation"},
-            "processing_stage": "reviewed"
+            "processing_stage": "reviewed",
         }
         response_data = {
             "id": annotation_id,
             "detection_id": 1,
             **update_data,
-            "updated_at": "2024-01-15T11:00:00.000000"
+            "updated_at": "2024-01-15T11:00:00.000000",
         }
-        
+
         with requests_mock.Mocker() as m:
-            m.patch(f"{API_BASE}/annotations/detections/{annotation_id}", json=response_data)
-            
+            m.patch(
+                f"{API_BASE}/annotations/detections/{annotation_id}", json=response_data
+            )
+
             result = update_detection_annotation(BASE_URL, annotation_id, update_data)
             assert result == response_data
 
@@ -761,8 +795,10 @@ class TestDetectionAnnotationOperations:
         """Test successful detection annotation deletion."""
         annotation_id = 1
         with requests_mock.Mocker() as m:
-            m.delete(f"{API_BASE}/annotations/detections/{annotation_id}", status_code=204)
-            
+            m.delete(
+                f"{API_BASE}/annotations/detections/{annotation_id}", status_code=204
+            )
+
             delete_detection_annotation(BASE_URL, annotation_id)
 
 
@@ -777,12 +813,16 @@ class TestSequenceAnnotationOperations:
             "created_at": "2024-01-15T10:30:00.000000",
             "has_smoke": True,
             "has_false_positives": False,
-            "false_positive_types": "[]"
+            "false_positive_types": "[]",
         }
-        
+
         with requests_mock.Mocker() as m:
-            m.post(f"{API_BASE}/annotations/sequences/", json=response_data, status_code=201)
-            
+            m.post(
+                f"{API_BASE}/annotations/sequences/",
+                json=response_data,
+                status_code=201,
+            )
+
             result = create_sequence_annotation(BASE_URL, mock_sequence_annotation_data)
             assert result == response_data
 
@@ -794,12 +834,14 @@ class TestSequenceAnnotationOperations:
             "sequence_id": 1,
             "has_missed_smoke": False,
             "annotation": {"sequences_bbox": []},
-            "processing_stage": "annotated"
+            "processing_stage": "annotated",
         }
-        
+
         with requests_mock.Mocker() as m:
-            m.get(f"{API_BASE}/annotations/sequences/{annotation_id}", json=response_data)
-            
+            m.get(
+                f"{API_BASE}/annotations/sequences/{annotation_id}", json=response_data
+            )
+
             result = get_sequence_annotation(BASE_URL, annotation_id)
             assert result == response_data
 
@@ -807,7 +849,7 @@ class TestSequenceAnnotationOperations:
         """Test successful sequence annotation listing."""
         with requests_mock.Mocker() as m:
             m.get(f"{API_BASE}/annotations/sequences/", json=mock_paginated_response)
-            
+
             result = list_sequence_annotations(BASE_URL)
             assert result == mock_paginated_response
 
@@ -818,32 +860,31 @@ class TestSequenceAnnotationOperations:
             "has_false_positives": False,
             "processing_stage": "annotated",
             "order_by": "created_at",
-            "order_direction": "desc"
+            "order_direction": "desc",
         }
-        
+
         with requests_mock.Mocker() as m:
             m.get(f"{API_BASE}/annotations/sequences/", json=mock_paginated_response)
-            
+
             result = list_sequence_annotations(BASE_URL, **params)
             assert result == mock_paginated_response
 
     def test_update_sequence_annotation_success(self):
         """Test successful sequence annotation update."""
         annotation_id = 1
-        update_data = {
-            "has_missed_smoke": True,
-            "processing_stage": "reviewed"
-        }
+        update_data = {"has_missed_smoke": True, "processing_stage": "reviewed"}
         response_data = {
             "id": annotation_id,
             "sequence_id": 1,
             **update_data,
-            "updated_at": "2024-01-15T11:00:00.000000"
+            "updated_at": "2024-01-15T11:00:00.000000",
         }
-        
+
         with requests_mock.Mocker() as m:
-            m.patch(f"{API_BASE}/annotations/sequences/{annotation_id}", json=response_data)
-            
+            m.patch(
+                f"{API_BASE}/annotations/sequences/{annotation_id}", json=response_data
+            )
+
             result = update_sequence_annotation(BASE_URL, annotation_id, update_data)
             assert result == response_data
 
@@ -851,12 +892,15 @@ class TestSequenceAnnotationOperations:
         """Test successful sequence annotation deletion."""
         annotation_id = 1
         with requests_mock.Mocker() as m:
-            m.delete(f"{API_BASE}/annotations/sequences/{annotation_id}", status_code=204)
-            
+            m.delete(
+                f"{API_BASE}/annotations/sequences/{annotation_id}", status_code=204
+            )
+
             delete_sequence_annotation(BASE_URL, annotation_id)
 
 
 # ==================== EDGE CASES AND INTEGRATION TESTS ====================
+
 
 class TestEdgeCases:
     """Test edge cases and integration scenarios."""
@@ -869,13 +913,13 @@ class TestEdgeCases:
             "https://api.example.com",
             "https://api.example.com/",
         ]
-        
+
         for base_url in test_urls:
             with requests_mock.Mocker() as m:
                 # All should resolve to the same endpoint
                 expected_url = f"{base_url.rstrip('/')}/api/v1/sequences/"
                 m.post(expected_url, json=mock_sequence_response, status_code=201)
-                
+
                 result = create_sequence(base_url, mock_sequence_data)
                 assert result == mock_sequence_response
 
@@ -889,38 +933,35 @@ class TestEdgeCases:
                     "false_positive_types": ["reflection", "cloud"],
                     "bboxes": [
                         {"detection_id": 1, "xyxyn": [0.1, 0.2, 0.4, 0.6]},
-                        {"detection_id": 2, "xyxyn": [0.5, 0.6, 0.8, 0.9]}
-                    ]
+                        {"detection_id": 2, "xyxyn": [0.5, 0.6, 0.8, 0.9]},
+                    ],
                 }
             ]
         }
-        
+
         annotation_data = {
             "sequence_id": 1,
             "annotation": complex_annotation,
-            "processing_stage": "annotated"
+            "processing_stage": "annotated",
         }
-        
+
         with requests_mock.Mocker() as m:
-            m.post(f"{API_BASE}/annotations/sequences/", 
-                   json={**annotation_data, "id": 1}, status_code=201)
-            
+            m.post(
+                f"{API_BASE}/annotations/sequences/",
+                json={**annotation_data, "id": 1},
+                status_code=201,
+            )
+
             result = create_sequence_annotation(BASE_URL, annotation_data)
             assert result["annotation"] == complex_annotation
 
     def test_empty_pagination_response(self):
         """Test handling of empty paginated responses."""
-        empty_response = {
-            "items": [],
-            "page": 1,
-            "pages": 0,
-            "size": 50,
-            "total": 0
-        }
-        
+        empty_response = {"items": [], "page": 1, "pages": 0, "size": 50, "total": 0}
+
         with requests_mock.Mocker() as m:
             m.get(f"{API_BASE}/sequences/", json=empty_response)
-            
+
             result = list_sequences(BASE_URL)
             assert result == empty_response
             assert len(result["items"]) == 0
@@ -931,20 +972,20 @@ class TestEdgeCases:
             "page": 100,
             "size": 100,  # Max allowed
             "order_by": "created_at",
-            "order_direction": "desc"
+            "order_direction": "desc",
         }
-        
+
         large_response = {
             "items": [],
             "page": 100,
             "pages": 100,
             "size": 100,
-            "total": 10000
+            "total": 10000,
         }
-        
+
         with requests_mock.Mocker() as m:
             m.get(f"{API_BASE}/sequences/", json=large_response)
-            
+
             result = list_sequences(BASE_URL, **params)
             assert result["page"] == 100
             assert result["total"] == 10000
@@ -952,12 +993,15 @@ class TestEdgeCases:
     def test_server_error_with_retry_context(self):
         """Test server error handling with operation context."""
         with requests_mock.Mocker() as m:
-            m.get(f"{API_BASE}/sequences/1", 
-                  json={"detail": "Database connection lost"}, status_code=503)
-            
+            m.get(
+                f"{API_BASE}/sequences/1",
+                json={"detail": "Database connection lost"},
+                status_code=503,
+            )
+
             with pytest.raises(ServerError) as exc_info:
                 get_sequence(BASE_URL, 1)
-            
+
             error = exc_info.value
             assert error.status_code == 503
             assert "get sequence 1" in error.operation
@@ -966,12 +1010,15 @@ class TestEdgeCases:
     def test_malformed_multipart_request(self, mock_detection_data):
         """Test handling of malformed multipart requests."""
         with requests_mock.Mocker() as m:
-            m.post(f"{API_BASE}/detections/", 
-                   json={"detail": "Invalid multipart data"}, status_code=400)
-            
+            m.post(
+                f"{API_BASE}/detections/",
+                json={"detail": "Invalid multipart data"},
+                status_code=400,
+            )
+
             with pytest.raises(AnnotationAPIError) as exc_info:
                 create_detection(BASE_URL, mock_detection_data, b"invalid", "test.jpg")
-            
+
             error = exc_info.value
             assert error.status_code == 400
             assert "Invalid multipart data" in str(error)

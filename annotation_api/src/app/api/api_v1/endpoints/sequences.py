@@ -82,8 +82,12 @@ async def create_sequence(
 async def list_sequences(
     source_api: Optional[str] = Query(None, description="Filter by source API"),
     camera_id: Optional[int] = Query(None, description="Filter by camera ID"),
-    organisation_id: Optional[int] = Query(None, description="Filter by organisation ID"),
-    is_wildfire_alertapi: Optional[bool] = Query(None, description="Filter by wildfire alert API status"),
+    organisation_id: Optional[int] = Query(
+        None, description="Filter by organisation ID"
+    ),
+    is_wildfire_alertapi: Optional[bool] = Query(
+        None, description="Filter by wildfire alert API status"
+    ),
     order_by: SequenceOrderByField = Query(
         SequenceOrderByField.created_at, description="Order by field"
     ),
@@ -98,7 +102,7 @@ async def list_sequences(
 
     - **source_api**: Filter sequences by source API
     - **camera_id**: Filter sequences by camera ID
-    - **organisation_id**: Filter sequences by organisation ID  
+    - **organisation_id**: Filter sequences by organisation ID
     - **is_wildfire_alertapi**: Filter sequences by wildfire alert API status
     - **order_by**: Order by created_at or recorded_at (default: created_at)
     - **order_direction**: asc or desc (default: desc)
@@ -111,13 +115,13 @@ async def list_sequences(
     # Apply filtering
     if source_api is not None:
         query = query.where(Sequence.source_api == source_api)
-    
+
     if camera_id is not None:
         query = query.where(Sequence.camera_id == camera_id)
-    
+
     if organisation_id is not None:
         query = query.where(Sequence.organisation_id == organisation_id)
-    
+
     if is_wildfire_alertapi is not None:
         query = query.where(Sequence.is_wildfire_alertapi == is_wildfire_alertapi)
 

@@ -6,7 +6,7 @@ using the requests library for HTTP communication.
 """
 
 import json
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 import requests
 
