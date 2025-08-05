@@ -9,7 +9,7 @@ Arguments:
   --url-api-annotation (url): url of the Annotation API
   --date-from (date): date in YYYY-MM-DD format to start the sequence fetching
   --date-end (date): date in YYYY-MM-DD format to end the sequence fetching, defaults to now()
-  --detections-limit (int): maximum number of detections to fetch, defaults to 10
+  --detections-limit (int): maximum number of detections to fetch, defaults to 30
   --detections-order-by (str): whether to order the detections by created_at in descending or ascending order, defaults to ascending
   --loglevel (str): provide logging level for the script
 
@@ -74,7 +74,7 @@ def make_cli_parser() -> argparse.ArgumentParser:
         "--detections-limit",
         help="Maximum number of detections to fetch",
         type=int,
-        default=10,
+        default=30,
     )
     parser.add_argument(
         "--detections-order-by",
