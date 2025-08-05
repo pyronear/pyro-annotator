@@ -12,7 +12,7 @@ Arguments:
   --url-api-platform (url): url of the Platform API (default: https://alertapi.pyronear.org)
   --url-api-annotation (url): url of the Annotation API (default: http://localhost:5050)
   --sequence-id (int): Sequence ID to fetch from platform API.
-  --detections-limit (int): Maximum number of detections to fetch (default: 10).
+  --detections-limit (int): Maximum number of detections to fetch (default: 30).
   --detections-order-by (str): Order the detections by created_at in descending or ascending order (default: asc).
   --skip-posting: Skip posting to annotation API (fetch and transform only, for testing).
   -log, --loglevel (str): Provide logging level for the script (default: info).
@@ -67,7 +67,7 @@ def make_cli_parser() -> argparse.ArgumentParser:
         "--detections-limit",
         help="Maximum number of detections to fetch",
         type=int,
-        default=10,
+        default=30,
     )
     parser.add_argument(
         "--detections-order-by",

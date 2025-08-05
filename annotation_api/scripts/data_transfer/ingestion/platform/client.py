@@ -210,7 +210,7 @@ def list_sequence_detections(
     api_endpoint: str,
     sequence_id: int,
     access_token: str,
-    limit: int = 10,
+    limit: int = 30,
     desc: bool = True,
 ) -> list[dict]:
     """
