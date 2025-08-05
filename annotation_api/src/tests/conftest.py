@@ -13,7 +13,7 @@ from sqlmodel import SQLModel, text
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.config import settings
-from app.db import engine
+from app.db import engine, get_session
 from app.main import app
 from app.models import Detection, Sequence
 from app.services.storage import s3_service
@@ -95,6 +95,21 @@ SEQ_TABLE = [
         "lat": 0.0,
         "lon": 0.0,
         "organisation_id": 1,
+    },
+    {
+        "id": 2,
+        "source_api": "pyronear_french",
+        "alert_api_id": 2,
+        "created_at": now - timedelta(hours=12),
+        "recorded_at": now - timedelta(hours=12),
+        "last_seen_at": now - timedelta(hours=6),
+        "camera_name": "test_camera_2",
+        "camera_id": 2,
+        "is_wildfire_alertapi": False,
+        "organisation_name": "test_org",
+        "lat": 1.0,
+        "lon": 1.0,
+        "organisation_id": 2,
     }
 ]
 
@@ -108,8 +123,14 @@ def event_loop() -> Generator:
 
 
 @pytest_asyncio.fixture(scope="function")
-async def async_client() -> AsyncGenerator[AsyncClient, None]:
+async def async_client(async_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     from httpx import ASGITransport
+    
+    # Override the get_session dependency to use the test session
+    async def get_test_session():
+        yield async_session
+    
+    app.dependency_overrides[get_session] = get_test_session
 
     async with AsyncClient(
         transport=ASGITransport(app=app),
@@ -118,6 +139,9 @@ async def async_client() -> AsyncGenerator[AsyncClient, None]:
         timeout=5,
     ) as client:
         yield client
+    
+    # Clean up the override
+    app.dependency_overrides.clear()
 
 
 @pytest_asyncio.fixture(scope="function")
@@ -130,16 +154,21 @@ async def async_session() -> AsyncSession:
     )
 
     async with async_session_maker() as session:
-        async with session.begin():
-            for table in reversed(SQLModel.metadata.sorted_tables):
-                await session.exec(table.delete())
-                if hasattr(table.c, "id"):
-                    await session.exec(
-                        text(f"ALTER SEQUENCE {table.name}_id_seq RESTART WITH 1")
-                    )
+        # Clean up tables without a transaction block
+        for table in reversed(SQLModel.metadata.sorted_tables):
+            await session.exec(table.delete())
+            if hasattr(table.c, "id"):
+                await session.exec(
+                    text(f"ALTER SEQUENCE {table.name}_id_seq RESTART WITH 1")
+                )
+        await session.commit()
 
         yield session
-        await session.rollback()
+        
+        # Clean up after test
+        for table in reversed(SQLModel.metadata.sorted_tables):
+            await session.exec(table.delete())
+        await session.commit()
 
 
 @pytest.fixture(scope="session")
@@ -151,23 +180,24 @@ def mock_img():
 
 
 @pytest_asyncio.fixture(scope="function")
-async def detection_session(async_session: AsyncSession):
+async def detection_session(sequence_session: AsyncSession):
+    # sequence_session already contains the sequences we need
     for entry in DET_TABLE:
-        async_session.add(Detection(**entry))
-    await async_session.commit()
+        sequence_session.add(Detection(**entry))
+    await sequence_session.commit()
     # Update the detection index count
-    await async_session.exec(
+    await sequence_session.exec(
         text(
             f"ALTER SEQUENCE {Detection.__tablename__}_id_seq RESTART WITH {max(entry['id'] for entry in DET_TABLE) + 1}"
         )
     )
-    await async_session.commit()
+    await sequence_session.commit()
     # Create bucket files
     for entry in DET_TABLE:
         bucket = s3_service.get_bucket(s3_service.resolve_bucket_name())
         bucket.upload_file(entry["bucket_key"], io.BytesIO(b""))
-    yield async_session
-    await async_session.rollback()
+    yield sequence_session
+    await sequence_session.rollback()
     # Delete bucket files
     try:
         for entry in DET_TABLE:
@@ -182,7 +212,7 @@ async def sequence_session(async_session: AsyncSession):
     for entry in SEQ_TABLE:
         async_session.add(Sequence(**entry))
     await async_session.commit()
-    # Update the detection index count
+    # Update the sequence index count
     await async_session.exec(
         text(
             f"ALTER SEQUENCE {Sequence.__tablename__}_id_seq RESTART WITH {max(entry['id'] for entry in SEQ_TABLE) + 1}"

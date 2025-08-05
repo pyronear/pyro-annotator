@@ -9,6 +9,7 @@ from fastapi import (
     APIRouter,
     Body,
     Depends,
+    HTTPException,
     Path,
     Query,
     status,
@@ -21,7 +22,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.api.dependencies import get_sequence_annotation_crud
 from app.crud import SequenceAnnotationCRUD
 from app.db import get_session
-from app.models import Sequence, SequenceAnnotation, SequenceAnnotationProcessingStage
+from app.models import Detection, Sequence, SequenceAnnotation, SequenceAnnotationProcessingStage
 from app.schemas.annotation_validation import SequenceAnnotationData
 from app.schemas.sequence_annotations import (
     SequenceAnnotationCreate,
@@ -66,11 +67,54 @@ def derive_false_positive_types(annotation_data: SequenceAnnotationData) -> str:
     return json.dumps(unique_types)
 
 
+async def validate_detection_ids(
+    annotation_data: SequenceAnnotationData, session: AsyncSession
+) -> None:
+    """Validate that all detection_ids in annotation data reference existing detections.
+    
+    Args:
+        annotation_data: The sequence annotation data containing detection_ids
+        session: Database session for querying detections
+        
+    Raises:
+        HTTPException: 422 status with details about missing detection_ids
+    """
+    # Extract all detection_ids from the annotation data
+    detection_ids = set()
+    for seq_bbox in annotation_data.sequences_bbox:
+        for bbox in seq_bbox.bboxes:
+            detection_ids.add(bbox.detection_id)
+    
+    # If no detection_ids to validate, return early
+    if not detection_ids:
+        return
+    
+    # Query database to find existing detection_ids
+    detection_ids_list = list(detection_ids)
+    query = select(Detection.id).where(Detection.id.in_(detection_ids_list))
+    result = await session.exec(query)
+    existing_ids = set(row[0] for row in result.all())  # Extract first element from tuples
+    
+    # Find missing detection_ids
+    missing_ids = detection_ids - existing_ids
+    
+    if missing_ids:
+        # Sort for consistent error messages
+        missing_ids_sorted = sorted(list(missing_ids))
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Detection IDs {missing_ids_sorted} do not exist in the database",
+        )
+
+
 @router.post("/", status_code=status.HTTP_201_CREATED)
 async def create_sequence_annotation(
     create_data: SequenceAnnotationCreate = Body(...),
     annotations: SequenceAnnotationCRUD = Depends(get_sequence_annotation_crud),
 ) -> SequenceAnnotationRead:
+    # Validate that all detection_ids exist in the database
+    await validate_detection_ids(create_data.annotation, annotations.session)
+    
     # Derive values from annotation data
     has_smoke = derive_has_smoke(create_data.annotation)
     has_false_positives = derive_has_false_positives(create_data.annotation)
@@ -191,8 +235,11 @@ async def update_sequence_annotation(
     # Start with existing data
     update_dict = {"updated_at": datetime.utcnow()}
 
-    # If annotation is being updated, derive new values
+    # If annotation is being updated, validate and derive new values
     if payload.annotation is not None:
+        # Validate that all detection_ids exist in the database
+        await validate_detection_ids(payload.annotation, annotations.session)
+        
         update_dict.update(
             {
                 "has_smoke": derive_has_smoke(payload.annotation),
