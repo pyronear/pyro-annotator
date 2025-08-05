@@ -45,7 +45,10 @@ class OrderDirection(str, Enum):
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
 async def create_sequence(
-    source_api: str = Form(...),
+    source_api: str = Form(
+        ...,
+        description="Source API for this sequence. Options: pyronear_french (Pyronear French platform), alert_wildfire (AlertWildfire network), api_cenia (CENIA Chile system)",
+    ),
     alert_api_id: int = Form(...),
     camera_name: str = Form(...),
     camera_id: int = Form(...),
@@ -80,7 +83,10 @@ async def create_sequence(
 
 @router.get("/")
 async def list_sequences(
-    source_api: Optional[str] = Query(None, description="Filter by source API"),
+    source_api: Optional[str] = Query(
+        None,
+        description="Filter by source API. Options: pyronear_french (Pyronear French platform), alert_wildfire (AlertWildfire network), api_cenia (CENIA Chile system)",
+    ),
     camera_id: Optional[int] = Query(None, description="Filter by camera ID"),
     organisation_id: Optional[int] = Query(
         None, description="Filter by organisation ID"

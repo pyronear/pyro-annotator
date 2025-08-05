@@ -156,13 +156,15 @@ async def list_sequence_annotations(
         None, description="Filter by has_false_positives"
     ),
     false_positive_type: Optional[str] = Query(
-        None, description="Filter by specific false positive type"
+        None,
+        description="Filter by specific false positive type. Options include: antenna, building, cliff, dark, dust, high_cloud, low_cloud, lens_flare, lens_droplet, light, rain, trail, road, sky, tree, water_body, other",
     ),
     has_missed_smoke: Optional[bool] = Query(
         None, description="Filter by has_missed_smoke"
     ),
     processing_stage: Optional[SequenceAnnotationProcessingStage] = Query(
-        None, description="Filter by processing stage"
+        None,
+        description="Filter by sequence annotation processing stage. Options: imported (initial import), ready_to_annotate (prepared for annotation), annotated (fully processed)",
     ),
     order_by: SequenceAnnotationOrderByField = Query(
         SequenceAnnotationOrderByField.created_at, description="Order by field"

@@ -49,7 +49,8 @@ async def create_detection_annotation(
     detection_id: int = Form(...),
     annotation: str = Form(..., description="JSON string of annotation object"),
     processing_stage: DetectionAnnotationProcessingStage = Form(
-        ..., description="Processing stage for annotation"
+        ...,
+        description="Processing stage for this detection annotation. Options: imported (initial import), visual_check (human verification), label_studio_check (quality review), annotated (fully processed)",
     ),
     annotations: DetectionAnnotationCRUD = Depends(get_detection_annotation_crud),
 ) -> DetectionAnnotationRead:
@@ -90,7 +91,8 @@ async def list_annotations(
         None, description="Filter by organisation ID"
     ),
     processing_stage: Optional[DetectionAnnotationProcessingStage] = Query(
-        None, description="Filter by processing stage"
+        None,
+        description="Filter by detection annotation processing stage. Options: imported (initial import), visual_check (human verification), label_studio_check (quality review), annotated (fully processed)",
     ),
     created_at_gte: Optional[datetime] = Query(
         None, description="Filter by created_at >= this date"
