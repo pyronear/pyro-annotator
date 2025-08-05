@@ -31,8 +31,7 @@ class BaseCRUD(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             await self.session.commit()
         except exc.IntegrityError as error:
             await self.session.rollback()
-            # Log full error for debugging
-            print(f"Database integrity error (full): {error}")
+            # Handle integrity constraint violations
 
             # Check if this is an enum validation error
             if isinstance(error.orig, asyncpg.InvalidTextRepresentationError):
@@ -49,8 +48,7 @@ class BaseCRUD(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             )
         except exc.DataError as error:
             await self.session.rollback()
-            # Log full error for debugging
-            print(f"Database data error (full): {error}")
+            # Handle data type validation errors
             # Handle data type validation errors
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

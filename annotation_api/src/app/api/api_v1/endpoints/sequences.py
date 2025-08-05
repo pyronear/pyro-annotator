@@ -13,7 +13,7 @@ from fastapi import (
     status,
 )
 from fastapi_pagination import Page, Params
-from fastapi_pagination.ext.sqlalchemy import paginate
+from fastapi_pagination.ext.sqlalchemy import apaginate
 from sqlalchemy import asc, desc, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -129,7 +129,7 @@ async def list_sequences(
         query = query.order_by(asc(order_field))
 
     # Apply pagination
-    return await paginate(session, query, params)
+    return await apaginate(session, query, params)
 
 
 @router.get("/{sequence_id}")

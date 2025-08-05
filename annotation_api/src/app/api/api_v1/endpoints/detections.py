@@ -17,7 +17,7 @@ from fastapi import (
     status,
 )
 from fastapi_pagination import Page, Params
-from fastapi_pagination.ext.sqlalchemy import paginate
+from fastapi_pagination.ext.sqlalchemy import apaginate
 from pydantic import ValidationError
 from sqlalchemy import asc, desc, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -154,7 +154,7 @@ async def list_detections(
         query = query.order_by(asc(order_field))
 
     # Apply pagination
-    return await paginate(session, query, params)
+    return await apaginate(session, query, params)
 
 
 @router.delete("/{detection_id}", status_code=status.HTTP_204_NO_CONTENT)
