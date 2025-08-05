@@ -67,7 +67,7 @@ class SequenceAnnotationCreate(BaseModel):
         description="Current processing stage in the sequence annotation workflow. Tracks progress from import through annotation completion.",
         examples=["imported", "ready_to_annotate", "annotated"],
     )
-    created_at: datetime
+    created_at: Optional[datetime] = None
 
 
 class SequenceAnnotationRead(BaseModel):
