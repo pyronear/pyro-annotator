@@ -7,7 +7,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, ConfigDict
 
 from app.models import DetectionAnnotationProcessingStage
 from app.schemas.annotation_validation import DetectionAnnotationData
@@ -20,9 +20,40 @@ __all__ = [
 
 
 class DetectionAnnotationCreate(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "detection_id": 123,
+                    "annotation": {
+                        "smoke_type": "wildfire",
+                        "confidence": 0.87,
+                        "notes": "Clear smoke plume visible",
+                    },
+                    "processing_stage": "imported",
+                    "created_at": "2024-01-15T10:30:00",
+                },
+                {
+                    "detection_id": 456,
+                    "annotation": {
+                        "smoke_type": "industrial",
+                        "confidence": 0.92,
+                        "notes": "Factory smoke confirmed",
+                    },
+                    "processing_stage": "annotated",
+                    "created_at": "2024-01-15T11:15:00",
+                },
+            ]
+        }
+    )
+
     detection_id: int
     annotation: DetectionAnnotationData
-    processing_stage: DetectionAnnotationProcessingStage
+    processing_stage: DetectionAnnotationProcessingStage = Field(
+        ...,
+        description="Current processing stage in the detection annotation workflow. Tracks progress from initial import through visual checks to final annotation.",
+        examples=["imported", "visual_check", "annotated"],
+    )
     created_at: datetime
 
 
@@ -30,12 +61,20 @@ class DetectionAnnotationRead(BaseModel):
     id: int
     detection_id: int
     annotation: DetectionAnnotationData
-    processing_stage: DetectionAnnotationProcessingStage
+    processing_stage: DetectionAnnotationProcessingStage = Field(
+        ...,
+        description="Current processing stage in the detection annotation workflow. Tracks progress from initial import through visual checks to final annotation.",
+        examples=["imported", "visual_check", "annotated"],
+    )
     created_at: datetime
     updated_at: Optional[datetime]
 
 
 class DetectionAnnotationUpdate(BaseModel):
     annotation: Optional[DetectionAnnotationData] = None
-    processing_stage: Optional[DetectionAnnotationProcessingStage] = None
+    processing_stage: Optional[DetectionAnnotationProcessingStage] = Field(
+        None,
+        description="Updated processing stage in the detection annotation workflow. Use to advance or modify the current stage.",
+        examples=["visual_check", "label_studio_check", "annotated"],
+    )
     updated_at: Optional[datetime] = None
