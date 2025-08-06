@@ -1,0 +1,162 @@
+import axios, { AxiosInstance, AxiosResponse } from 'axios';
+import { 
+  Sequence, 
+  SequenceAnnotation, 
+  DetectionAnnotation,
+  Detection,
+  PaginatedResponse,
+  SequenceFilters,
+  SequenceAnnotationFilters,
+  DetectionAnnotationFilters,
+  GifUrls,
+  ApiError
+} from '@/types/api';
+
+class ApiClient {
+  private client: AxiosInstance;
+
+  constructor(baseURL: string = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5050') {
+    this.client = axios.create({
+      baseURL: `${baseURL}/api/v1`,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      timeout: 30000,
+    });
+
+    // Request interceptor
+    this.client.interceptors.request.use(
+      (config) => {
+        console.log(`Making ${config.method?.toUpperCase()} request to ${config.url}`);
+        return config;
+      },
+      (error) => Promise.reject(error)
+    );
+
+    // Response interceptor
+    this.client.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        const apiError: ApiError = {
+          detail: error.response?.data?.detail || error.message || 'Unknown error occurred',
+        };
+        return Promise.reject(apiError);
+      }
+    );
+  }
+
+  // Sequences
+  async getSequences(filters: SequenceFilters = {}): Promise<PaginatedResponse<Sequence>> {
+    const response: AxiosResponse<PaginatedResponse<Sequence>> = await this.client.get('/sequences', {
+      params: filters,
+    });
+    return response.data;
+  }
+
+  async getSequence(id: number): Promise<Sequence> {
+    const response: AxiosResponse<Sequence> = await this.client.get(`/sequences/${id}`);
+    return response.data;
+  }
+
+  async createSequence(sequence: Omit<Sequence, 'id' | 'created_at' | 'updated_at'>): Promise<Sequence> {
+    const response: AxiosResponse<Sequence> = await this.client.post('/sequences', sequence);
+    return response.data;
+  }
+
+  async deleteSequence(id: number): Promise<void> {
+    await this.client.delete(`/sequences/${id}`);
+  }
+
+  // Sequence Annotations
+  async getSequenceAnnotations(filters: SequenceAnnotationFilters = {}): Promise<PaginatedResponse<SequenceAnnotation>> {
+    const response: AxiosResponse<PaginatedResponse<SequenceAnnotation>> = await this.client.get('/annotations/sequences', {
+      params: filters,
+    });
+    return response.data;
+  }
+
+  async getSequenceAnnotation(id: number): Promise<SequenceAnnotation> {
+    const response: AxiosResponse<SequenceAnnotation> = await this.client.get(`/annotations/sequences/${id}`);
+    return response.data;
+  }
+
+  async createSequenceAnnotation(annotation: Omit<SequenceAnnotation, 'id' | 'created_at' | 'updated_at'>): Promise<SequenceAnnotation> {
+    const response: AxiosResponse<SequenceAnnotation> = await this.client.post('/annotations/sequences', annotation);
+    return response.data;
+  }
+
+  async updateSequenceAnnotation(id: number, updates: Partial<SequenceAnnotation>): Promise<SequenceAnnotation> {
+    const response: AxiosResponse<SequenceAnnotation> = await this.client.patch(`/annotations/sequences/${id}`, updates);
+    return response.data;
+  }
+
+  async deleteSequenceAnnotation(id: number): Promise<void> {
+    await this.client.delete(`/annotations/sequences/${id}`);
+  }
+
+  // GIF Generation
+  async generateGifs(annotationId: number): Promise<void> {
+    await this.client.post(`/annotations/sequences/${annotationId}/generate-gifs`);
+  }
+
+  async getGifUrls(annotationId: number): Promise<GifUrls> {
+    const response: AxiosResponse<GifUrls> = await this.client.get(`/annotations/sequences/${annotationId}/gifs/urls`);
+    return response.data;
+  }
+
+  // Detections
+  async getDetections(filters: { sequence_id?: number; order_by?: 'created_at' | 'recorded_at'; order_direction?: 'asc' | 'desc'; page?: number; size?: number } = {}): Promise<PaginatedResponse<Detection>> {
+    const response: AxiosResponse<PaginatedResponse<Detection>> = await this.client.get('/detections', {
+      params: filters,
+    });
+    return response.data;
+  }
+
+  async getDetection(id: number): Promise<Detection> {
+    const response: AxiosResponse<Detection> = await this.client.get(`/detections/${id}`);
+    return response.data;
+  }
+
+  async getDetectionImageUrl(id: number): Promise<{ image_url: string; expires_at: string }> {
+    const response = await this.client.get(`/detections/${id}/url`);
+    return response.data;
+  }
+
+  // Detection Annotations (for future use)
+  async getDetectionAnnotations(filters: DetectionAnnotationFilters = {}): Promise<PaginatedResponse<DetectionAnnotation>> {
+    const response: AxiosResponse<PaginatedResponse<DetectionAnnotation>> = await this.client.get('/annotations/detections', {
+      params: filters,
+    });
+    return response.data;
+  }
+
+  async getDetectionAnnotation(id: number): Promise<DetectionAnnotation> {
+    const response: AxiosResponse<DetectionAnnotation> = await this.client.get(`/annotations/detections/${id}`);
+    return response.data;
+  }
+
+  async createDetectionAnnotation(annotation: Omit<DetectionAnnotation, 'id' | 'created_at' | 'updated_at'>): Promise<DetectionAnnotation> {
+    const response: AxiosResponse<DetectionAnnotation> = await this.client.post('/annotations/detections', annotation);
+    return response.data;
+  }
+
+  async updateDetectionAnnotation(id: number, updates: Partial<DetectionAnnotation>): Promise<DetectionAnnotation> {
+    const response: AxiosResponse<DetectionAnnotation> = await this.client.patch(`/annotations/detections/${id}`, updates);
+    return response.data;
+  }
+
+  async deleteDetectionAnnotation(id: number): Promise<void> {
+    await this.client.delete(`/annotations/detections/${id}`);
+  }
+
+  // Health check
+  async healthCheck(): Promise<{ status: string }> {
+    // Note: health check is at /status, not in /api/v1
+    const response = await axios.get(`${this.client.defaults.baseURL?.replace('/api/v1', '')}/status`);
+    return response.data;
+  }
+}
+
+// Export a singleton instance
+export const apiClient = new ApiClient();
+export default apiClient;
