@@ -162,7 +162,7 @@ async def list_sequences(
 
 @router.get("/{sequence_id}")
 async def get_sequence(
-    sequence_id: int = Path(..., gt=0),
+    sequence_id: int = Path(..., ge=0),
     sequences: SequenceCRUD = Depends(get_sequence_crud),
 ) -> SequenceRead:
     return await sequences.get(sequence_id, strict=True)
@@ -170,7 +170,7 @@ async def get_sequence(
 
 @router.delete("/{sequence_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_sequence(
-    sequence_id: int = Path(..., gt=0),
+    sequence_id: int = Path(..., ge=0),
     sequences: SequenceCRUD = Depends(get_sequence_crud),
 ) -> None:
     await sequences.delete(sequence_id)

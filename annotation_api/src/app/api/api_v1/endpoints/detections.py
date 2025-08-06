@@ -97,7 +97,7 @@ async def create_detection(
 
 @router.get("/{detection_id}")
 async def get_detection(
-    detection_id: int = Path(..., gt=0),
+    detection_id: int = Path(..., ge=0),
     detections: DetectionCRUD = Depends(get_detection_crud),
 ) -> DetectionRead:
     return await detections.get(detection_id, strict=True)
@@ -105,7 +105,7 @@ async def get_detection(
 
 @router.get("/{detection_id}/url", response_model=DetectionUrl)
 async def get_detection_url(
-    detection_id: int = Path(..., gt=0),
+    detection_id: int = Path(..., ge=0),
     session: AsyncSession = Depends(get_session),
 ) -> DetectionUrl:
     detection = await session.get(Detection, detection_id)
@@ -159,7 +159,7 @@ async def list_detections(
 
 @router.delete("/{detection_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_detection(
-    detection_id: int = Path(..., gt=0),
+    detection_id: int = Path(..., ge=0),
     detections: DetectionCRUD = Depends(get_detection_crud),
 ) -> None:
     detection = await detections.get(detection_id, strict=True)

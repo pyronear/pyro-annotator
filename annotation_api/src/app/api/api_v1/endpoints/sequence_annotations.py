@@ -243,7 +243,7 @@ async def list_sequence_annotations(
 
 @router.get("/{annotation_id}")
 async def get_sequence_annotation(
-    annotation_id: int = Path(..., gt=0),
+    annotation_id: int = Path(..., ge=0),
     annotations: SequenceAnnotationCRUD = Depends(get_sequence_annotation_crud),
 ) -> SequenceAnnotationRead:
     return await annotations.get(annotation_id, strict=True)
@@ -251,7 +251,7 @@ async def get_sequence_annotation(
 
 @router.patch("/{annotation_id}")
 async def update_sequence_annotation(
-    annotation_id: int = Path(..., gt=0),
+    annotation_id: int = Path(..., ge=0),
     payload: SequenceAnnotationUpdate = Body(...),
     annotations: SequenceAnnotationCRUD = Depends(get_sequence_annotation_crud),
 ) -> SequenceAnnotationRead:
@@ -293,7 +293,7 @@ async def update_sequence_annotation(
 
 @router.delete("/{annotation_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_sequence_annotation(
-    annotation_id: int = Path(..., gt=0),
+    annotation_id: int = Path(..., ge=0),
     annotations: SequenceAnnotationCRUD = Depends(get_sequence_annotation_crud),
 ) -> None:
     await annotations.delete(annotation_id)
