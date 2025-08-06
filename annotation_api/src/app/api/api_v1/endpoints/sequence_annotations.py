@@ -19,7 +19,7 @@ from fastapi_pagination.ext.sqlalchemy import apaginate
 from sqlalchemy import asc, desc, select, text
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.api.dependencies import get_sequence_annotation_crud
+from app.api.dependencies import get_sequence_annotation_crud, get_gif_generator
 from app.crud import SequenceAnnotationCRUD
 from app.db import get_session
 from app.models import (
@@ -297,3 +297,41 @@ async def delete_sequence_annotation(
     annotations: SequenceAnnotationCRUD = Depends(get_sequence_annotation_crud),
 ) -> None:
     await annotations.delete(annotation_id)
+
+
+@router.post("/{annotation_id}/generate-gifs", status_code=status.HTTP_200_OK)
+async def generate_sequence_annotation_gifs(
+    annotation_id: int = Path(..., ge=0, description="ID of the sequence annotation"),
+    gif_generator = Depends(get_gif_generator),
+) -> dict:
+    """
+    Generate GIFs for a sequence annotation.
+
+    This endpoint creates both main (full-frame with bounding box overlays) and crop GIFs
+    from the detection images referenced in the sequence annotation. The generated GIFs
+    are uploaded to S3 storage and the annotation is updated with the GIF URLs.
+
+    Args:
+        annotation_id: The ID of the sequence annotation to generate GIFs for
+
+    Returns:
+        dict: Contains generation results with annotation_id, sequence_id, gif_count, 
+              total_bboxes, and generated_at timestamp
+
+    Raises:
+        HTTPException 404: If sequence annotation not found
+        HTTPException 422: If no sequence bounding boxes found or no detections found
+        HTTPException 500: If GIF generation fails
+    """
+    try:
+        result = await gif_generator.generate_gifs_for_annotation(annotation_id)
+        return result
+    except HTTPException:
+        # Re-raise HTTP exceptions (404, 422)
+        raise
+    except Exception as e:
+        # Catch any other unexpected errors and return 500
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate GIFs: {str(e)}"
+        )
