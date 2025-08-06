@@ -148,6 +148,62 @@ async def test_delete_sequence_annotation(
 
 
 @pytest.mark.asyncio
+async def test_delete_sequence_annotation_does_not_cascade_sequence(
+    async_client: AsyncClient, sequence_session, detection_session
+):
+    """Test that deleting a sequence annotation does NOT cascade delete the parent sequence."""
+    # 1. Verify sequence exists (sequence_id = 1 from fixture)
+    sequence_resp = await async_client.get("/sequences/1")
+    assert sequence_resp.status_code == 200
+    initial_sequence_data = sequence_resp.json()
+    
+    # 2. Create annotation for sequence
+    annotation_payload = {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": True,
+                    "gif_url_main": "http://example.com/main.gif",
+                    "gif_url_crop": "http://example.com/crop.gif",
+                    "false_positive_types": [],
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                }
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
+        "created_at": datetime.utcnow().isoformat(),
+    }
+    
+    create_resp = await async_client.post("/annotations/sequences/", json=annotation_payload)
+    assert create_resp.status_code == 201
+    annotation_id = create_resp.json()["id"]
+    
+    # 3. Verify annotation was created
+    annotation_get_resp = await async_client.get(f"/annotations/sequences/{annotation_id}")
+    assert annotation_get_resp.status_code == 200
+    
+    # 4. Delete annotation
+    del_resp = await async_client.delete(f"/annotations/sequences/{annotation_id}")
+    assert del_resp.status_code == 204
+    
+    # 5. Verify annotation is deleted
+    annotation_get_resp_after = await async_client.get(f"/annotations/sequences/{annotation_id}")
+    assert annotation_get_resp_after.status_code == 404
+    
+    # 6. CRITICAL: Verify sequence still exists and was NOT cascade deleted
+    sequence_get_resp_after = await async_client.get("/sequences/1")
+    assert sequence_get_resp_after.status_code == 200
+    final_sequence_data = sequence_get_resp_after.json()
+    
+    # 7. Verify sequence data is unchanged
+    assert final_sequence_data["id"] == initial_sequence_data["id"]
+    assert final_sequence_data["source_api"] == initial_sequence_data["source_api"]
+    assert final_sequence_data["camera_name"] == initial_sequence_data["camera_name"]
+
+
+@pytest.mark.asyncio
 async def test_create_sequence_annotation_invalid_bbox(
     async_client: AsyncClient, sequence_session
 ):

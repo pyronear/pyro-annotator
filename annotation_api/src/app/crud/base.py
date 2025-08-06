@@ -20,9 +20,22 @@ __all__ = ["BaseCRUD"]
 
 
 class BaseCRUD(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
+    # Mapping from internal model names to user-friendly resource names
+    _RESOURCE_NAME_MAPPING = {
+        "Sequence": "sequence",
+        "SequenceAnnotation": "sequence annotation", 
+        "Detection": "detection",
+        "DetectionAnnotation": "detection annotation",
+    }
+    
     def __init__(self, session: AsyncSession, model: Type[ModelType]) -> None:
         self.session = session
         self.model = model
+    
+    def _get_resource_name(self) -> str:
+        """Get user-friendly resource name for error messages."""
+        model_name = self.model.__name__
+        return self._RESOURCE_NAME_MAPPING.get(model_name, model_name.lower())
 
     async def create(self, payload: CreateSchemaType) -> ModelType:
         entry = self.model(**payload.model_dump())
@@ -61,9 +74,10 @@ class BaseCRUD(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
     async def get(self, entry_id: int, strict: bool = False) -> Union[ModelType, None]:
         entry: Union[ModelType, None] = await self.session.get(self.model, entry_id)
         if strict and entry is None:
+            resource_name = self._get_resource_name()
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Table {self.model.__name__} has no corresponding entry.",
+                detail=f"{resource_name.capitalize()} not found.",
             )
         return entry
 
@@ -74,9 +88,10 @@ class BaseCRUD(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         results = await self.session.exec(statement=statement)
         entry = results.one_or_none()
         if strict and entry is None:
+            resource_name = self._get_resource_name()
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Table {self.model.__name__} has no corresponding entry.",
+                detail=f"{resource_name.capitalize()} not found.",
             )
         return entry
 

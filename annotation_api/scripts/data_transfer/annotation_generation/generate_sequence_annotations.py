@@ -3,7 +3,7 @@ CLI script to generate sequence annotations from AI predictions.
 
 This script analyzes sequences and their detections to automatically generate
 sequence annotations by clustering overlapping bounding boxes across temporal frames.
-The generated annotations are marked as 'ready_to_annotate' for human review.
+The generated annotations are marked as 'imported' for further processing (e.g., GIF generation).
 
 Usage:
   # Generate annotation for a single sequence
@@ -15,6 +15,9 @@ Usage:
   # Generate annotations for sequences in a date range
   uv run python -m scripts.data_transfer.annotation_generation.generate_sequence_annotations --date-from 2024-01-01 --date-end 2024-01-02 --loglevel info
 
+  # Generate annotations for ALL sequences without annotations
+  uv run python -m scripts.data_transfer.annotation_generation.generate_sequence_annotations --all-without-annotations --loglevel info
+
   # Preview annotations without creating them (dry run)
   uv run python -m scripts.data_transfer.annotation_generation.generate_sequence_annotations --sequence-id 123 --dry-run --loglevel debug
 
@@ -24,6 +27,7 @@ Arguments:
   --sequence-ids (str): Comma-separated list of sequence IDs to process
   --date-from (date): Start date for sequence range (YYYY-MM-DD format)
   --date-end (date): End date for sequence range (YYYY-MM-DD format)
+  --all-without-annotations: Process all sequences that do not have annotations yet
   --confidence-threshold (float): Minimum AI prediction confidence (default: 0.5)
   --iou-threshold (float): Minimum IoU for clustering overlapping boxes (default: 0.3)
   --min-cluster-size (int): Minimum boxes required in a cluster (default: 1)
@@ -34,6 +38,9 @@ Arguments:
 Examples:
   # Basic usage - single sequence
   uv run python -m scripts.data_transfer.annotation_generation.generate_sequence_annotations --sequence-id 123
+
+  # Process all sequences without annotations
+  uv run python -m scripts.data_transfer.annotation_generation.generate_sequence_annotations --all-without-annotations
 
   # High confidence predictions only
   uv run python -m scripts.data_transfer.annotation_generation.generate_sequence_annotations --sequence-id 123 --confidence-threshold 0.8
@@ -129,6 +136,11 @@ def make_cli_parser() -> argparse.ArgumentParser:
         "--date-from",
         help="Start date for sequence range (YYYY-MM-DD format)",
         type=valid_date,
+    )
+    sequence_group.add_argument(
+        "--all-without-annotations",
+        action="store_true",
+        help="Process all sequences that do not have annotations yet",
     )
     parser.add_argument(
         "--date-end",
@@ -275,6 +287,59 @@ def get_sequences_from_date_range(base_url: str, date_from: date, date_end: date
         return []
 
 
+def get_sequences_without_annotations(base_url: str) -> List[int]:
+    """
+    Get all sequence IDs that do not have annotations.
+
+    Args:
+        base_url: API base URL
+
+    Returns:
+        List of sequence IDs without annotations
+    """
+    try:
+        logging.info("Fetching sequences without annotations")
+
+        # Fetch sequences without annotations with pagination
+        all_sequences = []
+        page = 1
+        page_size = 100
+
+        while True:
+            response = list_sequences(
+                base_url,
+                has_annotation=False,
+                page=page,
+                size=page_size,
+            )
+
+            # Handle paginated response
+            if isinstance(response, dict) and 'items' in response:
+                sequences = response['items']
+                total_pages = response.get('pages', 1)
+            else:
+                sequences = response
+                total_pages = 1
+
+            if not sequences:
+                break
+
+            # Extract sequence IDs
+            for seq in sequences:
+                all_sequences.append(seq['id'])
+
+            if page >= total_pages:
+                break
+            page += 1
+
+        logging.info(f"Found {len(all_sequences)} sequences without annotations")
+        return all_sequences
+
+    except Exception as e:
+        logging.error(f"Error fetching sequences without annotations: {e}")
+        return []
+
+
 def check_existing_annotation(base_url: str, sequence_id: int) -> Optional[int]:
     """
     Check if a sequence already has an annotation.
@@ -323,7 +388,7 @@ def create_annotation_from_data(base_url: str, sequence_id: int, annotation_data
             # Update existing annotation (PATCH)
             update_dict = {
                 "annotation": annotation_data.model_dump(),
-                "processing_stage": SequenceAnnotationProcessingStage.READY_TO_ANNOTATE.value,
+                "processing_stage": SequenceAnnotationProcessingStage.IMPORTED.value,
                 "has_missed_smoke": False,  # Default to False, can be updated during human review
             }
 
@@ -342,7 +407,7 @@ def create_annotation_from_data(base_url: str, sequence_id: int, annotation_data
             annotation_dict = {
                 "sequence_id": sequence_id,
                 "annotation": annotation_data.model_dump(),
-                "processing_stage": SequenceAnnotationProcessingStage.READY_TO_ANNOTATE.value,
+                "processing_stage": SequenceAnnotationProcessingStage.IMPORTED.value,
                 "has_smoke": any(seq_bbox.is_smoke for seq_bbox in annotation_data.sequences_bbox),
                 "has_false_positives": any(len(seq_bbox.false_positive_types) > 0 for seq_bbox in annotation_data.sequences_bbox),
                 "has_missed_smoke": False,  # Default to False, can be updated during human review
@@ -401,6 +466,11 @@ def main():
         sequence_ids = get_sequences_from_date_range(args.url_api_annotation, args.date_from, args.date_end)
         if not sequence_ids:
             logger.error("No sequences found in specified date range")
+            sys.exit(1)
+    elif args.all_without_annotations:
+        sequence_ids = get_sequences_without_annotations(args.url_api_annotation)
+        if not sequence_ids:
+            logger.error("No sequences without annotations found")
             sys.exit(1)
 
     logger.info(f"Processing {len(sequence_ids)} sequences")

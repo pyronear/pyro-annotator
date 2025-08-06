@@ -93,6 +93,10 @@ uv run python -m scripts.data_transfer.annotation_generation.generate_sequence_a
 # Process sequences in date range
 uv run python -m scripts.data_transfer.annotation_generation.generate_sequence_annotations \
   --date-from 2024-01-01 --date-end 2024-01-02 --loglevel info
+
+# Process ALL sequences that don't have annotations yet
+uv run python -m scripts.data_transfer.annotation_generation.generate_sequence_annotations \
+  --all-without-annotations --loglevel info
 ```
 
 ### Advanced Configuration
@@ -142,6 +146,7 @@ uv run python -m scripts.data_transfer.annotation_generation.generate_sequence_a
 | `--sequence-ids` | Comma-separated sequence IDs | - | `123,456,789` |
 | `--date-from` | Start date (YYYY-MM-DD) | - | `2024-01-01` |
 | `--date-end` | End date (YYYY-MM-DD) | Today | `2024-01-02` |
+| `--all-without-annotations` | Process all sequences without annotations | `false` | Bulk processing |
 | `--confidence-threshold` | Min AI prediction confidence | `0.5` | `0.0` (no filtering) to `0.9` (strict) |
 | `--iou-threshold` | Min IoU for clustering | `0.3` | `0.1` (loose) to `0.7` (tight) |
 | `--min-cluster-size` | Min boxes per cluster | `1` | `1` (all) to `5` (multi-frame only) |
@@ -233,6 +238,12 @@ uv run python -m scripts.data_transfer.annotation_generation.generate_sequence_a
   --date-from 2024-01-01 --date-end 2024-01-07 \
   --confidence-threshold 0.6 --iou-threshold 0.4 \
   --min-cluster-size 2 --loglevel info
+
+# Process all sequences without annotations (initial bulk processing)
+uv run python -m scripts.data_transfer.annotation_generation.generate_sequence_annotations \
+  --all-without-annotations \
+  --confidence-threshold 0.5 --iou-threshold 0.3 \
+  --loglevel info
 ```
 
 ### Quality Control and Reprocessing
@@ -282,7 +293,7 @@ annotations = list_sequence_annotations(base_url, processing_stage="annotated")
 ### Understanding Generated Annotations
 
 #### **Processing Stage**
-All generated annotations have `processing_stage: "ready_to_annotate"`, indicating they need human review.
+All generated annotations have `processing_stage: "imported"`, indicating they need further processing (e.g., GIF generation) before human review.
 
 #### **Conservative Classification**
 - All clusters start with `is_smoke: True`
@@ -413,6 +424,21 @@ uv run python -m scripts.data_transfer.annotation_generation.generate_sequence_a
 ```bash
 #!/bin/bash
 # Process all sequences from yesterday
+YESTERDAY=$(date -d "yesterday" +%Y-%m-%d)
+uv run python -m scripts.data_transfer.annotation_generation.generate_sequence_annotations \
+  --date-from $YESTERDAY --date-end $YESTERDAY \
+  --confidence-threshold 0.5 --loglevel info
+```
+
+### Bulk Processing Workflow
+```bash
+# Initial setup: Process all sequences without annotations
+# This is useful for first-time setup or catching up on backlog
+uv run python -m scripts.data_transfer.annotation_generation.generate_sequence_annotations \
+  --all-without-annotations \
+  --confidence-threshold 0.5 --loglevel info
+
+# Then process new sequences daily
 YESTERDAY=$(date -d "yesterday" +%Y-%m-%d)
 uv run python -m scripts.data_transfer.annotation_generation.generate_sequence_annotations \
   --date-from $YESTERDAY --date-end $YESTERDAY \

@@ -189,7 +189,7 @@ async def list_annotations(
 
 @router.get("/{annotation_id}")
 async def get_annotation(
-    annotation_id: int = Path(..., gt=0),
+    annotation_id: int = Path(..., ge=0),
     annotations: DetectionAnnotationCRUD = Depends(get_detection_annotation_crud),
 ) -> DetectionAnnotationRead:
     return await annotations.get(annotation_id, strict=True)
@@ -197,7 +197,7 @@ async def get_annotation(
 
 @router.patch("/{annotation_id}")
 async def update_annotation(
-    annotation_id: int = Path(..., gt=0),
+    annotation_id: int = Path(..., ge=0),
     payload: DetectionAnnotationUpdate = Body(...),
     annotations: DetectionAnnotationCRUD = Depends(get_detection_annotation_crud),
 ) -> DetectionAnnotationRead:
@@ -231,7 +231,7 @@ async def update_annotation(
 
 @router.delete("/{annotation_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_annotation(
-    annotation_id: int = Path(..., gt=0),
+    annotation_id: int = Path(..., ge=0),
     annotations: DetectionAnnotationCRUD = Depends(get_detection_annotation_crud),
 ) -> None:
     await annotations.delete(annotation_id)

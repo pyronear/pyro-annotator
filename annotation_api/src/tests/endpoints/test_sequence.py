@@ -242,3 +242,89 @@ async def test_create_sequence_different_source_api_same_alert_id(
     # Both sequences should have the same alert_api_id but different source_api
     assert sequence1["alert_api_id"] == sequence2["alert_api_id"]
     assert sequence1["source_api"] != sequence2["source_api"]
+
+
+@pytest.mark.asyncio
+async def test_list_sequences_has_annotation_filter(
+    async_client: AsyncClient, sequence_session
+):
+    """Test filtering sequences by presence of annotations."""
+    # First, create some sequences
+    sequences_data = [
+        {
+            "source_api": "pyronear_french",
+            "alert_api_id": str(2000 + i),
+            "camera_name": f"test_cam_{i}",
+            "camera_id": str(1000 + i),
+            "organisation_name": "test_org",
+            "organisation_id": "1",
+            "lat": "0.0",
+            "lon": "0.0",
+            "created_at": (now - timedelta(days=1)).isoformat(),
+            "recorded_at": (now - timedelta(days=1)).isoformat(),
+            "last_seen_at": now.isoformat(),
+        }
+        for i in range(3)
+    ]
+
+    sequence_ids = []
+    for seq_data in sequences_data:
+        response = await async_client.post("/sequences", data=seq_data)
+        assert response.status_code == 201
+        sequence_ids.append(response.json()["id"])
+
+    # Create annotations for the first two sequences only
+    for i in range(2):
+        annotation_payload = {
+            "sequence_id": sequence_ids[i],
+            "has_missed_smoke": False,
+            "annotation": {
+                "sequences_bbox": [
+                    {
+                        "is_smoke": True,
+                        "gif_url_main": f"http://example.com/main_{i}.gif",
+                        "gif_url_crop": f"http://example.com/crop_{i}.gif",
+                        "false_positive_types": [],
+                        "bboxes": [],
+                    }
+                ]
+            },
+            "processing_stage": "imported",
+            "created_at": datetime.utcnow().isoformat(),
+        }
+        response = await async_client.post("/annotations/sequences/", json=annotation_payload)
+        assert response.status_code == 201
+
+    # Test 1: Get sequences WITHOUT annotations (should only get the third sequence)
+    response = await async_client.get("/sequences?has_annotation=false")
+    assert response.status_code == 200
+    data = response.json()
+    sequences_without_annotations = data["items"]
+    
+    # Should have at least our third sequence (might have others from other tests)
+    assert any(seq["id"] == sequence_ids[2] for seq in sequences_without_annotations)
+    # The first two sequences should NOT be in the results
+    assert not any(seq["id"] == sequence_ids[0] for seq in sequences_without_annotations)
+    assert not any(seq["id"] == sequence_ids[1] for seq in sequences_without_annotations)
+
+    # Test 2: Get sequences WITH annotations (should get the first two sequences)
+    response = await async_client.get("/sequences?has_annotation=true")
+    assert response.status_code == 200
+    data = response.json()
+    sequences_with_annotations = data["items"]
+    
+    # Should have our first two sequences
+    assert any(seq["id"] == sequence_ids[0] for seq in sequences_with_annotations)
+    assert any(seq["id"] == sequence_ids[1] for seq in sequences_with_annotations)
+    # The third sequence should NOT be in the results
+    assert not any(seq["id"] == sequence_ids[2] for seq in sequences_with_annotations)
+
+    # Test 3: Default behavior (no filter) - should get all sequences
+    response = await async_client.get("/sequences")
+    assert response.status_code == 200
+    data = response.json()
+    all_sequences = data["items"]
+    
+    # All three sequences should be present
+    for seq_id in sequence_ids:
+        assert any(seq["id"] == seq_id for seq in all_sequences)
