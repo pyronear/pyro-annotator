@@ -81,19 +81,31 @@ class SequenceGifGenerator:
         for bbox_data in annotation_data.sequences_bbox:
             if bbox_data.bboxes:  # Only generate GIFs if there are bounding boxes
                 try:
-                    gif_urls = await self._generate_gifs_for_bbox(bbox_data, detections)
+                    gif_keys = await self._generate_gifs_for_bbox(bbox_data, detections)
 
-                    # Update the bbox data with GIF URLs
-                    bbox_data.gif_url_main = gif_urls.get("main")
-                    bbox_data.gif_url_crop = gif_urls.get("crop")
+                    # Create updated bbox with new GIF keys using robust Pydantic handling
+                    updated_bbox = bbox_data.model_copy(update={
+                        "gif_key_main": gif_keys.get("main") or bbox_data.gif_key_main,
+                        "gif_key_crop": gif_keys.get("crop") or bbox_data.gif_key_crop
+                    })
+                    
+                    logger.info(
+                        f"Generated GIFs for bbox in annotation {annotation_id}: "
+                        f"main={'✓' if gif_keys.get('main') else '✗'}, "
+                        f"crop={'✓' if gif_keys.get('crop') else '✗'}"
+                    )
 
                 except Exception as e:
                     logger.error(
                         f"Failed to generate GIFs for bbox in annotation {annotation_id}: {str(e)}"
                     )
-                    # Continue with other bboxes, but log the error
+                    # Preserve original bbox data when generation fails
+                    updated_bbox = bbox_data
+            else:
+                # No bboxes to process, preserve original
+                updated_bbox = bbox_data
 
-            updated_sequences_bbox.append(bbox_data)
+            updated_sequences_bbox.append(updated_bbox)
 
         # Update the annotation with new GIF URLs
         updated_annotation_data = SequenceAnnotationData(
@@ -105,7 +117,24 @@ class SequenceGifGenerator:
         gif_count = sum(
             1
             for bbox in updated_sequences_bbox
-            if bbox.gif_url_main or bbox.gif_url_crop
+            if bbox.gif_key_main or bbox.gif_key_crop
+        )
+
+        # Collect GIF keys for response
+        gif_keys_info = []
+        for i, bbox in enumerate(updated_sequences_bbox):
+            if bbox.gif_key_main or bbox.gif_key_crop:
+                gif_keys_info.append({
+                    "bbox_index": i,
+                    "main_key": bbox.gif_key_main,
+                    "crop_key": bbox.gif_key_crop,
+                    "has_main": bbox.gif_key_main is not None,
+                    "has_crop": bbox.gif_key_crop is not None
+                })
+
+        logger.info(
+            f"GIF generation completed for annotation {annotation_id}: "
+            f"{gif_count} bboxes with GIFs out of {len(updated_sequences_bbox)} total"
         )
 
         return {
@@ -114,6 +143,7 @@ class SequenceGifGenerator:
             "gif_count": gif_count,
             "total_bboxes": len(updated_sequences_bbox),
             "generated_at": datetime.utcnow().isoformat(),
+            "gif_keys": gif_keys_info,
         }
 
     async def _get_annotation(self, annotation_id: int) -> SequenceAnnotation:
@@ -189,7 +219,7 @@ class SequenceGifGenerator:
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         sequence_id = relevant_detections[0].sequence_id
 
-        gif_urls = {}
+        gif_keys = {}
 
         # Generate main GIF (full frame with bbox overlay)
         if images:
@@ -206,7 +236,7 @@ class SequenceGifGenerator:
                     main_gif_key = f"gifs/sequence_{sequence_id}/main_{timestamp}.gif"
                     main_gif_data = self._create_gif_bytes(main_frames)
                     bucket.upload_file_bytes(main_gif_data, main_gif_key, "image/gif")
-                    gif_urls["main"] = bucket.get_public_url(main_gif_key)
+                    gif_keys["main"] = main_gif_key
 
             except Exception as e:
                 logger.error(f"Failed to generate main GIF: {str(e)}")
@@ -227,12 +257,12 @@ class SequenceGifGenerator:
                     crop_gif_key = f"gifs/sequence_{sequence_id}/crop_{timestamp}.gif"
                     crop_gif_data = self._create_gif_bytes(crop_frames)
                     bucket.upload_file_bytes(crop_gif_data, crop_gif_key, "image/gif")
-                    gif_urls["crop"] = bucket.get_public_url(crop_gif_key)
+                    gif_keys["crop"] = crop_gif_key
 
             except Exception as e:
                 logger.error(f"Failed to generate crop GIF: {str(e)}")
 
-        return gif_urls
+        return gif_keys
 
     def _load_image_from_bytes(self, image_bytes: bytes) -> np.ndarray:
         """Load image from bytes using OpenCV."""

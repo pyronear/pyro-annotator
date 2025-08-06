@@ -7,7 +7,7 @@ import hashlib
 import logging
 from datetime import datetime
 from mimetypes import guess_extension
-from typing import Any, Dict, Union
+from typing import Any, Dict, Optional, Union
 
 import boto3
 import magic
@@ -199,8 +199,13 @@ class S3Service:
         return "annotation-api"
 
 
-async def upload_file(file: UploadFile) -> str:
-    """Upload a file to S3 storage and return the public URL"""
+async def upload_file(
+    file: UploadFile, 
+    sequence_id: Optional[int] = None,
+    detection_id: Optional[int] = None,
+    recorded_at: Optional[datetime] = None
+) -> str:
+    """Upload a file to S3 storage and return the bucket key"""
     # Concatenate the first 8 chars (to avoid system interactions issues) of SHA256 hash with file extension
     sha_hash = hashlib.sha256(file.file.read()).hexdigest()
     await file.seek(0)
@@ -209,10 +214,16 @@ async def upload_file(file: UploadFile) -> str:
     await file.seek(0)
     # guess_extension will return none if this fails
     extension = guess_extension(magic.from_buffer(file.file.read(), mime=True)) or ""
-    # Concatenate timestamp & hash
-    bucket_key = (
-        f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}-{sha_hash[:8]}{extension}"
+    
+    # Generate organized bucket key
+    bucket_key = _generate_detection_bucket_key(
+        sequence_id=sequence_id,
+        detection_id=detection_id,
+        recorded_at=recorded_at,
+        sha_hash=sha_hash[:8],
+        extension=extension
     )
+    
     # Reset byte position of the file (cf. https://fastapi.tiangolo.com/tutorial/request-files/#uploadfile)
     await file.seek(0)
     bucket_name = s3_service.resolve_bucket_name()
@@ -236,6 +247,31 @@ async def upload_file(file: UploadFile) -> str:
             detail="Data was corrupted during upload",
         )
     return bucket_key
+
+
+def _generate_detection_bucket_key(
+    sequence_id: Optional[int] = None,
+    detection_id: Optional[int] = None,
+    recorded_at: Optional[datetime] = None,
+    sha_hash: str = "",
+    extension: str = ""
+) -> str:
+    """
+    Generate hierarchical bucket key for detection images.
+    
+    Pattern: detections/sequence_{sequence_id}/{YYYYMMDD_HHMMSS}_det{detection_id}_{hash}.{ext}
+    Fallback: detections/legacy/{YYYYMMDD_HHMMSS}_{hash}.{ext} if metadata unavailable
+    """
+    # Use recorded_at timestamp or fallback to upload time
+    timestamp = recorded_at or datetime.utcnow()
+    timestamp_str = timestamp.strftime("%Y%m%d_%H%M%S")
+    
+    # Organized structure if metadata available
+    if sequence_id is not None and detection_id is not None:
+        return f"detections/sequence_{sequence_id}/{timestamp_str}_det{detection_id}_{sha_hash}{extension}"
+    
+    # Fallback structure for incomplete metadata
+    return f"detections/legacy/{timestamp_str}_{sha_hash}{extension}"
 
 
 s3_service = S3Service(

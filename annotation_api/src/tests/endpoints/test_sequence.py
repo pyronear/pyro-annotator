@@ -282,8 +282,8 @@ async def test_list_sequences_has_annotation_filter(
                 "sequences_bbox": [
                     {
                         "is_smoke": True,
-                        "gif_url_main": f"http://example.com/main_{i}.gif",
-                        "gif_url_crop": f"http://example.com/crop_{i}.gif",
+                        "gif_key_main": f"gifs/sequence_1/main_{i}.gif",
+                        "gif_key_crop": f"gifs/sequence_1/crop_{i}.gif",
                         "false_positive_types": [],
                         "bboxes": [],
                     }
