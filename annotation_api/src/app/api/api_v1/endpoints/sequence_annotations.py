@@ -302,7 +302,7 @@ async def delete_sequence_annotation(
 @router.post("/{annotation_id}/generate-gifs", status_code=status.HTTP_200_OK)
 async def generate_sequence_annotation_gifs(
     annotation_id: int = Path(..., ge=0, description="ID of the sequence annotation"),
-    gif_generator = Depends(get_gif_generator),
+    gif_generator=Depends(get_gif_generator),
 ) -> dict:
     """
     Generate GIFs for a sequence annotation.
@@ -315,7 +315,7 @@ async def generate_sequence_annotation_gifs(
         annotation_id: The ID of the sequence annotation to generate GIFs for
 
     Returns:
-        dict: Contains generation results with annotation_id, sequence_id, gif_count, 
+        dict: Contains generation results with annotation_id, sequence_id, gif_count,
               total_bboxes, and generated_at timestamp
 
     Raises:
@@ -333,5 +333,5 @@ async def generate_sequence_annotation_gifs(
         # Catch any other unexpected errors and return 500
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to generate GIFs: {str(e)}"
+            detail=f"Failed to generate GIFs: {str(e)}",
         )

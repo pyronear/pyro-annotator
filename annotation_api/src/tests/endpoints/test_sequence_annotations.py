@@ -148,6 +148,185 @@ async def test_delete_sequence_annotation(
 
 
 @pytest.mark.asyncio
+async def test_generate_sequence_annotation_gifs_success(
+    async_client: AsyncClient, sequence_session, detection_session
+):
+    """Test successful GIF generation for a sequence annotation."""
+    # First create a sequence annotation with bboxes referencing existing detections
+    payload = {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": True,
+                    "gif_url_main": None,
+                    "gif_url_crop": None,
+                    "false_positive_types": [],
+                    "bboxes": [
+                        {"detection_id": 1, "xyxyn": [0.1, 0.1, 0.4, 0.4]},
+                        {"detection_id": 2, "xyxyn": [0.2, 0.2, 0.5, 0.5]},
+                    ],
+                }
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
+        "created_at": datetime.utcnow().isoformat(),
+    }
+
+    # Create the annotation
+    create_resp = await async_client.post("/annotations/sequences/", json=payload)
+    assert create_resp.status_code == 201
+    annotation_id = create_resp.json()["id"]
+
+    # Call the GIF generation endpoint
+    gif_resp = await async_client.post(
+        f"/annotations/sequences/{annotation_id}/generate-gifs"
+    )
+    assert gif_resp.status_code == 200
+
+    # Verify response structure
+    gif_result = gif_resp.json()
+    assert gif_result["annotation_id"] == annotation_id
+    assert gif_result["sequence_id"] == 1
+    assert "gif_count" in gif_result
+    assert "total_bboxes" in gif_result
+    assert "generated_at" in gif_result
+    assert gif_result["total_bboxes"] == 1  # One sequence_bbox
+
+    # Verify the annotation was updated with GIF URLs
+    updated_resp = await async_client.get(f"/annotations/sequences/{annotation_id}")
+    assert updated_resp.status_code == 200
+    updated_annotation = updated_resp.json()
+
+    # Check that GIF URLs were added to the annotation
+    sequences_bbox = updated_annotation["annotation"]["sequences_bbox"]
+    assert len(sequences_bbox) == 1
+    bbox = sequences_bbox[0]
+
+    # Both main and crop GIFs should be generated
+    assert bbox["gif_url_main"] is not None
+    assert bbox["gif_url_crop"] is not None
+    assert bbox["gif_url_main"].startswith("http")
+    assert bbox["gif_url_crop"].startswith("http")
+    assert "main_" in bbox["gif_url_main"]
+    assert "crop_" in bbox["gif_url_crop"]
+
+    # Verify GIF count matches what was actually generated
+    generated_gifs = sum(
+        1 for b in sequences_bbox if b.get("gif_url_main") or b.get("gif_url_crop")
+    )
+    assert gif_result["gif_count"] == generated_gifs
+
+
+@pytest.mark.asyncio
+async def test_generate_sequence_annotation_gifs_annotation_not_found(
+    async_client: AsyncClient,
+):
+    """Test GIF generation for non-existent annotation returns 404."""
+    non_existent_id = 99999
+
+    gif_resp = await async_client.post(
+        f"/annotations/sequences/{non_existent_id}/generate-gifs"
+    )
+    assert gif_resp.status_code == 404
+
+    error_data = gif_resp.json()
+    assert "detail" in error_data
+    assert "not found" in error_data["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_generate_sequence_annotation_gifs_no_bboxes(
+    async_client: AsyncClient, sequence_session, detection_session
+):
+    """Test GIF generation for annotation with no sequence bboxes returns 422."""
+    # Create annotation with empty sequences_bbox
+    payload = {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "annotation": {"sequences_bbox": []},  # Empty bboxes
+        "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
+        "created_at": datetime.utcnow().isoformat(),
+    }
+
+    create_resp = await async_client.post("/annotations/sequences/", json=payload)
+    assert create_resp.status_code == 201
+    annotation_id = create_resp.json()["id"]
+
+    # Try to generate GIFs - should fail with 422
+    gif_resp = await async_client.post(
+        f"/annotations/sequences/{annotation_id}/generate-gifs"
+    )
+    assert gif_resp.status_code == 422
+
+    error_data = gif_resp.json()
+    assert "detail" in error_data
+    assert "sequence bounding boxes" in error_data["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_generate_sequence_annotation_gifs_missing_images_from_s3(
+    async_client: AsyncClient, sequence_session, detection_session
+):
+    """Test GIF generation when detection images are missing from S3 storage."""
+    # Create annotation for sequence 1 but delete the detection images from S3 first
+    # This simulates the case where detections exist but images are missing
+
+    # First delete detection images from S3 to simulate missing files
+    from app.services.storage import s3_service
+
+    bucket = s3_service.get_bucket(s3_service.resolve_bucket_name())
+    try:
+        bucket.delete_file("seq1_img1.jpg")  # Detection ID 1
+        bucket.delete_file("seq1_img2.jpg")  # Detection ID 2
+    except Exception:
+        pass  # Files might not exist
+
+    payload = {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": True,
+                    "false_positive_types": [],
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.4, 0.4]}],
+                }
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
+        "created_at": datetime.utcnow().isoformat(),
+    }
+
+    create_resp = await async_client.post("/annotations/sequences/", json=payload)
+    assert create_resp.status_code == 201
+    annotation_id = create_resp.json()["id"]
+
+    # Try to generate GIFs - should succeed but with gif_count=0 due to missing images
+    gif_resp = await async_client.post(
+        f"/annotations/sequences/{annotation_id}/generate-gifs"
+    )
+    assert gif_resp.status_code == 200  # Service handles missing images gracefully
+
+    gif_result = gif_resp.json()
+    assert gif_result["annotation_id"] == annotation_id
+    assert gif_result["sequence_id"] == 1
+    assert gif_result["gif_count"] == 0  # No GIFs generated due to missing images
+    assert gif_result["total_bboxes"] == 1
+
+    # Verify annotation was updated but with no GIF URLs
+    updated_resp = await async_client.get(f"/annotations/sequences/{annotation_id}")
+    assert updated_resp.status_code == 200
+    updated_annotation = updated_resp.json()
+
+    sequences_bbox = updated_annotation["annotation"]["sequences_bbox"]
+    bbox = sequences_bbox[0]
+    assert bbox["gif_url_main"] is None  # No GIF generated
+    assert bbox["gif_url_crop"] is None  # No GIF generated
+
+
+@pytest.mark.asyncio
 async def test_delete_sequence_annotation_does_not_cascade_sequence(
     async_client: AsyncClient, sequence_session, detection_session
 ):
@@ -156,7 +335,7 @@ async def test_delete_sequence_annotation_does_not_cascade_sequence(
     sequence_resp = await async_client.get("/sequences/1")
     assert sequence_resp.status_code == 200
     initial_sequence_data = sequence_resp.json()
-    
+
     # 2. Create annotation for sequence
     annotation_payload = {
         "sequence_id": 1,
@@ -175,28 +354,34 @@ async def test_delete_sequence_annotation_does_not_cascade_sequence(
         "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
         "created_at": datetime.utcnow().isoformat(),
     }
-    
-    create_resp = await async_client.post("/annotations/sequences/", json=annotation_payload)
+
+    create_resp = await async_client.post(
+        "/annotations/sequences/", json=annotation_payload
+    )
     assert create_resp.status_code == 201
     annotation_id = create_resp.json()["id"]
-    
+
     # 3. Verify annotation was created
-    annotation_get_resp = await async_client.get(f"/annotations/sequences/{annotation_id}")
+    annotation_get_resp = await async_client.get(
+        f"/annotations/sequences/{annotation_id}"
+    )
     assert annotation_get_resp.status_code == 200
-    
+
     # 4. Delete annotation
     del_resp = await async_client.delete(f"/annotations/sequences/{annotation_id}")
     assert del_resp.status_code == 204
-    
+
     # 5. Verify annotation is deleted
-    annotation_get_resp_after = await async_client.get(f"/annotations/sequences/{annotation_id}")
+    annotation_get_resp_after = await async_client.get(
+        f"/annotations/sequences/{annotation_id}"
+    )
     assert annotation_get_resp_after.status_code == 404
-    
+
     # 6. CRITICAL: Verify sequence still exists and was NOT cascade deleted
     sequence_get_resp_after = await async_client.get("/sequences/1")
     assert sequence_get_resp_after.status_code == 200
     final_sequence_data = sequence_get_resp_after.json()
-    
+
     # 7. Verify sequence data is unchanged
     assert final_sequence_data["id"] == initial_sequence_data["id"]
     assert final_sequence_data["source_api"] == initial_sequence_data["source_api"]

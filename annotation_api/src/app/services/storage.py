@@ -72,16 +72,25 @@ class S3Bucket:
         self._s3.upload_fileobj(file_binary, self.name, bucket_key)
         return True
 
-    def upload_file_bytes(self, file_bytes: bytes, bucket_key: str, content_type: str = "application/octet-stream") -> bool:
+    def upload_file_bytes(
+        self,
+        file_bytes: bytes,
+        bucket_key: str,
+        content_type: str = "application/octet-stream",
+    ) -> bool:
         """Upload bytes to bucket with specified content type"""
         from io import BytesIO
+
         file_obj = BytesIO(file_bytes)
-        self._s3.upload_fileobj(file_obj, self.name, bucket_key, ExtraArgs={"ContentType": content_type})
+        self._s3.upload_fileobj(
+            file_obj, self.name, bucket_key, ExtraArgs={"ContentType": content_type}
+        )
         return True
 
     def download_file(self, bucket_key: str) -> bytes:
         """Download a file from bucket and return its content as bytes"""
         from io import BytesIO
+
         file_obj = BytesIO()
         self._s3.download_fileobj(self.name, bucket_key, file_obj)
         file_obj.seek(0)

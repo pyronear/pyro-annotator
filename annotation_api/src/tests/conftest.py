@@ -194,10 +194,14 @@ async def detection_session(sequence_session: AsyncSession):
         )
     )
     await sequence_session.commit()
-    # Create bucket files
+    # Create bucket files with actual image data
+    mock_image_data = requests.get(
+        "https://avatars.githubusercontent.com/u/61667887?s=200&v=4", timeout=5
+    ).content
+
     for entry in DET_TABLE:
         bucket = s3_service.get_bucket(s3_service.resolve_bucket_name())
-        bucket.upload_file(entry["bucket_key"], io.BytesIO(b""))
+        bucket.upload_file(entry["bucket_key"], io.BytesIO(mock_image_data))
     yield sequence_session
     await sequence_session.rollback()
     # Delete bucket files

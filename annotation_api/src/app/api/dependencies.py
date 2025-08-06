@@ -50,6 +50,8 @@ def get_sequence_annotation_crud(
     return SequenceAnnotationCRUD(session=session)
 
 
-def get_gif_generator(session: AsyncSession = Depends(get_session)) -> SequenceGifGenerator:
+def get_gif_generator(
+    session: AsyncSession = Depends(get_session),
+) -> SequenceGifGenerator:
     """Dependency function to get GIF generator service."""
     return SequenceGifGenerator(session)
