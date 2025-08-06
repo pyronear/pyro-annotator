@@ -43,8 +43,8 @@ SequenceAnnotationData(
     sequences_bbox=[
         SequenceBBox(
             is_smoke=True,  # Conservative default - requires human review
-            gif_url_main=None,  # GIF generation not implemented yet
-            gif_url_crop=None,  # GIF generation not implemented yet  
+            gif_url_main=None,  # Populated after GIF generation
+            gif_url_crop=None,  # Populated after GIF generation 
             false_positive_types=[],  # Empty initially, filled during human review
             bboxes=[
                 BoundingBox(detection_id=8, xyxyn=[0.735, 0.511, 0.748, 0.52]),
@@ -274,13 +274,21 @@ uv run python -m scripts.data_transfer.annotation_generation.generate_sequence_a
   --confidence-threshold 0.5
 ```
 
-#### **Phase 3: Human Review and Correction**
+#### **Phase 3: GIF Generation**
+```bash
+# Generate GIFs for annotations in 'imported' stage
+uv run python -m scripts.data_transfer.annotation_generation.generate_sequence_gifs \
+  --date-from 2024-01-01 --date-end 2024-01-02 \
+  --update-stage --loglevel info
+```
+
+#### **Phase 4: Human Review and Correction**
 - Use annotation API endpoints to review generated annotations
 - Correct `is_smoke` classifications
 - Add `false_positive_types` for non-smoke detections  
 - Update `processing_stage` to `annotated` when complete
 
-#### **Phase 4: Export and Analysis**
+#### **Phase 5: Export and Analysis**
 ```python
 # Export annotated data (see Examples guide)
 from app.clients.annotation_api import list_sequence_annotations
@@ -293,7 +301,9 @@ annotations = list_sequence_annotations(base_url, processing_stage="annotated")
 ### Understanding Generated Annotations
 
 #### **Processing Stage**
-All generated annotations have `processing_stage: "imported"`, indicating they need further processing (e.g., GIF generation) before human review.
+- **imported**: Initial state after automatic generation - requires GIF generation  
+- **ready_to_annotate**: After GIF generation - ready for human review
+- **annotated**: After human review - complete and ready for export
 
 #### **Conservative Classification**
 - All clusters start with `is_smoke: True`
@@ -445,4 +455,161 @@ uv run python -m scripts.data_transfer.annotation_generation.generate_sequence_a
   --confidence-threshold 0.5 --loglevel info
 ```
 
-This system provides a powerful foundation for scaling human annotation workflows by automatically processing AI predictions into reviewable, structured annotations.
+## GIF Generation
+
+After generating sequence annotations from AI predictions, the next step in the pipeline is creating visual GIFs that help human reviewers quickly understand the temporal context of detected objects.
+
+### Overview
+
+The GIF generation system creates two types of visual aids:
+
+1. **Main GIFs**: Full-frame videos with green bounding box overlays showing detected objects
+2. **Crop GIFs**: Zoomed-in videos focusing on the detected regions with padding
+
+### GIF Generation Script
+
+#### Basic Usage
+
+```bash
+# Generate GIFs for all annotations in 'imported' stage
+uv run python -m scripts.data_transfer.annotation_generation.generate_sequence_gifs \
+  --all-imported --loglevel info
+
+# Generate GIFs for specific annotation
+uv run python -m scripts.data_transfer.annotation_generation.generate_sequence_gifs \
+  --annotation-id 123 --loglevel info
+
+# Generate GIFs for specific sequence
+uv run python -m scripts.data_transfer.annotation_generation.generate_sequence_gifs \
+  --sequence-id 456 --loglevel info
+```
+
+#### Advanced Options
+
+```bash
+# Generate GIFs for date range and update processing stage
+uv run python -m scripts.data_transfer.annotation_generation.generate_sequence_gifs \
+  --date-from 2024-01-01 --date-end 2024-01-02 \
+  --update-stage --loglevel info
+
+# Preview without generating (dry run)
+uv run python -m scripts.data_transfer.annotation_generation.generate_sequence_gifs \
+  --all-imported --dry-run --loglevel debug
+
+# Force regeneration of existing GIFs
+uv run python -m scripts.data_transfer.annotation_generation.generate_sequence_gifs \
+  --annotation-id 123 --force --loglevel info
+
+# Concurrent processing with error tolerance
+uv run python -m scripts.data_transfer.annotation_generation.generate_sequence_gifs \
+  --all-imported --max-concurrent 5 --continue-on-error
+```
+
+### Parameters Reference
+
+| Parameter | Description | Default | Examples |
+|-----------|-------------|---------|----------|
+| `--annotation-id` | Single annotation ID to process | - | `123` |
+| `--annotation-ids` | Comma-separated annotation IDs | - | `123,456,789` |
+| `--sequence-id` | Process annotation for sequence | - | `456` |
+| `--sequence-ids` | Comma-separated sequence IDs | - | `456,789,012` |
+| `--date-from` | Start date (YYYY-MM-DD) | - | `2024-01-01` |
+| `--date-end` | End date (YYYY-MM-DD) | Today | `2024-01-02` |
+| `--all-imported` | Process all 'imported' annotations | `false` | Bulk processing |
+| `--dry-run` | Preview without generating | `false` | Testing |
+| `--force` | Regenerate existing GIFs | `false` | Reprocessing |
+| `--update-stage` | Update to 'ready_to_annotate' | `false` | Pipeline automation |
+| `--max-concurrent` | Maximum concurrent generations | `3` | `1-10` |
+| `--continue-on-error` | Continue if some fail | `false` | Batch processing |
+
+### Technical Details
+
+#### GIF Creation Process
+
+1. **Fetch Detection Images**: Downloads JPEG images from S3 storage for each detection in the annotation
+2. **Image Processing**: Uses OpenCV to load and process images 
+3. **Bounding Box Overlay**: Draws green rectangles on main GIF frames
+4. **Cropping**: Creates focused crop GIFs with 10% padding around detected regions
+5. **GIF Assembly**: Uses imageio with NeuQuant quantization for high-quality 256-color GIFs
+6. **S3 Upload**: Stores GIFs with organized naming: `gifs/sequence_{id}/{type}_{timestamp}.gif`
+7. **URL Generation**: Creates presigned URLs for browser access
+8. **Database Update**: Updates annotation with `gif_url_main` and `gif_url_crop` fields
+
+#### Quality Settings
+
+- **Duration**: 0.5 seconds per frame (2 FPS)
+- **Quantization**: NeuQuant algorithm for optimal color preservation
+- **Palette**: 256 colors for file size optimization
+- **Loop**: Infinite loop for continuous playback
+- **Format**: Standard GIF89a with transparency support
+
+### Integration Workflow
+
+#### After Annotation Generation
+```bash
+# Step 1: Generate annotations
+uv run python -m scripts.data_transfer.annotation_generation.generate_sequence_annotations \
+  --date-from 2024-01-01 --date-end 2024-01-02
+
+# Step 2: Generate GIFs and update processing stage  
+uv run python -m scripts.data_transfer.annotation_generation.generate_sequence_gifs \
+  --date-from 2024-01-01 --date-end 2024-01-02 --update-stage
+```
+
+#### Production Pipeline
+```bash
+#!/bin/bash
+# Daily processing pipeline
+YESTERDAY=$(date -d "yesterday" +%Y-%m-%d)
+
+# Generate annotations for new sequences
+uv run python -m scripts.data_transfer.annotation_generation.generate_sequence_annotations \
+  --date-from $YESTERDAY --date-end $YESTERDAY --loglevel info
+
+# Generate GIFs for imported annotations  
+uv run python -m scripts.data_transfer.annotation_generation.generate_sequence_gifs \
+  --date-from $YESTERDAY --date-end $YESTERDAY --update-stage --loglevel info
+```
+
+### Troubleshooting
+
+#### Common Issues
+
+**No GIFs Generated**
+- Check if annotations exist in 'imported' stage
+- Verify detection images exist in S3 storage
+- Use `--dry-run` to preview what would be processed
+- Check logs for S3 access issues
+
+**Low GIF Quality**  
+- Ensure source images are high resolution
+- Check network connectivity for S3 downloads
+- Monitor for corrupted image files
+
+**Performance Issues**
+- Reduce `--max-concurrent` for memory-constrained systems
+- Process smaller batches using specific annotation/sequence IDs
+- Monitor S3 bandwidth and rate limits
+
+#### Debug Mode
+```bash
+# Full debug information
+uv run python -m scripts.data_transfer.annotation_generation.generate_sequence_gifs \
+  --annotation-id 123 --dry-run --loglevel debug
+```
+
+Shows:
+- S3 download success/failure for each image
+- OpenCV image processing steps  
+- GIF creation parameters and file sizes
+- Upload URLs and database updates
+
+### Best Practices
+
+1. **Use --update-stage**: Automatically moves annotations to 'ready_to_annotate' stage
+2. **Batch Processing**: Use date ranges for efficient bulk processing  
+3. **Error Tolerance**: Use `--continue-on-error` for large batches
+4. **Resource Management**: Limit `--max-concurrent` based on available memory and S3 bandwidth
+5. **Quality Control**: Generate sample GIFs first before bulk processing
+
+This system provides a powerful foundation for scaling human annotation workflows by automatically processing AI predictions into reviewable, structured annotations with visual context.
