@@ -19,7 +19,7 @@ export default function SequenceBboxCard({
   onChange, 
   className = '' 
 }: SequenceBboxCardProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(true);
 
   const handleSmokeToggle = (isSmoke: boolean) => {
     const updatedBbox = {
