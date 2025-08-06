@@ -84,11 +84,15 @@ class SequenceGifGenerator:
                     gif_keys = await self._generate_gifs_for_bbox(bbox_data, detections)
 
                     # Create updated bbox with new GIF keys using robust Pydantic handling
-                    updated_bbox = bbox_data.model_copy(update={
-                        "gif_key_main": gif_keys.get("main") or bbox_data.gif_key_main,
-                        "gif_key_crop": gif_keys.get("crop") or bbox_data.gif_key_crop
-                    })
-                    
+                    updated_bbox = bbox_data.model_copy(
+                        update={
+                            "gif_key_main": gif_keys.get("main")
+                            or bbox_data.gif_key_main,
+                            "gif_key_crop": gif_keys.get("crop")
+                            or bbox_data.gif_key_crop,
+                        }
+                    )
+
                     logger.info(
                         f"Generated GIFs for bbox in annotation {annotation_id}: "
                         f"main={'✓' if gif_keys.get('main') else '✗'}, "
@@ -124,13 +128,15 @@ class SequenceGifGenerator:
         gif_keys_info = []
         for i, bbox in enumerate(updated_sequences_bbox):
             if bbox.gif_key_main or bbox.gif_key_crop:
-                gif_keys_info.append({
-                    "bbox_index": i,
-                    "main_key": bbox.gif_key_main,
-                    "crop_key": bbox.gif_key_crop,
-                    "has_main": bbox.gif_key_main is not None,
-                    "has_crop": bbox.gif_key_crop is not None
-                })
+                gif_keys_info.append(
+                    {
+                        "bbox_index": i,
+                        "main_key": bbox.gif_key_main,
+                        "crop_key": bbox.gif_key_crop,
+                        "has_main": bbox.gif_key_main is not None,
+                        "has_crop": bbox.gif_key_crop is not None,
+                    }
+                )
 
         logger.info(
             f"GIF generation completed for annotation {annotation_id}: "

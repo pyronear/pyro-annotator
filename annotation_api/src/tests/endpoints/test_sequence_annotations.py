@@ -194,7 +194,7 @@ async def test_generate_sequence_annotation_gifs_success(
     assert "generated_at" in gif_result
     assert "gif_keys" in gif_result  # New field
     assert gif_result["total_bboxes"] == 1  # One sequence_bbox
-    
+
     # Verify gif_keys structure in response
     gif_keys = gif_result["gif_keys"]
     assert len(gif_keys) == 1  # Should have one bbox with GIFs
@@ -246,7 +246,7 @@ async def test_generate_sequence_annotation_gifs_url_preservation(
                 {
                     "is_smoke": True,
                     "gif_key_main": "gifs/sequence_1/existing_main.gif",
-                    "gif_key_crop": "gifs/sequence_1/existing_crop.gif", 
+                    "gif_key_crop": "gifs/sequence_1/existing_crop.gif",
                     "false_positive_types": [],
                     "bboxes": [
                         {"detection_id": 1, "xyxyn": [0.1, 0.1, 0.4, 0.4]},
@@ -260,7 +260,7 @@ async def test_generate_sequence_annotation_gifs_url_preservation(
                     "bboxes": [
                         {"detection_id": 2, "xyxyn": [0.2, 0.2, 0.5, 0.5]},
                     ],
-                }
+                },
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
@@ -341,20 +341,20 @@ async def test_get_sequence_annotation_gif_urls(
         f"/annotations/sequences/{annotation_id}/generate-gifs"
     )
     assert gif_resp.status_code == 200
-    
+
     gif_result = gif_resp.json()
     assert gif_result["gif_count"] > 0  # Should have generated some GIFs
-    
+
     # Step 3: Test the GIF URLs endpoint with real GIF files
     urls_resp = await async_client.get(
         f"/annotations/sequences/{annotation_id}/gifs/urls"
     )
-    
+
     # Debug: Print response if not 200
     if urls_resp.status_code != 200:
         print(f"Response status: {urls_resp.status_code}")
         print(f"Response body: {urls_resp.text}")
-    
+
     assert urls_resp.status_code == 200
 
     # Verify response structure
@@ -368,7 +368,7 @@ async def test_get_sequence_annotation_gif_urls(
     # Now we should have actual GIF URLs since we generated them
     gif_urls = urls_result["gif_urls"]
     assert len(gif_urls) == 1  # One bbox with GIFs
-    
+
     bbox_urls = gif_urls[0]
     assert bbox_urls["bbox_index"] == 0
     assert bbox_urls["has_main"] is True
@@ -377,10 +377,14 @@ async def test_get_sequence_annotation_gif_urls(
     assert bbox_urls["crop_url"] is not None
     assert bbox_urls["main_expires_at"] is not None
     assert bbox_urls["crop_expires_at"] is not None
-    
+
     # Verify URLs are properly formatted (can be localhost or localstack in Docker)
-    assert bbox_urls["main_url"].startswith(("http://localhost:4566", "http://localstack:4566"))
-    assert bbox_urls["crop_url"].startswith(("http://localhost:4566", "http://localstack:4566"))
+    assert bbox_urls["main_url"].startswith(
+        ("http://localhost:4566", "http://localstack:4566")
+    )
+    assert bbox_urls["crop_url"].startswith(
+        ("http://localhost:4566", "http://localstack:4566")
+    )
     assert "gifs/sequence_1/" in bbox_urls["main_url"]
     assert "gifs/sequence_1/" in bbox_urls["crop_url"]
     assert "main_" in bbox_urls["main_url"]

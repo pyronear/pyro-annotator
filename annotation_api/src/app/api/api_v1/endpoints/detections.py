@@ -95,7 +95,7 @@ async def create_detection(
         file=file,
         sequence_id=sequence_id,
         detection_id=detection.id,
-        recorded_at=recorded_at
+        recorded_at=recorded_at,
     )
 
     # Update detection with the actual bucket key

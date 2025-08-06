@@ -346,17 +346,17 @@ async def get_sequence_annotation_gif_urls(
 ) -> dict:
     """
     Get fresh presigned URLs for all GIFs associated with a sequence annotation.
-    
+
     This endpoint generates fresh presigned URLs for all GIFs stored for the annotation's
     sequence bounding boxes. Each bbox that has generated GIFs will return both main and
     crop URLs (when available) with expiration timestamps.
-    
+
     Args:
         annotation_id: The ID of the sequence annotation to get GIF URLs for
-        
+
     Returns:
         dict: Contains annotation info and array of GIF URLs with expiration times
-        
+
     Raises:
         HTTPException 404: If sequence annotation not found
         HTTPException 404: If any GIF files are missing from S3 storage
@@ -370,20 +370,20 @@ async def get_sequence_annotation_gif_urls(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Sequence annotation not found",
             )
-        
+
         # Ensure we have the latest data from the database
         await session.refresh(annotation)
 
         # Parse annotation data
         from app.schemas.annotation_validation import SequenceAnnotationData
-        
+
         # Check if annotation field exists and is not None
-        if not hasattr(annotation, 'annotation') or annotation.annotation is None:
+        if not hasattr(annotation, "annotation") or annotation.annotation is None:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="Annotation data is missing or None",
             )
-        
+
         # Handle case where annotation.annotation might be a dict or already parsed
         annotation_dict = annotation.annotation
         if isinstance(annotation_dict, dict):
@@ -393,7 +393,7 @@ async def get_sequence_annotation_gif_urls(
 
         # Get S3 bucket
         bucket = s3_service.get_bucket(s3_service.resolve_bucket_name())
-        
+
         # Generate URLs for each bbox that has GIF keys
         gif_urls = []
         for i, bbox in enumerate(annotation_data.sequences_bbox):
@@ -405,30 +405,34 @@ async def get_sequence_annotation_gif_urls(
                     "main_expires_at": None,
                     "crop_expires_at": None,
                     "has_main": bbox.gif_key_main is not None,
-                    "has_crop": bbox.gif_key_crop is not None
+                    "has_crop": bbox.gif_key_crop is not None,
                 }
-                
+
                 # Generate main GIF URL if key exists
                 if bbox.gif_key_main:
                     try:
                         bbox_urls["main_url"] = bucket.get_public_url(bbox.gif_key_main)
                         # Calculate expiration time (24 hours from now by default)
-                        expire_time = datetime.utcnow() + timedelta(seconds=settings.S3_URL_EXPIRATION)
+                        expire_time = datetime.utcnow() + timedelta(
+                            seconds=settings.S3_URL_EXPIRATION
+                        )
                         bbox_urls["main_expires_at"] = expire_time.isoformat() + "Z"
                     except HTTPException:
                         # File not found in S3, skip this URL
                         bbox_urls["has_main"] = False
-                
-                # Generate crop GIF URL if key exists  
+
+                # Generate crop GIF URL if key exists
                 if bbox.gif_key_crop:
                     try:
                         bbox_urls["crop_url"] = bucket.get_public_url(bbox.gif_key_crop)
-                        expire_time = datetime.utcnow() + timedelta(seconds=settings.S3_URL_EXPIRATION)
+                        expire_time = datetime.utcnow() + timedelta(
+                            seconds=settings.S3_URL_EXPIRATION
+                        )
                         bbox_urls["crop_expires_at"] = expire_time.isoformat() + "Z"
                     except HTTPException:
                         # File not found in S3, skip this URL
                         bbox_urls["has_crop"] = False
-                
+
                 # Only add if at least one URL was generated
                 if bbox_urls["main_url"] or bbox_urls["crop_url"]:
                     gif_urls.append(bbox_urls)
@@ -438,7 +442,7 @@ async def get_sequence_annotation_gif_urls(
             "sequence_id": annotation.sequence_id,
             "total_bboxes": len(annotation_data.sequences_bbox),
             "gif_urls": gif_urls,
-            "generated_at": datetime.utcnow().isoformat() + "Z"
+            "generated_at": datetime.utcnow().isoformat() + "Z",
         }
 
     except HTTPException:
