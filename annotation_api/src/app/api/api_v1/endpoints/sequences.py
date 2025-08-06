@@ -20,7 +20,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.api.dependencies import get_sequence_crud
 from app.crud import SequenceCRUD
 from app.db import get_session
-from app.models import Sequence
+from app.models import Sequence, SequenceAnnotation
 from app.schemas.sequence import (
     SequenceCreate,
     SequenceRead,
@@ -94,6 +94,9 @@ async def list_sequences(
     is_wildfire_alertapi: Optional[bool] = Query(
         None, description="Filter by wildfire alert API status"
     ),
+    has_annotation: Optional[bool] = Query(
+        None, description="Filter by annotation presence. True: only sequences with annotations, False: only sequences without annotations"
+    ),
     order_by: SequenceOrderByField = Query(
         SequenceOrderByField.created_at, description="Order by field"
     ),
@@ -110,6 +113,7 @@ async def list_sequences(
     - **camera_id**: Filter sequences by camera ID
     - **organisation_id**: Filter sequences by organisation ID
     - **is_wildfire_alertapi**: Filter sequences by wildfire alert API status
+    - **has_annotation**: Filter by annotation presence (True: with annotations, False: without annotations)
     - **order_by**: Order by created_at or recorded_at (default: created_at)
     - **order_direction**: asc or desc (default: desc)
     - **page**: Page number (default: 1)
@@ -117,6 +121,12 @@ async def list_sequences(
     """
     # Build base query
     query = select(Sequence)
+
+    # Apply conditional join if annotation filtering is needed
+    if has_annotation is not None:
+        # Use outerjoin to include sequences both with and without annotations
+        from sqlalchemy import outerjoin
+        query = query.select_from(outerjoin(Sequence, SequenceAnnotation))
 
     # Apply filtering
     if source_api is not None:
@@ -130,6 +140,14 @@ async def list_sequences(
 
     if is_wildfire_alertapi is not None:
         query = query.where(Sequence.is_wildfire_alertapi == is_wildfire_alertapi)
+
+    if has_annotation is not None:
+        if has_annotation:
+            # Filter for sequences that have annotations
+            query = query.where(SequenceAnnotation.sequence_id.is_not(None))
+        else:
+            # Filter for sequences that do NOT have annotations
+            query = query.where(SequenceAnnotation.sequence_id.is_(None))
 
     # Apply ordering
     order_field = getattr(Sequence, order_by.value)
