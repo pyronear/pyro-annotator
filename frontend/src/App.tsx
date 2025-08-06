@@ -3,6 +3,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import AppLayout from '@/components/layout/AppLayout';
 import HomePage from '@/pages/HomePage';
 import SequencesPage from '@/pages/SequencesPage';
+import SequenceDetailPage from '@/pages/SequenceDetailPage';
+import AnnotationsPage from '@/pages/AnnotationsPage';
+import AnnotationInterface from '@/pages/AnnotationInterface';
 
 // Create a client
 const queryClient = new QueryClient({
@@ -25,7 +28,9 @@ function App() {
             <AppLayout>
               <Routes>
                 <Route path="/sequences" element={<SequencesPage />} />
-                <Route path="/sequences/:id/annotate" element={<div>Annotation Page (Coming Soon)</div>} />
+                <Route path="/sequences/:id" element={<SequenceDetailPage />} />
+                <Route path="/sequences/:id/annotate" element={<AnnotationInterface />} />
+                <Route path="/annotations" element={<AnnotationsPage />} />
               </Routes>
             </AppLayout>
           } />

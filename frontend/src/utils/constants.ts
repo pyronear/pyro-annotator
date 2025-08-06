@@ -111,6 +111,7 @@ export const QUERY_KEYS = {
   SEQUENCE: (id: number) => ['sequences', id],
   DETECTIONS: ['detections'],
   DETECTION: (id: number) => ['detections', id],
+  DETECTION_IMAGE: ['detection-image'],
   SEQUENCE_ANNOTATIONS: ['sequence-annotations'],
   SEQUENCE_ANNOTATION: (id: number) => ['sequence-annotations', id],
   DETECTION_ANNOTATIONS: ['detection-annotations'],

@@ -1,11 +1,14 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Search, Filter, Plus } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Search, Filter } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { SequenceFilters } from '@/types/api';
 import { QUERY_KEYS, PAGINATION_DEFAULTS } from '@/utils/constants';
+import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
 
 export default function SequencesPage() {
+  const navigate = useNavigate();
   const [filters, setFilters] = useState<SequenceFilters>({
     page: PAGINATION_DEFAULTS.PAGE,
     size: PAGINATION_DEFAULTS.SIZE,
@@ -56,10 +59,6 @@ export default function SequencesPage() {
             Manage and annotate wildfire detection sequences
           </p>
         </div>
-        <button className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
-          <Plus className="w-4 h-4 mr-2" />
-          Add Sequence
-        </button>
       </div>
 
       {/* Search and Filters */}
@@ -181,7 +180,16 @@ export default function SequencesPage() {
           <div className="divide-y divide-gray-200">
             {sequences.items.map((sequence) => (
               <div key={sequence.id} className="p-4 hover:bg-gray-50 cursor-pointer">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-4">
+                  {/* Detection Image Thumbnail */}
+                  <div className="flex-shrink-0">
+                    <DetectionImageThumbnail 
+                      sequenceId={sequence.id} 
+                      className="w-16 h-16"
+                    />
+                  </div>
+                  
+                  {/* Sequence Info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center space-x-3">
                       <h3 className="text-sm font-medium text-gray-900 truncate">
@@ -206,8 +214,13 @@ export default function SequencesPage() {
                       {sequence.azimuth && ` • Azimuth: ${sequence.azimuth}°`}
                     </div>
                   </div>
-                  <div className="flex-shrink-0 text-right">
-                    <button className="text-primary-600 hover:text-primary-900 text-sm font-medium">
+                  
+                  {/* Action Button */}
+                  <div className="flex-shrink-0">
+                    <button 
+                      onClick={() => navigate(`/sequences/${sequence.id}`)}
+                      className="text-primary-600 hover:text-primary-900 text-sm font-medium"
+                    >
                       View Details
                     </button>
                   </div>
