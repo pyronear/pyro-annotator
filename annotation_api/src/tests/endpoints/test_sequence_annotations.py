@@ -378,9 +378,9 @@ async def test_get_sequence_annotation_gif_urls(
     assert bbox_urls["main_expires_at"] is not None
     assert bbox_urls["crop_expires_at"] is not None
     
-    # Verify URLs are properly formatted
-    assert bbox_urls["main_url"].startswith("http://localhost:4566")
-    assert bbox_urls["crop_url"].startswith("http://localhost:4566")
+    # Verify URLs are properly formatted (can be localhost or localstack in Docker)
+    assert bbox_urls["main_url"].startswith(("http://localhost:4566", "http://localstack:4566"))
+    assert bbox_urls["crop_url"].startswith(("http://localhost:4566", "http://localstack:4566"))
     assert "gifs/sequence_1/" in bbox_urls["main_url"]
     assert "gifs/sequence_1/" in bbox_urls["crop_url"]
     assert "main_" in bbox_urls["main_url"]
