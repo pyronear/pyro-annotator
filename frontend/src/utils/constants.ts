@@ -117,4 +117,5 @@ export const QUERY_KEYS = {
   DETECTION_ANNOTATIONS: ['detection-annotations'],
   DETECTION_ANNOTATION: (id: number) => ['detection-annotations', id],
   GIF_URLS: (annotationId: number) => ['gif-urls', annotationId],
+  ANNOTATION_STATS: ['annotation-stats'],
 } as const;

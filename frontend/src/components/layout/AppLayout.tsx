@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Menu, X, Home, Database, Activity, Settings } from 'lucide-react';
+import { Menu, X, BarChart3, Database, Activity, Settings } from 'lucide-react';
 import { clsx } from 'clsx';
 
 interface AppLayoutProps {
@@ -8,7 +8,7 @@ interface AppLayoutProps {
 }
 
 const navigation = [
-  { name: 'Dashboard', href: '/dashboard', icon: Home },
+  { name: 'Dashboard', href: '/dashboard', icon: BarChart3 },
   { name: 'Sequences', href: '/sequences', icon: Database },
   { name: 'Annotations', href: '/annotations', icon: Activity },
   { name: 'Settings', href: '/settings', icon: Settings },

@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import AppLayout from '@/components/layout/AppLayout';
 import HomePage from '@/pages/HomePage';
+import DashboardPage from '@/pages/DashboardPage';
 import SequencesPage from '@/pages/SequencesPage';
 import SequenceDetailPage from '@/pages/SequenceDetailPage';
 import AnnotationsPage from '@/pages/AnnotationsPage';
@@ -27,6 +28,7 @@ function App() {
           <Route path="/*" element={
             <AppLayout>
               <Routes>
+                <Route path="/dashboard" element={<DashboardPage />} />
                 <Route path="/sequences" element={<SequencesPage />} />
                 <Route path="/sequences/:id" element={<SequenceDetailPage />} />
                 <Route path="/sequences/:id/annotate" element={<AnnotationInterface />} />
