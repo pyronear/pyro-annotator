@@ -117,7 +117,7 @@ class ApiClient {
     return response.data;
   }
 
-  async getDetectionImageUrl(id: number): Promise<{ image_url: string; expires_at: string }> {
+  async getDetectionImageUrl(id: number): Promise<{ url: string }> {
     const response = await this.client.get(`/detections/${id}/url`);
     return response.data;
   }

@@ -153,10 +153,10 @@ export default function AnnotationInterface() {
         {/* Image Preview */}
         <div className="bg-white rounded-lg border border-gray-200 p-4">
           <h2 className="text-lg font-medium text-gray-900 mb-4">Detection Preview</h2>
-          {imageData?.image_url ? (
+          {imageData?.url ? (
             <div className="w-full h-64 bg-gray-100 rounded-lg overflow-hidden">
               <img
-                src={imageData.image_url}
+                src={imageData.url}
                 alt="Detection"
                 className="w-full h-full object-contain"
               />

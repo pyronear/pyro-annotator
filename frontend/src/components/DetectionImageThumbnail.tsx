@@ -23,7 +23,7 @@ export default function DetectionImageThumbnail({ sequenceId, className = '' }: 
     );
   }
 
-  if (!imageData?.image_url) {
+  if (!imageData?.url) {
     return (
       <div className={`bg-gray-100 border border-gray-200 rounded flex items-center justify-center ${className}`}>
         <span className="text-gray-400 text-xs">No Image</span>
@@ -34,7 +34,7 @@ export default function DetectionImageThumbnail({ sequenceId, className = '' }: 
   return (
     <div className={`overflow-hidden rounded border border-gray-200 ${className}`}>
       <img
-        src={imageData.image_url}
+        src={imageData.url}
         alt="Detection preview"
         className="w-full h-full object-cover"
         onError={(e) => {
