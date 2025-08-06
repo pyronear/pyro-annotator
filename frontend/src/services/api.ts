@@ -9,6 +9,7 @@ import {
   SequenceAnnotationFilters,
   DetectionAnnotationFilters,
   GifUrls,
+  GifUrlsResponse,
   ApiError
 } from '@/types/api';
 
@@ -99,8 +100,8 @@ class ApiClient {
     await this.client.post(`/annotations/sequences/${annotationId}/generate-gifs`);
   }
 
-  async getGifUrls(annotationId: number): Promise<GifUrls> {
-    const response: AxiosResponse<GifUrls> = await this.client.get(`/annotations/sequences/${annotationId}/gifs/urls`);
+  async getGifUrls(annotationId: number): Promise<GifUrlsResponse> {
+    const response: AxiosResponse<GifUrlsResponse> = await this.client.get(`/annotations/sequences/${annotationId}/gifs/urls`);
     return response.data;
   }
 

@@ -158,6 +158,25 @@ export interface GifUrls {
   expires_at: string;
 }
 
+// Enhanced GIF URLs Response (matches actual API)
+export interface GifUrlsResponse {
+  annotation_id: number;
+  sequence_id: number;
+  total_bboxes: number;
+  gif_urls: GifBboxUrls[];
+  generated_at: string;
+}
+
+export interface GifBboxUrls {
+  bbox_index: number;
+  main_url?: string;
+  crop_url?: string;
+  main_expires_at: string;
+  crop_expires_at: string;
+  has_main: boolean;
+  has_crop: boolean;
+}
+
 // API Error Response
 export interface ApiError {
   detail: string | Record<string, string[]>;
