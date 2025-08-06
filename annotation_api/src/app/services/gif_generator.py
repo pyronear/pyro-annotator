@@ -280,8 +280,10 @@ class SequenceGifGenerator:
         # Convert normalized to absolute coordinates
         x1, y1, x2, y2 = int(x1 * w), int(y1 * h), int(x2 * w), int(y2 * h)
 
-        # Draw rectangle
-        cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 3)  # Green box
+        # Draw rectangle (BGR format: Blue=0, Green=0, Red=255)
+        # Using pure red in BGR format which converts to red in RGB
+        red_color = (0, 0, 255)  # Pure red in BGR
+        cv2.rectangle(image, (x1, y1), (x2, y2), red_color, 2)
 
         return image
 
