@@ -1,7 +1,7 @@
 # Copyright (C) 2025, Pyronear.
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 from typing import Optional
 
@@ -19,7 +19,9 @@ from fastapi_pagination.ext.sqlalchemy import apaginate
 from sqlalchemy import asc, desc, select, text
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.api.dependencies import get_sequence_annotation_crud
+from app.api.dependencies import get_sequence_annotation_crud, get_gif_generator
+from app.core.config import settings
+from app.services.storage import s3_service
 from app.crud import SequenceAnnotationCRUD
 from app.db import get_session
 from app.models import (
@@ -297,3 +299,158 @@ async def delete_sequence_annotation(
     annotations: SequenceAnnotationCRUD = Depends(get_sequence_annotation_crud),
 ) -> None:
     await annotations.delete(annotation_id)
+
+
+@router.post("/{annotation_id}/generate-gifs", status_code=status.HTTP_200_OK)
+async def generate_sequence_annotation_gifs(
+    annotation_id: int = Path(..., ge=0, description="ID of the sequence annotation"),
+    gif_generator=Depends(get_gif_generator),
+) -> dict:
+    """
+    Generate GIFs for a sequence annotation.
+
+    This endpoint creates both main (full-frame with bounding box overlays) and crop GIFs
+    from the detection images referenced in the sequence annotation. The generated GIFs
+    are uploaded to S3 storage and the annotation is updated with the GIF URLs.
+
+    Args:
+        annotation_id: The ID of the sequence annotation to generate GIFs for
+
+    Returns:
+        dict: Contains generation results with annotation_id, sequence_id, gif_count,
+              total_bboxes, and generated_at timestamp
+
+    Raises:
+        HTTPException 404: If sequence annotation not found
+        HTTPException 422: If no sequence bounding boxes found or no detections found
+        HTTPException 500: If GIF generation fails
+    """
+    try:
+        result = await gif_generator.generate_gifs_for_annotation(annotation_id)
+        return result
+    except HTTPException:
+        # Re-raise HTTP exceptions (404, 422)
+        raise
+    except Exception as e:
+        # Catch any other unexpected errors and return 500
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate GIFs: {str(e)}",
+        )
+
+
+@router.get("/{annotation_id}/gifs/urls", status_code=status.HTTP_200_OK)
+async def get_sequence_annotation_gif_urls(
+    annotation_id: int = Path(..., ge=0, description="ID of the sequence annotation"),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """
+    Get fresh presigned URLs for all GIFs associated with a sequence annotation.
+
+    This endpoint generates fresh presigned URLs for all GIFs stored for the annotation's
+    sequence bounding boxes. Each bbox that has generated GIFs will return both main and
+    crop URLs (when available) with expiration timestamps.
+
+    Args:
+        annotation_id: The ID of the sequence annotation to get GIF URLs for
+
+    Returns:
+        dict: Contains annotation info and array of GIF URLs with expiration times
+
+    Raises:
+        HTTPException 404: If sequence annotation not found
+        HTTPException 404: If any GIF files are missing from S3 storage
+    """
+    try:
+        # Get the annotation
+        annotation = await session.get(SequenceAnnotation, annotation_id)
+
+        if not annotation:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Sequence annotation not found",
+            )
+
+        # Ensure we have the latest data from the database
+        await session.refresh(annotation)
+
+        # Parse annotation data
+        from app.schemas.annotation_validation import SequenceAnnotationData
+
+        # Check if annotation field exists and is not None
+        if not hasattr(annotation, "annotation") or annotation.annotation is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Annotation data is missing or None",
+            )
+
+        # Handle case where annotation.annotation might be a dict or already parsed
+        annotation_dict = annotation.annotation
+        if isinstance(annotation_dict, dict):
+            annotation_data = SequenceAnnotationData(**annotation_dict)
+        else:
+            annotation_data = SequenceAnnotationData.model_validate(annotation_dict)
+
+        # Get S3 bucket
+        bucket = s3_service.get_bucket(s3_service.resolve_bucket_name())
+
+        # Generate URLs for each bbox that has GIF keys
+        gif_urls = []
+        for i, bbox in enumerate(annotation_data.sequences_bbox):
+            if bbox.gif_key_main or bbox.gif_key_crop:
+                bbox_urls = {
+                    "bbox_index": i,
+                    "main_url": None,
+                    "crop_url": None,
+                    "main_expires_at": None,
+                    "crop_expires_at": None,
+                    "has_main": bbox.gif_key_main is not None,
+                    "has_crop": bbox.gif_key_crop is not None,
+                }
+
+                # Generate main GIF URL if key exists
+                if bbox.gif_key_main:
+                    try:
+                        bbox_urls["main_url"] = bucket.get_public_url(bbox.gif_key_main)
+                        # Calculate expiration time (24 hours from now by default)
+                        expire_time = datetime.utcnow() + timedelta(
+                            seconds=settings.S3_URL_EXPIRATION
+                        )
+                        bbox_urls["main_expires_at"] = expire_time.isoformat() + "Z"
+                    except HTTPException:
+                        # File not found in S3, skip this URL
+                        bbox_urls["has_main"] = False
+
+                # Generate crop GIF URL if key exists
+                if bbox.gif_key_crop:
+                    try:
+                        bbox_urls["crop_url"] = bucket.get_public_url(bbox.gif_key_crop)
+                        expire_time = datetime.utcnow() + timedelta(
+                            seconds=settings.S3_URL_EXPIRATION
+                        )
+                        bbox_urls["crop_expires_at"] = expire_time.isoformat() + "Z"
+                    except HTTPException:
+                        # File not found in S3, skip this URL
+                        bbox_urls["has_crop"] = False
+
+                # Only add if at least one URL was generated
+                if bbox_urls["main_url"] or bbox_urls["crop_url"]:
+                    gif_urls.append(bbox_urls)
+
+        return {
+            "annotation_id": annotation_id,
+            "sequence_id": annotation.sequence_id,
+            "total_bboxes": len(annotation_data.sequences_bbox),
+            "gif_urls": gif_urls,
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+        }
+
+    except HTTPException:
+        # Re-raise HTTP exceptions (404, 422)
+        raise
+    except Exception as e:
+        # Catch any other unexpected errors and return 500
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate GIF URLs: {str(e)}",
+        )

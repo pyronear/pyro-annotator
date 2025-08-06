@@ -282,8 +282,8 @@ async def test_list_sequences_has_annotation_filter(
                 "sequences_bbox": [
                     {
                         "is_smoke": True,
-                        "gif_url_main": f"http://example.com/main_{i}.gif",
-                        "gif_url_crop": f"http://example.com/crop_{i}.gif",
+                        "gif_key_main": f"gifs/sequence_1/main_{i}.gif",
+                        "gif_key_crop": f"gifs/sequence_1/crop_{i}.gif",
                         "false_positive_types": [],
                         "bboxes": [],
                     }
@@ -292,7 +292,9 @@ async def test_list_sequences_has_annotation_filter(
             "processing_stage": "imported",
             "created_at": datetime.utcnow().isoformat(),
         }
-        response = await async_client.post("/annotations/sequences/", json=annotation_payload)
+        response = await async_client.post(
+            "/annotations/sequences/", json=annotation_payload
+        )
         assert response.status_code == 201
 
     # Test 1: Get sequences WITHOUT annotations (should only get the third sequence)
@@ -300,19 +302,23 @@ async def test_list_sequences_has_annotation_filter(
     assert response.status_code == 200
     data = response.json()
     sequences_without_annotations = data["items"]
-    
+
     # Should have at least our third sequence (might have others from other tests)
     assert any(seq["id"] == sequence_ids[2] for seq in sequences_without_annotations)
     # The first two sequences should NOT be in the results
-    assert not any(seq["id"] == sequence_ids[0] for seq in sequences_without_annotations)
-    assert not any(seq["id"] == sequence_ids[1] for seq in sequences_without_annotations)
+    assert not any(
+        seq["id"] == sequence_ids[0] for seq in sequences_without_annotations
+    )
+    assert not any(
+        seq["id"] == sequence_ids[1] for seq in sequences_without_annotations
+    )
 
     # Test 2: Get sequences WITH annotations (should get the first two sequences)
     response = await async_client.get("/sequences?has_annotation=true")
     assert response.status_code == 200
     data = response.json()
     sequences_with_annotations = data["items"]
-    
+
     # Should have our first two sequences
     assert any(seq["id"] == sequence_ids[0] for seq in sequences_with_annotations)
     assert any(seq["id"] == sequence_ids[1] for seq in sequences_with_annotations)
@@ -324,7 +330,7 @@ async def test_list_sequences_has_annotation_filter(
     assert response.status_code == 200
     data = response.json()
     all_sequences = data["items"]
-    
+
     # All three sequences should be present
     for seq_id in sequence_ids:
         assert any(seq["id"] == seq_id for seq in all_sequences)

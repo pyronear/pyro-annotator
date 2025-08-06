@@ -48,8 +48,8 @@ class BoundingBox(BaseModel):
 
 class SequenceBBox(BaseModel):
     is_smoke: bool
-    gif_url_main: Optional[str] = None
-    gif_url_crop: Optional[str] = None
+    gif_key_main: Optional[str] = None
+    gif_key_crop: Optional[str] = None
     false_positive_types: List[FalsePositiveType] = Field(default_factory=list)
     bboxes: List[BoundingBox]
 

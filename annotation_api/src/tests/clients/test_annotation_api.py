@@ -150,8 +150,8 @@ def mock_sequence_annotation_data():
             "sequences_bbox": [
                 {
                     "is_smoke": True,
-                    "gif_url_main": "http://example.com/main.gif",
-                    "gif_url_crop": "http://example.com/crop.gif",
+                    "gif_key_main": "gifs/sequence_1/main.gif",
+                    "gif_key_crop": "gifs/sequence_1/crop.gif",
                     "false_positive_types": [],
                     "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.2, 0.4, 0.6]}],
                 }
@@ -929,7 +929,7 @@ class TestEdgeCases:
             "sequences_bbox": [
                 {
                     "is_smoke": True,
-                    "gif_url_main": "http://example.com/main.gif",
+                    "gif_key_main": "gifs/sequence_1/main.gif",
                     "false_positive_types": ["reflection", "cloud"],
                     "bboxes": [
                         {"detection_id": 1, "xyxyn": [0.1, 0.2, 0.4, 0.6]},

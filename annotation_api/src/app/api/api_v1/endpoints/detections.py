@@ -75,19 +75,31 @@ async def create_detection(
             detail=f"Invalid algo_predictions format: {e.errors()}",
         )
 
-    # Upload image to S3
-    bucket_key = await upload_file(file)
-
+    # Create detection record first to get the detection ID
     detection = Detection(
         sequence_id=sequence_id,
         alert_api_id=alert_api_id,
         recorded_at=recorded_at,
-        bucket_key=bucket_key,
+        bucket_key="",  # Temporary placeholder
         algo_predictions=validated_predictions.model_dump(),  # Store as dict
         created_at=datetime.utcnow(),
     )
 
-    # Add and commit directly
+    # Add and commit to get the detection ID
+    detections.session.add(detection)
+    await detections.session.commit()
+    await detections.session.refresh(detection)
+
+    # Upload image to S3 with detection metadata
+    bucket_key = await upload_file(
+        file=file,
+        sequence_id=sequence_id,
+        detection_id=detection.id,
+        recorded_at=recorded_at,
+    )
+
+    # Update detection with the actual bucket key
+    detection.bucket_key = bucket_key
     detections.session.add(detection)
     await detections.session.commit()
     await detections.session.refresh(detection)

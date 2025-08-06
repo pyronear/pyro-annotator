@@ -67,9 +67,7 @@ from typing import List, Optional
 from tqdm import tqdm
 
 from app.clients.annotation_api import (
-    AnnotationAPIError,
     ValidationError,
-    NotFoundError,
     create_sequence_annotation,
     update_sequence_annotation,
     list_sequences,
@@ -96,8 +94,8 @@ def parse_sequence_ids(s: str) -> List[int]:
     Parse comma-separated sequence IDs.
     """
     try:
-        return [int(x.strip()) for x in s.split(',') if x.strip()]
-    except ValueError as e:
+        return [int(x.strip()) for x in s.split(",") if x.strip()]
+    except ValueError:
         msg = f"invalid sequence IDs format: {s!r}. Expected comma-separated integers."
         raise argparse.ArgumentTypeError(msg)
 
@@ -109,7 +107,7 @@ def make_cli_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Generate sequence annotations from AI predictions",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__.split('Arguments:')[0].split('Usage:')[1].strip()
+        epilog=__doc__.split("Arguments:")[0].split("Usage:")[1].strip(),
     )
 
     # API configuration
@@ -221,7 +219,9 @@ def validate_args(args: argparse.Namespace) -> bool:
     return True
 
 
-def get_sequences_from_date_range(base_url: str, date_from: date, date_end: date) -> List[int]:
+def get_sequences_from_date_range(
+    base_url: str, date_from: date, date_end: date
+) -> List[int]:
     """
     Get sequence IDs for a date range.
 
@@ -254,9 +254,9 @@ def get_sequences_from_date_range(base_url: str, date_from: date, date_end: date
             )
 
             # Handle paginated response
-            if isinstance(response, dict) and 'items' in response:
-                sequences = response['items']
-                total_pages = response.get('pages', 1)
+            if isinstance(response, dict) and "items" in response:
+                sequences = response["items"]
+                total_pages = response.get("pages", 1)
             else:
                 sequences = response
                 total_pages = 1
@@ -266,12 +266,14 @@ def get_sequences_from_date_range(base_url: str, date_from: date, date_end: date
 
             # Filter by date range (client-side filtering since API might not support date filtering)
             for seq in sequences:
-                recorded_at = seq.get('recorded_at')
+                recorded_at = seq.get("recorded_at")
                 if recorded_at:
                     try:
-                        seq_date = datetime.fromisoformat(recorded_at.replace('Z', '+00:00')).date()
+                        seq_date = datetime.fromisoformat(
+                            recorded_at.replace("Z", "+00:00")
+                        ).date()
                         if date_from <= seq_date <= date_end:
-                            all_sequences.append(seq['id'])
+                            all_sequences.append(seq["id"])
                     except (ValueError, TypeError):
                         continue
 
@@ -314,9 +316,9 @@ def get_sequences_without_annotations(base_url: str) -> List[int]:
             )
 
             # Handle paginated response
-            if isinstance(response, dict) and 'items' in response:
-                sequences = response['items']
-                total_pages = response.get('pages', 1)
+            if isinstance(response, dict) and "items" in response:
+                sequences = response["items"]
+                total_pages = response.get("pages", 1)
             else:
                 sequences = response
                 total_pages = 1
@@ -326,7 +328,7 @@ def get_sequences_without_annotations(base_url: str) -> List[int]:
 
             # Extract sequence IDs
             for seq in sequences:
-                all_sequences.append(seq['id'])
+                all_sequences.append(seq["id"])
 
             if page >= total_pages:
                 break
@@ -353,23 +355,31 @@ def check_existing_annotation(base_url: str, sequence_id: int) -> Optional[int]:
     """
     try:
         response = list_sequence_annotations(base_url, sequence_id=sequence_id)
-        
+
         # Handle paginated response
-        if isinstance(response, dict) and 'items' in response:
-            annotations = response['items']
+        if isinstance(response, dict) and "items" in response:
+            annotations = response["items"]
         else:
             annotations = response
 
         if len(annotations) > 0:
-            return annotations[0]['id']  # Return the annotation ID
+            return annotations[0]["id"]  # Return the annotation ID
         return None
 
     except Exception as e:
-        logging.debug(f"Error checking existing annotation for sequence {sequence_id}: {e}")
+        logging.debug(
+            f"Error checking existing annotation for sequence {sequence_id}: {e}"
+        )
         return None
 
 
-def create_annotation_from_data(base_url: str, sequence_id: int, annotation_data, dry_run: bool = False, existing_annotation_id: Optional[int] = None) -> bool:
+def create_annotation_from_data(
+    base_url: str,
+    sequence_id: int,
+    annotation_data,
+    dry_run: bool = False,
+    existing_annotation_id: Optional[int] = None,
+) -> bool:
     """
     Create or update a sequence annotation from analyzed data.
 
@@ -393,13 +403,19 @@ def create_annotation_from_data(base_url: str, sequence_id: int, annotation_data
             }
 
             if dry_run:
-                logging.info(f"DRY RUN: Would update annotation {existing_annotation_id} for sequence {sequence_id}")
+                logging.info(
+                    f"DRY RUN: Would update annotation {existing_annotation_id} for sequence {sequence_id}"
+                )
                 logging.debug(f"Update data: {update_dict}")
                 return True
 
             # Update the annotation
-            result = update_sequence_annotation(base_url, existing_annotation_id, update_dict)
-            logging.info(f"Updated annotation for sequence {sequence_id}: annotation_id={existing_annotation_id}")
+            result = update_sequence_annotation(
+                base_url, existing_annotation_id, update_dict
+            )
+            logging.info(
+                f"Updated annotation for sequence {sequence_id}: annotation_id={existing_annotation_id}"
+            )
             return True
 
         else:
@@ -408,25 +424,36 @@ def create_annotation_from_data(base_url: str, sequence_id: int, annotation_data
                 "sequence_id": sequence_id,
                 "annotation": annotation_data.model_dump(),
                 "processing_stage": SequenceAnnotationProcessingStage.IMPORTED.value,
-                "has_smoke": any(seq_bbox.is_smoke for seq_bbox in annotation_data.sequences_bbox),
-                "has_false_positives": any(len(seq_bbox.false_positive_types) > 0 for seq_bbox in annotation_data.sequences_bbox),
+                "has_smoke": any(
+                    seq_bbox.is_smoke for seq_bbox in annotation_data.sequences_bbox
+                ),
+                "has_false_positives": any(
+                    len(seq_bbox.false_positive_types) > 0
+                    for seq_bbox in annotation_data.sequences_bbox
+                ),
                 "has_missed_smoke": False,  # Default to False, can be updated during human review
                 "false_positive_types": "",  # Will be populated during human review
             }
 
             if dry_run:
-                logging.info(f"DRY RUN: Would create annotation for sequence {sequence_id}")
+                logging.info(
+                    f"DRY RUN: Would create annotation for sequence {sequence_id}"
+                )
                 logging.debug(f"Annotation data: {annotation_dict}")
                 return True
 
             # Create the annotation
             result = create_sequence_annotation(base_url, annotation_dict)
-            logging.info(f"Created annotation for sequence {sequence_id}: annotation_id={result.get('id')}")
+            logging.info(
+                f"Created annotation for sequence {sequence_id}: annotation_id={result.get('id')}"
+            )
             return True
 
     except ValidationError as e:
-        logging.error(f"Validation error creating annotation for sequence {sequence_id}: {e.message}")
-        if hasattr(e, 'field_errors') and e.field_errors:
+        logging.error(
+            f"Validation error creating annotation for sequence {sequence_id}: {e.message}"
+        )
+        if hasattr(e, "field_errors") and e.field_errors:
             for error in e.field_errors:
                 logging.error(f"  Field error: {error}")
         return False
@@ -444,7 +471,7 @@ def main():
     # Setup logging
     logging.basicConfig(
         level=args.loglevel.upper(),
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
     logger = logging.getLogger(__name__)
 
@@ -453,8 +480,10 @@ def main():
         sys.exit(1)
 
     logger.info("Starting sequence annotation generation")
-    logger.info(f"Configuration: confidence_threshold={args.confidence_threshold}, "
-               f"iou_threshold={args.iou_threshold}, min_cluster_size={args.min_cluster_size}")
+    logger.info(
+        f"Configuration: confidence_threshold={args.confidence_threshold}, "
+        f"iou_threshold={args.iou_threshold}, min_cluster_size={args.min_cluster_size}"
+    )
 
     # Determine sequence IDs to process
     sequence_ids = []
@@ -463,7 +492,9 @@ def main():
     elif args.sequence_ids:
         sequence_ids = args.sequence_ids
     elif args.date_from:
-        sequence_ids = get_sequences_from_date_range(args.url_api_annotation, args.date_from, args.date_end)
+        sequence_ids = get_sequences_from_date_range(
+            args.url_api_annotation, args.date_from, args.date_end
+        )
         if not sequence_ids:
             logger.error("No sequences found in specified date range")
             sys.exit(1)
@@ -492,10 +523,14 @@ def main():
         logger.info(f"Processing sequence {sequence_id}")
 
         # Check for existing annotation
-        existing_annotation_id = check_existing_annotation(args.url_api_annotation, sequence_id)
-        
+        existing_annotation_id = check_existing_annotation(
+            args.url_api_annotation, sequence_id
+        )
+
         if existing_annotation_id and not args.force:
-            logger.info(f"Sequence {sequence_id} already has annotation, skipping (use --force to overwrite)")
+            logger.info(
+                f"Sequence {sequence_id} already has annotation, skipping (use --force to overwrite)"
+            )
             skipped_existing += 1
             continue
 
@@ -507,14 +542,20 @@ def main():
             continue
 
         # Create or update annotation
-        if create_annotation_from_data(args.url_api_annotation, sequence_id, annotation_data, args.dry_run, existing_annotation_id):
+        if create_annotation_from_data(
+            args.url_api_annotation,
+            sequence_id,
+            annotation_data,
+            args.dry_run,
+            existing_annotation_id,
+        ):
             successful_annotations += 1
         else:
             failed_annotations += 1
 
     # Report final statistics
     logger.info("Sequence annotation generation completed")
-    logger.info(f"Results:")
+    logger.info("Results:")
     logger.info(f"  Total sequences processed: {len(sequence_ids)}")
     logger.info(f"  Successful annotations: {successful_annotations}")
     logger.info(f"  Skipped (existing): {skipped_existing}")

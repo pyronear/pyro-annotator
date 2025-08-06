@@ -7,7 +7,6 @@ structured annotation data ready for human review.
 """
 
 import logging
-from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 from app.clients.annotation_api import list_detections, get_sequence
@@ -17,7 +16,6 @@ from app.schemas.annotation_validation import (
     SequenceAnnotationData,
 )
 from .bbox_utils import (
-    box_iou,
     cluster_boxes_by_iou,
     filter_predictions_by_confidence,
     validate_bbox_format,
@@ -65,7 +63,9 @@ class SequenceAnalyzer:
         try:
             # Get sequence info for validation
             sequence = get_sequence(self.base_url, sequence_id)
-            self.logger.info(f"Analyzing sequence {sequence_id}: {sequence.get('camera_name', 'Unknown')}")
+            self.logger.info(
+                f"Analyzing sequence {sequence_id}: {sequence.get('camera_name', 'Unknown')}"
+            )
 
             # Get all detections for this sequence
             detections = self._fetch_sequence_detections(sequence_id)
@@ -73,20 +73,28 @@ class SequenceAnalyzer:
                 self.logger.warning(f"No detections found for sequence {sequence_id}")
                 return None
 
-            self.logger.info(f"Found {len(detections)} detections in sequence {sequence_id}")
+            self.logger.info(
+                f"Found {len(detections)} detections in sequence {sequence_id}"
+            )
 
             # Extract and validate AI predictions from detections
             predictions_with_ids = self._extract_predictions_from_detections(detections)
             if not predictions_with_ids:
-                self.logger.warning(f"No valid AI predictions found for sequence {sequence_id}")
+                self.logger.warning(
+                    f"No valid AI predictions found for sequence {sequence_id}"
+                )
                 return None
 
-            self.logger.info(f"Extracted {len(predictions_with_ids)} valid predictions above confidence threshold {self.confidence_threshold}")
+            self.logger.info(
+                f"Extracted {len(predictions_with_ids)} valid predictions above confidence threshold {self.confidence_threshold}"
+            )
 
             # Cluster overlapping bounding boxes across time
             bbox_clusters = self._cluster_temporal_bboxes(predictions_with_ids)
             if not bbox_clusters:
-                self.logger.warning(f"No temporal clusters found for sequence {sequence_id}")
+                self.logger.warning(
+                    f"No temporal clusters found for sequence {sequence_id}"
+                )
                 return None
 
             self.logger.info(f"Created {len(bbox_clusters)} temporal bbox clusters")
@@ -97,7 +105,9 @@ class SequenceAnalyzer:
             # Create final annotation data
             annotation_data = SequenceAnnotationData(sequences_bbox=sequences_bbox)
 
-            self.logger.info(f"Generated annotation with {len(sequences_bbox)} sequence bboxes for sequence {sequence_id}")
+            self.logger.info(
+                f"Generated annotation with {len(sequences_bbox)} sequence bboxes for sequence {sequence_id}"
+            )
             return annotation_data
 
         except Exception as e:
@@ -118,7 +128,7 @@ class SequenceAnalyzer:
             all_detections = []
             page = 1
             page_size = 100  # API limit
-            
+
             while True:
                 # Fetch detections with pagination
                 response = list_detections(
@@ -127,13 +137,13 @@ class SequenceAnalyzer:
                     order_by="recorded_at",
                     order_direction="asc",
                     page=page,
-                    size=page_size
+                    size=page_size,
                 )
-                
+
                 # Handle paginated response format
-                if isinstance(response, dict) and 'items' in response:
-                    detections = response['items']
-                    total_pages = response.get('pages', 1)
+                if isinstance(response, dict) and "items" in response:
+                    detections = response["items"]
+                    total_pages = response.get("pages", 1)
                 else:
                     detections = response
                     total_pages = 1
@@ -142,20 +152,24 @@ class SequenceAnalyzer:
                     break
 
                 all_detections.extend(detections)
-                
+
                 # Check if we've reached the last page
                 if page >= total_pages:
                     break
-                    
+
                 page += 1
 
             return all_detections
 
         except Exception as e:
-            self.logger.error(f"Error fetching detections for sequence {sequence_id}: {e}")
+            self.logger.error(
+                f"Error fetching detections for sequence {sequence_id}: {e}"
+            )
             return []
 
-    def _extract_predictions_from_detections(self, detections: List[Dict]) -> List[Tuple[List[float], int, Dict]]:
+    def _extract_predictions_from_detections(
+        self, detections: List[Dict]
+    ) -> List[Tuple[List[float], int, Dict]]:
         """
         Extract and validate AI predictions from detection records.
 
@@ -168,13 +182,13 @@ class SequenceAnalyzer:
         predictions_with_ids = []
 
         for detection in detections:
-            detection_id = detection['id']
-            algo_predictions = detection.get('algo_predictions')
+            detection_id = detection["id"]
+            algo_predictions = detection.get("algo_predictions")
 
             if not algo_predictions or not isinstance(algo_predictions, dict):
                 continue
 
-            predictions_list = algo_predictions.get('predictions', [])
+            predictions_list = algo_predictions.get("predictions", [])
             if not predictions_list:
                 continue
 
@@ -184,23 +198,27 @@ class SequenceAnalyzer:
             )
 
             for prediction in valid_predictions:
-                bbox = prediction.get('xyxyn')
+                bbox = prediction.get("xyxyn")
                 if not bbox or not validate_bbox_format(bbox):
-                    self.logger.debug(f"Invalid bbox format in detection {detection_id}: {bbox}")
+                    self.logger.debug(
+                        f"Invalid bbox format in detection {detection_id}: {bbox}"
+                    )
                     continue
 
                 # Store prediction with metadata
                 prediction_metadata = {
-                    'confidence': prediction.get('confidence', 0.0),
-                    'class_name': prediction.get('class_name', 'unknown'),
-                    'recorded_at': detection.get('recorded_at')
+                    "confidence": prediction.get("confidence", 0.0),
+                    "class_name": prediction.get("class_name", "unknown"),
+                    "recorded_at": detection.get("recorded_at"),
                 }
 
                 predictions_with_ids.append((bbox, detection_id, prediction_metadata))
 
         return predictions_with_ids
 
-    def _cluster_temporal_bboxes(self, predictions_with_ids: List[Tuple[List[float], int, Dict]]) -> List[List[Tuple[List[float], int, Dict]]]:
+    def _cluster_temporal_bboxes(
+        self, predictions_with_ids: List[Tuple[List[float], int, Dict]]
+    ) -> List[List[Tuple[List[float], int, Dict]]]:
         """
         Cluster bounding boxes that overlap across temporal frames.
 
@@ -214,10 +232,12 @@ class SequenceAnalyzer:
             return []
 
         # Sort by recorded_at timestamp for temporal ordering
-        predictions_with_ids.sort(key=lambda x: x[2].get('recorded_at', ''))
+        predictions_with_ids.sort(key=lambda x: x[2].get("recorded_at", ""))
 
         # Convert to format expected by clustering function
-        boxes_with_ids = [(bbox, detection_id) for bbox, detection_id, _ in predictions_with_ids]
+        boxes_with_ids = [
+            (bbox, detection_id) for bbox, detection_id, _ in predictions_with_ids
+        ]
 
         # Cluster using IoU similarity
         clusters = cluster_boxes_by_iou(boxes_with_ids, self.iou_threshold)
@@ -232,14 +252,20 @@ class SequenceAnalyzer:
                     # Find original metadata
                     for orig_bbox, orig_id, orig_metadata in predictions_with_ids:
                         if orig_id == detection_id and orig_bbox == bbox:
-                            cluster_with_metadata.append((bbox, detection_id, orig_metadata))
+                            cluster_with_metadata.append(
+                                (bbox, detection_id, orig_metadata)
+                            )
                             break
                 valid_clusters.append(cluster_with_metadata)
 
-        self.logger.debug(f"Filtered {len(clusters)} raw clusters to {len(valid_clusters)} valid clusters (min_size={self.min_cluster_size})")
+        self.logger.debug(
+            f"Filtered {len(clusters)} raw clusters to {len(valid_clusters)} valid clusters (min_size={self.min_cluster_size})"
+        )
         return valid_clusters
 
-    def _create_sequence_bboxes(self, bbox_clusters: List[List[Tuple[List[float], int, Dict]]]) -> List[SequenceBBox]:
+    def _create_sequence_bboxes(
+        self, bbox_clusters: List[List[Tuple[List[float], int, Dict]]]
+    ) -> List[SequenceBBox]:
         """
         Convert bbox clusters into SequenceBBox objects.
 
@@ -259,16 +285,13 @@ class SequenceAnalyzer:
 
             for bbox_coords, detection_id, metadata in cluster:
                 # Create BoundingBox object
-                bbox_obj = BoundingBox(
-                    detection_id=detection_id,
-                    xyxyn=bbox_coords
-                )
+                bbox_obj = BoundingBox(detection_id=detection_id, xyxyn=bbox_coords)
                 bboxes.append(bbox_obj)
 
                 # Track metadata for decision making
-                max_confidence = max(max_confidence, metadata.get('confidence', 0.0))
-                if metadata.get('class_name'):
-                    class_names.add(metadata['class_name'])
+                max_confidence = max(max_confidence, metadata.get("confidence", 0.0))
+                if metadata.get("class_name"):
+                    class_names.add(metadata["class_name"])
 
             # Create SequenceBBox with initial classification
             # Initially mark as smoke (to be reviewed by humans)
@@ -279,7 +302,7 @@ class SequenceAnalyzer:
                 gif_url_main=None,  # Skip GIF generation for now
                 gif_url_crop=None,  # Skip GIF generation for now
                 false_positive_types=[],  # Empty initially, filled during human review
-                bboxes=bboxes
+                bboxes=bboxes,
             )
 
             sequences_bbox.append(sequence_bbox)
@@ -292,7 +315,9 @@ class SequenceAnalyzer:
 
         return sequences_bbox
 
-    def analyze_multiple_sequences(self, sequence_ids: List[int]) -> Dict[int, Optional[SequenceAnnotationData]]:
+    def analyze_multiple_sequences(
+        self, sequence_ids: List[int]
+    ) -> Dict[int, Optional[SequenceAnnotationData]]:
         """
         Analyze multiple sequences and return results.
 
@@ -305,12 +330,16 @@ class SequenceAnalyzer:
         results = {}
 
         for sequence_id in sequence_ids:
-            self.logger.info(f"Processing sequence {sequence_id} ({sequence_ids.index(sequence_id) + 1}/{len(sequence_ids)})")
+            self.logger.info(
+                f"Processing sequence {sequence_id} ({sequence_ids.index(sequence_id) + 1}/{len(sequence_ids)})"
+            )
             results[sequence_id] = self.analyze_sequence(sequence_id)
 
         return results
 
-    def get_analysis_summary(self, results: Dict[int, Optional[SequenceAnnotationData]]) -> Dict[str, int]:
+    def get_analysis_summary(
+        self, results: Dict[int, Optional[SequenceAnnotationData]]
+    ) -> Dict[str, int]:
         """
         Generate summary statistics for analysis results.
 
@@ -334,11 +363,13 @@ class SequenceAnalyzer:
                     total_detection_bboxes += len(seq_bbox.bboxes)
 
         return {
-            'total_sequences': total_sequences,
-            'successful_sequences': successful_sequences,
-            'failed_sequences': failed_sequences,
-            'total_sequence_bboxes': total_sequence_bboxes,
-            'total_detection_bboxes': total_detection_bboxes,
-            'avg_sequence_bboxes_per_sequence': total_sequence_bboxes / max(successful_sequences, 1),
-            'avg_detection_bboxes_per_sequence': total_detection_bboxes / max(successful_sequences, 1)
+            "total_sequences": total_sequences,
+            "successful_sequences": successful_sequences,
+            "failed_sequences": failed_sequences,
+            "total_sequence_bboxes": total_sequence_bboxes,
+            "total_detection_bboxes": total_detection_bboxes,
+            "avg_sequence_bboxes_per_sequence": total_sequence_bboxes
+            / max(successful_sequences, 1),
+            "avg_detection_bboxes_per_sequence": total_detection_bboxes
+            / max(successful_sequences, 1),
         }

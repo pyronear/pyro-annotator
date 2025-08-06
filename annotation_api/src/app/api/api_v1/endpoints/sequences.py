@@ -95,7 +95,8 @@ async def list_sequences(
         None, description="Filter by wildfire alert API status"
     ),
     has_annotation: Optional[bool] = Query(
-        None, description="Filter by annotation presence. True: only sequences with annotations, False: only sequences without annotations"
+        None,
+        description="Filter by annotation presence. True: only sequences with annotations, False: only sequences without annotations",
     ),
     order_by: SequenceOrderByField = Query(
         SequenceOrderByField.created_at, description="Order by field"
@@ -126,6 +127,7 @@ async def list_sequences(
     if has_annotation is not None:
         # Use outerjoin to include sequences both with and without annotations
         from sqlalchemy import outerjoin
+
         query = query.select_from(outerjoin(Sequence, SequenceAnnotation))
 
     # Apply filtering

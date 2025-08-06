@@ -153,7 +153,8 @@ if __name__ == "__main__":
         "annotation_data": [
             {
                 "is_smoke": True,
-                "gif_url_main": "https://storage.example.com/sequence_123.gif",
+                "gif_key_main": None,  # Will be populated after GIF generation
+                "gif_key_crop": None,
                 "false_positive_types": [],
                 "bboxes": [
                     {"detection_id": 1, "xyxyn": [0.2, 0.3, 0.5, 0.7]}
@@ -434,6 +435,206 @@ export_results = export_training_data(
     min_annotations=50
 )
 print(f"Export completed: {export_results}")
+```
+
+### Example 4: Complete GIF Generation Workflow
+
+```python
+#!/usr/bin/env python3
+"""
+Complete workflow for generating and accessing GIFs for sequence annotations.
+Shows the two-step process: generation and URL retrieval.
+"""
+
+import requests
+from datetime import datetime
+from typing import Dict, List, Optional
+
+from app.clients.annotation_api import (
+    create_sequence_annotation,
+    AnnotationAPIError,
+    NotFoundError
+)
+
+def generate_and_retrieve_gifs(api_base_url: str, annotation_id: int) -> Dict:
+    """
+    Generate GIFs for a sequence annotation and retrieve fresh URLs.
+    
+    This demonstrates the two-step process:
+    1. Generate GIFs (stores bucket keys in database)
+    2. Retrieve fresh presigned URLs on-demand
+    
+    Args:
+        api_base_url: Base URL of the API
+        annotation_id: ID of the sequence annotation
+        
+    Returns:
+        Dictionary with GIF URLs and metadata
+    """
+    
+    results = {
+        "annotation_id": annotation_id,
+        "gif_generation": None,
+        "gif_urls": None,
+        "errors": []
+    }
+    
+    # Step 1: Generate GIFs
+    print(f"Generating GIFs for annotation {annotation_id}...")
+    
+    try:
+        gif_response = requests.post(
+            f"{api_base_url}/api/v1/annotations/sequences/{annotation_id}/generate-gifs"
+        )
+        
+        if gif_response.status_code == 200:
+            gif_data = gif_response.json()
+            results["gif_generation"] = gif_data
+            
+            print(f"✓ Generated {gif_data['gif_count']} GIFs")
+            print(f"  Total bboxes: {gif_data['total_bboxes']}")
+            
+            # Display generated bucket keys
+            for gif_key in gif_data['gif_keys']:
+                print(f"  Bbox {gif_key['bbox_index']}:")
+                if gif_key['has_main']:
+                    print(f"    Main key: {gif_key['main_key']}")
+                if gif_key['has_crop']:
+                    print(f"    Crop key: {gif_key['crop_key']}")
+                    
+        elif gif_response.status_code == 404:
+            results["errors"].append("Sequence annotation not found")
+            return results
+        elif gif_response.status_code == 422:
+            results["errors"].append(f"Invalid data: {gif_response.json()}")
+            return results
+        else:
+            results["errors"].append(f"GIF generation failed: {gif_response.status_code}")
+            return results
+            
+    except Exception as e:
+        results["errors"].append(f"Error generating GIFs: {str(e)}")
+        return results
+    
+    # Step 2: Retrieve fresh URLs
+    print(f"\nRetrieving fresh URLs for annotation {annotation_id}...")
+    
+    try:
+        urls_response = requests.get(
+            f"{api_base_url}/api/v1/annotations/sequences/{annotation_id}/gifs/urls"
+        )
+        
+        if urls_response.status_code == 200:
+            urls_data = urls_response.json()
+            results["gif_urls"] = urls_data
+            
+            print(f"✓ Retrieved URLs for {len(urls_data['gif_urls'])} bboxes")
+            
+            # Display URLs with expiration info
+            for gif_url in urls_data['gif_urls']:
+                print(f"\n  Bbox {gif_url['bbox_index']}:")
+                if gif_url['has_main']:
+                    print(f"    Main URL: {gif_url['main_url'][:80]}...")
+                    print(f"    Expires: {gif_url['main_expires_at']}")
+                if gif_url['has_crop']:
+                    print(f"    Crop URL: {gif_url['crop_url'][:80]}...")
+                    print(f"    Expires: {gif_url['crop_expires_at']}")
+                    
+        else:
+            results["errors"].append(f"URL retrieval failed: {urls_response.status_code}")
+            
+    except Exception as e:
+        results["errors"].append(f"Error retrieving URLs: {str(e)}")
+    
+    return results
+
+def create_annotation_and_generate_gifs(api_base_url: str, 
+                                       sequence_id: int,
+                                       detection_ids: List[int]) -> Optional[Dict]:
+    """
+    Create a sequence annotation and generate GIFs in one workflow.
+    
+    Args:
+        api_base_url: Base URL of the API
+        sequence_id: ID of the sequence to annotate
+        detection_ids: List of detection IDs to include
+        
+    Returns:
+        Dictionary with complete workflow results
+    """
+    
+    # Create annotation with empty gif_key fields
+    annotation_data = {
+        "sequence_id": sequence_id,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": True,
+                    "gif_key_main": None,  # Will be populated by GIF generation
+                    "gif_key_crop": None,
+                    "false_positive_types": [],
+                    "bboxes": [
+                        {"detection_id": det_id, "xyxyn": [0.1, 0.1, 0.9, 0.9]}
+                        for det_id in detection_ids
+                    ]
+                }
+            ]
+        },
+        "processing_stage": "annotated",
+        "created_at": datetime.utcnow().isoformat()
+    }
+    
+    try:
+        # Create the annotation
+        annotation = create_sequence_annotation(api_base_url, annotation_data)
+        print(f"Created annotation {annotation['id']} for sequence {sequence_id}")
+        
+        # Generate GIFs and get URLs
+        return generate_and_retrieve_gifs(api_base_url, annotation['id'])
+        
+    except AnnotationAPIError as e:
+        print(f"Failed to create annotation: {e.message}")
+        return None
+
+# Usage examples
+if __name__ == "__main__":
+    API_BASE_URL = "http://localhost:5050"
+    
+    # Example 1: Generate GIFs for existing annotation
+    results = generate_and_retrieve_gifs(API_BASE_URL, annotation_id=123)
+    
+    if not results["errors"]:
+        print("\nSuccess! You can now access the GIFs:")
+        if results["gif_urls"]:
+            for gif_url in results["gif_urls"]["gif_urls"]:
+                if gif_url["has_main"]:
+                    print(f"Main GIF: {gif_url['main_url']}")
+    
+    # Example 2: Complete workflow from annotation creation
+    new_results = create_annotation_and_generate_gifs(
+        API_BASE_URL,
+        sequence_id=456,
+        detection_ids=[789, 790, 791]
+    )
+    
+    # Example 3: Periodic URL refresh (for long-running applications)
+    def get_fresh_gif_urls(api_base_url: str, annotation_id: int) -> List[str]:
+        """Get fresh URLs whenever needed (e.g., every 12 hours)."""
+        urls = []
+        
+        response = requests.get(
+            f"{api_base_url}/api/v1/annotations/sequences/{annotation_id}/gifs/urls"
+        )
+        
+        if response.status_code == 200:
+            for gif_url in response.json()["gif_urls"]:
+                if gif_url["has_main"]:
+                    urls.append(gif_url["main_url"])
+                if gif_url["has_crop"]:
+                    urls.append(gif_url["crop_url"])
+        
+        return urls
 ```
 
 ## Utility Functions

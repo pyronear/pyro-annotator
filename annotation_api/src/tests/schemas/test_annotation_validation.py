@@ -88,8 +88,8 @@ class TestSequenceBBox:
     def test_valid_sequence_bbox(self):
         bbox = SequenceBBox(
             is_smoke=True,
-            gif_url_main="http://example.com/main.gif",
-            gif_url_crop="http://example.com/crop.gif",
+            gif_key_main="gifs/sequence_1/main_20240115.gif",
+            gif_key_crop="gifs/sequence_1/crop_20240115.gif",
             false_positive_types=[
                 FalsePositiveType.ANTENNA,
                 FalsePositiveType.BUILDING,
@@ -97,7 +97,7 @@ class TestSequenceBBox:
             bboxes=[BoundingBox(detection_id=1, xyxyn=[0.1, 0.2, 0.8, 0.9])],
         )
         assert bbox.is_smoke is True
-        assert bbox.gif_url_main == "http://example.com/main.gif"
+        assert bbox.gif_key_main == "gifs/sequence_1/main_20240115.gif"
         assert len(bbox.false_positive_types) == 2
         assert len(bbox.bboxes) == 1
 
@@ -106,8 +106,8 @@ class TestSequenceBBox:
             is_smoke=False,
             bboxes=[BoundingBox(detection_id=1, xyxyn=[0.1, 0.2, 0.8, 0.9])],
         )
-        assert bbox.gif_url_main is None
-        assert bbox.gif_url_crop is None
+        assert bbox.gif_key_main is None
+        assert bbox.gif_key_crop is None
         assert len(bbox.false_positive_types) == 0
 
     def test_empty_false_positive_types(self):

@@ -23,15 +23,15 @@ class BaseCRUD(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
     # Mapping from internal model names to user-friendly resource names
     _RESOURCE_NAME_MAPPING = {
         "Sequence": "sequence",
-        "SequenceAnnotation": "sequence annotation", 
+        "SequenceAnnotation": "sequence annotation",
         "Detection": "detection",
         "DetectionAnnotation": "detection annotation",
     }
-    
+
     def __init__(self, session: AsyncSession, model: Type[ModelType]) -> None:
         self.session = session
         self.model = model
-    
+
     def _get_resource_name(self) -> str:
         """Get user-friendly resource name for error messages."""
         model_name = self.model.__name__
