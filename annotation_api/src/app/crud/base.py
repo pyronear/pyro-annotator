@@ -5,6 +5,7 @@
 
 from typing import Any, Generic, List, Optional, Tuple, Type, TypeVar, Union, cast
 
+import asyncpg
 from fastapi import HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import exc
@@ -19,9 +20,22 @@ __all__ = ["BaseCRUD"]
 
 
 class BaseCRUD(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
+    # Mapping from internal model names to user-friendly resource names
+    _RESOURCE_NAME_MAPPING = {
+        "Sequence": "sequence",
+        "SequenceAnnotation": "sequence annotation",
+        "Detection": "detection",
+        "DetectionAnnotation": "detection annotation",
+    }
+
     def __init__(self, session: AsyncSession, model: Type[ModelType]) -> None:
         self.session = session
         self.model = model
+
+    def _get_resource_name(self) -> str:
+        """Get user-friendly resource name for error messages."""
+        model_name = self.model.__name__
+        return self._RESOURCE_NAME_MAPPING.get(model_name, model_name.lower())
 
     async def create(self, payload: CreateSchemaType) -> ModelType:
         entry = self.model(**payload.model_dump())
@@ -30,9 +44,28 @@ class BaseCRUD(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             await self.session.commit()
         except exc.IntegrityError as error:
             await self.session.rollback()
+            # Handle integrity constraint violations
+
+            # Check if this is an enum validation error
+            if isinstance(error.orig, asyncpg.InvalidTextRepresentationError):
+                error_msg = str(error.orig)
+                if "invalid input value for enum" in error_msg:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail="Invalid field value provided",
+                    )
+            # Handle other constraint violations (unique, foreign key, etc.)
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"An entry with the same index already exists : {error!s}",
+                detail="Resource already exists",
+            )
+        except exc.DataError:
+            await self.session.rollback()
+            # Handle data type validation errors
+            # Handle data type validation errors
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Invalid data format provided",
             )
         await self.session.refresh(entry)
 
@@ -41,20 +74,24 @@ class BaseCRUD(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
     async def get(self, entry_id: int, strict: bool = False) -> Union[ModelType, None]:
         entry: Union[ModelType, None] = await self.session.get(self.model, entry_id)
         if strict and entry is None:
+            resource_name = self._get_resource_name()
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Table {self.model.__name__} has no corresponding entry.",
+                detail=f"{resource_name.capitalize()} not found.",
             )
         return entry
 
-    async def get_by(self, field_name: str, val: Union[str, int], strict: bool = False) -> Union[ModelType, None]:
+    async def get_by(
+        self, field_name: str, val: Union[str, int], strict: bool = False
+    ) -> Union[ModelType, None]:
         statement = select(self.model).where(getattr(self.model, field_name) == val)  # type: ignore[var-annotated]
         results = await self.session.exec(statement=statement)
         entry = results.one_or_none()
         if strict and entry is None:
+            resource_name = self._get_resource_name()
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Table {self.model.__name__} has no corresponding entry.",
+                detail=f"{resource_name.capitalize()} not found.",
             )
         return entry
 
@@ -68,7 +105,9 @@ class BaseCRUD(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
     ) -> List[ModelType]:
         statement = select(self.model)  # type: ignore[var-annotated]
         if isinstance(filter_pair, tuple):
-            statement = statement.where(getattr(self.model, filter_pair[0]) == filter_pair[1])
+            statement = statement.where(
+                getattr(self.model, filter_pair[0]) == filter_pair[1]
+            )
 
         if isinstance(in_pair, tuple):
             statement = statement.where(getattr(self.model, in_pair[0]).in_(in_pair[1]))

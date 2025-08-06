@@ -1,58 +1,43 @@
 # this target runs checks on all files
-quality:
-	ruff format --check .
-	ruff check .
-	mypy
+lint:
+	uv run ruff format --check .
+	uv run ruff check .
+	uv run mypy .
 
 # this target runs checks on all files and potentially modifies some of them
-style:
-	ruff format .
-	ruff check --fix .
+fix:
+	uv run ruff format .
+	uv run ruff check --fix .
 
-# Pin the dependencies
-lock:
-	poetry lock --no-update
+# Setup the project (creates acme.json and checks prerequisites)
+setup:
+	@bash scripts/setup.sh
 
 # Build the docker
-build:
-	poetry export -f requirements.txt --without-hashes --output requirements.txt
-	docker build -f src/Dockerfile . -t pyronear/annotation-api:latest
+docker-build:
+	docker build -f Dockerfile . -t pyronear/annotation-api:latest
 
-# Run the docker
-run:
-	poetry export -f requirements.txt --without-hashes --output requirements.txt
-	docker compose up -d --build --wait
+# Run the development environment (with automatic setup)
+start:
+	@bash scripts/setup.sh
+	docker compose -f docker-compose-dev.yml up --build
 
-# Run the docker
+# Run the production environment (with automatic setup)
+start-prod:
+	@bash scripts/setup.sh
+	docker compose -f docker-compose.yml up --build
+
+# Stop the development environment
 stop:
-	docker compose down
-
-# Run tests for the library
-# the "-" are used to launch the next command even if a command fail
-test:
-	poetry export -f requirements.txt --without-hashes --with test --output requirements.txt
-	docker compose -f docker-compose-dev.yml up -d --build --wait
-	- docker compose -f docker-compose-dev.yml exec -T backend pytest -s --cov=app
 	docker compose -f docker-compose-dev.yml down
 
-build-client:
-	pip install -e client/.
-
-# Run tests for the Python client
-# the "-" are used to launch the next command even if a command fail
-test-client: build-client
-	poetry export -f requirements.txt --without-hashes --output requirements.txt
-	docker compose -f docker-compose.yml up -d --build --wait
-	- cd client && pytest -vv --cov=pyroannotationclient tests/ && cd ..
+# Stop the production environment  
+stop-prod:
 	docker compose -f docker-compose.yml down
 
-# Check that docs can build for client
-docs-client:
-	sphinx-build client/docs/source client/docs/_build -a
-
-
-e2e:
-	poetry export -f requirements.txt --without-hashes --output requirements.txt
-	docker compose -f docker-compose.yml up -d --build --wait
-	- python scripts/test_e2e.py
-	docker compose -f docker-compose.yml down
+# Run tests for the library
+# the "-" are used to launch the next command even if a command fails
+test:
+	docker compose -f docker-compose-dev.yml up -d --wait --build
+	- docker compose -f docker-compose-dev.yml exec -T backend /app/.venv/bin/python -m pytest -s --cov=app
+	docker compose -f docker-compose-dev.yml down

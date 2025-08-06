@@ -6,10 +6,14 @@
 import logging
 import time
 
+import asyncpg
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
+from fastapi.responses import JSONResponse
+from fastapi_pagination import add_pagination
+from sqlalchemy import exc
 
 from app.api.api_v1.router import api_router
 from app.core.config import settings
@@ -25,11 +29,78 @@ app = FastAPI(
     version=settings.VERSION,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     docs_url=None,
+    openapi_tags=[
+        {
+            "name": "detections",
+            "description": "Wildfire detection data with algo predictions",
+        },
+        {
+            "name": "sequences",
+            "description": "Image sequences from the pyronear platform",
+        },
+        {
+            "name": "detection annotations",
+            "description": "Manual annotations for detection data with smoke type classification",
+        },
+        {
+            "name": "sequence annotations",
+            "description": "Manual annotations for sequences.",
+        },
+    ],
 )
 
 
+# Exception handlers
+@app.exception_handler(exc.IntegrityError)
+async def integrity_error_handler(request: Request, exc_: exc.IntegrityError):
+    """Handle database integrity constraint violations."""
+    logger.error(f"Database integrity error: {exc_}")
+
+    # Check if this is an enum validation error
+    if isinstance(exc_.orig, asyncpg.InvalidTextRepresentationError):
+        error_msg = str(exc_.orig)
+        if "invalid input value for enum" in error_msg:
+            return JSONResponse(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                content={"detail": "Invalid field value provided"},
+            )
+
+    # Other integrity errors (unique constraints, foreign keys, etc.)
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content={"detail": "Resource already exists"},
+    )
+
+
+@app.exception_handler(exc.DataError)
+async def data_error_handler(request: Request, exc_: exc.DataError):
+    """Handle database data validation errors."""
+    logger.error(f"Database data error: {exc_}")
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"detail": "Invalid data format provided"},
+    )
+
+
+@app.exception_handler(asyncpg.InvalidTextRepresentationError)
+async def asyncpg_enum_error_handler(
+    request: Request, exc_: asyncpg.InvalidTextRepresentationError
+):
+    """Handle asyncpg enum validation errors that slip through."""
+    logger.error(f"AsyncPG enum validation error: {exc_}")
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"detail": "Invalid field value provided"},
+    )
+
+
 # Healthcheck
-@app.get("/status", status_code=status.HTTP_200_OK, summary="Healthcheck for the API", include_in_schema=False)
+@app.get(
+    "/status",
+    status_code=status.HTTP_200_OK,
+    summary="Healthcheck for the API",
+    include_in_schema=False,
+)
 def get_status() -> Status:
     return Status(status="ok")
 
@@ -80,16 +151,24 @@ def custom_openapi():
         version=settings.VERSION,
         description=settings.PROJECT_DESCRIPTION,
         routes=app.routes,
-        license_info={"name": "Apache 2.0", "url": "http://www.apache.org/licenses/LICENSE-2.0.html"},
+        license_info={
+            "name": "Apache 2.0",
+            "url": "http://www.apache.org/licenses/LICENSE-2.0.html",
+        },
         contact={
             "name": "API support",
             "email": settings.SUPPORT_EMAIL,
             "url": "https://github.com/pyronear/pyro-annotator/issues",
         },
     )
-    openapi_schema["info"]["x-logo"] = {"url": "https://pyronear.org/img/logo_letters.png"}
+    openapi_schema["info"]["x-logo"] = {
+        "url": "https://pyronear.org/img/logo_letters.png"
+    }
     app.openapi_schema = openapi_schema
     return app.openapi_schema
 
 
 app.openapi = custom_openapi  # type: ignore[method-assign]
+
+# Add pagination support
+add_pagination(app)

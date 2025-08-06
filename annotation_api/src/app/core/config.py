@@ -15,8 +15,8 @@ __all__ = ["settings"]
 
 class Settings(BaseSettings):
     # State
-    PROJECT_NAME: str = "Pyronear - Wildfire Alert API"
-    PROJECT_DESCRIPTION: str = "API for wildfire prevention, detection and monitoring"
+    PROJECT_NAME: str = "pyro-annotator - Annotation API"
+    PROJECT_DESCRIPTION: str = "API for managing platform annotations"
     VERSION: str = "0.1.0"
     API_V1_STR: str = "/api/v1"
     CORS_ORIGIN: str = "*"
@@ -46,7 +46,9 @@ class Settings(BaseSettings):
     MAX_BOXES_PER_DETECTION: int = 5
     DECIMALS_PER_COORD: int = 3
     MAX_BBOX_STR_LENGTH: int = (
-        2 + MAX_BOXES_PER_DETECTION * (2 + 5 * (2 + DECIMALS_PER_COORD) + 4 * 2) + (MAX_BOXES_PER_DETECTION - 1) * 2
+        2
+        + MAX_BOXES_PER_DETECTION * (2 + 5 * (2 + DECIMALS_PER_COORD) + 4 * 2)
+        + (MAX_BOXES_PER_DETECTION - 1) * 2
     )
 
     # Storage

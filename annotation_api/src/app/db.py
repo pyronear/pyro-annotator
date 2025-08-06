@@ -12,7 +12,7 @@ from sqlmodel import SQLModel, create_engine
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.config import settings
-from app.models import * # noqa
+from app.models import *  # noqa
 
 __all__ = ["get_session", "init_db"]
 
@@ -21,7 +21,9 @@ engine = AsyncEngine(create_engine(settings.POSTGRES_URL, echo=False))
 
 
 async def get_session() -> AsyncSession:  # type: ignore[misc]
-    async_session = sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+    async_session = sessionmaker(
+        bind=engine, class_=AsyncSession, expire_on_commit=False
+    )
     async with async_session() as session:
         yield session
 

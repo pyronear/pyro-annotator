@@ -7,11 +7,16 @@ import hashlib
 import logging
 from datetime import datetime
 from mimetypes import guess_extension
-from typing import Any, Dict, Union
+from typing import Any, Dict, Optional, Union
 
 import boto3
 import magic
-from botocore.exceptions import ClientError, EndpointConnectionError, NoCredentialsError, PartialCredentialsError
+from botocore.exceptions import (
+    ClientError,
+    EndpointConnectionError,
+    NoCredentialsError,
+    PartialCredentialsError,
+)
 from fastapi import HTTPException, UploadFile, status
 
 from app.core.config import settings
@@ -31,7 +36,12 @@ class S3Bucket:
         proxy_url: the proxy url
     """
 
-    def __init__(self, s3_client: boto3.client, bucket_name: str, proxy_url: Union[str, None] = None) -> None:
+    def __init__(
+        self,
+        s3_client: boto3.client,
+        bucket_name: str,
+        proxy_url: Union[str, None] = None,
+    ) -> None:
         self._s3 = s3_client
         try:
             self._s3.head_bucket(Bucket=bucket_name)
@@ -62,21 +72,50 @@ class S3Bucket:
         self._s3.upload_fileobj(file_binary, self.name, bucket_key)
         return True
 
+    def upload_file_bytes(
+        self,
+        file_bytes: bytes,
+        bucket_key: str,
+        content_type: str = "application/octet-stream",
+    ) -> bool:
+        """Upload bytes to bucket with specified content type"""
+        from io import BytesIO
+
+        file_obj = BytesIO(file_bytes)
+        self._s3.upload_fileobj(
+            file_obj, self.name, bucket_key, ExtraArgs={"ContentType": content_type}
+        )
+        return True
+
+    def download_file(self, bucket_key: str) -> bytes:
+        """Download a file from bucket and return its content as bytes"""
+        from io import BytesIO
+
+        file_obj = BytesIO()
+        self._s3.download_fileobj(self.name, bucket_key, file_obj)
+        file_obj.seek(0)
+        return file_obj.getvalue()
+
     def delete_file(self, bucket_key: str) -> None:
         """Remove bucket file and return whether the deletion succeeded"""
         # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3.html#S3.Client.delete_object
         self._s3.delete_object(Bucket=self.name, Key=bucket_key)
 
-    def get_public_url(self, bucket_key: str, url_expiration: int = settings.S3_URL_EXPIRATION) -> str:
+    def get_public_url(
+        self, bucket_key: str, url_expiration: int = settings.S3_URL_EXPIRATION
+    ) -> str:
         """Generate a temporary public URL for a bucket file"""
         if not self.check_file_existence(bucket_key):
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="File cannot be found on the bucket storage"
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="File cannot be found on the bucket storage",
             )
 
         # Generate a public URL for it using boto3 presign URL generation\
         presigned_url = self._s3.generate_presigned_url(
-            "get_object", Params={"Bucket": self.name, "Key": bucket_key}, ExpiresIn=url_expiration
+            "get_object",
+            Params={"Bucket": self.name, "Key": bucket_key},
+            ExpiresIn=url_expiration,
         )
         if self.proxy_url:
             return presigned_url.replace(self._s3.meta.endpoint_url, self.proxy_url)
@@ -88,7 +127,9 @@ class S3Bucket:
         for page in paginator.paginate(Bucket=self.name):
             if "Contents" in page:
                 delete_items = [{"Key": obj["Key"]} for obj in page["Contents"]]
-                self._s3.delete_objects(Bucket=self.name, Delete={"Objects": delete_items})
+                self._s3.delete_objects(
+                    Bucket=self.name, Delete={"Objects": delete_items}
+                )
 
 
 class S3Service:
@@ -103,7 +144,12 @@ class S3Service:
     """
 
     def __init__(
-        self, region: str, endpoint_url: str, access_key: str, secret_key: str, proxy_url: Union[str, None] = None
+        self,
+        region: str,
+        endpoint_url: str,
+        access_key: str,
+        secret_key: str,
+        proxy_url: Union[str, None] = None,
     ) -> None:
         _session = boto3.Session(access_key, secret_key, region_name=region)
         self._s3 = _session.client("s3", endpoint_url=endpoint_url)
@@ -123,7 +169,10 @@ class S3Service:
         """Create a new bucket in S3 storage"""
         try:
             self._s3.create_bucket(
-                Bucket=bucket_name, CreateBucketConfiguration={"LocationConstraint": self._s3.meta.region_name}
+                Bucket=bucket_name,
+                CreateBucketConfiguration={
+                    "LocationConstraint": self._s3.meta.region_name
+                },
             )
             return True
         except ClientError as e:
@@ -150,8 +199,13 @@ class S3Service:
         return "annotation-api"
 
 
-async def upload_file(file: UploadFile) -> str:
-    """Upload a file to S3 storage and return the public URL"""
+async def upload_file(
+    file: UploadFile,
+    sequence_id: Optional[int] = None,
+    detection_id: Optional[int] = None,
+    recorded_at: Optional[datetime] = None,
+) -> str:
+    """Upload a file to S3 storage and return the bucket key"""
     # Concatenate the first 8 chars (to avoid system interactions issues) of SHA256 hash with file extension
     sha_hash = hashlib.sha256(file.file.read()).hexdigest()
     await file.seek(0)
@@ -160,15 +214,25 @@ async def upload_file(file: UploadFile) -> str:
     await file.seek(0)
     # guess_extension will return none if this fails
     extension = guess_extension(magic.from_buffer(file.file.read(), mime=True)) or ""
-    # Concatenate timestamp & hash
-    bucket_key = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}-{sha_hash[:8]}{extension}"
+
+    # Generate organized bucket key
+    bucket_key = _generate_detection_bucket_key(
+        sequence_id=sequence_id,
+        detection_id=detection_id,
+        recorded_at=recorded_at,
+        sha_hash=sha_hash[:8],
+        extension=extension,
+    )
+
     # Reset byte position of the file (cf. https://fastapi.tiangolo.com/tutorial/request-files/#uploadfile)
     await file.seek(0)
     bucket_name = s3_service.resolve_bucket_name()
     bucket = s3_service.get_bucket(bucket_name)
     # Upload the file
     if not bucket.upload_file(bucket_key, file.file):  # type: ignore[arg-type]
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed upload")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed upload"
+        )
     logging.info(f"File uploaded to bucket {bucket_name} with key {bucket_key}.")
 
     # Data integrity check
@@ -185,6 +249,35 @@ async def upload_file(file: UploadFile) -> str:
     return bucket_key
 
 
+def _generate_detection_bucket_key(
+    sequence_id: Optional[int] = None,
+    detection_id: Optional[int] = None,
+    recorded_at: Optional[datetime] = None,
+    sha_hash: str = "",
+    extension: str = "",
+) -> str:
+    """
+    Generate hierarchical bucket key for detection images.
+
+    Pattern: detections/sequence_{sequence_id}/{YYYYMMDD_HHMMSS}_det{detection_id}_{hash}.{ext}
+    Fallback: detections/legacy/{YYYYMMDD_HHMMSS}_{hash}.{ext} if metadata unavailable
+    """
+    # Use recorded_at timestamp or fallback to upload time
+    timestamp = recorded_at or datetime.utcnow()
+    timestamp_str = timestamp.strftime("%Y%m%d_%H%M%S")
+
+    # Organized structure if metadata available
+    if sequence_id is not None and detection_id is not None:
+        return f"detections/sequence_{sequence_id}/{timestamp_str}_det{detection_id}_{sha_hash}{extension}"
+
+    # Fallback structure for incomplete metadata
+    return f"detections/legacy/{timestamp_str}_{sha_hash}{extension}"
+
+
 s3_service = S3Service(
-    settings.S3_REGION, settings.S3_ENDPOINT_URL, settings.S3_ACCESS_KEY, settings.S3_SECRET_KEY, settings.S3_PROXY_URL
+    settings.S3_REGION,
+    settings.S3_ENDPOINT_URL,
+    settings.S3_ACCESS_KEY,
+    settings.S3_SECRET_KEY,
+    settings.S3_PROXY_URL,
 )

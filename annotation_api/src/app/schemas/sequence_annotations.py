@@ -7,22 +7,67 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from app.models import SequenceAnnotationProcessingStage
+from app.schemas.annotation_validation import SequenceAnnotationData
 
-__all__ = ["SequenceAnnotationCreate", "SequenceAnnotationRead", "SequenceAnnotationUpdate"]
+__all__ = [
+    "SequenceAnnotationCreate",
+    "SequenceAnnotationRead",
+    "SequenceAnnotationUpdate",
+]
 
 
 class SequenceAnnotationCreate(BaseModel):
-    sequence_id: int = Field(foreign_key="sequences.id", nullable=False)
-    has_smoke: bool = Field(nullable=False)
-    has_false_positives: bool = Field(nullable=False)
-    false_positive_types: str = Field(nullable=False)
-    has_missed_smoke: bool = Field(nullable=False)
-    # annotation: Optional[Dict] = Field(default=None, sa_column_kwargs={"type_": "jsonb"})
-    processing_stage: SequenceAnnotationProcessingStage = Field(nullable=False)
-    created_at: datetime
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "sequence_id": 789,
+                    "has_missed_smoke": False,
+                    "annotation": {
+                        "sequences_bbox": [
+                            {
+                                "is_smoke": True,
+                                "false_positive_types": [],
+                                "bboxes": [
+                                    {"detection_id": 123, "xyxyn": [0.1, 0.2, 0.4, 0.6]}
+                                ],
+                            }
+                        ]
+                    },
+                    "processing_stage": "ready_to_annotate",
+                    "created_at": "2024-01-15T12:00:00",
+                },
+                {
+                    "sequence_id": 890,
+                    "has_missed_smoke": True,
+                    "annotation": {
+                        "sequences_bbox": [
+                            {
+                                "is_smoke": False,
+                                "false_positive_types": ["high_cloud", "lens_flare"],
+                                "bboxes": [],
+                            }
+                        ]
+                    },
+                    "processing_stage": "annotated",
+                    "created_at": "2024-01-15T13:30:00",
+                },
+            ]
+        }
+    )
+
+    sequence_id: int
+    has_missed_smoke: bool
+    annotation: SequenceAnnotationData
+    processing_stage: SequenceAnnotationProcessingStage = Field(
+        ...,
+        description="Current processing stage in the sequence annotation workflow. Tracks progress from import through annotation completion.",
+        examples=["imported", "ready_to_annotate", "annotated"],
+    )
+    created_at: Optional[datetime] = None
 
 
 class SequenceAnnotationRead(BaseModel):
@@ -32,17 +77,22 @@ class SequenceAnnotationRead(BaseModel):
     has_false_positives: bool
     false_positive_types: str
     has_missed_smoke: bool
-    # annotation: Optional[Dict]
-    processing_stage: SequenceAnnotationProcessingStage
+    annotation: SequenceAnnotationData
+    processing_stage: SequenceAnnotationProcessingStage = Field(
+        ...,
+        description="Current processing stage in the sequence annotation workflow. Tracks progress from import through annotation completion.",
+        examples=["imported", "ready_to_annotate", "annotated"],
+    )
     created_at: datetime
     updated_at: Optional[datetime]
 
 
 class SequenceAnnotationUpdate(BaseModel):
-    has_smoke: bool = Field(nullable=False)
-    has_false_positives: bool = Field(nullable=False)
-    false_positive_types: str = Field(nullable=False)
-    has_missed_smoke: bool = Field(nullable=False)
-    # annotation: Optional[Dict] = Field(default=None, sa_column_kwargs={"type_": "jsonb"})
-    processing_stage: SequenceAnnotationProcessingStage = Field(nullable=False)
-    updated_at: Optional[datetime]
+    has_missed_smoke: Optional[bool] = None
+    annotation: Optional[SequenceAnnotationData] = None
+    processing_stage: Optional[SequenceAnnotationProcessingStage] = Field(
+        None,
+        description="Updated processing stage in the sequence annotation workflow. Use to advance or modify the current stage.",
+        examples=["ready_to_annotate", "annotated"],
+    )
+    updated_at: Optional[datetime] = None
