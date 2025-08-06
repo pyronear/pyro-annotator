@@ -3,7 +3,7 @@ CLI script to generate sequence annotations from AI predictions.
 
 This script analyzes sequences and their detections to automatically generate
 sequence annotations by clustering overlapping bounding boxes across temporal frames.
-The generated annotations are marked as 'ready_to_annotate' for human review.
+The generated annotations are marked as 'imported' for further processing (e.g., GIF generation).
 
 Usage:
   # Generate annotation for a single sequence
@@ -323,7 +323,7 @@ def create_annotation_from_data(base_url: str, sequence_id: int, annotation_data
             # Update existing annotation (PATCH)
             update_dict = {
                 "annotation": annotation_data.model_dump(),
-                "processing_stage": SequenceAnnotationProcessingStage.READY_TO_ANNOTATE.value,
+                "processing_stage": SequenceAnnotationProcessingStage.IMPORTED.value,
                 "has_missed_smoke": False,  # Default to False, can be updated during human review
             }
 
@@ -342,7 +342,7 @@ def create_annotation_from_data(base_url: str, sequence_id: int, annotation_data
             annotation_dict = {
                 "sequence_id": sequence_id,
                 "annotation": annotation_data.model_dump(),
-                "processing_stage": SequenceAnnotationProcessingStage.READY_TO_ANNOTATE.value,
+                "processing_stage": SequenceAnnotationProcessingStage.IMPORTED.value,
                 "has_smoke": any(seq_bbox.is_smoke for seq_bbox in annotation_data.sequences_bbox),
                 "has_false_positives": any(len(seq_bbox.false_positive_types) > 0 for seq_bbox in annotation_data.sequences_bbox),
                 "has_missed_smoke": False,  # Default to False, can be updated during human review
