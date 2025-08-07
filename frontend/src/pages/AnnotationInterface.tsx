@@ -172,9 +172,9 @@ export default function AnnotationInterface() {
         return;
       }
 
-      // Complete annotation (Space)
-      if (e.key === ' ' && !showKeyboardModal) {
-        console.log('Space pressed, attempting to complete annotation'); // Debug log
+      // Complete annotation (Enter)
+      if (e.key === 'Enter' && !showKeyboardModal) {
+        console.log('Enter pressed, attempting to complete annotation'); // Debug log
         if (isAnnotationComplete()) {
           handleSave();
         } else {
@@ -205,16 +205,18 @@ export default function AnnotationInterface() {
         return;
       }
 
-      // Ignore if focused on input elements, no active detection, or modal is open
+      // Ignore if focused on input elements, no active detection, modal is open, or modifier keys are pressed
       if (e.target instanceof HTMLInputElement || 
           e.target instanceof HTMLTextAreaElement || 
           activeDetectionIndex === null ||
-          showKeyboardModal) {
+          showKeyboardModal ||
+          e.ctrlKey || e.metaKey || e.altKey) {
         console.log('Ignoring key event due to:', {
           isInput: e.target instanceof HTMLInputElement,
           isTextarea: e.target instanceof HTMLTextAreaElement,
           noActiveDetection: activeDetectionIndex === null,
-          modalOpen: showKeyboardModal
+          modalOpen: showKeyboardModal,
+          hasModifier: e.ctrlKey || e.metaKey || e.altKey
         });
         return;
       }
@@ -517,7 +519,7 @@ export default function AnnotationInterface() {
                 onClick={handleSave}
                 disabled={!isAnnotationComplete() || saveAnnotation.isPending}
                 className="inline-flex items-center px-3 py-1.5 border border-transparent rounded-md shadow-sm text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Submit annotation (Space)"
+                title="Submit annotation (Enter)"
               >
                 {saveAnnotation.isPending ? (
                   <div className="w-3 h-3 mr-1 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
@@ -945,7 +947,7 @@ export default function AnnotationInterface() {
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-gray-700">Submit annotation</span>
-                      <kbd className="px-2 py-1 bg-gray-100 rounded text-sm font-mono">Space</kbd>
+                      <kbd className="px-2 py-1 bg-gray-100 rounded text-sm font-mono">Enter</kbd>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-gray-700">Previous detection</span>
