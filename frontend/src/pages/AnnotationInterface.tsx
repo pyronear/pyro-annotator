@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Save, RotateCcw, CheckCircle, AlertCircle, Eye, Keyboard, X } from 'lucide-react';
+import { ArrowLeft, Save, RotateCcw, CheckCircle, AlertCircle, Eye, Keyboard, X, Upload } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { QUERY_KEYS, FALSE_POSITIVE_TYPES } from '@/utils/constants';
 import { SequenceAnnotation, SequenceBbox, FalsePositiveType } from '@/types/api';
@@ -475,88 +475,122 @@ export default function AnnotationInterface() {
             </p>
           </div>
         </div>
-        
-        <div className="flex space-x-3">
-          <button
-            onClick={handleReset}
-            className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-          >
-            <RotateCcw className="w-4 h-4 mr-2" />
-            Reset
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={!isAnnotationComplete() || saveAnnotation.isPending}
-            className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {saveAnnotation.isPending ? (
-              <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-            ) : (
-              <Save className="w-4 h-4 mr-2" />
-            )}
-            Complete Annotation
-          </button>
-        </div>
       </div>
 
-      {/* Progress Overview */}
-      <div className="bg-white rounded-lg border border-gray-200 p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-medium text-gray-900">Annotation Progress</h2>
-            <p className="text-sm text-gray-600">
-              {progress.completed} of {progress.total} bounding boxes annotated
-            </p>
-          </div>
-          <div className="flex items-center space-x-2">
-            {progress.completed === progress.total ? (
-              <CheckCircle className="w-6 h-6 text-green-500" />
-            ) : (
-              <AlertCircle className="w-6 h-6 text-orange-500" />
-            )}
-            <span className="text-sm font-medium">
-              {Math.round((progress.completed / progress.total) * 100)}%
-            </span>
-          </div>
-        </div>
-        <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
-          <div 
-            className="bg-primary-600 h-2 rounded-full transition-all duration-300"
-            style={{ width: `${(progress.completed / progress.total) * 100}%` }}
-          ></div>
-        </div>
-      </div>
-
-      {/* Keyboard Shortcuts Help */}
-      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-medium text-gray-900 mb-2">Keyboard Shortcuts</h3>
-            <div className="text-xs text-gray-600">
-              <p className="mb-1">
-                Press <kbd className="px-1.5 py-0.5 bg-gray-200 rounded text-xs font-mono">?</kbd> to view all keyboard shortcuts
-              </p>
-              <p className="text-gray-500">
-                {activeDetectionIndex !== null 
-                  ? `Shortcuts apply to Detection ${activeDetectionIndex + 1} (highlighted in blue)`
-                  : 'Scroll to a detection or click on one to activate shortcuts'
-                }
-              </p>
+      {/* Sticky Progress Header - Becomes sticky when scrolled */}
+      <div className="sticky top-0 bg-white border border-gray-200 rounded-lg shadow-sm z-30">
+        <div className="px-4 py-3">
+          {/* Top Row: Context + Action Buttons + Keyboard Shortcuts */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2">
+                <span className="text-sm font-medium text-gray-900">
+                  🔥 Sequence #{annotation.sequence_id}
+                </span>
+                <span className="text-gray-400">•</span>
+                <span className="text-sm text-gray-600">
+                  {sequence?.camera_name || 'Loading...'}
+                </span>
+              </div>
+            </div>
+            
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={handleReset}
+                className="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50"
+                title="Reset annotation (Ctrl+Z)"
+              >
+                <RotateCcw className="w-3 h-3 mr-1" />
+                Reset
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={!isAnnotationComplete() || saveAnnotation.isPending}
+                className="inline-flex items-center px-3 py-1.5 border border-transparent rounded-md shadow-sm text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Submit annotation (Space)"
+              >
+                {saveAnnotation.isPending ? (
+                  <div className="w-3 h-3 mr-1 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                ) : (
+                  <Upload className="w-3 h-3 mr-1" />
+                )}
+                Submit
+              </button>
+              <button
+                onClick={() => setShowKeyboardModal(true)}
+                className="inline-flex items-center px-2 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50"
+                title="Show keyboard shortcuts (?)"
+              >
+                <Keyboard className="w-3 h-3" />
+              </button>
             </div>
           </div>
-          <button
-            onClick={() => setShowKeyboardModal(true)}
-            className="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50"
-          >
-            <Keyboard className="w-4 h-4 mr-1" />
-            View Shortcuts
-          </button>
+
+          {/* Bottom Row: Progress + Status + Shortcuts Hint */}
+          <div className="flex items-center justify-between mt-2">
+            <div className="flex items-center space-x-4">
+              <span className="text-xs text-gray-600">
+                {activeDetectionIndex !== null 
+                  ? `Detection ${activeDetectionIndex + 1} of ${bboxes.length} active`
+                  : `${bboxes.length} detection${bboxes.length !== 1 ? 's' : ''} total`
+                }
+              </span>
+              <span className="text-gray-400">•</span>
+              <span className="text-xs font-medium text-gray-900">
+                {progress.completed} of {progress.total} completed ({Math.round((progress.completed / progress.total) * 100)}%)
+              </span>
+            </div>
+            
+            <div className="flex items-center space-x-3">
+              <span className="text-xs text-gray-500">
+                Press <kbd className="px-1 py-0.5 bg-gray-100 rounded text-xs font-mono">?</kbd> for shortcuts
+              </span>
+              {progress.completed === progress.total ? (
+                <CheckCircle className="w-4 h-4 text-green-500" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-orange-500" />
+              )}
+              <div className="w-24 bg-gray-200 rounded-full h-1.5">
+                <div 
+                  className="bg-primary-600 h-1.5 rounded-full transition-all duration-300"
+                  style={{ width: `${(progress.completed / progress.total) * 100}%` }}
+                ></div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Processing Stage Warning */}
-      {annotation.processing_stage !== 'ready_to_annotate' && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
+        {/* Keyboard Shortcuts Help */}
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-medium text-gray-900 mb-2">Keyboard Shortcuts</h3>
+              <div className="text-xs text-gray-600">
+                <p className="mb-1">
+                  Press <kbd className="px-1.5 py-0.5 bg-gray-200 rounded text-xs font-mono">?</kbd> to view all keyboard shortcuts
+                </p>
+                <p className="text-gray-500">
+                  {activeDetectionIndex !== null 
+                    ? `Shortcuts apply to Detection ${activeDetectionIndex + 1} (highlighted in blue)`
+                    : 'Scroll to a detection or click on one to activate shortcuts'
+                  }
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowKeyboardModal(true)}
+              className="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50"
+            >
+              <Keyboard className="w-4 h-4 mr-1" />
+              View Shortcuts
+            </button>
+          </div>
+        </div>
+
+        {/* Processing Stage Warning */}
+        {annotation.processing_stage !== 'ready_to_annotate' && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
           <div className="flex">
             <AlertCircle className="w-5 h-5 text-yellow-400" />
             <div className="ml-3">
@@ -919,7 +953,7 @@ export default function AnnotationInterface() {
                       <kbd className="px-2 py-1 bg-gray-100 rounded text-sm font-mono">Ctrl+Z</kbd>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-700">Complete annotation</span>
+                      <span className="text-sm text-gray-700">Submit annotation</span>
                       <kbd className="px-2 py-1 bg-gray-100 rounded text-sm font-mono">Space</kbd>
                     </div>
                     <div className="flex items-center justify-between">
