@@ -33,14 +33,21 @@ export default function SequenceReviewer({
   // Track if images are preloaded (we'll get this from the player)
   const [imagesPreloaded, setImagesPreloaded] = useState(false);
 
-  // Auto-play functionality
+  // Auto-start playing once images are preloaded
+  useEffect(() => {
+    if (imagesPreloaded && detections && detections.length > 0 && !isPlaying) {
+      setIsPlaying(true);
+    }
+  }, [imagesPreloaded, detections, isPlaying]);
+
+  // Auto-play functionality with looping
   useEffect(() => {
     if (isPlaying && detections && detections.length > 0) {
       playIntervalRef.current = setInterval(() => {
         setCurrentIndex(prev => {
+          // Loop back to start when reaching the end
           if (prev >= detections.length - 1) {
-            setIsPlaying(false);
-            return prev;
+            return 0;
           }
           return prev + 1;
         });
@@ -154,6 +161,7 @@ export default function SequenceReviewer({
         detections={detections}
         currentIndex={currentIndex}
         onIndexChange={setCurrentIndex}
+        onPreloadComplete={() => setImagesPreloaded(true)}
       />
 
       {/* Controls */}

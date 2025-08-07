@@ -7,6 +7,7 @@ interface SequencePlayerProps {
   detections: Detection[];
   currentIndex: number;
   onIndexChange: (index: number) => void;
+  onPreloadComplete?: () => void;
   className?: string;
 }
 
@@ -14,6 +15,7 @@ export default function SequencePlayer({
   detections, 
   currentIndex, 
   onIndexChange,
+  onPreloadComplete,
   className = '' 
 }: SequencePlayerProps) {
   const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
@@ -34,6 +36,13 @@ export default function SequencePlayer({
   
   const currentDetection = detections[currentIndex];
   const preloadProgress = getPreloadProgress();
+  
+  // Trigger preload complete callback when initial loading is done
+  useEffect(() => {
+    if (!isInitialLoading && onPreloadComplete) {
+      onPreloadComplete();
+    }
+  }, [isInitialLoading, onPreloadComplete]);
   
   // Update image when index changes
   useEffect(() => {
