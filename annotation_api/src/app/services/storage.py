@@ -279,4 +279,5 @@ s3_service = S3Service(
     settings.S3_ENDPOINT_URL,
     settings.S3_ACCESS_KEY,
     settings.S3_SECRET_KEY,
+    settings.S3_PROXY_URL,
 )

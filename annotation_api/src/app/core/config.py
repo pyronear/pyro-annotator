@@ -4,8 +4,6 @@
 # See LICENSE or go to <https://www.apache.org/licenses/LICENSE-2.0> for full license details.
 
 import os
-import secrets
-from typing import Union
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -46,6 +44,7 @@ class Settings(BaseSettings):
     S3_SECRET_KEY: str = os.environ["S3_SECRET_KEY"]
     S3_REGION: str = os.environ["S3_REGION"]
     S3_ENDPOINT_URL: str = os.environ["S3_ENDPOINT_URL"]
+    S3_PROXY_URL: str = os.environ.get("S3_PROXY_URL", "")
     S3_URL_EXPIRATION: int = int(os.environ.get("S3_URL_EXPIRATION") or 24 * 3600)
 
     DEBUG: bool = os.environ.get("DEBUG", "").lower() != "false"
