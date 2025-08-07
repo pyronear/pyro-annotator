@@ -20,20 +20,11 @@ docker-build:
 # Run the development environment (with automatic setup)
 start:
 	@bash scripts/setup.sh
-	docker compose -f docker-compose-dev.yml up --build
-
-# Run the production environment (with automatic setup)
-start-prod:
-	@bash scripts/setup.sh
 	docker compose -f docker-compose.yml up --build
 
 # Stop the development environment
 stop:
 	docker compose -f docker-compose-dev.yml down
-
-# Stop the production environment  
-stop-prod:
-	docker compose -f docker-compose.yml down
 
 # Run tests for the library
 # the "-" are used to launch the next command even if a command fails

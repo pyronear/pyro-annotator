@@ -51,5 +51,3 @@ services:
       - S3_ACCESS_KEY=fake
       - S3_SECRET_KEY=fake
       - S3_REGION=us-east-1
-    volumes:
-      - ./mydata:/label-studio/data

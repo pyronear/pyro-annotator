@@ -20,11 +20,7 @@ class Settings(BaseSettings):
     VERSION: str = "0.1.0"
     API_V1_STR: str = "/api/v1"
     CORS_ORIGIN: str = "*"
-    SUPPORT_EMAIL: Union[str, None] = os.environ.get("SUPPORT_EMAIL")
-    # Authentication
-    SUPERADMIN_LOGIN: str = os.environ["SUPERADMIN_LOGIN"]
-    SUPERADMIN_PWD: str = os.environ["SUPERADMIN_PWD"]
-    SUPERADMIN_ORG: str = os.environ["SUPERADMIN_ORG"]
+    SUPPORT_EMAIL: str = os.environ.get("SUPPORT_EMAIL", "support@pyronear.org")
     # DB
     POSTGRES_URL: str = os.environ["POSTGRES_URL"]
 
@@ -35,12 +31,6 @@ class Settings(BaseSettings):
         if v.startswith("postgres://"):
             return v.replace("postgres://", "postgresql+asyncpg://", 1)
         return v
-
-    # Security
-    JWT_SECRET: str = os.environ.get("JWT_SECRET") or secrets.token_urlsafe(32)
-    JWT_EXPIRE_MINUTES: int = 60
-    JWT_UNLIMITED: int = 60 * 24 * 365
-    JWT_ALGORITHM: str = "HS256"
 
     # DB conversion
     MAX_BOXES_PER_DETECTION: int = 5
@@ -56,7 +46,6 @@ class Settings(BaseSettings):
     S3_SECRET_KEY: str = os.environ["S3_SECRET_KEY"]
     S3_REGION: str = os.environ["S3_REGION"]
     S3_ENDPOINT_URL: str = os.environ["S3_ENDPOINT_URL"]
-    S3_PROXY_URL: str = os.environ.get("S3_PROXY_URL", "")
     S3_URL_EXPIRATION: int = int(os.environ.get("S3_URL_EXPIRATION") or 24 * 3600)
 
     DEBUG: bool = os.environ.get("DEBUG", "").lower() != "false"
