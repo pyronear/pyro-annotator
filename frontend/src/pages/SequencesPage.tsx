@@ -193,7 +193,7 @@ export default function SequencesPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center space-x-3">
                       <h3 className="text-sm font-medium text-gray-900 truncate">
-                        {sequence.camera_name} (ID: {sequence.camera_id})
+                        {sequence.camera_name}
                       </h3>
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                         {sequence.source_api}
@@ -205,14 +205,14 @@ export default function SequencesPage() {
                       )}
                     </div>
                     <div className="mt-1 flex items-center text-sm text-gray-500 space-x-4">
+                      <span>{new Date(sequence.recorded_at).toLocaleString()}</span>
                       <span>Org: {sequence.organisation_name}</span>
-                      <span>Alert ID: {sequence.alert_api_id}</span>
-                      <span>{new Date(sequence.recorded_at).toLocaleDateString()}</span>
                     </div>
-                    <div className="mt-1 text-xs text-gray-400">
-                      Location: {sequence.lat.toFixed(4)}, {sequence.lon.toFixed(4)}
-                      {sequence.azimuth && ` • Azimuth: ${sequence.azimuth}°`}
-                    </div>
+                    {sequence.azimuth && (
+                      <div className="mt-1 text-xs text-gray-400">
+                        Azimuth: {sequence.azimuth}°
+                      </div>
+                    )}
                   </div>
                   
                   {/* Action Button */}
