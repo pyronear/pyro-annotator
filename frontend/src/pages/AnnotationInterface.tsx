@@ -283,15 +283,19 @@ export default function AnnotationInterface() {
                 <h4 className="text-md font-medium text-gray-800 mb-4">
                   Detection {index + 1}
                 </h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-6">
                   {gifData.main_url && (
                     <div className="text-center">
                       <h5 className="text-sm font-medium text-gray-700 mb-3">Full Sequence</h5>
                       <img
                         src={gifData.main_url}
                         alt={`Main GIF for detection ${index + 1}`}
-                        className="max-w-full h-auto border border-gray-300 rounded shadow-sm mx-auto"
-                        style={{ maxHeight: '800px' }}
+                        className="border border-gray-300 rounded shadow-sm mx-auto"
+                        style={{ 
+                          width: '1280px',
+                          maxWidth: '100%', 
+                          height: 'auto' 
+                        }}
                       />
                     </div>
                   )}
@@ -301,8 +305,12 @@ export default function AnnotationInterface() {
                       <img
                         src={gifData.crop_url}
                         alt={`Crop GIF for detection ${index + 1}`}
-                        className="max-w-full h-auto border border-gray-300 rounded shadow-sm mx-auto"
-                        style={{ maxHeight: '800px' }}
+                        className="border border-gray-300 rounded shadow-sm mx-auto"
+                        style={{ 
+                          width: '900px',
+                          maxWidth: '100%', 
+                          height: 'auto' 
+                        }}
                       />
                     </div>
                   )}
