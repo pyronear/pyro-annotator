@@ -18,7 +18,12 @@ export default function SequencePlayer({
   onPreloadComplete,
   className = '' 
 }: SequencePlayerProps) {
-  const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
+  const [imageInfo, setImageInfo] = useState<{
+    width: number;
+    height: number;
+    offsetX: number;
+    offsetY: number;
+  } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   
@@ -70,42 +75,54 @@ export default function SequencePlayer({
     );
   }
   
-  // Handle image load to get dimensions
+  // Handle image load to get dimensions and position using DOM positioning
   const handleImageLoad = () => {
     if (imgRef.current && containerRef.current) {
-      const containerWidth = containerRef.current.offsetWidth;
-      const containerHeight = containerRef.current.offsetHeight;
-      const imgNaturalWidth = imgRef.current.naturalWidth;
-      const imgNaturalHeight = imgRef.current.naturalHeight;
+      // Get actual rendered positions from DOM
+      const containerRect = containerRef.current.getBoundingClientRect();
+      const imgRect = imgRef.current.getBoundingClientRect();
       
-      // Calculate scaled dimensions to fit container
-      const scale = Math.min(
-        containerWidth / imgNaturalWidth,
-        containerHeight / imgNaturalHeight
-      );
+      // Calculate the image position relative to the container
+      const offsetX = imgRect.left - containerRect.left;
+      const offsetY = imgRect.top - containerRect.top;
       
-      setImageDimensions({
-        width: imgNaturalWidth * scale,
-        height: imgNaturalHeight * scale
+      // Use the actual rendered dimensions
+      const width = imgRect.width;
+      const height = imgRect.height;
+      
+      
+      setImageInfo({
+        width: width,
+        height: height,
+        offsetX: offsetX,
+        offsetY: offsetY
       });
     }
   };
   
+
   // Render bounding boxes overlay
   const renderBoundingBoxes = () => {
-    if (!imageDimensions || !currentDetection?.algo_predictions?.predictions) return null;
+    if (!imageInfo || !currentDetection?.algo_predictions?.predictions) return null;
     
     return currentDetection.algo_predictions.predictions.map((prediction: AlgoPrediction, index: number) => {
       // Convert normalized coordinates (xyxyn) to pixel coordinates
       const [x1, y1, x2, y2] = prediction.xyxyn;
-      const left = x1 * imageDimensions.width;
-      const top = y1 * imageDimensions.height;
-      const width = (x2 - x1) * imageDimensions.width;
-      const height = (y2 - y1) * imageDimensions.height;
+      
+      // Ensure x2 > x1 and y2 > y1
+      if (x2 <= x1 || y2 <= y1) {
+        return null;
+      }
+      
+      // Calculate pixel coordinates relative to the actual image position
+      const left = imageInfo.offsetX + (x1 * imageInfo.width);
+      const top = imageInfo.offsetY + (y1 * imageInfo.height);
+      const width = (x2 - x1) * imageInfo.width;
+      const height = (y2 - y1) * imageInfo.height;
       
       return (
         <div
-          key={`${currentDetection.id}-${index}`}
+          key={`bbox-${currentDetection.id}-${index}`}
           className="absolute border-2 border-red-500 bg-red-500/20 pointer-events-none"
           style={{
             left: `${left}px`,
@@ -120,7 +137,7 @@ export default function SequencePlayer({
           </div>
         </div>
       );
-    });
+    }).filter(Boolean); // Remove null entries from invalid boxes
   };
   
   // Only show loading spinner when image isn't loaded
@@ -197,12 +214,11 @@ export default function SequencePlayer({
               onLoad={handleImageLoad}
             />
             
+            
             {/* Bounding Boxes Overlay */}
-            {imageDimensions && !showLoadingState && (
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
-                <div className="relative" style={{ width: imageDimensions.width, height: imageDimensions.height }}>
-                  {renderBoundingBoxes()}
-                </div>
+            {imageInfo && !showLoadingState && (
+              <div className="absolute inset-0 pointer-events-none z-20">
+                {renderBoundingBoxes()}
               </div>
             )}
           </>
