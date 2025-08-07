@@ -1,0 +1,28 @@
+name: Annotation API CI
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'annotation_api/**'
+      - '.github/workflows/annotation-api-ci.yml'
+
+defaults:
+  run:
+    working-directory: annotation_api
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Run tests using make
+      run: |
+        make test
