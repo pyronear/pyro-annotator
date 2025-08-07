@@ -3,10 +3,36 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Save, RotateCcw, CheckCircle, AlertCircle, Eye } from 'lucide-react';
 import { apiClient } from '@/services/api';
-import { QUERY_KEYS } from '@/utils/constants';
-import { SequenceAnnotation, SequenceBbox } from '@/types/api';
+import { QUERY_KEYS, FALSE_POSITIVE_TYPES } from '@/utils/constants';
+import { SequenceAnnotation, SequenceBbox, FalsePositiveType } from '@/types/api';
 import { useGifUrls } from '@/hooks/useGifUrls';
-import SequenceBboxCard from '@/components/annotation/SequenceBboxCard';
+
+// Helper functions for annotation state management
+const hasUserAnnotations = (bbox: SequenceBbox): boolean => {
+  return bbox.is_smoke || bbox.false_positive_types.length > 0;
+};
+
+const initializeCleanBbox = (originalBbox: SequenceBbox): SequenceBbox => {
+  return {
+    ...originalBbox,
+    is_smoke: false,
+    false_positive_types: [],
+    // Preserve structure like gif_key_main, gif_key_crop, bboxes with detection_ids
+  };
+};
+
+const shouldShowAsAnnotated = (bbox: SequenceBbox, processingStage: string): boolean => {
+  // If already marked as annotated in processing stage, show as annotated
+  if (processingStage === 'annotated') {
+    return true;
+  }
+  // If ready to annotate, only show as annotated if user has made selections
+  if (processingStage === 'ready_to_annotate') {
+    return hasUserAnnotations(bbox);
+  }
+  // For other stages, default to checking user annotations
+  return hasUserAnnotations(bbox);
+};
 
 export default function AnnotationInterface() {
   const { id } = useParams<{ id: string }>();
@@ -35,11 +61,22 @@ export default function AnnotationInterface() {
   // Fetch GIF URLs
   const { data: gifUrls, isLoading: loadingGifs } = useGifUrls(annotationId);
 
-  // Initialize bboxes when annotation loads
+  // Initialize bboxes when annotation loads - respecting processing stage
   useEffect(() => {
     if (annotation) {
       setCurrentAnnotation(annotation);
-      setBboxes([...annotation.annotation.sequences_bbox]);
+      
+      // Smart initialization based on processing stage
+      if (annotation.processing_stage === 'ready_to_annotate') {
+        // For sequences ready to annotate, start with clean checkboxes
+        const cleanBboxes = annotation.annotation.sequences_bbox.map(bbox => 
+          initializeCleanBbox(bbox)
+        );
+        setBboxes(cleanBboxes);
+      } else {
+        // For other stages (like 'annotated'), preserve existing data
+        setBboxes([...annotation.annotation.sequences_bbox]);
+      }
     }
   }, [annotation]);
 
@@ -234,16 +271,188 @@ export default function AnnotationInterface() {
         </div>
       )}
 
-      {/* Bbox Annotation Cards */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+      {/* Main GIFs Display - Move to top with maximized size */}
+      <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <h3 className="text-lg font-medium text-gray-900 mb-4">
+          Sequence GIFs
+        </h3>
+        {gifUrls?.gif_urls && gifUrls.gif_urls.length > 0 ? (
+          <div className="space-y-8">
+            {gifUrls.gif_urls.map((gifData, index) => (
+              <div key={index} className="border-b border-gray-100 pb-6 last:border-b-0">
+                <h4 className="text-md font-medium text-gray-800 mb-4">
+                  Detection {index + 1}
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {gifData.main_url && (
+                    <div className="text-center">
+                      <h5 className="text-sm font-medium text-gray-700 mb-3">Full Sequence</h5>
+                      <img
+                        src={gifData.main_url}
+                        alt={`Main GIF for detection ${index + 1}`}
+                        className="max-w-full h-auto border border-gray-300 rounded shadow-sm mx-auto"
+                        style={{ maxHeight: '800px' }}
+                      />
+                    </div>
+                  )}
+                  {gifData.crop_url && (
+                    <div className="text-center">
+                      <h5 className="text-sm font-medium text-gray-700 mb-3">Cropped View</h5>
+                      <img
+                        src={gifData.crop_url}
+                        alt={`Crop GIF for detection ${index + 1}`}
+                        className="max-w-full h-auto border border-gray-300 rounded shadow-sm mx-auto"
+                        style={{ maxHeight: '800px' }}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-8 text-gray-500">
+            {loadingGifs ? (
+              <div className="flex items-center justify-center space-x-2">
+                <div className="animate-spin w-5 h-5 border-2 border-primary-600 border-t-transparent rounded-full"></div>
+                <span>Loading GIFs...</span>
+              </div>
+            ) : (
+              <span>No GIFs available</span>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Bbox Annotation Cards - Simplified single column */}
+      <div className="space-y-6">
+        <h3 className="text-lg font-medium text-gray-900">
+          Detection Annotations
+        </h3>
         {bboxes.map((bbox, index) => (
-          <SequenceBboxCard
-            key={index}
-            bbox={bbox}
-            bboxIndex={index}
-            gifData={gifUrls?.gif_urls[index]}
-            onChange={(updatedBbox) => handleBboxChange(index, updatedBbox)}
-          />
+          <div key={index} className="bg-white rounded-lg border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h4 className="text-lg font-medium text-gray-900">
+                Detection {index + 1}
+              </h4>
+              <span className="text-sm text-gray-500">
+                {bbox.bboxes.length} bbox{bbox.bboxes.length !== 1 ? 'es' : ''}
+              </span>
+            </div>
+            
+            {/* Annotation Controls */}
+            <div className="space-y-4">
+              {/* Smoke Classification */}
+              <div>
+                <label className="flex items-center space-x-3">
+                  <input
+                    type="checkbox"
+                    checked={bbox.is_smoke}
+                    onChange={(e) => {
+                      const updatedBbox = { ...bbox, is_smoke: e.target.checked };
+                      if (e.target.checked) {
+                        updatedBbox.false_positive_types = [];
+                      }
+                      handleBboxChange(index, updatedBbox);
+                    }}
+                    className="w-4 h-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
+                  />
+                  <span className="text-sm font-medium text-gray-900">
+                    🔥 Is smoke sequence
+                  </span>
+                </label>
+              </div>
+
+              {/* False Positive Types - Comprehensive selection */}
+              {!bbox.is_smoke && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-3">
+                    False Positive Types (Select all that apply)
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 mb-4">
+                    {FALSE_POSITIVE_TYPES.map((fpType) => {
+                      const isSelected = bbox.false_positive_types.includes(fpType);
+                      const formatLabel = (type: string) => 
+                        type.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+                      
+                      return (
+                        <label key={fpType} className="flex items-center space-x-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              const updatedBbox = { ...bbox };
+                              if (e.target.checked) {
+                                // Add the false positive type
+                                updatedBbox.false_positive_types = [
+                                  ...bbox.false_positive_types,
+                                  fpType as FalsePositiveType
+                                ];
+                              } else {
+                                // Remove the false positive type
+                                updatedBbox.false_positive_types = bbox.false_positive_types.filter(
+                                  type => type !== fpType
+                                );
+                              }
+                              handleBboxChange(index, updatedBbox);
+                            }}
+                            className="w-3 h-3 text-red-600 focus:ring-red-500 border-gray-300 rounded"
+                          />
+                          <span className="text-xs text-gray-600">
+                            {formatLabel(fpType)}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  
+                  {/* Selected types display */}
+                  {bbox.false_positive_types.length > 0 && (
+                    <div className="mt-3">
+                      <div className="text-xs font-medium text-gray-700 mb-2">Selected:</div>
+                      <div className="flex flex-wrap gap-1">
+                        {bbox.false_positive_types.map((type) => (
+                          <span
+                            key={type}
+                            className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-red-100 text-red-800 border border-red-200"
+                          >
+                            {type.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                            <button
+                              onClick={() => {
+                                const updatedBbox = { ...bbox };
+                                updatedBbox.false_positive_types = bbox.false_positive_types.filter(
+                                  t => t !== type
+                                );
+                                handleBboxChange(index, updatedBbox);
+                              }}
+                              className="ml-1 hover:opacity-80 text-red-600"
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              {/* Status indicator */}
+              <div className="flex items-center space-x-2">
+                {shouldShowAsAnnotated(bbox, annotation?.processing_stage || '') ? (
+                  <div className="flex items-center text-green-600">
+                    <CheckCircle className="w-4 h-4 mr-1" />
+                    <span className="text-sm font-medium">Annotated</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center text-gray-400">
+                    <AlertCircle className="w-4 h-4 mr-1" />
+                    <span className="text-sm font-medium">Needs annotation</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         ))}
       </div>
 

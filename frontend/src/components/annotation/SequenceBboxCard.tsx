@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CheckCircle, AlertCircle, Eye, MapPin } from 'lucide-react';
+import { CheckCircle, AlertCircle, Eye } from 'lucide-react';
 import { SequenceBbox, FalsePositiveType, GifBboxUrls } from '@/types/api';
 import { FALSE_POSITIVE_TYPES } from '@/utils/constants';
 import GifViewer from './GifViewer';
@@ -138,28 +138,6 @@ export default function SequenceBboxCard({
           )}
         </div>
 
-        {/* Detection Bboxes Summary */}
-        <div className="bg-gray-50 rounded-md p-3">
-          <div className="flex items-center space-x-2 mb-2">
-            <MapPin className="w-4 h-4 text-gray-400" />
-            <span className="text-sm font-medium text-gray-700">
-              Detection Coordinates
-            </span>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {bbox.bboxes.slice(0, 4).map((detection) => (
-              <div key={detection.detection_id} className="text-xs text-gray-600">
-                <span className="font-medium">Det #{detection.detection_id}:</span>{' '}
-                [{detection.xyxyn.map(coord => coord.toFixed(3)).join(', ')}]
-              </div>
-            ))}
-            {bbox.bboxes.length > 4 && (
-              <div className="text-xs text-gray-500 col-span-2">
-                ... and {bbox.bboxes.length - 4} more detections
-              </div>
-            )}
-          </div>
-        </div>
       </div>
 
       {/* Expanded GIF View */}

@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ArrowRight, Save, SkipForward, CheckCircle, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, CheckCircle, AlertTriangle } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { SequenceAnnotation, SequenceBbox, GifUrlsResponse } from '@/types/api';
 import { QUERY_KEYS } from '@/utils/constants';
 import { useAnnotationStore } from '@/store/useAnnotationStore';
-import GifViewer from '@/components/media/GifViewer';
 
 export default function AnnotationPage() {
   const { id } = useParams<{ id: string }>();
@@ -16,11 +15,7 @@ export default function AnnotationPage() {
   const sequenceId = id ? Number(id) : null;
   
   const {
-    currentBboxIndex,
     missedSmoke,
-    setSelectedLabels,
-    nextBbox,
-    previousBbox,
     resetCurrentWork
   } = useAnnotationStore();
 
@@ -109,33 +104,18 @@ export default function AnnotationPage() {
     }
   }, [annotations, sequenceId]);
 
-  const getCurrentBbox = (): SequenceBbox | null => {
-    if (!currentAnnotation || currentBboxIndex >= currentAnnotation.annotation.sequences_bbox.length) {
-      return null;
-    }
-    return currentAnnotation.annotation.sequences_bbox[currentBboxIndex];
+
+  const handleCompleteSequence = () => {
+    navigate('/sequences');
+    resetCurrentWork();
   };
 
-  const handleSaveAnnotation = () => {
+  const handleBboxUpdate = (bboxIndex: number, updatedBbox: SequenceBbox) => {
     if (!currentAnnotation) return;
 
-    const currentBbox = getCurrentBbox();
-    if (!currentBbox) return;
-
-    // TODO: Update when new annotation UI is implemented
-    const falsePositiveTypes: any[] = [];
-    const isSmoke = false;
-
-    // Update the current bbox
-    const updatedBbox: SequenceBbox = {
-      ...currentBbox,
-      is_smoke: isSmoke,
-      false_positive_types: falsePositiveTypes as any[],
-    };
-
-    // Update annotation data
+    // Update the specific bbox
     const updatedSequencesBbox = [...currentAnnotation.annotation.sequences_bbox];
-    updatedSequencesBbox[currentBboxIndex] = updatedBbox;
+    updatedSequencesBbox[bboxIndex] = updatedBbox;
 
     // Calculate derived fields
     const has_smoke = updatedSequencesBbox.some(bbox => bbox.is_smoke) || missedSmoke;
@@ -155,29 +135,20 @@ export default function AnnotationPage() {
       processing_stage: 'annotated',
     };
 
+    // Update the annotation
     updateAnnotationMutation.mutate({
       id: currentAnnotation.id,
       data: updatedAnnotation
     });
 
-    // Move to next bbox
-    nextBbox();
-    setSelectedLabels([]);
-  };
-
-  const handleSkipBbox = () => {
-    nextBbox();
-    setSelectedLabels([]);
-  };
-
-  const handlePreviousBbox = () => {
-    previousBbox();
-    setSelectedLabels([]);
-  };
-
-  const handleCompleteSequence = () => {
-    navigate('/sequences');
-    resetCurrentWork();
+    // Update local state
+    setCurrentAnnotation({
+      ...currentAnnotation,
+      ...updatedAnnotation,
+      annotation: {
+        sequences_bbox: updatedSequencesBbox
+      }
+    } as SequenceAnnotation);
   };
 
   if (loadingSequence || loadingAnnotations) {
@@ -204,10 +175,7 @@ export default function AnnotationPage() {
     );
   }
 
-  const currentBbox = getCurrentBbox();
   const totalBboxes = currentAnnotation?.annotation.sequences_bbox.length || 0;
-  const isLastBbox = currentBboxIndex >= totalBboxes - 1;
-  const isComplete = false; // TODO: Update when new annotation UI is implemented
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
@@ -233,20 +201,11 @@ export default function AnnotationPage() {
         
         {totalBboxes > 0 && (
           <div className="text-sm text-gray-600">
-            Detection {currentBboxIndex + 1} of {totalBboxes}
+            {totalBboxes} detection{totalBboxes !== 1 ? 's' : ''} to annotate
           </div>
         )}
       </div>
 
-      {/* Progress Bar */}
-      {totalBboxes > 0 && (
-        <div className="bg-gray-200 rounded-full h-2">
-          <div
-            className="bg-primary-600 h-2 rounded-full transition-all duration-300"
-            style={{ width: `${((currentBboxIndex + 1) / totalBboxes) * 100}%` }}
-          ></div>
-        </div>
-      )}
 
       {/* Main Content */}
       {totalBboxes === 0 ? (
@@ -264,92 +223,178 @@ export default function AnnotationPage() {
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* GIF Viewer */}
-          <div>
-            <GifViewer
-              mainGifUrl={gifUrls.main_gif_url}
-              cropGifUrl={gifUrls.crop_gif_url}
-              title={`Detection ${currentBboxIndex + 1}`}
-              className="h-96"
-            />
-            
-            {/* Navigation Controls */}
-            <div className="mt-4 flex items-center justify-between">
-              <button
-                onClick={handlePreviousBbox}
-                disabled={currentBboxIndex === 0}
-                className="flex items-center px-4 py-2 border border-gray-300 rounded-md text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-              >
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Previous
-              </button>
+        <div className="space-y-6">
+          {/* GIF Display */}
+          <div className="bg-white rounded-lg border border-gray-200 p-6">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">
+              Sequence GIFs
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Main GIF */}
+              {gifUrls.main_gif_url && (
+                <div className="text-center">
+                  <h4 className="text-sm font-medium text-gray-700 mb-3">Full Sequence</h4>
+                  <img
+                    src={gifUrls.main_gif_url}
+                    alt="Main sequence GIF"
+                    className="max-w-full h-auto border border-gray-300 rounded shadow-sm mx-auto"
+                    style={{ maxHeight: '500px' }}
+                  />
+                </div>
+              )}
               
-              <div className="text-sm text-gray-600">
-                {currentBbox && (
-                  <span>
-                    Bbox: [{currentBbox.bboxes.map((b: any) => 
-                      b.xyxyn.map((coord: number) => coord.toFixed(3)).join(', ')
-                    ).join(' | ')}]
-                  </span>
-                )}
-              </div>
+              {/* Crop GIF */}
+              {gifUrls.crop_gif_url && (
+                <div className="text-center">
+                  <h4 className="text-sm font-medium text-gray-700 mb-3">Cropped View</h4>
+                  <img
+                    src={gifUrls.crop_gif_url}
+                    alt="Cropped sequence GIF"
+                    className="max-w-full h-auto border border-gray-300 rounded shadow-sm mx-auto"
+                    style={{ maxHeight: '500px' }}
+                  />
+                </div>
+              )}
               
-              <button
-                onClick={() => isLastBbox ? handleCompleteSequence() : handleSkipBbox()}
-                className="flex items-center px-4 py-2 border border-gray-300 rounded-md text-sm hover:bg-gray-50"
-              >
-                {isLastBbox ? 'Complete' : 'Skip'}
-                {!isLastBbox && <ArrowRight className="w-4 h-4 ml-2" />}
-              </button>
+              {/* Loading/Error States */}
+              {!gifUrls.main_gif_url && !gifUrls.crop_gif_url && (
+                <div className="col-span-2 text-center py-8">
+                  <div className="text-gray-500">
+                    {generateGifsMutation.isPending ? (
+                      <div className="flex items-center justify-center space-x-2">
+                        <div className="animate-spin w-5 h-5 border-2 border-primary-600 border-t-transparent rounded-full"></div>
+                        <span>Generating GIFs...</span>
+                      </div>
+                    ) : (
+                      <span>No GIFs available</span>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
-
-          {/* Annotation Panel */}
-          <div className="space-y-6">
-            {/* TODO: Replace with new annotation component based on API enums */}
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-              <p className="text-yellow-800">Annotation UI needs to be updated to use API enums (SmokeType and FalsePositiveType)</p>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex items-center space-x-4">
+          
+          {/* Annotation Controls */}
+          <div className="bg-white rounded-lg border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-medium text-gray-900">
+                Sequence Annotations
+              </h3>
               <button
-                onClick={handleSaveAnnotation}
-                disabled={!isComplete}
-                className={`flex items-center px-6 py-3 rounded-md text-sm font-medium transition-colors ${
-                  isComplete
-                    ? 'bg-primary-600 text-white hover:bg-primary-700'
-                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                }`}
+                onClick={handleCompleteSequence}
+                className="flex items-center px-4 py-2 bg-primary-600 text-white rounded-md text-sm hover:bg-primary-700"
               >
-                <Save className="w-4 h-4 mr-2" />
-                {isLastBbox ? 'Save & Complete' : 'Save & Next'}
-              </button>
-
-              <button
-                onClick={handleSkipBbox}
-                className="flex items-center px-6 py-3 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                <SkipForward className="w-4 h-4 mr-2" />
-                Skip This Detection
-              </button>
-            </div>
-
-            {/* Status */}
-            {updateAnnotationMutation.isPending && (
-              <div className="flex items-center text-sm text-blue-600">
-                <div className="animate-spin w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full mr-2"></div>
-                Saving annotation...
-              </div>
-            )}
-
-            {updateAnnotationMutation.isSuccess && (
-              <div className="flex items-center text-sm text-green-600">
                 <CheckCircle className="w-4 h-4 mr-2" />
-                Annotation saved successfully
-              </div>
-            )}
+                Complete Sequence
+              </button>
+            </div>
+            
+            <div className="text-sm text-gray-600 mb-6">
+              Annotate each detection below. All annotations will be saved automatically.
+            </div>
+            
+            {/* Vertical BBox List */}
+            <div className="space-y-4">
+              {currentAnnotation?.annotation.sequences_bbox.map((bbox, index) => (
+                <div key={index} className="bg-gray-50 rounded-lg border border-gray-200 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="text-lg font-medium text-gray-900">
+                      Detection {index + 1}
+                    </h4>
+                    <span className="text-sm text-gray-500">
+                      {bbox.bboxes.length} detection{bbox.bboxes.length !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                  
+                  {/* Individual GIFs for this bbox */}
+                  {bbox.gif_key_main || bbox.gif_key_crop ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                      {bbox.gif_key_main && (
+                        <div className="text-center">
+                          <h5 className="text-sm font-medium text-gray-600 mb-2">Main GIF</h5>
+                          <img
+                            src={`/api/gifs/${bbox.gif_key_main}`}
+                            alt={`Main GIF for detection ${index + 1}`}
+                            className="max-w-full h-auto border border-gray-300 rounded shadow-sm mx-auto"
+                            style={{ maxHeight: '300px' }}
+                          />
+                        </div>
+                      )}
+                      {bbox.gif_key_crop && (
+                        <div className="text-center">
+                          <h5 className="text-sm font-medium text-gray-600 mb-2">Crop GIF</h5>
+                          <img
+                            src={`/api/gifs/${bbox.gif_key_crop}`}
+                            alt={`Crop GIF for detection ${index + 1}`}
+                            className="max-w-full h-auto border border-gray-300 rounded shadow-sm mx-auto"
+                            style={{ maxHeight: '300px' }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-center py-4 text-gray-500 mb-6">
+                      <div className="text-sm">GIFs not available for this detection</div>
+                    </div>
+                  )}
+                  
+                  {/* Annotation Interface for this bbox */}
+                  <div className="space-y-4">
+                    {/* Smoke Classification */}
+                    <div>
+                      <label className="flex items-center space-x-3">
+                        <input
+                          type="checkbox"
+                          checked={bbox.is_smoke}
+                          onChange={(e) => {
+                            const updatedBbox = { ...bbox, is_smoke: e.target.checked };
+                            if (e.target.checked) {
+                              updatedBbox.false_positive_types = [];
+                            }
+                            handleBboxUpdate(index, updatedBbox);
+                          }}
+                          className="w-4 h-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
+                        />
+                        <span className="text-sm font-medium text-gray-900">
+                          🔥 Contains Smoke/Fire
+                        </span>
+                      </label>
+                    </div>
+
+                    {/* False Positive Types - Simple implementation for now */}
+                    {!bbox.is_smoke && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          False Positive Types
+                        </label>
+                        <div className="text-xs text-gray-500">
+                          TODO: Add false positive type selection interface
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+              
+              {/* Status Messages */}
+              {updateAnnotationMutation.isPending && (
+                <div className="text-center py-4">
+                  <div className="flex items-center justify-center text-sm text-blue-600">
+                    <div className="animate-spin w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full mr-2"></div>
+                    Saving annotation...
+                  </div>
+                </div>
+              )}
+
+              {updateAnnotationMutation.isSuccess && (
+                <div className="text-center py-4">
+                  <div className="flex items-center justify-center text-sm text-green-600">
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    Annotation saved successfully
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
