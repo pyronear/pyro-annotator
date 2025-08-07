@@ -7,22 +7,6 @@ set -e  # Exit on any error
 
 echo "🔧 Setting up Pyronear Annotation API..."
 
-# Function to create acme.json file if it doesn't exist
-setup_acme_file() {
-    local acme_file="./acme.json"
-    
-    if [ ! -f "$acme_file" ]; then
-        echo "📄 Creating acme.json file for Let's Encrypt certificates..."
-        touch "$acme_file"
-        chmod 600 "$acme_file"
-        echo "✅ Created $acme_file with proper permissions (600)"
-    else
-        echo "✅ acme.json already exists"
-        # Ensure correct permissions even if file exists
-        chmod 600 "$acme_file"
-        echo "✅ Verified acme.json permissions (600)"
-    fi
-}
 
 # Function to check if required tools are installed
 check_prerequisites() {
@@ -48,7 +32,6 @@ main() {
     echo "🚀 Starting setup process..."
     
     check_prerequisites
-    setup_acme_file
     
     echo ""
     echo "🎉 Setup completed successfully!"
