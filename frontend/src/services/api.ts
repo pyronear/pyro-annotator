@@ -60,6 +60,31 @@ class ApiClient {
     return response.data;
   }
 
+  async getSequenceDetections(id: number): Promise<Detection[]> {
+    // Fetch all detections for a sequence, handling pagination
+    const allDetections: Detection[] = [];
+    let page = 1;
+    let hasMore = true;
+    
+    while (hasMore) {
+      const response = await this.getDetections({
+        sequence_id: id,
+        order_by: 'recorded_at',
+        order_direction: 'asc',
+        page: page,
+        size: 100 // Max allowed by backend
+      });
+      
+      allDetections.push(...response.items);
+      
+      // Check if we've fetched all pages
+      hasMore = page < response.pages;
+      page++;
+    }
+    
+    return allDetections;
+  }
+
   async createSequence(sequence: Omit<Sequence, 'id' | 'created_at' | 'updated_at'>): Promise<Sequence> {
     const response: AxiosResponse<Sequence> = await this.client.post('/sequences', sequence);
     return response.data;

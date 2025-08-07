@@ -6,6 +6,7 @@ import { apiClient } from '@/services/api';
 import { QUERY_KEYS, FALSE_POSITIVE_TYPES } from '@/utils/constants';
 import { SequenceAnnotation, SequenceBbox, FalsePositiveType } from '@/types/api';
 import { useGifUrls } from '@/hooks/useGifUrls';
+import SequenceReviewer from '@/components/sequence/SequenceReviewer';
 
 // Helper functions for annotation state management
 const hasUserAnnotations = (bbox: SequenceBbox): boolean => {
@@ -43,6 +44,7 @@ export default function AnnotationInterface() {
   
   const [bboxes, setBboxes] = useState<SequenceBbox[]>([]);
   const [, setCurrentAnnotation] = useState<SequenceAnnotation | null>(null);
+  const [hasMissedSmoke, setHasMissedSmoke] = useState<boolean>(false);
   
   // Keyboard shortcuts state
   const [activeDetectionIndex, setActiveDetectionIndex] = useState<number | null>(null);
@@ -71,10 +73,13 @@ export default function AnnotationInterface() {
   // Fetch GIF URLs
   const { data: gifUrls, isLoading: loadingGifs } = useGifUrls(annotationId);
 
-  // Initialize bboxes when annotation loads - respecting processing stage
+  // Initialize bboxes and missed smoke when annotation loads - respecting processing stage
   useEffect(() => {
     if (annotation) {
       setCurrentAnnotation(annotation);
+      
+      // Initialize missed smoke flag from existing annotation
+      setHasMissedSmoke(annotation.has_missed_smoke || false);
       
       // Smart initialization based on processing stage
       if (annotation.processing_stage === 'ready_to_annotate') {
@@ -357,6 +362,8 @@ export default function AnnotationInterface() {
         false_positive_types: JSON.stringify(
           [...new Set(updatedBboxes.flatMap(bbox => bbox.false_positive_types))]
         ),
+        // Include missed smoke flag
+        has_missed_smoke: hasMissedSmoke,
       };
 
       return apiClient.updateSequenceAnnotation(annotationId!, updatedAnnotation);
@@ -398,6 +405,9 @@ export default function AnnotationInterface() {
 
   const handleReset = () => {
     if (annotation) {
+      // Reset missed smoke to original value
+      setHasMissedSmoke(annotation.has_missed_smoke || false);
+      
       // Use the same logic as initialization to respect processing stage
       if (annotation.processing_stage === 'ready_to_annotate') {
         // For sequences ready to annotate, reset to clean checkboxes
@@ -579,6 +589,13 @@ export default function AnnotationInterface() {
           </div>
         </div>
       )}
+
+      {/* Sequence Review for Missed Smoke */}
+      <SequenceReviewer
+        sequenceId={annotation.sequence_id}
+        hasMissedSmoke={hasMissedSmoke}
+        onMissedSmokeChange={setHasMissedSmoke}
+      />
 
       {/* GIF Loading State */}
       {loadingGifs && (

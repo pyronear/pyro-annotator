@@ -124,9 +124,11 @@ export const FILE_LIMITS = {
 export const QUERY_KEYS = {
   SEQUENCES: ['sequences'],
   SEQUENCE: (id: number) => ['sequences', id],
+  SEQUENCE_DETECTIONS: (sequenceId: number) => ['sequences', sequenceId, 'detections'],
   DETECTIONS: ['detections'],
   DETECTION: (id: number) => ['detections', id],
   DETECTION_IMAGE: ['detection-image'],
+  DETECTION_IMAGE_URL: (detectionId: number) => ['detections', detectionId, 'image-url'],
   SEQUENCE_ANNOTATIONS: ['sequence-annotations'],
   SEQUENCE_ANNOTATION: (id: number) => ['sequence-annotations', id],
   DETECTION_ANNOTATIONS: ['detection-annotations'],
