@@ -8,7 +8,6 @@ import {
   SequenceFilters,
   SequenceAnnotationFilters,
   DetectionAnnotationFilters,
-  GifUrls,
   GifUrlsResponse,
   ApiError
 } from '@/types/api';

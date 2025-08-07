@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Activity, Database, Zap, BarChart3 } from 'lucide-react';
+import { Activity, Database, BarChart3 } from 'lucide-react';
 
 export default function HomePage() {
   return (

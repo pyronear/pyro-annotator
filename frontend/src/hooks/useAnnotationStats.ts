@@ -55,7 +55,7 @@ export function useAnnotationStats(): AnnotationStats {
       page: 1 
     }),
     staleTime: 5 * 60 * 1000,
-    cacheTime: 10 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
   });
 
   const { 
@@ -69,7 +69,7 @@ export function useAnnotationStats(): AnnotationStats {
       page: 1 
     }),
     staleTime: 5 * 60 * 1000,
-    cacheTime: 10 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
   });
 
   const { 
@@ -83,7 +83,7 @@ export function useAnnotationStats(): AnnotationStats {
       page: 1 
     }),
     staleTime: 5 * 60 * 1000,
-    cacheTime: 10 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
   });
 
   // Calculate derived statistics

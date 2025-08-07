@@ -147,7 +147,7 @@ export default function SequenceBboxCard({
             </span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {bbox.bboxes.slice(0, 4).map((detection, idx) => (
+            {bbox.bboxes.slice(0, 4).map((detection) => (
               <div key={detection.detection_id} className="text-xs text-gray-600">
                 <span className="font-medium">Det #{detection.detection_id}:</span>{' '}
                 [{detection.xyxyn.map(coord => coord.toFixed(3)).join(', ')}]

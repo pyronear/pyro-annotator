@@ -97,19 +97,21 @@ export const useSequenceStore = create<SequenceStore>()(
       },
 
       getAnnotatedCount: () => {
-        const { sequences } = get();
-        return sequences.filter(seq => seq.has_annotation).length;
+        // TODO: Implement based on actual annotation data
+        return 0;
       },
 
       getPendingCount: () => {
         const { sequences } = get();
-        return sequences.filter(seq => !seq.has_annotation).length;
+        // TODO: Implement based on actual annotation data
+        return sequences.length;
       },
 
       getCompletionPercentage: () => {
         const { sequences } = get();
         if (sequences.length === 0) return 0;
-        const annotatedCount = sequences.filter(seq => seq.has_annotation).length;
+        // TODO: Implement based on actual annotation data
+        const annotatedCount = 0;
         return Math.round((annotatedCount / sequences.length) * 100);
       },
     }),

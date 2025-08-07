@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   frontend:
     build:
@@ -13,8 +11,6 @@ services:
       - VITE_API_BASE_URL=http://localhost:5050
       - VITE_ENVIRONMENT=production
     restart: unless-stopped
-    networks:
-      - pyro-network
     # Health check
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/health"]
@@ -22,18 +18,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-
-  # Optional: Include backend service reference
-  # Uncomment if you want to run both frontend and backend together
-  # backend:
-  #   external: true
-  #   container_name: pyro-annotator-backend
-
-networks:
-  pyro-network:
-    external: true
-    # If the network doesn't exist, create it with:
-    # docker network create pyro-network
 
 volumes:
   # Optional: Add volumes for logs or persistent data

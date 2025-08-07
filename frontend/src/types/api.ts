@@ -129,9 +129,11 @@ export interface SequenceFilters {
 }
 
 export interface SequenceAnnotationFilters {
+  sequence_id?: number;
   has_smoke?: boolean;
   has_false_positives?: boolean;
   false_positive_type?: FalsePositiveType;
+  smoke_type?: SmokeType;
   has_missed_smoke?: boolean;
   processing_stage?: ProcessingStage;
   order_by?: 'created_at' | 'sequence_recorded_at';

@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
-import { SequenceAnnotation, SequenceBbox } from '@/types/api';
-import { AnnotationLabel } from '@/utils/constants';
+import { SequenceAnnotation, SequenceBbox, FalsePositiveType } from '@/types/api';
 
 interface AnnotationProgress {
   total: number;
@@ -20,7 +19,7 @@ interface AnnotationStore {
   // Current annotation work
   currentSequenceId: number | null;
   currentBboxIndex: number;
-  selectedLabels: AnnotationLabel[];
+  selectedLabels: FalsePositiveType[];
   missedSmoke: boolean;
   
   // GIF URLs
@@ -41,7 +40,7 @@ interface AnnotationStore {
   // Current work actions
   startAnnotating: (sequenceId: number) => void;
   setCurrentBboxIndex: (index: number) => void;
-  setSelectedLabels: (labels: AnnotationLabel[]) => void;
+  setSelectedLabels: (labels: FalsePositiveType[]) => void;
   setMissedSmoke: (missed: boolean) => void;
   nextBbox: () => void;
   previousBbox: () => void;
@@ -168,7 +167,7 @@ export const useAnnotationStore = create<AnnotationStore>()(
             const currentAnnotation = state.currentAnnotation;
             if (!currentAnnotation) return state;
             
-            const maxIndex = currentAnnotation.sequences_bbox.length - 1;
+            const maxIndex = currentAnnotation.annotation.sequences_bbox.length - 1;
             const nextIndex = Math.min(state.currentBboxIndex + 1, maxIndex);
             
             return {
@@ -222,10 +221,10 @@ export const useAnnotationStore = create<AnnotationStore>()(
       // Computed
       getCurrentBbox: () => {
         const { currentAnnotation, currentBboxIndex } = get();
-        if (!currentAnnotation || currentBboxIndex >= currentAnnotation.sequences_bbox.length) {
+        if (!currentAnnotation || currentBboxIndex >= currentAnnotation.annotation.sequences_bbox.length) {
           return null;
         }
-        return currentAnnotation.sequences_bbox[currentBboxIndex];
+        return currentAnnotation.annotation.sequences_bbox[currentBboxIndex];
       },
 
       hasUnsavedChanges: () => {

@@ -16,7 +16,7 @@ export default function AnnotationInterface() {
   const annotationId = id ? parseInt(id) : null;
   
   const [bboxes, setBboxes] = useState<SequenceBbox[]>([]);
-  const [currentAnnotation, setCurrentAnnotation] = useState<SequenceAnnotation | null>(null);
+  const [, setCurrentAnnotation] = useState<SequenceAnnotation | null>(null);
 
   // Fetch sequence annotation
   const { data: annotation, isLoading, error } = useQuery({

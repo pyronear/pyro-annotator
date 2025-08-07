@@ -101,7 +101,7 @@ export default function AnnotationsPage() {
                 Smoke Type
               </label>
               <select
-                value={filters.smoke_type || ''}
+                value={(filters as any).smoke_type || ''}
                 onChange={(e) => handleFilterChange({ smoke_type: e.target.value as any || undefined })}
                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
               >
@@ -198,15 +198,15 @@ export default function AnnotationsPage() {
                       </span>
                       
                       {/* Annotation Type Badge */}
-                      {annotation.smoke_type && (
+                      {annotation.has_smoke && (
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
-                          🔥 {annotation.smoke_type}
+                          🔥 Smoke
                         </span>
                       )}
                       
-                      {annotation.false_positive_type && (
+                      {annotation.has_false_positives && (
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                          ❌ {annotation.false_positive_type}
+                          ❌ False Positive
                         </span>
                       )}
                     </div>
@@ -214,10 +214,10 @@ export default function AnnotationsPage() {
                     <div className="text-sm text-gray-500 space-y-1">
                       <p>Created: {new Date(annotation.created_at).toLocaleString()}</p>
                       {annotation.updated_at !== annotation.created_at && (
-                        <p>Updated: {new Date(annotation.updated_at).toLocaleString()}</p>
+                        <p>Updated: {new Date(annotation.updated_at!).toLocaleString()}</p>
                       )}
-                      {annotation.notes && (
-                        <p className="text-gray-700">Notes: {annotation.notes}</p>
+                      {annotation.false_positive_types && (
+                        <p className="text-gray-700">False positive types: {annotation.false_positive_types}</p>
                       )}
                     </div>
                   </div>

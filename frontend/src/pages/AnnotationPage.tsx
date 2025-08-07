@@ -1,13 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ArrowRight, Save, Skip, CheckCircle, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Save, SkipForward, CheckCircle, AlertTriangle } from 'lucide-react';
 import { apiClient } from '@/services/api';
-import { SequenceAnnotation, SequenceAnnotationData, SequenceBbox } from '@/types/api';
-import { QUERY_KEYS, ANNOTATION_LABELS, AnnotationLabel } from '@/utils/constants';
+import { SequenceAnnotation, SequenceBbox, GifUrlsResponse } from '@/types/api';
+import { QUERY_KEYS } from '@/utils/constants';
 import { useAnnotationStore } from '@/store/useAnnotationStore';
 import GifViewer from '@/components/media/GifViewer';
-import LabelSelector from '@/components/annotation/LabelSelector';
 
 export default function AnnotationPage() {
   const { id } = useParams<{ id: string }>();
@@ -18,10 +17,8 @@ export default function AnnotationPage() {
   
   const {
     currentBboxIndex,
-    selectedLabels,
     missedSmoke,
     setSelectedLabels,
-    setMissedSmoke,
     nextBbox,
     previousBbox,
     resetCurrentWork
@@ -40,7 +37,7 @@ export default function AnnotationPage() {
   // Get existing annotations for this sequence
   const { data: annotations, isLoading: loadingAnnotations } = useQuery({
     queryKey: [...QUERY_KEYS.SEQUENCE_ANNOTATIONS, { sequence_id: sequenceId }],
-    queryFn: () => apiClient.getSequenceAnnotations({ sequence_id: sequenceId }),
+    queryFn: () => apiClient.getSequenceAnnotations({ sequence_id: sequenceId! }),
     enabled: !!sequenceId,
   });
 
@@ -77,8 +74,14 @@ export default function AnnotationPage() {
   // Get GIF URLs mutation
   const getGifUrlsMutation = useMutation({
     mutationFn: (annotationId: number) => apiClient.getGifUrls(annotationId),
-    onSuccess: (urls) => {
-      setGifUrls(urls);
+    onSuccess: (response: GifUrlsResponse) => {
+      // Extract URLs from the first bbox if available
+      if (response.gif_urls && response.gif_urls.length > 0) {
+        setGifUrls({
+          main_gif_url: response.gif_urls[0].main_url,
+          crop_gif_url: response.gif_urls[0].crop_url
+        });
+      }
     },
   });
 
@@ -119,9 +122,9 @@ export default function AnnotationPage() {
     const currentBbox = getCurrentBbox();
     if (!currentBbox) return;
 
-    // Convert selected labels to false positive types
-    const falsePositiveTypes = selectedLabels.filter(label => label !== 'Smoke');
-    const isSmoke = selectedLabels.includes('Smoke');
+    // TODO: Update when new annotation UI is implemented
+    const falsePositiveTypes: any[] = [];
+    const isSmoke = false;
 
     // Update the current bbox
     const updatedBbox: SequenceBbox = {
@@ -204,7 +207,7 @@ export default function AnnotationPage() {
   const currentBbox = getCurrentBbox();
   const totalBboxes = currentAnnotation?.annotation.sequences_bbox.length || 0;
   const isLastBbox = currentBboxIndex >= totalBboxes - 1;
-  const isComplete = selectedLabels.length > 0 || missedSmoke;
+  const isComplete = false; // TODO: Update when new annotation UI is implemented
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
@@ -285,8 +288,8 @@ export default function AnnotationPage() {
               <div className="text-sm text-gray-600">
                 {currentBbox && (
                   <span>
-                    Bbox: [{currentBbox.bboxes.map(b => 
-                      b.xyxyn.map(coord => coord.toFixed(3)).join(', ')
+                    Bbox: [{currentBbox.bboxes.map((b: any) => 
+                      b.xyxyn.map((coord: number) => coord.toFixed(3)).join(', ')
                     ).join(' | ')}]
                   </span>
                 )}
@@ -304,14 +307,10 @@ export default function AnnotationPage() {
 
           {/* Annotation Panel */}
           <div className="space-y-6">
-            <LabelSelector
-              selectedLabels={selectedLabels}
-              onLabelsChange={setSelectedLabels}
-              showMissedSmoke={true}
-              missedSmoke={missedSmoke}
-              onMissedSmokeChange={setMissedSmoke}
-              required={true}
-            />
+            {/* TODO: Replace with new annotation component based on API enums */}
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <p className="text-yellow-800">Annotation UI needs to be updated to use API enums (SmokeType and FalsePositiveType)</p>
+            </div>
 
             {/* Action Buttons */}
             <div className="flex items-center space-x-4">
@@ -332,7 +331,7 @@ export default function AnnotationPage() {
                 onClick={handleSkipBbox}
                 className="flex items-center px-6 py-3 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
               >
-                <Skip className="w-4 h-4 mr-2" />
+                <SkipForward className="w-4 h-4 mr-2" />
                 Skip This Detection
               </button>
             </div>

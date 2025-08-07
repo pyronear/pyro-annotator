@@ -5,10 +5,7 @@ import ProgressBar, { MultiStageProgressBar } from '@/components/ProgressBar';
 
 export default function DashboardPage() {
   const { 
-    totalSequences, 
-    annotatedSequences, 
-    pendingSequences, 
-    completionPercentage,
+    totalSequences,
     processingStages,
     isLoading, 
     error 
