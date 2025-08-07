@@ -29,6 +29,9 @@ export default function SequenceReviewer({
 
   // Fetch sequence detections
   const { data: detections, isLoading, error } = useSequenceDetections(sequenceId);
+  
+  // Track if images are preloaded (we'll get this from the player)
+  const [imagesPreloaded, setImagesPreloaded] = useState(false);
 
   // Auto-play functionality
   useEffect(() => {
@@ -146,38 +149,6 @@ export default function SequenceReviewer({
 
   return (
     <div className={`space-y-4 ${className}`}>
-      {/* Header */}
-      <div className="bg-white border border-gray-200 rounded-lg p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-medium text-gray-900">
-              Sequence Review for Missed Smoke Detection
-            </h3>
-            <p className="text-sm text-gray-600 mt-1">
-              Review all {detections.length} detection{detections.length !== 1 ? 's' : ''} in sequence to identify any missed smoke
-            </p>
-          </div>
-          
-          <div className="text-right">
-            <div className="text-sm font-medium text-gray-900">
-              {Math.round(((currentIndex + 1) / detections.length) * 100)}% Complete
-            </div>
-            <div className="text-xs text-gray-500">
-              {currentIndex + 1} of {detections.length}
-            </div>
-          </div>
-        </div>
-        
-        <div className="mt-3">
-          <div className="w-full bg-gray-200 rounded-full h-1.5">
-            <div 
-              className="bg-primary-600 h-1.5 rounded-full transition-all duration-300"
-              style={{ width: `${((currentIndex + 1) / detections.length) * 100}%` }}
-            ></div>
-          </div>
-        </div>
-      </div>
-
       {/* Player */}
       <SequencePlayer
         detections={detections}
