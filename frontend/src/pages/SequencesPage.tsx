@@ -3,13 +3,14 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Search, Filter } from 'lucide-react';
 import { apiClient } from '@/services/api';
-import { SequenceFilters } from '@/types/api';
-import { QUERY_KEYS, PAGINATION_DEFAULTS } from '@/utils/constants';
+import { ExtendedSequenceFilters } from '@/types/api';
+import { QUERY_KEYS, PAGINATION_DEFAULTS, PROCESSING_STAGE_STATUS_OPTIONS, PROCESSING_STAGE_LABELS } from '@/utils/constants';
+import { getProcessingStageLabel, getProcessingStageColorClass } from '@/utils/processingStage';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
 
 export default function SequencesPage() {
   const navigate = useNavigate();
-  const [filters, setFilters] = useState<SequenceFilters>({
+  const [filters, setFilters] = useState<ExtendedSequenceFilters>({
     page: PAGINATION_DEFAULTS.PAGE,
     size: PAGINATION_DEFAULTS.SIZE,
   });
@@ -17,12 +18,13 @@ export default function SequencesPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
 
+  // Fetch sequences with annotations in a single efficient call
   const { data: sequences, isLoading, error } = useQuery({
-    queryKey: [...QUERY_KEYS.SEQUENCES, filters],
-    queryFn: () => apiClient.getSequences(filters),
+    queryKey: [...QUERY_KEYS.SEQUENCES, 'with-annotations', filters],
+    queryFn: () => apiClient.getSequencesWithAnnotations(filters),
   });
 
-  const handleFilterChange = (newFilters: Partial<SequenceFilters>) => {
+  const handleFilterChange = (newFilters: Partial<ExtendedSequenceFilters>) => {
     setFilters(prev => ({ ...prev, ...newFilters, page: 1 }));
   };
 
@@ -85,7 +87,7 @@ export default function SequencesPage() {
 
         {/* Expanded Filters */}
         {showFilters && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-4 border-t border-gray-200">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4 pt-4 border-t border-gray-200">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Source API
@@ -147,6 +149,24 @@ export default function SequencesPage() {
                 <option value="false">No Alert</option>
               </select>
             </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Processing Stage
+              </label>
+              <select
+                value={filters.processing_stage || ''}
+                onChange={(e) => handleFilterChange({ processing_stage: e.target.value as any || undefined })}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
+              >
+                <option value="">All Stages</option>
+                {PROCESSING_STAGE_STATUS_OPTIONS.map((stage) => (
+                  <option key={stage} value={stage}>
+                    {PROCESSING_STAGE_LABELS[stage]}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         )}
       </div>
@@ -203,6 +223,9 @@ export default function SequencesPage() {
                           🔥 Wildfire Alert
                         </span>
                       )}
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getProcessingStageColorClass(sequence.annotation?.processing_stage || 'no_annotation')}`}>
+                        {getProcessingStageLabel(sequence.annotation?.processing_stage || 'no_annotation')}
+                      </span>
                     </div>
                     <div className="mt-1 flex items-center text-sm text-gray-500 space-x-4">
                       <span>{new Date(sequence.recorded_at).toLocaleString()}</span>

@@ -63,6 +63,21 @@ export const PROCESSING_STAGES = [
   'annotated',
 ] as const;
 
+// Processing stage status options (including no annotation case)
+export const PROCESSING_STAGE_STATUS_OPTIONS = [
+  'no_annotation',
+  'imported',
+  'ready_to_annotate', 
+  'annotated',
+] as const;
+
+export const PROCESSING_STAGE_LABELS = {
+  'no_annotation': 'No annotation',
+  'imported': 'Imported',
+  'ready_to_annotate': 'Ready to annotate',
+  'annotated': 'Annotated',
+} as const;
+
 // Smoke types
 export const SMOKE_TYPES = [
   'wildfire',

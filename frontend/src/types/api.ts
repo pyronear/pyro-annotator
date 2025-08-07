@@ -179,6 +179,29 @@ export interface GifBboxUrls {
   has_crop: boolean;
 }
 
+// Processing stage status including "no annotation" case
+export type ProcessingStageStatus = ProcessingStage | 'no_annotation';
+
+// Extended filters for sequences with full annotation support
+export interface ExtendedSequenceFilters extends SequenceFilters {
+  processing_stage?: ProcessingStageStatus;
+  has_missed_smoke?: boolean;
+  has_smoke?: boolean;
+  has_false_positives?: boolean;
+  include_annotation?: boolean;
+}
+
+// Sequence with complete annotation information
+export interface SequenceWithAnnotation extends Sequence {
+  annotation?: SequenceAnnotation; // Complete annotation object with all fields
+}
+
+// Legacy interface for backward compatibility (to be removed after migration)
+export interface SequenceWithProcessingStage extends Sequence {
+  processing_stage_status: ProcessingStageStatus;
+  annotation_id?: number;
+}
+
 // API Error Response
 export interface ApiError {
   detail: string | Record<string, string[]>;

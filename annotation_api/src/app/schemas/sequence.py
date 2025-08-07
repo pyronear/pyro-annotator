@@ -110,5 +110,6 @@ class SequenceUpdateBboxAuto(BaseModel):
     algo_prediction: Optional[SequenceAnnotationData] = Field(default=None)
 
 
+
 class SequenceUpdateBboxVerified(BaseModel):
     algo_prediction: Optional[SequenceAnnotationData] = Field(default=None)

@@ -124,6 +124,92 @@ async def test_create_sequence_with_is_wildfire_alertapi_true(
 
 
 @pytest.mark.asyncio
+async def test_list_sequences_with_include_annotation(async_client: AsyncClient):
+    """Test including annotation data in sequences response"""
+    response = await async_client.get("/sequences?include_annotation=true")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, dict)
+    assert "items" in data
+    assert "page" in data
+    assert isinstance(data["items"], list)
+    
+    # Check that annotation field exists (can be null for sequences without annotations)
+    if data["items"]:
+        first_item = data["items"][0]
+        assert "annotation" in first_item
+        # If annotation exists, verify it has the expected fields
+        if first_item["annotation"]:
+            annotation = first_item["annotation"]
+            assert "id" in annotation
+            assert "processing_stage" in annotation
+            assert "has_smoke" in annotation
+            assert "has_false_positives" in annotation
+            assert "has_missed_smoke" in annotation
+            assert "annotation" in annotation
+
+
+@pytest.mark.asyncio
+async def test_list_sequences_filter_by_processing_stage(async_client: AsyncClient):
+    """Test filtering sequences by processing stage"""
+    # Test filtering by specific processing stage
+    response = await async_client.get("/sequences?processing_stage=imported")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, dict)
+    assert "items" in data
+    
+    # Test filtering by no_annotation
+    response = await async_client.get("/sequences?processing_stage=no_annotation")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, dict)
+    assert "items" in data
+
+
+@pytest.mark.asyncio
+async def test_list_sequences_filter_by_annotation_fields(async_client: AsyncClient):
+    """Test filtering sequences by annotation fields like has_smoke, has_false_positives"""
+    # Test filtering by has_smoke
+    response = await async_client.get("/sequences?has_smoke=true")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, dict)
+    assert "items" in data
+    
+    # Test filtering by has_false_positives
+    response = await async_client.get("/sequences?has_false_positives=false")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, dict)
+    assert "items" in data
+    
+    # Test filtering by has_missed_smoke
+    response = await async_client.get("/sequences?has_missed_smoke=false")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, dict)
+    assert "items" in data
+
+
+@pytest.mark.asyncio
+async def test_list_sequences_combined_filters(async_client: AsyncClient):
+    """Test combining annotation inclusion with filtering"""
+    response = await async_client.get("/sequences?include_annotation=true&processing_stage=annotated&has_smoke=true")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, dict)
+    assert "items" in data
+    
+    # Verify that sequences with annotations have the expected fields
+    for item in data["items"]:
+        assert "annotation" in item
+        if item["annotation"]:
+            assert item["annotation"]["processing_stage"] == "annotated"
+            assert item["annotation"]["has_smoke"] == True
+
+
+@pytest.mark.asyncio
 async def test_create_sequence_with_is_wildfire_alertapi_false(
     async_client: AsyncClient,
 ):

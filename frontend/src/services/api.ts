@@ -6,6 +6,8 @@ import {
   Detection,
   PaginatedResponse,
   SequenceFilters,
+  ExtendedSequenceFilters,
+  SequenceWithAnnotation,
   SequenceAnnotationFilters,
   DetectionAnnotationFilters,
   GifUrlsResponse,
@@ -65,6 +67,19 @@ class ApiClient {
 
   async deleteSequence(id: number): Promise<void> {
     await this.client.delete(`/sequences/${id}`);
+  }
+
+  // Enhanced method to get sequences with annotations
+  async getSequencesWithAnnotations(filters: ExtendedSequenceFilters = {}): Promise<PaginatedResponse<SequenceWithAnnotation>> {
+    const enhancedFilters = {
+      ...filters,
+      include_annotation: true, // Always include annotation data
+    };
+    
+    const response: AxiosResponse<PaginatedResponse<SequenceWithAnnotation>> = await this.client.get('/sequences', {
+      params: enhancedFilters,
+    });
+    return response.data;
   }
 
   // Sequence Annotations
