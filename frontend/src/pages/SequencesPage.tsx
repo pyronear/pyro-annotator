@@ -185,7 +185,7 @@ export default function SequencesPage() {
                   <div className="flex-shrink-0">
                     <DetectionImageThumbnail 
                       sequenceId={sequence.id} 
-                      className="w-16 h-16"
+                      className="h-16"
                     />
                   </div>
                   

@@ -36,7 +36,7 @@ export default function DetectionImageThumbnail({ sequenceId, className = '' }: 
       <img
         src={imageData.url}
         alt="Detection preview"
-        className="w-full h-full object-cover"
+        className="w-full h-full object-contain"
         onError={(e) => {
           const target = e.target as HTMLImageElement;
           target.style.display = 'none';
