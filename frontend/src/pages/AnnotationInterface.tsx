@@ -271,82 +271,73 @@ export default function AnnotationInterface() {
         </div>
       )}
 
-      {/* Main GIFs Display - Move to top with maximized size */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">
-          Sequence GIFs
-        </h3>
-        {gifUrls?.gif_urls && gifUrls.gif_urls.length > 0 ? (
-          <div className="space-y-8">
-            {gifUrls.gif_urls.map((gifData, index) => (
-              <div key={index} className="border-b border-gray-100 pb-6 last:border-b-0">
-                <h4 className="text-md font-medium text-gray-800 mb-4">
+      {/* Unified Detection Cards - GIFs + Annotation Controls */}
+      <div className="space-y-8">
+        {bboxes.map((bbox, index) => {
+          const gifData = gifUrls?.gif_urls?.[index];
+          
+          return (
+            <div key={index} className="bg-white rounded-lg border border-gray-200 p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h4 className="text-lg font-medium text-gray-900">
                   Detection {index + 1}
                 </h4>
-                <div className="space-y-6">
-                  {gifData.main_url && (
-                    <div className="text-center">
-                      <h5 className="text-sm font-medium text-gray-700 mb-3">Full Sequence</h5>
-                      <img
-                        src={gifData.main_url}
-                        alt={`Main GIF for detection ${index + 1}`}
-                        className="border border-gray-300 rounded shadow-sm mx-auto"
-                        style={{ 
-                          width: '1280px',
-                          maxWidth: '100%', 
-                          height: 'auto' 
-                        }}
-                      />
-                    </div>
-                  )}
-                  {gifData.crop_url && (
-                    <div className="text-center">
-                      <h5 className="text-sm font-medium text-gray-700 mb-3">Cropped View</h5>
-                      <img
-                        src={gifData.crop_url}
-                        alt={`Crop GIF for detection ${index + 1}`}
-                        className="border border-gray-300 rounded shadow-sm mx-auto"
-                        style={{ 
-                          width: '900px',
-                          maxWidth: '100%', 
-                          height: 'auto' 
-                        }}
-                      />
-                    </div>
-                  )}
-                </div>
+                <span className="text-sm text-gray-500">
+                  {bbox.bboxes.length} bbox{bbox.bboxes.length !== 1 ? 'es' : ''}
+                </span>
               </div>
-            ))}
-          </div>
-        ) : (
-          <div className="text-center py-8 text-gray-500">
-            {loadingGifs ? (
-              <div className="flex items-center justify-center space-x-2">
-                <div className="animate-spin w-5 h-5 border-2 border-primary-600 border-t-transparent rounded-full"></div>
-                <span>Loading GIFs...</span>
+              
+              {/* Visual Content - Main GIF + Crop GIF */}
+              <div className="space-y-6 mb-8">
+                {loadingGifs ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <div className="flex items-center justify-center space-x-2">
+                      <div className="animate-spin w-5 h-5 border-2 border-primary-600 border-t-transparent rounded-full"></div>
+                      <span>Loading GIFs...</span>
+                    </div>
+                  </div>
+                ) : gifData ? (
+                  <>
+                    {/* Main GIF */}
+                    {gifData.main_url && (
+                      <div className="text-center">
+                        <h5 className="text-sm font-medium text-gray-700 mb-3">Full Sequence</h5>
+                        <img
+                          src={gifData.main_url}
+                          alt={`Main GIF for detection ${index + 1}`}
+                          className="border border-gray-300 rounded shadow-sm mx-auto"
+                          style={{ 
+                            width: '1280px',
+                            maxWidth: '100%', 
+                            height: 'auto' 
+                          }}
+                        />
+                      </div>
+                    )}
+                    
+                    {/* Crop GIF */}
+                    {gifData.crop_url && (
+                      <div className="text-center">
+                        <h5 className="text-sm font-medium text-gray-700 mb-3">Cropped View</h5>
+                        <img
+                          src={gifData.crop_url}
+                          alt={`Crop GIF for detection ${index + 1}`}
+                          className="border border-gray-300 rounded shadow-sm mx-auto"
+                          style={{ 
+                            width: '900px',
+                            maxWidth: '100%', 
+                            height: 'auto' 
+                          }}
+                        />
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="text-center py-8 text-gray-500">
+                    <span>No GIFs available for this detection</span>
+                  </div>
+                )}
               </div>
-            ) : (
-              <span>No GIFs available</span>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Bbox Annotation Cards - Simplified single column */}
-      <div className="space-y-6">
-        <h3 className="text-lg font-medium text-gray-900">
-          Detection Annotations
-        </h3>
-        {bboxes.map((bbox, index) => (
-          <div key={index} className="bg-white rounded-lg border border-gray-200 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h4 className="text-lg font-medium text-gray-900">
-                Detection {index + 1}
-              </h4>
-              <span className="text-sm text-gray-500">
-                {bbox.bboxes.length} bbox{bbox.bboxes.length !== 1 ? 'es' : ''}
-              </span>
-            </div>
             
             {/* Annotation Controls */}
             <div className="space-y-4">
@@ -461,7 +452,8 @@ export default function AnnotationInterface() {
               </div>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Empty State */}
