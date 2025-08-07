@@ -199,7 +199,11 @@ export default function SequencesPage() {
           {/* Sequence List */}
           <div className="divide-y divide-gray-200">
             {sequences.items.map((sequence) => (
-              <div key={sequence.id} className="p-4 hover:bg-gray-50 cursor-pointer">
+              <div 
+                key={sequence.id} 
+                className="p-4 hover:bg-gray-50 cursor-pointer"
+                onClick={() => navigate(`/sequences/${sequence.id}`)}
+              >
                 <div className="flex items-center space-x-4">
                   {/* Detection Image Thumbnail */}
                   <div className="flex-shrink-0">
@@ -236,16 +240,6 @@ export default function SequencesPage() {
                         Azimuth: {sequence.azimuth}°
                       </div>
                     )}
-                  </div>
-                  
-                  {/* Action Button */}
-                  <div className="flex-shrink-0">
-                    <button 
-                      onClick={() => navigate(`/sequences/${sequence.id}`)}
-                      className="text-primary-600 hover:text-primary-900 text-sm font-medium"
-                    >
-                      View Details
-                    </button>
                   </div>
                 </div>
               </div>
