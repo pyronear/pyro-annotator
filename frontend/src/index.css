@@ -28,4 +28,18 @@
   .card {
     @apply bg-white rounded-lg border border-gray-200 shadow-sm;
   }
+  
+  /* GPU-accelerated image transitions for sequence player */
+  .sequence-player-image {
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    perspective: 1000px;
+    will-change: opacity, transform;
+  }
+  
+  /* Smooth image loading */
+  .image-preload {
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
+  }
 }
