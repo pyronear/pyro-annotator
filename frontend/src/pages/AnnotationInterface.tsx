@@ -144,8 +144,8 @@ export default function AnnotationInterface() {
       // Handle help modal first (works regardless of focus)
       // Note: '?' key requires Shift to be pressed, so we shouldn't check for !e.shiftKey
       if (e.key === '?') {
-        console.log('? key pressed, opening keyboard modal'); // Debug log
-        setShowKeyboardModal(true);
+        console.log('? key pressed, toggling keyboard modal'); // Debug log
+        setShowKeyboardModal(!showKeyboardModal);
         e.preventDefault();
         return;
       }
@@ -561,32 +561,6 @@ export default function AnnotationInterface() {
         </div>
       </div>
 
-        {/* Keyboard Shortcuts Help */}
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-medium text-gray-900 mb-2">Keyboard Shortcuts</h3>
-              <div className="text-xs text-gray-600">
-                <p className="mb-1">
-                  Press <kbd className="px-1.5 py-0.5 bg-gray-200 rounded text-xs font-mono">?</kbd> to view all keyboard shortcuts
-                </p>
-                <p className="text-gray-500">
-                  {activeDetectionIndex !== null 
-                    ? `Shortcuts apply to Detection ${activeDetectionIndex + 1} (highlighted in blue)`
-                    : 'Scroll to a detection or click on one to activate shortcuts'
-                  }
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => setShowKeyboardModal(true)}
-              className="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50"
-            >
-              <Keyboard className="w-4 h-4 mr-1" />
-              View Shortcuts
-            </button>
-          </div>
-        </div>
 
         {/* Processing Stage Warning */}
         {annotation.processing_stage !== 'ready_to_annotate' && (
