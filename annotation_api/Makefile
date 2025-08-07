@@ -24,7 +24,7 @@ start:
 
 # Stop the development environment
 stop:
-	docker compose -f docker-compose-dev.yml down
+	docker compose -f docker-compose.yml down
 
 # Run tests for the library
 # the "-" are used to launch the next command even if a command fails
