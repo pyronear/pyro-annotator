@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Save, RotateCcw, CheckCircle, AlertCircle, Eye } from 'lucide-react';
+import { ArrowLeft, Save, RotateCcw, CheckCircle, AlertCircle, Eye, Keyboard, X } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { QUERY_KEYS, FALSE_POSITIVE_TYPES } from '@/utils/constants';
 import { SequenceAnnotation, SequenceBbox, FalsePositiveType } from '@/types/api';
@@ -43,6 +43,16 @@ export default function AnnotationInterface() {
   
   const [bboxes, setBboxes] = useState<SequenceBbox[]>([]);
   const [, setCurrentAnnotation] = useState<SequenceAnnotation | null>(null);
+  
+  // Keyboard shortcuts state
+  const [activeDetectionIndex, setActiveDetectionIndex] = useState<number | null>(null);
+  const [showKeyboardModal, setShowKeyboardModal] = useState(false);
+  const detectionRefs = useRef<(HTMLDivElement | null)[]>([]);
+
+  // Toast notification state
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  const [toastType, setToastType] = useState<'success' | 'error' | 'info'>('success');
 
   // Fetch sequence annotation
   const { data: annotation, isLoading, error } = useQuery({
@@ -80,6 +90,259 @@ export default function AnnotationInterface() {
     }
   }, [annotation]);
 
+  // Intersection Observer for viewport-based active detection
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        let maxRatio = 0;
+        let bestIndex: number | null = null;
+        
+        entries.forEach((entry) => {
+          const index = detectionRefs.current.findIndex(ref => ref === entry.target);
+          if (index !== -1 && entry.intersectionRatio > maxRatio) {
+            maxRatio = entry.intersectionRatio;
+            bestIndex = index;
+          }
+        });
+        
+        // Only update if we have good visibility (>50%)
+        if (maxRatio > 0.5 && bestIndex !== null) {
+          setActiveDetectionIndex(bestIndex);
+        }
+      },
+      {
+        threshold: [0.1, 0.3, 0.5, 0.7, 0.9],
+        rootMargin: '-20px'
+      }
+    );
+
+    // Observe all detection cards
+    detectionRefs.current.forEach(ref => {
+      if (ref) observer.observe(ref);
+    });
+
+    return () => {
+      detectionRefs.current.forEach(ref => {
+        if (ref) observer.unobserve(ref);
+      });
+    };
+  }, [bboxes.length]);
+
+  // Keyboard shortcuts handler
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Debug: Log all key events for troubleshooting
+      console.log('Key pressed:', {
+        key: e.key,
+        code: e.code,
+        shiftKey: e.shiftKey,
+        target: e.target,
+        activeDetectionIndex,
+        showKeyboardModal
+      });
+
+      // Handle help modal first (works regardless of focus)
+      // Note: '?' key requires Shift to be pressed, so we shouldn't check for !e.shiftKey
+      if (e.key === '?') {
+        console.log('? key pressed, opening keyboard modal'); // Debug log
+        setShowKeyboardModal(true);
+        e.preventDefault();
+        return;
+      }
+      
+      // Handle Escape to close modal
+      if (e.key === 'Escape' && showKeyboardModal) {
+        console.log('Escape pressed, closing modal'); // Debug log
+        setShowKeyboardModal(false);
+        e.preventDefault();
+        return;
+      }
+
+      // Handle global shortcuts (work regardless of active detection)
+      // Reset annotation (Ctrl + Z)
+      if (e.key === 'z' && e.ctrlKey) {
+        console.log('Ctrl+Z pressed, resetting annotation'); // Debug log
+        handleReset();
+        e.preventDefault();
+        return;
+      }
+
+      // Complete annotation (Space)
+      if (e.key === ' ' && !showKeyboardModal) {
+        console.log('Space pressed, attempting to complete annotation'); // Debug log
+        if (isAnnotationComplete()) {
+          handleSave();
+        } else {
+          // Show error toast if annotation is incomplete
+          const progress = getAnnotationProgress();
+          const remaining = progress.total - progress.completed;
+          showToastNotification(
+            `Cannot save: ${remaining} detection${remaining !== 1 ? 's' : ''} still need${remaining === 1 ? 's' : ''} annotation`,
+            'error'
+          );
+        }
+        e.preventDefault();
+        return;
+      }
+
+      // Navigation shortcuts (Arrow Up/Down)
+      if (e.key === 'ArrowUp' && !showKeyboardModal) {
+        console.log('Arrow Up pressed, navigating to previous detection'); // Debug log
+        navigateToPreviousDetection();
+        e.preventDefault();
+        return;
+      }
+
+      if (e.key === 'ArrowDown' && !showKeyboardModal) {
+        console.log('Arrow Down pressed, navigating to next detection'); // Debug log
+        navigateToNextDetection();
+        e.preventDefault();
+        return;
+      }
+
+      // Ignore if focused on input elements, no active detection, or modal is open
+      if (e.target instanceof HTMLInputElement || 
+          e.target instanceof HTMLTextAreaElement || 
+          activeDetectionIndex === null ||
+          showKeyboardModal) {
+        console.log('Ignoring key event due to:', {
+          isInput: e.target instanceof HTMLInputElement,
+          isTextarea: e.target instanceof HTMLTextAreaElement,
+          noActiveDetection: activeDetectionIndex === null,
+          modalOpen: showKeyboardModal
+        });
+        return;
+      }
+
+      const key = e.key.toLowerCase();
+      
+      if (key === 's') {
+        // Toggle smoke for active detection
+        const bbox = bboxes[activeDetectionIndex];
+        if (bbox) {
+          const updatedBbox = { ...bbox, is_smoke: !bbox.is_smoke };
+          if (updatedBbox.is_smoke) {
+            updatedBbox.false_positive_types = [];
+          }
+          handleBboxChange(activeDetectionIndex, updatedBbox);
+          e.preventDefault();
+        }
+      } else {
+        // Handle letter-based shortcuts for false positive types
+        const typeIndex = getTypeIndexForKey(key);
+        if (typeIndex !== -1) {
+          toggleFalsePositiveType(activeDetectionIndex, typeIndex);
+          e.preventDefault();
+        }
+      }
+    };
+
+    // Use capture phase to ensure we get events before other handlers
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => document.removeEventListener('keydown', handleKeyDown, true);
+  }, [activeDetectionIndex, bboxes, showKeyboardModal]);
+
+  // Toast auto-dismiss logic
+  useEffect(() => {
+    if (showToast) {
+      const timer = setTimeout(() => {
+        setShowToast(false);
+      }, 3500); // Auto-dismiss after 3.5 seconds
+
+      return () => clearTimeout(timer);
+    }
+  }, [showToast]);
+
+  // Helper function to show toast notifications
+  const showToastNotification = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
+    setToastMessage(message);
+    setToastType(type);
+    setShowToast(true);
+  };
+
+  // Helper function to map keyboard keys to false positive type indices
+  const getTypeIndexForKey = (key: string): number => {
+    const keyMap: Record<string, number> = {
+      'a': FALSE_POSITIVE_TYPES.indexOf('antenna'),
+      'b': FALSE_POSITIVE_TYPES.indexOf('building'),
+      'c': FALSE_POSITIVE_TYPES.indexOf('cliff'),
+      'd': FALSE_POSITIVE_TYPES.indexOf('dark'),
+      'u': FALSE_POSITIVE_TYPES.indexOf('dust'), // 'd' taken by dark
+      'h': FALSE_POSITIVE_TYPES.indexOf('high_cloud'),
+      'l': FALSE_POSITIVE_TYPES.indexOf('low_cloud'),
+      'f': FALSE_POSITIVE_TYPES.indexOf('lens_flare'),
+      'p': FALSE_POSITIVE_TYPES.indexOf('lens_droplet'), // 'l' taken by low_cloud, use 'p' for droplet
+      'i': FALSE_POSITIVE_TYPES.indexOf('light'), // 'l' taken
+      'r': FALSE_POSITIVE_TYPES.indexOf('rain'),
+      't': FALSE_POSITIVE_TYPES.indexOf('trail'),
+      'o': FALSE_POSITIVE_TYPES.indexOf('road'), // 'r' taken by rain, use 'o' for road
+      'k': FALSE_POSITIVE_TYPES.indexOf('sky'), // 's' taken by smoke
+      'e': FALSE_POSITIVE_TYPES.indexOf('tree'), // 't' taken by trail
+      'w': FALSE_POSITIVE_TYPES.indexOf('water_body'),
+      'x': FALSE_POSITIVE_TYPES.indexOf('other'), // 'o' taken by road
+    };
+    
+    return keyMap[key] ?? -1;
+  };
+
+  // Helper function to toggle false positive types
+  const toggleFalsePositiveType = (detectionIndex: number, typeIndex: number) => {
+    const bbox = bboxes[detectionIndex];
+    if (!bbox || bbox.is_smoke) return; // Don't allow if it's marked as smoke
+    
+    const fpType = FALSE_POSITIVE_TYPES[typeIndex] as FalsePositiveType;
+    const updatedBbox = { ...bbox };
+    
+    if (bbox.false_positive_types.includes(fpType)) {
+      // Remove the type
+      updatedBbox.false_positive_types = bbox.false_positive_types.filter(type => type !== fpType);
+    } else {
+      // Add the type
+      updatedBbox.false_positive_types = [...bbox.false_positive_types, fpType];
+    }
+    
+    handleBboxChange(detectionIndex, updatedBbox);
+  };
+
+  // Navigation helper functions
+  const navigateToPreviousDetection = () => {
+    if (activeDetectionIndex === null || activeDetectionIndex <= 0) {
+      console.log('Already at first detection or no active detection');
+      return;
+    }
+    
+    const previousIndex = activeDetectionIndex - 1;
+    setActiveDetectionIndex(previousIndex);
+    
+    // Scroll the previous detection into view
+    const previousElement = detectionRefs.current[previousIndex];
+    if (previousElement) {
+      previousElement.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center'
+      });
+    }
+  };
+
+  const navigateToNextDetection = () => {
+    if (activeDetectionIndex === null || activeDetectionIndex >= bboxes.length - 1) {
+      console.log('Already at last detection or no active detection');
+      return;
+    }
+    
+    const nextIndex = activeDetectionIndex + 1;
+    setActiveDetectionIndex(nextIndex);
+    
+    // Scroll the next detection into view
+    const nextElement = detectionRefs.current[nextIndex];
+    if (nextElement) {
+      nextElement.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center'
+      });
+    }
+  };
+
   // Save annotation mutation
   const saveAnnotation = useMutation({
     mutationFn: async (updatedBboxes: SequenceBbox[]) => {
@@ -99,11 +362,17 @@ export default function AnnotationInterface() {
       return apiClient.updateSequenceAnnotation(annotationId!, updatedAnnotation);
     },
     onSuccess: () => {
+      // Show success toast notification
+      showToastNotification('Annotation saved successfully', 'success');
+      
       // Refresh annotations and sequences
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.SEQUENCE_ANNOTATIONS });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.SEQUENCES });
-      // Navigate back to sequence detail
-      navigate(`/sequences/${annotation?.sequence_id}`);
+      
+      // Navigate back to sequence detail after a brief delay to show the toast
+      setTimeout(() => {
+        navigate(`/sequences/${annotation?.sequence_id}`);
+      }, 1000);
     },
   });
 
@@ -114,13 +383,35 @@ export default function AnnotationInterface() {
   };
 
   const handleSave = () => {
-    if (!isAnnotationComplete()) return;
+    if (!isAnnotationComplete()) {
+      // Show error toast if annotation is incomplete
+      const progress = getAnnotationProgress();
+      const remaining = progress.total - progress.completed;
+      showToastNotification(
+        `Cannot save: ${remaining} detection${remaining !== 1 ? 's' : ''} still need${remaining === 1 ? 's' : ''} annotation`,
+        'error'
+      );
+      return;
+    }
     saveAnnotation.mutate(bboxes);
   };
 
   const handleReset = () => {
     if (annotation) {
-      setBboxes([...annotation.annotation.sequences_bbox]);
+      // Use the same logic as initialization to respect processing stage
+      if (annotation.processing_stage === 'ready_to_annotate') {
+        // For sequences ready to annotate, reset to clean checkboxes
+        const cleanBboxes = annotation.annotation.sequences_bbox.map(bbox => 
+          initializeCleanBbox(bbox)
+        );
+        setBboxes(cleanBboxes);
+      } else {
+        // For other stages (like 'annotated'), reset to original server data
+        setBboxes([...annotation.annotation.sequences_bbox]);
+      }
+      
+      // Show success toast notification
+      showToastNotification('Annotation reset successfully', 'success');
     }
   };
 
@@ -236,6 +527,33 @@ export default function AnnotationInterface() {
         </div>
       </div>
 
+      {/* Keyboard Shortcuts Help */}
+      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-medium text-gray-900 mb-2">Keyboard Shortcuts</h3>
+            <div className="text-xs text-gray-600">
+              <p className="mb-1">
+                Press <kbd className="px-1.5 py-0.5 bg-gray-200 rounded text-xs font-mono">?</kbd> to view all keyboard shortcuts
+              </p>
+              <p className="text-gray-500">
+                {activeDetectionIndex !== null 
+                  ? `Shortcuts apply to Detection ${activeDetectionIndex + 1} (highlighted in blue)`
+                  : 'Scroll to a detection or click on one to activate shortcuts'
+                }
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowKeyboardModal(true)}
+            className="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50"
+          >
+            <Keyboard className="w-4 h-4 mr-1" />
+            View Shortcuts
+          </button>
+        </div>
+      </div>
+
       {/* Processing Stage Warning */}
       {annotation.processing_stage !== 'ready_to_annotate' && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
@@ -276,12 +594,31 @@ export default function AnnotationInterface() {
         {bboxes.map((bbox, index) => {
           const gifData = gifUrls?.gif_urls?.[index];
           
+          const isActive = activeDetectionIndex === index;
+          
           return (
-            <div key={index} className="bg-white rounded-lg border border-gray-200 p-6">
+            <div 
+              key={index} 
+              ref={(el) => detectionRefs.current[index] = el}
+              className={`bg-white rounded-lg border p-6 cursor-pointer transition-all duration-200 ${
+                isActive 
+                  ? 'border-blue-500 ring-2 ring-blue-200 bg-blue-50' 
+                  : 'border-gray-200 hover:border-gray-300'
+              }`}
+              onClick={() => setActiveDetectionIndex(index)}
+            >
               <div className="flex items-center justify-between mb-6">
-                <h4 className="text-lg font-medium text-gray-900">
-                  Detection {index + 1}
-                </h4>
+                <div className="flex items-center space-x-3">
+                  <h4 className="text-lg font-medium text-gray-900">
+                    Detection {index + 1}
+                  </h4>
+                  {isActive && (
+                    <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                      <Keyboard className="w-3 h-3 mr-1" />
+                      Active
+                    </span>
+                  )}
+                </div>
                 <span className="text-sm text-gray-500">
                   {bbox.bboxes.length} bbox{bbox.bboxes.length !== 1 ? 'es' : ''}
                 </span>
@@ -359,6 +696,11 @@ export default function AnnotationInterface() {
                   <span className="text-sm font-medium text-gray-900">
                     🔥 Is smoke sequence
                   </span>
+                  {isActive && (
+                    <kbd className="ml-2 px-1.5 py-0.5 bg-gray-200 text-gray-700 rounded text-xs font-mono">
+                      S
+                    </kbd>
+                  )}
                 </label>
               </div>
 
@@ -369,10 +711,34 @@ export default function AnnotationInterface() {
                     False Positive Types (Select all that apply)
                   </label>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 mb-4">
-                    {FALSE_POSITIVE_TYPES.map((fpType) => {
+                    {FALSE_POSITIVE_TYPES.map((fpType, fpIndex) => {
                       const isSelected = bbox.false_positive_types.includes(fpType);
                       const formatLabel = (type: string) => 
                         type.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+                      
+                      // Get the keyboard shortcut for this type
+                      const getKeyForType = (type: string) => {
+                        const keyMap: Record<string, string> = {
+                          'antenna': 'A',
+                          'building': 'B',
+                          'cliff': 'C',
+                          'dark': 'D',
+                          'dust': 'U',
+                          'high_cloud': 'H',
+                          'low_cloud': 'L',
+                          'lens_flare': 'F',
+                          'lens_droplet': 'P',
+                          'light': 'I',
+                          'rain': 'R',
+                          'trail': 'T',
+                          'road': 'O',
+                          'sky': 'K',
+                          'tree': 'E',
+                          'water_body': 'W',
+                          'other': 'X',
+                        };
+                        return keyMap[type];
+                      };
                       
                       return (
                         <label key={fpType} className="flex items-center space-x-2 cursor-pointer">
@@ -400,6 +766,11 @@ export default function AnnotationInterface() {
                           <span className="text-xs text-gray-600">
                             {formatLabel(fpType)}
                           </span>
+                          {isActive && getKeyForType(fpType) && (
+                            <kbd className="ml-1 px-1 py-0.5 bg-gray-200 text-gray-700 rounded text-xs font-mono">
+                              {getKeyForType(fpType)}
+                            </kbd>
+                          )}
                         </label>
                       );
                     })}
@@ -466,6 +837,190 @@ export default function AnnotationInterface() {
           <p className="text-gray-600">
             This annotation doesn't contain any sequence bounding boxes to annotate.
           </p>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {showToast && (
+        <div className={`fixed top-4 right-4 z-50 transition-all duration-300 ease-in-out transform ${
+          showToast ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'
+        }`}>
+          <div className={`px-4 py-3 rounded-lg shadow-lg flex items-center space-x-3 min-w-80 ${
+            toastType === 'success' ? 'bg-green-50 border border-green-200' :
+            toastType === 'error' ? 'bg-red-50 border border-red-200' :
+            'bg-blue-50 border border-blue-200'
+          }`}>
+            <div className={`flex-shrink-0 w-5 h-5 ${
+              toastType === 'success' ? 'text-green-600' :
+              toastType === 'error' ? 'text-red-600' :
+              'text-blue-600'
+            }`}>
+              {toastType === 'success' && (
+                <CheckCircle className="w-5 h-5" />
+              )}
+              {toastType === 'error' && (
+                <AlertCircle className="w-5 h-5" />
+              )}
+              {toastType === 'info' && (
+                <AlertCircle className="w-5 h-5" />
+              )}
+            </div>
+            <p className={`text-sm font-medium ${
+              toastType === 'success' ? 'text-green-800' :
+              toastType === 'error' ? 'text-red-800' :
+              'text-blue-800'
+            }`}>
+              {toastMessage}
+            </p>
+            <button
+              onClick={() => setShowToast(false)}
+              className={`flex-shrink-0 ml-auto pl-3 ${
+                toastType === 'success' ? 'text-green-600 hover:text-green-800' :
+                toastType === 'error' ? 'text-red-600 hover:text-red-800' :
+                'text-blue-600 hover:text-blue-800'
+              }`}
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Keyboard Shortcuts Modal */}
+      {showKeyboardModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl max-h-[90vh] overflow-y-auto m-4">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h2 className="text-xl font-semibold text-gray-900">Keyboard Shortcuts</h2>
+              <button
+                onClick={() => setShowKeyboardModal(false)}
+                className="p-2 hover:bg-gray-100 rounded-md"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* General Shortcuts */}
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">General</h3>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-700">Show keyboard shortcuts</span>
+                      <kbd className="px-2 py-1 bg-gray-100 rounded text-sm font-mono">?</kbd>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-700">Close modal</span>
+                      <kbd className="px-2 py-1 bg-gray-100 rounded text-sm font-mono">Escape</kbd>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-700">Reset annotation</span>
+                      <kbd className="px-2 py-1 bg-gray-100 rounded text-sm font-mono">Ctrl+Z</kbd>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-700">Complete annotation</span>
+                      <kbd className="px-2 py-1 bg-gray-100 rounded text-sm font-mono">Space</kbd>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-700">Previous detection</span>
+                      <kbd className="px-2 py-1 bg-gray-100 rounded text-sm font-mono">↑</kbd>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-700">Next detection</span>
+                      <kbd className="px-2 py-1 bg-gray-100 rounded text-sm font-mono">↓</kbd>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-700">Toggle smoke detection</span>
+                      <kbd className="px-2 py-1 bg-gray-100 rounded text-sm font-mono">S</kbd>
+                    </div>
+                  </div>
+                </div>
+
+                {/* False Positive Types */}
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">False Positive Types</h3>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-700">Antenna</span>
+                      <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">A</kbd>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-700">Building</span>
+                      <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">B</kbd>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-700">Cliff</span>
+                      <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">C</kbd>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-700">Dark</span>
+                      <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">D</kbd>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-700">Dust</span>
+                      <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">U</kbd>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-700">High Cloud</span>
+                      <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">H</kbd>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-700">Low Cloud</span>
+                      <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">L</kbd>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-700">Lens Flare</span>
+                      <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">F</kbd>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-700">Lens Droplet</span>
+                      <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">P</kbd>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-700">Light</span>
+                      <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">I</kbd>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-700">Rain</span>
+                      <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">R</kbd>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-700">Trail</span>
+                      <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">T</kbd>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-700">Road</span>
+                      <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">O</kbd>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-700">Sky</span>
+                      <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">K</kbd>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-700">Tree</span>
+                      <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">E</kbd>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-700">Water Body</span>
+                      <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">W</kbd>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-700">Other</span>
+                      <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">X</kbd>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="mt-6 p-4 bg-blue-50 rounded-md">
+                <p className="text-sm text-blue-800">
+                  <strong>Note:</strong> Detection-specific shortcuts (S and false positive types) only work when a detection is active (highlighted in blue). 
+                  Global shortcuts (?, Escape, Ctrl+Z, Space, ↑/↓) work anywhere on the page. Arrow keys will activate and scroll to the previous/next detection.
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
