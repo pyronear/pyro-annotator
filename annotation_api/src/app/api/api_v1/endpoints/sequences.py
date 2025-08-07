@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional, Union
+from typing import Optional
 
 from fastapi import (
     APIRouter,
@@ -102,24 +102,18 @@ async def list_sequences(
         description="Filter by annotation presence. True: only sequences with annotations, False: only sequences without annotations",
     ),
     include_annotation: bool = Query(
-        False,
-        description="Include complete sequence annotation data in response"
+        False, description="Include complete sequence annotation data in response"
     ),
     processing_stage: Optional[str] = Query(
         None,
-        description="Filter by processing stage: 'imported', 'ready_to_annotate', 'annotated', or 'no_annotation'"
+        description="Filter by processing stage: 'imported', 'ready_to_annotate', 'annotated', or 'no_annotation'",
     ),
     has_missed_smoke: Optional[bool] = Query(
-        None,
-        description="Filter by missed smoke status"
+        None, description="Filter by missed smoke status"
     ),
-    has_smoke: Optional[bool] = Query(
-        None,
-        description="Filter by smoke presence"
-    ),
+    has_smoke: Optional[bool] = Query(None, description="Filter by smoke presence"),
     has_false_positives: Optional[bool] = Query(
-        None,
-        description="Filter by false positive presence"
+        None, description="Filter by false positive presence"
     ),
     order_by: SequenceOrderByField = Query(
         SequenceOrderByField.created_at, description="Order by field"
@@ -151,16 +145,17 @@ async def list_sequences(
     # Build base query
     query = select(Sequence)
     needs_annotation_join = (
-        has_annotation is not None or 
-        processing_stage is not None or 
-        has_missed_smoke is not None or 
-        has_smoke is not None or 
-        has_false_positives is not None
+        has_annotation is not None
+        or processing_stage is not None
+        or has_missed_smoke is not None
+        or has_smoke is not None
+        or has_false_positives is not None
     )
 
     # Apply conditional join if annotation filtering is needed
     if needs_annotation_join:
         from sqlalchemy import outerjoin
+
         query = query.select_from(outerjoin(Sequence, SequenceAnnotation))
 
     # Apply filtering
@@ -204,7 +199,9 @@ async def list_sequences(
         query = query.where(SequenceAnnotation.has_smoke == has_smoke)
 
     if has_false_positives is not None:
-        query = query.where(SequenceAnnotation.has_false_positives == has_false_positives)
+        query = query.where(
+            SequenceAnnotation.has_false_positives == has_false_positives
+        )
 
     # Apply ordering
     order_field = getattr(Sequence, order_by.value)
@@ -215,11 +212,11 @@ async def list_sequences(
 
     # Apply pagination
     paginated_result = await apaginate(session, query, params)
-    
+
     if include_annotation:
         # Fetch annotations for the sequences in the current page
         sequence_ids = [seq.id for seq in paginated_result.items]
-        
+
         if sequence_ids:
             # Fetch annotations for these sequences
             annotation_query = select(SequenceAnnotation).where(
@@ -227,31 +224,37 @@ async def list_sequences(
             )
             annotation_result = await session.execute(annotation_query)
             annotations = annotation_result.scalars().all()
-            
+
             # Create a mapping of sequence_id -> annotation
             annotation_map = {ann.sequence_id: ann for ann in annotations}
         else:
             annotation_map = {}
-        
+
         # Transform results to include annotation data
         items = []
         for sequence in paginated_result.items:
             # Convert sequence to dict using model_dump if available, otherwise use __dict__
-            if hasattr(sequence, 'model_dump'):
+            if hasattr(sequence, "model_dump"):
                 sequence_dict = sequence.model_dump()
             else:
-                sequence_dict = {c.name: getattr(sequence, c.name) for c in sequence.__table__.columns}
-            
+                sequence_dict = {
+                    c.name: getattr(sequence, c.name)
+                    for c in sequence.__table__.columns
+                }
+
             sequence_data = SequenceWithAnnotationRead(**sequence_dict)
             annotation = annotation_map.get(sequence.id)
             if annotation:
-                if hasattr(annotation, 'model_dump'):
+                if hasattr(annotation, "model_dump"):
                     annotation_dict = annotation.model_dump()
                 else:
-                    annotation_dict = {c.name: getattr(annotation, c.name) for c in annotation.__table__.columns}
+                    annotation_dict = {
+                        c.name: getattr(annotation, c.name)
+                        for c in annotation.__table__.columns
+                    }
                 sequence_data.annotation = SequenceAnnotationRead(**annotation_dict)
             items.append(sequence_data)
-        
+
         # Return transformed items as JSON response
         result_dict = {
             "items": [item.model_dump() for item in items],
@@ -260,11 +263,11 @@ async def list_sequences(
             "size": paginated_result.size,
             "total": paginated_result.total,
         }
-        
+
         import json
+
         return Response(
-            content=json.dumps(result_dict, default=str),
-            media_type="application/json"
+            content=json.dumps(result_dict, default=str), media_type="application/json"
         )
     else:
         # Standard pagination for sequence-only results

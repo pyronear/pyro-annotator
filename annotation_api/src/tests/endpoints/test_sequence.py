@@ -133,7 +133,7 @@ async def test_list_sequences_with_include_annotation(async_client: AsyncClient)
     assert "items" in data
     assert "page" in data
     assert isinstance(data["items"], list)
-    
+
     # Check that annotation field exists (can be null for sequences without annotations)
     if data["items"]:
         first_item = data["items"][0]
@@ -158,7 +158,7 @@ async def test_list_sequences_filter_by_processing_stage(async_client: AsyncClie
     data = response.json()
     assert isinstance(data, dict)
     assert "items" in data
-    
+
     # Test filtering by no_annotation
     response = await async_client.get("/sequences?processing_stage=no_annotation")
     assert response.status_code == 200
@@ -176,14 +176,14 @@ async def test_list_sequences_filter_by_annotation_fields(async_client: AsyncCli
     data = response.json()
     assert isinstance(data, dict)
     assert "items" in data
-    
+
     # Test filtering by has_false_positives
     response = await async_client.get("/sequences?has_false_positives=false")
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, dict)
     assert "items" in data
-    
+
     # Test filtering by has_missed_smoke
     response = await async_client.get("/sequences?has_missed_smoke=false")
     assert response.status_code == 200
@@ -195,18 +195,20 @@ async def test_list_sequences_filter_by_annotation_fields(async_client: AsyncCli
 @pytest.mark.asyncio
 async def test_list_sequences_combined_filters(async_client: AsyncClient):
     """Test combining annotation inclusion with filtering"""
-    response = await async_client.get("/sequences?include_annotation=true&processing_stage=annotated&has_smoke=true")
+    response = await async_client.get(
+        "/sequences?include_annotation=true&processing_stage=annotated&has_smoke=true"
+    )
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, dict)
     assert "items" in data
-    
+
     # Verify that sequences with annotations have the expected fields
     for item in data["items"]:
         assert "annotation" in item
         if item["annotation"]:
             assert item["annotation"]["processing_stage"] == "annotated"
-            assert item["annotation"]["has_smoke"] == True
+            assert item["annotation"]["has_smoke"] is True
 
 
 @pytest.mark.asyncio

@@ -16,8 +16,8 @@ __all__ = [
 
 class SequenceWithAnnotationRead(SequenceRead):
     """Extended sequence response including complete annotation data."""
-    
+
     annotation: Optional[SequenceAnnotationRead] = Field(
         default=None,
-        description="Complete sequence annotation data including processing stage, smoke classification, false positives, and annotation details. None if no annotation exists."
+        description="Complete sequence annotation data including processing stage, smoke classification, false positives, and annotation details. None if no annotation exists.",
     )
