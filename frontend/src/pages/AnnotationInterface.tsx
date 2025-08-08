@@ -7,6 +7,7 @@ import { QUERY_KEYS, FALSE_POSITIVE_TYPES } from '@/utils/constants';
 import { SequenceAnnotation, SequenceBbox, FalsePositiveType } from '@/types/api';
 import { useGifUrls } from '@/hooks/useGifUrls';
 import SequenceReviewer from '@/components/sequence/SequenceReviewer';
+import { useSequenceStore } from '@/store/useSequenceStore';
 
 // Helper functions for annotation state management
 const hasUserAnnotations = (bbox: SequenceBbox): boolean => {
@@ -39,6 +40,7 @@ export default function AnnotationInterface() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { getNextSequenceInWorkflow, clearAnnotationWorkflow, annotationWorkflow } = useSequenceStore();
   
   const sequenceId = id ? parseInt(id) : null;
   
@@ -477,9 +479,23 @@ export default function AnnotationInterface() {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.SEQUENCE_ANNOTATIONS });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.SEQUENCES });
       
-      // Navigate back to sequence detail after a brief delay to show the toast
+      // Check for next sequence in workflow
       setTimeout(() => {
-        navigate('/sequences');
+        const nextSequence = getNextSequenceInWorkflow();
+        
+        if (nextSequence) {
+          // Navigate to next sequence in workflow
+          const currentIndex = annotationWorkflow?.currentIndex || 0;
+          const totalSequences = annotationWorkflow?.sequences?.length || 0;
+          showToastNotification(`Moving to sequence ${currentIndex + 2} of ${totalSequences}`, 'info');
+          navigate(`/sequences/${nextSequence.id}/annotate`);
+        } else {
+          // No more sequences - workflow complete
+          const totalCompleted = annotationWorkflow?.sequences?.length || 1;
+          clearAnnotationWorkflow();
+          showToastNotification(`Workflow completed! Annotated ${totalCompleted} sequences.`, 'success');
+          navigate('/sequences');
+        }
       }, 1000);
     },
   });
@@ -605,7 +621,10 @@ export default function AnnotationInterface() {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <button
-                onClick={() => navigate('/sequences')}
+                onClick={() => {
+                  clearAnnotationWorkflow(); // Clear workflow when manually navigating back
+                  navigate('/sequences');
+                }}
                 className="p-1.5 rounded-md hover:bg-gray-100 hover:bg-opacity-75"
                 title="Back to sequence"
               >
@@ -636,6 +655,16 @@ export default function AnnotationInterface() {
                     <span className="text-gray-400">•</span>
                     <span className="text-xs text-gray-500">
                       {sequence.lat.toFixed(3)}, {sequence.lon.toFixed(3)}
+                    </span>
+                  </>
+                )}
+                
+                {/* Workflow Progress Indicator */}
+                {annotationWorkflow && annotationWorkflow.isActive && (
+                  <>
+                    <span className="text-gray-400">•</span>
+                    <span className="text-xs text-blue-600 font-medium">
+                      Sequence {annotationWorkflow.currentIndex + 1} of {annotationWorkflow.sequences.length}
                     </span>
                   </>
                 )}

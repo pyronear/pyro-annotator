@@ -7,9 +7,12 @@ import { ExtendedSequenceFilters } from '@/types/api';
 import { QUERY_KEYS, PAGINATION_DEFAULTS, PROCESSING_STAGE_STATUS_OPTIONS, PROCESSING_STAGE_LABELS } from '@/utils/constants';
 import { getProcessingStageLabel, getProcessingStageColorClass } from '@/utils/processingStage';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
+import { useSequenceStore } from '@/store/useSequenceStore';
 
 export default function SequencesPage() {
   const navigate = useNavigate();
+  const { startAnnotationWorkflow } = useSequenceStore();
+  
   const [filters, setFilters] = useState<ExtendedSequenceFilters>({
     page: PAGINATION_DEFAULTS.PAGE,
     size: PAGINATION_DEFAULTS.SIZE,
@@ -31,6 +34,16 @@ export default function SequencesPage() {
 
   const handlePageChange = (page: number) => {
     setFilters(prev => ({ ...prev, page }));
+  };
+
+  const handleSequenceClick = (clickedSequence: any) => {
+    // Initialize annotation workflow if we have sequences data
+    if (sequences?.items) {
+      startAnnotationWorkflow(sequences.items, clickedSequence.id, filters);
+    }
+    
+    // Navigate to annotation interface
+    navigate(`/sequences/${clickedSequence.id}/annotate`);
   };
 
   if (isLoading) {
@@ -203,7 +216,7 @@ export default function SequencesPage() {
               <div 
                 key={sequence.id} 
                 className="p-4 hover:bg-gray-50 cursor-pointer"
-                onClick={() => navigate(`/sequences/${sequence.id}/annotate`)}
+                onClick={() => handleSequenceClick(sequence)}
               >
                 <div className="flex items-center space-x-4">
                   {/* Detection Image Thumbnail */}
