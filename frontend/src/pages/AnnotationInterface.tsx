@@ -490,8 +490,8 @@ export default function AnnotationInterface() {
       </div>
 
       {/* Sticky Progress Header - Becomes sticky when scrolled */}
-      <div className="sticky top-0 bg-white border border-gray-200 rounded-lg shadow-sm z-30">
-        <div className="px-4 py-3">
+      <div className="sticky -top-6 -mx-6 bg-white/95 backdrop-blur-sm border-b border-gray-200 shadow-sm z-30">
+        <div className="px-10 py-3">
           {/* Top Row: Context + Action Buttons + Keyboard Shortcuts */}
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
