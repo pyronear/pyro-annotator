@@ -255,7 +255,9 @@ export default function SequencePlayer({
                   onChange={() => onMissedSmokeReviewChange('yes')}
                   className="w-4 h-4 text-orange-500 focus:ring-orange-500 border-gray-300 bg-white/20 mr-2"
                 />
-                <span className="text-sm font-medium text-white">Yes</span>
+                <span className="text-sm font-medium text-white">
+                  Yes <kbd className="ml-1 px-1 py-0.5 bg-white/20 rounded text-xs font-mono">Y</kbd>
+                </span>
               </label>
               <label className="flex items-center cursor-pointer hover:bg-white/10 px-2 py-1 rounded transition-colors">
                 <input
@@ -266,7 +268,9 @@ export default function SequencePlayer({
                   onChange={() => onMissedSmokeReviewChange('no')}
                   className="w-4 h-4 text-green-500 focus:ring-green-500 border-gray-300 bg-white/20 mr-2"
                 />
-                <span className="text-sm font-medium text-white">No</span>
+                <span className="text-sm font-medium text-white">
+                  No <kbd className="ml-1 px-1 py-0.5 bg-white/20 rounded text-xs font-mono">N</kbd>
+                </span>
               </label>
               <button
                 onClick={() => setShowInstructionsModal(true)}

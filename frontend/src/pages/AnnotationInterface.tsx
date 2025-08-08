@@ -203,6 +203,21 @@ export default function AnnotationInterface() {
         return;
       }
 
+      // Missed smoke review shortcuts (Y/N)
+      if ((e.key === 'y' || e.key === 'Y') && !showKeyboardModal) {
+        console.log('Y pressed, marking as missed smoke'); // Debug log
+        handleMissedSmokeReviewChange('yes');
+        e.preventDefault();
+        return;
+      }
+
+      if ((e.key === 'n' || e.key === 'N') && !showKeyboardModal) {
+        console.log('N pressed, marking as no missed smoke'); // Debug log
+        handleMissedSmokeReviewChange('no');
+        e.preventDefault();
+        return;
+      }
+
       // Ignore if focused on input elements, no active detection, modal is open, or modifier keys are pressed
       if (e.target instanceof HTMLInputElement || 
           e.target instanceof HTMLTextAreaElement || 
@@ -995,6 +1010,14 @@ export default function AnnotationInterface() {
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-gray-700">Toggle smoke detection</span>
                       <kbd className="px-2 py-1 bg-gray-100 rounded text-sm font-mono">S</kbd>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-700">Mark as missed smoke</span>
+                      <kbd className="px-2 py-1 bg-gray-100 rounded text-sm font-mono">Y</kbd>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-700">Mark as no missed smoke</span>
+                      <kbd className="px-2 py-1 bg-gray-100 rounded text-sm font-mono">N</kbd>
                     </div>
                   </div>
                 </div>
