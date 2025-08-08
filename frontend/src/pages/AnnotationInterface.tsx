@@ -484,11 +484,15 @@ export default function AnnotationInterface() {
               </button>
               <div className="flex items-center space-x-2">
                 <span className="text-sm font-medium text-gray-900">
-                  🔥 Sequence #{annotation.sequence_id}
+                  🔥 {sequence?.organisation_name || 'Loading...'}
                 </span>
                 <span className="text-gray-400">•</span>
                 <span className="text-sm text-gray-600">
                   {sequence?.camera_name || 'Loading...'}
+                </span>
+                <span className="text-gray-400">•</span>
+                <span className="text-sm text-gray-600">
+                  Recorded: {sequence?.recorded_at ? new Date(sequence.recorded_at).toLocaleString() : 'Loading...'}
                 </span>
               </div>
             </div>
@@ -528,13 +532,6 @@ export default function AnnotationInterface() {
           {/* Bottom Row: Progress + Status + Shortcuts Hint */}
           <div className="flex items-center justify-between mt-2">
             <div className="flex items-center space-x-4">
-              <span className="text-xs text-gray-600">
-                {activeDetectionIndex !== null 
-                  ? `Detection ${activeDetectionIndex + 1} of ${bboxes.length} active`
-                  : `${bboxes.length} detection${bboxes.length !== 1 ? 's' : ''} total`
-                }
-              </span>
-              <span className="text-gray-400">•</span>
               <span className="text-xs font-medium text-gray-900">
                 {progress.completed} of {progress.total} completed ({Math.round((progress.completed / progress.total) * 100)}%)
               </span>
