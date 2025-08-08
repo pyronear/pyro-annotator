@@ -111,7 +111,8 @@ The API provides enhanced endpoints with pagination, filtering, and ordering:
 
 ### Development Server
 - `make start` - Start development environment with Docker Compose
-- `make stop` - Stop development environment
+- `make stop` - Stop development environment (preserves data volumes)
+- `make clean` - Remove containers and volumes (fresh start, deletes all data)
 - `make start-prod` - Start production environment
 - `make stop-prod` - Stop production environment
 - `make docker-build` - Build Docker image
@@ -121,6 +122,15 @@ The API provides enhanced endpoints with pagination, filtering, and ordering:
 - Database migrations handled via Alembic
 - PostgreSQL with async support (asyncpg)
 - Development uses local PostgreSQL in Docker
+
+### Docker Volume Persistence
+- **PostgreSQL**: Data persists in `postgres_data` named volume
+- **LocalStack S3**: Data persists in `localstack_data` named volume (limited persistence in Community edition with PERSISTENCE=1)
+- **Preserving data**: Use `make stop` to stop containers while keeping volumes
+- **Reset volumes**: Use `make clean` (runs `docker compose down -v`) to remove all data
+- **Backup volumes**: Use `docker volume` commands or Docker Desktop
+- **LocalStack init**: Buckets are created only if they don't exist (idempotent initialization)
+- Note: docker-compose-dev.yml used for testing runs ephemeral (no persistent volumes)
 
 ## Environment Configuration
 Key environment variables (see `src/app/core/config.py`):
