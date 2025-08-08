@@ -49,8 +49,10 @@ export default function AnnotationInterface() {
   
   // Keyboard shortcuts state
   const [activeDetectionIndex, setActiveDetectionIndex] = useState<number | null>(null);
+  const [activeSection, setActiveSection] = useState<'detections' | 'sequence'>('detections');
   const [showKeyboardModal, setShowKeyboardModal] = useState(false);
   const detectionRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const sequenceReviewerRef = useRef<HTMLDivElement | null>(null);
 
   // Toast notification state
   const [showToast, setShowToast] = useState(false);
@@ -105,8 +107,18 @@ export default function AnnotationInterface() {
       (entries) => {
         let maxRatio = 0;
         let bestIndex: number | null = null;
+        let sequenceReviewerVisible = false;
         
         entries.forEach((entry) => {
+          // Check if it's the sequence reviewer
+          if (entry.target === sequenceReviewerRef.current) {
+            if (entry.intersectionRatio > 0.5) {
+              sequenceReviewerVisible = true;
+            }
+            return;
+          }
+
+          // Check detection elements
           const index = detectionRefs.current.findIndex(ref => ref === entry.target);
           if (index !== -1 && entry.intersectionRatio > maxRatio) {
             maxRatio = entry.intersectionRatio;
@@ -114,8 +126,12 @@ export default function AnnotationInterface() {
           }
         });
         
-        // Only update if we have good visibility (>50%)
-        if (maxRatio > 0.5 && bestIndex !== null) {
+        // Priority: sequence reviewer if visible, otherwise best detection
+        if (sequenceReviewerVisible) {
+          setActiveSection('sequence');
+          setActiveDetectionIndex(null);
+        } else if (maxRatio > 0.5 && bestIndex !== null) {
+          setActiveSection('detections');
           setActiveDetectionIndex(bestIndex);
         }
       },
@@ -130,10 +146,18 @@ export default function AnnotationInterface() {
       if (ref) observer.observe(ref);
     });
 
+    // Observe sequence reviewer
+    if (sequenceReviewerRef.current) {
+      observer.observe(sequenceReviewerRef.current);
+    }
+
     return () => {
       detectionRefs.current.forEach(ref => {
         if (ref) observer.unobserve(ref);
       });
+      if (sequenceReviewerRef.current) {
+        observer.unobserve(sequenceReviewerRef.current);
+      }
     };
   }, [bboxes.length]);
 
@@ -326,6 +350,40 @@ export default function AnnotationInterface() {
 
   // Navigation helper functions
   const navigateToPreviousDetection = () => {
+    // If we're in sequence section, go back to last detection
+    if (activeSection === 'sequence') {
+      if (bboxes.length > 0) {
+        const lastIndex = bboxes.length - 1;
+        setActiveDetectionIndex(lastIndex);
+        setActiveSection('detections');
+        
+        const lastElement = detectionRefs.current[lastIndex];
+        if (lastElement) {
+          lastElement.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center'
+          });
+        }
+      }
+      return;
+    }
+
+    // If at first detection, go to sequence reviewer
+    if (activeSection === 'detections' && activeDetectionIndex === 0) {
+      setActiveSection('sequence');
+      setActiveDetectionIndex(null);
+      
+      // Scroll sequence reviewer into view
+      if (sequenceReviewerRef.current) {
+        sequenceReviewerRef.current.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center'
+        });
+      }
+      return;
+    }
+
+    // Regular detection navigation
     if (activeDetectionIndex === null || activeDetectionIndex <= 0) {
       console.log('Already at first detection or no active detection');
       return;
@@ -345,6 +403,29 @@ export default function AnnotationInterface() {
   };
 
   const navigateToNextDetection = () => {
+    // If in sequence section with detections, go to first detection
+    if (activeSection === 'sequence' && bboxes.length > 0) {
+      setActiveSection('detections');
+      setActiveDetectionIndex(0);
+      
+      // Scroll first detection into view
+      const firstElement = detectionRefs.current[0];
+      if (firstElement) {
+        firstElement.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center'
+        });
+      }
+      return;
+    }
+
+    // If in sequence section and no detections, stay in sequence
+    if (activeSection === 'sequence' && bboxes.length === 0) {
+      console.log('Already at sequence section with no detections');
+      return;
+    }
+
+    // Regular detection navigation
     if (activeDetectionIndex === null || activeDetectionIndex >= bboxes.length - 1) {
       console.log('Already at last detection or no active detection');
       return;
@@ -643,11 +724,16 @@ export default function AnnotationInterface() {
       )}
 
       {/* Sequence Review for Missed Smoke */}
-      <SequenceReviewer
-        sequenceId={annotation.sequence_id}
-        missedSmokeReview={missedSmokeReview}
-        onMissedSmokeReviewChange={handleMissedSmokeReviewChange}
-      />
+      <div 
+        ref={sequenceReviewerRef}
+        className={`${activeSection === 'sequence' ? 'ring-2 ring-blue-500 ring-offset-2 rounded-lg' : ''}`}
+      >
+        <SequenceReviewer
+          sequenceId={annotation.sequence_id}
+          missedSmokeReview={missedSmokeReview}
+          onMissedSmokeReviewChange={handleMissedSmokeReviewChange}
+        />
+      </div>
 
       {/* GIF Loading State */}
       {loadingGifs && (
