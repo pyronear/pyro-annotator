@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Save, RotateCcw, CheckCircle, AlertCircle, Eye, Keyboard, X, Upload, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, RotateCcw, CheckCircle, AlertCircle, Eye, Keyboard, X, Upload, ChevronLeft, ChevronRight } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { QUERY_KEYS, FALSE_POSITIVE_TYPES } from '@/utils/constants';
 import { SequenceAnnotation, SequenceBbox, FalsePositiveType } from '@/types/api';
@@ -127,63 +127,74 @@ export default function AnnotationInterface() {
     }
   }, [annotation]);
 
+  // Clean up detection refs when bboxes change
+  useEffect(() => {
+    // Reset refs array to match current bboxes length
+    detectionRefs.current = detectionRefs.current.slice(0, bboxes.length);
+  }, [bboxes.length]);
+
   // Intersection Observer for viewport-based active detection
   useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        let maxRatio = 0;
-        let bestIndex: number | null = null;
-        let sequenceReviewerVisible = false;
-        
-        entries.forEach((entry) => {
-          // Check if it's the sequence reviewer
-          if (entry.target === sequenceReviewerRef.current) {
-            if (entry.intersectionRatio > 0.5) {
-              sequenceReviewerVisible = true;
+    // Small delay to ensure refs are set up after render
+    const timeoutId = setTimeout(() => {
+      const observer = new IntersectionObserver(
+        (entries) => {
+          let maxRatio = 0;
+          let bestIndex: number | null = null;
+          let sequenceReviewerVisible = false;
+          
+          entries.forEach((entry) => {
+            // Check if it's the sequence reviewer
+            if (entry.target === sequenceReviewerRef.current) {
+              if (entry.intersectionRatio > 0.5) {
+                sequenceReviewerVisible = true;
+              }
+              return;
             }
-            return;
-          }
 
-          // Check detection elements
-          const index = detectionRefs.current.findIndex(ref => ref === entry.target);
-          if (index !== -1 && entry.intersectionRatio > maxRatio) {
-            maxRatio = entry.intersectionRatio;
-            bestIndex = index;
+            // Check detection elements
+            const index = detectionRefs.current.findIndex(ref => ref === entry.target);
+            if (index !== -1 && entry.intersectionRatio > maxRatio) {
+              maxRatio = entry.intersectionRatio;
+              bestIndex = index;
+            }
+          });
+          
+          // Priority: sequence reviewer if visible, otherwise best detection
+          if (sequenceReviewerVisible) {
+            setActiveSection('sequence');
+            setActiveDetectionIndex(null);
+          } else if (maxRatio > 0.5 && bestIndex !== null) {
+            setActiveSection('detections');
+            setActiveDetectionIndex(bestIndex);
           }
-        });
-        
-        // Priority: sequence reviewer if visible, otherwise best detection
-        if (sequenceReviewerVisible) {
-          setActiveSection('sequence');
-          setActiveDetectionIndex(null);
-        } else if (maxRatio > 0.5 && bestIndex !== null) {
-          setActiveSection('detections');
-          setActiveDetectionIndex(bestIndex);
+        },
+        {
+          threshold: [0.1, 0.3, 0.5, 0.7, 0.9],
+          rootMargin: '-20px'
         }
-      },
-      {
-        threshold: [0.1, 0.3, 0.5, 0.7, 0.9],
-        rootMargin: '-20px'
+      );
+
+      // Observe all detection cards
+      detectionRefs.current.forEach((ref, idx) => {
+        // Only observe refs that correspond to current bboxes
+        if (ref && idx < bboxes.length) {
+          observer.observe(ref);
+        }
+      });
+
+      // Observe sequence reviewer
+      if (sequenceReviewerRef.current) {
+        observer.observe(sequenceReviewerRef.current);
       }
-    );
 
-    // Observe all detection cards
-    detectionRefs.current.forEach(ref => {
-      if (ref) observer.observe(ref);
-    });
-
-    // Observe sequence reviewer
-    if (sequenceReviewerRef.current) {
-      observer.observe(sequenceReviewerRef.current);
-    }
+      return () => {
+        observer.disconnect();
+      };
+    }, 100); // Small delay to ensure DOM is ready
 
     return () => {
-      detectionRefs.current.forEach(ref => {
-        if (ref) observer.unobserve(ref);
-      });
-      if (sequenceReviewerRef.current) {
-        observer.unobserve(sequenceReviewerRef.current);
-      }
+      clearTimeout(timeoutId);
     };
   }, [bboxes.length]);
 
@@ -358,13 +369,16 @@ export default function AnnotationInterface() {
         setActiveDetectionIndex(lastIndex);
         setActiveSection('detections');
         
-        const lastElement = detectionRefs.current[lastIndex];
-        if (lastElement) {
-          lastElement.scrollIntoView({
-            behavior: 'smooth',
-            block: 'center'
-          });
-        }
+        // Use requestAnimationFrame to ensure DOM is updated before scrolling
+        requestAnimationFrame(() => {
+          const lastElement = detectionRefs.current[lastIndex];
+          if (lastElement) {
+            lastElement.scrollIntoView({
+              behavior: 'smooth',
+              block: 'center'
+            });
+          }
+        });
       }
       return;
     }
@@ -374,13 +388,15 @@ export default function AnnotationInterface() {
       setActiveSection('sequence');
       setActiveDetectionIndex(null);
       
-      // Scroll sequence reviewer into view
-      if (sequenceReviewerRef.current) {
-        sequenceReviewerRef.current.scrollIntoView({
-          behavior: 'smooth',
-          block: 'center'
-        });
-      }
+      // Use requestAnimationFrame to ensure DOM is updated before scrolling
+      requestAnimationFrame(() => {
+        if (sequenceReviewerRef.current) {
+          sequenceReviewerRef.current.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center'
+          });
+        }
+      });
       return;
     }
 
@@ -392,14 +408,16 @@ export default function AnnotationInterface() {
     const previousIndex = activeDetectionIndex - 1;
     setActiveDetectionIndex(previousIndex);
     
-    // Scroll the previous detection into view
-    const previousElement = detectionRefs.current[previousIndex];
-    if (previousElement) {
-      previousElement.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center'
-      });
-    }
+    // Use requestAnimationFrame to ensure DOM is updated before scrolling
+    requestAnimationFrame(() => {
+      const previousElement = detectionRefs.current[previousIndex];
+      if (previousElement) {
+        previousElement.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center'
+        });
+      }
+    });
   };
 
   const navigateToNextDetection = () => {
@@ -408,14 +426,16 @@ export default function AnnotationInterface() {
       setActiveSection('detections');
       setActiveDetectionIndex(0);
       
-      // Scroll first detection into view
-      const firstElement = detectionRefs.current[0];
-      if (firstElement) {
-        firstElement.scrollIntoView({
-          behavior: 'smooth',
-          block: 'center'
-        });
-      }
+      // Use requestAnimationFrame to ensure DOM is updated before scrolling
+      requestAnimationFrame(() => {
+        const firstElement = detectionRefs.current[0];
+        if (firstElement) {
+          firstElement.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center'
+          });
+        }
+      });
       return;
     }
 
@@ -432,14 +452,16 @@ export default function AnnotationInterface() {
     const nextIndex = activeDetectionIndex + 1;
     setActiveDetectionIndex(nextIndex);
     
-    // Scroll the next detection into view
-    const nextElement = detectionRefs.current[nextIndex];
-    if (nextElement) {
-      nextElement.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center'
-      });
-    }
+    // Use requestAnimationFrame to ensure DOM is updated before scrolling
+    requestAnimationFrame(() => {
+      const nextElement = detectionRefs.current[nextIndex];
+      if (nextElement) {
+        nextElement.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center'
+        });
+      }
+    });
   };
 
   // Save annotation mutation
@@ -966,7 +988,7 @@ export default function AnnotationInterface() {
                     False Positive Types (Select all that apply)
                   </label>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 mb-4">
-                    {FALSE_POSITIVE_TYPES.map((fpType, fpIndex) => {
+                    {FALSE_POSITIVE_TYPES.map((fpType) => {
                       const isSelected = bbox.false_positive_types.includes(fpType);
                       const formatLabel = (type: string) => 
                         type.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
