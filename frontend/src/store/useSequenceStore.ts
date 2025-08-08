@@ -38,6 +38,12 @@ interface SequenceStore {
   getNextSequenceInWorkflow: () => SequenceWithAnnotation | null;
   clearAnnotationWorkflow: () => void;
   
+  // Manual Navigation
+  navigateToPreviousInWorkflow: () => SequenceWithAnnotation | null;
+  navigateToNextInWorkflow: () => SequenceWithAnnotation | null;
+  canNavigatePrevious: () => boolean;
+  canNavigateNext: () => boolean;
+  
   // Computed
   getFilteredSequences: () => Sequence[];
   getAnnotatedCount: () => number;
@@ -148,6 +154,63 @@ export const useSequenceStore = create<SequenceStore>()(
 
       clearAnnotationWorkflow: () =>
         set({ annotationWorkflow: null }, false, 'clearAnnotationWorkflow'),
+
+      // Manual Navigation Functions
+      navigateToPreviousInWorkflow: () => {
+        const { annotationWorkflow } = get();
+        if (!annotationWorkflow || !annotationWorkflow.isActive) {
+          return null;
+        }
+        
+        const previousIndex = annotationWorkflow.currentIndex - 1;
+        if (previousIndex >= 0) {
+          // Update current index to previous sequence
+          set({
+            annotationWorkflow: {
+              ...annotationWorkflow,
+              currentIndex: previousIndex,
+            }
+          }, false, 'navigateToPreviousInWorkflow');
+          
+          return annotationWorkflow.sequences[previousIndex];
+        }
+        
+        // Already at first sequence
+        return null;
+      },
+
+      navigateToNextInWorkflow: () => {
+        const { annotationWorkflow } = get();
+        if (!annotationWorkflow || !annotationWorkflow.isActive) {
+          return null;
+        }
+        
+        const nextIndex = annotationWorkflow.currentIndex + 1;
+        if (nextIndex < annotationWorkflow.sequences.length) {
+          // Update current index to next sequence
+          set({
+            annotationWorkflow: {
+              ...annotationWorkflow,
+              currentIndex: nextIndex,
+            }
+          }, false, 'navigateToNextInWorkflow');
+          
+          return annotationWorkflow.sequences[nextIndex];
+        }
+        
+        // Already at last sequence
+        return null;
+      },
+
+      canNavigatePrevious: () => {
+        const { annotationWorkflow } = get();
+        return !!(annotationWorkflow?.isActive && annotationWorkflow.currentIndex > 0);
+      },
+
+      canNavigateNext: () => {
+        const { annotationWorkflow } = get();
+        return !!(annotationWorkflow?.isActive && annotationWorkflow.currentIndex < annotationWorkflow.sequences.length - 1);
+      },
 
       // Computed values
       getFilteredSequences: () => {

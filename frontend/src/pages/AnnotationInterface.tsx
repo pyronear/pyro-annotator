@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Save, RotateCcw, CheckCircle, AlertCircle, Eye, Keyboard, X, Upload } from 'lucide-react';
+import { ArrowLeft, Save, RotateCcw, CheckCircle, AlertCircle, Eye, Keyboard, X, Upload, ChevronLeft, ChevronRight } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { QUERY_KEYS, FALSE_POSITIVE_TYPES } from '@/utils/constants';
 import { SequenceAnnotation, SequenceBbox, FalsePositiveType } from '@/types/api';
@@ -40,7 +40,15 @@ export default function AnnotationInterface() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { getNextSequenceInWorkflow, clearAnnotationWorkflow, annotationWorkflow } = useSequenceStore();
+  const { 
+    getNextSequenceInWorkflow, 
+    clearAnnotationWorkflow, 
+    annotationWorkflow,
+    navigateToPreviousInWorkflow,
+    navigateToNextInWorkflow,
+    canNavigatePrevious,
+    canNavigateNext
+  } = useSequenceStore();
   
   const sequenceId = id ? parseInt(id) : null;
   
@@ -570,6 +578,21 @@ export default function AnnotationInterface() {
     }
   };
 
+  // Manual Navigation Handlers
+  const handlePreviousSequence = () => {
+    const prevSequence = navigateToPreviousInWorkflow();
+    if (prevSequence) {
+      navigate(`/sequences/${prevSequence.id}/annotate`);
+    }
+  };
+
+  const handleNextSequence = () => {
+    const nextSequence = navigateToNextInWorkflow();
+    if (nextSequence) {
+      navigate(`/sequences/${nextSequence.id}/annotate`);
+    }
+  };
+
   const isAnnotationComplete = () => {
     const bboxesComplete = bboxes.every(bbox => 
       bbox.is_smoke || bbox.false_positive_types.length > 0
@@ -672,6 +695,27 @@ export default function AnnotationInterface() {
             </div>
             
             <div className="flex items-center space-x-2">
+              {/* Workflow Navigation Buttons */}
+              {annotationWorkflow && annotationWorkflow.isActive && (
+                <>
+                  <button
+                    onClick={handlePreviousSequence}
+                    disabled={!canNavigatePrevious()}
+                    className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                    title={canNavigatePrevious() ? "Previous sequence" : "Already at first sequence"}
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={handleNextSequence}
+                    disabled={!canNavigateNext()}
+                    className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                    title={canNavigateNext() ? "Next sequence" : "Already at last sequence"}
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </>
+              )}
               <button
                 onClick={handleReset}
                 className="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50"
