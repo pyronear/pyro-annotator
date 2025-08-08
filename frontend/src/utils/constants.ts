@@ -1,38 +1,3 @@
-// Annotation Labels - based on API SmokeType and FalsePositiveType enums
-export const SMOKE_LABELS = [
-  'wildfire',
-  'industrial', 
-  'other',
-] as const;
-
-export const FALSE_POSITIVE_LABELS = [
-  'antenna',
-  'building',
-  'cliff',
-  'dark',
-  'dust',
-  'high_cloud',
-  'low_cloud',
-  'lens_flare',
-  'lens_droplet',
-  'light',
-  'rain',
-  'trail',
-  'road',
-  'sky',
-  'tree',
-  'water_body',
-  'other',
-] as const;
-
-export type SmokeLabel = typeof SMOKE_LABELS[number];
-export type FalsePositiveLabel = typeof FALSE_POSITIVE_LABELS[number];
-
-// Combined annotation options for UI
-export const ANNOTATION_OPTIONS = {
-  SMOKE: SMOKE_LABELS,
-  FALSE_POSITIVE: FALSE_POSITIVE_LABELS,
-} as const;
 
 // API Endpoints
 export const API_ENDPOINTS = {
@@ -78,12 +43,6 @@ export const PROCESSING_STAGE_LABELS = {
   'annotated': 'Annotated',
 } as const;
 
-// Smoke types
-export const SMOKE_TYPES = [
-  'wildfire',
-  'industrial',
-  'other',
-] as const;
 
 // False positive types (matching backend enum)
 export const FALSE_POSITIVE_TYPES = [

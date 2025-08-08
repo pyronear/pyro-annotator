@@ -190,20 +190,9 @@ export default function AnnotationInterface() {
   // Keyboard shortcuts handler
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Debug: Log all key events for troubleshooting
-      console.log('Key pressed:', {
-        key: e.key,
-        code: e.code,
-        shiftKey: e.shiftKey,
-        target: e.target,
-        activeDetectionIndex,
-        showKeyboardModal
-      });
-
       // Handle help modal first (works regardless of focus)
       // Note: '?' key requires Shift to be pressed, so we shouldn't check for !e.shiftKey
       if (e.key === '?') {
-        console.log('? key pressed, toggling keyboard modal'); // Debug log
         setShowKeyboardModal(!showKeyboardModal);
         e.preventDefault();
         return;
@@ -211,7 +200,6 @@ export default function AnnotationInterface() {
       
       // Handle Escape to close modal
       if (e.key === 'Escape' && showKeyboardModal) {
-        console.log('Escape pressed, closing modal'); // Debug log
         setShowKeyboardModal(false);
         e.preventDefault();
         return;
@@ -220,7 +208,6 @@ export default function AnnotationInterface() {
       // Handle global shortcuts (work regardless of active detection)
       // Reset annotation (Ctrl + Z)
       if (e.key === 'z' && e.ctrlKey) {
-        console.log('Ctrl+Z pressed, resetting annotation'); // Debug log
         handleReset();
         e.preventDefault();
         return;
@@ -228,7 +215,6 @@ export default function AnnotationInterface() {
 
       // Complete annotation (Enter)
       if (e.key === 'Enter' && !showKeyboardModal) {
-        console.log('Enter pressed, attempting to complete annotation'); // Debug log
         if (isAnnotationComplete()) {
           handleSave();
         } else {
@@ -240,14 +226,12 @@ export default function AnnotationInterface() {
 
       // Navigation shortcuts (Arrow Up/Down)
       if (e.key === 'ArrowUp' && !showKeyboardModal) {
-        console.log('Arrow Up pressed, navigating to previous detection'); // Debug log
         navigateToPreviousDetection();
         e.preventDefault();
         return;
       }
 
       if (e.key === 'ArrowDown' && !showKeyboardModal) {
-        console.log('Arrow Down pressed, navigating to next detection'); // Debug log
         navigateToNextDetection();
         e.preventDefault();
         return;
@@ -255,14 +239,12 @@ export default function AnnotationInterface() {
 
       // Missed smoke review shortcuts (Y/N)
       if ((e.key === 'y' || e.key === 'Y') && !showKeyboardModal) {
-        console.log('Y pressed, marking as missed smoke'); // Debug log
         handleMissedSmokeReviewChange('yes');
         e.preventDefault();
         return;
       }
 
       if ((e.key === 'n' || e.key === 'N') && !showKeyboardModal) {
-        console.log('N pressed, marking as no missed smoke'); // Debug log
         handleMissedSmokeReviewChange('no');
         e.preventDefault();
         return;
@@ -274,13 +256,6 @@ export default function AnnotationInterface() {
           activeDetectionIndex === null ||
           showKeyboardModal ||
           e.ctrlKey || e.metaKey || e.altKey) {
-        console.log('Ignoring key event due to:', {
-          isInput: e.target instanceof HTMLInputElement,
-          isTextarea: e.target instanceof HTMLTextAreaElement,
-          noActiveDetection: activeDetectionIndex === null,
-          modalOpen: showKeyboardModal,
-          hasModifier: e.ctrlKey || e.metaKey || e.altKey
-        });
         return;
       }
 
@@ -411,7 +386,6 @@ export default function AnnotationInterface() {
 
     // Regular detection navigation
     if (activeDetectionIndex === null || activeDetectionIndex <= 0) {
-      console.log('Already at first detection or no active detection');
       return;
     }
     
@@ -447,13 +421,11 @@ export default function AnnotationInterface() {
 
     // If in sequence section and no detections, stay in sequence
     if (activeSection === 'sequence' && bboxes.length === 0) {
-      console.log('Already at sequence section with no detections');
       return;
     }
 
     // Regular detection navigation
     if (activeDetectionIndex === null || activeDetectionIndex >= bboxes.length - 1) {
-      console.log('Already at last detection or no active detection');
       return;
     }
     
