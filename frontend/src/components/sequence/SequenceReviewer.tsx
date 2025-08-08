@@ -4,7 +4,6 @@ import { Detection } from '@/types/api';
 import { useSequenceDetections } from '@/hooks/useSequenceDetections';
 import SequencePlayer from './SequencePlayer';
 import PlayerControls from './PlayerControls';
-import MissedSmokePanel from './MissedSmokePanel';
 
 interface SequenceReviewerProps {
   sequenceId: number;
@@ -157,6 +156,8 @@ export default function SequenceReviewer({
         currentIndex={currentIndex}
         onIndexChange={setCurrentIndex}
         onPreloadComplete={() => setImagesPreloaded(true)}
+        missedSmokeReview={missedSmokeReview}
+        onMissedSmokeReviewChange={onMissedSmokeReviewChange}
       />
 
       {/* Controls */}
@@ -170,12 +171,6 @@ export default function SequenceReviewer({
         onSeek={handleSeek}
         onSpeedChange={handleSpeedChange}
         onReset={handleReset}
-      />
-
-      {/* Missed Smoke Review Panel */}
-      <MissedSmokePanel
-        missedSmokeReview={missedSmokeReview}
-        onMissedSmokeReviewChange={onMissedSmokeReviewChange}
       />
     </div>
   );

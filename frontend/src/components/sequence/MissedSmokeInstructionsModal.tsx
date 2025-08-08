@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { X, Info } from 'lucide-react';
 
 interface MissedSmokeInstructionsModalProps {
@@ -9,6 +10,22 @@ export default function MissedSmokeInstructionsModal({
   isOpen,
   onClose
 }: MissedSmokeInstructionsModalProps) {
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('keydown', handleEscape);
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   return (

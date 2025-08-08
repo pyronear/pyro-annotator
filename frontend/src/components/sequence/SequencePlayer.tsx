@@ -1,13 +1,16 @@
 import { useState, useEffect, useRef } from 'react';
-import { AlertCircle, Eye, Loader2 } from 'lucide-react';
+import { AlertCircle, Eye, Loader2, Info } from 'lucide-react';
 import { Detection, AlgoPrediction } from '@/types/api';
 import { useImagePreloader } from '@/hooks/useImagePreloader';
+import MissedSmokeInstructionsModal from './MissedSmokeInstructionsModal';
 
 interface SequencePlayerProps {
   detections: Detection[];
   currentIndex: number;
   onIndexChange: (index: number) => void;
   onPreloadComplete?: () => void;
+  missedSmokeReview: 'yes' | 'no' | null;
+  onMissedSmokeReviewChange: (review: 'yes' | 'no') => void;
   className?: string;
 }
 
@@ -16,6 +19,8 @@ export default function SequencePlayer({
   currentIndex, 
   onIndexChange,
   onPreloadComplete,
+  missedSmokeReview,
+  onMissedSmokeReviewChange,
   className = '' 
 }: SequencePlayerProps) {
   const [imageInfo, setImageInfo] = useState<{
@@ -24,6 +29,7 @@ export default function SequencePlayer({
     offsetX: number;
     offsetY: number;
   } | null>(null);
+  const [showInstructionsModal, setShowInstructionsModal] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   
@@ -224,10 +230,11 @@ export default function SequencePlayer({
           </>
         )}
         
-        {/* Detection Info Overlay */}
+        {/* Detection Info & Missed Smoke Review Overlay */}
         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4 z-25">
-          <div className="flex items-center justify-between text-white">
-            <div>
+          <div className="flex items-end justify-between text-white">
+            {/* Left - Detection Info */}
+            <div className="flex-1">
               <p className="text-sm font-medium">
                 Detection {currentIndex + 1} of {detections.length}
               </p>
@@ -235,7 +242,43 @@ export default function SequencePlayer({
                 {new Date(currentDetection.recorded_at).toLocaleString()}
               </p>
             </div>
-            <div className="flex items-center space-x-2">
+            
+            {/* Center - Missed Smoke Review */}
+            <div className="flex items-center space-x-4 bg-black/40 px-4 py-2 rounded-lg border border-white/20">
+              <span className="text-sm font-medium text-white">Missed smoke?</span>
+              <label className="flex items-center cursor-pointer hover:bg-white/10 px-2 py-1 rounded transition-colors">
+                <input
+                  type="radio"
+                  name="missedSmokeOverlay"
+                  value="yes"
+                  checked={missedSmokeReview === 'yes'}
+                  onChange={() => onMissedSmokeReviewChange('yes')}
+                  className="w-4 h-4 text-orange-500 focus:ring-orange-500 border-gray-300 bg-white/20 mr-2"
+                />
+                <span className="text-sm font-medium text-white">Yes</span>
+              </label>
+              <label className="flex items-center cursor-pointer hover:bg-white/10 px-2 py-1 rounded transition-colors">
+                <input
+                  type="radio"
+                  name="missedSmokeOverlay"
+                  value="no"
+                  checked={missedSmokeReview === 'no'}
+                  onChange={() => onMissedSmokeReviewChange('no')}
+                  className="w-4 h-4 text-green-500 focus:ring-green-500 border-gray-300 bg-white/20 mr-2"
+                />
+                <span className="text-sm font-medium text-white">No</span>
+              </label>
+              <button
+                onClick={() => setShowInstructionsModal(true)}
+                className="p-1.5 hover:bg-white/20 rounded transition-colors"
+                title="Show review instructions"
+              >
+                <Info className="w-4 h-4 text-white" />
+              </button>
+            </div>
+            
+            {/* Right - Predictions */}
+            <div className="flex-1 flex items-center justify-end space-x-2">
               <Eye className="w-4 h-4" />
               <span className="text-xs">
                 {currentDetection.algo_predictions?.predictions?.length || 0} prediction{currentDetection.algo_predictions?.predictions?.length !== 1 ? 's' : ''}
@@ -244,6 +287,12 @@ export default function SequencePlayer({
           </div>
         </div>
       </div>
+      
+      {/* Instructions Modal */}
+      <MissedSmokeInstructionsModal
+        isOpen={showInstructionsModal}
+        onClose={() => setShowInstructionsModal(false)}
+      />
     </div>
   );
 }
