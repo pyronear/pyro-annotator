@@ -13,6 +13,7 @@ export default function SequencesPage() {
   const [filters, setFilters] = useState<ExtendedSequenceFilters>({
     page: PAGINATION_DEFAULTS.PAGE,
     size: PAGINATION_DEFAULTS.SIZE,
+    processing_stage: 'ready_to_annotate',
   });
 
   const [searchTerm, setSearchTerm] = useState('');

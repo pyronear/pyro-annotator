@@ -335,6 +335,7 @@ export default function SequencePlayer({
             )}
           </>
         )}
+
         
         {/* Detection Info & Controls Overlay */}
         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4 z-25">
