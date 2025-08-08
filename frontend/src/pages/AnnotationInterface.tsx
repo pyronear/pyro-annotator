@@ -469,32 +469,19 @@ export default function AnnotationInterface() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
-          <button
-            onClick={() => navigate(`/sequences/${annotation.sequence_id}`)}
-            className="p-2 rounded-md hover:bg-gray-100"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">
-              Annotate Sequence Bboxes
-            </h1>
-            <p className="text-gray-600">
-              {sequence?.camera_name || 'Loading...'} - Annotation #{annotation.id}
-            </p>
-          </div>
-        </div>
-      </div>
-
       {/* Sticky Progress Header - Becomes sticky when scrolled */}
       <div className="sticky -top-6 -mx-6 bg-white/85 backdrop-blur-sm border-b border-gray-200 shadow-sm z-30">
         <div className="px-10 py-3">
           {/* Top Row: Context + Action Buttons + Keyboard Shortcuts */}
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
+              <button
+                onClick={() => navigate(`/sequences/${annotation.sequence_id}`)}
+                className="p-1.5 rounded-md hover:bg-gray-100 hover:bg-opacity-75"
+                title="Back to sequence"
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </button>
               <div className="flex items-center space-x-2">
                 <span className="text-sm font-medium text-gray-900">
                   🔥 Sequence #{annotation.sequence_id}
