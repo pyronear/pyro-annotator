@@ -33,6 +33,10 @@ export default function SequencePlayer({
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   
+  // Loop detection for smooth transitions
+  const isLoopingBack = useRef(false);
+  const prevIndex = useRef(currentIndex);
+  
   // Use the image preloader hook
   const { 
     currentImage, 
@@ -54,6 +58,17 @@ export default function SequencePlayer({
       onPreloadComplete();
     }
   }, [isInitialLoading, onPreloadComplete]);
+  
+  // Detect loop-back transitions for smooth handling
+  useEffect(() => {
+    // Detect loop-back: jumping from near-end to beginning
+    if (prevIndex.current >= detections.length - 2 && currentIndex === 0) {
+      isLoopingBack.current = true;
+    } else {
+      isLoopingBack.current = false;
+    }
+    prevIndex.current = currentIndex;
+  }, [currentIndex, detections.length]);
   
   // Update image when index changes
   useEffect(() => {
@@ -213,8 +228,8 @@ export default function SequencePlayer({
               alt={`Detection ${currentIndex + 1} of ${detections.length}`}
               className="max-w-full max-h-full object-contain"
               style={{
-                opacity: showLoadingState ? 0 : 1,
-                transition: 'opacity 200ms ease-in-out',
+                opacity: showLoadingState && !isLoopingBack.current ? 0 : 1,
+                transition: isLoopingBack.current ? 'none' : 'opacity 200ms ease-in-out',
                 transform: 'translateZ(0)', // Force GPU layer
               }}
               onLoad={handleImageLoad}

@@ -32,10 +32,20 @@ export function useImagePreloader(
   const imageRefs = useRef<Record<number, HTMLImageElement>>({});
   const loadingQueue = useRef<Set<number>>(new Set());
   
-  // Calculate which images should be preloaded
+  // Calculate which images should be preloaded (with loop-aware logic)
   const getPreloadRange = () => {
-    const start = Math.max(0, currentIndex - preloadBehind);
-    const end = Math.min(detections.length - 1, currentIndex + preloadAhead);
+    let start = Math.max(0, currentIndex - preloadBehind);
+    let end = Math.min(detections.length - 1, currentIndex + preloadAhead);
+    
+    // Loop-aware: if we're near the end, also include beginning images
+    const nearEnd = currentIndex >= detections.length - 3; // Last 3 images
+    if (nearEnd && detections.length > 3) {
+      // Force include first few images when approaching end
+      start = Math.min(start, 0);
+      // Ensure we preload beginning images for smooth loop
+      end = Math.max(end, Math.min(2, detections.length - 1));
+    }
+    
     return { start, end };
   };
   
@@ -94,12 +104,25 @@ export function useImagePreloader(
     const { start, end } = getPreloadRange();
     const preloadPromises: Promise<void>[] = [];
     
-    // Priority order: current image first, then ahead, then behind
+    // Priority order: current image first, then loop-critical images, then ahead, then behind
     const indicesToPreload: number[] = [];
     
     // Current image has highest priority
     if (detections[currentIndex]) {
       indicesToPreload.push(currentIndex);
+    }
+    
+    // Check if we're near the end for loop-aware optimizations
+    const nearEnd = currentIndex >= detections.length - 3;
+    
+    // High priority for loop-critical images when near end
+    if (nearEnd && detections.length > 3) {
+      // Prioritize first few images for smooth loop-back
+      for (let i = 0; i < Math.min(3, detections.length); i++) {
+        if (i !== currentIndex) {
+          indicesToPreload.push(i);
+        }
+      }
     }
     
     // Then preload ahead (for smooth forward playback)
@@ -128,11 +151,19 @@ export function useImagePreloader(
       setIsInitialLoading(false);
     }
     
-    // Clean up images outside the window to free memory
+    // Clean up images outside the window to free memory (with loop protection)
     const allDetectionIds = new Set(detections.map(d => d.id));
     const windowDetectionIds = new Set(
       detections.slice(start, end + 1).map(d => d.id)
     );
+    
+    // Protect loop-critical images when near the end
+    if (nearEnd && detections.length > 3) {
+      // Add first few images to protected set
+      for (let i = 0; i < Math.min(3, detections.length); i++) {
+        windowDetectionIds.add(detections[i].id);
+      }
+    }
     
     Object.keys(imageRefs.current).forEach(idStr => {
       const id = parseInt(idStr);
