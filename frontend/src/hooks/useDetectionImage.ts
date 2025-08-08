@@ -12,15 +12,3 @@ export function useDetectionImage(detectionId: number | null) {
   });
 }
 
-export function useSequenceDetections(sequenceId: number) {
-  return useQuery({
-    queryKey: [...QUERY_KEYS.DETECTIONS, { sequence_id: sequenceId }],
-    queryFn: () => apiClient.getDetections({ 
-      sequence_id: sequenceId, 
-      size: 1,
-      order_by: 'recorded_at',
-      order_direction: 'asc'
-    }),
-    enabled: !!sequenceId,
-  });
-}

@@ -1,4 +1,5 @@
-import { useSequenceDetections, useDetectionImage } from '@/hooks/useDetectionImage';
+import { useSequenceDetections } from '@/hooks/useSequenceDetections';
+import { useDetectionImage } from '@/hooks/useDetectionImage';
 
 interface DetectionImageThumbnailProps {
   sequenceId: number;
@@ -6,8 +7,8 @@ interface DetectionImageThumbnailProps {
 }
 
 export default function DetectionImageThumbnail({ sequenceId, className = '' }: DetectionImageThumbnailProps) {
-  const { data: detectionsResponse, isLoading: loadingDetections } = useSequenceDetections(sequenceId);
-  const firstDetection = detectionsResponse?.items[0];
+  const { data: detections, isLoading: loadingDetections } = useSequenceDetections(sequenceId);
+  const firstDetection = detections?.[0];
   
   const { data: imageData, isLoading: loadingImage } = useDetectionImage(
     firstDetection?.id || null

@@ -40,7 +40,7 @@ export default function AnnotationInterface() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   
-  const annotationId = id ? parseInt(id) : null;
+  const sequenceId = id ? parseInt(id) : null;
   
   const [bboxes, setBboxes] = useState<SequenceBbox[]>([]);
   const [, setCurrentAnnotation] = useState<SequenceAnnotation | null>(null);
@@ -59,22 +59,27 @@ export default function AnnotationInterface() {
   const [toastMessage, setToastMessage] = useState('');
   const [toastType, setToastType] = useState<'success' | 'error' | 'info'>('success');
 
-  // Fetch sequence annotation
-  const { data: annotation, isLoading, error } = useQuery({
-    queryKey: QUERY_KEYS.SEQUENCE_ANNOTATION(annotationId!),
-    queryFn: () => apiClient.getSequenceAnnotation(annotationId!),
-    enabled: !!annotationId,
+  // Fetch sequence annotation by sequence ID
+  const { data: annotationResponse, isLoading, error } = useQuery({
+    queryKey: [...QUERY_KEYS.SEQUENCE_ANNOTATIONS, 'by-sequence', sequenceId],
+    queryFn: async () => {
+      const response = await apiClient.getSequenceAnnotations({ sequence_id: sequenceId!, size: 1 });
+      return response.items[0] || null; // Return first annotation or null
+    },
+    enabled: !!sequenceId,
   });
+  
+  const annotation = annotationResponse;
 
   // Fetch sequence data for header info
   const { data: sequence } = useQuery({
-    queryKey: QUERY_KEYS.SEQUENCE(annotation?.sequence_id!),
-    queryFn: () => apiClient.getSequence(annotation?.sequence_id!),
-    enabled: !!annotation?.sequence_id,
+    queryKey: QUERY_KEYS.SEQUENCE(sequenceId!),
+    queryFn: () => apiClient.getSequence(sequenceId!),
+    enabled: !!sequenceId,
   });
 
   // Fetch GIF URLs
-  const { data: gifUrls, isLoading: loadingGifs } = useGifUrls(annotationId);
+  const { data: gifUrls, isLoading: loadingGifs } = useGifUrls(annotation?.id || null);
 
   // Initialize bboxes and missed smoke when annotation loads - respecting processing stage
   useEffect(() => {
@@ -462,7 +467,7 @@ export default function AnnotationInterface() {
         has_missed_smoke: hasMissedSmoke,
       };
 
-      return apiClient.updateSequenceAnnotation(annotationId!, updatedAnnotation);
+      return apiClient.updateSequenceAnnotation(annotation!.id, updatedAnnotation);
     },
     onSuccess: () => {
       // Show success toast notification
@@ -729,7 +734,7 @@ export default function AnnotationInterface() {
         className={`${activeSection === 'sequence' ? 'ring-2 ring-blue-500 ring-offset-2 rounded-lg' : ''}`}
       >
         <SequenceReviewer
-          sequenceId={annotation.sequence_id}
+          sequenceId={sequenceId!}
           missedSmokeReview={missedSmokeReview}
           onMissedSmokeReviewChange={handleMissedSmokeReviewChange}
         />
