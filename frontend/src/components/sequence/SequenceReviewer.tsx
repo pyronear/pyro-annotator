@@ -8,22 +8,21 @@ import MissedSmokePanel from './MissedSmokePanel';
 
 interface SequenceReviewerProps {
   sequenceId: number;
-  hasMissedSmoke: boolean;
-  onMissedSmokeChange: (hasMissedSmoke: boolean) => void;
+  missedSmokeReview: 'yes' | 'no' | null;
+  onMissedSmokeReviewChange: (review: 'yes' | 'no') => void;
   className?: string;
 }
 
 export default function SequenceReviewer({
   sequenceId,
-  hasMissedSmoke,
-  onMissedSmokeChange,
+  missedSmokeReview,
+  onMissedSmokeReviewChange,
   className = ''
 }: SequenceReviewerProps) {
   // Playback state
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
-  const [isReviewComplete, setIsReviewComplete] = useState(false);
   
   const playIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -102,10 +101,6 @@ export default function SequenceReviewer({
     setCurrentIndex(0);
   };
 
-  const handleMarkReviewComplete = () => {
-    setIsReviewComplete(true);
-  };
-
   if (isLoading) {
     return (
       <div className={`bg-white border border-gray-200 rounded-lg p-8 ${className}`}>
@@ -179,10 +174,8 @@ export default function SequenceReviewer({
 
       {/* Missed Smoke Review Panel */}
       <MissedSmokePanel
-        hasMissedSmoke={hasMissedSmoke}
-        onMissedSmokeChange={onMissedSmokeChange}
-        isReviewComplete={isReviewComplete}
-        onMarkReviewComplete={handleMarkReviewComplete}
+        missedSmokeReview={missedSmokeReview}
+        onMissedSmokeReviewChange={onMissedSmokeReviewChange}
       />
     </div>
   );

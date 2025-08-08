@@ -45,6 +45,7 @@ export default function AnnotationInterface() {
   const [bboxes, setBboxes] = useState<SequenceBbox[]>([]);
   const [, setCurrentAnnotation] = useState<SequenceAnnotation | null>(null);
   const [hasMissedSmoke, setHasMissedSmoke] = useState<boolean>(false);
+  const [missedSmokeReview, setMissedSmokeReview] = useState<'yes' | 'no' | null>(null);
   
   // Keyboard shortcuts state
   const [activeDetectionIndex, setActiveDetectionIndex] = useState<number | null>(null);
@@ -80,6 +81,9 @@ export default function AnnotationInterface() {
       
       // Initialize missed smoke flag from existing annotation
       setHasMissedSmoke(annotation.has_missed_smoke || false);
+      
+      // Initialize missed smoke review from existing annotation
+      setMissedSmokeReview(annotation.has_missed_smoke ? 'yes' : null);
       
       // Smart initialization based on processing stage
       if (annotation.processing_stage === 'ready_to_annotate') {
@@ -178,13 +182,7 @@ export default function AnnotationInterface() {
         if (isAnnotationComplete()) {
           handleSave();
         } else {
-          // Show error toast if annotation is incomplete
-          const progress = getAnnotationProgress();
-          const remaining = progress.total - progress.completed;
-          showToastNotification(
-            `Cannot save: ${remaining} detection${remaining !== 1 ? 's' : ''} still need${remaining === 1 ? 's' : ''} annotation`,
-            'error'
-          );
+          handleSave(); // Use the same error logic as handleSave
         }
         e.preventDefault();
         return;
@@ -391,9 +389,27 @@ export default function AnnotationInterface() {
     setBboxes(newBboxes);
   };
 
+  const handleMissedSmokeReviewChange = (review: 'yes' | 'no') => {
+    setMissedSmokeReview(review);
+    // Sync with the boolean hasMissedSmoke state for backward compatibility
+    setHasMissedSmoke(review === 'yes');
+  };
+
   const handleSave = () => {
-    if (!isAnnotationComplete()) {
-      // Show error toast if annotation is incomplete
+    const bboxesComplete = bboxes.every(bbox => 
+      bbox.is_smoke || bbox.false_positive_types.length > 0
+    );
+    const missedSmokeComplete = missedSmokeReview !== null;
+
+    if (!bboxesComplete && !missedSmokeComplete) {
+      const progress = getAnnotationProgress();
+      const remaining = progress.total - progress.completed;
+      showToastNotification(
+        `Cannot save: ${remaining} detection${remaining !== 1 ? 's' : ''} still need${remaining === 1 ? 's' : ''} annotation and missed smoke review is required`,
+        'error'
+      );
+      return;
+    } else if (!bboxesComplete) {
       const progress = getAnnotationProgress();
       const remaining = progress.total - progress.completed;
       showToastNotification(
@@ -401,7 +417,14 @@ export default function AnnotationInterface() {
         'error'
       );
       return;
+    } else if (!missedSmokeComplete) {
+      showToastNotification(
+        'Cannot save: Please complete the missed smoke review',
+        'error'
+      );
+      return;
     }
+    
     saveAnnotation.mutate(bboxes);
   };
 
@@ -409,6 +432,9 @@ export default function AnnotationInterface() {
     if (annotation) {
       // Reset missed smoke to original value
       setHasMissedSmoke(annotation.has_missed_smoke || false);
+      
+      // Reset missed smoke review to original value
+      setMissedSmokeReview(annotation.has_missed_smoke ? 'yes' : null);
       
       // Use the same logic as initialization to respect processing stage
       if (annotation.processing_stage === 'ready_to_annotate') {
@@ -428,9 +454,11 @@ export default function AnnotationInterface() {
   };
 
   const isAnnotationComplete = () => {
-    return bboxes.every(bbox => 
+    const bboxesComplete = bboxes.every(bbox => 
       bbox.is_smoke || bbox.false_positive_types.length > 0
     );
+    const missedSmokeComplete = missedSmokeReview !== null;
+    return bboxesComplete && missedSmokeComplete;
   };
 
   const getAnnotationProgress = () => {
@@ -580,8 +608,8 @@ export default function AnnotationInterface() {
       {/* Sequence Review for Missed Smoke */}
       <SequenceReviewer
         sequenceId={annotation.sequence_id}
-        hasMissedSmoke={hasMissedSmoke}
-        onMissedSmokeChange={setHasMissedSmoke}
+        missedSmokeReview={missedSmokeReview}
+        onMissedSmokeReviewChange={handleMissedSmokeReviewChange}
       />
 
       {/* GIF Loading State */}
