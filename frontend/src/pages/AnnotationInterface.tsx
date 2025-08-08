@@ -820,21 +820,7 @@ export default function AnnotationInterface() {
       {/* Content with top padding to account for fixed header */}
       <div className="space-y-6 pt-20">
         {/* Processing Stage Messages */}
-        {annotation.processing_stage === 'annotated' ? (
-          <div className="bg-green-50 border border-green-200 rounded-md p-4">
-            <div className="flex">
-              <CheckCircle className="w-5 h-5 text-green-400" />
-              <div className="ml-3">
-                <p className="text-sm font-medium text-green-800">
-                  Annotation Complete
-                </p>
-                <p className="text-sm text-green-700 mt-1">
-                  This sequence has been fully annotated and reviewed. You can view the completed annotation or make changes if needed.
-                </p>
-              </div>
-            </div>
-          </div>
-        ) : annotation.processing_stage !== 'ready_to_annotate' && (
+        {annotation.processing_stage !== 'ready_to_annotate' && annotation.processing_stage !== 'annotated' && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
             <div className="flex">
               <AlertCircle className="w-5 h-5 text-yellow-400" />
