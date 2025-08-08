@@ -36,6 +36,17 @@ const shouldShowAsAnnotated = (bbox: SequenceBbox, processingStage: string): boo
   return hasUserAnnotations(bbox);
 };
 
+// Helper function to determine initial missed smoke review state based on processing stage
+const getInitialMissedSmokeReview = (annotation: SequenceAnnotation): 'yes' | 'no' | null => {
+  if (annotation.processing_stage === 'annotated') {
+    // For annotated sequences, the has_missed_smoke boolean reflects the actual review result
+    return annotation.has_missed_smoke ? 'yes' : 'no';
+  } else {
+    // For other stages (like ready_to_annotate), null means not reviewed yet
+    return annotation.has_missed_smoke ? 'yes' : null;
+  }
+};
+
 export default function AnnotationInterface() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -99,8 +110,8 @@ export default function AnnotationInterface() {
       // Initialize missed smoke flag from existing annotation
       setHasMissedSmoke(annotation.has_missed_smoke || false);
       
-      // Initialize missed smoke review from existing annotation
-      setMissedSmokeReview(annotation.has_missed_smoke ? 'yes' : null);
+      // Initialize missed smoke review using helper function that respects processing stage
+      setMissedSmokeReview(getInitialMissedSmokeReview(annotation));
       
       // Smart initialization based on processing stage
       if (annotation.processing_stage === 'ready_to_annotate') {
@@ -558,8 +569,8 @@ export default function AnnotationInterface() {
       // Reset missed smoke to original value
       setHasMissedSmoke(annotation.has_missed_smoke || false);
       
-      // Reset missed smoke review to original value
-      setMissedSmokeReview(annotation.has_missed_smoke ? 'yes' : null);
+      // Reset missed smoke review using helper function that respects processing stage
+      setMissedSmokeReview(getInitialMissedSmokeReview(annotation));
       
       // Use the same logic as initialization to respect processing stage
       if (annotation.processing_stage === 'ready_to_annotate') {
@@ -638,7 +649,11 @@ export default function AnnotationInterface() {
   return (
     <>
       {/* Fixed Header - Always at top */}
-      <div className="fixed top-0 left-0 md:left-64 right-0 bg-white/85 backdrop-blur-sm border-b border-gray-200 shadow-sm z-30">
+      <div className={`fixed top-0 left-0 md:left-64 right-0 backdrop-blur-sm shadow-sm z-30 ${
+        annotation?.processing_stage === 'annotated' 
+          ? 'bg-green-50/90 border-b border-green-200 border-l-4 border-l-green-500' 
+          : 'bg-white/85 border-b border-gray-200'
+      }`}>
         <div className="px-10 py-3">
           {/* Top Row: Context + Action Buttons + Keyboard Shortcuts */}
           <div className="flex items-center justify-between">
@@ -691,6 +706,17 @@ export default function AnnotationInterface() {
                     </span>
                   </>
                 )}
+                
+                {/* Completion Badge for Annotated Sequences */}
+                {annotation?.processing_stage === 'annotated' && (
+                  <>
+                    <span className="text-gray-400">•</span>
+                    <span className="inline-flex items-center text-xs text-green-600 font-medium">
+                      <CheckCircle className="w-3 h-3 mr-1" />
+                      Completed
+                    </span>
+                  </>
+                )}
               </div>
             </div>
             
@@ -728,14 +754,14 @@ export default function AnnotationInterface() {
                 onClick={handleSave}
                 disabled={!isAnnotationComplete() || saveAnnotation.isPending}
                 className="inline-flex items-center px-3 py-1.5 border border-transparent rounded-md shadow-sm text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Submit annotation (Enter)"
+                title={annotation?.processing_stage === 'annotated' ? "Save changes (Enter)" : "Submit annotation (Enter)"}
               >
                 {saveAnnotation.isPending ? (
                   <div className="w-3 h-3 mr-1 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                 ) : (
                   <Upload className="w-3 h-3 mr-1" />
                 )}
-                Submit
+                {annotation?.processing_stage === 'annotated' ? 'Save Changes' : 'Submit'}
               </button>
               <button
                 onClick={() => setShowKeyboardModal(true)}
@@ -772,7 +798,9 @@ export default function AnnotationInterface() {
               )}
               <div className="w-24 bg-gray-200 rounded-full h-1.5">
                 <div 
-                  className="bg-primary-600 h-1.5 rounded-full transition-all duration-300"
+                  className={`h-1.5 rounded-full transition-all duration-300 ${
+                    annotation?.processing_stage === 'annotated' ? 'bg-green-600' : 'bg-primary-600'
+                  }`}
                   style={{ width: `${(progress.completed / progress.total) * 100}%` }}
                 ></div>
               </div>
@@ -783,23 +811,37 @@ export default function AnnotationInterface() {
 
       {/* Content with top padding to account for fixed header */}
       <div className="space-y-6 pt-20">
-        {/* Processing Stage Warning */}
-        {annotation.processing_stage !== 'ready_to_annotate' && (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
-          <div className="flex">
-            <AlertCircle className="w-5 h-5 text-yellow-400" />
-            <div className="ml-3">
-              <p className="text-sm font-medium text-yellow-800">
-                Processing Stage Notice
-              </p>
-              <p className="text-sm text-yellow-700 mt-1">
-                This annotation is currently in "{annotation.processing_stage}" stage. 
-                Typically annotations should be in "ready_to_annotate" stage before editing.
-              </p>
+        {/* Processing Stage Messages */}
+        {annotation.processing_stage === 'annotated' ? (
+          <div className="bg-green-50 border border-green-200 rounded-md p-4">
+            <div className="flex">
+              <CheckCircle className="w-5 h-5 text-green-400" />
+              <div className="ml-3">
+                <p className="text-sm font-medium text-green-800">
+                  Annotation Complete
+                </p>
+                <p className="text-sm text-green-700 mt-1">
+                  This sequence has been fully annotated and reviewed. You can view the completed annotation or make changes if needed.
+                </p>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        ) : annotation.processing_stage !== 'ready_to_annotate' && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
+            <div className="flex">
+              <AlertCircle className="w-5 h-5 text-yellow-400" />
+              <div className="ml-3">
+                <p className="text-sm font-medium text-yellow-800">
+                  Processing Stage Notice
+                </p>
+                <p className="text-sm text-yellow-700 mt-1">
+                  This annotation is currently in "{annotation.processing_stage}" stage. 
+                  Typically annotations should be in "ready_to_annotate" stage before editing.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
       {/* Sequence Review for Missed Smoke */}
       <div 
