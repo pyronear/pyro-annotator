@@ -139,38 +139,52 @@ export default function AnnotationInterface() {
     const timeoutId = setTimeout(() => {
       const observer = new IntersectionObserver(
         (entries) => {
-          let maxRatio = 0;
-          let bestIndex: number | null = null;
-          let sequenceReviewerVisible = false;
+          const viewportCenter = window.innerHeight / 2;
+          let closestDistance = Infinity;
+          let activeElement: Element | null = null;
+          let activeIndex: number | null = null;
+          let activeType: 'sequence' | 'detection' | null = null;
           
           entries.forEach((entry) => {
-            // Check if it's the sequence reviewer
-            if (entry.target === sequenceReviewerRef.current) {
-              if (entry.intersectionRatio > 0.5) {
-                sequenceReviewerVisible = true;
+            // Only consider elements that are reasonably visible
+            if (entry.intersectionRatio < 0.3) return;
+            
+            const rect = entry.target.getBoundingClientRect();
+            const elementCenter = rect.top + rect.height / 2;
+            const distance = Math.abs(elementCenter - viewportCenter);
+            
+            if (distance < closestDistance) {
+              closestDistance = distance;
+              activeElement = entry.target;
+              
+              // Check if it's the sequence reviewer
+              if (entry.target === sequenceReviewerRef.current) {
+                activeType = 'sequence';
+                activeIndex = null;
+              } else {
+                // Check detection elements
+                const detectionIndex = detectionRefs.current.findIndex(ref => ref === entry.target);
+                if (detectionIndex !== -1) {
+                  activeType = 'detection';
+                  activeIndex = detectionIndex;
+                }
               }
-              return;
-            }
-
-            // Check detection elements
-            const index = detectionRefs.current.findIndex(ref => ref === entry.target);
-            if (index !== -1 && entry.intersectionRatio > maxRatio) {
-              maxRatio = entry.intersectionRatio;
-              bestIndex = index;
             }
           });
           
-          // Priority: sequence reviewer if visible, otherwise best detection
-          if (sequenceReviewerVisible) {
-            setActiveSection('sequence');
-            setActiveDetectionIndex(null);
-          } else if (maxRatio > 0.5 && bestIndex !== null) {
-            setActiveSection('detections');
-            setActiveDetectionIndex(bestIndex);
+          // Activate the element closest to viewport center (within reasonable distance)
+          if (activeElement && closestDistance < window.innerHeight * 0.6) {
+            if (activeType === 'sequence') {
+              setActiveSection('sequence');
+              setActiveDetectionIndex(null);
+            } else if (activeType === 'detection' && activeIndex !== null) {
+              setActiveSection('detections');
+              setActiveDetectionIndex(activeIndex);
+            }
           }
         },
         {
-          threshold: [0.1, 0.3, 0.5, 0.7, 0.9],
+          threshold: [0.1, 0.3, 0.5],
           rootMargin: '-20px'
         }
       );
