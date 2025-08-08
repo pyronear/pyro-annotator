@@ -468,9 +468,9 @@ export default function AnnotationInterface() {
   const progress = getAnnotationProgress();
 
   return (
-    <div className="space-y-6">
-      {/* Sticky Progress Header - Becomes sticky when scrolled */}
-      <div className="sticky -top-6 -mx-6 bg-white/85 backdrop-blur-sm border-b border-gray-200 shadow-sm z-30">
+    <>
+      {/* Fixed Header - Always at top */}
+      <div className="fixed top-0 left-0 md:left-64 right-0 bg-white/85 backdrop-blur-sm border-b border-gray-200 shadow-sm z-30">
         <div className="px-10 py-3">
           {/* Top Row: Context + Action Buttons + Keyboard Shortcuts */}
           <div className="flex items-center justify-between">
@@ -560,7 +560,8 @@ export default function AnnotationInterface() {
         </div>
       </div>
 
-
+      {/* Content with top padding to account for fixed header */}
+      <div className="space-y-6 pt-20">
         {/* Processing Stage Warning */}
         {annotation.processing_stage !== 'ready_to_annotate' && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
@@ -1037,6 +1038,7 @@ export default function AnnotationInterface() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 }
