@@ -3,20 +3,24 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Search, Filter } from 'lucide-react';
 import { apiClient } from '@/services/api';
-import { ExtendedSequenceFilters } from '@/types/api';
+import { ExtendedSequenceFilters, ProcessingStageStatus } from '@/types/api';
 import { QUERY_KEYS, PAGINATION_DEFAULTS, PROCESSING_STAGE_STATUS_OPTIONS, PROCESSING_STAGE_LABELS } from '@/utils/constants';
 import { getProcessingStageLabel, getProcessingStageColorClass } from '@/utils/processingStage';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
 import { useSequenceStore } from '@/store/useSequenceStore';
 
-export default function SequencesPage() {
+interface SequencesPageProps {
+  defaultProcessingStage?: ProcessingStageStatus;
+}
+
+export default function SequencesPage({ defaultProcessingStage = 'ready_to_annotate' }: SequencesPageProps = {}) {
   const navigate = useNavigate();
   const { startAnnotationWorkflow } = useSequenceStore();
   
   const [filters, setFilters] = useState<ExtendedSequenceFilters>({
     page: PAGINATION_DEFAULTS.PAGE,
     size: PAGINATION_DEFAULTS.SIZE,
-    processing_stage: 'ready_to_annotate',
+    processing_stage: defaultProcessingStage,
   });
 
   const [searchTerm, setSearchTerm] = useState('');

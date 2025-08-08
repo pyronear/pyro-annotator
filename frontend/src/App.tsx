@@ -4,7 +4,7 @@ import AppLayout from '@/components/layout/AppLayout';
 import HomePage from '@/pages/HomePage';
 import DashboardPage from '@/pages/DashboardPage';
 import SequencesPage from '@/pages/SequencesPage';
-import AnnotationsPage from '@/pages/AnnotationsPage';
+import SequencesPageWrapper from '@/pages/SequencesPageWrapper';
 import AnnotationInterface from '@/pages/AnnotationInterface';
 
 // Create a client
@@ -29,8 +29,9 @@ function App() {
               <Routes>
                 <Route path="/dashboard" element={<DashboardPage />} />
                 <Route path="/sequences" element={<SequencesPage />} />
+                <Route path="/sequences-review" element={<SequencesPageWrapper defaultProcessingStage="annotated" />} />
                 <Route path="/sequences/:id/annotate" element={<AnnotationInterface />} />
-                <Route path="/annotations" element={<AnnotationsPage />} />
+                <Route path="/annotations" element={<SequencesPageWrapper defaultProcessingStage="annotated" />} />
               </Routes>
             </AppLayout>
           } />

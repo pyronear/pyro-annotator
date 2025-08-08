@@ -1,17 +1,42 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Menu, X, BarChart3, Database, Activity, Settings } from 'lucide-react';
+import { Menu, X, BarChart3, Activity, ChevronRight, ChevronDown, Layers, Target } from 'lucide-react';
 import { clsx } from 'clsx';
 
 interface AppLayoutProps {
   children: React.ReactNode;
 }
 
-const navigation = [
+interface NavigationItem {
+  name: string;
+  href?: string;
+  icon: any;
+  children?: NavigationSubItem[];
+}
+
+interface NavigationSubItem {
+  name: string;
+  href: string;
+}
+
+const navigation: NavigationItem[] = [
   { name: 'Dashboard', href: '/dashboard', icon: BarChart3 },
-  { name: 'Sequences', href: '/sequences', icon: Database },
-  { name: 'Annotations', href: '/annotations', icon: Activity },
-  { name: 'Settings', href: '/settings', icon: Settings },
+  { 
+    name: 'Sequences', 
+    icon: Layers,
+    children: [
+      { name: 'Annotate', href: '/sequences' },
+      { name: 'Review', href: '/sequences-review' },
+    ]
+  },
+  { 
+    name: 'Detections', 
+    icon: Target,
+    children: [
+      { name: 'Annotate', href: '#' },
+      { name: 'Review', href: '#' },
+    ]
+  },
 ];
 
 export default function AppLayout({ children }: AppLayoutProps) {
@@ -74,6 +99,33 @@ export default function AppLayout({ children }: AppLayoutProps) {
 }
 
 function SidebarContent({ currentPath }: { currentPath: string }) {
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    'Sequences': true,
+    'Detections': true,
+  });
+
+  const toggleSection = (sectionName: string) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [sectionName]: !prev[sectionName]
+    }));
+  };
+
+  const isPathActive = (href?: string) => {
+    if (!href || href === '#') return false;
+    return currentPath === href || currentPath.startsWith(href + '/');
+  };
+
+  const isSectionActive = (item: NavigationItem) => {
+    if (item.href) {
+      return isPathActive(item.href);
+    }
+    if (item.children) {
+      return item.children.some(child => isPathActive(child.href));
+    }
+    return false;
+  };
+
   return (
     <div className="flex flex-col h-0 flex-1 border-r border-gray-200 bg-white">
       <div className="flex-1 flex flex-col pt-5 pb-4 overflow-y-auto">
@@ -89,27 +141,84 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
         </div>
         <nav className="mt-8 flex-1 px-2 bg-white space-y-1">
           {navigation.map((item) => {
-            const isActive = currentPath.startsWith(item.href);
-            return (
-              <Link
-                key={item.name}
-                to={item.href}
-                className={clsx(
-                  isActive
-                    ? 'bg-primary-50 border-r-4 border-primary-600 text-primary-700'
-                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
-                  'group flex items-center px-2 py-2 text-sm font-medium rounded-l-md'
-                )}
-              >
-                <item.icon
+            const isActive = isSectionActive(item);
+            const isExpanded = expandedSections[item.name];
+
+            if (item.href) {
+              return (
+                <Link
+                  key={item.name}
+                  to={item.href}
                   className={clsx(
-                    isActive ? 'text-primary-500' : 'text-gray-400 group-hover:text-gray-500',
-                    'mr-3 flex-shrink-0 h-5 w-5'
+                    isActive
+                      ? 'bg-primary-50 border-r-4 border-primary-600 text-primary-700'
+                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
+                    'group flex items-center px-2 py-2 text-sm font-medium rounded-l-md'
                   )}
-                  aria-hidden="true"
-                />
-                {item.name}
-              </Link>
+                >
+                  <item.icon
+                    className={clsx(
+                      isActive ? 'text-primary-500' : 'text-gray-400 group-hover:text-gray-500',
+                      'mr-3 flex-shrink-0 h-5 w-5'
+                    )}
+                    aria-hidden="true"
+                  />
+                  {item.name}
+                </Link>
+              );
+            }
+
+            return (
+              <div key={item.name}>
+                <button
+                  onClick={() => toggleSection(item.name)}
+                  className={clsx(
+                    isActive
+                      ? 'bg-primary-50 text-primary-700'
+                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
+                    'group flex items-center px-2 py-2 text-sm font-medium rounded-l-md w-full'
+                  )}
+                >
+                  <item.icon
+                    className={clsx(
+                      isActive ? 'text-primary-500' : 'text-gray-400 group-hover:text-gray-500',
+                      'mr-3 flex-shrink-0 h-5 w-5'
+                    )}
+                    aria-hidden="true"
+                  />
+                  <span className="flex-1 text-left">{item.name}</span>
+                  {isExpanded ? (
+                    <ChevronDown className="h-4 w-4 text-gray-400" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 text-gray-400" />
+                  )}
+                </button>
+                {isExpanded && item.children && (
+                  <div className="mt-1 space-y-1">
+                    {item.children.map((subItem) => {
+                      const isSubActive = isPathActive(subItem.href);
+                      const isDisabled = subItem.href === '#';
+                      return (
+                        <Link
+                          key={subItem.name}
+                          to={isDisabled ? '#' : subItem.href}
+                          onClick={(e) => isDisabled && e.preventDefault()}
+                          className={clsx(
+                            isSubActive
+                              ? 'bg-primary-50 border-r-4 border-primary-600 text-primary-700'
+                              : isDisabled
+                              ? 'text-gray-400 cursor-not-allowed'
+                              : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
+                            'group flex items-center pl-11 pr-2 py-2 text-sm font-medium rounded-l-md'
+                          )}
+                        >
+                          {subItem.name}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             );
           })}
         </nav>
