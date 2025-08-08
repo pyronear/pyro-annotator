@@ -24,6 +24,7 @@ export default function SequenceReviewer({
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   
   const playIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const hasAutoStarted = useRef(false);
 
   // Fetch sequence detections
   const { data: detections, isLoading, error } = useSequenceDetections(sequenceId);
@@ -31,12 +32,21 @@ export default function SequenceReviewer({
   // Track if images are preloaded (we'll get this from the player)
   const [imagesPreloaded, setImagesPreloaded] = useState(false);
 
-  // Auto-start playing once images are preloaded
+  // Auto-start playing once images are preloaded (only once)
   useEffect(() => {
-    if (imagesPreloaded && detections && detections.length > 0 && !isPlaying) {
+    if (imagesPreloaded && detections && detections.length > 0 && !hasAutoStarted.current) {
+      hasAutoStarted.current = true;
       setIsPlaying(true);
     }
-  }, [imagesPreloaded, detections, isPlaying]);
+  }, [imagesPreloaded, detections]);
+
+  // Reset auto-start flag when sequence changes
+  useEffect(() => {
+    hasAutoStarted.current = false;
+    setImagesPreloaded(false);
+    setIsPlaying(false);
+    setCurrentIndex(0);
+  }, [sequenceId]);
 
   // Auto-play functionality with looping
   useEffect(() => {
@@ -87,6 +97,8 @@ export default function SequenceReviewer({
 
   const handleSeek = (index: number) => {
     if (!detections) return;
+    // Pause auto-play when manually seeking
+    setIsPlaying(false);
     const clampedIndex = Math.max(0, Math.min(detections.length - 1, index));
     setCurrentIndex(clampedIndex);
   };
