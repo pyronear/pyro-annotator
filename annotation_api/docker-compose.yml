@@ -25,6 +25,7 @@ services:
       - SERVICES=s3
     volumes:
       - ./scripts/localstack:/etc/localstack/init/ready.d
+      - localstack_data:/var/lib/localstack
     healthcheck:
       test: ["CMD-SHELL", "awslocal --endpoint-url=http://localhost:4566 s3 ls s3://admin"]
       interval: 10s
@@ -55,3 +56,6 @@ services:
       interval: 10s
       timeout: 20s
       retries: 10
+
+volumes:
+  localstack_data:
