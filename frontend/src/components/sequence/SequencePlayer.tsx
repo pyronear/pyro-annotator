@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { AlertCircle, Eye, Loader2, Info } from 'lucide-react';
+import { AlertCircle, Eye, Loader2, Info, Play, Pause, SkipBack, SkipForward, RotateCcw } from 'lucide-react';
 import { Detection, AlgoPrediction } from '@/types/api';
 import { useImagePreloader } from '@/hooks/useImagePreloader';
 import MissedSmokeInstructionsModal from './MissedSmokeInstructionsModal';
@@ -11,6 +11,14 @@ interface SequencePlayerProps {
   onPreloadComplete?: () => void;
   missedSmokeReview: 'yes' | 'no' | null;
   onMissedSmokeReviewChange: (review: 'yes' | 'no') => void;
+  // Player controls props
+  isPlaying: boolean;
+  playbackSpeed: number;
+  onPlay: () => void;
+  onPause: () => void;
+  onSeek: (index: number) => void;
+  onSpeedChange: (speed: number) => void;
+  onReset: () => void;
   className?: string;
 }
 
@@ -21,6 +29,14 @@ export default function SequencePlayer({
   onPreloadComplete,
   missedSmokeReview,
   onMissedSmokeReviewChange,
+  // Player controls props
+  isPlaying,
+  playbackSpeed,
+  onPlay,
+  onPause,
+  onSeek,
+  onSpeedChange,
+  onReset,
   className = '' 
 }: SequencePlayerProps) {
   const [imageInfo, setImageInfo] = useState<{
@@ -32,6 +48,10 @@ export default function SequencePlayer({
   const [showInstructionsModal, setShowInstructionsModal] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
+  
+  // Player controls state
+  const [isDragging, setIsDragging] = useState(false);
+  const sliderRef = useRef<HTMLInputElement>(null);
   
   // Loop detection for smooth transitions
   const isLoopingBack = useRef(false);
@@ -79,6 +99,77 @@ export default function SequencePlayer({
       }
     }
   }, [currentImage]);
+  
+  // Player controls keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only handle if not focused on input elements
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      switch (e.key) {
+        case ' ':
+        case 'k':
+          e.preventDefault();
+          isPlaying ? onPause() : onPlay();
+          break;
+        case 'ArrowLeft':
+          e.preventDefault();
+          onSeek(Math.max(0, currentIndex - 1));
+          break;
+        case 'ArrowRight':
+          e.preventDefault();
+          onSeek(Math.min(detections.length - 1, currentIndex + 1));
+          break;
+        case ',':
+          e.preventDefault();
+          onSeek(Math.max(0, currentIndex - 1));
+          break;
+        case '.':
+          e.preventDefault();
+          onSeek(Math.min(detections.length - 1, currentIndex + 1));
+          break;
+        case '0':
+        case 'Home':
+          e.preventDefault();
+          onSeek(0);
+          break;
+        case 'End':
+          e.preventDefault();
+          onSeek(detections.length - 1);
+          break;
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isPlaying, currentIndex, detections.length, onPlay, onPause, onSeek]);
+  
+  // Player controls utility functions
+  const formatTime = (index: number) => {
+    const minutes = Math.floor(index / 60);
+    const seconds = index % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newIndex = parseInt(e.target.value);
+    onSeek(newIndex);
+  };
+
+  const handleSliderMouseDown = () => {
+    setIsDragging(true);
+    if (isPlaying) {
+      onPause();
+    }
+  };
+
+  const handleSliderMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  const speedOptions = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2];
   
   if (!currentDetection) {
     return (
@@ -245,63 +336,162 @@ export default function SequencePlayer({
           </>
         )}
         
-        {/* Detection Info & Missed Smoke Review Overlay */}
-        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4 z-25">
-          <div className="flex items-end justify-between text-white">
-            {/* Left - Detection Info */}
-            <div className="flex-1">
-              <p className="text-sm font-medium">
-                Detection {currentIndex + 1} of {detections.length}
-              </p>
-              <p className="text-xs opacity-90">
-                {new Date(currentDetection.recorded_at).toLocaleString()}
-              </p>
+        {/* Detection Info & Controls Overlay */}
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4 z-25">
+          <div className="space-y-3 text-white">
+            {/* Row 1 - Detection Info & Missed Smoke Review */}
+            <div className="flex items-end justify-between">
+              {/* Left - Detection Info */}
+              <div className="flex-1">
+                <p className="text-sm font-medium">
+                  Detection {currentIndex + 1} of {detections.length}
+                </p>
+                <p className="text-xs opacity-90">
+                  {new Date(currentDetection.recorded_at).toLocaleString()}
+                </p>
+              </div>
+              
+              {/* Center - Missed Smoke Review */}
+              <div className="flex items-center space-x-4 bg-black/40 px-4 py-2 rounded-lg border border-white/20">
+                <span className="text-sm font-medium text-white">Missed smoke?</span>
+                <label className="flex items-center cursor-pointer hover:bg-white/10 px-2 py-1 rounded transition-colors">
+                  <input
+                    type="radio"
+                    name="missedSmokeOverlay"
+                    value="yes"
+                    checked={missedSmokeReview === 'yes'}
+                    onChange={() => onMissedSmokeReviewChange('yes')}
+                    className="w-4 h-4 text-orange-500 focus:ring-orange-500 border-gray-300 bg-white/20 mr-2"
+                  />
+                  <span className="text-sm font-medium text-white">
+                    Yes <kbd className="ml-1 px-1 py-0.5 bg-white/20 rounded text-xs font-mono">Y</kbd>
+                  </span>
+                </label>
+                <label className="flex items-center cursor-pointer hover:bg-white/10 px-2 py-1 rounded transition-colors">
+                  <input
+                    type="radio"
+                    name="missedSmokeOverlay"
+                    value="no"
+                    checked={missedSmokeReview === 'no'}
+                    onChange={() => onMissedSmokeReviewChange('no')}
+                    className="w-4 h-4 text-green-500 focus:ring-green-500 border-gray-300 bg-white/20 mr-2"
+                  />
+                  <span className="text-sm font-medium text-white">
+                    No <kbd className="ml-1 px-1 py-0.5 bg-white/20 rounded text-xs font-mono">N</kbd>
+                  </span>
+                </label>
+                <button
+                  onClick={() => setShowInstructionsModal(true)}
+                  className="p-1.5 hover:bg-white/20 rounded transition-colors"
+                  title="Show review instructions"
+                >
+                  <Info className="w-4 h-4 text-white" />
+                </button>
+              </div>
+              
+              {/* Right - Predictions */}
+              <div className="flex-1 flex items-center justify-end space-x-2">
+                <Eye className="w-4 h-4" />
+                <span className="text-xs">
+                  {currentDetection.algo_predictions?.predictions?.length || 0} prediction{currentDetection.algo_predictions?.predictions?.length !== 1 ? 's' : ''}
+                </span>
+              </div>
             </div>
-            
-            {/* Center - Missed Smoke Review */}
-            <div className="flex items-center space-x-4 bg-black/40 px-4 py-2 rounded-lg border border-white/20">
-              <span className="text-sm font-medium text-white">Missed smoke?</span>
-              <label className="flex items-center cursor-pointer hover:bg-white/10 px-2 py-1 rounded transition-colors">
-                <input
-                  type="radio"
-                  name="missedSmokeOverlay"
-                  value="yes"
-                  checked={missedSmokeReview === 'yes'}
-                  onChange={() => onMissedSmokeReviewChange('yes')}
-                  className="w-4 h-4 text-orange-500 focus:ring-orange-500 border-gray-300 bg-white/20 mr-2"
-                />
-                <span className="text-sm font-medium text-white">
-                  Yes <kbd className="ml-1 px-1 py-0.5 bg-white/20 rounded text-xs font-mono">Y</kbd>
-                </span>
-              </label>
-              <label className="flex items-center cursor-pointer hover:bg-white/10 px-2 py-1 rounded transition-colors">
-                <input
-                  type="radio"
-                  name="missedSmokeOverlay"
-                  value="no"
-                  checked={missedSmokeReview === 'no'}
-                  onChange={() => onMissedSmokeReviewChange('no')}
-                  className="w-4 h-4 text-green-500 focus:ring-green-500 border-gray-300 bg-white/20 mr-2"
-                />
-                <span className="text-sm font-medium text-white">
-                  No <kbd className="ml-1 px-1 py-0.5 bg-white/20 rounded text-xs font-mono">N</kbd>
-                </span>
-              </label>
+
+            {/* Row 2 - Player Controls */}
+            <div className="flex items-center space-x-4">
+              {/* Play/Pause Button */}
               <button
-                onClick={() => setShowInstructionsModal(true)}
-                className="p-1.5 hover:bg-white/20 rounded transition-colors"
-                title="Show review instructions"
+                onClick={isPlaying ? onPause : onPlay}
+                className="flex-shrink-0 p-2 bg-white/20 text-white rounded-full hover:bg-white/30 transition-colors border border-white/30"
+                title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
               >
-                <Info className="w-4 h-4 text-white" />
+                {isPlaying ? (
+                  <Pause className="w-5 h-5" />
+                ) : (
+                  <Play className="w-5 h-5 ml-0.5" />
+                )}
               </button>
-            </div>
-            
-            {/* Right - Predictions */}
-            <div className="flex-1 flex items-center justify-end space-x-2">
-              <Eye className="w-4 h-4" />
-              <span className="text-xs">
-                {currentDetection.algo_predictions?.predictions?.length || 0} prediction{currentDetection.algo_predictions?.predictions?.length !== 1 ? 's' : ''}
-              </span>
+
+              {/* Frame Navigation */}
+              <div className="flex items-center space-x-1">
+                <button
+                  onClick={() => onSeek(Math.max(0, currentIndex - 1))}
+                  disabled={currentIndex === 0}
+                  className="p-1 text-white hover:text-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed"
+                  title="Previous frame (←)"
+                >
+                  <SkipBack className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => onSeek(Math.min(detections.length - 1, currentIndex + 1))}
+                  disabled={currentIndex === detections.length - 1}
+                  className="p-1 text-white hover:text-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed"
+                  title="Next frame (→)"
+                >
+                  <SkipForward className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Progress Slider */}
+              <div className="flex-1 flex items-center space-x-3">
+                <span className="text-xs text-white/80 font-mono min-w-[3rem]">
+                  {formatTime(currentIndex)}
+                </span>
+                
+                <div className="flex-1 relative">
+                  <input
+                    ref={sliderRef}
+                    type="range"
+                    min="0"
+                    max={detections.length - 1}
+                    value={currentIndex}
+                    onChange={handleSliderChange}
+                    onMouseDown={handleSliderMouseDown}
+                    onMouseUp={handleSliderMouseUp}
+                    className="w-full h-2 bg-white/20 rounded-lg appearance-none cursor-pointer slider"
+                    style={{
+                      background: `linear-gradient(to right, #ffffff 0%, #ffffff ${(currentIndex / (detections.length - 1)) * 100}%, rgba(255,255,255,0.2) ${(currentIndex / (detections.length - 1)) * 100}%, rgba(255,255,255,0.2) 100%)`
+                    }}
+                  />
+                </div>
+                
+                <span className="text-xs text-white/80 font-mono min-w-[3rem]">
+                  {formatTime(detections.length - 1)}
+                </span>
+              </div>
+
+              {/* Frame Counter */}
+              <div className="text-xs text-white/80">
+                <span className="font-mono">
+                  {currentIndex + 1} / {detections.length}
+                </span>
+              </div>
+
+              {/* Speed Control */}
+              <div className="flex items-center space-x-2">
+                <span className="text-xs text-white/70">Speed:</span>
+                <select
+                  value={playbackSpeed}
+                  onChange={(e) => onSpeedChange(parseFloat(e.target.value))}
+                  className="text-xs border border-white/30 rounded px-2 py-1 bg-black/40 text-white"
+                >
+                  {speedOptions.map(speed => (
+                    <option key={speed} value={speed} className="bg-black text-white">
+                      {speed}x
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Reset Button */}
+              <button
+                onClick={onReset}
+                className="flex-shrink-0 p-2 text-white hover:text-gray-300 border border-white/30 rounded-md hover:bg-white/10"
+                title="Reset to beginning"
+              >
+                <RotateCcw className="w-4 h-4" />
+              </button>
             </div>
           </div>
         </div>
@@ -312,6 +502,30 @@ export default function SequencePlayer({
         isOpen={showInstructionsModal}
         onClose={() => setShowInstructionsModal(false)}
       />
+
+      {/* Custom slider styles */}
+      <style jsx>{`
+        .slider::-webkit-slider-thumb {
+          appearance: none;
+          width: 16px;
+          height: 16px;
+          border-radius: 50%;
+          background: #ffffff;
+          cursor: pointer;
+          border: 2px solid rgba(0,0,0,0.2);
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+        
+        .slider::-moz-range-thumb {
+          width: 16px;
+          height: 16px;
+          border-radius: 50%;
+          background: #ffffff;
+          cursor: pointer;
+          border: 2px solid rgba(0,0,0,0.2);
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+      `}</style>
     </div>
   );
 }

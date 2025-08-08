@@ -3,7 +3,6 @@ import { AlertCircle } from 'lucide-react';
 import { Detection } from '@/types/api';
 import { useSequenceDetections } from '@/hooks/useSequenceDetections';
 import SequencePlayer from './SequencePlayer';
-import PlayerControls from './PlayerControls';
 
 interface SequenceReviewerProps {
   sequenceId: number;
@@ -161,8 +160,8 @@ export default function SequenceReviewer({
   }
 
   return (
-    <div className={`space-y-4 ${className}`}>
-      {/* Player */}
+    <div className={className}>
+      {/* Integrated Player with Controls */}
       <SequencePlayer
         detections={detections}
         currentIndex={currentIndex}
@@ -170,12 +169,7 @@ export default function SequenceReviewer({
         onPreloadComplete={() => setImagesPreloaded(true)}
         missedSmokeReview={missedSmokeReview}
         onMissedSmokeReviewChange={onMissedSmokeReviewChange}
-      />
-
-      {/* Controls */}
-      <PlayerControls
-        totalFrames={detections.length}
-        currentIndex={currentIndex}
+        // Player controls props
         isPlaying={isPlaying}
         playbackSpeed={playbackSpeed}
         onPlay={handlePlay}
