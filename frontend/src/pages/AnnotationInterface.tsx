@@ -512,7 +512,7 @@ export default function AnnotationInterface() {
               </button>
               <div className="flex items-center space-x-2">
                 <span className="text-sm font-medium text-gray-900">
-                  🔥 {sequence?.organisation_name || 'Loading...'}
+                  {sequence?.organisation_name || 'Loading...'}
                 </span>
                 <span className="text-gray-400">•</span>
                 <span className="text-sm text-gray-600">
@@ -520,8 +520,24 @@ export default function AnnotationInterface() {
                 </span>
                 <span className="text-gray-400">•</span>
                 <span className="text-sm text-gray-600">
-                  Recorded: {sequence?.recorded_at ? new Date(sequence.recorded_at).toLocaleString() : 'Loading...'}
+                  {sequence?.recorded_at ? new Date(sequence.recorded_at).toLocaleString() : 'Loading...'}
                 </span>
+                {sequence?.azimuth !== null && sequence?.azimuth !== undefined && (
+                  <>
+                    <span className="text-gray-400">•</span>
+                    <span className="text-xs text-gray-500">
+                      {sequence.azimuth}°
+                    </span>
+                  </>
+                )}
+                {sequence?.lat !== null && sequence?.lat !== undefined && sequence?.lon !== null && sequence?.lon !== undefined && (
+                  <>
+                    <span className="text-gray-400">•</span>
+                    <span className="text-xs text-gray-500">
+                      {sequence.lat.toFixed(3)}, {sequence.lon.toFixed(3)}
+                    </span>
+                  </>
+                )}
               </div>
             </div>
             
@@ -561,7 +577,13 @@ export default function AnnotationInterface() {
           <div className="flex items-center justify-between mt-2">
             <div className="flex items-center space-x-4">
               <span className="text-xs font-medium text-gray-900">
-                {progress.completed} of {progress.total} completed ({Math.round((progress.completed / progress.total) * 100)}%)
+                Review: {
+                  missedSmokeReview ? (
+                    <span className="text-green-600">Done</span>
+                  ) : (
+                    <span className="text-orange-600">Pending</span>
+                  )
+                } • {progress.completed} of {progress.total} detections • {Math.round((progress.completed / progress.total) * 100)}% complete
               </span>
             </div>
             
