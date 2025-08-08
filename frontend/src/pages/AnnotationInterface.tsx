@@ -474,7 +474,7 @@ export default function AnnotationInterface() {
       
       // Navigate back to sequence detail after a brief delay to show the toast
       setTimeout(() => {
-        navigate(`/sequences/${annotation?.sequence_id}`);
+        navigate('/sequences');
       }, 1000);
     },
   });
@@ -600,7 +600,7 @@ export default function AnnotationInterface() {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <button
-                onClick={() => navigate(`/sequences/${annotation.sequence_id}`)}
+                onClick={() => navigate('/sequences')}
                 className="p-1.5 rounded-md hover:bg-gray-100 hover:bg-opacity-75"
                 title="Back to sequence"
               >

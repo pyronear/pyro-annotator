@@ -224,14 +224,6 @@ export default function AnnotationsPage() {
                   
                   <div className="flex-shrink-0 flex items-center space-x-2">
                     <button
-                      onClick={() => navigate(`/sequences/${annotation.sequence_id}`)}
-                      className="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50"
-                    >
-                      <Eye className="w-3 h-3 mr-1" />
-                      View Sequence
-                    </button>
-                    
-                    <button
                       onClick={() => navigate(`/sequences/${annotation.sequence_id}/annotate`)}
                       className="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50"
                     >

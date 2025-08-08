@@ -203,7 +203,7 @@ export default function SequencesPage() {
               <div 
                 key={sequence.id} 
                 className="p-4 hover:bg-gray-50 cursor-pointer"
-                onClick={() => navigate(`/sequences/${sequence.id}`)}
+                onClick={() => navigate(`/sequences/${sequence.id}/annotate`)}
               >
                 <div className="flex items-center space-x-4">
                   {/* Detection Image Thumbnail */}
