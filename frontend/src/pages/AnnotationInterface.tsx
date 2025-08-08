@@ -606,10 +606,10 @@ export default function AnnotationInterface() {
           <p className="text-red-600 mb-2">Failed to load annotation</p>
           <p className="text-gray-500 text-sm">{String(error)}</p>
           <button 
-            onClick={() => navigate('/annotations')}
+            onClick={() => navigate('/sequences-review')}
             className="mt-4 text-primary-600 hover:text-primary-900"
           >
-            Back to Annotations
+            Back to Sequences Review
           </button>
         </div>
       </div>

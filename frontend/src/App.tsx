@@ -31,7 +31,6 @@ function App() {
                 <Route path="/sequences" element={<SequencesPage />} />
                 <Route path="/sequences-review" element={<SequencesPageWrapper defaultProcessingStage="annotated" />} />
                 <Route path="/sequences/:id/annotate" element={<AnnotationInterface />} />
-                <Route path="/annotations" element={<SequencesPageWrapper defaultProcessingStage="annotated" />} />
               </Routes>
             </AppLayout>
           } />
