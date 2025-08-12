@@ -14,6 +14,30 @@ interface SequencesPageProps {
   defaultProcessingStage?: ProcessingStageStatus;
 }
 
+// Emoji mapping for false positive types
+const getFalsePositiveEmoji = (type: string): string => {
+  const emojiMap: Record<string, string> = {
+    antenna: '📡',
+    building: '🏢',
+    cliff: '⛰️',
+    dark: '🌚',
+    dust: '🌪️',
+    high_cloud: '☁️',
+    low_cloud: '☁️',
+    lens_flare: '✨',
+    lens_droplet: '💧',
+    light: '💡',
+    rain: '🌧️',
+    trail: '🛤️',
+    road: '🛣️',
+    sky: '🌌',
+    tree: '🌳',
+    water_body: '🌊',
+    other: '❓'
+  };
+  return emojiMap[type] || '❓';
+};
+
 export default function SequencesPage({ defaultProcessingStage = 'ready_to_annotate' }: SequencesPageProps = {}) {
   const navigate = useNavigate();
   const { startAnnotationWorkflow } = useSequenceStore();
@@ -330,6 +354,49 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
                         {getProcessingStageLabel(sequence.annotation?.processing_stage || 'no_annotation')}
                       </span>
                     </div>
+                    
+                    {/* Annotation Details - Only show for annotated sequences (review page) */}
+                    {defaultProcessingStage === 'annotated' && sequence.annotation && (
+                      <div className="mt-2 flex items-center flex-wrap gap-2">
+                        {/* Smoke Detection Badge */}
+                        {sequence.annotation.has_smoke ? (
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                            💨 Smoke Detected
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                            ✅ No Smoke
+                          </span>
+                        )}
+
+                        {/* False Positive Types */}
+                        {(() => {
+                          try {
+                            const falsePositiveTypes = sequence.annotation.false_positive_types 
+                              ? JSON.parse(sequence.annotation.false_positive_types) 
+                              : [];
+                            return falsePositiveTypes.map((type: string) => (
+                              <span 
+                                key={type} 
+                                className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
+                              >
+                                {getFalsePositiveEmoji(type)} {type.replace(/_/g, ' ')}
+                              </span>
+                            ));
+                          } catch (e) {
+                            return null;
+                          }
+                        })()}
+
+                        {/* Missed Smoke Warning */}
+                        {sequence.annotation.has_missed_smoke && (
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                            🚨 Missed Smoke
+                          </span>
+                        )}
+                      </div>
+                    )}
+
                     <div className="mt-1 flex items-center text-sm text-gray-500 space-x-4">
                       <span>{new Date(sequence.recorded_at).toLocaleString()}</span>
                       <span>Org: {sequence.organisation_name}</span>
