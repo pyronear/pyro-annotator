@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Search, Filter } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { ExtendedSequenceFilters, ProcessingStageStatus } from '@/types/api';
 import { QUERY_KEYS, PAGINATION_DEFAULTS, PROCESSING_STAGE_STATUS_OPTIONS, PROCESSING_STAGE_LABELS } from '@/utils/constants';
@@ -23,8 +22,6 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
     processing_stage: defaultProcessingStage,
   });
 
-  const [searchTerm, setSearchTerm] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
 
   // Fetch sequences with annotations in a single efficient call
   const { data: sequences, isLoading, error } = useQuery({
@@ -81,31 +78,9 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
         </div>
       </div>
 
-      {/* Search and Filters */}
+      {/* Filters */}
       <div className="bg-white rounded-lg border border-gray-200 p-4">
-        <div className="flex items-center space-x-4 mb-4">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search sequences..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500"
-            />
-          </div>
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-          >
-            <Filter className="w-4 h-4 mr-2" />
-            Filters
-          </button>
-        </div>
-
-        {/* Expanded Filters */}
-        {showFilters && (
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4 pt-4 border-t border-gray-200">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Source API
@@ -185,8 +160,7 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
                 ))}
               </select>
             </div>
-          </div>
-        )}
+        </div>
       </div>
 
       {/* Results */}
