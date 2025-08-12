@@ -113,6 +113,17 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
 
   const isPathActive = (href?: string) => {
     if (!href || href === '#') return false;
+    
+    // Special handling for annotation pages to respect source context
+    if (currentPath.includes('/annotate')) {
+      const searchParams = new URLSearchParams(window.location.search);
+      const fromParam = searchParams.get('from');
+      
+      if (fromParam === 'review' && href === '/sequences-review') return true;
+      if (!fromParam && href === '/sequences') return true;
+      return false;
+    }
+    
     return currentPath === href || currentPath.startsWith(href + '/');
   };
 

@@ -63,6 +63,11 @@ export default function AnnotationInterface() {
   
   const sequenceId = id ? parseInt(id) : null;
   
+  // Determine back navigation URL based on source context
+  const searchParams = new URLSearchParams(window.location.search);
+  const fromParam = searchParams.get('from');
+  const backUrl = fromParam === 'review' ? '/sequences-review' : '/sequences';
+  
   const [bboxes, setBboxes] = useState<SequenceBbox[]>([]);
   const [, setCurrentAnnotation] = useState<SequenceAnnotation | null>(null);
   const [hasMissedSmoke, setHasMissedSmoke] = useState<boolean>(false);
@@ -521,7 +526,7 @@ export default function AnnotationInterface() {
           const totalCompleted = annotationWorkflow?.sequences?.length || 1;
           clearAnnotationWorkflow();
           showToastNotification(`Workflow completed! Annotated ${totalCompleted} sequences.`, 'success');
-          navigate('/sequences');
+          navigate(backUrl);
         }
       }, 1000);
     },
@@ -642,10 +647,10 @@ export default function AnnotationInterface() {
           <p className="text-red-600 mb-2">Failed to load annotation</p>
           <p className="text-gray-500 text-sm">{String(error)}</p>
           <button 
-            onClick={() => navigate('/sequences-review')}
+            onClick={() => navigate(backUrl)}
             className="mt-4 text-primary-600 hover:text-primary-900"
           >
-            Back to Sequences Review
+            Back to Sequences
           </button>
         </div>
       </div>
@@ -669,7 +674,7 @@ export default function AnnotationInterface() {
               <button
                 onClick={() => {
                   clearAnnotationWorkflow(); // Clear workflow when manually navigating back
-                  navigate('/sequences');
+                  navigate(backUrl);
                 }}
                 className="p-1.5 rounded-md hover:bg-gray-100 hover:bg-opacity-75"
                 title="Back to sequence"

@@ -127,8 +127,9 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
       startAnnotationWorkflow(sequences.items, clickedSequence.id, filters);
     }
     
-    // Navigate to annotation interface
-    navigate(`/sequences/${clickedSequence.id}/annotate`);
+    // Navigate to annotation interface with context about source page
+    const queryParam = defaultProcessingStage === 'annotated' ? '?from=review' : '';
+    navigate(`/sequences/${clickedSequence.id}/annotate${queryParam}`);
   };
 
   if (isLoading) {
