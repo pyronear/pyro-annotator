@@ -116,6 +116,13 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
     
     // Handle detection pages directly
     if (currentPath.startsWith('/detections/')) {
+      // Handle nested detection routes like /detections/{id}/annotate
+      if (href === '/detections/annotate' && currentPath.match(/^\/detections\/\d+\/annotate$/)) {
+        return true;
+      }
+      if (href === '/detections/review' && currentPath.match(/^\/detections\/\d+\/review$/)) {
+        return true;
+      }
       return currentPath === href;
     }
     

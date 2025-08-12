@@ -26,6 +26,8 @@ from app.crud import SequenceAnnotationCRUD
 from app.db import get_session
 from app.models import (
     Detection,
+    DetectionAnnotation,
+    DetectionAnnotationProcessingStage,
     Sequence,
     SequenceAnnotation,
     SequenceAnnotationProcessingStage,
@@ -72,6 +74,65 @@ def derive_false_positive_types(annotation_data: SequenceAnnotationData) -> str:
     # Remove duplicates while preserving order
     unique_types = list(dict.fromkeys(all_types))
     return json.dumps(unique_types)
+
+
+async def auto_create_detection_annotations(
+    sequence_id: int, 
+    has_smoke: bool, 
+    has_missed_smoke: bool, 
+    has_false_positives: bool,
+    session: AsyncSession
+) -> None:
+    """
+    Automatically create detection annotations for all detections in a sequence.
+    
+    Business logic for detection annotation processing stages:
+    - If has_missed_smoke=false AND has_false_positives=true (only false positives) 
+      → processing_stage = "visual_check"
+    - If has_smoke=true OR has_missed_smoke=true (smoke detected or missed smoke)
+      → processing_stage = "bbox_annotation"
+    
+    Args:
+        sequence_id: ID of the sequence
+        has_smoke: Whether sequence annotation indicates smoke presence
+        has_missed_smoke: Whether sequence annotation indicates missed smoke
+        has_false_positives: Whether sequence annotation indicates false positives
+        session: Database session
+    """
+    # Determine the appropriate processing stage based on sequence annotation
+    if not has_missed_smoke and has_false_positives:
+        # Only false positives, no smoke or missed smoke → visual check needed
+        processing_stage = DetectionAnnotationProcessingStage.VISUAL_CHECK
+    elif has_smoke or has_missed_smoke:
+        # Smoke detected or missed smoke → bbox annotation needed
+        processing_stage = DetectionAnnotationProcessingStage.BBOX_ANNOTATION
+    else:
+        # Default case (no smoke, no false positives, no missed smoke) → visual check
+        processing_stage = DetectionAnnotationProcessingStage.VISUAL_CHECK
+    
+    # Get all detections for this sequence
+    detections_query = select(Detection).where(Detection.sequence_id == sequence_id)
+    detections_result = await session.execute(detections_query)
+    detections = detections_result.scalars().all()
+    
+    # Create detection annotations for each detection
+    for detection in detections:
+        # Check if detection annotation already exists (avoid duplicates)
+        existing_query = select(DetectionAnnotation).where(
+            DetectionAnnotation.detection_id == detection.id
+        )
+        existing_result = await session.execute(existing_query)
+        existing_annotation = existing_result.scalar_one_or_none()
+        
+        if existing_annotation is None:
+            # Create new detection annotation with empty annotation data and determined processing stage
+            detection_annotation = DetectionAnnotation(
+                detection_id=detection.id,
+                annotation={},  # Empty annotation data initially
+                processing_stage=processing_stage,
+                created_at=datetime.utcnow(),
+            )
+            session.add(detection_annotation)
 
 
 async def validate_detection_ids(
@@ -147,6 +208,18 @@ async def create_sequence_annotation(
     annotations.session.add(sequence_annotation)
     await annotations.session.commit()
     await annotations.session.refresh(sequence_annotation)
+    
+    # Auto-create detection annotations if sequence annotation is marked as annotated
+    if create_data.processing_stage == SequenceAnnotationProcessingStage.ANNOTATED:
+        await auto_create_detection_annotations(
+            sequence_id=create_data.sequence_id,
+            has_smoke=has_smoke,
+            has_missed_smoke=create_data.has_missed_smoke,
+            has_false_positives=has_false_positives,
+            session=annotations.session
+        )
+        # Commit the detection annotations
+        await annotations.session.commit()
 
     return sequence_annotation
 
@@ -283,12 +356,32 @@ async def update_sequence_annotation(
     if payload.processing_stage is not None:
         update_dict["processing_stage"] = payload.processing_stage
 
+    # Check if processing_stage is being updated to "annotated" 
+    was_annotated_before = existing.processing_stage == SequenceAnnotationProcessingStage.ANNOTATED
+    will_be_annotated_after = (
+        payload.processing_stage == SequenceAnnotationProcessingStage.ANNOTATED 
+        if payload.processing_stage is not None 
+        else existing.processing_stage == SequenceAnnotationProcessingStage.ANNOTATED
+    )
+    
     # Update the model
     for key, value in update_dict.items():
         setattr(existing, key, value)
 
     await annotations.session.commit()
     await annotations.session.refresh(existing)
+    
+    # Auto-create detection annotations if processing_stage is newly set to "annotated"
+    if not was_annotated_before and will_be_annotated_after:
+        await auto_create_detection_annotations(
+            sequence_id=existing.sequence_id,
+            has_smoke=existing.has_smoke,
+            has_missed_smoke=existing.has_missed_smoke,
+            has_false_positives=existing.has_false_positives,
+            session=annotations.session
+        )
+        # Commit the detection annotations
+        await annotations.session.commit()
 
     return existing
 

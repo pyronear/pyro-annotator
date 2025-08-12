@@ -92,9 +92,8 @@ export default function DetectionReviewPage() {
   };
 
   const handleSequenceClick = (clickedSequence: SequenceWithDetectionProgress) => {
-    // For review purposes, might navigate to a read-only view
-    // TODO: Navigate to detection review interface when it's built
-    navigate(`/sequences/${clickedSequence.id}/annotate?from=detections-review`);
+    // Navigate to detection annotation interface for review purposes
+    navigate(`/detections/${clickedSequence.id}/annotate`);
   };
 
   if (isLoading) {
@@ -351,8 +350,6 @@ export default function DetectionReviewPage() {
             {/* Empty state */}
             {sequences.items.length === 0 && (
               <div className="p-8 text-center text-gray-500">
-                <div className="text-4xl mb-4">🎉</div>
-                <p className="text-lg font-medium mb-2">All caught up!</p>
                 <p>No sequences with completed detection annotations to review at the moment.</p>
               </div>
             )}

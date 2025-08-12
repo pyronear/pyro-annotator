@@ -8,6 +8,7 @@ import SequencesPageWrapper from '@/pages/SequencesPageWrapper';
 import AnnotationInterface from '@/pages/AnnotationInterface';
 import DetectionAnnotatePage from '@/pages/DetectionAnnotatePage';
 import DetectionReviewPage from '@/pages/DetectionReviewPage';
+import DetectionSequenceAnnotatePage from '@/pages/DetectionSequenceAnnotatePage';
 
 // Create a client
 const queryClient = new QueryClient({
@@ -35,6 +36,7 @@ function App() {
                 <Route path="/sequences/:id/annotate" element={<AnnotationInterface />} />
                 <Route path="/detections/annotate" element={<DetectionAnnotatePage />} />
                 <Route path="/detections/review" element={<DetectionReviewPage />} />
+                <Route path="/detections/:sequenceId/annotate" element={<DetectionSequenceAnnotatePage />} />
               </Routes>
             </AppLayout>
           } />
