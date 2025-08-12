@@ -25,8 +25,8 @@ const navigation: NavigationItem[] = [
     name: 'Sequences', 
     icon: Layers,
     children: [
-      { name: 'Annotate', href: '/sequences' },
-      { name: 'Review', href: '/sequences-review' },
+      { name: 'Annotate', href: '/sequences/annotate' },
+      { name: 'Review', href: '/sequences/review' },
     ]
   },
   { 
@@ -124,10 +124,10 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
       const searchParams = new URLSearchParams(window.location.search);
       const fromParam = searchParams.get('from');
       
-      if (fromParam === 'review' && href === '/sequences-review') return true;
+      if (fromParam === 'review' && href === '/sequences/review') return true;
       if (fromParam === 'detections' && href === '/detections/annotate') return true;
       if (fromParam === 'detections-review' && href === '/detections/review') return true;
-      if (!fromParam && href === '/sequences') return true;
+      if (!fromParam && href === '/sequences/annotate') return true;
       return false;
     }
     

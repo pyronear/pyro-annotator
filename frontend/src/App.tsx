@@ -30,8 +30,8 @@ function App() {
             <AppLayout>
               <Routes>
                 <Route path="/dashboard" element={<DashboardPage />} />
-                <Route path="/sequences" element={<SequencesPage />} />
-                <Route path="/sequences-review" element={<SequencesPageWrapper defaultProcessingStage="annotated" />} />
+                <Route path="/sequences/annotate" element={<SequencesPage />} />
+                <Route path="/sequences/review" element={<SequencesPageWrapper defaultProcessingStage="annotated" />} />
                 <Route path="/sequences/:id/annotate" element={<AnnotationInterface />} />
                 <Route path="/detections/annotate" element={<DetectionAnnotatePage />} />
                 <Route path="/detections/review" element={<DetectionReviewPage />} />

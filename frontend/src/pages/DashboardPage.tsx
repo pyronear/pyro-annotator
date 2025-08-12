@@ -32,7 +32,7 @@ export default function DashboardPage() {
       {/* Quick Actions */}
       <div className="grid md:grid-cols-3 gap-6">
         <Link 
-          to="/sequences"
+          to="/sequences/annotate"
           className="bg-white rounded-lg p-6 shadow-sm border border-gray-200 hover:shadow-md transition-shadow"
         >
           <div className="w-12 h-12 bg-primary-100 rounded-lg flex items-center justify-center mb-4">
@@ -47,7 +47,7 @@ export default function DashboardPage() {
         </Link>
 
         <Link 
-          to="/sequences-review"
+          to="/sequences/review"
           className="bg-white rounded-lg p-6 shadow-sm border border-gray-200 hover:shadow-md transition-shadow"
         >
           <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4">
@@ -196,14 +196,14 @@ export default function DashboardPage() {
           </div>
           <div className="flex space-x-3">
             <Link
-              to="/sequences"
+              to="/sequences/annotate"
               className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
             >
               <Clock className="w-4 h-4 mr-2" />
               View Pending
             </Link>
             <Link
-              to="/sequences"
+              to="/sequences/annotate"
               className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700"
             >
               Start Annotating

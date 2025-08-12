@@ -66,7 +66,7 @@ export default function AnnotationInterface() {
   // Determine back navigation URL based on source context
   const searchParams = new URLSearchParams(window.location.search);
   const fromParam = searchParams.get('from');
-  const backUrl = fromParam === 'review' ? '/sequences-review' : '/sequences';
+  const backUrl = fromParam === 'review' ? '/sequences/review' : '/sequences/annotate';
   
   const [bboxes, setBboxes] = useState<SequenceBbox[]>([]);
   const [, setCurrentAnnotation] = useState<SequenceAnnotation | null>(null);
