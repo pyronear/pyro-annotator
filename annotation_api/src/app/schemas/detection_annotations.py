@@ -75,6 +75,6 @@ class DetectionAnnotationUpdate(BaseModel):
     processing_stage: Optional[DetectionAnnotationProcessingStage] = Field(
         None,
         description="Updated processing stage in the detection annotation workflow. Use to advance or modify the current stage.",
-        examples=["visual_check", "label_studio_check", "annotated"],
+        examples=["visual_check", "bbox_annotation", "annotated"],
     )
     updated_at: Optional[datetime] = None

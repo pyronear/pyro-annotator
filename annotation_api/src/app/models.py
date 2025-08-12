@@ -28,8 +28,8 @@ class DetectionAnnotationProcessingStage(str, Enum):
         "imported"  # Initial stage when annotation is imported from external source
     )
     VISUAL_CHECK = "visual_check"  # Human visual verification of detection accuracy
-    LABEL_STUDIO_CHECK = (
-        "label_studio_check"  # Quality control using Label Studio interface
+    BBOX_ANNOTATION = (
+        "bbox_annotation"  # Manual bounding box drawing around smoke regions
     )
     ANNOTATED = "annotated"  # Final stage with complete human annotation and validation
 
@@ -126,7 +126,9 @@ class Sequence(SQLModel, table=True):
         Index("ix_sequence_last_seen_at", "last_seen_at"),
         Index("ix_sequence_source_api", "source_api"),
         Index("ix_sequence_camera_id", "camera_id"),
+        Index("ix_sequence_camera_name", "camera_name"),
         Index("ix_sequence_organisation_id", "organisation_id"),
+        Index("ix_sequence_organisation_name", "organisation_name"),
         Index("ix_sequence_is_wildfire", "is_wildfire_alertapi"),
     )
     id: int = Field(

@@ -229,7 +229,7 @@ Creates a human annotation for a detection.
 **Processing Stages:**
 - `"imported"`: Initially imported 
 - `"visual_check"`: Human visual review completed
-- `"label_studio_check"`: Label Studio review completed
+- `"bbox_annotation"`: Manual bounding box annotation around smoke regions
 - `"annotated"`: Final annotation completed
 
 **Returns:** Dictionary with created annotation data

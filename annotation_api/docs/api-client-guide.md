@@ -194,7 +194,7 @@ try:
         API_BASE_URL,
         detection_id=456,
         annotation=annotation_data,
-        processing_stage="annotated"  # imported, visual_check, label_studio_check, annotated
+        processing_stage="annotated"  # imported, visual_check, bbox_annotation, annotated
     )
     print(f"Created annotation with ID: {annotation['id']}")
 except ValidationError as e:
@@ -379,7 +379,7 @@ for pred in algo_predictions["predictions"]:
 ### 3. Use Appropriate Processing Stages
 ```python
 # Detection annotation workflow
-stages = ["imported", "visual_check", "label_studio_check", "annotated"]
+stages = ["imported", "visual_check", "bbox_annotation", "annotated"]
 
 # Sequence annotation workflow  
 stages = ["imported", "ready_to_annotate", "annotated"]

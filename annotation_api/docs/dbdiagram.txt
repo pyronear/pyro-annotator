@@ -147,6 +147,6 @@ Table detections_annotations {
 Enum detection_annotation_processing_stage {
   imported
   visual_check
-  label_studio_check
+  bbox_annotation
   annotated
 }
