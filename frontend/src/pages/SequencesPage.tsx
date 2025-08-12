@@ -28,6 +28,60 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
   const { data: cameras = [], isLoading: camerasLoading } = useCameras();
   const { data: organizations = [], isLoading: organizationsLoading } = useOrganizations();
 
+  // Date range state
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+
+  // Date range helper functions
+  const setDateRange = (preset: string) => {
+    const now = new Date();
+    const endDateStr = now.toISOString().split('T')[0]; // Today for UI display
+    const endDateTime = endDateStr + 'T23:59:59'; // End of day for API
+    let startDateStr = '';
+    let startDateTime = '';
+
+    switch (preset) {
+      case '7d':
+        startDateStr = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        startDateTime = startDateStr + 'T00:00:00';
+        break;
+      case '30d':
+        startDateStr = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        startDateTime = startDateStr + 'T00:00:00';
+        break;
+      case '90d':
+        startDateStr = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        startDateTime = startDateStr + 'T00:00:00';
+        break;
+    }
+
+    setDateFrom(startDateStr);
+    setDateTo(endDateStr);
+    handleFilterChange({ 
+      recorded_at_gte: startDateTime || undefined, 
+      recorded_at_lte: endDateTime || undefined 
+    });
+  };
+
+  const clearDateRange = () => {
+    setDateFrom('');
+    setDateTo('');
+    handleFilterChange({ recorded_at_gte: undefined, recorded_at_lte: undefined });
+  };
+
+  // Update filters when date range changes
+  const handleDateFromChange = (value: string) => {
+    setDateFrom(value);
+    const dateTimeValue = value ? value + 'T00:00:00' : undefined;
+    handleFilterChange({ recorded_at_gte: dateTimeValue });
+  };
+
+  const handleDateToChange = (value: string) => {
+    setDateTo(value);
+    const dateTimeValue = value ? value + 'T23:59:59' : undefined;
+    handleFilterChange({ recorded_at_lte: dateTimeValue });
+  };
+
 
   // Fetch sequences with annotations in a single efficient call
   const { data: sequences, isLoading, error } = useQuery({
@@ -163,21 +217,56 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Processing Stage
+                Date Range (Recorded)
               </label>
-              <select
-                value={filters.processing_stage || ''}
-                onChange={(e) => handleFilterChange({ processing_stage: e.target.value as any || undefined })}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
-              >
-                <option value="">All Stages</option>
-                {PROCESSING_STAGE_STATUS_OPTIONS.map((stage) => (
-                  <option key={stage} value={stage}>
-                    {PROCESSING_STAGE_LABELS[stage]}
-                  </option>
-                ))}
-              </select>
+              
+              {/* Preset Buttons */}
+              <div className="flex gap-1 mb-2">
+                <button
+                  onClick={() => setDateRange('7d')}
+                  className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 focus:ring-1 focus:ring-primary-500"
+                >
+                  7d
+                </button>
+                <button
+                  onClick={() => setDateRange('30d')}
+                  className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 focus:ring-1 focus:ring-primary-500"
+                >
+                  30d
+                </button>
+                <button
+                  onClick={() => setDateRange('90d')}
+                  className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 focus:ring-1 focus:ring-primary-500"
+                >
+                  90d
+                </button>
+                <button
+                  onClick={clearDateRange}
+                  className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 focus:ring-1 focus:ring-primary-500 text-red-600"
+                >
+                  Clear
+                </button>
+              </div>
+              
+              {/* Date Inputs */}
+              <div className="flex gap-2">
+                <input 
+                  type="date" 
+                  value={dateFrom} 
+                  onChange={(e) => handleDateFromChange(e.target.value)}
+                  className="flex-1 border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-primary-500 focus:border-primary-500"
+                  placeholder="From"
+                />
+                <input 
+                  type="date" 
+                  value={dateTo} 
+                  onChange={(e) => handleDateToChange(e.target.value)} 
+                  className="flex-1 border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-primary-500 focus:border-primary-500"
+                  placeholder="To"
+                />
+              </div>
             </div>
+
         </div>
       </div>
 

@@ -103,6 +103,14 @@ class ApiClient {
       include_annotation: true, // Always include annotation data
     };
     
+    // Debug logging for date range filters
+    if (enhancedFilters.recorded_at_gte || enhancedFilters.recorded_at_lte) {
+      console.log('Date range filter parameters:', {
+        recorded_at_gte: enhancedFilters.recorded_at_gte,
+        recorded_at_lte: enhancedFilters.recorded_at_lte
+      });
+    }
+    
     const response: AxiosResponse<PaginatedResponse<SequenceWithAnnotation>> = await this.client.get('/sequences', {
       params: enhancedFilters,
     });

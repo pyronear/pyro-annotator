@@ -117,6 +117,12 @@ async def list_sequences(
     has_false_positives: Optional[bool] = Query(
         None, description="Filter by false positive presence"
     ),
+    recorded_at_gte: Optional[datetime] = Query(
+        None, description="Filter by recorded_at >= this date"
+    ),
+    recorded_at_lte: Optional[datetime] = Query(
+        None, description="Filter by recorded_at <= this date"  
+    ),
     order_by: SequenceOrderByField = Query(
         SequenceOrderByField.created_at, description="Order by field"
     ),
@@ -139,6 +145,8 @@ async def list_sequences(
     - **has_missed_smoke**: Filter by missed smoke status
     - **has_smoke**: Filter by smoke presence
     - **has_false_positives**: Filter by false positive presence
+    - **recorded_at_gte**: Filter by recorded_at >= this date
+    - **recorded_at_lte**: Filter by recorded_at <= this date
     - **order_by**: Order by created_at or recorded_at (default: created_at)
     - **order_direction**: asc or desc (default: desc)
     - **page**: Page number (default: 1)
@@ -210,6 +218,13 @@ async def list_sequences(
         query = query.where(
             SequenceAnnotation.has_false_positives == has_false_positives
         )
+
+    # Apply date range filtering
+    if recorded_at_gte is not None:
+        query = query.where(Sequence.recorded_at >= recorded_at_gte)
+    
+    if recorded_at_lte is not None:
+        query = query.where(Sequence.recorded_at <= recorded_at_lte)
 
     # Apply ordering
     order_field = getattr(Sequence, order_by.value)

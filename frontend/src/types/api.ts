@@ -124,6 +124,8 @@ export interface SequenceFilters {
   organisation_id?: number;
   organisation_name?: string;
   is_wildfire_alertapi?: boolean;
+  recorded_at_gte?: string;
+  recorded_at_lte?: string;
   order_by?: 'created_at' | 'recorded_at';
   order_direction?: 'asc' | 'desc';
   page?: number;
