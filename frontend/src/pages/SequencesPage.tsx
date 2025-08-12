@@ -300,9 +300,17 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
         {/* Empty state message */}
         <div className="flex items-center justify-center min-h-96">
           <div className="text-center">
-            <div className="text-6xl mb-4">🎉</div>
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">All caught up!</h3>
-            <p className="text-gray-500">No sequences available for annotation at the moment.</p>
+            {defaultProcessingStage === 'annotated' ? (
+              // Review page - simple message without celebration
+              <p className="text-gray-500">No completed sequences to review at the moment.</p>
+            ) : (
+              // Annotation page - celebratory message
+              <>
+                <div className="text-6xl mb-4">🎉</div>
+                <h3 className="text-xl font-semibold text-gray-900 mb-2">All caught up!</h3>
+                <p className="text-gray-500">No sequences available for annotation at the moment.</p>
+              </>
+            )}
           </div>
         </div>
       </div>
