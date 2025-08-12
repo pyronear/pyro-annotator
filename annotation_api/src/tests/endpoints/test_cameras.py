@@ -12,16 +12,16 @@ from app.models import SourceApi
 
 
 @pytest.mark.asyncio
-async def test_list_cameras_empty(test_app_client: AsyncClient):
+async def test_list_cameras_empty(async_client: AsyncClient):
     """Test listing cameras when database is empty."""
-    response = await test_app_client.get("/api/v1/cameras")
+    response = await async_client.get("/cameras")
     assert response.status_code == 200
     data = response.json()
     assert data == []
 
 
 @pytest.mark.asyncio
-async def test_list_cameras_with_sequences(test_app_client: AsyncClient):
+async def test_list_cameras_with_sequences(async_client: AsyncClient):
     """Test listing cameras with existing sequences."""
     # Create some test sequences with different cameras
     sequences_data = [
@@ -65,11 +65,11 @@ async def test_list_cameras_with_sequences(test_app_client: AsyncClient):
 
     # Create sequences
     for seq_data in sequences_data:
-        response = await test_app_client.post("/api/v1/sequences", data=seq_data)
+        response = await async_client.post("/sequences", data=seq_data)
         assert response.status_code == 201
 
     # List cameras
-    response = await test_app_client.get("/api/v1/cameras")
+    response = await async_client.get("/cameras")
     assert response.status_code == 200
     cameras = response.json()
 
@@ -94,7 +94,7 @@ async def test_list_cameras_with_sequences(test_app_client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_list_cameras_with_search(test_app_client: AsyncClient):
+async def test_list_cameras_with_search(async_client: AsyncClient):
     """Test listing cameras with search filter."""
     # Create test sequences
     sequences_data = [
@@ -138,32 +138,32 @@ async def test_list_cameras_with_search(test_app_client: AsyncClient):
 
     # Create sequences
     for seq_data in sequences_data:
-        response = await test_app_client.post("/api/v1/sequences", data=seq_data)
+        response = await async_client.post("/sequences", data=seq_data)
         assert response.status_code == 201
 
     # Search for "Station"
-    response = await test_app_client.get("/api/v1/cameras", params={"search": "Station"})
+    response = await async_client.get("/cameras", params={"search": "Station"})
     assert response.status_code == 200
     cameras = response.json()
     assert len(cameras) == 2
     assert all("Station" in c["name"] for c in cameras)
 
     # Search for "North"
-    response = await test_app_client.get("/api/v1/cameras", params={"search": "North"})
+    response = await async_client.get("/cameras", params={"search": "North"})
     assert response.status_code == 200
     cameras = response.json()
     assert len(cameras) == 1
     assert cameras[0]["name"] == "Station North"
 
     # Search for non-existent camera
-    response = await test_app_client.get("/api/v1/cameras", params={"search": "NonExistent"})
+    response = await async_client.get("/cameras", params={"search": "NonExistent"})
     assert response.status_code == 200
     cameras = response.json()
     assert len(cameras) == 0
 
 
 @pytest.mark.asyncio
-async def test_list_cameras_case_insensitive_search(test_app_client: AsyncClient):
+async def test_list_cameras_case_insensitive_search(async_client: AsyncClient):
     """Test that camera search is case-insensitive."""
     # Create a test sequence
     seq_data = {
@@ -178,13 +178,13 @@ async def test_list_cameras_case_insensitive_search(test_app_client: AsyncClient
         "recorded_at": "2024-01-15T10:00:00",
         "last_seen_at": "2024-01-15T10:30:00",
     }
-    response = await test_app_client.post("/api/v1/sequences", data=seq_data)
+    response = await async_client.post("/sequences", data=seq_data)
     assert response.status_code == 201
 
     # Test different case variations
     search_terms = ["test", "TEST", "Test", "camera", "CAMERA", "Camera"]
     for term in search_terms:
-        response = await test_app_client.get("/api/v1/cameras", params={"search": term})
+        response = await async_client.get("/cameras", params={"search": term})
         assert response.status_code == 200
         cameras = response.json()
         assert len(cameras) == 1
@@ -192,7 +192,7 @@ async def test_list_cameras_case_insensitive_search(test_app_client: AsyncClient
 
 
 @pytest.mark.asyncio
-async def test_list_cameras_response_format(test_app_client: AsyncClient):
+async def test_list_cameras_response_format(async_client: AsyncClient):
     """Test that camera response has correct format."""
     # Create a test sequence
     seq_data = {
@@ -207,11 +207,11 @@ async def test_list_cameras_response_format(test_app_client: AsyncClient):
         "recorded_at": "2024-01-15T10:00:00",
         "last_seen_at": "2024-01-15T10:30:00",
     }
-    response = await test_app_client.post("/api/v1/sequences", data=seq_data)
+    response = await async_client.post("/sequences", data=seq_data)
     assert response.status_code == 201
 
     # Get cameras
-    response = await test_app_client.get("/api/v1/cameras")
+    response = await async_client.get("/cameras")
     assert response.status_code == 200
     cameras = response.json()
     assert len(cameras) == 1

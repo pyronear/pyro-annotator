@@ -12,16 +12,16 @@ from app.models import SourceApi
 
 
 @pytest.mark.asyncio
-async def test_list_organizations_empty(test_app_client: AsyncClient):
+async def test_list_organizations_empty(async_client: AsyncClient):
     """Test listing organizations when database is empty."""
-    response = await test_app_client.get("/api/v1/organizations")
+    response = await async_client.get("/organizations")
     assert response.status_code == 200
     data = response.json()
     assert data == []
 
 
 @pytest.mark.asyncio
-async def test_list_organizations_with_sequences(test_app_client: AsyncClient):
+async def test_list_organizations_with_sequences(async_client: AsyncClient):
     """Test listing organizations with existing sequences."""
     # Create some test sequences with different organizations
     sequences_data = [
@@ -77,11 +77,11 @@ async def test_list_organizations_with_sequences(test_app_client: AsyncClient):
 
     # Create sequences
     for seq_data in sequences_data:
-        response = await test_app_client.post("/api/v1/sequences", data=seq_data)
+        response = await async_client.post("/sequences", data=seq_data)
         assert response.status_code == 201
 
     # List organizations
-    response = await test_app_client.get("/api/v1/organizations")
+    response = await async_client.get("/organizations")
     assert response.status_code == 200
     orgs = response.json()
 
@@ -113,7 +113,7 @@ async def test_list_organizations_with_sequences(test_app_client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_list_organizations_with_search(test_app_client: AsyncClient):
+async def test_list_organizations_with_search(async_client: AsyncClient):
     """Test listing organizations with search filter."""
     # Create test sequences
     sequences_data = [
@@ -157,32 +157,32 @@ async def test_list_organizations_with_search(test_app_client: AsyncClient):
 
     # Create sequences
     for seq_data in sequences_data:
-        response = await test_app_client.post("/api/v1/sequences", data=seq_data)
+        response = await async_client.post("/sequences", data=seq_data)
         assert response.status_code == 201
 
     # Search for "Forest"
-    response = await test_app_client.get("/api/v1/organizations", params={"search": "Forest"})
+    response = await async_client.get("/organizations", params={"search": "Forest"})
     assert response.status_code == 200
     orgs = response.json()
     assert len(orgs) == 2
     assert all("Forest" in o["name"] for o in orgs)
 
     # Search for "International"
-    response = await test_app_client.get("/api/v1/organizations", params={"search": "International"})
+    response = await async_client.get("/organizations", params={"search": "International"})
     assert response.status_code == 200
     orgs = response.json()
     assert len(orgs) == 1
     assert orgs[0]["name"] == "Forest Watch International"
 
     # Search for non-existent organization
-    response = await test_app_client.get("/api/v1/organizations", params={"search": "NonExistent"})
+    response = await async_client.get("/organizations", params={"search": "NonExistent"})
     assert response.status_code == 200
     orgs = response.json()
     assert len(orgs) == 0
 
 
 @pytest.mark.asyncio
-async def test_list_organizations_case_insensitive_search(test_app_client: AsyncClient):
+async def test_list_organizations_case_insensitive_search(async_client: AsyncClient):
     """Test that organization search is case-insensitive."""
     # Create a test sequence
     seq_data = {
@@ -197,13 +197,13 @@ async def test_list_organizations_case_insensitive_search(test_app_client: Async
         "recorded_at": "2024-01-15T10:00:00",
         "last_seen_at": "2024-01-15T10:30:00",
     }
-    response = await test_app_client.post("/api/v1/sequences", data=seq_data)
+    response = await async_client.post("/sequences", data=seq_data)
     assert response.status_code == 201
 
     # Test different case variations
     search_terms = ["test", "TEST", "Test", "organization", "ORGANIZATION", "Organization"]
     for term in search_terms:
-        response = await test_app_client.get("/api/v1/organizations", params={"search": term})
+        response = await async_client.get("/organizations", params={"search": term})
         assert response.status_code == 200
         orgs = response.json()
         assert len(orgs) == 1
@@ -211,7 +211,7 @@ async def test_list_organizations_case_insensitive_search(test_app_client: Async
 
 
 @pytest.mark.asyncio
-async def test_list_organizations_response_format(test_app_client: AsyncClient):
+async def test_list_organizations_response_format(async_client: AsyncClient):
     """Test that organization response has correct format."""
     # Create a test sequence
     seq_data = {
@@ -226,11 +226,11 @@ async def test_list_organizations_response_format(test_app_client: AsyncClient):
         "recorded_at": "2024-01-15T10:00:00",
         "last_seen_at": "2024-01-15T10:30:00",
     }
-    response = await test_app_client.post("/api/v1/sequences", data=seq_data)
+    response = await async_client.post("/sequences", data=seq_data)
     assert response.status_code == 201
 
     # Get organizations
-    response = await test_app_client.get("/api/v1/organizations")
+    response = await async_client.get("/organizations")
     assert response.status_code == 200
     orgs = response.json()
     assert len(orgs) == 1
@@ -253,7 +253,7 @@ async def test_list_organizations_response_format(test_app_client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_list_organizations_multiple_sources(test_app_client: AsyncClient):
+async def test_list_organizations_multiple_sources(async_client: AsyncClient):
     """Test that organizations aggregate data from different source APIs correctly."""
     # Create sequences from different sources for the same organization
     sequences_data = [
@@ -297,11 +297,11 @@ async def test_list_organizations_multiple_sources(test_app_client: AsyncClient)
 
     # Create sequences
     for seq_data in sequences_data:
-        response = await test_app_client.post("/api/v1/sequences", data=seq_data)
+        response = await async_client.post("/sequences", data=seq_data)
         assert response.status_code == 201
 
     # Get organizations
-    response = await test_app_client.get("/api/v1/organizations")
+    response = await async_client.get("/organizations")
     assert response.status_code == 200
     orgs = response.json()
 
