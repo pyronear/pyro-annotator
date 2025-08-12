@@ -91,6 +91,8 @@ export const QUERY_KEYS = {
   SEQUENCE_ANNOTATIONS: ['sequence-annotations'],
   SEQUENCE_ANNOTATION: (id: number) => ['sequence-annotations', id],
   DETECTION_ANNOTATIONS: ['detection-annotations'],
+  CAMERAS: ['cameras'],
+  ORGANIZATIONS: ['organizations'],
   DETECTION_ANNOTATION: (id: number) => ['detection-annotations', id],
   GIF_URLS: (annotationId: number) => ['gif-urls', annotationId],
   ANNOTATION_STATS: ['annotation-stats'],

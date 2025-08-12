@@ -91,9 +91,11 @@ async def list_sequences(
         description="Filter by source API. Options: pyronear_french (Pyronear French platform), alert_wildfire (AlertWildfire network), api_cenia (CENIA Chile system)",
     ),
     camera_id: Optional[int] = Query(None, description="Filter by camera ID"),
+    camera_name: Optional[str] = Query(None, description="Filter by camera name (exact match)"),
     organisation_id: Optional[int] = Query(
         None, description="Filter by organisation ID"
     ),
+    organisation_name: Optional[str] = Query(None, description="Filter by organisation name (exact match)"),
     is_wildfire_alertapi: Optional[bool] = Query(
         None, description="Filter by wildfire alert API status"
     ),
@@ -164,9 +166,15 @@ async def list_sequences(
 
     if camera_id is not None:
         query = query.where(Sequence.camera_id == camera_id)
+    
+    if camera_name is not None:
+        query = query.where(Sequence.camera_name == camera_name)
 
     if organisation_id is not None:
         query = query.where(Sequence.organisation_id == organisation_id)
+    
+    if organisation_name is not None:
+        query = query.where(Sequence.organisation_name == organisation_name)
 
     if is_wildfire_alertapi is not None:
         query = query.where(Sequence.is_wildfire_alertapi == is_wildfire_alertapi)

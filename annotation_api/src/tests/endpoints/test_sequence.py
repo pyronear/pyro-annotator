@@ -422,3 +422,249 @@ async def test_list_sequences_has_annotation_filter(
     # All three sequences should be present
     for seq_id in sequence_ids:
         assert any(seq["id"] == seq_id for seq in all_sequences)
+
+
+@pytest.mark.asyncio
+async def test_list_sequences_filter_by_camera_name(async_client: AsyncClient):
+    """Test filtering sequences by camera name."""
+    # Create test sequences with different camera names
+    test_sequences = [
+        {
+            "source_api": "pyronear_french",
+            "alert_api_id": "7001",
+            "camera_name": "Station North Alpha",
+            "camera_id": "701",
+            "organisation_name": "Test Org",
+            "organisation_id": "1",
+            "lat": "43.5",
+            "lon": "1.5",
+            "recorded_at": (now - timedelta(days=1)).isoformat(),
+            "last_seen_at": now.isoformat(),
+        },
+        {
+            "source_api": "pyronear_french",
+            "alert_api_id": "7002", 
+            "camera_name": "Station South Beta",
+            "camera_id": "702",
+            "organisation_name": "Test Org",
+            "organisation_id": "1",
+            "lat": "43.0",
+            "lon": "1.5",
+            "recorded_at": (now - timedelta(days=1)).isoformat(),
+            "last_seen_at": now.isoformat(),
+        },
+        {
+            "source_api": "pyronear_french",
+            "alert_api_id": "7003",
+            "camera_name": "Tower East Gamma", 
+            "camera_id": "703",
+            "organisation_name": "Test Org",
+            "organisation_id": "1",
+            "lat": "43.5",
+            "lon": "2.0",
+            "recorded_at": (now - timedelta(days=1)).isoformat(),
+            "last_seen_at": now.isoformat(),
+        },
+    ]
+
+    # Create sequences
+    sequence_ids = []
+    for seq_data in test_sequences:
+        response = await async_client.post("/sequences", data=seq_data)
+        assert response.status_code == 201
+        sequence_ids.append(response.json()["id"])
+
+    # Test filtering by exact camera name
+    response = await async_client.get("/sequences?camera_name=Station North Alpha")
+    assert response.status_code == 200
+    data = response.json()
+    filtered_sequences = data["items"]
+    
+    assert len([seq for seq in filtered_sequences if seq["camera_name"] == "Station North Alpha"]) >= 1
+    # Verify no sequences with different camera names are returned
+    for seq in filtered_sequences:
+        if seq["id"] in sequence_ids:
+            assert seq["camera_name"] == "Station North Alpha"
+
+    # Test filtering by another camera name
+    response = await async_client.get("/sequences?camera_name=Tower East Gamma")
+    assert response.status_code == 200
+    data = response.json()
+    filtered_sequences = data["items"]
+    
+    assert len([seq for seq in filtered_sequences if seq["camera_name"] == "Tower East Gamma"]) >= 1
+    for seq in filtered_sequences:
+        if seq["id"] in sequence_ids:
+            assert seq["camera_name"] == "Tower East Gamma"
+
+    # Test with non-existent camera name
+    response = await async_client.get("/sequences?camera_name=NonExistent Camera")
+    assert response.status_code == 200
+    data = response.json()
+    filtered_sequences = data["items"]
+    
+    # Should not return any of our test sequences
+    for seq in filtered_sequences:
+        assert seq["id"] not in sequence_ids
+
+
+@pytest.mark.asyncio
+async def test_list_sequences_filter_by_organisation_name(async_client: AsyncClient):
+    """Test filtering sequences by organisation name."""
+    # Create test sequences with different organization names
+    test_sequences = [
+        {
+            "source_api": "pyronear_french",
+            "alert_api_id": "8001",
+            "camera_name": "Camera A",
+            "camera_id": "801",
+            "organisation_name": "Forest Protection Agency",
+            "organisation_id": "10",
+            "lat": "43.5",
+            "lon": "1.5",
+            "recorded_at": (now - timedelta(days=1)).isoformat(),
+            "last_seen_at": now.isoformat(),
+        },
+        {
+            "source_api": "alert_wildfire",
+            "alert_api_id": "8002",
+            "camera_name": "Camera B",
+            "camera_id": "802",
+            "organisation_name": "National Park Service",
+            "organisation_id": "11", 
+            "lat": "44.0",
+            "lon": "2.0",
+            "recorded_at": (now - timedelta(days=1)).isoformat(),
+            "last_seen_at": now.isoformat(),
+        },
+        {
+            "source_api": "api_cenia",
+            "alert_api_id": "8003",
+            "camera_name": "Camera C",
+            "camera_id": "803",
+            "organisation_name": "Forest Protection Agency",  # Same org as first
+            "organisation_id": "10",
+            "lat": "-33.4",
+            "lon": "-70.6",
+            "recorded_at": (now - timedelta(days=1)).isoformat(),
+            "last_seen_at": now.isoformat(),
+        },
+    ]
+
+    # Create sequences
+    sequence_ids = []
+    for seq_data in test_sequences:
+        response = await async_client.post("/sequences", data=seq_data)
+        assert response.status_code == 201
+        sequence_ids.append(response.json()["id"])
+
+    # Test filtering by organization name that has 2 sequences
+    response = await async_client.get("/sequences?organisation_name=Forest Protection Agency")
+    assert response.status_code == 200
+    data = response.json()
+    filtered_sequences = data["items"]
+    
+    # Should return at least 2 sequences with this org name
+    matching_sequences = [seq for seq in filtered_sequences if seq["organisation_name"] == "Forest Protection Agency"]
+    assert len(matching_sequences) >= 2
+    
+    # Verify only sequences with correct org name are returned
+    for seq in filtered_sequences:
+        if seq["id"] in sequence_ids:
+            assert seq["organisation_name"] == "Forest Protection Agency"
+
+    # Test filtering by organization name that has 1 sequence
+    response = await async_client.get("/sequences?organisation_name=National Park Service")
+    assert response.status_code == 200
+    data = response.json()
+    filtered_sequences = data["items"]
+    
+    matching_sequences = [seq for seq in filtered_sequences if seq["organisation_name"] == "National Park Service"]
+    assert len(matching_sequences) >= 1
+    
+    for seq in filtered_sequences:
+        if seq["id"] in sequence_ids:
+            assert seq["organisation_name"] == "National Park Service"
+
+    # Test with non-existent organization name
+    response = await async_client.get("/sequences?organisation_name=NonExistent Organization")
+    assert response.status_code == 200
+    data = response.json()
+    filtered_sequences = data["items"]
+    
+    # Should not return any of our test sequences
+    for seq in filtered_sequences:
+        assert seq["id"] not in sequence_ids
+
+
+@pytest.mark.asyncio
+async def test_list_sequences_combined_name_and_id_filters(async_client: AsyncClient):
+    """Test that name filters work alongside existing ID filters."""
+    # Create test sequences 
+    test_sequences = [
+        {
+            "source_api": "pyronear_french",
+            "alert_api_id": "9001",
+            "camera_name": "Test Camera Alpha",
+            "camera_id": "901",
+            "organisation_name": "Test Organization Alpha",
+            "organisation_id": "20",
+            "lat": "43.5",
+            "lon": "1.5",
+            "recorded_at": (now - timedelta(days=1)).isoformat(),
+            "last_seen_at": now.isoformat(),
+        },
+        {
+            "source_api": "pyronear_french",
+            "alert_api_id": "9002",
+            "camera_name": "Test Camera Beta",
+            "camera_id": "902",
+            "organisation_name": "Test Organization Alpha",  # Same org as first
+            "organisation_id": "20",
+            "lat": "43.0",
+            "lon": "1.5", 
+            "recorded_at": (now - timedelta(days=1)).isoformat(),
+            "last_seen_at": now.isoformat(),
+        },
+    ]
+
+    # Create sequences
+    sequence_ids = []
+    for seq_data in test_sequences:
+        response = await async_client.post("/sequences", data=seq_data)
+        assert response.status_code == 201
+        sequence_ids.append(response.json()["id"])
+
+    # Test combining camera_name with organisation_id
+    response = await async_client.get("/sequences?camera_name=Test Camera Alpha&organisation_id=20")
+    assert response.status_code == 200
+    data = response.json()
+    filtered_sequences = data["items"]
+    
+    # Should match the first sequence only
+    matching_sequences = [seq for seq in filtered_sequences if seq["id"] == sequence_ids[0]]
+    assert len(matching_sequences) == 1
+    assert matching_sequences[0]["camera_name"] == "Test Camera Alpha"
+    assert matching_sequences[0]["organisation_id"] == 20
+
+    # Test combining organisation_name with camera_id
+    response = await async_client.get("/sequences?organisation_name=Test Organization Alpha&camera_id=902")
+    assert response.status_code == 200
+    data = response.json()
+    filtered_sequences = data["items"]
+    
+    # Should match the second sequence only
+    matching_sequences = [seq for seq in filtered_sequences if seq["id"] == sequence_ids[1]]
+    assert len(matching_sequences) == 1
+    assert matching_sequences[0]["organisation_name"] == "Test Organization Alpha"
+    assert matching_sequences[0]["camera_id"] == 902
+
+    # Test incompatible filters (should return no results)
+    response = await async_client.get("/sequences?camera_name=Test Camera Alpha&camera_id=902")
+    assert response.status_code == 200
+    data = response.json()
+    filtered_sequences = data["items"]
+    
+    # Should not match any of our test sequences since camera name doesn't match camera ID
+    for seq in filtered_sequences:
+        assert seq["id"] not in sequence_ids

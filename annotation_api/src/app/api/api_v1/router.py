@@ -6,8 +6,10 @@
 from fastapi import APIRouter
 
 from app.api.api_v1.endpoints import (
+    cameras,
     detection_annotations,
     detections,
+    organizations,
     sequence_annotations,
     sequences,
 )
@@ -26,3 +28,5 @@ api_router.include_router(
     prefix="/annotations/sequences",
     tags=["sequence annotations"],
 )
+api_router.include_router(cameras.router, prefix="/cameras", tags=["cameras"])
+api_router.include_router(organizations.router, prefix="/organizations", tags=["organizations"])

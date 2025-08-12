@@ -7,6 +7,8 @@ import { QUERY_KEYS, PAGINATION_DEFAULTS, PROCESSING_STAGE_STATUS_OPTIONS, PROCE
 import { getProcessingStageLabel, getProcessingStageColorClass } from '@/utils/processingStage';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
 import { useSequenceStore } from '@/store/useSequenceStore';
+import { useCameras } from '@/hooks/useCameras';
+import { useOrganizations } from '@/hooks/useOrganizations';
 
 interface SequencesPageProps {
   defaultProcessingStage?: ProcessingStageStatus;
@@ -21,6 +23,10 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
     size: PAGINATION_DEFAULTS.SIZE,
     processing_stage: defaultProcessingStage,
   });
+
+  // Fetch cameras and organizations for dropdown options
+  const { data: cameras = [], isLoading: camerasLoading } = useCameras();
+  const { data: organizations = [], isLoading: organizationsLoading } = useOrganizations();
 
 
   // Fetch sequences with annotations in a single efficient call
@@ -99,28 +105,40 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Camera ID
+                Camera
               </label>
-              <input
-                type="number"
-                value={filters.camera_id || ''}
-                onChange={(e) => handleFilterChange({ camera_id: e.target.value ? Number(e.target.value) : undefined })}
-                placeholder="Enter camera ID"
+              <select
+                value={filters.camera_name || ''}
+                onChange={(e) => handleFilterChange({ camera_name: e.target.value || undefined })}
                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
-              />
+                disabled={camerasLoading}
+              >
+                <option value="">All Cameras</option>
+                {cameras.map((camera) => (
+                  <option key={camera.id} value={camera.name}>
+                    {camera.name} ({camera.sequence_count})
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Organization ID
+                Organization
               </label>
-              <input
-                type="number"
-                value={filters.organisation_id || ''}
-                onChange={(e) => handleFilterChange({ organisation_id: e.target.value ? Number(e.target.value) : undefined })}
-                placeholder="Enter organization ID"
+              <select
+                value={filters.organisation_name || ''}
+                onChange={(e) => handleFilterChange({ organisation_name: e.target.value || undefined })}
                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
-              />
+                disabled={organizationsLoading}
+              >
+                <option value="">All Organizations</option>
+                {organizations.map((organization) => (
+                  <option key={organization.id} value={organization.name}>
+                    {organization.name} ({organization.sequence_count})
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div>

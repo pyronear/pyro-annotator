@@ -121,6 +121,7 @@ class Sequence(SQLModel, table=True):
     __tablename__ = "sequences"
     __table_args__ = (
         UniqueConstraint("alert_api_id", "source_api", name="uq_sequence_alert_source"),
+        # Single column indices
         Index("ix_sequence_created_at", "created_at"),
         Index("ix_sequence_recorded_at", "recorded_at"),
         Index("ix_sequence_last_seen_at", "last_seen_at"),
@@ -130,6 +131,15 @@ class Sequence(SQLModel, table=True):
         Index("ix_sequence_organisation_id", "organisation_id"),
         Index("ix_sequence_organisation_name", "organisation_name"),
         Index("ix_sequence_is_wildfire", "is_wildfire_alertapi"),
+        # Composite indices for common filter combinations
+        Index("ix_sequence_source_camera", "source_api", "camera_name"),
+        Index("ix_sequence_source_org", "source_api", "organisation_name"),
+        Index("ix_sequence_source_wildfire", "source_api", "is_wildfire_alertapi"),
+        Index("ix_sequence_camera_org", "camera_name", "organisation_name"),
+        Index("ix_sequence_source_camera_org", "source_api", "camera_name", "organisation_name"),
+        Index("ix_sequence_source_camera_wildfire", "source_api", "camera_name", "is_wildfire_alertapi"),
+        Index("ix_sequence_source_org_wildfire", "source_api", "organisation_name", "is_wildfire_alertapi"),
+        Index("ix_sequence_full_filter", "source_api", "camera_name", "organisation_name", "is_wildfire_alertapi"),
     )
     id: int = Field(
         default=None, primary_key=True, sa_column_kwargs={"autoincrement": True}

@@ -120,7 +120,9 @@ export interface PaginatedResponse<T> {
 export interface SequenceFilters {
   source_api?: SourceApi;
   camera_id?: number;
+  camera_name?: string;
   organisation_id?: number;
+  organisation_name?: string;
   is_wildfire_alertapi?: boolean;
   order_by?: 'created_at' | 'recorded_at';
   order_direction?: 'asc' | 'desc';
@@ -194,6 +196,21 @@ export interface ExtendedSequenceFilters extends SequenceFilters {
 // Sequence with complete annotation information
 export interface SequenceWithAnnotation extends Sequence {
   annotation?: SequenceAnnotation; // Complete annotation object with all fields
+}
+
+// Camera and Organization types for dedicated endpoints
+export interface Camera {
+  id: number;
+  name: string;
+  sequence_count: number;
+  latest_sequence_date: string | null;
+}
+
+export interface Organization {
+  id: number;
+  name: string;
+  sequence_count: number;
+  latest_sequence_date: string | null;
 }
 
 // Legacy interface for backward compatibility (to be removed after migration)

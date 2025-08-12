@@ -4,6 +4,8 @@ import {
   SequenceAnnotation, 
   DetectionAnnotation,
   Detection,
+  Camera,
+  Organization,
   PaginatedResponse,
   SequenceFilters,
   ExtendedSequenceFilters,
@@ -103,6 +105,22 @@ class ApiClient {
     
     const response: AxiosResponse<PaginatedResponse<SequenceWithAnnotation>> = await this.client.get('/sequences', {
       params: enhancedFilters,
+    });
+    return response.data;
+  }
+
+  // Cameras
+  async getCameras(search?: string): Promise<Camera[]> {
+    const response: AxiosResponse<Camera[]> = await this.client.get('/cameras', {
+      params: search ? { search } : {},
+    });
+    return response.data;
+  }
+
+  // Organizations
+  async getOrganizations(search?: string): Promise<Organization[]> {
+    const response: AxiosResponse<Organization[]> = await this.client.get('/organizations', {
+      params: search ? { search } : {},
     });
     return response.data;
   }
