@@ -206,15 +206,11 @@ export interface SequenceWithAnnotation extends Sequence {
 export interface Camera {
   id: number;
   name: string;
-  sequence_count: number;
-  latest_sequence_date: string | null;
 }
 
 export interface Organization {
   id: number;
   name: string;
-  sequence_count: number;
-  latest_sequence_date: string | null;
 }
 
 // Legacy interface for backward compatibility (to be removed after migration)
