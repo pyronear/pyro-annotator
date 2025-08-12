@@ -195,7 +195,7 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
                 <option value="">All Cameras</option>
                 {cameras.map((camera) => (
                   <option key={camera.id} value={camera.name}>
-                    {camera.name} ({camera.sequence_count})
+                    {camera.name}
                   </option>
                 ))}
               </select>
@@ -214,7 +214,7 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
                 <option value="">All Organizations</option>
                 {organizations.map((organization) => (
                   <option key={organization.id} value={organization.name}>
-                    {organization.name} ({organization.sequence_count})
+                    {organization.name}
                   </option>
                 ))}
               </select>

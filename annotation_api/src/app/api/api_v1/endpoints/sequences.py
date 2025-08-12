@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import (
     APIRouter,
@@ -15,13 +15,13 @@ from fastapi import (
 )
 from fastapi_pagination import Page, Params
 from fastapi_pagination.ext.sqlalchemy import apaginate
-from sqlalchemy import asc, desc, select
+from sqlalchemy import asc, desc, func, case, select, outerjoin, and_
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.dependencies import get_sequence_crud
 from app.crud import SequenceCRUD
 from app.db import get_session
-from app.models import Sequence, SequenceAnnotation, SequenceAnnotationProcessingStage
+from app.models import Detection, DetectionAnnotation, Sequence, SequenceAnnotation, SequenceAnnotationProcessingStage
 from app.schemas.sequence import (
     SequenceCreate,
     SequenceRead,
@@ -123,6 +123,12 @@ async def list_sequences(
     recorded_at_lte: Optional[datetime] = Query(
         None, description="Filter by recorded_at <= this date"  
     ),
+    detection_annotation_completion: Optional[Literal["complete", "incomplete", "all"]] = Query(
+        "all", description="Filter by detection annotation completion status: 'complete' (all detections annotated), 'incomplete' (some detections not annotated), 'all' (no filter)"
+    ),
+    include_detection_stats: bool = Query(
+        False, description="Include detection annotation progress statistics in response"
+    ),
     order_by: SequenceOrderByField = Query(
         SequenceOrderByField.created_at, description="Order by field"
     ),
@@ -147,6 +153,8 @@ async def list_sequences(
     - **has_false_positives**: Filter by false positive presence
     - **recorded_at_gte**: Filter by recorded_at >= this date
     - **recorded_at_lte**: Filter by recorded_at <= this date
+    - **detection_annotation_completion**: Filter by detection annotation completion status ('complete', 'incomplete', 'all')
+    - **include_detection_stats**: Include detection annotation progress statistics in response (default: False)
     - **order_by**: Order by created_at or recorded_at (default: created_at)
     - **order_direction**: asc or desc (default: desc)
     - **page**: Page number (default: 1)
@@ -161,11 +169,13 @@ async def list_sequences(
         or has_smoke is not None
         or has_false_positives is not None
     )
+    needs_detection_annotation_join = (
+        detection_annotation_completion != "all"
+        or include_detection_stats
+    )
 
     # Apply conditional join if annotation filtering is needed
     if needs_annotation_join:
-        from sqlalchemy import outerjoin
-
         query = query.select_from(outerjoin(Sequence, SequenceAnnotation))
 
     # Apply filtering
@@ -225,6 +235,61 @@ async def list_sequences(
     
     if recorded_at_lte is not None:
         query = query.where(Sequence.recorded_at <= recorded_at_lte)
+
+    # Apply detection annotation filtering
+    if needs_detection_annotation_join:
+        # Create subquery to count detections and their annotation status per sequence
+        detection_stats_subquery = (
+            select(
+                Detection.sequence_id,
+                func.count(Detection.id).label("total_detections"),
+                func.count(DetectionAnnotation.id).label("total_detection_annotations"),
+                func.count(
+                    case((DetectionAnnotation.processing_stage == "annotated", 1))
+                ).label("completed_annotations")
+            )
+            .select_from(Detection)
+            .outerjoin(DetectionAnnotation, DetectionAnnotation.detection_id == Detection.id)
+            .group_by(Detection.sequence_id)
+            .subquery()
+        )
+        
+        # Ensure we have SequenceAnnotation join for checking sequence processing stage
+        if not needs_annotation_join:
+            # If we haven't already joined with SequenceAnnotation, do it now
+            query = query.outerjoin(SequenceAnnotation, SequenceAnnotation.sequence_id == Sequence.id)
+        
+        # Join the main query with the detection stats subquery
+        query = query.outerjoin(
+            detection_stats_subquery, 
+            Sequence.id == detection_stats_subquery.c.sequence_id
+        )
+        
+        # Base conditions for detection annotation filtering:
+        # 1. Sequence must be annotated (sequence-level work complete)
+        # 2. Sequence must have detections
+        base_conditions = [
+            SequenceAnnotation.processing_stage == SequenceAnnotationProcessingStage.ANNOTATED,
+            detection_stats_subquery.c.total_detections > 0,
+        ]
+        
+        # Apply detection annotation completion filtering
+        if detection_annotation_completion == "complete":
+            # Only sequences where all detections have been annotated
+            query = query.where(
+                and_(
+                    *base_conditions,
+                    detection_stats_subquery.c.completed_annotations == detection_stats_subquery.c.total_detections
+                )
+            )
+        elif detection_annotation_completion == "incomplete":
+            # Only sequences where not all detections have been annotated
+            query = query.where(
+                and_(
+                    *base_conditions,
+                    detection_stats_subquery.c.completed_annotations < detection_stats_subquery.c.total_detections
+                )
+            )
 
     # Apply ordering
     order_field = getattr(Sequence, order_by.value)

@@ -126,6 +126,8 @@ export interface SequenceFilters {
   is_wildfire_alertapi?: boolean;
   recorded_at_gte?: string;
   recorded_at_lte?: string;
+  detection_annotation_completion?: 'complete' | 'incomplete' | 'all';
+  include_detection_stats?: boolean;
   order_by?: 'created_at' | 'recorded_at';
   order_direction?: 'asc' | 'desc';
   page?: number;
@@ -219,6 +221,19 @@ export interface Organization {
 export interface SequenceWithProcessingStage extends Sequence {
   processing_stage_status: ProcessingStageStatus;
   annotation_id?: number;
+}
+
+// Detection annotation progress statistics
+export interface DetectionAnnotationStats {
+  total_detections: number;
+  annotated_detections: number;
+  completion_percentage: number;
+  pending_stages: string[];
+}
+
+// Sequence with detection annotation progress
+export interface SequenceWithDetectionProgress extends Sequence {
+  detection_annotation_stats?: DetectionAnnotationStats;
 }
 
 // API Error Response

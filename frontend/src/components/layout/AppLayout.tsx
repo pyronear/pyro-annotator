@@ -33,8 +33,8 @@ const navigation: NavigationItem[] = [
     name: 'Detections', 
     icon: Target,
     children: [
-      { name: 'Annotate', href: '#' },
-      { name: 'Review', href: '#' },
+      { name: 'Annotate', href: '/detections/annotate' },
+      { name: 'Review', href: '/detections/review' },
     ]
   },
 ];
@@ -114,12 +114,19 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
   const isPathActive = (href?: string) => {
     if (!href || href === '#') return false;
     
-    // Special handling for annotation pages to respect source context
-    if (currentPath.includes('/annotate')) {
+    // Handle detection pages directly
+    if (currentPath.startsWith('/detections/')) {
+      return currentPath === href;
+    }
+    
+    // Special handling for sequence annotation pages to respect source context
+    if (currentPath.includes('/sequences/') && currentPath.includes('/annotate')) {
       const searchParams = new URLSearchParams(window.location.search);
       const fromParam = searchParams.get('from');
       
       if (fromParam === 'review' && href === '/sequences-review') return true;
+      if (fromParam === 'detections' && href === '/detections/annotate') return true;
+      if (fromParam === 'detections-review' && href === '/detections/review') return true;
       if (!fromParam && href === '/sequences') return true;
       return false;
     }

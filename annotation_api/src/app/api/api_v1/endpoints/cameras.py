@@ -3,7 +3,7 @@
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.db import get_session
@@ -19,24 +19,20 @@ async def list_cameras(
     session: AsyncSession = Depends(get_session),
 ) -> List[CameraRead]:
     """
-    List all unique cameras with statistics.
+    List all unique cameras.
 
     Returns distinct cameras from sequences with:
     - Camera ID and name
-    - Total sequence count for each camera
-    - Latest sequence recorded date
 
     Optionally filter by camera name using the search parameter.
     """
-    # Build aggregation query
+    # Build query for distinct cameras
     query = (
         select(
             Sequence.camera_id.label("id"),
             Sequence.camera_name.label("name"),
-            func.count(Sequence.id).label("sequence_count"),
-            func.max(Sequence.recorded_at).label("latest_sequence_date"),
         )
-        .group_by(Sequence.camera_id, Sequence.camera_name)
+        .distinct()
         .order_by(Sequence.camera_name)
     )
 
@@ -53,8 +49,6 @@ async def list_cameras(
         CameraRead(
             id=camera.id,
             name=camera.name,
-            sequence_count=camera.sequence_count,
-            latest_sequence_date=camera.latest_sequence_date,
         )
         for camera in cameras
     ]

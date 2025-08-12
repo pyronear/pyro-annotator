@@ -12,12 +12,10 @@ __all__ = ["OrganizationRead"]
 
 
 class OrganizationRead(BaseModel):
-    """Organization information with aggregated statistics."""
+    """Organization information."""
 
     id: int
     name: str
-    sequence_count: int
-    latest_sequence_date: Optional[datetime] = None
 
     class Config:
         json_encoders = {datetime: lambda v: v.isoformat() if v else None}

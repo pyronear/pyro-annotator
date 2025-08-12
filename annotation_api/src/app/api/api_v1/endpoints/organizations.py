@@ -19,24 +19,20 @@ async def list_organizations(
     session: AsyncSession = Depends(get_session),
 ) -> List[OrganizationRead]:
     """
-    List all unique organizations with statistics.
+    List all unique organizations.
 
     Returns distinct organizations from sequences with:
     - Organization ID and name
-    - Total sequence count for each organization
-    - Latest sequence recorded date
 
     Optionally filter by organization name using the search parameter.
     """
-    # Build aggregation query
+    # Build query for distinct organizations
     query = (
         select(
             Sequence.organisation_id.label("id"),
             Sequence.organisation_name.label("name"),
-            func.count(Sequence.id).label("sequence_count"),
-            func.max(Sequence.recorded_at).label("latest_sequence_date"),
         )
-        .group_by(Sequence.organisation_id, Sequence.organisation_name)
+        .distinct()
         .order_by(Sequence.organisation_name)
     )
 
@@ -53,8 +49,6 @@ async def list_organizations(
         OrganizationRead(
             id=org.id,
             name=org.name,
-            sequence_count=org.sequence_count,
-            latest_sequence_date=org.latest_sequence_date,
         )
         for org in organizations
     ]
