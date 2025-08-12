@@ -337,6 +337,10 @@ uv run python -m scripts.data_transfer.ingestion.platform.fetch_platform_sequenc
 # Fetch specific sequence
 uv run python -m scripts.data_transfer.ingestion.platform.fetch_platform_sequence_id \
   --sequence-id 123 --loglevel info
+
+# Combined end-to-end processing: fetch → annotate → generate GIFs
+uv run python -m scripts.data_transfer.ingestion.platform.import \
+  --date-from 2024-01-01 --date-end 2024-01-02 --loglevel info
 ```
 
 #### Environment Variables Required
@@ -351,6 +355,7 @@ uv run python -m scripts.data_transfer.ingestion.platform.fetch_platform_sequenc
 - **Progress tracking** - tqdm progress bars for long-running operations
 - **Flexible date ranges** - Configurable date filtering
 - **Logging support** - Configurable log levels for debugging
+- **End-to-end processing** - Combined script handles full workflow: platform fetch → annotation generation → GIF creation with automatic stage transitions (IMPORTED → READY_TO_ANNOTATE)
 
 ## Migration Notes (Poetry → uv)
 

@@ -4,12 +4,13 @@ This guide covers the data transfer scripts for ingesting data from the Pyronear
 
 ## Overview
 
-The data ingestion system consists of two main scripts:
+The data ingestion system consists of three main scripts:
 
 1. **`fetch_platform_sequences`** - Fetches multiple sequences within a date range
-2. **`fetch_platform_sequence_id`** - Fetches a specific sequence by ID
+2. **`fetch_platform_sequence_id`** - Fetches a specific sequence by ID  
+3. **`import`** - **End-to-end processing**: Fetches platform data, generates annotations, and creates GIFs in one streamlined workflow
 
-Both scripts fetch data from the Pyronear platform API, transform it to match the annotation API format, download detection images, and create corresponding sequences and detections in your local annotation API.
+The first two scripts focus on data fetching and transfer, while the combined import script provides a complete pipeline from raw platform data to annotation-ready sequences with automatically generated GIFs and proper processing stage management.
 
 ## Prerequisites
 
@@ -313,3 +314,173 @@ The scripts maintain all relationships between:
 - AI prediction data and bounding boxes
 
 This ensures your local annotation API has complete context for annotation work.
+
+## 3. Combined End-to-End Processing
+
+The combined import script (`import.py`) provides a streamlined workflow that combines platform data fetching with automated annotation generation and GIF creation. This is the recommended approach for most use cases as it takes sequences from the platform API all the way to annotation-ready status in a single command.
+
+### Workflow Overview
+
+The script executes the following pipeline:
+
+1. **Fetch Platform Data**: Retrieves sequences and detections from platform API → posts to annotation API
+2. **For Each Sequence**:
+   - **Generate Annotation**: Analyzes AI predictions and creates sequence annotations → sets stage to `IMPORTED`
+   - **Generate GIFs**: Creates main/crop GIFs from detection images → sets stage to `READY_TO_ANNOTATE`
+
+### Key Features
+
+- **Sequential Processing**: Processes sequences one by one for better error control
+- **Automatic Overwriting**: Always updates existing annotations/GIFs (no force flag needed)
+- **Error Resilient**: Continues processing other sequences if one fails, logs errors clearly
+- **Stage Management**: Proper transitions from no annotation → `IMPORTED` → `READY_TO_ANNOTATE`
+- **Comprehensive Statistics**: Tracks success/failure rates for sequences, annotations, and GIFs
+
+### Basic Usage
+
+```bash
+# Full pipeline for a date range (recommended approach)
+uv run python -m scripts.data_transfer.ingestion.platform.import \
+  --date-from 2024-01-01 --date-end 2024-01-02 --loglevel info
+
+# Process all AI predictions (no confidence filtering)  
+uv run python -m scripts.data_transfer.ingestion.platform.import \
+  --date-from 2024-01-01 --confidence-threshold 0.0 --loglevel info
+
+# Dry run to preview what would be processed
+uv run python -m scripts.data_transfer.ingestion.platform.import \
+  --date-from 2024-01-01 --dry-run --loglevel debug
+```
+
+### Advanced Usage
+
+```bash
+# Skip platform fetch (use existing sequences in annotation API)
+uv run python -m scripts.data_transfer.ingestion.platform.import \
+  --date-from 2024-01-01 --skip-platform-fetch --loglevel info
+
+# Custom API endpoints and detection limits
+uv run python -m scripts.data_transfer.ingestion.platform.import \
+  --url-api-platform "https://alertapi.pyronear.org" \
+  --url-api-annotation "http://localhost:5050" \
+  --date-from 2024-01-01 --date-end 2024-01-07 \
+  --detections-limit 50 --detections-order-by desc \
+  --loglevel info
+
+# Fine-tune annotation generation parameters
+uv run python -m scripts.data_transfer.ingestion.platform.import \
+  --date-from 2024-01-01 \
+  --confidence-threshold 0.5 \
+  --iou-threshold 0.4 \
+  --min-cluster-size 2 \
+  --max-concurrent-gifs 5 \
+  --loglevel debug
+```
+
+### Parameters Reference
+
+#### Required Parameters
+| Parameter | Description | Default | Required |
+|-----------|-------------|---------|----------|
+| `--date-from` | Start date (YYYY-MM-DD format) | - | **Yes** |
+| `--date-end` | End date (YYYY-MM-DD format) | Current date | No |
+
+#### API Configuration
+| Parameter | Description | Default | Required |
+|-----------|-------------|---------|----------|
+| `--url-api-platform` | Platform API base URL | `https://alertapi.pyronear.org` | No |
+| `--url-api-annotation` | Annotation API base URL | `http://localhost:5050` | No |
+
+#### Platform Fetching Options
+| Parameter | Description | Default | Required |
+|-----------|-------------|---------|----------|
+| `--detections-limit` | Max detections per sequence | `30` | No |
+| `--detections-order-by` | Order detections by created_at | `asc` | No |
+
+#### Annotation Analysis Options
+| Parameter | Description | Default | Required |
+|-----------|-------------|---------|----------|
+| `--confidence-threshold` | Min AI prediction confidence (0.0-1.0) | `0.0` | No |
+| `--iou-threshold` | Min IoU for clustering overlapping boxes | `0.3` | No |
+| `--min-cluster-size` | Min boxes required in a cluster | `1` | No |
+
+#### Processing Control
+| Parameter | Description | Default | Required |
+|-----------|-------------|---------|----------|
+| `--dry-run` | Preview actions without execution | `false` | No |
+| `--skip-platform-fetch` | Skip platform data fetching | `false` | No |
+| `--max-concurrent-gifs` | Max concurrent GIF generations | `3` | No |
+| `--loglevel` | Logging level (debug/info/warning/error) | `info` | No |
+
+### Processing Stages and Workflow
+
+The script manages annotation processing stages automatically:
+
+1. **No Annotation**: Sequence exists but has no annotation
+2. **IMPORTED**: Annotation created from AI predictions (after step 2a)
+3. **READY_TO_ANNOTATE**: GIFs generated and annotation ready for human review (after step 2b)
+
+```
+Platform Data → Annotation API → Generate Annotations (IMPORTED) → Generate GIFs (READY_TO_ANNOTATE)
+```
+
+### Output and Reporting
+
+The script provides comprehensive statistics upon completion:
+
+```
+Processing completed!
+Final Statistics:
+  Total sequences: 15
+  Successful sequences: 14
+  Failed sequences: 1
+  Annotations created: 14
+  Sequences with GIFs: 13
+  Total GIFs generated: 26
+```
+
+### Error Handling
+
+The script is designed to be robust and handle individual failures gracefully:
+
+- **Continue on Error**: If one sequence fails, processing continues with the next
+- **Detailed Logging**: All errors are logged with sequence ID and failure reason
+- **Partial Success**: Reports which sequences succeeded/failed for targeted retry
+- **Stage Preservation**: Failed sequences remain at their last successful stage
+
+### Integration with Existing Workflow
+
+This script is ideal when you want to:
+
+- **Batch Process**: Import and prepare multiple sequences for annotation work
+- **Automate Pipeline**: Set up regular imports from platform to annotation API
+- **Quality Control**: Generate annotations and GIFs for human review and validation
+- **ML Training**: Prepare annotated datasets with bounding boxes and GIFs
+
+After running this script, sequences will be in `READY_TO_ANNOTATE` stage and ready for:
+- Human annotation review and validation
+- Bounding box refinement
+- False positive classification
+- Quality control workflows
+
+### Real-World Examples
+
+```bash
+# Daily import routine (last 24 hours)
+uv run python -m scripts.data_transfer.ingestion.platform.import \
+  --date-from $(date -d '1 day ago' '+%Y-%m-%d') \
+  --date-end $(date '+%Y-%m-%d') \
+  --loglevel info
+
+# Weekly batch processing with high confidence filtering
+uv run python -m scripts.data_transfer.ingestion.platform.import \
+  --date-from 2024-01-01 --date-end 2024-01-08 \
+  --confidence-threshold 0.7 \
+  --detections-limit 100 \
+  --loglevel info
+
+# Development/testing with existing data (skip platform fetch)
+uv run python -m scripts.data_transfer.ingestion.platform.import \
+  --date-from 2024-01-01 --date-end 2024-01-02 \
+  --skip-platform-fetch --dry-run --loglevel debug
+```
