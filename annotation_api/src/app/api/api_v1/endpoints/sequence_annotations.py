@@ -128,7 +128,7 @@ async def auto_create_detection_annotations(
             # Create new detection annotation with empty annotation data and determined processing stage
             detection_annotation = DetectionAnnotation(
                 detection_id=detection.id,
-                annotation={},  # Empty annotation data initially
+                annotation={"annotation": []},  # Correct structure with empty annotation array
                 processing_stage=processing_stage,
                 created_at=datetime.utcnow(),
             )
