@@ -84,6 +84,7 @@ function BoundingBoxOverlay({ detection, imageInfo }: BoundingBoxOverlayProps) {
 interface DrawingOverlayProps {
   drawnRectangles: DrawnRectangle[];
   currentDrawing: CurrentDrawing | null;
+  selectedRectangleId: string | null;
   imageInfo: {
     width: number;
     height: number;
@@ -100,6 +101,7 @@ interface DrawingOverlayProps {
 function DrawingOverlay({ 
   drawnRectangles, 
   currentDrawing, 
+  selectedRectangleId,
   imageInfo, 
   zoomLevel, 
   panOffset, 
@@ -108,12 +110,12 @@ function DrawingOverlay({
   normalizedToImage 
 }: DrawingOverlayProps) {
   
-  const renderRectangle = (rect: { xyxyn: [number, number, number, number] } | CurrentDrawing, type: 'completed' | 'drawing') => {
+  const renderRectangle = (rect: { xyxyn: [number, number, number, number]; id?: string } | CurrentDrawing, type: 'completed' | 'drawing') => {
     let left: number, top: number, width: number, height: number;
     
     if (type === 'completed') {
       // For completed rectangles, use normalized coordinates
-      const rectData = rect as { xyxyn: [number, number, number, number] };
+      const rectData = rect as { xyxyn: [number, number, number, number]; id: string };
       const [x1, y1, x2, y2] = rectData.xyxyn;
       const topLeft = normalizedToImage(x1, y1);
       const bottomRight = normalizedToImage(x2, y2);
@@ -136,10 +138,16 @@ function DrawingOverlay({
       height = maxY - minY;
     }
     
+    // Determine styling based on selection state
+    const isSelected = type === 'completed' && selectedRectangleId === (rect as any).id;
+    const borderColor = isSelected ? 'border-blue-500' : 'border-green-500';
+    const backgroundColor = isSelected ? 'bg-blue-500/20' : 'bg-green-500/10';
+    const borderWidth = isSelected ? 'border-3' : 'border-2';
+    
     return (
       <div
         key={type === 'completed' ? (rect as any).id : 'current-drawing'}
-        className="absolute border-2 border-green-500 bg-green-500/10 pointer-events-none"
+        className={`absolute ${borderWidth} ${borderColor} ${backgroundColor} pointer-events-none`}
         style={{
           left: `${left}px`,
           top: `${top}px`,
@@ -325,6 +333,8 @@ function ImageModal({
   const [isActivelyDrawing, setIsActivelyDrawing] = useState(false);
   const [drawnRectangles, setDrawnRectangles] = useState<DrawnRectangle[]>([]);
   const [currentDrawing, setCurrentDrawing] = useState<CurrentDrawing | null>(null);
+  const [selectedRectangleId, setSelectedRectangleId] = useState<string | null>(null);
+  const [undoStack, setUndoStack] = useState<DrawnRectangle[][]>([]);
 
   // Handle image load to get dimensions and position using DOM positioning
   const handleImageLoad = () => {
@@ -358,6 +368,8 @@ function ImageModal({
     setIsDrawMode(false);
     setIsActivelyDrawing(false);
     setCurrentDrawing(null);
+    setSelectedRectangleId(null);
+    setUndoStack([]);
     
     // Load existing annotation rectangles if available
     if (existingAnnotation?.annotation?.annotation) {
@@ -486,6 +498,52 @@ function ImageModal({
     };
   };
 
+  // Hit testing functions for rectangle selection
+  const isPointInRectangle = (pointX: number, pointY: number, rect: DrawnRectangle): boolean => {
+    const topLeft = normalizedToImage(rect.xyxyn[0], rect.xyxyn[1]);
+    const bottomRight = normalizedToImage(rect.xyxyn[2], rect.xyxyn[3]);
+    
+    return pointX >= topLeft.x && pointX <= bottomRight.x &&
+           pointY >= topLeft.y && pointY <= bottomRight.y;
+  };
+
+  const getRectangleAtPoint = (x: number, y: number): DrawnRectangle | null => {
+    // Check rectangles in reverse order (topmost/newest first)
+    for (let i = drawnRectangles.length - 1; i >= 0; i--) {
+      if (isPointInRectangle(x, y, drawnRectangles[i])) {
+        return drawnRectangles[i];
+      }
+    }
+    return null;
+  };
+
+  // Undo functionality
+  const pushUndoState = () => {
+    setUndoStack(prev => {
+      const newStack = [...prev, [...drawnRectangles]]; // Deep copy current state
+      // Limit stack size to 50 operations to prevent memory issues
+      return newStack.length > 50 ? newStack.slice(1) : newStack;
+    });
+  };
+
+  const handleUndo = () => {
+    if (undoStack.length === 0) return;
+    
+    // Cancel any active drawing first
+    if (isActivelyDrawing) {
+      setCurrentDrawing(null);
+      setIsActivelyDrawing(false);
+    }
+    
+    // Pop last state and restore
+    const lastState = undoStack[undoStack.length - 1];
+    setDrawnRectangles(lastState);
+    setUndoStack(prev => prev.slice(0, -1));
+    
+    // Clear selection since rectangles changed
+    setSelectedRectangleId(null);
+  };
+
   // Mouse wheel zoom handler
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
@@ -553,6 +611,21 @@ function ImageModal({
     
     const coords = screenToImageCoordinates(e.clientX, e.clientY);
     
+    // First, check if we clicked on an existing rectangle for selection
+    const hitRectangle = getRectangleAtPoint(coords.x, coords.y);
+    
+    if (hitRectangle) {
+      // Select the rectangle and cancel any active drawing
+      setSelectedRectangleId(hitRectangle.id);
+      setIsActivelyDrawing(false);
+      setCurrentDrawing(null);
+      return;
+    }
+    
+    // No rectangle hit - deselect any current selection
+    setSelectedRectangleId(null);
+    
+    // Proceed with drawing logic
     if (!isActivelyDrawing) {
       // First click: Start drawing rectangle
       setCurrentDrawing({
@@ -577,6 +650,9 @@ function ImageModal({
         // Only create rectangle if it has meaningful size (at least 10 pixels)
         const sizeThreshold = 10 / (imgRef.current?.getBoundingClientRect().width || 1000);
         if ((maxX - minX) > sizeThreshold && (maxY - minY) > sizeThreshold) {
+          // Save current state to undo stack before adding rectangle
+          pushUndoState();
+          
           const newRect: DrawnRectangle = {
             id: Date.now().toString(),
             xyxyn: [minX, minY, maxX, maxY]
@@ -624,7 +700,7 @@ function ImageModal({
     setTransformOrigin({ x: 50, y: 50 });
   };
 
-  // Keyboard handler for zoom reset, draw mode, and escape
+  // Keyboard handler for zoom reset, draw mode, escape, and deletion
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'r' || e.key === 'R') {
@@ -644,13 +720,35 @@ function ImageModal({
           setCurrentDrawing(null);
           setIsActivelyDrawing(false);
           e.preventDefault();
+        } else if (selectedRectangleId) {
+          // Deselect rectangle if one is selected and not actively drawing
+          setSelectedRectangleId(null);
+          e.preventDefault();
         }
+      } else if (e.key === 'Delete' && drawnRectangles.length > 0) {
+        // Save current state to undo stack before deleting
+        pushUndoState();
+        
+        // Smart delete: selected rectangle or all rectangles
+        if (selectedRectangleId) {
+          // Delete only the selected rectangle
+          setDrawnRectangles(prev => prev.filter(rect => rect.id !== selectedRectangleId));
+          setSelectedRectangleId(null);
+        } else {
+          // Delete all rectangles when none selected
+          setDrawnRectangles([]);
+        }
+        e.preventDefault();
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        // Undo with Ctrl-Z (Windows/Linux) or Cmd-Z (Mac)
+        handleUndo();
+        e.preventDefault();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isDrawMode, isActivelyDrawing]);
+  }, [isDrawMode, isActivelyDrawing, selectedRectangleId, drawnRectangles.length, undoStack.length]);
 
   // Cursor style based on state
   const getCursorStyle = () => {
@@ -749,6 +847,7 @@ function ImageModal({
                 <DrawingOverlay
                   drawnRectangles={drawnRectangles}
                   currentDrawing={currentDrawing}
+                  selectedRectangleId={selectedRectangleId}
                   imageInfo={imageInfo}
                   zoomLevel={zoomLevel}
                   panOffset={panOffset}
@@ -788,19 +887,31 @@ function ImageModal({
                   isActivelyDrawing 
                     ? "Drawing in progress... (Click to finish, Esc to cancel)" 
                     : isDrawMode 
-                    ? "Exit Draw Mode (D)" 
+                    ? `Exit Draw Mode (D)${selectedRectangleId ? ' • Rectangle selected' : ''}${drawnRectangles.length > 0 ? ` • ${drawnRectangles.length} rectangles` : ''}` 
                     : "Enter Draw Mode (D)"
                 }
               >
                 <Square className={`w-5 h-5 ${isDrawMode ? 'text-green-400' : 'text-white'}`} />
               </button>
               
-              {/* Clear Drawings Button */}
+              {/* Delete Button - Smart delete (selected or all) */}
               {drawnRectangles.length > 0 && (
                 <button
-                  onClick={() => setDrawnRectangles([])}
+                  onClick={() => {
+                    // Save current state to undo stack before deleting
+                    pushUndoState();
+                    
+                    if (selectedRectangleId) {
+                      // Delete only the selected rectangle
+                      setDrawnRectangles(prev => prev.filter(rect => rect.id !== selectedRectangleId));
+                      setSelectedRectangleId(null);
+                    } else {
+                      // Delete all rectangles when none selected
+                      setDrawnRectangles([]);
+                    }
+                  }}
                   className="p-2 bg-white bg-opacity-10 hover:bg-opacity-20 rounded-full transition-colors backdrop-blur-sm"
-                  title="Clear All Rectangles"
+                  title={selectedRectangleId ? "Delete Selected Rectangle (Delete)" : "Delete All Rectangles (Delete)"}
                 >
                   <Trash2 className="w-5 h-5 text-white" />
                 </button>
