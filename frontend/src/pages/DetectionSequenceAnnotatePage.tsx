@@ -335,8 +335,7 @@ function KeyboardShortcutsInfo({
             <div className="space-y-1">
               <KeyShortcut 
                 keys={["Space"]} 
-                description={isAnnotated ? "Already annotated" : "Submit annotation"} 
-                disabled={isAnnotated}
+                description={isAnnotated ? "Update annotation" : "Submit annotation"} 
               />
             </div>
           </div>
@@ -937,12 +936,16 @@ function ImageModal({
         // Toggle keyboard shortcuts info with ? key or H key
         setShowKeyboardShortcuts(!showKeyboardShortcuts);
         e.preventDefault();
+      } else if (e.key === ' ' && !isSubmitting) {
+        // Space key to submit/update annotation with current drawn rectangles
+        onSubmit(detection, drawnRectangles);
+        e.preventDefault();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isDrawMode, isActivelyDrawing, selectedRectangleId, drawnRectangles.length, undoStack.length, showKeyboardShortcuts, showPredictions, onTogglePredictions]);
+  }, [isDrawMode, isActivelyDrawing, selectedRectangleId, drawnRectangles.length, undoStack.length, showKeyboardShortcuts, showPredictions, onTogglePredictions, isSubmitting, detection, drawnRectangles, onSubmit]);
 
   // Cursor style based on state
   const getCursorStyle = () => {
@@ -1154,27 +1157,25 @@ function ImageModal({
             </div>
             
             {/* Submit Button - Centered below info */}
-            {!isAnnotated && (
-              <div className="flex justify-center mt-4">
-                <button
-                  onClick={() => onSubmit(detection, drawnRectangles)}
-                  disabled={isSubmitting}
-                  className="inline-flex items-center px-4 py-2 bg-primary-600 hover:bg-primary-700 disabled:bg-primary-400 text-white text-sm font-medium rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      Submitting...
-                    </>
-                  ) : (
-                    <>
-                      Submit
-                      <span className="ml-2 text-xs text-primary-200">(Space)</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            )}
+            <div className="flex justify-center mt-4">
+              <button
+                onClick={() => onSubmit(detection, drawnRectangles)}
+                disabled={isSubmitting}
+                className="inline-flex items-center px-4 py-2 bg-primary-600 hover:bg-primary-700 disabled:bg-primary-400 text-white text-sm font-medium rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500"
+              >
+                {isSubmitting ? (
+                  <>
+                    <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    {isAnnotated ? 'Updating...' : 'Submitting...'}
+                  </>
+                ) : (
+                  <>
+                    {isAnnotated ? 'Update' : 'Submit'}
+                    <span className="ml-2 text-xs text-primary-200">(Space)</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
 
           {/* Keyboard Shortcuts Info Overlay */}
@@ -1422,7 +1423,6 @@ export default function DetectionSequenceAnnotatePage() {
       // Modal navigation and submission
       if (showModal && selectedDetectionIndex !== null && detections) {
         const currentDetection = detections[selectedDetectionIndex];
-        const isCurrentAnnotated = detectionAnnotations.get(currentDetection.id)?.processing_stage === 'annotated';
         
         if (e.key === 'Escape') {
           // Only close main modal if no child modals are handling the escape
@@ -1435,10 +1435,10 @@ export default function DetectionSequenceAnnotatePage() {
         } else if (e.key === 'ArrowRight') {
           navigateModal('next');
           e.preventDefault();
-        } else if (e.key === ' ' && !isCurrentAnnotated && !annotateIndividualDetection.isPending) {
-          // Space bar to submit individual annotation with empty rectangles
-          // (rectangles should be handled by modal's own space bar handler)
-          annotateIndividualDetection.mutate({ detection: currentDetection, drawnRectangles: [] });
+        } else if (e.key === ' ' && !annotateIndividualDetection.isPending) {
+          // Space bar submission is handled by the ImageModal's own keyboard handler
+          // which has access to the actual drawnRectangles state. This is just a fallback
+          // that shouldn't normally execute since modal handles Space key first.
           e.preventDefault();
         } else if (e.key === 'p' || e.key === 'P') {
           // Toggle predictions visibility globally
