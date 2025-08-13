@@ -6,7 +6,7 @@ import { ExtendedSequenceFilters, SequenceWithDetectionProgress } from '@/types/
 import { QUERY_KEYS, PAGINATION_DEFAULTS } from '@/utils/constants';
 import { 
   analyzeSequenceAccuracy, 
-  getModelAccuracyBadgeClasses 
+  getRowBackgroundClasses 
 } from '@/utils/modelAccuracy';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
 import FalsePositiveFilter from '@/components/filters/FalsePositiveFilter';
@@ -330,10 +330,24 @@ export default function DetectionReviewPage() {
 
           {/* Sequence List */}
           <div className="divide-y divide-gray-200">
-            {sequences.items.map((sequence) => (
+            {sequences.items.map((sequence) => {
+              // Calculate row background based on model accuracy
+              let rowClasses = "p-4 cursor-pointer";
+              const annotation = annotationMap[sequence.id];
+              if (annotation) {
+                const accuracy = analyzeSequenceAccuracy({
+                  ...sequence,
+                  annotation: annotation
+                });
+                rowClasses = `p-4 cursor-pointer ${getRowBackgroundClasses(accuracy)}`;
+              } else {
+                rowClasses = "p-4 hover:bg-gray-50 cursor-pointer";
+              }
+              
+              return (
               <div 
                 key={sequence.id} 
-                className="p-4 hover:bg-gray-50 cursor-pointer"
+                className={rowClasses}
                 onClick={() => handleSequenceClick(sequence)}
               >
                 <div className="flex items-center space-x-4">
@@ -355,29 +369,11 @@ export default function DetectionReviewPage() {
                         {sequence.source_api}
                       </span>
                       
-                      {/* Model Accuracy Classification */}
-                      {(() => {
-                        const annotation = annotationMap[sequence.id];
-                        if (annotation) {
-                          const accuracy = analyzeSequenceAccuracy({
-                            ...sequence,
-                            annotation: annotation
-                          });
-                          return (
-                            <span className={getModelAccuracyBadgeClasses(accuracy)}>
-                              {accuracy.icon} {accuracy.label}
-                            </span>
-                          );
-                        } else if (sequence.is_wildfire_alertapi) {
-                          // Fallback to showing wildfire alert if no annotation available
-                          return (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
-                              🔥 Wildfire Alert (Pending Review)
-                            </span>
-                          );
-                        }
-                        return null;
-                      })()}
+                      {sequence.is_wildfire_alertapi && (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                          🔥 Wildfire Alert
+                        </span>
+                      )}
                       
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                         ✅ Fully Annotated
@@ -410,7 +406,8 @@ export default function DetectionReviewPage() {
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
 
             {/* Empty state */}
             {sequences.items.length === 0 && (

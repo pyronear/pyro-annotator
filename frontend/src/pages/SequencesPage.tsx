@@ -9,7 +9,7 @@ import {
   analyzeSequenceAccuracy, 
   getFalsePositiveEmoji, 
   formatFalsePositiveType, 
-  getModelAccuracyBadgeClasses 
+  getRowBackgroundClasses 
 } from '@/utils/modelAccuracy';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
 import FalsePositiveFilter from '@/components/filters/FalsePositiveFilter';
@@ -500,10 +500,20 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
 
           {/* Sequence List */}
           <div className="divide-y divide-gray-200">
-            {sequences.items.map((sequence) => (
+            {sequences.items.map((sequence) => {
+              // Calculate row background based on model accuracy for review pages
+              let rowClasses = "p-4 cursor-pointer";
+              if (defaultProcessingStage === 'annotated' && sequence.annotation) {
+                const accuracy = analyzeSequenceAccuracy(sequence);
+                rowClasses = `p-4 cursor-pointer ${getRowBackgroundClasses(accuracy)}`;
+              } else {
+                rowClasses = "p-4 hover:bg-gray-50 cursor-pointer";
+              }
+              
+              return (
               <div 
                 key={sequence.id} 
-                className="p-4 hover:bg-gray-50 cursor-pointer"
+                className={rowClasses}
                 onClick={() => handleSequenceClick(sequence)}
               >
                 <div className="flex items-center space-x-4">
@@ -551,20 +561,6 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
                     {/* Annotation Details - Only show for annotated sequences (review page) */}
                     {defaultProcessingStage === 'annotated' && sequence.annotation && (
                       <div className="mt-2 space-y-2">
-                        {/* Model Accuracy Analysis */}
-                        {(() => {
-                          const accuracy = analyzeSequenceAccuracy(sequence);
-                          return (
-                            <div className="flex items-center flex-wrap gap-2">
-                              <span className={getModelAccuracyBadgeClasses(accuracy)}>
-                                {accuracy.icon} {accuracy.label}
-                              </span>
-                              <span className="text-xs text-gray-500">
-                                {accuracy.description}
-                              </span>
-                            </div>
-                          );
-                        })()}
 
                         {/* Human Annotation Results */}
                         <div className="flex items-center flex-wrap gap-2">
@@ -620,7 +616,8 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Pagination */}

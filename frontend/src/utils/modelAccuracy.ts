@@ -152,3 +152,17 @@ export function getModelAccuracyBadgeClasses(
   
   return `inline-flex items-center rounded-full font-medium ${sizeClasses[size]} ${accuracy.colorClass} ${accuracy.bgClass}`;
 }
+
+/**
+ * Gets row background classes for model accuracy visualization
+ */
+export function getRowBackgroundClasses(accuracy: ModelAccuracyResult): string {
+  const backgroundClasses = {
+    true_positive: 'bg-green-50 border-l-4 border-l-green-500 hover:bg-green-100',
+    false_positive: 'bg-red-50 border-l-4 border-l-red-500 hover:bg-red-100',
+    false_negative: 'bg-orange-50 border-l-4 border-l-orange-500 hover:bg-orange-100',
+    unknown: 'hover:bg-gray-50',
+  };
+  
+  return backgroundClasses[accuracy.type];
+}

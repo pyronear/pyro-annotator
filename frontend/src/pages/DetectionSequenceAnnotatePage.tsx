@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, X, ChevronLeft, ChevronRight, CheckCircle, AlertCircle, Upload } from 'lucide-react';
@@ -12,17 +12,102 @@ import {
   formatFalsePositiveType,
   getModelAccuracyBadgeClasses 
 } from '@/utils/modelAccuracy';
-import { Detection, DetectionAnnotation } from '@/types/api';
+import { Detection, DetectionAnnotation, AlgoPrediction } from '@/types/api';
 
+// Component for rendering bounding boxes over detection images
+interface BoundingBoxOverlayProps {
+  detection: Detection;
+  imageInfo: {
+    width: number;
+    height: number;
+    offsetX: number;
+    offsetY: number;
+  };
+}
+
+function BoundingBoxOverlay({ detection, imageInfo }: BoundingBoxOverlayProps) {
+  if (!detection?.algo_predictions?.predictions) return null;
+  
+  return (
+    <>
+      {detection.algo_predictions.predictions.map((prediction: AlgoPrediction, index: number) => {
+        // Convert normalized coordinates (xyxyn) to pixel coordinates
+        const [x1, y1, x2, y2] = prediction.xyxyn;
+        
+        // Ensure x2 > x1 and y2 > y1
+        if (x2 <= x1 || y2 <= y1) {
+          return null;
+        }
+        
+        // Calculate pixel coordinates relative to the actual image position
+        const left = imageInfo.offsetX + (x1 * imageInfo.width);
+        const top = imageInfo.offsetY + (y1 * imageInfo.height);
+        const width = (x2 - x1) * imageInfo.width;
+        const height = (y2 - y1) * imageInfo.height;
+        
+        return (
+          <div
+            key={`bbox-${detection.id}-${index}`}
+            className="absolute border-2 border-red-500 bg-red-500/20 pointer-events-none"
+            style={{
+              left: `${left}px`,
+              top: `${top}px`,
+              width: `${width}px`,
+              height: `${height}px`,
+            }}
+          >
+            {/* Confidence label */}
+            <div className="absolute -top-6 left-0 bg-red-500 text-white text-xs px-1 py-0.5 rounded whitespace-nowrap">
+              {prediction.class_name} {(prediction.confidence * 100).toFixed(0)}%
+            </div>
+          </div>
+        );
+      }).filter(Boolean)} {/* Remove null entries from invalid boxes */}
+    </>
+  );
+}
 
 interface DetectionImageCardProps {
   detection: Detection;
   onClick: () => void;
   isAnnotated?: boolean;
+  showPredictions?: boolean;
 }
 
-function DetectionImageCard({ detection, onClick, isAnnotated = false }: DetectionImageCardProps) {
+function DetectionImageCard({ detection, onClick, isAnnotated = false, showPredictions = false }: DetectionImageCardProps) {
   const { data: imageData, isLoading } = useDetectionImage(detection.id);
+  const [imageInfo, setImageInfo] = useState<{
+    width: number;
+    height: number;
+    offsetX: number;
+    offsetY: number;
+  } | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  // Handle image load to get dimensions and position using DOM positioning
+  const handleImageLoad = () => {
+    if (imgRef.current && containerRef.current) {
+      // Get actual rendered positions from DOM
+      const containerRect = containerRef.current.getBoundingClientRect();
+      const imgRect = imgRef.current.getBoundingClientRect();
+      
+      // Calculate the image position relative to the container
+      const offsetX = imgRect.left - containerRect.left;
+      const offsetY = imgRect.top - containerRect.top;
+      
+      // Use the actual rendered dimensions
+      const width = imgRect.width;
+      const height = imgRect.height;
+      
+      setImageInfo({
+        width: width,
+        height: height,
+        offsetX: offsetX,
+        offsetY: offsetY
+      });
+    }
+  };
 
   if (isLoading) {
     return (
@@ -44,15 +129,20 @@ function DetectionImageCard({ detection, onClick, isAnnotated = false }: Detecti
 
   return (
     <div className="group cursor-pointer" onClick={onClick}>
-      <div className={`aspect-video overflow-hidden rounded-lg border-2 transition-colors ${
-        isAnnotated 
-          ? 'border-green-500 hover:border-green-600' 
-          : 'border-gray-200 hover:border-gray-300'
-      }`}>
+      <div 
+        ref={containerRef}
+        className={`relative aspect-video overflow-hidden rounded-lg border-2 transition-colors ${
+          isAnnotated 
+            ? 'border-green-500 hover:border-green-600' 
+            : 'border-gray-200 hover:border-gray-300'
+        }`}
+      >
         <img
+          ref={imgRef}
           src={imageData.url}
           alt={`Detection ${detection.id}`}
           className="w-full h-full object-contain bg-gray-50 group-hover:bg-gray-100 transition-colors"
+          onLoad={handleImageLoad}
           onError={(e) => {
             const target = e.target as HTMLImageElement;
             target.style.display = 'none';
@@ -62,6 +152,13 @@ function DetectionImageCard({ detection, onClick, isAnnotated = false }: Detecti
             }
           }}
         />
+        
+        {/* Bounding Boxes Overlay */}
+        {showPredictions && imageInfo && (
+          <div className="absolute inset-0 pointer-events-none">
+            <BoundingBoxOverlay detection={detection} imageInfo={imageInfo} />
+          </div>
+        )}
       </div>
       <div className="mt-2 text-sm text-gray-600">
         <div className="flex items-center justify-between">
@@ -84,6 +181,7 @@ interface ImageModalProps {
   canNavigateNext: boolean;
   currentIndex: number;
   totalCount: number;
+  showPredictions?: boolean;
 }
 
 function ImageModal({ 
@@ -93,9 +191,42 @@ function ImageModal({
   canNavigatePrev, 
   canNavigateNext,
   currentIndex,
-  totalCount
+  totalCount,
+  showPredictions = false
 }: ImageModalProps) {
   const { data: imageData } = useDetectionImage(detection.id);
+  const [imageInfo, setImageInfo] = useState<{
+    width: number;
+    height: number;
+    offsetX: number;
+    offsetY: number;
+  } | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  // Handle image load to get dimensions and position using DOM positioning
+  const handleImageLoad = () => {
+    if (imgRef.current && containerRef.current) {
+      // Get actual rendered positions from DOM
+      const containerRect = containerRef.current.getBoundingClientRect();
+      const imgRect = imgRef.current.getBoundingClientRect();
+      
+      // Calculate the image position relative to the container
+      const offsetX = imgRect.left - containerRect.left;
+      const offsetY = imgRect.top - containerRect.top;
+      
+      // Use the actual rendered dimensions
+      const width = imgRect.width;
+      const height = imgRect.height;
+      
+      setImageInfo({
+        width: width,
+        height: height,
+        offsetX: offsetX,
+        offsetY: offsetY
+      });
+    }
+  };
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50">
@@ -130,13 +261,27 @@ function ImageModal({
         </button>
 
         {/* Image container */}
-        <div className="max-w-7xl max-h-full flex flex-col items-center">
+        <div 
+          ref={containerRef}
+          className="relative max-w-7xl max-h-full flex flex-col items-center"
+        >
           {imageData?.url ? (
-            <img
-              src={imageData.url}
-              alt={`Detection ${detection.id}`}
-              className="max-w-full max-h-[80vh] object-contain"
-            />
+            <>
+              <img
+                ref={imgRef}
+                src={imageData.url}
+                alt={`Detection ${detection.id}`}
+                className="max-w-full max-h-[80vh] object-contain"
+                onLoad={handleImageLoad}
+              />
+              
+              {/* Bounding Boxes Overlay */}
+              {showPredictions && imageInfo && (
+                <div className="absolute inset-0 pointer-events-none">
+                  <BoundingBoxOverlay detection={detection} imageInfo={imageInfo} />
+                </div>
+              )}
+            </>
           ) : (
             <div className="w-96 h-96 bg-gray-800 flex items-center justify-center rounded-lg">
               <span className="text-gray-400">No image available</span>
@@ -170,6 +315,7 @@ export default function DetectionSequenceAnnotatePage() {
   const [detectionAnnotations, setDetectionAnnotations] = useState<Map<number, DetectionAnnotation>>(new Map());
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+  const [showPredictions, setShowPredictions] = useState(false);
 
   const { data: detections, isLoading, error } = useSequenceDetections(sequenceIdNum);
   
@@ -199,6 +345,15 @@ export default function DetectionSequenceAnnotatePage() {
       detection_annotation_completion: 'incomplete',
       include_detection_stats: true,
       size: 1,
+    }),
+  });
+
+  // Fetch all sequences for navigation
+  const { data: allSequences } = useQuery({
+    queryKey: [...QUERY_KEYS.SEQUENCES, 'navigation-context'],
+    queryFn: () => apiClient.getSequences({
+      detection_annotation_completion: 'incomplete',
+      size: 1000, // Get enough sequences for navigation
     }),
   });
 
@@ -282,6 +437,38 @@ export default function DetectionSequenceAnnotatePage() {
 
   const handleSave = () => {
     saveAnnotations.mutate();
+  };
+
+  // Navigation logic
+  const getCurrentSequenceIndex = () => {
+    if (!allSequences?.items || !sequenceIdNum) return -1;
+    return allSequences.items.findIndex(seq => seq.id === sequenceIdNum);
+  };
+
+  const canNavigatePrevious = () => {
+    const currentIndex = getCurrentSequenceIndex();
+    return currentIndex > 0;
+  };
+
+  const canNavigateNext = () => {
+    const currentIndex = getCurrentSequenceIndex();
+    return currentIndex >= 0 && allSequences?.items && currentIndex < allSequences.items.length - 1;
+  };
+
+  const handlePreviousSequence = () => {
+    const currentIndex = getCurrentSequenceIndex();
+    if (currentIndex > 0 && allSequences?.items) {
+      const prevSequence = allSequences.items[currentIndex - 1];
+      navigate(`/detections/${prevSequence.id}/annotate`);
+    }
+  };
+
+  const handleNextSequence = () => {
+    const currentIndex = getCurrentSequenceIndex();
+    if (currentIndex >= 0 && allSequences?.items && currentIndex < allSequences.items.length - 1) {
+      const nextSequence = allSequences.items[currentIndex + 1];
+      navigate(`/detections/${nextSequence.id}/annotate`);
+    }
   };
 
   const openModal = (index: number) => {
@@ -560,6 +747,35 @@ export default function DetectionSequenceAnnotatePage() {
             </div>
             
             <div className="flex items-center space-x-2">
+              {/* Navigation Buttons */}
+              <button
+                onClick={handlePreviousSequence}
+                disabled={!canNavigatePrevious()}
+                className="p-1.5 rounded-md hover:bg-gray-100 hover:bg-opacity-75 disabled:opacity-40 disabled:cursor-not-allowed"
+                title={canNavigatePrevious() ? "Previous sequence" : "Already at first sequence"}
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button
+                onClick={handleNextSequence}
+                disabled={!canNavigateNext()}
+                className="p-1.5 rounded-md hover:bg-gray-100 hover:bg-opacity-75 disabled:opacity-40 disabled:cursor-not-allowed"
+                title={canNavigateNext() ? "Next sequence" : "Already at last sequence"}
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+              
+              {/* Predictions Toggle */}
+              <label className="flex items-center space-x-2 px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showPredictions}
+                  onChange={(e) => setShowPredictions(e.target.checked)}
+                  className="w-3 h-3 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                />
+                <span>Show predictions</span>
+              </label>
+
               <button
                 onClick={handleSave}
                 disabled={saveAnnotations.isPending}
@@ -640,6 +856,7 @@ export default function DetectionSequenceAnnotatePage() {
               detection={detection}
               onClick={() => openModal(index)}
               isAnnotated={detectionAnnotations.get(detection.id)?.processing_stage === 'annotated'}
+              showPredictions={showPredictions}
             />
           ))}
         </div>
@@ -655,6 +872,7 @@ export default function DetectionSequenceAnnotatePage() {
           canNavigateNext={selectedDetectionIndex < detections.length - 1}
           currentIndex={selectedDetectionIndex}
           totalCount={detections.length}
+          showPredictions={showPredictions}
         />
       )}
 

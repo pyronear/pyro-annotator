@@ -2,7 +2,6 @@ import { useState, useRef, useEffect } from 'react';
 import { ChevronDown, X, Search } from 'lucide-react';
 import { FALSE_POSITIVE_TYPES } from '@/utils/constants';
 import { getFalsePositiveEmoji, formatFalsePositiveType } from '@/utils/modelAccuracy';
-import { FalsePositiveType } from '@/types/api';
 
 interface FalsePositiveFilterProps {
   selectedTypes: string[];
