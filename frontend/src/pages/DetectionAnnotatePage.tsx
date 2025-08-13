@@ -4,9 +4,9 @@ import { useNavigate } from 'react-router-dom';
 import { apiClient } from '@/services/api';
 import { ExtendedSequenceFilters, SequenceWithDetectionProgress } from '@/types/api';
 import { QUERY_KEYS, PAGINATION_DEFAULTS } from '@/utils/constants';
-import { 
-  analyzeSequenceAccuracy, 
-  getRowBackgroundClasses 
+import {
+  analyzeSequenceAccuracy,
+  getRowBackgroundClasses
 } from '@/utils/modelAccuracy';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
 import { useCameras } from '@/hooks/useCameras';
@@ -92,13 +92,13 @@ export default function DetectionAnnotatePage() {
     queryKey: [...QUERY_KEYS.SEQUENCE_ANNOTATIONS, 'detection-annotate', sequences?.items?.map(s => s.id)],
     queryFn: async () => {
       if (!sequences?.items?.length) return [];
-      
+
       const annotationPromises = sequences.items.map(sequence =>
         apiClient.getSequenceAnnotations({ sequence_id: sequence.id, size: 1 })
           .then(response => ({ sequenceId: sequence.id, annotation: response.items[0] || null }))
           .catch(() => ({ sequenceId: sequence.id, annotation: null }))
       );
-      
+
       return Promise.all(annotationPromises);
     },
     enabled: !!sequences?.items?.length,
@@ -501,72 +501,69 @@ export default function DetectionAnnotatePage() {
               } else {
                 rowClasses = "p-4 hover:bg-gray-50 cursor-pointer";
               }
-              
+
               return (
-              <div
-                key={sequence.id}
-                className={rowClasses}
-                onClick={() => handleSequenceClick(sequence)}
-              >
-                <div className="flex items-center space-x-4">
-                  {/* Detection Image Thumbnail */}
-                  <div className="flex-shrink-0">
-                    <DetectionImageThumbnail
-                      sequenceId={sequence.id}
-                      className="h-16"
-                    />
-                  </div>
+                <div
+                  key={sequence.id}
+                  className={rowClasses}
+                  onClick={() => handleSequenceClick(sequence)}
+                >
+                  <div className="flex items-center space-x-4">
+                    {/* Detection Image Thumbnail */}
+                    <div className="flex-shrink-0">
+                      <DetectionImageThumbnail
+                        sequenceId={sequence.id}
+                        className="h-16"
+                      />
+                    </div>
 
-                  {/* Sequence Info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center space-x-3">
-                      <h3 className="text-sm font-medium text-gray-900 truncate">
-                        {sequence.camera_name}
-                      </h3>
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                        {sequence.source_api}
-                      </span>
-                      {sequence.is_wildfire_alertapi && (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                          🔥 Wildfire Alert
+                    {/* Sequence Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center space-x-3">
+                        <h3 className="text-sm font-medium text-gray-900 truncate">
+                          {sequence.camera_name}
+                        </h3>
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                          {sequence.source_api}
                         </span>
-                      )}
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
-                        📝 Needs Work
-                      </span>
-                    </div>
-
-                    {/* Detection Progress - placeholder for future statistics */}
-                    {sequence.detection_annotation_stats && (
-                      <div className="mt-2 flex items-center space-x-4">
-                        <div className="flex items-center space-x-2">
-                          <div className="w-32 bg-gray-200 rounded-full h-2">
-                            <div
-                              className="bg-blue-600 h-2 rounded-full"
-                              style={{
-                                width: `${sequence.detection_annotation_stats.completion_percentage}%`
-                              }}
-                            ></div>
-                          </div>
-                          <span className="text-xs text-gray-500">
-                            {sequence.detection_annotation_stats.annotated_detections}/{sequence.detection_annotation_stats.total_detections} detections
+                        {sequence.is_wildfire_alertapi && (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                            🔥 Wildfire Alert
                           </span>
-                        </div>
+                        )}
                       </div>
-                    )}
 
-                    <div className="mt-1 flex items-center text-sm text-gray-500 space-x-4">
-                      <span>{new Date(sequence.recorded_at).toLocaleString()}</span>
-                      <span>Org: {sequence.organisation_name}</span>
-                    </div>
-                    {sequence.azimuth && (
-                      <div className="mt-1 text-xs text-gray-400">
-                        Azimuth: {sequence.azimuth}°
+                      {/* Detection Progress - placeholder for future statistics */}
+                      {sequence.detection_annotation_stats && (
+                        <div className="mt-2 flex items-center space-x-4">
+                          <div className="flex items-center space-x-2">
+                            <div className="w-32 bg-gray-200 rounded-full h-2">
+                              <div
+                                className="bg-blue-600 h-2 rounded-full"
+                                style={{
+                                  width: `${sequence.detection_annotation_stats.completion_percentage}%`
+                                }}
+                              ></div>
+                            </div>
+                            <span className="text-xs text-gray-500">
+                              {sequence.detection_annotation_stats.annotated_detections}/{sequence.detection_annotation_stats.total_detections} detections
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="mt-1 flex items-center text-sm text-gray-500 space-x-4">
+                        <span>{new Date(sequence.recorded_at).toLocaleString()}</span>
+                        <span>Org: {sequence.organisation_name}</span>
                       </div>
-                    )}
+                      {sequence.azimuth && (
+                        <div className="mt-1 text-xs text-gray-400">
+                          Azimuth: {sequence.azimuth}°
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
               );
             })}
           </div>
