@@ -4,9 +4,9 @@ import { useNavigate } from 'react-router-dom';
 import { apiClient } from '@/services/api';
 import { ExtendedSequenceFilters, SequenceWithDetectionProgress } from '@/types/api';
 import { QUERY_KEYS, PAGINATION_DEFAULTS } from '@/utils/constants';
-import { 
-  analyzeSequenceAccuracy, 
-  getRowBackgroundClasses 
+import {
+  analyzeSequenceAccuracy,
+  getRowBackgroundClasses
 } from '@/utils/modelAccuracy';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
 import FalsePositiveFilter from '@/components/filters/FalsePositiveFilter';
@@ -15,7 +15,7 @@ import { useOrganizations } from '@/hooks/useOrganizations';
 
 export default function DetectionReviewPage() {
   const navigate = useNavigate();
-  
+
   const [filters, setFilters] = useState<ExtendedSequenceFilters>({
     page: PAGINATION_DEFAULTS.PAGE,
     size: PAGINATION_DEFAULTS.SIZE,
@@ -60,9 +60,9 @@ export default function DetectionReviewPage() {
 
     setDateFrom(startDateStr);
     setDateTo(endDateStr);
-    handleFilterChange({ 
-      recorded_at_gte: startDateTime || undefined, 
-      recorded_at_lte: endDateTime || undefined 
+    handleFilterChange({
+      recorded_at_gte: startDateTime || undefined,
+      recorded_at_lte: endDateTime || undefined
     });
   };
 
@@ -96,13 +96,13 @@ export default function DetectionReviewPage() {
     queryKey: [...QUERY_KEYS.SEQUENCE_ANNOTATIONS, 'detection-review', sequences?.items?.map(s => s.id)],
     queryFn: async () => {
       if (!sequences?.items?.length) return [];
-      
+
       const annotationPromises = sequences.items.map(sequence =>
         apiClient.getSequenceAnnotations({ sequence_id: sequence.id, size: 1 })
           .then(response => ({ sequenceId: sequence.id, annotation: response.items[0] || null }))
           .catch(() => ({ sequenceId: sequence.id, annotation: null }))
       );
-      
+
       return Promise.all(annotationPromises);
     },
     enabled: !!sequences?.items?.length,
@@ -120,8 +120,8 @@ export default function DetectionReviewPage() {
 
   const handleFalsePositiveFilterChange = (selectedTypes: string[]) => {
     setSelectedFalsePositiveTypes(selectedTypes);
-    handleFilterChange({ 
-      false_positive_types: selectedTypes.length > 0 ? selectedTypes : undefined 
+    handleFilterChange({
+      false_positive_types: selectedTypes.length > 0 ? selectedTypes : undefined
     });
   };
 
@@ -230,8 +230,8 @@ export default function DetectionReviewPage() {
               value={filters.is_wildfire_alertapi === undefined ? '' : filters.is_wildfire_alertapi.toString()}
               onChange={(e) => {
                 const value = e.target.value;
-                handleFilterChange({ 
-                  is_wildfire_alertapi: value === '' ? undefined : value === 'true' 
+                handleFilterChange({
+                  is_wildfire_alertapi: value === '' ? undefined : value === 'true'
                 });
               }}
               className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
@@ -246,7 +246,7 @@ export default function DetectionReviewPage() {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Date Range (Recorded)
             </label>
-            
+
             {/* Preset Buttons */}
             <div className="flex gap-1 mb-2">
               <button
@@ -274,20 +274,20 @@ export default function DetectionReviewPage() {
                 Clear
               </button>
             </div>
-            
+
             {/* Date Inputs */}
             <div className="flex gap-2">
-              <input 
-                type="date" 
-                value={dateFrom} 
+              <input
+                type="date"
+                value={dateFrom}
                 onChange={(e) => handleDateFromChange(e.target.value)}
                 className="flex-1 border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-primary-500 focus:border-primary-500"
                 placeholder="From"
               />
-              <input 
-                type="date" 
-                value={dateTo} 
-                onChange={(e) => handleDateToChange(e.target.value)} 
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => handleDateToChange(e.target.value)}
                 className="flex-1 border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-primary-500 focus:border-primary-500"
                 placeholder="To"
               />
@@ -362,69 +362,77 @@ export default function DetectionReviewPage() {
               } else {
                 rowClasses = "p-4 hover:bg-gray-50 cursor-pointer";
               }
-              
-              return (
-              <div 
-                key={sequence.id} 
-                className={rowClasses}
-                onClick={() => handleSequenceClick(sequence)}
-              >
-                <div className="flex items-center space-x-4">
-                  {/* Detection Image Thumbnail */}
-                  <div className="flex-shrink-0">
-                    <DetectionImageThumbnail 
-                      sequenceId={sequence.id} 
-                      className="h-16"
-                    />
-                  </div>
-                  
-                  {/* Sequence Info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center space-x-3">
-                      <h3 className="text-sm font-medium text-gray-900 truncate">
-                        {sequence.camera_name}
-                      </h3>
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                        {sequence.source_api}
-                      </span>
-                      
-                      {sequence.is_wildfire_alertapi && (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
-                          🔥 Wildfire Alert
-                        </span>
-                      )}
-                      
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                        ✅ Fully Annotated
-                      </span>
-                    </div>
-                    
-                    {/* Detection Progress */}
-                    {sequence.detection_annotation_stats && (
-                      <div className="mt-2 flex items-center space-x-4">
-                        <div className="flex items-center space-x-2">
-                          <div className="w-32 bg-gray-200 rounded-full h-2">
-                            <div className="bg-green-600 h-2 rounded-full w-full"></div>
-                          </div>
-                          <span className="text-xs text-green-600 font-medium">
-                            {sequence.detection_annotation_stats.annotated_detections}/{sequence.detection_annotation_stats.total_detections} detections completed
-                          </span>
-                        </div>
-                      </div>
-                    )}
 
-                    <div className="mt-1 flex items-center text-sm text-gray-500 space-x-4">
-                      <span>{new Date(sequence.recorded_at).toLocaleString()}</span>
-                      <span>Org: {sequence.organisation_name}</span>
+              return (
+                <div
+                  key={sequence.id}
+                  className={rowClasses}
+                  onClick={() => handleSequenceClick(sequence)}
+                >
+                  <div className="flex items-center space-x-4">
+                    {/* Detection Image Thumbnail */}
+                    <div className="flex-shrink-0">
+                      <DetectionImageThumbnail
+                        sequenceId={sequence.id}
+                        className="h-16"
+                      />
                     </div>
-                    {sequence.azimuth && (
-                      <div className="mt-1 text-xs text-gray-400">
-                        Azimuth: {sequence.azimuth}°
+
+                    {/* Sequence Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center space-x-3">
+                        <h3 className="text-sm font-medium text-gray-900 truncate">
+                          {sequence.camera_name}
+                        </h3>
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                          {sequence.source_api}
+                        </span>
+
+                        {sequence.is_wildfire_alertapi && (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                            🔥 Wildfire Alert
+                          </span>
+                        )}
+
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                          ✅ Fully Annotated
+                        </span>
                       </div>
-                    )}
+
+                      {/* Detection Progress */}
+                      {sequence.detection_annotation_stats && (
+                        <div className="mt-2 flex items-center space-x-4">
+                          <div className="flex items-center space-x-2">
+                            <div className="w-32 bg-gray-200 rounded-full h-2">
+                              <div className="bg-green-600 h-2 rounded-full w-full"></div>
+                            </div>
+                            <span className="text-xs text-green-600 font-medium">
+                              {sequence.detection_annotation_stats.annotated_detections}/{sequence.detection_annotation_stats.total_detections} detections completed
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="flex items-center text-sm text-gray-500 space-x-2">
+                        <span>{new Date(sequence.recorded_at).toLocaleString()}</span>
+                        <span className="text-gray-400">•</span>
+                        <span>{sequence.organisation_name}</span>
+
+                        <span className="text-gray-400">•</span>
+                        {sequence.azimuth && (
+                          <span className="text-gray-400 text-xs">
+                            Azimuth: {sequence.azimuth}°
+                          </span>
+                        )}
+                      </div>
+                      {sequence.azimuth && (
+                        <div className="mt-1 text-xs text-gray-400">
+                          Azimuth: {sequence.azimuth}°
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
               );
             })}
 

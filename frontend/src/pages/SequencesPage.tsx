@@ -587,15 +587,19 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
                         })()}
                       </div>
 
-                      <div className="mt-1 flex items-center text-sm text-gray-500 space-x-4">
+                      <div className="mt-2 flex items-center text-sm text-gray-500 space-x-2">
                         <span>{new Date(sequence.recorded_at).toLocaleString()}</span>
-                        <span>Org: {sequence.organisation_name}</span>
+
+                        <span className="text-gray-400">•</span>
+                        <span>{sequence.organisation_name}</span>
+
+                        <span className="text-gray-400">•</span>
+                        {sequence.azimuth && (
+                          <span className="text-gray-400 text-xs">
+                            Azimuth: {sequence.azimuth}°
+                          </span>
+                        )}
                       </div>
-                      {sequence.azimuth && (
-                        <div className="mt-1 text-xs text-gray-400">
-                          Azimuth: {sequence.azimuth}°
-                        </div>
-                      )}
                     </div>
 
                     {/* False Positive Pills - Top Right Area (Review page only) */}
