@@ -517,9 +517,23 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
                           🔥 Wildfire Alert
                         </span>
                       )}
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getProcessingStageColorClass(sequence.annotation?.processing_stage || 'no_annotation')}`}>
-                        {getProcessingStageLabel(sequence.annotation?.processing_stage || 'no_annotation')}
-                      </span>
+                      {/* Processing stage pill - conditionally hidden based on page context */}
+                      {(() => {
+                        const processingStage = sequence.annotation?.processing_stage || 'no_annotation';
+                        // Hide "ready_to_annotate" pills on annotate page, hide "annotated" pills on review page
+                        const shouldHidePill = (
+                          (defaultProcessingStage === 'ready_to_annotate' && processingStage === 'ready_to_annotate') ||
+                          (defaultProcessingStage === 'annotated' && processingStage === 'annotated')
+                        );
+                        
+                        if (shouldHidePill) return null;
+                        
+                        return (
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getProcessingStageColorClass(processingStage)}`}>
+                            {getProcessingStageLabel(processingStage)}
+                          </span>
+                        );
+                      })()}
                     </div>
                     
                     {/* Annotation Details - Only show for annotated sequences (review page) */}

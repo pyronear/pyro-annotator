@@ -723,7 +723,7 @@ export default function AnnotationInterface() {
                 )}
                 
                 {/* Completion Badge for Annotated Sequences */}
-                {annotation?.processing_stage === 'annotated' && (
+                {annotation?.processing_stage === 'annotated' && fromParam !== 'review' && (
                   <>
                     <span className="text-gray-400">•</span>
                     <span className="inline-flex items-center text-xs text-green-600 font-medium">
