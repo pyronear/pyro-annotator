@@ -198,7 +198,18 @@ class ApiClient {
   }
 
   async createDetectionAnnotation(annotation: Omit<DetectionAnnotation, 'id' | 'created_at' | 'updated_at'>): Promise<DetectionAnnotation> {
-    const response: AxiosResponse<DetectionAnnotation> = await this.client.post('/annotations/detections', annotation);
+    // Backend expects form data, not JSON
+    const formData = new FormData();
+    formData.append('detection_id', annotation.detection_id.toString());
+    formData.append('annotation', JSON.stringify(annotation.annotation));
+    formData.append('processing_stage', annotation.processing_stage);
+    
+    const response: AxiosResponse<DetectionAnnotation> = await this.client.post('/annotations/detections', formData, {
+      headers: {
+        // Remove Content-Type to let browser set multipart/form-data with boundary
+        'Content-Type': undefined,
+      },
+    });
     return response.data;
   }
 

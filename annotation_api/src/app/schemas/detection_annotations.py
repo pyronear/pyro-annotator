@@ -77,4 +77,3 @@ class DetectionAnnotationUpdate(BaseModel):
         description="Updated processing stage in the detection annotation workflow. Use to advance or modify the current stage.",
         examples=["visual_check", "bbox_annotation", "annotated"],
     )
-    updated_at: Optional[datetime] = None
