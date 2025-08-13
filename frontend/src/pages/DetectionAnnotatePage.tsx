@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '@/services/api';
@@ -8,9 +8,11 @@ import {
   analyzeSequenceAccuracy,
   getRowBackgroundClasses,
   getFalsePositiveEmoji,
-  formatFalsePositiveType
+  formatFalsePositiveType,
+  ModelAccuracyType
 } from '@/utils/modelAccuracy';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
+import ModelAccuracyFilter from '@/components/filters/ModelAccuracyFilter';
 import { useCameras } from '@/hooks/useCameras';
 import { useOrganizations } from '@/hooks/useOrganizations';
 
@@ -32,6 +34,9 @@ export default function DetectionAnnotatePage() {
   // Date range state
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+
+  // Model accuracy filter state
+  const [selectedModelAccuracy, setSelectedModelAccuracy] = useState<ModelAccuracyType | 'all'>('all');
 
   // Date range helper functions
   const setDateRange = (preset: string) => {
@@ -111,6 +116,34 @@ export default function DetectionAnnotatePage() {
     acc[sequenceId] = annotation;
     return acc;
   }, {} as Record<number, any>) || {};
+
+  // Filter sequences by model accuracy
+  const filteredSequences = useMemo(() => {
+    if (!sequences || selectedModelAccuracy === 'all') {
+      return sequences;
+    }
+
+    const filtered = sequences.items.filter(sequence => {
+      const annotation = annotationMap[sequence.id];
+      if (!annotation) {
+        return selectedModelAccuracy === 'unknown';
+      }
+
+      const accuracy = analyzeSequenceAccuracy({
+        ...sequence,
+        annotation: annotation
+      });
+      
+      return accuracy.type === selectedModelAccuracy;
+    });
+
+    return {
+      ...sequences,
+      items: filtered,
+      total: filtered.length,
+      pages: Math.ceil(filtered.length / sequences.size)
+    };
+  }, [sequences, annotationMap, selectedModelAccuracy]);
 
   const handleFilterChange = (newFilters: Partial<ExtendedSequenceFilters>) => {
     setFilters(prev => ({ ...prev, ...newFilters, page: 1 }));
@@ -315,7 +348,7 @@ export default function DetectionAnnotatePage() {
 
       {/* Filters */}
       <div className="bg-white rounded-lg border border-gray-200 p-4">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-5 lg:grid-cols-6 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Source API
@@ -441,18 +474,28 @@ export default function DetectionAnnotatePage() {
               />
             </div>
           </div>
+
+          {/* Model Accuracy Filter */}
+          <ModelAccuracyFilter
+            selectedAccuracy={selectedModelAccuracy}
+            onSelectionChange={setSelectedModelAccuracy}
+            className="w-full"
+          />
         </div>
       </div>
 
       {/* Results */}
-      {sequences && (
+      {filteredSequences && (
         <div className="bg-white rounded-lg border border-gray-200">
           <div className="px-4 py-3 border-b border-gray-200">
             <div className="flex items-center justify-between">
               <p className="text-sm text-gray-700">
-                Showing {((sequences.page - 1) * sequences.size) + 1} to{' '}
-                {Math.min(sequences.page * sequences.size, sequences.total)} of{' '}
-                {sequences.total} sequences requiring detection annotation
+                Showing {((filteredSequences.page - 1) * filteredSequences.size) + 1} to{' '}
+                {Math.min(filteredSequences.page * filteredSequences.size, filteredSequences.total)} of{' '}
+                {filteredSequences.total} sequences requiring detection annotation
+                {selectedModelAccuracy !== 'all' && sequences && (
+                  <span className="text-gray-500"> (filtered from {sequences.total} total)</span>
+                )}
               </p>
               <div className="flex items-center space-x-2">
                 <label className="text-sm text-gray-700">Show:</label>
@@ -498,7 +541,7 @@ export default function DetectionAnnotatePage() {
 
           {/* Sequence List */}
           <div className="divide-y divide-gray-200">
-            {sequences.items.map((sequence) => {
+            {filteredSequences.items.map((sequence) => {
               // Calculate row background based on model accuracy
               let rowClasses = "p-4 cursor-pointer";
               const annotation = annotationMap[sequence.id];
@@ -607,22 +650,22 @@ export default function DetectionAnnotatePage() {
           </div>
 
           {/* Pagination */}
-          {sequences.pages > 1 && (
+          {filteredSequences.pages > 1 && (
             <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 <button
-                  onClick={() => handlePageChange(sequences.page - 1)}
-                  disabled={sequences.page === 1}
+                  onClick={() => handlePageChange(filteredSequences.page - 1)}
+                  disabled={filteredSequences.page === 1}
                   className="px-3 py-1 border border-gray-300 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
                 >
                   Previous
                 </button>
                 <span className="text-sm text-gray-700">
-                  Page {sequences.page} of {sequences.pages}
+                  Page {filteredSequences.page} of {filteredSequences.pages}
                 </span>
                 <button
-                  onClick={() => handlePageChange(sequences.page + 1)}
-                  disabled={sequences.page === sequences.pages}
+                  onClick={() => handlePageChange(filteredSequences.page + 1)}
+                  disabled={filteredSequences.page === filteredSequences.pages}
                   className="px-3 py-1 border border-gray-300 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
                 >
                   Next

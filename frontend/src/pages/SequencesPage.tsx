@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '@/services/api';
@@ -9,10 +9,12 @@ import {
   analyzeSequenceAccuracy,
   getFalsePositiveEmoji,
   formatFalsePositiveType,
-  getRowBackgroundClasses
+  getRowBackgroundClasses,
+  ModelAccuracyType
 } from '@/utils/modelAccuracy';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
 import FalsePositiveFilter from '@/components/filters/FalsePositiveFilter';
+import ModelAccuracyFilter from '@/components/filters/ModelAccuracyFilter';
 import { useSequenceStore } from '@/store/useSequenceStore';
 import { useCameras } from '@/hooks/useCameras';
 import { useOrganizations } from '@/hooks/useOrganizations';
@@ -42,6 +44,9 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
 
   // False positive filter state
   const [selectedFalsePositiveTypes, setSelectedFalsePositiveTypes] = useState<string[]>([]);
+
+  // Model accuracy filter state (only for review page)
+  const [selectedModelAccuracy, setSelectedModelAccuracy] = useState<ModelAccuracyType | 'all'>('all');
 
   // Date range helper functions
   const setDateRange = (preset: string) => {
@@ -99,6 +104,29 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
     queryKey: [...QUERY_KEYS.SEQUENCES, 'with-annotations', filters],
     queryFn: () => apiClient.getSequencesWithAnnotations(filters),
   });
+
+  // Filter sequences by model accuracy (only for review page)
+  const filteredSequences = useMemo(() => {
+    if (!sequences || selectedModelAccuracy === 'all' || defaultProcessingStage !== 'annotated') {
+      return sequences;
+    }
+
+    const filtered = sequences.items.filter(sequence => {
+      if (!sequence.annotation) {
+        return selectedModelAccuracy === 'unknown';
+      }
+
+      const accuracy = analyzeSequenceAccuracy(sequence);
+      return accuracy.type === selectedModelAccuracy;
+    });
+
+    return {
+      ...sequences,
+      items: filtered,
+      total: filtered.length,
+      pages: Math.ceil(filtered.length / sequences.size)
+    };
+  }, [sequences, selectedModelAccuracy, defaultProcessingStage]);
 
   const handleFilterChange = (newFilters: Partial<ExtendedSequenceFilters>) => {
     setFilters(prev => ({ ...prev, ...newFilters, page: 1 }));
@@ -161,7 +189,7 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
 
         {/* Filters */}
         <div className="bg-white rounded-lg border border-gray-200 p-4">
-          <div className={`grid grid-cols-1 ${defaultProcessingStage === 'annotated' ? 'md:grid-cols-6' : 'md:grid-cols-5'} gap-4`}>
+          <div className={`grid grid-cols-1 ${defaultProcessingStage === 'annotated' ? 'md:grid-cols-6 lg:grid-cols-7' : 'md:grid-cols-5'} gap-4`}>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Source API
@@ -297,6 +325,15 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
               />
             )}
 
+            {/* Model Accuracy Filter - Only show on review page */}
+            {defaultProcessingStage === 'annotated' && (
+              <ModelAccuracyFilter
+                selectedAccuracy={selectedModelAccuracy}
+                onSelectionChange={setSelectedModelAccuracy}
+                className="w-full"
+              />
+            )}
+
           </div>
         </div>
 
@@ -334,7 +371,7 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
 
       {/* Filters */}
       <div className="bg-white rounded-lg border border-gray-200 p-4">
-        <div className={`grid grid-cols-1 ${defaultProcessingStage === 'annotated' ? 'md:grid-cols-6' : 'md:grid-cols-5'} gap-4`}>
+        <div className={`grid grid-cols-1 ${defaultProcessingStage === 'annotated' ? 'md:grid-cols-6 lg:grid-cols-7' : 'md:grid-cols-5'} gap-4`}>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Source API
@@ -470,18 +507,30 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
             />
           )}
 
+          {/* Model Accuracy Filter - Only show on review page */}
+          {defaultProcessingStage === 'annotated' && (
+            <ModelAccuracyFilter
+              selectedAccuracy={selectedModelAccuracy}
+              onSelectionChange={setSelectedModelAccuracy}
+              className="w-full"
+            />
+          )}
+
         </div>
       </div>
 
       {/* Results */}
-      {sequences && (
+      {filteredSequences && (
         <div className="bg-white rounded-lg border border-gray-200">
           <div className="px-4 py-3 border-b border-gray-200">
             <div className="flex items-center justify-between">
               <p className="text-sm text-gray-700">
-                Showing {((sequences.page - 1) * sequences.size) + 1} to{' '}
-                {Math.min(sequences.page * sequences.size, sequences.total)} of{' '}
-                {sequences.total} results
+                Showing {((filteredSequences.page - 1) * filteredSequences.size) + 1} to{' '}
+                {Math.min(filteredSequences.page * filteredSequences.size, filteredSequences.total)} of{' '}
+                {filteredSequences.total} results
+                {selectedModelAccuracy !== 'all' && defaultProcessingStage === 'annotated' && sequences && (
+                  <span className="text-gray-500"> (filtered from {sequences.total} total)</span>
+                )}
               </p>
               <div className="flex items-center space-x-2">
                 <label className="text-sm text-gray-700">Show:</label>
@@ -529,7 +578,7 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
 
           {/* Sequence List */}
           <div className="divide-y divide-gray-200">
-            {sequences.items.map((sequence) => {
+            {filteredSequences.items.map((sequence) => {
               // Calculate row background based on model accuracy for review pages
               let rowClasses = "p-4 cursor-pointer";
               if (defaultProcessingStage === 'annotated' && sequence.annotation) {
@@ -633,22 +682,22 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
           </div>
 
           {/* Pagination */}
-          {sequences.pages > 1 && (
+          {filteredSequences.pages > 1 && (
             <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 <button
-                  onClick={() => handlePageChange(sequences.page - 1)}
-                  disabled={sequences.page === 1}
+                  onClick={() => handlePageChange(filteredSequences.page - 1)}
+                  disabled={filteredSequences.page === 1}
                   className="px-3 py-1 border border-gray-300 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
                 >
                   Previous
                 </button>
                 <span className="text-sm text-gray-700">
-                  Page {sequences.page} of {sequences.pages}
+                  Page {filteredSequences.page} of {filteredSequences.pages}
                 </span>
                 <button
-                  onClick={() => handlePageChange(sequences.page + 1)}
-                  disabled={sequences.page === sequences.pages}
+                  onClick={() => handlePageChange(filteredSequences.page + 1)}
+                  disabled={filteredSequences.page === filteredSequences.pages}
                   className="px-3 py-1 border border-gray-300 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
                 >
                   Next
