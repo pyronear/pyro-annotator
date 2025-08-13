@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Menu, X, BarChart3, Activity, ChevronRight, ChevronDown, Layers, Target } from 'lucide-react';
 import { clsx } from 'clsx';
+import { useAnnotationCounts } from '@/hooks/useAnnotationCounts';
+import NotificationBadge from '@/components/ui/NotificationBadge';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -17,27 +19,10 @@ interface NavigationItem {
 interface NavigationSubItem {
   name: string;
   href: string;
+  badgeCount?: number;
 }
 
-const navigation: NavigationItem[] = [
-  { name: 'Dashboard', href: '/dashboard', icon: BarChart3 },
-  { 
-    name: 'Sequences', 
-    icon: Layers,
-    children: [
-      { name: 'Annotate', href: '/sequences/annotate' },
-      { name: 'Review', href: '/sequences/review' },
-    ]
-  },
-  { 
-    name: 'Detections', 
-    icon: Target,
-    children: [
-      { name: 'Annotate', href: '/detections/annotate' },
-      { name: 'Review', href: '/detections/review' },
-    ]
-  },
-];
+// Navigation structure is now dynamically generated in SidebarContent to include badge counts
 
 export default function AppLayout({ children }: AppLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -104,6 +89,30 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
     'Detections': true,
   });
 
+  // Get annotation counts for badges
+  const { sequenceCount, detectionCount } = useAnnotationCounts();
+
+  // Create dynamic navigation with badge counts
+  const navigationWithBadges: NavigationItem[] = [
+    { name: 'Dashboard', href: '/dashboard', icon: BarChart3 },
+    { 
+      name: 'Sequences', 
+      icon: Layers,
+      children: [
+        { name: 'Annotate', href: '/sequences/annotate', badgeCount: sequenceCount },
+        { name: 'Review', href: '/sequences/review' },
+      ]
+    },
+    { 
+      name: 'Detections', 
+      icon: Target,
+      children: [
+        { name: 'Annotate', href: '/detections/annotate', badgeCount: detectionCount },
+        { name: 'Review', href: '/detections/review' },
+      ]
+    },
+  ];
+
   const toggleSection = (sectionName: string) => {
     setExpandedSections(prev => ({
       ...prev,
@@ -165,7 +174,7 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
           </div>
         </div>
         <nav className="mt-8 flex-1 px-2 bg-white space-y-1">
-          {navigation.map((item) => {
+          {navigationWithBadges.map((item) => {
             const isActive = isSectionActive(item);
             const isExpanded = expandedSections[item.name];
 
@@ -234,10 +243,13 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
                               : isDisabled
                               ? 'text-gray-400 cursor-not-allowed'
                               : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
-                            'group flex items-center pl-11 pr-2 py-2 text-sm font-medium rounded-l-md'
+                            'group flex items-center justify-between pl-11 pr-2 py-2 text-sm font-medium rounded-l-md'
                           )}
                         >
-                          {subItem.name}
+                          <span>{subItem.name}</span>
+                          {subItem.badgeCount !== undefined && (
+                            <NotificationBadge count={subItem.badgeCount} />
+                          )}
                         </Link>
                       );
                     })}

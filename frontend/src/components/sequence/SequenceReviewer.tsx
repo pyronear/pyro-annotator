@@ -20,7 +20,7 @@ export default function SequenceReviewer({
   // Playback state
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [playbackSpeed, setPlaybackSpeed] = useState(2);
   
   const playIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const hasAutoStarted = useRef(false);

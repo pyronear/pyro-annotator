@@ -510,6 +510,8 @@ export default function AnnotationInterface() {
       // Refresh annotations and sequences
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.SEQUENCE_ANNOTATIONS });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.SEQUENCES });
+      // Invalidate annotation counts to update sidebar badges
+      queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
       
       // Check for next sequence in workflow
       setTimeout(() => {

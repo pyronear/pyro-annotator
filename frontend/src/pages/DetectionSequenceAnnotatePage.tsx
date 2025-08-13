@@ -277,6 +277,8 @@ export default function DetectionSequenceAnnotatePage() {
     onSuccess: () => {
       // Invalidate queries to refresh data
       queryClient.invalidateQueries({ queryKey: [...QUERY_KEYS.DETECTION_ANNOTATIONS] });
+      // Invalidate annotation counts to update sidebar badges
+      queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
       setToastMessage('Detection annotations saved successfully');
       setShowToast(true);
       
