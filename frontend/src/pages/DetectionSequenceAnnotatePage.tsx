@@ -375,32 +375,80 @@ function ImageModal({
   const screenToImageCoordinates = (screenX: number, screenY: number) => {
     if (!imgRef.current || !containerRef.current) return { x: 0, y: 0 };
     
-    const imgRect = imgRef.current.getBoundingClientRect();
     const containerRect = containerRef.current.getBoundingClientRect();
     
-    // Get relative position to container
+    // Get mouse position relative to container
     const relativeX = screenX - containerRect.left;
     const relativeY = screenY - containerRect.top;
     
-    // Account for transform origin in image space
-    const originalWidth = imgRect.width / zoomLevel;
-    const originalHeight = imgRect.height / zoomLevel;
+    // Get original image dimensions and position (before any transforms)
+    const img = imgRef.current;
+    const containerWidth = containerRect.width;
+    const containerHeight = containerRect.height;
+    
+    // Calculate original image bounds using object-contain logic
+    const imgAspectRatio = img.naturalWidth / img.naturalHeight;
+    const containerAspectRatio = containerWidth / containerHeight;
+    
+    let originalWidth: number, originalHeight: number, originalX: number, originalY: number;
+    
+    if (imgAspectRatio > containerAspectRatio) {
+      // Image is wider - fit to width
+      originalWidth = containerWidth;
+      originalHeight = containerWidth / imgAspectRatio;
+      originalX = 0;
+      originalY = (containerHeight - originalHeight) / 2;
+    } else {
+      // Image is taller - fit to height
+      originalWidth = containerHeight * imgAspectRatio;
+      originalHeight = containerHeight;
+      originalX = (containerWidth - originalWidth) / 2;
+      originalY = 0;
+    }
+    
+    // Calculate transform origin in original image pixel coordinates
     const originX = (transformOrigin.x / 100) * originalWidth;
     const originY = (transformOrigin.y / 100) * originalHeight;
     
-    // Reverse transform to get original image coordinates
-    const imageX = (relativeX - panOffset.x - originX * (zoomLevel - 1)) / zoomLevel;
-    const imageY = (relativeY - panOffset.y - originY * (zoomLevel - 1)) / zoomLevel;
+    // Transform origin in container coordinates
+    const originContainerX = originalX + originX;
+    const originContainerY = originalY + originY;
+    
+    // Reverse the CSS transform: scale(zoomLevel) translate(panOffset.x, panOffset.y)
+    // Step 1: Reverse translation (panOffset is applied in scaled coordinate space)
+    const afterTranslateX = relativeX - panOffset.x;
+    const afterTranslateY = relativeY - panOffset.y;
+    
+    // Step 2: Reverse scaling around transform origin
+    const imageX = (afterTranslateX - originContainerX) / zoomLevel + originContainerX - originalX;
+    const imageY = (afterTranslateY - originContainerY) / zoomLevel + originContainerY - originalY;
     
     return { x: imageX, y: imageY };
   };
 
   const imageToNormalized = (imageX: number, imageY: number) => {
-    if (!imgRef.current) return { x: 0, y: 0 };
+    if (!imgRef.current || !containerRef.current) return { x: 0, y: 0 };
     
-    const imgRect = imgRef.current.getBoundingClientRect();
-    const originalWidth = imgRect.width / zoomLevel;
-    const originalHeight = imgRect.height / zoomLevel;
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const img = imgRef.current;
+    const containerWidth = containerRect.width;
+    const containerHeight = containerRect.height;
+    
+    // Calculate original image bounds using object-contain logic
+    const imgAspectRatio = img.naturalWidth / img.naturalHeight;
+    const containerAspectRatio = containerWidth / containerHeight;
+    
+    let originalWidth: number, originalHeight: number;
+    
+    if (imgAspectRatio > containerAspectRatio) {
+      // Image is wider - fit to width
+      originalWidth = containerWidth;
+      originalHeight = containerWidth / imgAspectRatio;
+    } else {
+      // Image is taller - fit to height
+      originalWidth = containerHeight * imgAspectRatio;
+      originalHeight = containerHeight;
+    }
     
     return {
       x: Math.max(0, Math.min(1, imageX / originalWidth)),
@@ -409,11 +457,28 @@ function ImageModal({
   };
 
   const normalizedToImage = (normX: number, normY: number) => {
-    if (!imgRef.current) return { x: 0, y: 0 };
+    if (!imgRef.current || !containerRef.current) return { x: 0, y: 0 };
     
-    const imgRect = imgRef.current.getBoundingClientRect();
-    const originalWidth = imgRect.width / zoomLevel;
-    const originalHeight = imgRect.height / zoomLevel;
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const img = imgRef.current;
+    const containerWidth = containerRect.width;
+    const containerHeight = containerRect.height;
+    
+    // Calculate original image bounds using object-contain logic
+    const imgAspectRatio = img.naturalWidth / img.naturalHeight;
+    const containerAspectRatio = containerWidth / containerHeight;
+    
+    let originalWidth: number, originalHeight: number;
+    
+    if (imgAspectRatio > containerAspectRatio) {
+      // Image is wider - fit to width
+      originalWidth = containerWidth;
+      originalHeight = containerWidth / imgAspectRatio;
+    } else {
+      // Image is taller - fit to height
+      originalWidth = containerHeight * imgAspectRatio;
+      originalHeight = containerHeight;
+    }
     
     return {
       x: normX * originalWidth,
@@ -914,24 +979,31 @@ export default function DetectionSequenceAnnotatePage() {
 
   // Individual detection annotation mutation
   const annotateIndividualDetection = useMutation({
-    mutationFn: async (detection: Detection) => {
+    mutationFn: async ({ detection, drawnRectangles }: { detection: Detection; drawnRectangles: DrawnRectangle[] }) => {
       const existingAnnotation = detectionAnnotations.get(detection.id);
 
       if (existingAnnotation) {
-        // Update existing annotation to 'annotated' stage
-        if (existingAnnotation.processing_stage !== 'annotated') {
-          return apiClient.updateDetectionAnnotation(existingAnnotation.id, {
-            processing_stage: 'annotated',
-          });
-        }
-        return existingAnnotation;
+        // Convert drawn rectangles to annotation format
+        const annotationItems = drawnRectangles.map(rect => ({
+          xyxyn: rect.xyxyn,
+          class_name: "smoke",
+          smoke_type: "wildfire" as const
+        }));
+
+        // Update existing annotation with proper annotation data and 'annotated' stage
+        return apiClient.updateDetectionAnnotation(existingAnnotation.id, {
+          annotation: {
+            annotation: annotationItems
+          },
+          processing_stage: 'annotated',
+        });
       } else {
         // No annotation exists - this shouldn't happen if sequence annotation was submitted first
         // But in case it does, throw an error to guide the user
         throw new Error(`No detection annotation found for detection ${detection.id}. Please ensure the sequence annotation has been submitted first to auto-create detection annotations.`);
       }
     },
-    onSuccess: (result, detection) => {
+    onSuccess: (result, { detection }) => {
       // Update local state
       setDetectionAnnotations(prev => new Map(prev).set(detection.id, result));
       
@@ -943,7 +1015,7 @@ export default function DetectionSequenceAnnotatePage() {
       setToastMessage(`Detection ${detection.id} annotated successfully`);
       setShowToast(true);
     },
-    onError: (_, detection) => {
+    onError: (_, { detection }) => {
       setToastMessage(`Failed to annotate detection ${detection.id}`);
       setShowToast(true);
     },
@@ -1034,8 +1106,9 @@ export default function DetectionSequenceAnnotatePage() {
           navigateModal('next');
           e.preventDefault();
         } else if (e.key === ' ' && !isCurrentAnnotated && !annotateIndividualDetection.isPending) {
-          // Space bar to submit individual annotation
-          annotateIndividualDetection.mutate(currentDetection);
+          // Space bar to submit individual annotation with empty rectangles
+          // (rectangles should be handled by modal's own space bar handler)
+          annotateIndividualDetection.mutate({ detection: currentDetection, drawnRectangles: [] });
           e.preventDefault();
         }
       }
@@ -1383,7 +1456,7 @@ export default function DetectionSequenceAnnotatePage() {
           detection={detections[selectedDetectionIndex]}
           onClose={closeModal}
           onNavigate={navigateModal}
-          onSubmit={(detection) => annotateIndividualDetection.mutate(detection)}
+          onSubmit={(detection, drawnRectangles) => annotateIndividualDetection.mutate({ detection, drawnRectangles })}
           onTogglePredictions={setShowPredictions}
           canNavigatePrev={selectedDetectionIndex > 0}
           canNavigateNext={selectedDetectionIndex < detections.length - 1}
@@ -1392,6 +1465,7 @@ export default function DetectionSequenceAnnotatePage() {
           showPredictions={showPredictions}
           isSubmitting={annotateIndividualDetection.isPending}
           isAnnotated={detectionAnnotations.get(detections[selectedDetectionIndex].id)?.processing_stage === 'annotated'}
+          existingAnnotation={detectionAnnotations.get(detections[selectedDetectionIndex].id)}
         />
       )}
 
