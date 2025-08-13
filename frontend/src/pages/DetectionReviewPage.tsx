@@ -328,6 +328,25 @@ export default function DetectionReviewPage() {
             </div>
           </div>
 
+          {/* Row Background Color Legend */}
+          <div className="px-4 py-2 bg-gray-50 border-b border-gray-200">
+            <div className="flex items-center space-x-6 text-xs">
+              <span className="font-medium text-gray-700">Row Colors:</span>
+              <div className="flex items-center space-x-1">
+                <div className="w-3 h-3 bg-green-200 border border-green-300 rounded"></div>
+                <span className="text-gray-600">True Positive (Model correct)</span>
+              </div>
+              <div className="flex items-center space-x-1">
+                <div className="w-3 h-3 bg-red-200 border border-red-300 rounded"></div>
+                <span className="text-gray-600">False Positive (Model incorrect)</span>
+              </div>
+              <div className="flex items-center space-x-1">
+                <div className="w-3 h-3 bg-orange-200 border border-orange-300 rounded"></div>
+                <span className="text-gray-600">False Negative (Model missed smoke)</span>
+              </div>
+            </div>
+          </div>
+
           {/* Sequence List */}
           <div className="divide-y divide-gray-200">
             {sequences.items.map((sequence) => {

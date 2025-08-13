@@ -344,7 +344,6 @@ export default function DetectionSequenceAnnotatePage() {
     queryFn: () => apiClient.getSequences({
       detection_annotation_completion: 'incomplete',
       include_detection_stats: true,
-      processing_stage: 'annotated', // Only show sequences that have completed sequence-level annotation
       size: 1000, // Get enough sequences for navigation
     }),
   });
