@@ -578,34 +578,6 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
                         );
                       })()}
                     </div>
-                    
-                    {/* Annotation Details - Only show for annotated sequences (review page) */}
-                    {defaultProcessingStage === 'annotated' && sequence.annotation && (
-                      <div className="mt-2 space-y-2">
-
-                        {/* Human Annotation Results - Only show false positive types */}
-                        <div className="flex items-center flex-wrap gap-2">
-                          {/* False Positive Types */}
-                          {(() => {
-                            try {
-                              const falsePositiveTypes = sequence.annotation.false_positive_types 
-                                ? JSON.parse(sequence.annotation.false_positive_types) 
-                                : [];
-                              return falsePositiveTypes.map((type: string) => (
-                                <span 
-                                  key={type} 
-                                  className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
-                                >
-                                  {getFalsePositiveEmoji(type)} {formatFalsePositiveType(type)}
-                                </span>
-                              ));
-                            } catch (e) {
-                              return null;
-                            }
-                          })()}
-                        </div>
-                      </div>
-                    )}
 
                     <div className="mt-1 flex items-center text-sm text-gray-500 space-x-4">
                       <span>{new Date(sequence.recorded_at).toLocaleString()}</span>
@@ -617,6 +589,31 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
                       </div>
                     )}
                   </div>
+                  
+                  {/* False Positive Pills - Top Right Area (Review page only) */}
+                  {defaultProcessingStage === 'annotated' && sequence.annotation && (
+                    <div className="flex-shrink-0">
+                      <div className="flex flex-wrap gap-2 justify-end">
+                        {(() => {
+                          try {
+                            const falsePositiveTypes = sequence.annotation.false_positive_types 
+                              ? JSON.parse(sequence.annotation.false_positive_types) 
+                              : [];
+                            return falsePositiveTypes.map((type: string) => (
+                              <span 
+                                key={type} 
+                                className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800"
+                              >
+                                {getFalsePositiveEmoji(type)} {formatFalsePositiveType(type)}
+                              </span>
+                            ));
+                          } catch (e) {
+                            return null;
+                          }
+                        })()}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
               );
