@@ -201,7 +201,7 @@ class ApiClient {
     return response.data;
   }
 
-  async createDetectionAnnotation(annotation: Omit<DetectionAnnotation, 'id' | 'created_at' | 'updated_at'>): Promise<DetectionAnnotation> {
+  async createDetectionAnnotation(annotation: Omit<DetectionAnnotation, 'id' | 'updated_at'>): Promise<DetectionAnnotation> {
     const response: AxiosResponse<DetectionAnnotation> = await this.client.post('/annotations/detections', annotation);
     return response.data;
   }

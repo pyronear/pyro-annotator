@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, X, ChevronLeft, ChevronRight, CheckCircle, AlertCircle, Upload } from 'lucide-react';
@@ -6,7 +6,7 @@ import { useSequenceDetections } from '@/hooks/useSequenceDetections';
 import { useDetectionImage } from '@/hooks/useDetectionImage';
 import { apiClient } from '@/services/api';
 import { QUERY_KEYS } from '@/utils/constants';
-import { Detection, DetectionAnnotation, SequenceAnnotation } from '@/types/api';
+import { Detection, DetectionAnnotation } from '@/types/api';
 
 interface DetectionImageCardProps {
   detection: Detection;
@@ -163,7 +163,6 @@ export default function DetectionSequenceAnnotatePage() {
   const [selectedDetectionIndex, setSelectedDetectionIndex] = useState<number | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [detectionAnnotations, setDetectionAnnotations] = useState<Map<number, DetectionAnnotation>>(new Map());
-  const [hasChanges, setHasChanges] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
 
@@ -193,7 +192,7 @@ export default function DetectionSequenceAnnotatePage() {
     queryKey: [...QUERY_KEYS.SEQUENCES, 'detection-annotate-count'],
     queryFn: () => apiClient.getSequences({
       detection_annotation_completion: 'incomplete',
-      processing_stage: 'annotated',
+      include_detection_stats: true,
       size: 1,
     }),
   });
@@ -242,8 +241,11 @@ export default function DetectionSequenceAnnotatePage() {
           // Create new annotation with 'annotated' stage
           return apiClient.createDetectionAnnotation({
             detection_id: detection.id,
-            annotation: {},
+            annotation: {
+              annotation: [] // Empty annotation array matching backend schema
+            } as any,
             processing_stage: 'annotated',
+            created_at: new Date().toISOString(),
           });
         }
       });
@@ -253,7 +255,6 @@ export default function DetectionSequenceAnnotatePage() {
     onSuccess: () => {
       // Invalidate queries to refresh data
       queryClient.invalidateQueries({ queryKey: [...QUERY_KEYS.DETECTION_ANNOTATIONS] });
-      setHasChanges(false);
       setToastMessage('Detection annotations saved successfully');
       setShowToast(true);
       
