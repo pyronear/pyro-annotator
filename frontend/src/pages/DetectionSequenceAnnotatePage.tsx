@@ -276,7 +276,7 @@ interface ImageModalProps {
   detection: Detection;
   onClose: () => void;
   onNavigate: (direction: 'prev' | 'next') => void;
-  onSubmit: (detection: Detection) => void;
+  onSubmit: (detection: Detection, drawnRectangles: DrawnRectangle[]) => void;
   onTogglePredictions: (show: boolean) => void;
   canNavigatePrev: boolean;
   canNavigateNext: boolean;
@@ -285,6 +285,7 @@ interface ImageModalProps {
   showPredictions?: boolean;
   isSubmitting?: boolean;
   isAnnotated?: boolean;
+  existingAnnotation?: DetectionAnnotation | null;
 }
 
 function ImageModal({
@@ -299,7 +300,8 @@ function ImageModal({
   totalCount,
   showPredictions = false,
   isSubmitting = false,
-  isAnnotated = false
+  isAnnotated = false,
+  existingAnnotation = null
 }: ImageModalProps) {
   const { data: imageData } = useDetectionImage(detection.id);
   const [imageInfo, setImageInfo] = useState<{
@@ -320,9 +322,9 @@ function ImageModal({
 
   // Drawing state management
   const [isDrawMode, setIsDrawMode] = useState(false);
+  const [isActivelyDrawing, setIsActivelyDrawing] = useState(false);
   const [drawnRectangles, setDrawnRectangles] = useState<DrawnRectangle[]>([]);
   const [currentDrawing, setCurrentDrawing] = useState<CurrentDrawing | null>(null);
-  const [isDrawing, setIsDrawing] = useState(false);
 
   // Handle image load to get dimensions and position using DOM positioning
   const handleImageLoad = () => {
@@ -348,16 +350,26 @@ function ImageModal({
     }
   };
 
-  // Reset zoom and drawing when detection changes
+  // Reset zoom and drawing when detection changes, load existing annotations
   useEffect(() => {
     setZoomLevel(1.0);
     setPanOffset({ x: 0, y: 0 });
     setTransformOrigin({ x: 50, y: 50 });
     setIsDrawMode(false);
-    setDrawnRectangles([]);
+    setIsActivelyDrawing(false);
     setCurrentDrawing(null);
-    setIsDrawing(false);
-  }, [detection.id]);
+    
+    // Load existing annotation rectangles if available
+    if (existingAnnotation?.annotation?.annotation) {
+      const existingRects: DrawnRectangle[] = existingAnnotation.annotation.annotation.map((item, index) => ({
+        id: `existing-${index}`,
+        xyxyn: item.xyxyn
+      }));
+      setDrawnRectangles(existingRects);
+    } else {
+      setDrawnRectangles([]);
+    }
+  }, [detection.id, existingAnnotation]);
 
   // Coordinate transformation functions
   const screenToImageCoordinates = (screenX: number, screenY: number) => {
@@ -458,28 +470,66 @@ function ImageModal({
     };
   };
 
-  // Mode-aware mouse handlers for drawing and panning
+  // Click-based drawing and panning handlers
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (isDrawMode) {
-      // Start drawing rectangle
-      const coords = screenToImageCoordinates(e.clientX, e.clientY);
+    if (!isDrawMode && zoomLevel > 1.0) {
+      // Start panning when not in draw mode
+      setIsDragging(true);
+      setDragStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
+    }
+    // Drawing is handled by handleClick instead
+  };
+
+  const handleClick = (e: React.MouseEvent) => {
+    if (!isDrawMode) return;
+    
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const coords = screenToImageCoordinates(e.clientX, e.clientY);
+    
+    if (!isActivelyDrawing) {
+      // First click: Start drawing rectangle
       setCurrentDrawing({
         startX: coords.x,
         startY: coords.y,
         currentX: coords.x,
         currentY: coords.y
       });
-      setIsDrawing(true);
-    } else if (zoomLevel > 1.0) {
-      // Start panning
-      setIsDragging(true);
-      setDragStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
+      setIsActivelyDrawing(true);
+    } else {
+      // Second click: Finalize rectangle
+      if (currentDrawing) {
+        const startNorm = imageToNormalized(currentDrawing.startX, currentDrawing.startY);
+        const endNorm = imageToNormalized(coords.x, coords.y);
+        
+        // Ensure we have a minimum rectangle size
+        const minX = Math.min(startNorm.x, endNorm.x);
+        const maxX = Math.max(startNorm.x, endNorm.x);
+        const minY = Math.min(startNorm.y, endNorm.y);
+        const maxY = Math.max(startNorm.y, endNorm.y);
+        
+        // Only create rectangle if it has meaningful size (at least 10 pixels)
+        const sizeThreshold = 10 / (imgRef.current?.getBoundingClientRect().width || 1000);
+        if ((maxX - minX) > sizeThreshold && (maxY - minY) > sizeThreshold) {
+          const newRect: DrawnRectangle = {
+            id: Date.now().toString(),
+            xyxyn: [minX, minY, maxX, maxY]
+          };
+          
+          setDrawnRectangles(prev => [...prev, newRect]);
+        }
+      }
+      
+      // Reset drawing state
+      setCurrentDrawing(null);
+      setIsActivelyDrawing(false);
     }
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (isDrawing && currentDrawing) {
-      // Update drawing rectangle
+    if (isActivelyDrawing && currentDrawing) {
+      // Update live preview rectangle
       const coords = screenToImageCoordinates(e.clientX, e.clientY);
       setCurrentDrawing(prev => prev ? { 
         ...prev, 
@@ -496,33 +546,10 @@ function ImageModal({
   };
 
   const handleMouseUp = () => {
-    if (isDrawing && currentDrawing) {
-      // Finalize rectangle
-      const startNorm = imageToNormalized(currentDrawing.startX, currentDrawing.startY);
-      const endNorm = imageToNormalized(currentDrawing.currentX, currentDrawing.currentY);
-      
-      // Ensure we have a minimum rectangle size
-      const minX = Math.min(startNorm.x, endNorm.x);
-      const maxX = Math.max(startNorm.x, endNorm.x);
-      const minY = Math.min(startNorm.y, endNorm.y);
-      const maxY = Math.max(startNorm.y, endNorm.y);
-      
-      // Only create rectangle if it has meaningful size (at least 10 pixels)
-      const sizeThreshold = 10 / (imgRef.current?.getBoundingClientRect().width || 1000);
-      if ((maxX - minX) > sizeThreshold && (maxY - minY) > sizeThreshold) {
-        const newRect: DrawnRectangle = {
-          id: Date.now().toString(),
-          xyxyn: [minX, minY, maxX, maxY]
-        };
-        
-        setDrawnRectangles(prev => [...prev, newRect]);
-      }
-      
-      setCurrentDrawing(null);
-      setIsDrawing(false);
-    } else {
+    if (isDragging) {
       setIsDragging(false);
     }
+    // Drawing finalization is handled by handleClick instead
   };
 
   // Reset zoom function
@@ -532,25 +559,39 @@ function ImageModal({
     setTransformOrigin({ x: 50, y: 50 });
   };
 
-  // Keyboard handler for zoom reset and draw mode
+  // Keyboard handler for zoom reset, draw mode, and escape
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'r' || e.key === 'R') {
         handleZoomReset();
         e.preventDefault();
       } else if (e.key === 'd' || e.key === 'D') {
+        // When toggling draw mode, cancel any active drawing
+        if (isDrawMode && isActivelyDrawing) {
+          setCurrentDrawing(null);
+          setIsActivelyDrawing(false);
+        }
         setIsDrawMode(!isDrawMode);
         e.preventDefault();
+      } else if (e.key === 'Escape') {
+        // Cancel current drawing if in progress
+        if (isActivelyDrawing) {
+          setCurrentDrawing(null);
+          setIsActivelyDrawing(false);
+          e.preventDefault();
+        }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isDrawMode]);
+  }, [isDrawMode, isActivelyDrawing]);
 
   // Cursor style based on state
   const getCursorStyle = () => {
-    if (isDrawMode) return 'crosshair';
+    if (isDrawMode) {
+      return isActivelyDrawing ? 'crosshair' : 'crosshair';
+    }
     if (zoomLevel <= 1.0) return 'default';
     return isDragging ? 'grabbing' : 'grab';
   };
@@ -608,6 +649,7 @@ function ImageModal({
               onMouseMove={handleMouseMove}
               onMouseUp={handleMouseUp}
               onMouseLeave={handleMouseUp}
+              onClick={handleClick}
               style={{ cursor: getCursorStyle() }}
             >
               <img
@@ -646,7 +688,7 @@ function ImageModal({
                   zoomLevel={zoomLevel}
                   panOffset={panOffset}
                   transformOrigin={transformOrigin}
-                  isDragging={isDragging || isDrawing}
+                  isDragging={isDragging || isActivelyDrawing}
                   normalizedToImage={normalizedToImage}
                 />
               )}
@@ -662,13 +704,28 @@ function ImageModal({
             <div className="flex items-center space-x-2">
               {/* Drawing Mode Toggle */}
               <button
-                onClick={() => setIsDrawMode(!isDrawMode)}
+                onClick={() => {
+                  // Cancel any active drawing when toggling draw mode
+                  if (isDrawMode && isActivelyDrawing) {
+                    setCurrentDrawing(null);
+                    setIsActivelyDrawing(false);
+                  }
+                  setIsDrawMode(!isDrawMode);
+                }}
                 className={`p-2 rounded-full transition-colors backdrop-blur-sm ${
-                  isDrawMode 
+                  isActivelyDrawing 
+                    ? 'bg-green-500 bg-opacity-40 hover:bg-opacity-50 ring-2 ring-green-400' 
+                    : isDrawMode 
                     ? 'bg-green-500 bg-opacity-20 hover:bg-opacity-30' 
                     : 'bg-white bg-opacity-10 hover:bg-opacity-20'
                 }`}
-                title={isDrawMode ? "Exit Draw Mode (D)" : "Enter Draw Mode (D)"}
+                title={
+                  isActivelyDrawing 
+                    ? "Drawing in progress... (Click to finish, Esc to cancel)" 
+                    : isDrawMode 
+                    ? "Exit Draw Mode (D)" 
+                    : "Enter Draw Mode (D)"
+                }
               >
                 <Square className={`w-5 h-5 ${isDrawMode ? 'text-green-400' : 'text-white'}`} />
               </button>
@@ -717,7 +774,7 @@ function ImageModal({
             {!isAnnotated && (
               <div className="flex justify-center mt-4">
                 <button
-                  onClick={() => onSubmit(detection)}
+                  onClick={() => onSubmit(detection, drawnRectangles)}
                   disabled={isSubmitting}
                   className="inline-flex items-center px-4 py-2 bg-primary-600 hover:bg-primary-700 disabled:bg-primary-400 text-white text-sm font-medium rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500"
                 >
