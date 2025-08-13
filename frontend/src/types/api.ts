@@ -106,6 +106,9 @@ export type FalsePositiveType =
 
 export type ProcessingStage = 'imported' | 'ready_to_annotate' | 'annotated';
 
+// Detection-specific processing stages  
+export type DetectionProcessingStage = 'imported' | 'visual_check' | 'bbox_annotation' | 'annotated';
+
 export type SourceApi = 'pyronear_french' | 'alert_wildfire' | 'api_cenia';
 
 // API Request/Response interfaces

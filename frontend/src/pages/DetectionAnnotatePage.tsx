@@ -10,7 +10,7 @@ import { useOrganizations } from '@/hooks/useOrganizations';
 
 export default function DetectionAnnotatePage() {
   const navigate = useNavigate();
-  
+
   const [filters, setFilters] = useState<ExtendedSequenceFilters>({
     page: PAGINATION_DEFAULTS.PAGE,
     size: PAGINATION_DEFAULTS.SIZE,
@@ -52,9 +52,9 @@ export default function DetectionAnnotatePage() {
 
     setDateFrom(startDateStr);
     setDateTo(endDateStr);
-    handleFilterChange({ 
-      recorded_at_gte: startDateTime || undefined, 
-      recorded_at_lte: endDateTime || undefined 
+    handleFilterChange({
+      recorded_at_gte: startDateTime || undefined,
+      recorded_at_lte: endDateTime || undefined
     });
   };
 
@@ -194,8 +194,8 @@ export default function DetectionAnnotatePage() {
                 value={filters.is_wildfire_alertapi === undefined ? '' : filters.is_wildfire_alertapi.toString()}
                 onChange={(e) => {
                   const value = e.target.value;
-                  handleFilterChange({ 
-                    is_wildfire_alertapi: value === '' ? undefined : value === 'true' 
+                  handleFilterChange({
+                    is_wildfire_alertapi: value === '' ? undefined : value === 'true'
                   });
                 }}
                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
@@ -210,7 +210,7 @@ export default function DetectionAnnotatePage() {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Date Range (Recorded)
               </label>
-              
+
               {/* Preset Buttons */}
               <div className="flex gap-1 mb-2">
                 <button
@@ -238,20 +238,20 @@ export default function DetectionAnnotatePage() {
                   Clear
                 </button>
               </div>
-              
+
               {/* Date Inputs */}
               <div className="flex gap-2">
-                <input 
-                  type="date" 
-                  value={dateFrom} 
+                <input
+                  type="date"
+                  value={dateFrom}
                   onChange={(e) => handleDateFromChange(e.target.value)}
                   className="flex-1 border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-primary-500 focus:border-primary-500"
                   placeholder="From"
                 />
-                <input 
-                  type="date" 
-                  value={dateTo} 
-                  onChange={(e) => handleDateToChange(e.target.value)} 
+                <input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => handleDateToChange(e.target.value)}
                   className="flex-1 border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-primary-500 focus:border-primary-500"
                   placeholder="To"
                 />
@@ -349,8 +349,8 @@ export default function DetectionAnnotatePage() {
               value={filters.is_wildfire_alertapi === undefined ? '' : filters.is_wildfire_alertapi.toString()}
               onChange={(e) => {
                 const value = e.target.value;
-                handleFilterChange({ 
-                  is_wildfire_alertapi: value === '' ? undefined : value === 'true' 
+                handleFilterChange({
+                  is_wildfire_alertapi: value === '' ? undefined : value === 'true'
                 });
               }}
               className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
@@ -365,7 +365,7 @@ export default function DetectionAnnotatePage() {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Date Range (Recorded)
             </label>
-            
+
             {/* Preset Buttons */}
             <div className="flex gap-1 mb-2">
               <button
@@ -393,20 +393,20 @@ export default function DetectionAnnotatePage() {
                 Clear
               </button>
             </div>
-            
+
             {/* Date Inputs */}
             <div className="flex gap-2">
-              <input 
-                type="date" 
-                value={dateFrom} 
+              <input
+                type="date"
+                value={dateFrom}
                 onChange={(e) => handleDateFromChange(e.target.value)}
                 className="flex-1 border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-primary-500 focus:border-primary-500"
                 placeholder="From"
               />
-              <input 
-                type="date" 
-                value={dateTo} 
-                onChange={(e) => handleDateToChange(e.target.value)} 
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => handleDateToChange(e.target.value)}
                 className="flex-1 border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-primary-500 focus:border-primary-500"
                 placeholder="To"
               />
@@ -443,20 +443,20 @@ export default function DetectionAnnotatePage() {
           {/* Sequence List */}
           <div className="divide-y divide-gray-200">
             {sequences.items.map((sequence) => (
-              <div 
-                key={sequence.id} 
+              <div
+                key={sequence.id}
                 className="p-4 hover:bg-gray-50 cursor-pointer"
                 onClick={() => handleSequenceClick(sequence)}
               >
                 <div className="flex items-center space-x-4">
                   {/* Detection Image Thumbnail */}
                   <div className="flex-shrink-0">
-                    <DetectionImageThumbnail 
-                      sequenceId={sequence.id} 
+                    <DetectionImageThumbnail
+                      sequenceId={sequence.id}
                       className="h-16"
                     />
                   </div>
-                  
+
                   {/* Sequence Info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center space-x-3">
@@ -472,19 +472,19 @@ export default function DetectionAnnotatePage() {
                         </span>
                       )}
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
-                        📝 Needs Detection Work
+                        📝 Needs Work
                       </span>
                     </div>
-                    
+
                     {/* Detection Progress - placeholder for future statistics */}
                     {sequence.detection_annotation_stats && (
                       <div className="mt-2 flex items-center space-x-4">
                         <div className="flex items-center space-x-2">
                           <div className="w-32 bg-gray-200 rounded-full h-2">
-                            <div 
-                              className="bg-blue-600 h-2 rounded-full" 
-                              style={{ 
-                                width: `${sequence.detection_annotation_stats.completion_percentage}%` 
+                            <div
+                              className="bg-blue-600 h-2 rounded-full"
+                              style={{
+                                width: `${sequence.detection_annotation_stats.completion_percentage}%`
                               }}
                             ></div>
                           </div>
