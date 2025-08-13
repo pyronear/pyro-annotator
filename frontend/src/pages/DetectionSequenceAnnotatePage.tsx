@@ -6,11 +6,11 @@ import { useSequenceDetections } from '@/hooks/useSequenceDetections';
 import { useDetectionImage } from '@/hooks/useDetectionImage';
 import { apiClient } from '@/services/api';
 import { QUERY_KEYS } from '@/utils/constants';
-import { 
-  analyzeSequenceAccuracy, 
-  getFalsePositiveEmoji, 
+import {
+  analyzeSequenceAccuracy,
+  getFalsePositiveEmoji,
   formatFalsePositiveType,
-  getModelAccuracyBadgeClasses 
+  getModelAccuracyBadgeClasses
 } from '@/utils/modelAccuracy';
 import { Detection, DetectionAnnotation, AlgoPrediction } from '@/types/api';
 
@@ -27,24 +27,24 @@ interface BoundingBoxOverlayProps {
 
 function BoundingBoxOverlay({ detection, imageInfo }: BoundingBoxOverlayProps) {
   if (!detection?.algo_predictions?.predictions) return null;
-  
+
   return (
     <>
       {detection.algo_predictions.predictions.map((prediction: AlgoPrediction, index: number) => {
         // Convert normalized coordinates (xyxyn) to pixel coordinates
         const [x1, y1, x2, y2] = prediction.xyxyn;
-        
+
         // Ensure x2 > x1 and y2 > y1
         if (x2 <= x1 || y2 <= y1) {
           return null;
         }
-        
+
         // Calculate pixel coordinates relative to the actual image position
         const left = imageInfo.offsetX + (x1 * imageInfo.width);
         const top = imageInfo.offsetY + (y1 * imageInfo.height);
         const width = (x2 - x1) * imageInfo.width;
         const height = (y2 - y1) * imageInfo.height;
-        
+
         return (
           <div
             key={`bbox-${detection.id}-${index}`}
@@ -91,15 +91,15 @@ function DetectionImageCard({ detection, onClick, isAnnotated = false, showPredi
       // Get actual rendered positions from DOM
       const containerRect = containerRef.current.getBoundingClientRect();
       const imgRect = imgRef.current.getBoundingClientRect();
-      
+
       // Calculate the image position relative to the container
       const offsetX = imgRect.left - containerRect.left;
       const offsetY = imgRect.top - containerRect.top;
-      
+
       // Use the actual rendered dimensions
       const width = imgRect.width;
       const height = imgRect.height;
-      
+
       setImageInfo({
         width: width,
         height: height,
@@ -129,13 +129,12 @@ function DetectionImageCard({ detection, onClick, isAnnotated = false, showPredi
 
   return (
     <div className="group cursor-pointer" onClick={onClick}>
-      <div 
+      <div
         ref={containerRef}
-        className={`relative aspect-video overflow-hidden rounded-lg border-2 transition-colors ${
-          isAnnotated 
-            ? 'border-green-500 hover:border-green-600' 
-            : 'border-gray-200 hover:border-gray-300'
-        }`}
+        className={`relative aspect-video overflow-hidden rounded-lg border-2 transition-colors ${isAnnotated
+          ? 'border-green-500 hover:border-green-600'
+          : 'border-gray-200 hover:border-gray-300'
+          }`}
       >
         <img
           ref={imgRef}
@@ -152,7 +151,7 @@ function DetectionImageCard({ detection, onClick, isAnnotated = false, showPredi
             }
           }}
         />
-        
+
         {/* Bounding Boxes Overlay */}
         {showPredictions && imageInfo && (
           <div className="absolute inset-0 pointer-events-none">
@@ -162,7 +161,6 @@ function DetectionImageCard({ detection, onClick, isAnnotated = false, showPredi
       </div>
       <div className="mt-2 text-sm text-gray-600">
         <div className="flex items-center justify-between">
-          <p className="font-medium">Detection {detection.id}</p>
           {isAnnotated && <CheckCircle className="w-4 h-4 text-green-500" />}
         </div>
         <p className="text-xs text-gray-500">
@@ -184,11 +182,11 @@ interface ImageModalProps {
   showPredictions?: boolean;
 }
 
-function ImageModal({ 
-  detection, 
-  onClose, 
-  onNavigate, 
-  canNavigatePrev, 
+function ImageModal({
+  detection,
+  onClose,
+  onNavigate,
+  canNavigatePrev,
   canNavigateNext,
   currentIndex,
   totalCount,
@@ -210,15 +208,15 @@ function ImageModal({
       // Get actual rendered positions from DOM
       const containerRect = containerRef.current.getBoundingClientRect();
       const imgRect = imgRef.current.getBoundingClientRect();
-      
+
       // Calculate the image position relative to the container
       const offsetX = imgRect.left - containerRect.left;
       const offsetY = imgRect.top - containerRect.top;
-      
+
       // Use the actual rendered dimensions
       const width = imgRect.width;
       const height = imgRect.height;
-      
+
       setImageInfo({
         width: width,
         height: height,
@@ -243,9 +241,8 @@ function ImageModal({
         <button
           onClick={() => onNavigate('prev')}
           disabled={!canNavigatePrev}
-          className={`absolute left-4 p-3 bg-white bg-opacity-10 hover:bg-opacity-20 rounded-full transition-colors ${
-            !canNavigatePrev ? 'opacity-40 cursor-not-allowed' : ''
-          }`}
+          className={`absolute left-4 p-3 bg-white bg-opacity-10 hover:bg-opacity-20 rounded-full transition-colors ${!canNavigatePrev ? 'opacity-40 cursor-not-allowed' : ''
+            }`}
         >
           <ChevronLeft className="w-6 h-6 text-white" />
         </button>
@@ -253,15 +250,14 @@ function ImageModal({
         <button
           onClick={() => onNavigate('next')}
           disabled={!canNavigateNext}
-          className={`absolute right-4 p-3 bg-white bg-opacity-10 hover:bg-opacity-20 rounded-full transition-colors ${
-            !canNavigateNext ? 'opacity-40 cursor-not-allowed' : ''
-          }`}
+          className={`absolute right-4 p-3 bg-white bg-opacity-10 hover:bg-opacity-20 rounded-full transition-colors ${!canNavigateNext ? 'opacity-40 cursor-not-allowed' : ''
+            }`}
         >
           <ChevronRight className="w-6 h-6 text-white" />
         </button>
 
         {/* Image container */}
-        <div 
+        <div
           ref={containerRef}
           className="relative max-w-7xl max-h-full flex flex-col items-center"
         >
@@ -274,7 +270,7 @@ function ImageModal({
                 className="max-w-full max-h-[80vh] object-contain"
                 onLoad={handleImageLoad}
               />
-              
+
               {/* Bounding Boxes Overlay */}
               {showPredictions && imageInfo && (
                 <div className="absolute inset-0 pointer-events-none">
@@ -318,7 +314,7 @@ export default function DetectionSequenceAnnotatePage() {
   const [showPredictions, setShowPredictions] = useState(false);
 
   const { data: detections, isLoading, error } = useSequenceDetections(sequenceIdNum);
-  
+
   // Fetch sequence data for header info
   const { data: sequence } = useQuery({
     queryKey: QUERY_KEYS.SEQUENCE(sequenceIdNum!),
@@ -352,7 +348,7 @@ export default function DetectionSequenceAnnotatePage() {
   const { data: existingAnnotations } = useQuery({
     queryKey: [...QUERY_KEYS.DETECTION_ANNOTATIONS, 'by-sequence', sequenceIdNum],
     queryFn: async () => {
-      const response = await apiClient.getDetectionAnnotations({ 
+      const response = await apiClient.getDetectionAnnotations({
         sequence_id: sequenceIdNum!,
         size: 100
       });
@@ -376,11 +372,11 @@ export default function DetectionSequenceAnnotatePage() {
   const saveAnnotations = useMutation({
     mutationFn: async () => {
       if (!detections) return;
-      
+
       // Create or update annotations for all detections
       const promises = detections.map(async (detection) => {
         const existingAnnotation = detectionAnnotations.get(detection.id);
-        
+
         if (existingAnnotation) {
           // Update existing annotation to 'annotated' stage
           if (existingAnnotation.processing_stage !== 'annotated') {
@@ -400,7 +396,7 @@ export default function DetectionSequenceAnnotatePage() {
           });
         }
       });
-      
+
       return Promise.all(promises.filter(Boolean));
     },
     onSuccess: () => {
@@ -410,7 +406,7 @@ export default function DetectionSequenceAnnotatePage() {
       queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
       setToastMessage('Detection annotations saved successfully');
       setShowToast(true);
-      
+
       // Navigate back after a short delay
       setTimeout(() => {
         navigate('/detections/annotate');
@@ -474,11 +470,11 @@ export default function DetectionSequenceAnnotatePage() {
 
   const navigateModal = (direction: 'prev' | 'next') => {
     if (!detections || selectedDetectionIndex === null) return;
-    
-    const newIndex = direction === 'prev' 
+
+    const newIndex = direction === 'prev'
       ? Math.max(0, selectedDetectionIndex - 1)
       : Math.min(detections.length - 1, selectedDetectionIndex + 1);
-    
+
     setSelectedDetectionIndex(newIndex);
   };
 
@@ -529,9 +525,9 @@ export default function DetectionSequenceAnnotatePage() {
   // Helper to get annotation pills
   const getAnnotationPills = () => {
     if (!sequenceAnnotation) return null;
-    
+
     const pills = [];
-    
+
     if (sequenceAnnotation.has_smoke) {
       pills.push(
         <span key="smoke" className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
@@ -539,7 +535,7 @@ export default function DetectionSequenceAnnotatePage() {
         </span>
       );
     }
-    
+
     if (sequenceAnnotation.has_missed_smoke) {
       pills.push(
         <span key="missed" className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
@@ -547,25 +543,18 @@ export default function DetectionSequenceAnnotatePage() {
         </span>
       );
     }
-    
+
     if (sequenceAnnotation.has_false_positives) {
-      // Add generic false positive pill
-      pills.push(
-        <span key="false-positive" className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-          False Positive
-        </span>
-      );
-      
       // Add individual false positive type pills
       try {
-        const falsePositiveTypes = sequenceAnnotation.false_positive_types 
-          ? JSON.parse(sequenceAnnotation.false_positive_types) 
+        const falsePositiveTypes = sequenceAnnotation.false_positive_types
+          ? JSON.parse(sequenceAnnotation.false_positive_types)
           : [];
-          
+
         falsePositiveTypes.forEach((type: string) => {
           pills.push(
-            <span 
-              key={`fp-${type}`} 
+            <span
+              key={`fp-${type}`}
               className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800"
             >
               {getFalsePositiveEmoji(type)} {formatFalsePositiveType(type)}
@@ -577,7 +566,7 @@ export default function DetectionSequenceAnnotatePage() {
         console.warn('Failed to parse false_positive_types:', e);
       }
     }
-    
+
     if (!sequenceAnnotation.has_smoke && !sequenceAnnotation.has_missed_smoke && !sequenceAnnotation.has_false_positives) {
       pills.push(
         <span key="no-smoke" className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
@@ -585,7 +574,7 @@ export default function DetectionSequenceAnnotatePage() {
         </span>
       );
     }
-    
+
     return pills;
   };
 
@@ -597,7 +586,7 @@ export default function DetectionSequenceAnnotatePage() {
           <div className="w-8 h-8 bg-gray-200 animate-pulse rounded"></div>
           <div className="h-8 w-64 bg-gray-200 animate-pulse rounded"></div>
         </div>
-        
+
         {/* Grid skeleton */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
           {Array.from({ length: 8 }).map((_, i) => (
@@ -669,11 +658,10 @@ export default function DetectionSequenceAnnotatePage() {
   return (
     <>
       {/* Fixed Header */}
-      <div className={`fixed top-0 left-0 md:left-64 right-0 backdrop-blur-sm shadow-sm z-30 ${
-        isAllAnnotated 
-          ? 'bg-green-50/90 border-b border-green-200 border-l-4 border-l-green-500' 
-          : 'bg-white/85 border-b border-gray-200'
-      }`}>
+      <div className={`fixed top-0 left-0 md:left-64 right-0 backdrop-blur-sm shadow-sm z-30 ${isAllAnnotated
+        ? 'bg-green-50/90 border-b border-green-200 border-l-4 border-l-green-500'
+        : 'bg-white/85 border-b border-gray-200'
+        }`}>
         <div className="px-10 py-3">
           {/* Top Row: Context + Action Buttons */}
           <div className="flex items-center justify-between">
@@ -713,7 +701,7 @@ export default function DetectionSequenceAnnotatePage() {
                     </span>
                   </>
                 )}
-                
+
                 {/* Sequence context */}
                 {allSequences && (
                   <>
@@ -723,7 +711,7 @@ export default function DetectionSequenceAnnotatePage() {
                     </span>
                   </>
                 )}
-                
+
                 {/* Completion Badge */}
                 {isAllAnnotated && (
                   <>
@@ -736,7 +724,7 @@ export default function DetectionSequenceAnnotatePage() {
                 )}
               </div>
             </div>
-            
+
             <div className="flex items-center space-x-2">
               {/* Navigation Buttons */}
               <button
@@ -755,7 +743,7 @@ export default function DetectionSequenceAnnotatePage() {
               >
                 <ChevronRight className="w-4 h-4" />
               </button>
-              
+
               {/* Predictions Toggle */}
               <label className="flex items-center space-x-2 px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 cursor-pointer">
                 <input
@@ -793,11 +781,10 @@ export default function DetectionSequenceAnnotatePage() {
                   <span className="text-orange-600">Pending</span>
                 )} • {annotatedCount} of {totalCount} detections • {completionPercentage}% complete
               </span>
-              
+
               {/* Model Accuracy Context */}
               {sequence && sequenceAnnotation && (
                 <div className="flex items-center space-x-2">
-                  <span className="text-xs text-gray-500">Model:</span>
                   {(() => {
                     const accuracy = analyzeSequenceAccuracy({
                       ...sequence,
@@ -811,13 +798,13 @@ export default function DetectionSequenceAnnotatePage() {
                   })()}
                 </div>
               )}
-              
+
               {/* Annotation pills */}
               <div className="flex items-center space-x-2">
                 {getAnnotationPills()}
               </div>
             </div>
-            
+
             <div className="flex items-center space-x-3">
               {isAllAnnotated ? (
                 <CheckCircle className="w-4 h-4 text-green-500" />
@@ -825,10 +812,9 @@ export default function DetectionSequenceAnnotatePage() {
                 <AlertCircle className="w-4 h-4 text-orange-500" />
               )}
               <div className="w-24 bg-gray-200 rounded-full h-1.5">
-                <div 
-                  className={`h-1.5 rounded-full transition-all duration-300 ${
-                    isAllAnnotated ? 'bg-green-600' : 'bg-primary-600'
-                  }`}
+                <div
+                  className={`h-1.5 rounded-full transition-all duration-300 ${isAllAnnotated ? 'bg-green-600' : 'bg-primary-600'
+                    }`}
                   style={{ width: `${completionPercentage}%` }}
                 ></div>
               </div>
@@ -842,8 +828,8 @@ export default function DetectionSequenceAnnotatePage() {
         {/* Detection Grid */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
           {detections.map((detection, index) => (
-            <DetectionImageCard 
-              key={detection.id} 
+            <DetectionImageCard
+              key={detection.id}
               detection={detection}
               onClick={() => openModal(index)}
               isAnnotated={detectionAnnotations.get(detection.id)?.processing_stage === 'annotated'}
@@ -869,9 +855,8 @@ export default function DetectionSequenceAnnotatePage() {
 
       {/* Toast Notification */}
       {showToast && (
-        <div className={`fixed top-24 right-4 z-50 transition-all duration-300 ease-in-out transform ${
-          showToast ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'
-        }`}>
+        <div className={`fixed top-24 right-4 z-50 transition-all duration-300 ease-in-out transform ${showToast ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'
+          }`}>
           <div className="px-4 py-3 rounded-lg shadow-lg flex items-center space-x-3 min-w-80 bg-green-50 border border-green-200">
             <CheckCircle className="w-5 h-5 text-green-600" />
             <span className="text-sm font-medium text-green-800">{toastMessage}</span>
