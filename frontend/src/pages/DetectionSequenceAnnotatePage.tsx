@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, X, ChevronLeft, ChevronRight, CheckCircle, AlertCircle, Upload, RotateCcw, Square, Trash2 } from 'lucide-react';
+import { ArrowLeft, X, ChevronLeft, ChevronRight, CheckCircle, AlertCircle, Upload, RotateCcw, Square, Trash2, Keyboard, Eye, MousePointer, Undo, Navigation } from 'lucide-react';
 import { useSequenceDetections } from '@/hooks/useSequenceDetections';
 import { useDetectionImage } from '@/hooks/useDetectionImage';
 import { apiClient } from '@/services/api';
@@ -182,6 +182,176 @@ function DrawingOverlay({
   );
 }
 
+// Keyboard Shortcuts Info Component
+interface KeyboardShortcutsInfoProps {
+  isVisible: boolean;
+  onClose: () => void;
+  isDrawMode: boolean;
+  hasRectangles: boolean;
+  hasUndoHistory: boolean;
+  isAnnotated: boolean;
+}
+
+function KeyboardShortcutsInfo({ 
+  isVisible, 
+  onClose, 
+  isDrawMode, 
+  hasRectangles, 
+  hasUndoHistory, 
+  isAnnotated 
+}: KeyboardShortcutsInfoProps) {
+  if (!isVisible) return null;
+
+  // Handle escape key for this modal specifically
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      onClose();
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  };
+
+  // Handle overlay click with proper event stopping
+  const handleOverlayClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onClose();
+  };
+
+  // Prevent modal content clicks from propagating
+  const handleContentClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const KeyShortcut = ({ keys, description, icon, disabled = false }: { 
+    keys: string[]; 
+    description: string; 
+    icon?: React.ReactNode; 
+    disabled?: boolean;
+  }) => (
+    <div className={`flex items-center space-x-3 py-2 px-3 rounded-md ${disabled ? 'opacity-50' : 'hover:bg-white/5'}`}>
+      <div className="flex items-center space-x-1 min-w-20">
+        {keys.map((key, index) => (
+          <span key={index}>
+            <kbd className="px-2 py-1 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-md">
+              {key}
+            </kbd>
+            {index < keys.length - 1 && <span className="text-gray-400 mx-1">+</span>}
+          </span>
+        ))}
+      </div>
+      <div className="flex items-center space-x-2 flex-1">
+        {icon && <div className="text-gray-400 w-4 h-4">{icon}</div>}
+        <span className="text-sm text-white">{description}</span>
+      </div>
+    </div>
+  );
+
+  return (
+    <div 
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-60"
+      onClick={handleOverlayClick}
+      onKeyDown={handleKeyDown}
+      tabIndex={-1}
+    >
+      <div 
+        className="bg-gray-900 border border-gray-700 rounded-lg p-6 max-w-md w-full mx-4 max-h-96 overflow-y-auto"
+        onClick={handleContentClick}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center space-x-2">
+            <Keyboard className="w-5 h-5 text-primary-400" />
+            <h3 className="text-lg font-semibold text-white">Keyboard Shortcuts</h3>
+          </div>
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onClose();
+            }}
+            className="p-1 hover:bg-white/10 rounded-full transition-colors"
+          >
+            <X className="w-4 h-4 text-gray-400" />
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          {/* Navigation */}
+          <div>
+            <h4 className="text-sm font-medium text-primary-300 mb-2 flex items-center space-x-2">
+              <Navigation className="w-4 h-4" />
+              <span>Navigation</span>
+            </h4>
+            <div className="space-y-1">
+              <KeyShortcut keys={["←"]} description="Previous detection" />
+              <KeyShortcut keys={["→"]} description="Next detection" />
+              <KeyShortcut keys={["Esc"]} description="Close modal" />
+            </div>
+          </div>
+
+          {/* View Controls */}
+          <div>
+            <h4 className="text-sm font-medium text-primary-300 mb-2 flex items-center space-x-2">
+              <Eye className="w-4 h-4" />
+              <span>View Controls</span>
+            </h4>
+            <div className="space-y-1">
+              <KeyShortcut keys={["P"]} description="Toggle predictions" icon={<Eye className="w-4 h-4" />} />
+              <KeyShortcut keys={["R"]} description="Reset zoom" />
+            </div>
+          </div>
+
+          {/* Drawing Tools */}
+          <div>
+            <h4 className="text-sm font-medium text-primary-300 mb-2 flex items-center space-x-2">
+              <MousePointer className="w-4 h-4" />
+              <span>Drawing Tools</span>
+            </h4>
+            <div className="space-y-1">
+              <KeyShortcut 
+                keys={["D"]} 
+                description={isDrawMode ? "Exit draw mode" : "Enter draw mode"} 
+                icon={<Square className="w-4 h-4" />} 
+              />
+              <KeyShortcut 
+                keys={["Del", "⌫"]} 
+                description={hasRectangles ? "Delete rectangles" : "Delete rectangles"} 
+                icon={<Trash2 className="w-4 h-4" />}
+                disabled={!hasRectangles}
+              />
+              <KeyShortcut 
+                keys={["Ctrl", "Z"]} 
+                description="Undo" 
+                icon={<Undo className="w-4 h-4" />}
+                disabled={!hasUndoHistory}
+              />
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div>
+            <h4 className="text-sm font-medium text-primary-300 mb-2">Actions</h4>
+            <div className="space-y-1">
+              <KeyShortcut 
+                keys={["Space"]} 
+                description={isAnnotated ? "Already annotated" : "Submit annotation"} 
+                disabled={isAnnotated}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6 pt-4 border-t border-gray-700">
+          <p className="text-xs text-gray-400 text-center">
+            Press <kbd className="px-1 py-0.5 text-xs bg-gray-700 rounded">?</kbd> or <kbd className="px-1 py-0.5 text-xs bg-gray-700 rounded">H</kbd> to toggle shortcuts
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface DetectionImageCardProps {
   detection: Detection;
   onClick: () => void;
@@ -341,6 +511,7 @@ function ImageModal({
   const [currentDrawing, setCurrentDrawing] = useState<CurrentDrawing | null>(null);
   const [selectedRectangleId, setSelectedRectangleId] = useState<string | null>(null);
   const [undoStack, setUndoStack] = useState<DrawnRectangle[][]>([]);
+  const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
 
   // Handle image load to get dimensions and position using DOM positioning
   const handleImageLoad = () => {
@@ -723,6 +894,13 @@ function ImageModal({
         setIsDrawMode(!isDrawMode);
         e.preventDefault();
       } else if (e.key === 'Escape') {
+        // If shortcuts modal is open, close it first and prevent other actions
+        if (showKeyboardShortcuts) {
+          setShowKeyboardShortcuts(false);
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
         // Cancel current drawing if in progress
         if (isActivelyDrawing) {
           setCurrentDrawing(null);
@@ -733,7 +911,7 @@ function ImageModal({
           setSelectedRectangleId(null);
           e.preventDefault();
         }
-      } else if (e.key === 'Delete' && drawnRectangles.length > 0) {
+      } else if ((e.key === 'Delete' || e.key === 'Backspace') && drawnRectangles.length > 0) {
         // Save current state to undo stack before deleting
         pushUndoState();
         
@@ -751,12 +929,20 @@ function ImageModal({
         // Undo with Ctrl-Z (Windows/Linux) or Cmd-Z (Mac)
         handleUndo();
         e.preventDefault();
+      } else if (e.key === 'p' || e.key === 'P') {
+        // Toggle predictions visibility
+        onTogglePredictions(!showPredictions);
+        e.preventDefault();
+      } else if (e.key === '?' || (e.key === 'h' && (e.ctrlKey || e.metaKey)) || (e.key === 'h' || e.key === 'H')) {
+        // Toggle keyboard shortcuts info with ? key or H key
+        setShowKeyboardShortcuts(!showKeyboardShortcuts);
+        e.preventDefault();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isDrawMode, isActivelyDrawing, selectedRectangleId, drawnRectangles.length, undoStack.length]);
+  }, [isDrawMode, isActivelyDrawing, selectedRectangleId, drawnRectangles.length, undoStack.length, showKeyboardShortcuts, showPredictions, onTogglePredictions]);
 
   // Cursor style based on state
   const getCursorStyle = () => {
@@ -796,6 +982,15 @@ function ImageModal({
             }`}
         >
           <ChevronRight className="w-6 h-6 text-white" />
+        </button>
+
+        {/* Keyboard Shortcuts Info Button */}
+        <button
+          onClick={() => setShowKeyboardShortcuts(!showKeyboardShortcuts)}
+          className="absolute top-4 left-4 p-2 bg-white bg-opacity-10 hover:bg-opacity-20 rounded-full transition-colors backdrop-blur-sm z-50"
+          title="Show keyboard shortcuts (? or H)"
+        >
+          <Keyboard className="w-4 h-4 text-white" />
         </button>
 
         {/* Predictions Toggle */}
@@ -921,8 +1116,8 @@ function ImageModal({
                   className="p-2 bg-white bg-opacity-10 hover:bg-opacity-20 rounded-full transition-colors backdrop-blur-sm"
                   title={
                     selectedRectangleId 
-                      ? "Delete Selected Rectangle (Delete key)" 
-                      : `Delete All ${drawnRectangles.length} Rectangles (Delete key) • Select a rectangle to delete individually`
+                      ? "Delete Selected Rectangle (Delete/Backspace)" 
+                      : `Delete All ${drawnRectangles.length} Rectangles (Delete/Backspace) • Select a rectangle to delete individually`
                   }
                 >
                   <Trash2 className="w-5 h-5 text-white" />
@@ -981,6 +1176,16 @@ function ImageModal({
               </div>
             )}
           </div>
+
+          {/* Keyboard Shortcuts Info Overlay */}
+          <KeyboardShortcutsInfo
+            isVisible={showKeyboardShortcuts}
+            onClose={() => setShowKeyboardShortcuts(false)}
+            isDrawMode={isDrawMode}
+            hasRectangles={drawnRectangles.length > 0}
+            hasUndoHistory={undoStack.length > 0}
+            isAnnotated={isAnnotated}
+          />
         </div>
       </div>
     </div>
@@ -1220,6 +1425,8 @@ export default function DetectionSequenceAnnotatePage() {
         const isCurrentAnnotated = detectionAnnotations.get(currentDetection.id)?.processing_stage === 'annotated';
         
         if (e.key === 'Escape') {
+          // Only close main modal if no child modals are handling the escape
+          // The ImageModal will handle its own escape logic first
           closeModal();
           e.preventDefault();
         } else if (e.key === 'ArrowLeft') {
@@ -1232,6 +1439,10 @@ export default function DetectionSequenceAnnotatePage() {
           // Space bar to submit individual annotation with empty rectangles
           // (rectangles should be handled by modal's own space bar handler)
           annotateIndividualDetection.mutate({ detection: currentDetection, drawnRectangles: [] });
+          e.preventDefault();
+        } else if (e.key === 'p' || e.key === 'P') {
+          // Toggle predictions visibility globally
+          setShowPredictions(!showPredictions);
           e.preventDefault();
         }
       }
