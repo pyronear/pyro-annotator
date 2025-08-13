@@ -142,18 +142,24 @@ function DrawingOverlay({
     const isSelected = type === 'completed' && selectedRectangleId === (rect as any).id;
     const borderColor = isSelected ? 'border-blue-500' : 'border-green-500';
     const backgroundColor = isSelected ? 'bg-blue-500/20' : 'bg-green-500/10';
-    const borderWidth = isSelected ? 'border-3' : 'border-2';
+    const borderWidth = isSelected ? 'border-4' : 'border-2';
+    
+    // Make completed rectangles clickable, but keep drawing preview non-interactive
+    const pointerEvents = type === 'completed' ? 'pointer-events-auto' : 'pointer-events-none';
+    const cursorStyle = type === 'completed' ? 'cursor-pointer' : '';
+    const hoverEffect = type === 'completed' ? 'hover:brightness-110' : '';
     
     return (
       <div
         key={type === 'completed' ? (rect as any).id : 'current-drawing'}
-        className={`absolute ${borderWidth} ${borderColor} ${backgroundColor} pointer-events-none`}
+        className={`absolute ${borderWidth} ${borderColor} ${backgroundColor} ${pointerEvents} ${cursorStyle} ${hoverEffect} transition-all duration-150`}
         style={{
           left: `${left}px`,
           top: `${top}px`,
           width: `${width}px`,
           height: `${height}px`,
         }}
+        title={type === 'completed' ? 'Click to select rectangle' : undefined}
       />
     );
   };
@@ -604,14 +610,13 @@ function ImageModal({
   };
 
   const handleClick = (e: React.MouseEvent) => {
-    if (!isDrawMode) return;
-    
     e.preventDefault();
     e.stopPropagation();
     
     const coords = screenToImageCoordinates(e.clientX, e.clientY);
     
     // First, check if we clicked on an existing rectangle for selection
+    // Selection works regardless of drawing mode - it takes priority
     const hitRectangle = getRectangleAtPoint(coords.x, coords.y);
     
     if (hitRectangle) {
@@ -624,6 +629,9 @@ function ImageModal({
     
     // No rectangle hit - deselect any current selection
     setSelectedRectangleId(null);
+    
+    // Only proceed with drawing if in drawing mode
+    if (!isDrawMode) return;
     
     // Proceed with drawing logic
     if (!isActivelyDrawing) {
@@ -887,8 +895,8 @@ function ImageModal({
                   isActivelyDrawing 
                     ? "Drawing in progress... (Click to finish, Esc to cancel)" 
                     : isDrawMode 
-                    ? `Exit Draw Mode (D)${selectedRectangleId ? ' • Rectangle selected' : ''}${drawnRectangles.length > 0 ? ` • ${drawnRectangles.length} rectangles` : ''}` 
-                    : "Enter Draw Mode (D)"
+                    ? `Draw Mode Active (D to exit)${selectedRectangleId ? ' • Rectangle selected' : ''}${drawnRectangles.length > 0 ? ` • ${drawnRectangles.length} rectangles` : ''} • Click rectangles to select` 
+                    : `Enter Draw Mode (D)${drawnRectangles.length > 0 ? ` • Click any of ${drawnRectangles.length} rectangles to select` : ''}`
                 }
               >
                 <Square className={`w-5 h-5 ${isDrawMode ? 'text-green-400' : 'text-white'}`} />
@@ -911,7 +919,11 @@ function ImageModal({
                     }
                   }}
                   className="p-2 bg-white bg-opacity-10 hover:bg-opacity-20 rounded-full transition-colors backdrop-blur-sm"
-                  title={selectedRectangleId ? "Delete Selected Rectangle (Delete)" : "Delete All Rectangles (Delete)"}
+                  title={
+                    selectedRectangleId 
+                      ? "Delete Selected Rectangle (Delete key)" 
+                      : `Delete All ${drawnRectangles.length} Rectangles (Delete key) • Select a rectangle to delete individually`
+                  }
                 >
                   <Trash2 className="w-5 h-5 text-white" />
                 </button>
