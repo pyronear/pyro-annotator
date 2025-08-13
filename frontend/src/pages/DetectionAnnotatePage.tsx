@@ -6,7 +6,9 @@ import { ExtendedSequenceFilters, SequenceWithDetectionProgress } from '@/types/
 import { QUERY_KEYS, PAGINATION_DEFAULTS } from '@/utils/constants';
 import {
   analyzeSequenceAccuracy,
-  getRowBackgroundClasses
+  getRowBackgroundClasses,
+  getFalsePositiveEmoji,
+  formatFalsePositiveType
 } from '@/utils/modelAccuracy';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
 import { useCameras } from '@/hooks/useCameras';
@@ -469,19 +471,27 @@ export default function DetectionAnnotatePage() {
 
           {/* Row Background Color Legend */}
           <div className="px-4 py-2 bg-gray-50 border-b border-gray-200">
-            <div className="flex items-center space-x-6 text-xs">
-              <span className="font-medium text-gray-700">Row Colors:</span>
-              <div className="flex items-center space-x-1">
-                <div className="w-3 h-3 bg-green-200 border border-green-300 rounded"></div>
-                <span className="text-gray-600">True Positive (Model correct)</span>
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center space-x-6">
+                <span className="font-medium text-gray-700">Row Colors:</span>
+                <div className="flex items-center space-x-1">
+                  <div className="w-3 h-3 bg-green-200 border border-green-300 rounded"></div>
+                  <span className="text-gray-600">True Positive (Model correct)</span>
+                </div>
+                <div className="flex items-center space-x-1">
+                  <div className="w-3 h-3 bg-red-200 border border-red-300 rounded"></div>
+                  <span className="text-gray-600">False Positive (Model incorrect)</span>
+                </div>
+                <div className="flex items-center space-x-1">
+                  <div className="w-3 h-3 bg-orange-200 border border-orange-300 rounded"></div>
+                  <span className="text-gray-600">False Negative (Model missed smoke)</span>
+                </div>
               </div>
-              <div className="flex items-center space-x-1">
-                <div className="w-3 h-3 bg-red-200 border border-red-300 rounded"></div>
-                <span className="text-gray-600">False Positive (Model incorrect)</span>
-              </div>
-              <div className="flex items-center space-x-1">
-                <div className="w-3 h-3 bg-orange-200 border border-orange-300 rounded"></div>
-                <span className="text-gray-600">False Negative (Model missed smoke)</span>
+              <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-1">
+                  <div className="w-3 h-3 bg-yellow-200 border border-yellow-300 rounded"></div>
+                  <span className="text-gray-600">False Positive Types</span>
+                </div>
               </div>
             </div>
           </div>
@@ -508,7 +518,7 @@ export default function DetectionAnnotatePage() {
                   className={rowClasses}
                   onClick={() => handleSequenceClick(sequence)}
                 >
-                  <div className="flex items-center space-x-4">
+                  <div className="flex items-start space-x-4">
                     {/* Detection Image Thumbnail */}
                     <div className="flex-shrink-0">
                       <DetectionImageThumbnail
@@ -565,6 +575,31 @@ export default function DetectionAnnotatePage() {
                         )}
                       </div>
                     </div>
+
+                    {/* False Positive Pills - Top Right Area */}
+                    {annotation && (
+                      <div className="flex-shrink-0 self-start">
+                        <div className="flex flex-wrap gap-1 justify-end">
+                          {(() => {
+                            try {
+                              const falsePositiveTypes = annotation.false_positive_types
+                                ? JSON.parse(annotation.false_positive_types)
+                                : [];
+                              return falsePositiveTypes.map((type: string) => (
+                                <span
+                                  key={type}
+                                  className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800"
+                                >
+                                  {getFalsePositiveEmoji(type)} {formatFalsePositiveType(type)}
+                                </span>
+                              ));
+                            } catch (e) {
+                              return null;
+                            }
+                          })()}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
