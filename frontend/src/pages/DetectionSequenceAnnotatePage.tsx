@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, X, ChevronLeft, ChevronRight, CheckCircle, AlertCircle, Upload, RotateCcw } from 'lucide-react';
+import { ArrowLeft, X, ChevronLeft, ChevronRight, CheckCircle, AlertCircle, Upload, RotateCcw, Square, Trash2 } from 'lucide-react';
 import { useSequenceDetections } from '@/hooks/useSequenceDetections';
 import { useDetectionImage } from '@/hooks/useDetectionImage';
 import { apiClient } from '@/services/api';
@@ -13,6 +13,19 @@ import {
   getModelAccuracyBadgeClasses
 } from '@/utils/modelAccuracy';
 import { Detection, DetectionAnnotation, AlgoPrediction } from '@/types/api';
+
+// Drawing-related interfaces
+interface DrawnRectangle {
+  id: string;
+  xyxyn: [number, number, number, number]; // normalized coordinates
+}
+
+interface CurrentDrawing {
+  startX: number;
+  startY: number;
+  currentX: number;
+  currentY: number;
+}
 
 // Component for rendering bounding boxes over detection images
 interface BoundingBoxOverlayProps {
@@ -64,6 +77,94 @@ function BoundingBoxOverlay({ detection, imageInfo }: BoundingBoxOverlayProps) {
         );
       }).filter(Boolean)} {/* Remove null entries from invalid boxes */}
     </>
+  );
+}
+
+// Component for rendering user-drawn rectangles
+interface DrawingOverlayProps {
+  drawnRectangles: DrawnRectangle[];
+  currentDrawing: CurrentDrawing | null;
+  imageInfo: {
+    width: number;
+    height: number;
+    offsetX: number;
+    offsetY: number;
+  };
+  zoomLevel: number;
+  panOffset: { x: number; y: number };
+  transformOrigin: { x: number; y: number };
+  isDragging: boolean;
+  normalizedToImage: (normX: number, normY: number) => { x: number; y: number };
+}
+
+function DrawingOverlay({ 
+  drawnRectangles, 
+  currentDrawing, 
+  imageInfo, 
+  zoomLevel, 
+  panOffset, 
+  transformOrigin, 
+  isDragging,
+  normalizedToImage 
+}: DrawingOverlayProps) {
+  
+  const renderRectangle = (rect: { xyxyn: [number, number, number, number] } | CurrentDrawing, type: 'completed' | 'drawing') => {
+    let left: number, top: number, width: number, height: number;
+    
+    if (type === 'completed') {
+      // For completed rectangles, use normalized coordinates
+      const rectData = rect as { xyxyn: [number, number, number, number] };
+      const [x1, y1, x2, y2] = rectData.xyxyn;
+      const topLeft = normalizedToImage(x1, y1);
+      const bottomRight = normalizedToImage(x2, y2);
+      
+      left = imageInfo.offsetX + topLeft.x;
+      top = imageInfo.offsetY + topLeft.y;
+      width = bottomRight.x - topLeft.x;
+      height = bottomRight.y - topLeft.y;
+    } else {
+      // For current drawing, use image coordinates directly
+      const drawingData = rect as CurrentDrawing;
+      const minX = Math.min(drawingData.startX, drawingData.currentX);
+      const minY = Math.min(drawingData.startY, drawingData.currentY);
+      const maxX = Math.max(drawingData.startX, drawingData.currentX);
+      const maxY = Math.max(drawingData.startY, drawingData.currentY);
+      
+      left = imageInfo.offsetX + minX;
+      top = imageInfo.offsetY + minY;
+      width = maxX - minX;
+      height = maxY - minY;
+    }
+    
+    return (
+      <div
+        key={type === 'completed' ? (rect as any).id : 'current-drawing'}
+        className="absolute border-2 border-green-500 bg-green-500/10 pointer-events-none"
+        style={{
+          left: `${left}px`,
+          top: `${top}px`,
+          width: `${width}px`,
+          height: `${height}px`,
+        }}
+      />
+    );
+  };
+  
+  return (
+    <div 
+      className="absolute inset-0 pointer-events-none"
+      style={{
+        transform: `scale(${zoomLevel}) translate(${panOffset.x}px, ${panOffset.y}px)`,
+        transformOrigin: `${transformOrigin.x}% ${transformOrigin.y}%`,
+        transition: isDragging ? 'none' : 'transform 0.1s ease-out'
+      }}
+    >
+      {/* Completed rectangles */}
+      {drawnRectangles.map(rect => renderRectangle(rect, 'completed'))}
+      
+      {/* Current drawing rectangle */}
+      {currentDrawing && renderRectangle(currentDrawing, 'drawing')}
+    </div>
   );
 }
 
@@ -217,6 +318,12 @@ function ImageModal({
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
+  // Drawing state management
+  const [isDrawMode, setIsDrawMode] = useState(false);
+  const [drawnRectangles, setDrawnRectangles] = useState<DrawnRectangle[]>([]);
+  const [currentDrawing, setCurrentDrawing] = useState<CurrentDrawing | null>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+
   // Handle image load to get dimensions and position using DOM positioning
   const handleImageLoad = () => {
     if (imgRef.current && containerRef.current) {
@@ -241,12 +348,66 @@ function ImageModal({
     }
   };
 
-  // Reset zoom when detection changes
+  // Reset zoom and drawing when detection changes
   useEffect(() => {
     setZoomLevel(1.0);
     setPanOffset({ x: 0, y: 0 });
     setTransformOrigin({ x: 50, y: 50 });
+    setIsDrawMode(false);
+    setDrawnRectangles([]);
+    setCurrentDrawing(null);
+    setIsDrawing(false);
   }, [detection.id]);
+
+  // Coordinate transformation functions
+  const screenToImageCoordinates = (screenX: number, screenY: number) => {
+    if (!imgRef.current || !containerRef.current) return { x: 0, y: 0 };
+    
+    const imgRect = imgRef.current.getBoundingClientRect();
+    const containerRect = containerRef.current.getBoundingClientRect();
+    
+    // Get relative position to container
+    const relativeX = screenX - containerRect.left;
+    const relativeY = screenY - containerRect.top;
+    
+    // Account for transform origin in image space
+    const originalWidth = imgRect.width / zoomLevel;
+    const originalHeight = imgRect.height / zoomLevel;
+    const originX = (transformOrigin.x / 100) * originalWidth;
+    const originY = (transformOrigin.y / 100) * originalHeight;
+    
+    // Reverse transform to get original image coordinates
+    const imageX = (relativeX - panOffset.x - originX * (zoomLevel - 1)) / zoomLevel;
+    const imageY = (relativeY - panOffset.y - originY * (zoomLevel - 1)) / zoomLevel;
+    
+    return { x: imageX, y: imageY };
+  };
+
+  const imageToNormalized = (imageX: number, imageY: number) => {
+    if (!imgRef.current) return { x: 0, y: 0 };
+    
+    const imgRect = imgRef.current.getBoundingClientRect();
+    const originalWidth = imgRect.width / zoomLevel;
+    const originalHeight = imgRect.height / zoomLevel;
+    
+    return {
+      x: Math.max(0, Math.min(1, imageX / originalWidth)),
+      y: Math.max(0, Math.min(1, imageY / originalHeight))
+    };
+  };
+
+  const normalizedToImage = (normX: number, normY: number) => {
+    if (!imgRef.current) return { x: 0, y: 0 };
+    
+    const imgRect = imgRef.current.getBoundingClientRect();
+    const originalWidth = imgRect.width / zoomLevel;
+    const originalHeight = imgRect.height / zoomLevel;
+    
+    return {
+      x: normX * originalWidth,
+      y: normY * originalHeight
+    };
+  };
 
   // Mouse wheel zoom handler
   const handleWheel = (e: React.WheelEvent) => {
@@ -254,7 +415,6 @@ function ImageModal({
     
     if (!containerRef.current || !imgRef.current) return;
     
-    const containerRect = containerRef.current.getBoundingClientRect();
     const imgRect = imgRef.current.getBoundingClientRect();
     
     // Calculate mouse position relative to the image
@@ -298,27 +458,71 @@ function ImageModal({
     };
   };
 
-  // Drag handlers for panning
+  // Mode-aware mouse handlers for drawing and panning
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (zoomLevel <= 1.0) return;
-    
-    setIsDragging(true);
-    setDragStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
+    if (isDrawMode) {
+      // Start drawing rectangle
+      const coords = screenToImageCoordinates(e.clientX, e.clientY);
+      setCurrentDrawing({
+        startX: coords.x,
+        startY: coords.y,
+        currentX: coords.x,
+        currentY: coords.y
+      });
+      setIsDrawing(true);
+    } else if (zoomLevel > 1.0) {
+      // Start panning
+      setIsDragging(true);
+      setDragStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
+    }
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging || zoomLevel <= 1.0) return;
-    
-    const newX = e.clientX - dragStart.x;
-    const newY = e.clientY - dragStart.y;
-    
-    // Apply boundary constraints
-    const constrainedOffset = constrainPan({ x: newX, y: newY });
-    setPanOffset(constrainedOffset);
+    if (isDrawing && currentDrawing) {
+      // Update drawing rectangle
+      const coords = screenToImageCoordinates(e.clientX, e.clientY);
+      setCurrentDrawing(prev => prev ? { 
+        ...prev, 
+        currentX: coords.x, 
+        currentY: coords.y 
+      } : null);
+    } else if (isDragging && !isDrawMode && zoomLevel > 1.0) {
+      // Handle panning
+      const newX = e.clientX - dragStart.x;
+      const newY = e.clientY - dragStart.y;
+      const constrainedOffset = constrainPan({ x: newX, y: newY });
+      setPanOffset(constrainedOffset);
+    }
   };
 
   const handleMouseUp = () => {
-    setIsDragging(false);
+    if (isDrawing && currentDrawing) {
+      // Finalize rectangle
+      const startNorm = imageToNormalized(currentDrawing.startX, currentDrawing.startY);
+      const endNorm = imageToNormalized(currentDrawing.currentX, currentDrawing.currentY);
+      
+      // Ensure we have a minimum rectangle size
+      const minX = Math.min(startNorm.x, endNorm.x);
+      const maxX = Math.max(startNorm.x, endNorm.x);
+      const minY = Math.min(startNorm.y, endNorm.y);
+      const maxY = Math.max(startNorm.y, endNorm.y);
+      
+      // Only create rectangle if it has meaningful size (at least 10 pixels)
+      const sizeThreshold = 10 / (imgRef.current?.getBoundingClientRect().width || 1000);
+      if ((maxX - minX) > sizeThreshold && (maxY - minY) > sizeThreshold) {
+        const newRect: DrawnRectangle = {
+          id: Date.now().toString(),
+          xyxyn: [minX, minY, maxX, maxY]
+        };
+        
+        setDrawnRectangles(prev => [...prev, newRect]);
+      }
+      
+      setCurrentDrawing(null);
+      setIsDrawing(false);
+    } else {
+      setIsDragging(false);
+    }
   };
 
   // Reset zoom function
@@ -328,21 +532,25 @@ function ImageModal({
     setTransformOrigin({ x: 50, y: 50 });
   };
 
-  // Keyboard handler for zoom reset
+  // Keyboard handler for zoom reset and draw mode
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'r' || e.key === 'R') {
         handleZoomReset();
+        e.preventDefault();
+      } else if (e.key === 'd' || e.key === 'D') {
+        setIsDrawMode(!isDrawMode);
         e.preventDefault();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [isDrawMode]);
 
   // Cursor style based on state
   const getCursorStyle = () => {
+    if (isDrawMode) return 'crosshair';
     if (zoomLevel <= 1.0) return 'default';
     return isDragging ? 'grabbing' : 'grab';
   };
@@ -358,16 +566,6 @@ function ImageModal({
           <X className="w-6 h-6 text-white" />
         </button>
 
-        {/* Reset Zoom Button - Only visible when zoomed */}
-        {zoomLevel > 1.0 && (
-          <button
-            onClick={handleZoomReset}
-            className="absolute top-4 left-4 p-2 bg-white bg-opacity-10 hover:bg-opacity-20 rounded-full transition-colors"
-            title="Reset Zoom (R)"
-          >
-            <RotateCcw className="w-6 h-6 text-white" />
-          </button>
-        )}
 
         {/* Navigation buttons */}
         <button
@@ -438,12 +636,66 @@ function ImageModal({
                   <BoundingBoxOverlay detection={detection} imageInfo={imageInfo} />
                 </div>
               )}
+
+              {/* Drawing Overlay */}
+              {imageInfo && (
+                <DrawingOverlay
+                  drawnRectangles={drawnRectangles}
+                  currentDrawing={currentDrawing}
+                  imageInfo={imageInfo}
+                  zoomLevel={zoomLevel}
+                  panOffset={panOffset}
+                  transformOrigin={transformOrigin}
+                  isDragging={isDragging || isDrawing}
+                  normalizedToImage={normalizedToImage}
+                />
+              )}
             </div>
           ) : (
             <div className="w-96 h-96 bg-gray-800 flex items-center justify-center rounded-lg">
               <span className="text-gray-400">No image available</span>
             </div>
           )}
+
+          {/* Control buttons - Bottom right */}
+          <div className="mt-4 flex justify-end">
+            <div className="flex items-center space-x-2">
+              {/* Drawing Mode Toggle */}
+              <button
+                onClick={() => setIsDrawMode(!isDrawMode)}
+                className={`p-2 rounded-full transition-colors backdrop-blur-sm ${
+                  isDrawMode 
+                    ? 'bg-green-500 bg-opacity-20 hover:bg-opacity-30' 
+                    : 'bg-white bg-opacity-10 hover:bg-opacity-20'
+                }`}
+                title={isDrawMode ? "Exit Draw Mode (D)" : "Enter Draw Mode (D)"}
+              >
+                <Square className={`w-5 h-5 ${isDrawMode ? 'text-green-400' : 'text-white'}`} />
+              </button>
+              
+              {/* Clear Drawings Button */}
+              {drawnRectangles.length > 0 && (
+                <button
+                  onClick={() => setDrawnRectangles([])}
+                  className="p-2 bg-white bg-opacity-10 hover:bg-opacity-20 rounded-full transition-colors backdrop-blur-sm"
+                  title="Clear All Rectangles"
+                >
+                  <Trash2 className="w-5 h-5 text-white" />
+                </button>
+              )}
+              
+              {/* Reset Zoom Button - Only visible when zoomed */}
+              {zoomLevel > 1.0 && (
+                <button
+                  onClick={handleZoomReset}
+                  className="p-2 bg-white bg-opacity-10 hover:bg-opacity-20 rounded-full transition-colors backdrop-blur-sm"
+                  title="Reset Zoom (R)"
+                >
+                  <RotateCcw className="w-6 h-6 text-white" />
+                </button>
+              )}
+            </div>
+          </div>
 
           {/* Detection info */}
           <div className="mt-4 bg-white bg-opacity-10 backdrop-blur-sm rounded-lg p-4 text-white">
