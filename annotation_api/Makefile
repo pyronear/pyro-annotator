@@ -35,4 +35,4 @@ clean:
 test:
 	docker compose -f docker-compose-dev.yml up -d --wait --build
 	- docker compose -f docker-compose-dev.yml exec -T backend /app/.venv/bin/python -m pytest -s --cov=app
-	docker compose -f docker-compose-dev.yml down
+	docker compose -f docker-compose-dev.yml down --volumes
