@@ -562,7 +562,7 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
                     <span className="text-gray-600">False Positive (Model incorrect)</span>
                   </div>
                   <div className="flex items-center space-x-1">
-                    <div className="w-3 h-3 bg-orange-200 border border-orange-300 rounded"></div>
+                    <div className="w-3 h-3 bg-blue-200 border border-blue-300 rounded"></div>
                     <span className="text-gray-600">False Negative (Model missed smoke)</span>
                   </div>
                 </div>

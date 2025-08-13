@@ -12,6 +12,7 @@ import {
   ModelAccuracyType
 } from '@/utils/modelAccuracy';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
+import FalsePositiveFilter from '@/components/filters/FalsePositiveFilter';
 import ModelAccuracyFilter from '@/components/filters/ModelAccuracyFilter';
 import { useCameras } from '@/hooks/useCameras';
 import { useOrganizations } from '@/hooks/useOrganizations';
@@ -37,6 +38,9 @@ export default function DetectionAnnotatePage() {
 
   // Model accuracy filter state
   const [selectedModelAccuracy, setSelectedModelAccuracy] = useState<ModelAccuracyType | 'all'>('all');
+
+  // False positive filter state
+  const [selectedFalsePositiveTypes, setSelectedFalsePositiveTypes] = useState<string[]>([]);
 
   // Date range helper functions
   const setDateRange = (preset: string) => {
@@ -149,6 +153,13 @@ export default function DetectionAnnotatePage() {
     setFilters(prev => ({ ...prev, ...newFilters, page: 1 }));
   };
 
+  const handleFalsePositiveFilterChange = (selectedTypes: string[]) => {
+    setSelectedFalsePositiveTypes(selectedTypes);
+    handleFilterChange({
+      false_positive_types: selectedTypes.length > 0 ? selectedTypes : undefined
+    });
+  };
+
   const handlePageChange = (page: number) => {
     setFilters(prev => ({ ...prev, page }));
   };
@@ -193,7 +204,7 @@ export default function DetectionAnnotatePage() {
 
         {/* Filters */}
         <div className="bg-white rounded-lg border border-gray-200 p-4">
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-6 lg:grid-cols-7 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Source API
@@ -348,7 +359,7 @@ export default function DetectionAnnotatePage() {
 
       {/* Filters */}
       <div className="bg-white rounded-lg border border-gray-200 p-4">
-        <div className="grid grid-cols-1 md:grid-cols-5 lg:grid-cols-6 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-6 lg:grid-cols-7 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Source API
@@ -475,6 +486,13 @@ export default function DetectionAnnotatePage() {
             </div>
           </div>
 
+          {/* False Positive Filter */}
+          <FalsePositiveFilter
+            selectedTypes={selectedFalsePositiveTypes}
+            onSelectionChange={handleFalsePositiveFilterChange}
+            className="w-full"
+          />
+
           {/* Model Accuracy Filter */}
           <ModelAccuracyFilter
             selectedAccuracy={selectedModelAccuracy}
@@ -526,7 +544,7 @@ export default function DetectionAnnotatePage() {
                   <span className="text-gray-600">False Positive (Model incorrect)</span>
                 </div>
                 <div className="flex items-center space-x-1">
-                  <div className="w-3 h-3 bg-orange-200 border border-orange-300 rounded"></div>
+                  <div className="w-3 h-3 bg-blue-200 border border-blue-300 rounded"></div>
                   <span className="text-gray-600">False Negative (Model missed smoke)</span>
                 </div>
               </div>
