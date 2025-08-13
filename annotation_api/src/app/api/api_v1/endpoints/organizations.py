@@ -1,8 +1,8 @@
 # Copyright (C) 2025, Pyronear.
 
-from typing import List, Optional
+from typing import List
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -15,7 +15,6 @@ router = APIRouter()
 
 @router.get("/", response_model=List[OrganizationRead])
 async def list_organizations(
-    search: Optional[str] = Query(None, description="Search organizations by name (partial match)"),
     session: AsyncSession = Depends(get_session),
 ) -> List[OrganizationRead]:
     """
@@ -23,8 +22,6 @@ async def list_organizations(
 
     Returns distinct organizations from sequences with:
     - Organization ID and name
-
-    Optionally filter by organization name using the search parameter.
     """
     # Build query for distinct organizations
     query = (
@@ -35,10 +32,6 @@ async def list_organizations(
         .distinct()
         .order_by(Sequence.organisation_name)
     )
-
-    # Apply search filter if provided
-    if search:
-        query = query.where(Sequence.organisation_name.ilike(f"%{search}%"))
 
     # Execute query
     result = await session.execute(query)

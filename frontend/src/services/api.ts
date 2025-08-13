@@ -118,18 +118,14 @@ class ApiClient {
   }
 
   // Cameras
-  async getCameras(search?: string): Promise<Camera[]> {
-    const response: AxiosResponse<Camera[]> = await this.client.get('/cameras', {
-      params: search ? { search } : {},
-    });
+  async getCameras(): Promise<Camera[]> {
+    const response: AxiosResponse<Camera[]> = await this.client.get('/cameras');
     return response.data;
   }
 
   // Organizations
-  async getOrganizations(search?: string): Promise<Organization[]> {
-    const response: AxiosResponse<Organization[]> = await this.client.get('/organizations', {
-      params: search ? { search } : {},
-    });
+  async getOrganizations(): Promise<Organization[]> {
+    const response: AxiosResponse<Organization[]> = await this.client.get('/organizations');
     return response.data;
   }
 
