@@ -4,7 +4,12 @@ import { useNavigate } from 'react-router-dom';
 import { apiClient } from '@/services/api';
 import { ExtendedSequenceFilters, SequenceWithDetectionProgress } from '@/types/api';
 import { QUERY_KEYS, PAGINATION_DEFAULTS } from '@/utils/constants';
+import { 
+  analyzeSequenceAccuracy, 
+  getModelAccuracyBadgeClasses 
+} from '@/utils/modelAccuracy';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
+import FalsePositiveFilter from '@/components/filters/FalsePositiveFilter';
 import { useCameras } from '@/hooks/useCameras';
 import { useOrganizations } from '@/hooks/useOrganizations';
 
@@ -26,6 +31,9 @@ export default function DetectionReviewPage() {
   // Date range state
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+
+  // False positive filter state
+  const [selectedFalsePositiveTypes, setSelectedFalsePositiveTypes] = useState<string[]>([]);
 
   // Date range helper functions
   const setDateRange = (preset: string) => {
@@ -83,8 +91,38 @@ export default function DetectionReviewPage() {
     queryFn: () => apiClient.getSequences(filters),
   });
 
+  // Fetch sequence annotations for model accuracy analysis
+  const { data: sequenceAnnotations } = useQuery({
+    queryKey: [...QUERY_KEYS.SEQUENCE_ANNOTATIONS, 'detection-review', sequences?.items?.map(s => s.id)],
+    queryFn: async () => {
+      if (!sequences?.items?.length) return [];
+      
+      const annotationPromises = sequences.items.map(sequence =>
+        apiClient.getSequenceAnnotations({ sequence_id: sequence.id, size: 1 })
+          .then(response => ({ sequenceId: sequence.id, annotation: response.items[0] || null }))
+          .catch(() => ({ sequenceId: sequence.id, annotation: null }))
+      );
+      
+      return Promise.all(annotationPromises);
+    },
+    enabled: !!sequences?.items?.length,
+  });
+
+  // Create a map for quick annotation lookup
+  const annotationMap = sequenceAnnotations?.reduce((acc, { sequenceId, annotation }) => {
+    acc[sequenceId] = annotation;
+    return acc;
+  }, {} as Record<number, any>) || {};
+
   const handleFilterChange = (newFilters: Partial<ExtendedSequenceFilters>) => {
     setFilters(prev => ({ ...prev, ...newFilters, page: 1 }));
+  };
+
+  const handleFalsePositiveFilterChange = (selectedTypes: string[]) => {
+    setSelectedFalsePositiveTypes(selectedTypes);
+    handleFilterChange({ 
+      false_positive_types: selectedTypes.length > 0 ? selectedTypes : undefined 
+    });
   };
 
   const handlePageChange = (page: number) => {
@@ -129,7 +167,7 @@ export default function DetectionReviewPage() {
 
       {/* Filters */}
       <div className="bg-white rounded-lg border border-gray-200 p-4">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Source API
@@ -255,6 +293,13 @@ export default function DetectionReviewPage() {
               />
             </div>
           </div>
+
+          {/* False Positive Filter */}
+          <FalsePositiveFilter
+            selectedTypes={selectedFalsePositiveTypes}
+            onSelectionChange={handleFalsePositiveFilterChange}
+            className="w-full"
+          />
         </div>
       </div>
 
@@ -309,11 +354,31 @@ export default function DetectionReviewPage() {
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                         {sequence.source_api}
                       </span>
-                      {sequence.is_wildfire_alertapi && (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                          🔥 Wildfire Alert
-                        </span>
-                      )}
+                      
+                      {/* Model Accuracy Classification */}
+                      {(() => {
+                        const annotation = annotationMap[sequence.id];
+                        if (annotation) {
+                          const accuracy = analyzeSequenceAccuracy({
+                            ...sequence,
+                            annotation: annotation
+                          });
+                          return (
+                            <span className={getModelAccuracyBadgeClasses(accuracy)}>
+                              {accuracy.icon} {accuracy.label}
+                            </span>
+                          );
+                        } else if (sequence.is_wildfire_alertapi) {
+                          // Fallback to showing wildfire alert if no annotation available
+                          return (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                              🔥 Wildfire Alert (Pending Review)
+                            </span>
+                          );
+                        }
+                        return null;
+                      })()}
+                      
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                         ✅ Fully Annotated
                       </span>

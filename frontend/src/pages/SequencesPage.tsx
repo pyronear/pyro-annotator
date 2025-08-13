@@ -5,7 +5,14 @@ import { apiClient } from '@/services/api';
 import { ExtendedSequenceFilters, ProcessingStageStatus } from '@/types/api';
 import { QUERY_KEYS, PAGINATION_DEFAULTS } from '@/utils/constants';
 import { getProcessingStageLabel, getProcessingStageColorClass } from '@/utils/processingStage';
+import { 
+  analyzeSequenceAccuracy, 
+  getFalsePositiveEmoji, 
+  formatFalsePositiveType, 
+  getModelAccuracyBadgeClasses 
+} from '@/utils/modelAccuracy';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
+import FalsePositiveFilter from '@/components/filters/FalsePositiveFilter';
 import { useSequenceStore } from '@/store/useSequenceStore';
 import { useCameras } from '@/hooks/useCameras';
 import { useOrganizations } from '@/hooks/useOrganizations';
@@ -14,29 +21,6 @@ interface SequencesPageProps {
   defaultProcessingStage?: ProcessingStageStatus;
 }
 
-// Emoji mapping for false positive types
-const getFalsePositiveEmoji = (type: string): string => {
-  const emojiMap: Record<string, string> = {
-    antenna: '📡',
-    building: '🏢',
-    cliff: '⛰️',
-    dark: '🌚',
-    dust: '🌪️',
-    high_cloud: '☁️',
-    low_cloud: '☁️',
-    lens_flare: '✨',
-    lens_droplet: '💧',
-    light: '💡',
-    rain: '🌧️',
-    trail: '🛤️',
-    road: '🛣️',
-    sky: '🌌',
-    tree: '🌳',
-    water_body: '🌊',
-    other: '❓'
-  };
-  return emojiMap[type] || '❓';
-};
 
 export default function SequencesPage({ defaultProcessingStage = 'ready_to_annotate' }: SequencesPageProps = {}) {
   const navigate = useNavigate();
@@ -55,6 +39,9 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
   // Date range state
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+
+  // False positive filter state
+  const [selectedFalsePositiveTypes, setSelectedFalsePositiveTypes] = useState<string[]>([]);
 
   // Date range helper functions
   const setDateRange = (preset: string) => {
@@ -117,6 +104,13 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
     setFilters(prev => ({ ...prev, ...newFilters, page: 1 }));
   };
 
+  const handleFalsePositiveFilterChange = (selectedTypes: string[]) => {
+    setSelectedFalsePositiveTypes(selectedTypes);
+    handleFilterChange({ 
+      false_positive_types: selectedTypes.length > 0 ? selectedTypes : undefined 
+    });
+  };
+
   const handlePageChange = (page: number) => {
     setFilters(prev => ({ ...prev, page }));
   };
@@ -167,7 +161,7 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
 
         {/* Filters */}
         <div className="bg-white rounded-lg border border-gray-200 p-4">
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <div className={`grid grid-cols-1 ${defaultProcessingStage === 'annotated' ? 'md:grid-cols-6' : 'md:grid-cols-5'} gap-4`}>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Source API
@@ -294,6 +288,15 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
                 </div>
               </div>
 
+              {/* False Positive Filter - Only show on review page */}
+              {defaultProcessingStage === 'annotated' && (
+                <FalsePositiveFilter
+                  selectedTypes={selectedFalsePositiveTypes}
+                  onSelectionChange={handleFalsePositiveFilterChange}
+                  className="w-full"
+                />
+              )}
+
           </div>
         </div>
 
@@ -331,7 +334,7 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
 
       {/* Filters */}
       <div className="bg-white rounded-lg border border-gray-200 p-4">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div className={`grid grid-cols-1 ${defaultProcessingStage === 'annotated' ? 'md:grid-cols-6' : 'md:grid-cols-5'} gap-4`}>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Source API
@@ -458,6 +461,15 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
               </div>
             </div>
 
+            {/* False Positive Filter - Only show on review page */}
+            {defaultProcessingStage === 'annotated' && (
+              <FalsePositiveFilter
+                selectedTypes={selectedFalsePositiveTypes}
+                onSelectionChange={handleFalsePositiveFilterChange}
+                className="w-full"
+              />
+            )}
+
         </div>
       </div>
 
@@ -538,43 +550,61 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
                     
                     {/* Annotation Details - Only show for annotated sequences (review page) */}
                     {defaultProcessingStage === 'annotated' && sequence.annotation && (
-                      <div className="mt-2 flex items-center flex-wrap gap-2">
-                        {/* Smoke Detection Badge */}
-                        {sequence.annotation.has_smoke ? (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                            💨 Smoke Detected
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                            ✅ No Smoke
-                          </span>
-                        )}
-
-                        {/* False Positive Types */}
+                      <div className="mt-2 space-y-2">
+                        {/* Model Accuracy Analysis */}
                         {(() => {
-                          try {
-                            const falsePositiveTypes = sequence.annotation.false_positive_types 
-                              ? JSON.parse(sequence.annotation.false_positive_types) 
-                              : [];
-                            return falsePositiveTypes.map((type: string) => (
-                              <span 
-                                key={type} 
-                                className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
-                              >
-                                {getFalsePositiveEmoji(type)} {type.replace(/_/g, ' ')}
+                          const accuracy = analyzeSequenceAccuracy(sequence);
+                          return (
+                            <div className="flex items-center flex-wrap gap-2">
+                              <span className={getModelAccuracyBadgeClasses(accuracy)}>
+                                {accuracy.icon} {accuracy.label}
                               </span>
-                            ));
-                          } catch (e) {
-                            return null;
-                          }
+                              <span className="text-xs text-gray-500">
+                                {accuracy.description}
+                              </span>
+                            </div>
+                          );
                         })()}
 
-                        {/* Missed Smoke Warning */}
-                        {sequence.annotation.has_missed_smoke && (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                            🚨 Missed Smoke
-                          </span>
-                        )}
+                        {/* Human Annotation Results */}
+                        <div className="flex items-center flex-wrap gap-2">
+                          {/* Smoke Detection Result */}
+                          {sequence.annotation.has_smoke ? (
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                              💨 Smoke Confirmed
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                              ✅ No Smoke
+                            </span>
+                          )}
+
+                          {/* False Positive Types */}
+                          {(() => {
+                            try {
+                              const falsePositiveTypes = sequence.annotation.false_positive_types 
+                                ? JSON.parse(sequence.annotation.false_positive_types) 
+                                : [];
+                              return falsePositiveTypes.map((type: string) => (
+                                <span 
+                                  key={type} 
+                                  className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
+                                >
+                                  {getFalsePositiveEmoji(type)} {formatFalsePositiveType(type)}
+                                </span>
+                              ));
+                            } catch (e) {
+                              return null;
+                            }
+                          })()}
+
+                          {/* Missed Smoke Warning */}
+                          {sequence.annotation.has_missed_smoke && (
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                              🚨 Missed Smoke
+                            </span>
+                          )}
+                        </div>
                       </div>
                     )}
 

@@ -6,31 +6,14 @@ import { useSequenceDetections } from '@/hooks/useSequenceDetections';
 import { useDetectionImage } from '@/hooks/useDetectionImage';
 import { apiClient } from '@/services/api';
 import { QUERY_KEYS } from '@/utils/constants';
+import { 
+  analyzeSequenceAccuracy, 
+  getFalsePositiveEmoji, 
+  formatFalsePositiveType,
+  getModelAccuracyBadgeClasses 
+} from '@/utils/modelAccuracy';
 import { Detection, DetectionAnnotation } from '@/types/api';
 
-// Emoji mapping for false positive types
-const getFalsePositiveEmoji = (type: string): string => {
-  const emojiMap: Record<string, string> = {
-    antenna: '📡',
-    building: '🏢',
-    cliff: '⛰️',
-    dark: '🌚',
-    dust: '🌪️',
-    high_cloud: '☁️',
-    low_cloud: '☁️',
-    lens_flare: '✨',
-    lens_droplet: '💧',
-    light: '💡',
-    rain: '🌧️',
-    trail: '🛤️',
-    road: '🛣️',
-    sky: '🌌',
-    tree: '🌳',
-    water_body: '🌊',
-    other: '❓'
-  };
-  return emojiMap[type] || '❓';
-};
 
 interface DetectionImageCardProps {
   detection: Detection;
@@ -407,7 +390,7 @@ export default function DetectionSequenceAnnotatePage() {
               key={`fp-${type}`} 
               className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800"
             >
-              {getFalsePositiveEmoji(type)} {type.replace(/_/g, ' ')}
+              {getFalsePositiveEmoji(type)} {formatFalsePositiveType(type)}
             </span>
           );
         });
@@ -593,7 +576,7 @@ export default function DetectionSequenceAnnotatePage() {
             </div>
           </div>
 
-          {/* Bottom Row: Progress + Annotation Pills */}
+          {/* Bottom Row: Progress + Model Accuracy + Annotation Pills */}
           <div className="flex items-center justify-between mt-2">
             <div className="flex items-center space-x-4">
               <span className="text-xs font-medium text-gray-900">
@@ -603,6 +586,24 @@ export default function DetectionSequenceAnnotatePage() {
                   <span className="text-orange-600">Pending</span>
                 )} • {annotatedCount} of {totalCount} detections • {completionPercentage}% complete
               </span>
+              
+              {/* Model Accuracy Context */}
+              {sequence && sequenceAnnotation && (
+                <div className="flex items-center space-x-2">
+                  <span className="text-xs text-gray-500">Model:</span>
+                  {(() => {
+                    const accuracy = analyzeSequenceAccuracy({
+                      ...sequence,
+                      annotation: sequenceAnnotation
+                    });
+                    return (
+                      <span className={getModelAccuracyBadgeClasses(accuracy, 'sm')}>
+                        {accuracy.icon} {accuracy.label}
+                      </span>
+                    );
+                  })()}
+                </div>
+              )}
               
               {/* Annotation pills */}
               <div className="flex items-center space-x-2">

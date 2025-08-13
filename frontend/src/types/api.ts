@@ -198,6 +198,7 @@ export interface ExtendedSequenceFilters extends SequenceFilters {
   has_missed_smoke?: boolean;
   has_smoke?: boolean;
   has_false_positives?: boolean;
+  false_positive_types?: string[]; // Array of false positive types for OR filtering
   include_annotation?: boolean;
 }
 
