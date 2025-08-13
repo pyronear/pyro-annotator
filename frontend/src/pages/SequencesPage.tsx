@@ -498,6 +498,27 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
             </div>
           </div>
 
+          {/* Row Background Color Legend - Only show on review page */}
+          {defaultProcessingStage === 'annotated' && (
+            <div className="px-4 py-2 bg-gray-50 border-b border-gray-200">
+              <div className="flex items-center space-x-6 text-xs">
+                <span className="font-medium text-gray-700">Row Colors:</span>
+                <div className="flex items-center space-x-1">
+                  <div className="w-3 h-3 bg-green-200 border border-green-300 rounded"></div>
+                  <span className="text-gray-600">True Positive (Model correct)</span>
+                </div>
+                <div className="flex items-center space-x-1">
+                  <div className="w-3 h-3 bg-red-200 border border-red-300 rounded"></div>
+                  <span className="text-gray-600">False Positive (Model incorrect)</span>
+                </div>
+                <div className="flex items-center space-x-1">
+                  <div className="w-3 h-3 bg-orange-200 border border-orange-300 rounded"></div>
+                  <span className="text-gray-600">False Negative (Model missed smoke)</span>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Sequence List */}
           <div className="divide-y divide-gray-200">
             {sequences.items.map((sequence) => {
@@ -562,19 +583,8 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
                     {defaultProcessingStage === 'annotated' && sequence.annotation && (
                       <div className="mt-2 space-y-2">
 
-                        {/* Human Annotation Results */}
+                        {/* Human Annotation Results - Only show false positive types */}
                         <div className="flex items-center flex-wrap gap-2">
-                          {/* Smoke Detection Result */}
-                          {sequence.annotation.has_smoke ? (
-                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                              💨 Smoke Confirmed
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                              ✅ No Smoke
-                            </span>
-                          )}
-
                           {/* False Positive Types */}
                           {(() => {
                             try {
@@ -593,13 +603,6 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
                               return null;
                             }
                           })()}
-
-                          {/* Missed Smoke Warning */}
-                          {sequence.annotation.has_missed_smoke && (
-                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                              🚨 Missed Smoke
-                            </span>
-                          )}
                         </div>
                       </div>
                     )}

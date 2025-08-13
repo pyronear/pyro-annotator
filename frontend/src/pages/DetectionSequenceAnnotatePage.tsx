@@ -338,21 +338,13 @@ export default function DetectionSequenceAnnotatePage() {
 
   const sequenceAnnotation = sequenceAnnotationResponse;
 
-  // Fetch total sequence count for navigation context
-  const { data: sequencesData } = useQuery({
-    queryKey: [...QUERY_KEYS.SEQUENCES, 'detection-annotate-count'],
-    queryFn: () => apiClient.getSequences({
-      detection_annotation_completion: 'incomplete',
-      include_detection_stats: true,
-      size: 1,
-    }),
-  });
-
-  // Fetch all sequences for navigation
+  // Fetch all sequences for navigation (using same filters as DetectionAnnotatePage)
   const { data: allSequences } = useQuery({
     queryKey: [...QUERY_KEYS.SEQUENCES, 'navigation-context'],
     queryFn: () => apiClient.getSequences({
       detection_annotation_completion: 'incomplete',
+      include_detection_stats: true,
+      processing_stage: 'annotated', // Only show sequences that have completed sequence-level annotation
       size: 1000, // Get enough sequences for navigation
     }),
   });
@@ -724,11 +716,11 @@ export default function DetectionSequenceAnnotatePage() {
                 )}
                 
                 {/* Sequence context */}
-                {sequencesData && (
+                {allSequences && (
                   <>
                     <span className="text-gray-400">•</span>
                     <span className="text-xs text-blue-600 font-medium">
-                      Sequence {sequenceId} of {sequencesData.total}
+                      Sequence {getCurrentSequenceIndex() + 1} of {allSequences.total}
                     </span>
                   </>
                 )}

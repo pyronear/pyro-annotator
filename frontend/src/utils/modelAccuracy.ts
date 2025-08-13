@@ -158,9 +158,9 @@ export function getModelAccuracyBadgeClasses(
  */
 export function getRowBackgroundClasses(accuracy: ModelAccuracyResult): string {
   const backgroundClasses = {
-    true_positive: 'bg-green-50 border-l-4 border-l-green-500 hover:bg-green-100',
-    false_positive: 'bg-red-50 border-l-4 border-l-red-500 hover:bg-red-100',
-    false_negative: 'bg-orange-50 border-l-4 border-l-orange-500 hover:bg-orange-100',
+    true_positive: 'bg-green-50 hover:bg-green-100',
+    false_positive: 'bg-red-50 hover:bg-red-100',
+    false_negative: 'bg-orange-50 hover:bg-orange-100',
     unknown: 'hover:bg-gray-50',
   };
   
