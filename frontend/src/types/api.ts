@@ -77,7 +77,14 @@ export interface DetectionAnnotation {
   updated_at: string | null;
 }
 
+export interface DetectionAnnotationBbox {
+  xyxyn: [number, number, number, number];
+  class_name: string;
+  smoke_type: SmokeType;
+}
+
 export interface DetectionAnnotationData {
+  annotation: DetectionAnnotationBbox[];
   smoke_type?: SmokeType;
   false_positive_type?: FalsePositiveType;
   bbox_xyxyn?: [number, number, number, number];

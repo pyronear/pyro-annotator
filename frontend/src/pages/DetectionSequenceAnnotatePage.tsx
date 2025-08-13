@@ -133,7 +133,7 @@ function DetectionImageCard({ detection, onClick, isAnnotated = false, showPredi
         ref={containerRef}
         className={`relative aspect-video overflow-hidden rounded-lg border-2 transition-colors ${isAnnotated
           ? 'border-green-500 hover:border-green-600'
-          : 'border-gray-200 hover:border-gray-300'
+          : 'border-blue-500 hover:border-blue-600'
           }`}
       >
         <img
@@ -175,22 +175,30 @@ interface ImageModalProps {
   detection: Detection;
   onClose: () => void;
   onNavigate: (direction: 'prev' | 'next') => void;
+  onSubmit: (detection: Detection) => void;
+  onTogglePredictions: (show: boolean) => void;
   canNavigatePrev: boolean;
   canNavigateNext: boolean;
   currentIndex: number;
   totalCount: number;
   showPredictions?: boolean;
+  isSubmitting?: boolean;
+  isAnnotated?: boolean;
 }
 
 function ImageModal({
   detection,
   onClose,
   onNavigate,
+  onSubmit,
+  onTogglePredictions,
   canNavigatePrev,
   canNavigateNext,
   currentIndex,
   totalCount,
-  showPredictions = false
+  showPredictions = false,
+  isSubmitting = false,
+  isAnnotated = false
 }: ImageModalProps) {
   const { data: imageData } = useDetectionImage(detection.id);
   const [imageInfo, setImageInfo] = useState<{
@@ -250,11 +258,22 @@ function ImageModal({
         <button
           onClick={() => onNavigate('next')}
           disabled={!canNavigateNext}
-          className={`absolute right-4 p-3 bg-white bg-opacity-10 hover:bg-opacity-20 rounded-full transition-colors ${!canNavigateNext ? 'opacity-40 cursor-not-allowed' : ''
+          className={`absolute right-16 p-3 bg-white bg-opacity-10 hover:bg-opacity-20 rounded-full transition-colors ${!canNavigateNext ? 'opacity-40 cursor-not-allowed' : ''
             }`}
         >
           <ChevronRight className="w-6 h-6 text-white" />
         </button>
+
+        {/* Predictions Toggle */}
+        <label className="absolute top-4 right-20 flex items-center space-x-2 px-3 py-2 bg-white bg-opacity-10 hover:bg-opacity-20 rounded-md text-xs font-medium text-white cursor-pointer backdrop-blur-sm">
+          <input
+            type="checkbox"
+            checked={showPredictions}
+            onChange={(e) => onTogglePredictions(e.target.checked)}
+            className="w-3 h-3 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+          />
+          <span>Show predictions</span>
+        </label>
 
         {/* Image container */}
         <div
@@ -286,13 +305,42 @@ function ImageModal({
 
           {/* Detection info */}
           <div className="mt-4 bg-white bg-opacity-10 backdrop-blur-sm rounded-lg p-4 text-white">
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center justify-center space-x-4">
               <span className="font-medium">Detection {currentIndex + 1} of {totalCount}</span>
               <span className="text-gray-300">•</span>
               <span className="text-gray-300">
                 {new Date(detection.recorded_at).toLocaleString()}
               </span>
+              {isAnnotated && (
+                <>
+                  <span className="text-gray-300">•</span>
+                  <span className="text-green-300 text-sm">✓ Annotated</span>
+                </>
+              )}
             </div>
+            
+            {/* Submit Button - Centered below info */}
+            {!isAnnotated && (
+              <div className="flex justify-center mt-4">
+                <button
+                  onClick={() => onSubmit(detection)}
+                  disabled={isSubmitting}
+                  className="inline-flex items-center px-4 py-2 bg-primary-600 hover:bg-primary-700 disabled:bg-primary-400 text-white text-sm font-medium rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Submitting...
+                    </>
+                  ) : (
+                    <>
+                      Submit
+                      <span className="ml-2 text-xs text-primary-200">(Space)</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -389,10 +437,9 @@ export default function DetectionSequenceAnnotatePage() {
           return apiClient.createDetectionAnnotation({
             detection_id: detection.id,
             annotation: {
-              annotation: [] // Empty annotation array matching backend schema
-            } as any,
+              annotation: []
+            },
             processing_stage: 'annotated',
-            created_at: new Date().toISOString(),
           });
         }
       });
@@ -414,6 +461,48 @@ export default function DetectionSequenceAnnotatePage() {
     },
     onError: () => {
       setToastMessage('Failed to save annotations');
+      setShowToast(true);
+    },
+  });
+
+  // Individual detection annotation mutation
+  const annotateIndividualDetection = useMutation({
+    mutationFn: async (detection: Detection) => {
+      const existingAnnotation = detectionAnnotations.get(detection.id);
+
+      if (existingAnnotation) {
+        // Update existing annotation to 'annotated' stage
+        if (existingAnnotation.processing_stage !== 'annotated') {
+          return apiClient.updateDetectionAnnotation(existingAnnotation.id, {
+            processing_stage: 'annotated',
+          });
+        }
+        return existingAnnotation;
+      } else {
+        // Create new annotation with 'annotated' stage
+        return apiClient.createDetectionAnnotation({
+          detection_id: detection.id,
+          annotation: {
+            annotation: []
+          },
+          processing_stage: 'annotated',
+        });
+      }
+    },
+    onSuccess: (result, detection) => {
+      // Update local state
+      setDetectionAnnotations(prev => new Map(prev).set(detection.id, result));
+      
+      // Invalidate queries to refresh data
+      queryClient.invalidateQueries({ queryKey: [...QUERY_KEYS.DETECTION_ANNOTATIONS] });
+      // Invalidate annotation counts to update sidebar badges
+      queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
+      
+      setToastMessage(`Detection ${detection.id} annotated successfully`);
+      setShowToast(true);
+    },
+    onError: (_, detection) => {
+      setToastMessage(`Failed to annotate detection ${detection.id}`);
       setShowToast(true);
     },
   });
@@ -488,8 +577,11 @@ export default function DetectionSequenceAnnotatePage() {
         return;
       }
 
-      // Modal navigation
-      if (showModal) {
+      // Modal navigation and submission
+      if (showModal && selectedDetectionIndex !== null && detections) {
+        const currentDetection = detections[selectedDetectionIndex];
+        const isCurrentAnnotated = detectionAnnotations.get(currentDetection.id)?.processing_stage === 'annotated';
+        
         if (e.key === 'Escape') {
           closeModal();
           e.preventDefault();
@@ -499,13 +591,17 @@ export default function DetectionSequenceAnnotatePage() {
         } else if (e.key === 'ArrowRight') {
           navigateModal('next');
           e.preventDefault();
+        } else if (e.key === ' ' && !isCurrentAnnotated && !annotateIndividualDetection.isPending) {
+          // Space bar to submit individual annotation
+          annotateIndividualDetection.mutate(currentDetection);
+          e.preventDefault();
         }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showModal, selectedDetectionIndex, detections]);
+  }, [showModal, selectedDetectionIndex, detections, detectionAnnotations, annotateIndividualDetection]);
 
   // Toast auto-dismiss
   useEffect(() => {
@@ -845,11 +941,15 @@ export default function DetectionSequenceAnnotatePage() {
           detection={detections[selectedDetectionIndex]}
           onClose={closeModal}
           onNavigate={navigateModal}
+          onSubmit={(detection) => annotateIndividualDetection.mutate(detection)}
+          onTogglePredictions={setShowPredictions}
           canNavigatePrev={selectedDetectionIndex > 0}
           canNavigateNext={selectedDetectionIndex < detections.length - 1}
           currentIndex={selectedDetectionIndex}
           totalCount={detections.length}
           showPredictions={showPredictions}
+          isSubmitting={annotateIndividualDetection.isPending}
+          isAnnotated={detectionAnnotations.get(detections[selectedDetectionIndex].id)?.processing_stage === 'annotated'}
         />
       )}
 
