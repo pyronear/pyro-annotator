@@ -165,8 +165,6 @@ function ImageModal({
             <div className="flex items-center space-x-4">
               <span className="font-medium">Detection {currentIndex + 1} of {totalCount}</span>
               <span className="text-gray-300">•</span>
-              <span className="text-gray-300">ID: {detection.id}</span>
-              <span className="text-gray-300">•</span>
               <span className="text-gray-300">
                 {new Date(detection.recorded_at).toLocaleString()}
               </span>

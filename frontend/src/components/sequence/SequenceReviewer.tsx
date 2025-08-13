@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { AlertCircle } from 'lucide-react';
-import { Detection } from '@/types/api';
+// import { Detection } from '@/types/api';
 import { useSequenceDetections } from '@/hooks/useSequenceDetections';
 import SequencePlayer from './SequencePlayer';
 

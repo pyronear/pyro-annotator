@@ -25,7 +25,7 @@ interface SequencePlayerProps {
 export default function SequencePlayer({ 
   detections, 
   currentIndex, 
-  onIndexChange,
+  // onIndexChange,
   onPreloadComplete,
   missedSmokeReview,
   onMissedSmokeReviewChange,
@@ -50,7 +50,7 @@ export default function SequencePlayer({
   const imgRef = useRef<HTMLImageElement>(null);
   
   // Player controls state
-  const [isDragging, setIsDragging] = useState(false);
+  // const [isDragging, setIsDragging] = useState(false);
   const sliderRef = useRef<HTMLInputElement>(null);
   
   // Loop detection for smooth transitions
@@ -60,9 +60,9 @@ export default function SequencePlayer({
   // Use the image preloader hook
   const { 
     currentImage, 
-    imageCache, 
+    // imageCache, 
     isInitialLoading, 
-    isImageReady,
+    // isImageReady,
     getPreloadProgress 
   } = useImagePreloader(detections, currentIndex, {
     preloadAhead: 10,
@@ -159,14 +159,14 @@ export default function SequencePlayer({
   };
 
   const handleSliderMouseDown = () => {
-    setIsDragging(true);
+    // setIsDragging(true);
     if (isPlaying) {
       onPause();
     }
   };
 
   const handleSliderMouseUp = () => {
-    setIsDragging(false);
+    // setIsDragging(false);
   };
 
   const speedOptions = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2];
@@ -505,7 +505,7 @@ export default function SequencePlayer({
       />
 
       {/* Custom slider styles */}
-      <style jsx>{`
+      <style>{`
         .slider::-webkit-slider-thumb {
           appearance: none;
           width: 16px;

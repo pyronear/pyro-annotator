@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { Play, Pause, SkipBack, SkipForward, RotateCcw } from 'lucide-react';
 
 interface PlayerControlsProps {
@@ -26,7 +26,7 @@ export default function PlayerControls({
   onReset,
   className = ''
 }: PlayerControlsProps) {
-  const [isDragging, setIsDragging] = useState(false);
+  // const [isDragging, setIsDragging] = useState(false);
   const sliderRef = useRef<HTMLInputElement>(null);
 
   // Handle keyboard shortcuts
@@ -87,14 +87,14 @@ export default function PlayerControls({
   };
 
   const handleSliderMouseDown = () => {
-    setIsDragging(true);
+    // setIsDragging(true);
     if (isPlaying) {
       onPause();
     }
   };
 
   const handleSliderMouseUp = () => {
-    setIsDragging(false);
+    // setIsDragging(false);
   };
 
   const speedOptions = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2];
@@ -202,7 +202,7 @@ export default function PlayerControls({
       </div>
 
       {/* Custom slider styles */}
-      <style jsx>{`
+      <style>{`
         .slider::-webkit-slider-thumb {
           appearance: none;
           width: 16px;

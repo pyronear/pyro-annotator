@@ -15,6 +15,7 @@ export interface Sequence {
   is_wildfire_alertapi: boolean | null;
   organisation_name: string;
   organisation_id: number;
+  detection_annotation_stats?: DetectionAnnotationStats;
 }
 
 export interface Detection {
