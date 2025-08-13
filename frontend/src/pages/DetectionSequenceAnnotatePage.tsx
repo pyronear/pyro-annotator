@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, X, ChevronLeft, ChevronRight, CheckCircle, AlertCircle, Upload } from 'lucide-react';
+import { ArrowLeft, X, ChevronLeft, ChevronRight, CheckCircle, AlertCircle, Upload, RotateCcw } from 'lucide-react';
 import { useSequenceDetections } from '@/hooks/useSequenceDetections';
 import { useDetectionImage } from '@/hooks/useDetectionImage';
 import { apiClient } from '@/services/api';
@@ -209,6 +209,13 @@ function ImageModal({
   } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
+  
+  // Zoom state management
+  const [zoomLevel, setZoomLevel] = useState(1.0);
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const [transformOrigin, setTransformOrigin] = useState({ x: 50, y: 50 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
   // Handle image load to get dimensions and position using DOM positioning
   const handleImageLoad = () => {
@@ -234,6 +241,112 @@ function ImageModal({
     }
   };
 
+  // Reset zoom when detection changes
+  useEffect(() => {
+    setZoomLevel(1.0);
+    setPanOffset({ x: 0, y: 0 });
+    setTransformOrigin({ x: 50, y: 50 });
+  }, [detection.id]);
+
+  // Mouse wheel zoom handler
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    
+    if (!containerRef.current || !imgRef.current) return;
+    
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const imgRect = imgRef.current.getBoundingClientRect();
+    
+    // Calculate mouse position relative to the image
+    const mouseX = e.clientX - imgRect.left;
+    const mouseY = e.clientY - imgRect.top;
+    
+    // Convert to percentage for transform-origin
+    const originX = (mouseX / imgRect.width) * 100;
+    const originY = (mouseY / imgRect.height) * 100;
+    
+    setTransformOrigin({ x: originX, y: originY });
+    
+    // Calculate new zoom level
+    const zoomDelta = e.deltaY < 0 ? 0.2 : -0.2;
+    const newZoomLevel = Math.max(1.0, Math.min(4.0, zoomLevel + zoomDelta));
+    
+    setZoomLevel(newZoomLevel);
+    
+    // Reset pan if zoomed back to 1x
+    if (newZoomLevel === 1.0) {
+      setPanOffset({ x: 0, y: 0 });
+      setTransformOrigin({ x: 50, y: 50 });
+    }
+  };
+
+  // Pan boundary constraint helper
+  const constrainPan = (offset: { x: number, y: number }) => {
+    if (!imgRef.current || zoomLevel <= 1) return offset;
+    
+    const imgRect = imgRef.current.getBoundingClientRect();
+    const scaledWidth = imgRect.width * zoomLevel;
+    const scaledHeight = imgRect.height * zoomLevel;
+    
+    // Calculate max pan distance to keep image centered in viewport
+    const maxPanX = (scaledWidth - imgRect.width) / 2;
+    const maxPanY = (scaledHeight - imgRect.height) / 2;
+    
+    return {
+      x: Math.max(-maxPanX, Math.min(maxPanX, offset.x)),
+      y: Math.max(-maxPanY, Math.min(maxPanY, offset.y))
+    };
+  };
+
+  // Drag handlers for panning
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (zoomLevel <= 1.0) return;
+    
+    setIsDragging(true);
+    setDragStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging || zoomLevel <= 1.0) return;
+    
+    const newX = e.clientX - dragStart.x;
+    const newY = e.clientY - dragStart.y;
+    
+    // Apply boundary constraints
+    const constrainedOffset = constrainPan({ x: newX, y: newY });
+    setPanOffset(constrainedOffset);
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  // Reset zoom function
+  const handleZoomReset = () => {
+    setZoomLevel(1.0);
+    setPanOffset({ x: 0, y: 0 });
+    setTransformOrigin({ x: 50, y: 50 });
+  };
+
+  // Keyboard handler for zoom reset
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'r' || e.key === 'R') {
+        handleZoomReset();
+        e.preventDefault();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Cursor style based on state
+  const getCursorStyle = () => {
+    if (zoomLevel <= 1.0) return 'default';
+    return isDragging ? 'grabbing' : 'grab';
+  };
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50">
       <div className="relative w-full h-full flex items-center justify-center p-4">
@@ -244,6 +357,17 @@ function ImageModal({
         >
           <X className="w-6 h-6 text-white" />
         </button>
+
+        {/* Reset Zoom Button - Only visible when zoomed */}
+        {zoomLevel > 1.0 && (
+          <button
+            onClick={handleZoomReset}
+            className="absolute top-4 left-4 p-2 bg-white bg-opacity-10 hover:bg-opacity-20 rounded-full transition-colors"
+            title="Reset Zoom (R)"
+          >
+            <RotateCcw className="w-6 h-6 text-white" />
+          </button>
+        )}
 
         {/* Navigation buttons */}
         <button
@@ -276,27 +400,45 @@ function ImageModal({
         </label>
 
         {/* Image container */}
-        <div
-          ref={containerRef}
-          className="relative max-w-7xl max-h-full flex flex-col items-center"
-        >
+        <div className="relative max-w-7xl max-h-full flex flex-col items-center">
           {imageData?.url ? (
-            <>
+            <div
+              ref={containerRef}
+              className="relative overflow-hidden"
+              onWheel={handleWheel}
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={handleMouseUp}
+              style={{ cursor: getCursorStyle() }}
+            >
               <img
                 ref={imgRef}
                 src={imageData.url}
                 alt={`Detection ${detection.id}`}
-                className="max-w-full max-h-[80vh] object-contain"
+                className="max-w-full max-h-[80vh] object-contain block"
+                style={{
+                  transform: `scale(${zoomLevel}) translate(${panOffset.x}px, ${panOffset.y}px)`,
+                  transformOrigin: `${transformOrigin.x}% ${transformOrigin.y}%`,
+                  transition: isDragging ? 'none' : 'transform 0.1s ease-out'
+                }}
                 onLoad={handleImageLoad}
               />
 
               {/* Bounding Boxes Overlay */}
               {showPredictions && imageInfo && (
-                <div className="absolute inset-0 pointer-events-none">
+                <div 
+                  className="absolute inset-0 pointer-events-none"
+                  style={{
+                    transform: `scale(${zoomLevel}) translate(${panOffset.x}px, ${panOffset.y}px)`,
+                    transformOrigin: `${transformOrigin.x}% ${transformOrigin.y}%`,
+                    transition: isDragging ? 'none' : 'transform 0.1s ease-out'
+                  }}
+                >
                   <BoundingBoxOverlay detection={detection} imageInfo={imageInfo} />
                 </div>
               )}
-            </>
+            </div>
           ) : (
             <div className="w-96 h-96 bg-gray-800 flex items-center justify-center rounded-lg">
               <span className="text-gray-400">No image available</span>
@@ -421,7 +563,7 @@ export default function DetectionSequenceAnnotatePage() {
     mutationFn: async () => {
       if (!detections) return;
 
-      // Create or update annotations for all detections
+      // Update annotations for all detections (should already exist from sequence annotation)
       const promises = detections.map(async (detection) => {
         const existingAnnotation = detectionAnnotations.get(detection.id);
 
@@ -433,18 +575,14 @@ export default function DetectionSequenceAnnotatePage() {
             });
           }
         } else {
-          // Create new annotation with 'annotated' stage
-          return apiClient.createDetectionAnnotation({
-            detection_id: detection.id,
-            annotation: {
-              annotation: []
-            },
-            processing_stage: 'annotated',
-          });
+          // No annotation exists - skip this detection with a warning
+          console.warn(`No detection annotation found for detection ${detection.id}. Skipping.`);
+          return null;
         }
       });
 
-      return Promise.all(promises.filter(Boolean));
+      const results = await Promise.all(promises);
+      return results.filter(Boolean); // Remove null results
     },
     onSuccess: () => {
       // Invalidate queries to refresh data
@@ -479,14 +617,9 @@ export default function DetectionSequenceAnnotatePage() {
         }
         return existingAnnotation;
       } else {
-        // Create new annotation with 'annotated' stage
-        return apiClient.createDetectionAnnotation({
-          detection_id: detection.id,
-          annotation: {
-            annotation: []
-          },
-          processing_stage: 'annotated',
-        });
+        // No annotation exists - this shouldn't happen if sequence annotation was submitted first
+        // But in case it does, throw an error to guide the user
+        throw new Error(`No detection annotation found for detection ${detection.id}. Please ensure the sequence annotation has been submitted first to auto-create detection annotations.`);
       }
     },
     onSuccess: (result, detection) => {
