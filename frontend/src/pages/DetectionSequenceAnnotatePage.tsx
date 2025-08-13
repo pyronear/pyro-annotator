@@ -8,6 +8,30 @@ import { apiClient } from '@/services/api';
 import { QUERY_KEYS } from '@/utils/constants';
 import { Detection, DetectionAnnotation } from '@/types/api';
 
+// Emoji mapping for false positive types
+const getFalsePositiveEmoji = (type: string): string => {
+  const emojiMap: Record<string, string> = {
+    antenna: '📡',
+    building: '🏢',
+    cliff: '⛰️',
+    dark: '🌚',
+    dust: '🌪️',
+    high_cloud: '☁️',
+    low_cloud: '☁️',
+    lens_flare: '✨',
+    lens_droplet: '💧',
+    light: '💡',
+    rain: '🌧️',
+    trail: '🛤️',
+    road: '🛣️',
+    sky: '🌌',
+    tree: '🌳',
+    water_body: '🌊',
+    other: '❓'
+  };
+  return emojiMap[type] || '❓';
+};
+
 interface DetectionImageCardProps {
   detection: Detection;
   onClick: () => void;
@@ -364,11 +388,33 @@ export default function DetectionSequenceAnnotatePage() {
     }
     
     if (sequenceAnnotation.has_false_positives) {
+      // Add generic false positive pill
       pills.push(
         <span key="false-positive" className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
           False Positive
         </span>
       );
+      
+      // Add individual false positive type pills
+      try {
+        const falsePositiveTypes = sequenceAnnotation.false_positive_types 
+          ? JSON.parse(sequenceAnnotation.false_positive_types) 
+          : [];
+          
+        falsePositiveTypes.forEach((type: string) => {
+          pills.push(
+            <span 
+              key={`fp-${type}`} 
+              className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800"
+            >
+              {getFalsePositiveEmoji(type)} {type.replace(/_/g, ' ')}
+            </span>
+          );
+        });
+      } catch (e) {
+        // If JSON parsing fails, just show the generic false positive pill
+        console.warn('Failed to parse false_positive_types:', e);
+      }
     }
     
     if (!sequenceAnnotation.has_smoke && !sequenceAnnotation.has_missed_smoke && !sequenceAnnotation.has_false_positives) {
