@@ -1422,8 +1422,6 @@ export default function DetectionSequenceAnnotatePage() {
 
       // Modal navigation and submission
       if (showModal && selectedDetectionIndex !== null && detections) {
-        const currentDetection = detections[selectedDetectionIndex];
-        
         if (e.key === 'Escape') {
           // Only close main modal if no child modals are handling the escape
           // The ImageModal will handle its own escape logic first
