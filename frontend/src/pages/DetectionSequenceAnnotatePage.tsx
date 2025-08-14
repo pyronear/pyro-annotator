@@ -12,12 +12,13 @@ import {
   formatFalsePositiveType,
   getModelAccuracyBadgeClasses
 } from '@/utils/modelAccuracy';
-import { Detection, DetectionAnnotation, AlgoPrediction } from '@/types/api';
+import { Detection, DetectionAnnotation, AlgoPrediction, SmokeType } from '@/types/api';
 
 // Drawing-related interfaces
 interface DrawnRectangle {
   id: string;
   xyxyn: [number, number, number, number]; // normalized coordinates
+  smokeType: SmokeType;
 }
 
 interface CurrentDrawing {
@@ -138,10 +139,27 @@ function DrawingOverlay({
       height = maxY - minY;
     }
     
-    // Determine styling based on selection state
+    // Determine styling based on selection state and smoke type
     const isSelected = type === 'completed' && selectedRectangleId === (rect as any).id;
-    const borderColor = isSelected ? 'border-blue-500' : 'border-green-500';
-    const backgroundColor = isSelected ? 'bg-blue-500/20' : 'bg-green-500/10';
+    const smokeType = type === 'completed' ? (rect as DrawnRectangle).smokeType : undefined;
+    
+    // Color mapping for smoke types
+    const getSmokeTypeColors = (smokeType: SmokeType) => {
+      switch (smokeType) {
+        case 'wildfire':
+          return { border: 'border-red-500', background: 'bg-red-500/15' };
+        case 'industrial':
+          return { border: 'border-purple-500', background: 'bg-purple-500/15' };
+        case 'other':
+          return { border: 'border-blue-500', background: 'bg-blue-500/15' };
+        default:
+          return { border: 'border-green-500', background: 'bg-green-500/10' };
+      }
+    };
+
+    const colors = smokeType ? getSmokeTypeColors(smokeType) : { border: 'border-green-500', background: 'bg-green-500/10' };
+    const borderColor = isSelected ? 'border-yellow-400' : colors.border;
+    const backgroundColor = isSelected ? 'bg-yellow-400/25' : colors.background;
     const borderWidth = isSelected ? 'border-4' : 'border-2';
     
     // Make completed rectangles clickable, but keep drawing preview non-interactive
@@ -326,6 +344,16 @@ function KeyboardShortcutsInfo({
                 icon={<Undo className="w-4 h-4" />}
                 disabled={!hasUndoHistory}
               />
+            </div>
+          </div>
+
+          {/* Smoke Type Selection */}
+          <div>
+            <h4 className="text-sm font-medium text-primary-300 mb-2">Smoke Types</h4>
+            <div className="space-y-1">
+              <KeyShortcut keys={["1", "W"]} description="🔥 Wildfire smoke" />
+              <KeyShortcut keys={["2", "I"]} description="🏭 Industrial smoke" />
+              <KeyShortcut keys={["3", "O"]} description="💨 Other smoke" />
             </div>
           </div>
 
@@ -555,6 +583,9 @@ function ImageModal({
   const [undoStack, setUndoStack] = useState<DrawnRectangle[][]>([]);
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
 
+  // Smoke type selection state
+  const [selectedSmokeType, setSelectedSmokeType] = useState<SmokeType>('wildfire');
+
   // Handle image load to get dimensions and position using DOM positioning
   const handleImageLoad = () => {
     if (imgRef.current && containerRef.current) {
@@ -594,7 +625,8 @@ function ImageModal({
     if (existingAnnotation?.annotation?.annotation) {
       const existingRects: DrawnRectangle[] = existingAnnotation.annotation.annotation.map((item, index) => ({
         id: `existing-${index}`,
-        xyxyn: item.xyxyn
+        xyxyn: item.xyxyn,
+        smokeType: item.smoke_type
       }));
       setDrawnRectangles(existingRects);
     } else {
@@ -745,6 +777,18 @@ function ImageModal({
     });
   };
 
+  // Change smoke type of selected rectangle
+  const changeSelectedRectangleSmokeType = (newSmokeType: SmokeType) => {
+    if (!selectedRectangleId) return;
+    
+    pushUndoState();
+    setDrawnRectangles(prev => prev.map(rect => 
+      rect.id === selectedRectangleId 
+        ? { ...rect, smokeType: newSmokeType }
+        : rect
+    ));
+  };
+
   const handleUndo = () => {
     if (undoStack.length === 0) return;
     
@@ -876,7 +920,8 @@ function ImageModal({
           
           const newRect: DrawnRectangle = {
             id: Date.now().toString(),
-            xyxyn: [minX, minY, maxX, maxY]
+            xyxyn: [minX, minY, maxX, maxY],
+            smokeType: selectedSmokeType
           };
           
           setDrawnRectangles(prev => [...prev, newRect]);
@@ -979,6 +1024,30 @@ function ImageModal({
         // Toggle keyboard shortcuts info with ? key or H key
         setShowKeyboardShortcuts(!showKeyboardShortcuts);
         e.preventDefault();
+      } else if (e.key === '1' || e.key === 'w' || e.key === 'W') {
+        // Set smoke type to wildfire
+        if (selectedRectangleId) {
+          changeSelectedRectangleSmokeType('wildfire');
+        } else {
+          setSelectedSmokeType('wildfire');
+        }
+        e.preventDefault();
+      } else if (e.key === '2' || e.key === 'i' || e.key === 'I') {
+        // Set smoke type to industrial
+        if (selectedRectangleId) {
+          changeSelectedRectangleSmokeType('industrial');
+        } else {
+          setSelectedSmokeType('industrial');
+        }
+        e.preventDefault();
+      } else if (e.key === '3' || e.key === 'o' || e.key === 'O') {
+        // Set smoke type to other
+        if (selectedRectangleId) {
+          changeSelectedRectangleSmokeType('other');
+        } else {
+          setSelectedSmokeType('other');
+        }
+        e.preventDefault();
       } else if (e.key === ' ' && !isSubmitting) {
         // Space key to submit/update annotation with current drawn rectangles
         onSubmit(detection, drawnRectangles);
@@ -988,7 +1057,7 @@ function ImageModal({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isDrawMode, isActivelyDrawing, selectedRectangleId, drawnRectangles.length, undoStack.length, showKeyboardShortcuts, showPredictions, onTogglePredictions, isSubmitting, detection, drawnRectangles, onSubmit]);
+  }, [isDrawMode, isActivelyDrawing, selectedRectangleId, drawnRectangles.length, undoStack.length, showKeyboardShortcuts, showPredictions, onTogglePredictions, isSubmitting, detection, drawnRectangles, onSubmit, selectedSmokeType]);
 
   // Cursor style based on state
   const getCursorStyle = () => {
@@ -1115,6 +1184,46 @@ function ImageModal({
           {/* Control buttons - Bottom right */}
           <div className="mt-4 flex justify-end">
             <div className="flex items-center space-x-2">
+              {/* Smoke Type Selector */}
+              <div className="flex items-center space-x-1 bg-white bg-opacity-10 backdrop-blur-sm rounded-md p-1">
+                {(['wildfire', 'industrial', 'other'] as const).map((smokeType) => {
+                  const isSelected = selectedRectangleId 
+                    ? drawnRectangles.find(r => r.id === selectedRectangleId)?.smokeType === smokeType
+                    : selectedSmokeType === smokeType;
+                  const colors = {
+                    wildfire: 'bg-red-500 text-white',
+                    industrial: 'bg-purple-500 text-white',
+                    other: 'bg-blue-500 text-white'
+                  };
+                  const inactiveColors = {
+                    wildfire: 'text-red-300 hover:bg-red-500 hover:bg-opacity-20',
+                    industrial: 'text-purple-300 hover:bg-purple-500 hover:bg-opacity-20',
+                    other: 'text-blue-300 hover:bg-blue-500 hover:bg-opacity-20'
+                  };
+                  
+                  return (
+                    <button
+                      key={smokeType}
+                      onClick={() => {
+                        if (selectedRectangleId) {
+                          changeSelectedRectangleSmokeType(smokeType);
+                        } else {
+                          setSelectedSmokeType(smokeType);
+                        }
+                      }}
+                      className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
+                        isSelected 
+                          ? colors[smokeType]
+                          : `${inactiveColors[smokeType]} text-white`
+                      }`}
+                      title={`${smokeType.charAt(0).toUpperCase() + smokeType.slice(1)} smoke (${smokeType === 'wildfire' ? '1/W' : smokeType === 'industrial' ? '2/I' : '3/O'})`}
+                    >
+                      {smokeType === 'wildfire' ? '🔥' : smokeType === 'industrial' ? '🏭' : '💨'} {smokeType.charAt(0).toUpperCase() + smokeType.slice(1)}
+                    </button>
+                  );
+                })}
+              </div>
+
               {/* Drawing Mode Toggle */}
               <button
                 onClick={() => {
@@ -1359,7 +1468,7 @@ export default function DetectionSequenceAnnotatePage() {
         const annotationItems = drawnRectangles.map(rect => ({
           xyxyn: rect.xyxyn,
           class_name: "smoke",
-          smoke_type: "wildfire" as const
+          smoke_type: rect.smokeType
         }));
 
         // Update existing annotation with proper annotation data and 'annotated' stage
