@@ -94,7 +94,7 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
 
   // Create dynamic navigation with badge counts
   const navigationWithBadges: NavigationItem[] = [
-    { name: 'Dashboard', href: '/dashboard', icon: BarChart3 },
+    { name: 'Dashboard', href: '/', icon: BarChart3 },
     { 
       name: 'Sequences', 
       icon: Layers,
