@@ -1420,6 +1420,13 @@ export default function DetectionSequenceAnnotatePage() {
         return;
       }
 
+      // Toggle predictions visibility with 'p' key (works globally, whether modal is open or not)
+      if (e.key === 'p' || e.key === 'P') {
+        setShowPredictions(!showPredictions);
+        e.preventDefault();
+        return;
+      }
+
       // Modal navigation and submission
       if (showModal && selectedDetectionIndex !== null && detections) {
         if (e.key === 'Escape') {
@@ -1438,17 +1445,13 @@ export default function DetectionSequenceAnnotatePage() {
           // which has access to the actual drawnRectangles state. This is just a fallback
           // that shouldn't normally execute since modal handles Space key first.
           e.preventDefault();
-        } else if (e.key === 'p' || e.key === 'P') {
-          // Toggle predictions visibility globally
-          setShowPredictions(!showPredictions);
-          e.preventDefault();
         }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showModal, selectedDetectionIndex, detections, detectionAnnotations, annotateIndividualDetection]);
+  }, [showModal, selectedDetectionIndex, detections, detectionAnnotations, annotateIndividualDetection, showPredictions]);
 
   // Toast auto-dismiss
   useEffect(() => {
