@@ -478,6 +478,7 @@ function DetectionImageCard({ detection, onClick, isAnnotated = false, showPredi
       const width = imgRect.width;
       const height = imgRect.height;
 
+      console.log('handleImageLoad called for detection:', detection.id, { width, height, offsetX, offsetY });
       setImageInfo({
         width: width,
         height: height,
@@ -683,6 +684,7 @@ function ImageModal({
       const width = imgRect.width;
       const height = imgRect.height;
 
+      console.log('handleImageLoad called for detection:', detection.id, { width, height, offsetX, offsetY });
       setImageInfo({
         width: width,
         height: height,
@@ -706,7 +708,35 @@ function ImageModal({
       setTransformOrigin({ x: 50, y: 50 });
       
       // Reset imageInfo to null to prevent stale overlays during image loading
+      console.log('Detection changed, setting imageInfo to null:', detection.id);
       setImageInfo(null);
+      
+      // Fallback: recalculate imageInfo after a short delay if handleImageLoad doesn't fire
+      setTimeout(() => {
+        if (imgRef.current && containerRef.current) {
+          const img = imgRef.current;
+          const containerRect = containerRef.current.getBoundingClientRect();
+          const imgRect = img.getBoundingClientRect();
+          
+          // Only recalculate if we have valid dimensions (image is loaded)
+          if (imgRect.width > 0 && imgRect.height > 0) {
+            const offsetX = imgRect.left - containerRect.left;
+            const offsetY = imgRect.top - containerRect.top;
+            const width = imgRect.width;
+            const height = imgRect.height;
+
+            console.log('Fallback imageInfo calculation:', { width, height, offsetX, offsetY });
+            setImageInfo({
+              width: width,
+              height: height,
+              offsetX: offsetX,
+              offsetY: offsetY
+            });
+          } else {
+            console.log('Fallback skipped - image not loaded yet:', { imgWidth: imgRect.width, imgHeight: imgRect.height });
+          }
+        }
+      }, 200); // Give image time to load
       
       // Handle drawing mode based on navigation type
       if (isAutoAdvance) {
