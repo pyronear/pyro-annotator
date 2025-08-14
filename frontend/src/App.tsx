@@ -36,7 +36,7 @@ function App() {
                 <Route path="/sequences/:id/annotate" element={<AnnotationInterface />} />
                 <Route path="/detections/annotate" element={<DetectionAnnotatePage />} />
                 <Route path="/detections/review" element={<DetectionReviewPage />} />
-                <Route path="/detections/:sequenceId/annotate" element={<DetectionSequenceAnnotatePage />} />
+                <Route path="/detections/:sequenceId/annotate/:detectionId?" element={<DetectionSequenceAnnotatePage />} />
               </Routes>
             </AppLayout>
           } />

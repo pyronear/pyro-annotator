@@ -244,7 +244,7 @@ function DrawingOverlay({
   
   return (
     <div 
-      className="absolute inset-0 pointer-events-none"
+      className="absolute inset-0 pointer-events-none z-20"
       style={{
         transform: `scale(${zoomLevel}) translate(${panOffset.x}px, ${panOffset.y}px)`,
         transformOrigin: `${transformOrigin.x}% ${transformOrigin.y}%`,
@@ -603,7 +603,7 @@ interface ImageModalProps {
   detection: Detection;
   onClose: () => void;
   onNavigate: (direction: 'prev' | 'next') => void;
-  onSubmit: (detection: Detection, drawnRectangles: DrawnRectangle[]) => void;
+  onSubmit: (detection: Detection, drawnRectangles: DrawnRectangle[], currentDrawMode: boolean) => void;
   onTogglePredictions: (show: boolean) => void;
   canNavigatePrev: boolean;
   canNavigateNext: boolean;
@@ -616,6 +616,10 @@ interface ImageModalProps {
   // Persistent smoke type props
   selectedSmokeType: SmokeType;
   onSmokeTypeChange: (smokeType: SmokeType) => void;
+  // Drawing mode persistence props
+  persistentDrawMode: boolean;
+  onDrawModeChange: (drawMode: boolean) => void;
+  isAutoAdvance: boolean;
 }
 
 function ImageModal({
@@ -633,7 +637,10 @@ function ImageModal({
   isAnnotated = false,
   existingAnnotation = null,
   selectedSmokeType,
-  onSmokeTypeChange
+  onSmokeTypeChange,
+  persistentDrawMode,
+  onDrawModeChange,
+  isAutoAdvance
 }: ImageModalProps) {
   const { data: imageData } = useDetectionImage(detection.id);
   const [imageInfo, setImageInfo] = useState<{
@@ -685,18 +692,54 @@ function ImageModal({
     }
   };
 
+  // Track previous detection ID to know when it actually changes
+  const prevDetectionIdRef = useRef(detection.id);
+  
   // Reset zoom and drawing when detection changes, load existing annotations
   useEffect(() => {
-    setZoomLevel(1.0);
-    setPanOffset({ x: 0, y: 0 });
-    setTransformOrigin({ x: 50, y: 50 });
-    setIsDrawMode(false);
-    setIsActivelyDrawing(false);
-    setCurrentDrawing(null);
-    setSelectedRectangleId(null);
-    setUndoStack([]);
+    // Only reset states if detection actually changed
+    if (prevDetectionIdRef.current !== detection.id) {
+      prevDetectionIdRef.current = detection.id;
+      
+      setZoomLevel(1.0);
+      setPanOffset({ x: 0, y: 0 });
+      setTransformOrigin({ x: 50, y: 50 });
+      
+      // Force imageInfo recalculation to ensure overlays render
+      if (imgRef.current && containerRef.current) {
+        const img = imgRef.current;
+        const containerRect = containerRef.current.getBoundingClientRect();
+        const imgRect = img.getBoundingClientRect();
+        
+        const offsetX = imgRect.left - containerRect.left;
+        const offsetY = imgRect.top - containerRect.top;
+        const width = imgRect.width;
+        const height = imgRect.height;
+
+        setImageInfo({
+          width: width,
+          height: height,
+          offsetX: offsetX,
+          offsetY: offsetY
+        });
+      }
+      
+      // Handle drawing mode based on navigation type
+      if (isAutoAdvance) {
+        // During auto-advance, preserve the drawing mode state
+        setIsDrawMode(persistentDrawMode);
+      } else {
+        // Manual navigation - reset drawing mode
+        setIsDrawMode(false);
+      }
+      
+      setIsActivelyDrawing(false);
+      setCurrentDrawing(null);
+      setSelectedRectangleId(null);
+      setUndoStack([]);
+    }
     
-    // Load existing annotation rectangles if available
+    // Always update rectangles based on annotation (even if detection didn't change)
     if (existingAnnotation?.annotation?.annotation) {
       const existingRects: DrawnRectangle[] = existingAnnotation.annotation.annotation.map((item, index) => ({
         id: `existing-${index}`,
@@ -707,7 +750,7 @@ function ImageModal({
     } else {
       setDrawnRectangles([]);
     }
-  }, [detection.id, existingAnnotation]);
+  }, [detection.id, existingAnnotation, isAutoAdvance, persistentDrawMode]);
 
   // Coordinate transformation functions
   const screenToImageCoordinates = (screenX: number, screenY: number) => {
@@ -1148,7 +1191,9 @@ function ImageModal({
           setCurrentDrawing(null);
           setIsActivelyDrawing(false);
         }
-        setIsDrawMode(!isDrawMode);
+        const newDrawMode = !isDrawMode;
+        setIsDrawMode(newDrawMode);
+        onDrawModeChange(newDrawMode);
         e.preventDefault();
       } else if (e.key === 'Escape') {
         // If shortcuts modal is open, close it first and prevent other actions
@@ -1224,14 +1269,31 @@ function ImageModal({
         e.preventDefault();
       } else if (e.key === ' ' && !isSubmitting) {
         // Space key to submit/update annotation with current drawn rectangles
-        onSubmit(detection, drawnRectangles);
+        onSubmit(detection, drawnRectangles, isDrawMode);
         e.preventDefault();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isDrawMode, isActivelyDrawing, selectedRectangleId, drawnRectangles.length, undoStack.length, showKeyboardShortcuts, showPredictions, onTogglePredictions, isSubmitting, detection, drawnRectangles, onSubmit, selectedSmokeType, changeSelectedRectangleSmokeType, onSmokeTypeChange, importAIPredictions]);
+  }, [isDrawMode, isActivelyDrawing, selectedRectangleId, drawnRectangles.length, undoStack.length, showKeyboardShortcuts, showPredictions, onTogglePredictions, isSubmitting, detection, drawnRectangles, onSubmit, selectedSmokeType, changeSelectedRectangleSmokeType, onSmokeTypeChange, onDrawModeChange, importAIPredictions]);
+
+  // Add non-passive wheel event listener
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const wheelHandler = (e: WheelEvent) => {
+      handleWheel(e as any); // Cast to React.WheelEvent for compatibility
+    };
+
+    // Add with passive: false to allow preventDefault
+    container.addEventListener('wheel', wheelHandler, { passive: false });
+    
+    return () => {
+      container.removeEventListener('wheel', wheelHandler);
+    };
+  }, [handleWheel]);
 
   // Cursor style based on state
   const getCursorStyle = () => {
@@ -1299,7 +1361,6 @@ function ImageModal({
             <div
               ref={containerRef}
               className="relative overflow-hidden"
-              onWheel={handleWheel}
               onMouseDown={handleMouseDown}
               onMouseMove={handleMouseMove}
               onMouseUp={handleMouseUp}
@@ -1323,7 +1384,7 @@ function ImageModal({
               {/* Bounding Boxes Overlay */}
               {showPredictions && imageInfo && (
                 <div 
-                  className="absolute inset-0 pointer-events-none"
+                  className="absolute inset-0 pointer-events-none z-10"
                   style={{
                     transform: `scale(${zoomLevel}) translate(${panOffset.x}px, ${panOffset.y}px)`,
                     transformOrigin: `${transformOrigin.x}% ${transformOrigin.y}%`,
@@ -1430,7 +1491,9 @@ function ImageModal({
                     setCurrentDrawing(null);
                     setIsActivelyDrawing(false);
                   }
-                  setIsDrawMode(!isDrawMode);
+                  const newDrawMode = !isDrawMode;
+                  setIsDrawMode(newDrawMode);
+                  onDrawModeChange(newDrawMode);
                 }}
                 className={`p-2 rounded-full transition-colors backdrop-blur-sm ${
                   isActivelyDrawing 
@@ -1509,7 +1572,7 @@ function ImageModal({
             {/* Submit Button - Centered below info */}
             <div className="flex justify-center mt-4">
               <button
-                onClick={() => onSubmit(detection, drawnRectangles)}
+                onClick={() => onSubmit(detection, drawnRectangles, isDrawMode)}
                 disabled={isSubmitting}
                 className="inline-flex items-center px-4 py-2 bg-primary-600 hover:bg-primary-700 disabled:bg-primary-400 text-white text-sm font-medium rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500"
               >
@@ -1544,7 +1607,7 @@ function ImageModal({
 }
 
 export default function DetectionSequenceAnnotatePage() {
-  const { sequenceId } = useParams<{ sequenceId: string }>();
+  const { sequenceId, detectionId } = useParams<{ sequenceId: string; detectionId?: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const sequenceIdNum = sequenceId ? parseInt(sequenceId, 10) : null;
@@ -1558,8 +1621,24 @@ export default function DetectionSequenceAnnotatePage() {
 
   // Persistent smoke type selection across detections
   const [persistentSmokeType, setPersistentSmokeType] = useState<SmokeType>('wildfire');
+  
+  // Track drawing mode state across auto-advance navigation
+  const [persistentDrawMode, setPersistentDrawMode] = useState(false);
+  const isAutoAdvanceRef = useRef(false);
 
   const { data: detections, isLoading, error } = useSequenceDetections(sequenceIdNum);
+
+  // Helper functions to map between detection ID and array index
+  const getDetectionIndexById = (detectionId: number): number | null => {
+    if (!detections) return null;
+    const index = detections.findIndex(detection => detection.id === detectionId);
+    return index >= 0 ? index : null;
+  };
+
+  const getDetectionIdByIndex = (index: number): number | null => {
+    if (!detections || index < 0 || index >= detections.length) return null;
+    return detections[index].id;
+  };
 
   // Fetch sequence data for header info
   const { data: sequence } = useQuery({
@@ -1701,13 +1780,20 @@ export default function DetectionSequenceAnnotatePage() {
 
       // Auto-advance to next detection if available
       if (selectedDetectionIndex !== null && detections && selectedDetectionIndex < detections.length - 1) {
+        // Mark as auto-advance (drawing mode already stored in onSubmit above)
+        isAutoAdvanceRef.current = true;
+        
         // Move to next detection
-        setSelectedDetectionIndex(selectedDetectionIndex + 1);
+        const nextDetectionId = getDetectionIdByIndex(selectedDetectionIndex + 1);
+        if (nextDetectionId && sequenceId) {
+          navigate(`/detections/${sequenceId}/annotate/${nextDetectionId}`);
+        }
       } else if (selectedDetectionIndex !== null && detections && selectedDetectionIndex === detections.length - 1) {
         // At last detection - close modal after a brief delay to show success message
         setTimeout(() => {
-          setShowModal(false);
-          setSelectedDetectionIndex(null);
+          if (sequenceId) {
+            navigate(`/detections/${sequenceId}/annotate`);
+          }
         }, 1000);
       }
     },
@@ -1758,24 +1844,54 @@ export default function DetectionSequenceAnnotatePage() {
   };
 
   const openModal = (index: number) => {
-    setSelectedDetectionIndex(index);
-    setShowModal(true);
+    const detectionId = getDetectionIdByIndex(index);
+    if (detectionId && sequenceId) {
+      navigate(`/detections/${sequenceId}/annotate/${detectionId}`);
+    }
   };
 
   const closeModal = () => {
-    setShowModal(false);
-    setSelectedDetectionIndex(null);
+    if (sequenceId) {
+      navigate(`/detections/${sequenceId}/annotate`);
+    }
   };
 
   const navigateModal = (direction: 'prev' | 'next') => {
-    if (!detections || selectedDetectionIndex === null) return;
+    if (!detections || selectedDetectionIndex === null || !sequenceId) return;
 
     const newIndex = direction === 'prev'
       ? Math.max(0, selectedDetectionIndex - 1)
       : Math.min(detections.length - 1, selectedDetectionIndex + 1);
 
-    setSelectedDetectionIndex(newIndex);
+    const newDetectionId = getDetectionIdByIndex(newIndex);
+    if (newDetectionId) {
+      navigate(`/detections/${sequenceId}/annotate/${newDetectionId}`);
+    }
   };
+
+  // State restoration based on URL parameters
+  useEffect(() => {
+    if (detectionId && detections) {
+      const detectionIdNum = parseInt(detectionId, 10);
+      const index = getDetectionIndexById(detectionIdNum);
+      
+      if (index !== null) {
+        // Valid detection ID found - open modal to this detection
+        setSelectedDetectionIndex(index);
+        setShowModal(true);
+      } else {
+        // Invalid detection ID - redirect to base URL
+        console.warn(`Invalid detection ID ${detectionId} for sequence ${sequenceId}`);
+        if (sequenceId) {
+          navigate(`/detections/${sequenceId}/annotate`, { replace: true });
+        }
+      }
+    } else if (!detectionId) {
+      // No detection ID in URL - ensure modal is closed
+      setShowModal(false);
+      setSelectedDetectionIndex(null);
+    }
+  }, [detectionId, detections, sequenceId, navigate, getDetectionIndexById]);
 
   // Keyboard event handlers
   useEffect(() => {
@@ -1820,6 +1936,17 @@ export default function DetectionSequenceAnnotatePage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [showModal, selectedDetectionIndex, detections, detectionAnnotations, annotateIndividualDetection, showPredictions]);
 
+  // Reset auto-advance flag after navigation
+  useEffect(() => {
+    if (selectedDetectionIndex !== null && isAutoAdvanceRef.current) {
+      // Reset the flag after the modal has had a chance to read it
+      const timer = setTimeout(() => {
+        isAutoAdvanceRef.current = false;
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [selectedDetectionIndex]);
+  
   // Toast auto-dismiss
   useEffect(() => {
     if (showToast) {
@@ -2173,7 +2300,11 @@ export default function DetectionSequenceAnnotatePage() {
           detection={detections[selectedDetectionIndex]}
           onClose={closeModal}
           onNavigate={navigateModal}
-          onSubmit={(detection, drawnRectangles) => annotateIndividualDetection.mutate({ detection, drawnRectangles })}
+          onSubmit={(detection, drawnRectangles, currentDrawMode) => {
+            // Store current drawing mode state before auto-advancing
+            setPersistentDrawMode(currentDrawMode);
+            annotateIndividualDetection.mutate({ detection, drawnRectangles });
+          }}
           onTogglePredictions={setShowPredictions}
           canNavigatePrev={selectedDetectionIndex > 0}
           canNavigateNext={selectedDetectionIndex < detections.length - 1}
@@ -2185,6 +2316,9 @@ export default function DetectionSequenceAnnotatePage() {
           existingAnnotation={detectionAnnotations.get(detections[selectedDetectionIndex].id)}
           selectedSmokeType={persistentSmokeType}
           onSmokeTypeChange={setPersistentSmokeType}
+          persistentDrawMode={persistentDrawMode}
+          onDrawModeChange={setPersistentDrawMode}
+          isAutoAdvance={isAutoAdvanceRef.current}
         />
       )}
 
