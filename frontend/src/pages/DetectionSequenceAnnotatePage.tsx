@@ -796,6 +796,37 @@ function ImageModal({
     ));
   };
 
+  // Utility function to check if coordinates match within tolerance
+  const coordinatesMatch = (coords1: [number, number, number, number], coords2: [number, number, number, number], tolerance = 0.01): boolean => {
+    return Math.abs(coords1[0] - coords2[0]) < tolerance &&
+           Math.abs(coords1[1] - coords2[1]) < tolerance &&
+           Math.abs(coords1[2] - coords2[2]) < tolerance &&
+           Math.abs(coords1[3] - coords2[3]) < tolerance;
+  };
+
+  // Get count of new (non-duplicate) predictions available to import
+  const getNewPredictionsCount = (): number => {
+    if (!detection?.algo_predictions?.predictions) return 0;
+    
+    const validPredictions = detection.algo_predictions.predictions.filter(pred => {
+      const [x1, y1, x2, y2] = pred.xyxyn;
+      return (
+        pred.confidence >= 0.3 && // Minimum confidence threshold
+        x1 >= 0 && x1 <= 1 && // Valid normalized coordinates
+        y1 >= 0 && y1 <= 1 &&
+        x2 >= 0 && x2 <= 1 &&
+        y2 >= 0 && y2 <= 1 &&
+        x2 > x1 && y2 > y1 // Valid rectangle dimensions
+      );
+    });
+    
+    const newPredictions = validPredictions.filter(pred => {
+      return !drawnRectangles.some(rect => coordinatesMatch(pred.xyxyn, rect.xyxyn));
+    });
+    
+    return newPredictions.length;
+  };
+
   // Import AI predictions as drawable rectangles
   const importAIPredictions = () => {
     if (!detection?.algo_predictions?.predictions) return;
@@ -815,11 +846,29 @@ function ImageModal({
     
     if (validPredictions.length === 0) return;
     
+    // Filter out predictions that already exist as drawn rectangles
+    const newPredictions = validPredictions.filter(pred => {
+      return !drawnRectangles.some(rect => coordinatesMatch(pred.xyxyn, rect.xyxyn));
+    });
+    
+    // If no new predictions to import, provide user feedback
+    if (newPredictions.length === 0) {
+      // Visual feedback: brief button animation to indicate no action taken
+      const button = document.querySelector('button[title*="All AI predictions already imported"]') as HTMLElement;
+      if (button) {
+        button.style.transform = 'scale(0.95)';
+        setTimeout(() => {
+          button.style.transform = '';
+        }, 150);
+      }
+      return;
+    }
+    
     // Save current state to undo stack before importing
     pushUndoState();
     
-    // Convert predictions to drawable rectangles with selected smoke type
-    const importedRectangles: DrawnRectangle[] = validPredictions.map((pred, index) => ({
+    // Convert new predictions to drawable rectangles with selected smoke type
+    const importedRectangles: DrawnRectangle[] = newPredictions.map((pred, index) => ({
       id: `imported-${Date.now()}-${index}`,
       xyxyn: pred.xyxyn,
       smokeType: selectedSmokeType
@@ -828,8 +877,12 @@ function ImageModal({
     // Add imported rectangles to existing ones
     setDrawnRectangles(prev => [...prev, ...importedRectangles]);
     
-    // Show success feedback (you could add a toast here if needed)
-    console.log(`Imported ${importedRectangles.length} AI predictions as ${selectedSmokeType} smoke`);
+    // Show success feedback with duplicate info in console (can be enhanced with toast later)
+    const skippedCount = validPredictions.length - newPredictions.length;
+    const message = skippedCount > 0
+      ? `✅ Imported ${importedRectangles.length} new predictions as ${selectedSmokeType} smoke (${skippedCount} duplicates skipped)`
+      : `✅ Imported ${importedRectangles.length} AI predictions as ${selectedSmokeType} smoke`;
+    console.log(message);
   };
 
   const handleUndo = () => {
@@ -1272,18 +1325,28 @@ function ImageModal({
               </div>
 
               {/* AI Import Button */}
-              <button
-                onClick={importAIPredictions}
-                disabled={!detection?.algo_predictions?.predictions?.length}
-                className="p-2 bg-white bg-opacity-10 hover:bg-opacity-20 disabled:bg-opacity-5 disabled:cursor-not-allowed rounded-full transition-colors backdrop-blur-sm"
-                title={
-                  detection?.algo_predictions?.predictions?.length 
-                    ? `Import ${detection.algo_predictions.predictions.length} AI predictions as ${selectedSmokeType} smoke (A)`
-                    : "No AI predictions available"
-                }
-              >
-                <Brain className={`w-5 h-5 ${detection?.algo_predictions?.predictions?.length ? 'text-white' : 'text-gray-500'}`} />
-              </button>
+              {(() => {
+                const newPredictionsCount = getNewPredictionsCount();
+                const totalPredictionsCount = detection?.algo_predictions?.predictions?.length || 0;
+                const hasNewPredictions = newPredictionsCount > 0;
+                
+                return (
+                  <button
+                    onClick={importAIPredictions}
+                    disabled={!hasNewPredictions}
+                    className="p-2 bg-white bg-opacity-10 hover:bg-opacity-20 disabled:bg-opacity-5 disabled:cursor-not-allowed rounded-full transition-colors backdrop-blur-sm"
+                    title={
+                      totalPredictionsCount === 0
+                        ? "No AI predictions available"
+                        : hasNewPredictions
+                        ? `Import ${newPredictionsCount} new AI predictions as ${selectedSmokeType} smoke (A)`
+                        : "All AI predictions already imported"
+                    }
+                  >
+                    <Brain className={`w-5 h-5 ${hasNewPredictions ? 'text-white' : 'text-gray-500'}`} />
+                  </button>
+                );
+              })()}
 
               {/* Drawing Mode Toggle */}
               <button
