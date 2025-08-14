@@ -14,6 +14,10 @@ export interface AnnotationStats {
   pendingSequences: number;
   completionPercentage: number;
   processingStages: ProcessingStageStats;
+  // Detection-level metrics
+  sequencesWithCompleteDetections: number;
+  sequencesWithIncompleteDetections: number;
+  detectionCompletionPercentage: number;
   isLoading: boolean;
   error: string | null;
 }
@@ -86,12 +90,50 @@ export function useAnnotationStats(): AnnotationStats {
     gcTime: 10 * 60 * 1000,
   });
 
+  // Fetch sequences with complete detection annotations
+  const { 
+    data: completeDetectionsData, 
+    isLoading: completeDetectionsLoading 
+  } = useQuery({
+    queryKey: [...QUERY_KEYS.ANNOTATION_STATS, 'complete_detections'],
+    queryFn: () => apiClient.getSequences({ 
+      detection_annotation_completion: 'complete',
+      size: 1, 
+      page: 1 
+    }),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+  });
+
+  // Fetch sequences with incomplete detection annotations
+  const { 
+    data: incompleteDetectionsData, 
+    isLoading: incompleteDetectionsLoading 
+  } = useQuery({
+    queryKey: [...QUERY_KEYS.ANNOTATION_STATS, 'incomplete_detections'],
+    queryFn: () => apiClient.getSequences({ 
+      detection_annotation_completion: 'incomplete',
+      size: 1, 
+      page: 1 
+    }),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+  });
+
   // Calculate derived statistics
   const totalSequences = sequencesData?.total ?? 0;
   const annotatedSequences = annotationsData?.total ?? 0;
   const pendingSequences = Math.max(0, totalSequences - annotatedSequences);
   const completionPercentage = totalSequences > 0 
     ? Math.round((annotatedSequences / totalSequences) * 100)
+    : 0;
+
+  // Detection-level statistics
+  const sequencesWithCompleteDetections = completeDetectionsData?.total ?? 0;
+  const sequencesWithIncompleteDetections = incompleteDetectionsData?.total ?? 0;
+  const totalSequencesWithDetections = sequencesWithCompleteDetections + sequencesWithIncompleteDetections;
+  const detectionCompletionPercentage = totalSequencesWithDetections > 0 
+    ? Math.round((sequencesWithCompleteDetections / totalSequencesWithDetections) * 100)
     : 0;
 
   // Processing stage statistics
@@ -102,7 +144,8 @@ export function useAnnotationStats(): AnnotationStats {
   };
 
   const isLoading = sequencesLoading || annotationsLoading || 
-                   importedLoading || readyToAnnotateLoading || annotatedLoading;
+                   importedLoading || readyToAnnotateLoading || annotatedLoading ||
+                   completeDetectionsLoading || incompleteDetectionsLoading;
   const error = sequencesError || annotationsError;
   const errorMessage = error ? String(error) : null;
 
@@ -112,6 +155,9 @@ export function useAnnotationStats(): AnnotationStats {
     pendingSequences,
     completionPercentage,
     processingStages,
+    sequencesWithCompleteDetections,
+    sequencesWithIncompleteDetections,
+    detectionCompletionPercentage,
     isLoading,
     error: errorMessage,
   };
