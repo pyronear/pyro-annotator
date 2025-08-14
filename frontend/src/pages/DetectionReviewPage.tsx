@@ -137,7 +137,7 @@ export default function DetectionReviewPage() {
         ...sequence,
         annotation: annotation
       });
-      
+
       return accuracy.type === selectedModelAccuracy;
     });
 
@@ -166,7 +166,7 @@ export default function DetectionReviewPage() {
 
   const handleSequenceClick = (clickedSequence: SequenceWithDetectionProgress) => {
     // Navigate to detection annotation interface for review purposes
-    navigate(`/detections/${clickedSequence.id}/annotate`);
+    navigate(`/detections/${clickedSequence.id}/annotate?from=detections-review`);
   };
 
   if (isLoading) {
@@ -447,9 +447,6 @@ export default function DetectionReviewPage() {
                           </span>
                         )}
 
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                          ✅ Fully Annotated
-                        </span>
                       </div>
 
                       {/* Detection Progress */}
