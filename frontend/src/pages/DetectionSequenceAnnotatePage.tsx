@@ -821,7 +821,10 @@ function ImageModal({
     });
     
     const newPredictions = validPredictions.filter(pred => {
-      return !drawnRectangles.some(rect => coordinatesMatch(pred.xyxyn, rect.xyxyn));
+      return !drawnRectangles.some(rect => 
+        rect.id.startsWith('imported-') && // Only check AI-imported rectangles
+        coordinatesMatch(pred.xyxyn, rect.xyxyn)
+      );
     });
     
     return newPredictions.length;
@@ -846,9 +849,12 @@ function ImageModal({
     
     if (validPredictions.length === 0) return;
     
-    // Filter out predictions that already exist as drawn rectangles
+    // Filter out predictions that already exist as AI-imported rectangles
     const newPredictions = validPredictions.filter(pred => {
-      return !drawnRectangles.some(rect => coordinatesMatch(pred.xyxyn, rect.xyxyn));
+      return !drawnRectangles.some(rect => 
+        rect.id.startsWith('imported-') && // Only check AI-imported rectangles
+        coordinatesMatch(pred.xyxyn, rect.xyxyn)
+      );
     });
     
     // If no new predictions to import, provide user feedback
