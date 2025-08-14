@@ -548,14 +548,14 @@ function DetectionImageCard({ detection, onClick, isAnnotated = false, showPredi
 
           {/* Bounding Boxes Overlay */}
           {showPredictions && imageInfo && (
-            <div className="absolute inset-0 pointer-events-none">
+            <div className="absolute inset-0 pointer-events-none transition-opacity duration-300 ease-in-out animate-in fade-in">
               <BoundingBoxOverlay detection={detection} imageInfo={imageInfo} />
             </div>
           )}
 
           {/* User Annotations Overlay */}
           {userAnnotation && imageInfo && (
-            <div className="absolute inset-0 pointer-events-none">
+            <div className="absolute inset-0 pointer-events-none transition-opacity duration-300 ease-in-out animate-in fade-in">
               <UserAnnotationOverlay detectionAnnotation={userAnnotation} imageInfo={imageInfo} />
             </div>
           )}
@@ -669,6 +669,10 @@ function ImageModal({
   const [undoStack, setUndoStack] = useState<DrawnRectangle[][]>([]);
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
 
+  // Transition state management for smooth overlay animations
+  const [overlaysVisible, setOverlaysVisible] = useState(true);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+
   // Handle image load to get dimensions and position using DOM positioning
   const handleImageLoad = () => {
     if (imgRef.current && containerRef.current) {
@@ -691,6 +695,14 @@ function ImageModal({
         offsetX: offsetX,
         offsetY: offsetY
       });
+      
+      // If transitioning, complete the fade-in animation
+      if (isTransitioning) {
+        setTimeout(() => {
+          setOverlaysVisible(true);
+          setIsTransitioning(false);
+        }, 50); // Small delay to ensure imageInfo is set
+      }
     }
   };
 
@@ -707,9 +719,15 @@ function ImageModal({
       setPanOffset({ x: 0, y: 0 });
       setTransformOrigin({ x: 50, y: 50 });
       
+      // Start transition: fade out overlays smoothly
+      console.log('Detection changed, starting transition:', detection.id);
+      setIsTransitioning(true);
+      setOverlaysVisible(false);
+      
       // Reset imageInfo to null to prevent stale overlays during image loading
-      console.log('Detection changed, setting imageInfo to null:', detection.id);
-      setImageInfo(null);
+      setTimeout(() => {
+        setImageInfo(null);
+      }, 150); // Allow fade out animation to start
       
       // Fallback: recalculate imageInfo after a short delay if handleImageLoad doesn't fire
       setTimeout(() => {
@@ -732,6 +750,12 @@ function ImageModal({
               offsetX: offsetX,
               offsetY: offsetY
             });
+            
+            // Complete transition: fade overlays back in
+            setTimeout(() => {
+              setOverlaysVisible(true);
+              setIsTransitioning(false);
+            }, 50); // Small delay to ensure imageInfo is set
           } else {
             console.log('Fallback skipped - image not loaded yet:', { imgWidth: imgRect.width, imgHeight: imgRect.height });
           }
@@ -1396,33 +1420,42 @@ function ImageModal({
               />
 
               {/* Bounding Boxes Overlay */}
-              {showPredictions && imageInfo && (
-                <div 
-                  className="absolute inset-0 pointer-events-none z-10"
-                  style={{
-                    transform: `scale(${zoomLevel}) translate(${panOffset.x}px, ${panOffset.y}px)`,
-                    transformOrigin: `${transformOrigin.x}% ${transformOrigin.y}%`,
-                    transition: isDragging ? 'none' : 'transform 0.1s ease-out'
-                  }}
-                >
+              <div 
+                className="absolute inset-0 pointer-events-none z-10 transition-opacity duration-300 ease-in-out"
+                style={{
+                  transform: `scale(${zoomLevel}) translate(${panOffset.x}px, ${panOffset.y}px)`,
+                  transformOrigin: `${transformOrigin.x}% ${transformOrigin.y}%`,
+                  transition: isDragging ? 'none' : 'transform 0.1s ease-out, opacity 0.3s ease-in-out',
+                  opacity: showPredictions && imageInfo && overlaysVisible ? 1 : 0,
+                  pointerEvents: showPredictions && imageInfo && overlaysVisible ? 'none' : 'none'
+                }}
+              >
+                {showPredictions && imageInfo && (
                   <BoundingBoxOverlay detection={detection} imageInfo={imageInfo} />
-                </div>
-              )}
+                )}
+              </div>
 
               {/* Drawing Overlay */}
-              {imageInfo && (
-                <DrawingOverlay
-                  drawnRectangles={drawnRectangles}
-                  currentDrawing={currentDrawing}
-                  selectedRectangleId={selectedRectangleId}
-                  imageInfo={imageInfo}
-                  zoomLevel={zoomLevel}
-                  panOffset={panOffset}
-                  transformOrigin={transformOrigin}
-                  isDragging={isDragging || isActivelyDrawing}
-                  normalizedToImage={normalizedToImage}
-                />
-              )}
+              <div 
+                className="absolute inset-0 z-20 transition-opacity duration-300 ease-in-out"
+                style={{
+                  opacity: imageInfo && overlaysVisible ? 1 : 0
+                }}
+              >
+                {imageInfo && (
+                  <DrawingOverlay
+                    drawnRectangles={drawnRectangles}
+                    currentDrawing={currentDrawing}
+                    selectedRectangleId={selectedRectangleId}
+                    imageInfo={imageInfo}
+                    zoomLevel={zoomLevel}
+                    panOffset={panOffset}
+                    transformOrigin={transformOrigin}
+                    isDragging={isDragging || isActivelyDrawing}
+                    normalizedToImage={normalizedToImage}
+                  />
+                )}
+              </div>
             </div>
           ) : (
             <div className="w-96 h-96 bg-gray-800 flex items-center justify-center rounded-lg">
