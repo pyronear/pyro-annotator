@@ -1691,6 +1691,8 @@ export default function DetectionSequenceAnnotatePage() {
       
       // Invalidate queries to refresh data
       queryClient.invalidateQueries({ queryKey: [...QUERY_KEYS.DETECTION_ANNOTATIONS] });
+      // Invalidate sequences to update completion status and remove from lists
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.SEQUENCES });
       // Invalidate annotation counts to update sidebar badges
       queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
       
