@@ -81,6 +81,78 @@ function BoundingBoxOverlay({ detection, imageInfo }: BoundingBoxOverlayProps) {
   );
 }
 
+// Reusable smoke type color mapping (shared between modal and grid)
+const getSmokeTypeColors = (smokeType: SmokeType) => {
+  switch (smokeType) {
+    case 'wildfire':
+      return { border: 'border-red-500', background: 'bg-red-500/15' };
+    case 'industrial':
+      return { border: 'border-purple-500', background: 'bg-purple-500/15' };
+    case 'other':
+      return { border: 'border-blue-500', background: 'bg-blue-500/15' };
+    default:
+      return { border: 'border-green-500', background: 'bg-green-500/10' };
+  }
+};
+
+// Component for rendering user annotations on detection images
+interface UserAnnotationOverlayProps {
+  detectionAnnotation: DetectionAnnotation | null;
+  imageInfo: {
+    width: number;
+    height: number;
+    offsetX: number;
+    offsetY: number;
+  };
+}
+
+function UserAnnotationOverlay({ detectionAnnotation, imageInfo }: UserAnnotationOverlayProps) {
+  if (!detectionAnnotation?.annotation?.annotation || detectionAnnotation.annotation.annotation.length === 0) {
+    return null;
+  }
+
+  return (
+    <>
+      {detectionAnnotation.annotation.annotation.map((annotationBbox, index) => {
+        // Convert normalized coordinates (xyxyn) to pixel coordinates
+        const [x1, y1, x2, y2] = annotationBbox.xyxyn;
+
+        // Ensure x2 > x1 and y2 > y1
+        if (x2 <= x1 || y2 <= y1) {
+          return null;
+        }
+
+        // Calculate pixel coordinates relative to the actual image position
+        const left = imageInfo.offsetX + (x1 * imageInfo.width);
+        const top = imageInfo.offsetY + (y1 * imageInfo.height);
+        const width = (x2 - x1) * imageInfo.width;
+        const height = (y2 - y1) * imageInfo.height;
+
+        // Get colors for this smoke type
+        const colors = getSmokeTypeColors(annotationBbox.smoke_type);
+
+        return (
+          <div
+            key={`user-annotation-${detectionAnnotation.detection_id}-${index}`}
+            className={`absolute border-2 ${colors.border} ${colors.background} pointer-events-none`}
+            style={{
+              left: `${left}px`,
+              top: `${top}px`,
+              width: `${width}px`,
+              height: `${height}px`,
+            }}
+          >
+            {/* Smoke type label */}
+            <div className={`absolute -top-6 left-0 ${colors.border.replace('border-', 'bg-')} text-white text-xs px-1 py-0.5 rounded whitespace-nowrap`}>
+              {annotationBbox.smoke_type === 'wildfire' ? '🔥' : annotationBbox.smoke_type === 'industrial' ? '🏭' : '💨'} {annotationBbox.smoke_type.charAt(0).toUpperCase() + annotationBbox.smoke_type.slice(1)}
+            </div>
+          </div>
+        );
+      }).filter(Boolean)} {/* Remove null entries from invalid boxes */}
+    </>
+  );
+}
+
 // Component for rendering user-drawn rectangles
 interface DrawingOverlayProps {
   drawnRectangles: DrawnRectangle[];
@@ -143,19 +215,7 @@ function DrawingOverlay({
     const isSelected = type === 'completed' && selectedRectangleId === (rect as any).id;
     const smokeType = type === 'completed' ? (rect as DrawnRectangle).smokeType : undefined;
     
-    // Color mapping for smoke types
-    const getSmokeTypeColors = (smokeType: SmokeType) => {
-      switch (smokeType) {
-        case 'wildfire':
-          return { border: 'border-red-500', background: 'bg-red-500/15' };
-        case 'industrial':
-          return { border: 'border-purple-500', background: 'bg-purple-500/15' };
-        case 'other':
-          return { border: 'border-blue-500', background: 'bg-blue-500/15' };
-        default:
-          return { border: 'border-green-500', background: 'bg-green-500/10' };
-      }
-    };
+    // Use shared color mapping function
 
     const colors = smokeType ? getSmokeTypeColors(smokeType) : { border: 'border-green-500', background: 'bg-green-500/10' };
     const borderColor = isSelected ? 'border-yellow-400' : colors.border;
@@ -389,9 +449,10 @@ interface DetectionImageCardProps {
   onClick: () => void;
   isAnnotated?: boolean;
   showPredictions?: boolean;
+  userAnnotation?: DetectionAnnotation | null;
 }
 
-function DetectionImageCard({ detection, onClick, isAnnotated = false, showPredictions = false }: DetectionImageCardProps) {
+function DetectionImageCard({ detection, onClick, isAnnotated = false, showPredictions = false, userAnnotation = null }: DetectionImageCardProps) {
   const { data: imageData, isLoading } = useDetectionImage(detection.id);
   const [imageInfo, setImageInfo] = useState<{
     width: number;
@@ -488,6 +549,13 @@ function DetectionImageCard({ detection, onClick, isAnnotated = false, showPredi
           {showPredictions && imageInfo && (
             <div className="absolute inset-0 pointer-events-none">
               <BoundingBoxOverlay detection={detection} imageInfo={imageInfo} />
+            </div>
+          )}
+
+          {/* User Annotations Overlay */}
+          {userAnnotation && imageInfo && (
+            <div className="absolute inset-0 pointer-events-none">
+              <UserAnnotationOverlay detectionAnnotation={userAnnotation} imageInfo={imageInfo} />
             </div>
           )}
 
@@ -2091,6 +2159,7 @@ export default function DetectionSequenceAnnotatePage() {
               onClick={() => openModal(index)}
               isAnnotated={detectionAnnotations.get(detection.id)?.processing_stage === 'annotated'}
               showPredictions={showPredictions}
+              userAnnotation={detectionAnnotations.get(detection.id) || null}
             />
           ))}
         </div>
