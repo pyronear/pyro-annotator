@@ -1628,6 +1628,18 @@ export default function DetectionSequenceAnnotatePage() {
       
       setToastMessage(`Detection ${detection.id} annotated successfully`);
       setShowToast(true);
+
+      // Auto-advance to next detection if available
+      if (selectedDetectionIndex !== null && detections && selectedDetectionIndex < detections.length - 1) {
+        // Move to next detection
+        setSelectedDetectionIndex(selectedDetectionIndex + 1);
+      } else if (selectedDetectionIndex !== null && detections && selectedDetectionIndex === detections.length - 1) {
+        // At last detection - close modal after a brief delay to show success message
+        setTimeout(() => {
+          setShowModal(false);
+          setSelectedDetectionIndex(null);
+        }, 1000);
+      }
     },
     onError: (_, { detection }) => {
       setToastMessage(`Failed to annotate detection ${detection.id}`);
