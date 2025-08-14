@@ -29,4 +29,6 @@ api_router.include_router(
     tags=["sequence annotations"],
 )
 api_router.include_router(cameras.router, prefix="/cameras", tags=["cameras"])
-api_router.include_router(organizations.router, prefix="/organizations", tags=["organizations"])
+api_router.include_router(
+    organizations.router, prefix="/organizations", tags=["organizations"]
+)

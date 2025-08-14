@@ -106,8 +106,6 @@ async def test_list_organizations_with_sequences(async_client: AsyncClient):
     assert orgs[2]["name"] == "Pyronear France"
 
 
-
-
 @pytest.mark.asyncio
 async def test_list_organizations_response_format(async_client: AsyncClient):
     """Test that organization response has correct format."""

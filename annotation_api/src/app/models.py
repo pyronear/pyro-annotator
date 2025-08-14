@@ -136,10 +136,31 @@ class Sequence(SQLModel, table=True):
         Index("ix_sequence_source_org", "source_api", "organisation_name"),
         Index("ix_sequence_source_wildfire", "source_api", "is_wildfire_alertapi"),
         Index("ix_sequence_camera_org", "camera_name", "organisation_name"),
-        Index("ix_sequence_source_camera_org", "source_api", "camera_name", "organisation_name"),
-        Index("ix_sequence_source_camera_wildfire", "source_api", "camera_name", "is_wildfire_alertapi"),
-        Index("ix_sequence_source_org_wildfire", "source_api", "organisation_name", "is_wildfire_alertapi"),
-        Index("ix_sequence_full_filter", "source_api", "camera_name", "organisation_name", "is_wildfire_alertapi"),
+        Index(
+            "ix_sequence_source_camera_org",
+            "source_api",
+            "camera_name",
+            "organisation_name",
+        ),
+        Index(
+            "ix_sequence_source_camera_wildfire",
+            "source_api",
+            "camera_name",
+            "is_wildfire_alertapi",
+        ),
+        Index(
+            "ix_sequence_source_org_wildfire",
+            "source_api",
+            "organisation_name",
+            "is_wildfire_alertapi",
+        ),
+        Index(
+            "ix_sequence_full_filter",
+            "source_api",
+            "camera_name",
+            "organisation_name",
+            "is_wildfire_alertapi",
+        ),
     )
     id: int = Field(
         default=None, primary_key=True, sa_column_kwargs={"autoincrement": True}

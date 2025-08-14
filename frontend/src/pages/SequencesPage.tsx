@@ -13,8 +13,7 @@ import {
   ModelAccuracyType
 } from '@/utils/modelAccuracy';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
-import FalsePositiveFilter from '@/components/filters/FalsePositiveFilter';
-import ModelAccuracyFilter from '@/components/filters/ModelAccuracyFilter';
+import TabbedFilters from '@/components/filters/TabbedFilters';
 import { useSequenceStore } from '@/store/useSequenceStore';
 import { useCameras } from '@/hooks/useCameras';
 import { useOrganizations } from '@/hooks/useOrganizations';
@@ -143,6 +142,7 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
     setFilters(prev => ({ ...prev, page }));
   };
 
+
   const handleSequenceClick = (clickedSequence: any) => {
     // Initialize annotation workflow if we have sequences data
     if (sequences?.items) {
@@ -188,154 +188,26 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
         </div>
 
         {/* Filters */}
-        <div className="bg-white rounded-lg border border-gray-200 p-4">
-          <div className={`grid grid-cols-1 ${defaultProcessingStage === 'annotated' ? 'md:grid-cols-6 lg:grid-cols-7' : 'md:grid-cols-5'} gap-4`}>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Source API
-              </label>
-              <select
-                value={filters.source_api || ''}
-                onChange={(e) => handleFilterChange({ source_api: e.target.value as any || undefined })}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
-              >
-                <option value="">All Sources</option>
-                <option value="pyronear_french">Pyronear French</option>
-                <option value="alert_wildfire">Alert Wildfire</option>
-                <option value="api_cenia">API Cenia</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Camera
-              </label>
-              <select
-                value={filters.camera_name || ''}
-                onChange={(e) => handleFilterChange({ camera_name: e.target.value || undefined })}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
-                disabled={camerasLoading}
-              >
-                <option value="">All Cameras</option>
-                {cameras.map((camera) => (
-                  <option key={camera.id} value={camera.name}>
-                    {camera.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Organization
-              </label>
-              <select
-                value={filters.organisation_name || ''}
-                onChange={(e) => handleFilterChange({ organisation_name: e.target.value || undefined })}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
-                disabled={organizationsLoading}
-              >
-                <option value="">All Organizations</option>
-                {organizations.map((organization) => (
-                  <option key={organization.id} value={organization.name}>
-                    {organization.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Wildfire Alert
-              </label>
-              <select
-                value={filters.is_wildfire_alertapi === undefined ? '' : filters.is_wildfire_alertapi.toString()}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  handleFilterChange({
-                    is_wildfire_alertapi: value === '' ? undefined : value === 'true'
-                  });
-                }}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
-              >
-                <option value="">All</option>
-                <option value="true">Wildfire Alert</option>
-                <option value="false">No Alert</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Date Range (Recorded)
-              </label>
-
-              {/* Preset Buttons */}
-              <div className="flex gap-1 mb-2">
-                <button
-                  onClick={() => setDateRange('7d')}
-                  className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 focus:ring-1 focus:ring-primary-500"
-                >
-                  7d
-                </button>
-                <button
-                  onClick={() => setDateRange('30d')}
-                  className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 focus:ring-1 focus:ring-primary-500"
-                >
-                  30d
-                </button>
-                <button
-                  onClick={() => setDateRange('90d')}
-                  className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 focus:ring-1 focus:ring-primary-500"
-                >
-                  90d
-                </button>
-                <button
-                  onClick={clearDateRange}
-                  className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 focus:ring-1 focus:ring-primary-500 text-red-600"
-                >
-                  Clear
-                </button>
-              </div>
-
-              {/* Date Inputs */}
-              <div className="flex gap-2">
-                <input
-                  type="date"
-                  value={dateFrom}
-                  onChange={(e) => handleDateFromChange(e.target.value)}
-                  className="flex-1 border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-primary-500 focus:border-primary-500"
-                  placeholder="From"
-                />
-                <input
-                  type="date"
-                  value={dateTo}
-                  onChange={(e) => handleDateToChange(e.target.value)}
-                  className="flex-1 border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-primary-500 focus:border-primary-500"
-                  placeholder="To"
-                />
-              </div>
-            </div>
-
-            {/* False Positive Filter - Only show on review page */}
-            {defaultProcessingStage === 'annotated' && (
-              <FalsePositiveFilter
-                selectedTypes={selectedFalsePositiveTypes}
-                onSelectionChange={handleFalsePositiveFilterChange}
-                className="w-full"
-              />
-            )}
-
-            {/* Model Accuracy Filter - Only show on review page */}
-            {defaultProcessingStage === 'annotated' && (
-              <ModelAccuracyFilter
-                selectedAccuracy={selectedModelAccuracy}
-                onSelectionChange={setSelectedModelAccuracy}
-                className="w-full"
-              />
-            )}
-
-          </div>
-        </div>
+        <TabbedFilters
+          filters={filters}
+          onFiltersChange={handleFilterChange}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          onDateFromChange={handleDateFromChange}
+          onDateToChange={handleDateToChange}
+          onDateRangeSet={setDateRange}
+          onDateRangeClear={clearDateRange}
+          selectedFalsePositiveTypes={selectedFalsePositiveTypes}
+          onFalsePositiveTypesChange={handleFalsePositiveFilterChange}
+          selectedModelAccuracy={selectedModelAccuracy}
+          onModelAccuracyChange={setSelectedModelAccuracy}
+          cameras={cameras}
+          organizations={organizations}
+          camerasLoading={camerasLoading}
+          organizationsLoading={organizationsLoading}
+          showModelAccuracy={defaultProcessingStage === 'annotated'}
+          showFalsePositiveTypes={defaultProcessingStage === 'annotated'}
+        />
 
         {/* Empty state message */}
         <div className="flex items-center justify-center min-h-96">
@@ -370,154 +242,26 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-lg border border-gray-200 p-4">
-        <div className={`grid grid-cols-1 ${defaultProcessingStage === 'annotated' ? 'md:grid-cols-6 lg:grid-cols-7' : 'md:grid-cols-5'} gap-4`}>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Source API
-            </label>
-            <select
-              value={filters.source_api || ''}
-              onChange={(e) => handleFilterChange({ source_api: e.target.value as any || undefined })}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
-            >
-              <option value="">All Sources</option>
-              <option value="pyronear_french">Pyronear French</option>
-              <option value="alert_wildfire">Alert Wildfire</option>
-              <option value="api_cenia">API Cenia</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Camera
-            </label>
-            <select
-              value={filters.camera_name || ''}
-              onChange={(e) => handleFilterChange({ camera_name: e.target.value || undefined })}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
-              disabled={camerasLoading}
-            >
-              <option value="">All Cameras</option>
-              {cameras.map((camera) => (
-                <option key={camera.id} value={camera.name}>
-                  {camera.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Organization
-            </label>
-            <select
-              value={filters.organisation_name || ''}
-              onChange={(e) => handleFilterChange({ organisation_name: e.target.value || undefined })}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
-              disabled={organizationsLoading}
-            >
-              <option value="">All Organizations</option>
-              {organizations.map((organization) => (
-                <option key={organization.id} value={organization.name}>
-                  {organization.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Wildfire Alert
-            </label>
-            <select
-              value={filters.is_wildfire_alertapi === undefined ? '' : filters.is_wildfire_alertapi.toString()}
-              onChange={(e) => {
-                const value = e.target.value;
-                handleFilterChange({
-                  is_wildfire_alertapi: value === '' ? undefined : value === 'true'
-                });
-              }}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
-            >
-              <option value="">All</option>
-              <option value="true">Wildfire Alert</option>
-              <option value="false">No Alert</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Date Range (Recorded)
-            </label>
-
-            {/* Preset Buttons */}
-            <div className="flex gap-1 mb-2">
-              <button
-                onClick={() => setDateRange('7d')}
-                className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 focus:ring-1 focus:ring-primary-500"
-              >
-                7d
-              </button>
-              <button
-                onClick={() => setDateRange('30d')}
-                className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 focus:ring-1 focus:ring-primary-500"
-              >
-                30d
-              </button>
-              <button
-                onClick={() => setDateRange('90d')}
-                className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 focus:ring-1 focus:ring-primary-500"
-              >
-                90d
-              </button>
-              <button
-                onClick={clearDateRange}
-                className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 focus:ring-1 focus:ring-primary-500 text-red-600"
-              >
-                Clear
-              </button>
-            </div>
-
-            {/* Date Inputs */}
-            <div className="flex gap-2">
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => handleDateFromChange(e.target.value)}
-                className="flex-1 border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-primary-500 focus:border-primary-500"
-                placeholder="From"
-              />
-              <input
-                type="date"
-                value={dateTo}
-                onChange={(e) => handleDateToChange(e.target.value)}
-                className="flex-1 border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-primary-500 focus:border-primary-500"
-                placeholder="To"
-              />
-            </div>
-          </div>
-
-          {/* False Positive Filter - Only show on review page */}
-          {defaultProcessingStage === 'annotated' && (
-            <FalsePositiveFilter
-              selectedTypes={selectedFalsePositiveTypes}
-              onSelectionChange={handleFalsePositiveFilterChange}
-              className="w-full"
-            />
-          )}
-
-          {/* Model Accuracy Filter - Only show on review page */}
-          {defaultProcessingStage === 'annotated' && (
-            <ModelAccuracyFilter
-              selectedAccuracy={selectedModelAccuracy}
-              onSelectionChange={setSelectedModelAccuracy}
-              className="w-full"
-            />
-          )}
-
-        </div>
-      </div>
+      <TabbedFilters
+        filters={filters}
+        onFiltersChange={handleFilterChange}
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+        onDateFromChange={handleDateFromChange}
+        onDateToChange={handleDateToChange}
+        onDateRangeSet={setDateRange}
+        onDateRangeClear={clearDateRange}
+        selectedFalsePositiveTypes={selectedFalsePositiveTypes}
+        onFalsePositiveTypesChange={handleFalsePositiveFilterChange}
+        selectedModelAccuracy={selectedModelAccuracy}
+        onModelAccuracyChange={setSelectedModelAccuracy}
+        cameras={cameras}
+        organizations={organizations}
+        camerasLoading={camerasLoading}
+        organizationsLoading={organizationsLoading}
+        showModelAccuracy={defaultProcessingStage === 'annotated'}
+        showFalsePositiveTypes={defaultProcessingStage === 'annotated'}
+      />
 
       {/* Results */}
       {filteredSequences && (

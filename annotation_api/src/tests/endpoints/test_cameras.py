@@ -89,8 +89,6 @@ async def test_list_cameras_with_sequences(async_client: AsyncClient):
     assert cameras[1]["name"] == "Camera Beta"
 
 
-
-
 @pytest.mark.asyncio
 async def test_list_cameras_response_format(async_client: AsyncClient):
     """Test that camera response has correct format."""

@@ -7,13 +7,13 @@ This script combines the functionality of three separate scripts into a streamli
 3. For each sequence: generate GIFs and update processing stage
 
 Usage:
-  # Basic usage - full pipeline for date range  
+  # Basic usage - full pipeline for date range
   uv run python -m scripts.data_transfer.ingestion.platform.import --date-from 2024-01-01 --date-end 2024-01-02
 
   # Skip platform fetch (use existing sequences)
   uv run python -m scripts.data_transfer.ingestion.platform.import --date-from 2024-01-01 --skip-platform-fetch
 
-  # Process ALL predictions (confidence 0.0) 
+  # Process ALL predictions (confidence 0.0)
   uv run python -m scripts.data_transfer.ingestion.platform.import --date-from 2024-01-01 --confidence-threshold 0.0
 
   # Dry run to preview what would be processed
@@ -255,7 +255,9 @@ def get_sequences_from_annotation_api(
         date_from_str = date_from.strftime("%Y-%m-%d")
         date_end_str = date_end.strftime("%Y-%m-%d")
 
-        logging.info(f"Fetching sequences from annotation API from {date_from_str} to {date_end_str}")
+        logging.info(
+            f"Fetching sequences from annotation API from {date_from_str} to {date_end_str}"
+        )
 
         # Fetch sequences with pagination
         all_sequence_ids = []
@@ -297,7 +299,9 @@ def get_sequences_from_annotation_api(
                 break
             page += 1
 
-        logging.info(f"Found {len(all_sequence_ids)} sequences in annotation API for date range")
+        logging.info(
+            f"Found {len(all_sequence_ids)} sequences in annotation API for date range"
+        )
         return all_sequence_ids
 
     except Exception as e:
@@ -341,7 +345,7 @@ def process_single_sequence(
         # Step 1: Generate annotation
         logging.debug(f"Analyzing sequence {sequence_id}")
         annotation_data = analyzer.analyze_sequence(sequence_id)
-        
+
         if annotation_data is None:
             error_msg = f"Failed to analyze sequence {sequence_id} - no detections or analysis failed"
             logging.warning(error_msg)
@@ -349,7 +353,9 @@ def process_single_sequence(
             return result
 
         # Check for existing annotation
-        existing_annotation_id = check_existing_annotation(annotation_api_url, sequence_id)
+        existing_annotation_id = check_existing_annotation(
+            annotation_api_url, sequence_id
+        )
 
         # Create or update annotation
         if create_annotation_from_data(
@@ -360,9 +366,13 @@ def process_single_sequence(
             existing_annotation_id,
         ):
             result["annotation_created"] = True
-            result["annotation_id"] = existing_annotation_id if existing_annotation_id else "new"
+            result["annotation_id"] = (
+                existing_annotation_id if existing_annotation_id else "new"
+            )
             result["final_stage"] = SequenceAnnotationProcessingStage.IMPORTED.value
-            logging.info(f"Successfully created/updated annotation for sequence {sequence_id}")
+            logging.info(
+                f"Successfully created/updated annotation for sequence {sequence_id}"
+            )
         else:
             error_msg = f"Failed to create annotation for sequence {sequence_id}"
             logging.error(error_msg)
@@ -372,14 +382,18 @@ def process_single_sequence(
         if dry_run:
             logging.info(f"DRY RUN: Would generate GIFs for sequence {sequence_id}")
             result["gifs_generated"] = True
-            result["final_stage"] = SequenceAnnotationProcessingStage.READY_TO_ANNOTATE.value
+            result["final_stage"] = (
+                SequenceAnnotationProcessingStage.READY_TO_ANNOTATE.value
+            )
             return result
 
         # Step 2: Generate GIFs
         # First, get the annotation ID if we don't have it
         if result["annotation_id"] == "new":
             # Refetch to get the actual annotation ID
-            actual_annotation_id = check_existing_annotation(annotation_api_url, sequence_id)
+            actual_annotation_id = check_existing_annotation(
+                annotation_api_url, sequence_id
+            )
             if actual_annotation_id:
                 result["annotation_id"] = actual_annotation_id
             else:
@@ -391,14 +405,14 @@ def process_single_sequence(
         # Get the annotation object for GIF generation
         try:
             annotations_response = list_sequence_annotations(
-                annotation_api_url, 
-                sequence_id=sequence_id,
-                page=1,
-                size=1
+                annotation_api_url, sequence_id=sequence_id, page=1, size=1
             )
-            
+
             # Handle paginated response
-            if isinstance(annotations_response, dict) and "items" in annotations_response:
+            if (
+                isinstance(annotations_response, dict)
+                and "items" in annotations_response
+            ):
                 annotations = annotations_response["items"]
             else:
                 annotations = annotations_response
@@ -429,8 +443,12 @@ def process_single_sequence(
         if gif_result["success"]:
             result["gifs_generated"] = True
             result["gif_count"] = gif_result["gif_count"]
-            result["final_stage"] = SequenceAnnotationProcessingStage.READY_TO_ANNOTATE.value
-            logging.info(f"Successfully generated {gif_result['gif_count']} GIFs for sequence {sequence_id}")
+            result["final_stage"] = (
+                SequenceAnnotationProcessingStage.READY_TO_ANNOTATE.value
+            )
+            logging.info(
+                f"Successfully generated {gif_result['gif_count']} GIFs for sequence {sequence_id}"
+            )
         else:
             error_msg = f"Failed to generate GIFs for sequence {sequence_id}: {gif_result.get('message', 'Unknown error')}"
             logging.error(error_msg)
@@ -482,7 +500,7 @@ def main():
         # Step 1: Fetch platform data (if not skipped)
         if not args.skip_platform_fetch:
             logger.info("Step 1: Fetching platform data")
-            
+
             if not shared.validate_available_env_variables():
                 logger.error("Missing required environment variables for platform API")
                 sys.exit(1)
@@ -493,7 +511,14 @@ def main():
             platform_admin_login = os.getenv("PLATFORM_ADMIN_LOGIN")
             platform_admin_password = os.getenv("PLATFORM_ADMIN_PASSWORD")
 
-            if not all([platform_login, platform_password, platform_admin_login, platform_admin_password]):
+            if not all(
+                [
+                    platform_login,
+                    platform_password,
+                    platform_admin_login,
+                    platform_admin_password,
+                ]
+            ):
                 logger.error("Missing platform credentials")
                 sys.exit(1)
 
@@ -511,7 +536,9 @@ def main():
             )
 
             # Fetch platform records
-            logger.info(f"Fetching platform data from {args.date_from} to {args.date_end}")
+            logger.info(
+                f"Fetching platform data from {args.date_from} to {args.date_end}"
+            )
             records = fetch_all_sequences_within(
                 date_from=args.date_from,
                 date_end=args.date_end,
@@ -531,14 +558,22 @@ def main():
             # Post to annotation API (if not dry run)
             if not args.dry_run:
                 logger.info("Posting platform data to annotation API")
-                result = shared.post_records_to_annotation_api(args.url_api_annotation, records)
-                
+                result = shared.post_records_to_annotation_api(
+                    args.url_api_annotation, records
+                )
+
                 logger.info("Platform data import results:")
-                logger.info(f"  Sequences: {result['successful_sequences']}/{result['total_sequences']} successful")
-                logger.info(f"  Detections: {result['successful_detections']}/{result['total_detections']} successful")
-                
+                logger.info(
+                    f"  Sequences: {result['successful_sequences']}/{result['total_sequences']} successful"
+                )
+                logger.info(
+                    f"  Detections: {result['successful_detections']}/{result['total_detections']} successful"
+                )
+
                 if result["failed_sequences"] > 0 or result["failed_detections"] > 0:
-                    logger.warning("Some platform data failed to import, but continuing with processing")
+                    logger.warning(
+                        "Some platform data failed to import, but continuing with processing"
+                    )
             else:
                 logger.info("DRY RUN: Skipping platform data posting")
 
@@ -571,7 +606,7 @@ def main():
 
         # Step 4: Process each sequence
         logger.info("Step 4: Processing sequences")
-        
+
         for sequence_id in tqdm(sequence_ids, desc="Processing sequences"):
             result = process_single_sequence(
                 sequence_id=sequence_id,
