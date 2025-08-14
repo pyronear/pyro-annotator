@@ -1758,12 +1758,24 @@ export default function DetectionSequenceAnnotatePage() {
     }
   }, [showToast]);
 
+  // Helper function to check if all detection annotations are in visual_check stage
+  const areAllInVisualCheckStage = () => {
+    if (!detections || detections.length === 0) return false;
+    
+    const annotationValues = Array.from(detectionAnnotations.values());
+    
+    // All detections must have annotations and all must be in visual_check stage
+    return detections.length === annotationValues.length && 
+           annotationValues.every(annotation => annotation.processing_stage === 'visual_check');
+  };
+
   // Calculate progress
   const annotatedCount = Array.from(detectionAnnotations.values()).filter(
     a => a.processing_stage === 'annotated'
   ).length;
   const totalCount = detections?.length || 0;
   const completionPercentage = totalCount > 0 ? Math.round((annotatedCount / totalCount) * 100) : 0;
+  const allInVisualCheck = areAllInVisualCheckStage();
 
   // Helper to get annotation pills
   const getAnnotationPills = () => {
@@ -1998,19 +2010,21 @@ export default function DetectionSequenceAnnotatePage() {
                 <span>Show predictions</span>
               </label>
 
-              <button
-                onClick={handleSave}
-                disabled={saveAnnotations.isPending}
-                className="inline-flex items-center px-3 py-1.5 border border-transparent rounded-md shadow-sm text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Submit annotations (Enter)"
-              >
-                {saveAnnotations.isPending ? (
-                  <div className="w-3 h-3 mr-1 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                ) : (
-                  <Upload className="w-3 h-3 mr-1" />
-                )}
-                Submit
-              </button>
+              {allInVisualCheck && (
+                <button
+                  onClick={handleSave}
+                  disabled={saveAnnotations.isPending}
+                  className="inline-flex items-center px-3 py-1.5 border border-transparent rounded-md shadow-sm text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Submit all detection annotations (Enter) - All flagged as false positive sequences"
+                >
+                  {saveAnnotations.isPending ? (
+                    <div className="w-3 h-3 mr-1 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  ) : (
+                    <Upload className="w-3 h-3 mr-1" />
+                  )}
+                  Submit All
+                </button>
+              )}
             </div>
           </div>
 

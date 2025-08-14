@@ -72,7 +72,7 @@ export interface DetectionAnnotation {
   id: number;
   detection_id: number;
   annotation: DetectionAnnotationData;
-  processing_stage: ProcessingStage;
+  processing_stage: DetectionProcessingStage;
   created_at: string;
   updated_at: string | null;
 }
