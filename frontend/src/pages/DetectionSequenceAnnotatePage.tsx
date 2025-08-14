@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, X, ChevronLeft, ChevronRight, CheckCircle, AlertCircle, Upload, RotateCcw, Square, Trash2, Keyboard, Eye, MousePointer, Undo, Navigation, Clock } from 'lucide-react';
+import { ArrowLeft, X, ChevronLeft, ChevronRight, CheckCircle, AlertCircle, Upload, RotateCcw, Square, Trash2, Keyboard, Eye, MousePointer, Undo, Navigation, Clock, Brain } from 'lucide-react';
 import { useSequenceDetections } from '@/hooks/useSequenceDetections';
 import { useDetectionImage } from '@/hooks/useDetectionImage';
 import { apiClient } from '@/services/api';
@@ -344,6 +344,11 @@ function KeyboardShortcutsInfo({
                 icon={<Undo className="w-4 h-4" />}
                 disabled={!hasUndoHistory}
               />
+              <KeyShortcut 
+                keys={["A"]} 
+                description="Import AI predictions" 
+                icon={<Brain className="w-4 h-4" />}
+              />
             </div>
           </div>
 
@@ -540,6 +545,9 @@ interface ImageModalProps {
   isSubmitting?: boolean;
   isAnnotated?: boolean;
   existingAnnotation?: DetectionAnnotation | null;
+  // Persistent smoke type props
+  selectedSmokeType: SmokeType;
+  onSmokeTypeChange: (smokeType: SmokeType) => void;
 }
 
 function ImageModal({
@@ -555,7 +563,9 @@ function ImageModal({
   showPredictions = false,
   isSubmitting = false,
   isAnnotated = false,
-  existingAnnotation = null
+  existingAnnotation = null,
+  selectedSmokeType,
+  onSmokeTypeChange
 }: ImageModalProps) {
   const { data: imageData } = useDetectionImage(detection.id);
   const [imageInfo, setImageInfo] = useState<{
@@ -582,9 +592,6 @@ function ImageModal({
   const [selectedRectangleId, setSelectedRectangleId] = useState<string | null>(null);
   const [undoStack, setUndoStack] = useState<DrawnRectangle[][]>([]);
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
-
-  // Smoke type selection state
-  const [selectedSmokeType, setSelectedSmokeType] = useState<SmokeType>('wildfire');
 
   // Handle image load to get dimensions and position using DOM positioning
   const handleImageLoad = () => {
@@ -787,6 +794,42 @@ function ImageModal({
         ? { ...rect, smokeType: newSmokeType }
         : rect
     ));
+  };
+
+  // Import AI predictions as drawable rectangles
+  const importAIPredictions = () => {
+    if (!detection?.algo_predictions?.predictions) return;
+    
+    // Filter valid predictions with reasonable confidence threshold
+    const validPredictions = detection.algo_predictions.predictions.filter(pred => {
+      const [x1, y1, x2, y2] = pred.xyxyn;
+      return (
+        pred.confidence >= 0.3 && // Minimum confidence threshold
+        x1 >= 0 && x1 <= 1 && // Valid normalized coordinates
+        y1 >= 0 && y1 <= 1 &&
+        x2 >= 0 && x2 <= 1 &&
+        y2 >= 0 && y2 <= 1 &&
+        x2 > x1 && y2 > y1 // Valid rectangle dimensions
+      );
+    });
+    
+    if (validPredictions.length === 0) return;
+    
+    // Save current state to undo stack before importing
+    pushUndoState();
+    
+    // Convert predictions to drawable rectangles with selected smoke type
+    const importedRectangles: DrawnRectangle[] = validPredictions.map((pred, index) => ({
+      id: `imported-${Date.now()}-${index}`,
+      xyxyn: pred.xyxyn,
+      smokeType: selectedSmokeType
+    }));
+    
+    // Add imported rectangles to existing ones
+    setDrawnRectangles(prev => [...prev, ...importedRectangles]);
+    
+    // Show success feedback (you could add a toast here if needed)
+    console.log(`Imported ${importedRectangles.length} AI predictions as ${selectedSmokeType} smoke`);
   };
 
   const handleUndo = () => {
@@ -1024,12 +1067,16 @@ function ImageModal({
         // Toggle keyboard shortcuts info with ? key or H key
         setShowKeyboardShortcuts(!showKeyboardShortcuts);
         e.preventDefault();
+      } else if (e.key === 'a' || e.key === 'A') {
+        // Import AI predictions as rectangles
+        importAIPredictions();
+        e.preventDefault();
       } else if (e.key === '1' || e.key === 'w' || e.key === 'W') {
         // Set smoke type to wildfire
         if (selectedRectangleId) {
           changeSelectedRectangleSmokeType('wildfire');
         } else {
-          setSelectedSmokeType('wildfire');
+          onSmokeTypeChange('wildfire');
         }
         e.preventDefault();
       } else if (e.key === '2' || e.key === 'i' || e.key === 'I') {
@@ -1037,7 +1084,7 @@ function ImageModal({
         if (selectedRectangleId) {
           changeSelectedRectangleSmokeType('industrial');
         } else {
-          setSelectedSmokeType('industrial');
+          onSmokeTypeChange('industrial');
         }
         e.preventDefault();
       } else if (e.key === '3' || e.key === 'o' || e.key === 'O') {
@@ -1045,7 +1092,7 @@ function ImageModal({
         if (selectedRectangleId) {
           changeSelectedRectangleSmokeType('other');
         } else {
-          setSelectedSmokeType('other');
+          onSmokeTypeChange('other');
         }
         e.preventDefault();
       } else if (e.key === ' ' && !isSubmitting) {
@@ -1057,7 +1104,7 @@ function ImageModal({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isDrawMode, isActivelyDrawing, selectedRectangleId, drawnRectangles.length, undoStack.length, showKeyboardShortcuts, showPredictions, onTogglePredictions, isSubmitting, detection, drawnRectangles, onSubmit, selectedSmokeType]);
+  }, [isDrawMode, isActivelyDrawing, selectedRectangleId, drawnRectangles.length, undoStack.length, showKeyboardShortcuts, showPredictions, onTogglePredictions, isSubmitting, detection, drawnRectangles, onSubmit, selectedSmokeType, changeSelectedRectangleSmokeType, onSmokeTypeChange, importAIPredictions]);
 
   // Cursor style based on state
   const getCursorStyle = () => {
@@ -1208,7 +1255,7 @@ function ImageModal({
                         if (selectedRectangleId) {
                           changeSelectedRectangleSmokeType(smokeType);
                         } else {
-                          setSelectedSmokeType(smokeType);
+                          onSmokeTypeChange(smokeType);
                         }
                       }}
                       className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
@@ -1223,6 +1270,20 @@ function ImageModal({
                   );
                 })}
               </div>
+
+              {/* AI Import Button */}
+              <button
+                onClick={importAIPredictions}
+                disabled={!detection?.algo_predictions?.predictions?.length}
+                className="p-2 bg-white bg-opacity-10 hover:bg-opacity-20 disabled:bg-opacity-5 disabled:cursor-not-allowed rounded-full transition-colors backdrop-blur-sm"
+                title={
+                  detection?.algo_predictions?.predictions?.length 
+                    ? `Import ${detection.algo_predictions.predictions.length} AI predictions as ${selectedSmokeType} smoke (A)`
+                    : "No AI predictions available"
+                }
+              >
+                <Brain className={`w-5 h-5 ${detection?.algo_predictions?.predictions?.length ? 'text-white' : 'text-gray-500'}`} />
+              </button>
 
               {/* Drawing Mode Toggle */}
               <button
@@ -1357,6 +1418,9 @@ export default function DetectionSequenceAnnotatePage() {
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [showPredictions, setShowPredictions] = useState(false);
+
+  // Persistent smoke type selection across detections
+  const [persistentSmokeType, setPersistentSmokeType] = useState<SmokeType>('wildfire');
 
   const { data: detections, isLoading, error } = useSequenceDetections(sequenceIdNum);
 
@@ -1953,6 +2017,8 @@ export default function DetectionSequenceAnnotatePage() {
           isSubmitting={annotateIndividualDetection.isPending}
           isAnnotated={detectionAnnotations.get(detections[selectedDetectionIndex].id)?.processing_stage === 'annotated'}
           existingAnnotation={detectionAnnotations.get(detections[selectedDetectionIndex].id)}
+          selectedSmokeType={persistentSmokeType}
+          onSmokeTypeChange={setPersistentSmokeType}
         />
       )}
 
