@@ -705,24 +705,8 @@ function ImageModal({
       setPanOffset({ x: 0, y: 0 });
       setTransformOrigin({ x: 50, y: 50 });
       
-      // Force imageInfo recalculation to ensure overlays render
-      if (imgRef.current && containerRef.current) {
-        const img = imgRef.current;
-        const containerRect = containerRef.current.getBoundingClientRect();
-        const imgRect = img.getBoundingClientRect();
-        
-        const offsetX = imgRect.left - containerRect.left;
-        const offsetY = imgRect.top - containerRect.top;
-        const width = imgRect.width;
-        const height = imgRect.height;
-
-        setImageInfo({
-          width: width,
-          height: height,
-          offsetX: offsetX,
-          offsetY: offsetY
-        });
-      }
+      // Reset imageInfo to null to prevent stale overlays during image loading
+      setImageInfo(null);
       
       // Handle drawing mode based on navigation type
       if (isAutoAdvance) {
