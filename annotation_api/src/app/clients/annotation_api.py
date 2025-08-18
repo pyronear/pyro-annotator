@@ -6,7 +6,7 @@ using the requests library for HTTP communication.
 """
 
 import json
-from typing import Dict, List, Optional, Any
+from typing import Dict, Optional
 
 import requests
 
@@ -19,9 +19,9 @@ class AnnotationAPIError(Exception):
     def __init__(
         self,
         message: str,
-        status_code: Optional[int] = None,
-        response_data: Optional[Dict[str, Any]] = None,
-        operation: Optional[str] = None,
+        status_code: int = None,
+        response_data: dict = None,
+        operation: str = None,
     ):
         self.message = message
         self.status_code = status_code
@@ -33,7 +33,7 @@ class AnnotationAPIError(Exception):
 class ValidationError(AnnotationAPIError):
     """API validation error (422)."""
 
-    def __init__(self, message: str, field_errors: Optional[List[Any]] = None, operation: Optional[str] = None):
+    def __init__(self, message: str, field_errors: list = None, operation: str = None):
         self.field_errors = field_errors or []
         super().__init__(message, 422, operation=operation)
 
@@ -41,7 +41,7 @@ class ValidationError(AnnotationAPIError):
 class NotFoundError(AnnotationAPIError):
     """Resource not found (404)."""
 
-    def __init__(self, message: str, operation: Optional[str] = None):
+    def __init__(self, message: str, operation: str = None):
         super().__init__(message, 404, operation=operation)
 
 
@@ -52,8 +52,8 @@ class ServerError(AnnotationAPIError):
         self,
         message: str,
         status_code: int = 500,
-        response_data: Optional[Dict[str, Any]] = None,
-        operation: Optional[str] = None,
+        response_data: dict = None,
+        operation: str = None,
     ):
         super().__init__(message, status_code, response_data, operation=operation)
 
@@ -89,7 +89,7 @@ __all__ = [
 
 
 def _make_request(
-    method: str, url: str, operation: Optional[str] = None, **kwargs
+    method: str, url: str, operation: str = None, **kwargs
 ) -> requests.Response:
     """
     Make an HTTP request with enhanced error handling.
@@ -120,8 +120,8 @@ def _make_request(
 
 
 def _handle_response(
-    response: requests.Response, operation: Optional[str] = None
-) -> Optional[Dict[str, Any]]:
+    response: requests.Response, operation: str = None
+) -> Optional[Dict]:
     """
     Parse response and raise appropriate exceptions for errors.
 
@@ -200,7 +200,7 @@ def _handle_response(
 # -------------------- SEQUENCE OPERATIONS --------------------
 
 
-def create_sequence(base_url: str, sequence_data: Dict[str, Any]) -> Dict[str, Any]:
+def create_sequence(base_url: str, sequence_data: Dict) -> Dict:
     """
     Create a new sequence in the annotation API.
 
@@ -218,11 +218,10 @@ def create_sequence(base_url: str, sequence_data: Dict[str, Any]) -> Dict[str, A
     url = f"{base_url.rstrip('/')}/api/v1/sequences/"
     operation = f"create sequence with alert_api_id={sequence_data.get('alert_api_id', 'unknown')}"
     response = _make_request("POST", url, operation=operation, data=sequence_data)
-    result = _handle_response(response, operation=operation)
-    return result or {}
+    return _handle_response(response, operation=operation)
 
 
-def get_sequence(base_url: str, sequence_id: int) -> Dict[str, Any]:
+def get_sequence(base_url: str, sequence_id: int) -> Dict:
     """
     Get a specific sequence by ID.
 
@@ -240,11 +239,10 @@ def get_sequence(base_url: str, sequence_id: int) -> Dict[str, Any]:
     url = f"{base_url.rstrip('/')}/api/v1/sequences/{sequence_id}"
     operation = f"get sequence {sequence_id}"
     response = _make_request("GET", url, operation=operation)
-    result = _handle_response(response, operation=operation)
-    return result or {}
+    return _handle_response(response, operation=operation)
 
 
-def list_sequences(base_url: str, **params) -> Dict[str, Any]:
+def list_sequences(base_url: str, **params) -> Dict:
     """
     List sequences with pagination and filtering.
 
@@ -276,8 +274,7 @@ def list_sequences(base_url: str, **params) -> Dict[str, Any]:
     url = f"{base_url.rstrip('/')}/api/v1/sequences/"
     operation = "list sequences"
     response = _make_request("GET", url, operation=operation, params=params)
-    result = _handle_response(response, operation=operation)
-    return result or {}
+    return _handle_response(response, operation=operation)
 
 
 def delete_sequence(base_url: str, sequence_id: int) -> None:
@@ -303,7 +300,7 @@ def delete_sequence(base_url: str, sequence_id: int) -> None:
 
 def create_detection(
     base_url: str, detection_data: Dict, image_file: bytes, filename: str
-) -> Dict[str, Any]:
+) -> Dict:
     """
     Create a new detection with an image file.
 
@@ -335,11 +332,10 @@ def create_detection(
 
     operation = f"create detection with alert_api_id={detection_data.get('alert_api_id', 'unknown')}"
     response = _make_request("POST", url, operation=operation, data=data, files=files)
-    result = _handle_response(response, operation=operation)
-    return result or {}
+    return _handle_response(response, operation=operation)
 
 
-def get_detection(base_url: str, detection_id: int) -> Dict[str, Any]:
+def get_detection(base_url: str, detection_id: int) -> Dict:
     """
     Get a specific detection by ID.
 
@@ -357,11 +353,10 @@ def get_detection(base_url: str, detection_id: int) -> Dict[str, Any]:
     url = f"{base_url.rstrip('/')}/api/v1/detections/{detection_id}"
     operation = f"get detection {detection_id}"
     response = _make_request("GET", url, operation=operation)
-    result = _handle_response(response, operation=operation)
-    return result or {}
+    return _handle_response(response, operation=operation)
 
 
-def list_detections(base_url: str, **params) -> Dict[str, Any]:
+def list_detections(base_url: str, **params) -> Dict:
     """
     List detections with pagination and filtering.
 
@@ -388,8 +383,7 @@ def list_detections(base_url: str, **params) -> Dict[str, Any]:
     url = f"{base_url.rstrip('/')}/api/v1/detections/"
     operation = "list detections"
     response = _make_request("GET", url, operation=operation, params=params)
-    result = _handle_response(response, operation=operation)
-    return result or {}
+    return _handle_response(response, operation=operation)
 
 
 def get_detection_url(base_url: str, detection_id: int) -> str:
@@ -411,8 +405,7 @@ def get_detection_url(base_url: str, detection_id: int) -> str:
     operation = f"get detection {detection_id} URL"
     response = _make_request("GET", url, operation=operation)
     result = _handle_response(response, operation=operation)
-    data = result or {}
-    return data.get("url", "")
+    return result["url"]
 
 
 def delete_detection(base_url: str, detection_id: int) -> None:
@@ -438,7 +431,7 @@ def delete_detection(base_url: str, detection_id: int) -> None:
 
 def create_detection_annotation(
     base_url: str, detection_id: int, annotation: Dict, processing_stage: str
-) -> Dict[str, Any]:
+) -> Dict:
     """
     Create a new detection annotation.
 
@@ -466,11 +459,10 @@ def create_detection_annotation(
 
     operation = f"create annotation for detection {detection_id}"
     response = _make_request("POST", url, operation=operation, data=data)
-    result = _handle_response(response, operation=operation)
-    return result or {}
+    return _handle_response(response, operation=operation)
 
 
-def get_detection_annotation(base_url: str, annotation_id: int) -> Dict[str, Any]:
+def get_detection_annotation(base_url: str, annotation_id: int) -> Dict:
     """
     Get a specific detection annotation by ID.
 
@@ -486,11 +478,10 @@ def get_detection_annotation(base_url: str, annotation_id: int) -> Dict[str, Any
     """
     url = f"{base_url.rstrip('/')}/api/v1/annotations/detections/{annotation_id}"
     response = _make_request("GET", url)
-    result = _handle_response(response)
-    return result or {}
+    return _handle_response(response)
 
 
-def list_detection_annotations(base_url: str, **params) -> Dict[str, Any]:
+def list_detection_annotations(base_url: str, **params) -> Dict:
     """
     List detection annotations with pagination and filtering.
 
@@ -524,13 +515,12 @@ def list_detection_annotations(base_url: str, **params) -> Dict[str, Any]:
     url = f"{base_url.rstrip('/')}/api/v1/annotations/detections/"
     operation = "list detection annotations"
     response = _make_request("GET", url, operation=operation, params=params)
-    result = _handle_response(response, operation=operation)
-    return result or {}
+    return _handle_response(response, operation=operation)
 
 
 def update_detection_annotation(
     base_url: str, annotation_id: int, update_data: Dict
-) -> Dict[str, Any]:
+) -> Dict:
     """
     Update a detection annotation by ID.
 
@@ -547,8 +537,7 @@ def update_detection_annotation(
     """
     url = f"{base_url.rstrip('/')}/api/v1/annotations/detections/{annotation_id}"
     response = _make_request("PATCH", url, json=update_data)
-    result = _handle_response(response)
-    return result or {}
+    return _handle_response(response)
 
 
 def delete_detection_annotation(base_url: str, annotation_id: int) -> None:
@@ -569,7 +558,7 @@ def delete_detection_annotation(base_url: str, annotation_id: int) -> None:
 # -------------------- SEQUENCE ANNOTATION OPERATIONS --------------------
 
 
-def create_sequence_annotation(base_url: str, annotation_data: Dict) -> Dict[str, Any]:
+def create_sequence_annotation(base_url: str, annotation_data: Dict) -> Dict:
     """
     Create a new sequence annotation.
 
@@ -590,11 +579,10 @@ def create_sequence_annotation(base_url: str, annotation_data: Dict) -> Dict[str
     """
     url = f"{base_url.rstrip('/')}/api/v1/annotations/sequences/"
     response = _make_request("POST", url, json=annotation_data)
-    result = _handle_response(response)
-    return result or {}
+    return _handle_response(response)
 
 
-def get_sequence_annotation(base_url: str, annotation_id: int) -> Dict[str, Any]:
+def get_sequence_annotation(base_url: str, annotation_id: int) -> Dict:
     """
     Get a specific sequence annotation by ID.
 
@@ -610,11 +598,10 @@ def get_sequence_annotation(base_url: str, annotation_id: int) -> Dict[str, Any]
     """
     url = f"{base_url.rstrip('/')}/api/v1/annotations/sequences/{annotation_id}"
     response = _make_request("GET", url)
-    result = _handle_response(response)
-    return result or {}
+    return _handle_response(response)
 
 
-def list_sequence_annotations(base_url: str, **params) -> Dict[str, Any]:
+def list_sequence_annotations(base_url: str, **params) -> Dict:
     """
     List sequence annotations with pagination and filtering.
 
@@ -646,13 +633,12 @@ def list_sequence_annotations(base_url: str, **params) -> Dict[str, Any]:
     url = f"{base_url.rstrip('/')}/api/v1/annotations/sequences/"
     operation = "list sequence annotations"
     response = _make_request("GET", url, operation=operation, params=params)
-    result = _handle_response(response, operation=operation)
-    return result or {}
+    return _handle_response(response, operation=operation)
 
 
 def update_sequence_annotation(
     base_url: str, annotation_id: int, update_data: Dict
-) -> Dict[str, Any]:
+) -> Dict:
     """
     Update a sequence annotation by ID.
 
@@ -672,8 +658,7 @@ def update_sequence_annotation(
     """
     url = f"{base_url.rstrip('/')}/api/v1/annotations/sequences/{annotation_id}"
     response = _make_request("PATCH", url, json=update_data)
-    result = _handle_response(response)
-    return result or {}
+    return _handle_response(response)
 
 
 def delete_sequence_annotation(base_url: str, annotation_id: int) -> None:
@@ -691,7 +676,7 @@ def delete_sequence_annotation(base_url: str, annotation_id: int) -> None:
     _make_request("DELETE", url)
 
 
-def generate_sequence_annotation_gifs(base_url: str, annotation_id: int) -> Dict[str, Any]:
+def generate_sequence_annotation_gifs(base_url: str, annotation_id: int) -> Dict:
     """
     Generate GIFs for a sequence annotation.
 
@@ -719,5 +704,4 @@ def generate_sequence_annotation_gifs(base_url: str, annotation_id: int) -> Dict
     url = f"{base_url.rstrip('/')}/api/v1/annotations/sequences/{annotation_id}/generate-gifs"
     operation = f"generate GIFs for sequence annotation {annotation_id}"
     response = _make_request("POST", url, operation=operation)
-    result = _handle_response(response, operation=operation)
-    return result or {}
+    return _handle_response(response, operation=operation)

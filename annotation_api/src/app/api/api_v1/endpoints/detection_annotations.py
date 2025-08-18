@@ -154,10 +154,10 @@ async def list_annotations(
     # Apply joins based on filtering requirements
     if needs_sequence_join:
         # Join through Detection to Sequence for camera/organisation filtering
-        query = query.select_from(DetectionAnnotation).join(Detection).join(Sequence)
+        query = query.join(Detection).join(Sequence)
     elif needs_detection_join:
         # Join only with Detection for sequence_id filtering
-        query = query.select_from(DetectionAnnotation).join(Detection)
+        query = query.join(Detection)
 
     # Apply filtering conditions
     if sequence_id is not None:

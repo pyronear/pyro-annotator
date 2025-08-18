@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Optional, Dict, Any
+from typing import Optional
 
 from fastapi import (
     APIRouter,
@@ -164,7 +164,7 @@ async def validate_detection_ids(
     # Query database to find existing detection_ids
     detection_ids_list = list(detection_ids)
     query = select(Detection.id).where(Detection.id.in_(detection_ids_list))
-    result = await session.execute(query)
+    result = await session.exec(query)
     existing_ids = set(
         row[0] for row in result.all()
     )  # Extract first element from tuples
@@ -285,7 +285,7 @@ async def list_sequence_annotations(
 
     # Apply join if needed for ordering by sequence recorded_at
     if needs_sequence_join:
-        query = query.select_from(SequenceAnnotation).join(Sequence)
+        query = query.join(Sequence)
 
     # Apply filtering conditions
     if sequence_id is not None:
@@ -344,7 +344,7 @@ async def update_sequence_annotation(
     existing = await annotations.get(annotation_id, strict=True)
 
     # Start with existing data
-    update_dict: Dict[str, Any] = {"updated_at": datetime.utcnow()}
+    update_dict = {"updated_at": datetime.utcnow()}
 
     # If annotation is being updated, validate and derive new values
     if payload.annotation is not None:
