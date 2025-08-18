@@ -1,7 +1,7 @@
-import { useState } from 'react';
 import { clsx } from 'clsx';
 import { ExtendedSequenceFilters } from '@/types/api';
 import { ModelAccuracyType } from '@/utils/modelAccuracy';
+import { usePersistedTabState } from '@/hooks/usePersistedTabState';
 import ModelAccuracyFilter from './ModelAccuracyFilter';
 import FalsePositiveFilter from './FalsePositiveFilter';
 
@@ -74,7 +74,7 @@ export default function TabbedFilters({
   simpleTabLabel = 'Simple',
   advancedTabLabel = 'Advanced',
 }: TabbedFiltersProps) {
-  const [activeTab, setActiveTab] = useState<'simple' | 'advanced'>(defaultTab);
+  const [activeTab, setActiveTab] = usePersistedTabState('tabbed-filters-active-tab', defaultTab);
 
   // Count active filters for each tab
   const countActiveSimpleFilters = () => {
@@ -99,36 +99,9 @@ export default function TabbedFilters({
     return count;
   };
 
-  // Handle tab switch with migration logic
+  // Handle tab switch - simplified without filter reset
   const handleTabSwitch = (newTab: 'simple' | 'advanced') => {
     if (newTab === activeTab) return;
-    
-    // Preserve shared filter values
-    const sharedFilters = {
-      camera_name: filters.camera_name,
-      organisation_name: filters.organisation_name,
-    };
-    
-    if (newTab === 'simple') {
-      // Reset advanced-only filters when switching to simple
-      onFiltersChange({
-        ...sharedFilters,
-        source_api: undefined,
-        is_wildfire_alertapi: undefined,
-        recorded_at_gte: undefined,
-        recorded_at_lte: undefined,
-      });
-      
-      // Reset advanced-only states
-      onDateFromChange('');
-      onDateToChange('');
-      onFalsePositiveTypesChange([]);
-    } else {
-      // When switching to advanced, keep all current values
-      onFiltersChange(sharedFilters);
-    }
-    
-    // Model accuracy is preserved in both directions (when available)
     setActiveTab(newTab);
   };
 

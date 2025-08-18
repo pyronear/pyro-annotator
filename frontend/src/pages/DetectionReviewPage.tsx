@@ -1,9 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '@/services/api';
 import { ExtendedSequenceFilters, SequenceWithDetectionProgress } from '@/types/api';
-import { QUERY_KEYS, PAGINATION_DEFAULTS } from '@/utils/constants';
+import { QUERY_KEYS } from '@/utils/constants';
 import {
   analyzeSequenceAccuracy,
   getRowBackgroundClasses,
@@ -15,31 +15,39 @@ import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
 import TabbedFilters from '@/components/filters/TabbedFilters';
 import { useCameras } from '@/hooks/useCameras';
 import { useOrganizations } from '@/hooks/useOrganizations';
+import { usePersistedFilters, createDefaultFilterState } from '@/hooks/usePersistedFilters';
 
 export default function DetectionReviewPage() {
   const navigate = useNavigate();
 
-  const [filters, setFilters] = useState<ExtendedSequenceFilters>({
-    page: PAGINATION_DEFAULTS.PAGE,
-    size: PAGINATION_DEFAULTS.SIZE,
-    detection_annotation_completion: 'complete',
-    include_detection_stats: true,
-    processing_stage: 'annotated', // Only show sequences that have completed sequence-level annotation
-  });
+  // Create default state specific to detection review page
+  const defaultState = {
+    ...createDefaultFilterState('annotated'),
+    filters: {
+      ...createDefaultFilterState('annotated').filters,
+      detection_annotation_completion: 'complete' as const,
+      include_detection_stats: true,
+      processing_stage: 'annotated' as const, // Only show sequences that have completed sequence-level annotation
+    },
+  };
+
+  // Use persisted filters hook
+  const {
+    filters,
+    dateFrom,
+    dateTo,
+    selectedFalsePositiveTypes,
+    selectedModelAccuracy,
+    setFilters,
+    setDateFrom,
+    setDateTo,
+    setSelectedFalsePositiveTypes,
+    setSelectedModelAccuracy,
+  } = usePersistedFilters('filters-detections-review', defaultState);
 
   // Fetch cameras and organizations for dropdown options
   const { data: cameras = [], isLoading: camerasLoading } = useCameras();
   const { data: organizations = [], isLoading: organizationsLoading } = useOrganizations();
-
-  // Date range state
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-
-  // False positive filter state
-  const [selectedFalsePositiveTypes, setSelectedFalsePositiveTypes] = useState<string[]>([]);
-
-  // Model accuracy filter state
-  const [selectedModelAccuracy, setSelectedModelAccuracy] = useState<ModelAccuracyType | 'all'>('all');
 
   // Date range helper functions
   const setDateRange = (preset: string) => {
@@ -149,7 +157,7 @@ export default function DetectionReviewPage() {
   }, [sequences, annotationMap, selectedModelAccuracy]);
 
   const handleFilterChange = (newFilters: Partial<ExtendedSequenceFilters>) => {
-    setFilters(prev => ({ ...prev, ...newFilters, page: 1 }));
+    setFilters({ ...filters, ...newFilters, page: 1 });
   };
 
   const handleFalsePositiveFilterChange = (selectedTypes: string[]) => {
@@ -160,7 +168,7 @@ export default function DetectionReviewPage() {
   };
 
   const handlePageChange = (page: number) => {
-    setFilters(prev => ({ ...prev, page }));
+    setFilters({ ...filters, page });
   };
 
   const handleSequenceClick = (clickedSequence: SequenceWithDetectionProgress) => {

@@ -1,9 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '@/services/api';
 import { ExtendedSequenceFilters, ProcessingStageStatus } from '@/types/api';
-import { QUERY_KEYS, PAGINATION_DEFAULTS } from '@/utils/constants';
+import { QUERY_KEYS } from '@/utils/constants';
 import { getProcessingStageLabel, getProcessingStageColorClass } from '@/utils/processingStage';
 import {
   analyzeSequenceAccuracy,
@@ -17,6 +17,7 @@ import TabbedFilters from '@/components/filters/TabbedFilters';
 import { useSequenceStore } from '@/store/useSequenceStore';
 import { useCameras } from '@/hooks/useCameras';
 import { useOrganizations } from '@/hooks/useOrganizations';
+import { usePersistedFilters, createDefaultFilterState } from '@/hooks/usePersistedFilters';
 
 interface SequencesPageProps {
   defaultProcessingStage?: ProcessingStageStatus;
@@ -27,25 +28,31 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
   const navigate = useNavigate();
   const { startAnnotationWorkflow } = useSequenceStore();
 
-  const [filters, setFilters] = useState<ExtendedSequenceFilters>({
-    page: PAGINATION_DEFAULTS.PAGE,
-    size: PAGINATION_DEFAULTS.SIZE,
-    processing_stage: defaultProcessingStage,
-  });
+  // Determine storage key based on processing stage to separate annotate vs review filters
+  const storageKey = defaultProcessingStage === 'annotated' 
+    ? 'filters-sequences-review' 
+    : 'filters-sequences-annotate';
+
+  // Use persisted filters hook
+  const {
+    filters,
+    dateFrom,
+    dateTo,
+    selectedFalsePositiveTypes,
+    selectedModelAccuracy,
+    setFilters,
+    setDateFrom,
+    setDateTo,
+    setSelectedFalsePositiveTypes,
+    setSelectedModelAccuracy,
+  } = usePersistedFilters(
+    storageKey,
+    createDefaultFilterState(defaultProcessingStage)
+  );
 
   // Fetch cameras and organizations for dropdown options
   const { data: cameras = [], isLoading: camerasLoading } = useCameras();
   const { data: organizations = [], isLoading: organizationsLoading } = useOrganizations();
-
-  // Date range state
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-
-  // False positive filter state
-  const [selectedFalsePositiveTypes, setSelectedFalsePositiveTypes] = useState<string[]>([]);
-
-  // Model accuracy filter state (only for review page)
-  const [selectedModelAccuracy, setSelectedModelAccuracy] = useState<ModelAccuracyType | 'all'>('all');
 
   // Date range helper functions
   const setDateRange = (preset: string) => {
@@ -128,7 +135,7 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
   }, [sequences, selectedModelAccuracy, defaultProcessingStage]);
 
   const handleFilterChange = (newFilters: Partial<ExtendedSequenceFilters>) => {
-    setFilters(prev => ({ ...prev, ...newFilters, page: 1 }));
+    setFilters({ ...filters, ...newFilters, page: 1 });
   };
 
   const handleFalsePositiveFilterChange = (selectedTypes: string[]) => {
@@ -139,7 +146,7 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
   };
 
   const handlePageChange = (page: number) => {
-    setFilters(prev => ({ ...prev, page }));
+    setFilters({ ...filters, page });
   };
 
 
