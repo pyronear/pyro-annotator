@@ -7,6 +7,8 @@ import { QUERY_KEYS, FALSE_POSITIVE_TYPES } from '@/utils/constants';
 import { SequenceAnnotation, SequenceBbox, FalsePositiveType } from '@/types/api';
 import { useGifUrls } from '@/hooks/useGifUrls';
 import SequenceReviewer from '@/components/sequence/SequenceReviewer';
+import CroppedImageSequence from '@/components/annotation/CroppedImageSequence';
+import FullImageSequence from '@/components/annotation/FullImageSequence';
 import { useSequenceStore } from '@/store/useSequenceStore';
 
 // Helper functions for annotation state management
@@ -85,6 +87,7 @@ export default function AnnotationInterface() {
   const [toastMessage, setToastMessage] = useState('');
   const [toastType, setToastType] = useState<'success' | 'error' | 'info'>('success');
 
+
   // Fetch sequence annotation by sequence ID
   const { data: annotationResponse, isLoading, error } = useQuery({
     queryKey: [...QUERY_KEYS.SEQUENCE_ANNOTATIONS, 'by-sequence', sequenceId],
@@ -131,6 +134,7 @@ export default function AnnotationInterface() {
       }
     }
   }, [annotation]);
+
 
   // Clean up detection refs when bboxes change
   useEffect(() => {
@@ -919,37 +923,19 @@ export default function AnnotationInterface() {
                   </div>
                 ) : gifData ? (
                   <>
-                    {/* Main GIF */}
-                    {gifData.main_url && (
+                    {/* Full Image Sequence */}
+                    {bbox.bboxes && bbox.bboxes.length > 0 && (
                       <div className="text-center">
                         <h5 className="text-sm font-medium text-gray-700 mb-3">Full Sequence</h5>
-                        <img
-                          src={gifData.main_url}
-                          alt={`Main GIF for detection ${index + 1}`}
-                          className="border border-gray-300 rounded shadow-sm mx-auto"
-                          style={{ 
-                            width: '1280px',
-                            maxWidth: '100%', 
-                            height: 'auto' 
-                          }}
-                        />
+                        <FullImageSequence bboxes={bbox.bboxes} />
                       </div>
                     )}
                     
-                    {/* Crop GIF */}
-                    {gifData.crop_url && (
-                      <div className="text-center">
+                    {/* Cropped Image Sequence */}
+                    {bbox.bboxes && bbox.bboxes.length > 0 && (
+                      <div className="text-center mt-6">
                         <h5 className="text-sm font-medium text-gray-700 mb-3">Cropped View</h5>
-                        <img
-                          src={gifData.crop_url}
-                          alt={`Crop GIF for detection ${index + 1}`}
-                          className="border border-gray-300 rounded shadow-sm mx-auto"
-                          style={{ 
-                            width: '900px',
-                            maxWidth: '100%', 
-                            height: 'auto' 
-                          }}
-                        />
+                        <CroppedImageSequence bboxes={bbox.bboxes} />
                       </div>
                     )}
                   </>
