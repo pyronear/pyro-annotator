@@ -1,6 +1,7 @@
 # Copyright (C) 2025, Pyronear.
 
 import json
+import logging
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import Optional
@@ -40,6 +41,7 @@ from app.schemas.sequence_annotations import (
 )
 
 router = APIRouter()
+logger = logging.getLogger("uvicorn.error")
 
 
 class SequenceAnnotationOrderByField(str, Enum):
@@ -173,6 +175,12 @@ async def validate_detection_ids(
     if missing_ids:
         # Sort for consistent error messages
         missing_ids_sorted = sorted(list(missing_ids))
+        logger.error(
+            f"Sequence annotation validation failed - missing detection IDs\n"
+            f"Requested detection IDs: {sorted(list(detection_ids))}\n"
+            f"Existing detection IDs: {sorted(list(existing_ids))}\n"
+            f"Missing detection IDs: {missing_ids_sorted}"
+        )
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Detection IDs {missing_ids_sorted} do not exist in the database",
@@ -476,6 +484,12 @@ async def get_sequence_annotation_gif_urls(
 
         # Check if annotation field exists and is not None
         if not hasattr(annotation, "annotation") or annotation.annotation is None:
+            logger.error(
+                f"GIF URL generation failed - missing annotation data\n"
+                f"Annotation ID: {annotation_id}\n"
+                f"Sequence ID: {annotation.sequence_id if annotation else 'N/A'}\n"
+                f"Has annotation field: {hasattr(annotation, 'annotation') if annotation else False}"
+            )
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="Annotation data is missing or None",

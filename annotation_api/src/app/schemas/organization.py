@@ -4,7 +4,6 @@
 # See LICENSE or go to <https://www.apache.org/licenses/LICENSE-2.0> for full license details.
 
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel
 

@@ -3,6 +3,7 @@
 # This program is licensed under the Apache License 2.0.
 # See LICENSE or go to <https://www.apache.org/licenses/LICENSE-2.0> for full license details.
 
+import logging
 from typing import Any, Generic, List, Optional, Tuple, Type, TypeVar, Union, cast
 
 import asyncpg
@@ -15,6 +16,8 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 ModelType = TypeVar("ModelType", bound=SQLModel)
 CreateSchemaType = TypeVar("CreateSchemaType", bound=BaseModel)
 UpdateSchemaType = TypeVar("UpdateSchemaType", bound=BaseModel)
+
+logger = logging.getLogger("uvicorn.error")
 
 __all__ = ["BaseCRUD"]
 
@@ -39,12 +42,22 @@ class BaseCRUD(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
 
     async def create(self, payload: CreateSchemaType) -> ModelType:
         entry = self.model(**payload.model_dump())
+        resource_name = self._get_resource_name()
+
         try:
             self.session.add(entry)
             await self.session.commit()
         except exc.IntegrityError as error:
             await self.session.rollback()
-            # Handle integrity constraint violations
+            # Log detailed error information
+            logger.error(
+                f"Database integrity error creating {resource_name}\n"
+                f"Model: {self.model.__name__}\n"
+                f"Payload: {payload.model_dump()}\n"
+                f"Error type: {type(error.orig).__name__}\n"
+                f"Error message: {error.orig}\n"
+                f"SQL statement: {error.statement if hasattr(error, 'statement') else 'N/A'}"
+            )
 
             # Check if this is an enum validation error
             if isinstance(error.orig, asyncpg.InvalidTextRepresentationError):
@@ -59,10 +72,18 @@ class BaseCRUD(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Resource already exists",
             )
-        except exc.DataError:
+        except exc.DataError as error:
             await self.session.rollback()
-            # Handle data type validation errors
-            # Handle data type validation errors
+            # Log detailed error information
+            logger.error(
+                f"Database data error creating {resource_name}\n"
+                f"Model: {self.model.__name__}\n"
+                f"Payload: {payload.model_dump()}\n"
+                f"Error type: {type(error.orig).__name__ if error.orig else 'DataError'}\n"
+                f"Error message: {error.orig if error.orig else error}\n"
+                f"SQL statement: {error.statement if hasattr(error, 'statement') else 'N/A'}"
+            )
+
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="Invalid data format provided",
@@ -137,14 +158,50 @@ class BaseCRUD(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
     async def update(self, entry_id: int, payload: UpdateSchemaType) -> ModelType:
         access = cast(ModelType, await self.get(entry_id, strict=True))
         values = payload.model_dump(exclude_unset=True)
+        resource_name = self._get_resource_name()
 
         for k, v in values.items():
             setattr(access, k, v)
 
-        self.session.add(access)
-        await self.session.commit()
-        await self.session.refresh(access)
+        try:
+            self.session.add(access)
+            await self.session.commit()
+        except exc.IntegrityError as error:
+            await self.session.rollback()
+            logger.error(
+                f"Database integrity error updating {resource_name} id={entry_id}\n"
+                f"Model: {self.model.__name__}\n"
+                f"Update values: {values}\n"
+                f"Error type: {type(error.orig).__name__}\n"
+                f"Error message: {error.orig}"
+            )
 
+            if isinstance(error.orig, asyncpg.InvalidTextRepresentationError):
+                error_msg = str(error.orig)
+                if "invalid input value for enum" in error_msg:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail="Invalid field value provided",
+                    )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Update violates database constraints",
+            )
+        except exc.DataError as error:
+            await self.session.rollback()
+            logger.error(
+                f"Database data error updating {resource_name} id={entry_id}\n"
+                f"Model: {self.model.__name__}\n"
+                f"Update values: {values}\n"
+                f"Error type: {type(error.orig).__name__ if error.orig else 'DataError'}\n"
+                f"Error message: {error.orig if error.orig else error}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Invalid data format provided",
+            )
+
+        await self.session.refresh(access)
         return access
 
     async def delete(self, entry_id: int) -> None:

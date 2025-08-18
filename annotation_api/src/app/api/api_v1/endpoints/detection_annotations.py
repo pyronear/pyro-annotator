@@ -1,6 +1,7 @@
 # Copyright (C) 2025, Pyronear.
 
 import json
+import logging
 from datetime import datetime
 from enum import Enum
 from typing import Optional
@@ -28,6 +29,7 @@ from app.schemas.detection_annotations import (
 from app.schemas.annotation_validation import DetectionAnnotationData
 
 router = APIRouter()
+logger = logging.getLogger("uvicorn.error")
 
 
 class DetectionAnnotationOrderByField(str, Enum):
@@ -60,6 +62,12 @@ async def create_detection_annotation(
     try:
         validated_annotation = DetectionAnnotationData(**parsed_annotation)
     except ValidationError as e:
+        logger.error(
+            f"Detection annotation validation failed for detection_id={detection_id}\n"
+            f"Processing stage: {processing_stage}\n"
+            f"Annotation data: {parsed_annotation}\n"
+            f"Validation errors: {e.errors()}"
+        )
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Invalid annotation format: {e.errors()}",

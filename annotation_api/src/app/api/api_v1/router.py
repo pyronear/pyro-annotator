@@ -14,7 +14,7 @@ from app.api.api_v1.endpoints import (
     sequences,
 )
 
-api_router = APIRouter(redirect_slashes=True)
+api_router = APIRouter()
 
 api_router.include_router(detections.router, prefix="/detections", tags=["detections"])
 api_router.include_router(

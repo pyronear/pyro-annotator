@@ -56,17 +56,15 @@ import logging
 import os
 import sys
 from datetime import date, datetime
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 
 from tqdm import tqdm
 
 # Import platform fetching functionality
 from . import client as platform_client
 from . import shared
-from . import utils as platform_utils
 from .fetch_platform_sequences import (
     valid_date,
-    validate_parsed_args,
     fetch_all_sequences_within,
 )
 
@@ -84,12 +82,8 @@ from ...annotation_generation.generate_sequence_gifs import (
 
 # Import API client and models
 from app.clients.annotation_api import (
-    ValidationError,
-    NotFoundError,
-    ServerError,
     list_sequences,
     list_sequence_annotations,
-    update_sequence_annotation,
 )
 from app.models import SequenceAnnotationProcessingStage
 
