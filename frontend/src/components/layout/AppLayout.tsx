@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Menu, X, BarChart3, Activity, ChevronRight, ChevronDown, Layers, Target } from 'lucide-react';
+import { Menu, X, BarChart3, ChevronRight, ChevronDown, Layers, Target } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useAnnotationCounts } from '@/hooks/useAnnotationCounts';
 import NotificationBadge from '@/components/ui/NotificationBadge';
@@ -174,10 +174,8 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
       <div className="flex-1 flex flex-col pt-5 pb-4 overflow-y-auto">
         <div className="flex items-center flex-shrink-0 px-4">
           <div className="flex items-center">
-            <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
-              <Activity className="w-5 h-5 text-white" />
-            </div>
-            <h1 className="ml-3 text-xl font-bold text-gray-900">
+            <img src="/logo.png" alt="PyroAnnotator Logo" className="w-8 h-8" />
+            <h1 className="ml-2 text-xl font-bold text-gray-900">
               PyroAnnotator
             </h1>
           </div>
