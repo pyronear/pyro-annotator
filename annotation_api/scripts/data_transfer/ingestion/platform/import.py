@@ -1,10 +1,9 @@
 """
 CLI script for end-to-end platform data import and processing.
 
-This script combines the functionality of three separate scripts into a streamlined workflow:
+This script combines platform data fetching and annotation generation into a streamlined workflow:
 1. Fetch sequences and detections from the Pyronear platform API
-2. For each sequence: generate annotations from AI predictions
-3. For each sequence: generate GIFs and update processing stage
+2. For each sequence: generate annotations from AI predictions and set ready for annotation
 
 Usage:
   # Basic usage - full pipeline for date range
@@ -31,7 +30,6 @@ Arguments:
   --min-cluster-size (int): Min boxes per cluster (default: 1)
   --dry-run: Preview actions without execution
   --skip-platform-fetch: Skip step 1 (use existing sequences in annotation API)
-  --max-concurrent-gifs (int): Concurrent GIF generations per sequence (default: 3)
   --loglevel (str): Logging level (debug/info/warning/error, default: info)
 
 Environment variables required:
@@ -75,15 +73,10 @@ from ...annotation_generation.generate_sequence_annotations import (
 )
 from ...annotation_generation.sequence_analyzer import SequenceAnalyzer
 
-# Import GIF generation functionality
-from ...annotation_generation.generate_sequence_gifs import (
-    generate_gifs_for_annotation,
-)
 
 # Import API client and models
 from app.clients.annotation_api import (
     list_sequences,
-    list_sequence_annotations,
 )
 from app.models import SequenceAnnotationProcessingStage
 
@@ -172,12 +165,6 @@ def make_cli_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Skip platform data fetching (use existing sequences in annotation API)",
     )
-    parser.add_argument(
-        "--max-concurrent-gifs",
-        help="Maximum concurrent GIF generations per sequence",
-        type=int,
-        default=3,
-    )
 
     # Logging
     parser.add_argument(
@@ -218,14 +205,6 @@ def validate_args(args: argparse.Namespace) -> bool:
         logging.error("--min-cluster-size must be at least 1")
         return False
 
-    if args.max_concurrent_gifs < 1:
-        logging.error("--max-concurrent-gifs must be at least 1")
-        return False
-
-    if args.max_concurrent_gifs > 10:
-        logging.warning(
-            f"--max-concurrent-gifs={args.max_concurrent_gifs} may overwhelm S3/OpenCV resources. Consider using <= 10"
-        )
 
     return True
 
@@ -308,17 +287,15 @@ def process_single_sequence(
     analyzer: SequenceAnalyzer,
     annotation_api_url: str,
     dry_run: bool = False,
-    max_concurrent_gifs: int = 3,
 ) -> Dict[str, Any]:
     """
-    Process a single sequence: generate annotation and GIFs.
+    Process a single sequence: generate annotation and set ready for annotation stage.
 
     Args:
         sequence_id: Sequence ID to process
         analyzer: SequenceAnalyzer instance
         annotation_api_url: Annotation API base URL
-        dry_run: If True, don't actually create annotations/GIFs
-        max_concurrent_gifs: Max concurrent GIF generations
+        dry_run: If True, don't actually create annotations
 
     Returns:
         Dictionary with processing results
@@ -327,8 +304,6 @@ def process_single_sequence(
         "sequence_id": sequence_id,
         "annotation_created": False,
         "annotation_id": None,
-        "gifs_generated": False,
-        "gif_count": 0,
         "errors": [],
         "final_stage": None,
     }
@@ -358,97 +333,23 @@ def process_single_sequence(
             annotation_data,
             dry_run,
             existing_annotation_id,
+            SequenceAnnotationProcessingStage.READY_TO_ANNOTATE,
         ):
             result["annotation_created"] = True
             result["annotation_id"] = (
                 existing_annotation_id if existing_annotation_id else "new"
             )
-            result["final_stage"] = SequenceAnnotationProcessingStage.IMPORTED.value
+            result["final_stage"] = SequenceAnnotationProcessingStage.READY_TO_ANNOTATE.value
             logging.info(
-                f"Successfully created/updated annotation for sequence {sequence_id}"
+                f"Successfully created/updated annotation for sequence {sequence_id} - ready for annotation"
             )
+            return result
         else:
             error_msg = f"Failed to create annotation for sequence {sequence_id}"
             logging.error(error_msg)
             result["errors"].append(error_msg)
             return result
 
-        if dry_run:
-            logging.info(f"DRY RUN: Would generate GIFs for sequence {sequence_id}")
-            result["gifs_generated"] = True
-            result["final_stage"] = (
-                SequenceAnnotationProcessingStage.READY_TO_ANNOTATE.value
-            )
-            return result
-
-        # Step 2: Generate GIFs
-        # First, get the annotation ID if we don't have it
-        if result["annotation_id"] == "new":
-            # Refetch to get the actual annotation ID
-            actual_annotation_id = check_existing_annotation(
-                annotation_api_url, sequence_id
-            )
-            if actual_annotation_id:
-                result["annotation_id"] = actual_annotation_id
-            else:
-                error_msg = f"Could not find annotation ID for sequence {sequence_id} after creation"
-                logging.error(error_msg)
-                result["errors"].append(error_msg)
-                return result
-
-        # Get the annotation object for GIF generation
-        try:
-            annotations_response = list_sequence_annotations(
-                annotation_api_url, sequence_id=sequence_id, page=1, size=1
-            )
-
-            # Handle paginated response
-            if (
-                isinstance(annotations_response, dict)
-                and "items" in annotations_response
-            ):
-                annotations = annotations_response["items"]
-            else:
-                annotations = annotations_response
-
-            if not annotations:
-                error_msg = f"No annotations found for sequence {sequence_id}"
-                logging.error(error_msg)
-                result["errors"].append(error_msg)
-                return result
-
-            annotation_obj = annotations[0]
-
-        except Exception as e:
-            error_msg = f"Error fetching annotation for sequence {sequence_id}: {e}"
-            logging.error(error_msg)
-            result["errors"].append(error_msg)
-            return result
-
-        # Generate GIFs
-        logging.debug(f"Generating GIFs for sequence {sequence_id}")
-        gif_result = generate_gifs_for_annotation(
-            annotation_api_url,
-            annotation_obj,
-            dry_run=False,  # We handle dry_run above
-            update_stage=True,  # Always update stage to ready_to_annotate
-        )
-
-        if gif_result["success"]:
-            result["gifs_generated"] = True
-            result["gif_count"] = gif_result["gif_count"]
-            result["final_stage"] = (
-                SequenceAnnotationProcessingStage.READY_TO_ANNOTATE.value
-            )
-            logging.info(
-                f"Successfully generated {gif_result['gif_count']} GIFs for sequence {sequence_id}"
-            )
-        else:
-            error_msg = f"Failed to generate GIFs for sequence {sequence_id}: {gif_result.get('message', 'Unknown error')}"
-            logging.error(error_msg)
-            result["errors"].append(error_msg)
-
-        return result
 
     except Exception as e:
         error_msg = f"Unexpected error processing sequence {sequence_id}: {e}"
@@ -486,8 +387,6 @@ def main():
         "successful_sequences": 0,
         "failed_sequences": 0,
         "annotations_created": 0,
-        "gifs_generated": 0,
-        "total_gifs": 0,
     }
 
     try:
@@ -607,7 +506,6 @@ def main():
                 analyzer=analyzer,
                 annotation_api_url=args.url_api_annotation,
                 dry_run=args.dry_run,
-                max_concurrent_gifs=args.max_concurrent_gifs,
             )
 
             # Update statistics
@@ -621,15 +519,10 @@ def main():
             if result["annotation_created"]:
                 stats["annotations_created"] += 1
 
-            if result["gifs_generated"]:
-                stats["gifs_generated"] += 1
-                stats["total_gifs"] += result["gif_count"]
-
             # Log progress
             logger.debug(
                 f"Sequence {sequence_id}: "
                 f"annotation={'✓' if result['annotation_created'] else '✗'}, "
-                f"gifs={'✓' if result['gifs_generated'] else '✗'} ({result['gif_count']}), "
                 f"stage={result['final_stage'] or 'failed'}"
             )
 
@@ -640,8 +533,6 @@ def main():
         logger.info(f"  Successful sequences: {stats['successful_sequences']}")
         logger.info(f"  Failed sequences: {stats['failed_sequences']}")
         logger.info(f"  Annotations created: {stats['annotations_created']}")
-        logger.info(f"  Sequences with GIFs: {stats['gifs_generated']}")
-        logger.info(f"  Total GIFs generated: {stats['total_gifs']}")
 
         if args.dry_run:
             logger.info("DRY RUN: No actual changes were made")

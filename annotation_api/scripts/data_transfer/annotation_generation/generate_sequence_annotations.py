@@ -379,6 +379,7 @@ def create_annotation_from_data(
     annotation_data,
     dry_run: bool = False,
     existing_annotation_id: Optional[int] = None,
+    processing_stage: SequenceAnnotationProcessingStage = SequenceAnnotationProcessingStage.READY_TO_ANNOTATE,
 ) -> bool:
     """
     Create or update a sequence annotation from analyzed data.
@@ -389,6 +390,7 @@ def create_annotation_from_data(
         annotation_data: SequenceAnnotationData object
         dry_run: If True, don't actually create/update the annotation
         existing_annotation_id: If provided, update existing annotation via PATCH instead of creating new one
+        processing_stage: Processing stage to set for the annotation
 
     Returns:
         True if successful, False otherwise
@@ -398,7 +400,7 @@ def create_annotation_from_data(
             # Update existing annotation (PATCH)
             update_dict = {
                 "annotation": annotation_data.model_dump(),
-                "processing_stage": SequenceAnnotationProcessingStage.IMPORTED.value,
+                "processing_stage": processing_stage.value,
                 "has_missed_smoke": False,  # Default to False, can be updated during human review
             }
 
@@ -423,7 +425,7 @@ def create_annotation_from_data(
             annotation_dict = {
                 "sequence_id": sequence_id,
                 "annotation": annotation_data.model_dump(),
-                "processing_stage": SequenceAnnotationProcessingStage.IMPORTED.value,
+                "processing_stage": processing_stage.value,
                 "has_smoke": any(
                     seq_bbox.is_smoke for seq_bbox in annotation_data.sequences_bbox
                 ),
