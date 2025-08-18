@@ -1710,7 +1710,7 @@ export default function DetectionSequenceAnnotatePage() {
     queryFn: () => apiClient.getSequences({
       detection_annotation_completion: 'incomplete',
       include_detection_stats: true,
-      size: 1000, // Get enough sequences for navigation
+      size: 100, // API maximum page size limit
     }),
   });
 
