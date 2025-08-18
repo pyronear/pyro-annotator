@@ -3,7 +3,7 @@ CLI script to generate sequence annotations from AI predictions.
 
 This script analyzes sequences and their detections to automatically generate
 sequence annotations by clustering overlapping bounding boxes across temporal frames.
-The generated annotations are marked as 'imported' for further processing (e.g., GIF generation).
+The generated annotations are marked with the specified processing stage (default: ready_to_annotate).
 
 Usage:
   # Generate annotation for a single sequence

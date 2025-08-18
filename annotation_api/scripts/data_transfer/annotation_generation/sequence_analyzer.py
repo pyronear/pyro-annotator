@@ -299,8 +299,8 @@ class SequenceAnalyzer:
             # are considered potential smoke until manually reviewed
             sequence_bbox = SequenceBBox(
                 is_smoke=True,  # Default to true, requires human review
-                gif_url_main=None,  # Skip GIF generation for now
-                gif_url_crop=None,  # Skip GIF generation for now
+                gif_key_main=None,  # No GIF generation - frontend uses image sequences
+                gif_key_crop=None,  # No GIF generation - frontend uses image sequences
                 false_positive_types=[],  # Empty initially, filled during human review
                 bboxes=bboxes,
             )
