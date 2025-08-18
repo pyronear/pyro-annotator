@@ -960,7 +960,6 @@ function ImageModal({
     const validPredictions = detection.algo_predictions.predictions.filter(pred => {
       const [x1, y1, x2, y2] = pred.xyxyn;
       return (
-        pred.confidence >= 0.3 && // Minimum confidence threshold
         x1 >= 0 && x1 <= 1 && // Valid normalized coordinates
         y1 >= 0 && y1 <= 1 &&
         x2 >= 0 && x2 <= 1 &&
@@ -983,11 +982,10 @@ function ImageModal({
   const importAIPredictions = () => {
     if (!detection?.algo_predictions?.predictions) return;
     
-    // Filter valid predictions with reasonable confidence threshold
+    // Filter predictions with valid bounding box coordinates
     const validPredictions = detection.algo_predictions.predictions.filter(pred => {
       const [x1, y1, x2, y2] = pred.xyxyn;
       return (
-        pred.confidence >= 0.3 && // Minimum confidence threshold
         x1 >= 0 && x1 <= 1 && // Valid normalized coordinates
         y1 >= 0 && y1 <= 1 &&
         x2 >= 0 && x2 <= 1 &&
