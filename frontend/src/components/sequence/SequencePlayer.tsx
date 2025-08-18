@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { AlertCircle, Eye, Loader2, Info, Play, Pause, SkipBack, SkipForward, RotateCcw } from 'lucide-react';
+import { AlertCircle, Eye, Loader2, Info, Play, Pause, SkipBack, SkipForward, RotateCcw, Clock, CheckCircle } from 'lucide-react';
 import { Detection, AlgoPrediction } from '@/types/api';
 import { useImagePreloader } from '@/hooks/useImagePreloader';
 import MissedSmokeInstructionsModal from './MissedSmokeInstructionsModal';
@@ -256,8 +256,23 @@ export default function SequencePlayer({
   const showLoadingState = !currentImage?.loaded;
   const hasError = currentImage?.error;
   
+  const isCompleted = missedSmokeReview !== null;
+
   return (
-    <div className={`bg-white border border-gray-200 rounded-lg overflow-hidden ${className}`}>
+    <div className={`relative rounded-lg overflow-hidden transition-all duration-200 ${
+      isCompleted
+        ? 'border-4 border-green-500 bg-green-50 hover:border-green-600 hover:bg-green-100'
+        : 'border-4 border-orange-400 bg-orange-50 hover:border-orange-500 hover:bg-orange-100 animate-pulse-subtle'
+    } ${className}`}>
+      {/* Status Badge Overlay */}
+      <div className={`absolute top-3 right-3 px-2 py-1 rounded-full text-xs font-semibold backdrop-blur-sm z-30 ${
+        isCompleted 
+          ? 'bg-green-600/90 text-white' 
+          : 'bg-orange-500/90 text-white'
+      }`}>
+        {isCompleted ? 'Reviewed' : 'Pending'}
+      </div>
+
       {/* Preload Progress Bar (only visible during initial load) */}
       {isInitialLoading && preloadProgress.percentage < 100 && (
         <div className="bg-gray-50 px-4 py-2 border-b border-gray-200">
@@ -494,6 +509,32 @@ export default function SequencePlayer({
                 <RotateCcw className="w-4 h-4" />
               </button>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Enhanced Status Bar */}
+      <div className={`px-3 py-2 ${
+        isCompleted 
+          ? 'bg-green-100 border-t border-green-300' 
+          : 'bg-orange-100 border-t border-orange-300'
+      }`}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            {isCompleted ? (
+              <>
+                <CheckCircle className="w-5 h-5 text-green-600" />
+                <span className="text-sm font-medium text-green-700">Completed</span>
+              </>
+            ) : (
+              <>
+                <Clock className="w-5 h-5 text-orange-600 animate-pulse" />
+                <span className="text-sm font-medium text-orange-700">Needs Review</span>
+              </>
+            )}
+          </div>
+          <div className="text-xs text-gray-600">
+            Missed smoke review: {isCompleted ? 'Complete' : 'Pending'}
           </div>
         </div>
       </div>

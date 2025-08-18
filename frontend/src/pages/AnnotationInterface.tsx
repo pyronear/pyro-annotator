@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, RotateCcw, CheckCircle, AlertCircle, Keyboard, X, Upload, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, RotateCcw, CheckCircle, AlertCircle, Keyboard, X, Upload, ChevronLeft, ChevronRight, Clock } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { QUERY_KEYS, FALSE_POSITIVE_TYPES } from '@/utils/constants';
 import { SequenceAnnotation, SequenceBbox, FalsePositiveType } from '@/types/api';
@@ -863,18 +863,30 @@ export default function AnnotationInterface() {
         {bboxes.map((bbox, index) => {
           
           const isActive = activeDetectionIndex === index;
+          const isAnnotated = shouldShowAsAnnotated(bbox, annotation?.processing_stage || '');
           
           return (
             <div 
               key={index} 
               ref={(el) => detectionRefs.current[index] = el}
-              className={`bg-white rounded-lg border p-6 cursor-pointer transition-all duration-200 ${
+              className={`relative rounded-lg cursor-pointer transition-all duration-200 ${
                 isActive 
-                  ? 'border-blue-500 ring-2 ring-blue-200 bg-blue-50' 
-                  : 'border-gray-200 hover:border-gray-300'
-              }`}
+                  ? 'border-4 border-blue-500 ring-2 ring-blue-200 bg-blue-50' 
+                  : isAnnotated
+                  ? 'border-4 border-green-500 bg-green-50 hover:border-green-600 hover:bg-green-100'
+                  : 'border-4 border-orange-400 bg-orange-50 hover:border-orange-500 hover:bg-orange-100 animate-pulse-subtle'
+              } p-6`}
               onClick={() => setActiveDetectionIndex(index)}
             >
+              {/* Status Badge Overlay */}
+              <div className={`absolute top-3 right-3 px-2 py-1 rounded-full text-xs font-semibold backdrop-blur-sm ${
+                isAnnotated 
+                  ? 'bg-green-600/90 text-white' 
+                  : 'bg-orange-500/90 text-white'
+              }`}>
+                {isAnnotated ? 'Reviewed' : 'Pending'}
+              </div>
+
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center space-x-3">
                   <h4 className="text-lg font-medium text-gray-900">
@@ -1043,19 +1055,27 @@ export default function AnnotationInterface() {
                 </div>
               )}
               
-              {/* Status indicator */}
-              <div className="flex items-center space-x-2">
-                {shouldShowAsAnnotated(bbox, annotation?.processing_stage || '') ? (
-                  <div className="flex items-center text-green-600">
-                    <CheckCircle className="w-4 h-4 mr-1" />
-                    <span className="text-sm font-medium">Annotated</span>
+              {/* Enhanced Status Bar */}
+              <div className={`px-3 py-2 rounded-md ${
+                isAnnotated 
+                  ? 'bg-green-100 border border-green-300' 
+                  : 'bg-orange-100 border border-orange-300'
+              }`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    {isAnnotated ? (
+                      <>
+                        <CheckCircle className="w-5 h-5 text-green-600" />
+                        <span className="text-sm font-medium text-green-700">Completed</span>
+                      </>
+                    ) : (
+                      <>
+                        <Clock className="w-5 h-5 text-orange-600 animate-pulse" />
+                        <span className="text-sm font-medium text-orange-700">Needs Review</span>
+                      </>
+                    )}
                   </div>
-                ) : (
-                  <div className="flex items-center text-gray-400">
-                    <AlertCircle className="w-4 h-4 mr-1" />
-                    <span className="text-sm font-medium">Needs annotation</span>
-                  </div>
-                )}
+                </div>
               </div>
             </div>
           </div>
