@@ -75,7 +75,6 @@ export const UI_CONSTANTS = {
 
 // File size limits
 export const FILE_LIMITS = {
-  MAX_GIF_SIZE: 50 * 1024 * 1024, // 50MB
   MAX_IMAGE_SIZE: 10 * 1024 * 1024, // 10MB
 } as const;
 
@@ -94,6 +93,5 @@ export const QUERY_KEYS = {
   CAMERAS: ['cameras'],
   ORGANIZATIONS: ['organizations'],
   DETECTION_ANNOTATION: (id: number) => ['detection-annotations', id],
-  GIF_URLS: (annotationId: number) => ['gif-urls', annotationId],
   ANNOTATION_STATS: ['annotation-stats'],
 } as const;

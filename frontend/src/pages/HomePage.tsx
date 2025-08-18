@@ -37,7 +37,7 @@ export default function HomePage() {
               Annotation Interface
             </h3>
             <p className="text-gray-600">
-              Streamlined annotation workflow with GIF visualization, multi-label 
+              Streamlined annotation workflow with interactive image sequences, multi-label 
               classification, and batch processing capabilities.
             </p>
           </div>

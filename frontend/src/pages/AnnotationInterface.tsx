@@ -1,11 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, RotateCcw, CheckCircle, AlertCircle, Eye, Keyboard, X, Upload, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, RotateCcw, CheckCircle, AlertCircle, Keyboard, X, Upload, ChevronLeft, ChevronRight } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { QUERY_KEYS, FALSE_POSITIVE_TYPES } from '@/utils/constants';
 import { SequenceAnnotation, SequenceBbox, FalsePositiveType } from '@/types/api';
-import { useGifUrls } from '@/hooks/useGifUrls';
 import SequenceReviewer from '@/components/sequence/SequenceReviewer';
 import CroppedImageSequence from '@/components/annotation/CroppedImageSequence';
 import FullImageSequence from '@/components/annotation/FullImageSequence';
@@ -21,7 +20,7 @@ const initializeCleanBbox = (originalBbox: SequenceBbox): SequenceBbox => {
     ...originalBbox,
     is_smoke: false,
     false_positive_types: [],
-    // Preserve structure like gif_key_main, gif_key_crop, bboxes with detection_ids
+    // Preserve structure with bboxes containing detection_ids
   };
 };
 
@@ -107,8 +106,6 @@ export default function AnnotationInterface() {
     enabled: !!sequenceId,
   });
 
-  // Fetch GIF URLs
-  const { data: gifUrls, isLoading: loadingGifs } = useGifUrls(annotation?.id || null);
 
   // Initialize bboxes and missed smoke when annotation loads - respecting processing stage
   useEffect(() => {
@@ -860,27 +857,10 @@ export default function AnnotationInterface() {
         />
       </div>
 
-      {/* GIF Loading State */}
-      {loadingGifs && (
-        <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
-          <div className="flex">
-            <Eye className="w-5 h-5 text-blue-400" />
-            <div className="ml-3">
-              <p className="text-sm font-medium text-blue-800">
-                Loading GIF Previews...
-              </p>
-              <p className="text-sm text-blue-700 mt-1">
-                Fetching visualization data for sequence bboxes
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* Unified Detection Cards - GIFs + Annotation Controls */}
+      {/* Unified Detection Cards - Image Sequences + Annotation Controls */}
       <div className="space-y-8">
         {bboxes.map((bbox, index) => {
-          const gifData = gifUrls?.gif_urls?.[index];
           
           const isActive = activeDetectionIndex === index;
           
@@ -912,37 +892,23 @@ export default function AnnotationInterface() {
                 </span>
               </div>
               
-              {/* Visual Content - Main GIF + Crop GIF */}
+              {/* Visual Content - Image Sequences */}
               <div className="space-y-6 mb-8">
-                {loadingGifs ? (
-                  <div className="text-center py-8 text-gray-500">
-                    <div className="flex items-center justify-center space-x-2">
-                      <div className="animate-spin w-5 h-5 border-2 border-primary-600 border-t-transparent rounded-full"></div>
-                      <span>Loading GIFs...</span>
-                    </div>
-                  </div>
-                ) : gifData ? (
+                {/* Image Sequences */}
+                {bbox.bboxes && bbox.bboxes.length > 0 && (
                   <>
                     {/* Full Image Sequence */}
-                    {bbox.bboxes && bbox.bboxes.length > 0 && (
-                      <div className="text-center">
-                        <h5 className="text-sm font-medium text-gray-700 mb-3">Full Sequence</h5>
-                        <FullImageSequence bboxes={bbox.bboxes} />
-                      </div>
-                    )}
+                    <div className="text-center">
+                      <h5 className="text-sm font-medium text-gray-700 mb-3">Full Sequence</h5>
+                      <FullImageSequence bboxes={bbox.bboxes} />
+                    </div>
                     
                     {/* Cropped Image Sequence */}
-                    {bbox.bboxes && bbox.bboxes.length > 0 && (
-                      <div className="text-center mt-6">
-                        <h5 className="text-sm font-medium text-gray-700 mb-3">Cropped View</h5>
-                        <CroppedImageSequence bboxes={bbox.bboxes} />
-                      </div>
-                    )}
+                    <div className="text-center mt-6">
+                      <h5 className="text-sm font-medium text-gray-700 mb-3">Cropped View</h5>
+                      <CroppedImageSequence bboxes={bbox.bboxes} />
+                    </div>
                   </>
-                ) : (
-                  <div className="text-center py-8 text-gray-500">
-                    <span>No GIFs available for this detection</span>
-                  </div>
                 )}
               </div>
             

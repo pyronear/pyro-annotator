@@ -48,8 +48,6 @@ export interface SequenceAnnotationData {
 export interface SequenceBbox {
   is_smoke: boolean;
   false_positive_types: FalsePositiveType[];
-  gif_key_main?: string;
-  gif_key_crop?: string;
   bboxes: BoundingBox[];
 }
 
@@ -170,31 +168,6 @@ export interface DetectionAnnotationFilters {
   size?: number;
 }
 
-// GIF Generation
-export interface GifUrls {
-  main_gif_url?: string;
-  crop_gif_url?: string;
-  expires_at: string;
-}
-
-// Enhanced GIF URLs Response (matches actual API)
-export interface GifUrlsResponse {
-  annotation_id: number;
-  sequence_id: number;
-  total_bboxes: number;
-  gif_urls: GifBboxUrls[];
-  generated_at: string;
-}
-
-export interface GifBboxUrls {
-  bbox_index: number;
-  main_url?: string;
-  crop_url?: string;
-  main_expires_at: string;
-  crop_expires_at: string;
-  has_main: boolean;
-  has_crop: boolean;
-}
 
 // Processing stage status including "no annotation" case
 export type ProcessingStageStatus = ProcessingStage | 'no_annotation';
