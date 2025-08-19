@@ -8,6 +8,7 @@ interface SequenceReviewerProps {
   sequenceId: number;
   missedSmokeReview: 'yes' | 'no' | null;
   onMissedSmokeReviewChange: (review: 'yes' | 'no') => void;
+  annotationLoading?: boolean;
   className?: string;
 }
 
@@ -15,6 +16,7 @@ export default function SequenceReviewer({
   sequenceId,
   missedSmokeReview,
   onMissedSmokeReviewChange,
+  annotationLoading = false,
   className = ''
 }: SequenceReviewerProps) {
   // Playback state
@@ -39,13 +41,13 @@ export default function SequenceReviewer({
     }
   }, [imagesPreloaded, detections]);
 
-  // Reset auto-start flag when sequence changes
+  // Reset auto-start flag when sequence changes or annotation starts loading
   useEffect(() => {
     hasAutoStarted.current = false;
     setImagesPreloaded(false);
     setIsPlaying(false);
     setCurrentIndex(0);
-  }, [sequenceId]);
+  }, [sequenceId, annotationLoading]);
 
   // Auto-play functionality with looping
   useEffect(() => {
@@ -111,13 +113,15 @@ export default function SequenceReviewer({
     setCurrentIndex(0);
   };
 
-  if (isLoading) {
+  if (isLoading || annotationLoading) {
     return (
       <div className={`bg-white border border-gray-200 rounded-lg p-8 ${className}`}>
         <div className="flex items-center justify-center">
           <div className="flex items-center space-x-3">
             <div className="animate-spin w-6 h-6 border-2 border-primary-600 border-t-transparent rounded-full"></div>
-            <span className="text-sm text-gray-600">Loading sequence detections...</span>
+            <span className="text-sm text-gray-600">
+              {annotationLoading ? 'Loading sequence annotation...' : 'Loading sequence detections...'}
+            </span>
           </div>
         </div>
       </div>

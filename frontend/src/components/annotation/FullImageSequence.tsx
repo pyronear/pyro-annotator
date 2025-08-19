@@ -5,6 +5,7 @@ import { apiClient } from '@/services/api';
 
 interface FullImageSequenceProps {
   bboxes: BoundingBox[];
+  sequenceId: number;
   className?: string;
 }
 
@@ -14,7 +15,7 @@ interface ImageData {
   error: boolean;
 }
 
-export default function FullImageSequence({ bboxes, className = '' }: FullImageSequenceProps) {
+export default function FullImageSequence({ bboxes, sequenceId, className = '' }: FullImageSequenceProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [images, setImages] = useState<ImageData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -30,13 +31,25 @@ export default function FullImageSequence({ bboxes, className = '' }: FullImageS
   const imgRef = useRef<HTMLImageElement>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Clear state immediately when props change to prevent stale data
+  useEffect(() => {
+    console.log(`FullImageSequence: Props changed, clearing state for sequence ${sequenceId}`);
+    setImages([]);
+    setCurrentIndex(0);
+    setIsLoading(true);
+    setError(null);
+    setImageInfo(null); // Clear image positioning info
+  }, [bboxes, sequenceId]);
+
   // Fetch detection image URLs
   useEffect(() => {
     const fetchImages = async () => {
-      if (!bboxes.length) return;
+      if (!bboxes.length || !sequenceId) {
+        setIsLoading(false);
+        return;
+      }
       
-      setIsLoading(true);
-      setError(null);
+      console.log(`FullImageSequence: Fetching images for sequence ${sequenceId}, ${bboxes.length} detections`);
       
       try {
         // Fetch all detection image URLs
@@ -87,12 +100,17 @@ export default function FullImageSequence({ bboxes, className = '' }: FullImageS
       }
     };
     
-    fetchImages();
-  }, [bboxes]);
+    // Only fetch if we have cleared state (prevents duplicate fetching)
+    if (bboxes.length > 0 && sequenceId && images.length === 0) {
+      fetchImages();
+    }
+  }, [bboxes, sequenceId, images.length]);
 
-  // Auto-play animation with 200ms interval
+  // Auto-play animation with 200ms interval - only when images are loaded
   useEffect(() => {
-    if (images.length > 1) {
+    const loadedImagesCount = images.filter(img => img.loaded && !img.error).length;
+    
+    if (images.length > 1 && loadedImagesCount > 1 && !isLoading) {
       intervalRef.current = setInterval(() => {
         setCurrentIndex(prev => (prev + 1) % images.length);
       }, 200);
@@ -108,7 +126,7 @@ export default function FullImageSequence({ bboxes, className = '' }: FullImageS
         clearInterval(intervalRef.current);
       }
     };
-  }, [images.length]);
+  }, [images.length, images, isLoading]);
 
   // Cleanup on unmount
   useEffect(() => {

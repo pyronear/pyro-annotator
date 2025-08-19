@@ -37,6 +37,12 @@ const shouldShowAsAnnotated = (bbox: SequenceBbox, processingStage: string): boo
   return hasUserAnnotations(bbox);
 };
 
+// Helper function to validate that annotation data matches current sequence
+const isAnnotationDataValid = (annotation: SequenceAnnotation | null, currentSequenceId: number | null): boolean => {
+  if (!annotation || !currentSequenceId) return false;
+  return annotation.sequence_id === currentSequenceId;
+};
+
 // Helper function to determine initial missed smoke review state based on processing stage
 const getInitialMissedSmokeReview = (annotation: SequenceAnnotation): 'yes' | 'no' | null => {
   if (annotation.processing_stage === 'annotated') {
@@ -107,9 +113,19 @@ export default function AnnotationInterface() {
   });
 
 
+  // Clear state immediately when sequence changes to prevent stale data
+  useEffect(() => {
+    console.log(`AnnotationInterface: Sequence changed to ${sequenceId}, clearing stale state`);
+    setBboxes([]);
+    setCurrentAnnotation(null);
+    setHasMissedSmoke(false);
+    setMissedSmokeReview(null);
+  }, [sequenceId]);
+
   // Initialize bboxes and missed smoke when annotation loads - respecting processing stage
   useEffect(() => {
-    if (annotation) {
+    if (annotation && sequenceId) {
+      console.log(`AnnotationInterface: Loading annotation for sequence ${sequenceId}`);
       setCurrentAnnotation(annotation);
       
       // Initialize missed smoke flag from existing annotation
@@ -130,7 +146,7 @@ export default function AnnotationInterface() {
         setBboxes([...annotation.annotation.sequences_bbox]);
       }
     }
-  }, [annotation]);
+  }, [annotation, sequenceId]);
 
 
   // Clean up detection refs when bboxes change
@@ -854,6 +870,7 @@ export default function AnnotationInterface() {
           sequenceId={sequenceId!}
           missedSmokeReview={missedSmokeReview}
           onMissedSmokeReviewChange={handleMissedSmokeReviewChange}
+          annotationLoading={isLoading}
         />
       </div>
 
@@ -906,21 +923,29 @@ export default function AnnotationInterface() {
               
               {/* Visual Content - Image Sequences */}
               <div className="space-y-6 mb-8">
-                {/* Image Sequences */}
-                {bbox.bboxes && bbox.bboxes.length > 0 && (
+                {/* Image Sequences - Only render when annotation data matches current sequence */}
+                {bbox.bboxes && bbox.bboxes.length > 0 && isAnnotationDataValid(annotation, sequenceId) ? (
                   <>
                     {/* Full Image Sequence */}
                     <div className="text-center">
                       <h5 className="text-sm font-medium text-gray-700 mb-3">Full Sequence</h5>
-                      <FullImageSequence bboxes={bbox.bboxes} />
+                      <FullImageSequence bboxes={bbox.bboxes} sequenceId={sequenceId!} />
                     </div>
                     
                     {/* Cropped Image Sequence */}
                     <div className="text-center mt-6">
                       <h5 className="text-sm font-medium text-gray-700 mb-3">Cropped View</h5>
-                      <CroppedImageSequence bboxes={bbox.bboxes} />
+                      <CroppedImageSequence bboxes={bbox.bboxes} sequenceId={sequenceId!} />
                     </div>
                   </>
+                ) : (
+                  /* Loading state when annotation data is being fetched */
+                  <div className="text-center py-8">
+                    <div className="flex items-center justify-center space-x-2 text-gray-500">
+                      <div className="animate-spin w-5 h-5 border-2 border-gray-300 border-t-gray-600 rounded-full"></div>
+                      <span>Loading sequence images...</span>
+                    </div>
+                  </div>
                 )}
               </div>
             
