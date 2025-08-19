@@ -73,14 +73,6 @@ The API provides enhanced endpoints with pagination, filtering, and ordering:
   - Paginated responses with advanced database indexing for performance
   - JSON filtering: searches within false_positive_types array using PostgreSQL JSONB operators
   - Derived field computation: automatically calculates has_smoke/has_false_positives from annotation data
-- **GIF Generation** (`POST /api/v1/annotations/sequences/{id}/generate-gifs`) - Generate main/crop GIFs for sequence annotations
-  - Creates GIFs from detection images with bounding box overlays
-  - Stores GIF bucket keys in annotation data (not URLs)
-  - Returns generated bucket keys and statistics
-- **GIF URLs** (`GET /api/v1/annotations/sequences/{id}/gifs/urls`) - Get fresh presigned URLs for GIFs
-  - Generates fresh URLs on-demand (avoids expired URLs in database)
-  - Returns URLs with expiration timestamps
-  - Handles missing files gracefully
 
 ## Development Commands
 
@@ -111,7 +103,8 @@ The API provides enhanced endpoints with pagination, filtering, and ordering:
 
 ### Development Server
 - `make start` - Start development environment with Docker Compose
-- `make stop` - Stop development environment
+- `make stop` - Stop development environment (preserves data volumes)
+- `make clean` - Remove containers and volumes (fresh start, deletes all data)
 - `make start-prod` - Start production environment
 - `make stop-prod` - Stop production environment
 - `make docker-build` - Build Docker image
@@ -121,6 +114,15 @@ The API provides enhanced endpoints with pagination, filtering, and ordering:
 - Database migrations handled via Alembic
 - PostgreSQL with async support (asyncpg)
 - Development uses local PostgreSQL in Docker
+
+### Docker Volume Persistence
+- **PostgreSQL**: Data persists in `postgres_data` named volume
+- **LocalStack S3**: Data persists in `localstack_data` named volume (limited persistence in Community edition with PERSISTENCE=1)
+- **Preserving data**: Use `make stop` to stop containers while keeping volumes
+- **Reset volumes**: Use `make clean` (runs `docker compose down -v`) to remove all data
+- **Backup volumes**: Use `docker volume` commands or Docker Desktop
+- **LocalStack init**: Buckets are created only if they don't exist (idempotent initialization)
+- Note: docker-compose-dev.yml used for testing runs ephemeral (no persistent volumes)
 
 ## Environment Configuration
 Key environment variables (see `src/app/core/config.py`):
@@ -179,7 +181,7 @@ The API implements comprehensive Pydantic validation for JSONB fields:
 - **Validation models**: `AlgoPrediction`, `AlgoPredictions` in `app/schemas/annotation_validation.py`
 
 #### SequenceAnnotation.annotation Validation & Derived Fields
-- **Structure**: `{sequences_bbox: [{is_smoke: bool, gif_key_main?: str, gif_key_crop?: str, false_positive_types: [enum, ...], bboxes: [{detection_id: int, xyxyn: [x1n y1n x2n y2n]}]}, ...]}`
+- **Structure**: `{sequences_bbox: [{is_smoke: bool, false_positive_types: [enum, ...], bboxes: [{detection_id: int, xyxyn: [x1n y1n x2n y2n]}]}, ...]}`
 - **Derived fields**: `has_smoke` and `has_false_positives` are automatically calculated from annotation data
 - **FalsePositiveType enum**: Validates false_positive_types against predefined enum values
 - **xyxyn constraints**: Same as Detection (4 floats, 0-1 range, coordinate constraints)
@@ -196,15 +198,6 @@ The API implements comprehensive Pydantic validation for JSONB fields:
 - **Ordering**: Configurable ordering by timestamp fields with asc/desc direction
 - **Error Handling**: Comprehensive exception handling with detailed validation messages
 
-### GIF Generation System
-- **Storage Strategy**: GIF bucket keys (not URLs) are stored in database to avoid expiring URLs
-- **Two-step Process**: 
-  1. Generate GIFs: `POST /api/v1/annotations/sequences/{annotation_id}/generate-gifs`
-  2. Get fresh URLs: `GET /api/v1/annotations/sequences/{annotation_id}/gifs/urls`
-- **Schema Fields**: `gif_key_main` and `gif_key_crop` store S3 bucket keys like `gifs/sequence_1/main_20240115.gif`
-- **URL Generation**: Fresh presigned URLs generated on-demand with configurable expiration (default 24h)
-- **Bounding Boxes**: Red color (BGR: 0,0,255) with thickness=2 pixels in main GIFs
-- **Development**: Use `S3_PROXY_URL=http://localhost:4566` for browser-accessible URLs
 
 ## Authentication & Security
 - JWT-based authentication with configurable expiration
@@ -313,20 +306,24 @@ with open("detection.jpg", "rb") as f:
 
 ## Data Transfer Scripts
 
-### Platform Data Ingestion
-Scripts for fetching data from the Pyronear platform API and transferring it to the annotation API.
+### Platform Data Import
+Single comprehensive script for fetching data from the Pyronear platform API and generating annotations in one streamlined workflow.
 
 #### Script Execution
 Use the Python module execution syntax with `uv run`:
 
 ```bash
-# Fetch sequences for a date range
-uv run python -m scripts.data_transfer.ingestion.platform.fetch_platform_sequences \
+# End-to-end processing: fetch platform data → generate annotations
+uv run python -m scripts.data_transfer.ingestion.platform.import \
   --date-from 2024-01-01 --date-end 2024-01-02 --loglevel info
 
-# Fetch specific sequence
-uv run python -m scripts.data_transfer.ingestion.platform.fetch_platform_sequence_id \
-  --sequence-id 123 --loglevel info
+# Skip platform fetch (process existing sequences only)
+uv run python -m scripts.data_transfer.ingestion.platform.import \
+  --date-from 2024-01-01 --date-end 2024-01-02 --skip-platform-fetch --loglevel info
+
+# Process with custom annotation parameters
+uv run python -m scripts.data_transfer.ingestion.platform.import \
+  --date-from 2024-01-01 --confidence-threshold 0.7 --iou-threshold 0.4 --loglevel info
 ```
 
 #### Environment Variables Required
@@ -336,11 +333,14 @@ uv run python -m scripts.data_transfer.ingestion.platform.fetch_platform_sequenc
 - `PLATFORM_ADMIN_PASSWORD` - Admin password for organization access
 
 #### Script Features
-- **Relative imports** - Clean module structure with relative imports
+- **End-to-end workflow** - Complete pipeline from platform data to annotation-ready sequences
 - **Concurrent processing** - Multi-threading for faster data fetching
 - **Progress tracking** - tqdm progress bars for long-running operations
 - **Flexible date ranges** - Configurable date filtering
 - **Logging support** - Configurable log levels for debugging
+- **Annotation generation** - Automatic clustering of AI predictions into sequence annotations
+- **Stage management** - Automatic transitions from platform data to READY_TO_ANNOTATE stage
+- **Parameter tuning** - Configurable confidence thresholds, IoU thresholds, and cluster sizes
 
 ## Migration Notes (Poetry → uv)
 

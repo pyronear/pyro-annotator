@@ -1,6 +1,7 @@
 # Copyright (C) 2025, Pyronear.
 
 import json
+import logging
 from datetime import datetime
 from enum import Enum
 from typing import Optional
@@ -28,6 +29,7 @@ from app.schemas.detection_annotations import (
 from app.schemas.annotation_validation import DetectionAnnotationData
 
 router = APIRouter()
+logger = logging.getLogger("uvicorn.error")
 
 
 class DetectionAnnotationOrderByField(str, Enum):
@@ -50,7 +52,7 @@ async def create_detection_annotation(
     annotation: str = Form(..., description="JSON string of annotation object"),
     processing_stage: DetectionAnnotationProcessingStage = Form(
         ...,
-        description="Processing stage for this detection annotation. Options: imported (initial import), visual_check (human verification), label_studio_check (quality review), annotated (fully processed)",
+        description="Processing stage for this detection annotation. Options: imported (initial import), visual_check (human verification), bbox_annotation (manual bbox drawing), annotated (fully processed)",
     ),
     annotations: DetectionAnnotationCRUD = Depends(get_detection_annotation_crud),
 ) -> DetectionAnnotationRead:
@@ -60,6 +62,12 @@ async def create_detection_annotation(
     try:
         validated_annotation = DetectionAnnotationData(**parsed_annotation)
     except ValidationError as e:
+        logger.error(
+            f"Detection annotation validation failed for detection_id={detection_id}\n"
+            f"Processing stage: {processing_stage}\n"
+            f"Annotation data: {parsed_annotation}\n"
+            f"Validation errors: {e.errors()}"
+        )
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Invalid annotation format: {e.errors()}",
@@ -92,7 +100,7 @@ async def list_annotations(
     ),
     processing_stage: Optional[DetectionAnnotationProcessingStage] = Query(
         None,
-        description="Filter by detection annotation processing stage. Options: imported (initial import), visual_check (human verification), label_studio_check (quality review), annotated (fully processed)",
+        description="Filter by detection annotation processing stage. Options: imported (initial import), visual_check (human verification), bbox_annotation (manual bbox drawing), annotated (fully processed)",
     ),
     created_at_gte: Optional[datetime] = Query(
         None, description="Filter by created_at >= this date"

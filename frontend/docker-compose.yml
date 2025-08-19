@@ -1,0 +1,25 @@
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pyro-annotator-frontend
+    ports:
+      - "3000:80"
+    environment:
+      # Configure API base URL for backend communication
+      - VITE_API_BASE_URL=http://localhost:5050
+      - VITE_ENVIRONMENT=production
+    restart: unless-stopped
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  # Optional: Add volumes for logs or persistent data
+  nginx_logs:
+    driver: local

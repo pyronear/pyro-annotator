@@ -1,6 +1,7 @@
 # Copyright (C) 2024, Pyronear.
 
 import json
+import logging
 from datetime import datetime
 from enum import Enum
 from typing import Optional
@@ -34,6 +35,7 @@ from app.schemas.detection import (
 from app.services.storage import s3_service, upload_file
 
 router = APIRouter()
+logger = logging.getLogger("uvicorn.error")
 
 
 class OrderByField(str, Enum):
@@ -70,6 +72,13 @@ async def create_detection(
     try:
         validated_predictions = AlgoPredictions(**parsed_predictions)
     except ValidationError as e:
+        logger.error(
+            f"Detection algo_predictions validation failed for sequence_id={sequence_id}\n"
+            f"Alert API ID: {alert_api_id}\n"
+            f"Recorded at: {recorded_at}\n"
+            f"Algo predictions data: {parsed_predictions}\n"
+            f"Validation errors: {e.errors()}"
+        )
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Invalid algo_predictions format: {e.errors()}",

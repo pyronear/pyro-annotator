@@ -5,7 +5,7 @@
 
 
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -75,7 +75,7 @@ class SequenceAnnotationRead(BaseModel):
     sequence_id: int
     has_smoke: bool
     has_false_positives: bool
-    false_positive_types: str
+    false_positive_types: List[str]
     has_missed_smoke: bool
     annotation: SequenceAnnotationData
     processing_stage: SequenceAnnotationProcessingStage = Field(

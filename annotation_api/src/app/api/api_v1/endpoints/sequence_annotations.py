@@ -1,9 +1,10 @@
 # Copyright (C) 2025, Pyronear.
 
 import json
-from datetime import datetime, timedelta
+import logging
+from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import (
     APIRouter,
@@ -19,13 +20,14 @@ from fastapi_pagination.ext.sqlalchemy import apaginate
 from sqlalchemy import asc, desc, select, text
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.api.dependencies import get_sequence_annotation_crud, get_gif_generator
-from app.core.config import settings
-from app.services.storage import s3_service
+from app.api.dependencies import get_sequence_annotation_crud
 from app.crud import SequenceAnnotationCRUD
 from app.db import get_session
 from app.models import (
     Detection,
+    DetectionAnnotation,
+    DetectionAnnotationProcessingStage,
+    FalsePositiveType,
     Sequence,
     SequenceAnnotation,
     SequenceAnnotationProcessingStage,
@@ -38,6 +40,7 @@ from app.schemas.sequence_annotations import (
 )
 
 router = APIRouter()
+logger = logging.getLogger("uvicorn.error")
 
 
 class SequenceAnnotationOrderByField(str, Enum):
@@ -64,14 +67,75 @@ def derive_has_false_positives(annotation_data: SequenceAnnotationData) -> bool:
     return any(bbox.false_positive_types for bbox in annotation_data.sequences_bbox)
 
 
-def derive_false_positive_types(annotation_data: SequenceAnnotationData) -> str:
-    """Derive false_positive_types from annotation data as a JSON string."""
+def derive_false_positive_types(annotation_data: SequenceAnnotationData) -> List[str]:
+    """Derive false_positive_types from annotation data as a list of strings."""
     all_types = []
     for bbox in annotation_data.sequences_bbox:
         all_types.extend([fp_type.value for fp_type in bbox.false_positive_types])
     # Remove duplicates while preserving order
     unique_types = list(dict.fromkeys(all_types))
-    return json.dumps(unique_types)
+    return unique_types
+
+
+async def auto_create_detection_annotations(
+    sequence_id: int,
+    has_smoke: bool,
+    has_missed_smoke: bool,
+    has_false_positives: bool,
+    session: AsyncSession,
+) -> None:
+    """
+    Automatically create detection annotations for all detections in a sequence.
+
+    Business logic for detection annotation processing stages:
+    - If has_missed_smoke=false AND has_false_positives=true (only false positives)
+      → processing_stage = "visual_check"
+    - If has_smoke=true OR has_missed_smoke=true (smoke detected or missed smoke)
+      → processing_stage = "bbox_annotation"
+
+    Args:
+        sequence_id: ID of the sequence
+        has_smoke: Whether sequence annotation indicates smoke presence
+        has_missed_smoke: Whether sequence annotation indicates missed smoke
+        has_false_positives: Whether sequence annotation indicates false positives
+        session: Database session
+    """
+    # Determine the appropriate processing stage based on sequence annotation
+    if not has_missed_smoke and has_false_positives:
+        # Only false positives, no smoke or missed smoke → visual check needed
+        processing_stage = DetectionAnnotationProcessingStage.VISUAL_CHECK
+    elif has_smoke or has_missed_smoke:
+        # Smoke detected or missed smoke → bbox annotation needed
+        processing_stage = DetectionAnnotationProcessingStage.BBOX_ANNOTATION
+    else:
+        # Default case (no smoke, no false positives, no missed smoke) → visual check
+        processing_stage = DetectionAnnotationProcessingStage.VISUAL_CHECK
+
+    # Get all detections for this sequence
+    detections_query = select(Detection).where(Detection.sequence_id == sequence_id)
+    detections_result = await session.execute(detections_query)
+    detections = detections_result.scalars().all()
+
+    # Create detection annotations for each detection
+    for detection in detections:
+        # Check if detection annotation already exists (avoid duplicates)
+        existing_query = select(DetectionAnnotation).where(
+            DetectionAnnotation.detection_id == detection.id
+        )
+        existing_result = await session.execute(existing_query)
+        existing_annotation = existing_result.scalar_one_or_none()
+
+        if existing_annotation is None:
+            # Create new detection annotation with empty annotation data and determined processing stage
+            detection_annotation = DetectionAnnotation(
+                detection_id=detection.id,
+                annotation={
+                    "annotation": []
+                },  # Correct structure with empty annotation array
+                processing_stage=processing_stage,
+                created_at=datetime.utcnow(),
+            )
+            session.add(detection_annotation)
 
 
 async def validate_detection_ids(
@@ -110,6 +174,12 @@ async def validate_detection_ids(
     if missing_ids:
         # Sort for consistent error messages
         missing_ids_sorted = sorted(list(missing_ids))
+        logger.error(
+            f"Sequence annotation validation failed - missing detection IDs\n"
+            f"Requested detection IDs: {sorted(list(detection_ids))}\n"
+            f"Existing detection IDs: {sorted(list(existing_ids))}\n"
+            f"Missing detection IDs: {missing_ids_sorted}"
+        )
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Detection IDs {missing_ids_sorted} do not exist in the database",
@@ -148,6 +218,18 @@ async def create_sequence_annotation(
     await annotations.session.commit()
     await annotations.session.refresh(sequence_annotation)
 
+    # Auto-create detection annotations if sequence annotation is marked as annotated
+    if create_data.processing_stage == SequenceAnnotationProcessingStage.ANNOTATED:
+        await auto_create_detection_annotations(
+            sequence_id=create_data.sequence_id,
+            has_smoke=has_smoke,
+            has_missed_smoke=create_data.has_missed_smoke,
+            has_false_positives=has_false_positives,
+            session=annotations.session,
+        )
+        # Commit the detection annotations
+        await annotations.session.commit()
+
     return sequence_annotation
 
 
@@ -158,9 +240,9 @@ async def list_sequence_annotations(
     has_false_positives: Optional[bool] = Query(
         None, description="Filter by has_false_positives"
     ),
-    false_positive_type: Optional[str] = Query(
+    false_positive_types: Optional[List[FalsePositiveType]] = Query(
         None,
-        description="Filter by specific false positive type. Options include: antenna, building, cliff, dark, dust, high_cloud, low_cloud, lens_flare, lens_droplet, light, rain, trail, road, sky, tree, water_body, other",
+        description="Filter by specific false positive types (OR logic). Annotations containing any of the specified types will be included in results.",
     ),
     has_missed_smoke: Optional[bool] = Query(
         None, description="Filter by has_missed_smoke"
@@ -216,11 +298,18 @@ async def list_sequence_annotations(
             SequenceAnnotation.has_false_positives == has_false_positives
         )
 
-    if false_positive_type is not None:
-        # Use PostgreSQL JSONB contains operator to search within JSON array
-        query = query.where(text("false_positive_types::jsonb ? :fp_type")).params(
-            fp_type=false_positive_type
-        )
+    if false_positive_types is not None and len(false_positive_types) > 0:
+        # Convert enum values to strings for database query
+        fp_type_values = [fp_type.value for fp_type in false_positive_types]
+        # Use PostgreSQL JSONB array contains operator for OR logic
+        # This will match annotations where false_positive_types contains any of the specified types
+        from sqlalchemy import or_
+        # Create OR conditions for each false positive type
+        fp_conditions = [
+            text("false_positive_types::jsonb ? :fp_type_" + str(i)).params(**{f"fp_type_{i}": fp_type})
+            for i, fp_type in enumerate(fp_type_values)
+        ]
+        query = query.where(or_(*fp_conditions))
 
     if has_missed_smoke is not None:
         query = query.where(SequenceAnnotation.has_missed_smoke == has_missed_smoke)
@@ -283,12 +372,34 @@ async def update_sequence_annotation(
     if payload.processing_stage is not None:
         update_dict["processing_stage"] = payload.processing_stage
 
+    # Check if processing_stage is being updated to "annotated"
+    was_annotated_before = (
+        existing.processing_stage == SequenceAnnotationProcessingStage.ANNOTATED
+    )
+    will_be_annotated_after = (
+        payload.processing_stage == SequenceAnnotationProcessingStage.ANNOTATED
+        if payload.processing_stage is not None
+        else existing.processing_stage == SequenceAnnotationProcessingStage.ANNOTATED
+    )
+
     # Update the model
     for key, value in update_dict.items():
         setattr(existing, key, value)
 
     await annotations.session.commit()
     await annotations.session.refresh(existing)
+
+    # Auto-create detection annotations if processing_stage is newly set to "annotated"
+    if not was_annotated_before and will_be_annotated_after:
+        await auto_create_detection_annotations(
+            sequence_id=existing.sequence_id,
+            has_smoke=existing.has_smoke,
+            has_missed_smoke=existing.has_missed_smoke,
+            has_false_positives=existing.has_false_positives,
+            session=annotations.session,
+        )
+        # Commit the detection annotations
+        await annotations.session.commit()
 
     return existing
 
@@ -299,158 +410,3 @@ async def delete_sequence_annotation(
     annotations: SequenceAnnotationCRUD = Depends(get_sequence_annotation_crud),
 ) -> None:
     await annotations.delete(annotation_id)
-
-
-@router.post("/{annotation_id}/generate-gifs", status_code=status.HTTP_200_OK)
-async def generate_sequence_annotation_gifs(
-    annotation_id: int = Path(..., ge=0, description="ID of the sequence annotation"),
-    gif_generator=Depends(get_gif_generator),
-) -> dict:
-    """
-    Generate GIFs for a sequence annotation.
-
-    This endpoint creates both main (full-frame with bounding box overlays) and crop GIFs
-    from the detection images referenced in the sequence annotation. The generated GIFs
-    are uploaded to S3 storage and the annotation is updated with the GIF URLs.
-
-    Args:
-        annotation_id: The ID of the sequence annotation to generate GIFs for
-
-    Returns:
-        dict: Contains generation results with annotation_id, sequence_id, gif_count,
-              total_bboxes, and generated_at timestamp
-
-    Raises:
-        HTTPException 404: If sequence annotation not found
-        HTTPException 422: If no sequence bounding boxes found or no detections found
-        HTTPException 500: If GIF generation fails
-    """
-    try:
-        result = await gif_generator.generate_gifs_for_annotation(annotation_id)
-        return result
-    except HTTPException:
-        # Re-raise HTTP exceptions (404, 422)
-        raise
-    except Exception as e:
-        # Catch any other unexpected errors and return 500
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to generate GIFs: {str(e)}",
-        )
-
-
-@router.get("/{annotation_id}/gifs/urls", status_code=status.HTTP_200_OK)
-async def get_sequence_annotation_gif_urls(
-    annotation_id: int = Path(..., ge=0, description="ID of the sequence annotation"),
-    session: AsyncSession = Depends(get_session),
-) -> dict:
-    """
-    Get fresh presigned URLs for all GIFs associated with a sequence annotation.
-
-    This endpoint generates fresh presigned URLs for all GIFs stored for the annotation's
-    sequence bounding boxes. Each bbox that has generated GIFs will return both main and
-    crop URLs (when available) with expiration timestamps.
-
-    Args:
-        annotation_id: The ID of the sequence annotation to get GIF URLs for
-
-    Returns:
-        dict: Contains annotation info and array of GIF URLs with expiration times
-
-    Raises:
-        HTTPException 404: If sequence annotation not found
-        HTTPException 404: If any GIF files are missing from S3 storage
-    """
-    try:
-        # Get the annotation
-        annotation = await session.get(SequenceAnnotation, annotation_id)
-
-        if not annotation:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Sequence annotation not found",
-            )
-
-        # Ensure we have the latest data from the database
-        await session.refresh(annotation)
-
-        # Parse annotation data
-        from app.schemas.annotation_validation import SequenceAnnotationData
-
-        # Check if annotation field exists and is not None
-        if not hasattr(annotation, "annotation") or annotation.annotation is None:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Annotation data is missing or None",
-            )
-
-        # Handle case where annotation.annotation might be a dict or already parsed
-        annotation_dict = annotation.annotation
-        if isinstance(annotation_dict, dict):
-            annotation_data = SequenceAnnotationData(**annotation_dict)
-        else:
-            annotation_data = SequenceAnnotationData.model_validate(annotation_dict)
-
-        # Get S3 bucket
-        bucket = s3_service.get_bucket(s3_service.resolve_bucket_name())
-
-        # Generate URLs for each bbox that has GIF keys
-        gif_urls = []
-        for i, bbox in enumerate(annotation_data.sequences_bbox):
-            if bbox.gif_key_main or bbox.gif_key_crop:
-                bbox_urls = {
-                    "bbox_index": i,
-                    "main_url": None,
-                    "crop_url": None,
-                    "main_expires_at": None,
-                    "crop_expires_at": None,
-                    "has_main": bbox.gif_key_main is not None,
-                    "has_crop": bbox.gif_key_crop is not None,
-                }
-
-                # Generate main GIF URL if key exists
-                if bbox.gif_key_main:
-                    try:
-                        bbox_urls["main_url"] = bucket.get_public_url(bbox.gif_key_main)
-                        # Calculate expiration time (24 hours from now by default)
-                        expire_time = datetime.utcnow() + timedelta(
-                            seconds=settings.S3_URL_EXPIRATION
-                        )
-                        bbox_urls["main_expires_at"] = expire_time.isoformat() + "Z"
-                    except HTTPException:
-                        # File not found in S3, skip this URL
-                        bbox_urls["has_main"] = False
-
-                # Generate crop GIF URL if key exists
-                if bbox.gif_key_crop:
-                    try:
-                        bbox_urls["crop_url"] = bucket.get_public_url(bbox.gif_key_crop)
-                        expire_time = datetime.utcnow() + timedelta(
-                            seconds=settings.S3_URL_EXPIRATION
-                        )
-                        bbox_urls["crop_expires_at"] = expire_time.isoformat() + "Z"
-                    except HTTPException:
-                        # File not found in S3, skip this URL
-                        bbox_urls["has_crop"] = False
-
-                # Only add if at least one URL was generated
-                if bbox_urls["main_url"] or bbox_urls["crop_url"]:
-                    gif_urls.append(bbox_urls)
-
-        return {
-            "annotation_id": annotation_id,
-            "sequence_id": annotation.sequence_id,
-            "total_bboxes": len(annotation_data.sequences_bbox),
-            "gif_urls": gif_urls,
-            "generated_at": datetime.utcnow().isoformat() + "Z",
-        }
-
-    except HTTPException:
-        # Re-raise HTTP exceptions (404, 422)
-        raise
-    except Exception as e:
-        # Catch any other unexpected errors and return 500
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to generate GIF URLs: {str(e)}",
-        )

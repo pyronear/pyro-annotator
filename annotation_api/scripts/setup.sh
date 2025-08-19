@@ -38,7 +38,6 @@ main() {
     echo ""
     echo "Next steps:"
     echo "  - For development: make start"
-    echo "  - For production: make start-prod"
     echo "  - Run tests: make test"
     echo ""
     echo "API will be available at: http://localhost:5050/docs"

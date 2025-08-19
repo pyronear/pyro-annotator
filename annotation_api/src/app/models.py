@@ -5,8 +5,7 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional
-
+from typing import List, Optional
 from sqlalchemy import Column, ForeignKey, Index, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
@@ -28,8 +27,8 @@ class DetectionAnnotationProcessingStage(str, Enum):
         "imported"  # Initial stage when annotation is imported from external source
     )
     VISUAL_CHECK = "visual_check"  # Human visual verification of detection accuracy
-    LABEL_STUDIO_CHECK = (
-        "label_studio_check"  # Quality control using Label Studio interface
+    BBOX_ANNOTATION = (
+        "bbox_annotation"  # Manual bounding box drawing around smoke regions
     )
     ANNOTATED = "annotated"  # Final stage with complete human annotation and validation
 
@@ -121,13 +120,46 @@ class Sequence(SQLModel, table=True):
     __tablename__ = "sequences"
     __table_args__ = (
         UniqueConstraint("alert_api_id", "source_api", name="uq_sequence_alert_source"),
+        # Single column indices
         Index("ix_sequence_created_at", "created_at"),
         Index("ix_sequence_recorded_at", "recorded_at"),
         Index("ix_sequence_last_seen_at", "last_seen_at"),
         Index("ix_sequence_source_api", "source_api"),
         Index("ix_sequence_camera_id", "camera_id"),
+        Index("ix_sequence_camera_name", "camera_name"),
         Index("ix_sequence_organisation_id", "organisation_id"),
+        Index("ix_sequence_organisation_name", "organisation_name"),
         Index("ix_sequence_is_wildfire", "is_wildfire_alertapi"),
+        # Composite indices for common filter combinations
+        Index("ix_sequence_source_camera", "source_api", "camera_name"),
+        Index("ix_sequence_source_org", "source_api", "organisation_name"),
+        Index("ix_sequence_source_wildfire", "source_api", "is_wildfire_alertapi"),
+        Index("ix_sequence_camera_org", "camera_name", "organisation_name"),
+        Index(
+            "ix_sequence_source_camera_org",
+            "source_api",
+            "camera_name",
+            "organisation_name",
+        ),
+        Index(
+            "ix_sequence_source_camera_wildfire",
+            "source_api",
+            "camera_name",
+            "is_wildfire_alertapi",
+        ),
+        Index(
+            "ix_sequence_source_org_wildfire",
+            "source_api",
+            "organisation_name",
+            "is_wildfire_alertapi",
+        ),
+        Index(
+            "ix_sequence_full_filter",
+            "source_api",
+            "camera_name",
+            "organisation_name",
+            "is_wildfire_alertapi",
+        ),
     )
     id: int = Field(
         default=None, primary_key=True, sa_column_kwargs={"autoincrement": True}
@@ -157,6 +189,8 @@ class SequenceAnnotation(SQLModel, table=True):
         Index("ix_sequence_annotation_processing_stage", "processing_stage"),
         Index("ix_sequence_annotation_created_at", "created_at"),
         Index("ix_sequence_annotation_stage_date", "processing_stage", "created_at"),
+        # GIN index for efficient JSONB operations on false_positive_types array
+        Index("ix_sequence_annotation_fp_types", "false_positive_types", postgresql_using="gin"),
     )
     id: int = Field(
         default=None, primary_key=True, sa_column_kwargs={"autoincrement": True}
@@ -166,7 +200,9 @@ class SequenceAnnotation(SQLModel, table=True):
     )
     has_smoke: bool
     has_false_positives: bool
-    false_positive_types: str
+    false_positive_types: List[str] = Field(
+        default_factory=list, sa_column=Column(JSONB)
+    )
     has_missed_smoke: bool
     annotation: dict = Field(sa_column=Column(JSONB))
     created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
