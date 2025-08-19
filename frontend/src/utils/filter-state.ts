@@ -227,15 +227,14 @@ export const createInitialFilterState = (
   overrides: Partial<ExtendedFilterState> = {}
 ): ExtendedFilterState => {
   return {
-    filters: {},
+    filters: {
+      ...overrides.filters
+    },
     dateFrom: '',
     dateTo: '',
     selectedFalsePositiveTypes: [],
     selectedModelAccuracy: 'all',
     ...overrides,
-    filters: {
-      ...overrides.filters
-    }
   };
 };
 

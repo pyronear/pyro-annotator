@@ -13,6 +13,17 @@ import { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError } from 'ax
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 /**
+ * Extended AxiosRequestConfig with metadata support
+ */
+export interface ExtendedAxiosRequestConfig extends AxiosRequestConfig {
+  metadata?: {
+    timestamp?: number;
+    requestId?: string;
+    [key: string]: any;
+  };
+}
+
+/**
  * Generic API request configuration
  */
 export interface ApiRequestConfig<TParams = any> extends Omit<AxiosRequestConfig, 'method' | 'url'> {
@@ -177,7 +188,7 @@ export const requestTransformers = {
    * 
    * @pure Function adds timestamp without mutation
    */
-  addTimestamp: <T extends AxiosRequestConfig>(config: T): T => ({
+  addTimestamp: <T extends ExtendedAxiosRequestConfig>(config: T): T => ({
     ...config,
     metadata: {
       ...config.metadata,

@@ -8,8 +8,7 @@ import {
   analyzeSequenceAccuracy,
   getRowBackgroundClasses,
   getFalsePositiveEmoji,
-  formatFalsePositiveType,
-  ModelAccuracyType
+  formatFalsePositiveType
 } from '@/utils/modelAccuracy';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
 import TabbedFilters from '@/components/filters/TabbedFilters';
