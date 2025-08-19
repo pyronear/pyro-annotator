@@ -15,7 +15,6 @@ from app.crud import (
     SequenceAnnotationCRUD,
     SequenceCRUD,
 )
-from app.services.gif_generator import SequenceGifGenerator
 from app.db import get_session
 
 JWTTemplate = TypeVar("JWTTemplate")
@@ -26,7 +25,6 @@ __all__ = [
     "get_detection_crud",
     "get_sequence_annotation_crud",
     "get_sequence_crud",
-    "get_gif_generator",
 ]
 
 
@@ -50,8 +48,3 @@ def get_sequence_annotation_crud(
     return SequenceAnnotationCRUD(session=session)
 
 
-def get_gif_generator(
-    session: AsyncSession = Depends(get_session),
-) -> SequenceGifGenerator:
-    """Dependency function to get GIF generator service."""
-    return SequenceGifGenerator(session)

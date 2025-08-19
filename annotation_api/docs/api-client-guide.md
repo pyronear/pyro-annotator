@@ -214,8 +214,6 @@ annotation_data = {
         "sequences_bbox": [
             {
                 "is_smoke": True,
-                "gif_key_main": None,  # Will be populated after GIF generation
-                "gif_key_crop": None,  # Will be populated after GIF generation
                 "false_positive_types": [],  # Empty if is_smoke=True
                 "bboxes": [
                     {
@@ -226,8 +224,6 @@ annotation_data = {
             },
             {
                 "is_smoke": False,
-                "gif_key_main": None,
-                "gif_key_crop": None,
                 "false_positive_types": ["lens_flare", "high_cloud"],
                 "bboxes": [
                     {
@@ -251,70 +247,6 @@ except ValidationError as e:
     print(f"Invalid sequence annotation: {e.message}")
 ```
 
-## Working with GIFs
-
-### GIF Generation Workflow
-
-The API uses a two-step process for GIF generation to avoid storing expiring URLs in the database:
-
-1. **Generate GIFs** - Creates GIF files and stores bucket keys
-2. **Get GIF URLs** - Retrieves fresh presigned URLs on-demand
-
-```python
-# Step 1: Generate GIFs for a sequence annotation
-import requests
-
-annotation_id = 123
-gif_response = requests.post(
-    f"{API_BASE_URL}/api/v1/annotations/sequences/{annotation_id}/generate-gifs"
-)
-
-if gif_response.status_code == 200:
-    result = gif_response.json()
-    print(f"Generated {result['gif_count']} GIFs")
-    print(f"GIF keys: {result['gif_keys']}")
-    
-    # Example response:
-    # {
-    #     "annotation_id": 123,
-    #     "sequence_id": 1,
-    #     "gif_count": 1,
-    #     "total_bboxes": 1,
-    #     "generated_at": "2024-01-15T10:30:00Z",
-    #     "gif_keys": [{
-    #         "bbox_index": 0,
-    #         "main_key": "gifs/sequence_1/main_20240115_103000.gif",
-    #         "crop_key": "gifs/sequence_1/crop_20240115_103000.gif",
-    #         "has_main": true,
-    #         "has_crop": true
-    #     }]
-    # }
-
-# Step 2: Get fresh URLs when needed
-urls_response = requests.get(
-    f"{API_BASE_URL}/api/v1/annotations/sequences/{annotation_id}/gifs/urls"
-)
-
-if urls_response.status_code == 200:
-    urls_data = urls_response.json()
-    
-    for gif_url in urls_data['gif_urls']:
-        print(f"Bbox {gif_url['bbox_index']}:")
-        if gif_url['has_main']:
-            print(f"  Main GIF: {gif_url['main_url']}")
-            print(f"  Expires: {gif_url['main_expires_at']}")
-        if gif_url['has_crop']:
-            print(f"  Crop GIF: {gif_url['crop_url']}")
-            print(f"  Expires: {gif_url['crop_expires_at']}")
-```
-
-### Key Points about GIF Storage
-
-- **Bucket Keys, Not URLs**: The database stores S3 bucket keys (e.g., `gifs/sequence_1/main_20240115.gif`)
-- **No Expiring URLs**: URLs with credentials are never stored in the database
-- **On-Demand Generation**: Fresh URLs are generated when requested
-- **Configurable Expiration**: URLs expire after 24 hours by default
-- **Development Access**: In development, URLs use `localhost:4566` instead of internal Docker hostnames
 
 ## Error Handling
 

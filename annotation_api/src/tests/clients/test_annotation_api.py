@@ -43,9 +43,7 @@ from app.clients.annotation_api import (
 BASE_URL = "http://localhost:5050"
 API_BASE = f"{BASE_URL}/api/v1"
 
-
 # ==================== FIXTURES ====================
-
 
 @pytest.fixture
 def mock_sequence_data():
@@ -61,9 +59,8 @@ def mock_sequence_data():
         "organisation_name": "Test Org",
         "lat": 43.6047,
         "lon": 1.4442,
-        "is_wildfire_alertapi": True,
+        "is_wildfire_alertapi": True
     }
-
 
 @pytest.fixture
 def mock_detection_data():
@@ -77,12 +74,11 @@ def mock_detection_data():
                 {
                     "xyxyn": [0.1, 0.2, 0.4, 0.6],
                     "confidence": 0.87,
-                    "class_name": "smoke",
+                    "class_name": "smoke"
                 }
             ]
-        },
+        }
     }
-
 
 @pytest.fixture
 def mock_sequence_response():
@@ -100,9 +96,8 @@ def mock_sequence_response():
         "organisation_name": "Test Org",
         "lat": 43.6047,
         "lon": 1.4442,
-        "is_wildfire_alertapi": True,
+        "is_wildfire_alertapi": True
     }
-
 
 @pytest.fixture
 def mock_detection_response():
@@ -119,12 +114,11 @@ def mock_detection_response():
                 {
                     "xyxyn": [0.1, 0.2, 0.4, 0.6],
                     "confidence": 0.87,
-                    "class_name": "smoke",
+                    "class_name": "smoke"
                 }
             ]
-        },
+        }
     }
-
 
 @pytest.fixture
 def mock_detection_annotation_data():
@@ -134,11 +128,10 @@ def mock_detection_annotation_data():
         "annotation": {
             "is_smoke": True,
             "confidence": 0.9,
-            "notes": "Clear smoke visible",
+            "notes": "Clear smoke visible"
         },
-        "processing_stage": "annotated",
+        "processing_stage": "annotated"
     }
-
 
 @pytest.fixture
 def mock_sequence_annotation_data():
@@ -150,31 +143,25 @@ def mock_sequence_annotation_data():
             "sequences_bbox": [
                 {
                     "is_smoke": True,
-                    "gif_key_main": "gifs/sequence_1/main.gif",
-                    "gif_key_crop": "gifs/sequence_1/crop.gif",
                     "false_positive_types": [],
-                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.2, 0.4, 0.6]}],
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.2, 0.4, 0.6]}]
                 }
             ]
         },
-        "processing_stage": "annotated",
+        "processing_stage": "annotated"
     }
-
 
 @pytest.fixture
 def mock_paginated_response():
     """Mock paginated API response."""
     return {"items": [], "page": 1, "pages": 1, "size": 50, "total": 0}
 
-
 @pytest.fixture
 def mock_image_file():
     """Mock image file content."""
     return b"fake_image_content"
 
-
 # ==================== HTTP UTILITIES TESTS ====================
-
 
 class TestHTTPUtilities:
     """Test HTTP utility functions."""
@@ -263,13 +250,13 @@ class TestHTTPUtilities:
                 {
                     "loc": ["body", "email"],
                     "msg": "field required",
-                    "type": "value_error.missing",
+                    "type": "value_error.missing"
                 },
                 {
                     "loc": ["body", "age"],
                     "msg": "ensure this value is greater than 0",
-                    "type": "value_error.number.not_gt",
-                },
+                    "type": "value_error.number.not_gt"
+                }
             ]
         }
 
@@ -359,9 +346,7 @@ class TestHTTPUtilities:
         assert error.status_code == 400
         assert "Bad Request" in str(error)
 
-
 # ==================== EXCEPTION TESTS ====================
-
 
 class TestExceptions:
     """Test custom exception classes."""
@@ -394,7 +379,7 @@ class TestExceptions:
         """Test ValidationError creation."""
         field_errors = [
             {"field": "email", "message": "Invalid email format"},
-            {"field": "password", "message": "Password too short"},
+            {"field": "password", "message": "Password too short"}
         ]
         error = ValidationError(
             "Validation failed", field_errors=field_errors, operation="create user"
@@ -425,9 +410,7 @@ class TestExceptions:
         assert error.response_data == response_data
         assert error.operation == "save data"
 
-
 # ==================== SEQUENCE OPERATIONS TESTS ====================
-
 
 class TestSequenceOperations:
     """Test sequence CRUD operations."""
@@ -453,7 +436,7 @@ class TestSequenceOperations:
                 {
                     "loc": ["body", "recorded_at"],
                     "msg": "field required",
-                    "type": "value_error.missing",
+                    "type": "value_error.missing"
                 }
             ]
         }
@@ -527,7 +510,7 @@ class TestSequenceOperations:
             "page": 2,
             "size": 25,
             "order_by": "recorded_at",
-            "order_direction": "desc",
+            "order_direction": "desc"
         }
 
         with requests_mock.Mocker() as m:
@@ -564,9 +547,7 @@ class TestSequenceOperations:
             with pytest.raises(NotFoundError):
                 delete_sequence(BASE_URL, sequence_id)
 
-
 # ==================== DETECTION OPERATIONS TESTS ====================
-
 
 class TestDetectionOperations:
     """Test detection CRUD operations."""
@@ -597,7 +578,7 @@ class TestDetectionOperations:
                 {
                     "loc": ["body", "sequence_id"],
                     "msg": "Sequence does not exist",
-                    "type": "value_error",
+                    "type": "value_error"
                 }
             ]
         }
@@ -697,9 +678,7 @@ class TestDetectionOperations:
             with pytest.raises(NotFoundError):
                 delete_detection(BASE_URL, detection_id)
 
-
 # ==================== ANNOTATION OPERATIONS TESTS ====================
-
 
 class TestDetectionAnnotationOperations:
     """Test detection annotation CRUD operations."""
@@ -709,7 +688,7 @@ class TestDetectionAnnotationOperations:
         response_data = {
             "id": 1,
             **mock_detection_annotation_data,
-            "created_at": "2024-01-15T10:30:00.000000",
+            "created_at": "2024-01-15T10:30:00.000000"
         }
 
         with requests_mock.Mocker() as m:
@@ -734,7 +713,7 @@ class TestDetectionAnnotationOperations:
             "id": annotation_id,
             "detection_id": 1,
             "annotation": {"is_smoke": True},
-            "processing_stage": "annotated",
+            "processing_stage": "annotated"
         }
 
         with requests_mock.Mocker() as m:
@@ -760,7 +739,7 @@ class TestDetectionAnnotationOperations:
             "processing_stage": "annotated",
             "created_at_gte": "2024-01-01T00:00:00",
             "page": 1,
-            "size": 20,
+            "size": 20
         }
 
         with requests_mock.Mocker() as m:
@@ -774,13 +753,13 @@ class TestDetectionAnnotationOperations:
         annotation_id = 1
         update_data = {
             "annotation": {"is_smoke": False, "notes": "Updated annotation"},
-            "processing_stage": "reviewed",
+            "processing_stage": "reviewed"
         }
         response_data = {
             "id": annotation_id,
             "detection_id": 1,
             **update_data,
-            "updated_at": "2024-01-15T11:00:00.000000",
+            "updated_at": "2024-01-15T11:00:00.000000"
         }
 
         with requests_mock.Mocker() as m:
@@ -801,7 +780,6 @@ class TestDetectionAnnotationOperations:
 
             delete_detection_annotation(BASE_URL, annotation_id)
 
-
 class TestSequenceAnnotationOperations:
     """Test sequence annotation CRUD operations."""
 
@@ -813,7 +791,7 @@ class TestSequenceAnnotationOperations:
             "created_at": "2024-01-15T10:30:00.000000",
             "has_smoke": True,
             "has_false_positives": False,
-            "false_positive_types": "[]",
+            "false_positive_types": "[]"
         }
 
         with requests_mock.Mocker() as m:
@@ -834,7 +812,7 @@ class TestSequenceAnnotationOperations:
             "sequence_id": 1,
             "has_missed_smoke": False,
             "annotation": {"sequences_bbox": []},
-            "processing_stage": "annotated",
+            "processing_stage": "annotated"
         }
 
         with requests_mock.Mocker() as m:
@@ -860,7 +838,7 @@ class TestSequenceAnnotationOperations:
             "has_false_positives": False,
             "processing_stage": "annotated",
             "order_by": "created_at",
-            "order_direction": "desc",
+            "order_direction": "desc"
         }
 
         with requests_mock.Mocker() as m:
@@ -877,7 +855,7 @@ class TestSequenceAnnotationOperations:
             "id": annotation_id,
             "sequence_id": 1,
             **update_data,
-            "updated_at": "2024-01-15T11:00:00.000000",
+            "updated_at": "2024-01-15T11:00:00.000000"
         }
 
         with requests_mock.Mocker() as m:
@@ -898,9 +876,7 @@ class TestSequenceAnnotationOperations:
 
             delete_sequence_annotation(BASE_URL, annotation_id)
 
-
 # ==================== EDGE CASES AND INTEGRATION TESTS ====================
-
 
 class TestEdgeCases:
     """Test edge cases and integration scenarios."""
@@ -911,7 +887,7 @@ class TestEdgeCases:
             "http://localhost:5050",
             "http://localhost:5050/",
             "https://api.example.com",
-            "https://api.example.com/",
+            "https://api.example.com/"
         ]
 
         for base_url in test_urls:
@@ -929,12 +905,11 @@ class TestEdgeCases:
             "sequences_bbox": [
                 {
                     "is_smoke": True,
-                    "gif_key_main": "gifs/sequence_1/main.gif",
                     "false_positive_types": ["reflection", "cloud"],
                     "bboxes": [
                         {"detection_id": 1, "xyxyn": [0.1, 0.2, 0.4, 0.6]},
-                        {"detection_id": 2, "xyxyn": [0.5, 0.6, 0.8, 0.9]},
-                    ],
+                        {"detection_id": 2, "xyxyn": [0.5, 0.6, 0.8, 0.9]}
+                    ]
                 }
             ]
         }
@@ -942,7 +917,7 @@ class TestEdgeCases:
         annotation_data = {
             "sequence_id": 1,
             "annotation": complex_annotation,
-            "processing_stage": "annotated",
+            "processing_stage": "annotated"
         }
 
         with requests_mock.Mocker() as m:
@@ -972,7 +947,7 @@ class TestEdgeCases:
             "page": 100,
             "size": 100,  # Max allowed
             "order_by": "created_at",
-            "order_direction": "desc",
+            "order_direction": "desc"
         }
 
         large_response = {
@@ -980,7 +955,7 @@ class TestEdgeCases:
             "page": 100,
             "pages": 100,
             "size": 100,
-            "total": 10000,
+            "total": 10000
         }
 
         with requests_mock.Mocker() as m:

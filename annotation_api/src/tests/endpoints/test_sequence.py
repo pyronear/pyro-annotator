@@ -5,7 +5,6 @@ from httpx import AsyncClient
 
 now = datetime.utcnow()
 
-
 @pytest.mark.asyncio
 async def test_create_sequence(async_client: AsyncClient):
     payload = {
@@ -21,7 +20,7 @@ async def test_create_sequence(async_client: AsyncClient):
         "lon": "0.0",
         "created_at": (now - timedelta(days=1)).isoformat(),
         "recorded_at": (now - timedelta(days=1)).isoformat(),
-        "last_seen_at": now.isoformat(),
+        "last_seen_at": now.isoformat()
     }
 
     response = await async_client.post("/sequences", data=payload)
@@ -31,7 +30,6 @@ async def test_create_sequence(async_client: AsyncClient):
     assert sequence["source_api"] == payload["source_api"]
     assert sequence["is_wildfire_alertapi"] is True
     assert sequence["camera_name"] == payload["camera_name"]
-
 
 @pytest.mark.asyncio
 async def test_get_sequence(async_client: AsyncClient):
@@ -43,7 +41,6 @@ async def test_get_sequence(async_client: AsyncClient):
         assert "camera_name" in seq
     else:
         assert response.status_code in (404, 422)
-
 
 @pytest.mark.asyncio
 async def test_list_sequences(async_client: AsyncClient):
@@ -57,7 +54,6 @@ async def test_list_sequences(async_client: AsyncClient):
     assert "size" in data
     assert isinstance(data["items"], list)
 
-
 @pytest.mark.asyncio
 async def test_delete_sequence(async_client: AsyncClient, sequence_session):
     sequence_id = 1
@@ -66,7 +62,6 @@ async def test_delete_sequence(async_client: AsyncClient, sequence_session):
 
     get_response = await async_client.get(f"/sequences/{sequence_id}")
     assert get_response.status_code == 404
-
 
 @pytest.mark.asyncio
 async def test_create_sequence_without_is_wildfire_alertapi(async_client: AsyncClient):
@@ -82,7 +77,7 @@ async def test_create_sequence_without_is_wildfire_alertapi(async_client: AsyncC
         "lon": "0.0",
         "created_at": (now - timedelta(days=1)).isoformat(),
         "recorded_at": (now - timedelta(days=1)).isoformat(),
-        "last_seen_at": now.isoformat(),
+        "last_seen_at": now.isoformat()
     }
 
     response = await async_client.post("/sequences", data=payload)
@@ -92,7 +87,6 @@ async def test_create_sequence_without_is_wildfire_alertapi(async_client: AsyncC
     assert sequence["source_api"] == payload["source_api"]
     assert sequence["is_wildfire_alertapi"] is None
     assert sequence["camera_name"] == payload["camera_name"]
-
 
 @pytest.mark.asyncio
 async def test_create_sequence_with_is_wildfire_alertapi_true(
@@ -111,7 +105,7 @@ async def test_create_sequence_with_is_wildfire_alertapi_true(
         "lon": "0.0",
         "created_at": (now - timedelta(days=1)).isoformat(),
         "recorded_at": (now - timedelta(days=1)).isoformat(),
-        "last_seen_at": now.isoformat(),
+        "last_seen_at": now.isoformat()
     }
 
     response = await async_client.post("/sequences", data=payload)
@@ -121,7 +115,6 @@ async def test_create_sequence_with_is_wildfire_alertapi_true(
     assert sequence["source_api"] == payload["source_api"]
     assert sequence["is_wildfire_alertapi"] is True
     assert sequence["camera_name"] == payload["camera_name"]
-
 
 @pytest.mark.asyncio
 async def test_list_sequences_with_include_annotation(async_client: AsyncClient):
@@ -148,7 +141,6 @@ async def test_list_sequences_with_include_annotation(async_client: AsyncClient)
             assert "has_missed_smoke" in annotation
             assert "annotation" in annotation
 
-
 @pytest.mark.asyncio
 async def test_list_sequences_filter_by_processing_stage(async_client: AsyncClient):
     """Test filtering sequences by processing stage"""
@@ -165,7 +157,6 @@ async def test_list_sequences_filter_by_processing_stage(async_client: AsyncClie
     data = response.json()
     assert isinstance(data, dict)
     assert "items" in data
-
 
 @pytest.mark.asyncio
 async def test_list_sequences_filter_by_annotation_fields(async_client: AsyncClient):
@@ -191,7 +182,6 @@ async def test_list_sequences_filter_by_annotation_fields(async_client: AsyncCli
     assert isinstance(data, dict)
     assert "items" in data
 
-
 @pytest.mark.asyncio
 async def test_list_sequences_combined_filters(async_client: AsyncClient):
     """Test combining annotation inclusion with filtering"""
@@ -210,7 +200,6 @@ async def test_list_sequences_combined_filters(async_client: AsyncClient):
             assert item["annotation"]["processing_stage"] == "annotated"
             assert item["annotation"]["has_smoke"] is True
 
-
 @pytest.mark.asyncio
 async def test_create_sequence_with_is_wildfire_alertapi_false(
     async_client: AsyncClient,
@@ -228,7 +217,7 @@ async def test_create_sequence_with_is_wildfire_alertapi_false(
         "lon": "0.0",
         "created_at": (now - timedelta(days=1)).isoformat(),
         "recorded_at": (now - timedelta(days=1)).isoformat(),
-        "last_seen_at": now.isoformat(),
+        "last_seen_at": now.isoformat()
     }
 
     response = await async_client.post("/sequences", data=payload)
@@ -238,7 +227,6 @@ async def test_create_sequence_with_is_wildfire_alertapi_false(
     assert sequence["source_api"] == payload["source_api"]
     assert sequence["is_wildfire_alertapi"] is False
     assert sequence["camera_name"] == payload["camera_name"]
-
 
 @pytest.mark.asyncio
 async def test_create_duplicate_sequence_unique_constraint(async_client: AsyncClient):
@@ -255,7 +243,7 @@ async def test_create_duplicate_sequence_unique_constraint(async_client: AsyncCl
         "lon": "0.0",
         "created_at": (now - timedelta(days=1)).isoformat(),
         "recorded_at": (now - timedelta(days=1)).isoformat(),
-        "last_seen_at": now.isoformat(),
+        "last_seen_at": now.isoformat()
     }
 
     # First sequence should be created successfully
@@ -287,7 +275,6 @@ async def test_create_duplicate_sequence_unique_constraint(async_client: AsyncCl
     assert retrieved_sequence["alert_api_id"] == int(payload["alert_api_id"])
     assert retrieved_sequence["source_api"] == payload["source_api"]
 
-
 @pytest.mark.asyncio
 async def test_create_sequence_different_source_api_same_alert_id(
     async_client: AsyncClient,
@@ -304,7 +291,7 @@ async def test_create_sequence_different_source_api_same_alert_id(
         "lon": "0.0",
         "created_at": (now - timedelta(days=1)).isoformat(),
         "recorded_at": (now - timedelta(days=1)).isoformat(),
-        "last_seen_at": now.isoformat(),
+        "last_seen_at": now.isoformat()
     }
 
     # Create sequence with pyronear_french source
@@ -331,7 +318,6 @@ async def test_create_sequence_different_source_api_same_alert_id(
     assert sequence1["alert_api_id"] == sequence2["alert_api_id"]
     assert sequence1["source_api"] != sequence2["source_api"]
 
-
 @pytest.mark.asyncio
 async def test_list_sequences_has_annotation_filter(
     async_client: AsyncClient, sequence_session
@@ -350,7 +336,7 @@ async def test_list_sequences_has_annotation_filter(
             "lon": "0.0",
             "created_at": (now - timedelta(days=1)).isoformat(),
             "recorded_at": (now - timedelta(days=1)).isoformat(),
-            "last_seen_at": now.isoformat(),
+            "last_seen_at": now.isoformat()
         }
         for i in range(3)
     ]
@@ -370,15 +356,13 @@ async def test_list_sequences_has_annotation_filter(
                 "sequences_bbox": [
                     {
                         "is_smoke": True,
-                        "gif_key_main": f"gifs/sequence_1/main_{i}.gif",
-                        "gif_key_crop": f"gifs/sequence_1/crop_{i}.gif",
                         "false_positive_types": [],
-                        "bboxes": [],
+                        "bboxes": []
                     }
                 ]
             },
             "processing_stage": "imported",
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.utcnow().isoformat()
         }
         response = await async_client.post(
             "/annotations/sequences/", json=annotation_payload
@@ -423,7 +407,6 @@ async def test_list_sequences_has_annotation_filter(
     for seq_id in sequence_ids:
         assert any(seq["id"] == seq_id for seq in all_sequences)
 
-
 @pytest.mark.asyncio
 async def test_list_sequences_filter_by_camera_name(async_client: AsyncClient):
     """Test filtering sequences by camera name."""
@@ -439,7 +422,7 @@ async def test_list_sequences_filter_by_camera_name(async_client: AsyncClient):
             "lat": "43.5",
             "lon": "1.5",
             "recorded_at": (now - timedelta(days=1)).isoformat(),
-            "last_seen_at": now.isoformat(),
+            "last_seen_at": now.isoformat()
         },
         {
             "source_api": "pyronear_french",
@@ -451,7 +434,7 @@ async def test_list_sequences_filter_by_camera_name(async_client: AsyncClient):
             "lat": "43.0",
             "lon": "1.5",
             "recorded_at": (now - timedelta(days=1)).isoformat(),
-            "last_seen_at": now.isoformat(),
+            "last_seen_at": now.isoformat()
         },
         {
             "source_api": "pyronear_french",
@@ -463,8 +446,8 @@ async def test_list_sequences_filter_by_camera_name(async_client: AsyncClient):
             "lat": "43.5",
             "lon": "2.0",
             "recorded_at": (now - timedelta(days=1)).isoformat(),
-            "last_seen_at": now.isoformat(),
-        },
+            "last_seen_at": now.isoformat()
+        }
     ]
 
     # Create sequences
@@ -525,7 +508,6 @@ async def test_list_sequences_filter_by_camera_name(async_client: AsyncClient):
     for seq in filtered_sequences:
         assert seq["id"] not in sequence_ids
 
-
 @pytest.mark.asyncio
 async def test_list_sequences_filter_by_organisation_name(async_client: AsyncClient):
     """Test filtering sequences by organisation name."""
@@ -541,7 +523,7 @@ async def test_list_sequences_filter_by_organisation_name(async_client: AsyncCli
             "lat": "43.5",
             "lon": "1.5",
             "recorded_at": (now - timedelta(days=1)).isoformat(),
-            "last_seen_at": now.isoformat(),
+            "last_seen_at": now.isoformat()
         },
         {
             "source_api": "alert_wildfire",
@@ -553,7 +535,7 @@ async def test_list_sequences_filter_by_organisation_name(async_client: AsyncCli
             "lat": "44.0",
             "lon": "2.0",
             "recorded_at": (now - timedelta(days=1)).isoformat(),
-            "last_seen_at": now.isoformat(),
+            "last_seen_at": now.isoformat()
         },
         {
             "source_api": "api_cenia",
@@ -565,8 +547,8 @@ async def test_list_sequences_filter_by_organisation_name(async_client: AsyncCli
             "lat": "-33.4",
             "lon": "-70.6",
             "recorded_at": (now - timedelta(days=1)).isoformat(),
-            "last_seen_at": now.isoformat(),
-        },
+            "last_seen_at": now.isoformat()
+        }
     ]
 
     # Create sequences
@@ -628,7 +610,6 @@ async def test_list_sequences_filter_by_organisation_name(async_client: AsyncCli
     for seq in filtered_sequences:
         assert seq["id"] not in sequence_ids
 
-
 @pytest.mark.asyncio
 async def test_list_sequences_combined_name_and_id_filters(async_client: AsyncClient):
     """Test that name filters work alongside existing ID filters."""
@@ -644,7 +625,7 @@ async def test_list_sequences_combined_name_and_id_filters(async_client: AsyncCl
             "lat": "43.5",
             "lon": "1.5",
             "recorded_at": (now - timedelta(days=1)).isoformat(),
-            "last_seen_at": now.isoformat(),
+            "last_seen_at": now.isoformat()
         },
         {
             "source_api": "pyronear_french",
@@ -656,8 +637,8 @@ async def test_list_sequences_combined_name_and_id_filters(async_client: AsyncCl
             "lat": "43.0",
             "lon": "1.5",
             "recorded_at": (now - timedelta(days=1)).isoformat(),
-            "last_seen_at": now.isoformat(),
-        },
+            "last_seen_at": now.isoformat()
+        }
     ]
 
     # Create sequences

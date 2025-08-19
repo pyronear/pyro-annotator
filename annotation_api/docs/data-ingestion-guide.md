@@ -8,9 +8,9 @@ The data ingestion system consists of three main scripts:
 
 1. **`fetch_platform_sequences`** - Fetches multiple sequences within a date range
 2. **`fetch_platform_sequence_id`** - Fetches a specific sequence by ID  
-3. **`import`** - **End-to-end processing**: Fetches platform data, generates annotations, and creates GIFs in one streamlined workflow
+3. **`import`** - **End-to-end processing**: Fetches platform data and generates annotations in one streamlined workflow
 
-The first two scripts focus on data fetching and transfer, while the combined import script provides a complete pipeline from raw platform data to annotation-ready sequences with automatically generated GIFs and proper processing stage management.
+The first two scripts focus on data fetching and transfer, while the combined import script provides a complete pipeline from raw platform data to annotation-ready sequences with proper processing stage management.
 
 ## Prerequisites
 
@@ -317,7 +317,7 @@ This ensures your local annotation API has complete context for annotation work.
 
 ## 3. Combined End-to-End Processing
 
-The combined import script (`import.py`) provides a streamlined workflow that combines platform data fetching with automated annotation generation and GIF creation. This is the recommended approach for most use cases as it takes sequences from the platform API all the way to annotation-ready status in a single command.
+The combined import script (`import.py`) provides a streamlined workflow that combines platform data fetching with automated annotation generation. This is the recommended approach for most use cases as it takes sequences from the platform API all the way to annotation-ready status in a single command.
 
 ### Workflow Overview
 
@@ -325,16 +325,15 @@ The script executes the following pipeline:
 
 1. **Fetch Platform Data**: Retrieves sequences and detections from platform API → posts to annotation API
 2. **For Each Sequence**:
-   - **Generate Annotation**: Analyzes AI predictions and creates sequence annotations → sets stage to `IMPORTED`
-   - **Generate GIFs**: Creates main/crop GIFs from detection images → sets stage to `READY_TO_ANNOTATE`
+   - **Generate Annotation**: Analyzes AI predictions and creates sequence annotations → sets stage to `READY_TO_ANNOTATE`
 
 ### Key Features
 
 - **Sequential Processing**: Processes sequences one by one for better error control
 - **Automatic Overwriting**: Always updates existing annotations/GIFs (no force flag needed)
 - **Error Resilient**: Continues processing other sequences if one fails, logs errors clearly
-- **Stage Management**: Proper transitions from no annotation → `IMPORTED` → `READY_TO_ANNOTATE`
-- **Comprehensive Statistics**: Tracks success/failure rates for sequences, annotations, and GIFs
+- **Stage Management**: Proper transitions from no annotation → `READY_TO_ANNOTATE`
+- **Comprehensive Statistics**: Tracks success/failure rates for sequences and annotations
 
 ### Basic Usage
 
@@ -373,7 +372,6 @@ uv run python -m scripts.data_transfer.ingestion.platform.import \
   --confidence-threshold 0.5 \
   --iou-threshold 0.4 \
   --min-cluster-size 2 \
-  --max-concurrent-gifs 5 \
   --loglevel debug
 ```
 
@@ -409,7 +407,6 @@ uv run python -m scripts.data_transfer.ingestion.platform.import \
 |-----------|-------------|---------|----------|
 | `--dry-run` | Preview actions without execution | `false` | No |
 | `--skip-platform-fetch` | Skip platform data fetching | `false` | No |
-| `--max-concurrent-gifs` | Max concurrent GIF generations | `3` | No |
 | `--loglevel` | Logging level (debug/info/warning/error) | `info` | No |
 
 ### Processing Stages and Workflow
@@ -417,11 +414,10 @@ uv run python -m scripts.data_transfer.ingestion.platform.import \
 The script manages annotation processing stages automatically:
 
 1. **No Annotation**: Sequence exists but has no annotation
-2. **IMPORTED**: Annotation created from AI predictions (after step 2a)
-3. **READY_TO_ANNOTATE**: GIFs generated and annotation ready for human review (after step 2b)
+2. **READY_TO_ANNOTATE**: Annotation created from AI predictions and ready for human review
 
 ```
-Platform Data → Annotation API → Generate Annotations (IMPORTED) → Generate GIFs (READY_TO_ANNOTATE)
+Platform Data → Annotation API → Generate Annotations (READY_TO_ANNOTATE)
 ```
 
 ### Output and Reporting
@@ -435,8 +431,6 @@ Final Statistics:
   Successful sequences: 14
   Failed sequences: 1
   Annotations created: 14
-  Sequences with GIFs: 13
-  Total GIFs generated: 26
 ```
 
 ### Error Handling
@@ -454,8 +448,8 @@ This script is ideal when you want to:
 
 - **Batch Process**: Import and prepare multiple sequences for annotation work
 - **Automate Pipeline**: Set up regular imports from platform to annotation API
-- **Quality Control**: Generate annotations and GIFs for human review and validation
-- **ML Training**: Prepare annotated datasets with bounding boxes and GIFs
+- **Quality Control**: Generate annotations for human review and validation
+- **ML Training**: Prepare annotated datasets with bounding boxes
 
 After running this script, sequences will be in `READY_TO_ANNOTATE` stage and ready for:
 - Human annotation review and validation

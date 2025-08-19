@@ -73,14 +73,6 @@ The API provides enhanced endpoints with pagination, filtering, and ordering:
   - Paginated responses with advanced database indexing for performance
   - JSON filtering: searches within false_positive_types array using PostgreSQL JSONB operators
   - Derived field computation: automatically calculates has_smoke/has_false_positives from annotation data
-- **GIF Generation** (`POST /api/v1/annotations/sequences/{id}/generate-gifs`) - Generate main/crop GIFs for sequence annotations
-  - Creates GIFs from detection images with bounding box overlays
-  - Stores GIF bucket keys in annotation data (not URLs)
-  - Returns generated bucket keys and statistics
-- **GIF URLs** (`GET /api/v1/annotations/sequences/{id}/gifs/urls`) - Get fresh presigned URLs for GIFs
-  - Generates fresh URLs on-demand (avoids expired URLs in database)
-  - Returns URLs with expiration timestamps
-  - Handles missing files gracefully
 
 ## Development Commands
 
@@ -189,7 +181,7 @@ The API implements comprehensive Pydantic validation for JSONB fields:
 - **Validation models**: `AlgoPrediction`, `AlgoPredictions` in `app/schemas/annotation_validation.py`
 
 #### SequenceAnnotation.annotation Validation & Derived Fields
-- **Structure**: `{sequences_bbox: [{is_smoke: bool, gif_key_main?: str, gif_key_crop?: str, false_positive_types: [enum, ...], bboxes: [{detection_id: int, xyxyn: [x1n y1n x2n y2n]}]}, ...]}`
+- **Structure**: `{sequences_bbox: [{is_smoke: bool, false_positive_types: [enum, ...], bboxes: [{detection_id: int, xyxyn: [x1n y1n x2n y2n]}]}, ...]}`
 - **Derived fields**: `has_smoke` and `has_false_positives` are automatically calculated from annotation data
 - **FalsePositiveType enum**: Validates false_positive_types against predefined enum values
 - **xyxyn constraints**: Same as Detection (4 floats, 0-1 range, coordinate constraints)
@@ -206,15 +198,6 @@ The API implements comprehensive Pydantic validation for JSONB fields:
 - **Ordering**: Configurable ordering by timestamp fields with asc/desc direction
 - **Error Handling**: Comprehensive exception handling with detailed validation messages
 
-### GIF Generation System
-- **Storage Strategy**: GIF bucket keys (not URLs) are stored in database to avoid expiring URLs
-- **Two-step Process**: 
-  1. Generate GIFs: `POST /api/v1/annotations/sequences/{annotation_id}/generate-gifs`
-  2. Get fresh URLs: `GET /api/v1/annotations/sequences/{annotation_id}/gifs/urls`
-- **Schema Fields**: `gif_key_main` and `gif_key_crop` store S3 bucket keys like `gifs/sequence_1/main_20240115.gif`
-- **URL Generation**: Fresh presigned URLs generated on-demand with configurable expiration (default 24h)
-- **Bounding Boxes**: Red color (BGR: 0,0,255) with thickness=2 pixels in main GIFs
-- **Development**: Use `S3_PROXY_URL=http://localhost:4566` for browser-accessible URLs
 
 ## Authentication & Security
 - JWT-based authentication with configurable expiration

@@ -7,7 +7,6 @@ from app import models
 
 now = datetime.utcnow()
 
-
 @pytest.mark.asyncio
 async def test_create_sequence_annotation(
     async_client: AsyncClient, sequence_session, detection_session
@@ -19,8 +18,6 @@ async def test_create_sequence_annotation(
             "sequences_bbox": [
                 {
                     "is_smoke": True,
-                    "gif_url_main": "http://example.com/main.gif",
-                    "gif_url_crop": "http://example.com/crop.gif",
                     "false_positive_types": [],
                     "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
                 }
@@ -38,7 +35,6 @@ async def test_create_sequence_annotation(
     assert result["has_false_positives"] is False  # Derived from annotation
     assert result["sequence_id"] == payload["sequence_id"]
 
-
 @pytest.mark.asyncio
 async def test_get_sequence_annotation(async_client: AsyncClient):
     annotation_id = 1
@@ -49,7 +45,6 @@ async def test_get_sequence_annotation(async_client: AsyncClient):
         assert "has_smoke" in data
     else:
         assert response.status_code in (404, 422)
-
 
 @pytest.mark.asyncio
 async def test_list_sequence_annotations(async_client: AsyncClient):
@@ -63,7 +58,6 @@ async def test_list_sequence_annotations(async_client: AsyncClient):
     assert "size" in json_response
     assert isinstance(json_response["items"], list)
 
-
 @pytest.mark.asyncio
 async def test_patch_sequence_annotation(async_client: AsyncClient):
     annotation_id = 1
@@ -73,8 +67,6 @@ async def test_patch_sequence_annotation(async_client: AsyncClient):
             "sequences_bbox": [
                 {
                     "is_smoke": False,
-                    "gif_url_main": "http://updated.com/main.gif",
-                    "gif_url_crop": "http://updated.com/crop.gif",
                     "false_positive_types": [models.FalsePositiveType.LENS_FLARE.value],
                     "bboxes": [{"detection_id": 1, "xyxyn": [0.2, 0.2, 0.3, 0.3]}],
                 }
@@ -94,7 +86,6 @@ async def test_patch_sequence_annotation(async_client: AsyncClient):
     else:
         assert response.status_code in (404, 422)
 
-
 @pytest.mark.asyncio
 async def test_patch_sequence_annotation_invalid_processing_stage(
     async_client: AsyncClient,
@@ -113,7 +104,6 @@ async def test_patch_sequence_annotation_invalid_processing_stage(
         "processing_stage" in str(error).lower() for error in error_data["detail"]
     )
 
-
 @pytest.mark.asyncio
 async def test_delete_sequence_annotation(
     async_client: AsyncClient, sequence_session, detection_session
@@ -125,8 +115,6 @@ async def test_delete_sequence_annotation(
             "sequences_bbox": [
                 {
                     "is_smoke": True,
-                    "gif_url_main": "http://example.com/main.gif",
-                    "gif_url_crop": "http://example.com/crop.gif",
                     "false_positive_types": [],
                     "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
                 }
@@ -146,369 +134,6 @@ async def test_delete_sequence_annotation(
     get_resp = await async_client.get(f"/annotations/sequences/{annotation_id}")
     assert get_resp.status_code == 404
 
-
-@pytest.mark.asyncio
-async def test_generate_sequence_annotation_gifs_success(
-    async_client: AsyncClient, sequence_session, detection_session
-):
-    """Test successful GIF generation for a sequence annotation."""
-    # First create a sequence annotation with bboxes referencing existing detections
-    payload = {
-        "sequence_id": 1,
-        "has_missed_smoke": False,
-        "annotation": {
-            "sequences_bbox": [
-                {
-                    "is_smoke": True,
-                    "gif_key_main": None,
-                    "gif_key_crop": None,
-                    "false_positive_types": [],
-                    "bboxes": [
-                        {"detection_id": 1, "xyxyn": [0.1, 0.1, 0.4, 0.4]},
-                        {"detection_id": 2, "xyxyn": [0.2, 0.2, 0.5, 0.5]},
-                    ],
-                }
-            ]
-        },
-        "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
-        "created_at": datetime.utcnow().isoformat(),
-    }
-
-    # Create the annotation
-    create_resp = await async_client.post("/annotations/sequences/", json=payload)
-    assert create_resp.status_code == 201
-    annotation_id = create_resp.json()["id"]
-
-    # Call the GIF generation endpoint
-    gif_resp = await async_client.post(
-        f"/annotations/sequences/{annotation_id}/generate-gifs"
-    )
-    assert gif_resp.status_code == 200
-
-    # Verify response structure
-    gif_result = gif_resp.json()
-    assert gif_result["annotation_id"] == annotation_id
-    assert gif_result["sequence_id"] == 1
-    assert "gif_count" in gif_result
-    assert "total_bboxes" in gif_result
-    assert "generated_at" in gif_result
-    assert "gif_keys" in gif_result  # New field
-    assert gif_result["total_bboxes"] == 1  # One sequence_bbox
-
-    # Verify gif_keys structure in response
-    gif_keys = gif_result["gif_keys"]
-    assert len(gif_keys) == 1  # Should have one bbox with GIFs
-    gif_key_entry = gif_keys[0]
-    assert gif_key_entry["bbox_index"] == 0
-    assert gif_key_entry["main_key"] is not None
-    assert gif_key_entry["crop_key"] is not None
-    assert gif_key_entry["has_main"] is True
-    assert gif_key_entry["has_crop"] is True
-    assert gif_key_entry["main_key"].startswith("gifs/")
-    assert gif_key_entry["crop_key"].startswith("gifs/")
-
-    # Verify the annotation was updated with GIF keys
-    updated_resp = await async_client.get(f"/annotations/sequences/{annotation_id}")
-    assert updated_resp.status_code == 200
-    updated_annotation = updated_resp.json()
-
-    # Check that GIF keys were added to the annotation
-    sequences_bbox = updated_annotation["annotation"]["sequences_bbox"]
-    assert len(sequences_bbox) == 1
-    bbox = sequences_bbox[0]
-
-    # Both main and crop GIF keys should be generated
-    assert bbox["gif_key_main"] is not None
-    assert bbox["gif_key_crop"] is not None
-    assert bbox["gif_key_main"].startswith("gifs/")
-    assert bbox["gif_key_crop"].startswith("gifs/")
-    assert "main_" in bbox["gif_key_main"]
-    assert "crop_" in bbox["gif_key_crop"]
-
-    # Verify GIF count matches what was actually generated
-    generated_gifs = sum(
-        1 for b in sequences_bbox if b.get("gif_key_main") or b.get("gif_key_crop")
-    )
-    assert gif_result["gif_count"] == generated_gifs
-
-
-@pytest.mark.asyncio
-async def test_generate_sequence_annotation_gifs_url_preservation(
-    async_client: AsyncClient, sequence_session, detection_session
-):
-    """Test that GIF generation preserves existing URLs and handles partial failures."""
-    # Create annotation with one bbox that already has GIF URLs
-    payload = {
-        "sequence_id": 1,
-        "has_missed_smoke": False,
-        "annotation": {
-            "sequences_bbox": [
-                {
-                    "is_smoke": True,
-                    "gif_key_main": "gifs/sequence_1/existing_main.gif",
-                    "gif_key_crop": "gifs/sequence_1/existing_crop.gif",
-                    "false_positive_types": [],
-                    "bboxes": [
-                        {"detection_id": 1, "xyxyn": [0.1, 0.1, 0.4, 0.4]},
-                    ],
-                },
-                {
-                    "is_smoke": False,
-                    "gif_key_main": None,
-                    "gif_key_crop": None,
-                    "false_positive_types": [],
-                    "bboxes": [
-                        {"detection_id": 2, "xyxyn": [0.2, 0.2, 0.5, 0.5]},
-                    ],
-                },
-            ]
-        },
-        "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
-        "created_at": datetime.utcnow().isoformat(),
-    }
-
-    # Create the annotation
-    create_resp = await async_client.post("/annotations/sequences/", json=payload)
-    assert create_resp.status_code == 201
-    annotation_id = create_resp.json()["id"]
-
-    # Generate GIFs
-    gif_resp = await async_client.post(
-        f"/annotations/sequences/{annotation_id}/generate-gifs"
-    )
-    assert gif_resp.status_code == 200
-
-    # Verify response includes both existing and new keys
-    gif_result = gif_resp.json()
-    assert gif_result["total_bboxes"] == 2
-    assert len(gif_result["gif_keys"]) == 2  # Both bboxes should have keys
-
-    # Verify the annotation was updated correctly
-    updated_resp = await async_client.get(f"/annotations/sequences/{annotation_id}")
-    assert updated_resp.status_code == 200
-    updated_annotation = updated_resp.json()
-
-    sequences_bbox = updated_annotation["annotation"]["sequences_bbox"]
-    assert len(sequences_bbox) == 2
-
-    # First bbox should preserve existing keys or have new ones
-    bbox1 = sequences_bbox[0]
-    assert bbox1["gif_key_main"] is not None  # Either existing or new
-    assert bbox1["gif_key_crop"] is not None  # Either existing or new
-
-    # Second bbox should have new keys generated
-    bbox2 = sequences_bbox[1]
-    assert bbox2["gif_key_main"] is not None
-    assert bbox2["gif_key_crop"] is not None
-    assert bbox2["gif_key_main"].startswith("gifs/")
-    assert bbox2["gif_key_crop"].startswith("gifs/")
-
-
-@pytest.mark.asyncio
-async def test_get_sequence_annotation_gif_urls(
-    async_client: AsyncClient, sequence_session, detection_session
-):
-    """Test getting fresh GIF URLs for sequence annotation after generation."""
-    # Step 1: Create annotation for GIF generation
-    payload = {
-        "sequence_id": 1,
-        "has_missed_smoke": False,
-        "annotation": {
-            "sequences_bbox": [
-                {
-                    "is_smoke": True,
-                    "gif_key_main": None,
-                    "gif_key_crop": None,
-                    "false_positive_types": [],
-                    "bboxes": [
-                        {"detection_id": 1, "xyxyn": [0.1, 0.1, 0.4, 0.4]},
-                        {"detection_id": 2, "xyxyn": [0.2, 0.2, 0.5, 0.5]},
-                    ],
-                }
-            ]
-        },
-        "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
-        "created_at": datetime.utcnow().isoformat(),
-    }
-
-    # Create the annotation
-    create_resp = await async_client.post("/annotations/sequences/", json=payload)
-    assert create_resp.status_code == 201
-    annotation_id = create_resp.json()["id"]
-
-    # Step 2: Generate GIFs (this creates actual GIF files in test S3)
-    gif_resp = await async_client.post(
-        f"/annotations/sequences/{annotation_id}/generate-gifs"
-    )
-    assert gif_resp.status_code == 200
-
-    gif_result = gif_resp.json()
-    assert gif_result["gif_count"] > 0  # Should have generated some GIFs
-
-    # Step 3: Test the GIF URLs endpoint with real GIF files
-    urls_resp = await async_client.get(
-        f"/annotations/sequences/{annotation_id}/gifs/urls"
-    )
-
-    # Debug: Print response if not 200
-    if urls_resp.status_code != 200:
-        print(f"Response status: {urls_resp.status_code}")
-        print(f"Response body: {urls_resp.text}")
-
-    assert urls_resp.status_code == 200
-
-    # Verify response structure
-    urls_result = urls_resp.json()
-    assert urls_result["annotation_id"] == annotation_id
-    assert urls_result["sequence_id"] == 1
-    assert urls_result["total_bboxes"] == 1
-    assert "gif_urls" in urls_result
-    assert "generated_at" in urls_result
-
-    # Now we should have actual GIF URLs since we generated them
-    gif_urls = urls_result["gif_urls"]
-    assert len(gif_urls) == 1  # One bbox with GIFs
-
-    bbox_urls = gif_urls[0]
-    assert bbox_urls["bbox_index"] == 0
-    assert bbox_urls["has_main"] is True
-    assert bbox_urls["has_crop"] is True
-    assert bbox_urls["main_url"] is not None
-    assert bbox_urls["crop_url"] is not None
-    assert bbox_urls["main_expires_at"] is not None
-    assert bbox_urls["crop_expires_at"] is not None
-
-    # Verify URLs are properly formatted (can be localhost or localstack in Docker)
-    assert bbox_urls["main_url"].startswith(
-        ("http://localhost:4566", "http://localstack:4566")
-    )
-    assert bbox_urls["crop_url"].startswith(
-        ("http://localhost:4566", "http://localstack:4566")
-    )
-    assert "gifs/sequence_1/" in bbox_urls["main_url"]
-    assert "gifs/sequence_1/" in bbox_urls["crop_url"]
-    assert "main_" in bbox_urls["main_url"]
-    assert "crop_" in bbox_urls["crop_url"]
-
-
-@pytest.mark.asyncio
-async def test_get_sequence_annotation_gif_urls_not_found(async_client: AsyncClient):
-    """Test GIF URLs endpoint for non-existent annotation returns 404."""
-    non_existent_id = 99999
-
-    urls_resp = await async_client.get(
-        f"/annotations/sequences/{non_existent_id}/gifs/urls"
-    )
-    assert urls_resp.status_code == 404
-
-
-@pytest.mark.asyncio
-async def test_generate_sequence_annotation_gifs_annotation_not_found(
-    async_client: AsyncClient,
-):
-    """Test GIF generation for non-existent annotation returns 404."""
-    non_existent_id = 99999
-
-    gif_resp = await async_client.post(
-        f"/annotations/sequences/{non_existent_id}/generate-gifs"
-    )
-    assert gif_resp.status_code == 404
-
-    error_data = gif_resp.json()
-    assert "detail" in error_data
-    assert "not found" in error_data["detail"].lower()
-
-
-@pytest.mark.asyncio
-async def test_generate_sequence_annotation_gifs_no_bboxes(
-    async_client: AsyncClient, sequence_session, detection_session
-):
-    """Test GIF generation for annotation with no sequence bboxes returns 422."""
-    # Create annotation with empty sequences_bbox
-    payload = {
-        "sequence_id": 1,
-        "has_missed_smoke": False,
-        "annotation": {"sequences_bbox": []},  # Empty bboxes
-        "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
-        "created_at": datetime.utcnow().isoformat(),
-    }
-
-    create_resp = await async_client.post("/annotations/sequences/", json=payload)
-    assert create_resp.status_code == 201
-    annotation_id = create_resp.json()["id"]
-
-    # Try to generate GIFs - should fail with 422
-    gif_resp = await async_client.post(
-        f"/annotations/sequences/{annotation_id}/generate-gifs"
-    )
-    assert gif_resp.status_code == 422
-
-    error_data = gif_resp.json()
-    assert "detail" in error_data
-    assert "sequence bounding boxes" in error_data["detail"].lower()
-
-
-@pytest.mark.asyncio
-async def test_generate_sequence_annotation_gifs_missing_images_from_s3(
-    async_client: AsyncClient, sequence_session, detection_session
-):
-    """Test GIF generation when detection images are missing from S3 storage."""
-    # Create annotation for sequence 1 but delete the detection images from S3 first
-    # This simulates the case where detections exist but images are missing
-
-    # First delete detection images from S3 to simulate missing files
-    from app.services.storage import s3_service
-
-    bucket = s3_service.get_bucket(s3_service.resolve_bucket_name())
-    try:
-        bucket.delete_file("seq1_img1.jpg")  # Detection ID 1
-        bucket.delete_file("seq1_img2.jpg")  # Detection ID 2
-    except Exception:
-        pass  # Files might not exist
-
-    payload = {
-        "sequence_id": 1,
-        "has_missed_smoke": False,
-        "annotation": {
-            "sequences_bbox": [
-                {
-                    "is_smoke": True,
-                    "false_positive_types": [],
-                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.4, 0.4]}],
-                }
-            ]
-        },
-        "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
-        "created_at": datetime.utcnow().isoformat(),
-    }
-
-    create_resp = await async_client.post("/annotations/sequences/", json=payload)
-    assert create_resp.status_code == 201
-    annotation_id = create_resp.json()["id"]
-
-    # Try to generate GIFs - should succeed but with gif_count=0 due to missing images
-    gif_resp = await async_client.post(
-        f"/annotations/sequences/{annotation_id}/generate-gifs"
-    )
-    assert gif_resp.status_code == 200  # Service handles missing images gracefully
-
-    gif_result = gif_resp.json()
-    assert gif_result["annotation_id"] == annotation_id
-    assert gif_result["sequence_id"] == 1
-    assert gif_result["gif_count"] == 0  # No GIFs generated due to missing images
-    assert gif_result["total_bboxes"] == 1
-
-    # Verify annotation was updated but with no GIF URLs
-    updated_resp = await async_client.get(f"/annotations/sequences/{annotation_id}")
-    assert updated_resp.status_code == 200
-    updated_annotation = updated_resp.json()
-
-    sequences_bbox = updated_annotation["annotation"]["sequences_bbox"]
-    bbox = sequences_bbox[0]
-    assert bbox["gif_key_main"] is None  # No GIF generated
-    assert bbox["gif_key_crop"] is None  # No GIF generated
-
-
 @pytest.mark.asyncio
 async def test_delete_sequence_annotation_does_not_cascade_sequence(
     async_client: AsyncClient, sequence_session, detection_session
@@ -527,8 +152,6 @@ async def test_delete_sequence_annotation_does_not_cascade_sequence(
             "sequences_bbox": [
                 {
                     "is_smoke": True,
-                    "gif_url_main": "http://example.com/main.gif",
-                    "gif_url_crop": "http://example.com/crop.gif",
                     "false_positive_types": [],
                     "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
                 }
@@ -570,7 +193,6 @@ async def test_delete_sequence_annotation_does_not_cascade_sequence(
     assert final_sequence_data["source_api"] == initial_sequence_data["source_api"]
     assert final_sequence_data["camera_name"] == initial_sequence_data["camera_name"]
 
-
 @pytest.mark.asyncio
 async def test_create_sequence_annotation_invalid_bbox(
     async_client: AsyncClient, sequence_session
@@ -598,7 +220,6 @@ async def test_create_sequence_annotation_invalid_bbox(
     error_data = response.json()
     assert "detail" in error_data
 
-
 @pytest.mark.asyncio
 async def test_create_sequence_annotation_invalid_false_positive_type(
     async_client: AsyncClient, sequence_session
@@ -624,7 +245,6 @@ async def test_create_sequence_annotation_invalid_false_positive_type(
     error_data = response.json()
     assert "detail" in error_data
 
-
 @pytest.mark.asyncio
 async def test_create_sequence_annotation_unique_constraint_violation(
     async_client: AsyncClient, sequence_session, detection_session
@@ -637,8 +257,6 @@ async def test_create_sequence_annotation_unique_constraint_violation(
             "sequences_bbox": [
                 {
                     "is_smoke": True,
-                    "gif_url_main": "http://example.com/main1.gif",
-                    "gif_url_crop": "http://example.com/crop1.gif",
                     "false_positive_types": [],
                     "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
                 }
@@ -662,8 +280,6 @@ async def test_create_sequence_annotation_unique_constraint_violation(
             "sequences_bbox": [
                 {
                     "is_smoke": False,
-                    "gif_url_main": "http://example.com/main2.gif",
-                    "gif_url_crop": "http://example.com/crop2.gif",
                     "false_positive_types": [models.FalsePositiveType.LENS_FLARE.value],
                     "bboxes": [{"detection_id": 1, "xyxyn": [0.2, 0.2, 0.3, 0.3]}],
                 }
@@ -679,7 +295,6 @@ async def test_create_sequence_annotation_unique_constraint_violation(
 
     # Note: After an integrity error, the database session becomes unusable for further operations
     # The important test here is that the second request correctly returns 409 Conflict
-
 
 @pytest.mark.asyncio
 async def test_create_sequence_annotation_different_sequences_allowed(
@@ -697,7 +312,6 @@ async def test_create_sequence_annotation_different_sequences_allowed(
             "sequences_bbox": [
                 {
                     "is_smoke": True,
-                    "gif_url_main": "http://example.com/seq1.gif",
                     "false_positive_types": [],
                     "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
                 }
@@ -740,7 +354,6 @@ async def test_create_sequence_annotation_different_sequences_allowed(
             "sequences_bbox": [
                 {
                     "is_smoke": False,
-                    "gif_url_main": "http://example.com/seq2.gif",
                     "false_positive_types": [models.FalsePositiveType.LENS_FLARE.value],
                     "bboxes": [{"detection_id": 1, "xyxyn": [0.2, 0.2, 0.3, 0.3]}],
                 }
@@ -760,7 +373,6 @@ async def test_create_sequence_annotation_different_sequences_allowed(
     assert annotation1["sequence_id"] == 1
     assert annotation2["sequence_id"] == sequence2_id
 
-
 @pytest.mark.asyncio
 async def test_list_sequence_annotations_filter_by_has_smoke(
     async_client: AsyncClient, sequence_session, detection_session
@@ -774,7 +386,6 @@ async def test_list_sequence_annotations_filter_by_has_smoke(
             "sequences_bbox": [
                 {
                     "is_smoke": True,  # This will set has_smoke to True
-                    "gif_url_main": "http://example.com/main.gif",
                     "false_positive_types": [],
                     "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
                 }
@@ -815,7 +426,6 @@ async def test_list_sequence_annotations_filter_by_has_smoke(
             break
     assert not found_annotation, "Should not find annotation with has_smoke=true when filtering for has_smoke=false"
 
-
 @pytest.mark.asyncio
 async def test_list_sequence_annotations_filter_by_has_false_positives(
     async_client: AsyncClient, sequence_session, detection_session
@@ -829,7 +439,6 @@ async def test_list_sequence_annotations_filter_by_has_false_positives(
             "sequences_bbox": [
                 {
                     "is_smoke": False,
-                    "gif_url_main": "http://example.com/main.gif",
                     "false_positive_types": [
                         models.FalsePositiveType.LENS_FLARE.value
                     ],  # This will set has_false_positives to True
@@ -863,7 +472,6 @@ async def test_list_sequence_annotations_filter_by_has_false_positives(
             break
     assert found_annotation, "Should find annotation with has_false_positives=true"
 
-
 @pytest.mark.asyncio
 async def test_list_sequence_annotations_filter_by_false_positive_type(
     async_client: AsyncClient, sequence_session, detection_session
@@ -877,7 +485,6 @@ async def test_list_sequence_annotations_filter_by_false_positive_type(
             "sequences_bbox": [
                 {
                     "is_smoke": False,
-                    "gif_url_main": "http://example.com/main.gif",
                     "false_positive_types": [
                         models.FalsePositiveType.ANTENNA.value,
                         models.FalsePositiveType.BUILDING.value,
@@ -950,7 +557,6 @@ async def test_list_sequence_annotations_filter_by_false_positive_type(
         not found_annotation
     ), "Should not find annotation when filtering for false_positive_type 'cliff'"
 
-
 @pytest.mark.asyncio
 async def test_list_sequence_annotations_filter_by_processing_stage(
     async_client: AsyncClient, sequence_session, detection_session
@@ -964,7 +570,6 @@ async def test_list_sequence_annotations_filter_by_processing_stage(
             "sequences_bbox": [
                 {
                     "is_smoke": True,
-                    "gif_url_main": "http://example.com/main.gif",
                     "false_positive_types": [],
                     "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
                 }
@@ -1009,7 +614,6 @@ async def test_list_sequence_annotations_filter_by_processing_stage(
             break
     assert not found_annotation, "Should not find annotation with processing_stage='annotated' when filtering for 'imported'"
 
-
 @pytest.mark.asyncio
 async def test_list_sequence_annotations_order_by_created_at(
     async_client: AsyncClient, sequence_session, detection_session
@@ -1029,7 +633,6 @@ async def test_list_sequence_annotations_order_by_created_at(
             "sequences_bbox": [
                 {
                     "is_smoke": True,
-                    "gif_url_main": "http://example.com/main1.gif",
                     "false_positive_types": [],
                     "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
                 }
@@ -1074,7 +677,6 @@ async def test_list_sequence_annotations_order_by_created_at(
             "sequences_bbox": [
                 {
                     "is_smoke": True,
-                    "gif_url_main": "http://example.com/main2.gif",
                     "false_positive_types": [],
                     "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
                 }
@@ -1140,7 +742,6 @@ async def test_list_sequence_annotations_order_by_created_at(
         annotation1_pos < annotation2_pos
     ), "Older annotation should come first in asc order"
 
-
 @pytest.mark.asyncio
 async def test_list_sequence_annotations_combined_filtering(
     async_client: AsyncClient, sequence_session, detection_session
@@ -1154,7 +755,6 @@ async def test_list_sequence_annotations_combined_filtering(
             "sequences_bbox": [
                 {
                     "is_smoke": True,
-                    "gif_url_main": "http://example.com/main.gif",
                     "false_positive_types": [models.FalsePositiveType.ANTENNA.value],
                     "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
                 }
@@ -1210,7 +810,6 @@ async def test_list_sequence_annotations_combined_filtering(
         not found_annotation
     ), "Should not find annotation when one filter criterion doesn't match"
 
-
 @pytest.mark.asyncio
 async def test_create_sequence_annotation_invalid_detection_id(
     async_client: AsyncClient, sequence_session, detection_session
@@ -1223,7 +822,6 @@ async def test_create_sequence_annotation_invalid_detection_id(
             "sequences_bbox": [
                 {
                     "is_smoke": True,
-                    "gif_url_main": "http://example.com/main.gif",
                     "false_positive_types": [],
                     "bboxes": [
                         {"detection_id": 99999, "xyxyn": [0.1, 0.1, 0.2, 0.2]}
@@ -1242,7 +840,6 @@ async def test_create_sequence_annotation_invalid_detection_id(
     assert "99999" in str(error_data["detail"])
     assert "do not exist" in str(error_data["detail"])
 
-
 @pytest.mark.asyncio
 async def test_create_sequence_annotation_mixed_valid_invalid_detection_ids(
     async_client: AsyncClient, sequence_session, detection_session
@@ -1255,7 +852,6 @@ async def test_create_sequence_annotation_mixed_valid_invalid_detection_ids(
             "sequences_bbox": [
                 {
                     "is_smoke": True,
-                    "gif_url_main": "http://example.com/main.gif",
                     "false_positive_types": [],
                     "bboxes": [
                         {
@@ -1287,7 +883,6 @@ async def test_create_sequence_annotation_mixed_valid_invalid_detection_ids(
     assert "88888" in error_detail
     assert "do not exist" in error_detail
 
-
 @pytest.mark.asyncio
 async def test_create_sequence_annotation_empty_bboxes(
     async_client: AsyncClient, sequence_session, detection_session
@@ -1300,7 +895,6 @@ async def test_create_sequence_annotation_empty_bboxes(
             "sequences_bbox": [
                 {
                     "is_smoke": False,
-                    "gif_url_main": "http://example.com/main.gif",
                     "false_positive_types": [models.FalsePositiveType.LENS_FLARE.value],
                     "bboxes": [],  # Empty bboxes - no detection_ids to validate
                 }
@@ -1317,7 +911,6 @@ async def test_create_sequence_annotation_empty_bboxes(
     assert result["has_smoke"] is False
     assert result["has_false_positives"] is True  # Derived from false_positive_types
 
-
 @pytest.mark.asyncio
 async def test_update_sequence_annotation_invalid_detection_id(
     async_client: AsyncClient, sequence_session, detection_session
@@ -1331,7 +924,6 @@ async def test_update_sequence_annotation_invalid_detection_id(
             "sequences_bbox": [
                 {
                     "is_smoke": True,
-                    "gif_url_main": "http://example.com/main.gif",
                     "false_positive_types": [],
                     "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
                 }
@@ -1353,7 +945,6 @@ async def test_update_sequence_annotation_invalid_detection_id(
             "sequences_bbox": [
                 {
                     "is_smoke": False,
-                    "gif_url_main": "http://updated.com/main.gif",
                     "false_positive_types": [models.FalsePositiveType.ANTENNA.value],
                     "bboxes": [
                         {"detection_id": 55555, "xyxyn": [0.2, 0.2, 0.3, 0.3]}
@@ -1374,7 +965,6 @@ async def test_update_sequence_annotation_invalid_detection_id(
     assert "55555" in str(error_data["detail"])
     assert "do not exist" in str(error_data["detail"])
 
-
 @pytest.mark.asyncio
 async def test_update_sequence_annotation_without_annotation_field(
     async_client: AsyncClient, sequence_session, detection_session
@@ -1388,7 +978,6 @@ async def test_update_sequence_annotation_without_annotation_field(
             "sequences_bbox": [
                 {
                     "is_smoke": True,
-                    "gif_url_main": "http://example.com/main.gif",
                     "false_positive_types": [],
                     "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
                 }

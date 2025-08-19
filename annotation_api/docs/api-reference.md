@@ -319,8 +319,6 @@ Creates a human annotation for a sequence.
     "sequences_bbox": [
         {
             "is_smoke": True,                           # Boolean: contains smoke
-            "gif_key_main": "gifs/sequence_1/main.gif", # Optional: S3 bucket key for main GIF
-            "gif_key_crop": "gifs/sequence_1/crop.gif", # Optional: S3 bucket key for crop GIF
             "false_positive_types": [],                # List of false positive types
             "bboxes": [                                # Bounding boxes for this segment
                 {
@@ -414,92 +412,6 @@ Deletes a sequence annotation.
 
 **Raises:** `NotFoundError`, `AnnotationAPIError`
 
-## GIF Generation Operations
-
-### `POST /api/v1/annotations/sequences/{annotation_id}/generate-gifs`
-
-Generates main and crop GIFs for a sequence annotation.
-
-**Parameters:**
-- `annotation_id`: Integer ID of the sequence annotation
-
-**Process:**
-1. Retrieves all detections referenced in the annotation's bounding boxes
-2. Creates main GIF with bounding box overlays (red color, 2px thickness)
-3. Creates crop GIF focused on the bounding box region
-4. Stores GIF files in S3 with keys like `gifs/sequence_{id}/main_{timestamp}.gif`
-5. Updates annotation with generated bucket keys
-
-**Returns:**
-```python
-{
-    "annotation_id": 123,
-    "sequence_id": 1,
-    "gif_count": 2,           # Number of bboxes with generated GIFs
-    "total_bboxes": 2,        # Total number of bboxes in annotation
-    "generated_at": "2024-01-15T10:30:00",
-    "gif_keys": [
-        {
-            "bbox_index": 0,
-            "main_key": "gifs/sequence_1/main_20240115_103000.gif",
-            "crop_key": "gifs/sequence_1/crop_20240115_103000.gif",
-            "has_main": True,
-            "has_crop": True
-        }
-    ]
-}
-```
-
-**Raises:** 
-- `NotFoundError` (404): Sequence annotation not found
-- `HTTPException` (422): No bounding boxes found or no detections available
-- `HTTPException` (500): GIF generation failed
-
----
-
-### `GET /api/v1/annotations/sequences/{annotation_id}/gifs/urls`
-
-Retrieves fresh presigned URLs for all GIFs associated with a sequence annotation.
-
-**Parameters:**
-- `annotation_id`: Integer ID of the sequence annotation
-
-**Process:**
-1. Retrieves annotation and parses stored GIF bucket keys
-2. Generates fresh presigned URLs for each GIF (24-hour expiration by default)
-3. Handles missing files gracefully (marks as unavailable)
-
-**Returns:**
-```python
-{
-    "annotation_id": 123,
-    "sequence_id": 1,
-    "total_bboxes": 2,
-    "gif_urls": [
-        {
-            "bbox_index": 0,
-            "main_url": "http://localhost:4566/annotation-api/gifs/sequence_1/main.gif?...",
-            "crop_url": "http://localhost:4566/annotation-api/gifs/sequence_1/crop.gif?...",
-            "main_expires_at": "2024-01-16T10:30:00Z",
-            "crop_expires_at": "2024-01-16T10:30:00Z",
-            "has_main": True,
-            "has_crop": True
-        }
-    ],
-    "generated_at": "2024-01-15T10:30:00Z"
-}
-```
-
-**URL Format Notes:**
-- In development: URLs use `http://localhost:4566` (configured via `S3_PROXY_URL`)
-- In production: URLs use actual S3 endpoint
-- URLs include AWS credentials and signature with expiration time
-
-**Raises:**
-- `NotFoundError` (404): Sequence annotation not found
-- `HTTPException` (422): Annotation data is missing or malformed
-- `HTTPException` (500): Failed to generate URLs
-
 ## Response Formats
 
 ### Sequence Object
@@ -576,8 +488,6 @@ Retrieves fresh presigned URLs for all GIFs associated with a sequence annotatio
         "sequences_bbox": [
             {
                 "is_smoke": True,
-                "gif_key_main": "gifs/sequence_123/main_20240115.gif",
-                "gif_key_crop": "gifs/sequence_123/crop_20240115.gif",
                 "false_positive_types": [],
                 "bboxes": [
                     {

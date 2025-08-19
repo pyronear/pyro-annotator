@@ -84,7 +84,6 @@ __all__ = [
     "list_sequence_annotations",
     "update_sequence_annotation",
     "delete_sequence_annotation",
-    "generate_sequence_annotation_gifs",
 ]
 
 
@@ -676,32 +675,3 @@ def delete_sequence_annotation(base_url: str, annotation_id: int) -> None:
     _make_request("DELETE", url)
 
 
-def generate_sequence_annotation_gifs(base_url: str, annotation_id: int) -> Dict:
-    """
-    Generate GIFs for a sequence annotation.
-
-    Calls the GIF generation endpoint to create both main (full-frame with bounding box overlays)
-    and crop GIFs from the detection images referenced in the sequence annotation.
-
-    Args:
-        base_url: Base URL of the annotation API
-        annotation_id: ID of the sequence annotation to generate GIFs for
-
-    Returns:
-        Dictionary containing generation results with keys:
-        - annotation_id: The annotation ID that was processed
-        - sequence_id: The sequence ID associated with the annotation
-        - gif_count: Number of GIFs successfully generated
-        - total_bboxes: Total number of sequence bboxes processed
-        - generated_at: ISO timestamp when generation completed
-
-    Raises:
-        NotFoundError: If sequence annotation not found (404)
-        ValidationError: If annotation has no sequence bboxes or no detections (422)
-        ServerError: If GIF generation fails due to infrastructure issues (500)
-        AnnotationAPIError: For other API errors
-    """
-    url = f"{base_url.rstrip('/')}/api/v1/annotations/sequences/{annotation_id}/generate-gifs"
-    operation = f"generate GIFs for sequence annotation {annotation_id}"
-    response = _make_request("POST", url, operation=operation)
-    return _handle_response(response, operation=operation)

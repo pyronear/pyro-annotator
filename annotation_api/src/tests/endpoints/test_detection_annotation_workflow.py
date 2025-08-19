@@ -23,7 +23,6 @@ from app import models
 
 now = datetime.utcnow()
 
-
 @pytest.mark.asyncio
 async def test_auto_create_detection_annotations_correct_structure(
     async_client: AsyncClient,
@@ -41,18 +40,16 @@ async def test_auto_create_detection_annotations_correct_structure(
             "sequences_bbox": [
                 {
                     "is_smoke": True,
-                    "gif_key_main": None,
-                    "gif_key_crop": None,
                     "false_positive_types": [],
                     "bboxes": [
                         {"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]},
-                        {"detection_id": 2, "xyxyn": [0.3, 0.3, 0.4, 0.4]},
-                    ],
+                        {"detection_id": 2, "xyxyn": [0.3, 0.3, 0.4, 0.4]}
+                    ]
                 }
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,  # This should trigger auto-creation
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.utcnow().isoformat()
     }
 
     response = await async_client.post(
@@ -129,7 +126,6 @@ async def test_auto_create_detection_annotations_correct_structure(
         detection_2_annotation["processing_stage"] == "bbox_annotation"
     ), "Processing stage should be bbox_annotation for smoke detection"
 
-
 @pytest.mark.asyncio
 async def test_auto_create_detection_annotations_update_scenario(
     async_client: AsyncClient, sequence_session: AsyncSession, detection_session
@@ -144,15 +140,13 @@ async def test_auto_create_detection_annotations_update_scenario(
             "sequences_bbox": [
                 {
                     "is_smoke": True,
-                    "gif_key_main": None,
-                    "gif_key_crop": None,
                     "false_positive_types": [],
-                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}]
                 }
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,  # Not 'annotated'
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.utcnow().isoformat()
     }
 
     create_response = await async_client.post(
@@ -206,7 +200,6 @@ async def test_auto_create_detection_annotations_update_scenario(
         detection_1_annotation["processing_stage"] == "bbox_annotation"
     ), "Processing stage should be bbox_annotation for smoke detection"
 
-
 @pytest.mark.asyncio
 async def test_auto_create_detection_annotations_processing_stages(
     async_client: AsyncClient,
@@ -224,17 +217,15 @@ async def test_auto_create_detection_annotations_processing_stages(
             "sequences_bbox": [
                 {
                     "is_smoke": False,  # No smoke
-                    "gif_key_main": None,
-                    "gif_key_crop": None,
                     "false_positive_types": [
                         models.FalsePositiveType.ANTENNA.value
                     ],  # Has false positives
-                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}]
                 }
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.utcnow().isoformat()
     }
 
     response1 = await async_client.post(
@@ -268,7 +259,7 @@ async def test_auto_create_detection_annotations_processing_stages(
         "lon": "0.0",
         "created_at": datetime.utcnow().isoformat(),
         "recorded_at": datetime.utcnow().isoformat(),
-        "last_seen_at": datetime.utcnow().isoformat(),
+        "last_seen_at": datetime.utcnow().isoformat()
     }
 
     sequence_response = await async_client.post("/sequences", data=sequence_payload)
@@ -286,11 +277,11 @@ async def test_auto_create_detection_annotations_processing_stages(
                     {
                         "xyxyn": [0.15, 0.15, 0.3, 0.3],
                         "confidence": 0.88,
-                        "class_name": "smoke",
+                        "class_name": "smoke"
                     }
                 ]
             }
-        ),
+        )
     }
 
     detection_response = await async_client.post(
@@ -309,17 +300,15 @@ async def test_auto_create_detection_annotations_processing_stages(
             "sequences_bbox": [
                 {
                     "is_smoke": True,  # Has smoke
-                    "gif_key_main": None,
-                    "gif_key_crop": None,
                     "false_positive_types": [],
                     "bboxes": [
                         {"detection_id": detection2_id, "xyxyn": [0.1, 0.1, 0.2, 0.2]}
-                    ],
+                    ]
                 }
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.utcnow().isoformat()
     }
 
     response2 = await async_client.post(
@@ -352,7 +341,7 @@ async def test_auto_create_detection_annotations_processing_stages(
         "lon": "0.0",
         "created_at": datetime.utcnow().isoformat(),
         "recorded_at": datetime.utcnow().isoformat(),
-        "last_seen_at": datetime.utcnow().isoformat(),
+        "last_seen_at": datetime.utcnow().isoformat()
     }
 
     sequence_response_3 = await async_client.post("/sequences", data=sequence_payload_3)
@@ -370,11 +359,11 @@ async def test_auto_create_detection_annotations_processing_stages(
                     {
                         "xyxyn": [0.15, 0.15, 0.3, 0.3],
                         "confidence": 0.88,
-                        "class_name": "smoke",
+                        "class_name": "smoke"
                     }
                 ]
             }
-        ),
+        )
     }
 
     detection_response_3 = await async_client.post(
@@ -392,17 +381,15 @@ async def test_auto_create_detection_annotations_processing_stages(
             "sequences_bbox": [
                 {
                     "is_smoke": False,  # No smoke detected but missed
-                    "gif_key_main": None,
-                    "gif_key_crop": None,
                     "false_positive_types": [],
                     "bboxes": [
                         {"detection_id": detection3_id, "xyxyn": [0.1, 0.1, 0.2, 0.2]}
-                    ],
+                    ]
                 }
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.utcnow().isoformat()
     }
 
     response3 = await async_client.post(
@@ -422,7 +409,6 @@ async def test_auto_create_detection_annotations_processing_stages(
         detection_3_annotation["processing_stage"] == "bbox_annotation"
     ), "Should be bbox_annotation for missed smoke"
 
-
 @pytest.mark.asyncio
 async def test_detection_annotation_update_workflow(
     async_client: AsyncClient, sequence_session: AsyncSession, detection_session
@@ -437,15 +423,13 @@ async def test_detection_annotation_update_workflow(
             "sequences_bbox": [
                 {
                     "is_smoke": True,
-                    "gif_key_main": None,
-                    "gif_key_crop": None,
                     "false_positive_types": [],
-                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}]
                 }
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.utcnow().isoformat()
     }
 
     seq_response = await async_client.post(
@@ -469,16 +453,16 @@ async def test_detection_annotation_update_workflow(
                 {
                     "xyxyn": [0.15, 0.15, 0.35, 0.35],
                     "class_name": "smoke",
-                    "smoke_type": "wildfire",
+                    "smoke_type": "wildfire"
                 },
                 {
                     "xyxyn": [0.45, 0.45, 0.65, 0.65],
                     "class_name": "smoke",
-                    "smoke_type": "industrial",
-                },
+                    "smoke_type": "industrial"
+                }
             ]
         },
-        "processing_stage": "annotated",
+        "processing_stage": "annotated"
     }
 
     update_response = await async_client.patch(
@@ -518,7 +502,6 @@ async def test_detection_annotation_update_workflow(
     retrieved_annotation = get_response.json()
     assert retrieved_annotation["annotation"]["annotation"] == annotation_items
 
-
 @pytest.mark.asyncio
 async def test_detection_annotation_validation_requirements(
     async_client: AsyncClient,
@@ -539,11 +522,11 @@ async def test_detection_annotation_validation_requirements(
                     {
                         "xyxyn": [0.15, 0.15, 0.3, 0.3],
                         "confidence": 0.88,
-                        "class_name": "smoke",
+                        "class_name": "smoke"
                     }
                 ]
             }
-        ),
+        )
     }
 
     detection_response = await async_client.post(
@@ -563,12 +546,12 @@ async def test_detection_annotation_validation_requirements(
                     {
                         "xyxyn": [0.1, 0.1, 0.2, 0.2],
                         "class_name": "smoke",
-                        "smoke_type": "wildfire",
+                        "smoke_type": "wildfire"
                     }
                 ]
             }
         ),
-        "processing_stage": "visual_check",
+        "processing_stage": "visual_check"
     }
 
     valid_response = await async_client.post(
@@ -585,7 +568,7 @@ async def test_detection_annotation_validation_requirements(
         "annotation": json.dumps(
             {}
         ),  # Invalid: empty object instead of {"annotation": [...]}
-        "processing_stage": "visual_check",
+        "processing_stage": "visual_check"
     }
 
     # This should fail with validation error due to invalid structure
@@ -605,11 +588,11 @@ async def test_detection_annotation_validation_requirements(
                 {
                     "xyxyn": [0.1, 0.1, 0.2, 0.2],
                     "class_name": "smoke",
-                    "smoke_type": "wildfire",
+                    "smoke_type": "wildfire"
                 }
             ]
         },
-        "processing_stage": "annotated",
+        "processing_stage": "annotated"
     }
 
     invalid_update_response = await async_client.patch(
@@ -627,11 +610,11 @@ async def test_detection_annotation_validation_requirements(
                 {
                     "xyxyn": [0.3, 0.3, 0.2, 0.2],  # x1 > x2, y1 > y2 - invalid
                     "class_name": "smoke",
-                    "smoke_type": "wildfire",
+                    "smoke_type": "wildfire"
                 }
             ]
         },
-        "processing_stage": "annotated",
+        "processing_stage": "annotated"
     }
 
     invalid_bbox_response = await async_client.patch(
@@ -652,7 +635,7 @@ async def test_detection_annotation_validation_requirements(
                 }
             ]
         },
-        "processing_stage": "annotated",
+        "processing_stage": "annotated"
     }
 
     invalid_smoke_response = await async_client.patch(
@@ -662,7 +645,6 @@ async def test_detection_annotation_validation_requirements(
     assert (
         invalid_smoke_response.status_code == 422
     ), "Invalid smoke type should be rejected"
-
 
 @pytest.mark.asyncio
 async def test_auto_create_avoids_duplicate_detection_annotations(
@@ -679,12 +661,12 @@ async def test_auto_create_avoids_duplicate_detection_annotations(
                     {
                         "xyxyn": [0.1, 0.1, 0.2, 0.2],
                         "class_name": "smoke",
-                        "smoke_type": "wildfire",
+                        "smoke_type": "wildfire"
                     }
                 ]
             }
         ),
-        "processing_stage": "visual_check",
+        "processing_stage": "visual_check"
     }
 
     manual_response = await async_client.post(
@@ -701,24 +683,22 @@ async def test_auto_create_avoids_duplicate_detection_annotations(
             "sequences_bbox": [
                 {
                     "is_smoke": True,
-                    "gif_key_main": None,
-                    "gif_key_crop": None,
                     "false_positive_types": [],
                     "bboxes": [
                         {
                             "detection_id": 1,
-                            "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                            "xyxyn": [0.1, 0.1, 0.2, 0.2]
                         },  # Already has annotation
                         {
                             "detection_id": 2,
-                            "xyxyn": [0.3, 0.3, 0.4, 0.4],
+                            "xyxyn": [0.3, 0.3, 0.4, 0.4]
                         },  # No existing annotation
-                    ],
+                    ]
                 }
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.utcnow().isoformat()
     }
 
     seq_response = await async_client.post(
@@ -757,7 +737,6 @@ async def test_auto_create_avoids_duplicate_detection_annotations(
     ), "New auto-created annotation should have empty structure"
     assert detection_2_annotation["processing_stage"] == "bbox_annotation"
 
-
 @pytest.mark.asyncio
 async def test_no_auto_create_when_not_annotated_stage(
     async_client: AsyncClient, sequence_session: AsyncSession, detection_session
@@ -772,15 +751,13 @@ async def test_no_auto_create_when_not_annotated_stage(
             "sequences_bbox": [
                 {
                     "is_smoke": True,
-                    "gif_key_main": None,
-                    "gif_key_crop": None,
                     "false_positive_types": [],
-                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}]
                 }
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,  # NOT annotated
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.utcnow().isoformat()
     }
 
     seq_response = await async_client.post(
@@ -806,15 +783,13 @@ async def test_no_auto_create_when_not_annotated_stage(
             "sequences_bbox": [
                 {
                     "is_smoke": True,
-                    "gif_key_main": None,
-                    "gif_key_crop": None,
                     "false_positive_types": [],
-                    "bboxes": [{"detection_id": 2, "xyxyn": [0.3, 0.3, 0.4, 0.4]}],
+                    "bboxes": [{"detection_id": 2, "xyxyn": [0.3, 0.3, 0.4, 0.4]}]
                 }
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.READY_TO_ANNOTATE.value,  # NOT annotated
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.utcnow().isoformat()
     }
 
     # Delete the first annotation to create the second one for same sequence
