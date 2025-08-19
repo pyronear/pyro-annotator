@@ -103,23 +103,97 @@ export function usePersistedFilters(
 
   // Individual setter functions for each piece of state
   const setFilters = (filters: ExtendedSequenceFilters) => {
-    updateState({ ...state, filters });
+    // Use functional update to get the latest state
+    setState((currentState) => {
+      const newState = { ...currentState, filters };
+      
+      // Update localStorage
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(newState));
+        } catch (error) {
+          console.warn(`Failed to write to localStorage key "${storageKey}":`, error);
+        }
+      }
+      
+      return newState;
+    });
   };
 
   const setDateFrom = (dateFrom: string) => {
-    updateState({ ...state, dateFrom });
+    // Use functional update to get the latest state
+    setState((currentState) => {
+      const newState = { ...currentState, dateFrom };
+      
+      // Update localStorage
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(newState));
+        } catch (error) {
+          console.warn(`Failed to write to localStorage key "${storageKey}":`, error);
+        }
+      }
+      
+      return newState;
+    });
   };
 
   const setDateTo = (dateTo: string) => {
-    updateState({ ...state, dateTo });
+    // Use functional update to get the latest state
+    setState((currentState) => {
+      const newState = { ...currentState, dateTo };
+      
+      // Update localStorage
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(newState));
+        } catch (error) {
+          console.warn(`Failed to write to localStorage key "${storageKey}":`, error);
+        }
+      }
+      
+      return newState;
+    });
   };
 
   const setSelectedFalsePositiveTypes = (selectedFalsePositiveTypes: string[]) => {
-    updateState({ ...state, selectedFalsePositiveTypes });
+    // ATOMIC UPDATE: Update both selectedFalsePositiveTypes AND filters together
+    const newFilters = {
+      ...state.filters,
+      false_positive_types: selectedFalsePositiveTypes.length > 0 ? selectedFalsePositiveTypes : undefined,
+      page: 1
+    };
+    
+    const newState = { 
+      ...state, 
+      selectedFalsePositiveTypes,
+      filters: newFilters
+    };
+    
+    updateState(newState);
   };
 
   const setSelectedModelAccuracy = (selectedModelAccuracy: ModelAccuracyType | 'all') => {
     updateState({ ...state, selectedModelAccuracy });
+  };
+
+  // Atomic update for false positive types + filters to avoid race conditions
+  const setSelectedFalsePositiveTypesAndFilters = (
+    selectedFalsePositiveTypes: string[], 
+    additionalFilters: Partial<ExtendedSequenceFilters> = {}
+  ) => {
+    const newFilters = {
+      ...state.filters,
+      false_positive_types: selectedFalsePositiveTypes.length > 0 ? selectedFalsePositiveTypes : undefined,
+      page: 1,
+      ...additionalFilters
+    };
+    
+    updateState({ 
+      ...state, 
+      selectedFalsePositiveTypes,
+      filters: newFilters
+    });
   };
 
   // Reset all filters to default state
@@ -159,6 +233,7 @@ export function usePersistedFilters(
     setDateFrom,
     setDateTo,
     setSelectedFalsePositiveTypes,
+    setSelectedFalsePositiveTypesAndFilters,
     setSelectedModelAccuracy,
     resetFilters,
   };

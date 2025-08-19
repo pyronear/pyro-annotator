@@ -18,6 +18,7 @@ export default function FalsePositiveFilter({
   placeholder = 'Filter by false positive types...',
   className = '',
 }: FalsePositiveFilterProps) {
+  console.log('[FalsePositiveFilter] Component rendered with selectedTypes:', selectedTypes);
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -29,12 +30,22 @@ export default function FalsePositiveFilter({
 
   // Handle selection toggle
   const toggleSelection = (type: string) => {
+    console.log('[FalsePositiveFilter] toggleSelection called with type:', type);
+    console.log('[FalsePositiveFilter] Current selectedTypes:', selectedTypes);
     const isSelected = selectedTypes.includes(type);
+    console.log('[FalsePositiveFilter] isSelected:', isSelected);
+    
+    let newSelection;
     if (isSelected) {
-      onSelectionChange(selectedTypes.filter(t => t !== type));
+      newSelection = selectedTypes.filter(t => t !== type);
     } else {
-      onSelectionChange([...selectedTypes, type]);
+      newSelection = [...selectedTypes, type];
     }
+    
+    console.log('[FalsePositiveFilter] New selection:', newSelection);
+    console.log('[FalsePositiveFilter] Calling onSelectionChange callback...');
+    onSelectionChange(newSelection);
+    console.log('[FalsePositiveFilter] onSelectionChange callback completed');
   };
 
   // Handle select all
@@ -150,6 +161,7 @@ export default function FalsePositiveFilter({
               {filteredTypes.length > 0 ? (
                 filteredTypes.map(type => {
                   const isSelected = selectedTypes.includes(type);
+                  console.log('[FalsePositiveFilter] Rendering type:', type, 'isSelected:', isSelected);
                   return (
                     <label
                       key={type}
@@ -160,7 +172,10 @@ export default function FalsePositiveFilter({
                       <input
                         type="checkbox"
                         checked={isSelected}
-                        onChange={() => toggleSelection(type)}
+                        onChange={() => {
+                          console.log('[FalsePositiveFilter] Checkbox onChange fired for:', type);
+                          toggleSelection(type);
+                        }}
                         className="w-4 h-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded mr-3"
                       />
                       <span className="flex items-center space-x-2">

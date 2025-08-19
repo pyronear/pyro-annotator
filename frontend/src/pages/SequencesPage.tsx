@@ -18,6 +18,7 @@ import { useSequenceStore } from '@/store/useSequenceStore';
 import { useCameras } from '@/hooks/useCameras';
 import { useOrganizations } from '@/hooks/useOrganizations';
 import { usePersistedFilters, createDefaultFilterState } from '@/hooks/usePersistedFilters';
+import { calculatePresetDateRange } from '@/components/filters/shared/DateRangeFilter';
 
 interface SequencesPageProps {
   defaultProcessingStage?: ProcessingStageStatus;
@@ -44,6 +45,7 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
     setDateFrom,
     setDateTo,
     setSelectedFalsePositiveTypes,
+    setSelectedFalsePositiveTypesAndFilters,
     setSelectedModelAccuracy,
     resetFilters,
   } = usePersistedFilters(
@@ -51,38 +53,25 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
     createDefaultFilterState(defaultProcessingStage)
   );
 
+
   // Fetch cameras and organizations for dropdown options
   const { data: cameras = [], isLoading: camerasLoading } = useCameras();
   const { data: organizations = [], isLoading: organizationsLoading } = useOrganizations();
 
   // Date range helper functions
   const setDateRange = (preset: string) => {
-    const now = new Date();
-    const endDateStr = now.toISOString().split('T')[0]; // Today for UI display
-    const endDateTime = endDateStr + 'T23:59:59'; // End of day for API
-    let startDateStr = '';
-    let startDateTime = '';
-
-    switch (preset) {
-      case '7d':
-        startDateStr = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-        startDateTime = startDateStr + 'T00:00:00';
-        break;
-      case '30d':
-        startDateStr = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-        startDateTime = startDateStr + 'T00:00:00';
-        break;
-      case '90d':
-        startDateStr = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-        startDateTime = startDateStr + 'T00:00:00';
-        break;
-    }
-
+    const { dateFrom: startDateStr, dateTo: endDateStr } = calculatePresetDateRange(preset);
+    
     setDateFrom(startDateStr);
     setDateTo(endDateStr);
+    
+    // Convert to API datetime format if dates are valid
+    const startDateTime = startDateStr ? startDateStr + 'T00:00:00' : undefined;
+    const endDateTime = endDateStr ? endDateStr + 'T23:59:59' : undefined;
+    
     handleFilterChange({
-      recorded_at_gte: startDateTime || undefined,
-      recorded_at_lte: endDateTime || undefined
+      recorded_at_gte: startDateTime,
+      recorded_at_lte: endDateTime
     });
   };
 
@@ -139,11 +128,8 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
     setFilters({ ...filters, ...newFilters, page: 1 });
   };
 
-  const handleFalsePositiveFilterChange = (selectedTypes: string[]) => {
+  const handleFalsePositiveFilterChangeV2 = (selectedTypes: string[]) => {
     setSelectedFalsePositiveTypes(selectedTypes);
-    handleFilterChange({
-      false_positive_types: selectedTypes.length > 0 ? selectedTypes : undefined
-    });
   };
 
   const handlePageChange = (page: number) => {
@@ -206,7 +192,7 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
           onDateRangeSet={setDateRange}
           onDateRangeClear={clearDateRange}
           selectedFalsePositiveTypes={selectedFalsePositiveTypes}
-          onFalsePositiveTypesChange={handleFalsePositiveFilterChange}
+          onFalsePositiveTypesChange={handleFalsePositiveFilterChangeV2}
           selectedModelAccuracy={selectedModelAccuracy}
           onModelAccuracyChange={setSelectedModelAccuracy}
           onResetFilters={resetFilters}
@@ -261,7 +247,7 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
         onDateRangeSet={setDateRange}
         onDateRangeClear={clearDateRange}
         selectedFalsePositiveTypes={selectedFalsePositiveTypes}
-        onFalsePositiveTypesChange={handleFalsePositiveFilterChange}
+        onFalsePositiveTypesChange={handleFalsePositiveFilterChangeV2}
         selectedModelAccuracy={selectedModelAccuracy}
         onModelAccuracyChange={setSelectedModelAccuracy}
         onResetFilters={resetFilters}

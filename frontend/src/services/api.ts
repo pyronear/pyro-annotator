@@ -30,7 +30,6 @@ class ApiClient {
     // Request interceptor
     this.client.interceptors.request.use(
       (config) => {
-        console.log(`Making ${config.method?.toUpperCase()} request to ${config.url}`);
         return config;
       },
       (error) => Promise.reject(error)
@@ -101,14 +100,6 @@ class ApiClient {
       ...filters,
       include_annotation: true, // Always include annotation data
     };
-    
-    // Debug logging for date range filters
-    if (enhancedFilters.recorded_at_gte || enhancedFilters.recorded_at_lte) {
-      console.log('Date range filter parameters:', {
-        recorded_at_gte: enhancedFilters.recorded_at_gte,
-        recorded_at_lte: enhancedFilters.recorded_at_lte
-      });
-    }
     
     const response: AxiosResponse<PaginatedResponse<SequenceWithAnnotation>> = await this.client.get('/sequences', {
       params: enhancedFilters,

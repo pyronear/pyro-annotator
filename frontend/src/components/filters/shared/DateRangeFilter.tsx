@@ -1,3 +1,5 @@
+import React from 'react';
+
 /**
  * Props for the DateRangeFilter component
  */
@@ -87,13 +89,24 @@ export default function DateRangeFilter({
   };
 
   /**
+   * Determines which preset (if any) matches the current date range
+   * 
+   * @pure Function analyzes current date values against presets
+   */
+  const getCurrentPreset = (): string | null => {
+    return detectActivePreset(dateFrom, dateTo, presetOptions);
+  };
+
+  /**
    * Handles preset button clicks
    * 
-   * @pure Function delegates preset selection
+   * @pure Function delegates preset selection to parent component
    */
   const handlePresetClick = (presetKey: string) => {
     onPresetSelect(presetKey);
   };
+
+  const currentPreset = getCurrentPreset();
 
   return (
     <div className={className} data-testid={testId}>
@@ -103,21 +116,29 @@ export default function DateRangeFilter({
 
       {/* Preset Buttons */}
       {showPresets && (
-        <div className="flex gap-1 mb-2">
-          {presetOptions.map((preset) => (
-            <button
-              key={preset.key}
-              onClick={() => handlePresetClick(preset.key)}
-              className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 focus:ring-1 focus:ring-primary-500 transition-colors"
-              type="button"
-              aria-label={`Set date range to last ${preset.label}`}
-            >
-              {preset.label}
-            </button>
-          ))}
+        <div className="flex gap-1 mb-3">
+          {presetOptions.map((preset) => {
+            const isActive = currentPreset === preset.key;
+            return (
+              <button
+                key={preset.key}
+                onClick={() => handlePresetClick(preset.key)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1 ${
+                  isActive
+                    ? 'bg-primary-600 text-white border border-primary-600 shadow-sm hover:bg-primary-700 focus:ring-primary-500'
+                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 hover:border-gray-400 focus:ring-primary-500'
+                }`}
+                type="button"
+                aria-label={`Set date range to last ${preset.label}`}
+                aria-pressed={isActive}
+              >
+                {preset.label}
+              </button>
+            );
+          })}
           <button
             onClick={onClear}
-            className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 focus:ring-1 focus:ring-primary-500 text-red-600 transition-colors"
+            className="px-3 py-1.5 text-xs font-medium border border-gray-300 rounded-md text-red-600 bg-white hover:bg-red-50 hover:border-red-300 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-red-500 transition-all duration-200"
             type="button"
             aria-label="Clear date range"
           >
@@ -128,22 +149,30 @@ export default function DateRangeFilter({
 
       {/* Date Inputs */}
       <div className="flex gap-2">
-        <input
-          type="date"
-          value={dateFrom}
-          onChange={handleDateFromChange}
-          className="flex-1 border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-primary-500 focus:border-primary-500"
-          placeholder="From"
-          aria-label={`${label} from date`}
-        />
-        <input
-          type="date"
-          value={dateTo}
-          onChange={handleDateToChange}
-          className="flex-1 border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-primary-500 focus:border-primary-500"
-          placeholder="To"
-          aria-label={`${label} to date`}
-        />
+        <div className="flex-1">
+          <label className="block text-xs text-gray-600 mb-1">From</label>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={handleDateFromChange}
+            className={`w-full border rounded-md px-3 py-2 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${
+              dateFrom ? 'border-primary-300 bg-primary-50/50' : 'border-gray-300 bg-white'
+            }`}
+            aria-label={`${label} from date`}
+          />
+        </div>
+        <div className="flex-1">
+          <label className="block text-xs text-gray-600 mb-1">To</label>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={handleDateToChange}
+            className={`w-full border rounded-md px-3 py-2 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${
+              dateTo ? 'border-primary-300 bg-primary-50/50' : 'border-gray-300 bg-white'
+            }`}
+            aria-label={`${label} to date`}
+          />
+        </div>
       </div>
     </div>
   );
@@ -236,4 +265,50 @@ export const isValidDateRange = (dateFrom: string, dateTo: string): boolean => {
  */
 export const countActiveDateFilters = (dateFrom: string, dateTo: string): number => {
   return (dateFrom || dateTo) ? 1 : 0;
+};
+
+/**
+ * Determines which preset matches the given date range
+ * 
+ * @pure Function analyzes date values against preset options
+ * @param dateFrom - Start date string (YYYY-MM-DD)
+ * @param dateTo - End date string (YYYY-MM-DD) 
+ * @param presetOptions - Array of preset configurations
+ * @returns Preset key if match found, null otherwise
+ * 
+ * @example
+ * const preset = detectActivePreset('2024-01-24', '2024-01-31', DEFAULT_DATE_PRESETS);
+ * // Returns: '7d' (if dates match 7-day preset)
+ */
+export const detectActivePreset = (
+  dateFrom: string, 
+  dateTo: string, 
+  presetOptions: readonly DatePresetOption[] = DEFAULT_DATE_PRESETS
+): string | null => {
+  if (!dateFrom || !dateTo) return null;
+  
+  const fromDate = new Date(dateFrom);
+  const toDate = new Date(dateTo);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  // Check if 'to' date is today (allow some tolerance)
+  const isToDateToday = Math.abs(toDate.getTime() - today.getTime()) <= 24 * 60 * 60 * 1000;
+  if (!isToDateToday) return null;
+  
+  // Check each preset
+  for (const preset of presetOptions) {
+    if (preset.days) {
+      const expectedFromDate = new Date(today);
+      expectedFromDate.setDate(expectedFromDate.getDate() - preset.days);
+      
+      // Allow 1-day tolerance for date matching
+      const daysDiff = Math.abs((fromDate.getTime() - expectedFromDate.getTime()) / (24 * 60 * 60 * 1000));
+      if (daysDiff <= 1) {
+        return preset.key;
+      }
+    }
+  }
+  
+  return null;
 };

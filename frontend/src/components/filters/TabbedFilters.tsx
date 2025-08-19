@@ -4,6 +4,7 @@ import { ModelAccuracyType } from '@/utils/modelAccuracy';
 import { usePersistedTabState } from '@/hooks/usePersistedTabState';
 import ModelAccuracyFilter from './ModelAccuracyFilter';
 import FalsePositiveFilter from './FalsePositiveFilter';
+import DateRangeFilter from './shared/DateRangeFilter';
 
 interface Camera {
   id: number;
@@ -250,55 +251,17 @@ export default function TabbedFilters({
       )}
 
       <div className="md:col-span-3">
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Date Range (Recorded)
-        </label>
-
-        {/* Preset Buttons */}
-        <div className="flex gap-1 mb-2">
-          <button
-            onClick={() => onDateRangeSet('7d')}
-            className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 focus:ring-1 focus:ring-primary-500"
-          >
-            7d
-          </button>
-          <button
-            onClick={() => onDateRangeSet('30d')}
-            className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 focus:ring-1 focus:ring-primary-500"
-          >
-            30d
-          </button>
-          <button
-            onClick={() => onDateRangeSet('90d')}
-            className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 focus:ring-1 focus:ring-primary-500"
-          >
-            90d
-          </button>
-          <button
-            onClick={onDateRangeClear}
-            className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 focus:ring-1 focus:ring-primary-500 text-red-600"
-          >
-            Clear
-          </button>
-        </div>
-
-        {/* Date Inputs */}
-        <div className="flex gap-2">
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => onDateFromChange(e.target.value)}
-            className="flex-1 border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-primary-500 focus:border-primary-500"
-            placeholder="From"
-          />
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(e) => onDateToChange(e.target.value)}
-            className="flex-1 border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-primary-500 focus:border-primary-500"
-            placeholder="To"
-          />
-        </div>
+        <DateRangeFilter
+          label="Date Range (Recorded)"
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          onDateFromChange={onDateFromChange}
+          onDateToChange={onDateToChange}
+          onPresetSelect={onDateRangeSet}
+          onClear={onDateRangeClear}
+          className="w-full"
+          data-testid="tabbed-filters-date-range"
+        />
       </div>
 
       {/* False Positive Filter - Only show on review page */}
@@ -306,7 +269,13 @@ export default function TabbedFilters({
         <div className="md:col-span-3">
           <FalsePositiveFilter
             selectedTypes={selectedFalsePositiveTypes}
-            onSelectionChange={onFalsePositiveTypesChange}
+            onSelectionChange={(types) => {
+              console.log('[TabbedFilters] FalsePositiveFilter onSelectionChange called with:', types);
+              console.log('[TabbedFilters] onFalsePositiveTypesChange function is:', onFalsePositiveTypesChange.name);
+              console.log('[TabbedFilters] Calling onFalsePositiveTypesChange...');
+              onFalsePositiveTypesChange(types);
+              console.log('[TabbedFilters] onFalsePositiveTypesChange completed');
+            }}
             className="w-full"
           />
         </div>
