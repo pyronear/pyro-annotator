@@ -29,13 +29,20 @@ export default function DashboardPage() {
       {/* Hero Section */}
       <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-xl p-8 text-white">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold mb-2">
-              Welcome to PyroAnnotator
-            </h1>
-            <p className="text-blue-100 text-lg">
-              Wildfire detection annotation system - Track your progress and manage workflows
-            </p>
+          <div className="flex items-center space-x-4">
+            <img 
+              src="/logo.png" 
+              alt="PyroAnnotator Logo" 
+              className="w-16 h-16 object-contain"
+            />
+            <div>
+              <h1 className="text-3xl font-bold mb-2">
+                Welcome to PyroAnnotator
+              </h1>
+              <p className="text-blue-100 text-lg">
+                Wildfire detection annotation system - Track your progress and manage workflows
+              </p>
+            </div>
           </div>
           <div className="hidden md:flex items-center space-x-6">
             <div className="text-center">
