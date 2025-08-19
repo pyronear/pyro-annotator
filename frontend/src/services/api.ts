@@ -1,4 +1,5 @@
 import axios, { AxiosInstance, AxiosResponse } from 'axios';
+import qs from 'qs';
 import { 
   Sequence, 
   SequenceAnnotation, 
@@ -25,6 +26,12 @@ class ApiClient {
         'Content-Type': 'application/json',
       },
       timeout: 30000,
+      paramsSerializer: (params) => {
+        return qs.stringify(params, { 
+          arrayFormat: 'repeat',  // Convert arrays to repeated params: ?false_positive_types=antenna&false_positive_types=building
+          skipNulls: true         // Skip null/undefined values
+        });
+      },
     });
 
     // Request interceptor
