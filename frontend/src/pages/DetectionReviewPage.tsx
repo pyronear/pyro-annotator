@@ -200,9 +200,9 @@ export default function DetectionReviewPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Detection Review</h1>
+            <h1 className="text-2xl font-bold text-gray-900">Detections</h1>
             <p className="text-gray-600">
-              Sequences with completed detection annotations ready for review
+              Review and verify annotated wildfire detections
             </p>
           </div>
         </div>
@@ -260,7 +260,7 @@ export default function DetectionReviewPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Detection Review</h1>
           <p className="text-gray-600">
-            Sequences with completed detection annotations ready for review
+            Review and verify annotated wildfire detections
           </p>
         </div>
       </div>

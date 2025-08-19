@@ -200,9 +200,9 @@ export default function DetectionAnnotatePage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Detection Annotations</h1>
+            <h1 className="text-2xl font-bold text-gray-900">Detections</h1>
             <p className="text-gray-600">
-              Sequences requiring detection-level annotation work
+              Annotate individual detections within wildfire sequences
             </p>
           </div>
         </div>
@@ -264,7 +264,7 @@ export default function DetectionAnnotatePage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Detection Annotations</h1>
           <p className="text-gray-600">
-            Sequences requiring detection-level annotation work
+            Annotate individual detections within wildfire sequences
           </p>
         </div>
       </div>
