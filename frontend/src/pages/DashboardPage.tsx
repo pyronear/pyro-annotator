@@ -145,7 +145,7 @@ export default function DashboardPage() {
               )}
             </div>
             <p className="text-xs text-gray-500 mt-2">
-              {isLoading ? 'Loading...' : `${detectionCompletionPercentage}% of sequences with detections`}
+              {isLoading ? 'Loading...' : `${isNaN(detectionCompletionPercentage) ? 0 : detectionCompletionPercentage}% of sequences with detections`}
             </p>
           </div>
         </div>
