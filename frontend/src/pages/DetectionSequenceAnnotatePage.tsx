@@ -10,7 +10,8 @@ import {
   analyzeSequenceAccuracy,
   getFalsePositiveEmoji,
   formatFalsePositiveType,
-  getModelAccuracyBadgeClasses
+  getModelAccuracyBadgeClasses,
+  parseFalsePositiveTypes
 } from '@/utils/modelAccuracy';
 import { Detection, DetectionAnnotation, AlgoPrediction, SmokeType } from '@/types/api';
 import { createDefaultFilterState } from '@/hooks/usePersistedFilters';
@@ -2194,25 +2195,18 @@ export default function DetectionSequenceAnnotatePage() {
 
     if (sequenceAnnotation.has_false_positives) {
       // Add individual false positive type pills
-      try {
-        const falsePositiveTypes = sequenceAnnotation.false_positive_types
-          ? JSON.parse(sequenceAnnotation.false_positive_types)
-          : [];
-
-        falsePositiveTypes.forEach((type: string) => {
-          pills.push(
-            <span
-              key={`fp-${type}`}
-              className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800"
-            >
-              {getFalsePositiveEmoji(type)} {formatFalsePositiveType(type)}
-            </span>
-          );
-        });
-      } catch (e) {
-        // If JSON parsing fails, just show the generic false positive pill
-        console.warn('Failed to parse false_positive_types:', e);
-      }
+      const falsePositiveTypes = parseFalsePositiveTypes(sequenceAnnotation.false_positive_types);
+      
+      falsePositiveTypes.forEach((type: string) => {
+        pills.push(
+          <span
+            key={`fp-${type}`}
+            className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800"
+          >
+            {getFalsePositiveEmoji(type)} {formatFalsePositiveType(type)}
+          </span>
+        );
+      });
     }
 
     if (!sequenceAnnotation.has_smoke && !sequenceAnnotation.has_missed_smoke && !sequenceAnnotation.has_false_positives) {

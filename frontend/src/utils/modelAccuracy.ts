@@ -127,6 +127,47 @@ export function formatFalsePositiveType(type: string): string {
   return type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 }
 
+/**
+ * Robust parser for false positive types that handles multiple formats
+ */
+export function parseFalsePositiveTypes(value: string | string[] | null | undefined): string[] {
+  if (!value) {
+    return [];
+  }
+
+  // If it's already an array, just filter and return
+  if (Array.isArray(value)) {
+    return value.filter(item => typeof item === 'string');
+  }
+
+  // If it's not a string, return empty
+  if (typeof value !== 'string') {
+    return [];
+  }
+
+  // Try JSON parsing first (handles arrays like ["light", "dust"])
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) {
+      return parsed.filter(item => typeof item === 'string');
+    }
+    // If it's a single string value wrapped in JSON quotes
+    if (typeof parsed === 'string') {
+      return [parsed];
+    }
+  } catch {
+    // JSON parsing failed, try other formats
+  }
+
+  // Handle comma-separated values (e.g., "light,dust,building")
+  if (value.includes(',')) {
+    return value.split(',').map(type => type.trim()).filter(type => type.length > 0);
+  }
+
+  // Handle single string value (e.g., "light")
+  return [value.trim()].filter(type => type.length > 0);
+}
+
 
 /**
  * Component for displaying model accuracy badge

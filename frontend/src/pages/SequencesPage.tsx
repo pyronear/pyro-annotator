@@ -9,7 +9,8 @@ import {
   analyzeSequenceAccuracy,
   getFalsePositiveEmoji,
   formatFalsePositiveType,
-  getRowBackgroundClasses
+  getRowBackgroundClasses,
+  parseFalsePositiveTypes
 } from '@/utils/modelAccuracy';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
 import TabbedFilters from '@/components/filters/TabbedFilters';
@@ -409,21 +410,15 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
                       <div className="flex-shrink-0 self-start">
                         <div className="flex flex-wrap gap-1 justify-end">
                           {(() => {
-                            try {
-                              const falsePositiveTypes = sequence.annotation.false_positive_types
-                                ? JSON.parse(sequence.annotation.false_positive_types)
-                                : [];
-                              return falsePositiveTypes.map((type: string) => (
-                                <span
-                                  key={type}
-                                  className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800"
-                                >
-                                  {getFalsePositiveEmoji(type)} {formatFalsePositiveType(type)}
-                                </span>
-                              ));
-                            } catch (e) {
-                              return null;
-                            }
+                            const falsePositiveTypes = parseFalsePositiveTypes(sequence.annotation.false_positive_types);
+                            return falsePositiveTypes.map((type: string) => (
+                              <span
+                                key={type}
+                                className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800"
+                              >
+                                {getFalsePositiveEmoji(type)} {formatFalsePositiveType(type)}
+                              </span>
+                            ));
                           })()}
                         </div>
                       </div>
