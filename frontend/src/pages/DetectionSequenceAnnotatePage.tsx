@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, X, ChevronLeft, ChevronRight, CheckCircle, AlertCircle, Upload, RotateCcw, Square, Trash2, Keyboard, Eye, MousePointer, Undo, Navigation, Clock, Brain } from 'lucide-react';
 import { useSequenceDetections } from '@/hooks/useSequenceDetections';
@@ -13,6 +13,7 @@ import {
   getModelAccuracyBadgeClasses
 } from '@/utils/modelAccuracy';
 import { Detection, DetectionAnnotation, AlgoPrediction, SmokeType } from '@/types/api';
+import { createDefaultFilterState } from '@/hooks/usePersistedFilters';
 
 // Drawing-related interfaces
 interface DrawnRectangle {
@@ -1671,6 +1672,42 @@ export default function DetectionSequenceAnnotatePage() {
   const [persistentDrawMode, setPersistentDrawMode] = useState(false);
   const isAutoAdvanceRef = useRef(false);
 
+  // Detect source page from URL search params
+  const [searchParams] = useSearchParams();
+  const fromParam = searchParams.get('from');
+  
+  // Determine source page and appropriate filter storage key
+  const sourcePage = fromParam === 'detections-review' ? 'review' : 'annotate';
+  const filterStorageKey = sourcePage === 'review' ? 'filters-detections-review' : 'filters-detections-annotate';
+  
+  // Load persisted filters from the appropriate source page
+  const sourcePageFilters = useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    
+    try {
+      const stored = localStorage.getItem(filterStorageKey);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        return parsed;
+      }
+    } catch (error) {
+      console.warn(`Failed to read filters from localStorage key "${filterStorageKey}":`, error);
+    }
+    
+    // If no stored filters, create defaults based on source page
+    const defaultState = {
+      ...createDefaultFilterState('annotated'),
+      filters: {
+        ...createDefaultFilterState('annotated').filters,
+        detection_annotation_completion: sourcePage === 'review' ? 'complete' : 'incomplete',
+        include_detection_stats: true,
+        processing_stage: 'annotated',
+      },
+    };
+    
+    return defaultState;
+  }, [filterStorageKey, sourcePage]);
+
   const { data: detections, isLoading, error } = useSequenceDetections(sequenceIdNum);
 
   // Helper functions to map between detection ID and array index
@@ -1704,15 +1741,82 @@ export default function DetectionSequenceAnnotatePage() {
 
   const sequenceAnnotation = sequenceAnnotationResponse;
 
-  // Fetch all sequences for navigation (using same filters as DetectionAnnotatePage)
-  const { data: allSequences } = useQuery({
-    queryKey: [...QUERY_KEYS.SEQUENCES, 'navigation-context'],
-    queryFn: () => apiClient.getSequences({
-      detection_annotation_completion: 'incomplete',
-      include_detection_stats: true,
-      size: 100, // API maximum page size limit
-    }),
+  // Fetch all sequences for navigation using filters from the source page
+  const { data: rawSequences } = useQuery({
+    queryKey: [...QUERY_KEYS.SEQUENCES, 'navigation-context', sourcePage, sourcePageFilters?.filters],
+    queryFn: () => {
+      if (!sourcePageFilters?.filters) {
+        // Fallback to basic query if filters not available
+        return apiClient.getSequences({
+          detection_annotation_completion: sourcePage === 'review' ? 'complete' : 'incomplete',
+          include_detection_stats: true,
+          size: 1000, // Increased size to handle pagination properly for navigation
+        });
+      }
+      
+      return apiClient.getSequences({
+        ...sourcePageFilters.filters,
+        size: 1000, // Increased size to handle pagination properly for navigation
+      });
+    },
+    enabled: !!sourcePageFilters,
   });
+
+  // Fetch sequence annotations for model accuracy filtering (if applicable)
+  const { data: allSequenceAnnotations } = useQuery({
+    queryKey: [...QUERY_KEYS.SEQUENCE_ANNOTATIONS, 'navigation-context', rawSequences?.items?.map(s => s.id)],
+    queryFn: async () => {
+      if (!rawSequences?.items?.length || !sourcePageFilters?.selectedModelAccuracy || sourcePageFilters.selectedModelAccuracy === 'all') {
+        return [];
+      }
+
+      const annotationPromises = rawSequences.items.map(sequence =>
+        apiClient.getSequenceAnnotations({ sequence_id: sequence.id, size: 1 })
+          .then(response => ({ sequenceId: sequence.id, annotation: response.items[0] || null }))
+          .catch(() => ({ sequenceId: sequence.id, annotation: null }))
+      );
+
+      return Promise.all(annotationPromises);
+    },
+    enabled: !!rawSequences?.items?.length && !!sourcePageFilters?.selectedModelAccuracy && sourcePageFilters.selectedModelAccuracy !== 'all',
+  });
+
+  // Apply client-side model accuracy filtering (similar to DetectionAnnotatePage and DetectionReviewPage)
+  const allSequences = useMemo(() => {
+    if (!rawSequences || !sourcePageFilters?.selectedModelAccuracy || sourcePageFilters.selectedModelAccuracy === 'all') {
+      return rawSequences;
+    }
+
+    if (!allSequenceAnnotations) {
+      return rawSequences; // Return unfiltered if annotations not loaded yet
+    }
+
+    const annotationMap = allSequenceAnnotations.reduce((acc, { sequenceId, annotation }) => {
+      acc[sequenceId] = annotation;
+      return acc;
+    }, {} as Record<number, any>);
+
+    const filtered = rawSequences.items.filter(sequence => {
+      const annotation = annotationMap[sequence.id];
+      if (!annotation) {
+        return sourcePageFilters.selectedModelAccuracy === 'unknown';
+      }
+
+      const accuracy = analyzeSequenceAccuracy({
+        ...sequence,
+        annotation: annotation
+      });
+      
+      return accuracy.type === sourcePageFilters.selectedModelAccuracy;
+    });
+
+    return {
+      ...rawSequences,
+      items: filtered,
+      total: filtered.length,
+      pages: Math.ceil(filtered.length / rawSequences.size)
+    };
+  }, [rawSequences, allSequenceAnnotations, sourcePageFilters?.selectedModelAccuracy]);
 
   // Fetch existing detection annotations for this sequence
   const { data: existingAnnotations } = useQuery({
@@ -1767,14 +1871,30 @@ export default function DetectionSequenceAnnotatePage() {
     onSuccess: () => {
       // Invalidate queries to refresh data
       queryClient.invalidateQueries({ queryKey: [...QUERY_KEYS.DETECTION_ANNOTATIONS] });
+      // Invalidate sequences queries for both annotate and review pages
+      queryClient.invalidateQueries({ queryKey: [...QUERY_KEYS.SEQUENCES, 'detection-annotate'] });
+      queryClient.invalidateQueries({ queryKey: [...QUERY_KEYS.SEQUENCES, 'detection-review'] });
+      // Invalidate navigation context queries
+      queryClient.invalidateQueries({ queryKey: [...QUERY_KEYS.SEQUENCES, 'navigation-context'] });
       // Invalidate annotation counts to update sidebar badges
       queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
       setToastMessage('Detection annotations saved successfully');
       setShowToast(true);
 
-      // Navigate back after a short delay
+      // Auto-advance to next sequence or navigate back after a short delay
       setTimeout(() => {
-        navigate('/detections/annotate');
+        // Check if there's a next sequence to auto-advance to
+        const currentIndex = getCurrentSequenceIndex();
+        if (currentIndex >= 0 && allSequences?.items && currentIndex < allSequences.items.length - 1) {
+          // Auto-advance to next filtered sequence
+          const nextSequence = allSequences.items[currentIndex + 1];
+          const sourceParam = fromParam ? `?from=${fromParam}` : '';
+          navigate(`/detections/${nextSequence.id}/annotate${sourceParam}`);
+        } else {
+          // No next sequence, return to appropriate source page
+          const backPath = sourcePage === 'review' ? '/detections/review' : '/detections/annotate';
+          navigate(backPath);
+        }
       }, 1500);
     },
     onError: () => {
@@ -1815,8 +1935,11 @@ export default function DetectionSequenceAnnotatePage() {
       
       // Invalidate queries to refresh data
       queryClient.invalidateQueries({ queryKey: [...QUERY_KEYS.DETECTION_ANNOTATIONS] });
-      // Invalidate the specific sequences query used by DetectionAnnotatePage
+      // Invalidate sequences queries for both annotate and review pages
       queryClient.invalidateQueries({ queryKey: [...QUERY_KEYS.SEQUENCES, 'detection-annotate'] });
+      queryClient.invalidateQueries({ queryKey: [...QUERY_KEYS.SEQUENCES, 'detection-review'] });
+      // Invalidate navigation context queries
+      queryClient.invalidateQueries({ queryKey: [...QUERY_KEYS.SEQUENCES, 'navigation-context'] });
       // Invalidate annotation counts to update sidebar badges
       queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
       
@@ -1849,7 +1972,8 @@ export default function DetectionSequenceAnnotatePage() {
   });
 
   const handleBack = () => {
-    navigate('/detections/annotate');
+    const backPath = sourcePage === 'review' ? '/detections/review' : '/detections/annotate';
+    navigate(backPath);
   };
 
   const handleSave = () => {
@@ -1876,7 +2000,8 @@ export default function DetectionSequenceAnnotatePage() {
     const currentIndex = getCurrentSequenceIndex();
     if (currentIndex > 0 && allSequences?.items) {
       const prevSequence = allSequences.items[currentIndex - 1];
-      navigate(`/detections/${prevSequence.id}/annotate`);
+      const sourceParam = fromParam ? `?from=${fromParam}` : '';
+      navigate(`/detections/${prevSequence.id}/annotate${sourceParam}`);
     }
   };
 
@@ -1884,7 +2009,8 @@ export default function DetectionSequenceAnnotatePage() {
     const currentIndex = getCurrentSequenceIndex();
     if (currentIndex >= 0 && allSequences?.items && currentIndex < allSequences.items.length - 1) {
       const nextSequence = allSequences.items[currentIndex + 1];
-      navigate(`/detections/${nextSequence.id}/annotate`);
+      const sourceParam = fromParam ? `?from=${fromParam}` : '';
+      navigate(`/detections/${nextSequence.id}/annotate${sourceParam}`);
     }
   };
 

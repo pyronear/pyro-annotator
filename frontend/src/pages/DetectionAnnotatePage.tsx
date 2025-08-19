@@ -174,7 +174,7 @@ export default function DetectionAnnotatePage() {
 
   const handleSequenceClick = (clickedSequence: SequenceWithDetectionProgress) => {
     // Navigate to detection annotation interface for this specific sequence
-    navigate(`/detections/${clickedSequence.id}/annotate`);
+    navigate(`/detections/${clickedSequence.id}/annotate?from=detections-annotate`);
   };
 
   if (isLoading) {
