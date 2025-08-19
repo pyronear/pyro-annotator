@@ -1682,30 +1682,40 @@ export default function DetectionSequenceAnnotatePage() {
   
   // Load persisted filters from the appropriate source page
   const sourcePageFilters = useMemo(() => {
-    if (typeof window === 'undefined') return null;
+    console.log(`[DetectionSequenceAnnotate] Loading filters for sourcePage: ${sourcePage}, key: ${filterStorageKey}`);
     
+    if (typeof window === 'undefined') {
+      console.log('[DetectionSequenceAnnotate] SSR mode, returning null');
+      return null;
+    }
+    
+    let storedFilters = null;
     try {
       const stored = localStorage.getItem(filterStorageKey);
       if (stored) {
-        const parsed = JSON.parse(stored);
-        return parsed;
+        storedFilters = JSON.parse(stored);
+        console.log('[DetectionSequenceAnnotate] Found stored filters:', storedFilters);
+      } else {
+        console.log(`[DetectionSequenceAnnotate] No stored filters found in localStorage for key: ${filterStorageKey}`);
       }
     } catch (error) {
-      console.warn(`Failed to read filters from localStorage key "${filterStorageKey}":`, error);
+      console.warn(`[DetectionSequenceAnnotate] Failed to read filters from localStorage key "${filterStorageKey}":`, error);
     }
     
-    // If no stored filters, create defaults based on source page
+    // Always return something (either stored filters or defaults)
     const defaultState = {
       ...createDefaultFilterState('annotated'),
       filters: {
         ...createDefaultFilterState('annotated').filters,
-        detection_annotation_completion: sourcePage === 'review' ? 'complete' : 'incomplete',
+        detection_annotation_completion: sourcePage === 'review' ? 'complete' as const : 'incomplete' as const,
         include_detection_stats: true,
-        processing_stage: 'annotated',
+        processing_stage: 'annotated' as const,
       },
     };
     
-    return defaultState;
+    const result = storedFilters || defaultState;
+    console.log('[DetectionSequenceAnnotate] Final sourcePageFilters:', result);
+    return result;
   }, [filterStorageKey, sourcePage]);
 
   const { data: detections, isLoading, error } = useSequenceDetections(sequenceIdNum);
@@ -1742,52 +1752,91 @@ export default function DetectionSequenceAnnotatePage() {
   const sequenceAnnotation = sequenceAnnotationResponse;
 
   // Fetch all sequences for navigation using filters from the source page
-  const { data: rawSequences } = useQuery({
+  const { data: rawSequences, isLoading: rawSequencesLoading, error: rawSequencesError } = useQuery({
     queryKey: [...QUERY_KEYS.SEQUENCES, 'navigation-context', sourcePage, sourcePageFilters?.filters],
     queryFn: () => {
-      if (!sourcePageFilters?.filters) {
-        // Fallback to basic query if filters not available
+      // Always provide a fallback query - use stored filters if available, otherwise use basic filters
+      const baseFilters = {
+        detection_annotation_completion: sourcePage === 'review' ? 'complete' as const : 'incomplete' as const,
+        include_detection_stats: true,
+        processing_stage: 'annotated' as const,
+        size: 100, // Backend maximum limit is 100 - may limit navigation with large datasets
+      };
+
+      if (sourcePageFilters?.filters) {
+        // Use stored filters with size override (backend maximum is 100)
         return apiClient.getSequences({
-          detection_annotation_completion: sourcePage === 'review' ? 'complete' : 'incomplete',
-          include_detection_stats: true,
-          size: 1000, // Increased size to handle pagination properly for navigation
+          ...sourcePageFilters.filters,
+          size: 100,
         });
+      } else {
+        // Fallback to basic filters
+        console.log('[DetectionSequenceAnnotate] Using fallback filters for navigation context');
+        return apiClient.getSequences(baseFilters);
       }
-      
-      return apiClient.getSequences({
-        ...sourcePageFilters.filters,
-        size: 1000, // Increased size to handle pagination properly for navigation
-      });
     },
-    enabled: !!sourcePageFilters,
+    // Remove the restrictive enabled condition - always try to load navigation data
+    retry: 3, // Add retry for robustness
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
   });
 
   // Fetch sequence annotations for model accuracy filtering (if applicable)
   const { data: allSequenceAnnotations } = useQuery({
-    queryKey: [...QUERY_KEYS.SEQUENCE_ANNOTATIONS, 'navigation-context', rawSequences?.items?.map(s => s.id)],
+    queryKey: [...QUERY_KEYS.SEQUENCE_ANNOTATIONS, 'navigation-context', rawSequences?.items?.map(s => s.id), sourcePageFilters?.selectedModelAccuracy],
     queryFn: async () => {
-      if (!rawSequences?.items?.length || !sourcePageFilters?.selectedModelAccuracy || sourcePageFilters.selectedModelAccuracy === 'all') {
+      if (!rawSequences?.items?.length) {
+        console.log('[DetectionSequenceAnnotate] No rawSequences items for annotations');
         return [];
       }
+
+      // Only fetch annotations if model accuracy filtering is needed
+      const modelAccuracy = sourcePageFilters?.selectedModelAccuracy;
+      if (!modelAccuracy || modelAccuracy === 'all') {
+        console.log('[DetectionSequenceAnnotate] No model accuracy filtering needed, skipping annotations fetch');
+        return [];
+      }
+
+      console.log(`[DetectionSequenceAnnotate] Fetching annotations for ${rawSequences.items.length} sequences for model accuracy filtering: ${modelAccuracy}`);
 
       const annotationPromises = rawSequences.items.map(sequence =>
         apiClient.getSequenceAnnotations({ sequence_id: sequence.id, size: 1 })
           .then(response => ({ sequenceId: sequence.id, annotation: response.items[0] || null }))
-          .catch(() => ({ sequenceId: sequence.id, annotation: null }))
+          .catch(error => {
+            console.warn(`Failed to fetch annotation for sequence ${sequence.id}:`, error);
+            return { sequenceId: sequence.id, annotation: null };
+          })
       );
 
       return Promise.all(annotationPromises);
     },
-    enabled: !!rawSequences?.items?.length && !!sourcePageFilters?.selectedModelAccuracy && sourcePageFilters.selectedModelAccuracy !== 'all',
+    enabled: !!rawSequences?.items?.length,
+    retry: 2,
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
   });
 
   // Apply client-side model accuracy filtering (similar to DetectionAnnotatePage and DetectionReviewPage)
   const allSequences = useMemo(() => {
-    if (!rawSequences || !sourcePageFilters?.selectedModelAccuracy || sourcePageFilters.selectedModelAccuracy === 'all') {
+    console.log('[DetectionSequenceAnnotate] Computing allSequences:', {
+      hasRawSequences: !!rawSequences,
+      rawSequencesCount: rawSequences?.items?.length || 0,
+      selectedModelAccuracy: sourcePageFilters?.selectedModelAccuracy,
+      hasAnnotations: !!allSequenceAnnotations,
+      annotationsCount: allSequenceAnnotations?.length || 0
+    });
+
+    if (!rawSequences) {
+      console.log('[DetectionSequenceAnnotate] No rawSequences data, returning null');
+      return null;
+    }
+
+    const modelAccuracy = sourcePageFilters?.selectedModelAccuracy;
+    if (!modelAccuracy || modelAccuracy === 'all') {
+      console.log('[DetectionSequenceAnnotate] No model accuracy filtering, returning raw sequences:', rawSequences.items?.length || 0);
       return rawSequences;
     }
 
     if (!allSequenceAnnotations) {
+      console.log('[DetectionSequenceAnnotate] Model accuracy filtering requested but annotations not loaded yet, returning raw sequences');
       return rawSequences; // Return unfiltered if annotations not loaded yet
     }
 
@@ -1799,7 +1848,7 @@ export default function DetectionSequenceAnnotatePage() {
     const filtered = rawSequences.items.filter(sequence => {
       const annotation = annotationMap[sequence.id];
       if (!annotation) {
-        return sourcePageFilters.selectedModelAccuracy === 'unknown';
+        return modelAccuracy === 'unknown';
       }
 
       const accuracy = analyzeSequenceAccuracy({
@@ -1807,8 +1856,10 @@ export default function DetectionSequenceAnnotatePage() {
         annotation: annotation
       });
       
-      return accuracy.type === sourcePageFilters.selectedModelAccuracy;
+      return accuracy.type === modelAccuracy;
     });
+
+    console.log(`[DetectionSequenceAnnotate] Applied model accuracy filtering (${modelAccuracy}): ${rawSequences.items.length} -> ${filtered.length} sequences`);
 
     return {
       ...rawSequences,
@@ -2326,11 +2377,32 @@ export default function DetectionSequenceAnnotatePage() {
                 )}
 
                 {/* Sequence context */}
-                {allSequences && (
+                {rawSequencesLoading ? (
+                  <>
+                    <span className="text-gray-400">•</span>
+                    <span className="text-xs text-gray-500 animate-pulse">
+                      Loading sequences...
+                    </span>
+                  </>
+                ) : rawSequencesError ? (
+                  <>
+                    <span className="text-gray-400">•</span>
+                    <span className="text-xs text-red-500">
+                      Error loading sequences
+                    </span>
+                  </>
+                ) : allSequences && allSequences.total > 0 ? (
                   <>
                     <span className="text-gray-400">•</span>
                     <span className="text-xs text-blue-600 font-medium">
                       Sequence {getCurrentSequenceIndex() + 1} of {allSequences.total}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-gray-400">•</span>
+                    <span className="text-xs text-gray-500">
+                      No sequences found
                     </span>
                   </>
                 )}
@@ -2350,22 +2422,60 @@ export default function DetectionSequenceAnnotatePage() {
 
             <div className="flex items-center space-x-2">
               {/* Navigation Buttons */}
-              <button
-                onClick={handlePreviousSequence}
-                disabled={!canNavigatePrevious()}
-                className="p-1.5 rounded-md hover:bg-gray-100 hover:bg-opacity-75 disabled:opacity-40 disabled:cursor-not-allowed"
-                title={canNavigatePrevious() ? "Previous sequence" : "Already at first sequence"}
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <button
-                onClick={handleNextSequence}
-                disabled={!canNavigateNext()}
-                className="p-1.5 rounded-md hover:bg-gray-100 hover:bg-opacity-75 disabled:opacity-40 disabled:cursor-not-allowed"
-                title={canNavigateNext() ? "Next sequence" : "Already at last sequence"}
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
+              {rawSequencesLoading ? (
+                <>
+                  <button
+                    disabled
+                    className="p-1.5 rounded-md opacity-40 cursor-not-allowed"
+                    title="Loading sequences..."
+                  >
+                    <ChevronLeft className="w-4 h-4 animate-pulse" />
+                  </button>
+                  <button
+                    disabled
+                    className="p-1.5 rounded-md opacity-40 cursor-not-allowed"
+                    title="Loading sequences..."
+                  >
+                    <ChevronRight className="w-4 h-4 animate-pulse" />
+                  </button>
+                </>
+              ) : rawSequencesError ? (
+                <>
+                  <button
+                    disabled
+                    className="p-1.5 rounded-md opacity-40 cursor-not-allowed"
+                    title="Error loading sequences"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <button
+                    disabled
+                    className="p-1.5 rounded-md opacity-40 cursor-not-allowed"
+                    title="Error loading sequences"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={handlePreviousSequence}
+                    disabled={!canNavigatePrevious()}
+                    className="p-1.5 rounded-md hover:bg-gray-100 hover:bg-opacity-75 disabled:opacity-40 disabled:cursor-not-allowed"
+                    title={canNavigatePrevious() ? "Previous sequence" : "Already at first sequence"}
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={handleNextSequence}
+                    disabled={!canNavigateNext()}
+                    className="p-1.5 rounded-md hover:bg-gray-100 hover:bg-opacity-75 disabled:opacity-40 disabled:cursor-not-allowed"
+                    title={canNavigateNext() ? "Next sequence" : "Already at last sequence"}
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </>
+              )}
 
               {/* Predictions Toggle */}
               <label className="flex items-center space-x-2 px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 cursor-pointer">
