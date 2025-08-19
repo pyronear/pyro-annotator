@@ -77,6 +77,8 @@ export default function TabbedFilters({
   const [activeTab, setActiveTab] = usePersistedTabState('tabbed-filters-active-tab', defaultTab);
 
   // Count active filters for each tab
+  // Note: We exclude system filters like 'processing_stage', 'page', 'size', 'include_annotation' 
+  // which are not user-visible filters
   const countActiveSimpleFilters = () => {
     let count = 0;
     if (filters.camera_name) count++;

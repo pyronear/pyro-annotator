@@ -24,6 +24,8 @@ export function createDefaultFilterState(
     filters: {
       page: PAGINATION_DEFAULTS.PAGE,
       size: PAGINATION_DEFAULTS.SIZE,
+      // Note: processing_stage is a system filter, not a user-visible filter
+      // It's used to determine which sequences to show based on the page context
       processing_stage: defaultProcessingStage as any,
     },
     dateFrom: '',
@@ -54,13 +56,26 @@ export function usePersistedFilters(
       const stored = localStorage.getItem(storageKey);
       if (stored) {
         const parsed = JSON.parse(stored) as PersistedFilterState;
+        
+        // Clean up filters - only keep user-visible filter values, not empty strings
+        const cleanedFilters = { ...parsed.filters };
+        
+        // Remove empty string values that should be undefined
+        if (cleanedFilters.camera_name === '') delete cleanedFilters.camera_name;
+        if (cleanedFilters.organisation_name === '') delete cleanedFilters.organisation_name;
+        // source_api is an enum type, so we check differently
+        if (!cleanedFilters.source_api) delete cleanedFilters.source_api;
+        
         // Merge with defaults to handle missing properties in stored data
+        // Always preserve the processing_stage from defaultState as it's a system filter
         return {
           ...defaultState,
           ...parsed,
           filters: {
             ...defaultState.filters,
-            ...parsed.filters,
+            ...cleanedFilters,
+            // Always use the processing_stage from defaultState, not from localStorage
+            processing_stage: defaultState.filters.processing_stage,
           },
         };
       }
