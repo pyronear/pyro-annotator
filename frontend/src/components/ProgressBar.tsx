@@ -25,7 +25,7 @@ export default function ProgressBar({
   className = '',
   ariaLabel 
 }: ProgressBarProps) {
-  const percentage = Math.min(Math.max((value / max) * 100, 0), 100);
+  const percentage = max > 0 ? Math.min(Math.max((value / max) * 100, 0), 100) : 0;
   
   const colorClasses = {
     primary: 'bg-primary-600',
@@ -60,7 +60,11 @@ export default function ProgressBar({
       {/* Percentage text overlay */}
       {showPercentage && (
         <div className="absolute inset-0 flex items-center justify-center">
-          <span className="text-xs font-medium text-white text-shadow-sm">
+          <span className={`text-xs font-medium px-1.5 py-0.5 rounded text-shadow-sm ${
+            percentage < 50 
+              ? 'text-gray-800 bg-white/40' 
+              : 'text-white bg-black/20'
+          }`}>
             {Math.round(percentage)}%
           </span>
         </div>

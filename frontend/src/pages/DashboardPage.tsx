@@ -8,7 +8,8 @@ import {
   ArrowRight,
   AlertTriangle,
   Activity,
-  BarChart3
+  BarChart3,
+  Layers
 } from 'lucide-react';
 import { useAnnotationStats } from '@/hooks/useAnnotationStats';
 import ProgressBar, { MultiStageProgressBar } from '@/components/ProgressBar';
@@ -68,7 +69,7 @@ export default function DashboardPage() {
           <div className="flex items-start justify-between">
             <div className="flex items-center space-x-3">
               <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-                <Target className="w-6 h-6 text-green-600" />
+                <Layers className="w-6 h-6 text-green-600" />
               </div>
               <div>
                 <h3 className="text-lg font-semibold text-gray-900">
@@ -99,7 +100,7 @@ export default function DashboardPage() {
                   value={processingStages.annotated} 
                   max={totalSequences}
                   color="green" 
-                  height={8}
+                  height={20}
                   ariaLabel="Sequence annotation progress"
                 />
               )}
@@ -115,7 +116,7 @@ export default function DashboardPage() {
           <div className="flex items-start justify-between">
             <div className="flex items-center space-x-3">
               <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                <CheckCircle2 className="w-6 h-6 text-blue-600" />
+                <Target className="w-6 h-6 text-blue-600" />
               </div>
               <div>
                 <h3 className="text-lg font-semibold text-gray-900">
@@ -146,7 +147,7 @@ export default function DashboardPage() {
                   value={sequencesWithCompleteDetections} 
                   max={sequencesWithCompleteDetections + sequencesWithIncompleteDetections}
                   color="primary" 
-                  height={8}
+                  height={20}
                   ariaLabel="Detection annotation progress"
                 />
               )}
