@@ -122,6 +122,11 @@ export function usePersistedFilters(
     updateState({ ...state, selectedModelAccuracy });
   };
 
+  // Reset all filters to default state
+  const resetFilters = () => {
+    updateState(defaultState);
+  };
+
   // Sync with localStorage changes from other tabs/windows
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -155,5 +160,6 @@ export function usePersistedFilters(
     setDateTo,
     setSelectedFalsePositiveTypes,
     setSelectedModelAccuracy,
+    resetFilters,
   };
 }

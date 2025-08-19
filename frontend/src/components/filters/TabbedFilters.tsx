@@ -44,6 +44,9 @@ interface TabbedFiltersProps {
   showModelAccuracy?: boolean; // for review pages only
   showFalsePositiveTypes?: boolean; // for review pages only
   
+  // Reset handler
+  onResetFilters?: () => void;
+  
   className?: string;
   defaultTab?: 'simple' | 'advanced';
   simpleTabLabel?: string;
@@ -69,6 +72,7 @@ export default function TabbedFilters({
   organizationsLoading,
   showModelAccuracy = false,
   showFalsePositiveTypes = false,
+  onResetFilters,
   className = '',
   defaultTab = 'simple',
   simpleTabLabel = 'Simple',
@@ -310,48 +314,65 @@ export default function TabbedFilters({
     </>
   );
 
+  // Check if any filters are active
+  const hasActiveFilters = () => {
+    return activeTab === 'simple' ? countActiveSimpleFilters() > 0 : countActiveAdvancedFilters() > 0;
+  };
+
   return (
     <div className={clsx('bg-white rounded-lg border border-gray-200', className)}>
       {/* Tab Navigation */}
       <div className="border-b border-gray-200">
-        <nav className="-mb-px flex">
-          <button
-            onClick={() => handleTabSwitch('simple')}
-            className={clsx(
-              'py-3 px-6 text-sm font-medium rounded-tl-lg transition-colors duration-200',
-              activeTab === 'simple'
-                ? 'border-b-2 border-primary-500 text-primary-600 bg-primary-50'
-                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-            )}
-          >
-            <div className="flex items-center space-x-2">
-              <span>{simpleTabLabel}</span>
-              {countActiveSimpleFilters() > 0 && (
-                <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-800">
-                  {countActiveSimpleFilters()}
-                </span>
+        <div className="flex justify-between items-center">
+          <nav className="-mb-px flex">
+            <button
+              onClick={() => handleTabSwitch('simple')}
+              className={clsx(
+                'py-3 px-6 text-sm font-medium rounded-tl-lg transition-colors duration-200',
+                activeTab === 'simple'
+                  ? 'border-b-2 border-primary-500 text-primary-600 bg-primary-50'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
               )}
-            </div>
-          </button>
-          <button
-            onClick={() => handleTabSwitch('advanced')}
-            className={clsx(
-              'py-3 px-6 text-sm font-medium rounded-tr-lg transition-colors duration-200',
-              activeTab === 'advanced'
-                ? 'border-b-2 border-primary-500 text-primary-600 bg-primary-50'
-                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-            )}
-          >
-            <div className="flex items-center space-x-2">
-              <span>{advancedTabLabel}</span>
-              {countActiveAdvancedFilters() > 0 && (
-                <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-800">
-                  {countActiveAdvancedFilters()}
-                </span>
+            >
+              <div className="flex items-center space-x-2">
+                <span>{simpleTabLabel}</span>
+                {countActiveSimpleFilters() > 0 && (
+                  <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-800">
+                    {countActiveSimpleFilters()}
+                  </span>
+                )}
+              </div>
+            </button>
+            <button
+              onClick={() => handleTabSwitch('advanced')}
+              className={clsx(
+                'py-3 px-6 text-sm font-medium transition-colors duration-200',
+                activeTab === 'advanced'
+                  ? 'border-b-2 border-primary-500 text-primary-600 bg-primary-50'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
               )}
-            </div>
-          </button>
-        </nav>
+            >
+              <div className="flex items-center space-x-2">
+                <span>{advancedTabLabel}</span>
+                {countActiveAdvancedFilters() > 0 && (
+                  <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-800">
+                    {countActiveAdvancedFilters()}
+                  </span>
+                )}
+              </div>
+            </button>
+          </nav>
+          {/* Reset All Filters Button */}
+          {onResetFilters && hasActiveFilters() && (
+            <button
+              onClick={onResetFilters}
+              className="mr-4 px-3 py-1.5 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors duration-200"
+              title="Reset all filters to default values"
+            >
+              Reset All Filters
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Tab Content */}
