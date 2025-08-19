@@ -306,24 +306,24 @@ with open("detection.jpg", "rb") as f:
 
 ## Data Transfer Scripts
 
-### Platform Data Ingestion
-Scripts for fetching data from the Pyronear platform API and transferring it to the annotation API.
+### Platform Data Import
+Single comprehensive script for fetching data from the Pyronear platform API and generating annotations in one streamlined workflow.
 
 #### Script Execution
 Use the Python module execution syntax with `uv run`:
 
 ```bash
-# Fetch sequences for a date range
-uv run python -m scripts.data_transfer.ingestion.platform.fetch_platform_sequences \
-  --date-from 2024-01-01 --date-end 2024-01-02 --loglevel info
-
-# Fetch specific sequence
-uv run python -m scripts.data_transfer.ingestion.platform.fetch_platform_sequence_id \
-  --sequence-id 123 --loglevel info
-
-# Combined end-to-end processing: fetch → annotate
+# End-to-end processing: fetch platform data → generate annotations
 uv run python -m scripts.data_transfer.ingestion.platform.import \
   --date-from 2024-01-01 --date-end 2024-01-02 --loglevel info
+
+# Skip platform fetch (process existing sequences only)
+uv run python -m scripts.data_transfer.ingestion.platform.import \
+  --date-from 2024-01-01 --date-end 2024-01-02 --skip-platform-fetch --loglevel info
+
+# Process with custom annotation parameters
+uv run python -m scripts.data_transfer.ingestion.platform.import \
+  --date-from 2024-01-01 --confidence-threshold 0.7 --iou-threshold 0.4 --loglevel info
 ```
 
 #### Environment Variables Required
@@ -333,12 +333,14 @@ uv run python -m scripts.data_transfer.ingestion.platform.import \
 - `PLATFORM_ADMIN_PASSWORD` - Admin password for organization access
 
 #### Script Features
-- **Relative imports** - Clean module structure with relative imports
+- **End-to-end workflow** - Complete pipeline from platform data to annotation-ready sequences
 - **Concurrent processing** - Multi-threading for faster data fetching
 - **Progress tracking** - tqdm progress bars for long-running operations
 - **Flexible date ranges** - Configurable date filtering
 - **Logging support** - Configurable log levels for debugging
-- **End-to-end processing** - Combined script handles full workflow: platform fetch → annotation generation with automatic stage transitions (IMPORTED → READY_TO_ANNOTATE)
+- **Annotation generation** - Automatic clustering of AI predictions into sequence annotations
+- **Stage management** - Automatic transitions from platform data to READY_TO_ANNOTATE stage
+- **Parameter tuning** - Configurable confidence thresholds, IoU thresholds, and cluster sizes
 
 ## Migration Notes (Poetry → uv)
 

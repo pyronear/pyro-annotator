@@ -53,6 +53,7 @@ dev = [
     "httpx>=0.23.0",
     "aiosqlite>=0.16.0,<1.0.0",
     "pyyaml>=6.0",
+    "pillow>=10.0.0",
 ]
 
 [tool.coverage.run]
