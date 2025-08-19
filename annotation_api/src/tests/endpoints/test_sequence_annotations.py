@@ -1,4 +1,5 @@
 from datetime import datetime
+import json
 
 import pytest
 from httpx import AsyncClient
@@ -501,9 +502,9 @@ async def test_list_sequence_annotations_filter_by_false_positive_type(
     assert response.status_code == 201
     annotation_id = response.json()["id"]
 
-    # Test filtering by false_positive_type="antenna" (should find the annotation)
+    # Test filtering by false_positive_types=["antenna"] (should find the annotation)
     response = await async_client.get(
-        "/annotations/sequences/?false_positive_type=antenna"
+        "/annotations/sequences/?false_positive_types=antenna"
     )
     assert response.status_code == 200
     json_response = response.json()
@@ -514,18 +515,16 @@ async def test_list_sequence_annotations_filter_by_false_positive_type(
         if annotation["id"] == annotation_id:
             found_annotation = True
             # Verify the false_positive_types contains "antenna"
-            import json
-
-            fp_types = json.loads(annotation["false_positive_types"])
+            fp_types = annotation["false_positive_types"]
             assert "antenna" in fp_types
             break
     assert (
         found_annotation
     ), "Should find annotation containing false_positive_type 'antenna'"
 
-    # Test filtering by false_positive_type="building" (should also find the annotation)
+    # Test filtering by false_positive_types=["building"] (should also find the annotation)
     response = await async_client.get(
-        "/annotations/sequences/?false_positive_type=building"
+        "/annotations/sequences/?false_positive_types=building"
     )
     assert response.status_code == 200
     json_response = response.json()
@@ -540,9 +539,9 @@ async def test_list_sequence_annotations_filter_by_false_positive_type(
         found_annotation
     ), "Should find annotation containing false_positive_type 'building'"
 
-    # Test filtering by false_positive_type="cliff" (should not find the annotation)
+    # Test filtering by false_positive_types=["cliff"] (should not find the annotation)
     response = await async_client.get(
-        "/annotations/sequences/?false_positive_type=cliff"
+        "/annotations/sequences/?false_positive_types=cliff"
     )
     assert response.status_code == 200
     json_response = response.json()
@@ -555,7 +554,7 @@ async def test_list_sequence_annotations_filter_by_false_positive_type(
             break
     assert (
         not found_annotation
-    ), "Should not find annotation when filtering for false_positive_type 'cliff'"
+    ), "Should not find annotation when filtering for false_positive_types 'cliff'"
 
 @pytest.mark.asyncio
 async def test_list_sequence_annotations_filter_by_processing_stage(
@@ -1014,13 +1013,92 @@ async def test_update_sequence_annotation_without_annotation_field(
 
 @pytest.mark.asyncio
 async def test_list_sequence_annotations_filter_by_false_positive_types(
-    async_client: AsyncClient, sequence_session: dict
+    async_client: AsyncClient, sequence_session
 ):
     """Test filtering sequence annotations by false positive types."""
+    
+    # Create test sequences first
+    test_sequences = [
+        {
+            "source_api": "pyronear_french",
+            "alert_api_id": "9001",
+            "camera_name": "FP Test Camera 1",
+            "camera_id": "901",
+            "organisation_name": "Test Org",
+            "organisation_id": "1",
+            "lat": "43.5",
+            "lon": "1.5",
+            "recorded_at": "2024-01-15T10:30:00",
+            "last_seen_at": "2024-01-15T10:35:00"
+        },
+        {
+            "source_api": "pyronear_french", 
+            "alert_api_id": "9002",
+            "camera_name": "FP Test Camera 2",
+            "camera_id": "902",
+            "organisation_name": "Test Org",
+            "organisation_id": "1",
+            "lat": "43.0",
+            "lon": "1.5",
+            "recorded_at": "2024-01-15T10:30:00",
+            "last_seen_at": "2024-01-15T10:35:00"
+        },
+        {
+            "source_api": "pyronear_french",
+            "alert_api_id": "9003", 
+            "camera_name": "FP Test Camera 3",
+            "camera_id": "903",
+            "organisation_name": "Test Org",
+            "organisation_id": "1",
+            "lat": "43.5",
+            "lon": "2.0",
+            "recorded_at": "2024-01-15T10:30:00",
+            "last_seen_at": "2024-01-15T10:35:00"
+        }
+    ]
+    
+    # Create sequences and get their IDs
+    sequence_ids = []
+    for seq_data in test_sequences:
+        response = await async_client.post("/sequences", data=seq_data)
+        assert response.status_code == 201
+        sequence_ids.append(response.json()["id"])
+
+    # Create detections for each sequence and capture their IDs
+    detection_ids = []
+    for i, seq_id in enumerate(sequence_ids, 1):
+        detection_payload = {
+            "sequence_id": str(seq_id),
+            "alert_api_id": str(i + 1000), 
+            "recorded_at": "2024-01-15T10:25:00",
+            "algo_predictions": json.dumps({
+                "predictions": [
+                    {
+                        "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                        "confidence": 0.85,
+                        "class_name": "smoke"
+                    }
+                ]
+            })
+        }
+        
+        # Create a simple test image
+        import io
+        from PIL import Image
+        img = Image.new('RGB', (100, 100), color='red')
+        img_bytes = io.BytesIO()
+        img.save(img_bytes, format='JPEG')
+        img_bytes.seek(0)
+        
+        files = {"file": ("test.jpg", img_bytes, "image/jpeg")}
+        response = await async_client.post("/detections", data=detection_payload, files=files)
+        assert response.status_code == 201
+        detection_ids.append(response.json()["id"])
+
     # Create test annotations with different false positive types
     test_annotations = [
         {
-            "sequence_id": sequence_session["id"],
+            "sequence_id": sequence_ids[0],
             "has_smoke": False,
             "has_false_positives": True,
             "false_positive_types": ["antenna", "building"],  # Multiple types
@@ -1030,14 +1108,14 @@ async def test_list_sequence_annotations_filter_by_false_positive_types(
                     {
                         "is_smoke": False,
                         "false_positive_types": ["antenna", "building"],
-                        "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                        "bboxes": [{"detection_id": detection_ids[0], "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
                     }
                 ]
             },
             "processing_stage": "annotated"
         },
         {
-            "sequence_id": sequence_session["id"] + 1,  # Assuming another sequence exists
+            "sequence_id": sequence_ids[1],
             "has_smoke": False,
             "has_false_positives": True,
             "false_positive_types": ["lens_flare"],  # Single type
@@ -1047,14 +1125,14 @@ async def test_list_sequence_annotations_filter_by_false_positive_types(
                     {
                         "is_smoke": False,
                         "false_positive_types": ["lens_flare"],
-                        "bboxes": [{"detection_id": 2, "xyxyn": [0.2, 0.2, 0.3, 0.3]}],
+                        "bboxes": [{"detection_id": detection_ids[1], "xyxyn": [0.2, 0.2, 0.3, 0.3]}],
                     }
                 ]
             },
             "processing_stage": "annotated"
         },
         {
-            "sequence_id": sequence_session["id"] + 2,  # Assuming another sequence exists
+            "sequence_id": sequence_ids[2],
             "has_smoke": True,
             "has_false_positives": False,
             "false_positive_types": [],  # No false positives
@@ -1064,30 +1142,13 @@ async def test_list_sequence_annotations_filter_by_false_positive_types(
                     {
                         "is_smoke": True,
                         "false_positive_types": [],
-                        "bboxes": [{"detection_id": 3, "xyxyn": [0.3, 0.3, 0.4, 0.4]}],
+                        "bboxes": [{"detection_id": detection_ids[2], "xyxyn": [0.3, 0.3, 0.4, 0.4]}],
                     }
                 ]
             },
             "processing_stage": "annotated"
         }
     ]
-
-    # Create additional sequences for the test
-    for i in range(1, 3):  # Create sequence_id + 1 and sequence_id + 2
-        seq_payload = {
-            "source_api": "pyronear_french",
-            "alert_api_id": str(9000 + i),
-            "camera_name": f"FP Test Camera {i}",
-            "camera_id": str(900 + i),
-            "organisation_name": "Test Org",
-            "organisation_id": "1",
-            "lat": "43.5",
-            "lon": "1.5",
-            "recorded_at": "2024-01-15T10:30:00",
-            "last_seen_at": "2024-01-15T10:35:00"
-        }
-        response = await async_client.post("/sequences", data=seq_payload)
-        assert response.status_code == 201
 
     # Create annotations
     annotation_ids = []
@@ -1120,15 +1181,13 @@ async def test_list_sequence_annotations_filter_by_false_positive_types(
     assert annotation_ids[1] in matching_ids
     assert annotation_ids[2] not in matching_ids
 
-    # Test 3: Filter by non-existent false positive type - should match none
+    # Test 3: Filter by non-existent false positive type - should return validation error
     response = await async_client.get("/annotations/sequences/?false_positive_types=nonexistent")
-    assert response.status_code == 200
-    data = response.json()
-    filtered_annotations = data["items"]
-    
-    # Should not match any of our test annotations
-    matching_ids = [ann["id"] for ann in filtered_annotations if ann["id"] in annotation_ids]
-    assert len(matching_ids) == 0
+    assert response.status_code == 422
+    error_data = response.json()
+    assert "detail" in error_data
+    # Verify it's a validation error for the enum
+    assert any("Input should be" in str(error) for error in error_data["detail"])
 
 
 @pytest.mark.asyncio

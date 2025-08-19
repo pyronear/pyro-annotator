@@ -67,14 +67,14 @@ def derive_has_false_positives(annotation_data: SequenceAnnotationData) -> bool:
     return any(bbox.false_positive_types for bbox in annotation_data.sequences_bbox)
 
 
-def derive_false_positive_types(annotation_data: SequenceAnnotationData) -> str:
-    """Derive false_positive_types from annotation data as a JSON string."""
+def derive_false_positive_types(annotation_data: SequenceAnnotationData) -> List[str]:
+    """Derive false_positive_types from annotation data as a list of strings."""
     all_types = []
     for bbox in annotation_data.sequences_bbox:
         all_types.extend([fp_type.value for fp_type in bbox.false_positive_types])
     # Remove duplicates while preserving order
     unique_types = list(dict.fromkeys(all_types))
-    return json.dumps(unique_types)
+    return unique_types
 
 
 async def auto_create_detection_annotations(
@@ -303,9 +303,13 @@ async def list_sequence_annotations(
         fp_type_values = [fp_type.value for fp_type in false_positive_types]
         # Use PostgreSQL JSONB array contains operator for OR logic
         # This will match annotations where false_positive_types contains any of the specified types
-        query = query.where(
-            text("false_positive_types::jsonb ?| array[:fp_types]")
-        ).params(fp_types=fp_type_values)
+        from sqlalchemy import or_
+        # Create OR conditions for each false positive type
+        fp_conditions = [
+            text("false_positive_types::jsonb ? :fp_type_" + str(i)).params(**{f"fp_type_{i}": fp_type})
+            for i, fp_type in enumerate(fp_type_values)
+        ]
+        query = query.where(or_(*fp_conditions))
 
     if has_missed_smoke is not None:
         query = query.where(SequenceAnnotation.has_missed_smoke == has_missed_smoke)

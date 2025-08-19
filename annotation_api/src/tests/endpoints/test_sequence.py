@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timedelta
 
 import pytest
@@ -743,7 +744,39 @@ async def test_list_sequences_filter_by_false_positive_types(async_client: Async
         assert response.status_code == 201
         sequence_ids.append(response.json()["id"])
 
-    # Create sequence annotations with different false positive types
+    # Create detections first (required for bbox validation) and capture their IDs
+    detection_ids = []
+    for i, seq_id in enumerate(sequence_ids, 1):
+        detection_payload = {
+            "sequence_id": str(seq_id),
+            "alert_api_id": str(i),
+            "recorded_at": (now - timedelta(days=1)).isoformat(),
+            "algo_predictions": json.dumps({
+                "predictions": [
+                    {
+                        "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                        "confidence": 0.85,
+                        "class_name": "smoke"
+                    }
+                ]
+            })
+        }
+        
+        # Create a simple test image for the detection
+        import io
+        from PIL import Image
+        img = Image.new('RGB', (100, 100), color='red')
+        img_bytes = io.BytesIO()
+        img.save(img_bytes, format='JPEG')
+        img_bytes.seek(0)
+        
+        files = {"file": ("test.jpg", img_bytes, "image/jpeg")}
+        
+        response = await async_client.post("/detections", data=detection_payload, files=files)
+        assert response.status_code == 201
+        detection_ids.append(response.json()["id"])
+
+    # Create sequence annotations with different false positive types using actual detection IDs
     annotations = [
         {
             "sequence_id": sequence_ids[0],
@@ -756,7 +789,7 @@ async def test_list_sequences_filter_by_false_positive_types(async_client: Async
                     {
                         "is_smoke": False,
                         "false_positive_types": ["antenna", "building"],
-                        "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                        "bboxes": [{"detection_id": detection_ids[0], "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
                     }
                 ]
             },
@@ -773,7 +806,7 @@ async def test_list_sequences_filter_by_false_positive_types(async_client: Async
                     {
                         "is_smoke": False,
                         "false_positive_types": ["lens_flare"],
-                        "bboxes": [{"detection_id": 2, "xyxyn": [0.2, 0.2, 0.3, 0.3]}],
+                        "bboxes": [{"detection_id": detection_ids[1], "xyxyn": [0.2, 0.2, 0.3, 0.3]}],
                     }
                 ]
             },
@@ -790,7 +823,7 @@ async def test_list_sequences_filter_by_false_positive_types(async_client: Async
                     {
                         "is_smoke": True,
                         "false_positive_types": [],
-                        "bboxes": [{"detection_id": 3, "xyxyn": [0.3, 0.3, 0.4, 0.4]}],
+                        "bboxes": [{"detection_id": detection_ids[2], "xyxyn": [0.3, 0.3, 0.4, 0.4]}],
                     }
                 ]
             },
@@ -827,15 +860,13 @@ async def test_list_sequences_filter_by_false_positive_types(async_client: Async
     assert sequence_ids[1] in matching_ids
     assert sequence_ids[2] not in matching_ids
 
-    # Test 3: Filter by non-existent false positive type - should match none
+    # Test 3: Filter by non-existent false positive type - should return validation error
     response = await async_client.get("/sequences?false_positive_types=nonexistent&include_annotation=true")
-    assert response.status_code == 200
-    data = response.json()
-    filtered_sequences = data["items"]
-    
-    # Should not match any of our test sequences
-    matching_ids = [seq["id"] for seq in filtered_sequences if seq["id"] in sequence_ids]
-    assert len(matching_ids) == 0
+    assert response.status_code == 422
+    error_data = response.json()
+    assert "detail" in error_data
+    # Verify it's a validation error for the enum
+    assert any("Input should be" in str(error) for error in error_data["detail"])
 
 
 @pytest.mark.asyncio
