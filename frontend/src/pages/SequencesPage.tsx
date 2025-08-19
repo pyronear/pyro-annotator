@@ -45,6 +45,7 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
     setDateTo,
     setSelectedFalsePositiveTypes,
     setSelectedModelAccuracy,
+    resetFilters,
   } = usePersistedFilters(
     storageKey,
     createDefaultFilterState(defaultProcessingStage)
@@ -208,6 +209,7 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
           onFalsePositiveTypesChange={handleFalsePositiveFilterChange}
           selectedModelAccuracy={selectedModelAccuracy}
           onModelAccuracyChange={setSelectedModelAccuracy}
+          onResetFilters={resetFilters}
           cameras={cameras}
           organizations={organizations}
           camerasLoading={camerasLoading}
@@ -262,6 +264,7 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
         onFalsePositiveTypesChange={handleFalsePositiveFilterChange}
         selectedModelAccuracy={selectedModelAccuracy}
         onModelAccuracyChange={setSelectedModelAccuracy}
+        onResetFilters={resetFilters}
         cameras={cameras}
         organizations={organizations}
         camerasLoading={camerasLoading}

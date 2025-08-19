@@ -43,6 +43,7 @@ export default function DetectionAnnotatePage() {
     setDateTo,
     setSelectedFalsePositiveTypes,
     setSelectedModelAccuracy,
+    resetFilters,
   } = usePersistedFilters('filters-detections-annotate', defaultState);
 
   // Fetch cameras and organizations for dropdown options
@@ -224,6 +225,7 @@ export default function DetectionAnnotatePage() {
           onFalsePositiveTypesChange={handleFalsePositiveFilterChange}
           selectedModelAccuracy={selectedModelAccuracy}
           onModelAccuracyChange={setSelectedModelAccuracy}
+          onResetFilters={resetFilters}
           cameras={cameras}
           organizations={organizations}
           camerasLoading={camerasLoading}
@@ -270,6 +272,7 @@ export default function DetectionAnnotatePage() {
         onFalsePositiveTypesChange={handleFalsePositiveFilterChange}
         selectedModelAccuracy={selectedModelAccuracy}
         onModelAccuracyChange={setSelectedModelAccuracy}
+        onResetFilters={resetFilters}
         cameras={cameras}
         organizations={organizations}
         camerasLoading={camerasLoading}

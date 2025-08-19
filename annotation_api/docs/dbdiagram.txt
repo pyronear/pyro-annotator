@@ -61,8 +61,6 @@ Table sequences_annotations {
   //   version: int, 
   //   sequences_bbox: [{ 
   //     is_smoke: bool, 
-  //     gif_url_main : str,
-  //     gif_url_crop : str,
   //     false_positive_types: list[str] -- eg. ['lens_flare', 'high_cloud', ...], 
   //     bboxes: [{detection_id: int, xyxyn: [x1n y1n x2n y2n]}]
   //   }, ...]

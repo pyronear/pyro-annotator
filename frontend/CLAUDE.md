@@ -24,18 +24,15 @@ frontend/
 │   ├── components/
 │   │   ├── annotation/          # Annotation-specific components
 │   │   │   ├── AnnotationInterface.tsx
-│   │   │   ├── GifViewer.tsx
 │   │   │   └── SequenceBboxCard.tsx
 │   │   ├── layout/              # Layout components
 │   │   │   └── AppLayout.tsx
 │   │   ├── media/               # Media display components
-│   │   │   └── GifViewer.tsx
 │   │   └── ui/                  # Reusable UI components
 │   │       └── ProgressIndicator.tsx
 │   ├── hooks/                   # Custom React hooks
 │   │   ├── useAnnotationStats.ts
-│   │   ├── useDetectionImage.ts
-│   │   └── useGifUrls.ts
+│   │   └── useDetectionImage.ts
 │   ├── pages/                   # Route components
 │   │   ├── AnnotationInterface.tsx
 │   │   ├── AnnotationPage.tsx   # Main annotation workflow
@@ -101,7 +98,6 @@ Based on backend SQLModel schemas with comprehensive typing:
 - `SmokeType` - 'wildfire' | 'industrial' | 'other' (from backend enum)
 - `FalsePositiveType` - Extensive enum matching backend (antenna, building, cliff, etc.)
 - `PaginatedResponse<T>` - Paginated API responses
-- `GifUrlsResponse` - GIF generation response format
 
 ### API Client (`src/services/api.ts`)
 Axios-based client with:
@@ -112,7 +108,6 @@ Axios-based client with:
   - Detections: CRUD with image upload support
   - Sequence Annotations: CRUD with complex filtering
   - Detection Annotations: CRUD operations
-  - GIF Generation: `generateGifs()` and `getGifUrls()`
 - **Error Handling**: Typed `ApiError` responses
 
 ### State Management
@@ -128,8 +123,7 @@ Axios-based client with:
 ## Key Features & Components
 
 ### Annotation Workflow
-- **SequenceBboxCard**: Individual bbox annotation with GIF preview
-- **GifViewer**: Display main/crop GIFs with controls
+- **SequenceBboxCard**: Individual bbox annotation
 - **AnnotationInterface**: Complete annotation workflow UI
 - **Progress Tracking**: Visual progress indicators and statistics
 
@@ -220,8 +214,7 @@ Backend enums are the source of truth:
 2. **Annotation Creation**: Auto-create annotation record if none exists
 3. **Bbox Processing**: Iterate through detection bboxes
 4. **Classification**: Select smoke type or false positive types
-5. **GIF Generation**: Generate visualization GIFs
-6. **Completion**: Mark annotation as complete
+5. **Completion**: Mark annotation as complete
 
 ### State Synchronization
 - **Optimistic Updates**: Immediate UI updates with server sync
@@ -244,7 +237,7 @@ Backend enums are the source of truth:
 
 ## Performance Considerations
 - **Code Splitting**: Route-based code splitting with React Router
-- **Image Optimization**: Lazy loading for GIF previews
+- **Image Optimization**: Lazy loading for image previews
 - **API Efficiency**: Pagination and filtering to reduce data transfer
 - **Caching Strategy**: Aggressive caching for static data, fresh data for annotations
 

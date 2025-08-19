@@ -330,7 +330,7 @@ The script executes the following pipeline:
 ### Key Features
 
 - **Sequential Processing**: Processes sequences one by one for better error control
-- **Automatic Overwriting**: Always updates existing annotations/GIFs (no force flag needed)
+- **Automatic Overwriting**: Always updates existing annotations (no force flag needed)
 - **Error Resilient**: Continues processing other sequences if one fails, logs errors clearly
 - **Stage Management**: Proper transitions from no annotation → `READY_TO_ANNOTATE`
 - **Comprehensive Statistics**: Tracks success/failure rates for sequences and annotations

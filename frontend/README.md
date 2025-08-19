@@ -9,7 +9,7 @@ A modern React application for wildfire detection annotation, replacing the lega
 - 🎯 **Advanced Filtering**: Filter sequences by source, camera, organization, and wildfire alerts
 - 📱 **Responsive Design**: Works on desktop, tablet, and mobile devices
 - 🚀 **Performance**: Optimized with React Query for caching and Zustand for state management
-- 🎨 **Interactive GIF Viewer**: Side-by-side GIF comparison with playback controls
+- 🎨 **Interactive Image Viewer**: Side-by-side image comparison with controls
 - 📋 **Smart Annotation**: Intuitive interface matching API data models
 - 🐳 **Docker Ready**: Containerized for easy deployment
 
@@ -96,7 +96,7 @@ frontend/
 │   ├── components/         # Reusable UI components
 │   │   ├── annotation/     # Annotation-specific components
 │   │   ├── layout/         # Layout components
-│   │   ├── media/          # Media components (GifViewer)
+│   │   ├── media/          # Media components
 │   │   └── ui/             # Basic UI components
 │   ├── pages/              # Route components
 │   │   ├── HomePage.tsx    # Landing page
@@ -130,12 +130,12 @@ frontend/
 - Real-time data from API with caching
 
 ### AnnotationPage  
-- Interactive GIF viewer with playback controls
+- Interactive image viewer with controls
 - Smart annotation interface matching API enums
 - Progress tracking and batch operations
 
-### GifViewer
-- Side-by-side main/crop GIF comparison
+### ImageViewer
+- Side-by-side main/crop image comparison
 - Zoom, fullscreen, and playback controls
 - Optimized loading and error handling
 
@@ -154,8 +154,6 @@ The frontend integrates with the PyroAnnotator API using:
 - `GET /api/v1/annotations/sequences` - List sequence annotations
 - `POST /api/v1/annotations/sequences` - Create annotations
 - `PATCH /api/v1/annotations/sequences/{id}` - Update annotations  
-- `POST /api/v1/annotations/sequences/{id}/generate-gifs` - Generate GIFs
-- `GET /api/v1/annotations/sequences/{id}/gifs/urls` - Get GIF URLs
 
 ### Data Models
 The frontend uses TypeScript types that match the API's data models:
@@ -261,7 +259,7 @@ Property does not exist on type
 
 **Memory Usage**
 - Check for memory leaks in useEffect cleanup
-- Verify GIF resources are properly disposed
+- Verify image resources are properly disposed
 - Monitor component re-renders
 
 ## Contributing
