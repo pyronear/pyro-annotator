@@ -6,8 +6,6 @@
 from datetime import datetime
 from enum import Enum
 from typing import List, Optional
-
-from pydantic import field_validator
 from sqlalchemy import Column, ForeignKey, Index, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
@@ -202,7 +200,7 @@ class SequenceAnnotation(SQLModel, table=True):
     )
     has_smoke: bool
     has_false_positives: bool
-    false_positive_types: List[FalsePositiveType] = Field(
+    false_positive_types: List[str] = Field(
         default_factory=list, sa_column=Column(JSONB)
     )
     has_missed_smoke: bool
@@ -210,32 +208,6 @@ class SequenceAnnotation(SQLModel, table=True):
     created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
     updated_at: Optional[datetime] = Field(default=None)
     processing_stage: SequenceAnnotationProcessingStage
-
-    @field_validator("false_positive_types")
-    @classmethod
-    def validate_false_positive_types(cls, v):
-        """Validate that false positive types array contains only valid enum values."""
-        if not isinstance(v, list):
-            raise ValueError("false_positive_types must be a list")
-        
-        # Allow empty list
-        if not v:
-            return []
-        
-        # Validate each item is a valid FalsePositiveType
-        validated_types = []
-        for fp_type in v:
-            if isinstance(fp_type, FalsePositiveType):
-                validated_types.append(fp_type)
-            elif isinstance(fp_type, str):
-                try:
-                    validated_types.append(FalsePositiveType(fp_type))
-                except ValueError:
-                    raise ValueError(f"'{fp_type}' is not a valid FalsePositiveType")
-            else:
-                raise ValueError(f"Invalid type for false positive: {type(fp_type)}")
-        
-        return validated_types
 
 
 class Detection(SQLModel, table=True):

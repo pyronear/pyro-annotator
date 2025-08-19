@@ -691,3 +691,160 @@ async def test_list_sequences_combined_name_and_id_filters(async_client: AsyncCl
     # Should not match any of our test sequences since camera name doesn't match camera ID
     for seq in filtered_sequences:
         assert seq["id"] not in sequence_ids
+
+
+@pytest.mark.asyncio
+async def test_list_sequences_filter_by_false_positive_types(async_client: AsyncClient):
+    """Test filtering sequences by false positive types."""
+    # Create test sequences with annotations containing different false positive types
+    test_sequences = [
+        {
+            "source_api": "pyronear_french",
+            "alert_api_id": "8001",
+            "camera_name": "FP Test Camera 1",
+            "camera_id": "801",
+            "organisation_name": "Test Org",
+            "organisation_id": "1",
+            "lat": "43.5",
+            "lon": "1.5",
+            "recorded_at": (now - timedelta(days=1)).isoformat(),
+            "last_seen_at": now.isoformat()
+        },
+        {
+            "source_api": "pyronear_french",
+            "alert_api_id": "8002",
+            "camera_name": "FP Test Camera 2",
+            "camera_id": "802",
+            "organisation_name": "Test Org",
+            "organisation_id": "1",
+            "lat": "43.0",
+            "lon": "1.5",
+            "recorded_at": (now - timedelta(days=1)).isoformat(),
+            "last_seen_at": now.isoformat()
+        },
+        {
+            "source_api": "pyronear_french",
+            "alert_api_id": "8003",
+            "camera_name": "FP Test Camera 3",
+            "camera_id": "803",
+            "organisation_name": "Test Org",
+            "organisation_id": "1",
+            "lat": "43.5",
+            "lon": "2.0",
+            "recorded_at": (now - timedelta(days=1)).isoformat(),
+            "last_seen_at": now.isoformat()
+        }
+    ]
+
+    # Create sequences and get their IDs
+    sequence_ids = []
+    for seq_data in test_sequences:
+        response = await async_client.post("/sequences", data=seq_data)
+        assert response.status_code == 201
+        sequence_ids.append(response.json()["id"])
+
+    # Create sequence annotations with different false positive types
+    annotations = [
+        {
+            "sequence_id": sequence_ids[0],
+            "has_smoke": False,
+            "has_false_positives": True,
+            "false_positive_types": ["antenna", "building"],  # Multiple types
+            "has_missed_smoke": False,
+            "annotation": {
+                "sequences_bbox": [
+                    {
+                        "is_smoke": False,
+                        "false_positive_types": ["antenna", "building"],
+                        "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                    }
+                ]
+            },
+            "processing_stage": "annotated"
+        },
+        {
+            "sequence_id": sequence_ids[1],
+            "has_smoke": False,
+            "has_false_positives": True,
+            "false_positive_types": ["lens_flare"],  # Single type
+            "has_missed_smoke": False,
+            "annotation": {
+                "sequences_bbox": [
+                    {
+                        "is_smoke": False,
+                        "false_positive_types": ["lens_flare"],
+                        "bboxes": [{"detection_id": 2, "xyxyn": [0.2, 0.2, 0.3, 0.3]}],
+                    }
+                ]
+            },
+            "processing_stage": "annotated"
+        },
+        {
+            "sequence_id": sequence_ids[2],
+            "has_smoke": True,
+            "has_false_positives": False,
+            "false_positive_types": [],  # No false positives
+            "has_missed_smoke": False,
+            "annotation": {
+                "sequences_bbox": [
+                    {
+                        "is_smoke": True,
+                        "false_positive_types": [],
+                        "bboxes": [{"detection_id": 3, "xyxyn": [0.3, 0.3, 0.4, 0.4]}],
+                    }
+                ]
+            },
+            "processing_stage": "annotated"
+        }
+    ]
+
+    # Create annotations
+    for annotation_data in annotations:
+        response = await async_client.post("/annotations/sequences/", json=annotation_data)
+        assert response.status_code == 201
+
+    # Test 1: Filter by single false positive type - should match first sequence
+    response = await async_client.get("/sequences?false_positive_types=antenna&include_annotation=true")
+    assert response.status_code == 200
+    data = response.json()
+    filtered_sequences = data["items"]
+    
+    # Should only match first sequence
+    matching_ids = [seq["id"] for seq in filtered_sequences if seq["id"] in sequence_ids]
+    assert sequence_ids[0] in matching_ids
+    assert sequence_ids[1] not in matching_ids
+    assert sequence_ids[2] not in matching_ids
+
+    # Test 2: Filter by multiple false positive types - should match first two sequences
+    response = await async_client.get("/sequences?false_positive_types=antenna&false_positive_types=lens_flare&include_annotation=true")
+    assert response.status_code == 200
+    data = response.json()
+    filtered_sequences = data["items"]
+    
+    # Should match first two sequences
+    matching_ids = [seq["id"] for seq in filtered_sequences if seq["id"] in sequence_ids]
+    assert sequence_ids[0] in matching_ids
+    assert sequence_ids[1] in matching_ids
+    assert sequence_ids[2] not in matching_ids
+
+    # Test 3: Filter by non-existent false positive type - should match none
+    response = await async_client.get("/sequences?false_positive_types=nonexistent&include_annotation=true")
+    assert response.status_code == 200
+    data = response.json()
+    filtered_sequences = data["items"]
+    
+    # Should not match any of our test sequences
+    matching_ids = [seq["id"] for seq in filtered_sequences if seq["id"] in sequence_ids]
+    assert len(matching_ids) == 0
+
+
+@pytest.mark.asyncio
+async def test_list_sequences_false_positive_types_validation(async_client: AsyncClient):
+    """Test that invalid false positive types return proper validation errors."""
+    # Test with invalid false positive type - should return 422 validation error
+    response = await async_client.get("/sequences?false_positive_types=invalid_type")
+    assert response.status_code == 422
+    
+    # Test with mix of valid and invalid types
+    response = await async_client.get("/sequences?false_positive_types=antenna&false_positive_types=invalid_type")
+    assert response.status_code == 422

@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import (
     APIRouter,
@@ -27,6 +27,7 @@ from app.models import (
     Detection,
     DetectionAnnotation,
     DetectionAnnotationProcessingStage,
+    FalsePositiveType,
     Sequence,
     SequenceAnnotation,
     SequenceAnnotationProcessingStage,
@@ -239,9 +240,9 @@ async def list_sequence_annotations(
     has_false_positives: Optional[bool] = Query(
         None, description="Filter by has_false_positives"
     ),
-    false_positive_type: Optional[str] = Query(
+    false_positive_types: Optional[List[FalsePositiveType]] = Query(
         None,
-        description="Filter by specific false positive type. Options include: antenna, building, cliff, dark, dust, high_cloud, low_cloud, lens_flare, lens_droplet, light, rain, trail, road, sky, tree, water_body, other",
+        description="Filter by specific false positive types (OR logic). Annotations containing any of the specified types will be included in results.",
     ),
     has_missed_smoke: Optional[bool] = Query(
         None, description="Filter by has_missed_smoke"
@@ -297,11 +298,14 @@ async def list_sequence_annotations(
             SequenceAnnotation.has_false_positives == has_false_positives
         )
 
-    if false_positive_type is not None:
-        # Use PostgreSQL JSONB contains operator to search within JSON array
-        query = query.where(text("false_positive_types::jsonb ? :fp_type")).params(
-            fp_type=false_positive_type
-        )
+    if false_positive_types is not None and len(false_positive_types) > 0:
+        # Convert enum values to strings for database query
+        fp_type_values = [fp_type.value for fp_type in false_positive_types]
+        # Use PostgreSQL JSONB array contains operator for OR logic
+        # This will match annotations where false_positive_types contains any of the specified types
+        query = query.where(
+            text("false_positive_types::jsonb ?| array[:fp_types]")
+        ).params(fp_types=fp_type_values)
 
     if has_missed_smoke is not None:
         query = query.where(SequenceAnnotation.has_missed_smoke == has_missed_smoke)

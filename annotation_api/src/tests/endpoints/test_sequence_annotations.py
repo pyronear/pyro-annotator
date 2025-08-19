@@ -1010,3 +1010,134 @@ async def test_update_sequence_annotation_without_annotation_field(
     # Original annotation should remain unchanged
     assert updated["has_smoke"] is True
     assert updated["has_false_positives"] is False
+
+
+@pytest.mark.asyncio
+async def test_list_sequence_annotations_filter_by_false_positive_types(
+    async_client: AsyncClient, sequence_session: dict
+):
+    """Test filtering sequence annotations by false positive types."""
+    # Create test annotations with different false positive types
+    test_annotations = [
+        {
+            "sequence_id": sequence_session["id"],
+            "has_smoke": False,
+            "has_false_positives": True,
+            "false_positive_types": ["antenna", "building"],  # Multiple types
+            "has_missed_smoke": False,
+            "annotation": {
+                "sequences_bbox": [
+                    {
+                        "is_smoke": False,
+                        "false_positive_types": ["antenna", "building"],
+                        "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                    }
+                ]
+            },
+            "processing_stage": "annotated"
+        },
+        {
+            "sequence_id": sequence_session["id"] + 1,  # Assuming another sequence exists
+            "has_smoke": False,
+            "has_false_positives": True,
+            "false_positive_types": ["lens_flare"],  # Single type
+            "has_missed_smoke": False,
+            "annotation": {
+                "sequences_bbox": [
+                    {
+                        "is_smoke": False,
+                        "false_positive_types": ["lens_flare"],
+                        "bboxes": [{"detection_id": 2, "xyxyn": [0.2, 0.2, 0.3, 0.3]}],
+                    }
+                ]
+            },
+            "processing_stage": "annotated"
+        },
+        {
+            "sequence_id": sequence_session["id"] + 2,  # Assuming another sequence exists
+            "has_smoke": True,
+            "has_false_positives": False,
+            "false_positive_types": [],  # No false positives
+            "has_missed_smoke": False,
+            "annotation": {
+                "sequences_bbox": [
+                    {
+                        "is_smoke": True,
+                        "false_positive_types": [],
+                        "bboxes": [{"detection_id": 3, "xyxyn": [0.3, 0.3, 0.4, 0.4]}],
+                    }
+                ]
+            },
+            "processing_stage": "annotated"
+        }
+    ]
+
+    # Create additional sequences for the test
+    for i in range(1, 3):  # Create sequence_id + 1 and sequence_id + 2
+        seq_payload = {
+            "source_api": "pyronear_french",
+            "alert_api_id": str(9000 + i),
+            "camera_name": f"FP Test Camera {i}",
+            "camera_id": str(900 + i),
+            "organisation_name": "Test Org",
+            "organisation_id": "1",
+            "lat": "43.5",
+            "lon": "1.5",
+            "recorded_at": "2024-01-15T10:30:00",
+            "last_seen_at": "2024-01-15T10:35:00"
+        }
+        response = await async_client.post("/sequences", data=seq_payload)
+        assert response.status_code == 201
+
+    # Create annotations
+    annotation_ids = []
+    for annotation_data in test_annotations:
+        response = await async_client.post("/annotations/sequences/", json=annotation_data)
+        assert response.status_code == 201
+        annotation_ids.append(response.json()["id"])
+
+    # Test 1: Filter by single false positive type - should match first annotation
+    response = await async_client.get("/annotations/sequences/?false_positive_types=antenna")
+    assert response.status_code == 200
+    data = response.json()
+    filtered_annotations = data["items"]
+    
+    # Should only match first annotation
+    matching_ids = [ann["id"] for ann in filtered_annotations if ann["id"] in annotation_ids]
+    assert annotation_ids[0] in matching_ids
+    assert annotation_ids[1] not in matching_ids
+    assert annotation_ids[2] not in matching_ids
+
+    # Test 2: Filter by multiple false positive types - should match first two annotations
+    response = await async_client.get("/annotations/sequences/?false_positive_types=antenna&false_positive_types=lens_flare")
+    assert response.status_code == 200
+    data = response.json()
+    filtered_annotations = data["items"]
+    
+    # Should match first two annotations
+    matching_ids = [ann["id"] for ann in filtered_annotations if ann["id"] in annotation_ids]
+    assert annotation_ids[0] in matching_ids
+    assert annotation_ids[1] in matching_ids
+    assert annotation_ids[2] not in matching_ids
+
+    # Test 3: Filter by non-existent false positive type - should match none
+    response = await async_client.get("/annotations/sequences/?false_positive_types=nonexistent")
+    assert response.status_code == 200
+    data = response.json()
+    filtered_annotations = data["items"]
+    
+    # Should not match any of our test annotations
+    matching_ids = [ann["id"] for ann in filtered_annotations if ann["id"] in annotation_ids]
+    assert len(matching_ids) == 0
+
+
+@pytest.mark.asyncio
+async def test_list_sequence_annotations_false_positive_types_validation(async_client: AsyncClient):
+    """Test that invalid false positive types return proper validation errors."""
+    # Test with invalid false positive type - should return 422 validation error
+    response = await async_client.get("/annotations/sequences/?false_positive_types=invalid_type")
+    assert response.status_code == 422
+    
+    # Test with mix of valid and invalid types
+    response = await async_client.get("/annotations/sequences/?false_positive_types=antenna&false_positive_types=invalid_type")
+    assert response.status_code == 422
