@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '@/services/api';
 import { ExtendedSequenceFilters, SequenceWithDetectionProgress } from '@/types/api';
-import { QUERY_KEYS } from '@/utils/constants';
+import { QUERY_KEYS, PAGINATION_OPTIONS } from '@/utils/constants';
 import {
   analyzeSequenceAccuracy,
   getRowBackgroundClasses,
@@ -17,6 +17,7 @@ import { useCameras } from '@/hooks/useCameras';
 import { useOrganizations } from '@/hooks/useOrganizations';
 import { usePersistedFilters, createDefaultFilterState } from '@/hooks/usePersistedFilters';
 import { calculatePresetDateRange } from '@/components/filters/shared/DateRangeFilter';
+import { hasActiveUserFilters } from '@/utils/filterHelpers';
 
 export default function DetectionReviewPage() {
   const navigate = useNavigate();
@@ -181,6 +182,77 @@ export default function DetectionReviewPage() {
     );
   }
 
+  // Empty state when no sequences are available for review
+  if (filteredSequences && filteredSequences.items.length === 0) {
+    // Check if user has applied filters
+    const hasFilters = hasActiveUserFilters(
+      filters,
+      dateFrom,
+      dateTo,
+      selectedFalsePositiveTypes,
+      selectedModelAccuracy,
+      true, // showModelAccuracy
+      true  // showFalsePositiveTypes
+    );
+
+    return (
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Detection Review</h1>
+            <p className="text-gray-600">
+              Sequences with completed detection annotations ready for review
+            </p>
+          </div>
+        </div>
+
+        {/* Filters */}
+        <TabbedFilters
+          filters={filters}
+          onFiltersChange={handleFilterChange}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          onDateFromChange={handleDateFromChange}
+          onDateToChange={handleDateToChange}
+          onDateRangeSet={setDateRange}
+          onDateRangeClear={clearDateRange}
+          selectedFalsePositiveTypes={selectedFalsePositiveTypes}
+          onFalsePositiveTypesChange={handleFalsePositiveFilterChange}
+          selectedModelAccuracy={selectedModelAccuracy}
+          onModelAccuracyChange={setSelectedModelAccuracy}
+          onResetFilters={resetFilters}
+          cameras={cameras}
+          organizations={organizations}
+          camerasLoading={camerasLoading}
+          organizationsLoading={organizationsLoading}
+          showModelAccuracy={true}
+          showFalsePositiveTypes={true}
+        />
+
+        {/* Empty state message */}
+        <div className="flex items-center justify-center min-h-96">
+          <div className="text-center">
+            {hasFilters ? (
+              // Filtered results - no matches
+              <>
+                <div className="text-4xl mb-4">🔍</div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">No matching sequences found</h3>
+                <p className="text-gray-500 mb-4">
+                  No sequences with completed detection annotations match your current filters.
+                </p>
+                <p className="text-gray-400 text-sm">Try adjusting your search criteria above.</p>
+              </>
+            ) : (
+              // No filters - no sequences available
+              <p className="text-gray-500">No sequences with completed detection annotations to review at the moment.</p>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -236,9 +308,9 @@ export default function DetectionReviewPage() {
                   onChange={(e) => handleFilterChange({ size: Number(e.target.value) })}
                   className="border border-gray-300 rounded px-2 py-1 text-sm"
                 >
-                  <option value={10}>10</option>
-                  <option value={20}>20</option>
-                  <option value={50}>50</option>
+                  {PAGINATION_OPTIONS.map(size => (
+                    <option key={size} value={size}>{size}</option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -376,12 +448,6 @@ export default function DetectionReviewPage() {
               );
             })}
 
-            {/* Empty state */}
-            {filteredSequences.items.length === 0 && (
-              <div className="p-8 text-center text-gray-500">
-                <p>No sequences with completed detection annotations to review at the moment.</p>
-              </div>
-            )}
           </div>
 
           {/* Pagination */}

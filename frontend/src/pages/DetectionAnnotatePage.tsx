@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '@/services/api';
 import { ExtendedSequenceFilters, SequenceWithDetectionProgress } from '@/types/api';
-import { QUERY_KEYS } from '@/utils/constants';
+import { QUERY_KEYS, PAGINATION_OPTIONS } from '@/utils/constants';
 import {
   analyzeSequenceAccuracy,
   getRowBackgroundClasses,
@@ -17,6 +17,7 @@ import { useCameras } from '@/hooks/useCameras';
 import { useOrganizations } from '@/hooks/useOrganizations';
 import { usePersistedFilters, createDefaultFilterState } from '@/hooks/usePersistedFilters';
 import { calculatePresetDateRange } from '@/components/filters/shared/DateRangeFilter';
+import { hasActiveUserFilters } from '@/utils/filterHelpers';
 
 export default function DetectionAnnotatePage() {
   const navigate = useNavigate();
@@ -183,6 +184,17 @@ export default function DetectionAnnotatePage() {
 
   // Empty state when no sequences need detection annotation
   if (sequences && sequences.items.length === 0) {
+    // Check if user has applied filters
+    const hasFilters = hasActiveUserFilters(
+      filters,
+      dateFrom,
+      dateTo,
+      selectedFalsePositiveTypes,
+      selectedModelAccuracy,
+      true, // showModelAccuracy
+      true  // showFalsePositiveTypes
+    );
+
     return (
       <div className="space-y-6">
         {/* Header */}
@@ -221,9 +233,24 @@ export default function DetectionAnnotatePage() {
         {/* Empty state message */}
         <div className="flex items-center justify-center min-h-96">
           <div className="text-center">
-            <div className="text-6xl mb-4">🎉</div>
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">All caught up!</h3>
-            <p className="text-gray-500">No detection annotations needed at the moment.</p>
+            {hasFilters ? (
+              // Filtered results - no matches
+              <>
+                <div className="text-4xl mb-4">🔍</div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">No matching sequences found</h3>
+                <p className="text-gray-500 mb-4">
+                  No sequences needing detection annotation match your current filters.
+                </p>
+                <p className="text-gray-400 text-sm">Try adjusting your search criteria above.</p>
+              </>
+            ) : (
+              // No filters - all caught up
+              <>
+                <div className="text-6xl mb-4">🎉</div>
+                <h3 className="text-xl font-semibold text-gray-900 mb-2">All caught up!</h3>
+                <p className="text-gray-500">No detection annotations needed at the moment.</p>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -285,9 +312,9 @@ export default function DetectionAnnotatePage() {
                   onChange={(e) => handleFilterChange({ size: Number(e.target.value) })}
                   className="border border-gray-300 rounded px-2 py-1 text-sm"
                 >
-                  <option value={10}>10</option>
-                  <option value={20}>20</option>
-                  <option value={50}>50</option>
+                  {PAGINATION_OPTIONS.map(size => (
+                    <option key={size} value={size}>{size}</option>
+                  ))}
                 </select>
               </div>
             </div>

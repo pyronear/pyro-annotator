@@ -10,9 +10,12 @@ export const API_ENDPOINTS = {
 // Pagination defaults
 export const PAGINATION_DEFAULTS = {
   PAGE: 1,
-  SIZE: 20,
+  SIZE: 50,
   MAX_SIZE: 100,
 } as const;
+
+// Pagination options for user selection
+export const PAGINATION_OPTIONS = [10, 20, 50, 100] as const;
 
 // Source API types
 export const SOURCE_APIS = [

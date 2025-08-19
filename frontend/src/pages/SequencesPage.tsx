@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '@/services/api';
 import { ExtendedSequenceFilters, ProcessingStageStatus } from '@/types/api';
-import { QUERY_KEYS } from '@/utils/constants';
+import { QUERY_KEYS, PAGINATION_OPTIONS } from '@/utils/constants';
 import { getProcessingStageLabel, getProcessingStageColorClass } from '@/utils/processingStage';
 import {
   analyzeSequenceAccuracy,
@@ -19,6 +19,7 @@ import { useCameras } from '@/hooks/useCameras';
 import { useOrganizations } from '@/hooks/useOrganizations';
 import { usePersistedFilters, createDefaultFilterState } from '@/hooks/usePersistedFilters';
 import { calculatePresetDateRange } from '@/components/filters/shared/DateRangeFilter';
+import { hasActiveUserFilters } from '@/utils/filterHelpers';
 
 interface SequencesPageProps {
   defaultProcessingStage?: ProcessingStageStatus;
@@ -45,7 +46,6 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
     setDateFrom,
     setDateTo,
     setSelectedFalsePositiveTypes,
-    setSelectedFalsePositiveTypesAndFilters,
     setSelectedModelAccuracy,
     resetFilters,
   } = usePersistedFilters(
@@ -169,6 +169,17 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
 
   // Empty state when no sequences are available
   if (sequences && sequences.items.length === 0) {
+    // Check if user has applied filters
+    const hasFilters = hasActiveUserFilters(
+      filters,
+      dateFrom,
+      dateTo,
+      selectedFalsePositiveTypes,
+      selectedModelAccuracy,
+      defaultProcessingStage === 'annotated',
+      defaultProcessingStage === 'annotated'
+    );
+
     return (
       <div className="space-y-6">
         {/* Header */}
@@ -207,7 +218,20 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
         {/* Empty state message */}
         <div className="flex items-center justify-center min-h-96">
           <div className="text-center">
-            {defaultProcessingStage === 'annotated' ? (
+            {hasFilters ? (
+              // Filtered results - no matches
+              <>
+                <div className="text-4xl mb-4">🔍</div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">No matching sequences found</h3>
+                <p className="text-gray-500 mb-4">
+                  {defaultProcessingStage === 'annotated'
+                    ? 'No completed sequences match your current filters.'
+                    : 'No sequences match your current filters.'
+                  }
+                </p>
+                <p className="text-gray-400 text-sm">Try adjusting your search criteria above.</p>
+              </>
+            ) : defaultProcessingStage === 'annotated' ? (
               // Review page - simple message without celebration
               <p className="text-gray-500">No completed sequences to review at the moment.</p>
             ) : (
@@ -279,9 +303,9 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
                   onChange={(e) => handleFilterChange({ size: Number(e.target.value) })}
                   className="border border-gray-300 rounded px-2 py-1 text-sm"
                 >
-                  <option value={10}>10</option>
-                  <option value={20}>20</option>
-                  <option value={50}>50</option>
+                  {PAGINATION_OPTIONS.map(size => (
+                    <option key={size} value={size}>{size}</option>
+                  ))}
                 </select>
               </div>
             </div>
