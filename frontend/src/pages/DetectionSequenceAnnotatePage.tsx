@@ -1682,10 +1682,7 @@ export default function DetectionSequenceAnnotatePage() {
   
   // Load persisted filters from the appropriate source page
   const sourcePageFilters = useMemo(() => {
-    console.log(`[DetectionSequenceAnnotate] Loading filters for sourcePage: ${sourcePage}, key: ${filterStorageKey}`);
-    
     if (typeof window === 'undefined') {
-      console.log('[DetectionSequenceAnnotate] SSR mode, returning null');
       return null;
     }
     
@@ -1694,9 +1691,6 @@ export default function DetectionSequenceAnnotatePage() {
       const stored = localStorage.getItem(filterStorageKey);
       if (stored) {
         storedFilters = JSON.parse(stored);
-        console.log('[DetectionSequenceAnnotate] Found stored filters:', storedFilters);
-      } else {
-        console.log(`[DetectionSequenceAnnotate] No stored filters found in localStorage for key: ${filterStorageKey}`);
       }
     } catch (error) {
       console.warn(`[DetectionSequenceAnnotate] Failed to read filters from localStorage key "${filterStorageKey}":`, error);
@@ -1713,9 +1707,7 @@ export default function DetectionSequenceAnnotatePage() {
       },
     };
     
-    const result = storedFilters || defaultState;
-    console.log('[DetectionSequenceAnnotate] Final sourcePageFilters:', result);
-    return result;
+    return storedFilters || defaultState;
   }, [filterStorageKey, sourcePage]);
 
   const { data: detections, isLoading, error } = useSequenceDetections(sequenceIdNum);
@@ -1771,7 +1763,6 @@ export default function DetectionSequenceAnnotatePage() {
         });
       } else {
         // Fallback to basic filters
-        console.log('[DetectionSequenceAnnotate] Using fallback filters for navigation context');
         return apiClient.getSequences(baseFilters);
       }
     },
@@ -1785,18 +1776,14 @@ export default function DetectionSequenceAnnotatePage() {
     queryKey: [...QUERY_KEYS.SEQUENCE_ANNOTATIONS, 'navigation-context', rawSequences?.items?.map(s => s.id), sourcePageFilters?.selectedModelAccuracy],
     queryFn: async () => {
       if (!rawSequences?.items?.length) {
-        console.log('[DetectionSequenceAnnotate] No rawSequences items for annotations');
         return [];
       }
 
       // Only fetch annotations if model accuracy filtering is needed
       const modelAccuracy = sourcePageFilters?.selectedModelAccuracy;
       if (!modelAccuracy || modelAccuracy === 'all') {
-        console.log('[DetectionSequenceAnnotate] No model accuracy filtering needed, skipping annotations fetch');
         return [];
       }
-
-      console.log(`[DetectionSequenceAnnotate] Fetching annotations for ${rawSequences.items.length} sequences for model accuracy filtering: ${modelAccuracy}`);
 
       const annotationPromises = rawSequences.items.map(sequence =>
         apiClient.getSequenceAnnotations({ sequence_id: sequence.id, size: 1 })
@@ -1816,27 +1803,16 @@ export default function DetectionSequenceAnnotatePage() {
 
   // Apply client-side model accuracy filtering (similar to DetectionAnnotatePage and DetectionReviewPage)
   const allSequences = useMemo(() => {
-    console.log('[DetectionSequenceAnnotate] Computing allSequences:', {
-      hasRawSequences: !!rawSequences,
-      rawSequencesCount: rawSequences?.items?.length || 0,
-      selectedModelAccuracy: sourcePageFilters?.selectedModelAccuracy,
-      hasAnnotations: !!allSequenceAnnotations,
-      annotationsCount: allSequenceAnnotations?.length || 0
-    });
-
     if (!rawSequences) {
-      console.log('[DetectionSequenceAnnotate] No rawSequences data, returning null');
       return null;
     }
 
     const modelAccuracy = sourcePageFilters?.selectedModelAccuracy;
     if (!modelAccuracy || modelAccuracy === 'all') {
-      console.log('[DetectionSequenceAnnotate] No model accuracy filtering, returning raw sequences:', rawSequences.items?.length || 0);
       return rawSequences;
     }
 
     if (!allSequenceAnnotations) {
-      console.log('[DetectionSequenceAnnotate] Model accuracy filtering requested but annotations not loaded yet, returning raw sequences');
       return rawSequences; // Return unfiltered if annotations not loaded yet
     }
 
@@ -1858,8 +1834,6 @@ export default function DetectionSequenceAnnotatePage() {
       
       return accuracy.type === modelAccuracy;
     });
-
-    console.log(`[DetectionSequenceAnnotate] Applied model accuracy filtering (${modelAccuracy}): ${rawSequences.items.length} -> ${filtered.length} sequences`);
 
     return {
       ...rawSequences,
