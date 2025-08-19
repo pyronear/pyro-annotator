@@ -269,13 +269,7 @@ export default function TabbedFilters({
         <div className="md:col-span-3">
           <FalsePositiveFilter
             selectedTypes={selectedFalsePositiveTypes}
-            onSelectionChange={(types) => {
-              console.log('[TabbedFilters] FalsePositiveFilter onSelectionChange called with:', types);
-              console.log('[TabbedFilters] onFalsePositiveTypesChange function is:', onFalsePositiveTypesChange.name);
-              console.log('[TabbedFilters] Calling onFalsePositiveTypesChange...');
-              onFalsePositiveTypesChange(types);
-              console.log('[TabbedFilters] onFalsePositiveTypesChange completed');
-            }}
+            onSelectionChange={onFalsePositiveTypesChange}
             className="w-full"
           />
         </div>
@@ -283,9 +277,9 @@ export default function TabbedFilters({
     </>
   );
 
-  // Check if any filters are active
+  // Check if any filters are active across both tabs
   const hasActiveFilters = () => {
-    return activeTab === 'simple' ? countActiveSimpleFilters() > 0 : countActiveAdvancedFilters() > 0;
+    return countActiveAdvancedFilters() > 0; // Always check all filters since advanced includes simple
   };
 
   return (
