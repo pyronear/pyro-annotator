@@ -11,16 +11,16 @@ from app.models import SourceApi
 
 
 @pytest.mark.asyncio
-async def test_list_source_apis_empty(async_client: AsyncClient):
+async def test_list_source_apis_empty(authenticated_client: AsyncClient):
     """Test listing source APIs when database is empty."""
-    response = await async_client.get("/source-apis")
+    response = await authenticated_client.get("/source-apis")
     assert response.status_code == 200
     data = response.json()
     assert data == []
 
 
 @pytest.mark.asyncio
-async def test_list_source_apis_with_sequences(async_client: AsyncClient):
+async def test_list_source_apis_with_sequences(authenticated_client: AsyncClient):
     """Test listing source APIs with existing sequences."""
     # Create some test sequences with different source APIs
     sequences_data = [
@@ -76,11 +76,11 @@ async def test_list_source_apis_with_sequences(async_client: AsyncClient):
 
     # Create sequences
     for seq_data in sequences_data:
-        response = await async_client.post("/sequences", data=seq_data)
+        response = await authenticated_client.post("/sequences", data=seq_data)
         assert response.status_code == 201
 
     # List source APIs
-    response = await async_client.get("/source-apis")
+    response = await authenticated_client.get("/source-apis")
     assert response.status_code == 200
     source_apis = response.json()
 
@@ -105,7 +105,7 @@ async def test_list_source_apis_with_sequences(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_list_source_apis_response_format(async_client: AsyncClient):
+async def test_list_source_apis_response_format(authenticated_client: AsyncClient):
     """Test that source API response has correct format."""
     # Create a test sequence
     seq_data = {
@@ -120,11 +120,11 @@ async def test_list_source_apis_response_format(async_client: AsyncClient):
         "recorded_at": "2024-01-15T10:00:00",
         "last_seen_at": "2024-01-15T10:30:00",
     }
-    response = await async_client.post("/sequences", data=seq_data)
+    response = await authenticated_client.post("/sequences", data=seq_data)
     assert response.status_code == 201
 
     # Get source APIs
-    response = await async_client.get("/source-apis")
+    response = await authenticated_client.get("/source-apis")
     assert response.status_code == 200
     source_apis = response.json()
     assert len(source_apis) == 1
@@ -144,7 +144,7 @@ async def test_list_source_apis_response_format(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_list_source_apis_all_types(async_client: AsyncClient):
+async def test_list_source_apis_all_types(authenticated_client: AsyncClient):
     """Test that all known source API types are handled correctly."""
     # Create sequences for each source API type
     sequences_data = [
@@ -188,11 +188,11 @@ async def test_list_source_apis_all_types(async_client: AsyncClient):
 
     # Create sequences
     for seq_data in sequences_data:
-        response = await async_client.post("/sequences", data=seq_data)
+        response = await authenticated_client.post("/sequences", data=seq_data)
         assert response.status_code == 201
 
     # Get source APIs
-    response = await async_client.get("/source-apis")
+    response = await authenticated_client.get("/source-apis")
     assert response.status_code == 200
     source_apis = response.json()
 
@@ -209,7 +209,7 @@ async def test_list_source_apis_all_types(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_list_source_apis_deduplication(async_client: AsyncClient):
+async def test_list_source_apis_deduplication(authenticated_client: AsyncClient):
     """Test that duplicate source APIs are properly deduplicated."""
     # Create multiple sequences with the same source API
     sequences_data = [
@@ -253,11 +253,11 @@ async def test_list_source_apis_deduplication(async_client: AsyncClient):
 
     # Create sequences
     for seq_data in sequences_data:
-        response = await async_client.post("/sequences", data=seq_data)
+        response = await authenticated_client.post("/sequences", data=seq_data)
         assert response.status_code == 201
 
     # Get source APIs
-    response = await async_client.get("/source-apis")
+    response = await authenticated_client.get("/source-apis")
     assert response.status_code == 200
     source_apis = response.json()
 

@@ -1394,7 +1394,7 @@ function ImageModal({
         </label>
 
         {/* Image container */}
-        <div className="relative max-w-7xl max-h-full flex flex-col items-center">
+        <div className="relative max-w-7xl flex flex-col items-center">
           {imageData?.url ? (
             <div
               ref={containerRef}
@@ -1410,7 +1410,7 @@ function ImageModal({
                 ref={imgRef}
                 src={imageData.url}
                 alt={`Detection ${detection.id}`}
-                className="max-w-full max-h-[80vh] object-contain block"
+                className="max-w-full max-h-[95vh] object-contain block"
                 style={{
                   transform: `scale(${zoomLevel}) translate(${panOffset.x}px, ${panOffset.y}px)`,
                   transformOrigin: `${transformOrigin.x}% ${transformOrigin.y}%`,

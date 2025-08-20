@@ -175,7 +175,7 @@ class TestHTTPUtilities:
         """Test successful HTTP request."""
         with requests_mock.Mocker() as m:
             m.get("http://example.com/test", json={"success": True})
-            response = _make_request("GET", "http://example.com/test")
+            response = _make_request("GET", "http://example.com/test", "test_token")
             assert response.status_code == 200
             assert response.json() == {"success": True}
 
@@ -184,7 +184,7 @@ class TestHTTPUtilities:
         with requests_mock.Mocker() as m:
             m.get("http://example.com/test", json={"data": "test"})
             response = _make_request(
-                "GET", "http://example.com/test", operation="test operation"
+                "GET", "http://example.com/test", "test_token", operation="test operation"
             )
             assert response.status_code == 200
 
@@ -198,7 +198,7 @@ class TestHTTPUtilities:
 
             with pytest.raises(AnnotationAPIError) as exc_info:
                 _make_request(
-                    "GET", "http://example.com/test", operation="test operation"
+                    "GET", "http://example.com/test", "test_token", operation="test operation"
                 )
 
             assert "Network error during test operation" in str(exc_info.value)
@@ -210,7 +210,7 @@ class TestHTTPUtilities:
             m.get("http://example.com/test", exc=requests.Timeout("Request timed out"))
 
             with pytest.raises(AnnotationAPIError) as exc_info:
-                _make_request("GET", "http://example.com/test")
+                _make_request("GET", "http://example.com/test", "test_token")
 
             assert "Network error" in str(exc_info.value)
 
@@ -905,7 +905,7 @@ class TestEdgeCases:
                 expected_url = f"{base_url.rstrip('/')}/api/v1/sequences/"
                 m.post(expected_url, json=mock_sequence_response, status_code=201)
 
-                result = create_sequence(base_url, mock_sequence_data)
+                result = create_sequence(base_url, auth_token, mock_sequence_data)
                 assert result == mock_sequence_response
 
     def test_complex_json_serialization(self):
@@ -946,7 +946,7 @@ class TestEdgeCases:
         with requests_mock.Mocker() as m:
             m.get(f"{API_BASE}/sequences/", json=empty_response)
 
-            result = list_sequences(BASE_URL)
+            result = list_sequences(BASE_URL, "test_token")
             assert result == empty_response
             assert len(result["items"]) == 0
 
@@ -970,7 +970,7 @@ class TestEdgeCases:
         with requests_mock.Mocker() as m:
             m.get(f"{API_BASE}/sequences/", json=large_response)
 
-            result = list_sequences(BASE_URL, **params)
+            result = list_sequences(BASE_URL, "test_token", **params)
             assert result["page"] == 100
             assert result["total"] == 10000
 
@@ -984,7 +984,7 @@ class TestEdgeCases:
             )
 
             with pytest.raises(ServerError) as exc_info:
-                get_sequence(BASE_URL, 1)
+                get_sequence(BASE_URL, "test_token", 1)
 
             error = exc_info.value
             assert error.status_code == 503
@@ -1001,7 +1001,7 @@ class TestEdgeCases:
             )
 
             with pytest.raises(AnnotationAPIError) as exc_info:
-                create_detection(BASE_URL, mock_detection_data, b"invalid", "test.jpg")
+                create_detection(BASE_URL, auth_token, mock_detection_data, b"invalid", "test.jpg")
 
             error = exc_info.value
             assert error.status_code == 400
