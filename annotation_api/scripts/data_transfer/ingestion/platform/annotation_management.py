@@ -32,11 +32,13 @@ import logging
 from datetime import date, datetime
 from typing import List, Dict, Any, Optional
 
-from .shared import (
-    list_sequence_annotations_authenticated,
-    create_sequence_annotation_authenticated,
-    update_sequence_annotation_authenticated,
+from app.clients.annotation_api import (
+    get_auth_token,
+    list_sequence_annotations,
+    create_sequence_annotation,
+    update_sequence_annotation,
 )
+import os
 from app.models import SequenceAnnotationProcessingStage
 from app.schemas.annotation_validation import SequenceAnnotationData
 from .annotation_processing import SequenceAnalyzer
@@ -89,7 +91,13 @@ def check_existing_annotation(base_url: str, sequence_id: int) -> Optional[int]:
         ...     print("No existing annotation found")
     """
     try:
-        response = list_sequence_annotations_authenticated(base_url, sequence_id=sequence_id)
+        # Get authentication token
+        auth_token = get_auth_token(
+            base_url,
+            os.environ.get("ANNOTATOR_LOGIN", "admin"),
+            os.environ.get("ANNOTATOR_PASSWORD", "admin")
+        )
+        response = list_sequence_annotations(base_url, auth_token, sequence_id=sequence_id)
 
         if isinstance(response, dict) and "items" in response:
             annotations = response["items"]
@@ -153,6 +161,13 @@ def create_annotation_from_data(
         ... )
     """
     try:
+        # Get authentication token
+        auth_token = get_auth_token(
+            base_url,
+            os.environ.get("ANNOTATOR_LOGIN", "admin"),
+            os.environ.get("ANNOTATOR_PASSWORD", "admin")
+        )
+        
         if existing_annotation_id:
             # Update existing annotation (PATCH)
             update_dict = {
@@ -166,7 +181,7 @@ def create_annotation_from_data(
                 logging.debug(f"Update data: {update_dict}")
                 return True
 
-            result = update_sequence_annotation_authenticated(base_url, existing_annotation_id, update_dict)
+            result = update_sequence_annotation(base_url, auth_token, existing_annotation_id, update_dict)
             if result:
                 logging.debug(f"Successfully updated annotation {existing_annotation_id} for sequence {sequence_id}")
                 return True
@@ -188,7 +203,7 @@ def create_annotation_from_data(
                 logging.debug(f"Create data: {create_dict}")
                 return True
 
-            result = create_sequence_annotation_authenticated(base_url, create_dict)
+            result = create_sequence_annotation(base_url, auth_token, create_dict)
             if result:
                 logging.debug(f"Successfully created annotation for sequence {sequence_id}")
                 return True

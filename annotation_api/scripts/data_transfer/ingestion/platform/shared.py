@@ -16,6 +16,9 @@ import requests
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 from rich.console import Console
 
+# Import client functions
+from app.clients.annotation_api import get_auth_token, create_sequence, create_detection
+
 # Import LogSuppressor from import module
 import logging
 
@@ -81,233 +84,20 @@ from app.clients.annotation_api import (
 # Remove settings import to avoid database dependency for import scripts
 
 
-# Global variable to cache authentication token
-_auth_token_cache = None
 
 
-def get_annotation_api_token(annotation_api_url: str) -> str:
-    """
-    Get JWT authentication token for the annotation API.
-    
-    Args:
-        annotation_api_url: Base URL of the annotation API
-        
-    Returns:
-        JWT token string
-        
-    Raises:
-        Exception: If authentication fails
-    """
-    global _auth_token_cache
-    
-    # Use cached token if available (simple caching, could be improved with expiration)
-    if _auth_token_cache:
-        return _auth_token_cache
-    
-    import requests
-    
-    login_url = f"{annotation_api_url.rstrip('/')}/api/v1/auth/login"
-    login_data = {
-        "username": os.environ.get("ANNOTATOR_LOGIN", "admin"),
-        "password": os.environ.get("ANNOTATOR_PASSWORD", "admin")
-    }
-    
-    try:
-        response = requests.post(login_url, json=login_data, timeout=30)
-        response.raise_for_status()
-        
-        token_data = response.json()
-        _auth_token_cache = token_data["access_token"]
-        return _auth_token_cache
-        
-    except requests.RequestException as e:
-        raise Exception(f"Failed to authenticate with annotation API: {e}")
-    except KeyError:
-        raise Exception("Invalid response format from authentication endpoint")
 
 
-def get_auth_headers(annotation_api_url: str) -> dict:
-    """
-    Get authentication headers for API requests.
-    
-    Args:
-        annotation_api_url: Base URL of the annotation API
-        
-    Returns:
-        Dictionary with Authorization header
-    """
-    token = get_annotation_api_token(annotation_api_url)
-    return {"Authorization": f"Bearer {token}"}
 
 
-def create_sequence_authenticated(annotation_api_url: str, sequence_data: dict) -> dict:
-    """
-    Create a sequence with authentication.
-    
-    Args:
-        annotation_api_url: Base URL of the annotation API
-        sequence_data: Dictionary containing sequence data to create
-        
-    Returns:
-        Dictionary containing the created sequence data
-    """
-    headers = get_auth_headers(annotation_api_url)
-    
-    # Debug logging
-    import logging
-    logging.debug(f"Creating sequence with data: {json.dumps(sequence_data, indent=2)}")
-    
-    # Use data parameter to send form data (not JSON) as the API expects Form fields
-    url = f"{annotation_api_url.rstrip('/')}/api/v1/sequences/"
-    
-    try:
-        response = requests.post(url, data=sequence_data, headers=headers, timeout=30)
-        response.raise_for_status()
-        return response.json()
-    except requests.HTTPError as e:
-        logging.error(f"HTTP error creating sequence: {e}")
-        logging.error(f"Response content: {e.response.text if e.response else 'No response'}")
-        raise
 
 
-def create_detection_authenticated(
-    annotation_api_url: str, detection_data: dict, image_file: bytes, filename: str
-) -> dict:
-    """
-    Create a detection with image file and authentication.
-    
-    Args:
-        annotation_api_url: Base URL of the annotation API
-        detection_data: Dictionary containing detection data
-        image_file: Image file content as bytes
-        filename: Name for the uploaded file
-        
-    Returns:
-        Dictionary containing the created detection data
-    """
-    headers = get_auth_headers(annotation_api_url)
-    
-    # Use the same logic as the original create_detection function but with auth headers  
-    url = f"{annotation_api_url.rstrip('/')}/api/v1/detections/"
-    files = {"file": (filename, image_file, "image/jpeg")}
-    
-    # Prepare form data - must match the exact format expected by the API
-    data = {
-        "algo_predictions": json.dumps(detection_data["algo_predictions"]),
-        "alert_api_id": detection_data["alert_api_id"],
-        "sequence_id": detection_data["sequence_id"],
-        "recorded_at": detection_data["recorded_at"],
-    }
-    
-    response = requests.post(url, data=data, files=files, headers=headers, timeout=60)
-    response.raise_for_status()
-    return response.json()
 
 
-def list_sequence_annotations_authenticated(annotation_api_url: str, **kwargs) -> dict:
-    """
-    List sequence annotations with authentication.
-    
-    Args:
-        annotation_api_url: Base URL of the annotation API
-        **kwargs: Query parameters for filtering (e.g., sequence_id)
-        
-    Returns:
-        Dictionary containing the list of annotations
-    """
-    headers = get_auth_headers(annotation_api_url)
-    
-    # Use the same logic as the original list_sequence_annotations function but with auth headers
-    url = f"{annotation_api_url.rstrip('/')}/api/v1/annotations/sequences/"
-    response = requests.get(url, params=kwargs, headers=headers, timeout=30)
-    response.raise_for_status()
-    return response.json()
 
 
-def create_sequence_annotation_authenticated(annotation_api_url: str, annotation_data: dict) -> dict:
-    """
-    Create a sequence annotation with authentication.
-    
-    Args:
-        annotation_api_url: Base URL of the annotation API
-        annotation_data: Dictionary containing sequence annotation data
-        
-    Returns:
-        Dictionary containing the created annotation data
-    """
-    headers = get_auth_headers(annotation_api_url)
-    
-    # Use the same logic as the original create_sequence_annotation function but with auth headers
-    url = f"{annotation_api_url.rstrip('/')}/api/v1/annotations/sequences/"
-    response = requests.post(url, json=annotation_data, headers=headers, timeout=30)
-    response.raise_for_status()
-    return response.json()
 
 
-def update_sequence_annotation_authenticated(
-    annotation_api_url: str, annotation_id: int, update_data: dict
-) -> dict:
-    """
-    Update a sequence annotation with authentication.
-    
-    Args:
-        annotation_api_url: Base URL of the annotation API
-        annotation_id: ID of the annotation to update
-        update_data: Dictionary containing update data
-        
-    Returns:
-        Dictionary containing the updated annotation data
-    """
-    headers = get_auth_headers(annotation_api_url)
-    
-    import requests
-    url = f"{annotation_api_url.rstrip('/')}/api/v1/annotations/sequences/{annotation_id}"
-    
-    response = requests.patch(url, json=update_data, headers=headers, timeout=30)
-    response.raise_for_status()
-    return response.json()
-
-
-def list_detections_authenticated(annotation_api_url: str, **kwargs) -> dict:
-    """
-    List detections with authentication.
-    
-    Args:
-        annotation_api_url: Base URL of the annotation API
-        **kwargs: Query parameters for filtering (e.g., sequence_id)
-        
-    Returns:
-        Dictionary containing the list of detections
-    """
-    headers = get_auth_headers(annotation_api_url)
-    
-    import requests
-    url = f"{annotation_api_url.rstrip('/')}/api/v1/detections/"
-    
-    response = requests.get(url, params=kwargs, headers=headers, timeout=30)
-    response.raise_for_status()
-    return response.json()
-
-
-def get_sequence_authenticated(annotation_api_url: str, sequence_id: int) -> dict:
-    """
-    Get a specific sequence by ID with authentication.
-    
-    Args:
-        annotation_api_url: Base URL of the annotation API
-        sequence_id: ID of the sequence to retrieve
-        
-    Returns:
-        Dictionary containing the sequence data
-    """
-    headers = get_auth_headers(annotation_api_url)
-    
-    import requests
-    url = f"{annotation_api_url.rstrip('/')}/api/v1/sequences/{sequence_id}"
-    
-    response = requests.get(url, headers=headers, timeout=30)
-    response.raise_for_status()
-    return response.json()
 
 
 def validate_available_env_variables() -> bool:
@@ -463,7 +253,7 @@ def group_records_by_sequence(records: List[dict]) -> Dict[int, List[dict]]:
 
 
 def _process_single_detection(
-    record: dict, annotation_api_url: str, annotation_sequence_id: int
+    record: dict, annotation_api_url: str, auth_token: str, annotation_sequence_id: int
 ) -> Dict[str, Any]:
     """
     Process a single detection: download image and create detection in API.
@@ -471,6 +261,7 @@ def _process_single_detection(
     Args:
         record: Detection record from platform
         annotation_api_url: Annotation API base URL
+        auth_token: JWT authentication token
         annotation_sequence_id: Sequence ID in annotation API
         
     Returns:
@@ -491,8 +282,8 @@ def _process_single_detection(
 
         # Create detection in annotation API
         filename = f"detection_{record['detection_id']}.jpg"
-        annotation_detection = create_detection_authenticated(
-            annotation_api_url, detection_data, image_data, filename
+        annotation_detection = create_detection(
+            annotation_api_url, auth_token, detection_data, image_data, filename
         )
 
         logging.debug(f"Created detection with ID: {annotation_detection['id']}")
@@ -549,13 +340,20 @@ def post_sequence_to_annotation_api(
     if not sequence_records:
         raise ValueError("No records provided for sequence")
 
+    # Get authentication token
+    auth_token = get_auth_token(
+        annotation_api_url,
+        os.environ.get("ANNOTATOR_LOGIN", "admin"),
+        os.environ.get("ANNOTATOR_PASSWORD", "admin")
+    )
+
     # Use first record for sequence data (all records have same sequence info)
     first_record = sequence_records[0]
     sequence_data = transform_sequence_data(first_record)
 
     # Create sequence
     logging.info(f"Creating sequence with alert_api_id={first_record['sequence_id']}")
-    annotation_sequence = create_sequence_authenticated(annotation_api_url, sequence_data)
+    annotation_sequence = create_sequence(annotation_api_url, auth_token, sequence_data)
     annotation_sequence_id = annotation_sequence["id"]
 
     # Create detections for this sequence using parallel processing
@@ -565,7 +363,7 @@ def post_sequence_to_annotation_api(
     if len(sequence_records) == 1:
         # Single detection - process directly to avoid thread overhead
         result = _process_single_detection(
-            sequence_records[0], annotation_api_url, annotation_sequence_id
+            sequence_records[0], annotation_api_url, auth_token, annotation_sequence_id
         )
         if result["success"]:
             successful_detections = 1
@@ -580,6 +378,7 @@ def post_sequence_to_annotation_api(
                     _process_single_detection,
                     record,
                     annotation_api_url,
+                    auth_token,
                     annotation_sequence_id
                 ): record
                 for record in sequence_records
