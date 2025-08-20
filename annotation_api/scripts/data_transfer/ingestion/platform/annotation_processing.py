@@ -26,7 +26,7 @@ Example:
 import logging
 from typing import List, Dict, Any, Optional, Tuple
 
-from app.clients.annotation_api import list_detections, get_sequence
+from .shared import list_detections_authenticated, get_sequence_authenticated
 from app.schemas.annotation_validation import (
     BoundingBox,
     SequenceBBox,
@@ -250,7 +250,7 @@ class SequenceAnalyzer:
             ...         print(f"Cluster has {len(bbox_cluster.bboxes)} detections")
         """
         try:
-            sequence = get_sequence(self.base_url, sequence_id)
+            sequence = get_sequence_authenticated(self.base_url, sequence_id)
             self.logger.info(f"Analyzing sequence {sequence_id}: {sequence.get('camera_name', 'Unknown')}")
 
             detections = self._fetch_sequence_detections(sequence_id)
@@ -300,7 +300,7 @@ class SequenceAnalyzer:
             page_size = 100
 
             while True:
-                response = list_detections(
+                response = list_detections_authenticated(
                     self.base_url,
                     sequence_id=sequence_id,
                     order_by="recorded_at",

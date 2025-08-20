@@ -138,6 +138,10 @@ Key environment variables (see `src/app/core/config.py`):
 - `JWT_SECRET` - JWT token signing secret (default: `your-secret-key-change-in-production`)
 - `ACCESS_TOKEN_EXPIRE_HOURS` - Token expiration in hours (default: `24`)
 
+### Script Authentication (Data Import Scripts)
+- `ANNOTATOR_LOGIN` - Import script authentication login (default: `admin`)
+- `ANNOTATOR_PASSWORD` - Import script authentication password (default: `admin`)
+
 ### Database & Storage
 - `POSTGRES_URL` - Database connection string
 - `SUPERADMIN_LOGIN/PWD/ORG` - Admin user credentials
@@ -416,6 +420,8 @@ uv run python -m scripts.data_transfer.ingestion.platform.import \
 - `PLATFORM_PASSWORD` - Platform API password  
 - `PLATFORM_ADMIN_LOGIN` - Admin login for organization access
 - `PLATFORM_ADMIN_PASSWORD` - Admin password for organization access
+- `ANNOTATOR_LOGIN` - Annotation API login for script authentication (default: `admin`)
+- `ANNOTATOR_PASSWORD` - Annotation API password for script authentication (default: `admin`)
 
 #### Script Features
 - **End-to-end workflow** - Complete pipeline from platform data to annotation-ready sequences

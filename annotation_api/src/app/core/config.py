@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     JWT_SECRET: str = os.environ.get("JWT_SECRET", "your-secret-key-change-in-production")
     ACCESS_TOKEN_EXPIRE_HOURS: int = int(os.environ.get("ACCESS_TOKEN_EXPIRE_HOURS", "24"))
     
+    # Script Authentication (for import scripts)
+    ANNOTATOR_LOGIN: str = os.environ.get("ANNOTATOR_LOGIN", "admin")
+    ANNOTATOR_PASSWORD: str = os.environ.get("ANNOTATOR_PASSWORD", "admin")
+    
     # DB
     POSTGRES_URL: str = os.environ["POSTGRES_URL"]
 
