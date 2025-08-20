@@ -7,6 +7,7 @@ import {
   Detection,
   Camera,
   Organization,
+  SourceApi,
   PaginatedResponse,
   SequenceFilters,
   ExtendedSequenceFilters,
@@ -123,6 +124,12 @@ class ApiClient {
   // Organizations
   async getOrganizations(): Promise<Organization[]> {
     const response: AxiosResponse<Organization[]> = await this.client.get('/organizations');
+    return response.data;
+  }
+
+  // Source APIs
+  async getSourceApis(): Promise<SourceApi[]> {
+    const response: AxiosResponse<SourceApi[]> = await this.client.get('/source-apis');
     return response.data;
   }
 

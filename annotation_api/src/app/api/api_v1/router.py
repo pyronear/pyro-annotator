@@ -12,6 +12,7 @@ from app.api.api_v1.endpoints import (
     organizations,
     sequence_annotations,
     sequences,
+    source_apis,
 )
 
 api_router = APIRouter()
@@ -31,4 +32,7 @@ api_router.include_router(
 api_router.include_router(cameras.router, prefix="/cameras", tags=["cameras"])
 api_router.include_router(
     organizations.router, prefix="/organizations", tags=["organizations"]
+)
+api_router.include_router(
+    source_apis.router, prefix="/source-apis", tags=["source apis"]
 )

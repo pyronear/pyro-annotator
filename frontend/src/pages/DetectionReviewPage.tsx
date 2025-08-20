@@ -15,6 +15,7 @@ import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
 import TabbedFilters from '@/components/filters/TabbedFilters';
 import { useCameras } from '@/hooks/useCameras';
 import { useOrganizations } from '@/hooks/useOrganizations';
+import { useSourceApis } from '@/hooks/useSourceApis';
 import { usePersistedFilters, createDefaultFilterState } from '@/hooks/usePersistedFilters';
 import { calculatePresetDateRange } from '@/components/filters/shared/DateRangeFilter';
 import { hasActiveUserFilters } from '@/utils/filterHelpers';
@@ -48,9 +49,10 @@ export default function DetectionReviewPage() {
     resetFilters,
   } = usePersistedFilters('filters-detections-review', defaultState);
 
-  // Fetch cameras and organizations for dropdown options
+  // Fetch cameras, organizations, and source APIs for dropdown options
   const { data: cameras = [], isLoading: camerasLoading } = useCameras();
   const { data: organizations = [], isLoading: organizationsLoading } = useOrganizations();
+  const { data: sourceApis = [], isLoading: sourceApisLoading } = useSourceApis();
 
   // Date range helper functions
   const setDateRange = (preset: string) => {
@@ -224,8 +226,10 @@ export default function DetectionReviewPage() {
           onResetFilters={resetFilters}
           cameras={cameras}
           organizations={organizations}
+          sourceApis={sourceApis}
           camerasLoading={camerasLoading}
           organizationsLoading={organizationsLoading}
+          sourceApisLoading={sourceApisLoading}
           showModelAccuracy={true}
           showFalsePositiveTypes={true}
         />
@@ -282,8 +286,10 @@ export default function DetectionReviewPage() {
         onResetFilters={resetFilters}
         cameras={cameras}
         organizations={organizations}
+        sourceApis={sourceApis}
         camerasLoading={camerasLoading}
         organizationsLoading={organizationsLoading}
+        sourceApisLoading={sourceApisLoading}
         showModelAccuracy={true}
         showFalsePositiveTypes={true}
       />

@@ -198,6 +198,11 @@ export interface Organization {
   name: string;
 }
 
+export interface SourceApi {
+  id: string;
+  name: string;
+}
+
 // Legacy interface for backward compatibility (to be removed after migration)
 export interface SequenceWithProcessingStage extends Sequence {
   processing_stage_status: ProcessingStageStatus;
