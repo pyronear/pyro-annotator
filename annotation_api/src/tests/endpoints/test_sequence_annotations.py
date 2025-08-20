@@ -3,6 +3,7 @@ import json
 
 import pytest
 from httpx import AsyncClient
+from PIL import Image
 
 from app import models
 
@@ -1084,7 +1085,6 @@ async def test_list_sequence_annotations_filter_by_false_positive_types(
         
         # Create a simple test image
         import io
-        from PIL import Image
         img = Image.new('RGB', (100, 100), color='red')
         img_bytes = io.BytesIO()
         img.save(img_bytes, format='JPEG')
@@ -1200,3 +1200,437 @@ async def test_list_sequence_annotations_false_positive_types_validation(authent
     # Test with mix of valid and invalid types
     response = await authenticated_client.get("/annotations/sequences/?false_positive_types=antenna&false_positive_types=invalid_type")
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_false_positive_sequence_auto_annotated_detection_annotations(
+    authenticated_client: AsyncClient, sequence_session
+):
+    """Test that false positive sequences (no smoke, no missed smoke, has false positives) automatically create ANNOTATED detection annotations."""
+    
+    # Create a detection for the sequence first
+    detection_payload = {
+        "sequence_id": "1",
+        "alert_api_id": "2001",
+        "recorded_at": "2024-01-15T10:25:00",
+        "algo_predictions": json.dumps({
+            "predictions": [
+                {
+                    "xyxyn": [0.1, 0.1, 0.3, 0.3],
+                    "confidence": 0.87,
+                    "class_name": "smoke"
+                }
+            ]
+        })
+    }
+    
+    # Create test image
+    import io
+    img = Image.new('RGB', (100, 100), color='blue')
+    img_bytes = io.BytesIO()
+    img.save(img_bytes, format='JPEG')
+    img_bytes.seek(0)
+    
+    files = {"file": ("test.jpg", img_bytes, "image/jpeg")}
+    response = await authenticated_client.post("/detections", data=detection_payload, files=files)
+    assert response.status_code == 201
+    detection_id = response.json()["id"]
+
+    # Create a false positive sequence annotation (no smoke, no missed smoke, has false positives)
+    false_positive_payload = {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": False,  # No smoke
+                    "false_positive_types": ["antenna", "building"],  # Has false positives
+                    "bboxes": [{"detection_id": detection_id, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                }
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
+        "created_at": datetime.utcnow().isoformat(),
+    }
+
+    # Create the sequence annotation - this should trigger auto-creation of detection annotations
+    response = await authenticated_client.post("/annotations/sequences/", json=false_positive_payload)
+    assert response.status_code == 201
+    seq_annotation = response.json()
+    
+    # Verify sequence annotation properties
+    assert seq_annotation["has_smoke"] is False
+    assert seq_annotation["has_false_positives"] is True
+    assert seq_annotation["has_missed_smoke"] is False
+
+    # Check that a detection annotation was automatically created
+    response = await authenticated_client.get(f"/annotations/detections/?sequence_id=1")
+    assert response.status_code == 200
+    detection_annotations = response.json()["items"]
+    
+    # Should have one detection annotation for our detection
+    detection_annotation = None
+    for ann in detection_annotations:
+        if ann["detection_id"] == detection_id:
+            detection_annotation = ann
+            break
+    
+    assert detection_annotation is not None, "Detection annotation should be auto-created"
+    # For false positive sequences, detection annotations should be automatically ANNOTATED
+    assert detection_annotation["processing_stage"] == "annotated"
+    # Should have empty annotation (no bounding boxes needed for false positives)
+    assert detection_annotation["annotation"] == {"annotation": []}
+
+
+@pytest.mark.asyncio
+async def test_true_positive_sequence_pre_populated_detection_annotations(
+    authenticated_client: AsyncClient, sequence_session
+):
+    """Test that true positive sequences (has smoke, no missed smoke, no false positives) create VISUAL_CHECK detection annotations with pre-populated predictions."""
+    
+    # Create a detection with algo_predictions for the sequence
+    algo_predictions = {
+        "predictions": [
+            {
+                "xyxyn": [0.1, 0.2, 0.4, 0.6],
+                "confidence": 0.92,
+                "class_name": "smoke"
+            },
+            {
+                "xyxyn": [0.5, 0.3, 0.8, 0.7],
+                "confidence": 0.85,
+                "class_name": "fire"
+            }
+        ]
+    }
+    
+    detection_payload = {
+        "sequence_id": "1",
+        "alert_api_id": "3001", 
+        "recorded_at": "2024-01-15T10:25:00",
+        "algo_predictions": json.dumps(algo_predictions)
+    }
+    
+    # Create test image
+    import io
+    img = Image.new('RGB', (100, 100), color='orange')
+    img_bytes = io.BytesIO()
+    img.save(img_bytes, format='JPEG')
+    img_bytes.seek(0)
+    
+    files = {"file": ("test.jpg", img_bytes, "image/jpeg")}
+    response = await authenticated_client.post("/detections", data=detection_payload, files=files)
+    assert response.status_code == 201
+    detection_id = response.json()["id"]
+
+    # Create a true positive sequence annotation (has smoke, no missed smoke, no false positives)
+    true_positive_payload = {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": True,  # Has smoke
+                    "false_positive_types": [],  # No false positives
+                    "bboxes": [{"detection_id": detection_id, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                }
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
+        "created_at": datetime.utcnow().isoformat(),
+    }
+
+    # Create the sequence annotation - this should trigger auto-creation of detection annotations
+    response = await authenticated_client.post("/annotations/sequences/", json=true_positive_payload)
+    assert response.status_code == 201
+    seq_annotation = response.json()
+    
+    # Verify sequence annotation properties
+    assert seq_annotation["has_smoke"] is True
+    assert seq_annotation["has_false_positives"] is False
+    assert seq_annotation["has_missed_smoke"] is False
+
+    # Check that a detection annotation was automatically created
+    response = await authenticated_client.get(f"/annotations/detections/?sequence_id=1")
+    assert response.status_code == 200
+    detection_annotations = response.json()["items"]
+    
+    # Should have detection annotations for our detection
+    detection_annotation = None
+    for ann in detection_annotations:
+        if ann["detection_id"] == detection_id:
+            detection_annotation = ann
+            break
+    
+    assert detection_annotation is not None, "Detection annotation should be auto-created"
+    # For true positive sequences, detection annotations should be VISUAL_CHECK (ready for review)
+    assert detection_annotation["processing_stage"] == "visual_check"
+    
+    # Should have pre-populated annotation from model predictions
+    annotation_data = detection_annotation["annotation"]
+    assert "annotation" in annotation_data
+    annotations = annotation_data["annotation"]
+    
+    # Should have 2 annotations from the 2 model predictions
+    assert len(annotations) == 2
+    
+    # Check first annotation
+    assert annotations[0]["xyxyn"] == [0.1, 0.2, 0.4, 0.6]
+    assert annotations[0]["class_name"] == "smoke"
+    assert annotations[0]["smoke_type"] == "wildfire"  # Default for true positives
+    
+    # Check second annotation
+    assert annotations[1]["xyxyn"] == [0.5, 0.3, 0.8, 0.7]
+    assert annotations[1]["class_name"] == "fire"
+    assert annotations[1]["smoke_type"] == "wildfire"  # Default for true positives
+
+
+@pytest.mark.asyncio
+async def test_true_positive_sequence_empty_predictions_fallback(
+    authenticated_client: AsyncClient, sequence_session
+):
+    """Test that true positive sequences with no/invalid model predictions fall back to empty annotations."""
+    
+    # Create a detection with empty algo_predictions
+    detection_payload = {
+        "sequence_id": "1",
+        "alert_api_id": "4001",
+        "recorded_at": "2024-01-15T10:25:00",
+        "algo_predictions": json.dumps({"predictions": []})  # Empty predictions
+    }
+    
+    # Create test image
+    import io
+    img = Image.new('RGB', (100, 100), color='green')
+    img_bytes = io.BytesIO()
+    img.save(img_bytes, format='JPEG')
+    img_bytes.seek(0)
+    
+    files = {"file": ("test.jpg", img_bytes, "image/jpeg")}
+    response = await authenticated_client.post("/detections", data=detection_payload, files=files)
+    assert response.status_code == 201
+    detection_id = response.json()["id"]
+
+    # Create a true positive sequence annotation
+    true_positive_payload = {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": True,
+                    "false_positive_types": [],
+                    "bboxes": [{"detection_id": detection_id, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                }
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
+        "created_at": datetime.utcnow().isoformat(),
+    }
+
+    # Create the sequence annotation
+    response = await authenticated_client.post("/annotations/sequences/", json=true_positive_payload)
+    assert response.status_code == 201
+
+    # Check the detection annotation
+    response = await authenticated_client.get(f"/annotations/detections/?sequence_id=1")
+    assert response.status_code == 200
+    detection_annotations = response.json()["items"]
+    
+    detection_annotation = None
+    for ann in detection_annotations:
+        if ann["detection_id"] == detection_id:
+            detection_annotation = ann
+            break
+    
+    assert detection_annotation is not None
+    assert detection_annotation["processing_stage"] == "visual_check"
+    # Should fall back to empty annotation when predictions are empty
+    assert detection_annotation["annotation"] == {"annotation": []}
+
+
+@pytest.mark.asyncio
+async def test_mixed_sequence_normal_bbox_annotation(
+    authenticated_client: AsyncClient, sequence_session
+):
+    """Test that mixed sequences (smoke + false positives or missed smoke) create BBOX_ANNOTATION detection annotations."""
+    
+    # Create a detection for the sequence
+    detection_payload = {
+        "sequence_id": "1",
+        "alert_api_id": "5001",
+        "recorded_at": "2024-01-15T10:25:00",
+        "algo_predictions": json.dumps({
+            "predictions": [
+                {
+                    "xyxyn": [0.1, 0.1, 0.3, 0.3],
+                    "confidence": 0.75,
+                    "class_name": "smoke"
+                }
+            ]
+        })
+    }
+    
+    # Create test image
+    import io
+    img = Image.new('RGB', (100, 100), color='purple')
+    img_bytes = io.BytesIO()
+    img.save(img_bytes, format='JPEG')
+    img_bytes.seek(0)
+    
+    files = {"file": ("test.jpg", img_bytes, "image/jpeg")}
+    response = await authenticated_client.post("/detections", data=detection_payload, files=files)
+    assert response.status_code == 201
+    detection_id = response.json()["id"]
+
+    # Create a mixed sequence annotation (has smoke + has false positives)
+    mixed_payload = {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": True,  # Has smoke
+                    "false_positive_types": ["antenna"],  # Also has false positives
+                    "bboxes": [{"detection_id": detection_id, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                }
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
+        "created_at": datetime.utcnow().isoformat(),
+    }
+
+    # Create the sequence annotation
+    response = await authenticated_client.post("/annotations/sequences/", json=mixed_payload)
+    assert response.status_code == 201
+    seq_annotation = response.json()
+    
+    # Verify sequence annotation properties
+    assert seq_annotation["has_smoke"] is True
+    assert seq_annotation["has_false_positives"] is True
+    assert seq_annotation["has_missed_smoke"] is False
+
+    # Check the detection annotation
+    response = await authenticated_client.get(f"/annotations/detections/?sequence_id=1")
+    assert response.status_code == 200
+    detection_annotations = response.json()["items"]
+    
+    detection_annotation = None
+    for ann in detection_annotations:
+        if ann["detection_id"] == detection_id:
+            detection_annotation = ann
+            break
+    
+    assert detection_annotation is not None
+    # Mixed sequences should use BBOX_ANNOTATION (manual drawing required)
+    assert detection_annotation["processing_stage"] == "bbox_annotation"
+    # Should have empty annotation (user needs to draw manually)
+    assert detection_annotation["annotation"] == {"annotation": []}
+
+
+@pytest.mark.asyncio
+async def test_convert_algo_predictions_to_annotation_helper():
+    """Test the convert_algo_predictions_to_annotation helper function directly."""
+    from app.api.api_v1.endpoints.sequence_annotations import convert_algo_predictions_to_annotation
+    
+    # Test with valid predictions
+    algo_predictions = {
+        "predictions": [
+            {
+                "xyxyn": [0.1, 0.2, 0.4, 0.6],
+                "confidence": 0.92,
+                "class_name": "smoke"
+            },
+            {
+                "xyxyn": [0.5, 0.3, 0.8, 0.7],
+                "confidence": 0.85,
+                "class_name": "fire"
+            }
+        ]
+    }
+    
+    result = convert_algo_predictions_to_annotation(algo_predictions)
+    
+    assert "annotation" in result
+    annotations = result["annotation"]
+    assert len(annotations) == 2
+    
+    # Check first annotation
+    assert annotations[0]["xyxyn"] == [0.1, 0.2, 0.4, 0.6]
+    assert annotations[0]["class_name"] == "smoke"
+    assert annotations[0]["smoke_type"] == "wildfire"
+    
+    # Check second annotation
+    assert annotations[1]["xyxyn"] == [0.5, 0.3, 0.8, 0.7]
+    assert annotations[1]["class_name"] == "fire"
+    assert annotations[1]["smoke_type"] == "wildfire"
+
+    # Test with None input
+    result = convert_algo_predictions_to_annotation(None)
+    assert result == {"annotation": []}
+    
+    # Test with empty predictions
+    result = convert_algo_predictions_to_annotation({"predictions": []})
+    assert result == {"annotation": []}
+    
+    # Test with missing predictions key
+    result = convert_algo_predictions_to_annotation({"other_key": "value"})
+    assert result == {"annotation": []}
+    
+    # Test with invalid prediction format (missing xyxyn)
+    invalid_predictions = {
+        "predictions": [
+            {
+                "confidence": 0.85,
+                "class_name": "smoke"
+                # Missing xyxyn
+            },
+            {
+                "xyxyn": [0.1, 0.2, 0.3, 0.4],
+                "confidence": 0.90,
+                "class_name": "fire"
+            }
+        ]
+    }
+    
+    result = convert_algo_predictions_to_annotation(invalid_predictions)
+    # Should skip invalid prediction and include only the valid one
+    assert len(result["annotation"]) == 1
+    assert result["annotation"][0]["xyxyn"] == [0.1, 0.2, 0.3, 0.4]
+    assert result["annotation"][0]["class_name"] == "fire"
+    
+    # Test with invalid xyxyn format
+    invalid_xyxyn_predictions = {
+        "predictions": [
+            {
+                "xyxyn": [0.1, 0.2],  # Too short
+                "confidence": 0.85,
+                "class_name": "smoke"
+            },
+            {
+                "xyxyn": "not_a_list",  # Wrong type
+                "confidence": 0.90,
+                "class_name": "fire"
+            }
+        ]
+    }
+    
+    result = convert_algo_predictions_to_annotation(invalid_xyxyn_predictions)
+    # Should skip both invalid predictions
+    assert result == {"annotation": []}
+    
+    # Test with missing class_name (should default to "smoke")
+    missing_class_predictions = {
+        "predictions": [
+            {
+                "xyxyn": [0.1, 0.2, 0.3, 0.4],
+                "confidence": 0.85
+                # Missing class_name
+            }
+        ]
+    }
+    
+    result = convert_algo_predictions_to_annotation(missing_class_predictions)
+    assert len(result["annotation"]) == 1
+    assert result["annotation"][0]["class_name"] == "smoke"  # Default value
+    assert result["annotation"][0]["smoke_type"] == "wildfire"
