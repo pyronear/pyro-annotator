@@ -84,7 +84,7 @@ async def test_auto_create_detection_annotations_correct_structure(
     ), "Detection annotation should be auto-created for detection_id 2"
 
     # Step 4: CRITICAL TEST - Verify the annotation field has the correct structure
-    # The fixed backend should create {"annotation": []} instead of {}
+    # For true positive sequences, annotations should be pre-populated with model predictions
     assert (
         "annotation" in detection_1_annotation
     ), "Detection annotation should have 'annotation' field"
@@ -97,9 +97,12 @@ async def test_auto_create_detection_annotations_correct_structure(
     assert isinstance(
         detection_1_annotation["annotation"]["annotation"], list
     ), "Annotation.annotation should be a list"
-    assert (
-        detection_1_annotation["annotation"]["annotation"] == []
-    ), "Annotation.annotation should be an empty list initially"
+    # For true positive sequences, should be pre-populated with model predictions
+    annotations = detection_1_annotation["annotation"]["annotation"]
+    assert len(annotations) == 1, "Should have one prediction pre-populated"
+    assert annotations[0]["class_name"] == "smoke", "Should have smoke prediction"
+    assert annotations[0]["smoke_type"] == "wildfire", "Should default to wildfire"
+    assert annotations[0]["xyxyn"] == [0.12, 0.13, 0.45, 0.48], "Should match model prediction coordinates"
 
     # Same verification for second detection
     assert (
@@ -114,17 +117,20 @@ async def test_auto_create_detection_annotations_correct_structure(
     assert isinstance(
         detection_2_annotation["annotation"]["annotation"], list
     ), "Annotation.annotation should be a list"
-    assert (
-        detection_2_annotation["annotation"]["annotation"] == []
-    ), "Annotation.annotation should be an empty list initially"
+    # For true positive sequences, should be pre-populated with model predictions
+    annotations_2 = detection_2_annotation["annotation"]["annotation"]
+    assert len(annotations_2) == 1, "Should have one prediction pre-populated"
+    assert annotations_2[0]["class_name"] == "fire", "Should have fire prediction"
+    assert annotations_2[0]["smoke_type"] == "wildfire", "Should default to wildfire"
+    assert annotations_2[0]["xyxyn"] == [0.2, 0.25, 0.5, 0.55], "Should match model prediction coordinates"
 
-    # Step 5: Verify processing_stage is set correctly (should be 'bbox_annotation' since has_smoke=True)
+    # Step 5: Verify processing_stage is set correctly (should be 'visual_check' for true positive only sequences)
     assert (
-        detection_1_annotation["processing_stage"] == "bbox_annotation"
-    ), "Processing stage should be bbox_annotation for smoke detection"
+        detection_1_annotation["processing_stage"] == "visual_check"
+    ), "Processing stage should be 'visual_check' for true positive only sequences (smoke, no false positives, no missed smoke)"
     assert (
-        detection_2_annotation["processing_stage"] == "bbox_annotation"
-    ), "Processing stage should be bbox_annotation for smoke detection"
+        detection_2_annotation["processing_stage"] == "visual_check"
+    ), "Processing stage should be 'visual_check' for true positive only sequences (smoke, no false positives, no missed smoke)"
 
 @pytest.mark.asyncio
 async def test_auto_create_detection_annotations_update_scenario(
@@ -192,13 +198,15 @@ async def test_auto_create_detection_annotations_update_scenario(
         detection_1_annotation is not None
     ), "Detection annotation should be auto-created after update to 'annotated'"
 
-    # Step 5: Verify the correct annotation structure
+    # Step 5: Verify the correct annotation structure - should be pre-populated for true positive sequences
+    annotations = detection_1_annotation["annotation"]["annotation"]
+    assert len(annotations) == 1, "Should have one prediction pre-populated for true positive sequence"
+    assert annotations[0]["class_name"] == "smoke", "Should have smoke prediction from model"
+    assert annotations[0]["smoke_type"] == "wildfire", "Should default to wildfire"
+    assert annotations[0]["xyxyn"] == [0.12, 0.13, 0.45, 0.48], "Should match model prediction coordinates"
     assert (
-        detection_1_annotation["annotation"]["annotation"] == []
-    ), "Auto-created annotation should have correct empty structure"
-    assert (
-        detection_1_annotation["processing_stage"] == "bbox_annotation"
-    ), "Processing stage should be bbox_annotation for smoke detection"
+        detection_1_annotation["processing_stage"] == "visual_check"
+    ), "Processing stage should be 'visual_check' for true positive only sequences (smoke, no false positives, no missed smoke)"
 
 @pytest.mark.asyncio
 async def test_auto_create_detection_annotations_processing_stages(
@@ -209,8 +217,8 @@ async def test_auto_create_detection_annotations_processing_stages(
 ):
     """Test the business logic for determining detection annotation processing stages."""
 
-    # Test Case 1: has_missed_smoke=false AND has_false_positives=true → visual_check
-    payload_visual_check = {
+    # Test Case 1: has_missed_smoke=false AND has_false_positives=true AND has_smoke=false → annotated  
+    payload_annotated = {
         "sequence_id": 1,
         "has_missed_smoke": False,  # False
         "annotation": {
@@ -229,19 +237,23 @@ async def test_auto_create_detection_annotations_processing_stages(
     }
 
     response1 = await authenticated_client.post(
-        "/annotations/sequences/", json=payload_visual_check
+        "/annotations/sequences/", json=payload_annotated
     )
     assert response1.status_code == 201
 
-    # Check the created detection annotation has visual_check stage
+    # Check the created detection annotation has annotated stage (false positive only sequences)
     detection_annotations_response = await authenticated_client.get("/annotations/detections/")
     detection_annotations = detection_annotations_response.json()["items"]
     detection_1_annotation = next(
         ann for ann in detection_annotations if ann["detection_id"] == 1
     )
     assert (
-        detection_1_annotation["processing_stage"] == "visual_check"
-    ), "Should be visual_check for false positives only"
+        detection_1_annotation["processing_stage"] == "annotated"
+    ), "Should be annotated for false positive only sequences (no smoke, no missed smoke, has false positives)"
+    
+    # Verify annotations are empty for false positive only sequences
+    annotations = detection_1_annotation["annotation"]["annotation"]
+    assert len(annotations) == 0, "False positive only sequences should have empty annotations"
 
     # Clean up for next test - delete the sequence annotation
     await authenticated_client.delete(f"/annotations/sequences/{response1.json()['id']}")
@@ -292,15 +304,15 @@ async def test_auto_create_detection_annotations_processing_stages(
     assert detection_response.status_code == 201
     detection2_id = detection_response.json()["id"]
 
-    # Test Case 2: has_smoke=true → bbox_annotation
-    payload_bbox_annotation = {
+    # Test Case 2: has_smoke=true AND has_missed_smoke=false AND has_false_positives=false → visual_check with pre-populated predictions
+    payload_visual_check = {
         "sequence_id": sequence2_id,
         "has_missed_smoke": False,
         "annotation": {
             "sequences_bbox": [
                 {
                     "is_smoke": True,  # Has smoke
-                    "false_positive_types": [],
+                    "false_positive_types": [],  # No false positives
                     "bboxes": [
                         {"detection_id": detection2_id, "xyxyn": [0.1, 0.1, 0.2, 0.2]}
                     ]
@@ -312,11 +324,11 @@ async def test_auto_create_detection_annotations_processing_stages(
     }
 
     response2 = await authenticated_client.post(
-        "/annotations/sequences/", json=payload_bbox_annotation
+        "/annotations/sequences/", json=payload_visual_check
     )
     assert response2.status_code == 201
 
-    # Check the created detection annotation has bbox_annotation stage
+    # Check the created detection annotation has visual_check stage (true positive only sequences)
     detection_annotations_response = await authenticated_client.get("/annotations/detections/")
     detection_annotations = detection_annotations_response.json()["items"]
     detection_2_annotation = next(
@@ -325,8 +337,15 @@ async def test_auto_create_detection_annotations_processing_stages(
     )
     assert detection_2_annotation is not None, "Detection annotation should be created"
     assert (
-        detection_2_annotation["processing_stage"] == "bbox_annotation"
-    ), "Should be bbox_annotation for smoke detection"
+        detection_2_annotation["processing_stage"] == "visual_check"
+    ), "Should be visual_check for true positive only sequences (has smoke, no false positives, no missed smoke)"
+    
+    # Verify annotations are pre-populated with model predictions for true positive sequences
+    annotations = detection_2_annotation["annotation"]["annotation"]
+    assert len(annotations) == 1, "Should have one prediction pre-populated for true positive sequence"
+    assert annotations[0]["class_name"] == "smoke", "Should have smoke prediction from model"
+    assert annotations[0]["smoke_type"] == "wildfire", "Should default to wildfire"
+    assert annotations[0]["xyxyn"] == [0.15, 0.15, 0.3, 0.3], "Should match model prediction coordinates"
 
     # Test Case 3: has_missed_smoke=true → bbox_annotation (create another sequence/detection for this test)
     sequence_payload_3 = {
@@ -732,10 +751,13 @@ async def test_auto_create_avoids_duplicate_detection_annotations(
     ), "Should create exactly one annotation for detection_id=2"
 
     detection_2_annotation = detection_2_annotations[0]
-    assert (
-        detection_2_annotation["annotation"]["annotation"] == []
-    ), "New auto-created annotation should have empty structure"
-    assert detection_2_annotation["processing_stage"] == "bbox_annotation"
+    # For true positive sequences, annotations should be pre-populated with model predictions
+    annotations = detection_2_annotation["annotation"]["annotation"]
+    assert len(annotations) == 1, "Should have one prediction pre-populated for true positive sequence"
+    assert annotations[0]["class_name"] == "fire", "Should have fire prediction from model"
+    assert annotations[0]["smoke_type"] == "wildfire", "Should default to wildfire"
+    assert annotations[0]["xyxyn"] == [0.2, 0.25, 0.5, 0.55], "Should match model prediction coordinates"
+    assert detection_2_annotation["processing_stage"] == "visual_check"
 
 @pytest.mark.asyncio
 async def test_no_auto_create_when_not_annotated_stage(

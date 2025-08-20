@@ -77,6 +77,47 @@ def derive_false_positive_types(annotation_data: SequenceAnnotationData) -> List
     return unique_types
 
 
+def convert_algo_predictions_to_annotation(algo_predictions: Optional[dict]) -> dict:
+    """
+    Convert detection algo_predictions to detection annotation format.
+    
+    Args:
+        algo_predictions: Model predictions in format {"predictions": [{"xyxyn": [...], "confidence": float, "class_name": str}]}
+    
+    Returns:
+        Annotation dict in format {"annotation": [{"xyxyn": [...], "class_name": str, "smoke_type": "wildfire"}]}
+    """
+    if not algo_predictions or "predictions" not in algo_predictions:
+        return {"annotation": []}
+    
+    predictions = algo_predictions.get("predictions", [])
+    if not predictions:
+        return {"annotation": []}
+    
+    annotation_items = []
+    for prediction in predictions:
+        if not isinstance(prediction, dict):
+            continue
+            
+        # Extract required fields
+        xyxyn = prediction.get("xyxyn")
+        class_name = prediction.get("class_name", "smoke")
+        
+        # Validate xyxyn format
+        if not isinstance(xyxyn, list) or len(xyxyn) != 4:
+            continue
+            
+        # Convert to annotation format with default wildfire smoke_type
+        annotation_item = {
+            "xyxyn": xyxyn,
+            "class_name": class_name,
+            "smoke_type": "wildfire"  # Default for true positive sequences
+        }
+        annotation_items.append(annotation_item)
+    
+    return {"annotation": annotation_items}
+
+
 async def auto_create_detection_annotations(
     sequence_id: int,
     has_smoke: bool,
@@ -102,13 +143,13 @@ async def auto_create_detection_annotations(
     """
     # Determine the appropriate processing stage based on sequence annotation
     if not has_missed_smoke and has_false_positives and not has_smoke:
-        # False positive sequence with no smoke and no missed smoke → automatically annotated
+        # False positive only sequence (no smoke, no missed smoke, has false positives) → automatically annotated
         processing_stage = DetectionAnnotationProcessingStage.ANNOTATED
-    elif not has_missed_smoke and has_false_positives:
-        # False positives with smoke or missed smoke → visual check needed
+    elif has_smoke and not has_missed_smoke and not has_false_positives:
+        # True positive only sequence (has smoke, no missed smoke, no false positives) → visual check with pre-populated predictions
         processing_stage = DetectionAnnotationProcessingStage.VISUAL_CHECK
     elif has_smoke or has_missed_smoke:
-        # Smoke detected or missed smoke → bbox annotation needed
+        # Mixed cases (smoke + false positives, or missed smoke + anything) → bbox annotation needed
         processing_stage = DetectionAnnotationProcessingStage.BBOX_ANNOTATION
     else:
         # Default case (no smoke, no false positives, no missed smoke) → visual check
@@ -129,12 +170,18 @@ async def auto_create_detection_annotations(
         existing_annotation = existing_result.scalar_one_or_none()
 
         if existing_annotation is None:
-            # Create new detection annotation with empty annotation data and determined processing stage
+            # Determine annotation data based on sequence type
+            if has_smoke and not has_missed_smoke and not has_false_positives:
+                # True positive sequence: pre-populate with model predictions
+                annotation_data = convert_algo_predictions_to_annotation(detection.algo_predictions)
+            else:
+                # All other cases: start with empty annotation
+                annotation_data = {"annotation": []}
+            
+            # Create new detection annotation with determined annotation data and processing stage
             detection_annotation = DetectionAnnotation(
                 detection_id=detection.id,
-                annotation={
-                    "annotation": []
-                },  # Correct structure with empty annotation array
+                annotation=annotation_data,
                 processing_stage=processing_stage,
                 created_at=datetime.utcnow(),
             )
