@@ -101,8 +101,11 @@ async def auto_create_detection_annotations(
         session: Database session
     """
     # Determine the appropriate processing stage based on sequence annotation
-    if not has_missed_smoke and has_false_positives:
-        # Only false positives, no smoke or missed smoke → visual check needed
+    if not has_missed_smoke and has_false_positives and not has_smoke:
+        # False positive sequence with no smoke and no missed smoke → automatically annotated
+        processing_stage = DetectionAnnotationProcessingStage.ANNOTATED
+    elif not has_missed_smoke and has_false_positives:
+        # False positives with smoke or missed smoke → visual check needed
         processing_stage = DetectionAnnotationProcessingStage.VISUAL_CHECK
     elif has_smoke or has_missed_smoke:
         # Smoke detected or missed smoke → bbox annotation needed
