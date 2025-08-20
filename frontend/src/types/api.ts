@@ -2,7 +2,7 @@
 
 export interface Sequence {
   id: number;
-  source_api: 'pyronear_french' | 'alert_wildfire' | 'api_cenia';
+  source_api: string;
   alert_api_id: number;
   created_at: string;
   recorded_at: string;
@@ -115,7 +115,6 @@ export type ProcessingStage = 'imported' | 'ready_to_annotate' | 'annotated';
 // Detection-specific processing stages  
 export type DetectionProcessingStage = 'imported' | 'visual_check' | 'bbox_annotation' | 'annotated';
 
-export type SourceApi = 'pyronear_french' | 'alert_wildfire' | 'api_cenia';
 
 // API Request/Response interfaces
 export interface PaginatedResponse<T> {
@@ -127,7 +126,7 @@ export interface PaginatedResponse<T> {
 }
 
 export interface SequenceFilters {
-  source_api?: SourceApi;
+  source_api?: string;
   camera_id?: number;
   camera_name?: string;
   organisation_id?: number;
