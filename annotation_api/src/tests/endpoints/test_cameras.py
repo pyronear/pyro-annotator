@@ -11,16 +11,16 @@ from app.models import SourceApi
 
 
 @pytest.mark.asyncio
-async def test_list_cameras_empty(async_client: AsyncClient):
+async def test_list_cameras_empty(authenticated_client: AsyncClient):
     """Test listing cameras when database is empty."""
-    response = await async_client.get("/cameras")
+    response = await authenticated_client.get("/cameras")
     assert response.status_code == 200
     data = response.json()
     assert data == []
 
 
 @pytest.mark.asyncio
-async def test_list_cameras_with_sequences(async_client: AsyncClient):
+async def test_list_cameras_with_sequences(authenticated_client: AsyncClient):
     """Test listing cameras with existing sequences."""
     # Create some test sequences with different cameras
     sequences_data = [
@@ -64,11 +64,11 @@ async def test_list_cameras_with_sequences(async_client: AsyncClient):
 
     # Create sequences
     for seq_data in sequences_data:
-        response = await async_client.post("/sequences", data=seq_data)
+        response = await authenticated_client.post("/sequences", data=seq_data)
         assert response.status_code == 201
 
     # List cameras
-    response = await async_client.get("/cameras")
+    response = await authenticated_client.get("/cameras")
     assert response.status_code == 200
     cameras = response.json()
 
@@ -89,7 +89,7 @@ async def test_list_cameras_with_sequences(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_list_cameras_response_format(async_client: AsyncClient):
+async def test_list_cameras_response_format(authenticated_client: AsyncClient):
     """Test that camera response has correct format."""
     # Create a test sequence
     seq_data = {
@@ -104,11 +104,11 @@ async def test_list_cameras_response_format(async_client: AsyncClient):
         "recorded_at": "2024-01-15T10:00:00",
         "last_seen_at": "2024-01-15T10:30:00",
     }
-    response = await async_client.post("/sequences", data=seq_data)
+    response = await authenticated_client.post("/sequences", data=seq_data)
     assert response.status_code == 201
 
     # Get cameras
-    response = await async_client.get("/cameras")
+    response = await authenticated_client.get("/cameras")
     assert response.status_code == 200
     cameras = response.json()
     assert len(cameras) == 1

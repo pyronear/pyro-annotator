@@ -20,7 +20,7 @@ from fastapi_pagination.ext.sqlalchemy import apaginate
 from sqlalchemy import asc, desc, select, text
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.api.dependencies import get_sequence_annotation_crud
+from app.api.dependencies import get_current_user, get_sequence_annotation_crud
 from app.crud import SequenceAnnotationCRUD
 from app.db import get_session
 from app.models import (
@@ -190,6 +190,7 @@ async def validate_detection_ids(
 async def create_sequence_annotation(
     create_data: SequenceAnnotationCreate = Body(...),
     annotations: SequenceAnnotationCRUD = Depends(get_sequence_annotation_crud),
+    current_user: str = Depends(get_current_user),
 ) -> SequenceAnnotationRead:
     # Validate that all detection_ids exist in the database
     await validate_detection_ids(create_data.annotation, annotations.session)
@@ -259,6 +260,7 @@ async def list_sequence_annotations(
     ),
     session: AsyncSession = Depends(get_session),
     params: Params = Depends(),
+    current_user: str = Depends(get_current_user),
 ) -> Page[SequenceAnnotationRead]:
     """
     List sequence annotations with filtering, pagination and ordering.
@@ -336,6 +338,7 @@ async def list_sequence_annotations(
 async def get_sequence_annotation(
     annotation_id: int = Path(..., ge=0),
     annotations: SequenceAnnotationCRUD = Depends(get_sequence_annotation_crud),
+    current_user: str = Depends(get_current_user),
 ) -> SequenceAnnotationRead:
     return await annotations.get(annotation_id, strict=True)
 
@@ -345,6 +348,7 @@ async def update_sequence_annotation(
     annotation_id: int = Path(..., ge=0),
     payload: SequenceAnnotationUpdate = Body(...),
     annotations: SequenceAnnotationCRUD = Depends(get_sequence_annotation_crud),
+    current_user: str = Depends(get_current_user),
 ) -> SequenceAnnotationRead:
     # Get existing annotation
     existing = await annotations.get(annotation_id, strict=True)
@@ -408,5 +412,6 @@ async def update_sequence_annotation(
 async def delete_sequence_annotation(
     annotation_id: int = Path(..., ge=0),
     annotations: SequenceAnnotationCRUD = Depends(get_sequence_annotation_crud),
+    current_user: str = Depends(get_current_user),
 ) -> None:
     await annotations.delete(annotation_id)

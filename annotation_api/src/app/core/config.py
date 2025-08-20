@@ -19,6 +19,13 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
     CORS_ORIGIN: str = "*"
     SUPPORT_EMAIL: str = os.environ.get("SUPPORT_EMAIL", "support@pyronear.org")
+    
+    # Authentication
+    AUTH_USERNAME: str = os.environ.get("AUTH_USERNAME", "admin")
+    AUTH_PASSWORD: str = os.environ.get("AUTH_PASSWORD", "admin")
+    JWT_SECRET: str = os.environ.get("JWT_SECRET", "your-secret-key-change-in-production")
+    ACCESS_TOKEN_EXPIRE_HOURS: int = int(os.environ.get("ACCESS_TOKEN_EXPIRE_HOURS", "24"))
+    
     # DB
     POSTGRES_URL: str = os.environ["POSTGRES_URL"]
 

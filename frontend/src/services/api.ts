@@ -34,9 +34,22 @@ class ApiClient {
       },
     });
 
-    // Request interceptor
+    // Request interceptor to add authentication token
     this.client.interceptors.request.use(
       (config) => {
+        // Get token from localStorage (where zustand persists it)
+        const authStore = localStorage.getItem('auth-store');
+        if (authStore) {
+          try {
+            const parsedStore = JSON.parse(authStore);
+            const token = parsedStore.state?.token;
+            if (token) {
+              config.headers.Authorization = `Bearer ${token}`;
+            }
+          } catch (error) {
+            // Ignore parsing errors
+          }
+        }
         return config;
       },
       (error) => Promise.reject(error)
@@ -46,6 +59,13 @@ class ApiClient {
     this.client.interceptors.response.use(
       (response) => response,
       (error) => {
+        // Handle 401 errors by triggering logout
+        if (error.response?.status === 401) {
+          // Clear auth store and redirect to login
+          localStorage.removeItem('auth-store');
+          window.location.href = '/login';
+        }
+        
         const apiError: ApiError = {
           detail: error.response?.data?.detail || error.message || 'Unknown error occurred',
         };
