@@ -1,16 +1,15 @@
 """
 CLI script for end-to-end platform data import and processing.
 
-This script combines platform data fetching and annotation generation into a streamlined workflow:
+This script provides a streamlined workflow to fetch platform data and generate annotations:
 1. Fetch sequences and detections from the Pyronear platform API
-2. For each sequence: generate annotations from AI predictions and set ready for annotation
+2. Import successfully fetched data into the annotation API
+3. Generate annotations from AI predictions for successfully imported sequences only
+4. Set sequences to READY_TO_ANNOTATE stage
 
 Usage:
   # Basic usage - full pipeline for date range
   uv run python -m scripts.data_transfer.ingestion.platform.import --date-from 2024-01-01 --date-end 2024-01-02
-
-  # Skip platform fetch (use existing sequences)
-  uv run python -m scripts.data_transfer.ingestion.platform.import --date-from 2024-01-01 --skip-platform-fetch
 
   # Process ALL predictions (confidence 0.0)
   uv run python -m scripts.data_transfer.ingestion.platform.import --date-from 2024-01-01 --confidence-threshold 0.0
@@ -30,7 +29,6 @@ Arguments:
   --min-cluster-size (int): Min boxes per cluster (default: 1)
   --max-workers (int): Max workers for parallel processing, auto-scales for different operations (default: 4)
   --dry-run: Preview actions without execution
-  --skip-platform-fetch: Skip step 1 (use existing sequences in annotation API)
   --loglevel (str): Logging level (debug/info/warning/error, default: info)
 
 Environment variables required:
@@ -73,7 +71,6 @@ from .annotation_processing import SequenceAnalyzer
 from .sequence_fetching import fetch_all_sequences_within
 from .annotation_management import (
     valid_date,
-    get_sequences_from_annotation_api,
     process_single_sequence,
 )
 
@@ -164,11 +161,6 @@ def make_cli_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Preview actions without executing them",
     )
-    parser.add_argument(
-        "--skip-platform-fetch",
-        action="store_true",
-        help="Skip platform data fetching (use existing sequences in annotation API)",
-    )
 
     # Concurrency control
     parser.add_argument(
@@ -248,13 +240,26 @@ def main() -> None:
     step_manager = StepManager(console, show_timing=True)
     error_collector = ErrorCollector()
     
-    # Initialize statistics
+    # Initialize comprehensive statistics
     stats = {
-        "total_sequences": 0,
-        "successful_sequences": 0,
-        "failed_sequences": 0,
+        # Import statistics (Step 1)
+        "records_fetched": 0,
+        "sequences_attempted_import": 0, 
+        "sequences_import_successful": 0,
+        "sequences_import_failed": 0,
+        "detections_attempted_import": 0,
+        "detections_import_successful": 0,
+        "detections_import_failed": 0,
+        
+        # Annotation statistics (Step 4)
+        "total_sequences_for_annotation": 0,
+        "annotations_successful": 0,
+        "annotations_failed": 0,
         "annotations_created": 0,
     }
+    
+    # Initialize organization early to avoid reference errors in exception handlers
+    organization = os.getenv("PLATFORM_LOGIN") or "unknown"
 
     # Print header
     console.print()
@@ -271,151 +276,162 @@ def main() -> None:
         console.print(f"[blue]ℹ️  Analysis config: confidence={args.confidence_threshold}, iou={args.iou_threshold}, min_cluster={args.min_cluster_size}[/]")
 
     try:
-        # Step 1: Fetch platform data (if not skipped)
-        if not args.skip_platform_fetch:
-            step_manager.start_step(
-                1, 
-                "Platform Data Import",
-                f"Fetching data from {args.date_from} to {args.date_end} using {worker_config.base_workers} workers"
-            )
+        # Step 1: Fetch platform data
+        successfully_imported_sequence_ids = []
+        step_manager.start_step(
+            1, 
+            "Platform Data Import",
+            f"Fetching {organization} data from {args.date_from} to {args.date_end} using {worker_config.base_workers} workers"
+        )
 
-            if not shared.validate_available_env_variables():
-                console.print("[red]❌ Missing required environment variables for platform API[/]")
-                step_manager.complete_step(False, "Missing environment variables")
-                sys.exit(1)
+        if not shared.validate_available_env_variables():
+            console.print("[red]❌ Missing required environment variables for platform API[/]")
+            step_manager.complete_step(False, "Missing environment variables")
+            sys.exit(1)
 
-            # Get platform credentials
-            platform_login = os.getenv("PLATFORM_LOGIN")
-            platform_password = os.getenv("PLATFORM_PASSWORD")
-            platform_admin_login = os.getenv("PLATFORM_ADMIN_LOGIN")
-            platform_admin_password = os.getenv("PLATFORM_ADMIN_PASSWORD")
+        # Get platform credentials
+        platform_login = os.getenv("PLATFORM_LOGIN")
+        platform_password = os.getenv("PLATFORM_PASSWORD")
+        platform_admin_login = os.getenv("PLATFORM_ADMIN_LOGIN")
+        platform_admin_password = os.getenv("PLATFORM_ADMIN_PASSWORD")
 
-            if not all([platform_login, platform_password, platform_admin_login, platform_admin_password]):
-                error_collector.add_error("Missing platform credentials")
-                step_manager.complete_step(False, "Missing platform credentials")
-                sys.exit(1)
+        if not all([platform_login, platform_password, platform_admin_login, platform_admin_password]):
+            error_collector.add_error("Missing platform credentials")
+            step_manager.complete_step(False, "Missing platform credentials")
+            sys.exit(1)
 
-            # Get access tokens with progress display
-            auth_start_time = time.time()
-            with console.status("[bold blue]🔐 Authenticating with platform API...", spinner="dots") as status:
-                try:
-                    status.update("[bold blue]🔐 Getting user access token...")
-                    access_token = platform_client.get_api_access_token(
-                        api_endpoint=args.url_api_platform,
-                        username=platform_login,
-                        password=platform_password,
-                    )
-                    
-                    status.update("[bold blue]🔐 Getting admin access token...")
-                    access_token_admin = platform_client.get_api_access_token(
-                        api_endpoint=args.url_api_platform,
-                        username=platform_admin_login,
-                        password=platform_admin_password,
-                    )
-                    
-                    auth_duration = time.time() - auth_start_time
-                    console.print(f"[green]✅ Authentication successful[/] [dim]({auth_duration:.1f}s)[/]")
-                    
-                except Exception as e:
-                    error_collector.add_error(f"Authentication failed: {e}")
-                    step_manager.complete_step(False, f"Authentication failed: {e}")
-                    sys.exit(1)
-
-            # Fetch platform records
+        # Get access tokens with progress display
+        auth_start_time = time.time()
+        with console.status(f"[bold blue]🔐 Authenticating with platform API ({organization})...", spinner="dots") as status:
             try:
-                records = fetch_all_sequences_within(
-                    date_from=args.date_from,
-                    date_end=args.date_end,
-                    detections_limit=args.detections_limit,
-                    detections_order_by=args.detections_order_by,
+                status.update(f"[bold blue]🔐 Getting {organization} access token...")
+                access_token = platform_client.get_api_access_token(
                     api_endpoint=args.url_api_platform,
-                    access_token=access_token,
-                    access_token_admin=access_token_admin,
-                    worker_config=worker_config,
-                    suppress_logs=suppress_logs,
-                    console=console,
-                    error_collector=error_collector,
+                    username=platform_login,
+                    password=platform_password,
                 )
+                
+                status.update("[bold blue]🔐 Getting admin access token...")
+                access_token_admin = platform_client.get_api_access_token(
+                    api_endpoint=args.url_api_platform,
+                    username=platform_admin_login,
+                    password=platform_admin_password,
+                )
+                
+                auth_duration = time.time() - auth_start_time
+                console.print(f"[green]✅ Authentication successful[/] [dim]({auth_duration:.1f}s)[/]")
+                
             except Exception as e:
-                error_collector.add_error(f"Platform data fetching failed: {e}")
-                step_manager.complete_step(False, f"Platform data fetching failed: {e}")
-                error_collector.print_summary(console, "Platform Data Fetching Errors")
+                error_collector.add_error(f"Authentication failed: {e}")
+                step_manager.complete_step(False, f"Authentication failed: {e}")
                 sys.exit(1)
 
-            if not records and not args.dry_run:
-                step_manager.complete_step(False, "No records fetched from platform API")
-                sys.exit(0)
+        # Fetch platform records
+        try:
+            records = fetch_all_sequences_within(
+                date_from=args.date_from,
+                date_end=args.date_end,
+                detections_limit=args.detections_limit,
+                detections_order_by=args.detections_order_by,
+                api_endpoint=args.url_api_platform,
+                access_token=access_token,
+                access_token_admin=access_token_admin,
+                worker_config=worker_config,
+                suppress_logs=suppress_logs,
+                console=console,
+                error_collector=error_collector,
+                organization=organization,
+            )
+        except Exception as e:
+            error_collector.add_error(f"Platform data fetching failed: {e}")
+            step_manager.complete_step(False, f"Platform data fetching failed: {e}")
+            error_collector.print_summary(console, "Platform Data Fetching Errors")
+            sys.exit(1)
 
-            # Post to annotation API (if not dry run)
-            if not args.dry_run:
-                console.print(f"[blue]🚀 Posting {len(records)} records to annotation API...[/]")
+        if not records and not args.dry_run:
+            step_manager.complete_step(False, "No records fetched from platform API")
+            sys.exit(0)
+
+        # Post to annotation API (if not dry run)
+        if not args.dry_run:
+            console.print(f"[blue]🚀 Posting {len(records)} records to annotation API...[/]")
+            
+            try:
+                result = shared.post_records_to_annotation_api(
+                    args.url_api_annotation, 
+                    records, 
+                    max_workers=worker_config.api_posting,
+                    max_detection_workers=worker_config.detection_per_sequence,
+                    suppress_logs=suppress_logs
+                )
+
+                # Capture import statistics in main stats and get successfully imported sequence IDs
+                stats["records_fetched"] = len(records)
+                stats["sequences_attempted_import"] = result['total_sequences']
+                stats["sequences_import_successful"] = result['successful_sequences']
+                stats["sequences_import_failed"] = result['failed_sequences']
+                stats["detections_attempted_import"] = result['total_detections']
+                stats["detections_import_successful"] = result['successful_detections']
+                stats["detections_import_failed"] = result['failed_detections']
+                successfully_imported_sequence_ids = result['successful_sequence_ids']
+
+                # Prepare step completion stats for display
+                step_stats = {
+                    "Records fetched": len(records),
+                    "Sequences posted": f"{result['successful_sequences']}/{result['total_sequences']}",
+                    "Detections posted": f"{result['successful_detections']}/{result['total_detections']}"
+                }
                 
-                try:
-                    result = shared.post_records_to_annotation_api(
-                        args.url_api_annotation, 
-                        records, 
-                        max_workers=worker_config.api_posting,
-                        max_detection_workers=worker_config.detection_per_sequence,
-                        suppress_logs=suppress_logs
+                step_success = result["failed_sequences"] == 0 and result["failed_detections"] == 0
+                step_message = "Platform data successfully imported" if step_success else "Platform data imported with some failures"
+                
+                step_manager.complete_step(step_success, step_message, step_stats)
+                
+                if result["failed_sequences"] > 0 or result["failed_detections"] > 0:
+                    error_collector.add_warning(
+                        f"{result['failed_sequences']} sequences and {result['failed_detections']} detections failed to import (likely duplicates)"
                     )
 
-                    # Prepare step completion stats
-                    step_stats = {
-                        "Records fetched": len(records),
-                        "Sequences posted": f"{result['successful_sequences']}/{result['total_sequences']}",
-                        "Detections posted": f"{result['successful_detections']}/{result['total_detections']}"
-                    }
-                    
-                    step_success = result["failed_sequences"] == 0 and result["failed_detections"] == 0
-                    step_message = "Platform data successfully imported" if step_success else "Platform data imported with some failures"
-                    
-                    step_manager.complete_step(step_success, step_message, step_stats)
-                    
-                    if result["failed_sequences"] > 0 or result["failed_detections"] > 0:
-                        error_collector.add_warning(
-                            f"{result['failed_sequences']} sequences and {result['failed_detections']} detections failed to import"
-                        )
-
-                except Exception as e:
-                    error_collector.add_error(f"Failed to post data to annotation API: {e}")
-                    step_manager.complete_step(False, f"Failed to post data to annotation API: {e}")
-                    error_collector.print_summary(console, "Platform Data Import Errors")
-                    sys.exit(1)
-            else:
-                step_stats = {"Records that would be posted": len(records)}
-                step_manager.complete_step(True, "DRY RUN: Platform data fetch completed", step_stats)
-
+            except Exception as e:
+                error_collector.add_error(f"Failed to post data to annotation API: {e}")
+                step_manager.complete_step(False, f"Failed to post data to annotation API: {e}")
+                error_collector.print_summary(console, "Platform Data Import Errors")
+                sys.exit(1)
         else:
-            step_manager.start_step(1, "Platform Data Import", "Skipped per user request")
-            step_manager.complete_step(True, "Platform data fetch skipped")
+            # For dry run, capture what would have been imported but don't set sequence IDs
+            stats["records_fetched"] = len(records)
+            step_stats = {"Records that would be posted": len(records)}
+            step_manager.complete_step(True, "DRY RUN: Platform data fetch completed", step_stats)
 
-        # Step 2: Get sequences to process
+        # Step 2: Prepare sequences for annotation generation
         step_manager.start_step(
             2, 
-            "Sequence Discovery",
-            f"Finding sequences in annotation API for date range {args.date_from} to {args.date_end}"
+            "Sequence Preparation",
+            f"Preparing successfully imported {organization} sequences for annotation generation"
         )
         
-        try:
-            sequence_ids = get_sequences_from_annotation_api(
-                args.url_api_annotation,
-                args.date_from,
-                args.date_end,
-            )
-
-            if not sequence_ids:
-                step_manager.complete_step(False, "No sequences found to process")
-                sys.exit(1)
-
-            stats["total_sequences"] = len(sequence_ids)
-            step_stats = {"Sequences found": len(sequence_ids)}
-            step_manager.complete_step(True, f"Found {len(sequence_ids)} sequences to process", step_stats)
+        # Use only successfully imported sequences for annotation processing
+        sequence_ids = successfully_imported_sequence_ids
+        
+        if not sequence_ids:
+            step_message = "No sequences successfully imported - nothing to process for annotation generation"
+            step_manager.complete_step(True, step_message)
             
-        except Exception as e:
-            error_collector.add_error(f"Failed to fetch sequences from annotation API: {e}")
-            step_manager.complete_step(False, f"Failed to fetch sequences: {e}")
-            error_collector.print_summary(console, "Sequence Discovery Errors")
-            sys.exit(1)
+            # Show final summary with zero processing and exit gracefully
+            console.print()
+            panel = Panel(
+                f"[yellow]No sequences were successfully imported from {organization} platform data.\n"
+                f"Check import statistics above for details (likely all were duplicates).[/]",
+                title=f"⚠️ Processing Complete - {organization} - No Annotations Generated",
+                border_style="yellow",
+                padding=(1, 2)
+            )
+            console.print(panel)
+            sys.exit(0)
+
+        stats["total_sequences_for_annotation"] = len(sequence_ids)
+        step_stats = {"Successfully imported sequences": len(sequence_ids)}
+        step_manager.complete_step(True, f"Prepared {len(sequence_ids)} sequences for annotation generation", step_stats)
 
         # Step 3: Initialize sequence analyzer
         step_manager.start_step(
@@ -481,13 +497,13 @@ def main() -> None:
                         try:
                             result = future.result()
 
-                            # Update statistics
+                            # Update annotation statistics
                             if result["errors"]:
-                                stats["failed_sequences"] += 1
+                                stats["annotations_failed"] += 1
                                 for error in result["errors"]:
                                     error_collector.add_error(f"Sequence {sequence_id}: {error}")
                             else:
-                                stats["successful_sequences"] += 1
+                                stats["annotations_successful"] += 1
 
                             if result["annotation_created"]:
                                 stats["annotations_created"] += 1
@@ -503,19 +519,19 @@ def main() -> None:
                         except Exception as e:
                             error_msg = f"Unexpected error processing sequence {sequence_id}: {e}"
                             error_collector.add_error(error_msg)
-                            stats["failed_sequences"] += 1
+                            stats["annotations_failed"] += 1
                             progress_bar.advance(task)
 
-        # Complete Step 4 with final statistics
-        step_4_success = stats["failed_sequences"] == 0
+        # Complete Step 4 with annotation statistics
+        step_4_success = stats["annotations_failed"] == 0
         final_stats = {
-            "Total sequences": stats['total_sequences'],
-            "Successful": stats['successful_sequences'],
-            "Failed": stats['failed_sequences'],
+            "Sequences processed": stats['total_sequences_for_annotation'],
+            "Annotations successful": stats['annotations_successful'],
+            "Annotations failed": stats['annotations_failed'],
             "Annotations created": stats['annotations_created']
         }
         
-        step_4_message = "All sequences processed successfully" if step_4_success else f"{stats['failed_sequences']} sequences failed"
+        step_4_message = "All sequences processed successfully" if step_4_success else f"{stats['annotations_failed']} annotation(s) failed"
         if args.dry_run:
             step_4_message = "DRY RUN: " + step_4_message
             
@@ -525,30 +541,60 @@ def main() -> None:
         if error_collector.has_issues():
             error_collector.print_summary(console, "Processing Summary")
 
-        # Final summary panel
+        # Enhanced final summary panel with import and annotation breakdown
         console.print()
-        success = stats["failed_sequences"] == 0
+        
+        # Determine overall success (critical failures, not including expected duplicates)
+        has_critical_failures = (
+            stats["annotations_failed"] > 0 or
+            error_collector.get_error_count() > 0
+        )
+        
+        success = not has_critical_failures
         style = "green" if success else "red"
         icon = "✅" if success else "❌"
         
-        summary_text = f"""[bold]Total Sequences:[/] {stats['total_sequences']}
-[bold]Successful:[/] {stats['successful_sequences']}
-[bold]Failed:[/] {stats['failed_sequences']}
-[bold]Annotations Created:[/] {stats['annotations_created']}"""
+        # Build comprehensive summary
+        summary_parts = []
         
+        # Platform Import Section
+        if not args.dry_run:
+            import_section = f"""[bold cyan]PLATFORM IMPORT:[/]
+• Records fetched: {stats['records_fetched']}
+• Sequences attempted: {stats['sequences_attempted_import']}
+• Successfully imported: {stats['sequences_import_successful']}
+• Failed/duplicates: {stats['sequences_import_failed']}"""
+            summary_parts.append(import_section)
+        
+        # Annotation Generation Section
+        annotation_section = f"""[bold blue]ANNOTATION GENERATION:[/]
+• Sequences processed: {stats['total_sequences_for_annotation']}
+• Annotations successful: {stats['annotations_successful']}
+• Annotations failed: {stats['annotations_failed']}
+• Annotations created: {stats['annotations_created']}"""
+        summary_parts.append(annotation_section)
+        
+        # Join sections
+        summary_text = "\n\n".join(summary_parts)
+        
+        # Add dry run notice
         if args.dry_run:
             summary_text += "\n\n[yellow]DRY RUN: No actual changes were made[/]"
         
+        # Add context note about duplicates if applicable
+        if stats.get("sequences_import_failed", 0) > 0 and stats["annotations_failed"] == 0:
+            summary_text += f"\n\n[dim]Note: {stats['sequences_import_failed']} sequences failed import (likely duplicates from re-running same dates)[/]"
+        
         panel = Panel(
             summary_text,
-            title=f"{icon} Processing Complete",
+            title=f"{icon} Processing Complete - {organization}",
             border_style=style,
             padding=(1, 2)
         )
         console.print(panel)
 
-        # Exit with appropriate code
-        if stats["failed_sequences"] > 0:
+        # Exit with appropriate code (only exit with error for critical failures)
+        if has_critical_failures:
             sys.exit(1)
         else:
             sys.exit(0)

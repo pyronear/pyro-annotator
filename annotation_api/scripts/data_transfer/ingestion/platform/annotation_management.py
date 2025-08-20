@@ -33,7 +33,6 @@ from datetime import date, datetime
 from typing import List, Dict, Any, Optional
 
 from app.clients.annotation_api import (
-    list_sequences,
     list_sequence_annotations,
     create_sequence_annotation,
     update_sequence_annotation,
@@ -201,92 +200,6 @@ def create_annotation_from_data(
         logging.error(f"Error creating/updating annotation for sequence {sequence_id}: {e}")
         return False
 
-
-def get_sequences_from_annotation_api(
-    base_url: str, 
-    date_from: date, 
-    date_end: date
-) -> List[int]:
-    """
-    Get sequence IDs from the annotation API for a date range.
-    
-    This function fetches sequences from the annotation API and filters them
-    by the specified date range using client-side filtering.
-    
-    Args:
-        base_url: Annotation API base URL
-        date_from: Start date for filtering
-        date_end: End date for filtering
-        
-    Returns:
-        List of sequence IDs within the date range
-        
-    Example:
-        >>> from datetime import date
-        >>> sequence_ids = get_sequences_from_annotation_api(
-        ...     "http://localhost:5050",
-        ...     date(2024, 1, 1),
-        ...     date(2024, 1, 2)
-        ... )
-        >>> print(f"Found {len(sequence_ids)} sequences")
-    """
-    try:
-        # Format dates for filtering
-        date_from_str = date_from.strftime("%Y-%m-%d")
-        date_end_str = date_end.strftime("%Y-%m-%d")
-
-        logging.info(
-            f"Fetching sequences from annotation API from {date_from_str} to {date_end_str}"
-        )
-
-        # Fetch sequences with pagination
-        all_sequence_ids = []
-        page = 1
-        page_size = 100
-
-        while True:
-            response = list_sequences(
-                base_url,
-                page=page,
-                size=page_size,
-            )
-
-            # Handle paginated response
-            if isinstance(response, dict) and "items" in response:
-                sequences = response["items"]
-                total_pages = response.get("pages", 1)
-            else:
-                sequences = response
-                total_pages = 1
-
-            if not sequences:
-                break
-
-            # Filter by date range (client-side filtering)
-            for seq in sequences:
-                recorded_at = seq.get("recorded_at")
-                if recorded_at:
-                    try:
-                        seq_date = datetime.fromisoformat(
-                            recorded_at.replace("Z", "+00:00")
-                        ).date()
-                        if date_from <= seq_date <= date_end:
-                            all_sequence_ids.append(seq["id"])
-                    except (ValueError, TypeError):
-                        continue
-
-            if page >= total_pages:
-                break
-            page += 1
-
-        logging.info(
-            f"Found {len(all_sequence_ids)} sequences in annotation API for date range"
-        )
-        return all_sequence_ids
-
-    except Exception as e:
-        logging.error(f"Error fetching sequences from annotation API: {e}")
-        return []
 
 
 def process_single_sequence(

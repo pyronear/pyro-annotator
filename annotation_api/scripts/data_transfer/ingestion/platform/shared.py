@@ -386,7 +386,7 @@ def post_records_to_annotation_api(
         suppress_logs: Whether to suppress log output during progress display
 
     Returns:
-        Dictionary with summary statistics
+        Dictionary with summary statistics including list of successfully imported sequence IDs
     """
     if not records:
         logging.warning("No records to post")
@@ -397,6 +397,7 @@ def post_records_to_annotation_api(
             "successful_detections": 0,
             "failed_detections": 0,
             "total_detections": 0,
+            "successful_sequence_ids": [],
         }
 
     # Group records by sequence
@@ -410,6 +411,7 @@ def post_records_to_annotation_api(
     failed_sequences = 0
     total_successful_detections = 0
     total_failed_detections = 0
+    successful_sequence_ids = []
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         # Submit all sequence posting tasks
@@ -442,6 +444,7 @@ def post_records_to_annotation_api(
                         successful_sequences += 1
                         total_successful_detections += result["successful_detections"]
                         total_failed_detections += result["failed_detections"]
+                        successful_sequence_ids.append(result["sequence_id"])
 
                         # Success logs are suppressed, only errors will show
                         logging.info(
@@ -483,4 +486,5 @@ def post_records_to_annotation_api(
         "successful_detections": total_successful_detections,
         "failed_detections": total_failed_detections,
         "total_detections": len(records),
+        "successful_sequence_ids": successful_sequence_ids,
     }

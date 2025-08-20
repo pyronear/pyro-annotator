@@ -197,6 +197,7 @@ def fetch_all_sequences_within(
     suppress_logs: bool = True,
     console: Optional[Console] = None,
     error_collector: Optional[ErrorCollector] = None,
+    organization: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
     Fetch all sequences and detections between date_from and date_end.
@@ -320,7 +321,9 @@ def fetch_all_sequences_within(
     records = []
     first_sequence_logged = False
     
-    console.print(f"[blue]🔄 Processing sequences with {worker_config.detection_fetching} workers[/]")
+    # Create organization-aware processing message
+    org_context = f" {organization}" if organization else ""
+    console.print(f"[blue]🔄 Processing{org_context} sequences with {worker_config.detection_fetching} workers[/]")
     with concurrent.futures.ThreadPoolExecutor(max_workers=worker_config.detection_fetching) as executor:
         # Submit all tasks
         future_to_sequence = {
@@ -339,9 +342,11 @@ def fetch_all_sequences_within(
         
         # Collect results with progress tracking
         with LogSuppressor(suppress=suppress_logs):
+            # Create organization-aware progress text
+            progress_text = f"[bold blue]Processing{org_context} sequence detections"
             with Progress(
                 SpinnerColumn(),
-                TextColumn("[bold blue]Processing sequence detections"),
+                TextColumn(progress_text),
                 BarColumn(bar_width=40),
                 TaskProgressColumn(),
                 console=Console(),
