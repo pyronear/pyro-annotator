@@ -6,6 +6,7 @@ and fetch_platform_sequences.py to avoid code duplication.
 """
 
 import concurrent.futures
+import json
 import logging
 import os
 from collections import defaultdict
@@ -14,6 +15,9 @@ from typing import Dict, List, Any
 import requests
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 from rich.console import Console
+
+# Import client functions
+from app.clients.annotation_api import get_auth_token, create_sequence, create_detection
 
 # Import LogSuppressor from import module
 import logging
@@ -71,7 +75,29 @@ from app.clients.annotation_api import (
     ValidationError,
     create_detection,
     create_sequence,
+    list_sequence_annotations,
+    create_sequence_annotation,
+    update_sequence_annotation,
+    get_sequence,
+    list_detections,
 )
+# Remove settings import to avoid database dependency for import scripts
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 def validate_available_env_variables() -> bool:
@@ -227,7 +253,7 @@ def group_records_by_sequence(records: List[dict]) -> Dict[int, List[dict]]:
 
 
 def _process_single_detection(
-    record: dict, annotation_api_url: str, annotation_sequence_id: int
+    record: dict, annotation_api_url: str, auth_token: str, annotation_sequence_id: int
 ) -> Dict[str, Any]:
     """
     Process a single detection: download image and create detection in API.
@@ -235,6 +261,7 @@ def _process_single_detection(
     Args:
         record: Detection record from platform
         annotation_api_url: Annotation API base URL
+        auth_token: JWT authentication token
         annotation_sequence_id: Sequence ID in annotation API
         
     Returns:
@@ -256,7 +283,7 @@ def _process_single_detection(
         # Create detection in annotation API
         filename = f"detection_{record['detection_id']}.jpg"
         annotation_detection = create_detection(
-            annotation_api_url, detection_data, image_data, filename
+            annotation_api_url, auth_token, detection_data, image_data, filename
         )
 
         logging.debug(f"Created detection with ID: {annotation_detection['id']}")
@@ -313,13 +340,20 @@ def post_sequence_to_annotation_api(
     if not sequence_records:
         raise ValueError("No records provided for sequence")
 
+    # Get authentication token
+    auth_token = get_auth_token(
+        annotation_api_url,
+        os.environ.get("ANNOTATOR_LOGIN", "admin"),
+        os.environ.get("ANNOTATOR_PASSWORD", "admin")
+    )
+
     # Use first record for sequence data (all records have same sequence info)
     first_record = sequence_records[0]
     sequence_data = transform_sequence_data(first_record)
 
     # Create sequence
     logging.info(f"Creating sequence with alert_api_id={first_record['sequence_id']}")
-    annotation_sequence = create_sequence(annotation_api_url, sequence_data)
+    annotation_sequence = create_sequence(annotation_api_url, auth_token, sequence_data)
     annotation_sequence_id = annotation_sequence["id"]
 
     # Create detections for this sequence using parallel processing
@@ -329,7 +363,7 @@ def post_sequence_to_annotation_api(
     if len(sequence_records) == 1:
         # Single detection - process directly to avoid thread overhead
         result = _process_single_detection(
-            sequence_records[0], annotation_api_url, annotation_sequence_id
+            sequence_records[0], annotation_api_url, auth_token, annotation_sequence_id
         )
         if result["success"]:
             successful_detections = 1
@@ -344,6 +378,7 @@ def post_sequence_to_annotation_api(
                     _process_single_detection,
                     record,
                     annotation_api_url,
+                    auth_token,
                     annotation_sequence_id
                 ): record
                 for record in sequence_records

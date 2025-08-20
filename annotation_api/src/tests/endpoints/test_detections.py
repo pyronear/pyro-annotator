@@ -10,7 +10,7 @@ now = datetime.utcnow()
 
 @pytest.mark.asyncio
 async def test_create_detection(
-    async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
 ):
     payload = {
         "sequence_id": "1",  # en multipart/form-data, tout est str
@@ -29,7 +29,7 @@ async def test_create_detection(
         ),
     }
 
-    response = await async_client.post(
+    response = await authenticated_client.post(
         "/detections",
         data=payload,
         files={"file": ("image.jpg", mock_img, "image/jpeg")},
@@ -42,9 +42,9 @@ async def test_create_detection(
 
 
 @pytest.mark.asyncio
-async def test_get_detection(async_client: AsyncClient):
+async def test_get_detection(authenticated_client: AsyncClient):
     detection_id = 1
-    response = await async_client.get(f"/detections/{detection_id}")
+    response = await authenticated_client.get(f"/detections/{detection_id}")
     if response.status_code == 200:
         detection = response.json()
         assert detection["id"] == detection_id
@@ -54,8 +54,8 @@ async def test_get_detection(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_get_detection_url(async_client: AsyncClient, detection_id: int = 1):
-    response = await async_client.get(f"/detections/{detection_id}/url")
+async def test_get_detection_url(authenticated_client: AsyncClient, detection_id: int = 1):
+    response = await authenticated_client.get(f"/detections/{detection_id}/url")
     if response.status_code == 200:
         url_data = response.json()
         assert "url" in url_data
@@ -65,8 +65,8 @@ async def test_get_detection_url(async_client: AsyncClient, detection_id: int = 
 
 
 @pytest.mark.asyncio
-async def test_list_detections(async_client: AsyncClient):
-    response = await async_client.get("/detections")
+async def test_list_detections(authenticated_client: AsyncClient):
+    response = await authenticated_client.get("/detections")
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, dict)
@@ -79,7 +79,7 @@ async def test_list_detections(async_client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_delete_detection(
-    async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
 ):
     payload = {
         "sequence_id": "1",  # en multipart/form-data, tout est str
@@ -98,7 +98,7 @@ async def test_delete_detection(
         ),
     }
 
-    response = await async_client.post(
+    response = await authenticated_client.post(
         "/detections",
         data=payload,
         files={"file": ("image.jpg", mock_img, "image/jpeg")},
@@ -106,16 +106,16 @@ async def test_delete_detection(
     assert response.status_code == 201
     detection_id = response.json()["id"]
 
-    delete_resp = await async_client.delete(f"/detections/{detection_id}")
+    delete_resp = await authenticated_client.delete(f"/detections/{detection_id}")
     assert delete_resp.status_code == 204
 
-    get_resp = await async_client.get(f"/detections/{detection_id}")
+    get_resp = await authenticated_client.get(f"/detections/{detection_id}")
     assert get_resp.status_code == 404
 
 
 @pytest.mark.asyncio
 async def test_create_detection_invalid_xyxyn_values(
-    async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
 ):
     payload = {
         "sequence_id": "1",
@@ -134,7 +134,7 @@ async def test_create_detection_invalid_xyxyn_values(
         ),
     }
 
-    response = await async_client.post(
+    response = await authenticated_client.post(
         "/detections",
         data=payload,
         files={"file": ("image.jpg", mock_img, "image/jpeg")},
@@ -146,7 +146,7 @@ async def test_create_detection_invalid_xyxyn_values(
 
 @pytest.mark.asyncio
 async def test_create_detection_invalid_xyxyn_range(
-    async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
 ):
     payload = {
         "sequence_id": "1",
@@ -165,7 +165,7 @@ async def test_create_detection_invalid_xyxyn_range(
         ),
     }
 
-    response = await async_client.post(
+    response = await authenticated_client.post(
         "/detections",
         data=payload,
         files={"file": ("image.jpg", mock_img, "image/jpeg")},
@@ -177,7 +177,7 @@ async def test_create_detection_invalid_xyxyn_range(
 
 @pytest.mark.asyncio
 async def test_create_detection_invalid_confidence(
-    async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
 ):
     payload = {
         "sequence_id": "1",
@@ -196,7 +196,7 @@ async def test_create_detection_invalid_confidence(
         ),
     }
 
-    response = await async_client.post(
+    response = await authenticated_client.post(
         "/detections",
         data=payload,
         files={"file": ("image.jpg", mock_img, "image/jpeg")},
@@ -208,7 +208,7 @@ async def test_create_detection_invalid_confidence(
 
 @pytest.mark.asyncio
 async def test_create_detection_invalid_json_structure(
-    async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
 ):
     payload = {
         "sequence_id": "1",
@@ -227,7 +227,7 @@ async def test_create_detection_invalid_json_structure(
         ),
     }
 
-    response = await async_client.post(
+    response = await authenticated_client.post(
         "/detections",
         data=payload,
         files={"file": ("image.jpg", mock_img, "image/jpeg")},
@@ -239,32 +239,32 @@ async def test_create_detection_invalid_json_structure(
 
 # Additional error scenario tests
 @pytest.mark.asyncio
-async def test_get_detection_not_found(async_client: AsyncClient):
-    response = await async_client.get("/detections/99999")
+async def test_get_detection_not_found(authenticated_client: AsyncClient):
+    response = await authenticated_client.get("/detections/99999")
     assert response.status_code == 404
 
 
 @pytest.mark.asyncio
-async def test_get_detection_invalid_id(async_client: AsyncClient):
-    response = await async_client.get("/detections/invalid")
+async def test_get_detection_invalid_id(authenticated_client: AsyncClient):
+    response = await authenticated_client.get("/detections/invalid")
     assert response.status_code == 422
 
 
 @pytest.mark.asyncio
-async def test_get_detection_url_not_found(async_client: AsyncClient):
-    response = await async_client.get("/detections/99999/url")
+async def test_get_detection_url_not_found(authenticated_client: AsyncClient):
+    response = await authenticated_client.get("/detections/99999/url")
     assert response.status_code == 404
 
 
 @pytest.mark.asyncio
-async def test_get_detection_url_invalid_id(async_client: AsyncClient):
-    response = await async_client.get("/detections/invalid/url")
+async def test_get_detection_url_invalid_id(authenticated_client: AsyncClient):
+    response = await authenticated_client.get("/detections/invalid/url")
     assert response.status_code == 422
 
 
 @pytest.mark.asyncio
 async def test_create_detection_without_file(
-    async_client: AsyncClient, sequence_session: AsyncSession
+    authenticated_client: AsyncClient, sequence_session: AsyncSession
 ):
     payload = {
         "sequence_id": "1",
@@ -272,25 +272,25 @@ async def test_create_detection_without_file(
         "recorded_at": now.isoformat(),
     }
 
-    response = await async_client.post("/detections", data=payload)
+    response = await authenticated_client.post("/detections", data=payload)
     assert response.status_code == 422
 
 
 @pytest.mark.asyncio
-async def test_delete_detection_not_found(async_client: AsyncClient):
-    response = await async_client.delete("/detections/99999")
+async def test_delete_detection_not_found(authenticated_client: AsyncClient):
+    response = await authenticated_client.delete("/detections/99999")
     assert response.status_code == 404
 
 
 @pytest.mark.asyncio
-async def test_delete_detection_invalid_id(async_client: AsyncClient):
-    response = await async_client.delete("/detections/invalid")
+async def test_delete_detection_invalid_id(authenticated_client: AsyncClient):
+    response = await authenticated_client.delete("/detections/invalid")
     assert response.status_code == 422
 
 
 @pytest.mark.asyncio
 async def test_create_detection_unique_constraint_violation(
-    async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
 ):
     """Test that creating detections with duplicate (alert_api_id, id) fails due to unique constraint."""
     payload = {
@@ -311,7 +311,7 @@ async def test_create_detection_unique_constraint_violation(
     }
 
     # First detection should be created successfully
-    response1 = await async_client.post(
+    response1 = await authenticated_client.post(
         "/detections",
         data=payload,
         files={"file": ("image1.jpg", mock_img, "image/jpeg")},
@@ -328,7 +328,7 @@ async def test_create_detection_unique_constraint_violation(
     payload2 = payload.copy()
     payload2["sequence_id"] = "1"  # Same or different sequence
 
-    response2 = await async_client.post(
+    response2 = await authenticated_client.post(
         "/detections",
         data=payload2,
         files={"file": ("image2.jpg", mock_img, "image/jpeg")},
@@ -345,7 +345,7 @@ async def test_create_detection_unique_constraint_violation(
 
 @pytest.mark.asyncio
 async def test_create_detection_different_alert_api_id_allows_duplicate_processing(
-    async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
 ):
     """Test that detections with different alert_api_id can be created without constraint issues."""
     base_payload = {
@@ -368,7 +368,7 @@ async def test_create_detection_different_alert_api_id_allows_duplicate_processi
     payload1 = base_payload.copy()
     payload1["alert_api_id"] = "777"
 
-    response1 = await async_client.post(
+    response1 = await authenticated_client.post(
         "/detections",
         data=payload1,
         files={"file": ("image1.jpg", mock_img, "image/jpeg")},
@@ -381,7 +381,7 @@ async def test_create_detection_different_alert_api_id_allows_duplicate_processi
     payload2 = base_payload.copy()
     payload2["alert_api_id"] = "888"
 
-    response2 = await async_client.post(
+    response2 = await authenticated_client.post(
         "/detections",
         data=payload2,
         files={"file": ("image2.jpg", mock_img, "image/jpeg")},

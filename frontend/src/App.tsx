@@ -1,4 +1,5 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import AppLayout from '@/components/layout/AppLayout';
 import DashboardPage from '@/pages/DashboardPage';
@@ -8,6 +9,8 @@ import AnnotationInterface from '@/pages/AnnotationInterface';
 import DetectionAnnotatePage from '@/pages/DetectionAnnotatePage';
 import DetectionReviewPage from '@/pages/DetectionReviewPage';
 import DetectionSequenceAnnotatePage from '@/pages/DetectionSequenceAnnotatePage';
+import LoginPage from '@/pages/LoginPage';
+import { useAuthStore } from '@/store/useAuthStore';
 
 // Create a client
 const queryClient = new QueryClient({
@@ -21,10 +24,47 @@ const queryClient = new QueryClient({
 });
 
 function App() {
+  const { isAuthenticated, isLoading, error, login, clearError, initializeAuth } = useAuthStore();
+
+  useEffect(() => {
+    // Initialize authentication on app start
+    initializeAuth();
+  }, [initializeAuth]);
+
+  const handleLogin = async (username: string, password: string) => {
+    clearError();
+    await login(username, password);
+  };
+
+  // Show login page if not authenticated
+  if (!isAuthenticated) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <Router>
+          <Routes>
+            <Route 
+              path="/login" 
+              element={
+                <LoginPage 
+                  onLogin={handleLogin} 
+                  isLoading={isLoading} 
+                  error={error} 
+                />
+              } 
+            />
+            <Route path="*" element={<Navigate to="/login" replace />} />
+          </Routes>
+        </Router>
+      </QueryClientProvider>
+    );
+  }
+
+  // Show authenticated app
   return (
     <QueryClientProvider client={queryClient}>
       <Router>
         <Routes>
+          <Route path="/login" element={<Navigate to="/" replace />} />
           <Route path="/" element={
             <AppLayout>
               <DashboardPage />

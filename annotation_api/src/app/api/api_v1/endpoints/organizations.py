@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.api.dependencies import get_current_user
 from app.db import get_session
 from app.models import Sequence
 from app.schemas.organization import OrganizationRead
@@ -16,6 +17,7 @@ router = APIRouter()
 @router.get("/", response_model=List[OrganizationRead])
 async def list_organizations(
     session: AsyncSession = Depends(get_session),
+    current_user: str = Depends(get_current_user),
 ) -> List[OrganizationRead]:
     """
     List all unique organizations.

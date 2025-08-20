@@ -4,11 +4,11 @@
 # See LICENSE or go to <https://www.apache.org/licenses/LICENSE-2.0> for full license details.
 
 import logging
-from typing import TypeVar
 
 from fastapi import Depends
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.auth.dependencies import get_current_user
 from app.crud import (
     DetectionAnnotationCRUD,
     DetectionCRUD,
@@ -17,10 +17,10 @@ from app.crud import (
 )
 from app.db import get_session
 
-JWTTemplate = TypeVar("JWTTemplate")
 logger = logging.getLogger("uvicorn.error")
 
 __all__ = [
+    "get_current_user",
     "get_detection_annotation_crud",
     "get_detection_crud",
     "get_sequence_annotation_crud",

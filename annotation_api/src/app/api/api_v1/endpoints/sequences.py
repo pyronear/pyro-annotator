@@ -18,7 +18,7 @@ from fastapi_pagination.ext.sqlalchemy import apaginate
 from sqlalchemy import asc, desc, func, case, select, outerjoin, and_, text, cast, ARRAY, String
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.api.dependencies import get_sequence_crud
+from app.api.dependencies import get_current_user, get_sequence_crud
 from app.crud import SequenceCRUD
 from app.db import get_session
 from app.models import (
@@ -72,6 +72,7 @@ async def create_sequence(
     recorded_at: datetime = Form(...),
     last_seen_at: Optional[datetime] = Form(None),
     sequences: SequenceCRUD = Depends(get_sequence_crud),
+    current_user: str = Depends(get_current_user),
 ) -> SequenceRead:
     payload = SequenceCreate(
         source_api=source_api,
@@ -156,6 +157,7 @@ async def list_sequences(
     ),
     session: AsyncSession = Depends(get_session),
     params: Params = Depends(),
+    current_user: str = Depends(get_current_user),
 ) -> Page[SequenceRead]:
     """
     List sequences with filtering, pagination and ordering.
@@ -401,6 +403,7 @@ async def list_sequences(
 async def get_sequence(
     sequence_id: int = Path(..., ge=0),
     sequences: SequenceCRUD = Depends(get_sequence_crud),
+    current_user: str = Depends(get_current_user),
 ) -> SequenceRead:
     return await sequences.get(sequence_id, strict=True)
 
@@ -409,5 +412,6 @@ async def get_sequence(
 async def delete_sequence(
     sequence_id: int = Path(..., ge=0),
     sequences: SequenceCRUD = Depends(get_sequence_crud),
+    current_user: str = Depends(get_current_user),
 ) -> None:
     await sequences.delete(sequence_id)

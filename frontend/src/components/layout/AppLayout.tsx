@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Menu, X, BarChart3, ChevronRight, ChevronDown, Layers, Target } from 'lucide-react';
+import { Menu, X, BarChart3, ChevronRight, ChevronDown, Layers, Target, LogOut, User } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useAnnotationCounts } from '@/hooks/useAnnotationCounts';
 import NotificationBadge from '@/components/ui/NotificationBadge';
+import { useAuthStore } from '@/store/useAuthStore';
 import logoImg from '/public/logo.png';
 
 interface AppLayoutProps {
@@ -268,17 +269,50 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
           })}
         </nav>
       </div>
-      <div className="flex-shrink-0 flex border-t border-gray-200 p-4">
-        <div className="flex items-center">
-          <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">
-            <span className="text-sm font-medium text-gray-700">U</span>
-          </div>
-          <div className="ml-3">
-            <p className="text-sm font-medium text-gray-700">User</p>
-            <p className="text-xs font-medium text-gray-500">Annotator</p>
-          </div>
-        </div>
+      <div className="flex-shrink-0 border-t border-gray-200 p-4">
+        <UserSection />
       </div>
+    </div>
+  );
+}
+
+function UserSection() {
+  const { user, logout } = useAuthStore();
+  const [showDropdown, setShowDropdown] = useState(false);
+
+  const handleLogout = () => {
+    logout();
+    setShowDropdown(false);
+  };
+
+  const username = user?.username || 'User';
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setShowDropdown(!showDropdown)}
+        className="flex items-center w-full text-left hover:bg-gray-50 rounded-lg p-2 transition-colors"
+      >
+        <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+          <User className="h-4 w-4 text-white" />
+        </div>
+        <div className="ml-3 flex-1">
+          <p className="text-sm font-medium text-gray-700">{username}</p>
+          <p className="text-xs font-medium text-gray-500">Annotator</p>
+        </div>
+      </button>
+
+      {showDropdown && (
+        <div className="absolute bottom-full left-0 mb-1 w-full bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5">
+          <button
+            onClick={handleLogout}
+            className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md"
+          >
+            <LogOut className="h-4 w-4 mr-2" />
+            Sign out
+          </button>
+        </div>
+      )}
     </div>
   );
 }

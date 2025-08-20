@@ -25,7 +25,7 @@ now = datetime.utcnow()
 
 @pytest.mark.asyncio
 async def test_auto_create_detection_annotations_correct_structure(
-    async_client: AsyncClient,
+    authenticated_client: AsyncClient,
     sequence_session: AsyncSession,
     detection_session,
     mock_img: bytes,
@@ -52,7 +52,7 @@ async def test_auto_create_detection_annotations_correct_structure(
         "created_at": datetime.utcnow().isoformat()
     }
 
-    response = await async_client.post(
+    response = await authenticated_client.post(
         "/annotations/sequences/", json=sequence_annotation_payload
     )
     assert (
@@ -61,7 +61,7 @@ async def test_auto_create_detection_annotations_correct_structure(
     sequence_annotation_id = response.json()["id"]
 
     # Step 2: Verify that detection annotations were auto-created for all detections in the sequence
-    detection_annotations_response = await async_client.get("/annotations/detections/")
+    detection_annotations_response = await authenticated_client.get("/annotations/detections/")
     assert detection_annotations_response.status_code == 200
     detection_annotations = detection_annotations_response.json()["items"]
 
@@ -128,7 +128,7 @@ async def test_auto_create_detection_annotations_correct_structure(
 
 @pytest.mark.asyncio
 async def test_auto_create_detection_annotations_update_scenario(
-    async_client: AsyncClient, sequence_session: AsyncSession, detection_session
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, detection_session
 ):
     """Test that detection annotations are auto-created when sequence annotation is UPDATED to 'annotated'."""
 
@@ -149,14 +149,14 @@ async def test_auto_create_detection_annotations_update_scenario(
         "created_at": datetime.utcnow().isoformat()
     }
 
-    create_response = await async_client.post(
+    create_response = await authenticated_client.post(
         "/annotations/sequences/", json=create_payload
     )
     assert create_response.status_code == 201
     sequence_annotation_id = create_response.json()["id"]
 
     # Step 2: Verify no detection annotations exist yet
-    detection_annotations_response = await async_client.get("/annotations/detections/")
+    detection_annotations_response = await authenticated_client.get("/annotations/detections/")
     assert detection_annotations_response.status_code == 200
     initial_annotations = detection_annotations_response.json()["items"]
     detection_1_exists_initially = any(
@@ -171,14 +171,14 @@ async def test_auto_create_detection_annotations_update_scenario(
         "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value
     }
 
-    update_response = await async_client.patch(
+    update_response = await authenticated_client.patch(
         f"/annotations/sequences/{sequence_annotation_id}",
         json=update_payload,
     )
     assert update_response.status_code == 200
 
     # Step 4: Verify detection annotation was auto-created after the update
-    detection_annotations_response = await async_client.get("/annotations/detections/")
+    detection_annotations_response = await authenticated_client.get("/annotations/detections/")
     assert detection_annotations_response.status_code == 200
     final_annotations = detection_annotations_response.json()["items"]
 
@@ -202,7 +202,7 @@ async def test_auto_create_detection_annotations_update_scenario(
 
 @pytest.mark.asyncio
 async def test_auto_create_detection_annotations_processing_stages(
-    async_client: AsyncClient,
+    authenticated_client: AsyncClient,
     sequence_session: AsyncSession,
     detection_session,
     mock_img: bytes,
@@ -228,13 +228,13 @@ async def test_auto_create_detection_annotations_processing_stages(
         "created_at": datetime.utcnow().isoformat()
     }
 
-    response1 = await async_client.post(
+    response1 = await authenticated_client.post(
         "/annotations/sequences/", json=payload_visual_check
     )
     assert response1.status_code == 201
 
     # Check the created detection annotation has visual_check stage
-    detection_annotations_response = await async_client.get("/annotations/detections/")
+    detection_annotations_response = await authenticated_client.get("/annotations/detections/")
     detection_annotations = detection_annotations_response.json()["items"]
     detection_1_annotation = next(
         ann for ann in detection_annotations if ann["detection_id"] == 1
@@ -244,7 +244,7 @@ async def test_auto_create_detection_annotations_processing_stages(
     ), "Should be visual_check for false positives only"
 
     # Clean up for next test - delete the sequence annotation
-    await async_client.delete(f"/annotations/sequences/{response1.json()['id']}")
+    await authenticated_client.delete(f"/annotations/sequences/{response1.json()['id']}")
 
     # Test Case 2: Create a new sequence for the next test
     sequence_payload = {
@@ -262,7 +262,7 @@ async def test_auto_create_detection_annotations_processing_stages(
         "last_seen_at": datetime.utcnow().isoformat()
     }
 
-    sequence_response = await async_client.post("/sequences", data=sequence_payload)
+    sequence_response = await authenticated_client.post("/sequences", data=sequence_payload)
     assert sequence_response.status_code == 201
     sequence2_id = sequence_response.json()["id"]
 
@@ -284,7 +284,7 @@ async def test_auto_create_detection_annotations_processing_stages(
         )
     }
 
-    detection_response = await async_client.post(
+    detection_response = await authenticated_client.post(
         "/detections",
         data=detection_payload,
         files={"file": ("bbox_test.jpg", mock_img, "image/jpeg")},
@@ -311,13 +311,13 @@ async def test_auto_create_detection_annotations_processing_stages(
         "created_at": datetime.utcnow().isoformat()
     }
 
-    response2 = await async_client.post(
+    response2 = await authenticated_client.post(
         "/annotations/sequences/", json=payload_bbox_annotation
     )
     assert response2.status_code == 201
 
     # Check the created detection annotation has bbox_annotation stage
-    detection_annotations_response = await async_client.get("/annotations/detections/")
+    detection_annotations_response = await authenticated_client.get("/annotations/detections/")
     detection_annotations = detection_annotations_response.json()["items"]
     detection_2_annotation = next(
         (ann for ann in detection_annotations if ann["detection_id"] == detection2_id),
@@ -344,7 +344,7 @@ async def test_auto_create_detection_annotations_processing_stages(
         "last_seen_at": datetime.utcnow().isoformat()
     }
 
-    sequence_response_3 = await async_client.post("/sequences", data=sequence_payload_3)
+    sequence_response_3 = await authenticated_client.post("/sequences", data=sequence_payload_3)
     assert sequence_response_3.status_code == 201
     sequence3_id = sequence_response_3.json()["id"]
 
@@ -366,7 +366,7 @@ async def test_auto_create_detection_annotations_processing_stages(
         )
     }
 
-    detection_response_3 = await async_client.post(
+    detection_response_3 = await authenticated_client.post(
         "/detections",
         data=detection_payload_3,
         files={"file": ("missed_smoke_test.jpg", mock_img, "image/jpeg")},
@@ -392,13 +392,13 @@ async def test_auto_create_detection_annotations_processing_stages(
         "created_at": datetime.utcnow().isoformat()
     }
 
-    response3 = await async_client.post(
+    response3 = await authenticated_client.post(
         "/annotations/sequences/", json=payload_missed_smoke
     )
     assert response3.status_code == 201
 
     # Check the created detection annotation has bbox_annotation stage
-    detection_annotations_response = await async_client.get("/annotations/detections/")
+    detection_annotations_response = await authenticated_client.get("/annotations/detections/")
     detection_annotations = detection_annotations_response.json()["items"]
     detection_3_annotation = next(
         (ann for ann in detection_annotations if ann["detection_id"] == detection3_id),
@@ -411,7 +411,7 @@ async def test_auto_create_detection_annotations_processing_stages(
 
 @pytest.mark.asyncio
 async def test_detection_annotation_update_workflow(
-    async_client: AsyncClient, sequence_session: AsyncSession, detection_session
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, detection_session
 ):
     """Test the complete workflow: auto-create detection annotations → frontend updates with bbox data."""
 
@@ -432,13 +432,13 @@ async def test_detection_annotation_update_workflow(
         "created_at": datetime.utcnow().isoformat()
     }
 
-    seq_response = await async_client.post(
+    seq_response = await authenticated_client.post(
         "/annotations/sequences/", json=sequence_annotation_payload
     )
     assert seq_response.status_code == 201
 
     # Step 2: Get the auto-created detection annotation
-    detection_annotations_response = await async_client.get("/annotations/detections/")
+    detection_annotations_response = await authenticated_client.get("/annotations/detections/")
     detection_annotations = detection_annotations_response.json()["items"]
     detection_annotation = next(
         ann for ann in detection_annotations if ann["detection_id"] == 1
@@ -465,7 +465,7 @@ async def test_detection_annotation_update_workflow(
         "processing_stage": "annotated"
     }
 
-    update_response = await async_client.patch(
+    update_response = await authenticated_client.patch(
         f"/annotations/detections/{detection_annotation_id}", json=update_payload
     )
     assert (
@@ -495,7 +495,7 @@ async def test_detection_annotation_update_workflow(
     assert bbox2["smoke_type"] == "industrial"
 
     # Step 5: Verify we can retrieve the updated annotation
-    get_response = await async_client.get(
+    get_response = await authenticated_client.get(
         f"/annotations/detections/{detection_annotation_id}"
     )
     assert get_response.status_code == 200
@@ -504,7 +504,7 @@ async def test_detection_annotation_update_workflow(
 
 @pytest.mark.asyncio
 async def test_detection_annotation_validation_requirements(
-    async_client: AsyncClient,
+    authenticated_client: AsyncClient,
     sequence_session: AsyncSession,
     detection_session,
     mock_img: bytes,
@@ -529,7 +529,7 @@ async def test_detection_annotation_validation_requirements(
         )
     }
 
-    detection_response = await async_client.post(
+    detection_response = await authenticated_client.post(
         "/detections",
         data=detection_payload,
         files={"file": ("validation_test.jpg", mock_img, "image/jpeg")},
@@ -554,7 +554,7 @@ async def test_detection_annotation_validation_requirements(
         "processing_stage": "visual_check"
     }
 
-    valid_response = await async_client.post(
+    valid_response = await authenticated_client.post(
         "/annotations/detections/", data=valid_payload
     )
     assert (
@@ -572,7 +572,7 @@ async def test_detection_annotation_validation_requirements(
     }
 
     # This should fail with validation error due to invalid structure
-    invalid_response_empty = await async_client.post(
+    invalid_response_empty = await authenticated_client.post(
         "/annotations/detections/", data=invalid_payload_empty
     )
     assert (
@@ -595,7 +595,7 @@ async def test_detection_annotation_validation_requirements(
         "processing_stage": "annotated"
     }
 
-    invalid_update_response = await async_client.patch(
+    invalid_update_response = await authenticated_client.patch(
         f"/annotations/detections/{detection_annotation_id}",
         json=invalid_update_payload,
     )
@@ -617,7 +617,7 @@ async def test_detection_annotation_validation_requirements(
         "processing_stage": "annotated"
     }
 
-    invalid_bbox_response = await async_client.patch(
+    invalid_bbox_response = await authenticated_client.patch(
         f"/annotations/detections/{detection_annotation_id}", json=invalid_bbox_payload
     )
     assert (
@@ -638,7 +638,7 @@ async def test_detection_annotation_validation_requirements(
         "processing_stage": "annotated"
     }
 
-    invalid_smoke_response = await async_client.patch(
+    invalid_smoke_response = await authenticated_client.patch(
         f"/annotations/detections/{detection_annotation_id}",
         json=invalid_smoke_type_payload,
     )
@@ -648,7 +648,7 @@ async def test_detection_annotation_validation_requirements(
 
 @pytest.mark.asyncio
 async def test_auto_create_avoids_duplicate_detection_annotations(
-    async_client: AsyncClient, sequence_session: AsyncSession, detection_session
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, detection_session
 ):
     """Test that auto-creation doesn't create duplicate detection annotations if they already exist."""
 
@@ -669,7 +669,7 @@ async def test_auto_create_avoids_duplicate_detection_annotations(
         "processing_stage": "visual_check"
     }
 
-    manual_response = await async_client.post(
+    manual_response = await authenticated_client.post(
         "/annotations/detections/", data=manual_payload
     )
     assert manual_response.status_code == 201
@@ -701,13 +701,13 @@ async def test_auto_create_avoids_duplicate_detection_annotations(
         "created_at": datetime.utcnow().isoformat()
     }
 
-    seq_response = await async_client.post(
+    seq_response = await authenticated_client.post(
         "/annotations/sequences/", json=sequence_annotation_payload
     )
     assert seq_response.status_code == 201
 
     # Step 3: Verify the existing annotation for detection_id=1 was not duplicated or modified
-    get_existing_response = await async_client.get(
+    get_existing_response = await authenticated_client.get(
         f"/annotations/detections/{existing_annotation_id}"
     )
     assert get_existing_response.status_code == 200
@@ -721,7 +721,7 @@ async def test_auto_create_avoids_duplicate_detection_annotations(
     )
 
     # Step 4: Verify a new annotation was created for detection_id=2
-    all_annotations_response = await async_client.get("/annotations/detections/")
+    all_annotations_response = await authenticated_client.get("/annotations/detections/")
     all_annotations = all_annotations_response.json()["items"]
 
     detection_2_annotations = [
@@ -739,7 +739,7 @@ async def test_auto_create_avoids_duplicate_detection_annotations(
 
 @pytest.mark.asyncio
 async def test_no_auto_create_when_not_annotated_stage(
-    async_client: AsyncClient, sequence_session: AsyncSession, detection_session
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, detection_session
 ):
     """Test that detection annotations are NOT auto-created when sequence annotation is not in 'annotated' stage."""
 
@@ -760,13 +760,13 @@ async def test_no_auto_create_when_not_annotated_stage(
         "created_at": datetime.utcnow().isoformat()
     }
 
-    seq_response = await async_client.post(
+    seq_response = await authenticated_client.post(
         "/annotations/sequences/", json=sequence_annotation_payload
     )
     assert seq_response.status_code == 201
 
     # Verify no detection annotations were created
-    detection_annotations_response = await async_client.get("/annotations/detections/")
+    detection_annotations_response = await authenticated_client.get("/annotations/detections/")
     detection_annotations = detection_annotations_response.json()["items"]
     detection_1_annotations = [
         ann for ann in detection_annotations if ann["detection_id"] == 1
@@ -793,15 +793,15 @@ async def test_no_auto_create_when_not_annotated_stage(
     }
 
     # Delete the first annotation to create the second one for same sequence
-    await async_client.delete(f"/annotations/sequences/{seq_response.json()['id']}")
+    await authenticated_client.delete(f"/annotations/sequences/{seq_response.json()['id']}")
 
-    seq_response_2 = await async_client.post(
+    seq_response_2 = await authenticated_client.post(
         "/annotations/sequences/", json=sequence_annotation_payload_2
     )
     assert seq_response_2.status_code == 201
 
     # Verify still no detection annotations were created
-    detection_annotations_response = await async_client.get("/annotations/detections/")
+    detection_annotations_response = await authenticated_client.get("/annotations/detections/")
     detection_annotations = detection_annotations_response.json()["items"]
     detection_2_annotations = [
         ann for ann in detection_annotations if ann["detection_id"] == 2

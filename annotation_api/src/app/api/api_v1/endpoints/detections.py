@@ -23,7 +23,7 @@ from pydantic import ValidationError
 from sqlalchemy import asc, desc, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.api.dependencies import get_detection_crud
+from app.api.dependencies import get_current_user, get_detection_crud
 from app.crud import DetectionCRUD
 from app.db import get_session
 from app.models import Detection
@@ -64,6 +64,7 @@ async def create_detection(
     recorded_at: datetime = Form(),
     file: UploadFile = File(..., alias="file"),
     detections: DetectionCRUD = Depends(get_detection_crud),
+    current_user: str = Depends(get_current_user),
 ) -> DetectionRead:
     # Parse string JSON -> dict
     parsed_predictions = json.loads(algo_predictions)
@@ -120,6 +121,7 @@ async def create_detection(
 async def get_detection(
     detection_id: int = Path(..., ge=0),
     detections: DetectionCRUD = Depends(get_detection_crud),
+    current_user: str = Depends(get_current_user),
 ) -> DetectionRead:
     return await detections.get(detection_id, strict=True)
 
@@ -128,6 +130,7 @@ async def get_detection(
 async def get_detection_url(
     detection_id: int = Path(..., ge=0),
     session: AsyncSession = Depends(get_session),
+    current_user: str = Depends(get_current_user),
 ) -> DetectionUrl:
     detection = await session.get(Detection, detection_id)
     if detection is None:
@@ -150,6 +153,7 @@ async def list_detections(
     ),
     session: AsyncSession = Depends(get_session),
     params: Params = Depends(),
+    current_user: str = Depends(get_current_user),
 ) -> Page[DetectionRead]:
     """
     List detections with filtering, pagination and ordering.
@@ -182,6 +186,7 @@ async def list_detections(
 async def delete_detection(
     detection_id: int = Path(..., ge=0),
     detections: DetectionCRUD = Depends(get_detection_crud),
+    current_user: str = Depends(get_current_user),
 ) -> None:
     detection = await detections.get(detection_id, strict=True)
     bucket = s3_service.get_bucket(s3_service.resolve_bucket_name())

@@ -12,6 +12,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel, text
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.auth.dependencies import create_access_token
 from app.core.config import settings
 from app.db import engine, get_session
 from app.main import app
@@ -179,6 +180,39 @@ def mock_img():
     return requests.get(
         "https://avatars.githubusercontent.com/u/61667887?s=200&v=4", timeout=5
     ).content
+
+
+@pytest.fixture(scope="session")
+def auth_token():
+    """Generate an authentication token for testing."""
+    return create_access_token(data={"sub": settings.AUTH_USERNAME})
+
+
+@pytest_asyncio.fixture(scope="function")
+async def authenticated_client(
+    async_session: AsyncSession,
+    auth_token: str,
+) -> AsyncGenerator[AsyncClient, None]:
+    """Create an authenticated HTTP client for testing."""
+    from httpx import ASGITransport
+
+    # Override the get_session dependency to use the test session
+    async def get_test_session():
+        yield async_session
+
+    app.dependency_overrides[get_session] = get_test_session
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url=f"http://api.localhost:8050{settings.API_V1_STR}",
+        headers={"Authorization": f"Bearer {auth_token}"},
+        follow_redirects=True,
+        timeout=5,
+    ) as client:
+        yield client
+
+    # Clean up the override
+    app.dependency_overrides.clear()
 
 
 @pytest_asyncio.fixture(scope="function")

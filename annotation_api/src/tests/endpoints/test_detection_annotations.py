@@ -10,7 +10,7 @@ now = datetime.utcnow()
 
 @pytest.mark.asyncio
 async def test_create_detection_annotation(
-    async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
 ):
     detection_payload = {
         "sequence_id": "1",
@@ -29,7 +29,7 @@ async def test_create_detection_annotation(
         ),
     }
 
-    detection_response = await async_client.post(
+    detection_response = await authenticated_client.post(
         "/detections",
         data=detection_payload,
         files={"file": ("image.jpg", mock_img, "image/jpeg")},
@@ -53,7 +53,7 @@ async def test_create_detection_annotation(
         "processing_stage": "visual_check",  # Enum sous forme de str
     }
 
-    response = await async_client.post(
+    response = await authenticated_client.post(
         "/annotations/detections/", data=annotation_payload
     )
     assert response.status_code == 201
@@ -64,8 +64,8 @@ async def test_create_detection_annotation(
 
 
 @pytest.mark.asyncio
-async def test_list_detection_annotations(async_client: AsyncClient):
-    response = await async_client.get("/annotations/detections/")
+async def test_list_detection_annotations(authenticated_client: AsyncClient):
+    response = await authenticated_client.get("/annotations/detections/")
     assert response.status_code == 200
     json_response = response.json()
     assert isinstance(json_response, dict)
@@ -77,9 +77,9 @@ async def test_list_detection_annotations(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_get_detection_annotation(async_client: AsyncClient):
+async def test_get_detection_annotation(authenticated_client: AsyncClient):
     annotation_id = 1
-    response = await async_client.get(f"/annotations/detections/{annotation_id}")
+    response = await authenticated_client.get(f"/annotations/detections/{annotation_id}")
     if response.status_code == 200:
         annotation = response.json()
         assert annotation["id"] == annotation_id
@@ -89,7 +89,7 @@ async def test_get_detection_annotation(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_update_detection_annotation(async_client: AsyncClient):
+async def test_update_detection_annotation(authenticated_client: AsyncClient):
     annotation_id = 1
     update_payload = {
         "annotation": {
@@ -104,7 +104,7 @@ async def test_update_detection_annotation(async_client: AsyncClient):
         "processing_stage": "annotated",
     }
 
-    response = await async_client.patch(
+    response = await authenticated_client.patch(
         f"/annotations/detections/{annotation_id}", json=update_payload
     )
 
@@ -119,20 +119,20 @@ async def test_update_detection_annotation(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_delete_detection_annotation(async_client: AsyncClient):
+async def test_delete_detection_annotation(authenticated_client: AsyncClient):
     annotation_id = 1
-    delete_response = await async_client.delete(
+    delete_response = await authenticated_client.delete(
         f"/annotations/detections/{annotation_id}"
     )
     assert delete_response.status_code in (204, 404)
 
-    get_response = await async_client.get(f"/annotations/detections/{annotation_id}")
+    get_response = await authenticated_client.get(f"/annotations/detections/{annotation_id}")
     assert get_response.status_code == 404
 
 
 @pytest.mark.asyncio
 async def test_create_detection_annotation_invalid_xyxyn(
-    async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
 ):
     # First create a detection
     detection_payload = {
@@ -152,7 +152,7 @@ async def test_create_detection_annotation_invalid_xyxyn(
         ),
     }
 
-    detection_response = await async_client.post(
+    detection_response = await authenticated_client.post(
         "/detections",
         data=detection_payload,
         files={"file": ("image.jpg", mock_img, "image/jpeg")},
@@ -177,7 +177,7 @@ async def test_create_detection_annotation_invalid_xyxyn(
         "processing_stage": "visual_check",
     }
 
-    response = await async_client.post(
+    response = await authenticated_client.post(
         "/annotations/detections/", data=annotation_payload
     )
     assert response.status_code == 422
@@ -187,7 +187,7 @@ async def test_create_detection_annotation_invalid_xyxyn(
 
 @pytest.mark.asyncio
 async def test_create_detection_annotation_invalid_smoke_type(
-    async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
 ):
     # First create a detection
     detection_payload = {
@@ -207,7 +207,7 @@ async def test_create_detection_annotation_invalid_smoke_type(
         ),
     }
 
-    detection_response = await async_client.post(
+    detection_response = await authenticated_client.post(
         "/detections",
         data=detection_payload,
         files={"file": ("image.jpg", mock_img, "image/jpeg")},
@@ -232,7 +232,7 @@ async def test_create_detection_annotation_invalid_smoke_type(
         "processing_stage": "visual_check",
     }
 
-    response = await async_client.post(
+    response = await authenticated_client.post(
         "/annotations/detections/", data=annotation_payload
     )
     assert response.status_code == 422
@@ -242,7 +242,7 @@ async def test_create_detection_annotation_invalid_smoke_type(
 
 @pytest.mark.asyncio
 async def test_create_detection_annotation_invalid_json_structure(
-    async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
 ):
     # First create a detection
     detection_payload = {
@@ -262,7 +262,7 @@ async def test_create_detection_annotation_invalid_json_structure(
         ),
     }
 
-    detection_response = await async_client.post(
+    detection_response = await authenticated_client.post(
         "/detections",
         data=detection_payload,
         files={"file": ("image.jpg", mock_img, "image/jpeg")},
@@ -287,7 +287,7 @@ async def test_create_detection_annotation_invalid_json_structure(
         "processing_stage": "visual_check",
     }
 
-    response = await async_client.post(
+    response = await authenticated_client.post(
         "/annotations/detections/", data=annotation_payload
     )
     assert response.status_code == 422
@@ -297,7 +297,7 @@ async def test_create_detection_annotation_invalid_json_structure(
 
 @pytest.mark.asyncio
 async def test_create_detection_annotation_unique_constraint_violation(
-    async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
 ):
     """Test that creating multiple annotations for the same detection fails due to unique constraint."""
     # First create a detection
@@ -318,7 +318,7 @@ async def test_create_detection_annotation_unique_constraint_violation(
         ),
     }
 
-    detection_response = await async_client.post(
+    detection_response = await authenticated_client.post(
         "/detections",
         data=detection_payload,
         files={"file": ("image.jpg", mock_img, "image/jpeg")},
@@ -343,7 +343,7 @@ async def test_create_detection_annotation_unique_constraint_violation(
         "processing_stage": "visual_check",
     }
 
-    response1 = await async_client.post(
+    response1 = await authenticated_client.post(
         "/annotations/detections/", data=annotation_payload1
     )
     assert response1.status_code == 201
@@ -368,7 +368,7 @@ async def test_create_detection_annotation_unique_constraint_violation(
     }
 
     # Try to create second annotation for same detection - should fail with 409 Conflict
-    response2 = await async_client.post(
+    response2 = await authenticated_client.post(
         "/annotations/detections/", data=annotation_payload2
     )
     assert response2.status_code == 409  # Conflict due to unique constraint violation
@@ -379,7 +379,7 @@ async def test_create_detection_annotation_unique_constraint_violation(
 
 @pytest.mark.asyncio
 async def test_create_detection_annotation_different_detections_allowed(
-    async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
 ):
     """Test that creating annotations for different detections succeeds."""
     # Create first detection
@@ -400,7 +400,7 @@ async def test_create_detection_annotation_different_detections_allowed(
         ),
     }
 
-    detection_response1 = await async_client.post(
+    detection_response1 = await authenticated_client.post(
         "/detections",
         data=detection_payload1,
         files={"file": ("image1.jpg", mock_img, "image/jpeg")},
@@ -426,7 +426,7 @@ async def test_create_detection_annotation_different_detections_allowed(
         ),
     }
 
-    detection_response2 = await async_client.post(
+    detection_response2 = await authenticated_client.post(
         "/detections",
         data=detection_payload2,
         files={"file": ("image2.jpg", mock_img, "image/jpeg")},
@@ -451,7 +451,7 @@ async def test_create_detection_annotation_different_detections_allowed(
         "processing_stage": "visual_check",
     }
 
-    response1 = await async_client.post(
+    response1 = await authenticated_client.post(
         "/annotations/detections/", data=annotation_payload1
     )
     assert response1.status_code == 201
@@ -475,7 +475,7 @@ async def test_create_detection_annotation_different_detections_allowed(
         "processing_stage": "annotated",
     }
 
-    response2 = await async_client.post(
+    response2 = await authenticated_client.post(
         "/annotations/detections/", data=annotation_payload2
     )
     assert response2.status_code == 201
@@ -490,7 +490,7 @@ async def test_create_detection_annotation_different_detections_allowed(
 
 @pytest.mark.asyncio
 async def test_list_detection_annotations_filter_by_camera_id(
-    async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
 ):
     """Test filtering detection annotations by camera_id."""
     # Create first detection with camera_id 1 (from sequence 1)
@@ -511,7 +511,7 @@ async def test_list_detection_annotations_filter_by_camera_id(
         ),
     }
 
-    detection_response1 = await async_client.post(
+    detection_response1 = await authenticated_client.post(
         "/detections",
         data=detection_payload1,
         files={"file": ("image1.jpg", mock_img, "image/jpeg")},
@@ -536,13 +536,13 @@ async def test_list_detection_annotations_filter_by_camera_id(
         "processing_stage": "visual_check",
     }
 
-    response1 = await async_client.post(
+    response1 = await authenticated_client.post(
         "/annotations/detections/", data=annotation_payload1
     )
     assert response1.status_code == 201
 
     # Test filtering by camera_id=1 (should find the annotation)
-    response = await async_client.get("/annotations/detections/?camera_id=1")
+    response = await authenticated_client.get("/annotations/detections/?camera_id=1")
     assert response.status_code == 200
     json_response = response.json()
     assert "items" in json_response
@@ -552,7 +552,7 @@ async def test_list_detection_annotations_filter_by_camera_id(
         assert annotation["detection_id"] == detection_id1
 
     # Test filtering by non-existent camera_id (should find no annotations)
-    response = await async_client.get("/annotations/detections/?camera_id=999")
+    response = await authenticated_client.get("/annotations/detections/?camera_id=999")
     assert response.status_code == 200
     json_response = response.json()
     assert "items" in json_response
@@ -561,7 +561,7 @@ async def test_list_detection_annotations_filter_by_camera_id(
 
 @pytest.mark.asyncio
 async def test_list_detection_annotations_filter_by_organisation_id(
-    async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
 ):
     """Test filtering detection annotations by organisation_id."""
     # Create detection with organisation_id 1 (from sequence 1)
@@ -582,7 +582,7 @@ async def test_list_detection_annotations_filter_by_organisation_id(
         ),
     }
 
-    detection_response = await async_client.post(
+    detection_response = await authenticated_client.post(
         "/detections",
         data=detection_payload,
         files={"file": ("image.jpg", mock_img, "image/jpeg")},
@@ -607,20 +607,20 @@ async def test_list_detection_annotations_filter_by_organisation_id(
         "processing_stage": "visual_check",
     }
 
-    response = await async_client.post(
+    response = await authenticated_client.post(
         "/annotations/detections/", data=annotation_payload
     )
     assert response.status_code == 201
 
     # Test filtering by organisation_id=1 (should find the annotation)
-    response = await async_client.get("/annotations/detections/?organisation_id=1")
+    response = await authenticated_client.get("/annotations/detections/?organisation_id=1")
     assert response.status_code == 200
     json_response = response.json()
     assert "items" in json_response
     assert len(json_response["items"]) >= 1
 
     # Test filtering by non-existent organisation_id (should find no annotations)
-    response = await async_client.get("/annotations/detections/?organisation_id=999")
+    response = await authenticated_client.get("/annotations/detections/?organisation_id=999")
     assert response.status_code == 200
     json_response = response.json()
     assert "items" in json_response
@@ -629,7 +629,7 @@ async def test_list_detection_annotations_filter_by_organisation_id(
 
 @pytest.mark.asyncio
 async def test_list_detection_annotations_combined_filtering(
-    async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
 ):
     """Test combined filtering by camera_id, organisation_id, and processing_stage."""
     # Create detection
@@ -650,7 +650,7 @@ async def test_list_detection_annotations_combined_filtering(
         ),
     }
 
-    detection_response = await async_client.post(
+    detection_response = await authenticated_client.post(
         "/detections",
         data=detection_payload,
         files={"file": ("image.jpg", mock_img, "image/jpeg")},
@@ -675,13 +675,13 @@ async def test_list_detection_annotations_combined_filtering(
         "processing_stage": "annotated",
     }
 
-    response = await async_client.post(
+    response = await authenticated_client.post(
         "/annotations/detections/", data=annotation_payload
     )
     assert response.status_code == 201
 
     # Test combined filtering - should find the annotation
-    response = await async_client.get(
+    response = await authenticated_client.get(
         "/annotations/detections/?camera_id=1&organisation_id=1&processing_stage=annotated"
     )
     assert response.status_code == 200
@@ -690,7 +690,7 @@ async def test_list_detection_annotations_combined_filtering(
     assert len(json_response["items"]) >= 1
 
     # Test combined filtering with mismatched criteria - should find no annotations
-    response = await async_client.get(
+    response = await authenticated_client.get(
         "/annotations/detections/?camera_id=1&organisation_id=1&processing_stage=imported"
     )
     assert response.status_code == 200
@@ -702,7 +702,7 @@ async def test_list_detection_annotations_combined_filtering(
 
 @pytest.mark.asyncio
 async def test_list_detection_annotations_filter_by_detection_recorded_at_gte(
-    async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
 ):
     """Test filtering detection annotations by detection_recorded_at_gte."""
     # Define test dates
@@ -727,7 +727,7 @@ async def test_list_detection_annotations_filter_by_detection_recorded_at_gte(
         ),
     }
 
-    detection_response = await async_client.post(
+    detection_response = await authenticated_client.post(
         "/detections",
         data=detection_payload,
         files={"file": ("image.jpg", mock_img, "image/jpeg")},
@@ -752,13 +752,13 @@ async def test_list_detection_annotations_filter_by_detection_recorded_at_gte(
         "processing_stage": "visual_check",
     }
 
-    response = await async_client.post(
+    response = await authenticated_client.post(
         "/annotations/detections/", data=annotation_payload
     )
     assert response.status_code == 201
 
     # Test filtering by detection_recorded_at_gte with base_date (should find the annotation)
-    response = await async_client.get(
+    response = await authenticated_client.get(
         f"/annotations/detections/?detection_recorded_at_gte={base_date.isoformat()}"
     )
     assert response.status_code == 200
@@ -776,7 +776,7 @@ async def test_list_detection_annotations_filter_by_detection_recorded_at_gte(
 
     # Test filtering by detection_recorded_at_gte with future date (should not find annotation)
     future_date = now + timedelta(days=1)
-    response = await async_client.get(
+    response = await authenticated_client.get(
         f"/annotations/detections/?detection_recorded_at_gte={future_date.isoformat()}"
     )
     assert response.status_code == 200
@@ -795,7 +795,7 @@ async def test_list_detection_annotations_filter_by_detection_recorded_at_gte(
 
 @pytest.mark.asyncio
 async def test_list_detection_annotations_filter_by_detection_recorded_at_lte(
-    async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
 ):
     """Test filtering detection annotations by detection_recorded_at_lte."""
     # Define test dates
@@ -819,7 +819,7 @@ async def test_list_detection_annotations_filter_by_detection_recorded_at_lte(
         ),
     }
 
-    detection_response = await async_client.post(
+    detection_response = await authenticated_client.post(
         "/detections",
         data=detection_payload,
         files={"file": ("image.jpg", mock_img, "image/jpeg")},
@@ -844,13 +844,13 @@ async def test_list_detection_annotations_filter_by_detection_recorded_at_lte(
         "processing_stage": "visual_check",
     }
 
-    response = await async_client.post(
+    response = await authenticated_client.post(
         "/annotations/detections/", data=annotation_payload
     )
     assert response.status_code == 201
 
     # Test filtering by detection_recorded_at_lte with current date (should find the annotation)
-    response = await async_client.get(
+    response = await authenticated_client.get(
         f"/annotations/detections/?detection_recorded_at_lte={now.isoformat()}"
     )
     assert response.status_code == 200
@@ -868,7 +868,7 @@ async def test_list_detection_annotations_filter_by_detection_recorded_at_lte(
 
     # Test filtering by detection_recorded_at_lte with very old date (should not find annotation)
     very_old_date = now - timedelta(days=20)
-    response = await async_client.get(
+    response = await authenticated_client.get(
         f"/annotations/detections/?detection_recorded_at_lte={very_old_date.isoformat()}"
     )
     assert response.status_code == 200
@@ -887,7 +887,7 @@ async def test_list_detection_annotations_filter_by_detection_recorded_at_lte(
 
 @pytest.mark.asyncio
 async def test_list_detection_annotations_filter_by_detection_recorded_at_range(
-    async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
 ):
     """Test filtering detection annotations by detection_recorded_at date range."""
     # Define test dates
@@ -913,7 +913,7 @@ async def test_list_detection_annotations_filter_by_detection_recorded_at_range(
         ),
     }
 
-    detection_response = await async_client.post(
+    detection_response = await authenticated_client.post(
         "/detections",
         data=detection_payload,
         files={"file": ("image.jpg", mock_img, "image/jpeg")},
@@ -938,13 +938,13 @@ async def test_list_detection_annotations_filter_by_detection_recorded_at_range(
         "processing_stage": "visual_check",
     }
 
-    response = await async_client.post(
+    response = await authenticated_client.post(
         "/annotations/detections/", data=annotation_payload
     )
     assert response.status_code == 201
 
     # Test filtering by date range (should find the annotation)
-    response = await async_client.get(
+    response = await authenticated_client.get(
         f"/annotations/detections/?detection_recorded_at_gte={start_date.isoformat()}&detection_recorded_at_lte={end_date.isoformat()}"
     )
     assert response.status_code == 200
@@ -963,7 +963,7 @@ async def test_list_detection_annotations_filter_by_detection_recorded_at_range(
     # Test filtering by narrow date range that excludes the detection (should not find annotation)
     narrow_start = now - timedelta(days=3)
     narrow_end = now - timedelta(days=2)
-    response = await async_client.get(
+    response = await authenticated_client.get(
         f"/annotations/detections/?detection_recorded_at_gte={narrow_start.isoformat()}&detection_recorded_at_lte={narrow_end.isoformat()}"
     )
     assert response.status_code == 200
@@ -982,7 +982,7 @@ async def test_list_detection_annotations_filter_by_detection_recorded_at_range(
 
 @pytest.mark.asyncio
 async def test_list_detection_annotations_combined_date_filtering(
-    async_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
 ):
     """Test combined filtering by detection_recorded_at and annotation created_at."""
     # Define test dates
@@ -1006,7 +1006,7 @@ async def test_list_detection_annotations_combined_date_filtering(
         ),
     }
 
-    detection_response = await async_client.post(
+    detection_response = await authenticated_client.post(
         "/detections",
         data=detection_payload,
         files={"file": ("image.jpg", mock_img, "image/jpeg")},
@@ -1031,13 +1031,13 @@ async def test_list_detection_annotations_combined_date_filtering(
         "processing_stage": "annotated",
     }
 
-    response = await async_client.post(
+    response = await authenticated_client.post(
         "/annotations/detections/", data=annotation_payload
     )
     assert response.status_code == 201
 
     # Test combined filtering - detection recorded date + processing stage
-    response = await async_client.get(
+    response = await authenticated_client.get(
         f"/annotations/detections/?detection_recorded_at_gte={detection_recorded_date.isoformat()}&processing_stage=annotated"
     )
     assert response.status_code == 200
@@ -1053,7 +1053,7 @@ async def test_list_detection_annotations_combined_date_filtering(
     assert found_annotation, "Should find annotation matching both detection recorded date and processing stage"
 
     # Test combined filtering with mismatched criteria
-    response = await async_client.get(
+    response = await authenticated_client.get(
         f"/annotations/detections/?detection_recorded_at_gte={detection_recorded_date.isoformat()}&processing_stage=imported"
     )
     assert response.status_code == 200

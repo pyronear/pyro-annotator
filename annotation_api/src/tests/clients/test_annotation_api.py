@@ -161,6 +161,11 @@ def mock_image_file():
     """Mock image file content."""
     return b"fake_image_content"
 
+@pytest.fixture
+def auth_token():
+    """Mock authentication token for testing."""
+    return "test_jwt_token_12345"
+
 # ==================== HTTP UTILITIES TESTS ====================
 
 class TestHTTPUtilities:
@@ -415,21 +420,24 @@ class TestExceptions:
 class TestSequenceOperations:
     """Test sequence CRUD operations."""
 
-    def test_create_sequence_success(self, mock_sequence_data, mock_sequence_response):
+    def test_create_sequence_success(self, auth_token, mock_sequence_data, mock_sequence_response):
         """Test successful sequence creation."""
         with requests_mock.Mocker() as m:
             m.post(
                 f"{API_BASE}/sequences/", json=mock_sequence_response, status_code=201
             )
 
-            result = create_sequence(BASE_URL, mock_sequence_data)
+            result = create_sequence(BASE_URL, auth_token, mock_sequence_data)
             assert result == mock_sequence_response
 
             # Verify request was made correctly
             assert m.last_request.method == "POST"
             assert m.last_request.url == f"{API_BASE}/sequences/"
+            # Verify authentication header was included
+            assert "Authorization" in m.last_request.headers
+            assert m.last_request.headers["Authorization"] == f"Bearer {auth_token}"
 
-    def test_create_sequence_validation_error(self, mock_sequence_data):
+    def test_create_sequence_validation_error(self, auth_token, mock_sequence_data):
         """Test sequence creation with validation error."""
         error_response = {
             "detail": [
@@ -445,7 +453,7 @@ class TestSequenceOperations:
             m.post(f"{API_BASE}/sequences/", json=error_response, status_code=422)
 
             with pytest.raises(ValidationError) as exc_info:
-                create_sequence(BASE_URL, mock_sequence_data)
+                create_sequence(BASE_URL, auth_token, mock_sequence_data)
 
             error = exc_info.value
             assert error.status_code == 422
@@ -453,7 +461,7 @@ class TestSequenceOperations:
             assert error.field_errors[0]["field"] == "body.recorded_at"
 
     def test_create_sequence_base_url_handling(
-        self, mock_sequence_data, mock_sequence_response
+        self, auth_token, mock_sequence_data, mock_sequence_response
     ):
         """Test base URL handling with trailing slash."""
         with requests_mock.Mocker() as m:
@@ -462,22 +470,22 @@ class TestSequenceOperations:
             )
 
             # Test with trailing slash
-            result = create_sequence(f"{BASE_URL}/", mock_sequence_data)
+            result = create_sequence(f"{BASE_URL}/", auth_token, mock_sequence_data)
             assert result == mock_sequence_response
 
             # Verify URL was constructed correctly
             assert m.last_request.url == f"{API_BASE}/sequences/"
 
-    def test_get_sequence_success(self, mock_sequence_response):
+    def test_get_sequence_success(self, auth_token, mock_sequence_response):
         """Test successful sequence retrieval."""
         sequence_id = 1
         with requests_mock.Mocker() as m:
             m.get(f"{API_BASE}/sequences/{sequence_id}", json=mock_sequence_response)
 
-            result = get_sequence(BASE_URL, sequence_id)
+            result = get_sequence(BASE_URL, auth_token, sequence_id)
             assert result == mock_sequence_response
 
-    def test_get_sequence_not_found(self):
+    def test_get_sequence_not_found(self, auth_token):
         """Test sequence retrieval with not found error."""
         sequence_id = 999
         with requests_mock.Mocker() as m:
@@ -488,21 +496,21 @@ class TestSequenceOperations:
             )
 
             with pytest.raises(NotFoundError) as exc_info:
-                get_sequence(BASE_URL, sequence_id)
+                get_sequence(BASE_URL, auth_token, sequence_id)
 
             error = exc_info.value
             assert error.status_code == 404
             assert "Sequence not found" in str(error)
 
-    def test_list_sequences_success(self, mock_paginated_response):
+    def test_list_sequences_success(self, auth_token, mock_paginated_response):
         """Test successful sequence listing."""
         with requests_mock.Mocker() as m:
             m.get(f"{API_BASE}/sequences/", json=mock_paginated_response)
 
-            result = list_sequences(BASE_URL)
+            result = list_sequences(BASE_URL, auth_token)
             assert result == mock_paginated_response
 
-    def test_list_sequences_with_params(self, mock_paginated_response):
+    def test_list_sequences_with_params(self, auth_token, mock_paginated_response):
         """Test sequence listing with query parameters."""
         params = {
             "source_api": "pyronear_french",
@@ -516,7 +524,7 @@ class TestSequenceOperations:
         with requests_mock.Mocker() as m:
             m.get(f"{API_BASE}/sequences/", json=mock_paginated_response)
 
-            result = list_sequences(BASE_URL, **params)
+            result = list_sequences(BASE_URL, auth_token, **params)
             assert result == mock_paginated_response
 
             # Verify query parameters were passed
@@ -525,16 +533,16 @@ class TestSequenceOperations:
             assert request_params["camera_id"] == ["1"]
             assert request_params["page"] == ["2"]
 
-    def test_delete_sequence_success(self):
+    def test_delete_sequence_success(self, auth_token):
         """Test successful sequence deletion."""
         sequence_id = 1
         with requests_mock.Mocker() as m:
             m.delete(f"{API_BASE}/sequences/{sequence_id}", status_code=204)
 
             # Should not raise any exception
-            delete_sequence(BASE_URL, sequence_id)
+            delete_sequence(BASE_URL, auth_token, sequence_id)
 
-    def test_delete_sequence_not_found(self):
+    def test_delete_sequence_not_found(self, auth_token):
         """Test sequence deletion with not found error."""
         sequence_id = 999
         with requests_mock.Mocker() as m:
@@ -545,7 +553,7 @@ class TestSequenceOperations:
             )
 
             with pytest.raises(NotFoundError):
-                delete_sequence(BASE_URL, sequence_id)
+                delete_sequence(BASE_URL, auth_token, sequence_id)
 
 # ==================== DETECTION OPERATIONS TESTS ====================
 
@@ -553,7 +561,7 @@ class TestDetectionOperations:
     """Test detection CRUD operations."""
 
     def test_create_detection_success(
-        self, mock_detection_data, mock_detection_response, mock_image_file
+        self, auth_token, mock_detection_data, mock_detection_response, mock_image_file
     ):
         """Test successful detection creation with file upload."""
         with requests_mock.Mocker() as m:
@@ -562,7 +570,7 @@ class TestDetectionOperations:
             )
 
             result = create_detection(
-                BASE_URL, mock_detection_data, mock_image_file, "test.jpg"
+                BASE_URL, auth_token, mock_detection_data, mock_image_file, "test.jpg"
             )
             assert result == mock_detection_response
 
@@ -570,7 +578,7 @@ class TestDetectionOperations:
             assert m.last_request.method == "POST"
 
     def test_create_detection_validation_error(
-        self, mock_detection_data, mock_image_file
+        self, auth_token, mock_detection_data, mock_image_file
     ):
         """Test detection creation with validation error."""
         error_response = {
@@ -588,16 +596,16 @@ class TestDetectionOperations:
 
             with pytest.raises(ValidationError):
                 create_detection(
-                    BASE_URL, mock_detection_data, mock_image_file, "test.jpg"
+                    BASE_URL, auth_token, mock_detection_data, mock_image_file, "test.jpg"
                 )
 
-    def test_get_detection_success(self, mock_detection_response):
+    def test_get_detection_success(self, auth_token, mock_detection_response):
         """Test successful detection retrieval."""
         detection_id = 1
         with requests_mock.Mocker() as m:
             m.get(f"{API_BASE}/detections/{detection_id}", json=mock_detection_response)
 
-            result = get_detection(BASE_URL, detection_id)
+            result = get_detection(BASE_URL, auth_token, detection_id)
             assert result == mock_detection_response
 
     def test_get_detection_not_found(self):
@@ -611,24 +619,24 @@ class TestDetectionOperations:
             )
 
             with pytest.raises(NotFoundError):
-                get_detection(BASE_URL, detection_id)
+                get_detection(BASE_URL, auth_token, detection_id)
 
-    def test_list_detections_success(self, mock_paginated_response):
+    def test_list_detections_success(self, auth_token, mock_paginated_response):
         """Test successful detection listing."""
         with requests_mock.Mocker() as m:
             m.get(f"{API_BASE}/detections/", json=mock_paginated_response)
 
-            result = list_detections(BASE_URL)
+            result = list_detections(BASE_URL, auth_token)
             assert result == mock_paginated_response
 
-    def test_list_detections_with_params(self, mock_paginated_response):
+    def test_list_detections_with_params(self, auth_token, mock_paginated_response):
         """Test detection listing with query parameters."""
         params = {"sequence_id": 1, "order_by": "recorded_at", "order_direction": "asc"}
 
         with requests_mock.Mocker() as m:
             m.get(f"{API_BASE}/detections/", json=mock_paginated_response)
 
-            result = list_detections(BASE_URL, **params)
+            result = list_detections(BASE_URL, auth_token, **params)
             assert result == mock_paginated_response
 
     def test_get_detection_url_success(self):
@@ -641,10 +649,10 @@ class TestDetectionOperations:
                 f"{API_BASE}/detections/{detection_id}/url", json={"url": expected_url}
             )
 
-            result = get_detection_url(BASE_URL, detection_id)
+            result = get_detection_url(BASE_URL, auth_token, detection_id)
             assert result == expected_url
 
-    def test_get_detection_url_not_found(self):
+    def test_get_detection_url_not_found(self, auth_token):
         """Test detection URL retrieval with not found error."""
         detection_id = 999
         with requests_mock.Mocker() as m:
@@ -655,17 +663,17 @@ class TestDetectionOperations:
             )
 
             with pytest.raises(NotFoundError):
-                get_detection_url(BASE_URL, detection_id)
+                get_detection_url(BASE_URL, auth_token, detection_id)
 
-    def test_delete_detection_success(self):
+    def test_delete_detection_success(self, auth_token):
         """Test successful detection deletion."""
         detection_id = 1
         with requests_mock.Mocker() as m:
             m.delete(f"{API_BASE}/detections/{detection_id}", status_code=204)
 
-            delete_detection(BASE_URL, detection_id)
+            delete_detection(BASE_URL, auth_token, detection_id)
 
-    def test_delete_detection_not_found(self):
+    def test_delete_detection_not_found(self, auth_token):
         """Test detection deletion with not found error."""
         detection_id = 999
         with requests_mock.Mocker() as m:
@@ -676,14 +684,14 @@ class TestDetectionOperations:
             )
 
             with pytest.raises(NotFoundError):
-                delete_detection(BASE_URL, detection_id)
+                delete_detection(BASE_URL, auth_token, detection_id)
 
 # ==================== ANNOTATION OPERATIONS TESTS ====================
 
 class TestDetectionAnnotationOperations:
     """Test detection annotation CRUD operations."""
 
-    def test_create_detection_annotation_success(self, mock_detection_annotation_data):
+    def test_create_detection_annotation_success(self, auth_token, mock_detection_annotation_data):
         """Test successful detection annotation creation."""
         response_data = {
             "id": 1,
@@ -700,13 +708,14 @@ class TestDetectionAnnotationOperations:
 
             result = create_detection_annotation(
                 BASE_URL,
+                auth_token,
                 mock_detection_annotation_data["detection_id"],
                 mock_detection_annotation_data["annotation"],
                 mock_detection_annotation_data["processing_stage"],
             )
             assert result == response_data
 
-    def test_get_detection_annotation_success(self):
+    def test_get_detection_annotation_success(self, auth_token):
         """Test successful detection annotation retrieval."""
         annotation_id = 1
         response_data = {
@@ -721,18 +730,18 @@ class TestDetectionAnnotationOperations:
                 f"{API_BASE}/annotations/detections/{annotation_id}", json=response_data
             )
 
-            result = get_detection_annotation(BASE_URL, annotation_id)
+            result = get_detection_annotation(BASE_URL, auth_token, annotation_id)
             assert result == response_data
 
-    def test_list_detection_annotations_success(self, mock_paginated_response):
+    def test_list_detection_annotations_success(self, auth_token, mock_paginated_response):
         """Test successful detection annotation listing."""
         with requests_mock.Mocker() as m:
             m.get(f"{API_BASE}/annotations/detections/", json=mock_paginated_response)
 
-            result = list_detection_annotations(BASE_URL)
+            result = list_detection_annotations(BASE_URL, auth_token)
             assert result == mock_paginated_response
 
-    def test_list_detection_annotations_with_params(self, mock_paginated_response):
+    def test_list_detection_annotations_with_params(self, auth_token, mock_paginated_response):
         """Test detection annotation listing with query parameters."""
         params = {
             "sequence_id": 1,
@@ -745,7 +754,7 @@ class TestDetectionAnnotationOperations:
         with requests_mock.Mocker() as m:
             m.get(f"{API_BASE}/annotations/detections/", json=mock_paginated_response)
 
-            result = list_detection_annotations(BASE_URL, **params)
+            result = list_detection_annotations(BASE_URL, auth_token, **params)
             assert result == mock_paginated_response
 
     def test_update_detection_annotation_success(self):
@@ -767,7 +776,7 @@ class TestDetectionAnnotationOperations:
                 f"{API_BASE}/annotations/detections/{annotation_id}", json=response_data
             )
 
-            result = update_detection_annotation(BASE_URL, annotation_id, update_data)
+            result = update_detection_annotation(BASE_URL, auth_token, annotation_id, update_data)
             assert result == response_data
 
     def test_delete_detection_annotation_success(self):
@@ -778,12 +787,12 @@ class TestDetectionAnnotationOperations:
                 f"{API_BASE}/annotations/detections/{annotation_id}", status_code=204
             )
 
-            delete_detection_annotation(BASE_URL, annotation_id)
+            delete_detection_annotation(BASE_URL, auth_token, annotation_id)
 
 class TestSequenceAnnotationOperations:
     """Test sequence annotation CRUD operations."""
 
-    def test_create_sequence_annotation_success(self, mock_sequence_annotation_data):
+    def test_create_sequence_annotation_success(self, auth_token, mock_sequence_annotation_data):
         """Test successful sequence annotation creation."""
         response_data = {
             "id": 1,
@@ -801,7 +810,7 @@ class TestSequenceAnnotationOperations:
                 status_code=201,
             )
 
-            result = create_sequence_annotation(BASE_URL, mock_sequence_annotation_data)
+            result = create_sequence_annotation(BASE_URL, auth_token, mock_sequence_annotation_data)
             assert result == response_data
 
     def test_get_sequence_annotation_success(self):
@@ -820,18 +829,18 @@ class TestSequenceAnnotationOperations:
                 f"{API_BASE}/annotations/sequences/{annotation_id}", json=response_data
             )
 
-            result = get_sequence_annotation(BASE_URL, annotation_id)
+            result = get_sequence_annotation(BASE_URL, auth_token, annotation_id)
             assert result == response_data
 
-    def test_list_sequence_annotations_success(self, mock_paginated_response):
+    def test_list_sequence_annotations_success(self, auth_token, mock_paginated_response):
         """Test successful sequence annotation listing."""
         with requests_mock.Mocker() as m:
             m.get(f"{API_BASE}/annotations/sequences/", json=mock_paginated_response)
 
-            result = list_sequence_annotations(BASE_URL)
+            result = list_sequence_annotations(BASE_URL, auth_token)
             assert result == mock_paginated_response
 
-    def test_list_sequence_annotations_with_params(self, mock_paginated_response):
+    def test_list_sequence_annotations_with_params(self, auth_token, mock_paginated_response):
         """Test sequence annotation listing with query parameters."""
         params = {
             "has_smoke": True,
@@ -844,7 +853,7 @@ class TestSequenceAnnotationOperations:
         with requests_mock.Mocker() as m:
             m.get(f"{API_BASE}/annotations/sequences/", json=mock_paginated_response)
 
-            result = list_sequence_annotations(BASE_URL, **params)
+            result = list_sequence_annotations(BASE_URL, auth_token, **params)
             assert result == mock_paginated_response
 
     def test_update_sequence_annotation_success(self):
@@ -863,7 +872,7 @@ class TestSequenceAnnotationOperations:
                 f"{API_BASE}/annotations/sequences/{annotation_id}", json=response_data
             )
 
-            result = update_sequence_annotation(BASE_URL, annotation_id, update_data)
+            result = update_sequence_annotation(BASE_URL, auth_token, annotation_id, update_data)
             assert result == response_data
 
     def test_delete_sequence_annotation_success(self):
@@ -874,14 +883,14 @@ class TestSequenceAnnotationOperations:
                 f"{API_BASE}/annotations/sequences/{annotation_id}", status_code=204
             )
 
-            delete_sequence_annotation(BASE_URL, annotation_id)
+            delete_sequence_annotation(BASE_URL, auth_token, annotation_id)
 
 # ==================== EDGE CASES AND INTEGRATION TESTS ====================
 
 class TestEdgeCases:
     """Test edge cases and integration scenarios."""
 
-    def test_base_url_formatting(self, mock_sequence_data, mock_sequence_response):
+    def test_base_url_formatting(self, auth_token, mock_sequence_data, mock_sequence_response):
         """Test various base URL formats are handled correctly."""
         test_urls = [
             "http://localhost:5050",
@@ -927,7 +936,7 @@ class TestEdgeCases:
                 status_code=201,
             )
 
-            result = create_sequence_annotation(BASE_URL, annotation_data)
+            result = create_sequence_annotation(BASE_URL, auth_token, annotation_data)
             assert result["annotation"] == complex_annotation
 
     def test_empty_pagination_response(self):
@@ -982,7 +991,7 @@ class TestEdgeCases:
             assert "get sequence 1" in error.operation
             assert "Database connection lost" in str(error)
 
-    def test_malformed_multipart_request(self, mock_detection_data):
+    def test_malformed_multipart_request(self, auth_token, mock_detection_data):
         """Test handling of malformed multipart requests."""
         with requests_mock.Mocker() as m:
             m.post(

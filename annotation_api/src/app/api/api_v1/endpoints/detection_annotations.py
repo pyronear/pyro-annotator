@@ -13,7 +13,7 @@ from pydantic import ValidationError
 from sqlalchemy import asc, desc, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.api.dependencies import get_detection_annotation_crud
+from app.api.dependencies import get_current_user, get_detection_annotation_crud
 from app.crud import DetectionAnnotationCRUD
 from app.db import get_session
 from app.models import (
@@ -55,6 +55,7 @@ async def create_detection_annotation(
         description="Processing stage for this detection annotation. Options: imported (initial import), visual_check (human verification), bbox_annotation (manual bbox drawing), annotated (fully processed)",
     ),
     annotations: DetectionAnnotationCRUD = Depends(get_detection_annotation_crud),
+    current_user: str = Depends(get_current_user),
 ) -> DetectionAnnotationRead:
     # Parse and validate annotation
     parsed_annotation = json.loads(annotation)
@@ -122,6 +123,7 @@ async def list_annotations(
     ),
     session: AsyncSession = Depends(get_session),
     params: Params = Depends(),
+    current_user: str = Depends(get_current_user),
 ) -> Page[DetectionAnnotationRead]:
     """
     List detection annotations with filtering, pagination and ordering.
@@ -199,6 +201,7 @@ async def list_annotations(
 async def get_annotation(
     annotation_id: int = Path(..., ge=0),
     annotations: DetectionAnnotationCRUD = Depends(get_detection_annotation_crud),
+    current_user: str = Depends(get_current_user),
 ) -> DetectionAnnotationRead:
     return await annotations.get(annotation_id, strict=True)
 
@@ -208,6 +211,7 @@ async def update_annotation(
     annotation_id: int = Path(..., ge=0),
     payload: DetectionAnnotationUpdate = Body(...),
     annotations: DetectionAnnotationCRUD = Depends(get_detection_annotation_crud),
+    current_user: str = Depends(get_current_user),
 ) -> DetectionAnnotationRead:
     # Get existing annotation
     existing = await annotations.get(annotation_id, strict=True)
@@ -241,5 +245,6 @@ async def update_annotation(
 async def delete_annotation(
     annotation_id: int = Path(..., ge=0),
     annotations: DetectionAnnotationCRUD = Depends(get_detection_annotation_crud),
+    current_user: str = Depends(get_current_user),
 ) -> None:
     await annotations.delete(annotation_id)

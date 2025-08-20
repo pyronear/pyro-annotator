@@ -10,7 +10,7 @@ now = datetime.utcnow()
 
 @pytest.mark.asyncio
 async def test_create_sequence_annotation(
-    async_client: AsyncClient, sequence_session, detection_session
+    authenticated_client: AsyncClient, sequence_session, detection_session
 ):
     payload = {
         "sequence_id": 1,
@@ -28,7 +28,7 @@ async def test_create_sequence_annotation(
         "created_at": datetime.utcnow().isoformat(),
     }
 
-    response = await async_client.post("/annotations/sequences/", json=payload)
+    response = await authenticated_client.post("/annotations/sequences/", json=payload)
     assert response.status_code == 201, response.text
     result = response.json()
     assert "id" in result
@@ -37,9 +37,9 @@ async def test_create_sequence_annotation(
     assert result["sequence_id"] == payload["sequence_id"]
 
 @pytest.mark.asyncio
-async def test_get_sequence_annotation(async_client: AsyncClient):
+async def test_get_sequence_annotation(authenticated_client: AsyncClient):
     annotation_id = 1
-    response = await async_client.get(f"/annotations/sequences/{annotation_id}")
+    response = await authenticated_client.get(f"/annotations/sequences/{annotation_id}")
     if response.status_code == 200:
         data = response.json()
         assert data["id"] == annotation_id
@@ -48,8 +48,8 @@ async def test_get_sequence_annotation(async_client: AsyncClient):
         assert response.status_code in (404, 422)
 
 @pytest.mark.asyncio
-async def test_list_sequence_annotations(async_client: AsyncClient):
-    response = await async_client.get("/annotations/sequences/")
+async def test_list_sequence_annotations(authenticated_client: AsyncClient):
+    response = await authenticated_client.get("/annotations/sequences/")
     assert response.status_code == 200
     json_response = response.json()
     assert isinstance(json_response, dict)
@@ -60,7 +60,7 @@ async def test_list_sequence_annotations(async_client: AsyncClient):
     assert isinstance(json_response["items"], list)
 
 @pytest.mark.asyncio
-async def test_patch_sequence_annotation(async_client: AsyncClient):
+async def test_patch_sequence_annotation(authenticated_client: AsyncClient):
     annotation_id = 1
     payload = {
         "has_missed_smoke": False,
@@ -76,7 +76,7 @@ async def test_patch_sequence_annotation(async_client: AsyncClient):
         "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
     }
 
-    response = await async_client.patch(
+    response = await authenticated_client.patch(
         f"/annotations/sequences/{annotation_id}",
         json=payload,
     )
@@ -89,12 +89,12 @@ async def test_patch_sequence_annotation(async_client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_patch_sequence_annotation_invalid_processing_stage(
-    async_client: AsyncClient,
+    authenticated_client: AsyncClient,
 ):
     annotation_id = 1
     payload = {"processing_stage": "invalid_stage_not_in_enum"}
 
-    response = await async_client.patch(
+    response = await authenticated_client.patch(
         f"/annotations/sequences/{annotation_id}",
         json=payload,
     )
@@ -107,7 +107,7 @@ async def test_patch_sequence_annotation_invalid_processing_stage(
 
 @pytest.mark.asyncio
 async def test_delete_sequence_annotation(
-    async_client: AsyncClient, sequence_session, detection_session
+    authenticated_client: AsyncClient, sequence_session, detection_session
 ):
     payload = {
         "sequence_id": 1,
@@ -125,23 +125,23 @@ async def test_delete_sequence_annotation(
         "created_at": datetime.utcnow().isoformat(),
     }
 
-    create_resp = await async_client.post("/annotations/sequences/", json=payload)
+    create_resp = await authenticated_client.post("/annotations/sequences/", json=payload)
     assert create_resp.status_code == 201
     annotation_id = create_resp.json()["id"]
 
-    del_resp = await async_client.delete(f"/annotations/sequences/{annotation_id}")
+    del_resp = await authenticated_client.delete(f"/annotations/sequences/{annotation_id}")
     assert del_resp.status_code == 204
 
-    get_resp = await async_client.get(f"/annotations/sequences/{annotation_id}")
+    get_resp = await authenticated_client.get(f"/annotations/sequences/{annotation_id}")
     assert get_resp.status_code == 404
 
 @pytest.mark.asyncio
 async def test_delete_sequence_annotation_does_not_cascade_sequence(
-    async_client: AsyncClient, sequence_session, detection_session
+    authenticated_client: AsyncClient, sequence_session, detection_session
 ):
     """Test that deleting a sequence annotation does NOT cascade delete the parent sequence."""
     # 1. Verify sequence exists (sequence_id = 1 from fixture)
-    sequence_resp = await async_client.get("/sequences/1")
+    sequence_resp = await authenticated_client.get("/sequences/1")
     assert sequence_resp.status_code == 200
     initial_sequence_data = sequence_resp.json()
 
@@ -162,30 +162,30 @@ async def test_delete_sequence_annotation_does_not_cascade_sequence(
         "created_at": datetime.utcnow().isoformat(),
     }
 
-    create_resp = await async_client.post(
+    create_resp = await authenticated_client.post(
         "/annotations/sequences/", json=annotation_payload
     )
     assert create_resp.status_code == 201
     annotation_id = create_resp.json()["id"]
 
     # 3. Verify annotation was created
-    annotation_get_resp = await async_client.get(
+    annotation_get_resp = await authenticated_client.get(
         f"/annotations/sequences/{annotation_id}"
     )
     assert annotation_get_resp.status_code == 200
 
     # 4. Delete annotation
-    del_resp = await async_client.delete(f"/annotations/sequences/{annotation_id}")
+    del_resp = await authenticated_client.delete(f"/annotations/sequences/{annotation_id}")
     assert del_resp.status_code == 204
 
     # 5. Verify annotation is deleted
-    annotation_get_resp_after = await async_client.get(
+    annotation_get_resp_after = await authenticated_client.get(
         f"/annotations/sequences/{annotation_id}"
     )
     assert annotation_get_resp_after.status_code == 404
 
     # 6. CRITICAL: Verify sequence still exists and was NOT cascade deleted
-    sequence_get_resp_after = await async_client.get("/sequences/1")
+    sequence_get_resp_after = await authenticated_client.get("/sequences/1")
     assert sequence_get_resp_after.status_code == 200
     final_sequence_data = sequence_get_resp_after.json()
 
@@ -196,7 +196,7 @@ async def test_delete_sequence_annotation_does_not_cascade_sequence(
 
 @pytest.mark.asyncio
 async def test_create_sequence_annotation_invalid_bbox(
-    async_client: AsyncClient, sequence_session
+    authenticated_client: AsyncClient, sequence_session
 ):
     payload = {
         "sequence_id": 1,
@@ -216,14 +216,14 @@ async def test_create_sequence_annotation_invalid_bbox(
         "created_at": datetime.utcnow().isoformat(),
     }
 
-    response = await async_client.post("/annotations/sequences/", json=payload)
+    response = await authenticated_client.post("/annotations/sequences/", json=payload)
     assert response.status_code == 422
     error_data = response.json()
     assert "detail" in error_data
 
 @pytest.mark.asyncio
 async def test_create_sequence_annotation_invalid_false_positive_type(
-    async_client: AsyncClient, sequence_session
+    authenticated_client: AsyncClient, sequence_session
 ):
     payload = {
         "sequence_id": 1,
@@ -241,14 +241,14 @@ async def test_create_sequence_annotation_invalid_false_positive_type(
         "created_at": datetime.utcnow().isoformat(),
     }
 
-    response = await async_client.post("/annotations/sequences/", json=payload)
+    response = await authenticated_client.post("/annotations/sequences/", json=payload)
     assert response.status_code == 422
     error_data = response.json()
     assert "detail" in error_data
 
 @pytest.mark.asyncio
 async def test_create_sequence_annotation_unique_constraint_violation(
-    async_client: AsyncClient, sequence_session, detection_session
+    authenticated_client: AsyncClient, sequence_session, detection_session
 ):
     """Test that creating multiple annotations for the same sequence fails due to unique constraint."""
     payload1 = {
@@ -268,7 +268,7 @@ async def test_create_sequence_annotation_unique_constraint_violation(
     }
 
     # First annotation should be created successfully
-    response1 = await async_client.post("/annotations/sequences/", json=payload1)
+    response1 = await authenticated_client.post("/annotations/sequences/", json=payload1)
     assert response1.status_code == 201
     annotation1 = response1.json()
     assert annotation1["sequence_id"] == 1
@@ -291,7 +291,7 @@ async def test_create_sequence_annotation_unique_constraint_violation(
     }
 
     # Try to create second annotation for same sequence - should fail with 409 Conflict
-    response2 = await async_client.post("/annotations/sequences/", json=payload2)
+    response2 = await authenticated_client.post("/annotations/sequences/", json=payload2)
     assert response2.status_code == 409  # Conflict due to unique constraint violation
 
     # Note: After an integrity error, the database session becomes unusable for further operations
@@ -299,7 +299,7 @@ async def test_create_sequence_annotation_unique_constraint_violation(
 
 @pytest.mark.asyncio
 async def test_create_sequence_annotation_different_sequences_allowed(
-    async_client: AsyncClient, sequence_session, detection_session
+    authenticated_client: AsyncClient, sequence_session, detection_session
 ):
     """Test that creating annotations for different sequences succeeds."""
     # This test assumes we have at least two sequences available (sequence_id 1 exists from sequence_session)
@@ -322,7 +322,7 @@ async def test_create_sequence_annotation_different_sequences_allowed(
         "created_at": datetime.utcnow().isoformat(),
     }
 
-    response1 = await async_client.post("/annotations/sequences/", json=payload1)
+    response1 = await authenticated_client.post("/annotations/sequences/", json=payload1)
     assert response1.status_code == 201
     annotation1 = response1.json()
     assert annotation1["sequence_id"] == 1
@@ -343,7 +343,7 @@ async def test_create_sequence_annotation_different_sequences_allowed(
         "last_seen_at": datetime.utcnow().isoformat(),
     }
 
-    sequence_response = await async_client.post("/sequences", data=sequence_payload)
+    sequence_response = await authenticated_client.post("/sequences", data=sequence_payload)
     assert sequence_response.status_code == 201
     sequence2_id = sequence_response.json()["id"]
 
@@ -364,7 +364,7 @@ async def test_create_sequence_annotation_different_sequences_allowed(
         "created_at": datetime.utcnow().isoformat(),
     }
 
-    response2 = await async_client.post("/annotations/sequences/", json=payload2)
+    response2 = await authenticated_client.post("/annotations/sequences/", json=payload2)
     assert response2.status_code == 201
     annotation2 = response2.json()
     assert annotation2["sequence_id"] == sequence2_id
@@ -376,7 +376,7 @@ async def test_create_sequence_annotation_different_sequences_allowed(
 
 @pytest.mark.asyncio
 async def test_list_sequence_annotations_filter_by_has_smoke(
-    async_client: AsyncClient, sequence_session, detection_session
+    authenticated_client: AsyncClient, sequence_session, detection_session
 ):
     """Test filtering sequence annotations by has_smoke."""
     # Create annotation with has_smoke=True
@@ -396,12 +396,12 @@ async def test_list_sequence_annotations_filter_by_has_smoke(
         "created_at": datetime.utcnow().isoformat(),
     }
 
-    response = await async_client.post("/annotations/sequences/", json=payload)
+    response = await authenticated_client.post("/annotations/sequences/", json=payload)
     assert response.status_code == 201
     annotation_id = response.json()["id"]
 
     # Test filtering by has_smoke=true (should find the annotation)
-    response = await async_client.get("/annotations/sequences/?has_smoke=true")
+    response = await authenticated_client.get("/annotations/sequences/?has_smoke=true")
     assert response.status_code == 200
     json_response = response.json()
     assert "items" in json_response
@@ -415,7 +415,7 @@ async def test_list_sequence_annotations_filter_by_has_smoke(
     assert found_annotation, "Should find annotation with has_smoke=true"
 
     # Test filtering by has_smoke=false (should not find this annotation)
-    response = await async_client.get("/annotations/sequences/?has_smoke=false")
+    response = await authenticated_client.get("/annotations/sequences/?has_smoke=false")
     assert response.status_code == 200
     json_response = response.json()
     assert "items" in json_response
@@ -429,7 +429,7 @@ async def test_list_sequence_annotations_filter_by_has_smoke(
 
 @pytest.mark.asyncio
 async def test_list_sequence_annotations_filter_by_has_false_positives(
-    async_client: AsyncClient, sequence_session, detection_session
+    authenticated_client: AsyncClient, sequence_session, detection_session
 ):
     """Test filtering sequence annotations by has_false_positives."""
     # Create annotation with has_false_positives=True
@@ -451,14 +451,14 @@ async def test_list_sequence_annotations_filter_by_has_false_positives(
         "created_at": datetime.utcnow().isoformat(),
     }
 
-    response = await async_client.post("/annotations/sequences/", json=payload)
+    response = await authenticated_client.post("/annotations/sequences/", json=payload)
     assert response.status_code == 201
     annotation_id = response.json()["id"]
     annotation_data = response.json()
     assert annotation_data["has_false_positives"] is True
 
     # Test filtering by has_false_positives=true (should find the annotation)
-    response = await async_client.get(
+    response = await authenticated_client.get(
         "/annotations/sequences/?has_false_positives=true"
     )
     assert response.status_code == 200
@@ -475,7 +475,7 @@ async def test_list_sequence_annotations_filter_by_has_false_positives(
 
 @pytest.mark.asyncio
 async def test_list_sequence_annotations_filter_by_false_positive_type(
-    async_client: AsyncClient, sequence_session, detection_session
+    authenticated_client: AsyncClient, sequence_session, detection_session
 ):
     """Test filtering sequence annotations by specific false_positive_type using JSON search."""
     # Create annotation with specific false positive type
@@ -498,12 +498,12 @@ async def test_list_sequence_annotations_filter_by_false_positive_type(
         "created_at": datetime.utcnow().isoformat(),
     }
 
-    response = await async_client.post("/annotations/sequences/", json=payload)
+    response = await authenticated_client.post("/annotations/sequences/", json=payload)
     assert response.status_code == 201
     annotation_id = response.json()["id"]
 
     # Test filtering by false_positive_types=["antenna"] (should find the annotation)
-    response = await async_client.get(
+    response = await authenticated_client.get(
         "/annotations/sequences/?false_positive_types=antenna"
     )
     assert response.status_code == 200
@@ -523,7 +523,7 @@ async def test_list_sequence_annotations_filter_by_false_positive_type(
     ), "Should find annotation containing false_positive_type 'antenna'"
 
     # Test filtering by false_positive_types=["building"] (should also find the annotation)
-    response = await async_client.get(
+    response = await authenticated_client.get(
         "/annotations/sequences/?false_positive_types=building"
     )
     assert response.status_code == 200
@@ -540,7 +540,7 @@ async def test_list_sequence_annotations_filter_by_false_positive_type(
     ), "Should find annotation containing false_positive_type 'building'"
 
     # Test filtering by false_positive_types=["cliff"] (should not find the annotation)
-    response = await async_client.get(
+    response = await authenticated_client.get(
         "/annotations/sequences/?false_positive_types=cliff"
     )
     assert response.status_code == 200
@@ -558,7 +558,7 @@ async def test_list_sequence_annotations_filter_by_false_positive_type(
 
 @pytest.mark.asyncio
 async def test_list_sequence_annotations_filter_by_processing_stage(
-    async_client: AsyncClient, sequence_session, detection_session
+    authenticated_client: AsyncClient, sequence_session, detection_session
 ):
     """Test filtering sequence annotations by processing_stage."""
     # Create annotation with specific processing stage
@@ -578,12 +578,12 @@ async def test_list_sequence_annotations_filter_by_processing_stage(
         "created_at": datetime.utcnow().isoformat(),
     }
 
-    response = await async_client.post("/annotations/sequences/", json=payload)
+    response = await authenticated_client.post("/annotations/sequences/", json=payload)
     assert response.status_code == 201
     annotation_id = response.json()["id"]
 
     # Test filtering by processing_stage="annotated" (should find the annotation)
-    response = await async_client.get(
+    response = await authenticated_client.get(
         "/annotations/sequences/?processing_stage=annotated"
     )
     assert response.status_code == 200
@@ -599,7 +599,7 @@ async def test_list_sequence_annotations_filter_by_processing_stage(
     assert found_annotation, "Should find annotation with processing_stage='annotated'"
 
     # Test filtering by processing_stage="imported" (should not find this annotation)
-    response = await async_client.get(
+    response = await authenticated_client.get(
         "/annotations/sequences/?processing_stage=imported"
     )
     assert response.status_code == 200
@@ -615,7 +615,7 @@ async def test_list_sequence_annotations_filter_by_processing_stage(
 
 @pytest.mark.asyncio
 async def test_list_sequence_annotations_order_by_created_at(
-    async_client: AsyncClient, sequence_session, detection_session
+    authenticated_client: AsyncClient, sequence_session, detection_session
 ):
     """Test ordering sequence annotations by created_at."""
     # Create two annotations with different created_at times
@@ -641,7 +641,7 @@ async def test_list_sequence_annotations_order_by_created_at(
         "created_at": (base_time - timedelta(minutes=10)).isoformat(),
     }
 
-    response1 = await async_client.post("/annotations/sequences/", json=payload1)
+    response1 = await authenticated_client.post("/annotations/sequences/", json=payload1)
     assert response1.status_code == 201
     annotation1_id = response1.json()["id"]
 
@@ -664,7 +664,7 @@ async def test_list_sequence_annotations_order_by_created_at(
         "last_seen_at": datetime.utcnow().isoformat(),
     }
 
-    sequence_response = await async_client.post("/sequences", data=sequence_payload)
+    sequence_response = await authenticated_client.post("/sequences", data=sequence_payload)
     assert sequence_response.status_code == 201
     sequence2_id = sequence_response.json()["id"]
 
@@ -685,12 +685,12 @@ async def test_list_sequence_annotations_order_by_created_at(
         "created_at": (base_time - timedelta(minutes=5)).isoformat(),
     }
 
-    response2 = await async_client.post("/annotations/sequences/", json=payload2)
+    response2 = await authenticated_client.post("/annotations/sequences/", json=payload2)
     assert response2.status_code == 201
     annotation2_id = response2.json()["id"]
 
     # Test ordering by created_at desc (default)
-    response = await async_client.get(
+    response = await authenticated_client.get(
         "/annotations/sequences/?order_by=created_at&order_direction=desc"
     )
     assert response.status_code == 200
@@ -716,7 +716,7 @@ async def test_list_sequence_annotations_order_by_created_at(
     ), "Newer annotation should come first in desc order"
 
     # Test ordering by created_at asc
-    response = await async_client.get(
+    response = await authenticated_client.get(
         "/annotations/sequences/?order_by=created_at&order_direction=asc"
     )
     assert response.status_code == 200
@@ -743,7 +743,7 @@ async def test_list_sequence_annotations_order_by_created_at(
 
 @pytest.mark.asyncio
 async def test_list_sequence_annotations_combined_filtering(
-    async_client: AsyncClient, sequence_session, detection_session
+    authenticated_client: AsyncClient, sequence_session, detection_session
 ):
     """Test combined filtering by multiple parameters."""
     # Create annotation with specific characteristics
@@ -763,7 +763,7 @@ async def test_list_sequence_annotations_combined_filtering(
         "created_at": datetime.utcnow().isoformat(),
     }
 
-    response = await async_client.post("/annotations/sequences/", json=payload)
+    response = await authenticated_client.post("/annotations/sequences/", json=payload)
     assert response.status_code == 201
     annotation_id = response.json()["id"]
     annotation_data = response.json()
@@ -774,7 +774,7 @@ async def test_list_sequence_annotations_combined_filtering(
     assert annotation_data["has_missed_smoke"] is True
 
     # Test combined filtering - should find the annotation
-    response = await async_client.get(
+    response = await authenticated_client.get(
         "/annotations/sequences/?has_smoke=true&has_false_positives=true&has_missed_smoke=true&processing_stage=annotated"
     )
     assert response.status_code == 200
@@ -793,7 +793,7 @@ async def test_list_sequence_annotations_combined_filtering(
     assert found_annotation, "Should find annotation matching all filtering criteria"
 
     # Test combined filtering with one mismatched criterion - should not find the annotation
-    response = await async_client.get(
+    response = await authenticated_client.get(
         "/annotations/sequences/?has_smoke=true&has_false_positives=true&has_missed_smoke=false&processing_stage=annotated"
     )
     assert response.status_code == 200
@@ -811,7 +811,7 @@ async def test_list_sequence_annotations_combined_filtering(
 
 @pytest.mark.asyncio
 async def test_create_sequence_annotation_invalid_detection_id(
-    async_client: AsyncClient, sequence_session, detection_session
+    authenticated_client: AsyncClient, sequence_session, detection_session
 ):
     """Test that creating sequence annotation with non-existent detection_id fails with 422."""
     payload = {
@@ -832,7 +832,7 @@ async def test_create_sequence_annotation_invalid_detection_id(
         "created_at": datetime.utcnow().isoformat(),
     }
 
-    response = await async_client.post("/annotations/sequences/", json=payload)
+    response = await authenticated_client.post("/annotations/sequences/", json=payload)
     assert response.status_code == 422
     error_data = response.json()
     assert "detail" in error_data
@@ -841,7 +841,7 @@ async def test_create_sequence_annotation_invalid_detection_id(
 
 @pytest.mark.asyncio
 async def test_create_sequence_annotation_mixed_valid_invalid_detection_ids(
-    async_client: AsyncClient, sequence_session, detection_session
+    authenticated_client: AsyncClient, sequence_session, detection_session
 ):
     """Test that creating sequence annotation with mix of valid and invalid detection_ids fails with 422."""
     payload = {
@@ -873,7 +873,7 @@ async def test_create_sequence_annotation_mixed_valid_invalid_detection_ids(
         "created_at": datetime.utcnow().isoformat(),
     }
 
-    response = await async_client.post("/annotations/sequences/", json=payload)
+    response = await authenticated_client.post("/annotations/sequences/", json=payload)
     assert response.status_code == 422
     error_data = response.json()
     assert "detail" in error_data
@@ -884,7 +884,7 @@ async def test_create_sequence_annotation_mixed_valid_invalid_detection_ids(
 
 @pytest.mark.asyncio
 async def test_create_sequence_annotation_empty_bboxes(
-    async_client: AsyncClient, sequence_session, detection_session
+    authenticated_client: AsyncClient, sequence_session, detection_session
 ):
     """Test that creating sequence annotation with empty bboxes succeeds (no detection_ids to validate)."""
     payload = {
@@ -903,7 +903,7 @@ async def test_create_sequence_annotation_empty_bboxes(
         "created_at": datetime.utcnow().isoformat(),
     }
 
-    response = await async_client.post("/annotations/sequences/", json=payload)
+    response = await authenticated_client.post("/annotations/sequences/", json=payload)
     assert response.status_code == 201
     result = response.json()
     assert "id" in result
@@ -912,7 +912,7 @@ async def test_create_sequence_annotation_empty_bboxes(
 
 @pytest.mark.asyncio
 async def test_update_sequence_annotation_invalid_detection_id(
-    async_client: AsyncClient, sequence_session, detection_session
+    authenticated_client: AsyncClient, sequence_session, detection_session
 ):
     """Test that updating sequence annotation with non-existent detection_id fails with 422."""
     # First create a valid annotation
@@ -932,7 +932,7 @@ async def test_update_sequence_annotation_invalid_detection_id(
         "created_at": datetime.utcnow().isoformat(),
     }
 
-    create_response = await async_client.post(
+    create_response = await authenticated_client.post(
         "/annotations/sequences/", json=create_payload
     )
     assert create_response.status_code == 201
@@ -954,7 +954,7 @@ async def test_update_sequence_annotation_invalid_detection_id(
         "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
     }
 
-    response = await async_client.patch(
+    response = await authenticated_client.patch(
         f"/annotations/sequences/{annotation_id}",
         json=update_payload,
     )
@@ -966,7 +966,7 @@ async def test_update_sequence_annotation_invalid_detection_id(
 
 @pytest.mark.asyncio
 async def test_update_sequence_annotation_without_annotation_field(
-    async_client: AsyncClient, sequence_session, detection_session
+    authenticated_client: AsyncClient, sequence_session, detection_session
 ):
     """Test that updating sequence annotation without changing annotation field works (no validation needed)."""
     # First create a valid annotation
@@ -986,7 +986,7 @@ async def test_update_sequence_annotation_without_annotation_field(
         "created_at": datetime.utcnow().isoformat(),
     }
 
-    create_response = await async_client.post(
+    create_response = await authenticated_client.post(
         "/annotations/sequences/", json=create_payload
     )
     assert create_response.status_code == 201
@@ -998,7 +998,7 @@ async def test_update_sequence_annotation_without_annotation_field(
         "has_missed_smoke": True,
     }
 
-    response = await async_client.patch(
+    response = await authenticated_client.patch(
         f"/annotations/sequences/{annotation_id}",
         json=update_payload,
     )
@@ -1013,7 +1013,7 @@ async def test_update_sequence_annotation_without_annotation_field(
 
 @pytest.mark.asyncio
 async def test_list_sequence_annotations_filter_by_false_positive_types(
-    async_client: AsyncClient, sequence_session
+    authenticated_client: AsyncClient, sequence_session
 ):
     """Test filtering sequence annotations by false positive types."""
     
@@ -1060,7 +1060,7 @@ async def test_list_sequence_annotations_filter_by_false_positive_types(
     # Create sequences and get their IDs
     sequence_ids = []
     for seq_data in test_sequences:
-        response = await async_client.post("/sequences", data=seq_data)
+        response = await authenticated_client.post("/sequences", data=seq_data)
         assert response.status_code == 201
         sequence_ids.append(response.json()["id"])
 
@@ -1091,7 +1091,7 @@ async def test_list_sequence_annotations_filter_by_false_positive_types(
         img_bytes.seek(0)
         
         files = {"file": ("test.jpg", img_bytes, "image/jpeg")}
-        response = await async_client.post("/detections", data=detection_payload, files=files)
+        response = await authenticated_client.post("/detections", data=detection_payload, files=files)
         assert response.status_code == 201
         detection_ids.append(response.json()["id"])
 
@@ -1153,12 +1153,12 @@ async def test_list_sequence_annotations_filter_by_false_positive_types(
     # Create annotations
     annotation_ids = []
     for annotation_data in test_annotations:
-        response = await async_client.post("/annotations/sequences/", json=annotation_data)
+        response = await authenticated_client.post("/annotations/sequences/", json=annotation_data)
         assert response.status_code == 201
         annotation_ids.append(response.json()["id"])
 
     # Test 1: Filter by single false positive type - should match first annotation
-    response = await async_client.get("/annotations/sequences/?false_positive_types=antenna")
+    response = await authenticated_client.get("/annotations/sequences/?false_positive_types=antenna")
     assert response.status_code == 200
     data = response.json()
     filtered_annotations = data["items"]
@@ -1170,7 +1170,7 @@ async def test_list_sequence_annotations_filter_by_false_positive_types(
     assert annotation_ids[2] not in matching_ids
 
     # Test 2: Filter by multiple false positive types - should match first two annotations
-    response = await async_client.get("/annotations/sequences/?false_positive_types=antenna&false_positive_types=lens_flare")
+    response = await authenticated_client.get("/annotations/sequences/?false_positive_types=antenna&false_positive_types=lens_flare")
     assert response.status_code == 200
     data = response.json()
     filtered_annotations = data["items"]
@@ -1182,7 +1182,7 @@ async def test_list_sequence_annotations_filter_by_false_positive_types(
     assert annotation_ids[2] not in matching_ids
 
     # Test 3: Filter by non-existent false positive type - should return validation error
-    response = await async_client.get("/annotations/sequences/?false_positive_types=nonexistent")
+    response = await authenticated_client.get("/annotations/sequences/?false_positive_types=nonexistent")
     assert response.status_code == 422
     error_data = response.json()
     assert "detail" in error_data
@@ -1191,12 +1191,12 @@ async def test_list_sequence_annotations_filter_by_false_positive_types(
 
 
 @pytest.mark.asyncio
-async def test_list_sequence_annotations_false_positive_types_validation(async_client: AsyncClient):
+async def test_list_sequence_annotations_false_positive_types_validation(authenticated_client: AsyncClient):
     """Test that invalid false positive types return proper validation errors."""
     # Test with invalid false positive type - should return 422 validation error
-    response = await async_client.get("/annotations/sequences/?false_positive_types=invalid_type")
+    response = await authenticated_client.get("/annotations/sequences/?false_positive_types=invalid_type")
     assert response.status_code == 422
     
     # Test with mix of valid and invalid types
-    response = await async_client.get("/annotations/sequences/?false_positive_types=antenna&false_positive_types=invalid_type")
+    response = await authenticated_client.get("/annotations/sequences/?false_positive_types=antenna&false_positive_types=invalid_type")
     assert response.status_code == 422

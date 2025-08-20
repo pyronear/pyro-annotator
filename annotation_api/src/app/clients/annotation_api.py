@@ -64,6 +64,8 @@ __all__ = [
     "ValidationError",
     "NotFoundError",
     "ServerError",
+    # Authentication
+    "get_auth_token",
     # Functions
     "create_sequence",
     "get_sequence",
@@ -87,15 +89,72 @@ __all__ = [
 ]
 
 
+# -------------------- AUTHENTICATION UTILITIES --------------------
+
+
+def get_auth_token(base_url: str, username: str, password: str) -> str:
+    """
+    Get a JWT authentication token from the API.
+    
+    Args:
+        base_url: Base URL of the annotation API
+        username: Login username
+        password: Login password
+        
+    Returns:
+        JWT access token string
+        
+    Raises:
+        AnnotationAPIError: If authentication fails
+    """
+    login_url = f"{base_url.rstrip('/')}/api/v1/auth/login"
+    login_data = {"username": username, "password": password}
+    
+    try:
+        response = requests.post(login_url, json=login_data, timeout=30)
+        response.raise_for_status()
+        
+        token_data = response.json()
+        return token_data["access_token"]
+        
+    except requests.RequestException as e:
+        raise AnnotationAPIError(
+            f"Failed to authenticate with annotation API: {str(e)}",
+            operation="authentication"
+        ) from e
+    except KeyError as e:
+        raise AnnotationAPIError(
+            "Invalid response format from authentication endpoint",
+            operation="authentication"
+        ) from e
+
+
+def _get_auth_headers(auth_token: str) -> Dict[str, str]:
+    """
+    Get authentication headers for API requests.
+    
+    Args:
+        auth_token: JWT access token
+        
+    Returns:
+        Dictionary with Authorization header
+    """
+    return {"Authorization": f"Bearer {auth_token}"}
+
+
+# -------------------- HTTP UTILITIES --------------------
+
+
 def _make_request(
-    method: str, url: str, operation: str = None, **kwargs
+    method: str, url: str, auth_token: str, operation: str = None, **kwargs
 ) -> requests.Response:
     """
-    Make an HTTP request with enhanced error handling.
+    Make an authenticated HTTP request with enhanced error handling.
 
     Args:
         method: HTTP method (GET, POST, DELETE, etc.)
         url: Full URL to make the request to
+        auth_token: JWT authentication token
         operation: Description of the operation for error context
         **kwargs: Additional arguments to pass to requests
 
@@ -106,6 +165,11 @@ def _make_request(
         AnnotationAPIError: For various API errors with detailed messages
     """
     try:
+        # Add authentication headers
+        headers = kwargs.get("headers", {})
+        headers.update(_get_auth_headers(auth_token))
+        kwargs["headers"] = headers
+        
         response = requests.request(method, url, **kwargs)
 
         # Don't raise for status here - we'll handle it in _handle_response
@@ -199,12 +263,13 @@ def _handle_response(
 # -------------------- SEQUENCE OPERATIONS --------------------
 
 
-def create_sequence(base_url: str, sequence_data: Dict) -> Dict:
+def create_sequence(base_url: str, auth_token: str, sequence_data: Dict) -> Dict:
     """
     Create a new sequence in the annotation API.
 
     Args:
         base_url: Base URL of the annotation API (e.g., "http://localhost:5050")
+        auth_token: JWT authentication token
         sequence_data: Dictionary containing sequence data to create
 
     Returns:
@@ -216,16 +281,17 @@ def create_sequence(base_url: str, sequence_data: Dict) -> Dict:
     """
     url = f"{base_url.rstrip('/')}/api/v1/sequences/"
     operation = f"create sequence with alert_api_id={sequence_data.get('alert_api_id', 'unknown')}"
-    response = _make_request("POST", url, operation=operation, data=sequence_data)
+    response = _make_request("POST", url, auth_token, operation=operation, data=sequence_data)
     return _handle_response(response, operation=operation)
 
 
-def get_sequence(base_url: str, sequence_id: int) -> Dict:
+def get_sequence(base_url: str, auth_token: str, sequence_id: int) -> Dict:
     """
     Get a specific sequence by ID.
 
     Args:
         base_url: Base URL of the annotation API
+        auth_token: JWT authentication token
         sequence_id: ID of the sequence to retrieve
 
     Returns:
@@ -237,16 +303,17 @@ def get_sequence(base_url: str, sequence_id: int) -> Dict:
     """
     url = f"{base_url.rstrip('/')}/api/v1/sequences/{sequence_id}"
     operation = f"get sequence {sequence_id}"
-    response = _make_request("GET", url, operation=operation)
+    response = _make_request("GET", url, auth_token, operation=operation)
     return _handle_response(response, operation=operation)
 
 
-def list_sequences(base_url: str, **params) -> Dict:
+def list_sequences(base_url: str, auth_token: str, **params) -> Dict:
     """
     List sequences with pagination and filtering.
 
     Args:
         base_url: Base URL of the annotation API
+        auth_token: JWT authentication token
         **params: Query parameters for filtering and pagination:
             - source_api: Filter by source API
             - camera_id: Filter by camera ID
@@ -272,16 +339,17 @@ def list_sequences(base_url: str, **params) -> Dict:
     """
     url = f"{base_url.rstrip('/')}/api/v1/sequences/"
     operation = "list sequences"
-    response = _make_request("GET", url, operation=operation, params=params)
+    response = _make_request("GET", url, auth_token, operation=operation, params=params)
     return _handle_response(response, operation=operation)
 
 
-def delete_sequence(base_url: str, sequence_id: int) -> None:
+def delete_sequence(base_url: str, auth_token: str, sequence_id: int) -> None:
     """
     Delete a sequence by ID.
 
     Args:
         base_url: Base URL of the annotation API
+        auth_token: JWT authentication token
         sequence_id: ID of the sequence to delete
 
     Raises:
@@ -290,7 +358,7 @@ def delete_sequence(base_url: str, sequence_id: int) -> None:
     """
     url = f"{base_url.rstrip('/')}/api/v1/sequences/{sequence_id}"
     operation = f"delete sequence {sequence_id}"
-    response = _make_request("DELETE", url, operation=operation)
+    response = _make_request("DELETE", url, auth_token, operation=operation)
     _handle_response(response, operation=operation)
 
 
@@ -298,13 +366,14 @@ def delete_sequence(base_url: str, sequence_id: int) -> None:
 
 
 def create_detection(
-    base_url: str, detection_data: Dict, image_file: bytes, filename: str
+    base_url: str, auth_token: str, detection_data: Dict, image_file: bytes, filename: str
 ) -> Dict:
     """
     Create a new detection with an image file.
 
     Args:
         base_url: Base URL of the annotation API
+        auth_token: JWT authentication token
         detection_data: Dictionary containing detection data (algo_predictions, alert_api_id, etc.)
         image_file: Image file content as bytes
         filename: Name for the uploaded file
@@ -330,16 +399,17 @@ def create_detection(
     files = {"file": (filename, image_file, "image/jpeg")}
 
     operation = f"create detection with alert_api_id={detection_data.get('alert_api_id', 'unknown')}"
-    response = _make_request("POST", url, operation=operation, data=data, files=files)
+    response = _make_request("POST", url, auth_token, operation=operation, data=data, files=files)
     return _handle_response(response, operation=operation)
 
 
-def get_detection(base_url: str, detection_id: int) -> Dict:
+def get_detection(base_url: str, auth_token: str, detection_id: int) -> Dict:
     """
     Get a specific detection by ID.
 
     Args:
         base_url: Base URL of the annotation API
+        auth_token: JWT authentication token
         detection_id: ID of the detection to retrieve
 
     Returns:
@@ -351,16 +421,17 @@ def get_detection(base_url: str, detection_id: int) -> Dict:
     """
     url = f"{base_url.rstrip('/')}/api/v1/detections/{detection_id}"
     operation = f"get detection {detection_id}"
-    response = _make_request("GET", url, operation=operation)
+    response = _make_request("GET", url, auth_token, operation=operation)
     return _handle_response(response, operation=operation)
 
 
-def list_detections(base_url: str, **params) -> Dict:
+def list_detections(base_url: str, auth_token: str, **params) -> Dict:
     """
     List detections with pagination and filtering.
 
     Args:
         base_url: Base URL of the annotation API
+        auth_token: JWT authentication token
         **params: Query parameters for filtering and pagination:
             - sequence_id: Filter by sequence ID
             - order_by: Order by field (created_at, recorded_at)
@@ -381,16 +452,17 @@ def list_detections(base_url: str, **params) -> Dict:
     """
     url = f"{base_url.rstrip('/')}/api/v1/detections/"
     operation = "list detections"
-    response = _make_request("GET", url, operation=operation, params=params)
+    response = _make_request("GET", url, auth_token, operation=operation, params=params)
     return _handle_response(response, operation=operation)
 
 
-def get_detection_url(base_url: str, detection_id: int) -> str:
+def get_detection_url(base_url: str, auth_token: str, detection_id: int) -> str:
     """
     Get a temporary URL for accessing a detection's image.
 
     Args:
         base_url: Base URL of the annotation API
+        auth_token: JWT authentication token
         detection_id: ID of the detection
 
     Returns:
@@ -402,17 +474,18 @@ def get_detection_url(base_url: str, detection_id: int) -> str:
     """
     url = f"{base_url.rstrip('/')}/api/v1/detections/{detection_id}/url"
     operation = f"get detection {detection_id} URL"
-    response = _make_request("GET", url, operation=operation)
+    response = _make_request("GET", url, auth_token, operation=operation)
     result = _handle_response(response, operation=operation)
     return result["url"]
 
 
-def delete_detection(base_url: str, detection_id: int) -> None:
+def delete_detection(base_url: str, auth_token: str, detection_id: int) -> None:
     """
     Delete a detection by ID.
 
     Args:
         base_url: Base URL of the annotation API
+        auth_token: JWT authentication token
         detection_id: ID of the detection to delete
 
     Raises:
@@ -421,7 +494,7 @@ def delete_detection(base_url: str, detection_id: int) -> None:
     """
     url = f"{base_url.rstrip('/')}/api/v1/detections/{detection_id}"
     operation = f"delete detection {detection_id}"
-    response = _make_request("DELETE", url, operation=operation)
+    response = _make_request("DELETE", url, auth_token, operation=operation)
     _handle_response(response, operation=operation)
 
 
@@ -429,13 +502,14 @@ def delete_detection(base_url: str, detection_id: int) -> None:
 
 
 def create_detection_annotation(
-    base_url: str, detection_id: int, annotation: Dict, processing_stage: str
+    base_url: str, auth_token: str, detection_id: int, annotation: Dict, processing_stage: str
 ) -> Dict:
     """
     Create a new detection annotation.
 
     Args:
         base_url: Base URL of the annotation API
+        auth_token: JWT authentication token
         detection_id: ID of the detection to annotate
         annotation: Dictionary containing annotation data
         processing_stage: Processing stage enum value (e.g., "imported", "annotated")
@@ -457,35 +531,38 @@ def create_detection_annotation(
     }
 
     operation = f"create annotation for detection {detection_id}"
-    response = _make_request("POST", url, operation=operation, data=data)
+    response = _make_request("POST", url, auth_token, operation=operation, data=data)
     return _handle_response(response, operation=operation)
 
 
-def get_detection_annotation(base_url: str, annotation_id: int) -> Dict:
+def get_detection_annotation(base_url: str, auth_token: str, annotation_id: int) -> Dict:
     """
     Get a specific detection annotation by ID.
 
     Args:
         base_url: Base URL of the annotation API
+        auth_token: JWT authentication token
         annotation_id: ID of the detection annotation to retrieve
 
     Returns:
         Dictionary containing the detection annotation data
 
     Raises:
-        requests.RequestException: If the request fails
+        AnnotationAPIError: If the request fails
     """
     url = f"{base_url.rstrip('/')}/api/v1/annotations/detections/{annotation_id}"
-    response = _make_request("GET", url)
-    return _handle_response(response)
+    operation = f"get detection annotation {annotation_id}"
+    response = _make_request("GET", url, auth_token, operation=operation)
+    return _handle_response(response, operation=operation)
 
 
-def list_detection_annotations(base_url: str, **params) -> Dict:
+def list_detection_annotations(base_url: str, auth_token: str, **params) -> Dict:
     """
     List detection annotations with pagination and filtering.
 
     Args:
         base_url: Base URL of the annotation API
+        auth_token: JWT authentication token
         **params: Query parameters for filtering and pagination:
             - sequence_id: Filter by sequence ID (through detection relationship)
             - camera_id: Filter by camera ID (through detection -> sequence relationship)
@@ -513,18 +590,19 @@ def list_detection_annotations(base_url: str, **params) -> Dict:
     """
     url = f"{base_url.rstrip('/')}/api/v1/annotations/detections/"
     operation = "list detection annotations"
-    response = _make_request("GET", url, operation=operation, params=params)
+    response = _make_request("GET", url, auth_token, operation=operation, params=params)
     return _handle_response(response, operation=operation)
 
 
 def update_detection_annotation(
-    base_url: str, annotation_id: int, update_data: Dict
+    base_url: str, auth_token: str, annotation_id: int, update_data: Dict
 ) -> Dict:
     """
     Update a detection annotation by ID.
 
     Args:
         base_url: Base URL of the annotation API
+        auth_token: JWT authentication token
         annotation_id: ID of the detection annotation to update
         update_data: Dictionary containing fields to update (annotation, processing_stage)
 
@@ -532,37 +610,42 @@ def update_detection_annotation(
         Dictionary containing the updated detection annotation data
 
     Raises:
-        requests.RequestException: If the request fails
+        AnnotationAPIError: If the request fails
     """
     url = f"{base_url.rstrip('/')}/api/v1/annotations/detections/{annotation_id}"
-    response = _make_request("PATCH", url, json=update_data)
-    return _handle_response(response)
+    operation = f"update detection annotation {annotation_id}"
+    response = _make_request("PATCH", url, auth_token, operation=operation, json=update_data)
+    return _handle_response(response, operation=operation)
 
 
-def delete_detection_annotation(base_url: str, annotation_id: int) -> None:
+def delete_detection_annotation(base_url: str, auth_token: str, annotation_id: int) -> None:
     """
     Delete a detection annotation by ID.
 
     Args:
         base_url: Base URL of the annotation API
+        auth_token: JWT authentication token
         annotation_id: ID of the detection annotation to delete
 
     Raises:
-        requests.RequestException: If the request fails
+        AnnotationAPIError: If the request fails
     """
     url = f"{base_url.rstrip('/')}/api/v1/annotations/detections/{annotation_id}"
-    _make_request("DELETE", url)
+    operation = f"delete detection annotation {annotation_id}"
+    response = _make_request("DELETE", url, auth_token, operation=operation)
+    _handle_response(response, operation=operation)
 
 
 # -------------------- SEQUENCE ANNOTATION OPERATIONS --------------------
 
 
-def create_sequence_annotation(base_url: str, annotation_data: Dict) -> Dict:
+def create_sequence_annotation(base_url: str, auth_token: str, annotation_data: Dict) -> Dict:
     """
     Create a new sequence annotation.
 
     Args:
         base_url: Base URL of the annotation API
+        auth_token: JWT authentication token
         annotation_data: Dictionary containing sequence annotation data including:
             - sequence_id: ID of the sequence to annotate
             - has_missed_smoke: Boolean indicating if smoke was missed
@@ -574,38 +657,42 @@ def create_sequence_annotation(base_url: str, annotation_data: Dict) -> Dict:
         Dictionary containing the created sequence annotation data
 
     Raises:
-        requests.RequestException: If the request fails
+        AnnotationAPIError: If the request fails
     """
     url = f"{base_url.rstrip('/')}/api/v1/annotations/sequences/"
-    response = _make_request("POST", url, json=annotation_data)
-    return _handle_response(response)
+    operation = f"create sequence annotation for sequence {annotation_data.get('sequence_id', 'unknown')}"
+    response = _make_request("POST", url, auth_token, operation=operation, json=annotation_data)
+    return _handle_response(response, operation=operation)
 
 
-def get_sequence_annotation(base_url: str, annotation_id: int) -> Dict:
+def get_sequence_annotation(base_url: str, auth_token: str, annotation_id: int) -> Dict:
     """
     Get a specific sequence annotation by ID.
 
     Args:
         base_url: Base URL of the annotation API
+        auth_token: JWT authentication token
         annotation_id: ID of the sequence annotation to retrieve
 
     Returns:
         Dictionary containing the sequence annotation data
 
     Raises:
-        requests.RequestException: If the request fails
+        AnnotationAPIError: If the request fails
     """
     url = f"{base_url.rstrip('/')}/api/v1/annotations/sequences/{annotation_id}"
-    response = _make_request("GET", url)
-    return _handle_response(response)
+    operation = f"get sequence annotation {annotation_id}"
+    response = _make_request("GET", url, auth_token, operation=operation)
+    return _handle_response(response, operation=operation)
 
 
-def list_sequence_annotations(base_url: str, **params) -> Dict:
+def list_sequence_annotations(base_url: str, auth_token: str, **params) -> Dict:
     """
     List sequence annotations with pagination and filtering.
 
     Args:
         base_url: Base URL of the annotation API
+        auth_token: JWT authentication token
         **params: Query parameters for filtering and pagination:
             - sequence_id: Filter by sequence ID
             - has_smoke: Filter by has_smoke boolean
@@ -631,18 +718,19 @@ def list_sequence_annotations(base_url: str, **params) -> Dict:
     """
     url = f"{base_url.rstrip('/')}/api/v1/annotations/sequences/"
     operation = "list sequence annotations"
-    response = _make_request("GET", url, operation=operation, params=params)
+    response = _make_request("GET", url, auth_token, operation=operation, params=params)
     return _handle_response(response, operation=operation)
 
 
 def update_sequence_annotation(
-    base_url: str, annotation_id: int, update_data: Dict
+    base_url: str, auth_token: str, annotation_id: int, update_data: Dict
 ) -> Dict:
     """
     Update a sequence annotation by ID.
 
     Args:
         base_url: Base URL of the annotation API
+        auth_token: JWT authentication token
         annotation_id: ID of the sequence annotation to update
         update_data: Dictionary containing fields to update:
             - has_missed_smoke: Optional boolean
@@ -653,25 +741,29 @@ def update_sequence_annotation(
         Dictionary containing the updated sequence annotation data
 
     Raises:
-        requests.RequestException: If the request fails
+        AnnotationAPIError: If the request fails
     """
     url = f"{base_url.rstrip('/')}/api/v1/annotations/sequences/{annotation_id}"
-    response = _make_request("PATCH", url, json=update_data)
-    return _handle_response(response)
+    operation = f"update sequence annotation {annotation_id}"
+    response = _make_request("PATCH", url, auth_token, operation=operation, json=update_data)
+    return _handle_response(response, operation=operation)
 
 
-def delete_sequence_annotation(base_url: str, annotation_id: int) -> None:
+def delete_sequence_annotation(base_url: str, auth_token: str, annotation_id: int) -> None:
     """
     Delete a sequence annotation by ID.
 
     Args:
         base_url: Base URL of the annotation API
+        auth_token: JWT authentication token
         annotation_id: ID of the sequence annotation to delete
 
     Raises:
-        requests.RequestException: If the request fails
+        AnnotationAPIError: If the request fails
     """
     url = f"{base_url.rstrip('/')}/api/v1/annotations/sequences/{annotation_id}"
-    _make_request("DELETE", url)
+    operation = f"delete sequence annotation {annotation_id}"
+    response = _make_request("DELETE", url, auth_token, operation=operation)
+    _handle_response(response, operation=operation)
 
 

@@ -23,6 +23,10 @@ annotation_api/
 │   │   │   │   ├── endpoints/  # Individual endpoint modules
 │   │   │   │   └── router.py   # API router configuration
 │   │   │   └── dependencies.py # Dependency injection
+│   │   ├── auth/            # JWT authentication system
+│   │   │   ├── dependencies.py # JWT token validation & middleware
+│   │   │   ├── endpoints.py    # Login endpoint
+│   │   │   └── schemas.py      # Authentication request/response models
 │   │   ├── clients/         # API client modules
 │   │   │   └── annotation_api.py # Rich API client with error handling
 │   │   ├── core/            # Core configuration
@@ -33,7 +37,7 @@ annotation_api/
 │   │   ├── models.py        # SQLModel database models
 │   │   ├── main.py          # FastAPI application entry point
 │   │   └── db.py            # Database initialization
-│   └── tests/               # Comprehensive test suite (84+ tests)
+│   └── tests/               # Comprehensive test suite (192 tests)
 ├── docs/                    # Complete user documentation
 │   ├── README.md           # Documentation index
 │   ├── api-client-guide.md # User guide with examples
@@ -98,7 +102,8 @@ The API provides enhanced endpoints with pagination, filtering, and ordering:
 - Live code mounting via volumes (`./src/app:/app/app`, `./src/tests:/app/tests`) 
 - Proper test isolation with database cleanup between tests
 - Fixed HTTPX AsyncClient integration using `ASGITransport` for FastAPI testing
-- Comprehensive test suite with 84+ test cases covering all endpoints and edge cases
+- Comprehensive test suite with 192 test cases covering all endpoints and edge cases
+- Authenticated test fixtures for API endpoint testing
 - Clean test output with silenced debug messages and deprecation warnings
 
 ### Development Server
@@ -126,11 +131,24 @@ The API provides enhanced endpoints with pagination, filtering, and ordering:
 
 ## Environment Configuration
 Key environment variables (see `src/app/core/config.py`):
+
+### Authentication
+- `AUTH_USERNAME` - Login username (default: `admin`)
+- `AUTH_PASSWORD` - Login password (default: `admin`)
+- `JWT_SECRET` - JWT token signing secret (default: `your-secret-key-change-in-production`)
+- `ACCESS_TOKEN_EXPIRE_HOURS` - Token expiration in hours (default: `24`)
+
+### Script Authentication (Data Import Scripts)
+- `ANNOTATOR_LOGIN` - Import script authentication login (default: `admin`)
+- `ANNOTATOR_PASSWORD` - Import script authentication password (default: `admin`)
+
+### Database & Storage
 - `POSTGRES_URL` - Database connection string
 - `SUPERADMIN_LOGIN/PWD/ORG` - Admin user credentials
-- `JWT_SECRET` - JWT token secret
 - `S3_ACCESS_KEY/SECRET_KEY/REGION/ENDPOINT_URL` - S3 storage config
 - `S3_PROXY_URL` - Proxy URL for S3 (e.g., `http://localhost:4566` in development)
+
+### Development
 - `DEBUG` - Debug mode flag
 
 ## Development Setup
@@ -141,6 +159,19 @@ Key environment variables (see `src/app/core/config.py`):
 5. Install dependencies (for local dev): `uv sync --group dev`
 6. Run: `make start` (Docker - recommended) or `uv run uvicorn app.main:app --reload --app-dir src` (local)
 7. Access API docs at: http://localhost:5050/docs
+
+### Authentication Setup
+The API uses JWT authentication. Default credentials:
+- **Username**: `admin`
+- **Password**: `admin`
+
+To customize credentials, set environment variables in `docker-compose.yml`:
+```yaml
+environment:
+  - AUTH_USERNAME=your_username
+  - AUTH_PASSWORD=your_password
+  - JWT_SECRET=your_secure_jwt_secret
+```
 
 ### Setup Commands
 - `make setup` - Run setup tasks only (creates acme.json, checks prerequisites)
@@ -200,10 +231,51 @@ The API implements comprehensive Pydantic validation for JSONB fields:
 
 
 ## Authentication & Security
-- JWT-based authentication with configurable expiration
-- CORS middleware configured
-- Superadmin user setup via environment variables
-- S3 storage with presigned URLs for file access
+
+### JWT Authentication System
+The API implements secure JWT-based authentication protecting all endpoints:
+
+#### Features
+- **Token-based Authentication**: Bearer token authentication using JWT
+- **Configurable Credentials**: Username/password set via environment variables
+- **Configurable Expiration**: Token expiration time configurable (default 24 hours)
+- **Automatic Protection**: All API endpoints protected by authentication middleware
+- **Status Endpoint Exception**: `/status` endpoint remains public for health checks
+
+#### Authentication Flow
+1. **Login**: POST to `/api/v1/auth/login` with credentials
+2. **Token Response**: Receive JWT access token and token type
+3. **API Requests**: Include `Authorization: Bearer <token>` header
+4. **Token Expiry**: Tokens expire after configured time (default 24 hours)
+
+#### Usage Example
+```python
+import requests
+
+# Login
+response = requests.post("http://localhost:5050/api/v1/auth/login", 
+                        json={"username": "admin", "password": "admin"})
+token = response.json()["access_token"]
+
+# Make authenticated requests
+headers = {"Authorization": f"Bearer {token}"}
+sequences = requests.get("http://localhost:5050/api/v1/sequences/", headers=headers)
+```
+
+#### Environment Configuration
+```yaml
+# Docker Compose configuration
+environment:
+  - AUTH_USERNAME=admin                    # Default login username
+  - AUTH_PASSWORD=admin                    # Default login password  
+  - JWT_SECRET=your_secure_secret_here     # JWT signing secret
+  - ACCESS_TOKEN_EXPIRE_HOURS=24           # Token expiration (hours)
+```
+
+### Additional Security Features
+- CORS middleware configured for cross-origin requests
+- S3 storage with presigned URLs for secure file access
+- Comprehensive error handling without information leakage
 
 ## Monitoring & Observability
 - Process time headers added to responses
@@ -235,10 +307,27 @@ Robust synchronous client library with comprehensive error handling and validati
 - **Retry Logic**: Built-in retry mechanisms for transient failures
 
 #### Core Operations
-**Sequences:**
+
+**Authentication Required**
+All API operations require authentication. The client handles JWT token management automatically:
+
 ```python
+import requests
 from app.clients.annotation_api import create_sequence, list_sequences, ValidationError
 
+# First, authenticate to get token
+def get_auth_token(base_url: str, username: str, password: str) -> str:
+    response = requests.post(f"{base_url}/api/v1/auth/login", 
+                           json={"username": username, "password": password})
+    return response.json()["access_token"]
+
+# Get authentication token
+token = get_auth_token("http://localhost:5050", "admin", "admin")
+headers = {"Authorization": f"Bearer {token}"}
+```
+
+**Sequences:**
+```python
 # Create sequence with required recorded_at field
 sequence_data = {
     "source_api": "pyronear_french",
@@ -249,12 +338,12 @@ sequence_data = {
     # ... other required fields
 }
 try:
-    sequence = create_sequence("http://localhost:5050", sequence_data)
+    sequence = create_sequence("http://localhost:5050", sequence_data, headers=headers)
 except ValidationError as e:
     print(f"Validation failed: {e.field_errors}")
 
 # List with paginated response
-sequences_page = list_sequences("http://localhost:5050")
+sequences_page = list_sequences("http://localhost:5050", headers=headers)
 print(f"Page {sequences_page['page']} of {sequences_page['pages']}")
 for seq in sequences_page['items']:
     print(f"Sequence: {seq['id']}")
@@ -331,6 +420,8 @@ uv run python -m scripts.data_transfer.ingestion.platform.import \
 - `PLATFORM_PASSWORD` - Platform API password  
 - `PLATFORM_ADMIN_LOGIN` - Admin login for organization access
 - `PLATFORM_ADMIN_PASSWORD` - Admin password for organization access
+- `ANNOTATOR_LOGIN` - Annotation API login for script authentication (default: `admin`)
+- `ANNOTATOR_PASSWORD` - Annotation API password for script authentication (default: `admin`)
 
 #### Script Features
 - **End-to-end workflow** - Complete pipeline from platform data to annotation-ready sequences
@@ -370,6 +461,14 @@ uv run python -m scripts.data_transfer.ingestion.platform.import \
 
 ## Recent Enhancements (2024)
 
+### Authentication System Implementation
+- **JWT Authentication**: Complete JWT-based authentication system protecting all API endpoints
+- **Configurable Credentials**: Environment variable-based login credentials (AUTH_USERNAME/AUTH_PASSWORD)
+- **Token Management**: Configurable token expiration and JWT secret management
+- **Login Endpoint**: Dedicated `/api/v1/auth/login` endpoint for token acquisition
+- **Middleware Integration**: FastAPI dependency injection for automatic endpoint protection
+- **Test Authentication**: All 192 tests updated with authenticated client fixtures
+
 ### Database & Schema Improvements
 - **Added recorded_at field** to Sequence model as required field for temporal tracking
 - **Enhanced database indexing** for optimal query performance on timestamp and filter fields
@@ -382,7 +481,8 @@ uv run python -m scripts.data_transfer.ingestion.platform.import \
 - **Enhanced Error Handling**: Detailed validation messages with field-level error reporting
 
 ### Test Suite Improvements
-- **Comprehensive Coverage**: 84+ test cases covering all endpoints and edge cases
+- **Comprehensive Coverage**: 192 test cases covering all endpoints and edge cases including authentication
+- **Authentication Testing**: Authenticated client fixtures and JWT token validation tests
 - **Clean Test Output**: Silenced debug messages and deprecation warnings for cleaner CI
 - **Proper Isolation**: Database cleanup and sequence resets between tests
 - **Pagination Testing**: Updated tests to handle new paginated response format
@@ -397,6 +497,15 @@ uv run python -m scripts.data_transfer.ingestion.platform.import \
 ## Troubleshooting
 
 ### Common Issues
+
+#### Authentication Issues
+- **401/403 Unauthorized**: Check that JWT token is included in `Authorization: Bearer <token>` header
+- **Invalid credentials**: Verify AUTH_USERNAME and AUTH_PASSWORD environment variables
+- **Token expired**: JWT tokens expire after configured time (default 24 hours), obtain new token via login
+- **Login endpoint 404**: Login endpoint is at `/api/v1/auth/login`, not `/auth/login`
+- **Tests failing with auth**: Use `authenticated_client` fixture instead of `async_client` for protected endpoints
+
+#### General Issues
 - **Module not found in Docker**: Ensure volume mounts don't overwrite virtual environment
 - **Dependencies out of sync**: Run `uv sync` to update from lock file
 - **Type checking errors**: Install dev dependencies with `uv sync --group dev`

@@ -26,7 +26,8 @@ Example:
 import logging
 from typing import List, Dict, Any, Optional, Tuple
 
-from app.clients.annotation_api import list_detections, get_sequence
+from app.clients.annotation_api import get_auth_token, list_detections, get_sequence
+import os
 from app.schemas.annotation_validation import (
     BoundingBox,
     SequenceBBox,
@@ -226,6 +227,7 @@ class SequenceAnalyzer:
         self.base_url = base_url
         self.confidence_threshold = confidence_threshold
         self.iou_threshold = iou_threshold
+        self._auth_token = None  # Cache token for session
         self.min_cluster_size = min_cluster_size
         self.logger = logging.getLogger(__name__)
 
@@ -250,7 +252,8 @@ class SequenceAnalyzer:
             ...         print(f"Cluster has {len(bbox_cluster.bboxes)} detections")
         """
         try:
-            sequence = get_sequence(self.base_url, sequence_id)
+            auth_token = self._get_auth_token()
+            sequence = get_sequence(self.base_url, auth_token, sequence_id)
             self.logger.info(f"Analyzing sequence {sequence_id}: {sequence.get('camera_name', 'Unknown')}")
 
             detections = self._fetch_sequence_detections(sequence_id)
@@ -284,6 +287,21 @@ class SequenceAnalyzer:
             self.logger.error(f"Error analyzing sequence {sequence_id}: {e}")
             return None
 
+    def _get_auth_token(self) -> str:
+        """
+        Get cached authentication token, or fetch a new one if needed.
+        
+        Returns:
+            JWT authentication token
+        """
+        if not self._auth_token:
+            self._auth_token = get_auth_token(
+                self.base_url,
+                os.environ.get("ANNOTATOR_LOGIN", "admin"),
+                os.environ.get("ANNOTATOR_PASSWORD", "admin")
+            )
+        return self._auth_token
+
     def _fetch_sequence_detections(self, sequence_id: int) -> List[Dict[str, Any]]:
         """
         Fetch all detections for a sequence using pagination.
@@ -300,8 +318,10 @@ class SequenceAnalyzer:
             page_size = 100
 
             while True:
+                auth_token = self._get_auth_token()
                 response = list_detections(
                     self.base_url,
+                    auth_token,
                     sequence_id=sequence_id,
                     order_by="recorded_at",
                     order_direction="asc",
