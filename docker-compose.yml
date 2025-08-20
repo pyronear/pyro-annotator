@@ -40,6 +40,8 @@ services:
     build:
       context: ./annotation_api
       dockerfile: ./Dockerfile
+      tags:
+        - "pyronear/annotation-api:latest"
     depends_on:
       postgres:
         condition: service_healthy
@@ -73,8 +75,10 @@ services:
       context: ./frontend
       dockerfile: ./Dockerfile
       args:
-        - VITE_API_BASE_URL=http://localhost:5050
+        - VITE_API_BASE_URL=http://localhost:5050 #https://annotationdev.pyronear.org
         - VITE_ENVIRONMENT=production
+      tags:
+        - "pyronear/annotation-app:latest"
     depends_on:
       annotation_api:
         condition: service_healthy
