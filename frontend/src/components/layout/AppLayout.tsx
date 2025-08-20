@@ -5,6 +5,7 @@ import { clsx } from 'clsx';
 import { useAnnotationCounts } from '@/hooks/useAnnotationCounts';
 import NotificationBadge from '@/components/ui/NotificationBadge';
 import { useAuthStore } from '@/store/useAuthStore';
+import logoImg from '/public/logo.png';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -175,7 +176,7 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
       <div className="flex-1 flex flex-col pt-5 pb-4 overflow-y-auto">
         <div className="flex items-center flex-shrink-0 px-4">
           <div className="flex items-center">
-            <img src="/logo.png" alt="PyroAnnotator Logo" className="w-8 h-8" />
+            <img src={logoImg} alt="PyroAnnotator Logo" className="w-8 h-8" />
             <h1 className="ml-2 text-xl font-bold text-gray-900">
               PyroAnnotator
             </h1>

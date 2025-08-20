@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useAnnotationStats } from '@/hooks/useAnnotationStats';
 import ProgressBar, { MultiStageProgressBar } from '@/components/ProgressBar';
+import logoImg from '/public/logo.png';
 
 export default function DashboardPage() {
   const { 
@@ -32,7 +33,7 @@ export default function DashboardPage() {
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
             <img 
-              src="/logo.png" 
+              src={logoImg} 
               alt="PyroAnnotator Logo" 
               className="w-16 h-16 object-contain"
             />
