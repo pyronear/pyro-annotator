@@ -143,7 +143,7 @@ export default function LoginPage({ onLogin, isLoading = false, error }: LoginPa
         {/* Footer */}
         <div className="text-center">
           <p className="text-xs text-gray-500">
-            © 2024 Pyronear. Wildfire prevention and detection.
+            Pyronear
           </p>
         </div>
       </div>
