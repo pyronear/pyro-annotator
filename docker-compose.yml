@@ -72,15 +72,14 @@ services:
     build:
       context: ./frontend
       dockerfile: ./Dockerfile
+      args:
+        - VITE_API_BASE_URL=http://localhost:5050
+        - VITE_ENVIRONMENT=production
     depends_on:
       annotation_api:
         condition: service_healthy
     ports:
       - "3000:80"
-    environment:
-      # Configure API base URL for backend communication within Docker network
-      - VITE_API_BASE_URL=http://annotation_api:5050
-      - VITE_ENVIRONMENT=production
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/"]
