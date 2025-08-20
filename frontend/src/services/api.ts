@@ -1,8 +1,8 @@
 import axios, { AxiosInstance, AxiosResponse } from 'axios';
 import qs from 'qs';
-import { 
-  Sequence, 
-  SequenceAnnotation, 
+import {
+  Sequence,
+  SequenceAnnotation,
   DetectionAnnotation,
   Detection,
   Camera,
@@ -28,7 +28,7 @@ class ApiClient {
       },
       timeout: 30000,
       paramsSerializer: (params) => {
-        return qs.stringify(params, { 
+        return qs.stringify(params, {
           arrayFormat: 'repeat',  // Convert arrays to repeated params: ?false_positive_types=antenna&false_positive_types=building
           skipNulls: true         // Skip null/undefined values
         });
@@ -66,7 +66,7 @@ class ApiClient {
           localStorage.removeItem('auth-store');
           window.location.href = '/login';
         }
-        
+
         const apiError: ApiError = {
           detail: error.response?.data?.detail || error.message || 'Unknown error occurred',
         };
@@ -93,7 +93,7 @@ class ApiClient {
     const allDetections: Detection[] = [];
     let page = 1;
     let hasMore = true;
-    
+
     while (hasMore) {
       const response = await this.getDetections({
         sequence_id: id,
@@ -102,14 +102,14 @@ class ApiClient {
         page: page,
         size: 100 // Max allowed by backend
       });
-      
+
       allDetections.push(...response.items);
-      
+
       // Check if we've fetched all pages
       hasMore = page < response.pages;
       page++;
     }
-    
+
     return allDetections;
   }
 
@@ -128,7 +128,7 @@ class ApiClient {
       ...filters,
       include_annotation: true, // Always include annotation data
     };
-    
+
     const response: AxiosResponse<PaginatedResponse<SequenceWithAnnotation>> = await this.client.get('/sequences', {
       params: enhancedFilters,
     });
@@ -218,7 +218,7 @@ class ApiClient {
     formData.append('detection_id', annotation.detection_id.toString());
     formData.append('annotation', JSON.stringify(annotation.annotation));
     formData.append('processing_stage', annotation.processing_stage);
-    
+
     const response: AxiosResponse<DetectionAnnotation> = await this.client.post('/annotations/detections', formData, {
       headers: {
         // Remove Content-Type to let browser set multipart/form-data with boundary
