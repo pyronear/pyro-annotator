@@ -95,6 +95,7 @@ export const QUERY_KEYS = {
   DETECTION_ANNOTATIONS: ['detection-annotations'],
   CAMERAS: ['cameras'],
   ORGANIZATIONS: ['organizations'],
+  SOURCE_APIS: ['source-apis'],
   DETECTION_ANNOTATION: (id: number) => ['detection-annotations', id],
   ANNOTATION_STATS: ['annotation-stats'],
 } as const;

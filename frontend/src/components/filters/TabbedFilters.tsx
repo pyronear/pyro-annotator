@@ -16,6 +16,11 @@ interface Organization {
   name: string;
 }
 
+interface SourceApi {
+  id: string;
+  name: string;
+}
+
 interface TabbedFiltersProps {
   // Current filter values
   filters: ExtendedSequenceFilters;
@@ -38,8 +43,10 @@ interface TabbedFiltersProps {
   // Data
   cameras: Camera[];
   organizations: Organization[];
+  sourceApis: SourceApi[];
   camerasLoading: boolean;
   organizationsLoading: boolean;
+  sourceApisLoading: boolean;
   
   // Configuration
   showModelAccuracy?: boolean; // for review pages only
@@ -69,8 +76,10 @@ export default function TabbedFilters({
   onModelAccuracyChange,
   cameras,
   organizations,
+  sourceApis,
   camerasLoading,
   organizationsLoading,
+  sourceApisLoading,
   showModelAccuracy = false,
   showFalsePositiveTypes = false,
   onResetFilters,
@@ -213,11 +222,14 @@ export default function TabbedFilters({
           value={filters.source_api || ''}
           onChange={(e) => onFiltersChange({ source_api: e.target.value as any || undefined })}
           className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
+          disabled={sourceApisLoading}
         >
           <option value="">All Sources</option>
-          <option value="pyronear_french">Pyronear French</option>
-          <option value="alert_wildfire">Alert Wildfire</option>
-          <option value="api_cenia">API Cenia</option>
+          {sourceApis.map((sourceApi) => (
+            <option key={sourceApi.id} value={sourceApi.id}>
+              {sourceApi.name}
+            </option>
+          ))}
         </select>
       </div>
 
