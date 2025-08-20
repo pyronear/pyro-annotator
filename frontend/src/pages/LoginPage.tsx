@@ -4,7 +4,7 @@ import { Lock, User, AlertTriangle } from 'lucide-react';
 interface LoginPageProps {
   onLogin: (username: string, password: string) => Promise<void>;
   isLoading?: boolean;
-  error?: string;
+  error?: string | null;
 }
 
 export default function LoginPage({ onLogin, isLoading = false, error }: LoginPageProps) {

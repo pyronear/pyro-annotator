@@ -5,7 +5,7 @@ import { clsx } from 'clsx';
 import { useAnnotationCounts } from '@/hooks/useAnnotationCounts';
 import NotificationBadge from '@/components/ui/NotificationBadge';
 import { useAuthStore } from '@/store/useAuthStore';
-import logoImg from '/public/logo.png';
+import logoImg from '@/assets/logo.png';
 
 interface AppLayoutProps {
   children: React.ReactNode;

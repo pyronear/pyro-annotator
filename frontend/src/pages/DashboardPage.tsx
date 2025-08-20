@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { useAnnotationStats } from '@/hooks/useAnnotationStats';
 import ProgressBar, { MultiStageProgressBar } from '@/components/ProgressBar';
-import logoImg from '/public/logo.png';
+import logoImg from '@/assets/logo.png';
 
 export default function DashboardPage() {
   const { 
