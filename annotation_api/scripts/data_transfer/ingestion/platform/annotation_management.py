@@ -1,0 +1,390 @@
+"""
+Annotation management utilities for annotation API interactions.
+
+This module handles interactions with the annotation API including checking for existing
+annotations, creating new annotations, updating annotations, and processing sequences
+for annotation generation.
+
+Functions:
+    check_existing_annotation: Check if a sequence already has an annotation
+    create_annotation_from_data: Create or update a sequence annotation
+    get_sequences_from_annotation_api: Get sequence IDs from annotation API
+    process_single_sequence: Process a single sequence for annotation generation
+    valid_date: Datetime parser for CLI arguments
+
+Example:
+    >>> from annotation_management import process_single_sequence
+    >>> from annotation_processing import SequenceAnalyzer
+    >>> 
+    >>> analyzer = SequenceAnalyzer("http://localhost:5050")
+    >>> result = process_single_sequence(
+    ...     sequence_id=123,
+    ...     analyzer=analyzer,
+    ...     annotation_api_url="http://localhost:5050",
+    ...     dry_run=False
+    ... )
+    >>> if result["annotation_created"]:
+    ...     print("Annotation created successfully!")
+"""
+
+import argparse
+import logging
+from datetime import date, datetime
+from typing import List, Dict, Any, Optional
+
+from app.clients.annotation_api import (
+    list_sequences,
+    list_sequence_annotations,
+    create_sequence_annotation,
+    update_sequence_annotation,
+)
+from app.models import SequenceAnnotationProcessingStage
+from app.schemas.annotation_validation import SequenceAnnotationData
+from .annotation_processing import SequenceAnalyzer
+
+
+def valid_date(s: str) -> date:
+    """
+    Datetime parser for CLI argument validation.
+    
+    Converts a string in YYYY-MM-DD format to a date object.
+    
+    Args:
+        s: Date string in YYYY-MM-DD format
+        
+    Returns:
+        date object
+        
+    Raises:
+        argparse.ArgumentTypeError: If the string is not a valid date
+        
+    Example:
+        >>> date_obj = valid_date("2024-01-15")
+        >>> print(date_obj)
+        2024-01-15
+        >>> valid_date("invalid")  # Raises ArgumentTypeError
+    """
+    try:
+        return datetime.strptime(s, "%Y-%m-%d").date()
+    except ValueError:
+        msg = "not a valid date: {0!r}".format(s)
+        raise argparse.ArgumentTypeError(msg)
+
+
+def check_existing_annotation(base_url: str, sequence_id: int) -> Optional[int]:
+    """
+    Check if a sequence already has an annotation.
+    
+    Args:
+        base_url: Base URL of the annotation API
+        sequence_id: ID of the sequence to check
+        
+    Returns:
+        Annotation ID if found, None if no annotation exists
+        
+    Example:
+        >>> annotation_id = check_existing_annotation("http://localhost:5050", 123)
+        >>> if annotation_id:
+        ...     print(f"Found existing annotation with ID: {annotation_id}")
+        >>> else:
+        ...     print("No existing annotation found")
+    """
+    try:
+        response = list_sequence_annotations(base_url, sequence_id=sequence_id)
+
+        if isinstance(response, dict) and "items" in response:
+            annotations = response["items"]
+        else:
+            annotations = response
+
+        if len(annotations) > 0:
+            return annotations[0]["id"]
+        return None
+
+    except Exception as e:
+        logging.debug(f"Error checking existing annotation for sequence {sequence_id}: {e}")
+        return None
+
+
+def create_annotation_from_data(
+    base_url: str,
+    sequence_id: int,
+    annotation_data: SequenceAnnotationData,
+    dry_run: bool = False,
+    existing_annotation_id: Optional[int] = None,
+    processing_stage: SequenceAnnotationProcessingStage = SequenceAnnotationProcessingStage.READY_TO_ANNOTATE,
+) -> bool:
+    """
+    Create or update a sequence annotation from analyzed data.
+    
+    This function handles both creating new annotations and updating existing ones
+    based on whether an existing annotation ID is provided.
+    
+    Args:
+        base_url: Base URL of the annotation API
+        sequence_id: ID of the sequence to annotate
+        annotation_data: SequenceAnnotationData containing the annotation
+        dry_run: If True, only log what would be done without making changes
+        existing_annotation_id: ID of existing annotation to update (None to create new)
+        processing_stage: Processing stage to set for the annotation
+        
+    Returns:
+        True if annotation was created/updated successfully, False otherwise
+        
+    Example:
+        >>> from app.schemas.annotation_validation import SequenceAnnotationData
+        >>> from app.models import SequenceAnnotationProcessingStage
+        >>> 
+        >>> # Create new annotation
+        >>> success = create_annotation_from_data(
+        ...     base_url="http://localhost:5050",
+        ...     sequence_id=123,
+        ...     annotation_data=annotation_data,
+        ...     dry_run=False,
+        ...     processing_stage=SequenceAnnotationProcessingStage.READY_TO_ANNOTATE
+        ... )
+        >>> 
+        >>> # Update existing annotation
+        >>> success = create_annotation_from_data(
+        ...     base_url="http://localhost:5050",
+        ...     sequence_id=123,
+        ...     annotation_data=updated_data,
+        ...     existing_annotation_id=456,
+        ...     dry_run=False
+        ... )
+    """
+    try:
+        if existing_annotation_id:
+            # Update existing annotation (PATCH)
+            update_dict = {
+                "annotation": annotation_data.model_dump(),
+                "processing_stage": processing_stage.value,
+                "has_missed_smoke": False,
+            }
+
+            if dry_run:
+                logging.info(f"DRY RUN: Would update annotation {existing_annotation_id} for sequence {sequence_id}")
+                logging.debug(f"Update data: {update_dict}")
+                return True
+
+            result = update_sequence_annotation(base_url, existing_annotation_id, update_dict)
+            if result:
+                logging.debug(f"Successfully updated annotation {existing_annotation_id} for sequence {sequence_id}")
+                return True
+            else:
+                logging.error(f"Failed to update annotation {existing_annotation_id} for sequence {sequence_id}")
+                return False
+
+        else:
+            # Create new annotation (POST)
+            create_dict = {
+                "sequence_id": sequence_id,
+                "annotation": annotation_data.model_dump(),
+                "processing_stage": processing_stage.value,
+                "has_missed_smoke": False,
+            }
+
+            if dry_run:
+                logging.info(f"DRY RUN: Would create new annotation for sequence {sequence_id}")
+                logging.debug(f"Create data: {create_dict}")
+                return True
+
+            result = create_sequence_annotation(base_url, create_dict)
+            if result:
+                logging.debug(f"Successfully created annotation for sequence {sequence_id}")
+                return True
+            else:
+                logging.error(f"Failed to create annotation for sequence {sequence_id}")
+                return False
+
+    except Exception as e:
+        logging.error(f"Error creating/updating annotation for sequence {sequence_id}: {e}")
+        return False
+
+
+def get_sequences_from_annotation_api(
+    base_url: str, 
+    date_from: date, 
+    date_end: date
+) -> List[int]:
+    """
+    Get sequence IDs from the annotation API for a date range.
+    
+    This function fetches sequences from the annotation API and filters them
+    by the specified date range using client-side filtering.
+    
+    Args:
+        base_url: Annotation API base URL
+        date_from: Start date for filtering
+        date_end: End date for filtering
+        
+    Returns:
+        List of sequence IDs within the date range
+        
+    Example:
+        >>> from datetime import date
+        >>> sequence_ids = get_sequences_from_annotation_api(
+        ...     "http://localhost:5050",
+        ...     date(2024, 1, 1),
+        ...     date(2024, 1, 2)
+        ... )
+        >>> print(f"Found {len(sequence_ids)} sequences")
+    """
+    try:
+        # Format dates for filtering
+        date_from_str = date_from.strftime("%Y-%m-%d")
+        date_end_str = date_end.strftime("%Y-%m-%d")
+
+        logging.info(
+            f"Fetching sequences from annotation API from {date_from_str} to {date_end_str}"
+        )
+
+        # Fetch sequences with pagination
+        all_sequence_ids = []
+        page = 1
+        page_size = 100
+
+        while True:
+            response = list_sequences(
+                base_url,
+                page=page,
+                size=page_size,
+            )
+
+            # Handle paginated response
+            if isinstance(response, dict) and "items" in response:
+                sequences = response["items"]
+                total_pages = response.get("pages", 1)
+            else:
+                sequences = response
+                total_pages = 1
+
+            if not sequences:
+                break
+
+            # Filter by date range (client-side filtering)
+            for seq in sequences:
+                recorded_at = seq.get("recorded_at")
+                if recorded_at:
+                    try:
+                        seq_date = datetime.fromisoformat(
+                            recorded_at.replace("Z", "+00:00")
+                        ).date()
+                        if date_from <= seq_date <= date_end:
+                            all_sequence_ids.append(seq["id"])
+                    except (ValueError, TypeError):
+                        continue
+
+            if page >= total_pages:
+                break
+            page += 1
+
+        logging.info(
+            f"Found {len(all_sequence_ids)} sequences in annotation API for date range"
+        )
+        return all_sequence_ids
+
+    except Exception as e:
+        logging.error(f"Error fetching sequences from annotation API: {e}")
+        return []
+
+
+def process_single_sequence(
+    sequence_id: int,
+    analyzer: SequenceAnalyzer,
+    annotation_api_url: str,
+    dry_run: bool = False,
+) -> Dict[str, Any]:
+    """
+    Process a single sequence: generate annotation and set ready for annotation stage.
+    
+    This function is the main entry point for processing a sequence. It:
+    1. Uses the analyzer to generate annotation data from AI predictions
+    2. Checks for existing annotations to avoid duplicates
+    3. Creates or updates the annotation with READY_TO_ANNOTATE stage
+    
+    Args:
+        sequence_id: Sequence ID to process
+        analyzer: SequenceAnalyzer instance configured with processing parameters
+        annotation_api_url: Annotation API base URL
+        dry_run: If True, preview actions without executing them
+        
+    Returns:
+        Dictionary with processing results:
+        - sequence_id: The processed sequence ID
+        - annotation_created: Whether annotation was successfully created/updated
+        - annotation_id: ID of created/updated annotation ("new" for new annotations)
+        - errors: List of error messages if any occurred
+        - final_stage: Processing stage set for the annotation
+        
+    Example:
+        >>> from annotation_processing import SequenceAnalyzer
+        >>> 
+        >>> analyzer = SequenceAnalyzer("http://localhost:5050")
+        >>> result = process_single_sequence(
+        ...     sequence_id=123,
+        ...     analyzer=analyzer,
+        ...     annotation_api_url="http://localhost:5050",
+        ...     dry_run=False
+        ... )
+        >>> 
+        >>> if result["annotation_created"]:
+        ...     print(f"Successfully processed sequence {result['sequence_id']}")
+        >>> else:
+        ...     print(f"Failed to process sequence: {result['errors']}")
+    """
+    result = {
+        "sequence_id": sequence_id,
+        "annotation_created": False,
+        "annotation_id": None,
+        "errors": [],
+        "final_stage": None,
+    }
+
+    try:
+        logging.info(f"Processing sequence {sequence_id}")
+
+        # Step 1: Generate annotation
+        logging.debug(f"Analyzing sequence {sequence_id}")
+        annotation_data = analyzer.analyze_sequence(sequence_id)
+
+        if annotation_data is None:
+            error_msg = f"Failed to analyze sequence {sequence_id} - no detections or analysis failed"
+            logging.warning(error_msg)
+            result["errors"].append(error_msg)
+            return result
+
+        # Check for existing annotation
+        existing_annotation_id = check_existing_annotation(
+            annotation_api_url, sequence_id
+        )
+
+        # Create or update annotation
+        if create_annotation_from_data(
+            annotation_api_url,
+            sequence_id,
+            annotation_data,
+            dry_run,
+            existing_annotation_id,
+            SequenceAnnotationProcessingStage.READY_TO_ANNOTATE,
+        ):
+            result["annotation_created"] = True
+            result["annotation_id"] = (
+                existing_annotation_id if existing_annotation_id else "new"
+            )
+            result["final_stage"] = SequenceAnnotationProcessingStage.READY_TO_ANNOTATE.value
+            logging.info(
+                f"Successfully created/updated annotation for sequence {sequence_id} - ready for annotation"
+            )
+            return result
+        else:
+            error_msg = f"Failed to create annotation for sequence {sequence_id}"
+            logging.error(error_msg)
+            result["errors"].append(error_msg)
+            return result
+
+    except Exception as e:
+        error_msg = f"Unexpected error processing sequence {sequence_id}: {e}"
+        logging.error(error_msg)
+        result["errors"].append(error_msg)
+        return result
