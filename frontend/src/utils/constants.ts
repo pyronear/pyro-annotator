@@ -1,10 +1,14 @@
 
 // API Endpoints
 export const API_ENDPOINTS = {
-  SEQUENCES: '/sequences',
-  SEQUENCE_ANNOTATIONS: '/annotations/sequences',
-  DETECTION_ANNOTATIONS: '/annotations/detections',
-  DETECTIONS: '/detections',
+  SEQUENCES: '/sequences/',
+  SEQUENCE_ANNOTATIONS: '/annotations/sequences/',
+  DETECTION_ANNOTATIONS: '/annotations/detections/',
+  DETECTIONS: '/detections/',
+  CAMERAS: '/cameras/',
+  ORGANIZATIONS: '/organizations/',
+  SOURCE_APIS: '/source-apis/',
+  STATUS: '/status',
 } as const;
 
 // Pagination defaults
