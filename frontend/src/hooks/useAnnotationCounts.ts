@@ -39,6 +39,7 @@ export function useAnnotationCounts(): AnnotationCounts {
       const response = await apiClient.getSequences({
         detection_annotation_completion: 'incomplete', // Sequences that still need detection annotation
         include_detection_stats: true,
+        is_unsure: false, // Exclude unsure sequences to match DetectionAnnotatePage filtering
         size: 1, // Only need the total count
       });
       return response.total;
