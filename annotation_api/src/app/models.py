@@ -186,6 +186,7 @@ class SequenceAnnotation(SQLModel, table=True):
         Index("ix_sequence_annotation_has_smoke", "has_smoke"),
         Index("ix_sequence_annotation_has_false_positives", "has_false_positives"),
         Index("ix_sequence_annotation_has_missed_smoke", "has_missed_smoke"),
+        Index("ix_sequence_annotation_is_unsure", "is_unsure"),
         Index("ix_sequence_annotation_processing_stage", "processing_stage"),
         Index("ix_sequence_annotation_created_at", "created_at"),
         Index("ix_sequence_annotation_stage_date", "processing_stage", "created_at"),
@@ -204,6 +205,7 @@ class SequenceAnnotation(SQLModel, table=True):
         default_factory=list, sa_column=Column(JSONB)
     )
     has_missed_smoke: bool
+    is_unsure: Optional[bool] = Field(default=False)
     annotation: dict = Field(sa_column=Column(JSONB))
     created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
     updated_at: Optional[datetime] = Field(default=None)

@@ -43,11 +43,13 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
     dateTo,
     selectedFalsePositiveTypes,
     selectedModelAccuracy,
+    selectedUnsure,
     setFilters,
     setDateFrom,
     setDateTo,
     setSelectedFalsePositiveTypes,
     setSelectedModelAccuracy,
+    setSelectedUnsure,
     resetFilters,
   } = usePersistedFilters(
     storageKey,
@@ -178,6 +180,8 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
       dateTo,
       selectedFalsePositiveTypes,
       selectedModelAccuracy,
+      selectedUnsure,
+      defaultProcessingStage === 'annotated',
       defaultProcessingStage === 'annotated',
       defaultProcessingStage === 'annotated'
     );
@@ -208,6 +212,8 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
           onFalsePositiveTypesChange={handleFalsePositiveFilterChangeV2}
           selectedModelAccuracy={selectedModelAccuracy}
           onModelAccuracyChange={setSelectedModelAccuracy}
+          selectedUnsure={selectedUnsure}
+          onUnsureChange={setSelectedUnsure}
           onResetFilters={resetFilters}
           cameras={cameras}
           organizations={organizations}
@@ -217,6 +223,7 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
           sourceApisLoading={sourceApisLoading}
           showModelAccuracy={defaultProcessingStage === 'annotated'}
           showFalsePositiveTypes={defaultProcessingStage === 'annotated'}
+          showUnsureFilter={defaultProcessingStage === 'annotated'}
         />
 
         {/* Empty state message */}
@@ -278,6 +285,8 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
         onFalsePositiveTypesChange={handleFalsePositiveFilterChangeV2}
         selectedModelAccuracy={selectedModelAccuracy}
         onModelAccuracyChange={setSelectedModelAccuracy}
+        selectedUnsure={selectedUnsure}
+        onUnsureChange={setSelectedUnsure}
         onResetFilters={resetFilters}
         cameras={cameras}
         organizations={organizations}
@@ -287,6 +296,7 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
         sourceApisLoading={sourceApisLoading}
         showModelAccuracy={defaultProcessingStage === 'annotated'}
         showFalsePositiveTypes={defaultProcessingStage === 'annotated'}
+        showUnsureFilter={defaultProcessingStage === 'annotated'}
       />
 
       {/* Results */}
@@ -335,6 +345,10 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
                     <div className="w-3 h-3 bg-blue-200 border border-blue-300 rounded"></div>
                     <span className="text-gray-600">False Negative (Model missed smoke)</span>
                   </div>
+                  <div className="flex items-center space-x-1">
+                    <div className="w-3 h-3 bg-amber-50 border border-amber-300 rounded"></div>
+                    <span className="text-gray-600">Unsure (Needs review)</span>
+                  </div>
                 </div>
                 <div className="flex items-center space-x-2">
                   <div className="flex items-center space-x-1">
@@ -352,8 +366,13 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
               // Calculate row background based on model accuracy for review pages
               let rowClasses = "p-4 cursor-pointer";
               if (defaultProcessingStage === 'annotated' && sequence.annotation) {
-                const accuracy = analyzeSequenceAccuracy(sequence);
-                rowClasses = `p-4 cursor-pointer ${getRowBackgroundClasses(accuracy)}`;
+                // Special background for unsure sequences
+                if (sequence.annotation.is_unsure) {
+                  rowClasses = "p-4 cursor-pointer bg-amber-50 hover:bg-amber-100";
+                } else {
+                  const accuracy = analyzeSequenceAccuracy(sequence);
+                  rowClasses = `p-4 cursor-pointer ${getRowBackgroundClasses(accuracy)}`;
+                }
               } else {
                 rowClasses = "p-4 hover:bg-gray-50 cursor-pointer";
               }
@@ -385,6 +404,12 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
                         {sequence.is_wildfire_alertapi && (
                           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
                             🔥 Wildfire Alert
+                          </span>
+                        )}
+                        {/* Unsure indicator for review page */}
+                        {defaultProcessingStage === 'annotated' && sequence.annotation?.is_unsure && (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                            ⚠️ Unsure
                           </span>
                         )}
                         {/* Processing stage pill - conditionally hidden based on page context */}

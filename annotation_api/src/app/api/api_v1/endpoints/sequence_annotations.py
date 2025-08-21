@@ -259,6 +259,7 @@ async def create_sequence_annotation(
         has_false_positives=has_false_positives,
         false_positive_types=false_positive_types,
         has_missed_smoke=create_data.has_missed_smoke,
+        is_unsure=create_data.is_unsure,
         annotation=create_data.annotation.model_dump(),
         processing_stage=create_data.processing_stage,
         created_at=create_data.created_at,
@@ -269,8 +270,9 @@ async def create_sequence_annotation(
     await annotations.session.commit()
     await annotations.session.refresh(sequence_annotation)
 
-    # Auto-create detection annotations if sequence annotation is marked as annotated
-    if create_data.processing_stage == SequenceAnnotationProcessingStage.ANNOTATED:
+    # Auto-create detection annotations if sequence annotation is marked as annotated and not unsure
+    # Skip detection annotation creation for unsure sequences
+    if create_data.processing_stage == SequenceAnnotationProcessingStage.ANNOTATED and not create_data.is_unsure:
         await auto_create_detection_annotations(
             sequence_id=create_data.sequence_id,
             has_smoke=has_smoke,
@@ -297,6 +299,9 @@ async def list_sequence_annotations(
     ),
     has_missed_smoke: Optional[bool] = Query(
         None, description="Filter by has_missed_smoke"
+    ),
+    is_unsure: Optional[bool] = Query(
+        None, description="Filter by is_unsure flag (sequences marked as uncertain)"
     ),
     processing_stage: Optional[SequenceAnnotationProcessingStage] = Query(
         None,
@@ -366,6 +371,9 @@ async def list_sequence_annotations(
     if has_missed_smoke is not None:
         query = query.where(SequenceAnnotation.has_missed_smoke == has_missed_smoke)
 
+    if is_unsure is not None:
+        query = query.where(SequenceAnnotation.is_unsure == is_unsure)
+
     if processing_stage is not None:
         query = query.where(SequenceAnnotation.processing_stage == processing_stage)
 
@@ -423,6 +431,8 @@ async def update_sequence_annotation(
     # Add other updateable fields
     if payload.has_missed_smoke is not None:
         update_dict["has_missed_smoke"] = payload.has_missed_smoke
+    if payload.is_unsure is not None:
+        update_dict["is_unsure"] = payload.is_unsure
     if payload.processing_stage is not None:
         update_dict["processing_stage"] = payload.processing_stage
 
@@ -443,8 +453,9 @@ async def update_sequence_annotation(
     await annotations.session.commit()
     await annotations.session.refresh(existing)
 
-    # Auto-create detection annotations if processing_stage is newly set to "annotated"
-    if not was_annotated_before and will_be_annotated_after:
+    # Auto-create detection annotations if processing_stage is newly set to "annotated" and not unsure
+    # Skip detection annotation creation for unsure sequences
+    if not was_annotated_before and will_be_annotated_after and not existing.is_unsure:
         await auto_create_detection_annotations(
             sequence_id=existing.sequence_id,
             has_smoke=existing.has_smoke,

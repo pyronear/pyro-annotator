@@ -31,6 +31,7 @@ export default function DetectionReviewPage() {
       detection_annotation_completion: 'complete' as const,
       include_detection_stats: true,
       processing_stage: 'annotated' as const, // Only show sequences that have completed sequence-level annotation
+      is_unsure: false, // Exclude unsure sequences from detection annotation workflow
     },
   };
 
@@ -193,8 +194,10 @@ export default function DetectionReviewPage() {
       dateTo,
       selectedFalsePositiveTypes,
       selectedModelAccuracy,
+      'all', // selectedUnsure
       true, // showModelAccuracy
-      true  // showFalsePositiveTypes
+      true, // showFalsePositiveTypes
+      false // showUnsureFilter
     );
 
     return (

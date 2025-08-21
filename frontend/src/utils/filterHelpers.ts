@@ -10,8 +10,10 @@ import { ModelAccuracyType } from './modelAccuracy';
  * @param dateTo - Date to value
  * @param selectedFalsePositiveTypes - Selected false positive types
  * @param selectedModelAccuracy - Selected model accuracy filter
+ * @param selectedUnsure - Selected unsure filter
  * @param showModelAccuracy - Whether model accuracy filter is shown (review pages)
  * @param showFalsePositiveTypes - Whether false positive types filter is shown (review pages)
+ * @param showUnsureFilter - Whether unsure filter is shown (sequence review page)
  * @returns true if user has applied any filters that could cause empty results
  */
 export function hasActiveUserFilters(
@@ -20,8 +22,10 @@ export function hasActiveUserFilters(
   dateTo: string,
   selectedFalsePositiveTypes: string[],
   selectedModelAccuracy: ModelAccuracyType | 'all',
+  selectedUnsure: 'all' | 'unsure' | 'not-unsure',
   showModelAccuracy: boolean = false,
-  showFalsePositiveTypes: boolean = false
+  showFalsePositiveTypes: boolean = false,
+  showUnsureFilter: boolean = false
 ): boolean {
   // Check date range filters
   if (dateFrom || dateTo) {
@@ -39,6 +43,10 @@ export function hasActiveUserFilters(
   }
 
   if (showFalsePositiveTypes && selectedFalsePositiveTypes.length > 0) {
+    return true;
+  }
+
+  if (showUnsureFilter && selectedUnsure !== 'all') {
     return true;
   }
 

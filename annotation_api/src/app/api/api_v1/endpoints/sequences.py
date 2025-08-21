@@ -133,6 +133,9 @@ async def list_sequences(
         None,
         description="Filter by specific false positive types (OR logic). Sequences containing any of the specified types will be included in results.",
     ),
+    is_unsure: Optional[bool] = Query(
+        None, description="Filter by sequence annotation unsure flag"
+    ),
     recorded_at_gte: Optional[datetime] = Query(
         None, description="Filter by recorded_at >= this date"
     ),
@@ -172,6 +175,8 @@ async def list_sequences(
     - **has_missed_smoke**: Filter by missed smoke status
     - **has_smoke**: Filter by smoke presence
     - **has_false_positives**: Filter by false positive presence
+    - **false_positive_types**: Filter by specific false positive types (OR logic)
+    - **is_unsure**: Filter by sequence annotation unsure flag
     - **recorded_at_gte**: Filter by recorded_at >= this date
     - **recorded_at_lte**: Filter by recorded_at <= this date
     - **detection_annotation_completion**: Filter by detection annotation completion status ('complete', 'incomplete', 'all')
@@ -258,6 +263,9 @@ async def list_sequences(
         query = query.where(
             SequenceAnnotation.false_positive_types.op("?|")(cast(fp_type_values, ARRAY(String)))
         )
+
+    if is_unsure is not None:
+        query = query.where(SequenceAnnotation.is_unsure == is_unsure)
 
     # Apply date range filtering
     if recorded_at_gte is not None:

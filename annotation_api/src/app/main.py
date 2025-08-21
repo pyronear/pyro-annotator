@@ -349,6 +349,17 @@ def custom_openapi():
     openapi_schema["info"]["x-logo"] = {
         "url": "https://pyronear.org/img/logo_letters.png"
     }
+    
+    # Add JWT Bearer authentication security scheme
+    openapi_schema["components"]["securitySchemes"] = {
+        "bearerAuth": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+            "description": "Enter your JWT token obtained from the /api/v1/auth/login endpoint"
+        }
+    }
+    
     app.openapi_schema = openapi_schema
     return app.openapi_schema
 

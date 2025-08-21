@@ -20,7 +20,7 @@ __all__ = ["create_access_token", "verify_password", "get_current_user"]
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # HTTP Bearer token security
-security = HTTPBearer()
+security = HTTPBearer(scheme_name="bearerAuth")
 
 ALGORITHM = "HS256"
 

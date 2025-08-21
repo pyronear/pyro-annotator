@@ -35,6 +35,7 @@ export interface SequenceAnnotation {
   has_false_positives: boolean;
   false_positive_types: string;
   has_missed_smoke: boolean;
+  is_unsure: boolean;
   annotation: SequenceAnnotationData;
   processing_stage: ProcessingStage;
   created_at: string;
@@ -136,6 +137,7 @@ export interface SequenceFilters {
   recorded_at_lte?: string;
   detection_annotation_completion?: 'complete' | 'incomplete' | 'all';
   include_detection_stats?: boolean;
+  is_unsure?: boolean;
   order_by?: 'created_at' | 'recorded_at';
   order_direction?: 'asc' | 'desc';
   page?: number;
@@ -149,6 +151,7 @@ export interface SequenceAnnotationFilters {
   false_positive_type?: FalsePositiveType;
   smoke_type?: SmokeType;
   has_missed_smoke?: boolean;
+  is_unsure?: boolean;
   processing_stage?: ProcessingStage;
   order_by?: 'created_at' | 'sequence_recorded_at';
   order_direction?: 'asc' | 'desc';
@@ -178,6 +181,7 @@ export interface ExtendedSequenceFilters extends SequenceFilters {
   has_smoke?: boolean;
   has_false_positives?: boolean;
   false_positive_types?: string[]; // Array of false positive types for OR filtering
+  is_unsure?: boolean;
   include_annotation?: boolean;
 }
 

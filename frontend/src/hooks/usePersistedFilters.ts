@@ -12,6 +12,7 @@ export interface PersistedFilterState {
   dateTo: string;
   selectedFalsePositiveTypes: string[];
   selectedModelAccuracy: ModelAccuracyType | 'all';
+  selectedUnsure: 'all' | 'unsure' | 'not-unsure';
 }
 
 /**
@@ -32,6 +33,7 @@ export function createDefaultFilterState(
     dateTo: '',
     selectedFalsePositiveTypes: [],
     selectedModelAccuracy: 'all',
+    selectedUnsure: 'all',
   };
 }
 
@@ -177,6 +179,23 @@ export function usePersistedFilters(
     updateState({ ...state, selectedModelAccuracy });
   };
 
+  const setSelectedUnsure = (selectedUnsure: 'all' | 'unsure' | 'not-unsure') => {
+    // ATOMIC UPDATE: Update both selectedUnsure AND filters together
+    const newFilters = {
+      ...state.filters,
+      is_unsure: selectedUnsure === 'all' ? undefined : selectedUnsure === 'unsure',
+      page: 1
+    };
+    
+    const newState = { 
+      ...state, 
+      selectedUnsure,
+      filters: newFilters
+    };
+    
+    updateState(newState);
+  };
+
   // Atomic update for false positive types + filters to avoid race conditions
   const setSelectedFalsePositiveTypesAndFilters = (
     selectedFalsePositiveTypes: string[], 
@@ -227,6 +246,7 @@ export function usePersistedFilters(
     dateTo: state.dateTo,
     selectedFalsePositiveTypes: state.selectedFalsePositiveTypes,
     selectedModelAccuracy: state.selectedModelAccuracy,
+    selectedUnsure: state.selectedUnsure,
     
     // Setters
     setFilters,
@@ -235,6 +255,7 @@ export function usePersistedFilters(
     setSelectedFalsePositiveTypes,
     setSelectedFalsePositiveTypesAndFilters,
     setSelectedModelAccuracy,
+    setSelectedUnsure,
     resetFilters,
   };
 }
