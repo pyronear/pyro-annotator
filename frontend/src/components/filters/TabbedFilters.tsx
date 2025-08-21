@@ -40,6 +40,9 @@ interface TabbedFiltersProps {
   selectedModelAccuracy: ModelAccuracyType | 'all';
   onModelAccuracyChange: (accuracy: ModelAccuracyType | 'all') => void;
   
+  selectedUnsure?: 'all' | 'unsure' | 'not-unsure';
+  onUnsureChange?: (unsure: 'all' | 'unsure' | 'not-unsure') => void;
+  
   // Data
   cameras: Camera[];
   organizations: Organization[];
@@ -51,6 +54,7 @@ interface TabbedFiltersProps {
   // Configuration
   showModelAccuracy?: boolean; // for review pages only
   showFalsePositiveTypes?: boolean; // for review pages only
+  showUnsureFilter?: boolean; // for sequence review page only
   
   // Reset handler
   onResetFilters?: () => void;
@@ -74,6 +78,8 @@ export default function TabbedFilters({
   onFalsePositiveTypesChange,
   selectedModelAccuracy,
   onModelAccuracyChange,
+  selectedUnsure = 'all',
+  onUnsureChange = () => {},
   cameras,
   organizations,
   sourceApis,
@@ -82,6 +88,7 @@ export default function TabbedFilters({
   sourceApisLoading,
   showModelAccuracy = false,
   showFalsePositiveTypes = false,
+  showUnsureFilter = false,
   onResetFilters,
   className = '',
   defaultTab = 'simple',
@@ -98,6 +105,7 @@ export default function TabbedFilters({
     if (filters.camera_name) count++;
     if (filters.organisation_name) count++;
     if (selectedModelAccuracy && selectedModelAccuracy !== 'all' && showModelAccuracy) count++;
+    if (selectedUnsure && selectedUnsure !== 'all' && showUnsureFilter) count++;
     return count;
   };
 
@@ -107,6 +115,7 @@ export default function TabbedFilters({
     if (filters.camera_name) count++;
     if (filters.organisation_name) count++;
     if (selectedModelAccuracy && selectedModelAccuracy !== 'all' && showModelAccuracy) count++;
+    if (selectedUnsure && selectedUnsure !== 'all' && showUnsureFilter) count++;
     // Include advanced-only filters
     if (filters.source_api) count++;
     if (filters.is_wildfire_alertapi !== undefined) count++;
@@ -169,6 +178,24 @@ export default function TabbedFilters({
           onSelectionChange={onModelAccuracyChange}
           className="w-full"
         />
+      )}
+
+      {/* Unsure Filter - Only show on sequence review page */}
+      {showUnsureFilter && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Certainty
+          </label>
+          <select
+            value={selectedUnsure}
+            onChange={(e) => onUnsureChange(e.target.value as 'all' | 'unsure' | 'not-unsure')}
+            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
+          >
+            <option value="all">All</option>
+            <option value="unsure">Only Unsure</option>
+            <option value="not-unsure">Not Unsure</option>
+          </select>
+        </div>
       )}
     </>
   );
@@ -260,6 +287,24 @@ export default function TabbedFilters({
           onSelectionChange={onModelAccuracyChange}
           className="w-full"
         />
+      )}
+
+      {/* Unsure Filter - Only show on sequence review page */}
+      {showUnsureFilter && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Certainty
+          </label>
+          <select
+            value={selectedUnsure}
+            onChange={(e) => onUnsureChange(e.target.value as 'all' | 'unsure' | 'not-unsure')}
+            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
+          >
+            <option value="all">All</option>
+            <option value="unsure">Only Unsure</option>
+            <option value="not-unsure">Not Unsure</option>
+          </select>
+        </div>
       )}
 
       <div className="md:col-span-3">

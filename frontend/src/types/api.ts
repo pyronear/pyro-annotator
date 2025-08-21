@@ -137,6 +137,7 @@ export interface SequenceFilters {
   recorded_at_lte?: string;
   detection_annotation_completion?: 'complete' | 'incomplete' | 'all';
   include_detection_stats?: boolean;
+  is_unsure?: boolean;
   order_by?: 'created_at' | 'recorded_at';
   order_direction?: 'asc' | 'desc';
   page?: number;

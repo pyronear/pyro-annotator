@@ -43,11 +43,13 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
     dateTo,
     selectedFalsePositiveTypes,
     selectedModelAccuracy,
+    selectedUnsure,
     setFilters,
     setDateFrom,
     setDateTo,
     setSelectedFalsePositiveTypes,
     setSelectedModelAccuracy,
+    setSelectedUnsure,
     resetFilters,
   } = usePersistedFilters(
     storageKey,
@@ -178,6 +180,8 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
       dateTo,
       selectedFalsePositiveTypes,
       selectedModelAccuracy,
+      selectedUnsure,
+      defaultProcessingStage === 'annotated',
       defaultProcessingStage === 'annotated',
       defaultProcessingStage === 'annotated'
     );
@@ -208,6 +212,8 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
           onFalsePositiveTypesChange={handleFalsePositiveFilterChangeV2}
           selectedModelAccuracy={selectedModelAccuracy}
           onModelAccuracyChange={setSelectedModelAccuracy}
+          selectedUnsure={selectedUnsure}
+          onUnsureChange={setSelectedUnsure}
           onResetFilters={resetFilters}
           cameras={cameras}
           organizations={organizations}
@@ -217,6 +223,7 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
           sourceApisLoading={sourceApisLoading}
           showModelAccuracy={defaultProcessingStage === 'annotated'}
           showFalsePositiveTypes={defaultProcessingStage === 'annotated'}
+          showUnsureFilter={defaultProcessingStage === 'annotated'}
         />
 
         {/* Empty state message */}
@@ -278,6 +285,8 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
         onFalsePositiveTypesChange={handleFalsePositiveFilterChangeV2}
         selectedModelAccuracy={selectedModelAccuracy}
         onModelAccuracyChange={setSelectedModelAccuracy}
+        selectedUnsure={selectedUnsure}
+        onUnsureChange={setSelectedUnsure}
         onResetFilters={resetFilters}
         cameras={cameras}
         organizations={organizations}
@@ -287,6 +296,7 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
         sourceApisLoading={sourceApisLoading}
         showModelAccuracy={defaultProcessingStage === 'annotated'}
         showFalsePositiveTypes={defaultProcessingStage === 'annotated'}
+        showUnsureFilter={defaultProcessingStage === 'annotated'}
       />
 
       {/* Results */}
