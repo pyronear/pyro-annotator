@@ -17,12 +17,38 @@ from app.models import *  # noqa
 __all__ = ["get_session", "init_db"]
 
 logger = logging.getLogger("uvicorn.error")
-engine = AsyncEngine(create_engine(settings.POSTGRES_URL, echo=False))
+
+# Configure connection pooling for high-performance operations
+engine = AsyncEngine(
+    create_engine(
+        settings.POSTGRES_URL,
+        echo=False,
+        # Connection pool configuration for handling thousands of requests
+        pool_size=20,  # Number of connections to maintain in the pool
+        max_overflow=30,  # Additional connections when pool is exhausted
+        pool_timeout=30,  # Seconds to wait for connection from pool
+        pool_recycle=3600,  # Recycle connections after 1 hour
+        pool_pre_ping=True,  # Validate connections before use
+        # Async connection configuration
+        connect_args={
+            "command_timeout": 60,  # Timeout for individual commands
+            "server_settings": {
+                "jit": "off",  # Disable JIT for consistent performance
+                "application_name": "pyro-annotator-api",
+            },
+        },
+    )
+)
 
 
 async def get_session() -> AsyncSession:  # type: ignore[misc]
+    # Configure sessionmaker with optimized settings for bulk operations
     async_session = sessionmaker(
-        bind=engine, class_=AsyncSession, expire_on_commit=False
+        bind=engine, 
+        class_=AsyncSession, 
+        expire_on_commit=False,
+        # Optimize for batch operations and reduce memory usage
+        autoflush=False  # Manual flush control for batch operations
     )
     async with async_session() as session:
         yield session

@@ -160,32 +160,45 @@ async def auto_create_detection_annotations(
     detections_result = await session.execute(detections_query)
     detections = detections_result.scalars().all()
 
-    # Create detection annotations for each detection
-    for detection in detections:
-        # Check if detection annotation already exists (avoid duplicates)
-        existing_query = select(DetectionAnnotation).where(
-            DetectionAnnotation.detection_id == detection.id
-        )
-        existing_result = await session.execute(existing_query)
-        existing_annotation = existing_result.scalar_one_or_none()
+    if not detections:
+        return
 
-        if existing_annotation is None:
-            # Determine annotation data based on sequence type
-            if has_smoke and not has_missed_smoke and not has_false_positives:
-                # True positive sequence: pre-populate with model predictions
-                annotation_data = convert_algo_predictions_to_annotation(detection.algo_predictions)
-            else:
-                # All other cases: start with empty annotation
-                annotation_data = {"annotation": []}
+    # Get existing detection annotation IDs to avoid duplicates in a single batch query
+    detection_ids = [d.id for d in detections]
+    existing_annotations_query = select(DetectionAnnotation.detection_id).where(
+        DetectionAnnotation.detection_id.in_(detection_ids)
+    )
+    existing_result = await session.execute(existing_annotations_query)
+    existing_detection_ids = set(existing_result.scalars().all())
+
+    # Prepare batch data for bulk insert
+    new_annotations = []
+    current_time = datetime.utcnow()
+    
+    for detection in detections:
+        # Skip if annotation already exists
+        if detection.id in existing_detection_ids:
+            continue
             
-            # Create new detection annotation with determined annotation data and processing stage
-            detection_annotation = DetectionAnnotation(
-                detection_id=detection.id,
-                annotation=annotation_data,
-                processing_stage=processing_stage,
-                created_at=datetime.utcnow(),
-            )
-            session.add(detection_annotation)
+        # Determine annotation data based on sequence type
+        if has_smoke and not has_missed_smoke and not has_false_positives:
+            # True positive sequence: pre-populate with model predictions
+            annotation_data = convert_algo_predictions_to_annotation(detection.algo_predictions)
+        else:
+            # All other cases: start with empty annotation
+            annotation_data = {"annotation": []}
+        
+        # Prepare annotation for bulk insert
+        new_annotations.append(DetectionAnnotation(
+            detection_id=detection.id,
+            annotation=annotation_data,
+            processing_stage=processing_stage,
+            created_at=current_time,
+        ))
+
+    # Bulk insert all new detection annotations at once
+    if new_annotations:
+        session.add_all(new_annotations)
 
 
 async def validate_detection_ids(
@@ -210,13 +223,11 @@ async def validate_detection_ids(
     if not detection_ids:
         return
 
-    # Query database to find existing detection_ids
+    # Single batch query to find existing detection_ids
     detection_ids_list = list(detection_ids)
     query = select(Detection.id).where(Detection.id.in_(detection_ids_list))
-    result = await session.exec(query)
-    existing_ids = set(
-        row[0] for row in result.all()
-    )  # Extract first element from tuples
+    result = await session.execute(query)
+    existing_ids = set(result.scalars().all())
 
     # Find missing detection_ids
     missing_ids = detection_ids - existing_ids
