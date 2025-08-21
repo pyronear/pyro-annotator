@@ -509,10 +509,8 @@ export default function AnnotationInterface() {
   const saveAnnotation = useMutation({
     mutationFn: async (updatedBboxes: SequenceBbox[]) => {
       const updatedAnnotation: Partial<SequenceAnnotation> = {
-        annotation: isUnsure ? {
-          sequences_bbox: [] // Empty annotation structure for unsure sequences
-        } : {
-          sequences_bbox: updatedBboxes
+        annotation: {
+          sequences_bbox: updatedBboxes // Always preserve the actual bbox data
         },
         processing_stage: 'annotated', // Move to annotated stage
         // Update derived fields - all false for unsure sequences
