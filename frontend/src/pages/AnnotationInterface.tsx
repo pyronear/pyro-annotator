@@ -700,7 +700,9 @@ export default function AnnotationInterface() {
     <>
       {/* Fixed Header - Always at top */}
       <div className={`fixed top-0 left-0 md:left-64 right-0 backdrop-blur-sm shadow-sm z-30 ${
-        annotation?.processing_stage === 'annotated' 
+        isUnsure
+          ? 'bg-amber-50/90 border-b border-amber-200 border-l-4 border-l-amber-500'
+          : annotation?.processing_stage === 'annotated' 
           ? 'bg-green-50/90 border-b border-green-200 border-l-4 border-l-green-500' 
           : 'bg-white/85 border-b border-gray-200'
       }`}>
@@ -842,7 +844,7 @@ export default function AnnotationInterface() {
                   ) : (
                     <span className="text-orange-600">Pending</span>
                   )
-                } • {progress.completed} of {progress.total} detections • {Math.round((progress.completed / progress.total) * 100)}% complete
+                } • {progress.completed} of {progress.total} detections • {progress.total === 0 ? 0 : Math.round((progress.completed / progress.total) * 100)}% complete
               </span>
             </div>
             
@@ -858,9 +860,13 @@ export default function AnnotationInterface() {
               <div className="w-24 bg-gray-200 rounded-full h-1.5">
                 <div 
                   className={`h-1.5 rounded-full transition-all duration-300 ${
-                    annotation?.processing_stage === 'annotated' ? 'bg-green-600' : 'bg-primary-600'
+                    isUnsure 
+                      ? 'bg-amber-600' 
+                      : annotation?.processing_stage === 'annotated' 
+                      ? 'bg-green-600' 
+                      : 'bg-primary-600'
                   }`}
-                  style={{ width: `${(progress.completed / progress.total) * 100}%` }}
+                  style={{ width: `${progress.total === 0 ? 0 : (progress.completed / progress.total) * 100}%` }}
                 ></div>
               </div>
             </div>

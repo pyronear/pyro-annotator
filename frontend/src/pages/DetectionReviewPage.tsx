@@ -194,8 +194,10 @@ export default function DetectionReviewPage() {
       dateTo,
       selectedFalsePositiveTypes,
       selectedModelAccuracy,
+      'all', // selectedUnsure
       true, // showModelAccuracy
-      true  // showFalsePositiveTypes
+      true, // showFalsePositiveTypes
+      false // showUnsureFilter
     );
 
     return (
