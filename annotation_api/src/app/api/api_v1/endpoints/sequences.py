@@ -15,7 +15,17 @@ from fastapi import (
 )
 from fastapi_pagination import Page, Params
 from fastapi_pagination.ext.sqlalchemy import apaginate
-from sqlalchemy import asc, desc, func, case, select, outerjoin, and_, text, cast, ARRAY, String
+from sqlalchemy import (
+    asc,
+    desc,
+    func,
+    case,
+    select,
+    and_,
+    cast,
+    ARRAY,
+    String,
+)
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.dependencies import get_current_user, get_sequence_crud
@@ -202,7 +212,9 @@ async def list_sequences(
 
     # Apply conditional join if annotation filtering is needed
     if needs_annotation_join:
-        query = query.outerjoin(SequenceAnnotation, Sequence.id == SequenceAnnotation.sequence_id)
+        query = query.outerjoin(
+            SequenceAnnotation, Sequence.id == SequenceAnnotation.sequence_id
+        )
 
     # Apply filtering
     if source_api is not None:
@@ -261,7 +273,9 @@ async def list_sequences(
         # Use PostgreSQL JSONB array contains operator for OR logic
         # This will match sequences where false_positive_types contains any of the specified types
         query = query.where(
-            SequenceAnnotation.false_positive_types.op("?|")(cast(fp_type_values, ARRAY(String)))
+            SequenceAnnotation.false_positive_types.op("?|")(
+                cast(fp_type_values, ARRAY(String))
+            )
         )
 
     if is_unsure is not None:

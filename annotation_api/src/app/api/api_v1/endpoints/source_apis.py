@@ -24,10 +24,7 @@ async def list_source_apis(
     - Source API ID and display name
     """
     # Build query for distinct source APIs
-    query = (
-        select(Sequence.source_api)
-        .distinct()
-    )
+    query = select(Sequence.source_api).distinct()
 
     # Execute query
     result = await session.execute(query)

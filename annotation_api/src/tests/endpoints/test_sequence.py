@@ -6,6 +6,7 @@ from httpx import AsyncClient
 
 now = datetime.utcnow()
 
+
 @pytest.mark.asyncio
 async def test_create_sequence(authenticated_client: AsyncClient):
     payload = {
@@ -21,7 +22,7 @@ async def test_create_sequence(authenticated_client: AsyncClient):
         "lon": "0.0",
         "created_at": (now - timedelta(days=1)).isoformat(),
         "recorded_at": (now - timedelta(days=1)).isoformat(),
-        "last_seen_at": now.isoformat()
+        "last_seen_at": now.isoformat(),
     }
 
     response = await authenticated_client.post("/sequences", data=payload)
@@ -31,6 +32,7 @@ async def test_create_sequence(authenticated_client: AsyncClient):
     assert sequence["source_api"] == payload["source_api"]
     assert sequence["is_wildfire_alertapi"] is True
     assert sequence["camera_name"] == payload["camera_name"]
+
 
 @pytest.mark.asyncio
 async def test_get_sequence(authenticated_client: AsyncClient):
@@ -42,6 +44,7 @@ async def test_get_sequence(authenticated_client: AsyncClient):
         assert "camera_name" in seq
     else:
         assert response.status_code in (404, 422)
+
 
 @pytest.mark.asyncio
 async def test_list_sequences(authenticated_client: AsyncClient):
@@ -55,6 +58,7 @@ async def test_list_sequences(authenticated_client: AsyncClient):
     assert "size" in data
     assert isinstance(data["items"], list)
 
+
 @pytest.mark.asyncio
 async def test_delete_sequence(authenticated_client: AsyncClient, sequence_session):
     sequence_id = 1
@@ -64,8 +68,11 @@ async def test_delete_sequence(authenticated_client: AsyncClient, sequence_sessi
     get_response = await authenticated_client.get(f"/sequences/{sequence_id}")
     assert get_response.status_code == 404
 
+
 @pytest.mark.asyncio
-async def test_create_sequence_without_is_wildfire_alertapi(authenticated_client: AsyncClient):
+async def test_create_sequence_without_is_wildfire_alertapi(
+    authenticated_client: AsyncClient,
+):
     payload = {
         "source_api": "pyronear_french",
         "alert_api_id": "101",
@@ -78,7 +85,7 @@ async def test_create_sequence_without_is_wildfire_alertapi(authenticated_client
         "lon": "0.0",
         "created_at": (now - timedelta(days=1)).isoformat(),
         "recorded_at": (now - timedelta(days=1)).isoformat(),
-        "last_seen_at": now.isoformat()
+        "last_seen_at": now.isoformat(),
     }
 
     response = await authenticated_client.post("/sequences", data=payload)
@@ -88,6 +95,7 @@ async def test_create_sequence_without_is_wildfire_alertapi(authenticated_client
     assert sequence["source_api"] == payload["source_api"]
     assert sequence["is_wildfire_alertapi"] is None
     assert sequence["camera_name"] == payload["camera_name"]
+
 
 @pytest.mark.asyncio
 async def test_create_sequence_with_is_wildfire_alertapi_true(
@@ -106,7 +114,7 @@ async def test_create_sequence_with_is_wildfire_alertapi_true(
         "lon": "0.0",
         "created_at": (now - timedelta(days=1)).isoformat(),
         "recorded_at": (now - timedelta(days=1)).isoformat(),
-        "last_seen_at": now.isoformat()
+        "last_seen_at": now.isoformat(),
     }
 
     response = await authenticated_client.post("/sequences", data=payload)
@@ -117,8 +125,11 @@ async def test_create_sequence_with_is_wildfire_alertapi_true(
     assert sequence["is_wildfire_alertapi"] is True
     assert sequence["camera_name"] == payload["camera_name"]
 
+
 @pytest.mark.asyncio
-async def test_list_sequences_with_include_annotation(authenticated_client: AsyncClient):
+async def test_list_sequences_with_include_annotation(
+    authenticated_client: AsyncClient,
+):
     """Test including annotation data in sequences response"""
     response = await authenticated_client.get("/sequences?include_annotation=true")
     assert response.status_code == 200
@@ -142,8 +153,11 @@ async def test_list_sequences_with_include_annotation(authenticated_client: Asyn
             assert "has_missed_smoke" in annotation
             assert "annotation" in annotation
 
+
 @pytest.mark.asyncio
-async def test_list_sequences_filter_by_processing_stage(authenticated_client: AsyncClient):
+async def test_list_sequences_filter_by_processing_stage(
+    authenticated_client: AsyncClient,
+):
     """Test filtering sequences by processing stage"""
     # Test filtering by specific processing stage
     response = await authenticated_client.get("/sequences?processing_stage=imported")
@@ -153,14 +167,19 @@ async def test_list_sequences_filter_by_processing_stage(authenticated_client: A
     assert "items" in data
 
     # Test filtering by no_annotation
-    response = await authenticated_client.get("/sequences?processing_stage=no_annotation")
+    response = await authenticated_client.get(
+        "/sequences?processing_stage=no_annotation"
+    )
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, dict)
     assert "items" in data
 
+
 @pytest.mark.asyncio
-async def test_list_sequences_filter_by_annotation_fields(authenticated_client: AsyncClient):
+async def test_list_sequences_filter_by_annotation_fields(
+    authenticated_client: AsyncClient,
+):
     """Test filtering sequences by annotation fields like has_smoke, has_false_positives"""
     # Test filtering by has_smoke
     response = await authenticated_client.get("/sequences?has_smoke=true")
@@ -183,6 +202,7 @@ async def test_list_sequences_filter_by_annotation_fields(authenticated_client: 
     assert isinstance(data, dict)
     assert "items" in data
 
+
 @pytest.mark.asyncio
 async def test_list_sequences_combined_filters(authenticated_client: AsyncClient):
     """Test combining annotation inclusion with filtering"""
@@ -201,6 +221,7 @@ async def test_list_sequences_combined_filters(authenticated_client: AsyncClient
             assert item["annotation"]["processing_stage"] == "annotated"
             assert item["annotation"]["has_smoke"] is True
 
+
 @pytest.mark.asyncio
 async def test_create_sequence_with_is_wildfire_alertapi_false(
     authenticated_client: AsyncClient,
@@ -218,7 +239,7 @@ async def test_create_sequence_with_is_wildfire_alertapi_false(
         "lon": "0.0",
         "created_at": (now - timedelta(days=1)).isoformat(),
         "recorded_at": (now - timedelta(days=1)).isoformat(),
-        "last_seen_at": now.isoformat()
+        "last_seen_at": now.isoformat(),
     }
 
     response = await authenticated_client.post("/sequences", data=payload)
@@ -229,8 +250,11 @@ async def test_create_sequence_with_is_wildfire_alertapi_false(
     assert sequence["is_wildfire_alertapi"] is False
     assert sequence["camera_name"] == payload["camera_name"]
 
+
 @pytest.mark.asyncio
-async def test_create_duplicate_sequence_unique_constraint(authenticated_client: AsyncClient):
+async def test_create_duplicate_sequence_unique_constraint(
+    authenticated_client: AsyncClient,
+):
     """Test that creating sequences with duplicate (alert_api_id, source_api) fails due to unique constraint."""
     payload = {
         "source_api": "pyronear_french",
@@ -244,7 +268,7 @@ async def test_create_duplicate_sequence_unique_constraint(authenticated_client:
         "lon": "0.0",
         "created_at": (now - timedelta(days=1)).isoformat(),
         "recorded_at": (now - timedelta(days=1)).isoformat(),
-        "last_seen_at": now.isoformat()
+        "last_seen_at": now.isoformat(),
     }
 
     # First sequence should be created successfully
@@ -276,6 +300,7 @@ async def test_create_duplicate_sequence_unique_constraint(authenticated_client:
     assert retrieved_sequence["alert_api_id"] == int(payload["alert_api_id"])
     assert retrieved_sequence["source_api"] == payload["source_api"]
 
+
 @pytest.mark.asyncio
 async def test_create_sequence_different_source_api_same_alert_id(
     authenticated_client: AsyncClient,
@@ -292,7 +317,7 @@ async def test_create_sequence_different_source_api_same_alert_id(
         "lon": "0.0",
         "created_at": (now - timedelta(days=1)).isoformat(),
         "recorded_at": (now - timedelta(days=1)).isoformat(),
-        "last_seen_at": now.isoformat()
+        "last_seen_at": now.isoformat(),
     }
 
     # Create sequence with pyronear_french source
@@ -319,6 +344,7 @@ async def test_create_sequence_different_source_api_same_alert_id(
     assert sequence1["alert_api_id"] == sequence2["alert_api_id"]
     assert sequence1["source_api"] != sequence2["source_api"]
 
+
 @pytest.mark.asyncio
 async def test_list_sequences_has_annotation_filter(
     authenticated_client: AsyncClient, sequence_session
@@ -337,7 +363,7 @@ async def test_list_sequences_has_annotation_filter(
             "lon": "0.0",
             "created_at": (now - timedelta(days=1)).isoformat(),
             "recorded_at": (now - timedelta(days=1)).isoformat(),
-            "last_seen_at": now.isoformat()
+            "last_seen_at": now.isoformat(),
         }
         for i in range(3)
     ]
@@ -355,15 +381,11 @@ async def test_list_sequences_has_annotation_filter(
             "has_missed_smoke": False,
             "annotation": {
                 "sequences_bbox": [
-                    {
-                        "is_smoke": True,
-                        "false_positive_types": [],
-                        "bboxes": []
-                    }
+                    {"is_smoke": True, "false_positive_types": [], "bboxes": []}
                 ]
             },
             "processing_stage": "imported",
-            "created_at": datetime.utcnow().isoformat()
+            "created_at": datetime.utcnow().isoformat(),
         }
         response = await authenticated_client.post(
             "/annotations/sequences/", json=annotation_payload
@@ -408,6 +430,7 @@ async def test_list_sequences_has_annotation_filter(
     for seq_id in sequence_ids:
         assert any(seq["id"] == seq_id for seq in all_sequences)
 
+
 @pytest.mark.asyncio
 async def test_list_sequences_filter_by_camera_name(authenticated_client: AsyncClient):
     """Test filtering sequences by camera name."""
@@ -423,7 +446,7 @@ async def test_list_sequences_filter_by_camera_name(authenticated_client: AsyncC
             "lat": "43.5",
             "lon": "1.5",
             "recorded_at": (now - timedelta(days=1)).isoformat(),
-            "last_seen_at": now.isoformat()
+            "last_seen_at": now.isoformat(),
         },
         {
             "source_api": "pyronear_french",
@@ -435,7 +458,7 @@ async def test_list_sequences_filter_by_camera_name(authenticated_client: AsyncC
             "lat": "43.0",
             "lon": "1.5",
             "recorded_at": (now - timedelta(days=1)).isoformat(),
-            "last_seen_at": now.isoformat()
+            "last_seen_at": now.isoformat(),
         },
         {
             "source_api": "pyronear_french",
@@ -447,8 +470,8 @@ async def test_list_sequences_filter_by_camera_name(authenticated_client: AsyncC
             "lat": "43.5",
             "lon": "2.0",
             "recorded_at": (now - timedelta(days=1)).isoformat(),
-            "last_seen_at": now.isoformat()
-        }
+            "last_seen_at": now.isoformat(),
+        },
     ]
 
     # Create sequences
@@ -459,7 +482,9 @@ async def test_list_sequences_filter_by_camera_name(authenticated_client: AsyncC
         sequence_ids.append(response.json()["id"])
 
     # Test filtering by exact camera name
-    response = await authenticated_client.get("/sequences?camera_name=Station North Alpha")
+    response = await authenticated_client.get(
+        "/sequences?camera_name=Station North Alpha"
+    )
     assert response.status_code == 200
     data = response.json()
     filtered_sequences = data["items"]
@@ -500,7 +525,9 @@ async def test_list_sequences_filter_by_camera_name(authenticated_client: AsyncC
             assert seq["camera_name"] == "Tower East Gamma"
 
     # Test with non-existent camera name
-    response = await authenticated_client.get("/sequences?camera_name=NonExistent Camera")
+    response = await authenticated_client.get(
+        "/sequences?camera_name=NonExistent Camera"
+    )
     assert response.status_code == 200
     data = response.json()
     filtered_sequences = data["items"]
@@ -509,8 +536,11 @@ async def test_list_sequences_filter_by_camera_name(authenticated_client: AsyncC
     for seq in filtered_sequences:
         assert seq["id"] not in sequence_ids
 
+
 @pytest.mark.asyncio
-async def test_list_sequences_filter_by_organisation_name(authenticated_client: AsyncClient):
+async def test_list_sequences_filter_by_organisation_name(
+    authenticated_client: AsyncClient,
+):
     """Test filtering sequences by organisation name."""
     # Create test sequences with different organization names
     test_sequences = [
@@ -524,7 +554,7 @@ async def test_list_sequences_filter_by_organisation_name(authenticated_client: 
             "lat": "43.5",
             "lon": "1.5",
             "recorded_at": (now - timedelta(days=1)).isoformat(),
-            "last_seen_at": now.isoformat()
+            "last_seen_at": now.isoformat(),
         },
         {
             "source_api": "alert_wildfire",
@@ -536,7 +566,7 @@ async def test_list_sequences_filter_by_organisation_name(authenticated_client: 
             "lat": "44.0",
             "lon": "2.0",
             "recorded_at": (now - timedelta(days=1)).isoformat(),
-            "last_seen_at": now.isoformat()
+            "last_seen_at": now.isoformat(),
         },
         {
             "source_api": "api_cenia",
@@ -548,8 +578,8 @@ async def test_list_sequences_filter_by_organisation_name(authenticated_client: 
             "lat": "-33.4",
             "lon": "-70.6",
             "recorded_at": (now - timedelta(days=1)).isoformat(),
-            "last_seen_at": now.isoformat()
-        }
+            "last_seen_at": now.isoformat(),
+        },
     ]
 
     # Create sequences
@@ -611,8 +641,11 @@ async def test_list_sequences_filter_by_organisation_name(authenticated_client: 
     for seq in filtered_sequences:
         assert seq["id"] not in sequence_ids
 
+
 @pytest.mark.asyncio
-async def test_list_sequences_combined_name_and_id_filters(authenticated_client: AsyncClient):
+async def test_list_sequences_combined_name_and_id_filters(
+    authenticated_client: AsyncClient,
+):
     """Test that name filters work alongside existing ID filters."""
     # Create test sequences
     test_sequences = [
@@ -626,7 +659,7 @@ async def test_list_sequences_combined_name_and_id_filters(authenticated_client:
             "lat": "43.5",
             "lon": "1.5",
             "recorded_at": (now - timedelta(days=1)).isoformat(),
-            "last_seen_at": now.isoformat()
+            "last_seen_at": now.isoformat(),
         },
         {
             "source_api": "pyronear_french",
@@ -638,8 +671,8 @@ async def test_list_sequences_combined_name_and_id_filters(authenticated_client:
             "lat": "43.0",
             "lon": "1.5",
             "recorded_at": (now - timedelta(days=1)).isoformat(),
-            "last_seen_at": now.isoformat()
-        }
+            "last_seen_at": now.isoformat(),
+        },
     ]
 
     # Create sequences
@@ -695,7 +728,9 @@ async def test_list_sequences_combined_name_and_id_filters(authenticated_client:
 
 
 @pytest.mark.asyncio
-async def test_list_sequences_filter_by_false_positive_types(authenticated_client: AsyncClient):
+async def test_list_sequences_filter_by_false_positive_types(
+    authenticated_client: AsyncClient,
+):
     """Test filtering sequences by false positive types."""
     # Create test sequences with annotations containing different false positive types
     test_sequences = [
@@ -709,7 +744,7 @@ async def test_list_sequences_filter_by_false_positive_types(authenticated_clien
             "lat": "43.5",
             "lon": "1.5",
             "recorded_at": (now - timedelta(days=1)).isoformat(),
-            "last_seen_at": now.isoformat()
+            "last_seen_at": now.isoformat(),
         },
         {
             "source_api": "pyronear_french",
@@ -721,7 +756,7 @@ async def test_list_sequences_filter_by_false_positive_types(authenticated_clien
             "lat": "43.0",
             "lon": "1.5",
             "recorded_at": (now - timedelta(days=1)).isoformat(),
-            "last_seen_at": now.isoformat()
+            "last_seen_at": now.isoformat(),
         },
         {
             "source_api": "pyronear_french",
@@ -733,8 +768,8 @@ async def test_list_sequences_filter_by_false_positive_types(authenticated_clien
             "lat": "43.5",
             "lon": "2.0",
             "recorded_at": (now - timedelta(days=1)).isoformat(),
-            "last_seen_at": now.isoformat()
-        }
+            "last_seen_at": now.isoformat(),
+        },
     ]
 
     # Create sequences and get their IDs
@@ -751,28 +786,33 @@ async def test_list_sequences_filter_by_false_positive_types(authenticated_clien
             "sequence_id": str(seq_id),
             "alert_api_id": str(i),
             "recorded_at": (now - timedelta(days=1)).isoformat(),
-            "algo_predictions": json.dumps({
-                "predictions": [
-                    {
-                        "xyxyn": [0.1, 0.1, 0.2, 0.2],
-                        "confidence": 0.85,
-                        "class_name": "smoke"
-                    }
-                ]
-            })
+            "algo_predictions": json.dumps(
+                {
+                    "predictions": [
+                        {
+                            "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                            "confidence": 0.85,
+                            "class_name": "smoke",
+                        }
+                    ]
+                }
+            ),
         }
-        
+
         # Create a simple test image for the detection
         import io
         from PIL import Image
-        img = Image.new('RGB', (100, 100), color='red')
+
+        img = Image.new("RGB", (100, 100), color="red")
         img_bytes = io.BytesIO()
-        img.save(img_bytes, format='JPEG')
+        img.save(img_bytes, format="JPEG")
         img_bytes.seek(0)
-        
+
         files = {"file": ("test.jpg", img_bytes, "image/jpeg")}
-        
-        response = await authenticated_client.post("/detections", data=detection_payload, files=files)
+
+        response = await authenticated_client.post(
+            "/detections", data=detection_payload, files=files
+        )
         assert response.status_code == 201
         detection_ids.append(response.json()["id"])
 
@@ -789,11 +829,16 @@ async def test_list_sequences_filter_by_false_positive_types(authenticated_clien
                     {
                         "is_smoke": False,
                         "false_positive_types": ["antenna", "building"],
-                        "bboxes": [{"detection_id": detection_ids[0], "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                        "bboxes": [
+                            {
+                                "detection_id": detection_ids[0],
+                                "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                            }
+                        ],
                     }
                 ]
             },
-            "processing_stage": "annotated"
+            "processing_stage": "annotated",
         },
         {
             "sequence_id": sequence_ids[1],
@@ -806,11 +851,16 @@ async def test_list_sequences_filter_by_false_positive_types(authenticated_clien
                     {
                         "is_smoke": False,
                         "false_positive_types": ["lens_flare"],
-                        "bboxes": [{"detection_id": detection_ids[1], "xyxyn": [0.2, 0.2, 0.3, 0.3]}],
+                        "bboxes": [
+                            {
+                                "detection_id": detection_ids[1],
+                                "xyxyn": [0.2, 0.2, 0.3, 0.3],
+                            }
+                        ],
                     }
                 ]
             },
-            "processing_stage": "annotated"
+            "processing_stage": "annotated",
         },
         {
             "sequence_id": sequence_ids[2],
@@ -823,45 +873,62 @@ async def test_list_sequences_filter_by_false_positive_types(authenticated_clien
                     {
                         "is_smoke": True,
                         "false_positive_types": [],
-                        "bboxes": [{"detection_id": detection_ids[2], "xyxyn": [0.3, 0.3, 0.4, 0.4]}],
+                        "bboxes": [
+                            {
+                                "detection_id": detection_ids[2],
+                                "xyxyn": [0.3, 0.3, 0.4, 0.4],
+                            }
+                        ],
                     }
                 ]
             },
-            "processing_stage": "annotated"
-        }
+            "processing_stage": "annotated",
+        },
     ]
 
     # Create annotations
     for annotation_data in annotations:
-        response = await authenticated_client.post("/annotations/sequences/", json=annotation_data)
+        response = await authenticated_client.post(
+            "/annotations/sequences/", json=annotation_data
+        )
         assert response.status_code == 201
 
     # Test 1: Filter by single false positive type - should match first sequence
-    response = await authenticated_client.get("/sequences?false_positive_types=antenna&include_annotation=true")
+    response = await authenticated_client.get(
+        "/sequences?false_positive_types=antenna&include_annotation=true"
+    )
     assert response.status_code == 200
     data = response.json()
     filtered_sequences = data["items"]
-    
+
     # Should only match first sequence
-    matching_ids = [seq["id"] for seq in filtered_sequences if seq["id"] in sequence_ids]
+    matching_ids = [
+        seq["id"] for seq in filtered_sequences if seq["id"] in sequence_ids
+    ]
     assert sequence_ids[0] in matching_ids
     assert sequence_ids[1] not in matching_ids
     assert sequence_ids[2] not in matching_ids
 
     # Test 2: Filter by multiple false positive types - should match first two sequences
-    response = await authenticated_client.get("/sequences?false_positive_types=antenna&false_positive_types=lens_flare&include_annotation=true")
+    response = await authenticated_client.get(
+        "/sequences?false_positive_types=antenna&false_positive_types=lens_flare&include_annotation=true"
+    )
     assert response.status_code == 200
     data = response.json()
     filtered_sequences = data["items"]
-    
+
     # Should match first two sequences
-    matching_ids = [seq["id"] for seq in filtered_sequences if seq["id"] in sequence_ids]
+    matching_ids = [
+        seq["id"] for seq in filtered_sequences if seq["id"] in sequence_ids
+    ]
     assert sequence_ids[0] in matching_ids
     assert sequence_ids[1] in matching_ids
     assert sequence_ids[2] not in matching_ids
 
     # Test 3: Filter by non-existent false positive type - should return validation error
-    response = await authenticated_client.get("/sequences?false_positive_types=nonexistent&include_annotation=true")
+    response = await authenticated_client.get(
+        "/sequences?false_positive_types=nonexistent&include_annotation=true"
+    )
     assert response.status_code == 422
     error_data = response.json()
     assert "detail" in error_data
@@ -870,12 +937,18 @@ async def test_list_sequences_filter_by_false_positive_types(authenticated_clien
 
 
 @pytest.mark.asyncio
-async def test_list_sequences_false_positive_types_validation(authenticated_client: AsyncClient):
+async def test_list_sequences_false_positive_types_validation(
+    authenticated_client: AsyncClient,
+):
     """Test that invalid false positive types return proper validation errors."""
     # Test with invalid false positive type - should return 422 validation error
-    response = await authenticated_client.get("/sequences?false_positive_types=invalid_type")
+    response = await authenticated_client.get(
+        "/sequences?false_positive_types=invalid_type"
+    )
     assert response.status_code == 422
-    
+
     # Test with mix of valid and invalid types
-    response = await authenticated_client.get("/sequences?false_positive_types=antenna&false_positive_types=invalid_type")
+    response = await authenticated_client.get(
+        "/sequences?false_positive_types=antenna&false_positive_types=invalid_type"
+    )
     assert response.status_code == 422

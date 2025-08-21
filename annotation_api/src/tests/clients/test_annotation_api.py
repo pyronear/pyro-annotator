@@ -45,6 +45,7 @@ API_BASE = f"{BASE_URL}/api/v1"
 
 # ==================== FIXTURES ====================
 
+
 @pytest.fixture
 def mock_sequence_data():
     """Sample sequence data for testing."""
@@ -59,8 +60,9 @@ def mock_sequence_data():
         "organisation_name": "Test Org",
         "lat": 43.6047,
         "lon": 1.4442,
-        "is_wildfire_alertapi": True
+        "is_wildfire_alertapi": True,
     }
+
 
 @pytest.fixture
 def mock_detection_data():
@@ -74,11 +76,12 @@ def mock_detection_data():
                 {
                     "xyxyn": [0.1, 0.2, 0.4, 0.6],
                     "confidence": 0.87,
-                    "class_name": "smoke"
+                    "class_name": "smoke",
                 }
             ]
-        }
+        },
     }
+
 
 @pytest.fixture
 def mock_sequence_response():
@@ -96,8 +99,9 @@ def mock_sequence_response():
         "organisation_name": "Test Org",
         "lat": 43.6047,
         "lon": 1.4442,
-        "is_wildfire_alertapi": True
+        "is_wildfire_alertapi": True,
     }
+
 
 @pytest.fixture
 def mock_detection_response():
@@ -114,11 +118,12 @@ def mock_detection_response():
                 {
                     "xyxyn": [0.1, 0.2, 0.4, 0.6],
                     "confidence": 0.87,
-                    "class_name": "smoke"
+                    "class_name": "smoke",
                 }
             ]
-        }
+        },
     }
+
 
 @pytest.fixture
 def mock_detection_annotation_data():
@@ -128,10 +133,11 @@ def mock_detection_annotation_data():
         "annotation": {
             "is_smoke": True,
             "confidence": 0.9,
-            "notes": "Clear smoke visible"
+            "notes": "Clear smoke visible",
         },
-        "processing_stage": "annotated"
+        "processing_stage": "annotated",
     }
+
 
 @pytest.fixture
 def mock_sequence_annotation_data():
@@ -144,29 +150,34 @@ def mock_sequence_annotation_data():
                 {
                     "is_smoke": True,
                     "false_positive_types": [],
-                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.2, 0.4, 0.6]}]
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.2, 0.4, 0.6]}],
                 }
             ]
         },
-        "processing_stage": "annotated"
+        "processing_stage": "annotated",
     }
+
 
 @pytest.fixture
 def mock_paginated_response():
     """Mock paginated API response."""
     return {"items": [], "page": 1, "pages": 1, "size": 50, "total": 0}
 
+
 @pytest.fixture
 def mock_image_file():
     """Mock image file content."""
     return b"fake_image_content"
+
 
 @pytest.fixture
 def auth_token():
     """Mock authentication token for testing."""
     return "test_jwt_token_12345"
 
+
 # ==================== HTTP UTILITIES TESTS ====================
+
 
 class TestHTTPUtilities:
     """Test HTTP utility functions."""
@@ -184,7 +195,10 @@ class TestHTTPUtilities:
         with requests_mock.Mocker() as m:
             m.get("http://example.com/test", json={"data": "test"})
             response = _make_request(
-                "GET", "http://example.com/test", "test_token", operation="test operation"
+                "GET",
+                "http://example.com/test",
+                "test_token",
+                operation="test operation",
             )
             assert response.status_code == 200
 
@@ -198,7 +212,10 @@ class TestHTTPUtilities:
 
             with pytest.raises(AnnotationAPIError) as exc_info:
                 _make_request(
-                    "GET", "http://example.com/test", "test_token", operation="test operation"
+                    "GET",
+                    "http://example.com/test",
+                    "test_token",
+                    operation="test operation",
                 )
 
             assert "Network error during test operation" in str(exc_info.value)
@@ -255,13 +272,13 @@ class TestHTTPUtilities:
                 {
                     "loc": ["body", "email"],
                     "msg": "field required",
-                    "type": "value_error.missing"
+                    "type": "value_error.missing",
                 },
                 {
                     "loc": ["body", "age"],
                     "msg": "ensure this value is greater than 0",
-                    "type": "value_error.number.not_gt"
-                }
+                    "type": "value_error.number.not_gt",
+                },
             ]
         }
 
@@ -351,7 +368,9 @@ class TestHTTPUtilities:
         assert error.status_code == 400
         assert "Bad Request" in str(error)
 
+
 # ==================== EXCEPTION TESTS ====================
+
 
 class TestExceptions:
     """Test custom exception classes."""
@@ -384,7 +403,7 @@ class TestExceptions:
         """Test ValidationError creation."""
         field_errors = [
             {"field": "email", "message": "Invalid email format"},
-            {"field": "password", "message": "Password too short"}
+            {"field": "password", "message": "Password too short"},
         ]
         error = ValidationError(
             "Validation failed", field_errors=field_errors, operation="create user"
@@ -415,12 +434,16 @@ class TestExceptions:
         assert error.response_data == response_data
         assert error.operation == "save data"
 
+
 # ==================== SEQUENCE OPERATIONS TESTS ====================
+
 
 class TestSequenceOperations:
     """Test sequence CRUD operations."""
 
-    def test_create_sequence_success(self, auth_token, mock_sequence_data, mock_sequence_response):
+    def test_create_sequence_success(
+        self, auth_token, mock_sequence_data, mock_sequence_response
+    ):
         """Test successful sequence creation."""
         with requests_mock.Mocker() as m:
             m.post(
@@ -444,7 +467,7 @@ class TestSequenceOperations:
                 {
                     "loc": ["body", "recorded_at"],
                     "msg": "field required",
-                    "type": "value_error.missing"
+                    "type": "value_error.missing",
                 }
             ]
         }
@@ -518,7 +541,7 @@ class TestSequenceOperations:
             "page": 2,
             "size": 25,
             "order_by": "recorded_at",
-            "order_direction": "desc"
+            "order_direction": "desc",
         }
 
         with requests_mock.Mocker() as m:
@@ -555,7 +578,9 @@ class TestSequenceOperations:
             with pytest.raises(NotFoundError):
                 delete_sequence(BASE_URL, auth_token, sequence_id)
 
+
 # ==================== DETECTION OPERATIONS TESTS ====================
+
 
 class TestDetectionOperations:
     """Test detection CRUD operations."""
@@ -586,7 +611,7 @@ class TestDetectionOperations:
                 {
                     "loc": ["body", "sequence_id"],
                     "msg": "Sequence does not exist",
-                    "type": "value_error"
+                    "type": "value_error",
                 }
             ]
         }
@@ -596,7 +621,11 @@ class TestDetectionOperations:
 
             with pytest.raises(ValidationError):
                 create_detection(
-                    BASE_URL, auth_token, mock_detection_data, mock_image_file, "test.jpg"
+                    BASE_URL,
+                    auth_token,
+                    mock_detection_data,
+                    mock_image_file,
+                    "test.jpg",
                 )
 
     def test_get_detection_success(self, auth_token, mock_detection_response):
@@ -686,17 +715,21 @@ class TestDetectionOperations:
             with pytest.raises(NotFoundError):
                 delete_detection(BASE_URL, auth_token, detection_id)
 
+
 # ==================== ANNOTATION OPERATIONS TESTS ====================
+
 
 class TestDetectionAnnotationOperations:
     """Test detection annotation CRUD operations."""
 
-    def test_create_detection_annotation_success(self, auth_token, mock_detection_annotation_data):
+    def test_create_detection_annotation_success(
+        self, auth_token, mock_detection_annotation_data
+    ):
         """Test successful detection annotation creation."""
         response_data = {
             "id": 1,
             **mock_detection_annotation_data,
-            "created_at": "2024-01-15T10:30:00.000000"
+            "created_at": "2024-01-15T10:30:00.000000",
         }
 
         with requests_mock.Mocker() as m:
@@ -722,7 +755,7 @@ class TestDetectionAnnotationOperations:
             "id": annotation_id,
             "detection_id": 1,
             "annotation": {"is_smoke": True},
-            "processing_stage": "annotated"
+            "processing_stage": "annotated",
         }
 
         with requests_mock.Mocker() as m:
@@ -733,7 +766,9 @@ class TestDetectionAnnotationOperations:
             result = get_detection_annotation(BASE_URL, auth_token, annotation_id)
             assert result == response_data
 
-    def test_list_detection_annotations_success(self, auth_token, mock_paginated_response):
+    def test_list_detection_annotations_success(
+        self, auth_token, mock_paginated_response
+    ):
         """Test successful detection annotation listing."""
         with requests_mock.Mocker() as m:
             m.get(f"{API_BASE}/annotations/detections/", json=mock_paginated_response)
@@ -741,14 +776,16 @@ class TestDetectionAnnotationOperations:
             result = list_detection_annotations(BASE_URL, auth_token)
             assert result == mock_paginated_response
 
-    def test_list_detection_annotations_with_params(self, auth_token, mock_paginated_response):
+    def test_list_detection_annotations_with_params(
+        self, auth_token, mock_paginated_response
+    ):
         """Test detection annotation listing with query parameters."""
         params = {
             "sequence_id": 1,
             "processing_stage": "annotated",
             "created_at_gte": "2024-01-01T00:00:00",
             "page": 1,
-            "size": 20
+            "size": 20,
         }
 
         with requests_mock.Mocker() as m:
@@ -762,13 +799,13 @@ class TestDetectionAnnotationOperations:
         annotation_id = 1
         update_data = {
             "annotation": {"is_smoke": False, "notes": "Updated annotation"},
-            "processing_stage": "reviewed"
+            "processing_stage": "reviewed",
         }
         response_data = {
             "id": annotation_id,
             "detection_id": 1,
             **update_data,
-            "updated_at": "2024-01-15T11:00:00.000000"
+            "updated_at": "2024-01-15T11:00:00.000000",
         }
 
         with requests_mock.Mocker() as m:
@@ -776,7 +813,9 @@ class TestDetectionAnnotationOperations:
                 f"{API_BASE}/annotations/detections/{annotation_id}", json=response_data
             )
 
-            result = update_detection_annotation(BASE_URL, auth_token, annotation_id, update_data)
+            result = update_detection_annotation(
+                BASE_URL, auth_token, annotation_id, update_data
+            )
             assert result == response_data
 
     def test_delete_detection_annotation_success(self):
@@ -789,10 +828,13 @@ class TestDetectionAnnotationOperations:
 
             delete_detection_annotation(BASE_URL, auth_token, annotation_id)
 
+
 class TestSequenceAnnotationOperations:
     """Test sequence annotation CRUD operations."""
 
-    def test_create_sequence_annotation_success(self, auth_token, mock_sequence_annotation_data):
+    def test_create_sequence_annotation_success(
+        self, auth_token, mock_sequence_annotation_data
+    ):
         """Test successful sequence annotation creation."""
         response_data = {
             "id": 1,
@@ -800,7 +842,7 @@ class TestSequenceAnnotationOperations:
             "created_at": "2024-01-15T10:30:00.000000",
             "has_smoke": True,
             "has_false_positives": False,
-            "false_positive_types": "[]"
+            "false_positive_types": "[]",
         }
 
         with requests_mock.Mocker() as m:
@@ -810,7 +852,9 @@ class TestSequenceAnnotationOperations:
                 status_code=201,
             )
 
-            result = create_sequence_annotation(BASE_URL, auth_token, mock_sequence_annotation_data)
+            result = create_sequence_annotation(
+                BASE_URL, auth_token, mock_sequence_annotation_data
+            )
             assert result == response_data
 
     def test_get_sequence_annotation_success(self):
@@ -821,7 +865,7 @@ class TestSequenceAnnotationOperations:
             "sequence_id": 1,
             "has_missed_smoke": False,
             "annotation": {"sequences_bbox": []},
-            "processing_stage": "annotated"
+            "processing_stage": "annotated",
         }
 
         with requests_mock.Mocker() as m:
@@ -832,7 +876,9 @@ class TestSequenceAnnotationOperations:
             result = get_sequence_annotation(BASE_URL, auth_token, annotation_id)
             assert result == response_data
 
-    def test_list_sequence_annotations_success(self, auth_token, mock_paginated_response):
+    def test_list_sequence_annotations_success(
+        self, auth_token, mock_paginated_response
+    ):
         """Test successful sequence annotation listing."""
         with requests_mock.Mocker() as m:
             m.get(f"{API_BASE}/annotations/sequences/", json=mock_paginated_response)
@@ -840,14 +886,16 @@ class TestSequenceAnnotationOperations:
             result = list_sequence_annotations(BASE_URL, auth_token)
             assert result == mock_paginated_response
 
-    def test_list_sequence_annotations_with_params(self, auth_token, mock_paginated_response):
+    def test_list_sequence_annotations_with_params(
+        self, auth_token, mock_paginated_response
+    ):
         """Test sequence annotation listing with query parameters."""
         params = {
             "has_smoke": True,
             "has_false_positives": False,
             "processing_stage": "annotated",
             "order_by": "created_at",
-            "order_direction": "desc"
+            "order_direction": "desc",
         }
 
         with requests_mock.Mocker() as m:
@@ -864,7 +912,7 @@ class TestSequenceAnnotationOperations:
             "id": annotation_id,
             "sequence_id": 1,
             **update_data,
-            "updated_at": "2024-01-15T11:00:00.000000"
+            "updated_at": "2024-01-15T11:00:00.000000",
         }
 
         with requests_mock.Mocker() as m:
@@ -872,7 +920,9 @@ class TestSequenceAnnotationOperations:
                 f"{API_BASE}/annotations/sequences/{annotation_id}", json=response_data
             )
 
-            result = update_sequence_annotation(BASE_URL, auth_token, annotation_id, update_data)
+            result = update_sequence_annotation(
+                BASE_URL, auth_token, annotation_id, update_data
+            )
             assert result == response_data
 
     def test_delete_sequence_annotation_success(self):
@@ -885,18 +935,22 @@ class TestSequenceAnnotationOperations:
 
             delete_sequence_annotation(BASE_URL, auth_token, annotation_id)
 
+
 # ==================== EDGE CASES AND INTEGRATION TESTS ====================
+
 
 class TestEdgeCases:
     """Test edge cases and integration scenarios."""
 
-    def test_base_url_formatting(self, auth_token, mock_sequence_data, mock_sequence_response):
+    def test_base_url_formatting(
+        self, auth_token, mock_sequence_data, mock_sequence_response
+    ):
         """Test various base URL formats are handled correctly."""
         test_urls = [
             "http://localhost:5050",
             "http://localhost:5050/",
             "https://api.example.com",
-            "https://api.example.com/"
+            "https://api.example.com/",
         ]
 
         for base_url in test_urls:
@@ -917,8 +971,8 @@ class TestEdgeCases:
                     "false_positive_types": ["reflection", "cloud"],
                     "bboxes": [
                         {"detection_id": 1, "xyxyn": [0.1, 0.2, 0.4, 0.6]},
-                        {"detection_id": 2, "xyxyn": [0.5, 0.6, 0.8, 0.9]}
-                    ]
+                        {"detection_id": 2, "xyxyn": [0.5, 0.6, 0.8, 0.9]},
+                    ],
                 }
             ]
         }
@@ -926,7 +980,7 @@ class TestEdgeCases:
         annotation_data = {
             "sequence_id": 1,
             "annotation": complex_annotation,
-            "processing_stage": "annotated"
+            "processing_stage": "annotated",
         }
 
         with requests_mock.Mocker() as m:
@@ -956,7 +1010,7 @@ class TestEdgeCases:
             "page": 100,
             "size": 100,  # Max allowed
             "order_by": "created_at",
-            "order_direction": "desc"
+            "order_direction": "desc",
         }
 
         large_response = {
@@ -964,7 +1018,7 @@ class TestEdgeCases:
             "page": 100,
             "pages": 100,
             "size": 100,
-            "total": 10000
+            "total": 10000,
         }
 
         with requests_mock.Mocker() as m:
@@ -1001,7 +1055,9 @@ class TestEdgeCases:
             )
 
             with pytest.raises(AnnotationAPIError) as exc_info:
-                create_detection(BASE_URL, auth_token, mock_detection_data, b"invalid", "test.jpg")
+                create_detection(
+                    BASE_URL, auth_token, mock_detection_data, b"invalid", "test.jpg"
+                )
 
             error = exc_info.value
             assert error.status_code == 400

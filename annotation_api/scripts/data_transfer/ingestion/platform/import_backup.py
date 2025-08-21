@@ -61,14 +61,15 @@ import sys
 from datetime import date, datetime, timedelta
 from typing import List, Dict, Any, Optional
 
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeElapsedColumn
+from rich.progress import (
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    BarColumn,
+    TaskProgressColumn,
+)
 from rich.console import Console
 from rich.panel import Panel
-from rich.text import Text
-from rich.live import Live
-from rich.layout import Layout
-from rich.status import Status
-from rich.table import Table
 import time
 
 # Import platform fetching functionality
@@ -97,32 +98,33 @@ from app.schemas.annotation_validation import (
 # WORKER SCALING AND PROGRESS MANAGEMENT
 # ==============================================================================
 
+
 class WorkerConfig:
     """Intelligent worker scaling configuration based on single max_workers parameter."""
-    
+
     def __init__(self, max_workers: int):
         self.base_workers = max_workers
-        
+
     @property
     def detection_fetching(self) -> int:
         """Workers for platform API detection fetching."""
         return self.base_workers
-        
+
     @property
     def api_posting(self) -> int:
         """Workers for sequence creation API calls (slightly conservative)."""
         return max(1, int(self.base_workers * 0.75))
-        
+
     @property
     def annotation_processing(self) -> int:
         """Workers for CPU-bound annotation processing (can use more)."""
         return int(self.base_workers * 1.5)
-        
+
     @property
     def detection_per_sequence(self) -> int:
         """Workers for detection creation within each sequence."""
         return self.base_workers
-        
+
     @property
     def page_fetching(self) -> int:
         """Workers for paginated API calls."""
@@ -131,46 +133,42 @@ class WorkerConfig:
 
 class ErrorCollector:
     """Collects errors and warnings during processing for clean summary reporting."""
-    
+
     def __init__(self):
         self.errors = []
         self.warnings = []
-    
+
     def add_error(self, message: str, context: dict = None):
         """Add an error to the collection."""
-        self.errors.append({
-            "message": message, 
-            "context": context or {}, 
-            "timestamp": datetime.now()
-        })
-    
+        self.errors.append(
+            {"message": message, "context": context or {}, "timestamp": datetime.now()}
+        )
+
     def add_warning(self, message: str, context: dict = None):
         """Add a warning to the collection."""
-        self.warnings.append({
-            "message": message, 
-            "context": context or {}, 
-            "timestamp": datetime.now()
-        })
-    
+        self.warnings.append(
+            {"message": message, "context": context or {}, "timestamp": datetime.now()}
+        )
+
     def has_issues(self) -> bool:
         """Check if there are any errors or warnings."""
         return len(self.errors) > 0 or len(self.warnings) > 0
-    
+
     def print_summary(self, console: Console, title: str = "Issues Encountered"):
         """Print a formatted summary of errors and warnings."""
         if not self.has_issues():
             return
-            
+
         console.print()
         summary_text = ""
-        
+
         if self.errors:
             summary_text += f"[red]❌ {len(self.errors)} error(s):[/]\n"
             for error in self.errors[-5:]:  # Show last 5 errors
                 summary_text += f"  • {error['message']}\n"
             if len(self.errors) > 5:
                 summary_text += f"  ... and {len(self.errors) - 5} more error(s)\n"
-        
+
         if self.warnings:
             if summary_text:
                 summary_text += "\n"
@@ -179,15 +177,15 @@ class ErrorCollector:
                 summary_text += f"  • {warning['message']}\n"
             if len(self.warnings) > 3:
                 summary_text += f"  ... and {len(self.warnings) - 3} more warning(s)\n"
-        
+
         panel = Panel(
-            summary_text.strip(), 
-            title=title, 
+            summary_text.strip(),
+            title=title,
             border_style="red" if self.errors else "yellow",
-            padding=(1, 2)
+            padding=(1, 2),
         )
         console.print(panel)
-    
+
     def clear(self):
         """Clear all collected errors and warnings."""
         self.errors.clear()
@@ -196,101 +194,103 @@ class ErrorCollector:
 
 class StepManager:
     """Manages step-by-step progress with Rich formatting and timing."""
-    
+
     def __init__(self, console: Console, show_timing: bool = True):
         self.console = console
         self.show_timing = show_timing
         self.current_step = 0
         self.step_start_time = None
-        
+
     def start_step(self, step_number: int, title: str, description: str = None):
         """Start a new step with Rich panel formatting."""
         self.current_step = step_number
         self.step_start_time = time.time()
-        
+
         panel_title = f"📋 Step {step_number}: {title}"
         panel_content = description or f"Starting {title.lower()}..."
-        
+
         self.console.print()
-        self.console.print(Panel(
-            f"[bold blue]{panel_content}[/]",
-            title=panel_title,
-            border_style="blue",
-            padding=(0, 2)
-        ))
-    
-    def complete_step(self, success: bool = True, message: str = None, stats: dict = None):
+        self.console.print(
+            Panel(
+                f"[bold blue]{panel_content}[/]",
+                title=panel_title,
+                border_style="blue",
+                padding=(0, 2),
+            )
+        )
+
+    def complete_step(
+        self, success: bool = True, message: str = None, stats: dict = None
+    ):
         """Mark the current step as completed with timing and status."""
         if self.step_start_time is None:
             return
-            
+
         duration = time.time() - self.step_start_time
         status_icon = "✅" if success else "❌"
         status_color = "green" if success else "red"
-        
+
         completion_text = f"[{status_color}]{status_icon} Step {self.current_step} {'completed' if success else 'failed'}[/]"
-        
+
         if self.show_timing:
             completion_text += f" [dim]({duration:.1f}s)[/]"
-        
+
         if message:
             completion_text += f"\n{message}"
-            
+
         if stats:
             completion_text += "\n"
             for key, value in stats.items():
                 completion_text += f"• {key}: [bold]{value}[/]\n"
-        
-        self.console.print(Panel(
-            completion_text.strip(),
-            border_style=status_color,
-            padding=(0, 2)
-        ))
-        
+
+        self.console.print(
+            Panel(completion_text.strip(), border_style=status_color, padding=(0, 2))
+        )
+
         self.step_start_time = None
 
 
 class LogSuppressor:
     """Context manager to suppress logging during progress displays."""
-    
+
     def __init__(self, suppress: bool = True):
         self.suppress = suppress
         self.original_levels = {}
-        
+
     def __enter__(self):
         if self.suppress:
             # Store original levels and suppress ALL loggers except ERROR level
             loggers_to_suppress = [
-                '',  # root logger - most important
-                '__main__',
-                'root',
-                'scripts.data_transfer.ingestion.platform.import',
-                'scripts.data_transfer.ingestion.platform.shared',
-                'scripts.data_transfer.ingestion.platform.client',
-                'scripts.data_transfer.ingestion.platform.utils',
-                'app.clients.annotation_api',
-                'requests',
-                'urllib3',
-                'urllib3.connectionpool',
-                'asyncio',
-                'concurrent.futures',
-                'multiprocessing'
+                "",  # root logger - most important
+                "__main__",
+                "root",
+                "scripts.data_transfer.ingestion.platform.import",
+                "scripts.data_transfer.ingestion.platform.shared",
+                "scripts.data_transfer.ingestion.platform.client",
+                "scripts.data_transfer.ingestion.platform.utils",
+                "app.clients.annotation_api",
+                "requests",
+                "urllib3",
+                "urllib3.connectionpool",
+                "asyncio",
+                "concurrent.futures",
+                "multiprocessing",
             ]
-            
+
             for logger_name in loggers_to_suppress:
                 logger = logging.getLogger(logger_name)
                 self.original_levels[logger_name] = logger.level
                 logger.setLevel(logging.CRITICAL)  # Only show critical errors
-                
+
             # Also suppress all existing loggers to catch any dynamically created ones
             for logger_name in logging.getLogger().manager.loggerDict:
                 if logger_name not in self.original_levels:
                     logger = logging.getLogger(logger_name)
                     self.original_levels[logger_name] = logger.level
                     logger.setLevel(logging.CRITICAL)
-                    
+
         return self
-        
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.suppress:
             # Restore original log levels
@@ -301,6 +301,7 @@ class LogSuppressor:
 # ==============================================================================
 # UTILITY FUNCTIONS
 # ==============================================================================
+
 
 def valid_date(s: str):
     """
@@ -316,11 +317,11 @@ def valid_date(s: str):
 def get_dates_within(date_from: date, date_end: date) -> List[date]:
     """
     Get all dates between date_from and date_end (inclusive).
-    
+
     Args:
         date_from: Start date
         date_end: End date
-        
+
     Returns:
         List of dates
     """
@@ -332,15 +333,17 @@ def get_dates_within(date_from: date, date_end: date) -> List[date]:
     return dates
 
 
-def _fetch_sequences_for_date(api_endpoint: str, target_date: date, access_token: str) -> List[Dict]:
+def _fetch_sequences_for_date(
+    api_endpoint: str, target_date: date, access_token: str
+) -> List[Dict]:
     """
     Fetch sequences for a specific date from the platform API.
-    
+
     Args:
         api_endpoint: Platform API endpoint
         target_date: Date to fetch sequences for
         access_token: API access token
-        
+
     Returns:
         List of sequences for the date
     """
@@ -369,7 +372,7 @@ def _process_single_sequence_detections(
 ) -> List[Dict]:
     """
     Process detections for a single sequence.
-    
+
     Args:
         sequence: Sequence data
         indexed_cameras: Camera lookup dict
@@ -378,7 +381,7 @@ def _process_single_sequence_detections(
         access_token: API access token
         detections_limit: Max detections per sequence
         detections_order_by: Order direction for detections
-        
+
     Returns:
         List of detection records for this sequence
     """
@@ -426,7 +429,7 @@ def fetch_all_sequences_within(
     worker_config: WorkerConfig,
     suppress_logs: bool = True,
     console: Console = None,
-    error_collector: 'ErrorCollector' = None,
+    error_collector: "ErrorCollector" = None,
 ) -> List[Dict]:
     """
     Fetch all sequences and detections between date_from and date_end.
@@ -452,28 +455,34 @@ def fetch_all_sequences_within(
         console = Console()
     if error_collector is None:
         error_collector = ErrorCollector()
-    
+
     # Load metadata with progress display
     metadata_start_time = time.time()
-    with console.status("[bold blue]📡 Loading platform metadata...", spinner="dots") as status:
+    with console.status(
+        "[bold blue]📡 Loading platform metadata...", spinner="dots"
+    ) as status:
         try:
             status.update("[bold blue]📡 Loading cameras...")
             cameras = platform_client.list_cameras(
                 api_endpoint=api_endpoint, access_token=access_token
             )
             indexed_cameras = platform_utils.index_by(cameras, key="id")
-            
+
             status.update("[bold blue]📡 Loading organizations...")
             organizations = platform_client.list_organizations(
                 api_endpoint=api_endpoint,
                 access_token=access_token_admin,
             )
             indexed_organizations = platform_utils.index_by(organizations, key="id")
-            
+
             metadata_duration = time.time() - metadata_start_time
-            console.print(f"[green]✅ Metadata loaded[/] [dim]({metadata_duration:.1f}s)[/]")
-            console.print(f"   • [bold]{len(cameras)}[/] cameras, [bold]{len(organizations)}[/] organizations")
-            
+            console.print(
+                f"[green]✅ Metadata loaded[/] [dim]({metadata_duration:.1f}s)[/]"
+            )
+            console.print(
+                f"   • [bold]{len(cameras)}[/] cameras, [bold]{len(organizations)}[/] organizations"
+            )
+
         except Exception as e:
             error_msg = f"Failed to load platform metadata: {e}"
             error_collector.add_error(error_msg)
@@ -481,7 +490,7 @@ def fetch_all_sequences_within(
 
     # Prepare date range
     dates = get_dates_within(date_from=date_from, date_end=date_end)
-    
+
     # Better date range display
     if len(dates) == 1:
         console.print(f"[blue]📅 Processing [bold]1 day[/]: {dates[0]:%Y-%m-%d}[/]")
@@ -489,7 +498,9 @@ def fetch_all_sequences_within(
         date_list = ", ".join(d.strftime("%Y-%m-%d") for d in dates)
         console.print(f"[blue]📅 Processing [bold]{len(dates)} days[/]: {date_list}[/]")
     else:
-        console.print(f"[blue]📅 Processing [bold]{len(dates)} days[/]: {dates[0]:%Y-%m-%d} to {dates[-1]:%Y-%m-%d}[/]")
+        console.print(
+            f"[blue]📅 Processing [bold]{len(dates)} days[/]: {dates[0]:%Y-%m-%d} to {dates[-1]:%Y-%m-%d}[/]"
+        )
 
     sequences = []
 
@@ -507,9 +518,11 @@ def fetch_all_sequences_within(
                 BarColumn(bar_width=40),
                 TaskProgressColumn(),
                 console=Console(),
-                transient=True
+                transient=True,
             ) as progress_bar:
-                task = progress_bar.add_task("Processing dates", total=len(future_to_date))
+                task = progress_bar.add_task(
+                    "Processing dates", total=len(future_to_date)
+                )
                 for future in concurrent.futures.as_completed(future_to_date):
                     sequences.extend(future.result())
                     progress_bar.advance(task)
@@ -519,9 +532,13 @@ def fetch_all_sequences_within(
     # Now fetch detections and build flattened records using parallel processing
     records = []
     first_sequence_logged = False
-    
-    logging.info(f"Processing sequences with {worker_config.detection_fetching} workers")
-    with concurrent.futures.ThreadPoolExecutor(max_workers=worker_config.detection_fetching) as executor:
+
+    logging.info(
+        f"Processing sequences with {worker_config.detection_fetching} workers"
+    )
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=worker_config.detection_fetching
+    ) as executor:
         # Submit all tasks
         future_to_sequence = {
             executor.submit(
@@ -536,7 +553,7 @@ def fetch_all_sequences_within(
             ): sequence
             for sequence in sequences
         }
-        
+
         # Collect results with progress tracking
         with LogSuppressor(suppress=suppress_logs):
             with Progress(
@@ -545,14 +562,16 @@ def fetch_all_sequences_within(
                 BarColumn(bar_width=40),
                 TaskProgressColumn(),
                 console=Console(),
-                transient=True
+                transient=True,
             ) as progress_bar:
-                task = progress_bar.add_task("Fetching detections", total=len(future_to_sequence))
+                task = progress_bar.add_task(
+                    "Fetching detections", total=len(future_to_sequence)
+                )
                 for future in concurrent.futures.as_completed(future_to_sequence):
                     sequence = future_to_sequence[future]
                     try:
                         sequence_records = future.result()
-                        
+
                         # Debug logging for first successful sequence (only if not suppressed)
                         if not first_sequence_logged and sequence_records:
                             first_sequence_logged = True
@@ -560,15 +579,19 @@ def fetch_all_sequences_within(
                             camera = indexed_cameras.get(camera_id, {})
                             org_id = camera.get("organization_id")
                             organization = indexed_organizations.get(org_id, {})
-                            
+
                             logging.debug(f"Sample sequence structure: {sequence}")
                             logging.debug(f"Sample camera structure: {camera}")
-                            logging.debug(f"Sample organization structure: {organization}")
-                            logging.debug(f"Sample record structure: {sequence_records[0] if sequence_records else 'No records'}")
-                        
+                            logging.debug(
+                                f"Sample organization structure: {organization}"
+                            )
+                            logging.debug(
+                                f"Sample record structure: {sequence_records[0] if sequence_records else 'No records'}"
+                            )
+
                         records.extend(sequence_records)
                         progress_bar.advance(task)
-                        
+
                     except Exception as e:
                         # Collect errors instead of logging immediately
                         error_msg = f"Error processing sequence {sequence.get('id', 'unknown')}: {e}"
@@ -577,13 +600,15 @@ def fetch_all_sequences_within(
                         continue
 
     # Show final results
-    console.print(f"[green]✅ Processing complete[/]")
-    console.print(f"   • [bold]{len(records)}[/] detection records from [bold]{len(sequences)}[/] sequences")
-    
+    console.print("[green]✅ Processing complete[/]")
+    console.print(
+        f"   • [bold]{len(records)}[/] detection records from [bold]{len(sequences)}[/] sequences"
+    )
+
     # Show errors if any occurred
     if error_collector.has_issues():
         error_collector.print_summary(console, "Sequence Processing Issues")
-    
+
     return records
 
 
@@ -618,17 +643,22 @@ def box_iou(box1: List[float], box2: List[float]) -> float:
     return intersection / union
 
 
-def filter_predictions_by_confidence(predictions: List[dict], confidence_threshold: float) -> List[dict]:
+def filter_predictions_by_confidence(
+    predictions: List[dict], confidence_threshold: float
+) -> List[dict]:
     """Filter AI predictions by confidence threshold."""
     if confidence_threshold == 0.0:
         return predictions
     return [
-        pred for pred in predictions
+        pred
+        for pred in predictions
         if pred.get("confidence", 0) >= confidence_threshold
     ]
 
 
-def cluster_boxes_by_iou(boxes_with_ids: List[tuple], iou_threshold: float) -> List[List[tuple]]:
+def cluster_boxes_by_iou(
+    boxes_with_ids: List[tuple], iou_threshold: float
+) -> List[List[tuple]]:
     """Cluster bounding boxes by IoU similarity."""
     if not boxes_with_ids:
         return []
@@ -675,7 +705,9 @@ def check_existing_annotation(base_url: str, sequence_id: int) -> Optional[int]:
         return None
 
     except Exception as e:
-        logging.debug(f"Error checking existing annotation for sequence {sequence_id}: {e}")
+        logging.debug(
+            f"Error checking existing annotation for sequence {sequence_id}: {e}"
+        )
         return None
 
 
@@ -698,16 +730,24 @@ def create_annotation_from_data(
             }
 
             if dry_run:
-                logging.info(f"DRY RUN: Would update annotation {existing_annotation_id} for sequence {sequence_id}")
+                logging.info(
+                    f"DRY RUN: Would update annotation {existing_annotation_id} for sequence {sequence_id}"
+                )
                 logging.debug(f"Update data: {update_dict}")
                 return True
 
-            result = update_sequence_annotation(base_url, existing_annotation_id, update_dict)
+            result = update_sequence_annotation(
+                base_url, existing_annotation_id, update_dict
+            )
             if result:
-                logging.debug(f"Successfully updated annotation {existing_annotation_id} for sequence {sequence_id}")
+                logging.debug(
+                    f"Successfully updated annotation {existing_annotation_id} for sequence {sequence_id}"
+                )
                 return True
             else:
-                logging.error(f"Failed to update annotation {existing_annotation_id} for sequence {sequence_id}")
+                logging.error(
+                    f"Failed to update annotation {existing_annotation_id} for sequence {sequence_id}"
+                )
                 return False
 
         else:
@@ -720,20 +760,26 @@ def create_annotation_from_data(
             }
 
             if dry_run:
-                logging.info(f"DRY RUN: Would create new annotation for sequence {sequence_id}")
+                logging.info(
+                    f"DRY RUN: Would create new annotation for sequence {sequence_id}"
+                )
                 logging.debug(f"Create data: {create_dict}")
                 return True
 
             result = create_sequence_annotation(base_url, create_dict)
             if result:
-                logging.debug(f"Successfully created annotation for sequence {sequence_id}")
+                logging.debug(
+                    f"Successfully created annotation for sequence {sequence_id}"
+                )
                 return True
             else:
                 logging.error(f"Failed to create annotation for sequence {sequence_id}")
                 return False
 
     except Exception as e:
-        logging.error(f"Error creating/updating annotation for sequence {sequence_id}: {e}")
+        logging.error(
+            f"Error creating/updating annotation for sequence {sequence_id}: {e}"
+        )
         return False
 
 
@@ -741,8 +787,13 @@ def create_annotation_from_data(
 class SequenceAnalyzer:
     """Analyzes sequences to generate automatic annotations based on AI predictions."""
 
-    def __init__(self, base_url: str, confidence_threshold: float = 0.5,
-                 iou_threshold: float = 0.3, min_cluster_size: int = 1):
+    def __init__(
+        self,
+        base_url: str,
+        confidence_threshold: float = 0.5,
+        iou_threshold: float = 0.3,
+        min_cluster_size: int = 1,
+    ):
         self.base_url = base_url
         self.confidence_threshold = confidence_threshold
         self.iou_threshold = iou_threshold
@@ -753,25 +804,35 @@ class SequenceAnalyzer:
         """Analyze a sequence and generate annotation data."""
         try:
             sequence = get_sequence(self.base_url, sequence_id)
-            self.logger.info(f"Analyzing sequence {sequence_id}: {sequence.get('camera_name', 'Unknown')}")
+            self.logger.info(
+                f"Analyzing sequence {sequence_id}: {sequence.get('camera_name', 'Unknown')}"
+            )
 
             detections = self._fetch_sequence_detections(sequence_id)
             if not detections:
                 self.logger.warning(f"No detections found for sequence {sequence_id}")
                 return None
 
-            self.logger.info(f"Found {len(detections)} detections in sequence {sequence_id}")
+            self.logger.info(
+                f"Found {len(detections)} detections in sequence {sequence_id}"
+            )
 
             predictions_with_ids = self._extract_predictions_from_detections(detections)
             if not predictions_with_ids:
-                self.logger.warning(f"No valid AI predictions found for sequence {sequence_id}")
+                self.logger.warning(
+                    f"No valid AI predictions found for sequence {sequence_id}"
+                )
                 return None
 
-            self.logger.info(f"Extracted {len(predictions_with_ids)} valid predictions above confidence threshold {self.confidence_threshold}")
+            self.logger.info(
+                f"Extracted {len(predictions_with_ids)} valid predictions above confidence threshold {self.confidence_threshold}"
+            )
 
             bbox_clusters = self._cluster_temporal_bboxes(predictions_with_ids)
             if not bbox_clusters:
-                self.logger.warning(f"No temporal clusters found for sequence {sequence_id}")
+                self.logger.warning(
+                    f"No temporal clusters found for sequence {sequence_id}"
+                )
                 return None
 
             self.logger.info(f"Created {len(bbox_clusters)} temporal bbox clusters")
@@ -779,7 +840,9 @@ class SequenceAnalyzer:
             sequences_bbox = self._create_sequence_bboxes(bbox_clusters)
             annotation_data = SequenceAnnotationData(sequences_bbox=sequences_bbox)
 
-            self.logger.info(f"Generated annotation with {len(sequences_bbox)} sequence bboxes for sequence {sequence_id}")
+            self.logger.info(
+                f"Generated annotation with {len(sequences_bbox)} sequence bboxes for sequence {sequence_id}"
+            )
             return annotation_data
 
         except Exception as e:
@@ -823,10 +886,14 @@ class SequenceAnalyzer:
             return all_detections
 
         except Exception as e:
-            self.logger.error(f"Error fetching detections for sequence {sequence_id}: {e}")
+            self.logger.error(
+                f"Error fetching detections for sequence {sequence_id}: {e}"
+            )
             return []
 
-    def _extract_predictions_from_detections(self, detections: List[Dict]) -> List[tuple]:
+    def _extract_predictions_from_detections(
+        self, detections: List[Dict]
+    ) -> List[tuple]:
         """Extract and validate AI predictions from detection records."""
         predictions_with_ids = []
 
@@ -851,30 +918,35 @@ class SequenceAnalyzer:
                     if len(xyxyn) == 4:
                         predictions_with_ids.append((xyxyn, detection_id, prediction))
                 except Exception as e:
-                    self.logger.debug(f"Invalid prediction format in detection {detection_id}: {e}")
+                    self.logger.debug(
+                        f"Invalid prediction format in detection {detection_id}: {e}"
+                    )
                     continue
 
         return predictions_with_ids
 
-    def _cluster_temporal_bboxes(self, predictions_with_ids: List[tuple]) -> List[List[tuple]]:
+    def _cluster_temporal_bboxes(
+        self, predictions_with_ids: List[tuple]
+    ) -> List[List[tuple]]:
         """Cluster overlapping bounding boxes across temporal frames."""
         if not predictions_with_ids:
             return []
 
         # Convert to format expected by clustering function
         boxes_with_ids = [(pred[0], pred[1]) for pred in predictions_with_ids]
-        
+
         clusters = cluster_boxes_by_iou(boxes_with_ids, self.iou_threshold)
 
         # Filter by minimum cluster size
         filtered_clusters = [
-            cluster for cluster in clusters
-            if len(cluster) >= self.min_cluster_size
+            cluster for cluster in clusters if len(cluster) >= self.min_cluster_size
         ]
 
         return filtered_clusters
 
-    def _create_sequence_bboxes(self, bbox_clusters: List[List[tuple]]) -> List[SequenceBBox]:
+    def _create_sequence_bboxes(
+        self, bbox_clusters: List[List[tuple]]
+    ) -> List[SequenceBBox]:
         """Convert bbox clusters to SequenceBBox objects."""
         sequences_bbox = []
 
@@ -888,7 +960,7 @@ class SequenceAnalyzer:
             sequence_bbox = SequenceBBox(
                 is_smoke=True,  # Conservative default
                 false_positive_types=[],  # Empty initially
-                bboxes=bboxes
+                bboxes=bboxes,
             )
             sequences_bbox.append(sequence_bbox)
 
@@ -1170,7 +1242,9 @@ def process_single_sequence(
             result["annotation_id"] = (
                 existing_annotation_id if existing_annotation_id else "new"
             )
-            result["final_stage"] = SequenceAnnotationProcessingStage.READY_TO_ANNOTATE.value
+            result["final_stage"] = (
+                SequenceAnnotationProcessingStage.READY_TO_ANNOTATE.value
+            )
             logging.info(
                 f"Successfully created/updated annotation for sequence {sequence_id} - ready for annotation"
             )
@@ -1180,7 +1254,6 @@ def process_single_sequence(
             logging.error(error_msg)
             result["errors"].append(error_msg)
             return result
-
 
     except Exception as e:
         error_msg = f"Unexpected error processing sequence {sequence_id}: {e}"
@@ -1207,15 +1280,15 @@ def main():
 
     # Initialize worker configuration
     worker_config = WorkerConfig(args.max_workers)
-    
+
     # Initialize console and progress context
     console = Console()
     suppress_logs = args.loglevel != "debug"  # Suppress logs unless in debug mode
-    
+
     # Initialize step manager and error collector
     step_manager = StepManager(console, show_timing=True)
     error_collector = ErrorCollector()
-    
+
     # Initialize statistics
     stats = {
         "total_sequences": 0,
@@ -1227,29 +1300,37 @@ def main():
     # Print header
     console = Console()
     console.print()
-    console.print(Panel(
-        "[bold blue]Platform Data Import & Processing[/]",
-        title="🔥 Pyronear Data Import",
-        border_style="blue",
-        padding=(0, 2)
-    ))
+    console.print(
+        Panel(
+            "[bold blue]Platform Data Import & Processing[/]",
+            title="🔥 Pyronear Data Import",
+            border_style="blue",
+            padding=(0, 2),
+        )
+    )
 
     if args.loglevel == "debug":
         console.print(f"[blue]ℹ️  Date range: {args.date_from} to {args.date_end}[/]")
-        console.print(f"[blue]ℹ️  Worker config: base={args.max_workers}, detection={worker_config.detection_fetching}, api={worker_config.api_posting}, annotation={worker_config.annotation_processing}[/]")
-        console.print(f"[blue]ℹ️  Analysis config: confidence={args.confidence_threshold}, iou={args.iou_threshold}, min_cluster={args.min_cluster_size}[/]")
+        console.print(
+            f"[blue]ℹ️  Worker config: base={args.max_workers}, detection={worker_config.detection_fetching}, api={worker_config.api_posting}, annotation={worker_config.annotation_processing}[/]"
+        )
+        console.print(
+            f"[blue]ℹ️  Analysis config: confidence={args.confidence_threshold}, iou={args.iou_threshold}, min_cluster={args.min_cluster_size}[/]"
+        )
 
     try:
         # Step 1: Fetch platform data (if not skipped)
         if not args.skip_platform_fetch:
             step_manager.start_step(
-                1, 
+                1,
                 "Platform Data Import",
-                f"Fetching data from {args.date_from} to {args.date_end} using {worker_config.base_workers} workers"
+                f"Fetching data from {args.date_from} to {args.date_end} using {worker_config.base_workers} workers",
             )
 
             if not shared.validate_available_env_variables():
-                console.print("[red]❌ Missing required environment variables for platform API[/]")
+                console.print(
+                    "[red]❌ Missing required environment variables for platform API[/]"
+                )
                 step_manager.complete_step(False, "Missing environment variables")
                 sys.exit(1)
 
@@ -1273,7 +1354,9 @@ def main():
 
             # Get access tokens with progress display
             auth_start_time = time.time()
-            with console.status("[bold blue]🔐 Authenticating with platform API...", spinner="dots") as status:
+            with console.status(
+                "[bold blue]🔐 Authenticating with platform API...", spinner="dots"
+            ) as status:
                 try:
                     status.update("[bold blue]🔐 Getting user access token...")
                     access_token = platform_client.get_api_access_token(
@@ -1281,17 +1364,19 @@ def main():
                         username=platform_login,
                         password=platform_password,
                     )
-                    
+
                     status.update("[bold blue]🔐 Getting admin access token...")
                     access_token_admin = platform_client.get_api_access_token(
                         api_endpoint=args.url_api_platform,
                         username=platform_admin_login,
                         password=platform_admin_password,
                     )
-                    
+
                     auth_duration = time.time() - auth_start_time
-                    console.print(f"[green]✅ Authentication successful[/] [dim]({auth_duration:.1f}s)[/]")
-                    
+                    console.print(
+                        f"[green]✅ Authentication successful[/] [dim]({auth_duration:.1f}s)[/]"
+                    )
+
                 except Exception as e:
                     error_collector.add_error(f"Authentication failed: {e}")
                     step_manager.complete_step(False, f"Authentication failed: {e}")
@@ -1319,59 +1404,83 @@ def main():
                 sys.exit(1)
 
             if not records and not args.dry_run:
-                step_manager.complete_step(False, "No records fetched from platform API")
+                step_manager.complete_step(
+                    False, "No records fetched from platform API"
+                )
                 sys.exit(0)
 
             # Post to annotation API (if not dry run)
             if not args.dry_run:
-                console.print(f"[blue]🚀 Posting {len(records)} records to annotation API...[/]")
-                
+                console.print(
+                    f"[blue]🚀 Posting {len(records)} records to annotation API...[/]"
+                )
+
                 try:
                     result = shared.post_records_to_annotation_api(
-                        args.url_api_annotation, 
-                        records, 
+                        args.url_api_annotation,
+                        records,
                         max_workers=worker_config.api_posting,
                         max_detection_workers=worker_config.detection_per_sequence,
-                        suppress_logs=suppress_logs
+                        suppress_logs=suppress_logs,
                     )
 
                     # Prepare step completion stats
                     step_stats = {
                         "Records fetched": len(records),
                         "Sequences posted": f"{result['successful_sequences']}/{result['total_sequences']}",
-                        "Detections posted": f"{result['successful_detections']}/{result['total_detections']}"
+                        "Detections posted": f"{result['successful_detections']}/{result['total_detections']}",
                     }
-                    
-                    step_success = result["failed_sequences"] == 0 and result["failed_detections"] == 0
-                    step_message = "Platform data successfully imported" if step_success else "Platform data imported with some failures"
-                    
+
+                    step_success = (
+                        result["failed_sequences"] == 0
+                        and result["failed_detections"] == 0
+                    )
+                    step_message = (
+                        "Platform data successfully imported"
+                        if step_success
+                        else "Platform data imported with some failures"
+                    )
+
                     step_manager.complete_step(step_success, step_message, step_stats)
-                    
-                    if result["failed_sequences"] > 0 or result["failed_detections"] > 0:
+
+                    if (
+                        result["failed_sequences"] > 0
+                        or result["failed_detections"] > 0
+                    ):
                         error_collector.add_warning(
                             f"{result['failed_sequences']} sequences and {result['failed_detections']} detections failed to import"
                         )
 
                 except Exception as e:
-                    error_collector.add_error(f"Failed to post data to annotation API: {e}")
-                    step_manager.complete_step(False, f"Failed to post data to annotation API: {e}")
-                    error_collector.print_summary(console, "Platform Data Import Errors")
+                    error_collector.add_error(
+                        f"Failed to post data to annotation API: {e}"
+                    )
+                    step_manager.complete_step(
+                        False, f"Failed to post data to annotation API: {e}"
+                    )
+                    error_collector.print_summary(
+                        console, "Platform Data Import Errors"
+                    )
                     sys.exit(1)
             else:
                 step_stats = {"Records that would be posted": len(records)}
-                step_manager.complete_step(True, "DRY RUN: Platform data fetch completed", step_stats)
+                step_manager.complete_step(
+                    True, "DRY RUN: Platform data fetch completed", step_stats
+                )
 
         else:
-            step_manager.start_step(1, "Platform Data Import", "Skipped per user request")
+            step_manager.start_step(
+                1, "Platform Data Import", "Skipped per user request"
+            )
             step_manager.complete_step(True, "Platform data fetch skipped")
 
         # Step 2: Get sequences to process
         step_manager.start_step(
-            2, 
+            2,
             "Sequence Discovery",
-            f"Finding sequences in annotation API for date range {args.date_from} to {args.date_end}"
+            f"Finding sequences in annotation API for date range {args.date_from} to {args.date_end}",
         )
-        
+
         try:
             sequence_ids = get_sequences_from_annotation_api(
                 args.url_api_annotation,
@@ -1385,21 +1494,25 @@ def main():
 
             stats["total_sequences"] = len(sequence_ids)
             step_stats = {"Sequences found": len(sequence_ids)}
-            step_manager.complete_step(True, f"Found {len(sequence_ids)} sequences to process", step_stats)
-            
+            step_manager.complete_step(
+                True, f"Found {len(sequence_ids)} sequences to process", step_stats
+            )
+
         except Exception as e:
-            error_collector.add_error(f"Failed to fetch sequences from annotation API: {e}")
+            error_collector.add_error(
+                f"Failed to fetch sequences from annotation API: {e}"
+            )
             step_manager.complete_step(False, f"Failed to fetch sequences: {e}")
             error_collector.print_summary(console, "Sequence Discovery Errors")
             sys.exit(1)
 
         # Step 3: Initialize sequence analyzer
         step_manager.start_step(
-            3, 
+            3,
             "Analysis Setup",
-            f"Configuring sequence analyzer (confidence={args.confidence_threshold}, iou={args.iou_threshold})"
+            f"Configuring sequence analyzer (confidence={args.confidence_threshold}, iou={args.iou_threshold})",
         )
-        
+
         try:
             analyzer = SequenceAnalyzer(
                 base_url=args.url_api_annotation,
@@ -1407,15 +1520,17 @@ def main():
                 iou_threshold=args.iou_threshold,
                 min_cluster_size=args.min_cluster_size,
             )
-            
+
             analyzer_stats = {
                 "Confidence threshold": args.confidence_threshold,
                 "IoU threshold": args.iou_threshold,
                 "Min cluster size": args.min_cluster_size,
-                "Workers": worker_config.annotation_processing
+                "Workers": worker_config.annotation_processing,
             }
-            step_manager.complete_step(True, "Sequence analyzer configured", analyzer_stats)
-            
+            step_manager.complete_step(
+                True, "Sequence analyzer configured", analyzer_stats
+            )
+
         except Exception as e:
             error_collector.add_error(f"Failed to initialize sequence analyzer: {e}")
             step_manager.complete_step(False, f"Failed to initialize analyzer: {e}")
@@ -1424,11 +1539,13 @@ def main():
         # Step 4: Process each sequence
         step_manager.start_step(
             4,
-            "Annotation Generation", 
-            f"Processing {len(sequence_ids)} sequences with {worker_config.annotation_processing} workers"
+            "Annotation Generation",
+            f"Processing {len(sequence_ids)} sequences with {worker_config.annotation_processing} workers",
         )
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=worker_config.annotation_processing) as executor:
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=worker_config.annotation_processing
+        ) as executor:
             # Submit all sequence processing tasks
             future_to_sequence_id = {
                 executor.submit(
@@ -1449,10 +1566,14 @@ def main():
                     BarColumn(bar_width=40),
                     TaskProgressColumn(),
                     console=Console(),
-                    transient=True
+                    transient=True,
                 ) as progress_bar:
-                    task = progress_bar.add_task("Processing sequences", total=len(future_to_sequence_id))
-                    for future in concurrent.futures.as_completed(future_to_sequence_id):
+                    task = progress_bar.add_task(
+                        "Processing sequences", total=len(future_to_sequence_id)
+                    )
+                    for future in concurrent.futures.as_completed(
+                        future_to_sequence_id
+                    ):
                         sequence_id = future_to_sequence_id[future]
                         try:
                             result = future.result()
@@ -1485,18 +1606,22 @@ def main():
         # Complete Step 4 with final statistics
         step_4_success = stats["failed_sequences"] == 0
         final_stats = {
-            "Total sequences": stats['total_sequences'],
-            "Successful": stats['successful_sequences'],
-            "Failed": stats['failed_sequences'],
-            "Annotations created": stats['annotations_created']
+            "Total sequences": stats["total_sequences"],
+            "Successful": stats["successful_sequences"],
+            "Failed": stats["failed_sequences"],
+            "Annotations created": stats["annotations_created"],
         }
-        
-        step_4_message = "All sequences processed successfully" if step_4_success else f"{stats['failed_sequences']} sequences failed"
+
+        step_4_message = (
+            "All sequences processed successfully"
+            if step_4_success
+            else f"{stats['failed_sequences']} sequences failed"
+        )
         if args.dry_run:
             step_4_message = "DRY RUN: " + step_4_message
-            
+
         step_manager.complete_step(step_4_success, step_4_message, final_stats)
-        
+
         # Show any accumulated errors/warnings
         if error_collector.has_issues():
             error_collector.print_summary(console, "Processing Summary")
@@ -1506,20 +1631,20 @@ def main():
         success = stats["failed_sequences"] == 0
         style = "green" if success else "red"
         icon = "✅" if success else "❌"
-        
+
         summary_text = f"""[bold]Total Sequences:[/] {stats['total_sequences']}
 [bold]Successful:[/] {stats['successful_sequences']}
 [bold]Failed:[/] {stats['failed_sequences']}
 [bold]Annotations Created:[/] {stats['annotations_created']}"""
-        
+
         if args.dry_run:
             summary_text += "\n\n[yellow]DRY RUN: No actual changes were made[/]"
-        
+
         panel = Panel(
             summary_text,
             title=f"{icon} Processing Complete",
             border_style=style,
-            padding=(1, 2)
+            padding=(1, 2),
         )
         console.print(panel)
 

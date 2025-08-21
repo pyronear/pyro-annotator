@@ -4,7 +4,7 @@
 The Pyronear Annotation API is a FastAPI-based backend service for wildfire prevention, detection and monitoring. It provides REST endpoints for managing detection annotations, sequences, and related wildfire data with advanced pagination, filtering, and validation capabilities.
 
 ## Technology Stack
-- **Framework**: FastAPI with Python 3.9+
+- **Framework**: FastAPI with Python 3.13+
 - **Package Manager**: uv (fast Python package installer and resolver)
 - **Database**: PostgreSQL with SQLModel/SQLAlchemy
 - **Storage**: S3-compatible storage (AWS S3/LocalStack)
@@ -180,7 +180,7 @@ environment:
 - `make stop` / `make stop-prod` - Stop respective environments
 
 ## Code Standards
-- Python 3.9+ with type hints
+- Python 3.13+ with type hints
 - uv for fast dependency management
 - Ruff for formatting and linting (120 char line length)
 - MyPy for type checking

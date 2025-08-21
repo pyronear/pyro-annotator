@@ -6,98 +6,82 @@ and fetch_platform_sequences.py to avoid code duplication.
 """
 
 import concurrent.futures
-import json
 import logging
 import os
 from collections import defaultdict
 from typing import Dict, List, Any
 
 import requests
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+from rich.progress import (
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    BarColumn,
+    TaskProgressColumn,
+)
 from rich.console import Console
 
 # Import client functions
-from app.clients.annotation_api import get_auth_token, create_sequence, create_detection
+from app.clients.annotation_api import (
+    get_auth_token,
+    create_sequence,
+    create_detection,
+    AnnotationAPIError,
+    ValidationError,
+)
 
 # Import LogSuppressor from import module
-import logging
 
 
 class LogSuppressor:
     """Context manager to suppress logging during progress displays."""
-    
+
     def __init__(self, suppress: bool = True):
         self.suppress = suppress
         self.original_levels = {}
-        
+
     def __enter__(self):
         if self.suppress:
             # Store original levels and suppress ALL loggers except CRITICAL level
             loggers_to_suppress = [
-                '',  # root logger - most important
-                '__main__',
-                'root',
-                'scripts.data_transfer.ingestion.platform.import',
-                'scripts.data_transfer.ingestion.platform.shared',
-                'scripts.data_transfer.ingestion.platform.client',
-                'scripts.data_transfer.ingestion.platform.utils',
-                'app.clients.annotation_api',
-                'requests',
-                'urllib3',
-                'urllib3.connectionpool',
-                'asyncio',
-                'concurrent.futures',
-                'multiprocessing'
+                "",  # root logger - most important
+                "__main__",
+                "root",
+                "scripts.data_transfer.ingestion.platform.import",
+                "scripts.data_transfer.ingestion.platform.shared",
+                "scripts.data_transfer.ingestion.platform.client",
+                "scripts.data_transfer.ingestion.platform.utils",
+                "app.clients.annotation_api",
+                "requests",
+                "urllib3",
+                "urllib3.connectionpool",
+                "asyncio",
+                "concurrent.futures",
+                "multiprocessing",
             ]
-            
+
             for logger_name in loggers_to_suppress:
                 logger = logging.getLogger(logger_name)
                 self.original_levels[logger_name] = logger.level
                 logger.setLevel(logging.CRITICAL)  # Only show critical errors
-                
+
             # Also suppress all existing loggers to catch any dynamically created ones
             for logger_name in logging.getLogger().manager.loggerDict:
                 if logger_name not in self.original_levels:
                     logger = logging.getLogger(logger_name)
                     self.original_levels[logger_name] = logger.level
                     logger.setLevel(logging.CRITICAL)
-                    
+
         return self
-        
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.suppress:
             # Restore original log levels
             for logger_name, original_level in self.original_levels.items():
                 logging.getLogger(logger_name).setLevel(original_level)
 
-from app.clients.annotation_api import (
-    AnnotationAPIError,
-    ValidationError,
-    create_detection,
-    create_sequence,
-    list_sequence_annotations,
-    create_sequence_annotation,
-    update_sequence_annotation,
-    get_sequence,
-    list_detections,
-)
+
 # Remove settings import to avoid database dependency for import scripts
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 def validate_available_env_variables() -> bool:
@@ -257,13 +241,13 @@ def _process_single_detection(
 ) -> Dict[str, Any]:
     """
     Process a single detection: download image and create detection in API.
-    
+
     Args:
         record: Detection record from platform
         annotation_api_url: Annotation API base URL
         auth_token: JWT authentication token
         annotation_sequence_id: Sequence ID in annotation API
-        
+
     Returns:
         Dictionary with processing results
     """
@@ -272,7 +256,7 @@ def _process_single_detection(
         "success": False,
         "error": None,
     }
-    
+
     try:
         # Download image
         image_data = download_image(record["detection_url"])
@@ -298,30 +282,36 @@ def _process_single_detection(
                 logging.error(f"  - {field_error['field']}: {field_error['message']}")
         result["error"] = error_msg
         return result
-        
+
     except requests.RequestException as e:
         error_msg = f"Network error downloading image for detection {record['detection_id']}: {e}"
         logging.error(error_msg)
         result["error"] = error_msg
         return result
-        
+
     except AnnotationAPIError as e:
-        error_msg = f"API error processing detection {record['detection_id']}: {e.message}"
+        error_msg = (
+            f"API error processing detection {record['detection_id']}: {e.message}"
+        )
         logging.error(error_msg)
         if e.status_code:
             logging.error(f"HTTP Status: {e.status_code}")
         result["error"] = error_msg
         return result
-        
+
     except Exception as e:
-        error_msg = f"Unexpected error processing detection {record['detection_id']}: {e}"
+        error_msg = (
+            f"Unexpected error processing detection {record['detection_id']}: {e}"
+        )
         logging.error(error_msg)
         result["error"] = error_msg
         return result
 
 
 def post_sequence_to_annotation_api(
-    annotation_api_url: str, sequence_records: List[dict], max_detection_workers: int = 4
+    annotation_api_url: str,
+    sequence_records: List[dict],
+    max_detection_workers: int = 4,
 ) -> Dict:
     """
     Post a sequence and its detections to the annotation API.
@@ -344,7 +334,7 @@ def post_sequence_to_annotation_api(
     auth_token = get_auth_token(
         annotation_api_url,
         os.environ.get("ANNOTATOR_LOGIN", "admin"),
-        os.environ.get("ANNOTATOR_PASSWORD", "admin")
+        os.environ.get("ANNOTATOR_PASSWORD", "admin"),
     )
 
     # Use first record for sequence data (all records have same sequence info)
@@ -371,7 +361,9 @@ def post_sequence_to_annotation_api(
             failed_detections = 1
     else:
         # Multiple detections - use parallel processing
-        with concurrent.futures.ThreadPoolExecutor(max_workers=max_detection_workers) as executor:
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=max_detection_workers
+        ) as executor:
             # Submit all detection processing tasks
             future_to_record = {
                 executor.submit(
@@ -379,7 +371,7 @@ def post_sequence_to_annotation_api(
                     record,
                     annotation_api_url,
                     auth_token,
-                    annotation_sequence_id
+                    annotation_sequence_id,
                 ): record
                 for record in sequence_records
             }
@@ -394,7 +386,9 @@ def post_sequence_to_annotation_api(
                     else:
                         failed_detections += 1
                 except Exception as e:
-                    logging.error(f"Unexpected error processing detection {record['detection_id']}: {e}")
+                    logging.error(
+                        f"Unexpected error processing detection {record['detection_id']}: {e}"
+                    )
                     failed_detections += 1
 
     return {
@@ -408,7 +402,11 @@ def post_sequence_to_annotation_api(
 
 
 def post_records_to_annotation_api(
-    annotation_api_url: str, records: List[dict], max_workers: int = 3, max_detection_workers: int = 4, suppress_logs: bool = True
+    annotation_api_url: str,
+    records: List[dict],
+    max_workers: int = 3,
+    max_detection_workers: int = 4,
+    suppress_logs: bool = True,
 ) -> Dict:
     """
     Post multiple sequences and their detections to the annotation API.
@@ -455,7 +453,7 @@ def post_records_to_annotation_api(
                 post_sequence_to_annotation_api,
                 annotation_api_url,
                 sequence_records,
-                max_detection_workers
+                max_detection_workers,
             ): (platform_sequence_id, sequence_records)
             for platform_sequence_id, sequence_records in grouped_records.items()
         }
@@ -468,9 +466,11 @@ def post_records_to_annotation_api(
                 BarColumn(bar_width=40),
                 TaskProgressColumn(),
                 console=Console(),
-                transient=True
+                transient=True,
             ) as progress_bar:
-                task = progress_bar.add_task("Processing sequences", total=len(future_to_sequence))
+                task = progress_bar.add_task(
+                    "Processing sequences", total=len(future_to_sequence)
+                )
                 for future in concurrent.futures.as_completed(future_to_sequence):
                     platform_sequence_id, sequence_records = future_to_sequence[future]
                     try:
@@ -502,14 +502,18 @@ def post_records_to_annotation_api(
                         total_failed_detections += len(sequence_records)
                         progress_bar.advance(task)
                     except AnnotationAPIError as e:
-                        logging.error(f"❌ Sequence {platform_sequence_id} API error: {e.message}")
+                        logging.error(
+                            f"❌ Sequence {platform_sequence_id} API error: {e.message}"
+                        )
                         if e.status_code:
                             logging.error(f"HTTP Status: {e.status_code}")
                         failed_sequences += 1
                         total_failed_detections += len(sequence_records)
                         progress_bar.advance(task)
                     except Exception as e:
-                        logging.error(f"❌ Sequence {platform_sequence_id} unexpected error: {e}")
+                        logging.error(
+                            f"❌ Sequence {platform_sequence_id} unexpected error: {e}"
+                        )
                         failed_sequences += 1
                         total_failed_detections += len(sequence_records)
                         progress_bar.advance(task)

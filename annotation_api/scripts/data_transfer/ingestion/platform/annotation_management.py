@@ -15,7 +15,7 @@ Functions:
 Example:
     >>> from annotation_management import process_single_sequence
     >>> from annotation_processing import SequenceAnalyzer
-    >>> 
+    >>>
     >>> analyzer = SequenceAnalyzer("http://localhost:5050")
     >>> result = process_single_sequence(
     ...     sequence_id=123,
@@ -30,7 +30,7 @@ Example:
 import argparse
 import logging
 from datetime import date, datetime
-from typing import List, Dict, Any, Optional
+from typing import Dict, Any, Optional
 
 from app.clients.annotation_api import (
     get_auth_token,
@@ -47,18 +47,18 @@ from .annotation_processing import SequenceAnalyzer
 def valid_date(s: str) -> date:
     """
     Datetime parser for CLI argument validation.
-    
+
     Converts a string in YYYY-MM-DD format to a date object.
-    
+
     Args:
         s: Date string in YYYY-MM-DD format
-        
+
     Returns:
         date object
-        
+
     Raises:
         argparse.ArgumentTypeError: If the string is not a valid date
-        
+
     Example:
         >>> date_obj = valid_date("2024-01-15")
         >>> print(date_obj)
@@ -75,14 +75,14 @@ def valid_date(s: str) -> date:
 def check_existing_annotation(base_url: str, sequence_id: int) -> Optional[int]:
     """
     Check if a sequence already has an annotation.
-    
+
     Args:
         base_url: Base URL of the annotation API
         sequence_id: ID of the sequence to check
-        
+
     Returns:
         Annotation ID if found, None if no annotation exists
-        
+
     Example:
         >>> annotation_id = check_existing_annotation("http://localhost:5050", 123)
         >>> if annotation_id:
@@ -95,9 +95,11 @@ def check_existing_annotation(base_url: str, sequence_id: int) -> Optional[int]:
         auth_token = get_auth_token(
             base_url,
             os.environ.get("ANNOTATOR_LOGIN", "admin"),
-            os.environ.get("ANNOTATOR_PASSWORD", "admin")
+            os.environ.get("ANNOTATOR_PASSWORD", "admin"),
         )
-        response = list_sequence_annotations(base_url, auth_token, sequence_id=sequence_id)
+        response = list_sequence_annotations(
+            base_url, auth_token, sequence_id=sequence_id
+        )
 
         if isinstance(response, dict) and "items" in response:
             annotations = response["items"]
@@ -109,7 +111,9 @@ def check_existing_annotation(base_url: str, sequence_id: int) -> Optional[int]:
         return None
 
     except Exception as e:
-        logging.debug(f"Error checking existing annotation for sequence {sequence_id}: {e}")
+        logging.debug(
+            f"Error checking existing annotation for sequence {sequence_id}: {e}"
+        )
         return None
 
 
@@ -123,10 +127,10 @@ def create_annotation_from_data(
 ) -> bool:
     """
     Create or update a sequence annotation from analyzed data.
-    
+
     This function handles both creating new annotations and updating existing ones
     based on whether an existing annotation ID is provided.
-    
+
     Args:
         base_url: Base URL of the annotation API
         sequence_id: ID of the sequence to annotate
@@ -134,14 +138,14 @@ def create_annotation_from_data(
         dry_run: If True, only log what would be done without making changes
         existing_annotation_id: ID of existing annotation to update (None to create new)
         processing_stage: Processing stage to set for the annotation
-        
+
     Returns:
         True if annotation was created/updated successfully, False otherwise
-        
+
     Example:
         >>> from app.schemas.annotation_validation import SequenceAnnotationData
         >>> from app.models import SequenceAnnotationProcessingStage
-        >>> 
+        >>>
         >>> # Create new annotation
         >>> success = create_annotation_from_data(
         ...     base_url="http://localhost:5050",
@@ -150,7 +154,7 @@ def create_annotation_from_data(
         ...     dry_run=False,
         ...     processing_stage=SequenceAnnotationProcessingStage.READY_TO_ANNOTATE
         ... )
-        >>> 
+        >>>
         >>> # Update existing annotation
         >>> success = create_annotation_from_data(
         ...     base_url="http://localhost:5050",
@@ -165,9 +169,9 @@ def create_annotation_from_data(
         auth_token = get_auth_token(
             base_url,
             os.environ.get("ANNOTATOR_LOGIN", "admin"),
-            os.environ.get("ANNOTATOR_PASSWORD", "admin")
+            os.environ.get("ANNOTATOR_PASSWORD", "admin"),
         )
-        
+
         if existing_annotation_id:
             # Update existing annotation (PATCH)
             update_dict = {
@@ -177,16 +181,24 @@ def create_annotation_from_data(
             }
 
             if dry_run:
-                logging.info(f"DRY RUN: Would update annotation {existing_annotation_id} for sequence {sequence_id}")
+                logging.info(
+                    f"DRY RUN: Would update annotation {existing_annotation_id} for sequence {sequence_id}"
+                )
                 logging.debug(f"Update data: {update_dict}")
                 return True
 
-            result = update_sequence_annotation(base_url, auth_token, existing_annotation_id, update_dict)
+            result = update_sequence_annotation(
+                base_url, auth_token, existing_annotation_id, update_dict
+            )
             if result:
-                logging.debug(f"Successfully updated annotation {existing_annotation_id} for sequence {sequence_id}")
+                logging.debug(
+                    f"Successfully updated annotation {existing_annotation_id} for sequence {sequence_id}"
+                )
                 return True
             else:
-                logging.error(f"Failed to update annotation {existing_annotation_id} for sequence {sequence_id}")
+                logging.error(
+                    f"Failed to update annotation {existing_annotation_id} for sequence {sequence_id}"
+                )
                 return False
 
         else:
@@ -199,22 +211,27 @@ def create_annotation_from_data(
             }
 
             if dry_run:
-                logging.info(f"DRY RUN: Would create new annotation for sequence {sequence_id}")
+                logging.info(
+                    f"DRY RUN: Would create new annotation for sequence {sequence_id}"
+                )
                 logging.debug(f"Create data: {create_dict}")
                 return True
 
             result = create_sequence_annotation(base_url, auth_token, create_dict)
             if result:
-                logging.debug(f"Successfully created annotation for sequence {sequence_id}")
+                logging.debug(
+                    f"Successfully created annotation for sequence {sequence_id}"
+                )
                 return True
             else:
                 logging.error(f"Failed to create annotation for sequence {sequence_id}")
                 return False
 
     except Exception as e:
-        logging.error(f"Error creating/updating annotation for sequence {sequence_id}: {e}")
+        logging.error(
+            f"Error creating/updating annotation for sequence {sequence_id}: {e}"
+        )
         return False
-
 
 
 def process_single_sequence(
@@ -225,18 +242,18 @@ def process_single_sequence(
 ) -> Dict[str, Any]:
     """
     Process a single sequence: generate annotation and set ready for annotation stage.
-    
+
     This function is the main entry point for processing a sequence. It:
     1. Uses the analyzer to generate annotation data from AI predictions
     2. Checks for existing annotations to avoid duplicates
     3. Creates or updates the annotation with READY_TO_ANNOTATE stage
-    
+
     Args:
         sequence_id: Sequence ID to process
         analyzer: SequenceAnalyzer instance configured with processing parameters
         annotation_api_url: Annotation API base URL
         dry_run: If True, preview actions without executing them
-        
+
     Returns:
         Dictionary with processing results:
         - sequence_id: The processed sequence ID
@@ -244,10 +261,10 @@ def process_single_sequence(
         - annotation_id: ID of created/updated annotation ("new" for new annotations)
         - errors: List of error messages if any occurred
         - final_stage: Processing stage set for the annotation
-        
+
     Example:
         >>> from annotation_processing import SequenceAnalyzer
-        >>> 
+        >>>
         >>> analyzer = SequenceAnalyzer("http://localhost:5050")
         >>> result = process_single_sequence(
         ...     sequence_id=123,
@@ -255,7 +272,7 @@ def process_single_sequence(
         ...     annotation_api_url="http://localhost:5050",
         ...     dry_run=False
         ... )
-        >>> 
+        >>>
         >>> if result["annotation_created"]:
         ...     print(f"Successfully processed sequence {result['sequence_id']}")
         >>> else:
@@ -300,7 +317,9 @@ def process_single_sequence(
             result["annotation_id"] = (
                 existing_annotation_id if existing_annotation_id else "new"
             )
-            result["final_stage"] = SequenceAnnotationProcessingStage.READY_TO_ANNOTATE.value
+            result["final_stage"] = (
+                SequenceAnnotationProcessingStage.READY_TO_ANNOTATE.value
+            )
             logging.info(
                 f"Successfully created/updated annotation for sequence {sequence_id} - ready for annotation"
             )

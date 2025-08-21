@@ -101,7 +101,9 @@ async def test_list_source_apis_with_sequences(authenticated_client: AsyncClient
 
     # Verify that results are sorted alphabetically by source_api value
     source_api_ids = [api["id"] for api in source_apis]
-    assert source_api_ids == sorted(source_api_ids), f"Source APIs should be sorted alphabetically, got: {source_api_ids}"
+    assert source_api_ids == sorted(
+        source_api_ids
+    ), f"Source APIs should be sorted alphabetically, got: {source_api_ids}"
 
 
 @pytest.mark.asyncio

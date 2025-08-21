@@ -54,7 +54,9 @@ async def test_get_detection(authenticated_client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_get_detection_url(authenticated_client: AsyncClient, detection_id: int = 1):
+async def test_get_detection_url(
+    authenticated_client: AsyncClient, detection_id: int = 1
+):
     response = await authenticated_client.get(f"/detections/{detection_id}/url")
     if response.status_code == 200:
         url_data = response.json()

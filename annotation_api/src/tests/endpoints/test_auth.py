@@ -7,14 +7,11 @@ from app.core.config import settings
 @pytest.mark.asyncio
 async def test_login_valid_credentials(async_client: AsyncClient):
     """Test login with valid credentials."""
-    payload = {
-        "username": settings.AUTH_USERNAME,
-        "password": settings.AUTH_PASSWORD
-    }
-    
+    payload = {"username": settings.AUTH_USERNAME, "password": settings.AUTH_PASSWORD}
+
     response = await async_client.post("/auth/login", json=payload)
     assert response.status_code == 200
-    
+
     data = response.json()
     assert "access_token" in data
     assert data["token_type"] == "bearer"
@@ -25,14 +22,11 @@ async def test_login_valid_credentials(async_client: AsyncClient):
 @pytest.mark.asyncio
 async def test_login_invalid_username(async_client: AsyncClient):
     """Test login with invalid username."""
-    payload = {
-        "username": "wrong_username",
-        "password": settings.AUTH_PASSWORD
-    }
-    
+    payload = {"username": "wrong_username", "password": settings.AUTH_PASSWORD}
+
     response = await async_client.post("/auth/login", json=payload)
     assert response.status_code == 401
-    
+
     data = response.json()
     assert "detail" in data
     assert "Incorrect username or password" in data["detail"]
@@ -41,14 +35,11 @@ async def test_login_invalid_username(async_client: AsyncClient):
 @pytest.mark.asyncio
 async def test_login_invalid_password(async_client: AsyncClient):
     """Test login with invalid password."""
-    payload = {
-        "username": settings.AUTH_USERNAME,
-        "password": "wrong_password"
-    }
-    
+    payload = {"username": settings.AUTH_USERNAME, "password": "wrong_password"}
+
     response = await async_client.post("/auth/login", json=payload)
     assert response.status_code == 401
-    
+
     data = response.json()
     assert "detail" in data
     assert "Incorrect username or password" in data["detail"]
@@ -59,10 +50,10 @@ async def test_login_missing_fields(async_client: AsyncClient):
     """Test login with missing required fields."""
     # Missing password
     payload = {"username": settings.AUTH_USERNAME}
-    
+
     response = await async_client.post("/auth/login", json=payload)
     assert response.status_code == 422
-    
+
     data = response.json()
     assert "detail" in data
 
@@ -83,7 +74,9 @@ async def test_protected_endpoint_with_invalid_token(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_protected_endpoint_with_valid_token(auth_token: str, async_client: AsyncClient):
+async def test_protected_endpoint_with_valid_token(
+    auth_token: str, async_client: AsyncClient
+):
     """Test accessing protected endpoint with valid authentication token."""
     headers = {"Authorization": f"Bearer {auth_token}"}
     response = await async_client.get("/sequences", headers=headers)
