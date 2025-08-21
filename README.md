@@ -92,7 +92,6 @@ uv run python -m scripts.data_transfer.ingestion.platform.import \
 - `--confidence-threshold`: Minimum AI confidence (0.0-1.0, default: 0.0) 
 - `--iou-threshold`: IoU threshold for clustering overlapping boxes (default: 0.3)
 - `--dry-run`: Preview actions without execution
-- `--skip-platform-fetch`: Process existing sequences only
 - `--loglevel`: Logging level (debug/info/warning/error)
 
 ### Example Workflows
@@ -133,5 +132,4 @@ docker compose up -d    # Fresh start
 
 - [API](./annotation_api/README.md)
 - [Frontend](./frontend/README.md)
-- [Sequence Level Annotation](./sequence_labeler/README.md)
 - [SAM bbox propagation](./sam_based_bbox_propagation/README.md)
