@@ -16,6 +16,7 @@ import {
   DetectionAnnotationFilters,
   ApiError
 } from '@/types/api';
+import { API_ENDPOINTS } from '@/utils/constants';
 
 class ApiClient {
   private client: AxiosInstance;
@@ -77,7 +78,7 @@ class ApiClient {
 
   // Sequences
   async getSequences(filters: SequenceFilters = {}): Promise<PaginatedResponse<Sequence>> {
-    const response: AxiosResponse<PaginatedResponse<Sequence>> = await this.client.get('/sequences', {
+    const response: AxiosResponse<PaginatedResponse<Sequence>> = await this.client.get(API_ENDPOINTS.SEQUENCES, {
       params: filters,
     });
     return response.data;
@@ -114,7 +115,7 @@ class ApiClient {
   }
 
   async createSequence(sequence: Omit<Sequence, 'id' | 'created_at' | 'updated_at'>): Promise<Sequence> {
-    const response: AxiosResponse<Sequence> = await this.client.post('/sequences', sequence);
+    const response: AxiosResponse<Sequence> = await this.client.post(API_ENDPOINTS.SEQUENCES, sequence);
     return response.data;
   }
 
@@ -129,7 +130,7 @@ class ApiClient {
       include_annotation: true, // Always include annotation data
     };
 
-    const response: AxiosResponse<PaginatedResponse<SequenceWithAnnotation>> = await this.client.get('/sequences', {
+    const response: AxiosResponse<PaginatedResponse<SequenceWithAnnotation>> = await this.client.get(API_ENDPOINTS.SEQUENCES, {
       params: enhancedFilters,
     });
     return response.data;
@@ -137,25 +138,25 @@ class ApiClient {
 
   // Cameras
   async getCameras(): Promise<Camera[]> {
-    const response: AxiosResponse<Camera[]> = await this.client.get('/cameras');
+    const response: AxiosResponse<Camera[]> = await this.client.get(API_ENDPOINTS.CAMERAS);
     return response.data;
   }
 
   // Organizations
   async getOrganizations(): Promise<Organization[]> {
-    const response: AxiosResponse<Organization[]> = await this.client.get('/organizations');
+    const response: AxiosResponse<Organization[]> = await this.client.get(API_ENDPOINTS.ORGANIZATIONS);
     return response.data;
   }
 
   // Source APIs
   async getSourceApis(): Promise<SourceApi[]> {
-    const response: AxiosResponse<SourceApi[]> = await this.client.get('/source-apis');
+    const response: AxiosResponse<SourceApi[]> = await this.client.get(API_ENDPOINTS.SOURCE_APIS);
     return response.data;
   }
 
   // Sequence Annotations
   async getSequenceAnnotations(filters: SequenceAnnotationFilters = {}): Promise<PaginatedResponse<SequenceAnnotation>> {
-    const response: AxiosResponse<PaginatedResponse<SequenceAnnotation>> = await this.client.get('/annotations/sequences', {
+    const response: AxiosResponse<PaginatedResponse<SequenceAnnotation>> = await this.client.get(API_ENDPOINTS.SEQUENCE_ANNOTATIONS, {
       params: filters,
     });
     return response.data;
@@ -167,7 +168,7 @@ class ApiClient {
   }
 
   async createSequenceAnnotation(annotation: Omit<SequenceAnnotation, 'id' | 'created_at' | 'updated_at'>): Promise<SequenceAnnotation> {
-    const response: AxiosResponse<SequenceAnnotation> = await this.client.post('/annotations/sequences', annotation);
+    const response: AxiosResponse<SequenceAnnotation> = await this.client.post(API_ENDPOINTS.SEQUENCE_ANNOTATIONS, annotation);
     return response.data;
   }
 
@@ -183,7 +184,7 @@ class ApiClient {
 
   // Detections
   async getDetections(filters: { sequence_id?: number; order_by?: 'created_at' | 'recorded_at'; order_direction?: 'asc' | 'desc'; page?: number; size?: number } = {}): Promise<PaginatedResponse<Detection>> {
-    const response: AxiosResponse<PaginatedResponse<Detection>> = await this.client.get('/detections', {
+    const response: AxiosResponse<PaginatedResponse<Detection>> = await this.client.get(API_ENDPOINTS.DETECTIONS, {
       params: filters,
     });
     return response.data;
@@ -201,7 +202,7 @@ class ApiClient {
 
   // Detection Annotations (for future use)
   async getDetectionAnnotations(filters: DetectionAnnotationFilters = {}): Promise<PaginatedResponse<DetectionAnnotation>> {
-    const response: AxiosResponse<PaginatedResponse<DetectionAnnotation>> = await this.client.get('/annotations/detections', {
+    const response: AxiosResponse<PaginatedResponse<DetectionAnnotation>> = await this.client.get(API_ENDPOINTS.DETECTION_ANNOTATIONS, {
       params: filters,
     });
     return response.data;
@@ -219,7 +220,7 @@ class ApiClient {
     formData.append('annotation', JSON.stringify(annotation.annotation));
     formData.append('processing_stage', annotation.processing_stage);
 
-    const response: AxiosResponse<DetectionAnnotation> = await this.client.post('/annotations/detections', formData, {
+    const response: AxiosResponse<DetectionAnnotation> = await this.client.post(API_ENDPOINTS.DETECTION_ANNOTATIONS, formData, {
       headers: {
         // Remove Content-Type to let browser set multipart/form-data with boundary
         'Content-Type': undefined,
@@ -240,7 +241,7 @@ class ApiClient {
   // Health check
   async healthCheck(): Promise<{ status: string }> {
     // Note: health check is at /status, not in /api/v1
-    const response = await axios.get(`${this.client.defaults.baseURL?.replace('/api/v1', '')}/status`);
+    const response = await axios.get(`${this.client.defaults.baseURL?.replace('/api/v1', '')}${API_ENDPOINTS.STATUS}`);
     return response.data;
   }
 }
