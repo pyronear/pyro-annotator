@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Lock, User, AlertTriangle } from 'lucide-react';
+import logoImg from '@/assets/logo.png';
 
 interface LoginPageProps {
   onLogin: (username: string, password: string) => Promise<void>;
@@ -27,7 +28,7 @@ export default function LoginPage({ onLogin, isLoading = false, error }: LoginPa
         <div className="text-center">
           <div className="flex justify-center">
             <img 
-              src="/logo.png" 
+              src={logoImg} 
               alt="PyroAnnotator Logo" 
               className="w-20 h-20 object-contain"
             />
