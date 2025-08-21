@@ -152,7 +152,7 @@ async def async_session() -> AsyncSession:
     async with engine.begin() as conn:
         # Drop all tables first to ensure clean schema
         await conn.run_sync(SQLModel.metadata.drop_all)
-        # Then recreate with current schema including all fields like is_unsure
+        # Then recreate with current schema including all fields
         await conn.run_sync(SQLModel.metadata.create_all)
 
     async_session_maker = sessionmaker(
