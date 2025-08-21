@@ -347,18 +347,18 @@ async def list_sequences(
     paginated_result = await apaginate(session, query, params)
 
     if include_annotation:
-        # Fetch annotations for the sequences in the current page
+        # Fetch annotations for the sequences in the current page using a single query
         sequence_ids = [seq.id for seq in paginated_result.items]
 
         if sequence_ids:
-            # Fetch annotations for these sequences
+            # Single batch query to fetch all annotations at once
             annotation_query = select(SequenceAnnotation).where(
                 SequenceAnnotation.sequence_id.in_(sequence_ids)
             )
             annotation_result = await session.execute(annotation_query)
             annotations = annotation_result.scalars().all()
 
-            # Create a mapping of sequence_id -> annotation
+            # Create a mapping of sequence_id -> annotation for O(1) lookup
             annotation_map = {ann.sequence_id: ann for ann in annotations}
         else:
             annotation_map = {}

@@ -208,7 +208,7 @@ class BaseCRUD(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         await self.get(entry_id, strict=True)
         statement = delete(self.model).where(self.model.id == entry_id)
 
-        await self.session.exec(statement=statement)  # type: ignore[call-overload]
+        await self.session.execute(statement)
         await self.session.commit()
 
     async def get_in(self, list_: List[Any], field_name: str) -> List[ModelType]:
