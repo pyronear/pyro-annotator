@@ -79,6 +79,7 @@ export default function AnnotationInterface() {
   const [, setCurrentAnnotation] = useState<SequenceAnnotation | null>(null);
   const [hasMissedSmoke, setHasMissedSmoke] = useState<boolean>(false);
   const [missedSmokeReview, setMissedSmokeReview] = useState<'yes' | 'no' | null>(null);
+  const [isUnsure, setIsUnsure] = useState<boolean>(false);
   
   // Keyboard shortcuts state
   const [activeDetectionIndex, setActiveDetectionIndex] = useState<number | null>(null);
@@ -120,6 +121,7 @@ export default function AnnotationInterface() {
     setCurrentAnnotation(null);
     setHasMissedSmoke(false);
     setMissedSmokeReview(null);
+    setIsUnsure(false);
   }, [sequenceId]);
 
   // Initialize bboxes and missed smoke when annotation loads - respecting processing stage
@@ -130,6 +132,9 @@ export default function AnnotationInterface() {
       
       // Initialize missed smoke flag from existing annotation
       setHasMissedSmoke(annotation.has_missed_smoke || false);
+      
+      // Initialize unsure flag from existing annotation
+      setIsUnsure(annotation.is_unsure || false);
       
       // Initialize missed smoke review using helper function that respects processing stage
       setMissedSmokeReview(getInitialMissedSmokeReview(annotation));
@@ -504,18 +509,22 @@ export default function AnnotationInterface() {
   const saveAnnotation = useMutation({
     mutationFn: async (updatedBboxes: SequenceBbox[]) => {
       const updatedAnnotation: Partial<SequenceAnnotation> = {
-        annotation: {
+        annotation: isUnsure ? {
+          sequences_bbox: [] // Empty annotation structure for unsure sequences
+        } : {
           sequences_bbox: updatedBboxes
         },
         processing_stage: 'annotated', // Move to annotated stage
-        // Update derived fields
-        has_smoke: updatedBboxes.some(bbox => bbox.is_smoke),
-        has_false_positives: updatedBboxes.some(bbox => bbox.false_positive_types.length > 0),
-        false_positive_types: JSON.stringify(
+        // Update derived fields - all false for unsure sequences
+        has_smoke: isUnsure ? false : updatedBboxes.some(bbox => bbox.is_smoke),
+        has_false_positives: isUnsure ? false : updatedBboxes.some(bbox => bbox.false_positive_types.length > 0),
+        false_positive_types: isUnsure ? "[]" : JSON.stringify(
           [...new Set(updatedBboxes.flatMap(bbox => bbox.false_positive_types))]
         ),
-        // Include missed smoke flag
-        has_missed_smoke: hasMissedSmoke,
+        // Include missed smoke flag - false for unsure sequences
+        has_missed_smoke: isUnsure ? false : hasMissedSmoke,
+        // Include unsure flag
+        is_unsure: isUnsure,
       };
 
       return apiClient.updateSequenceAnnotation(annotation!.id, updatedAnnotation);
@@ -564,6 +573,12 @@ export default function AnnotationInterface() {
   };
 
   const handleSave = () => {
+    // If marked as unsure, skip all validation and allow immediate submission
+    if (isUnsure) {
+      saveAnnotation.mutate(bboxes);
+      return;
+    }
+
     const bboxesComplete = bboxes.every(bbox => 
       bbox.is_smoke || bbox.false_positive_types.length > 0
     );
@@ -600,6 +615,9 @@ export default function AnnotationInterface() {
     if (annotation) {
       // Reset missed smoke to original value
       setHasMissedSmoke(annotation.has_missed_smoke || false);
+      
+      // Reset unsure flag to original value
+      setIsUnsure(annotation.is_unsure || false);
       
       // Reset missed smoke review using helper function that respects processing stage
       setMissedSmokeReview(getInitialMissedSmokeReview(annotation));
@@ -774,6 +792,15 @@ export default function AnnotationInterface() {
                   </button>
                 </>
               )}
+              <label className="flex items-center space-x-1 px-2 py-1.5 border border-gray-200 rounded-md bg-white">
+                <input
+                  type="checkbox"
+                  checked={isUnsure}
+                  onChange={(e) => setIsUnsure(e.target.checked)}
+                  className="rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                />
+                <span className="text-xs font-medium text-gray-700">Unsure</span>
+              </label>
               <button
                 onClick={handleReset}
                 className="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50"
@@ -784,16 +811,16 @@ export default function AnnotationInterface() {
               </button>
               <button
                 onClick={handleSave}
-                disabled={!isAnnotationComplete() || saveAnnotation.isPending}
+                disabled={(!isAnnotationComplete() && !isUnsure) || saveAnnotation.isPending}
                 className="inline-flex items-center px-3 py-1.5 border border-transparent rounded-md shadow-sm text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                title={annotation?.processing_stage === 'annotated' ? "Save changes (Enter)" : "Submit annotation (Enter)"}
+                title={isUnsure ? "Submit as unsure (Enter)" : annotation?.processing_stage === 'annotated' ? "Save changes (Enter)" : "Submit annotation (Enter)"}
               >
                 {saveAnnotation.isPending ? (
                   <div className="w-3 h-3 mr-1 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                 ) : (
                   <Upload className="w-3 h-3 mr-1" />
                 )}
-                {annotation?.processing_stage === 'annotated' ? 'Save Changes' : 'Submit'}
+                {isUnsure ? 'Submit Unsure' : annotation?.processing_stage === 'annotated' ? 'Save Changes' : 'Submit'}
               </button>
               <button
                 onClick={() => setShowKeyboardModal(true)}

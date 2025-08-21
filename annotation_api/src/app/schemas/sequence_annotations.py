@@ -61,6 +61,7 @@ class SequenceAnnotationCreate(BaseModel):
 
     sequence_id: int
     has_missed_smoke: bool
+    is_unsure: bool = False
     annotation: SequenceAnnotationData
     processing_stage: SequenceAnnotationProcessingStage = Field(
         ...,
@@ -77,6 +78,7 @@ class SequenceAnnotationRead(BaseModel):
     has_false_positives: bool
     false_positive_types: List[str]
     has_missed_smoke: bool
+    is_unsure: bool
     annotation: SequenceAnnotationData
     processing_stage: SequenceAnnotationProcessingStage = Field(
         ...,
@@ -89,6 +91,7 @@ class SequenceAnnotationRead(BaseModel):
 
 class SequenceAnnotationUpdate(BaseModel):
     has_missed_smoke: Optional[bool] = None
+    is_unsure: Optional[bool] = None
     annotation: Optional[SequenceAnnotationData] = None
     processing_stage: Optional[SequenceAnnotationProcessingStage] = Field(
         None,
