@@ -44,11 +44,11 @@ engine = AsyncEngine(
 async def get_session() -> AsyncSession:  # type: ignore[misc]
     # Configure sessionmaker with optimized settings for bulk operations
     async_session = sessionmaker(
-        bind=engine, 
-        class_=AsyncSession, 
+        bind=engine,
+        class_=AsyncSession,
         expire_on_commit=False,
         # Optimize for batch operations and reduce memory usage
-        autoflush=False  # Manual flush control for batch operations
+        autoflush=False,  # Manual flush control for batch operations
     )
     async with async_session() as session:
         yield session

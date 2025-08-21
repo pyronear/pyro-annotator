@@ -79,7 +79,9 @@ async def test_list_detection_annotations(authenticated_client: AsyncClient):
 @pytest.mark.asyncio
 async def test_get_detection_annotation(authenticated_client: AsyncClient):
     annotation_id = 1
-    response = await authenticated_client.get(f"/annotations/detections/{annotation_id}")
+    response = await authenticated_client.get(
+        f"/annotations/detections/{annotation_id}"
+    )
     if response.status_code == 200:
         annotation = response.json()
         assert annotation["id"] == annotation_id
@@ -126,7 +128,9 @@ async def test_delete_detection_annotation(authenticated_client: AsyncClient):
     )
     assert delete_response.status_code in (204, 404)
 
-    get_response = await authenticated_client.get(f"/annotations/detections/{annotation_id}")
+    get_response = await authenticated_client.get(
+        f"/annotations/detections/{annotation_id}"
+    )
     assert get_response.status_code == 404
 
 
@@ -613,14 +617,18 @@ async def test_list_detection_annotations_filter_by_organisation_id(
     assert response.status_code == 201
 
     # Test filtering by organisation_id=1 (should find the annotation)
-    response = await authenticated_client.get("/annotations/detections/?organisation_id=1")
+    response = await authenticated_client.get(
+        "/annotations/detections/?organisation_id=1"
+    )
     assert response.status_code == 200
     json_response = response.json()
     assert "items" in json_response
     assert len(json_response["items"]) >= 1
 
     # Test filtering by non-existent organisation_id (should find no annotations)
-    response = await authenticated_client.get("/annotations/detections/?organisation_id=999")
+    response = await authenticated_client.get(
+        "/annotations/detections/?organisation_id=999"
+    )
     assert response.status_code == 200
     json_response = response.json()
     assert "items" in json_response

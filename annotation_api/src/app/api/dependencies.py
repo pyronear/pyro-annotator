@@ -46,5 +46,3 @@ def get_sequence_annotation_crud(
     session: AsyncSession = Depends(get_session),
 ) -> SequenceAnnotationCRUD:
     return SequenceAnnotationCRUD(session=session)
-
-

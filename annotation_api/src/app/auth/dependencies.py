@@ -37,8 +37,7 @@ def create_access_token(data: Dict[str, Any]) -> str:
 def verify_password(plain_password: str, username: str) -> bool:
     """Verify a password against the configured credentials."""
     return (
-        username == settings.AUTH_USERNAME 
-        and plain_password == settings.AUTH_PASSWORD
+        username == settings.AUTH_USERNAME and plain_password == settings.AUTH_PASSWORD
     )
 
 
@@ -55,20 +54,22 @@ def verify_token(token: str) -> Optional[TokenPayload]:
     return token_data
 
 
-def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+) -> str:
     """Get the current authenticated user from the JWT token."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    
+
     token_data = verify_token(credentials.credentials)
     if token_data is None or token_data.username is None:
         raise credentials_exception
-    
+
     # Verify that the user in the token matches our configured username
     if token_data.username != settings.AUTH_USERNAME:
         raise credentials_exception
-    
+
     return token_data.username

@@ -15,11 +15,11 @@ Example:
     >>> from worker_config import WorkerConfig
     >>> from progress_management import ErrorCollector
     >>> from rich.console import Console
-    >>> 
+    >>>
     >>> console = Console()
     >>> error_collector = ErrorCollector()
     >>> worker_config = WorkerConfig(4)
-    >>> 
+    >>>
     >>> records = fetch_all_sequences_within(
     ...     date_from=date(2024, 1, 1),
     ...     date_end=date(2024, 1, 2),
@@ -41,7 +41,13 @@ from datetime import date, timedelta
 from typing import List, Dict, Any, Optional
 
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+from rich.progress import (
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    BarColumn,
+    TaskProgressColumn,
+)
 
 from . import client as platform_client
 from . import utils as platform_utils
@@ -52,14 +58,14 @@ from .worker_config import WorkerConfig
 def get_dates_within(date_from: date, date_end: date) -> List[date]:
     """
     Get all dates between date_from and date_end (inclusive).
-    
+
     Args:
         date_from: Start date (inclusive)
         date_end: End date (inclusive)
-        
+
     Returns:
         List of date objects from start to end
-        
+
     Example:
         >>> from datetime import date
         >>> dates = get_dates_within(date(2024, 1, 1), date(2024, 1, 3))
@@ -77,21 +83,19 @@ def get_dates_within(date_from: date, date_end: date) -> List[date]:
 
 
 def fetch_sequences_for_date(
-    api_endpoint: str, 
-    target_date: date, 
-    access_token: str
+    api_endpoint: str, target_date: date, access_token: str
 ) -> List[Dict[str, Any]]:
     """
     Fetch sequences for a specific date from the platform API.
-    
+
     Args:
         api_endpoint: Platform API endpoint URL
         target_date: Date to fetch sequences for
         access_token: API access token for authentication
-        
+
     Returns:
         List of sequence dictionaries for the specified date
-        
+
     Example:
         >>> sequences = fetch_sequences_for_date(
         ...     "https://api.example.com",
@@ -125,10 +129,10 @@ def process_single_sequence_detections(
 ) -> List[Dict[str, Any]]:
     """
     Process detections for a single sequence.
-    
+
     This function fetches detections for a sequence and builds flattened records
     by combining sequence, detection, camera, and organization metadata.
-    
+
     Args:
         sequence: Sequence data dictionary
         indexed_cameras: Camera lookup dictionary (camera_id -> camera_data)
@@ -137,10 +141,10 @@ def process_single_sequence_detections(
         access_token: API access token for authentication
         detections_limit: Maximum number of detections to fetch per sequence
         detections_order_by: Order direction for detections ("asc" or "desc")
-        
+
     Returns:
         List of flattened detection record dictionaries
-        
+
     Example:
         >>> records = process_single_sequence_detections(
         ...     sequence={"id": 123, "camera_id": 456},
@@ -201,13 +205,13 @@ def fetch_all_sequences_within(
 ) -> List[Dict[str, Any]]:
     """
     Fetch all sequences and detections between date_from and date_end.
-    
+
     This is the main function for fetching platform data. It:
     1. Loads metadata (cameras and organizations) with progress display
     2. Fetches sequences for each date in the range using parallel processing
     3. Processes detections for each sequence using parallel processing
     4. Returns flattened records ready for annotation API posting
-    
+
     Args:
         date_from: Start date for sequence fetching
         date_end: End date for sequence fetching
@@ -223,18 +227,18 @@ def fetch_all_sequences_within(
 
     Returns:
         List of flattened detection record dictionaries
-        
+
     Raises:
         Exception: If metadata loading fails or other critical errors occur
-        
+
     Example:
         >>> from datetime import date
         >>> from worker_config import WorkerConfig
         >>> from rich.console import Console
-        >>> 
+        >>>
         >>> console = Console()
         >>> worker_config = WorkerConfig(4)
-        >>> 
+        >>>
         >>> records = fetch_all_sequences_within(
         ...     date_from=date(2024, 1, 1),
         ...     date_end=date(2024, 1, 2),
@@ -253,28 +257,34 @@ def fetch_all_sequences_within(
         console = Console()
     if error_collector is None:
         error_collector = ErrorCollector()
-    
+
     # Load metadata with progress display
     metadata_start_time = time.time()
-    with console.status("[bold blue]📡 Loading platform metadata...", spinner="dots") as status:
+    with console.status(
+        "[bold blue]📡 Loading platform metadata...", spinner="dots"
+    ) as status:
         try:
             status.update("[bold blue]📡 Loading cameras...")
             cameras = platform_client.list_cameras(
                 api_endpoint=api_endpoint, access_token=access_token
             )
             indexed_cameras = platform_utils.index_by(cameras, key="id")
-            
+
             status.update("[bold blue]📡 Loading organizations...")
             organizations = platform_client.list_organizations(
                 api_endpoint=api_endpoint,
                 access_token=access_token_admin,
             )
             indexed_organizations = platform_utils.index_by(organizations, key="id")
-            
+
             metadata_duration = time.time() - metadata_start_time
-            console.print(f"[green]✅ Metadata loaded[/] [dim]({metadata_duration:.1f}s)[/]")
-            console.print(f"   • [bold]{len(cameras)}[/] cameras, [bold]{len(organizations)}[/] organizations")
-            
+            console.print(
+                f"[green]✅ Metadata loaded[/] [dim]({metadata_duration:.1f}s)[/]"
+            )
+            console.print(
+                f"   • [bold]{len(cameras)}[/] cameras, [bold]{len(organizations)}[/] organizations"
+            )
+
         except Exception as e:
             error_msg = f"Failed to load platform metadata: {e}"
             error_collector.add_error(error_msg)
@@ -282,7 +292,7 @@ def fetch_all_sequences_within(
 
     # Prepare date range
     dates = get_dates_within(date_from=date_from, date_end=date_end)
-    
+
     # Better date range display
     if len(dates) == 1:
         console.print(f"[blue]📅 Processing [bold]1 day[/]: {dates[0]:%Y-%m-%d}[/]")
@@ -290,7 +300,9 @@ def fetch_all_sequences_within(
         date_list = ", ".join(d.strftime("%Y-%m-%d") for d in dates)
         console.print(f"[blue]📅 Processing [bold]{len(dates)} days[/]: {date_list}[/]")
     else:
-        console.print(f"[blue]📅 Processing [bold]{len(dates)} days[/]: {dates[0]:%Y-%m-%d} to {dates[-1]:%Y-%m-%d}[/]")
+        console.print(
+            f"[blue]📅 Processing [bold]{len(dates)} days[/]: {dates[0]:%Y-%m-%d} to {dates[-1]:%Y-%m-%d}[/]"
+        )
 
     # Fetch sequences for all dates using parallel processing
     sequences = []
@@ -308,9 +320,11 @@ def fetch_all_sequences_within(
                 BarColumn(bar_width=40),
                 TaskProgressColumn(),
                 console=Console(),
-                transient=True
+                transient=True,
             ) as progress_bar:
-                task = progress_bar.add_task("Processing dates", total=len(future_to_date))
+                task = progress_bar.add_task(
+                    "Processing dates", total=len(future_to_date)
+                )
                 for future in concurrent.futures.as_completed(future_to_date):
                     sequences.extend(future.result())
                     progress_bar.advance(task)
@@ -320,11 +334,15 @@ def fetch_all_sequences_within(
     # Now fetch detections and build flattened records using parallel processing
     records = []
     first_sequence_logged = False
-    
+
     # Create organization-aware processing message
     org_context = f" {organization}" if organization else ""
-    console.print(f"[blue]🔄 Processing{org_context} sequences with {worker_config.detection_fetching} workers[/]")
-    with concurrent.futures.ThreadPoolExecutor(max_workers=worker_config.detection_fetching) as executor:
+    console.print(
+        f"[blue]🔄 Processing{org_context} sequences with {worker_config.detection_fetching} workers[/]"
+    )
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=worker_config.detection_fetching
+    ) as executor:
         # Submit all tasks
         future_to_sequence = {
             executor.submit(
@@ -339,7 +357,7 @@ def fetch_all_sequences_within(
             ): sequence
             for sequence in sequences
         }
-        
+
         # Collect results with progress tracking
         with LogSuppressor(suppress=suppress_logs):
             # Create organization-aware progress text
@@ -350,14 +368,16 @@ def fetch_all_sequences_within(
                 BarColumn(bar_width=40),
                 TaskProgressColumn(),
                 console=Console(),
-                transient=True
+                transient=True,
             ) as progress_bar:
-                task = progress_bar.add_task("Fetching detections", total=len(future_to_sequence))
+                task = progress_bar.add_task(
+                    "Fetching detections", total=len(future_to_sequence)
+                )
                 for future in concurrent.futures.as_completed(future_to_sequence):
                     sequence = future_to_sequence[future]
                     try:
                         sequence_records = future.result()
-                        
+
                         # Debug logging for first successful sequence (only if not suppressed)
                         if not first_sequence_logged and sequence_records:
                             first_sequence_logged = True
@@ -365,15 +385,19 @@ def fetch_all_sequences_within(
                             camera = indexed_cameras.get(camera_id, {})
                             org_id = camera.get("organization_id")
                             organization = indexed_organizations.get(org_id, {})
-                            
+
                             logging.debug(f"Sample sequence structure: {sequence}")
                             logging.debug(f"Sample camera structure: {camera}")
-                            logging.debug(f"Sample organization structure: {organization}")
-                            logging.debug(f"Sample record structure: {sequence_records[0] if sequence_records else 'No records'}")
-                        
+                            logging.debug(
+                                f"Sample organization structure: {organization}"
+                            )
+                            logging.debug(
+                                f"Sample record structure: {sequence_records[0] if sequence_records else 'No records'}"
+                            )
+
                         records.extend(sequence_records)
                         progress_bar.advance(task)
-                        
+
                     except Exception as e:
                         # Collect errors instead of logging immediately
                         error_msg = f"Error processing sequence {sequence.get('id', 'unknown')}: {e}"
@@ -382,11 +406,13 @@ def fetch_all_sequences_within(
                         continue
 
     # Show final results
-    console.print(f"[green]✅ Processing complete[/]")
-    console.print(f"   • [bold]{len(records)}[/] detection records from [bold]{len(sequences)}[/] sequences")
-    
+    console.print("[green]✅ Processing complete[/]")
+    console.print(
+        f"   • [bold]{len(records)}[/] detection records from [bold]{len(sequences)}[/] sequences"
+    )
+
     # Show errors if any occurred
     if error_collector.has_issues():
         error_collector.print_summary(console, "Sequence Processing Issues")
-    
+
     return records

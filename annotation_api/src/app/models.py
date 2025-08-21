@@ -191,7 +191,11 @@ class SequenceAnnotation(SQLModel, table=True):
         Index("ix_sequence_annotation_created_at", "created_at"),
         Index("ix_sequence_annotation_stage_date", "processing_stage", "created_at"),
         # GIN index for efficient JSONB operations on false_positive_types array
-        Index("ix_sequence_annotation_fp_types", "false_positive_types", postgresql_using="gin"),
+        Index(
+            "ix_sequence_annotation_fp_types",
+            "false_positive_types",
+            postgresql_using="gin",
+        ),
     )
     id: int = Field(
         default=None, primary_key=True, sa_column_kwargs={"autoincrement": True}

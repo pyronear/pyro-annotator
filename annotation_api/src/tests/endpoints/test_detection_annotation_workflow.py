@@ -23,6 +23,7 @@ from app import models
 
 now = datetime.utcnow()
 
+
 @pytest.mark.asyncio
 async def test_auto_create_detection_annotations_correct_structure(
     authenticated_client: AsyncClient,
@@ -43,13 +44,13 @@ async def test_auto_create_detection_annotations_correct_structure(
                     "false_positive_types": [],
                     "bboxes": [
                         {"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]},
-                        {"detection_id": 2, "xyxyn": [0.3, 0.3, 0.4, 0.4]}
-                    ]
+                        {"detection_id": 2, "xyxyn": [0.3, 0.3, 0.4, 0.4]},
+                    ],
                 }
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,  # This should trigger auto-creation
-        "created_at": datetime.utcnow().isoformat()
+        "created_at": datetime.utcnow().isoformat(),
     }
 
     response = await authenticated_client.post(
@@ -58,10 +59,11 @@ async def test_auto_create_detection_annotations_correct_structure(
     assert (
         response.status_code == 201
     ), f"Failed to create sequence annotation: {response.text}"
-    sequence_annotation_id = response.json()["id"]
 
     # Step 2: Verify that detection annotations were auto-created for all detections in the sequence
-    detection_annotations_response = await authenticated_client.get("/annotations/detections/")
+    detection_annotations_response = await authenticated_client.get(
+        "/annotations/detections/"
+    )
     assert detection_annotations_response.status_code == 200
     detection_annotations = detection_annotations_response.json()["items"]
 
@@ -102,7 +104,12 @@ async def test_auto_create_detection_annotations_correct_structure(
     assert len(annotations) == 1, "Should have one prediction pre-populated"
     assert annotations[0]["class_name"] == "smoke", "Should have smoke prediction"
     assert annotations[0]["smoke_type"] == "wildfire", "Should default to wildfire"
-    assert annotations[0]["xyxyn"] == [0.12, 0.13, 0.45, 0.48], "Should match model prediction coordinates"
+    assert annotations[0]["xyxyn"] == [
+        0.12,
+        0.13,
+        0.45,
+        0.48,
+    ], "Should match model prediction coordinates"
 
     # Same verification for second detection
     assert (
@@ -122,7 +129,12 @@ async def test_auto_create_detection_annotations_correct_structure(
     assert len(annotations_2) == 1, "Should have one prediction pre-populated"
     assert annotations_2[0]["class_name"] == "fire", "Should have fire prediction"
     assert annotations_2[0]["smoke_type"] == "wildfire", "Should default to wildfire"
-    assert annotations_2[0]["xyxyn"] == [0.2, 0.25, 0.5, 0.55], "Should match model prediction coordinates"
+    assert annotations_2[0]["xyxyn"] == [
+        0.2,
+        0.25,
+        0.5,
+        0.55,
+    ], "Should match model prediction coordinates"
 
     # Step 5: Verify processing_stage is set correctly (should be 'visual_check' for true positive only sequences)
     assert (
@@ -131,6 +143,7 @@ async def test_auto_create_detection_annotations_correct_structure(
     assert (
         detection_2_annotation["processing_stage"] == "visual_check"
     ), "Processing stage should be 'visual_check' for true positive only sequences (smoke, no false positives, no missed smoke)"
+
 
 @pytest.mark.asyncio
 async def test_auto_create_detection_annotations_update_scenario(
@@ -147,12 +160,12 @@ async def test_auto_create_detection_annotations_update_scenario(
                 {
                     "is_smoke": True,
                     "false_positive_types": [],
-                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}]
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
                 }
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,  # Not 'annotated'
-        "created_at": datetime.utcnow().isoformat()
+        "created_at": datetime.utcnow().isoformat(),
     }
 
     create_response = await authenticated_client.post(
@@ -162,7 +175,9 @@ async def test_auto_create_detection_annotations_update_scenario(
     sequence_annotation_id = create_response.json()["id"]
 
     # Step 2: Verify no detection annotations exist yet
-    detection_annotations_response = await authenticated_client.get("/annotations/detections/")
+    detection_annotations_response = await authenticated_client.get(
+        "/annotations/detections/"
+    )
     assert detection_annotations_response.status_code == 200
     initial_annotations = detection_annotations_response.json()["items"]
     detection_1_exists_initially = any(
@@ -184,7 +199,9 @@ async def test_auto_create_detection_annotations_update_scenario(
     assert update_response.status_code == 200
 
     # Step 4: Verify detection annotation was auto-created after the update
-    detection_annotations_response = await authenticated_client.get("/annotations/detections/")
+    detection_annotations_response = await authenticated_client.get(
+        "/annotations/detections/"
+    )
     assert detection_annotations_response.status_code == 200
     final_annotations = detection_annotations_response.json()["items"]
 
@@ -200,13 +217,23 @@ async def test_auto_create_detection_annotations_update_scenario(
 
     # Step 5: Verify the correct annotation structure - should be pre-populated for true positive sequences
     annotations = detection_1_annotation["annotation"]["annotation"]
-    assert len(annotations) == 1, "Should have one prediction pre-populated for true positive sequence"
-    assert annotations[0]["class_name"] == "smoke", "Should have smoke prediction from model"
+    assert (
+        len(annotations) == 1
+    ), "Should have one prediction pre-populated for true positive sequence"
+    assert (
+        annotations[0]["class_name"] == "smoke"
+    ), "Should have smoke prediction from model"
     assert annotations[0]["smoke_type"] == "wildfire", "Should default to wildfire"
-    assert annotations[0]["xyxyn"] == [0.12, 0.13, 0.45, 0.48], "Should match model prediction coordinates"
+    assert annotations[0]["xyxyn"] == [
+        0.12,
+        0.13,
+        0.45,
+        0.48,
+    ], "Should match model prediction coordinates"
     assert (
         detection_1_annotation["processing_stage"] == "visual_check"
     ), "Processing stage should be 'visual_check' for true positive only sequences (smoke, no false positives, no missed smoke)"
+
 
 @pytest.mark.asyncio
 async def test_auto_create_detection_annotations_processing_stages(
@@ -217,7 +244,7 @@ async def test_auto_create_detection_annotations_processing_stages(
 ):
     """Test the business logic for determining detection annotation processing stages."""
 
-    # Test Case 1: has_missed_smoke=false AND has_false_positives=true AND has_smoke=false → annotated  
+    # Test Case 1: has_missed_smoke=false AND has_false_positives=true AND has_smoke=false → annotated
     payload_annotated = {
         "sequence_id": 1,
         "has_missed_smoke": False,  # False
@@ -228,12 +255,12 @@ async def test_auto_create_detection_annotations_processing_stages(
                     "false_positive_types": [
                         models.FalsePositiveType.ANTENNA.value
                     ],  # Has false positives
-                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}]
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
                 }
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
-        "created_at": datetime.utcnow().isoformat()
+        "created_at": datetime.utcnow().isoformat(),
     }
 
     response1 = await authenticated_client.post(
@@ -242,7 +269,9 @@ async def test_auto_create_detection_annotations_processing_stages(
     assert response1.status_code == 201
 
     # Check the created detection annotation has annotated stage (false positive only sequences)
-    detection_annotations_response = await authenticated_client.get("/annotations/detections/")
+    detection_annotations_response = await authenticated_client.get(
+        "/annotations/detections/"
+    )
     detection_annotations = detection_annotations_response.json()["items"]
     detection_1_annotation = next(
         ann for ann in detection_annotations if ann["detection_id"] == 1
@@ -250,13 +279,17 @@ async def test_auto_create_detection_annotations_processing_stages(
     assert (
         detection_1_annotation["processing_stage"] == "annotated"
     ), "Should be annotated for false positive only sequences (no smoke, no missed smoke, has false positives)"
-    
+
     # Verify annotations are empty for false positive only sequences
     annotations = detection_1_annotation["annotation"]["annotation"]
-    assert len(annotations) == 0, "False positive only sequences should have empty annotations"
+    assert (
+        len(annotations) == 0
+    ), "False positive only sequences should have empty annotations"
 
     # Clean up for next test - delete the sequence annotation
-    await authenticated_client.delete(f"/annotations/sequences/{response1.json()['id']}")
+    await authenticated_client.delete(
+        f"/annotations/sequences/{response1.json()['id']}"
+    )
 
     # Test Case 2: Create a new sequence for the next test
     sequence_payload = {
@@ -271,10 +304,12 @@ async def test_auto_create_detection_annotations_processing_stages(
         "lon": "0.0",
         "created_at": datetime.utcnow().isoformat(),
         "recorded_at": datetime.utcnow().isoformat(),
-        "last_seen_at": datetime.utcnow().isoformat()
+        "last_seen_at": datetime.utcnow().isoformat(),
     }
 
-    sequence_response = await authenticated_client.post("/sequences", data=sequence_payload)
+    sequence_response = await authenticated_client.post(
+        "/sequences", data=sequence_payload
+    )
     assert sequence_response.status_code == 201
     sequence2_id = sequence_response.json()["id"]
 
@@ -289,11 +324,11 @@ async def test_auto_create_detection_annotations_processing_stages(
                     {
                         "xyxyn": [0.15, 0.15, 0.3, 0.3],
                         "confidence": 0.88,
-                        "class_name": "smoke"
+                        "class_name": "smoke",
                     }
                 ]
             }
-        )
+        ),
     }
 
     detection_response = await authenticated_client.post(
@@ -315,12 +350,12 @@ async def test_auto_create_detection_annotations_processing_stages(
                     "false_positive_types": [],  # No false positives
                     "bboxes": [
                         {"detection_id": detection2_id, "xyxyn": [0.1, 0.1, 0.2, 0.2]}
-                    ]
+                    ],
                 }
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
-        "created_at": datetime.utcnow().isoformat()
+        "created_at": datetime.utcnow().isoformat(),
     }
 
     response2 = await authenticated_client.post(
@@ -329,7 +364,9 @@ async def test_auto_create_detection_annotations_processing_stages(
     assert response2.status_code == 201
 
     # Check the created detection annotation has visual_check stage (true positive only sequences)
-    detection_annotations_response = await authenticated_client.get("/annotations/detections/")
+    detection_annotations_response = await authenticated_client.get(
+        "/annotations/detections/"
+    )
     detection_annotations = detection_annotations_response.json()["items"]
     detection_2_annotation = next(
         (ann for ann in detection_annotations if ann["detection_id"] == detection2_id),
@@ -339,13 +376,22 @@ async def test_auto_create_detection_annotations_processing_stages(
     assert (
         detection_2_annotation["processing_stage"] == "visual_check"
     ), "Should be visual_check for true positive only sequences (has smoke, no false positives, no missed smoke)"
-    
+
     # Verify annotations are pre-populated with model predictions for true positive sequences
     annotations = detection_2_annotation["annotation"]["annotation"]
-    assert len(annotations) == 1, "Should have one prediction pre-populated for true positive sequence"
-    assert annotations[0]["class_name"] == "smoke", "Should have smoke prediction from model"
+    assert (
+        len(annotations) == 1
+    ), "Should have one prediction pre-populated for true positive sequence"
+    assert (
+        annotations[0]["class_name"] == "smoke"
+    ), "Should have smoke prediction from model"
     assert annotations[0]["smoke_type"] == "wildfire", "Should default to wildfire"
-    assert annotations[0]["xyxyn"] == [0.15, 0.15, 0.3, 0.3], "Should match model prediction coordinates"
+    assert annotations[0]["xyxyn"] == [
+        0.15,
+        0.15,
+        0.3,
+        0.3,
+    ], "Should match model prediction coordinates"
 
     # Test Case 3: has_missed_smoke=true → bbox_annotation (create another sequence/detection for this test)
     sequence_payload_3 = {
@@ -360,10 +406,12 @@ async def test_auto_create_detection_annotations_processing_stages(
         "lon": "0.0",
         "created_at": datetime.utcnow().isoformat(),
         "recorded_at": datetime.utcnow().isoformat(),
-        "last_seen_at": datetime.utcnow().isoformat()
+        "last_seen_at": datetime.utcnow().isoformat(),
     }
 
-    sequence_response_3 = await authenticated_client.post("/sequences", data=sequence_payload_3)
+    sequence_response_3 = await authenticated_client.post(
+        "/sequences", data=sequence_payload_3
+    )
     assert sequence_response_3.status_code == 201
     sequence3_id = sequence_response_3.json()["id"]
 
@@ -378,11 +426,11 @@ async def test_auto_create_detection_annotations_processing_stages(
                     {
                         "xyxyn": [0.15, 0.15, 0.3, 0.3],
                         "confidence": 0.88,
-                        "class_name": "smoke"
+                        "class_name": "smoke",
                     }
                 ]
             }
-        )
+        ),
     }
 
     detection_response_3 = await authenticated_client.post(
@@ -403,12 +451,12 @@ async def test_auto_create_detection_annotations_processing_stages(
                     "false_positive_types": [],
                     "bboxes": [
                         {"detection_id": detection3_id, "xyxyn": [0.1, 0.1, 0.2, 0.2]}
-                    ]
+                    ],
                 }
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
-        "created_at": datetime.utcnow().isoformat()
+        "created_at": datetime.utcnow().isoformat(),
     }
 
     response3 = await authenticated_client.post(
@@ -417,7 +465,9 @@ async def test_auto_create_detection_annotations_processing_stages(
     assert response3.status_code == 201
 
     # Check the created detection annotation has bbox_annotation stage
-    detection_annotations_response = await authenticated_client.get("/annotations/detections/")
+    detection_annotations_response = await authenticated_client.get(
+        "/annotations/detections/"
+    )
     detection_annotations = detection_annotations_response.json()["items"]
     detection_3_annotation = next(
         (ann for ann in detection_annotations if ann["detection_id"] == detection3_id),
@@ -427,6 +477,7 @@ async def test_auto_create_detection_annotations_processing_stages(
     assert (
         detection_3_annotation["processing_stage"] == "bbox_annotation"
     ), "Should be bbox_annotation for missed smoke"
+
 
 @pytest.mark.asyncio
 async def test_detection_annotation_update_workflow(
@@ -443,12 +494,12 @@ async def test_detection_annotation_update_workflow(
                 {
                     "is_smoke": True,
                     "false_positive_types": [],
-                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}]
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
                 }
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
-        "created_at": datetime.utcnow().isoformat()
+        "created_at": datetime.utcnow().isoformat(),
     }
 
     seq_response = await authenticated_client.post(
@@ -457,7 +508,9 @@ async def test_detection_annotation_update_workflow(
     assert seq_response.status_code == 201
 
     # Step 2: Get the auto-created detection annotation
-    detection_annotations_response = await authenticated_client.get("/annotations/detections/")
+    detection_annotations_response = await authenticated_client.get(
+        "/annotations/detections/"
+    )
     detection_annotations = detection_annotations_response.json()["items"]
     detection_annotation = next(
         ann for ann in detection_annotations if ann["detection_id"] == 1
@@ -472,16 +525,16 @@ async def test_detection_annotation_update_workflow(
                 {
                     "xyxyn": [0.15, 0.15, 0.35, 0.35],
                     "class_name": "smoke",
-                    "smoke_type": "wildfire"
+                    "smoke_type": "wildfire",
                 },
                 {
                     "xyxyn": [0.45, 0.45, 0.65, 0.65],
                     "class_name": "smoke",
-                    "smoke_type": "industrial"
-                }
+                    "smoke_type": "industrial",
+                },
             ]
         },
-        "processing_stage": "annotated"
+        "processing_stage": "annotated",
     }
 
     update_response = await authenticated_client.patch(
@@ -521,6 +574,7 @@ async def test_detection_annotation_update_workflow(
     retrieved_annotation = get_response.json()
     assert retrieved_annotation["annotation"]["annotation"] == annotation_items
 
+
 @pytest.mark.asyncio
 async def test_detection_annotation_validation_requirements(
     authenticated_client: AsyncClient,
@@ -541,11 +595,11 @@ async def test_detection_annotation_validation_requirements(
                     {
                         "xyxyn": [0.15, 0.15, 0.3, 0.3],
                         "confidence": 0.88,
-                        "class_name": "smoke"
+                        "class_name": "smoke",
                     }
                 ]
             }
-        )
+        ),
     }
 
     detection_response = await authenticated_client.post(
@@ -565,12 +619,12 @@ async def test_detection_annotation_validation_requirements(
                     {
                         "xyxyn": [0.1, 0.1, 0.2, 0.2],
                         "class_name": "smoke",
-                        "smoke_type": "wildfire"
+                        "smoke_type": "wildfire",
                     }
                 ]
             }
         ),
-        "processing_stage": "visual_check"
+        "processing_stage": "visual_check",
     }
 
     valid_response = await authenticated_client.post(
@@ -587,7 +641,7 @@ async def test_detection_annotation_validation_requirements(
         "annotation": json.dumps(
             {}
         ),  # Invalid: empty object instead of {"annotation": [...]}
-        "processing_stage": "visual_check"
+        "processing_stage": "visual_check",
     }
 
     # This should fail with validation error due to invalid structure
@@ -607,11 +661,11 @@ async def test_detection_annotation_validation_requirements(
                 {
                     "xyxyn": [0.1, 0.1, 0.2, 0.2],
                     "class_name": "smoke",
-                    "smoke_type": "wildfire"
+                    "smoke_type": "wildfire",
                 }
             ]
         },
-        "processing_stage": "annotated"
+        "processing_stage": "annotated",
     }
 
     invalid_update_response = await authenticated_client.patch(
@@ -629,11 +683,11 @@ async def test_detection_annotation_validation_requirements(
                 {
                     "xyxyn": [0.3, 0.3, 0.2, 0.2],  # x1 > x2, y1 > y2 - invalid
                     "class_name": "smoke",
-                    "smoke_type": "wildfire"
+                    "smoke_type": "wildfire",
                 }
             ]
         },
-        "processing_stage": "annotated"
+        "processing_stage": "annotated",
     }
 
     invalid_bbox_response = await authenticated_client.patch(
@@ -654,7 +708,7 @@ async def test_detection_annotation_validation_requirements(
                 }
             ]
         },
-        "processing_stage": "annotated"
+        "processing_stage": "annotated",
     }
 
     invalid_smoke_response = await authenticated_client.patch(
@@ -664,6 +718,7 @@ async def test_detection_annotation_validation_requirements(
     assert (
         invalid_smoke_response.status_code == 422
     ), "Invalid smoke type should be rejected"
+
 
 @pytest.mark.asyncio
 async def test_auto_create_avoids_duplicate_detection_annotations(
@@ -680,12 +735,12 @@ async def test_auto_create_avoids_duplicate_detection_annotations(
                     {
                         "xyxyn": [0.1, 0.1, 0.2, 0.2],
                         "class_name": "smoke",
-                        "smoke_type": "wildfire"
+                        "smoke_type": "wildfire",
                     }
                 ]
             }
         ),
-        "processing_stage": "visual_check"
+        "processing_stage": "visual_check",
     }
 
     manual_response = await authenticated_client.post(
@@ -706,18 +761,18 @@ async def test_auto_create_avoids_duplicate_detection_annotations(
                     "bboxes": [
                         {
                             "detection_id": 1,
-                            "xyxyn": [0.1, 0.1, 0.2, 0.2]
+                            "xyxyn": [0.1, 0.1, 0.2, 0.2],
                         },  # Already has annotation
                         {
                             "detection_id": 2,
-                            "xyxyn": [0.3, 0.3, 0.4, 0.4]
+                            "xyxyn": [0.3, 0.3, 0.4, 0.4],
                         },  # No existing annotation
-                    ]
+                    ],
                 }
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
-        "created_at": datetime.utcnow().isoformat()
+        "created_at": datetime.utcnow().isoformat(),
     }
 
     seq_response = await authenticated_client.post(
@@ -740,7 +795,9 @@ async def test_auto_create_avoids_duplicate_detection_annotations(
     )
 
     # Step 4: Verify a new annotation was created for detection_id=2
-    all_annotations_response = await authenticated_client.get("/annotations/detections/")
+    all_annotations_response = await authenticated_client.get(
+        "/annotations/detections/"
+    )
     all_annotations = all_annotations_response.json()["items"]
 
     detection_2_annotations = [
@@ -753,11 +810,21 @@ async def test_auto_create_avoids_duplicate_detection_annotations(
     detection_2_annotation = detection_2_annotations[0]
     # For true positive sequences, annotations should be pre-populated with model predictions
     annotations = detection_2_annotation["annotation"]["annotation"]
-    assert len(annotations) == 1, "Should have one prediction pre-populated for true positive sequence"
-    assert annotations[0]["class_name"] == "fire", "Should have fire prediction from model"
+    assert (
+        len(annotations) == 1
+    ), "Should have one prediction pre-populated for true positive sequence"
+    assert (
+        annotations[0]["class_name"] == "fire"
+    ), "Should have fire prediction from model"
     assert annotations[0]["smoke_type"] == "wildfire", "Should default to wildfire"
-    assert annotations[0]["xyxyn"] == [0.2, 0.25, 0.5, 0.55], "Should match model prediction coordinates"
+    assert annotations[0]["xyxyn"] == [
+        0.2,
+        0.25,
+        0.5,
+        0.55,
+    ], "Should match model prediction coordinates"
     assert detection_2_annotation["processing_stage"] == "visual_check"
+
 
 @pytest.mark.asyncio
 async def test_no_auto_create_when_not_annotated_stage(
@@ -774,12 +841,12 @@ async def test_no_auto_create_when_not_annotated_stage(
                 {
                     "is_smoke": True,
                     "false_positive_types": [],
-                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}]
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
                 }
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,  # NOT annotated
-        "created_at": datetime.utcnow().isoformat()
+        "created_at": datetime.utcnow().isoformat(),
     }
 
     seq_response = await authenticated_client.post(
@@ -788,7 +855,9 @@ async def test_no_auto_create_when_not_annotated_stage(
     assert seq_response.status_code == 201
 
     # Verify no detection annotations were created
-    detection_annotations_response = await authenticated_client.get("/annotations/detections/")
+    detection_annotations_response = await authenticated_client.get(
+        "/annotations/detections/"
+    )
     detection_annotations = detection_annotations_response.json()["items"]
     detection_1_annotations = [
         ann for ann in detection_annotations if ann["detection_id"] == 1
@@ -806,16 +875,18 @@ async def test_no_auto_create_when_not_annotated_stage(
                 {
                     "is_smoke": True,
                     "false_positive_types": [],
-                    "bboxes": [{"detection_id": 2, "xyxyn": [0.3, 0.3, 0.4, 0.4]}]
+                    "bboxes": [{"detection_id": 2, "xyxyn": [0.3, 0.3, 0.4, 0.4]}],
                 }
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.READY_TO_ANNOTATE.value,  # NOT annotated
-        "created_at": datetime.utcnow().isoformat()
+        "created_at": datetime.utcnow().isoformat(),
     }
 
     # Delete the first annotation to create the second one for same sequence
-    await authenticated_client.delete(f"/annotations/sequences/{seq_response.json()['id']}")
+    await authenticated_client.delete(
+        f"/annotations/sequences/{seq_response.json()['id']}"
+    )
 
     seq_response_2 = await authenticated_client.post(
         "/annotations/sequences/", json=sequence_annotation_payload_2
@@ -823,7 +894,9 @@ async def test_no_auto_create_when_not_annotated_stage(
     assert seq_response_2.status_code == 201
 
     # Verify still no detection annotations were created
-    detection_annotations_response = await authenticated_client.get("/annotations/detections/")
+    detection_annotations_response = await authenticated_client.get(
+        "/annotations/detections/"
+    )
     detection_annotations = detection_annotations_response.json()["items"]
     detection_2_annotations = [
         ann for ann in detection_annotations if ann["detection_id"] == 2

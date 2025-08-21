@@ -1,6 +1,5 @@
 # Copyright (C) 2025, Pyronear.
 
-import json
 import logging
 from datetime import datetime
 from enum import Enum
@@ -80,41 +79,41 @@ def derive_false_positive_types(annotation_data: SequenceAnnotationData) -> List
 def convert_algo_predictions_to_annotation(algo_predictions: Optional[dict]) -> dict:
     """
     Convert detection algo_predictions to detection annotation format.
-    
+
     Args:
         algo_predictions: Model predictions in format {"predictions": [{"xyxyn": [...], "confidence": float, "class_name": str}]}
-    
+
     Returns:
         Annotation dict in format {"annotation": [{"xyxyn": [...], "class_name": str, "smoke_type": "wildfire"}]}
     """
     if not algo_predictions or "predictions" not in algo_predictions:
         return {"annotation": []}
-    
+
     predictions = algo_predictions.get("predictions", [])
     if not predictions:
         return {"annotation": []}
-    
+
     annotation_items = []
     for prediction in predictions:
         if not isinstance(prediction, dict):
             continue
-            
+
         # Extract required fields
         xyxyn = prediction.get("xyxyn")
         class_name = prediction.get("class_name", "smoke")
-        
+
         # Validate xyxyn format
         if not isinstance(xyxyn, list) or len(xyxyn) != 4:
             continue
-            
+
         # Convert to annotation format with default wildfire smoke_type
         annotation_item = {
             "xyxyn": xyxyn,
             "class_name": class_name,
-            "smoke_type": "wildfire"  # Default for true positive sequences
+            "smoke_type": "wildfire",  # Default for true positive sequences
         }
         annotation_items.append(annotation_item)
-    
+
     return {"annotation": annotation_items}
 
 
@@ -174,27 +173,31 @@ async def auto_create_detection_annotations(
     # Prepare batch data for bulk insert
     new_annotations = []
     current_time = datetime.utcnow()
-    
+
     for detection in detections:
         # Skip if annotation already exists
         if detection.id in existing_detection_ids:
             continue
-            
+
         # Determine annotation data based on sequence type
         if has_smoke and not has_missed_smoke and not has_false_positives:
             # True positive sequence: pre-populate with model predictions
-            annotation_data = convert_algo_predictions_to_annotation(detection.algo_predictions)
+            annotation_data = convert_algo_predictions_to_annotation(
+                detection.algo_predictions
+            )
         else:
             # All other cases: start with empty annotation
             annotation_data = {"annotation": []}
-        
+
         # Prepare annotation for bulk insert
-        new_annotations.append(DetectionAnnotation(
-            detection_id=detection.id,
-            annotation=annotation_data,
-            processing_stage=processing_stage,
-            created_at=current_time,
-        ))
+        new_annotations.append(
+            DetectionAnnotation(
+                detection_id=detection.id,
+                annotation=annotation_data,
+                processing_stage=processing_stage,
+                created_at=current_time,
+            )
+        )
 
     # Bulk insert all new detection annotations at once
     if new_annotations:
@@ -283,7 +286,10 @@ async def create_sequence_annotation(
 
     # Auto-create detection annotations if sequence annotation is marked as annotated and not unsure
     # Skip detection annotation creation for unsure sequences
-    if create_data.processing_stage == SequenceAnnotationProcessingStage.ANNOTATED and not create_data.is_unsure:
+    if (
+        create_data.processing_stage == SequenceAnnotationProcessingStage.ANNOTATED
+        and not create_data.is_unsure
+    ):
         await auto_create_detection_annotations(
             sequence_id=create_data.sequence_id,
             has_smoke=has_smoke,
@@ -372,9 +378,12 @@ async def list_sequence_annotations(
         # Use PostgreSQL JSONB array contains operator for OR logic
         # This will match annotations where false_positive_types contains any of the specified types
         from sqlalchemy import or_
+
         # Create OR conditions for each false positive type
         fp_conditions = [
-            text("false_positive_types::jsonb ? :fp_type_" + str(i)).params(**{f"fp_type_{i}": fp_type})
+            text("false_positive_types::jsonb ? :fp_type_" + str(i)).params(
+                **{f"fp_type_{i}": fp_type}
+            )
             for i, fp_type in enumerate(fp_type_values)
         ]
         query = query.where(or_(*fp_conditions))

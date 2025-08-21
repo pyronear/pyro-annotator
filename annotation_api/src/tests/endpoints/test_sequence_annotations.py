@@ -9,6 +9,7 @@ from app import models
 
 now = datetime.utcnow()
 
+
 @pytest.mark.asyncio
 async def test_create_sequence_annotation(
     authenticated_client: AsyncClient, sequence_session, detection_session
@@ -37,6 +38,7 @@ async def test_create_sequence_annotation(
     assert result["has_false_positives"] is False  # Derived from annotation
     assert result["sequence_id"] == payload["sequence_id"]
 
+
 @pytest.mark.asyncio
 async def test_get_sequence_annotation(authenticated_client: AsyncClient):
     annotation_id = 1
@@ -47,6 +49,7 @@ async def test_get_sequence_annotation(authenticated_client: AsyncClient):
         assert "has_smoke" in data
     else:
         assert response.status_code in (404, 422)
+
 
 @pytest.mark.asyncio
 async def test_list_sequence_annotations(authenticated_client: AsyncClient):
@@ -59,6 +62,7 @@ async def test_list_sequence_annotations(authenticated_client: AsyncClient):
     assert "pages" in json_response
     assert "size" in json_response
     assert isinstance(json_response["items"], list)
+
 
 @pytest.mark.asyncio
 async def test_patch_sequence_annotation(authenticated_client: AsyncClient):
@@ -88,6 +92,7 @@ async def test_patch_sequence_annotation(authenticated_client: AsyncClient):
     else:
         assert response.status_code in (404, 422)
 
+
 @pytest.mark.asyncio
 async def test_patch_sequence_annotation_invalid_processing_stage(
     authenticated_client: AsyncClient,
@@ -105,6 +110,7 @@ async def test_patch_sequence_annotation_invalid_processing_stage(
     assert any(
         "processing_stage" in str(error).lower() for error in error_data["detail"]
     )
+
 
 @pytest.mark.asyncio
 async def test_delete_sequence_annotation(
@@ -126,15 +132,20 @@ async def test_delete_sequence_annotation(
         "created_at": datetime.utcnow().isoformat(),
     }
 
-    create_resp = await authenticated_client.post("/annotations/sequences/", json=payload)
+    create_resp = await authenticated_client.post(
+        "/annotations/sequences/", json=payload
+    )
     assert create_resp.status_code == 201
     annotation_id = create_resp.json()["id"]
 
-    del_resp = await authenticated_client.delete(f"/annotations/sequences/{annotation_id}")
+    del_resp = await authenticated_client.delete(
+        f"/annotations/sequences/{annotation_id}"
+    )
     assert del_resp.status_code == 204
 
     get_resp = await authenticated_client.get(f"/annotations/sequences/{annotation_id}")
     assert get_resp.status_code == 404
+
 
 @pytest.mark.asyncio
 async def test_delete_sequence_annotation_does_not_cascade_sequence(
@@ -176,7 +187,9 @@ async def test_delete_sequence_annotation_does_not_cascade_sequence(
     assert annotation_get_resp.status_code == 200
 
     # 4. Delete annotation
-    del_resp = await authenticated_client.delete(f"/annotations/sequences/{annotation_id}")
+    del_resp = await authenticated_client.delete(
+        f"/annotations/sequences/{annotation_id}"
+    )
     assert del_resp.status_code == 204
 
     # 5. Verify annotation is deleted
@@ -194,6 +207,7 @@ async def test_delete_sequence_annotation_does_not_cascade_sequence(
     assert final_sequence_data["id"] == initial_sequence_data["id"]
     assert final_sequence_data["source_api"] == initial_sequence_data["source_api"]
     assert final_sequence_data["camera_name"] == initial_sequence_data["camera_name"]
+
 
 @pytest.mark.asyncio
 async def test_create_sequence_annotation_invalid_bbox(
@@ -222,6 +236,7 @@ async def test_create_sequence_annotation_invalid_bbox(
     error_data = response.json()
     assert "detail" in error_data
 
+
 @pytest.mark.asyncio
 async def test_create_sequence_annotation_invalid_false_positive_type(
     authenticated_client: AsyncClient, sequence_session
@@ -247,6 +262,7 @@ async def test_create_sequence_annotation_invalid_false_positive_type(
     error_data = response.json()
     assert "detail" in error_data
 
+
 @pytest.mark.asyncio
 async def test_create_sequence_annotation_unique_constraint_violation(
     authenticated_client: AsyncClient, sequence_session, detection_session
@@ -269,7 +285,9 @@ async def test_create_sequence_annotation_unique_constraint_violation(
     }
 
     # First annotation should be created successfully
-    response1 = await authenticated_client.post("/annotations/sequences/", json=payload1)
+    response1 = await authenticated_client.post(
+        "/annotations/sequences/", json=payload1
+    )
     assert response1.status_code == 201
     annotation1 = response1.json()
     assert annotation1["sequence_id"] == 1
@@ -292,11 +310,14 @@ async def test_create_sequence_annotation_unique_constraint_violation(
     }
 
     # Try to create second annotation for same sequence - should fail with 409 Conflict
-    response2 = await authenticated_client.post("/annotations/sequences/", json=payload2)
+    response2 = await authenticated_client.post(
+        "/annotations/sequences/", json=payload2
+    )
     assert response2.status_code == 409  # Conflict due to unique constraint violation
 
     # Note: After an integrity error, the database session becomes unusable for further operations
     # The important test here is that the second request correctly returns 409 Conflict
+
 
 @pytest.mark.asyncio
 async def test_create_sequence_annotation_different_sequences_allowed(
@@ -323,7 +344,9 @@ async def test_create_sequence_annotation_different_sequences_allowed(
         "created_at": datetime.utcnow().isoformat(),
     }
 
-    response1 = await authenticated_client.post("/annotations/sequences/", json=payload1)
+    response1 = await authenticated_client.post(
+        "/annotations/sequences/", json=payload1
+    )
     assert response1.status_code == 201
     annotation1 = response1.json()
     assert annotation1["sequence_id"] == 1
@@ -344,7 +367,9 @@ async def test_create_sequence_annotation_different_sequences_allowed(
         "last_seen_at": datetime.utcnow().isoformat(),
     }
 
-    sequence_response = await authenticated_client.post("/sequences", data=sequence_payload)
+    sequence_response = await authenticated_client.post(
+        "/sequences", data=sequence_payload
+    )
     assert sequence_response.status_code == 201
     sequence2_id = sequence_response.json()["id"]
 
@@ -365,7 +390,9 @@ async def test_create_sequence_annotation_different_sequences_allowed(
         "created_at": datetime.utcnow().isoformat(),
     }
 
-    response2 = await authenticated_client.post("/annotations/sequences/", json=payload2)
+    response2 = await authenticated_client.post(
+        "/annotations/sequences/", json=payload2
+    )
     assert response2.status_code == 201
     annotation2 = response2.json()
     assert annotation2["sequence_id"] == sequence2_id
@@ -374,6 +401,7 @@ async def test_create_sequence_annotation_different_sequences_allowed(
     assert annotation1["sequence_id"] != annotation2["sequence_id"]
     assert annotation1["sequence_id"] == 1
     assert annotation2["sequence_id"] == sequence2_id
+
 
 @pytest.mark.asyncio
 async def test_list_sequence_annotations_filter_by_has_smoke(
@@ -428,6 +456,7 @@ async def test_list_sequence_annotations_filter_by_has_smoke(
             break
     assert not found_annotation, "Should not find annotation with has_smoke=true when filtering for has_smoke=false"
 
+
 @pytest.mark.asyncio
 async def test_list_sequence_annotations_filter_by_has_false_positives(
     authenticated_client: AsyncClient, sequence_session, detection_session
@@ -473,6 +502,7 @@ async def test_list_sequence_annotations_filter_by_has_false_positives(
             assert annotation["has_false_positives"] is True
             break
     assert found_annotation, "Should find annotation with has_false_positives=true"
+
 
 @pytest.mark.asyncio
 async def test_list_sequence_annotations_filter_by_false_positive_type(
@@ -557,6 +587,7 @@ async def test_list_sequence_annotations_filter_by_false_positive_type(
         not found_annotation
     ), "Should not find annotation when filtering for false_positive_types 'cliff'"
 
+
 @pytest.mark.asyncio
 async def test_list_sequence_annotations_filter_by_processing_stage(
     authenticated_client: AsyncClient, sequence_session, detection_session
@@ -614,6 +645,7 @@ async def test_list_sequence_annotations_filter_by_processing_stage(
             break
     assert not found_annotation, "Should not find annotation with processing_stage='annotated' when filtering for 'imported'"
 
+
 @pytest.mark.asyncio
 async def test_list_sequence_annotations_order_by_created_at(
     authenticated_client: AsyncClient, sequence_session, detection_session
@@ -642,7 +674,9 @@ async def test_list_sequence_annotations_order_by_created_at(
         "created_at": (base_time - timedelta(minutes=10)).isoformat(),
     }
 
-    response1 = await authenticated_client.post("/annotations/sequences/", json=payload1)
+    response1 = await authenticated_client.post(
+        "/annotations/sequences/", json=payload1
+    )
     assert response1.status_code == 201
     annotation1_id = response1.json()["id"]
 
@@ -665,7 +699,9 @@ async def test_list_sequence_annotations_order_by_created_at(
         "last_seen_at": datetime.utcnow().isoformat(),
     }
 
-    sequence_response = await authenticated_client.post("/sequences", data=sequence_payload)
+    sequence_response = await authenticated_client.post(
+        "/sequences", data=sequence_payload
+    )
     assert sequence_response.status_code == 201
     sequence2_id = sequence_response.json()["id"]
 
@@ -686,7 +722,9 @@ async def test_list_sequence_annotations_order_by_created_at(
         "created_at": (base_time - timedelta(minutes=5)).isoformat(),
     }
 
-    response2 = await authenticated_client.post("/annotations/sequences/", json=payload2)
+    response2 = await authenticated_client.post(
+        "/annotations/sequences/", json=payload2
+    )
     assert response2.status_code == 201
     annotation2_id = response2.json()["id"]
 
@@ -741,6 +779,7 @@ async def test_list_sequence_annotations_order_by_created_at(
     assert (
         annotation1_pos < annotation2_pos
     ), "Older annotation should come first in asc order"
+
 
 @pytest.mark.asyncio
 async def test_list_sequence_annotations_combined_filtering(
@@ -810,6 +849,7 @@ async def test_list_sequence_annotations_combined_filtering(
         not found_annotation
     ), "Should not find annotation when one filter criterion doesn't match"
 
+
 @pytest.mark.asyncio
 async def test_create_sequence_annotation_invalid_detection_id(
     authenticated_client: AsyncClient, sequence_session, detection_session
@@ -839,6 +879,7 @@ async def test_create_sequence_annotation_invalid_detection_id(
     assert "detail" in error_data
     assert "99999" in str(error_data["detail"])
     assert "do not exist" in str(error_data["detail"])
+
 
 @pytest.mark.asyncio
 async def test_create_sequence_annotation_mixed_valid_invalid_detection_ids(
@@ -883,6 +924,7 @@ async def test_create_sequence_annotation_mixed_valid_invalid_detection_ids(
     assert "88888" in error_detail
     assert "do not exist" in error_detail
 
+
 @pytest.mark.asyncio
 async def test_create_sequence_annotation_empty_bboxes(
     authenticated_client: AsyncClient, sequence_session, detection_session
@@ -910,6 +952,7 @@ async def test_create_sequence_annotation_empty_bboxes(
     assert "id" in result
     assert result["has_smoke"] is False
     assert result["has_false_positives"] is True  # Derived from false_positive_types
+
 
 @pytest.mark.asyncio
 async def test_update_sequence_annotation_invalid_detection_id(
@@ -965,6 +1008,7 @@ async def test_update_sequence_annotation_invalid_detection_id(
     assert "55555" in str(error_data["detail"])
     assert "do not exist" in str(error_data["detail"])
 
+
 @pytest.mark.asyncio
 async def test_update_sequence_annotation_without_annotation_field(
     authenticated_client: AsyncClient, sequence_session, detection_session
@@ -1017,7 +1061,7 @@ async def test_list_sequence_annotations_filter_by_false_positive_types(
     authenticated_client: AsyncClient, sequence_session
 ):
     """Test filtering sequence annotations by false positive types."""
-    
+
     # Create test sequences first
     test_sequences = [
         {
@@ -1030,10 +1074,10 @@ async def test_list_sequence_annotations_filter_by_false_positive_types(
             "lat": "43.5",
             "lon": "1.5",
             "recorded_at": "2024-01-15T10:30:00",
-            "last_seen_at": "2024-01-15T10:35:00"
+            "last_seen_at": "2024-01-15T10:35:00",
         },
         {
-            "source_api": "pyronear_french", 
+            "source_api": "pyronear_french",
             "alert_api_id": "9002",
             "camera_name": "FP Test Camera 2",
             "camera_id": "902",
@@ -1042,11 +1086,11 @@ async def test_list_sequence_annotations_filter_by_false_positive_types(
             "lat": "43.0",
             "lon": "1.5",
             "recorded_at": "2024-01-15T10:30:00",
-            "last_seen_at": "2024-01-15T10:35:00"
+            "last_seen_at": "2024-01-15T10:35:00",
         },
         {
             "source_api": "pyronear_french",
-            "alert_api_id": "9003", 
+            "alert_api_id": "9003",
             "camera_name": "FP Test Camera 3",
             "camera_id": "903",
             "organisation_name": "Test Org",
@@ -1054,10 +1098,10 @@ async def test_list_sequence_annotations_filter_by_false_positive_types(
             "lat": "43.5",
             "lon": "2.0",
             "recorded_at": "2024-01-15T10:30:00",
-            "last_seen_at": "2024-01-15T10:35:00"
-        }
+            "last_seen_at": "2024-01-15T10:35:00",
+        },
     ]
-    
+
     # Create sequences and get their IDs
     sequence_ids = []
     for seq_data in test_sequences:
@@ -1070,28 +1114,33 @@ async def test_list_sequence_annotations_filter_by_false_positive_types(
     for i, seq_id in enumerate(sequence_ids, 1):
         detection_payload = {
             "sequence_id": str(seq_id),
-            "alert_api_id": str(i + 1000), 
+            "alert_api_id": str(i + 1000),
             "recorded_at": "2024-01-15T10:25:00",
-            "algo_predictions": json.dumps({
-                "predictions": [
-                    {
-                        "xyxyn": [0.1, 0.1, 0.2, 0.2],
-                        "confidence": 0.85,
-                        "class_name": "smoke"
-                    }
-                ]
-            })
+            "algo_predictions": json.dumps(
+                {
+                    "predictions": [
+                        {
+                            "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                            "confidence": 0.85,
+                            "class_name": "smoke",
+                        }
+                    ]
+                }
+            ),
         }
-        
+
         # Create a simple test image
         import io
-        img = Image.new('RGB', (100, 100), color='red')
+
+        img = Image.new("RGB", (100, 100), color="red")
         img_bytes = io.BytesIO()
-        img.save(img_bytes, format='JPEG')
+        img.save(img_bytes, format="JPEG")
         img_bytes.seek(0)
-        
+
         files = {"file": ("test.jpg", img_bytes, "image/jpeg")}
-        response = await authenticated_client.post("/detections", data=detection_payload, files=files)
+        response = await authenticated_client.post(
+            "/detections", data=detection_payload, files=files
+        )
         assert response.status_code == 201
         detection_ids.append(response.json()["id"])
 
@@ -1108,11 +1157,16 @@ async def test_list_sequence_annotations_filter_by_false_positive_types(
                     {
                         "is_smoke": False,
                         "false_positive_types": ["antenna", "building"],
-                        "bboxes": [{"detection_id": detection_ids[0], "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                        "bboxes": [
+                            {
+                                "detection_id": detection_ids[0],
+                                "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                            }
+                        ],
                     }
                 ]
             },
-            "processing_stage": "annotated"
+            "processing_stage": "annotated",
         },
         {
             "sequence_id": sequence_ids[1],
@@ -1125,11 +1179,16 @@ async def test_list_sequence_annotations_filter_by_false_positive_types(
                     {
                         "is_smoke": False,
                         "false_positive_types": ["lens_flare"],
-                        "bboxes": [{"detection_id": detection_ids[1], "xyxyn": [0.2, 0.2, 0.3, 0.3]}],
+                        "bboxes": [
+                            {
+                                "detection_id": detection_ids[1],
+                                "xyxyn": [0.2, 0.2, 0.3, 0.3],
+                            }
+                        ],
                     }
                 ]
             },
-            "processing_stage": "annotated"
+            "processing_stage": "annotated",
         },
         {
             "sequence_id": sequence_ids[2],
@@ -1142,47 +1201,64 @@ async def test_list_sequence_annotations_filter_by_false_positive_types(
                     {
                         "is_smoke": True,
                         "false_positive_types": [],
-                        "bboxes": [{"detection_id": detection_ids[2], "xyxyn": [0.3, 0.3, 0.4, 0.4]}],
+                        "bboxes": [
+                            {
+                                "detection_id": detection_ids[2],
+                                "xyxyn": [0.3, 0.3, 0.4, 0.4],
+                            }
+                        ],
                     }
                 ]
             },
-            "processing_stage": "annotated"
-        }
+            "processing_stage": "annotated",
+        },
     ]
 
     # Create annotations
     annotation_ids = []
     for annotation_data in test_annotations:
-        response = await authenticated_client.post("/annotations/sequences/", json=annotation_data)
+        response = await authenticated_client.post(
+            "/annotations/sequences/", json=annotation_data
+        )
         assert response.status_code == 201
         annotation_ids.append(response.json()["id"])
 
     # Test 1: Filter by single false positive type - should match first annotation
-    response = await authenticated_client.get("/annotations/sequences/?false_positive_types=antenna")
+    response = await authenticated_client.get(
+        "/annotations/sequences/?false_positive_types=antenna"
+    )
     assert response.status_code == 200
     data = response.json()
     filtered_annotations = data["items"]
-    
+
     # Should only match first annotation
-    matching_ids = [ann["id"] for ann in filtered_annotations if ann["id"] in annotation_ids]
+    matching_ids = [
+        ann["id"] for ann in filtered_annotations if ann["id"] in annotation_ids
+    ]
     assert annotation_ids[0] in matching_ids
     assert annotation_ids[1] not in matching_ids
     assert annotation_ids[2] not in matching_ids
 
     # Test 2: Filter by multiple false positive types - should match first two annotations
-    response = await authenticated_client.get("/annotations/sequences/?false_positive_types=antenna&false_positive_types=lens_flare")
+    response = await authenticated_client.get(
+        "/annotations/sequences/?false_positive_types=antenna&false_positive_types=lens_flare"
+    )
     assert response.status_code == 200
     data = response.json()
     filtered_annotations = data["items"]
-    
+
     # Should match first two annotations
-    matching_ids = [ann["id"] for ann in filtered_annotations if ann["id"] in annotation_ids]
+    matching_ids = [
+        ann["id"] for ann in filtered_annotations if ann["id"] in annotation_ids
+    ]
     assert annotation_ids[0] in matching_ids
     assert annotation_ids[1] in matching_ids
     assert annotation_ids[2] not in matching_ids
 
     # Test 3: Filter by non-existent false positive type - should return validation error
-    response = await authenticated_client.get("/annotations/sequences/?false_positive_types=nonexistent")
+    response = await authenticated_client.get(
+        "/annotations/sequences/?false_positive_types=nonexistent"
+    )
     assert response.status_code == 422
     error_data = response.json()
     assert "detail" in error_data
@@ -1191,14 +1267,20 @@ async def test_list_sequence_annotations_filter_by_false_positive_types(
 
 
 @pytest.mark.asyncio
-async def test_list_sequence_annotations_false_positive_types_validation(authenticated_client: AsyncClient):
+async def test_list_sequence_annotations_false_positive_types_validation(
+    authenticated_client: AsyncClient,
+):
     """Test that invalid false positive types return proper validation errors."""
     # Test with invalid false positive type - should return 422 validation error
-    response = await authenticated_client.get("/annotations/sequences/?false_positive_types=invalid_type")
+    response = await authenticated_client.get(
+        "/annotations/sequences/?false_positive_types=invalid_type"
+    )
     assert response.status_code == 422
-    
+
     # Test with mix of valid and invalid types
-    response = await authenticated_client.get("/annotations/sequences/?false_positive_types=antenna&false_positive_types=invalid_type")
+    response = await authenticated_client.get(
+        "/annotations/sequences/?false_positive_types=antenna&false_positive_types=invalid_type"
+    )
     assert response.status_code == 422
 
 
@@ -1207,32 +1289,37 @@ async def test_false_positive_sequence_auto_annotated_detection_annotations(
     authenticated_client: AsyncClient, sequence_session
 ):
     """Test that false positive sequences (no smoke, no missed smoke, has false positives) automatically create ANNOTATED detection annotations."""
-    
+
     # Create a detection for the sequence first
     detection_payload = {
         "sequence_id": "1",
         "alert_api_id": "2001",
         "recorded_at": "2024-01-15T10:25:00",
-        "algo_predictions": json.dumps({
-            "predictions": [
-                {
-                    "xyxyn": [0.1, 0.1, 0.3, 0.3],
-                    "confidence": 0.87,
-                    "class_name": "smoke"
-                }
-            ]
-        })
+        "algo_predictions": json.dumps(
+            {
+                "predictions": [
+                    {
+                        "xyxyn": [0.1, 0.1, 0.3, 0.3],
+                        "confidence": 0.87,
+                        "class_name": "smoke",
+                    }
+                ]
+            }
+        ),
     }
-    
+
     # Create test image
     import io
-    img = Image.new('RGB', (100, 100), color='blue')
+
+    img = Image.new("RGB", (100, 100), color="blue")
     img_bytes = io.BytesIO()
-    img.save(img_bytes, format='JPEG')
+    img.save(img_bytes, format="JPEG")
     img_bytes.seek(0)
-    
+
     files = {"file": ("test.jpg", img_bytes, "image/jpeg")}
-    response = await authenticated_client.post("/detections", data=detection_payload, files=files)
+    response = await authenticated_client.post(
+        "/detections", data=detection_payload, files=files
+    )
     assert response.status_code == 201
     detection_id = response.json()["id"]
 
@@ -1244,8 +1331,13 @@ async def test_false_positive_sequence_auto_annotated_detection_annotations(
             "sequences_bbox": [
                 {
                     "is_smoke": False,  # No smoke
-                    "false_positive_types": ["antenna", "building"],  # Has false positives
-                    "bboxes": [{"detection_id": detection_id, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                    "false_positive_types": [
+                        "antenna",
+                        "building",
+                    ],  # Has false positives
+                    "bboxes": [
+                        {"detection_id": detection_id, "xyxyn": [0.1, 0.1, 0.2, 0.2]}
+                    ],
                 }
             ]
         },
@@ -1254,28 +1346,32 @@ async def test_false_positive_sequence_auto_annotated_detection_annotations(
     }
 
     # Create the sequence annotation - this should trigger auto-creation of detection annotations
-    response = await authenticated_client.post("/annotations/sequences/", json=false_positive_payload)
+    response = await authenticated_client.post(
+        "/annotations/sequences/", json=false_positive_payload
+    )
     assert response.status_code == 201
     seq_annotation = response.json()
-    
+
     # Verify sequence annotation properties
     assert seq_annotation["has_smoke"] is False
     assert seq_annotation["has_false_positives"] is True
     assert seq_annotation["has_missed_smoke"] is False
 
     # Check that a detection annotation was automatically created
-    response = await authenticated_client.get(f"/annotations/detections/?sequence_id=1")
+    response = await authenticated_client.get("/annotations/detections/?sequence_id=1")
     assert response.status_code == 200
     detection_annotations = response.json()["items"]
-    
+
     # Should have one detection annotation for our detection
     detection_annotation = None
     for ann in detection_annotations:
         if ann["detection_id"] == detection_id:
             detection_annotation = ann
             break
-    
-    assert detection_annotation is not None, "Detection annotation should be auto-created"
+
+    assert (
+        detection_annotation is not None
+    ), "Detection annotation should be auto-created"
     # For false positive sequences, detection annotations should be automatically ANNOTATED
     assert detection_annotation["processing_stage"] == "annotated"
     # Should have empty annotation (no bounding boxes needed for false positives)
@@ -1287,39 +1383,34 @@ async def test_true_positive_sequence_pre_populated_detection_annotations(
     authenticated_client: AsyncClient, sequence_session
 ):
     """Test that true positive sequences (has smoke, no missed smoke, no false positives) create VISUAL_CHECK detection annotations with pre-populated predictions."""
-    
+
     # Create a detection with algo_predictions for the sequence
     algo_predictions = {
         "predictions": [
-            {
-                "xyxyn": [0.1, 0.2, 0.4, 0.6],
-                "confidence": 0.92,
-                "class_name": "smoke"
-            },
-            {
-                "xyxyn": [0.5, 0.3, 0.8, 0.7],
-                "confidence": 0.85,
-                "class_name": "fire"
-            }
+            {"xyxyn": [0.1, 0.2, 0.4, 0.6], "confidence": 0.92, "class_name": "smoke"},
+            {"xyxyn": [0.5, 0.3, 0.8, 0.7], "confidence": 0.85, "class_name": "fire"},
         ]
     }
-    
+
     detection_payload = {
         "sequence_id": "1",
-        "alert_api_id": "3001", 
+        "alert_api_id": "3001",
         "recorded_at": "2024-01-15T10:25:00",
-        "algo_predictions": json.dumps(algo_predictions)
+        "algo_predictions": json.dumps(algo_predictions),
     }
-    
+
     # Create test image
     import io
-    img = Image.new('RGB', (100, 100), color='orange')
+
+    img = Image.new("RGB", (100, 100), color="orange")
     img_bytes = io.BytesIO()
-    img.save(img_bytes, format='JPEG')
+    img.save(img_bytes, format="JPEG")
     img_bytes.seek(0)
-    
+
     files = {"file": ("test.jpg", img_bytes, "image/jpeg")}
-    response = await authenticated_client.post("/detections", data=detection_payload, files=files)
+    response = await authenticated_client.post(
+        "/detections", data=detection_payload, files=files
+    )
     assert response.status_code == 201
     detection_id = response.json()["id"]
 
@@ -1332,7 +1423,9 @@ async def test_true_positive_sequence_pre_populated_detection_annotations(
                 {
                     "is_smoke": True,  # Has smoke
                     "false_positive_types": [],  # No false positives
-                    "bboxes": [{"detection_id": detection_id, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                    "bboxes": [
+                        {"detection_id": detection_id, "xyxyn": [0.1, 0.1, 0.2, 0.2]}
+                    ],
                 }
             ]
         },
@@ -1341,44 +1434,48 @@ async def test_true_positive_sequence_pre_populated_detection_annotations(
     }
 
     # Create the sequence annotation - this should trigger auto-creation of detection annotations
-    response = await authenticated_client.post("/annotations/sequences/", json=true_positive_payload)
+    response = await authenticated_client.post(
+        "/annotations/sequences/", json=true_positive_payload
+    )
     assert response.status_code == 201
     seq_annotation = response.json()
-    
+
     # Verify sequence annotation properties
     assert seq_annotation["has_smoke"] is True
     assert seq_annotation["has_false_positives"] is False
     assert seq_annotation["has_missed_smoke"] is False
 
     # Check that a detection annotation was automatically created
-    response = await authenticated_client.get(f"/annotations/detections/?sequence_id=1")
+    response = await authenticated_client.get("/annotations/detections/?sequence_id=1")
     assert response.status_code == 200
     detection_annotations = response.json()["items"]
-    
+
     # Should have detection annotations for our detection
     detection_annotation = None
     for ann in detection_annotations:
         if ann["detection_id"] == detection_id:
             detection_annotation = ann
             break
-    
-    assert detection_annotation is not None, "Detection annotation should be auto-created"
+
+    assert (
+        detection_annotation is not None
+    ), "Detection annotation should be auto-created"
     # For true positive sequences, detection annotations should be VISUAL_CHECK (ready for review)
     assert detection_annotation["processing_stage"] == "visual_check"
-    
+
     # Should have pre-populated annotation from model predictions
     annotation_data = detection_annotation["annotation"]
     assert "annotation" in annotation_data
     annotations = annotation_data["annotation"]
-    
+
     # Should have 2 annotations from the 2 model predictions
     assert len(annotations) == 2
-    
+
     # Check first annotation
     assert annotations[0]["xyxyn"] == [0.1, 0.2, 0.4, 0.6]
     assert annotations[0]["class_name"] == "smoke"
     assert annotations[0]["smoke_type"] == "wildfire"  # Default for true positives
-    
+
     # Check second annotation
     assert annotations[1]["xyxyn"] == [0.5, 0.3, 0.8, 0.7]
     assert annotations[1]["class_name"] == "fire"
@@ -1390,24 +1487,27 @@ async def test_true_positive_sequence_empty_predictions_fallback(
     authenticated_client: AsyncClient, sequence_session
 ):
     """Test that true positive sequences with no/invalid model predictions fall back to empty annotations."""
-    
+
     # Create a detection with empty algo_predictions
     detection_payload = {
         "sequence_id": "1",
         "alert_api_id": "4001",
         "recorded_at": "2024-01-15T10:25:00",
-        "algo_predictions": json.dumps({"predictions": []})  # Empty predictions
+        "algo_predictions": json.dumps({"predictions": []}),  # Empty predictions
     }
-    
+
     # Create test image
     import io
-    img = Image.new('RGB', (100, 100), color='green')
+
+    img = Image.new("RGB", (100, 100), color="green")
     img_bytes = io.BytesIO()
-    img.save(img_bytes, format='JPEG')
+    img.save(img_bytes, format="JPEG")
     img_bytes.seek(0)
-    
+
     files = {"file": ("test.jpg", img_bytes, "image/jpeg")}
-    response = await authenticated_client.post("/detections", data=detection_payload, files=files)
+    response = await authenticated_client.post(
+        "/detections", data=detection_payload, files=files
+    )
     assert response.status_code == 201
     detection_id = response.json()["id"]
 
@@ -1420,7 +1520,9 @@ async def test_true_positive_sequence_empty_predictions_fallback(
                 {
                     "is_smoke": True,
                     "false_positive_types": [],
-                    "bboxes": [{"detection_id": detection_id, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                    "bboxes": [
+                        {"detection_id": detection_id, "xyxyn": [0.1, 0.1, 0.2, 0.2]}
+                    ],
                 }
             ]
         },
@@ -1429,20 +1531,22 @@ async def test_true_positive_sequence_empty_predictions_fallback(
     }
 
     # Create the sequence annotation
-    response = await authenticated_client.post("/annotations/sequences/", json=true_positive_payload)
+    response = await authenticated_client.post(
+        "/annotations/sequences/", json=true_positive_payload
+    )
     assert response.status_code == 201
 
     # Check the detection annotation
-    response = await authenticated_client.get(f"/annotations/detections/?sequence_id=1")
+    response = await authenticated_client.get("/annotations/detections/?sequence_id=1")
     assert response.status_code == 200
     detection_annotations = response.json()["items"]
-    
+
     detection_annotation = None
     for ann in detection_annotations:
         if ann["detection_id"] == detection_id:
             detection_annotation = ann
             break
-    
+
     assert detection_annotation is not None
     assert detection_annotation["processing_stage"] == "visual_check"
     # Should fall back to empty annotation when predictions are empty
@@ -1454,32 +1558,37 @@ async def test_mixed_sequence_normal_bbox_annotation(
     authenticated_client: AsyncClient, sequence_session
 ):
     """Test that mixed sequences (smoke + false positives or missed smoke) create BBOX_ANNOTATION detection annotations."""
-    
+
     # Create a detection for the sequence
     detection_payload = {
         "sequence_id": "1",
         "alert_api_id": "5001",
         "recorded_at": "2024-01-15T10:25:00",
-        "algo_predictions": json.dumps({
-            "predictions": [
-                {
-                    "xyxyn": [0.1, 0.1, 0.3, 0.3],
-                    "confidence": 0.75,
-                    "class_name": "smoke"
-                }
-            ]
-        })
+        "algo_predictions": json.dumps(
+            {
+                "predictions": [
+                    {
+                        "xyxyn": [0.1, 0.1, 0.3, 0.3],
+                        "confidence": 0.75,
+                        "class_name": "smoke",
+                    }
+                ]
+            }
+        ),
     }
-    
+
     # Create test image
     import io
-    img = Image.new('RGB', (100, 100), color='purple')
+
+    img = Image.new("RGB", (100, 100), color="purple")
     img_bytes = io.BytesIO()
-    img.save(img_bytes, format='JPEG')
+    img.save(img_bytes, format="JPEG")
     img_bytes.seek(0)
-    
+
     files = {"file": ("test.jpg", img_bytes, "image/jpeg")}
-    response = await authenticated_client.post("/detections", data=detection_payload, files=files)
+    response = await authenticated_client.post(
+        "/detections", data=detection_payload, files=files
+    )
     assert response.status_code == 201
     detection_id = response.json()["id"]
 
@@ -1492,7 +1601,9 @@ async def test_mixed_sequence_normal_bbox_annotation(
                 {
                     "is_smoke": True,  # Has smoke
                     "false_positive_types": ["antenna"],  # Also has false positives
-                    "bboxes": [{"detection_id": detection_id, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                    "bboxes": [
+                        {"detection_id": detection_id, "xyxyn": [0.1, 0.1, 0.2, 0.2]}
+                    ],
                 }
             ]
         },
@@ -1501,26 +1612,28 @@ async def test_mixed_sequence_normal_bbox_annotation(
     }
 
     # Create the sequence annotation
-    response = await authenticated_client.post("/annotations/sequences/", json=mixed_payload)
+    response = await authenticated_client.post(
+        "/annotations/sequences/", json=mixed_payload
+    )
     assert response.status_code == 201
     seq_annotation = response.json()
-    
+
     # Verify sequence annotation properties
     assert seq_annotation["has_smoke"] is True
     assert seq_annotation["has_false_positives"] is True
     assert seq_annotation["has_missed_smoke"] is False
 
     # Check the detection annotation
-    response = await authenticated_client.get(f"/annotations/detections/?sequence_id=1")
+    response = await authenticated_client.get("/annotations/detections/?sequence_id=1")
     assert response.status_code == 200
     detection_annotations = response.json()["items"]
-    
+
     detection_annotation = None
     for ann in detection_annotations:
         if ann["detection_id"] == detection_id:
             detection_annotation = ann
             break
-    
+
     assert detection_annotation is not None
     # Mixed sequences should use BBOX_ANNOTATION (manual drawing required)
     assert detection_annotation["processing_stage"] == "bbox_annotation"
@@ -1531,35 +1644,29 @@ async def test_mixed_sequence_normal_bbox_annotation(
 @pytest.mark.asyncio
 async def test_convert_algo_predictions_to_annotation_helper():
     """Test the convert_algo_predictions_to_annotation helper function directly."""
-    from app.api.api_v1.endpoints.sequence_annotations import convert_algo_predictions_to_annotation
-    
+    from app.api.api_v1.endpoints.sequence_annotations import (
+        convert_algo_predictions_to_annotation,
+    )
+
     # Test with valid predictions
     algo_predictions = {
         "predictions": [
-            {
-                "xyxyn": [0.1, 0.2, 0.4, 0.6],
-                "confidence": 0.92,
-                "class_name": "smoke"
-            },
-            {
-                "xyxyn": [0.5, 0.3, 0.8, 0.7],
-                "confidence": 0.85,
-                "class_name": "fire"
-            }
+            {"xyxyn": [0.1, 0.2, 0.4, 0.6], "confidence": 0.92, "class_name": "smoke"},
+            {"xyxyn": [0.5, 0.3, 0.8, 0.7], "confidence": 0.85, "class_name": "fire"},
         ]
     }
-    
+
     result = convert_algo_predictions_to_annotation(algo_predictions)
-    
+
     assert "annotation" in result
     annotations = result["annotation"]
     assert len(annotations) == 2
-    
+
     # Check first annotation
     assert annotations[0]["xyxyn"] == [0.1, 0.2, 0.4, 0.6]
     assert annotations[0]["class_name"] == "smoke"
     assert annotations[0]["smoke_type"] == "wildfire"
-    
+
     # Check second annotation
     assert annotations[1]["xyxyn"] == [0.5, 0.3, 0.8, 0.7]
     assert annotations[1]["class_name"] == "fire"
@@ -1568,68 +1675,64 @@ async def test_convert_algo_predictions_to_annotation_helper():
     # Test with None input
     result = convert_algo_predictions_to_annotation(None)
     assert result == {"annotation": []}
-    
+
     # Test with empty predictions
     result = convert_algo_predictions_to_annotation({"predictions": []})
     assert result == {"annotation": []}
-    
+
     # Test with missing predictions key
     result = convert_algo_predictions_to_annotation({"other_key": "value"})
     assert result == {"annotation": []}
-    
+
     # Test with invalid prediction format (missing xyxyn)
     invalid_predictions = {
         "predictions": [
             {
                 "confidence": 0.85,
-                "class_name": "smoke"
+                "class_name": "smoke",
                 # Missing xyxyn
             },
-            {
-                "xyxyn": [0.1, 0.2, 0.3, 0.4],
-                "confidence": 0.90,
-                "class_name": "fire"
-            }
+            {"xyxyn": [0.1, 0.2, 0.3, 0.4], "confidence": 0.90, "class_name": "fire"},
         ]
     }
-    
+
     result = convert_algo_predictions_to_annotation(invalid_predictions)
     # Should skip invalid prediction and include only the valid one
     assert len(result["annotation"]) == 1
     assert result["annotation"][0]["xyxyn"] == [0.1, 0.2, 0.3, 0.4]
     assert result["annotation"][0]["class_name"] == "fire"
-    
+
     # Test with invalid xyxyn format
     invalid_xyxyn_predictions = {
         "predictions": [
             {
                 "xyxyn": [0.1, 0.2],  # Too short
                 "confidence": 0.85,
-                "class_name": "smoke"
+                "class_name": "smoke",
             },
             {
                 "xyxyn": "not_a_list",  # Wrong type
                 "confidence": 0.90,
-                "class_name": "fire"
-            }
+                "class_name": "fire",
+            },
         ]
     }
-    
+
     result = convert_algo_predictions_to_annotation(invalid_xyxyn_predictions)
     # Should skip both invalid predictions
     assert result == {"annotation": []}
-    
+
     # Test with missing class_name (should default to "smoke")
     missing_class_predictions = {
         "predictions": [
             {
                 "xyxyn": [0.1, 0.2, 0.3, 0.4],
-                "confidence": 0.85
+                "confidence": 0.85,
                 # Missing class_name
             }
         ]
     }
-    
+
     result = convert_algo_predictions_to_annotation(missing_class_predictions)
     assert len(result["annotation"]) == 1
     assert result["annotation"][0]["class_name"] == "smoke"  # Default value

@@ -22,6 +22,6 @@ def login(login_data: LoginRequest) -> LoginResponse:
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     access_token = create_access_token(data={"sub": login_data.username})
     return LoginResponse(access_token=access_token, token_type="bearer")
