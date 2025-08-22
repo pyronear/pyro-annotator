@@ -5,7 +5,7 @@
 
 import hashlib
 import logging
-from datetime import datetime
+from datetime import datetime, UTC
 from mimetypes import guess_extension
 from typing import Any, Dict, Optional, Union
 
@@ -263,7 +263,7 @@ def _generate_detection_bucket_key(
     Fallback: detections/legacy/{YYYYMMDD_HHMMSS}_{hash}.{ext} if metadata unavailable
     """
     # Use recorded_at timestamp or fallback to upload time
-    timestamp = recorded_at or datetime.utcnow()
+    timestamp = recorded_at or datetime.now(UTC)
     timestamp_str = timestamp.strftime("%Y%m%d_%H%M%S")
 
     # Organized structure if metadata available

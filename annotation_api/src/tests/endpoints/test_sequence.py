@@ -1,10 +1,10 @@
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 import pytest
 from httpx import AsyncClient
 
-now = datetime.utcnow()
+now = datetime.now(UTC)
 
 
 @pytest.mark.asyncio
@@ -385,7 +385,7 @@ async def test_list_sequences_has_annotation_filter(
                 ]
             },
             "processing_stage": "imported",
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
         }
         response = await authenticated_client.post(
             "/annotations/sequences/", json=annotation_payload

@@ -3,10 +3,10 @@
 # This program is licensed under the Apache License 2.0.
 # See LICENSE or go to <https://www.apache.org/licenses/LICENSE-2.0> for full license details.
 
-from datetime import datetime
+from datetime import datetime, UTC
 from enum import Enum
 from typing import List, Optional
-from sqlalchemy import Column, ForeignKey, Index, UniqueConstraint
+from sqlalchemy import Column, DateTime, ForeignKey, Index, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
@@ -166,9 +166,12 @@ class Sequence(SQLModel, table=True):
     )
     source_api: SourceApi
     alert_api_id: int
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    recorded_at: datetime
-    last_seen_at: datetime
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        sa_column=Column(DateTime(timezone=True))
+    )
+    recorded_at: datetime = Field(sa_column=Column(DateTime(timezone=True)))
+    last_seen_at: datetime = Field(sa_column=Column(DateTime(timezone=True)))
     camera_name: str
     camera_id: int
     lat: float
@@ -211,8 +214,14 @@ class SequenceAnnotation(SQLModel, table=True):
     has_missed_smoke: bool
     is_unsure: Optional[bool] = Field(default=False)
     annotation: dict = Field(sa_column=Column(JSONB))
-    created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
-    updated_at: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        sa_column=Column(DateTime(timezone=True))
+    )
+    updated_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True))
+    )
     processing_stage: SequenceAnnotationProcessingStage
 
 
@@ -228,8 +237,11 @@ class Detection(SQLModel, table=True):
     id: int = Field(
         default=None, primary_key=True, sa_column_kwargs={"autoincrement": True}
     )
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    recorded_at: datetime
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        sa_column=Column(DateTime(timezone=True))
+    )
+    recorded_at: datetime = Field(sa_column=Column(DateTime(timezone=True)))
     alert_api_id: int
     sequence_id: Optional[int] = Field(
         default=None, sa_column=Column(ForeignKey("sequences.id", ondelete="CASCADE"))
@@ -255,5 +267,11 @@ class DetectionAnnotation(SQLModel, table=True):
     )
     annotation: dict = Field(default=None, sa_column=Column(JSONB))
     processing_stage: DetectionAnnotationProcessingStage = Field(default=None)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        sa_column=Column(DateTime(timezone=True))
+    )
+    updated_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True))
+    )

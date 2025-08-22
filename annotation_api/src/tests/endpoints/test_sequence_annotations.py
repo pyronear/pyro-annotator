@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, UTC
 import json
 
 import pytest
@@ -7,7 +7,7 @@ from PIL import Image
 
 from app import models
 
-now = datetime.utcnow()
+now = datetime.now(UTC)
 
 
 @pytest.mark.asyncio
@@ -27,7 +27,7 @@ async def test_create_sequence_annotation(
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
     response = await authenticated_client.post("/annotations/sequences/", json=payload)
@@ -129,7 +129,7 @@ async def test_delete_sequence_annotation(
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
     create_resp = await authenticated_client.post(
@@ -171,7 +171,7 @@ async def test_delete_sequence_annotation_does_not_cascade_sequence(
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
     create_resp = await authenticated_client.post(
@@ -228,7 +228,7 @@ async def test_create_sequence_annotation_invalid_bbox(
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
     response = await authenticated_client.post("/annotations/sequences/", json=payload)
@@ -254,7 +254,7 @@ async def test_create_sequence_annotation_invalid_false_positive_type(
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
     response = await authenticated_client.post("/annotations/sequences/", json=payload)
@@ -281,7 +281,7 @@ async def test_create_sequence_annotation_unique_constraint_violation(
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
     # First annotation should be created successfully
@@ -306,7 +306,7 @@ async def test_create_sequence_annotation_unique_constraint_violation(
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
     # Try to create second annotation for same sequence - should fail with 409 Conflict
@@ -341,7 +341,7 @@ async def test_create_sequence_annotation_different_sequences_allowed(
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
     response1 = await authenticated_client.post(
@@ -362,9 +362,9 @@ async def test_create_sequence_annotation_different_sequences_allowed(
         "azimuth": "90",
         "lat": "0.0",
         "lon": "0.0",
-        "created_at": datetime.utcnow().isoformat(),
-        "recorded_at": datetime.utcnow().isoformat(),
-        "last_seen_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
+        "recorded_at": datetime.now(UTC).isoformat(),
+        "last_seen_at": datetime.now(UTC).isoformat(),
     }
 
     sequence_response = await authenticated_client.post(
@@ -387,7 +387,7 @@ async def test_create_sequence_annotation_different_sequences_allowed(
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
     response2 = await authenticated_client.post(
@@ -422,7 +422,7 @@ async def test_list_sequence_annotations_filter_by_has_smoke(
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
     response = await authenticated_client.post("/annotations/sequences/", json=payload)
@@ -478,7 +478,7 @@ async def test_list_sequence_annotations_filter_by_has_false_positives(
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
     response = await authenticated_client.post("/annotations/sequences/", json=payload)
@@ -526,7 +526,7 @@ async def test_list_sequence_annotations_filter_by_false_positive_type(
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
     response = await authenticated_client.post("/annotations/sequences/", json=payload)
@@ -607,7 +607,7 @@ async def test_list_sequence_annotations_filter_by_processing_stage(
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
     response = await authenticated_client.post("/annotations/sequences/", json=payload)
@@ -655,7 +655,7 @@ async def test_list_sequence_annotations_order_by_created_at(
     import time
     from datetime import timedelta
 
-    base_time = datetime.utcnow()
+    base_time = datetime.now(UTC)
 
     # First annotation (older)
     payload1 = {
@@ -694,9 +694,9 @@ async def test_list_sequence_annotations_order_by_created_at(
         "azimuth": "90",
         "lat": "0.0",
         "lon": "0.0",
-        "created_at": datetime.utcnow().isoformat(),
-        "recorded_at": datetime.utcnow().isoformat(),
-        "last_seen_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
+        "recorded_at": datetime.now(UTC).isoformat(),
+        "last_seen_at": datetime.now(UTC).isoformat(),
     }
 
     sequence_response = await authenticated_client.post(
@@ -800,7 +800,7 @@ async def test_list_sequence_annotations_combined_filtering(
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
     response = await authenticated_client.post("/annotations/sequences/", json=payload)
@@ -870,7 +870,7 @@ async def test_create_sequence_annotation_invalid_detection_id(
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
     response = await authenticated_client.post("/annotations/sequences/", json=payload)
@@ -912,7 +912,7 @@ async def test_create_sequence_annotation_mixed_valid_invalid_detection_ids(
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
     response = await authenticated_client.post("/annotations/sequences/", json=payload)
@@ -943,7 +943,7 @@ async def test_create_sequence_annotation_empty_bboxes(
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
     response = await authenticated_client.post("/annotations/sequences/", json=payload)
@@ -973,7 +973,7 @@ async def test_update_sequence_annotation_invalid_detection_id(
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
     create_response = await authenticated_client.post(
@@ -1028,7 +1028,7 @@ async def test_update_sequence_annotation_without_annotation_field(
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
     create_response = await authenticated_client.post(
@@ -1342,7 +1342,7 @@ async def test_false_positive_sequence_auto_annotated_detection_annotations(
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
     # Create the sequence annotation - this should trigger auto-creation of detection annotations
@@ -1430,7 +1430,7 @@ async def test_true_positive_sequence_pre_populated_detection_annotations(
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
     # Create the sequence annotation - this should trigger auto-creation of detection annotations
@@ -1527,7 +1527,7 @@ async def test_true_positive_sequence_empty_predictions_fallback(
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
     # Create the sequence annotation
@@ -1608,7 +1608,7 @@ async def test_mixed_sequence_normal_bbox_annotation(
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
     # Create the sequence annotation

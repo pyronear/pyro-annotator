@@ -1,6 +1,6 @@
 import asyncio
 import io
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from typing import AsyncGenerator, Generator
 
 import pytest
@@ -20,7 +20,7 @@ from app.models import Detection, Sequence
 from app.services.storage import s3_service
 
 dt_format = "%Y-%m-%dT%H:%M:%S.%f"
-now = datetime.utcnow()
+now = datetime.now(UTC)
 
 DET_TABLE = [
     {

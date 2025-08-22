@@ -5,7 +5,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 __all__ = ["CameraRead"]
 
@@ -16,5 +16,6 @@ class CameraRead(BaseModel):
     id: int
     name: str
 
-    class Config:
-        json_encoders = {datetime: lambda v: v.isoformat() if v else None}
+    model_config = ConfigDict(
+        json_encoders={datetime: lambda v: v.isoformat() if v else None}
+    )

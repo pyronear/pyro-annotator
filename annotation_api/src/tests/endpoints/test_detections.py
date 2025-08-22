@@ -1,11 +1,11 @@
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 import pytest
 from httpx import AsyncClient
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-now = datetime.utcnow()
+now = datetime.now(UTC)
 
 
 @pytest.mark.asyncio

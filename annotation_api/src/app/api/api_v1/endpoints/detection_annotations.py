@@ -2,7 +2,7 @@
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, UTC
 from enum import Enum
 from typing import Optional
 
@@ -81,7 +81,7 @@ async def create_detection_annotation(
         detection_id=detection_id,
         annotation=validated_annotation.model_dump(),
         processing_stage=processing_stage,
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(UTC),
     )
 
     # Add and commit directly
@@ -217,7 +217,7 @@ async def update_annotation(
     existing = await annotations.get(annotation_id, strict=True)
 
     # Start with existing data
-    update_dict = {"updated_at": datetime.utcnow()}
+    update_dict = {"updated_at": datetime.now(UTC)}
 
     # If annotation is being updated, validate it
     if payload.annotation is not None:

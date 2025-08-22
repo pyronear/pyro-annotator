@@ -13,7 +13,7 @@ These tests verify the fixes implemented for the detection annotation workflow i
 """
 
 import json
-from datetime import datetime
+from datetime import datetime, UTC
 
 import pytest
 from httpx import AsyncClient
@@ -21,7 +21,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app import models
 
-now = datetime.utcnow()
+now = datetime.now(UTC)
 
 
 @pytest.mark.asyncio
@@ -50,7 +50,7 @@ async def test_auto_create_detection_annotations_correct_structure(
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,  # This should trigger auto-creation
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
     response = await authenticated_client.post(
@@ -165,7 +165,7 @@ async def test_auto_create_detection_annotations_update_scenario(
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,  # Not 'annotated'
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
     create_response = await authenticated_client.post(
@@ -260,7 +260,7 @@ async def test_auto_create_detection_annotations_processing_stages(
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
     response1 = await authenticated_client.post(
@@ -302,9 +302,9 @@ async def test_auto_create_detection_annotations_processing_stages(
         "azimuth": "90",
         "lat": "0.0",
         "lon": "0.0",
-        "created_at": datetime.utcnow().isoformat(),
-        "recorded_at": datetime.utcnow().isoformat(),
-        "last_seen_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
+        "recorded_at": datetime.now(UTC).isoformat(),
+        "last_seen_at": datetime.now(UTC).isoformat(),
     }
 
     sequence_response = await authenticated_client.post(
@@ -317,7 +317,7 @@ async def test_auto_create_detection_annotations_processing_stages(
     detection_payload = {
         "sequence_id": str(sequence2_id),
         "alert_api_id": "1002",
-        "recorded_at": datetime.utcnow().isoformat(),
+        "recorded_at": datetime.now(UTC).isoformat(),
         "algo_predictions": json.dumps(
             {
                 "predictions": [
@@ -355,7 +355,7 @@ async def test_auto_create_detection_annotations_processing_stages(
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
     response2 = await authenticated_client.post(
@@ -404,9 +404,9 @@ async def test_auto_create_detection_annotations_processing_stages(
         "azimuth": "90",
         "lat": "0.0",
         "lon": "0.0",
-        "created_at": datetime.utcnow().isoformat(),
-        "recorded_at": datetime.utcnow().isoformat(),
-        "last_seen_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
+        "recorded_at": datetime.now(UTC).isoformat(),
+        "last_seen_at": datetime.now(UTC).isoformat(),
     }
 
     sequence_response_3 = await authenticated_client.post(
@@ -419,7 +419,7 @@ async def test_auto_create_detection_annotations_processing_stages(
     detection_payload_3 = {
         "sequence_id": str(sequence3_id),
         "alert_api_id": "1004",
-        "recorded_at": datetime.utcnow().isoformat(),
+        "recorded_at": datetime.now(UTC).isoformat(),
         "algo_predictions": json.dumps(
             {
                 "predictions": [
@@ -456,7 +456,7 @@ async def test_auto_create_detection_annotations_processing_stages(
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
     response3 = await authenticated_client.post(
@@ -499,7 +499,7 @@ async def test_detection_annotation_update_workflow(
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
     seq_response = await authenticated_client.post(
@@ -588,7 +588,7 @@ async def test_detection_annotation_validation_requirements(
     detection_payload = {
         "sequence_id": "1",
         "alert_api_id": "2001",
-        "recorded_at": datetime.utcnow().isoformat(),
+        "recorded_at": datetime.now(UTC).isoformat(),
         "algo_predictions": json.dumps(
             {
                 "predictions": [
@@ -772,7 +772,7 @@ async def test_auto_create_avoids_duplicate_detection_annotations(
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
     seq_response = await authenticated_client.post(
@@ -846,7 +846,7 @@ async def test_no_auto_create_when_not_annotated_stage(
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,  # NOT annotated
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
     seq_response = await authenticated_client.post(
@@ -880,7 +880,7 @@ async def test_no_auto_create_when_not_annotated_stage(
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.READY_TO_ANNOTATE.value,  # NOT annotated
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
     # Delete the first annotation to create the second one for same sequence
