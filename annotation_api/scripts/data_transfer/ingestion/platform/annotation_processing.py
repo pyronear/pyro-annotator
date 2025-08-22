@@ -531,6 +531,16 @@ class SequenceAnalyzer:
             if x1 > x2 or y1 > y2:
                 return False
 
+            # Explicitly reject [0, 0, 0, 0] null coordinates (empty/null detections from platform API)
+            if coords == [0, 0, 0, 0]:
+                self.logger.debug(f"Rejecting null bbox coordinates: {coords}")
+                return False
+
+            # Reject zero-area bounding boxes (point boxes with no area for cropping)
+            if x1 == x2 and y1 == y2:
+                self.logger.debug(f"Rejecting zero-area bbox (point): {coords}")
+                return False
+
             return True
 
         except (TypeError, ValueError):

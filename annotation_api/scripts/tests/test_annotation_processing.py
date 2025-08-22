@@ -43,8 +43,10 @@ class TestSequenceAnalyzer:
         valid_coords = [
             [0.0, 0.0, 1.0, 1.0],  # Full image
             [0.1, 0.2, 0.8, 0.9],  # Normal case
-            [0.5, 0.5, 0.5, 0.5],  # Point (equal coordinates)
-            [0.0, 0.0, 0.0, 0.0],  # Zero point
+            [0.1, 0.2, 0.3, 0.4],  # Small but valid area
+            [0.0, 0.0, 0.1, 0.1],  # Small corner bbox
+            # Note: Zero-area bboxes like [0.5, 0.5, 0.5, 0.5] are now invalid to prevent empty crops
+            # Note: [0.0, 0.0, 0.0, 0.0] is now considered invalid to prevent empty sequence bboxes
         ]
         
         for coords in valid_coords:
@@ -69,6 +71,15 @@ class TestSequenceAnalyzer:
             [0.1, 0.9, 0.8, 0.2],   # y1 > y2
             [0.8, 0.9, 0.1, 0.2],   # Both wrong
             
+            # Null/empty bbox coordinates (should be rejected to prevent empty sequence bboxes)
+            [0, 0, 0, 0],           # Null coordinates from failed detections
+            [0.0, 0.0, 0.0, 0.0],   # Same as above but float format
+            
+            # Zero-area bounding boxes (point boxes with no area for cropping)
+            [0.5, 0.5, 0.5, 0.5],   # Point at center
+            [0.1, 0.3, 0.1, 0.3],   # Point at arbitrary location
+            [0.0, 1.0, 0.0, 1.0],   # Point at corner
+            
             # Non-numeric values
             ["0.1", 0.2, 0.8, 0.9],  # String
             [0.1, None, 0.8, 0.9],   # None
@@ -83,6 +94,86 @@ class TestSequenceAnalyzer:
         
         for coords in invalid_coords:
             assert not self.analyzer._is_valid_bbox_coords(coords), f"Should be invalid: {coords}"
+
+    def test_is_valid_bbox_coords_null_coordinates(self):
+        """Test that null/empty [0,0,0,0] coordinates are specifically rejected."""
+        # These should all be rejected to prevent empty sequence bboxes in annotation interface
+        null_coords = [
+            [0, 0, 0, 0],           # Integer format
+            [0.0, 0.0, 0.0, 0.0],   # Float format  
+        ]
+        
+        for coords in null_coords:
+            assert not self.analyzer._is_valid_bbox_coords(coords), f"Null coordinates should be invalid: {coords}"
+
+    def test_is_valid_bbox_coords_zero_area_coordinates(self):
+        """Test that zero-area (point) coordinates are specifically rejected."""
+        # These should all be rejected as they have no area for cropping
+        zero_area_coords = [
+            [0.5, 0.5, 0.5, 0.5],   # Point at center
+            [0.1, 0.3, 0.1, 0.3],   # Point at arbitrary location
+            [0.0, 0.0, 0.0, 0.0],   # Point at origin (also null)
+            [1.0, 1.0, 1.0, 1.0],   # Point at opposite corner
+            [0.25, 0.75, 0.25, 0.75], # Point at another location
+        ]
+        
+        for coords in zero_area_coords:
+            assert not self.analyzer._is_valid_bbox_coords(coords), f"Zero-area coordinates should be invalid: {coords}"
+
+    def test_create_sequence_bboxes_with_null_coordinates(self):
+        """Test sequence bbox creation filters out [0,0,0,0] coordinates completely."""
+        bbox_clusters = [
+            # Cluster with mix of valid and null coordinates
+            [
+                ([0.1, 0.2, 0.8, 0.9], 123),    # Valid
+                ([0, 0, 0, 0], 124),            # Null - should be filtered out
+                ([0.2, 0.3, 0.7, 0.8], 125),   # Valid
+            ],
+            # Cluster with only null coordinates - should be completely skipped
+            [
+                ([0, 0, 0, 0], 126),            # Null
+                ([0.0, 0.0, 0.0, 0.0], 127),   # Null (float format)
+            ],
+        ]
+        
+        with patch.object(self.analyzer, 'logger') as mock_logger:
+            result = self.analyzer._create_sequence_bboxes(bbox_clusters)
+        
+        # Should create only one SequenceBBox (second cluster completely skipped due to all null coordinates)
+        assert len(result) == 1
+        assert len(result[0].bboxes) == 2  # Only the valid coordinates from first cluster
+        
+        # Should have logged debug messages about rejected coordinates
+        debug_calls = [call for call in mock_logger.debug.call_args_list if "Rejecting null bbox" in str(call)]
+        assert len(debug_calls) >= 2  # At least 2 null coordinates rejected
+
+    def test_create_sequence_bboxes_with_zero_area_coordinates(self):
+        """Test sequence bbox creation filters out zero-area (point) coordinates."""
+        bbox_clusters = [
+            # Cluster with mix of valid and zero-area coordinates
+            [
+                ([0.1, 0.2, 0.8, 0.9], 123),    # Valid
+                ([0.5, 0.5, 0.5, 0.5], 124),    # Zero-area point - should be filtered out
+                ([0.2, 0.3, 0.7, 0.8], 125),    # Valid
+                ([0.1, 0.3, 0.1, 0.3], 126),    # Zero-area point - should be filtered out
+            ],
+            # Cluster with only zero-area coordinates - should be completely skipped
+            [
+                ([0.25, 0.75, 0.25, 0.75], 127), # Zero-area point
+                ([1.0, 1.0, 1.0, 1.0], 128),     # Zero-area point at corner
+            ],
+        ]
+        
+        with patch.object(self.analyzer, 'logger') as mock_logger:
+            result = self.analyzer._create_sequence_bboxes(bbox_clusters)
+        
+        # Should create only one SequenceBBox (second cluster completely skipped)
+        assert len(result) == 1
+        assert len(result[0].bboxes) == 2  # Only the valid coordinates from first cluster
+        
+        # Should have logged debug messages about rejected zero-area coordinates
+        debug_calls = [call for call in mock_logger.debug.call_args_list if "Rejecting zero-area bbox" in str(call)]
+        assert len(debug_calls) >= 3  # At least 3 zero-area coordinates rejected (2 from first cluster + 2 from second)
 
     def test_create_sequence_bboxes_valid_clusters(self):
         """Test sequence bbox creation with valid clusters."""
