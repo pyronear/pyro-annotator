@@ -80,6 +80,9 @@ The API provides enhanced endpoints with pagination, filtering, and ordering:
 
 ## Development Commands
 
+### Help & Reference
+- `make help` - Show all available make commands with descriptions
+
 ### Package Management
 - `uv sync` - Install production dependencies
 - `uv sync --group dev` - Install development dependencies (includes quality, test tools)
@@ -94,10 +97,19 @@ The API provides enhanced endpoints with pagination, filtering, and ordering:
 - `uv run mypy` - Type checking
 
 ### Testing
+
+#### Main Application Tests
 - `make test` - Run full test suite with coverage in Docker containers (includes live code mounting)
+- `make test-specific TEST=test_auth.py::test_login_valid_credentials` - Run specific main app test
 - `uv run pytest src/tests/ -s --cov=app` - Run tests locally with coverage (requires local setup)
 
-**Note**: The `make test` command uses a specialized Docker setup with:
+#### Scripts Tests (Annotation Processing, Data Import)
+- `make test-scripts` - Run scripts tests (annotation processing, data import, etc.)
+- `make test-scripts-cov` - Run scripts tests with coverage report
+- `make test-scripts-specific TEST=TestSequenceAnalyzer::test_create_sequence_bboxes_all_invalid_cluster` - Run specific scripts test
+- `make test-all` - Run all tests (main app + scripts)
+
+**Note**: The main `make test` command uses a specialized Docker setup with:
 - Multi-stage Dockerfile with dedicated test target that includes dev dependencies
 - Live code mounting via volumes (`./src/app:/app/app`, `./src/tests:/app/tests`) 
 - Proper test isolation with database cleanup between tests
@@ -105,6 +117,13 @@ The API provides enhanced endpoints with pagination, filtering, and ordering:
 - Comprehensive test suite with 192 test cases covering all endpoints and edge cases
 - Authenticated test fixtures for API endpoint testing
 - Clean test output with silenced debug messages and deprecation warnings
+
+**Scripts tests** are located in `scripts/tests/` and cover:
+- Coordinate validation and error handling for annotation processing
+- Empty sequence bbox prevention (critical bug fix)
+- IoU clustering and temporal bbox grouping algorithms  
+- Edge cases like invalid predictions, malformed data, and clustering failures
+- 20 comprehensive test cases with 74% code coverage of annotation processing module
 
 ### Development Server
 - `make start` - Start development environment with Docker Compose

@@ -447,12 +447,40 @@ class SequenceAnalyzer:
             List of SequenceBBox objects ready for annotation
         """
         sequences_bbox = []
+        invalid_bbox_count = 0
+        skipped_cluster_count = 0
 
-        for cluster in bbox_clusters:
+        for cluster_idx, cluster in enumerate(bbox_clusters):
             bboxes = []
+            
             for bbox_coords, detection_id in cluster:
-                bbox = BoundingBox(detection_id=detection_id, xyxyn=bbox_coords)
-                bboxes.append(bbox)
+                # Pre-validate coordinates before BoundingBox creation
+                if not self._is_valid_bbox_coords(bbox_coords):
+                    self.logger.debug(
+                        f"Skipping invalid coordinates for detection {detection_id}: {bbox_coords}"
+                    )
+                    invalid_bbox_count += 1
+                    continue
+                
+                try:
+                    bbox = BoundingBox(detection_id=detection_id, xyxyn=bbox_coords)
+                    bboxes.append(bbox)
+                except Exception as e:
+                    self.logger.warning(
+                        f"Failed to create BoundingBox for detection {detection_id} "
+                        f"with coords {bbox_coords}: {e}"
+                    )
+                    invalid_bbox_count += 1
+                    continue
+
+            # Only create SequenceBBox if we have valid bboxes
+            if not bboxes:
+                self.logger.warning(
+                    f"Skipping cluster {cluster_idx} - no valid bounding boxes "
+                    f"(attempted {len(cluster)} bboxes)"
+                )
+                skipped_cluster_count += 1
+                continue
 
             # Conservative classification - mark as smoke for human review
             sequence_bbox = SequenceBBox(
@@ -462,7 +490,51 @@ class SequenceAnalyzer:
             )
             sequences_bbox.append(sequence_bbox)
 
+        # Log summary statistics
+        if invalid_bbox_count > 0 or skipped_cluster_count > 0:
+            self.logger.info(
+                f"Annotation processing summary: "
+                f"created {len(sequences_bbox)} sequence bboxes, "
+                f"skipped {invalid_bbox_count} invalid bboxes, "
+                f"skipped {skipped_cluster_count} empty clusters"
+            )
+
         return sequences_bbox
+
+    def _is_valid_bbox_coords(self, coords: List[float]) -> bool:
+        """
+        Validate bounding box coordinates before BoundingBox creation.
+
+        Args:
+            coords: List of coordinates [x1, y1, x2, y2]
+
+        Returns:
+            True if coordinates are valid, False otherwise
+        """
+        try:
+            # Check basic structure
+            if not isinstance(coords, list) or len(coords) != 4:
+                return False
+
+            # Check if all values are numeric
+            for coord in coords:
+                if not isinstance(coord, (int, float)):
+                    return False
+
+            x1, y1, x2, y2 = coords
+
+            # Check range constraints (0 <= value <= 1)
+            if not all(0 <= coord <= 1 for coord in coords):
+                return False
+
+            # Check ordering constraints (x1 <= x2 and y1 <= y2)
+            if x1 > x2 or y1 > y2:
+                return False
+
+            return True
+
+        except (TypeError, ValueError):
+            return False
 
     def get_configuration(self) -> Dict[str, Any]:
         """
