@@ -114,18 +114,19 @@ def validate_available_env_variables() -> bool:
         return True
 
 
-def transform_sequence_data(record: dict) -> dict:
+def transform_sequence_data(record: dict, source_api: str = "pyronear_french") -> dict:
     """
     Transform platform sequence data to annotation API format.
 
     Args:
         record: Platform record containing sequence metadata
+        source_api: Source API enum value (pyronear_french, api_cenia, etc.)
 
     Returns:
         Dictionary formatted for annotation API sequence creation
     """
     return {
-        "source_api": "pyronear_french",
+        "source_api": source_api,
         "alert_api_id": record["sequence_id"],  # Platform sequence ID
         "camera_name": record["camera_name"],
         "camera_id": record["camera_id"],
@@ -312,6 +313,7 @@ def post_sequence_to_annotation_api(
     annotation_api_url: str,
     sequence_records: List[dict],
     max_detection_workers: int = 4,
+    source_api: str = "pyronear_french",
 ) -> Dict:
     """
     Post a sequence and its detections to the annotation API.
@@ -320,6 +322,7 @@ def post_sequence_to_annotation_api(
         annotation_api_url: Base URL of annotation API
         sequence_records: List of detection records for a single sequence
         max_detection_workers: Max workers for parallel detection creation
+        source_api: Source API enum value (pyronear_french, api_cenia, etc.)
 
     Returns:
         Dictionary with success status and created sequence info
@@ -339,7 +342,7 @@ def post_sequence_to_annotation_api(
 
     # Use first record for sequence data (all records have same sequence info)
     first_record = sequence_records[0]
-    sequence_data = transform_sequence_data(first_record)
+    sequence_data = transform_sequence_data(first_record, source_api)
 
     # Create sequence
     logging.info(f"Creating sequence with alert_api_id={first_record['sequence_id']}")
@@ -407,6 +410,7 @@ def post_records_to_annotation_api(
     max_workers: int = 3,
     max_detection_workers: int = 4,
     suppress_logs: bool = True,
+    source_api: str = "pyronear_french",
 ) -> Dict:
     """
     Post multiple sequences and their detections to the annotation API.
@@ -417,6 +421,7 @@ def post_records_to_annotation_api(
         max_workers: Maximum number of workers for parallel sequence posting
         max_detection_workers: Maximum number of workers for detection creation within each sequence
         suppress_logs: Whether to suppress log output during progress display
+        source_api: Source API enum value (pyronear_french, api_cenia, etc.)
 
     Returns:
         Dictionary with summary statistics including list of successfully imported sequence IDs
@@ -454,6 +459,7 @@ def post_records_to_annotation_api(
                 annotation_api_url,
                 sequence_records,
                 max_detection_workers,
+                source_api,
             ): (platform_sequence_id, sequence_records)
             for platform_sequence_id, sequence_records in grouped_records.items()
         }
