@@ -114,8 +114,9 @@ def make_cli_parser() -> argparse.ArgumentParser:
     # API configuration
     parser.add_argument(
         "--url-api-platform",
-        help="Platform API URL",
+        help="Platform API URL (alertapi.pyronear.org for Pyronear French, apicenia.pyronear.org for CENIA)",
         type=str,
+        choices=["https://alertapi.pyronear.org", "https://apicenia.pyronear.org"],
         default="https://alertapi.pyronear.org",
     )
     parser.add_argument(
@@ -186,6 +187,23 @@ def make_cli_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def get_source_api_from_url(url: str) -> str:
+    """
+    Map platform URL to source_api enum value.
+
+    Args:
+        url: Platform API URL
+
+    Returns:
+        source_api enum value for the database
+    """
+    url_to_source_api = {
+        "https://alertapi.pyronear.org": "pyronear_french",
+        "https://apicenia.pyronear.org": "api_cenia",
+    }
+    return url_to_source_api.get(url, "pyronear_french")
+
+
 def validate_args(args: argparse.Namespace) -> bool:
     """
     Validate parsed command line arguments.
@@ -238,6 +256,9 @@ def main() -> None:
     if not validate_args(args):
         sys.exit(1)
 
+    # Get source_api from platform URL
+    source_api = get_source_api_from_url(args.url_api_platform)
+
     # Initialize components
     worker_config = WorkerConfig(args.max_workers)
     console = Console()
@@ -278,6 +299,7 @@ def main() -> None:
 
     if args.loglevel == "debug":
         console.print(f"[blue]ℹ️  Date range: {args.date_from} to {args.date_end}[/]")
+        console.print(f"[blue]ℹ️  Platform: {args.url_api_platform} (source_api: {source_api})[/]")
         console.print(f"[blue]ℹ️  Worker config: {worker_config}[/]")
         console.print(
             f"[blue]ℹ️  Analysis config: confidence={args.confidence_threshold}, iou={args.iou_threshold}, min_cluster={args.min_cluster_size}[/]"
@@ -387,6 +409,7 @@ def main() -> None:
                     max_workers=worker_config.api_posting,
                     max_detection_workers=worker_config.detection_per_sequence,
                     suppress_logs=suppress_logs,
+                    source_api=source_api,
                 )
 
                 # Capture import statistics in main stats and get successfully imported sequence IDs
