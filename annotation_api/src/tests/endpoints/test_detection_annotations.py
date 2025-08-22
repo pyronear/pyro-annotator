@@ -1,11 +1,17 @@
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
+from urllib.parse import quote
 
 import pytest
 from httpx import AsyncClient
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-now = datetime.utcnow()
+now = datetime.now(UTC)
+
+
+def format_datetime_for_url(dt: datetime) -> str:
+    """Format datetime for URL parameters, avoiding encoding issues with timezone offset."""
+    return quote(dt.isoformat(), safe='')
 
 
 @pytest.mark.asyncio
@@ -767,7 +773,7 @@ async def test_list_detection_annotations_filter_by_detection_recorded_at_gte(
 
     # Test filtering by detection_recorded_at_gte with base_date (should find the annotation)
     response = await authenticated_client.get(
-        f"/annotations/detections/?detection_recorded_at_gte={base_date.isoformat()}"
+        f"/annotations/detections/?detection_recorded_at_gte={format_datetime_for_url(base_date)}"
     )
     assert response.status_code == 200
     json_response = response.json()
@@ -785,7 +791,7 @@ async def test_list_detection_annotations_filter_by_detection_recorded_at_gte(
     # Test filtering by detection_recorded_at_gte with future date (should not find annotation)
     future_date = now + timedelta(days=1)
     response = await authenticated_client.get(
-        f"/annotations/detections/?detection_recorded_at_gte={future_date.isoformat()}"
+        f"/annotations/detections/?detection_recorded_at_gte={format_datetime_for_url(future_date)}"
     )
     assert response.status_code == 200
     json_response = response.json()
@@ -859,7 +865,7 @@ async def test_list_detection_annotations_filter_by_detection_recorded_at_lte(
 
     # Test filtering by detection_recorded_at_lte with current date (should find the annotation)
     response = await authenticated_client.get(
-        f"/annotations/detections/?detection_recorded_at_lte={now.isoformat()}"
+        f"/annotations/detections/?detection_recorded_at_lte={format_datetime_for_url(now)}"
     )
     assert response.status_code == 200
     json_response = response.json()
@@ -877,7 +883,7 @@ async def test_list_detection_annotations_filter_by_detection_recorded_at_lte(
     # Test filtering by detection_recorded_at_lte with very old date (should not find annotation)
     very_old_date = now - timedelta(days=20)
     response = await authenticated_client.get(
-        f"/annotations/detections/?detection_recorded_at_lte={very_old_date.isoformat()}"
+        f"/annotations/detections/?detection_recorded_at_lte={format_datetime_for_url(very_old_date)}"
     )
     assert response.status_code == 200
     json_response = response.json()
@@ -953,7 +959,7 @@ async def test_list_detection_annotations_filter_by_detection_recorded_at_range(
 
     # Test filtering by date range (should find the annotation)
     response = await authenticated_client.get(
-        f"/annotations/detections/?detection_recorded_at_gte={start_date.isoformat()}&detection_recorded_at_lte={end_date.isoformat()}"
+        f"/annotations/detections/?detection_recorded_at_gte={format_datetime_for_url(start_date)}&detection_recorded_at_lte={format_datetime_for_url(end_date)}"
     )
     assert response.status_code == 200
     json_response = response.json()
@@ -972,7 +978,7 @@ async def test_list_detection_annotations_filter_by_detection_recorded_at_range(
     narrow_start = now - timedelta(days=3)
     narrow_end = now - timedelta(days=2)
     response = await authenticated_client.get(
-        f"/annotations/detections/?detection_recorded_at_gte={narrow_start.isoformat()}&detection_recorded_at_lte={narrow_end.isoformat()}"
+        f"/annotations/detections/?detection_recorded_at_gte={format_datetime_for_url(narrow_start)}&detection_recorded_at_lte={format_datetime_for_url(narrow_end)}"
     )
     assert response.status_code == 200
     json_response = response.json()
@@ -1046,7 +1052,7 @@ async def test_list_detection_annotations_combined_date_filtering(
 
     # Test combined filtering - detection recorded date + processing stage
     response = await authenticated_client.get(
-        f"/annotations/detections/?detection_recorded_at_gte={detection_recorded_date.isoformat()}&processing_stage=annotated"
+        f"/annotations/detections/?detection_recorded_at_gte={format_datetime_for_url(detection_recorded_date)}&processing_stage=annotated"
     )
     assert response.status_code == 200
     json_response = response.json()
@@ -1062,7 +1068,7 @@ async def test_list_detection_annotations_combined_date_filtering(
 
     # Test combined filtering with mismatched criteria
     response = await authenticated_client.get(
-        f"/annotations/detections/?detection_recorded_at_gte={detection_recorded_date.isoformat()}&processing_stage=imported"
+        f"/annotations/detections/?detection_recorded_at_gte={format_datetime_for_url(detection_recorded_date)}&processing_stage=imported"
     )
     assert response.status_code == 200
     json_response = response.json()

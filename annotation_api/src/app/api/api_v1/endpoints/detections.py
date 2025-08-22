@@ -2,7 +2,7 @@
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, UTC
 from enum import Enum
 from typing import Optional
 
@@ -92,7 +92,7 @@ async def create_detection(
         recorded_at=recorded_at,
         bucket_key="",  # Temporary placeholder
         algo_predictions=validated_predictions.model_dump(),  # Store as dict
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(UTC),
     )
 
     # Add and commit to get the detection ID

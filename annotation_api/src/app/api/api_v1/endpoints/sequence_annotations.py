@@ -1,7 +1,7 @@
 # Copyright (C) 2025, Pyronear.
 
 import logging
-from datetime import datetime
+from datetime import datetime, UTC
 from enum import Enum
 from typing import List, Optional
 
@@ -172,7 +172,7 @@ async def auto_create_detection_annotations(
 
     # Prepare batch data for bulk insert
     new_annotations = []
-    current_time = datetime.utcnow()
+    current_time = datetime.now(UTC)
 
     for detection in detections:
         # Skip if annotation already exists
@@ -276,7 +276,6 @@ async def create_sequence_annotation(
         is_unsure=create_data.is_unsure,
         annotation=create_data.annotation.model_dump(),
         processing_stage=create_data.processing_stage,
-        created_at=create_data.created_at,
     )
 
     # Add and commit directly
@@ -432,7 +431,7 @@ async def update_sequence_annotation(
     existing = await annotations.get(annotation_id, strict=True)
 
     # Start with existing data
-    update_dict = {"updated_at": datetime.utcnow()}
+    update_dict = {"updated_at": datetime.now(UTC)}
 
     # If annotation is being updated, validate and derive new values
     if payload.annotation is not None:

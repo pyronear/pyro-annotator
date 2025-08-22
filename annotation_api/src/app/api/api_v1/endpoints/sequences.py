@@ -1,6 +1,6 @@
 # Copyright (C) 2025, Pyronear.
 
-from datetime import datetime
+from datetime import datetime, UTC
 from enum import Enum
 from typing import List, Literal, Optional
 
@@ -96,8 +96,8 @@ async def create_sequence(
         lat=lat,
         lon=lon,
         azimuth=azimuth,
-        created_at=created_at or datetime.utcnow(),
-        last_seen_at=last_seen_at or datetime.utcnow(),
+        created_at=created_at or datetime.now(UTC),
+        last_seen_at=last_seen_at or datetime.now(UTC),
     )
     return await sequences.create(payload)
 

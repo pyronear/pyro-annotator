@@ -13,7 +13,7 @@ from app.models import SourceApi
 @pytest.mark.asyncio
 async def test_list_organizations_empty(authenticated_client: AsyncClient):
     """Test listing organizations when database is empty."""
-    response = await authenticated_client.get("/organizations")
+    response = await authenticated_client.get("/organizations/")
     assert response.status_code == 200
     data = response.json()
     assert data == []
@@ -76,11 +76,11 @@ async def test_list_organizations_with_sequences(authenticated_client: AsyncClie
 
     # Create sequences
     for seq_data in sequences_data:
-        response = await authenticated_client.post("/sequences", data=seq_data)
+        response = await authenticated_client.post("/sequences/", data=seq_data)
         assert response.status_code == 201
 
     # List organizations
-    response = await authenticated_client.get("/organizations")
+    response = await authenticated_client.get("/organizations/")
     assert response.status_code == 200
     orgs = response.json()
 
@@ -121,11 +121,11 @@ async def test_list_organizations_response_format(authenticated_client: AsyncCli
         "recorded_at": "2024-01-15T10:00:00",
         "last_seen_at": "2024-01-15T10:30:00",
     }
-    response = await authenticated_client.post("/sequences", data=seq_data)
+    response = await authenticated_client.post("/sequences/", data=seq_data)
     assert response.status_code == 201
 
     # Get organizations
-    response = await authenticated_client.get("/organizations")
+    response = await authenticated_client.get("/organizations/")
     assert response.status_code == 200
     orgs = response.json()
     assert len(orgs) == 1
@@ -185,11 +185,11 @@ async def test_list_organizations_multiple_sources(authenticated_client: AsyncCl
 
     # Create sequences
     for seq_data in sequences_data:
-        response = await authenticated_client.post("/sequences", data=seq_data)
+        response = await authenticated_client.post("/sequences/", data=seq_data)
         assert response.status_code == 201
 
     # Get organizations
-    response = await authenticated_client.get("/organizations")
+    response = await authenticated_client.get("/organizations/")
     assert response.status_code == 200
     orgs = response.json()
 

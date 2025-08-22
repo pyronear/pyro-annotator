@@ -1,6 +1,6 @@
 import asyncio
 import io
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from typing import AsyncGenerator, Generator
 
 import pytest
@@ -20,7 +20,7 @@ from app.models import Detection, Sequence
 from app.services.storage import s3_service
 
 dt_format = "%Y-%m-%dT%H:%M:%S.%f"
-now = datetime.utcnow()
+now = datetime.now(UTC)
 
 DET_TABLE = [
     {
@@ -115,13 +115,6 @@ SEQ_TABLE = [
 ]
 
 
-@pytest.fixture(scope="session")
-def event_loop() -> Generator:
-    policy = asyncio.get_event_loop_policy()
-    loop = policy.new_event_loop()
-    yield loop
-    loop.close()
-
 
 @pytest_asyncio.fixture(scope="function")
 async def async_client(
@@ -175,6 +168,10 @@ async def async_session() -> AsyncSession:
         for table in reversed(SQLModel.metadata.sorted_tables):
             await session.exec(table.delete())
         await session.commit()
+        
+        # Dispose engine to force connection pool cleanup between tests
+        # This prevents "Event loop is closed" errors when running multiple tests
+        await engine.dispose()
 
 
 @pytest.fixture(scope="session")

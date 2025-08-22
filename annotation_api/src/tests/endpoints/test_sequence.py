@@ -1,10 +1,10 @@
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 import pytest
 from httpx import AsyncClient
 
-now = datetime.utcnow()
+now = datetime.now(UTC)
 
 
 @pytest.mark.asyncio
@@ -25,7 +25,7 @@ async def test_create_sequence(authenticated_client: AsyncClient):
         "last_seen_at": now.isoformat(),
     }
 
-    response = await authenticated_client.post("/sequences", data=payload)
+    response = await authenticated_client.post("/sequences/", data=payload)
     assert response.status_code == 201
     sequence = response.json()
     assert "id" in sequence
@@ -48,7 +48,7 @@ async def test_get_sequence(authenticated_client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_list_sequences(authenticated_client: AsyncClient):
-    response = await authenticated_client.get("/sequences")
+    response = await authenticated_client.get("/sequences/")
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, dict)
@@ -88,7 +88,7 @@ async def test_create_sequence_without_is_wildfire_alertapi(
         "last_seen_at": now.isoformat(),
     }
 
-    response = await authenticated_client.post("/sequences", data=payload)
+    response = await authenticated_client.post("/sequences/", data=payload)
     assert response.status_code == 201
     sequence = response.json()
     assert "id" in sequence
@@ -117,7 +117,7 @@ async def test_create_sequence_with_is_wildfire_alertapi_true(
         "last_seen_at": now.isoformat(),
     }
 
-    response = await authenticated_client.post("/sequences", data=payload)
+    response = await authenticated_client.post("/sequences/", data=payload)
     assert response.status_code == 201
     sequence = response.json()
     assert "id" in sequence
@@ -131,7 +131,7 @@ async def test_list_sequences_with_include_annotation(
     authenticated_client: AsyncClient,
 ):
     """Test including annotation data in sequences response"""
-    response = await authenticated_client.get("/sequences?include_annotation=true")
+    response = await authenticated_client.get("/sequences/?include_annotation=true")
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, dict)
@@ -160,7 +160,7 @@ async def test_list_sequences_filter_by_processing_stage(
 ):
     """Test filtering sequences by processing stage"""
     # Test filtering by specific processing stage
-    response = await authenticated_client.get("/sequences?processing_stage=imported")
+    response = await authenticated_client.get("/sequences/?processing_stage=imported")
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, dict)
@@ -168,7 +168,7 @@ async def test_list_sequences_filter_by_processing_stage(
 
     # Test filtering by no_annotation
     response = await authenticated_client.get(
-        "/sequences?processing_stage=no_annotation"
+        "/sequences/?processing_stage=no_annotation"
     )
     assert response.status_code == 200
     data = response.json()
@@ -182,21 +182,21 @@ async def test_list_sequences_filter_by_annotation_fields(
 ):
     """Test filtering sequences by annotation fields like has_smoke, has_false_positives"""
     # Test filtering by has_smoke
-    response = await authenticated_client.get("/sequences?has_smoke=true")
+    response = await authenticated_client.get("/sequences/?has_smoke=true")
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, dict)
     assert "items" in data
 
     # Test filtering by has_false_positives
-    response = await authenticated_client.get("/sequences?has_false_positives=false")
+    response = await authenticated_client.get("/sequences/?has_false_positives=false")
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, dict)
     assert "items" in data
 
     # Test filtering by has_missed_smoke
-    response = await authenticated_client.get("/sequences?has_missed_smoke=false")
+    response = await authenticated_client.get("/sequences/?has_missed_smoke=false")
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, dict)
@@ -207,7 +207,7 @@ async def test_list_sequences_filter_by_annotation_fields(
 async def test_list_sequences_combined_filters(authenticated_client: AsyncClient):
     """Test combining annotation inclusion with filtering"""
     response = await authenticated_client.get(
-        "/sequences?include_annotation=true&processing_stage=annotated&has_smoke=true"
+        "/sequences/?include_annotation=true&processing_stage=annotated&has_smoke=true"
     )
     assert response.status_code == 200
     data = response.json()
@@ -242,7 +242,7 @@ async def test_create_sequence_with_is_wildfire_alertapi_false(
         "last_seen_at": now.isoformat(),
     }
 
-    response = await authenticated_client.post("/sequences", data=payload)
+    response = await authenticated_client.post("/sequences/", data=payload)
     assert response.status_code == 201
     sequence = response.json()
     assert "id" in sequence
@@ -370,7 +370,7 @@ async def test_list_sequences_has_annotation_filter(
 
     sequence_ids = []
     for seq_data in sequences_data:
-        response = await authenticated_client.post("/sequences", data=seq_data)
+        response = await authenticated_client.post("/sequences/", data=seq_data)
         assert response.status_code == 201
         sequence_ids.append(response.json()["id"])
 
@@ -385,7 +385,7 @@ async def test_list_sequences_has_annotation_filter(
                 ]
             },
             "processing_stage": "imported",
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
         }
         response = await authenticated_client.post(
             "/annotations/sequences/", json=annotation_payload
@@ -393,7 +393,7 @@ async def test_list_sequences_has_annotation_filter(
         assert response.status_code == 201
 
     # Test 1: Get sequences WITHOUT annotations (should only get the third sequence)
-    response = await authenticated_client.get("/sequences?has_annotation=false")
+    response = await authenticated_client.get("/sequences/?has_annotation=false")
     assert response.status_code == 200
     data = response.json()
     sequences_without_annotations = data["items"]
@@ -409,7 +409,7 @@ async def test_list_sequences_has_annotation_filter(
     )
 
     # Test 2: Get sequences WITH annotations (should get the first two sequences)
-    response = await authenticated_client.get("/sequences?has_annotation=true")
+    response = await authenticated_client.get("/sequences/?has_annotation=true")
     assert response.status_code == 200
     data = response.json()
     sequences_with_annotations = data["items"]
@@ -421,7 +421,7 @@ async def test_list_sequences_has_annotation_filter(
     assert not any(seq["id"] == sequence_ids[2] for seq in sequences_with_annotations)
 
     # Test 3: Default behavior (no filter) - should get all sequences
-    response = await authenticated_client.get("/sequences")
+    response = await authenticated_client.get("/sequences/")
     assert response.status_code == 200
     data = response.json()
     all_sequences = data["items"]
@@ -477,13 +477,13 @@ async def test_list_sequences_filter_by_camera_name(authenticated_client: AsyncC
     # Create sequences
     sequence_ids = []
     for seq_data in test_sequences:
-        response = await authenticated_client.post("/sequences", data=seq_data)
+        response = await authenticated_client.post("/sequences/", data=seq_data)
         assert response.status_code == 201
         sequence_ids.append(response.json()["id"])
 
     # Test filtering by exact camera name
     response = await authenticated_client.get(
-        "/sequences?camera_name=Station North Alpha"
+        "/sequences/?camera_name=Station North Alpha"
     )
     assert response.status_code == 200
     data = response.json()
@@ -505,7 +505,7 @@ async def test_list_sequences_filter_by_camera_name(authenticated_client: AsyncC
             assert seq["camera_name"] == "Station North Alpha"
 
     # Test filtering by another camera name
-    response = await authenticated_client.get("/sequences?camera_name=Tower East Gamma")
+    response = await authenticated_client.get("/sequences/?camera_name=Tower East Gamma")
     assert response.status_code == 200
     data = response.json()
     filtered_sequences = data["items"]
@@ -526,7 +526,7 @@ async def test_list_sequences_filter_by_camera_name(authenticated_client: AsyncC
 
     # Test with non-existent camera name
     response = await authenticated_client.get(
-        "/sequences?camera_name=NonExistent Camera"
+        "/sequences/?camera_name=NonExistent Camera"
     )
     assert response.status_code == 200
     data = response.json()
@@ -585,13 +585,13 @@ async def test_list_sequences_filter_by_organisation_name(
     # Create sequences
     sequence_ids = []
     for seq_data in test_sequences:
-        response = await authenticated_client.post("/sequences", data=seq_data)
+        response = await authenticated_client.post("/sequences/", data=seq_data)
         assert response.status_code == 201
         sequence_ids.append(response.json()["id"])
 
     # Test filtering by organization name that has 2 sequences
     response = await authenticated_client.get(
-        "/sequences?organisation_name=Forest Protection Agency"
+        "/sequences/?organisation_name=Forest Protection Agency"
     )
     assert response.status_code == 200
     data = response.json()
@@ -612,7 +612,7 @@ async def test_list_sequences_filter_by_organisation_name(
 
     # Test filtering by organization name that has 1 sequence
     response = await authenticated_client.get(
-        "/sequences?organisation_name=National Park Service"
+        "/sequences/?organisation_name=National Park Service"
     )
     assert response.status_code == 200
     data = response.json()
@@ -631,7 +631,7 @@ async def test_list_sequences_filter_by_organisation_name(
 
     # Test with non-existent organization name
     response = await authenticated_client.get(
-        "/sequences?organisation_name=NonExistent Organization"
+        "/sequences/?organisation_name=NonExistent Organization"
     )
     assert response.status_code == 200
     data = response.json()
@@ -678,13 +678,13 @@ async def test_list_sequences_combined_name_and_id_filters(
     # Create sequences
     sequence_ids = []
     for seq_data in test_sequences:
-        response = await authenticated_client.post("/sequences", data=seq_data)
+        response = await authenticated_client.post("/sequences/", data=seq_data)
         assert response.status_code == 201
         sequence_ids.append(response.json()["id"])
 
     # Test combining camera_name with organisation_id
     response = await authenticated_client.get(
-        "/sequences?camera_name=Test Camera Alpha&organisation_id=20"
+        "/sequences/?camera_name=Test Camera Alpha&organisation_id=20"
     )
     assert response.status_code == 200
     data = response.json()
@@ -700,7 +700,7 @@ async def test_list_sequences_combined_name_and_id_filters(
 
     # Test combining organisation_name with camera_id
     response = await authenticated_client.get(
-        "/sequences?organisation_name=Test Organization Alpha&camera_id=902"
+        "/sequences/?organisation_name=Test Organization Alpha&camera_id=902"
     )
     assert response.status_code == 200
     data = response.json()
@@ -716,7 +716,7 @@ async def test_list_sequences_combined_name_and_id_filters(
 
     # Test incompatible filters (should return no results)
     response = await authenticated_client.get(
-        "/sequences?camera_name=Test Camera Alpha&camera_id=902"
+        "/sequences/?camera_name=Test Camera Alpha&camera_id=902"
     )
     assert response.status_code == 200
     data = response.json()
@@ -775,7 +775,7 @@ async def test_list_sequences_filter_by_false_positive_types(
     # Create sequences and get their IDs
     sequence_ids = []
     for seq_data in test_sequences:
-        response = await authenticated_client.post("/sequences", data=seq_data)
+        response = await authenticated_client.post("/sequences/", data=seq_data)
         assert response.status_code == 201
         sequence_ids.append(response.json()["id"])
 
@@ -811,7 +811,7 @@ async def test_list_sequences_filter_by_false_positive_types(
         files = {"file": ("test.jpg", img_bytes, "image/jpeg")}
 
         response = await authenticated_client.post(
-            "/detections", data=detection_payload, files=files
+            "/detections/", data=detection_payload, files=files
         )
         assert response.status_code == 201
         detection_ids.append(response.json()["id"])
@@ -895,7 +895,7 @@ async def test_list_sequences_filter_by_false_positive_types(
 
     # Test 1: Filter by single false positive type - should match first sequence
     response = await authenticated_client.get(
-        "/sequences?false_positive_types=antenna&include_annotation=true"
+        "/sequences/?false_positive_types=antenna&include_annotation=true"
     )
     assert response.status_code == 200
     data = response.json()
@@ -911,7 +911,7 @@ async def test_list_sequences_filter_by_false_positive_types(
 
     # Test 2: Filter by multiple false positive types - should match first two sequences
     response = await authenticated_client.get(
-        "/sequences?false_positive_types=antenna&false_positive_types=lens_flare&include_annotation=true"
+        "/sequences/?false_positive_types=antenna&false_positive_types=lens_flare&include_annotation=true"
     )
     assert response.status_code == 200
     data = response.json()
@@ -927,7 +927,7 @@ async def test_list_sequences_filter_by_false_positive_types(
 
     # Test 3: Filter by non-existent false positive type - should return validation error
     response = await authenticated_client.get(
-        "/sequences?false_positive_types=nonexistent&include_annotation=true"
+        "/sequences/?false_positive_types=nonexistent&include_annotation=true"
     )
     assert response.status_code == 422
     error_data = response.json()
@@ -943,12 +943,12 @@ async def test_list_sequences_false_positive_types_validation(
     """Test that invalid false positive types return proper validation errors."""
     # Test with invalid false positive type - should return 422 validation error
     response = await authenticated_client.get(
-        "/sequences?false_positive_types=invalid_type"
+        "/sequences/?false_positive_types=invalid_type"
     )
     assert response.status_code == 422
 
     # Test with mix of valid and invalid types
     response = await authenticated_client.get(
-        "/sequences?false_positive_types=antenna&false_positive_types=invalid_type"
+        "/sequences/?false_positive_types=antenna&false_positive_types=invalid_type"
     )
     assert response.status_code == 422

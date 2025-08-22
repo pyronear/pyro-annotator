@@ -1,11 +1,11 @@
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 import pytest
 from httpx import AsyncClient
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-now = datetime.utcnow()
+now = datetime.now(UTC)
 
 
 @pytest.mark.asyncio
@@ -30,7 +30,7 @@ async def test_create_detection(
     }
 
     response = await authenticated_client.post(
-        "/detections",
+        "/detections/",
         data=payload,
         files={"file": ("image.jpg", mock_img, "image/jpeg")},
     )
@@ -68,7 +68,7 @@ async def test_get_detection_url(
 
 @pytest.mark.asyncio
 async def test_list_detections(authenticated_client: AsyncClient):
-    response = await authenticated_client.get("/detections")
+    response = await authenticated_client.get("/detections/")
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, dict)
@@ -101,7 +101,7 @@ async def test_delete_detection(
     }
 
     response = await authenticated_client.post(
-        "/detections",
+        "/detections/",
         data=payload,
         files={"file": ("image.jpg", mock_img, "image/jpeg")},
     )
@@ -137,7 +137,7 @@ async def test_create_detection_invalid_xyxyn_values(
     }
 
     response = await authenticated_client.post(
-        "/detections",
+        "/detections/",
         data=payload,
         files={"file": ("image.jpg", mock_img, "image/jpeg")},
     )
@@ -168,7 +168,7 @@ async def test_create_detection_invalid_xyxyn_range(
     }
 
     response = await authenticated_client.post(
-        "/detections",
+        "/detections/",
         data=payload,
         files={"file": ("image.jpg", mock_img, "image/jpeg")},
     )
@@ -199,7 +199,7 @@ async def test_create_detection_invalid_confidence(
     }
 
     response = await authenticated_client.post(
-        "/detections",
+        "/detections/",
         data=payload,
         files={"file": ("image.jpg", mock_img, "image/jpeg")},
     )
@@ -230,7 +230,7 @@ async def test_create_detection_invalid_json_structure(
     }
 
     response = await authenticated_client.post(
-        "/detections",
+        "/detections/",
         data=payload,
         files={"file": ("image.jpg", mock_img, "image/jpeg")},
     )
@@ -274,7 +274,7 @@ async def test_create_detection_without_file(
         "recorded_at": now.isoformat(),
     }
 
-    response = await authenticated_client.post("/detections", data=payload)
+    response = await authenticated_client.post("/detections/", data=payload)
     assert response.status_code == 422
 
 
@@ -314,7 +314,7 @@ async def test_create_detection_unique_constraint_violation(
 
     # First detection should be created successfully
     response1 = await authenticated_client.post(
-        "/detections",
+        "/detections/",
         data=payload,
         files={"file": ("image1.jpg", mock_img, "image/jpeg")},
     )
@@ -331,7 +331,7 @@ async def test_create_detection_unique_constraint_violation(
     payload2["sequence_id"] = "1"  # Same or different sequence
 
     response2 = await authenticated_client.post(
-        "/detections",
+        "/detections/",
         data=payload2,
         files={"file": ("image2.jpg", mock_img, "image/jpeg")},
     )
@@ -371,7 +371,7 @@ async def test_create_detection_different_alert_api_id_allows_duplicate_processi
     payload1["alert_api_id"] = "777"
 
     response1 = await authenticated_client.post(
-        "/detections",
+        "/detections/",
         data=payload1,
         files={"file": ("image1.jpg", mock_img, "image/jpeg")},
     )
@@ -384,7 +384,7 @@ async def test_create_detection_different_alert_api_id_allows_duplicate_processi
     payload2["alert_api_id"] = "888"
 
     response2 = await authenticated_client.post(
-        "/detections",
+        "/detections/",
         data=payload2,
         files={"file": ("image2.jpg", mock_img, "image/jpeg")},
     )
