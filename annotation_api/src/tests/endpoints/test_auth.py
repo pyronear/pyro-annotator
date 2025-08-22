@@ -61,7 +61,7 @@ async def test_login_missing_fields(async_client: AsyncClient):
 @pytest.mark.asyncio
 async def test_protected_endpoint_without_token(async_client: AsyncClient):
     """Test accessing protected endpoint without authentication token."""
-    response = await async_client.get("/sequences")
+    response = await async_client.get("/sequences/")
     assert response.status_code == 403
 
 
