@@ -1,7 +1,6 @@
 import pytest
 from httpx import AsyncClient
 
-from app.core.config import settings
 from app.models import User
 
 
@@ -14,7 +13,7 @@ class TestCurrentUser:
     ):
         """Test getting current user information."""
         response = await authenticated_client.get("/users/me")
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["id"] == test_user.id
@@ -31,7 +30,9 @@ class TestCurrentUser:
         assert response.status_code == 403
 
     @pytest.mark.asyncio
-    async def test_get_current_user_inactive(self, async_client: AsyncClient, inactive_user_token: str):
+    async def test_get_current_user_inactive(
+        self, async_client: AsyncClient, inactive_user_token: str
+    ):
         """Test getting current user with inactive account."""
         headers = {"Authorization": f"Bearer {inactive_user_token}"}
         response = await async_client.get("/users/me", headers=headers)
@@ -49,20 +50,20 @@ class TestListUsers:
     ):
         """Test admin can list all users."""
         response = await authenticated_client.get("/users/")
-        
+
         assert response.status_code == 200
         data = response.json()
-        
+
         # Should be paginated response
         assert "items" in data
         assert "page" in data
         assert "pages" in data
         assert "size" in data
         assert "total" in data
-        
+
         assert isinstance(data["items"], list)
         assert len(data["items"]) >= 2  # At least test_user and regular_user
-        
+
         # Verify users are in response
         usernames = [user["username"] for user in data["items"]]
         assert test_user.username in usernames
@@ -75,7 +76,7 @@ class TestListUsers:
         """Test regular user cannot list users."""
         headers = {"Authorization": f"Bearer {regular_user_token}"}
         response = await async_client.get("/users/", headers=headers)
-        
+
         assert response.status_code == 403
         data = response.json()
         assert "Not enough permissions" in data["detail"]
@@ -84,10 +85,10 @@ class TestListUsers:
     async def test_list_users_pagination(self, authenticated_client: AsyncClient):
         """Test user listing with pagination."""
         response = await authenticated_client.get("/users/?page=1&size=1")
-        
+
         assert response.status_code == 200
         data = response.json()
-        
+
         # Should be paginated response
         assert "items" in data
         assert len(data["items"]) <= 1
@@ -95,26 +96,32 @@ class TestListUsers:
         assert data["size"] == 1
 
     @pytest.mark.asyncio
-    async def test_list_users_search(self, authenticated_client: AsyncClient, test_user: User):
+    async def test_list_users_search(
+        self, authenticated_client: AsyncClient, test_user: User
+    ):
         """Test user listing with search."""
-        response = await authenticated_client.get(f"/users/?search={test_user.username}")
-        
+        response = await authenticated_client.get(
+            f"/users/?search={test_user.username}"
+        )
+
         assert response.status_code == 200
         data = response.json()
-        
+
         # Should find the user
         assert len(data["items"]) >= 1
         usernames = [user["username"] for user in data["items"]]
         assert test_user.username in usernames
 
     @pytest.mark.asyncio
-    async def test_list_users_filter_superuser(self, authenticated_client: AsyncClient, test_user: User):
+    async def test_list_users_filter_superuser(
+        self, authenticated_client: AsyncClient, test_user: User
+    ):
         """Test user listing with superuser filter."""
         response = await authenticated_client.get("/users/?is_superuser=true")
-        
+
         assert response.status_code == 200
         data = response.json()
-        
+
         # All returned users should be superusers
         for user in data["items"]:
             assert user["is_superuser"] is True
@@ -133,9 +140,9 @@ class TestCreateUser:
             "is_active": True,
             "is_superuser": False,
         }
-        
+
         response = await authenticated_client.post("/users/", json=user_data)
-        
+
         assert response.status_code == 201
         data = response.json()
         assert data["username"] == user_data["username"]
@@ -155,9 +162,9 @@ class TestCreateUser:
             "password": "password123",
         }
         headers = {"Authorization": f"Bearer {regular_user_token}"}
-        
+
         response = await async_client.post("/users/", json=user_data, headers=headers)
-        
+
         assert response.status_code == 403
         data = response.json()
         assert "Not enough permissions" in data["detail"]
@@ -172,9 +179,9 @@ class TestCreateUser:
             "email": "different@test.com",
             "password": "password123",
         }
-        
+
         response = await authenticated_client.post("/users/", json=user_data)
-        
+
         assert response.status_code == 400
         data = response.json()
         assert "Username already registered" in data["detail"]
@@ -189,9 +196,9 @@ class TestCreateUser:
             "email": test_user.email,  # Duplicate email
             "password": "password123",
         }
-        
+
         response = await authenticated_client.post("/users/", json=user_data)
-        
+
         assert response.status_code == 400
         data = response.json()
         assert "Email already registered" in data["detail"]
@@ -204,7 +211,7 @@ class TestCreateUser:
             "email": "invalid-email",  # Invalid email
             "password": "password123",
         }
-        
+
         response = await authenticated_client.post("/users/", json=user_data)
         assert response.status_code == 422
 
@@ -216,7 +223,7 @@ class TestCreateUser:
             "email": "test@test.com",
             "password": "short",  # Too short
         }
-        
+
         response = await authenticated_client.post("/users/", json=user_data)
         assert response.status_code == 422
 
@@ -230,7 +237,7 @@ class TestGetUser:
     ):
         """Test admin can get any user."""
         response = await authenticated_client.get(f"/users/{regular_user.id}")
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["id"] == regular_user.id
@@ -243,14 +250,14 @@ class TestGetUser:
         """Test regular user cannot get other users."""
         headers = {"Authorization": f"Bearer {regular_user_token}"}
         response = await async_client.get(f"/users/{test_user.id}", headers=headers)
-        
+
         assert response.status_code == 403
 
     @pytest.mark.asyncio
     async def test_get_user_not_found(self, authenticated_client: AsyncClient):
         """Test getting non-existent user."""
         response = await authenticated_client.get("/users/99999")
-        
+
         assert response.status_code == 404
         data = response.json()
         assert "User not found" in data["detail"]
@@ -269,17 +276,16 @@ class TestUpdateUser:
             "email": "updated@test.com",
             "is_active": False,
         }
-        
+
         response = await authenticated_client.patch(
             f"/users/{regular_user.id}", json=update_data
         )
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["username"] == update_data["username"]
         assert data["email"] == update_data["email"]
         assert data["is_active"] == update_data["is_active"]
-
 
     @pytest.mark.asyncio
     async def test_update_user_regular_user_forbidden(
@@ -288,11 +294,11 @@ class TestUpdateUser:
         """Test regular user cannot update users."""
         headers = {"Authorization": f"Bearer {regular_user_token}"}
         update_data = {"username": "hacker"}
-        
+
         response = await async_client.patch(
             f"/users/{test_user.id}", json=update_data, headers=headers
         )
-        
+
         assert response.status_code == 403
 
     @pytest.mark.asyncio
@@ -301,11 +307,11 @@ class TestUpdateUser:
     ):
         """Test updating to duplicate username."""
         update_data = {"username": test_user.username}  # Already taken
-        
+
         response = await authenticated_client.patch(
             f"/users/{regular_user.id}", json=update_data
         )
-        
+
         assert response.status_code == 400
         data = response.json()
         assert "Username already registered" in data["detail"]
@@ -314,9 +320,9 @@ class TestUpdateUser:
     async def test_update_user_not_found(self, authenticated_client: AsyncClient):
         """Test updating non-existent user."""
         update_data = {"username": "newname"}
-        
+
         response = await authenticated_client.patch("/users/99999", json=update_data)
-        
+
         assert response.status_code == 404
 
 
@@ -329,11 +335,11 @@ class TestUpdateUserPassword:
     ):
         """Test admin can update user password."""
         password_data = {"password": "newpassword123"}
-        
+
         response = await authenticated_client.patch(
             f"/users/{regular_user.id}/password", json=password_data
         )
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["id"] == regular_user.id
@@ -346,11 +352,11 @@ class TestUpdateUserPassword:
         """Test regular user cannot update passwords."""
         headers = {"Authorization": f"Bearer {regular_user_token}"}
         password_data = {"password": "hacker123"}
-        
+
         response = await async_client.patch(
             f"/users/{test_user.id}/password", json=password_data, headers=headers
         )
-        
+
         assert response.status_code == 403
 
     @pytest.mark.asyncio
@@ -359,20 +365,24 @@ class TestUpdateUserPassword:
     ):
         """Test updating with invalid password."""
         password_data = {"password": "short"}  # Too short
-        
+
         response = await authenticated_client.patch(
             f"/users/{regular_user.id}/password", json=password_data
         )
-        
+
         assert response.status_code == 422
 
     @pytest.mark.asyncio
-    async def test_update_password_user_not_found(self, authenticated_client: AsyncClient):
+    async def test_update_password_user_not_found(
+        self, authenticated_client: AsyncClient
+    ):
         """Test updating password for non-existent user."""
         password_data = {"password": "validpassword123"}
-        
-        response = await authenticated_client.patch("/users/99999/password", json=password_data)
-        
+
+        response = await authenticated_client.patch(
+            "/users/99999/password", json=password_data
+        )
+
         assert response.status_code == 404
 
 
@@ -385,7 +395,7 @@ class TestDeleteUser:
     ):
         """Test admin can delete user."""
         response = await authenticated_client.delete(f"/users/{regular_user.id}")
-        
+
         assert response.status_code == 204
 
         # Verify user is deleted
@@ -398,7 +408,7 @@ class TestDeleteUser:
     ):
         """Test admin cannot delete their own account."""
         response = await authenticated_client.delete(f"/users/{test_user.id}")
-        
+
         assert response.status_code == 400
         data = response.json()
         assert "Cannot delete your own account" in data["detail"]
@@ -409,14 +419,14 @@ class TestDeleteUser:
     ):
         """Test regular user cannot delete users."""
         headers = {"Authorization": f"Bearer {regular_user_token}"}
-        
+
         response = await async_client.delete(f"/users/{test_user.id}", headers=headers)
-        
+
         assert response.status_code == 403
 
     @pytest.mark.asyncio
     async def test_delete_user_not_found(self, authenticated_client: AsyncClient):
         """Test deleting non-existent user."""
         response = await authenticated_client.delete("/users/99999")
-        
+
         assert response.status_code == 404

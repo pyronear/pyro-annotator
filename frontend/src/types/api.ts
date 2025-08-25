@@ -1,5 +1,10 @@
 // API Response Types - Generated from backend OpenAPI schema
 
+export interface Contributor {
+  id: number;
+  username: string;
+}
+
 export interface Sequence {
   id: number;
   source_api: string;
@@ -40,6 +45,7 @@ export interface SequenceAnnotation {
   processing_stage: ProcessingStage;
   created_at: string;
   updated_at: string | null;
+  contributors?: Contributor[];
 }
 
 export interface SequenceAnnotationData {
@@ -74,6 +80,7 @@ export interface DetectionAnnotation {
   processing_stage: DetectionProcessingStage;
   created_at: string;
   updated_at: string | null;
+  contributors?: Contributor[];
 }
 
 export interface DetectionAnnotationBbox {

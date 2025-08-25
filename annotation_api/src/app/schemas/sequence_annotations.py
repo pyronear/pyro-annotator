@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field, ConfigDict
 
 from app.models import SequenceAnnotationProcessingStage
 from app.schemas.annotation_validation import SequenceAnnotationData
+from app.schemas.user import ContributorRead
 
 __all__ = [
     "SequenceAnnotationCreate",
@@ -86,6 +87,10 @@ class SequenceAnnotationRead(BaseModel):
     )
     created_at: datetime
     updated_at: Optional[datetime]
+    contributors: Optional[List[ContributorRead]] = Field(
+        default=None,
+        description="List of users who have contributed to this sequence annotation",
+    )
 
 
 class SequenceAnnotationUpdate(BaseModel):

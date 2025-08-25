@@ -3,7 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi_pagination import Page, Params
 from fastapi_pagination.ext.sqlalchemy import apaginate
-from sqlalchemy import asc, desc
+from sqlalchemy import desc
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.auth.dependencies import get_current_active_user, get_current_superuser
@@ -27,14 +27,16 @@ async def read_current_user(
 async def list_users(
     search: Optional[str] = Query(None, description="Search in username or email"),
     is_active: Optional[bool] = Query(None, description="Filter by active status"),
-    is_superuser: Optional[bool] = Query(None, description="Filter by superuser status"),
+    is_superuser: Optional[bool] = Query(
+        None, description="Filter by superuser status"
+    ),
     session: AsyncSession = Depends(get_session),
     params: Params = Depends(),
     current_user: User = Depends(get_current_superuser),
 ) -> Page[User]:
     """
     List users with filtering, pagination and search.
-    
+
     - **search**: Search in username or email fields
     - **is_active**: Filter by active/inactive status
     - **is_superuser**: Filter by superuser status
@@ -42,17 +44,17 @@ async def list_users(
     - **size**: Page size (default: 50, max: 100)
     """
     user_crud = UserCRUD(session)
-    
+
     # Build query with filters
     query = user_crud.build_user_search_query(
         search=search,
         is_active=is_active,
         is_superuser=is_superuser,
     )
-    
+
     # Add default ordering by created_at desc
     query = query.order_by(desc(User.created_at))
-    
+
     # Apply pagination
     return await apaginate(session, query, params)
 
@@ -146,7 +148,7 @@ async def update_user_password(
 ) -> User:
     """Update a user's password (admin only)."""
     user_crud = UserCRUD(session)
-    
+
     user = await user_crud.update_user_password(user_id, password_update)
     if not user:
         raise HTTPException(
@@ -175,4 +177,3 @@ async def delete_user(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
-

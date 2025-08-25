@@ -1737,3 +1737,189 @@ async def test_convert_algo_predictions_to_annotation_helper():
     assert len(result["annotation"]) == 1
     assert result["annotation"][0]["class_name"] == "smoke"  # Default value
     assert result["annotation"][0]["smoke_type"] == "wildfire"
+
+
+# Contributor Tests
+
+
+@pytest.mark.asyncio
+async def test_get_sequence_annotation_includes_contributors(
+    authenticated_client: AsyncClient, sequence_session, detection_session
+):
+    """Test that individual sequence annotation GET endpoint includes contributor information."""
+    # Create sequence annotation
+    payload = {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": True,
+                    "false_positive_types": [],
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                }
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+
+    # Create annotation
+    create_response = await authenticated_client.post("/annotations/sequences/", json=payload)
+    assert create_response.status_code == 201
+    annotation_id = create_response.json()["id"]
+
+    # Get the annotation
+    get_response = await authenticated_client.get(f"/annotations/sequences/{annotation_id}")
+    assert get_response.status_code == 200
+    
+    annotation_data = get_response.json()
+    
+    # Verify contributors field exists
+    assert "contributors" in annotation_data
+    assert isinstance(annotation_data["contributors"], list)
+    
+    # Should have at least one contributor (the user who created it)
+    assert len(annotation_data["contributors"]) >= 1
+    
+    # Check contributor data structure
+    contributor = annotation_data["contributors"][0]
+    assert "id" in contributor
+    assert "username" in contributor
+    assert isinstance(contributor["id"], int)
+    assert isinstance(contributor["username"], str)
+
+
+@pytest.mark.asyncio
+async def test_get_sequence_annotation_multiple_contributors(
+    authenticated_client: AsyncClient, sequence_session, detection_session
+):
+    """Test that sequence annotation includes multiple contributors after updates."""
+    # Create sequence annotation
+    create_payload = {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": True,
+                    "false_positive_types": [],
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                }
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+
+    # Create annotation with user 1
+    create_response = await authenticated_client.post("/annotations/sequences/", json=create_payload)
+    assert create_response.status_code == 201
+    annotation_id = create_response.json()["id"]
+
+    # Update annotation (this will record another contribution from same user)
+    update_payload = {
+        "has_missed_smoke": True,
+        "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
+    }
+
+    update_response = await authenticated_client.patch(
+        f"/annotations/sequences/{annotation_id}", json=update_payload
+    )
+    assert update_response.status_code == 200
+
+    # Get the annotation and verify contributors
+    get_response = await authenticated_client.get(f"/annotations/sequences/{annotation_id}")
+    assert get_response.status_code == 200
+    
+    annotation_data = get_response.json()
+    
+    # Verify contributors field exists and has contributions
+    assert "contributors" in annotation_data
+    assert isinstance(annotation_data["contributors"], list)
+    assert len(annotation_data["contributors"]) >= 1  # At least one contributor
+    
+    # All contributors should have the same user (since we used same authenticated client)
+    for contributor in annotation_data["contributors"]:
+        assert "id" in contributor
+        assert "username" in contributor
+        assert isinstance(contributor["id"], int)
+        assert isinstance(contributor["username"], str)
+
+
+@pytest.mark.asyncio
+async def test_list_sequence_annotations_includes_contributors(
+    authenticated_client: AsyncClient, sequence_session, detection_session
+):
+    """Test that sequence annotations list endpoint includes contributor information."""
+    # Create sequence annotation
+    payload = {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": True,
+                    "false_positive_types": [],
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                }
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+
+    # Create annotation
+    create_response = await authenticated_client.post("/annotations/sequences/", json=payload)
+    assert create_response.status_code == 201
+    created_annotation_id = create_response.json()["id"]
+
+    # List annotations
+    list_response = await authenticated_client.get("/annotations/sequences/")
+    assert list_response.status_code == 200
+    
+    list_data = list_response.json()
+    
+    # Verify paginated response structure
+    assert "items" in list_data
+    assert isinstance(list_data["items"], list)
+    
+    # Find our created annotation in the list
+    found_annotation = None
+    for annotation in list_data["items"]:
+        if annotation["id"] == created_annotation_id:
+            found_annotation = annotation
+            break
+    
+    assert found_annotation is not None, "Created annotation should be in the list"
+    
+    # Verify contributors field exists for the annotation in the list
+    assert "contributors" in found_annotation
+    assert isinstance(found_annotation["contributors"], list)
+    assert len(found_annotation["contributors"]) >= 1
+    
+    # Check contributor data structure
+    contributor = found_annotation["contributors"][0]
+    assert "id" in contributor
+    assert "username" in contributor
+    assert isinstance(contributor["id"], int)
+    assert isinstance(contributor["username"], str)
+
+
+@pytest.mark.asyncio
+async def test_list_sequence_annotations_empty_contributors(
+    authenticated_client: AsyncClient, sequence_session
+):
+    """Test that sequence annotations with no contributions return empty contributors array."""
+    # List all annotations (may include some with no manual contributions)
+    list_response = await authenticated_client.get("/annotations/sequences/")
+    assert list_response.status_code == 200
+    
+    list_data = list_response.json()
+    
+    # Verify all annotations have contributors field (even if empty)
+    assert "items" in list_data
+    for annotation in list_data["items"]:
+        assert "contributors" in annotation
+        assert isinstance(annotation["contributors"], list)
+        # Contributors array may be empty or populated, but should always be a list

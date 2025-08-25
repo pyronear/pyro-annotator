@@ -5,12 +5,13 @@
 
 
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, Field, ConfigDict
 
 from app.models import DetectionAnnotationProcessingStage
 from app.schemas.annotation_validation import DetectionAnnotationData
+from app.schemas.user import ContributorRead
 
 __all__ = [
     "DetectionAnnotationCreate",
@@ -65,6 +66,10 @@ class DetectionAnnotationRead(BaseModel):
     )
     created_at: datetime
     updated_at: Optional[datetime]
+    contributors: Optional[List[ContributorRead]] = Field(
+        default=None,
+        description="List of users who have contributed to this detection annotation",
+    )
 
 
 class DetectionAnnotationUpdate(BaseModel):

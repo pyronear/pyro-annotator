@@ -452,7 +452,7 @@ class SequenceAnalyzer:
 
         for cluster_idx, cluster in enumerate(bbox_clusters):
             bboxes = []
-            
+
             for bbox_coords, detection_id in cluster:
                 # Pre-validate coordinates before BoundingBox creation
                 if not self._is_valid_bbox_coords(bbox_coords):
@@ -461,7 +461,7 @@ class SequenceAnalyzer:
                     )
                     invalid_bbox_count += 1
                     continue
-                
+
                 try:
                     bbox = BoundingBox(detection_id=detection_id, xyxyn=bbox_coords)
                     bboxes.append(bbox)

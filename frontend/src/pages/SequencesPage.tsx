@@ -14,6 +14,7 @@ import {
 } from '@/utils/modelAccuracy';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
 import TabbedFilters from '@/components/filters/TabbedFilters';
+import ContributorList from '@/components/ui/ContributorList';
 import { useSequenceStore } from '@/store/useSequenceStore';
 import { useCameras } from '@/hooks/useCameras';
 import { useOrganizations } from '@/hooks/useOrganizations';
@@ -444,6 +445,16 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
                           </span>
                         )}
                       </div>
+
+                      {/* Contributors - Review page only */}
+                      {defaultProcessingStage === 'annotated' && sequence.annotation?.contributors && (
+                        <div className="mt-1">
+                          <ContributorList 
+                            contributors={sequence.annotation.contributors}
+                            displayMode="compact"
+                          />
+                        </div>
+                      )}
                     </div>
 
                     {/* False Positive Pills - Top Right Area (Review page only) */}

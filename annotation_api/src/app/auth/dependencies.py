@@ -17,7 +17,12 @@ from app.crud import UserCRUD
 from app.db import get_session
 from app.models import User
 
-__all__ = ["create_access_token", "get_current_user", "get_current_active_user", "get_current_superuser"]
+__all__ = [
+    "create_access_token",
+    "get_current_user",
+    "get_current_active_user",
+    "get_current_superuser",
+]
 
 # HTTP Bearer token security
 security = HTTPBearer(scheme_name="bearerAuth")
@@ -32,8 +37,6 @@ def create_access_token(data: Dict[str, Any]) -> str:
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, settings.JWT_SECRET, algorithm=ALGORITHM)
     return encoded_jwt
-
-
 
 
 def verify_token(token: str) -> Optional[TokenPayload]:
@@ -69,7 +72,7 @@ async def get_current_user(
     user = await user_crud.get_by_id(token_data.user_id)
     if user is None:
         raise credentials_exception
-    
+
     return user
 
 
@@ -79,8 +82,7 @@ async def get_current_active_user(
     """Get the current active user."""
     if not current_user.is_active:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Inactive user"
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Inactive user"
         )
     return current_user
 
@@ -91,7 +93,6 @@ async def get_current_superuser(
     """Get the current superuser."""
     if not current_user.is_superuser:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
         )
     return current_user

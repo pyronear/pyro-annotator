@@ -3,7 +3,14 @@ from typing import Optional
 
 from pydantic import BaseModel, EmailStr, Field
 
-__all__ = ["UserCreate", "UserRead", "UserUpdate", "UserPasswordUpdate", "UserInDB"]
+__all__ = [
+    "UserCreate",
+    "UserRead",
+    "UserUpdate",
+    "UserPasswordUpdate",
+    "UserInDB",
+    "ContributorRead",
+]
 
 
 class UserBase(BaseModel):
@@ -46,3 +53,12 @@ class UserInDB(UserBase):
     class Config:
         from_attributes = True
 
+
+class ContributorRead(BaseModel):
+    """Lightweight user schema for contributor information in API responses."""
+
+    id: int
+    username: str
+
+    class Config:
+        from_attributes = True

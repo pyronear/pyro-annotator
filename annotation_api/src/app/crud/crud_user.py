@@ -125,30 +125,26 @@ class UserCRUD(BaseCRUD[User, UserCreate, UserUpdate]):
     ):
         """Build query for user search with filters."""
         query = select(User)
-        
+
         conditions = []
-        
+
         # Add search filter (username or email)
         if search:
             search_term = f"%{search}%"
             conditions.append(
-                or_(
-                    User.username.ilike(search_term),
-                    User.email.ilike(search_term)
-                )
+                or_(User.username.ilike(search_term), User.email.ilike(search_term))
             )
-        
+
         # Add is_active filter
         if is_active is not None:
             conditions.append(User.is_active == is_active)
-        
+
         # Add is_superuser filter
         if is_superuser is not None:
             conditions.append(User.is_superuser == is_superuser)
-        
+
         # Apply conditions
         if conditions:
             query = query.where(and_(*conditions))
-        
-        return query
 
+        return query
