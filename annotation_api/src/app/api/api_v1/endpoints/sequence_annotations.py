@@ -30,6 +30,7 @@ from app.models import (
     FalsePositiveType,
     Sequence,
     SequenceAnnotation,
+    SequenceAnnotationContribution,
     SequenceAnnotationProcessingStage,
 )
 from app.schemas.annotation_validation import SequenceAnnotationData
@@ -266,7 +267,6 @@ async def create_sequence_annotation(
     false_positive_types = derive_false_positive_types(create_data.annotation)
 
     # Create database model with derived values
-    from app.models import SequenceAnnotation
 
     sequence_annotation = SequenceAnnotation(
         sequence_id=create_data.sequence_id,
@@ -279,8 +279,17 @@ async def create_sequence_annotation(
         processing_stage=create_data.processing_stage,
     )
 
-    # Add and commit directly
+    # Create contribution record in same transaction
     annotations.session.add(sequence_annotation)
+    await annotations.session.flush()  # Flush to get the ID
+    
+    contribution = SequenceAnnotationContribution(
+        sequence_annotation_id=sequence_annotation.id,
+        user_id=current_user.id
+    )
+    annotations.session.add(contribution)
+    
+    # Commit both annotation and contribution
     await annotations.session.commit()
     await annotations.session.refresh(sequence_annotation)
 
@@ -466,9 +475,16 @@ async def update_sequence_annotation(
         else existing.processing_stage == SequenceAnnotationProcessingStage.ANNOTATED
     )
 
-    # Update the model
+    # Update the model and record contribution in same transaction
     for key, value in update_dict.items():
         setattr(existing, key, value)
+    
+    # Record contribution
+    contribution = SequenceAnnotationContribution(
+        sequence_annotation_id=existing.id,
+        user_id=current_user.id
+    )
+    annotations.session.add(contribution)
 
     await annotations.session.commit()
     await annotations.session.refresh(existing)

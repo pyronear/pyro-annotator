@@ -296,3 +296,47 @@ class User(SQLModel, table=True):
     updated_at: Optional[datetime] = Field(
         default=None, sa_column=Column(DateTime(timezone=True))
     )
+
+
+class SequenceAnnotationContribution(SQLModel, table=True):
+    __tablename__ = "sequence_annotation_contributions"
+    __table_args__ = (
+        Index("ix_seq_contrib_annotation_user", "sequence_annotation_id", "user_id"),
+        Index("ix_seq_contrib_user_time", "user_id", "contributed_at"),
+    )
+    
+    id: int = Field(
+        default=None, primary_key=True, sa_column_kwargs={"autoincrement": True}
+    )
+    sequence_annotation_id: int = Field(
+        sa_column=Column(ForeignKey("sequences_annotations.id", ondelete="CASCADE"))
+    )
+    user_id: int = Field(
+        sa_column=Column(ForeignKey("users.id", ondelete="CASCADE"))
+    )
+    contributed_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        sa_column=Column(DateTime(timezone=True)),
+    )
+
+
+class DetectionAnnotationContribution(SQLModel, table=True):
+    __tablename__ = "detection_annotation_contributions"
+    __table_args__ = (
+        Index("ix_det_contrib_annotation_user", "detection_annotation_id", "user_id"),
+        Index("ix_det_contrib_user_time", "user_id", "contributed_at"),
+    )
+    
+    id: int = Field(
+        default=None, primary_key=True, sa_column_kwargs={"autoincrement": True}
+    )
+    detection_annotation_id: int = Field(
+        sa_column=Column(ForeignKey("detections_annotations.id", ondelete="CASCADE"))
+    )
+    user_id: int = Field(
+        sa_column=Column(ForeignKey("users.id", ondelete="CASCADE"))
+    )
+    contributed_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        sa_column=Column(DateTime(timezone=True)),
+    )

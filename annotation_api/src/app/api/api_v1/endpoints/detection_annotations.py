@@ -20,6 +20,7 @@ from app.db import get_session
 from app.models import (
     Detection,
     DetectionAnnotation,
+    DetectionAnnotationContribution,
     DetectionAnnotationProcessingStage,
     Sequence,
 )
@@ -76,7 +77,6 @@ async def create_detection_annotation(
         )
 
     # Create database model with validated data
-    from app.models import DetectionAnnotation
 
     detection_annotation = DetectionAnnotation(
         detection_id=detection_id,
@@ -85,8 +85,17 @@ async def create_detection_annotation(
         created_at=datetime.now(UTC),
     )
 
-    # Add and commit directly
+    # Create contribution record in same transaction
     annotations.session.add(detection_annotation)
+    await annotations.session.flush()  # Flush to get the ID
+    
+    contribution = DetectionAnnotationContribution(
+        detection_annotation_id=detection_annotation.id,
+        user_id=current_user.id
+    )
+    annotations.session.add(contribution)
+    
+    # Commit both annotation and contribution
     await annotations.session.commit()
     await annotations.session.refresh(detection_annotation)
 
@@ -232,9 +241,16 @@ async def update_annotation(
     if payload.processing_stage is not None:
         update_dict["processing_stage"] = payload.processing_stage
 
-    # Update the model
+    # Update the model and record contribution in same transaction
     for key, value in update_dict.items():
         setattr(existing, key, value)
+    
+    # Record contribution
+    contribution = DetectionAnnotationContribution(
+        detection_annotation_id=existing.id,
+        user_id=current_user.id
+    )
+    annotations.session.add(contribution)
 
     await annotations.session.commit()
     await annotations.session.refresh(existing)

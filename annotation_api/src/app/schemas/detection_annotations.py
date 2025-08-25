@@ -31,7 +31,6 @@ class DetectionAnnotationCreate(BaseModel):
                         "notes": "Clear smoke plume visible",
                     },
                     "processing_stage": "imported",
-                    "created_at": "2024-01-15T10:30:00",
                 },
                 {
                     "detection_id": 456,
@@ -41,7 +40,6 @@ class DetectionAnnotationCreate(BaseModel):
                         "notes": "Factory smoke confirmed",
                     },
                     "processing_stage": "annotated",
-                    "created_at": "2024-01-15T11:15:00",
                 },
             ]
         }
@@ -54,7 +52,6 @@ class DetectionAnnotationCreate(BaseModel):
         description="Current processing stage in the detection annotation workflow. Tracks progress from initial import through visual checks to final annotation.",
         examples=["imported", "visual_check", "annotated"],
     )
-    created_at: datetime
 
 
 class DetectionAnnotationRead(BaseModel):
