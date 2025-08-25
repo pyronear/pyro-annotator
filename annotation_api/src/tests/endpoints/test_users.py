@@ -52,11 +52,19 @@ class TestListUsers:
         
         assert response.status_code == 200
         data = response.json()
-        assert isinstance(data, list)
-        assert len(data) >= 2  # At least test_user and regular_user
+        
+        # Should be paginated response
+        assert "items" in data
+        assert "page" in data
+        assert "pages" in data
+        assert "size" in data
+        assert "total" in data
+        
+        assert isinstance(data["items"], list)
+        assert len(data["items"]) >= 2  # At least test_user and regular_user
         
         # Verify users are in response
-        usernames = [user["username"] for user in data]
+        usernames = [user["username"] for user in data["items"]]
         assert test_user.username in usernames
         assert regular_user.username in usernames
 
@@ -75,11 +83,41 @@ class TestListUsers:
     @pytest.mark.asyncio
     async def test_list_users_pagination(self, authenticated_client: AsyncClient):
         """Test user listing with pagination."""
-        response = await authenticated_client.get("/users/?skip=0&limit=1")
+        response = await authenticated_client.get("/users/?page=1&size=1")
         
         assert response.status_code == 200
         data = response.json()
-        assert len(data) <= 1
+        
+        # Should be paginated response
+        assert "items" in data
+        assert len(data["items"]) <= 1
+        assert data["page"] == 1
+        assert data["size"] == 1
+
+    @pytest.mark.asyncio
+    async def test_list_users_search(self, authenticated_client: AsyncClient, test_user: User):
+        """Test user listing with search."""
+        response = await authenticated_client.get(f"/users/?search={test_user.username}")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Should find the user
+        assert len(data["items"]) >= 1
+        usernames = [user["username"] for user in data["items"]]
+        assert test_user.username in usernames
+
+    @pytest.mark.asyncio
+    async def test_list_users_filter_superuser(self, authenticated_client: AsyncClient, test_user: User):
+        """Test user listing with superuser filter."""
+        response = await authenticated_client.get("/users/?is_superuser=true")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # All returned users should be superusers
+        for user in data["items"]:
+            assert user["is_superuser"] is True
 
 
 class TestCreateUser:
@@ -242,21 +280,6 @@ class TestUpdateUser:
         assert data["email"] == update_data["email"]
         assert data["is_active"] == update_data["is_active"]
 
-    @pytest.mark.asyncio
-    async def test_update_user_password(
-        self, authenticated_client: AsyncClient, regular_user: User
-    ):
-        """Test updating user password."""
-        update_data = {"password": "newpassword123"}
-        
-        response = await authenticated_client.patch(
-            f"/users/{regular_user.id}", json=update_data
-        )
-        
-        assert response.status_code == 200
-        # Password should be hashed, not returned
-        data = response.json()
-        assert "hashed_password" not in data
 
     @pytest.mark.asyncio
     async def test_update_user_regular_user_forbidden(
@@ -293,6 +316,62 @@ class TestUpdateUser:
         update_data = {"username": "newname"}
         
         response = await authenticated_client.patch("/users/99999", json=update_data)
+        
+        assert response.status_code == 404
+
+
+class TestUpdateUserPassword:
+    """Tests for PATCH /users/{id}/password endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_update_password_admin_success(
+        self, authenticated_client: AsyncClient, regular_user: User
+    ):
+        """Test admin can update user password."""
+        password_data = {"password": "newpassword123"}
+        
+        response = await authenticated_client.patch(
+            f"/users/{regular_user.id}/password", json=password_data
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == regular_user.id
+        assert "hashed_password" not in data
+
+    @pytest.mark.asyncio
+    async def test_update_password_regular_user_forbidden(
+        self, async_client: AsyncClient, regular_user_token: str, test_user: User
+    ):
+        """Test regular user cannot update passwords."""
+        headers = {"Authorization": f"Bearer {regular_user_token}"}
+        password_data = {"password": "hacker123"}
+        
+        response = await async_client.patch(
+            f"/users/{test_user.id}/password", json=password_data, headers=headers
+        )
+        
+        assert response.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_update_password_invalid_password(
+        self, authenticated_client: AsyncClient, regular_user: User
+    ):
+        """Test updating with invalid password."""
+        password_data = {"password": "short"}  # Too short
+        
+        response = await authenticated_client.patch(
+            f"/users/{regular_user.id}/password", json=password_data
+        )
+        
+        assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_update_password_user_not_found(self, authenticated_client: AsyncClient):
+        """Test updating password for non-existent user."""
+        password_data = {"password": "validpassword123"}
+        
+        response = await authenticated_client.patch("/users/99999/password", json=password_data)
         
         assert response.status_code == 404
 

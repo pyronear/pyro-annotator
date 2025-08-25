@@ -244,9 +244,10 @@ class TestUserUpdates:
         old_password_hash = regular_user.hashed_password
         new_password = "newpassword123"
         
-        update_data = UserUpdate(password=new_password)
+        from app.schemas.user import UserPasswordUpdate
+        password_data = UserPasswordUpdate(password=new_password)
         
-        updated_user = await user_crud.update_user(regular_user.id, update_data)
+        updated_user = await user_crud.update_user_password(regular_user.id, password_data)
         
         assert updated_user is not None
         assert updated_user.hashed_password != old_password_hash

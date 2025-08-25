@@ -2,12 +2,12 @@ from datetime import UTC, datetime
 from typing import List, Optional
 
 from passlib.context import CryptContext
-from sqlalchemy import select
+from sqlalchemy import select, or_, and_
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.crud.base import BaseCRUD
 from app.models import User
-from app.schemas.user import UserCreate, UserUpdate
+from app.schemas.user import UserCreate, UserUpdate, UserPasswordUpdate
 
 __all__ = ["UserCRUD"]
 
@@ -100,4 +100,55 @@ class UserCRUD(BaseCRUD[User, UserCreate, UserUpdate]):
         if not self.verify_password(password, user.hashed_password):
             return None
         return user
+
+    async def update_user_password(
+        self, user_id: int, password_update: UserPasswordUpdate
+    ) -> Optional[User]:
+        db_user = await self.get_by_id(user_id)
+        if not db_user:
+            return None
+
+        # Hash the new password
+        db_user.hashed_password = self.get_password_hash(password_update.password)
+        db_user.updated_at = datetime.now(UTC)
+
+        self.session.add(db_user)
+        await self.session.commit()
+        await self.session.refresh(db_user)
+        return db_user
+
+    def build_user_search_query(
+        self,
+        search: Optional[str] = None,
+        is_active: Optional[bool] = None,
+        is_superuser: Optional[bool] = None,
+    ):
+        """Build query for user search with filters."""
+        query = select(User)
+        
+        conditions = []
+        
+        # Add search filter (username or email)
+        if search:
+            search_term = f"%{search}%"
+            conditions.append(
+                or_(
+                    User.username.ilike(search_term),
+                    User.email.ilike(search_term)
+                )
+            )
+        
+        # Add is_active filter
+        if is_active is not None:
+            conditions.append(User.is_active == is_active)
+        
+        # Add is_superuser filter
+        if is_superuser is not None:
+            conditions.append(User.is_superuser == is_superuser)
+        
+        # Apply conditions
+        if conditions:
+            query = query.where(and_(*conditions))
+        
+        return query
 

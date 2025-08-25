@@ -3,7 +3,7 @@ from typing import Optional
 
 from pydantic import BaseModel, EmailStr, Field
 
-__all__ = ["UserCreate", "UserRead", "UserUpdate", "UserInDB"]
+__all__ = ["UserCreate", "UserRead", "UserUpdate", "UserPasswordUpdate", "UserInDB"]
 
 
 class UserBase(BaseModel):
@@ -20,9 +20,12 @@ class UserCreate(UserBase):
 class UserUpdate(BaseModel):
     username: Optional[str] = Field(None, min_length=3, max_length=50)
     email: Optional[EmailStr] = None
-    password: Optional[str] = Field(None, min_length=8)
     is_active: Optional[bool] = None
     is_superuser: Optional[bool] = None
+
+
+class UserPasswordUpdate(BaseModel):
+    password: str = Field(..., min_length=8)
 
 
 class UserRead(UserBase):
