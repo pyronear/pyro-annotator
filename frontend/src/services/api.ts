@@ -8,6 +8,13 @@ import {
   Camera,
   Organization,
   SourceApi,
+  User,
+  UserCreate,
+  UserUpdate,
+  UserPasswordUpdate,
+  LoginRequest,
+  LoginResponse,
+  UserFilters,
   PaginatedResponse,
   SequenceFilters,
   ExtendedSequenceFilters,
@@ -236,6 +243,67 @@ class ApiClient {
 
   async deleteDetectionAnnotation(id: number): Promise<void> {
     await this.client.delete(`/annotations/detections/${id}`);
+  }
+
+  // Authentication
+  async login(credentials: LoginRequest): Promise<LoginResponse> {
+    const response: AxiosResponse<LoginResponse> = await this.client.post(API_ENDPOINTS.AUTH_LOGIN, credentials);
+    return response.data;
+  }
+
+  async getCurrentUser(): Promise<User> {
+    // Get current user info from JWT token by calling users endpoint with current credentials
+    // Since we don't have a /me endpoint, we'll get user info from the token payload
+    const authStore = localStorage.getItem('auth-store');
+    if (authStore) {
+      try {
+        const parsedStore = JSON.parse(authStore);
+        const token = parsedStore.state?.token;
+        if (token) {
+          // Decode JWT to get user_id
+          const payload = JSON.parse(atob(token.split('.')[1]));
+          if (payload.user_id) {
+            return this.getUser(payload.user_id);
+          }
+        }
+      } catch (error) {
+        // If token parsing fails, throw error
+        throw new Error('Unable to get current user: invalid token');
+      }
+    }
+    throw new Error('No authentication token found');
+  }
+
+  // Users
+  async getUsers(filters: UserFilters = {}): Promise<PaginatedResponse<User>> {
+    const response: AxiosResponse<PaginatedResponse<User>> = await this.client.get(API_ENDPOINTS.USERS, {
+      params: filters,
+    });
+    return response.data;
+  }
+
+  async getUser(id: number): Promise<User> {
+    const response: AxiosResponse<User> = await this.client.get(`/users/${id}`);
+    return response.data;
+  }
+
+  async createUser(user: UserCreate): Promise<User> {
+    const response: AxiosResponse<User> = await this.client.post(API_ENDPOINTS.USERS, user);
+    return response.data;
+  }
+
+  async updateUser(id: number, updates: UserUpdate): Promise<User> {
+    const response: AxiosResponse<User> = await this.client.patch(`/users/${id}`, updates);
+    return response.data;
+  }
+
+  async updateUserPassword(id: number, passwordUpdate: UserPasswordUpdate): Promise<User> {
+    const response: AxiosResponse<User> = await this.client.patch(`/users/${id}/password`, passwordUpdate);
+    return response.data;
+  }
+
+  async deleteUser(id: number): Promise<void> {
+    await this.client.delete(`/users/${id}`);
   }
 
   // Health check

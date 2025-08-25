@@ -1,9 +1,7 @@
 import { create } from 'zustand';
 import { devtools, persist } from 'zustand/middleware';
-
-interface User {
-  username: string;
-}
+import { User } from '@/types/api';
+import { apiClient } from '@/services/api';
 
 interface AuthStore {
   // State
@@ -20,6 +18,9 @@ interface AuthStore {
   setError: (error: string | null) => void;
   clearError: () => void;
   initializeAuth: () => void;
+  
+  // Computed properties
+  isSuperuser: () => boolean;
 }
 
 export const useAuthStore = create<AuthStore>()(
@@ -38,27 +39,25 @@ export const useAuthStore = create<AuthStore>()(
           try {
             set({ isLoading: true, error: null }, false, 'login:start');
 
-            const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5050';
-            const response = await fetch(`${baseUrl}/api/v1/auth/login`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
+            const response = await apiClient.login({ username, password });
+            
+            // Store token first so getCurrentUser can use it
+            set(
+              {
+                token: response.access_token,
+                isAuthenticated: true,
               },
-              body: JSON.stringify({ username, password }),
-            });
+              false,
+              'login:token_received'
+            );
 
-            if (!response.ok) {
-              const errorData = await response.json().catch(() => ({ detail: 'Login failed' }));
-              throw new Error(errorData.detail || 'Login failed');
-            }
-
-            const data = await response.json();
-            const { access_token } = data;
+            // Fetch user information using the token
+            const user = await apiClient.getCurrentUser();
 
             set(
               {
-                user: { username },
-                token: access_token,
+                user: user,
+                token: response.access_token,
                 isAuthenticated: true,
                 isLoading: false,
                 error: null,
@@ -66,14 +65,14 @@ export const useAuthStore = create<AuthStore>()(
               false,
               'login:success'
             );
-          } catch (error) {
+          } catch (error: any) {
             set(
               {
                 user: null,
                 token: null,
                 isAuthenticated: false,
                 isLoading: false,
-                error: error instanceof Error ? error.message : 'Login failed',
+                error: error?.detail || error?.message || 'Login failed',
               },
               false,
               'login:error'
@@ -105,7 +104,7 @@ export const useAuthStore = create<AuthStore>()(
         clearError: () =>
           set({ error: null }, false, 'clearError'),
 
-        initializeAuth: () => {
+        initializeAuth: async () => {
           const { token } = get();
           if (token) {
             // Verify token is still valid by checking if it's expired
@@ -117,21 +116,33 @@ export const useAuthStore = create<AuthStore>()(
                 // Token expired, logout
                 get().logout();
               } else {
-                // Token still valid, restore authentication state
-                set(
-                  { 
-                    isAuthenticated: true,
-                    user: { username: payload.sub }
-                  }, 
-                  false, 
-                  'initializeAuth:restored'
-                );
+                // Token still valid, fetch fresh user info
+                try {
+                  const user = await apiClient.getCurrentUser();
+                  set(
+                    { 
+                      isAuthenticated: true,
+                      user: user
+                    }, 
+                    false, 
+                    'initializeAuth:restored'
+                  );
+                } catch (error) {
+                  // Failed to fetch user info, logout
+                  get().logout();
+                }
               }
             } catch (error) {
               // Invalid token format, logout
               get().logout();
             }
           }
+        },
+
+        // Computed properties
+        isSuperuser: () => {
+          const { user } = get();
+          return user?.is_superuser || false;
         },
       }),
       {

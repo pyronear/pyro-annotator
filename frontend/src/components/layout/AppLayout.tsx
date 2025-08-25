@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Menu, X, BarChart3, ChevronRight, ChevronDown, Layers, Target, LogOut, User } from 'lucide-react';
+import { Menu, X, BarChart3, ChevronRight, ChevronDown, Layers, Target, LogOut, User, Users } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useAnnotationCounts } from '@/hooks/useAnnotationCounts';
 import NotificationBadge from '@/components/ui/NotificationBadge';
@@ -91,8 +91,9 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
     'Detections': true,
   });
 
-  // Get annotation counts for badges
+  // Get annotation counts for badges and current user
   const { sequenceCount, detectionCount } = useAnnotationCounts();
+  const { isSuperuser } = useAuthStore();
 
   // Create dynamic navigation with badge counts
   const navigationWithBadges: NavigationItem[] = [
@@ -113,6 +114,7 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
         { name: 'Review', href: '/detections/review' },
       ]
     },
+    ...(isSuperuser() ? [{ name: 'User Management', href: '/users', icon: Users }] : []),
   ];
 
   const toggleSection = (sectionName: string) => {
