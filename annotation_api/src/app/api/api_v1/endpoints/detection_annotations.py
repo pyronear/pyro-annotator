@@ -240,9 +240,7 @@ async def list_annotations(
     # Transform results to include contributor data
     items_with_contributors = []
     for annotation in paginated_result.items:
-        annotation_dict = {
-            c.name: getattr(annotation, c.name) for c in annotation.__table__.columns
-        }
+        annotation_dict = annotation.model_dump()
         annotation_dict["contributors"] = contributors_map.get(annotation.id, [])
         items_with_contributors.append(DetectionAnnotationRead(**annotation_dict))
 
@@ -265,9 +263,7 @@ async def get_annotation(
     contributors = await annotations.get_annotation_contributors(annotation_id)
 
     # Convert to DetectionAnnotationRead with contributors
-    annotation_dict = {
-        c.name: getattr(annotation, c.name) for c in annotation.__table__.columns
-    }
+    annotation_dict = annotation.model_dump()
     annotation_dict["contributors"] = [
         {"id": user.id, "username": user.username} for user in contributors
     ]

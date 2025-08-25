@@ -13,6 +13,7 @@ import {
 } from '@/utils/modelAccuracy';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
 import TabbedFilters from '@/components/filters/TabbedFilters';
+import ContributorList from '@/components/ui/ContributorList';
 import { useCameras } from '@/hooks/useCameras';
 import { useOrganizations } from '@/hooks/useOrganizations';
 import { useSourceApis } from '@/hooks/useSourceApis';
@@ -427,6 +428,17 @@ export default function DetectionReviewPage() {
                           </span>
                         )}
                       </div>
+
+                      {/* Contributors */}
+                      {annotation && annotation.contributors && (
+                        <div className="mt-1">
+                          <ContributorList 
+                            contributors={annotation.contributors}
+                            displayMode="compact"
+                          />
+                        </div>
+                      )}
+
                       {sequence.azimuth && (
                         <div className="mt-1 text-xs text-gray-400">
                           Azimuth: {sequence.azimuth}°
