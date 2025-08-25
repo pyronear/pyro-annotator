@@ -92,3 +92,40 @@ async def test_status_endpoint_no_auth_required(async_client: AsyncClient):
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "ok"
+
+
+# Additional Authorization Tests for User Management
+
+@pytest.mark.asyncio
+async def test_inactive_user_blocked(async_client: AsyncClient, inactive_user_token: str):
+    """Test that inactive users cannot access protected endpoints."""
+    headers = {"Authorization": f"Bearer {inactive_user_token}"}
+    response = await async_client.get("/sequences", headers=headers)
+    assert response.status_code == 400
+    data = response.json()
+    assert "Inactive user" in data["detail"]
+
+
+@pytest.mark.asyncio
+async def test_regular_user_access_allowed(async_client: AsyncClient, regular_user_token: str):
+    """Test that active regular users can access general endpoints."""
+    headers = {"Authorization": f"Bearer {regular_user_token}"}
+    response = await async_client.get("/sequences", headers=headers)
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_regular_user_admin_access_denied(async_client: AsyncClient, regular_user_token: str):
+    """Test that regular users cannot access admin-only endpoints."""
+    headers = {"Authorization": f"Bearer {regular_user_token}"}
+    response = await async_client.get("/users/", headers=headers)
+    assert response.status_code == 403
+    data = response.json()
+    assert "Not enough permissions" in data["detail"]
+
+
+@pytest.mark.asyncio
+async def test_superuser_admin_access_allowed(authenticated_client: AsyncClient):
+    """Test that superusers can access admin-only endpoints."""
+    response = await authenticated_client.get("/users/")
+    assert response.status_code == 200

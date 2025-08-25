@@ -200,10 +200,56 @@ async def test_user(async_session: AsyncSession) -> User:
 
 
 @pytest_asyncio.fixture(scope="function")
+async def regular_user(async_session: AsyncSession) -> User:
+    """Create a regular (non-admin) user for authorization testing."""
+    user_crud = UserCRUD(async_session)
+    user_create = UserCreate(
+        username="regularuser",
+        email="regular@test.com",
+        password="testpassword123",
+        is_active=True,
+        is_superuser=False,  # Regular user, not admin
+    )
+    user = await user_crud.create_user(user_create)
+    return user
+
+
+@pytest_asyncio.fixture(scope="function")
+async def inactive_user(async_session: AsyncSession) -> User:
+    """Create an inactive user for status testing."""
+    user_crud = UserCRUD(async_session)
+    user_create = UserCreate(
+        username="inactiveuser",
+        email="inactive@test.com",
+        password="testpassword123",
+        is_active=False,  # Inactive user
+        is_superuser=False,
+    )
+    user = await user_crud.create_user(user_create)
+    return user
+
+
+@pytest_asyncio.fixture(scope="function")
 async def auth_token(test_user: User) -> str:
     """Generate an authentication token for testing."""
     return create_access_token(
         data={"sub": test_user.username, "user_id": test_user.id}
+    )
+
+
+@pytest_asyncio.fixture(scope="function")
+async def regular_user_token(regular_user: User) -> str:
+    """Generate an authentication token for regular user."""
+    return create_access_token(
+        data={"sub": regular_user.username, "user_id": regular_user.id}
+    )
+
+
+@pytest_asyncio.fixture(scope="function")
+async def inactive_user_token(inactive_user: User) -> str:
+    """Generate an authentication token for inactive user."""
+    return create_access_token(
+        data={"sub": inactive_user.username, "user_id": inactive_user.id}
     )
 
 
