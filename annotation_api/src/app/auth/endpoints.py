@@ -24,24 +24,20 @@ async def login(
     """Authenticate user and return access token."""
     user_crud = UserCRUD(session)
     user = await user_crud.authenticate(
-        username=login_data.username,
-        password=login_data.password
+        username=login_data.username, password=login_data.password
     )
-    
+
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     if not user.is_active:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Inactive user"
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Inactive user"
         )
 
-    access_token = create_access_token(
-        data={"sub": user.username, "user_id": user.id}
-    )
+    access_token = create_access_token(data={"sub": user.username, "user_id": user.id})
     return LoginResponse(access_token=access_token, token_type="bearer")

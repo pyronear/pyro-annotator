@@ -1,7 +1,6 @@
-import asyncio
 import io
 from datetime import datetime, timedelta, UTC
-from typing import AsyncGenerator, Generator
+from typing import AsyncGenerator
 
 import pytest
 import pytest_asyncio
@@ -117,7 +116,6 @@ SEQ_TABLE = [
 ]
 
 
-
 @pytest_asyncio.fixture(scope="function")
 async def async_client(
     async_session: AsyncSession,
@@ -170,7 +168,7 @@ async def async_session() -> AsyncSession:
         for table in reversed(SQLModel.metadata.sorted_tables):
             await session.exec(table.delete())
         await session.commit()
-        
+
         # Dispose engine to force connection pool cleanup between tests
         # This prevents "Event loop is closed" errors when running multiple tests
         await engine.dispose()

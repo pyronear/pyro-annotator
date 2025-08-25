@@ -14,9 +14,9 @@ from fastapi import (
     Query,
     status,
 )
-from fastapi_pagination import Page, Params
+from fastapi_pagination import Page, Params, create_page
 from fastapi_pagination.ext.sqlalchemy import apaginate
-from sqlalchemy import asc, desc, select, text
+from sqlalchemy import asc, desc, select, text, or_
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.dependencies import get_current_user, get_sequence_annotation_crud
@@ -282,13 +282,12 @@ async def create_sequence_annotation(
     # Create contribution record in same transaction
     annotations.session.add(sequence_annotation)
     await annotations.session.flush()  # Flush to get the ID
-    
+
     contribution = SequenceAnnotationContribution(
-        sequence_annotation_id=sequence_annotation.id,
-        user_id=current_user.id
+        sequence_annotation_id=sequence_annotation.id, user_id=current_user.id
     )
     annotations.session.add(contribution)
-    
+
     # Commit both annotation and contribution
     await annotations.session.commit()
     await annotations.session.refresh(sequence_annotation)
@@ -386,8 +385,6 @@ async def list_sequence_annotations(
         fp_type_values = [fp_type.value for fp_type in false_positive_types]
         # Use PostgreSQL JSONB array contains operator for OR logic
         # This will match annotations where false_positive_types contains any of the specified types
-        from sqlalchemy import or_
-
         # Create OR conditions for each false positive type
         fp_conditions = [
             text("false_positive_types::jsonb ? :fp_type_" + str(i)).params(
@@ -418,7 +415,53 @@ async def list_sequence_annotations(
         query = query.order_by(asc(order_field))
 
     # Apply pagination
-    return await apaginate(session, query, params)
+    paginated_result = await apaginate(session, query, params)
+
+    # Get annotation IDs from the paginated results
+    annotation_ids = [annotation.id for annotation in paginated_result.items]
+
+    if annotation_ids:
+        # Batch query to get all contributors for these annotations
+        contributors_query = (
+            select(
+                SequenceAnnotationContribution.sequence_annotation_id,
+                User.id,
+                User.username,
+            )
+            .join(User, SequenceAnnotationContribution.user_id == User.id)
+            .where(
+                SequenceAnnotationContribution.sequence_annotation_id.in_(
+                    annotation_ids
+                )
+            )
+        )
+        contributors_result = await session.execute(contributors_query)
+        contributors_data = contributors_result.all()
+
+        # Create mapping of annotation_id -> list of contributors
+        contributors_map = {}
+        for annotation_id, user_id, username in contributors_data:
+            if annotation_id not in contributors_map:
+                contributors_map[annotation_id] = []
+            contributors_map[annotation_id].append(
+                {"id": user_id, "username": username}
+            )
+    else:
+        contributors_map = {}
+
+    # Transform results to include contributor data
+    items_with_contributors = []
+    for annotation in paginated_result.items:
+        annotation_dict = {
+            c.name: getattr(annotation, c.name) for c in annotation.__table__.columns
+        }
+        annotation_dict["contributors"] = contributors_map.get(annotation.id, [])
+        items_with_contributors.append(SequenceAnnotationRead(**annotation_dict))
+
+    # Return paginated result with enhanced items
+    return create_page(
+        items_with_contributors, total=paginated_result.total, params=params
+    )
 
 
 @router.get("/{annotation_id}")
@@ -427,7 +470,21 @@ async def get_sequence_annotation(
     annotations: SequenceAnnotationCRUD = Depends(get_sequence_annotation_crud),
     current_user: User = Depends(get_current_user),
 ) -> SequenceAnnotationRead:
-    return await annotations.get(annotation_id, strict=True)
+    # Get the annotation
+    annotation = await annotations.get(annotation_id, strict=True)
+
+    # Get contributors for this annotation
+    contributors = await annotations.get_annotation_contributors(annotation_id)
+
+    # Convert to SequenceAnnotationRead with contributors
+    annotation_dict = {
+        c.name: getattr(annotation, c.name) for c in annotation.__table__.columns
+    }
+    annotation_dict["contributors"] = [
+        {"id": user.id, "username": user.username} for user in contributors
+    ]
+
+    return SequenceAnnotationRead(**annotation_dict)
 
 
 @router.patch("/{annotation_id}")
@@ -478,11 +535,10 @@ async def update_sequence_annotation(
     # Update the model and record contribution in same transaction
     for key, value in update_dict.items():
         setattr(existing, key, value)
-    
+
     # Record contribution
     contribution = SequenceAnnotationContribution(
-        sequence_annotation_id=existing.id,
-        user_id=current_user.id
+        sequence_annotation_id=existing.id, user_id=current_user.id
     )
     annotations.session.add(contribution)
 

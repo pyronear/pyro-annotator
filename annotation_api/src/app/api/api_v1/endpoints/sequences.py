@@ -1,5 +1,6 @@
 # Copyright (C) 2025, Pyronear.
 
+import json
 from datetime import datetime, UTC
 from enum import Enum
 from typing import List, Literal, Optional
@@ -29,7 +30,6 @@ from sqlalchemy import (
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.dependencies import get_current_user, get_sequence_crud
-from app.models import User
 from app.crud import SequenceCRUD
 from app.db import get_session
 from app.models import (
@@ -38,7 +38,9 @@ from app.models import (
     FalsePositiveType,
     Sequence,
     SequenceAnnotation,
+    SequenceAnnotationContribution,
     SequenceAnnotationProcessingStage,
+    User,
 )
 from app.schemas.sequence import (
     SequenceCreate,
@@ -375,8 +377,41 @@ async def list_sequences(
 
             # Create a mapping of sequence_id -> annotation for O(1) lookup
             annotation_map = {ann.sequence_id: ann for ann in annotations}
+
+            # Get annotation IDs for contributor query
+            annotation_ids = [ann.id for ann in annotations]
+
+            # Batch query to get all contributors for these annotations
+            if annotation_ids:
+                contributors_query = (
+                    select(
+                        SequenceAnnotationContribution.sequence_annotation_id,
+                        User.id,
+                        User.username,
+                    )
+                    .join(User, SequenceAnnotationContribution.user_id == User.id)
+                    .where(
+                        SequenceAnnotationContribution.sequence_annotation_id.in_(
+                            annotation_ids
+                        )
+                    )
+                )
+                contributors_result = await session.execute(contributors_query)
+                contributors_data = contributors_result.all()
+
+                # Create mapping of annotation_id -> list of contributors
+                contributors_map = {}
+                for annotation_id, user_id, username in contributors_data:
+                    if annotation_id not in contributors_map:
+                        contributors_map[annotation_id] = []
+                    contributors_map[annotation_id].append(
+                        {"id": user_id, "username": username}
+                    )
+            else:
+                contributors_map = {}
         else:
             annotation_map = {}
+            contributors_map = {}
 
         # Transform results to include annotation data
         items = []
@@ -400,6 +435,10 @@ async def list_sequences(
                         c.name: getattr(annotation, c.name)
                         for c in annotation.__table__.columns
                     }
+                # Add contributors data to the annotation
+                annotation_dict["contributors"] = contributors_map.get(
+                    annotation.id, []
+                )
                 sequence_data.annotation = SequenceAnnotationRead(**annotation_dict)
             items.append(sequence_data)
 
@@ -411,8 +450,6 @@ async def list_sequences(
             "size": paginated_result.size,
             "total": paginated_result.total,
         }
-
-        import json
 
         return Response(
             content=json.dumps(result_dict, default=str), media_type="application/json"
