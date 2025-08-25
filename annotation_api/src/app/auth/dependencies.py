@@ -9,15 +9,15 @@ from typing import Any, Dict, Optional
 import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from passlib.context import CryptContext
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.auth.schemas import TokenPayload
 from app.core.config import settings
+from app.crud import UserCRUD
+from app.db import get_session
+from app.models import User
 
-__all__ = ["create_access_token", "verify_password", "get_current_user"]
-
-# Password hashing context
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+__all__ = ["create_access_token", "get_current_user", "get_current_active_user", "get_current_superuser"]
 
 # HTTP Bearer token security
 security = HTTPBearer(scheme_name="bearerAuth")
@@ -34,11 +34,6 @@ def create_access_token(data: Dict[str, Any]) -> str:
     return encoded_jwt
 
 
-def verify_password(plain_password: str, username: str) -> bool:
-    """Verify a password against the configured credentials."""
-    return (
-        username == settings.AUTH_USERNAME and plain_password == settings.AUTH_PASSWORD
-    )
 
 
 def verify_token(token: str) -> Optional[TokenPayload]:
@@ -46,17 +41,19 @@ def verify_token(token: str) -> Optional[TokenPayload]:
     try:
         payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
-        if username is None:
+        user_id: int = payload.get("user_id")
+        if username is None or user_id is None:
             return None
-        token_data = TokenPayload(username=username)
+        token_data = TokenPayload(username=username, user_id=user_id)
     except jwt.PyJWTError:
         return None
     return token_data
 
 
-def get_current_user(
+async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
-) -> str:
+    session: AsyncSession = Depends(get_session),
+) -> User:
     """Get the current authenticated user from the JWT token."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -65,11 +62,36 @@ def get_current_user(
     )
 
     token_data = verify_token(credentials.credentials)
-    if token_data is None or token_data.username is None:
+    if token_data is None:
         raise credentials_exception
 
-    # Verify that the user in the token matches our configured username
-    if token_data.username != settings.AUTH_USERNAME:
+    user_crud = UserCRUD(session)
+    user = await user_crud.get_by_id(token_data.user_id)
+    if user is None:
         raise credentials_exception
+    
+    return user
 
-    return token_data.username
+
+async def get_current_active_user(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """Get the current active user."""
+    if not current_user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Inactive user"
+        )
+    return current_user
+
+
+async def get_current_superuser(
+    current_user: User = Depends(get_current_active_user),
+) -> User:
+    """Get the current superuser."""
+    if not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+    return current_user

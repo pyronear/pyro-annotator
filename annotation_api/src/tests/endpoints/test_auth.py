@@ -5,7 +5,7 @@ from app.core.config import settings
 
 
 @pytest.mark.asyncio
-async def test_login_valid_credentials(async_client: AsyncClient):
+async def test_login_valid_credentials(async_client: AsyncClient, test_user):
     """Test login with valid credentials."""
     payload = {"username": settings.AUTH_USERNAME, "password": settings.AUTH_PASSWORD}
 
@@ -20,7 +20,7 @@ async def test_login_valid_credentials(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_login_invalid_username(async_client: AsyncClient):
+async def test_login_invalid_username(async_client: AsyncClient, test_user):
     """Test login with invalid username."""
     payload = {"username": "wrong_username", "password": settings.AUTH_PASSWORD}
 
@@ -33,7 +33,7 @@ async def test_login_invalid_username(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_login_invalid_password(async_client: AsyncClient):
+async def test_login_invalid_password(async_client: AsyncClient, test_user):
     """Test login with invalid password."""
     payload = {"username": settings.AUTH_USERNAME, "password": "wrong_password"}
 

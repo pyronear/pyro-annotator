@@ -8,7 +8,7 @@ import logging
 from fastapi import Depends
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_active_user
 from app.crud import (
     DetectionAnnotationCRUD,
     DetectionCRUD,
@@ -26,6 +26,9 @@ __all__ = [
     "get_sequence_annotation_crud",
     "get_sequence_crud",
 ]
+
+# Re-export for backward compatibility
+get_current_user = get_current_active_user
 
 
 def get_detection_crud(session: AsyncSession = Depends(get_session)) -> DetectionCRUD:

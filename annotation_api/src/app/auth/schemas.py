@@ -22,3 +22,4 @@ class LoginResponse(BaseModel):
 
 class TokenPayload(BaseModel):
     username: Optional[str] = None
+    user_id: Optional[int] = None

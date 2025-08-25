@@ -50,7 +50,10 @@ services:
     ports:
       - "5050:5050"
     environment:
+      - SUPPORT_EMAIL=contact@pyronear.org
+      # DB
       - POSTGRES_URL=postgresql+asyncpg://dummy_pg_user:dummy_pg_pwd@postgres/dummy_pg_db
+      # S3
       - S3_ENDPOINT_URL=http://localstack:4566
       - S3_ACCESS_KEY=fake
       - S3_SECRET_KEY=fake
