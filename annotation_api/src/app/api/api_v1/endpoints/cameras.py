@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.dependencies import get_current_user
+from app.models import User
 from app.db import get_session
 from app.models import Sequence
 from app.schemas.camera import CameraRead
@@ -17,7 +18,7 @@ router = APIRouter()
 @router.get("/", response_model=List[CameraRead])
 async def list_cameras(
     session: AsyncSession = Depends(get_session),
-    current_user: str = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ) -> List[CameraRead]:
     """
     List all unique cameras.

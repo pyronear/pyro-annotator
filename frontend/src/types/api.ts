@@ -225,6 +225,54 @@ export interface SequenceWithDetectionProgress extends Sequence {
   detection_annotation_stats?: DetectionAnnotationStats;
 }
 
+// User Management Types
+export interface User {
+  id: number;
+  username: string;
+  email: string;
+  is_active: boolean;
+  is_superuser: boolean;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface UserCreate {
+  username: string;
+  email: string;
+  password: string;
+  is_active?: boolean;
+  is_superuser?: boolean;
+}
+
+export interface UserUpdate {
+  username?: string;
+  email?: string;
+  is_active?: boolean;
+  is_superuser?: boolean;
+}
+
+export interface UserPasswordUpdate {
+  password: string;
+}
+
+export interface LoginRequest {
+  username: string;
+  password: string;
+}
+
+export interface LoginResponse {
+  access_token: string;
+  token_type: string;
+}
+
+export interface UserFilters {
+  is_active?: boolean;
+  is_superuser?: boolean;
+  search?: string;
+  page?: number;
+  size?: number;
+}
+
 // API Error Response
 export interface ApiError {
   detail: string | Record<string, string[]>;

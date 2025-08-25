@@ -8,6 +8,8 @@ export const API_ENDPOINTS = {
   CAMERAS: '/cameras/',
   ORGANIZATIONS: '/organizations/',
   SOURCE_APIS: '/source-apis/',
+  USERS: '/users/',
+  AUTH_LOGIN: '/auth/login',
   STATUS: '/status',
 } as const;
 
@@ -102,4 +104,6 @@ export const QUERY_KEYS = {
   SOURCE_APIS: ['source-apis'],
   DETECTION_ANNOTATION: (id: number) => ['detection-annotations', id],
   ANNOTATION_STATS: ['annotation-stats'],
+  USERS: ['users'],
+  USER: (id: number) => ['users', id],
 } as const;

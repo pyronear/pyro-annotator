@@ -1,16 +1,12 @@
-# Copyright (C) 2024, Pyronear.
-
-# This program is licensed under the Apache License 2.0.
-# See LICENSE or go to <https://www.apache.org/licenses/LICENSE-2.0> for full license details.
-
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from enum import Enum
 from typing import List, Optional
+
 from sqlalchemy import Column, DateTime, ForeignKey, Index, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
-__all__ = ["Detection", "DetectionAnnotation", "Sequence", "SequenceAnnotation"]
+__all__ = ["Detection", "DetectionAnnotation", "Sequence", "SequenceAnnotation", "User"]
 
 # -------------------- ENUMS --------------------
 
@@ -168,7 +164,7 @@ class Sequence(SQLModel, table=True):
     alert_api_id: int
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),
-        sa_column=Column(DateTime(timezone=True))
+        sa_column=Column(DateTime(timezone=True)),
     )
     recorded_at: datetime = Field(sa_column=Column(DateTime(timezone=True)))
     last_seen_at: datetime = Field(sa_column=Column(DateTime(timezone=True)))
@@ -216,11 +212,10 @@ class SequenceAnnotation(SQLModel, table=True):
     annotation: dict = Field(sa_column=Column(JSONB))
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),
-        sa_column=Column(DateTime(timezone=True))
+        sa_column=Column(DateTime(timezone=True)),
     )
     updated_at: Optional[datetime] = Field(
-        default=None,
-        sa_column=Column(DateTime(timezone=True))
+        default=None, sa_column=Column(DateTime(timezone=True))
     )
     processing_stage: SequenceAnnotationProcessingStage
 
@@ -239,7 +234,7 @@ class Detection(SQLModel, table=True):
     )
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),
-        sa_column=Column(DateTime(timezone=True))
+        sa_column=Column(DateTime(timezone=True)),
     )
     recorded_at: datetime = Field(sa_column=Column(DateTime(timezone=True)))
     alert_api_id: int
@@ -269,9 +264,35 @@ class DetectionAnnotation(SQLModel, table=True):
     processing_stage: DetectionAnnotationProcessingStage = Field(default=None)
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),
-        sa_column=Column(DateTime(timezone=True))
+        sa_column=Column(DateTime(timezone=True)),
     )
     updated_at: Optional[datetime] = Field(
+        default=None, sa_column=Column(DateTime(timezone=True))
+    )
+
+
+class User(SQLModel, table=True):
+    __tablename__ = "users"
+    __table_args__ = (
+        UniqueConstraint("username", name="uq_user_username"),
+        UniqueConstraint("email", name="uq_user_email"),
+        Index("ix_user_username", "username"),
+        Index("ix_user_email", "email"),
+    )
+    id: int = Field(
         default=None,
-        sa_column=Column(DateTime(timezone=True))
+        primary_key=True,
+        sa_column_kwargs={"autoincrement": True},
+    )
+    username: str = Field(max_length=50)
+    email: str = Field(max_length=255)
+    hashed_password: str
+    is_active: bool = Field(default=True)
+    is_superuser: bool = Field(default=False)
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        sa_column=Column(DateTime(timezone=True)),
+    )
+    updated_at: Optional[datetime] = Field(
+        default=None, sa_column=Column(DateTime(timezone=True))
     )

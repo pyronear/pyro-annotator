@@ -13,6 +13,7 @@ from app.api.api_v1.endpoints import (
     sequence_annotations,
     sequences,
     source_apis,
+    users,
 )
 from app.auth import endpoints as auth
 
@@ -20,6 +21,9 @@ api_router = APIRouter()
 
 # Authentication endpoints
 api_router.include_router(auth.router, prefix="/auth", tags=["authentication"])
+
+# User management endpoints
+api_router.include_router(users.router, prefix="/users", tags=["users"])
 
 api_router.include_router(detections.router, prefix="/detections", tags=["detections"])
 api_router.include_router(

@@ -17,10 +17,14 @@ from fastapi.responses import JSONResponse
 from fastapi_pagination import add_pagination
 from pydantic import ValidationError
 from sqlalchemy import exc
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.api_v1.router import api_router
 from app.core.config import settings
+from app.crud import UserCRUD
+from app.db import get_session, init_db
 from app.schemas.base import Status
+from app.schemas.user import UserCreate
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -368,3 +372,37 @@ app.openapi = custom_openapi  # type: ignore[method-assign]
 
 # Add pagination support
 add_pagination(app)
+
+
+# Startup event to create admin user
+@app.on_event("startup")
+async def startup_event():
+    """Initialize database and create admin user if not exists."""
+    logger.info("Initializing database...")
+    await init_db()
+    
+    # Create admin user from environment variables if not exists
+    async for session in get_session():
+        user_crud = UserCRUD(session)
+        
+        # Check if admin user exists
+        admin_user = await user_crud.get_by_username(settings.AUTH_USERNAME)
+        
+        if not admin_user:
+            logger.info(f"Creating admin user: {settings.AUTH_USERNAME}")
+            try:
+                admin_create = UserCreate(
+                    username=settings.AUTH_USERNAME,
+                    email=f"{settings.AUTH_USERNAME}@pyronear.org",
+                    password=settings.AUTH_PASSWORD,
+                    is_active=True,
+                    is_superuser=True,
+                )
+                await user_crud.create_user(admin_create)
+                logger.info("Admin user created successfully")
+            except Exception as e:
+                logger.error(f"Failed to create admin user: {e}")
+        else:
+            logger.info("Admin user already exists")
+        
+        break  # Exit after first session
