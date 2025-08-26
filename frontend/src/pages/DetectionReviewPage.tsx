@@ -42,11 +42,13 @@ export default function DetectionReviewPage() {
     dateFrom,
     dateTo,
     selectedFalsePositiveTypes,
+    selectedSmokeTypes,
     selectedModelAccuracy,
     setFilters,
     setDateFrom,
     setDateTo,
     setSelectedFalsePositiveTypes,
+    setSelectedSmokeTypes,
     setSelectedModelAccuracy,
     resetFilters,
   } = usePersistedFilters('filters-detections-review', defaultState);
@@ -194,10 +196,12 @@ export default function DetectionReviewPage() {
       dateFrom,
       dateTo,
       selectedFalsePositiveTypes,
+      selectedSmokeTypes,
       selectedModelAccuracy,
       'all', // selectedUnsure
       true, // showModelAccuracy
       true, // showFalsePositiveTypes
+      true, // showSmokeTypes
       false // showUnsureFilter
     );
 
@@ -225,6 +229,8 @@ export default function DetectionReviewPage() {
           onDateRangeClear={clearDateRange}
           selectedFalsePositiveTypes={selectedFalsePositiveTypes}
           onFalsePositiveTypesChange={handleFalsePositiveFilterChange}
+          selectedSmokeTypes={selectedSmokeTypes}
+          onSmokeTypesChange={setSelectedSmokeTypes}
           selectedModelAccuracy={selectedModelAccuracy}
           onModelAccuracyChange={setSelectedModelAccuracy}
           onResetFilters={resetFilters}
@@ -236,6 +242,7 @@ export default function DetectionReviewPage() {
           sourceApisLoading={sourceApisLoading}
           showModelAccuracy={true}
           showFalsePositiveTypes={true}
+          showSmokeTypes={true}
         />
 
         {/* Empty state message */}
@@ -296,6 +303,9 @@ export default function DetectionReviewPage() {
         sourceApisLoading={sourceApisLoading}
         showModelAccuracy={true}
         showFalsePositiveTypes={true}
+        selectedSmokeTypes={selectedSmokeTypes}
+        onSmokeTypesChange={setSelectedSmokeTypes}
+        showSmokeTypes={true}
       />
 
       {/* Results */}

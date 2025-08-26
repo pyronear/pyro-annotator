@@ -195,6 +195,12 @@ class SequenceAnnotation(SQLModel, table=True):
             "false_positive_types",
             postgresql_using="gin",
         ),
+        # GIN index for efficient JSONB operations on smoke_types array
+        Index(
+            "ix_sequence_annotation_smoke_types",
+            "smoke_types",
+            postgresql_using="gin",
+        ),
     )
     id: int = Field(
         default=None, primary_key=True, sa_column_kwargs={"autoincrement": True}
@@ -205,6 +211,9 @@ class SequenceAnnotation(SQLModel, table=True):
     has_smoke: bool
     has_false_positives: bool
     false_positive_types: List[str] = Field(
+        default_factory=list, sa_column=Column(JSONB)
+    )
+    smoke_types: List[str] = Field(
         default_factory=list, sa_column=Column(JSONB)
     )
     has_missed_smoke: bool

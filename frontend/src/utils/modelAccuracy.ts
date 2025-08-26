@@ -209,3 +209,21 @@ export function getRowBackgroundClasses(accuracy: ModelAccuracyResult): string {
   
   return backgroundClasses[accuracy.type];
 }
+
+// Helper functions for smoke type display
+export const getSmokeTypeEmoji = (type: string): string => {
+  switch (type) {
+    case 'wildfire':
+      return '🔥';
+    case 'industrial':
+      return '🏭';
+    case 'other':
+      return '💨';
+    default:
+      return '💨';
+  }
+};
+
+export const formatSmokeType = (type: string): string => {
+  return type.charAt(0).toUpperCase() + type.slice(1);
+};

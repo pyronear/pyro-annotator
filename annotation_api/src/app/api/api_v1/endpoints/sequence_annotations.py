@@ -32,6 +32,7 @@ from app.models import (
     SequenceAnnotation,
     SequenceAnnotationContribution,
     SequenceAnnotationProcessingStage,
+    SmokeType,
 )
 from app.schemas.annotation_validation import SequenceAnnotationData
 from app.schemas.sequence_annotations import (
@@ -73,6 +74,17 @@ def derive_false_positive_types(annotation_data: SequenceAnnotationData) -> List
     all_types = []
     for bbox in annotation_data.sequences_bbox:
         all_types.extend([fp_type.value for fp_type in bbox.false_positive_types])
+    # Remove duplicates while preserving order
+    unique_types = list(dict.fromkeys(all_types))
+    return unique_types
+
+
+def derive_smoke_types(annotation_data: SequenceAnnotationData) -> List[str]:
+    """Derive smoke_types from annotation data as a list of strings."""
+    all_types = []
+    for bbox in annotation_data.sequences_bbox:
+        if bbox.is_smoke and bbox.smoke_type:
+            all_types.append(bbox.smoke_type.value)
     # Remove duplicates while preserving order
     unique_types = list(dict.fromkeys(all_types))
     return unique_types
@@ -303,6 +315,10 @@ async def list_sequence_annotations(
         None,
         description="Filter by specific false positive types (OR logic). Annotations containing any of the specified types will be included in results.",
     ),
+    smoke_types: Optional[List[SmokeType]] = Query(
+        None,
+        description="Filter by specific smoke types (OR logic). Annotations containing any of the specified types will be included in results.",
+    ),
     has_missed_smoke: Optional[bool] = Query(
         None, description="Filter by has_missed_smoke"
     ),
@@ -330,6 +346,7 @@ async def list_sequence_annotations(
     - **has_smoke**: Filter by has_smoke boolean
     - **has_false_positives**: Filter by has_false_positives boolean
     - **false_positive_type**: Filter by specific false positive type (searches within JSON array)
+    - **smoke_types**: Filter by specific smoke types (searches within JSON array)
     - **has_missed_smoke**: Filter by has_missed_smoke boolean
     - **processing_stage**: Filter by processing stage (imported, ready_to_annotate, annotated)
     - **order_by**: Order by created_at or sequence_recorded_at (default: created_at)
@@ -374,6 +391,20 @@ async def list_sequence_annotations(
             for i, fp_type in enumerate(fp_type_values)
         ]
         query = query.where(or_(*fp_conditions))
+
+    if smoke_types is not None and len(smoke_types) > 0:
+        # Convert enum values to strings for database query
+        smoke_type_values = [smoke_type.value for smoke_type in smoke_types]
+        # Use PostgreSQL JSONB array contains operator for OR logic
+        # This will match annotations where smoke_types contains any of the specified types
+        # Create OR conditions for each smoke type
+        smoke_conditions = [
+            text("smoke_types::jsonb ? :smoke_type_" + str(i)).params(
+                **{f"smoke_type_{i}": smoke_type}
+            )
+            for i, smoke_type in enumerate(smoke_type_values)
+        ]
+        query = query.where(or_(*smoke_conditions))
 
     if has_missed_smoke is not None:
         query = query.where(SequenceAnnotation.has_missed_smoke == has_missed_smoke)

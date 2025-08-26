@@ -10,7 +10,9 @@ import {
   getFalsePositiveEmoji,
   formatFalsePositiveType,
   getRowBackgroundClasses,
-  parseFalsePositiveTypes
+  parseFalsePositiveTypes,
+  getSmokeTypeEmoji,
+  formatSmokeType
 } from '@/utils/modelAccuracy';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
 import TabbedFilters from '@/components/filters/TabbedFilters';
@@ -43,12 +45,14 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
     dateFrom,
     dateTo,
     selectedFalsePositiveTypes,
+    selectedSmokeTypes,
     selectedModelAccuracy,
     selectedUnsure,
     setFilters,
     setDateFrom,
     setDateTo,
     setSelectedFalsePositiveTypes,
+    setSelectedSmokeTypes,
     setSelectedModelAccuracy,
     setSelectedUnsure,
     resetFilters,
@@ -180,8 +184,10 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
       dateFrom,
       dateTo,
       selectedFalsePositiveTypes,
+      selectedSmokeTypes,
       selectedModelAccuracy,
       selectedUnsure,
+      defaultProcessingStage === 'annotated',
       defaultProcessingStage === 'annotated',
       defaultProcessingStage === 'annotated',
       defaultProcessingStage === 'annotated'
@@ -211,6 +217,8 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
           onDateRangeClear={clearDateRange}
           selectedFalsePositiveTypes={selectedFalsePositiveTypes}
           onFalsePositiveTypesChange={handleFalsePositiveFilterChangeV2}
+          selectedSmokeTypes={selectedSmokeTypes}
+          onSmokeTypesChange={setSelectedSmokeTypes}
           selectedModelAccuracy={selectedModelAccuracy}
           onModelAccuracyChange={setSelectedModelAccuracy}
           selectedUnsure={selectedUnsure}
@@ -224,6 +232,7 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
           sourceApisLoading={sourceApisLoading}
           showModelAccuracy={defaultProcessingStage === 'annotated'}
           showFalsePositiveTypes={defaultProcessingStage === 'annotated'}
+          showSmokeTypes={defaultProcessingStage === 'annotated'}
           showUnsureFilter={defaultProcessingStage === 'annotated'}
         />
 
@@ -284,6 +293,8 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
         onDateRangeClear={clearDateRange}
         selectedFalsePositiveTypes={selectedFalsePositiveTypes}
         onFalsePositiveTypesChange={handleFalsePositiveFilterChangeV2}
+        selectedSmokeTypes={selectedSmokeTypes}
+        onSmokeTypesChange={setSelectedSmokeTypes}
         selectedModelAccuracy={selectedModelAccuracy}
         onModelAccuracyChange={setSelectedModelAccuracy}
         selectedUnsure={selectedUnsure}
@@ -297,6 +308,7 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
         sourceApisLoading={sourceApisLoading}
         showModelAccuracy={defaultProcessingStage === 'annotated'}
         showFalsePositiveTypes={defaultProcessingStage === 'annotated'}
+        showSmokeTypes={defaultProcessingStage === 'annotated'}
         showUnsureFilter={defaultProcessingStage === 'annotated'}
       />
 
@@ -467,6 +479,18 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
                                 </span>
                               ));
                             })()}
+                          </div>
+
+                          {/* Smoke Type Pills */}
+                          <div className="flex flex-wrap gap-1 justify-end">
+                            {sequence.annotation.smoke_types?.map((type: string) => (
+                              <span
+                                key={type}
+                                className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800"
+                              >
+                                {getSmokeTypeEmoji(type)} {formatSmokeType(type)}
+                              </span>
+                            ))}
                           </div>
                           
                           {/* Contributors - Bottom Right */}

@@ -3,22 +3,58 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, RotateCcw, CheckCircle, AlertCircle, Keyboard, X, Upload, ChevronLeft, ChevronRight, Clock } from 'lucide-react';
 import { apiClient } from '@/services/api';
-import { QUERY_KEYS, FALSE_POSITIVE_TYPES } from '@/utils/constants';
-import { SequenceAnnotation, SequenceBbox, FalsePositiveType } from '@/types/api';
+import { QUERY_KEYS, FALSE_POSITIVE_TYPES, SMOKE_TYPES } from '@/utils/constants';
+import { SequenceAnnotation, SequenceBbox, FalsePositiveType, SmokeType } from '@/types/api';
 import SequenceReviewer from '@/components/sequence/SequenceReviewer';
 import CroppedImageSequence from '@/components/annotation/CroppedImageSequence';
 import FullImageSequence from '@/components/annotation/FullImageSequence';
 import { useSequenceStore } from '@/store/useSequenceStore';
+import { getSmokeTypeEmoji, formatSmokeType } from '@/utils/modelAccuracy';
 
 // Helper functions for annotation state management
+const getClassificationType = (bbox: SequenceBbox, index: number, primaryClassification: Record<number, 'unselected' | 'smoke' | 'false_positive'>): 'unselected' | 'smoke' | 'false_positive' => {
+  const userChoice = primaryClassification[index] || 'unselected';
+  
+  // If user explicitly chose smoke and bbox data matches
+  if (userChoice === 'smoke' && bbox.is_smoke) {
+    return 'smoke';
+  }
+  
+  // If user explicitly chose false positive (regardless of bbox data completeness)  
+  if (userChoice === 'false_positive') {
+    return 'false_positive';
+  }
+  
+  // If no explicit choice made, derive from existing data for backwards compatibility
+  if (userChoice === 'unselected') {
+    if (bbox.is_smoke) {
+      return 'smoke';
+    } else if (bbox.false_positive_types.length > 0) {
+      return 'false_positive';
+    }
+  }
+  
+  return 'unselected';
+};
+
 const hasUserAnnotations = (bbox: SequenceBbox): boolean => {
-  return bbox.is_smoke || bbox.false_positive_types.length > 0;
+  if (bbox.is_smoke) {
+    // If smoke is selected, smoke_type must also be selected
+    return bbox.smoke_type !== undefined;
+  } else if (bbox.false_positive_types.length > 0) {
+    // If false positive is selected (has false positive types), it's annotated
+    return true;
+  } else {
+    // If neither smoke nor false positive types are selected, it's unselected
+    return false;
+  }
 };
 
 const initializeCleanBbox = (originalBbox: SequenceBbox): SequenceBbox => {
   return {
     ...originalBbox,
     is_smoke: false,
+    smoke_type: undefined,
     false_positive_types: [],
     // Preserve structure with bboxes containing detection_ids
   };
@@ -80,6 +116,9 @@ export default function AnnotationInterface() {
   const [hasMissedSmoke, setHasMissedSmoke] = useState<boolean>(false);
   const [missedSmokeReview, setMissedSmokeReview] = useState<'yes' | 'no' | null>(null);
   const [isUnsure, setIsUnsure] = useState<boolean>(false);
+  
+  // Primary classification UI state (separate from data state)
+  const [primaryClassification, setPrimaryClassification] = useState<Record<number, 'unselected' | 'smoke' | 'false_positive'>>({});
   
   // Keyboard shortcuts state
   const [activeDetectionIndex, setActiveDetectionIndex] = useState<number | null>(null);
@@ -314,22 +353,67 @@ export default function AnnotationInterface() {
       const key = e.key.toLowerCase();
       
       if (key === 's') {
-        // Toggle smoke for active detection
+        // Set as smoke sequence for active detection
         const bbox = bboxes[activeDetectionIndex];
         if (bbox) {
-          const updatedBbox = { ...bbox, is_smoke: !bbox.is_smoke };
-          if (updatedBbox.is_smoke) {
-            updatedBbox.false_positive_types = [];
-          }
+          // Update UI state
+          setPrimaryClassification(prev => ({
+            ...prev,
+            [activeDetectionIndex]: 'smoke'
+          }));
+          
+          // Update bbox data
+          const updatedBbox = { 
+            ...bbox, 
+            is_smoke: true,
+            false_positive_types: [] // Clear conflicting data
+          };
           handleBboxChange(activeDetectionIndex, updatedBbox);
           e.preventDefault();
         }
-      } else {
-        // Handle letter-based shortcuts for false positive types
-        const typeIndex = getTypeIndexForKey(key);
-        if (typeIndex !== -1) {
-          toggleFalsePositiveType(activeDetectionIndex, typeIndex);
+      } else if (key === 'f') {
+        // Set as false positive for active detection
+        const bbox = bboxes[activeDetectionIndex];
+        if (bbox) {
+          // Update UI state
+          setPrimaryClassification(prev => ({
+            ...prev,
+            [activeDetectionIndex]: 'false_positive'
+          }));
+          
+          // Update bbox data - clear conflicting data but DON'T add false positive types yet
+          const updatedBbox = { 
+            ...bbox, 
+            is_smoke: false,
+            smoke_type: undefined // Clear conflicting data
+            // Keep existing false_positive_types if any, don't auto-add new ones
+          };
+          handleBboxChange(activeDetectionIndex, updatedBbox);
           e.preventDefault();
+        }
+      } else if (key === '1' || key === '2' || key === '3') {
+        // Handle smoke type shortcuts (only when smoke is selected)
+        const bbox = bboxes[activeDetectionIndex];
+        if (bbox && bbox.is_smoke) {
+          const smokeTypeIndex = parseInt(key) - 1;
+          if (smokeTypeIndex >= 0 && smokeTypeIndex < SMOKE_TYPES.length) {
+            const updatedBbox = { 
+              ...bbox, 
+              smoke_type: SMOKE_TYPES[smokeTypeIndex] as SmokeType
+            };
+            handleBboxChange(activeDetectionIndex, updatedBbox);
+            e.preventDefault();
+          }
+        }
+      } else {
+        // Handle letter-based shortcuts for false positive types (only when false positive is selected)
+        const bbox = bboxes[activeDetectionIndex];
+        if (bbox && !bbox.is_smoke) {
+          const typeIndex = getTypeIndexForKey(key);
+          if (typeIndex !== -1) {
+            toggleFalsePositiveType(activeDetectionIndex, typeIndex);
+            e.preventDefault();
+          }
         }
       }
     };
@@ -653,17 +737,13 @@ export default function AnnotationInterface() {
   };
 
   const isAnnotationComplete = () => {
-    const bboxesComplete = bboxes.every(bbox => 
-      bbox.is_smoke || bbox.false_positive_types.length > 0
-    );
+    const bboxesComplete = bboxes.every(bbox => hasUserAnnotations(bbox));
     const missedSmokeComplete = missedSmokeReview !== null;
     return bboxesComplete && missedSmokeComplete;
   };
 
   const getAnnotationProgress = () => {
-    const completed = bboxes.filter(bbox => 
-      bbox.is_smoke || bbox.false_positive_types.length > 0
-    ).length;
+    const completed = bboxes.filter(bbox => hasUserAnnotations(bbox)).length;
     return { completed, total: bboxes.length };
   };
 
@@ -982,34 +1062,138 @@ export default function AnnotationInterface() {
             
             {/* Annotation Controls */}
             <div className="space-y-4">
-              {/* Smoke Classification */}
+              {/* Step 1: Primary Classification */}
               <div>
-                <label className="flex items-center space-x-3">
-                  <input
-                    type="checkbox"
-                    checked={bbox.is_smoke}
-                    onChange={(e) => {
-                      const updatedBbox = { ...bbox, is_smoke: e.target.checked };
-                      if (e.target.checked) {
-                        updatedBbox.false_positive_types = [];
-                      }
-                      handleBboxChange(index, updatedBbox);
-                    }}
-                    className="w-4 h-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
-                  />
-                  <span className="text-sm font-medium text-gray-900">
-                    🔥 Is smoke sequence
-                  </span>
-                  {isActive && (
-                    <kbd className="ml-2 px-1.5 py-0.5 bg-gray-200 text-gray-700 rounded text-xs font-mono">
-                      S
-                    </kbd>
-                  )}
+                <label className="block text-sm font-medium text-gray-700 mb-3">
+                  Sequence Classification
                 </label>
+                <div className="space-y-2">
+                  {(() => {
+                    // Use the new classification helper
+                    const classificationType = getClassificationType(bbox, index, primaryClassification);
+                    
+                    return (
+                      <>
+                        {/* Smoke Sequence Option */}
+                        <label className="flex items-center space-x-3 cursor-pointer">
+                          <input
+                            type="radio"
+                            name={`classification-${index}`}
+                            checked={classificationType === 'smoke'}
+                            onChange={() => {
+                              // Update UI state
+                              setPrimaryClassification(prev => ({
+                                ...prev,
+                                [index]: 'smoke'
+                              }));
+                              
+                              // Update bbox data
+                              const updatedBbox = { 
+                                ...bbox, 
+                                is_smoke: true,
+                                false_positive_types: [] // Clear conflicting data
+                              };
+                              handleBboxChange(index, updatedBbox);
+                            }}
+                            className="w-4 h-4 text-orange-600 focus:ring-orange-500 border-gray-300"
+                          />
+                          <span className="text-sm font-medium text-gray-900">
+                            🔥 Smoke Sequence
+                          </span>
+                          {isActive && (
+                            <kbd className="ml-2 px-1.5 py-0.5 bg-gray-200 text-gray-700 rounded text-xs font-mono">
+                              S
+                            </kbd>
+                          )}
+                        </label>
+                        
+                        {/* False Positive Option */}
+                        <label className="flex items-center space-x-3 cursor-pointer">
+                          <input
+                            type="radio"
+                            name={`classification-${index}`}
+                            checked={classificationType === 'false_positive'}
+                            onChange={() => {
+                              // Update UI state
+                              setPrimaryClassification(prev => ({
+                                ...prev,
+                                [index]: 'false_positive'
+                              }));
+                              
+                              // Update bbox data - clear conflicting data but DON'T add false positive types yet
+                              const updatedBbox = { 
+                                ...bbox, 
+                                is_smoke: false,
+                                smoke_type: undefined // Clear conflicting data
+                                // Keep existing false_positive_types if any, don't auto-add new ones
+                              };
+                              handleBboxChange(index, updatedBbox);
+                            }}
+                            className="w-4 h-4 text-red-600 focus:ring-red-500 border-gray-300"
+                          />
+                          <span className="text-sm font-medium text-gray-900">
+                            ❌ False Positive
+                          </span>
+                          {isActive && (
+                            <kbd className="ml-2 px-1.5 py-0.5 bg-gray-200 text-gray-700 rounded text-xs font-mono">
+                              F
+                            </kbd>
+                          )}
+                        </label>
+                      </>
+                    );
+                  })()}
+                </div>
               </div>
 
-              {/* False Positive Types - Comprehensive selection */}
-              {!bbox.is_smoke && (
+              {/* Step 2: Smoke Type Selection (when smoke sequence selected) */}
+              {bbox.is_smoke && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-3">
+                    Smoke Type
+                  </label>
+                  <div className="space-y-2">
+                    {SMOKE_TYPES.map((smokeType, smokeIndex) => (
+                      <label key={smokeType} className="flex items-center space-x-3 cursor-pointer">
+                        <input
+                          type="radio"
+                          name={`smoke-type-${index}`}
+                          checked={bbox.smoke_type === smokeType}
+                          onChange={() => {
+                            const updatedBbox = { 
+                              ...bbox, 
+                              smoke_type: smokeType as SmokeType
+                            };
+                            handleBboxChange(index, updatedBbox);
+                          }}
+                          className="w-4 h-4 text-orange-600 focus:ring-orange-500 border-gray-300"
+                        />
+                        <span className="text-sm text-gray-900">
+                          {getSmokeTypeEmoji(smokeType)} {formatSmokeType(smokeType)}
+                        </span>
+                        {isActive && (
+                          <kbd className="ml-2 px-1.5 py-0.5 bg-gray-200 text-gray-700 rounded text-xs font-mono">
+                            {smokeIndex + 1}
+                          </kbd>
+                        )}
+                      </label>
+                    ))}
+                  </div>
+                  
+                  {/* Show selected smoke type as a pill */}
+                  {bbox.smoke_type && (
+                    <div className="mt-3">
+                      <div className="text-xs font-medium text-gray-700 mb-2">Selected:</div>
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800 border border-orange-200">
+                        {getSmokeTypeEmoji(bbox.smoke_type)} {formatSmokeType(bbox.smoke_type)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Step 2: False Positive Types Selection (when false positive selected) */}
+              {getClassificationType(bbox, index, primaryClassification) === 'false_positive' && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-3">
                     False Positive Types (Select all that apply)
@@ -1030,7 +1214,7 @@ export default function AnnotationInterface() {
                           'dust': 'U',
                           'high_cloud': 'H',
                           'low_cloud': 'L',
-                          'lens_flare': 'F',
+                          'lens_flare': 'Z',
                           'lens_droplet': 'P',
                           'light': 'I',
                           'rain': 'R',
@@ -1213,7 +1397,7 @@ export default function AnnotationInterface() {
             </div>
             
             <div className="p-6">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* General Shortcuts */}
                 <div>
                   <h3 className="text-lg font-medium text-gray-900 mb-4">General</h3>
@@ -1243,8 +1427,12 @@ export default function AnnotationInterface() {
                       <kbd className="px-2 py-1 bg-gray-100 rounded text-sm font-mono">↓</kbd>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-700">Toggle smoke detection</span>
+                      <span className="text-sm text-gray-700">Mark as smoke sequence</span>
                       <kbd className="px-2 py-1 bg-gray-100 rounded text-sm font-mono">S</kbd>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-700">Mark as false positive</span>
+                      <kbd className="px-2 py-1 bg-gray-100 rounded text-sm font-mono">F</kbd>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-gray-700">Mark as missed smoke</span>
@@ -1254,6 +1442,30 @@ export default function AnnotationInterface() {
                       <span className="text-sm text-gray-700">Mark as no missed smoke</span>
                       <kbd className="px-2 py-1 bg-gray-100 rounded text-sm font-mono">N</kbd>
                     </div>
+                  </div>
+                </div>
+
+                {/* Smoke Types */}
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">Smoke Types</h3>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-700">🔥 Wildfire</span>
+                      <kbd className="px-2 py-1 bg-gray-100 rounded text-sm font-mono">1</kbd>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-700">🏭 Industrial</span>
+                      <kbd className="px-2 py-1 bg-gray-100 rounded text-sm font-mono">2</kbd>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-700">💨 Other</span>
+                      <kbd className="px-2 py-1 bg-gray-100 rounded text-sm font-mono">3</kbd>
+                    </div>
+                  </div>
+                  <div className="mt-4 p-3 bg-orange-50 rounded-md">
+                    <p className="text-xs text-orange-800">
+                      <strong>Note:</strong> Smoke type shortcuts only work when "Smoke Sequence" is selected.
+                    </p>
                   </div>
                 </div>
 
@@ -1291,7 +1503,7 @@ export default function AnnotationInterface() {
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-gray-700">Lens Flare</span>
-                      <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">F</kbd>
+                      <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">Z</kbd>
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-gray-700">Lens Droplet</span>
@@ -1335,8 +1547,9 @@ export default function AnnotationInterface() {
               
               <div className="mt-6 p-4 bg-blue-50 rounded-md">
                 <p className="text-sm text-blue-800">
-                  <strong>Note:</strong> Detection-specific shortcuts (S and false positive types) only work when a detection is active (highlighted in blue). 
-                  Global shortcuts (?, Escape, Ctrl+Z, Space, ↑/↓) work anywhere on the page. Arrow keys will activate and scroll to the previous/next detection.
+                  <strong>Note:</strong> Detection-specific shortcuts (S, F, 1-3, and false positive types) only work when a detection is active (highlighted in blue). 
+                  Smoke type shortcuts (1-3) only work when "Smoke Sequence" is selected. False positive type shortcuts only work when "False Positive" is selected.
+                  Global shortcuts (?, Escape, Ctrl+Z, Enter, ↑/↓) work anywhere on the page.
                 </p>
               </div>
             </div>

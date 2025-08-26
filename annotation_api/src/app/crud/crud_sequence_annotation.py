@@ -49,6 +49,17 @@ class SequenceAnnotationCRUD(
         # Remove duplicates while preserving order
         return list(dict.fromkeys(all_types))
 
+    def _derive_smoke_types(
+        self, annotation_data: SequenceAnnotationData
+    ) -> list:
+        """Derive smoke_types from annotation data as a list of strings."""
+        all_types = []
+        for bbox in annotation_data.sequences_bbox:
+            if bbox.is_smoke and bbox.smoke_type:
+                all_types.append(bbox.smoke_type.value)
+        # Remove duplicates while preserving order
+        return list(dict.fromkeys(all_types))
+
     async def create(
         self, payload: SequenceAnnotationCreate, user_id: int
     ) -> SequenceAnnotation:
@@ -59,6 +70,7 @@ class SequenceAnnotationCRUD(
             has_smoke=self._derive_has_smoke(payload.annotation),
             has_false_positives=self._derive_has_false_positives(payload.annotation),
             false_positive_types=self._derive_false_positive_types(payload.annotation),
+            smoke_types=self._derive_smoke_types(payload.annotation),
             has_missed_smoke=payload.has_missed_smoke,
             is_unsure=payload.is_unsure,
             annotation=payload.annotation.model_dump(),
@@ -111,6 +123,9 @@ class SequenceAnnotationCRUD(
                     annotation_pydantic
                 )
                 update_data["false_positive_types"] = self._derive_false_positive_types(
+                    annotation_pydantic
+                )
+                update_data["smoke_types"] = self._derive_smoke_types(
                     annotation_pydantic
                 )
                 # Convert annotation data to dict for storage

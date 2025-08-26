@@ -41,11 +41,13 @@ export default function DetectionAnnotatePage() {
     dateFrom,
     dateTo,
     selectedFalsePositiveTypes,
+    selectedSmokeTypes,
     selectedModelAccuracy,
     setFilters,
     setDateFrom,
     setDateTo,
     setSelectedFalsePositiveTypes,
+    setSelectedSmokeTypes,
     setSelectedModelAccuracy,
     resetFilters,
   } = usePersistedFilters('filters-detections-annotate', defaultState);
@@ -193,10 +195,12 @@ export default function DetectionAnnotatePage() {
       dateFrom,
       dateTo,
       selectedFalsePositiveTypes,
+      selectedSmokeTypes,
       selectedModelAccuracy,
       'all', // selectedUnsure
       true, // showModelAccuracy
       true, // showFalsePositiveTypes
+      true, // showSmokeTypes
       false // showUnsureFilter
     );
 
@@ -224,6 +228,8 @@ export default function DetectionAnnotatePage() {
           onDateRangeClear={clearDateRange}
           selectedFalsePositiveTypes={selectedFalsePositiveTypes}
           onFalsePositiveTypesChange={handleFalsePositiveFilterChange}
+          selectedSmokeTypes={selectedSmokeTypes}
+          onSmokeTypesChange={setSelectedSmokeTypes}
           selectedModelAccuracy={selectedModelAccuracy}
           onModelAccuracyChange={setSelectedModelAccuracy}
           onResetFilters={resetFilters}
@@ -235,6 +241,7 @@ export default function DetectionAnnotatePage() {
           sourceApisLoading={sourceApisLoading}
           showModelAccuracy={true}
           showFalsePositiveTypes={true}
+          showSmokeTypes={true}
         />
 
         {/* Empty state message */}
@@ -299,6 +306,9 @@ export default function DetectionAnnotatePage() {
         sourceApisLoading={sourceApisLoading}
         showModelAccuracy={true}
         showFalsePositiveTypes={true}
+        selectedSmokeTypes={selectedSmokeTypes}
+        onSmokeTypesChange={setSelectedSmokeTypes}
+        showSmokeTypes={true}
       />
 
       {/* Results */}

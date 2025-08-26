@@ -39,6 +39,7 @@ export interface SequenceAnnotation {
   has_smoke: boolean;
   has_false_positives: boolean;
   false_positive_types: string;
+  smoke_types: string[];
   has_missed_smoke: boolean;
   is_unsure: boolean;
   annotation: SequenceAnnotationData;
@@ -54,6 +55,7 @@ export interface SequenceAnnotationData {
 
 export interface SequenceBbox {
   is_smoke: boolean;
+  smoke_type?: SmokeType;
   false_positive_types: FalsePositiveType[];
   bboxes: BoundingBox[];
 }
@@ -188,6 +190,7 @@ export interface ExtendedSequenceFilters extends SequenceFilters {
   has_smoke?: boolean;
   has_false_positives?: boolean;
   false_positive_types?: string[]; // Array of false positive types for OR filtering
+  smoke_types?: string[]; // Array of smoke types for OR filtering
   is_unsure?: boolean;
   include_annotation?: boolean;
 }

@@ -77,6 +77,7 @@ class SequenceAnnotationRead(BaseModel):
     has_smoke: bool
     has_false_positives: bool
     false_positive_types: List[str]
+    smoke_types: List[str]
     has_missed_smoke: bool
     is_unsure: bool
     annotation: SequenceAnnotationData
