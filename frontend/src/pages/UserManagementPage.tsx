@@ -6,6 +6,7 @@ import { User, UserCreate, UserUpdate, UserPasswordUpdate, UserFilters } from '@
 import { apiClient } from '@/services/api';
 import { QUERY_KEYS, PAGINATION_DEFAULTS } from '@/utils/constants';
 import { useAuthStore } from '@/store/useAuthStore';
+import PasswordField from '@/components/ui/PasswordField';
 
 export default function UserManagementPage() {
   const { user: currentUser, isSuperuser } = useAuthStore();
@@ -449,18 +450,15 @@ function CreateUserModal({
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-              <input
-                type="password"
-                required
-                minLength={8}
-                value={formData.password}
-                onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <p className="text-xs text-gray-500 mt-1">Minimum 8 characters</p>
-            </div>
+            <PasswordField
+              label="Password"
+              value={formData.password}
+              onChange={(value) => setFormData(prev => ({ ...prev, password: value }))}
+              required
+              showGenerator={true}
+              showStrengthIndicator={true}
+              showRequirements={false}
+            />
 
             <div className="space-y-3">
               <label className="flex items-center">
@@ -650,18 +648,15 @@ function PasswordChangeModal({
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
-              <input
-                type="password"
-                required
-                minLength={8}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <p className="text-xs text-gray-500 mt-1">Minimum 8 characters</p>
-            </div>
+            <PasswordField
+              label="New Password"
+              value={password}
+              onChange={setPassword}
+              required
+              showGenerator={true}
+              showStrengthIndicator={true}
+              showRequirements={false}
+            />
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Confirm Password</label>
@@ -670,8 +665,20 @@ function PasswordChangeModal({
                 required
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${
+                  confirmPassword && password && password !== confirmPassword
+                    ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
+                    : confirmPassword && password && password === confirmPassword
+                    ? 'border-green-300 focus:ring-green-500 focus:border-green-500'
+                    : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
+                }`}
               />
+              {confirmPassword && password && password !== confirmPassword && (
+                <p className="text-xs text-red-600 mt-1">Passwords do not match</p>
+              )}
+              {confirmPassword && password && password === confirmPassword && (
+                <p className="text-xs text-green-600 mt-1">Passwords match</p>
+              )}
             </div>
 
             <div className="flex justify-end space-x-3 pt-4">
