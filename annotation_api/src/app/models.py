@@ -213,9 +213,7 @@ class SequenceAnnotation(SQLModel, table=True):
     false_positive_types: List[str] = Field(
         default_factory=list, sa_column=Column(JSONB)
     )
-    smoke_types: List[str] = Field(
-        default_factory=list, sa_column=Column(JSONB)
-    )
+    smoke_types: List[str] = Field(default_factory=list, sa_column=Column(JSONB))
     has_missed_smoke: bool
     is_unsure: Optional[bool] = Field(default=False)
     annotation: dict = Field(sa_column=Column(JSONB))

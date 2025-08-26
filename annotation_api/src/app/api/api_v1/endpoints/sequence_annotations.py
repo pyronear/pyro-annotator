@@ -90,15 +90,18 @@ def derive_smoke_types(annotation_data: SequenceAnnotationData) -> List[str]:
     return unique_types
 
 
-def convert_algo_predictions_to_annotation(algo_predictions: Optional[dict]) -> dict:
+def convert_algo_predictions_to_annotation(
+    algo_predictions: Optional[dict], smoke_types: Optional[List[str]] = None
+) -> dict:
     """
     Convert detection algo_predictions to detection annotation format.
 
     Args:
         algo_predictions: Model predictions in format {"predictions": [{"xyxyn": [...], "confidence": float, "class_name": str}]}
+        smoke_types: Optional list of smoke types from sequence annotation. Uses first smoke type if available, defaults to "wildfire"
 
     Returns:
-        Annotation dict in format {"annotation": [{"xyxyn": [...], "class_name": str, "smoke_type": "wildfire"}]}
+        Annotation dict in format {"annotation": [{"xyxyn": [...], "class_name": str, "smoke_type": str}]}
     """
     if not algo_predictions or "predictions" not in algo_predictions:
         return {"annotation": []}
@@ -120,11 +123,16 @@ def convert_algo_predictions_to_annotation(algo_predictions: Optional[dict]) -> 
         if not isinstance(xyxyn, list) or len(xyxyn) != 4:
             continue
 
-        # Convert to annotation format with default wildfire smoke_type
+        # Convert to annotation format with user-selected smoke type or default wildfire
+        # Use first smoke type from sequence annotation if available, otherwise default to wildfire
+        selected_smoke_type = "wildfire"  # Default fallback
+        if smoke_types and len(smoke_types) > 0:
+            selected_smoke_type = smoke_types[0]
+
         annotation_item = {
             "xyxyn": xyxyn,
             "class_name": class_name,
-            "smoke_type": "wildfire",  # Default for true positive sequences
+            "smoke_type": selected_smoke_type,
         }
         annotation_items.append(annotation_item)
 
@@ -137,6 +145,7 @@ async def auto_create_detection_annotations(
     has_missed_smoke: bool,
     has_false_positives: bool,
     session: AsyncSession,
+    smoke_types: Optional[List[str]] = None,
 ) -> None:
     """
     Automatically create detection annotations for all detections in a sequence.
@@ -153,6 +162,7 @@ async def auto_create_detection_annotations(
         has_missed_smoke: Whether sequence annotation indicates missed smoke
         has_false_positives: Whether sequence annotation indicates false positives
         session: Database session
+        smoke_types: Optional list of smoke types from sequence annotation for true positive sequences
     """
     # Determine the appropriate processing stage based on sequence annotation
     if not has_missed_smoke and has_false_positives and not has_smoke:
@@ -195,9 +205,9 @@ async def auto_create_detection_annotations(
 
         # Determine annotation data based on sequence type
         if has_smoke and not has_missed_smoke and not has_false_positives:
-            # True positive sequence: pre-populate with model predictions
+            # True positive sequence: pre-populate with model predictions using user-selected smoke types
             annotation_data = convert_algo_predictions_to_annotation(
-                detection.algo_predictions
+                detection.algo_predictions, smoke_types
             )
         else:
             # All other cases: start with empty annotation
@@ -288,6 +298,7 @@ async def create_sequence_annotation(
             has_missed_smoke=create_data.has_missed_smoke,
             has_false_positives=sequence_annotation.has_false_positives,
             session=annotations.session,
+            smoke_types=sequence_annotation.smoke_types,
         )
         # Commit the detection annotations
         await annotations.session.commit()
@@ -541,6 +552,7 @@ async def update_sequence_annotation(
             has_missed_smoke=updated_annotation.has_missed_smoke,
             has_false_positives=updated_annotation.has_false_positives,
             session=annotations.session,
+            smoke_types=updated_annotation.smoke_types,
         )
         # Commit the detection annotations
         await annotations.session.commit()

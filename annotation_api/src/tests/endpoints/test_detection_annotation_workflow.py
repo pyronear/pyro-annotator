@@ -904,3 +904,159 @@ async def test_no_auto_create_when_not_annotated_stage(
     assert (
         len(detection_2_annotations) == 0
     ), "No detection annotations should be created for 'ready_to_annotate' stage"
+
+
+@pytest.mark.asyncio
+async def test_smoke_type_propagation_from_sequence_to_detection_annotations(
+    authenticated_client: AsyncClient, sequence_session, detection_session
+):
+    """Test that smoke types from sequence annotations are properly propagated to auto-created detection annotations."""
+
+    # Step 1: Use existing test sequence and detections from fixtures
+    # sequence_session fixture creates sequence ID 1 with detections 1 and 2
+    # detection_session fixture creates the detections with algo_predictions
+    test_sequence_id = 1
+
+    # Step 2: Create sequence annotation with specific smoke types (industrial + other)
+    # This should propagate to detection annotations instead of defaulting to wildfire
+    sequence_annotation_payload = {
+        "sequence_id": test_sequence_id,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": True,
+                    "smoke_type": "industrial",  # This should propagate to detection annotations
+                    "false_positive_types": [],
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                },
+                {
+                    "is_smoke": True,
+                    "smoke_type": "other",  # Additional smoke type
+                    "false_positive_types": [],
+                    "bboxes": [{"detection_id": 2, "xyxyn": [0.3, 0.3, 0.4, 0.4]}],
+                },
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
+    }
+
+    response = await authenticated_client.post(
+        "/annotations/sequences/", json=sequence_annotation_payload
+    )
+    assert (
+        response.status_code == 201
+    ), f"Failed to create sequence annotation: {response.text}"
+
+    sequence_annotation = response.json()
+    # Verify smoke types were derived correctly (should be ["industrial", "other"])
+    assert (
+        "industrial" in sequence_annotation["smoke_types"]
+    ), "Should derive industrial smoke type"
+    assert (
+        "other" in sequence_annotation["smoke_types"]
+    ), "Should derive other smoke type"
+
+    # Step 3: Verify detection annotations were auto-created with the correct smoke type
+    detection_annotations_response = await authenticated_client.get(
+        "/annotations/detections/"
+    )
+    assert detection_annotations_response.status_code == 200
+    detection_annotations = detection_annotations_response.json()["items"]
+
+    # Find detection annotations for our sequence
+    sequence_detection_annotations = [
+        ann
+        for ann in detection_annotations
+        if ann.get("detection", {}).get("sequence_id") == test_sequence_id
+    ]
+
+    assert (
+        len(sequence_detection_annotations) >= 2
+    ), "Should have detection annotations for both detections"
+
+    # Step 4: Verify smoke type propagation - should use first smoke type from sequence annotation
+    for detection_annotation in sequence_detection_annotations[:2]:  # Check first 2
+        annotation_data = detection_annotation["annotation"]
+        assert (
+            "annotation" in annotation_data
+        ), "Detection annotation should have annotation data"
+
+        if annotation_data[
+            "annotation"
+        ]:  # True positive sequence should have pre-populated data
+            annotations = annotation_data["annotation"]
+            assert (
+                len(annotations) > 0
+            ), "True positive sequence should have predictions pre-populated"
+
+            # Verify that smoke_type is "industrial" (first smoke type) instead of defaulting to "wildfire"
+            assert (
+                annotations[0]["smoke_type"] == "industrial"
+            ), f"Should use sequence annotation smoke type 'industrial', got '{annotations[0]['smoke_type']}'"
+            assert (
+                annotations[0]["class_name"] == "smoke"
+            ), "Should have smoke prediction"
+
+
+@pytest.mark.asyncio
+async def test_smoke_type_fallback_to_wildfire_when_no_smoke_types(
+    authenticated_client: AsyncClient, sequence_session, detection_session
+):
+    """Test that detection annotations fall back to 'wildfire' when sequence has no smoke types."""
+
+    # Step 1: Use existing test sequence and detections from fixtures
+    # sequence_session fixture creates sequence ID 2 with detection 3
+    # detection_session fixture creates the detections with algo_predictions
+    test_sequence_id = 2
+
+    # Step 2: Create sequence annotation without smoke_type in sequences_bbox
+    # This should result in empty smoke_types and fallback to wildfire
+    sequence_annotation_payload = {
+        "sequence_id": test_sequence_id,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": True,
+                    # No smoke_type specified - should result in empty derived smoke_types
+                    "false_positive_types": [],
+                    "bboxes": [
+                        {"detection_id": 3, "xyxyn": [0.1, 0.1, 0.2, 0.2]}
+                    ],  # Use detection 3 for sequence 2
+                }
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
+    }
+
+    response = await authenticated_client.post(
+        "/annotations/sequences/", json=sequence_annotation_payload
+    )
+    assert response.status_code == 201
+
+    # Step 3: Verify detection annotation uses wildfire as fallback
+    detection_annotations_response = await authenticated_client.get(
+        "/annotations/detections/"
+    )
+    assert detection_annotations_response.status_code == 200
+    detection_annotations = detection_annotations_response.json()["items"]
+
+    sequence_detection_annotation = next(
+        (
+            ann
+            for ann in detection_annotations
+            if ann.get("detection", {}).get("sequence_id") == test_sequence_id
+        ),
+        None,
+    )
+
+    assert sequence_detection_annotation is not None, "Should have detection annotation"
+
+    annotation_data = sequence_detection_annotation["annotation"]
+    if annotation_data["annotation"]:
+        annotations = annotation_data["annotation"]
+        assert len(annotations) > 0, "Should have predictions"
+        assert (
+            annotations[0]["smoke_type"] == "wildfire"
+        ), "Should fallback to wildfire when no smoke_type specified"

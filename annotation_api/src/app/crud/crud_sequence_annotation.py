@@ -49,9 +49,7 @@ class SequenceAnnotationCRUD(
         # Remove duplicates while preserving order
         return list(dict.fromkeys(all_types))
 
-    def _derive_smoke_types(
-        self, annotation_data: SequenceAnnotationData
-    ) -> list:
+    def _derive_smoke_types(self, annotation_data: SequenceAnnotationData) -> list:
         """Derive smoke_types from annotation data as a list of strings."""
         all_types = []
         for bbox in annotation_data.sequences_bbox:

@@ -1402,7 +1402,7 @@ async def test_list_sequence_annotations_filter_by_smoke_types(
                                 "xyxyn": [0.15, 0.15, 0.25, 0.25],
                             }
                         ],
-                    }
+                    },
                 ]
             },
             "processing_stage": "annotated",
