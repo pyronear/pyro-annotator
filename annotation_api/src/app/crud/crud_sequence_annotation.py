@@ -8,7 +8,7 @@ from sqlalchemy import select, distinct
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.crud.base import BaseCRUD
-from app.models import SequenceAnnotation, SequenceAnnotationContribution, User
+from app.models import SequenceAnnotation, SequenceAnnotationContribution, User, SequenceAnnotationProcessingStage
 from app.schemas.sequence_annotations import (
     SequenceAnnotationCreate,
     SequenceAnnotationUpdate,
@@ -58,11 +58,12 @@ class SequenceAnnotationCRUD(
         self.session.add(annotation)
         await self.session.flush()  # Flush to get the ID
 
-        # Record the contribution in the same transaction
-        contribution = SequenceAnnotationContribution(
-            sequence_annotation_id=annotation.id, user_id=user_id
-        )
-        self.session.add(contribution)
+        # Only record contribution if creating in annotated stage
+        if payload.processing_stage == SequenceAnnotationProcessingStage.ANNOTATED:
+            contribution = SequenceAnnotationContribution(
+                sequence_annotation_id=annotation.id, user_id=user_id
+            )
+            self.session.add(contribution)
         await self.session.commit()
         await self.session.refresh(annotation)
 
@@ -96,11 +97,14 @@ class SequenceAnnotationCRUD(
         for field, value in update_data.items():
             setattr(annotation, field, value)
 
-        # Record the contribution in the same transaction
-        contribution = SequenceAnnotationContribution(
-            sequence_annotation_id=annotation_id, user_id=user_id
-        )
-        self.session.add(contribution)
+        # Only record contribution if moving to annotated stage or already in annotated stage
+        new_stage = update_data.get("processing_stage", annotation.processing_stage)
+        if (new_stage == SequenceAnnotationProcessingStage.ANNOTATED or 
+            annotation.processing_stage == SequenceAnnotationProcessingStage.ANNOTATED):
+            contribution = SequenceAnnotationContribution(
+                sequence_annotation_id=annotation_id, user_id=user_id
+            )
+            self.session.add(contribution)
 
         # Save changes (annotation + contribution)
         self.session.add(annotation)

@@ -9,7 +9,7 @@ from sqlalchemy import select, distinct
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.crud.base import BaseCRUD
-from app.models import DetectionAnnotation, DetectionAnnotationContribution, User
+from app.models import DetectionAnnotation, DetectionAnnotationContribution, User, DetectionAnnotationProcessingStage
 from app.schemas.detection_annotations import (
     DetectionAnnotationCreate,
     DetectionAnnotationUpdate,
@@ -39,11 +39,12 @@ class DetectionAnnotationCRUD(
         self.session.add(annotation)
         await self.session.flush()  # Flush to get the ID
 
-        # Record the contribution in the same transaction
-        contribution = DetectionAnnotationContribution(
-            detection_annotation_id=annotation.id, user_id=user_id
-        )
-        self.session.add(contribution)
+        # Only record contribution if creating in annotated stage
+        if payload.processing_stage == DetectionAnnotationProcessingStage.ANNOTATED:
+            contribution = DetectionAnnotationContribution(
+                detection_annotation_id=annotation.id, user_id=user_id
+            )
+            self.session.add(contribution)
         await self.session.commit()
         await self.session.refresh(annotation)
 
@@ -63,11 +64,14 @@ class DetectionAnnotationCRUD(
         for field, value in update_data.items():
             setattr(annotation, field, value)
 
-        # Record the contribution in the same transaction
-        contribution = DetectionAnnotationContribution(
-            detection_annotation_id=annotation_id, user_id=user_id
-        )
-        self.session.add(contribution)
+        # Only record contribution if moving to annotated stage or already in annotated stage
+        new_stage = update_data.get("processing_stage", annotation.processing_stage)
+        if (new_stage == DetectionAnnotationProcessingStage.ANNOTATED or 
+            annotation.processing_stage == DetectionAnnotationProcessingStage.ANNOTATED):
+            contribution = DetectionAnnotationContribution(
+                detection_annotation_id=annotation_id, user_id=user_id
+            )
+            self.session.add(contribution)
 
         # Save changes (annotation + contribution)
         self.session.add(annotation)
