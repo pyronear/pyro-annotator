@@ -36,6 +36,7 @@ from app.models import (
     Detection,
     DetectionAnnotation,
     FalsePositiveType,
+    SmokeType,
     Sequence,
     SequenceAnnotation,
     SequenceAnnotationContribution,
@@ -146,6 +147,10 @@ async def list_sequences(
         None,
         description="Filter by specific false positive types (OR logic). Sequences containing any of the specified types will be included in results.",
     ),
+    smoke_types: Optional[List[SmokeType]] = Query(
+        None,
+        description="Filter by specific smoke types (OR logic). Sequences containing any of the specified types will be included in results.",
+    ),
     is_unsure: Optional[bool] = Query(
         None, description="Filter by sequence annotation unsure flag"
     ),
@@ -189,6 +194,7 @@ async def list_sequences(
     - **has_smoke**: Filter by smoke presence
     - **has_false_positives**: Filter by false positive presence
     - **false_positive_types**: Filter by specific false positive types (OR logic)
+    - **smoke_types**: Filter by specific smoke types (OR logic)
     - **is_unsure**: Filter by sequence annotation unsure flag
     - **recorded_at_gte**: Filter by recorded_at >= this date
     - **recorded_at_lte**: Filter by recorded_at <= this date
@@ -208,6 +214,7 @@ async def list_sequences(
         or has_smoke is not None
         or has_false_positives is not None
         or false_positive_types is not None
+        or smoke_types is not None
     )
     needs_detection_annotation_join = (
         detection_annotation_completion != "all" or include_detection_stats
@@ -278,6 +285,17 @@ async def list_sequences(
         query = query.where(
             SequenceAnnotation.false_positive_types.op("?|")(
                 cast(fp_type_values, ARRAY(String))
+            )
+        )
+
+    if smoke_types is not None and len(smoke_types) > 0:
+        # Convert enum values to strings for database query
+        smoke_type_values = [smoke_type.value for smoke_type in smoke_types]
+        # Use PostgreSQL JSONB array contains operator for OR logic
+        # This will match sequences where smoke_types contains any of the specified types
+        query = query.where(
+            SequenceAnnotation.smoke_types.op("?|")(
+                cast(smoke_type_values, ARRAY(String))
             )
         )
 

@@ -75,6 +75,13 @@ export const FALSE_POSITIVE_TYPES = [
   'other',
 ] as const;
 
+// Smoke types (matching backend enum)
+export const SMOKE_TYPES = [
+  'wildfire',
+  'industrial', 
+  'other',
+] as const;
+
 // UI Constants
 export const UI_CONSTANTS = {
   SIDEBAR_WIDTH: '256px',

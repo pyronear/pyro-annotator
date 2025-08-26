@@ -9,10 +9,12 @@ import { ModelAccuracyType } from './modelAccuracy';
  * @param dateFrom - Date from value
  * @param dateTo - Date to value
  * @param selectedFalsePositiveTypes - Selected false positive types
+ * @param selectedSmokeTypes - Selected smoke types
  * @param selectedModelAccuracy - Selected model accuracy filter
  * @param selectedUnsure - Selected unsure filter
  * @param showModelAccuracy - Whether model accuracy filter is shown (review pages)
  * @param showFalsePositiveTypes - Whether false positive types filter is shown (review pages)
+ * @param showSmokeTypes - Whether smoke types filter is shown (review pages)
  * @param showUnsureFilter - Whether unsure filter is shown (sequence review page)
  * @returns true if user has applied any filters that could cause empty results
  */
@@ -21,10 +23,12 @@ export function hasActiveUserFilters(
   dateFrom: string,
   dateTo: string,
   selectedFalsePositiveTypes: string[],
+  selectedSmokeTypes: string[],
   selectedModelAccuracy: ModelAccuracyType | 'all',
   selectedUnsure: 'all' | 'unsure' | 'not-unsure',
   showModelAccuracy: boolean = false,
   showFalsePositiveTypes: boolean = false,
+  showSmokeTypes: boolean = false,
   showUnsureFilter: boolean = false
 ): boolean {
   // Check date range filters
@@ -43,6 +47,10 @@ export function hasActiveUserFilters(
   }
 
   if (showFalsePositiveTypes && selectedFalsePositiveTypes.length > 0) {
+    return true;
+  }
+
+  if (showSmokeTypes && selectedSmokeTypes.length > 0) {
     return true;
   }
 

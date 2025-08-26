@@ -32,6 +32,7 @@ from app.models import (
     SequenceAnnotation,
     SequenceAnnotationContribution,
     SequenceAnnotationProcessingStage,
+    SmokeType,
 )
 from app.schemas.annotation_validation import SequenceAnnotationData
 from app.schemas.sequence_annotations import (
@@ -78,15 +79,29 @@ def derive_false_positive_types(annotation_data: SequenceAnnotationData) -> List
     return unique_types
 
 
-def convert_algo_predictions_to_annotation(algo_predictions: Optional[dict]) -> dict:
+def derive_smoke_types(annotation_data: SequenceAnnotationData) -> List[str]:
+    """Derive smoke_types from annotation data as a list of strings."""
+    all_types = []
+    for bbox in annotation_data.sequences_bbox:
+        if bbox.is_smoke and bbox.smoke_type:
+            all_types.append(bbox.smoke_type.value)
+    # Remove duplicates while preserving order
+    unique_types = list(dict.fromkeys(all_types))
+    return unique_types
+
+
+def convert_algo_predictions_to_annotation(
+    algo_predictions: Optional[dict], smoke_types: Optional[List[str]] = None
+) -> dict:
     """
     Convert detection algo_predictions to detection annotation format.
 
     Args:
         algo_predictions: Model predictions in format {"predictions": [{"xyxyn": [...], "confidence": float, "class_name": str}]}
+        smoke_types: Optional list of smoke types from sequence annotation. Uses first smoke type if available, defaults to "wildfire"
 
     Returns:
-        Annotation dict in format {"annotation": [{"xyxyn": [...], "class_name": str, "smoke_type": "wildfire"}]}
+        Annotation dict in format {"annotation": [{"xyxyn": [...], "class_name": str, "smoke_type": str}]}
     """
     if not algo_predictions or "predictions" not in algo_predictions:
         return {"annotation": []}
@@ -108,11 +123,16 @@ def convert_algo_predictions_to_annotation(algo_predictions: Optional[dict]) -> 
         if not isinstance(xyxyn, list) or len(xyxyn) != 4:
             continue
 
-        # Convert to annotation format with default wildfire smoke_type
+        # Convert to annotation format with user-selected smoke type or default wildfire
+        # Use first smoke type from sequence annotation if available, otherwise default to wildfire
+        selected_smoke_type = "wildfire"  # Default fallback
+        if smoke_types and len(smoke_types) > 0:
+            selected_smoke_type = smoke_types[0]
+
         annotation_item = {
             "xyxyn": xyxyn,
             "class_name": class_name,
-            "smoke_type": "wildfire",  # Default for true positive sequences
+            "smoke_type": selected_smoke_type,
         }
         annotation_items.append(annotation_item)
 
@@ -125,6 +145,7 @@ async def auto_create_detection_annotations(
     has_missed_smoke: bool,
     has_false_positives: bool,
     session: AsyncSession,
+    smoke_types: Optional[List[str]] = None,
 ) -> None:
     """
     Automatically create detection annotations for all detections in a sequence.
@@ -141,6 +162,7 @@ async def auto_create_detection_annotations(
         has_missed_smoke: Whether sequence annotation indicates missed smoke
         has_false_positives: Whether sequence annotation indicates false positives
         session: Database session
+        smoke_types: Optional list of smoke types from sequence annotation for true positive sequences
     """
     # Determine the appropriate processing stage based on sequence annotation
     if not has_missed_smoke and has_false_positives and not has_smoke:
@@ -183,9 +205,9 @@ async def auto_create_detection_annotations(
 
         # Determine annotation data based on sequence type
         if has_smoke and not has_missed_smoke and not has_false_positives:
-            # True positive sequence: pre-populate with model predictions
+            # True positive sequence: pre-populate with model predictions using user-selected smoke types
             annotation_data = convert_algo_predictions_to_annotation(
-                detection.algo_predictions
+                detection.algo_predictions, smoke_types
             )
         else:
             # All other cases: start with empty annotation
@@ -276,6 +298,7 @@ async def create_sequence_annotation(
             has_missed_smoke=create_data.has_missed_smoke,
             has_false_positives=sequence_annotation.has_false_positives,
             session=annotations.session,
+            smoke_types=sequence_annotation.smoke_types,
         )
         # Commit the detection annotations
         await annotations.session.commit()
@@ -302,6 +325,10 @@ async def list_sequence_annotations(
     false_positive_types: Optional[List[FalsePositiveType]] = Query(
         None,
         description="Filter by specific false positive types (OR logic). Annotations containing any of the specified types will be included in results.",
+    ),
+    smoke_types: Optional[List[SmokeType]] = Query(
+        None,
+        description="Filter by specific smoke types (OR logic). Annotations containing any of the specified types will be included in results.",
     ),
     has_missed_smoke: Optional[bool] = Query(
         None, description="Filter by has_missed_smoke"
@@ -330,6 +357,7 @@ async def list_sequence_annotations(
     - **has_smoke**: Filter by has_smoke boolean
     - **has_false_positives**: Filter by has_false_positives boolean
     - **false_positive_type**: Filter by specific false positive type (searches within JSON array)
+    - **smoke_types**: Filter by specific smoke types (searches within JSON array)
     - **has_missed_smoke**: Filter by has_missed_smoke boolean
     - **processing_stage**: Filter by processing stage (imported, ready_to_annotate, annotated)
     - **order_by**: Order by created_at or sequence_recorded_at (default: created_at)
@@ -374,6 +402,20 @@ async def list_sequence_annotations(
             for i, fp_type in enumerate(fp_type_values)
         ]
         query = query.where(or_(*fp_conditions))
+
+    if smoke_types is not None and len(smoke_types) > 0:
+        # Convert enum values to strings for database query
+        smoke_type_values = [smoke_type.value for smoke_type in smoke_types]
+        # Use PostgreSQL JSONB array contains operator for OR logic
+        # This will match annotations where smoke_types contains any of the specified types
+        # Create OR conditions for each smoke type
+        smoke_conditions = [
+            text("smoke_types::jsonb ? :smoke_type_" + str(i)).params(
+                **{f"smoke_type_{i}": smoke_type}
+            )
+            for i, smoke_type in enumerate(smoke_type_values)
+        ]
+        query = query.where(or_(*smoke_conditions))
 
     if has_missed_smoke is not None:
         query = query.where(SequenceAnnotation.has_missed_smoke == has_missed_smoke)
@@ -510,6 +552,7 @@ async def update_sequence_annotation(
             has_missed_smoke=updated_annotation.has_missed_smoke,
             has_false_positives=updated_annotation.has_false_positives,
             session=annotations.session,
+            smoke_types=updated_annotation.smoke_types,
         )
         # Commit the detection annotations
         await annotations.session.commit()

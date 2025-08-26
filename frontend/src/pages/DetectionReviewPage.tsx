@@ -9,7 +9,9 @@ import {
   getRowBackgroundClasses,
   getFalsePositiveEmoji,
   formatFalsePositiveType,
-  parseFalsePositiveTypes
+  parseFalsePositiveTypes,
+  getSmokeTypeEmoji,
+  formatSmokeType
 } from '@/utils/modelAccuracy';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
 import TabbedFilters from '@/components/filters/TabbedFilters';
@@ -42,11 +44,13 @@ export default function DetectionReviewPage() {
     dateFrom,
     dateTo,
     selectedFalsePositiveTypes,
+    selectedSmokeTypes,
     selectedModelAccuracy,
     setFilters,
     setDateFrom,
     setDateTo,
     setSelectedFalsePositiveTypes,
+    setSelectedSmokeTypes,
     setSelectedModelAccuracy,
     resetFilters,
   } = usePersistedFilters('filters-detections-review', defaultState);
@@ -59,14 +63,14 @@ export default function DetectionReviewPage() {
   // Date range helper functions
   const setDateRange = (preset: string) => {
     const { dateFrom: startDateStr, dateTo: endDateStr } = calculatePresetDateRange(preset);
-    
+
     setDateFrom(startDateStr);
     setDateTo(endDateStr);
-    
+
     // Convert to API datetime format if dates are valid
     const startDateTime = startDateStr ? startDateStr + 'T00:00:00' : undefined;
     const endDateTime = endDateStr ? endDateStr + 'T23:59:59' : undefined;
-    
+
     handleFilterChange({
       recorded_at_gte: startDateTime,
       recorded_at_lte: endDateTime
@@ -194,10 +198,12 @@ export default function DetectionReviewPage() {
       dateFrom,
       dateTo,
       selectedFalsePositiveTypes,
+      selectedSmokeTypes,
       selectedModelAccuracy,
       'all', // selectedUnsure
       true, // showModelAccuracy
       true, // showFalsePositiveTypes
+      true, // showSmokeTypes
       false // showUnsureFilter
     );
 
@@ -225,6 +231,8 @@ export default function DetectionReviewPage() {
           onDateRangeClear={clearDateRange}
           selectedFalsePositiveTypes={selectedFalsePositiveTypes}
           onFalsePositiveTypesChange={handleFalsePositiveFilterChange}
+          selectedSmokeTypes={selectedSmokeTypes}
+          onSmokeTypesChange={setSelectedSmokeTypes}
           selectedModelAccuracy={selectedModelAccuracy}
           onModelAccuracyChange={setSelectedModelAccuracy}
           onResetFilters={resetFilters}
@@ -236,6 +244,7 @@ export default function DetectionReviewPage() {
           sourceApisLoading={sourceApisLoading}
           showModelAccuracy={true}
           showFalsePositiveTypes={true}
+          showSmokeTypes={true}
         />
 
         {/* Empty state message */}
@@ -296,6 +305,9 @@ export default function DetectionReviewPage() {
         sourceApisLoading={sourceApisLoading}
         showModelAccuracy={true}
         showFalsePositiveTypes={true}
+        selectedSmokeTypes={selectedSmokeTypes}
+        onSmokeTypesChange={setSelectedSmokeTypes}
+        showSmokeTypes={true}
       />
 
       {/* Results */}
@@ -345,6 +357,10 @@ export default function DetectionReviewPage() {
                 </div>
               </div>
               <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-1">
+                  <div className="w-3 h-3 bg-orange-200 border border-orange-300 rounded"></div>
+                  <span className="text-gray-600">Smoke Types</span>
+                </div>
                 <div className="flex items-center space-x-1">
                   <div className="w-3 h-3 bg-yellow-200 border border-yellow-300 rounded"></div>
                   <span className="text-gray-600">False Positive Types</span>
@@ -451,11 +467,22 @@ export default function DetectionReviewPage() {
                               ));
                             })()}
                           </div>
-                          
+                          {/* Smoke Type Pills */}
+                          <div className="flex flex-wrap gap-1 justify-end">
+                            {annotation.smoke_types?.map((type: string) => (
+                              <span
+                                key={type}
+                                className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800"
+                              >
+                                {getSmokeTypeEmoji(type)} {formatSmokeType(type)}
+                              </span>
+                            ))}
+                          </div>
+
                           {/* Contributors - Bottom Right */}
                           {annotation.contributors && annotation.contributors.length > 0 && (
                             <div className="flex justify-end">
-                              <ContributorList 
+                              <ContributorList
                                 contributors={annotation.contributors}
                                 displayMode="compact"
                               />

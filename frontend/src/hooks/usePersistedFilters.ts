@@ -11,6 +11,7 @@ export interface PersistedFilterState {
   dateFrom: string;
   dateTo: string;
   selectedFalsePositiveTypes: string[];
+  selectedSmokeTypes: string[];
   selectedModelAccuracy: ModelAccuracyType | 'all';
   selectedUnsure: 'all' | 'unsure' | 'not-unsure';
 }
@@ -32,6 +33,7 @@ export function createDefaultFilterState(
     dateFrom: '',
     dateTo: '',
     selectedFalsePositiveTypes: [],
+    selectedSmokeTypes: [],
     selectedModelAccuracy: 'all',
     selectedUnsure: 'all',
   };
@@ -175,6 +177,23 @@ export function usePersistedFilters(
     updateState(newState);
   };
 
+  const setSelectedSmokeTypes = (selectedSmokeTypes: string[]) => {
+    // ATOMIC UPDATE: Update both selectedSmokeTypes AND filters together
+    const newFilters = {
+      ...state.filters,
+      smoke_types: selectedSmokeTypes.length > 0 ? selectedSmokeTypes : undefined,
+      page: 1
+    };
+    
+    const newState = { 
+      ...state, 
+      selectedSmokeTypes,
+      filters: newFilters
+    };
+    
+    updateState(newState);
+  };
+
   const setSelectedModelAccuracy = (selectedModelAccuracy: ModelAccuracyType | 'all') => {
     updateState({ ...state, selectedModelAccuracy });
   };
@@ -245,6 +264,7 @@ export function usePersistedFilters(
     dateFrom: state.dateFrom,
     dateTo: state.dateTo,
     selectedFalsePositiveTypes: state.selectedFalsePositiveTypes,
+    selectedSmokeTypes: state.selectedSmokeTypes,
     selectedModelAccuracy: state.selectedModelAccuracy,
     selectedUnsure: state.selectedUnsure,
     
@@ -253,6 +273,7 @@ export function usePersistedFilters(
     setDateFrom,
     setDateTo,
     setSelectedFalsePositiveTypes,
+    setSelectedSmokeTypes,
     setSelectedFalsePositiveTypesAndFilters,
     setSelectedModelAccuracy,
     setSelectedUnsure,

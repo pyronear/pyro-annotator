@@ -3,7 +3,7 @@
 # This program is licensed under the Apache License 2.0.
 # See LICENSE or go to <https://www.apache.org/licenses/LICENSE-2.0> for full license details.
 
-from typing import List
+from typing import List, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -48,6 +48,7 @@ class BoundingBox(BaseModel):
 
 class SequenceBBox(BaseModel):
     is_smoke: bool
+    smoke_type: Optional[SmokeType] = Field(default=None)
     false_positive_types: List[FalsePositiveType] = Field(default_factory=list)
     bboxes: List[BoundingBox]
 

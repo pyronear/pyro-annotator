@@ -4,6 +4,7 @@ import { ModelAccuracyType } from '@/utils/modelAccuracy';
 import { usePersistedTabState } from '@/hooks/usePersistedTabState';
 import ModelAccuracyFilter from './ModelAccuracyFilter';
 import FalsePositiveFilter from './FalsePositiveFilter';
+import SmokeTypeFilter from './SmokeTypeFilter';
 import DateRangeFilter from './shared/DateRangeFilter';
 
 interface Camera {
@@ -37,6 +38,9 @@ interface TabbedFiltersProps {
   selectedFalsePositiveTypes: string[];
   onFalsePositiveTypesChange: (types: string[]) => void;
   
+  selectedSmokeTypes: string[];
+  onSmokeTypesChange: (types: string[]) => void;
+  
   selectedModelAccuracy: ModelAccuracyType | 'all';
   onModelAccuracyChange: (accuracy: ModelAccuracyType | 'all') => void;
   
@@ -54,6 +58,7 @@ interface TabbedFiltersProps {
   // Configuration
   showModelAccuracy?: boolean; // for review pages only
   showFalsePositiveTypes?: boolean; // for review pages only
+  showSmokeTypes?: boolean; // for review pages only
   showUnsureFilter?: boolean; // for sequence review page only
   
   // Reset handler
@@ -76,6 +81,8 @@ export default function TabbedFilters({
   onDateRangeClear,
   selectedFalsePositiveTypes,
   onFalsePositiveTypesChange,
+  selectedSmokeTypes,
+  onSmokeTypesChange,
   selectedModelAccuracy,
   onModelAccuracyChange,
   selectedUnsure = 'all',
@@ -88,6 +95,7 @@ export default function TabbedFilters({
   sourceApisLoading,
   showModelAccuracy = false,
   showFalsePositiveTypes = false,
+  showSmokeTypes = false,
   showUnsureFilter = false,
   onResetFilters,
   className = '',
@@ -121,6 +129,7 @@ export default function TabbedFilters({
     if (filters.is_wildfire_alertapi !== undefined) count++;
     if (dateFrom || dateTo) count++;
     if (selectedFalsePositiveTypes.length > 0) count++;
+    if (selectedSmokeTypes && selectedSmokeTypes.length > 0) count++;
     return count;
   };
 
@@ -310,6 +319,17 @@ export default function TabbedFilters({
           <FalsePositiveFilter
             selectedTypes={selectedFalsePositiveTypes}
             onSelectionChange={onFalsePositiveTypesChange}
+            className="w-full"
+          />
+        </div>
+      )}
+
+      {/* Smoke Type Filter - Only show on review page */}
+      {showSmokeTypes && (
+        <div className="md:col-span-3">
+          <SmokeTypeFilter
+            selectedTypes={selectedSmokeTypes}
+            onSelectionChange={onSmokeTypesChange}
             className="w-full"
           />
         </div>
