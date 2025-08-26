@@ -41,7 +41,7 @@ function App() {
   if (!isAuthenticated) {
     return (
       <QueryClientProvider client={queryClient}>
-        <Router>
+        <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <Routes>
             <Route 
               path="/login" 
@@ -63,7 +63,7 @@ function App() {
   // Show authenticated app
   return (
     <QueryClientProvider client={queryClient}>
-      <Router>
+      <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
           <Route path="/login" element={<Navigate to="/" replace />} />
           <Route path="/" element={
