@@ -25,6 +25,7 @@ from app.models import (
     Sequence,
 )
 from app.schemas.detection_annotations import (
+    DetectionAnnotationCreate,
     DetectionAnnotationRead,
     DetectionAnnotationUpdate,
 )
@@ -76,29 +77,26 @@ async def create_detection_annotation(
             detail=f"Invalid annotation format: {e.errors()}",
         )
 
-    # Create database model with validated data
-
-    detection_annotation = DetectionAnnotation(
+    # Create DetectionAnnotationCreate object for CRUD
+    create_data = DetectionAnnotationCreate(
         detection_id=detection_id,
-        annotation=validated_annotation.model_dump(),
+        annotation=validated_annotation,
         processing_stage=processing_stage,
-        created_at=datetime.now(UTC),
     )
 
-    # Create contribution record in same transaction
-    annotations.session.add(detection_annotation)
-    await annotations.session.flush()  # Flush to get the ID
+    # Use CRUD method which handles contribution tracking with proper conditional logic
+    detection_annotation = await annotations.create(create_data, current_user.id)
 
-    contribution = DetectionAnnotationContribution(
-        detection_annotation_id=detection_annotation.id, user_id=current_user.id
-    )
-    annotations.session.add(contribution)
+    # Get contributors for this annotation
+    contributors = await annotations.get_annotation_contributors(detection_annotation.id)
 
-    # Commit both annotation and contribution
-    await annotations.session.commit()
-    await annotations.session.refresh(detection_annotation)
+    # Convert to DetectionAnnotationRead with contributors
+    annotation_dict = detection_annotation.model_dump()
+    annotation_dict["contributors"] = [
+        {"id": user.id, "username": user.username} for user in contributors
+    ]
 
-    return detection_annotation
+    return DetectionAnnotationRead(**annotation_dict)
 
 
 @router.get("/")
@@ -278,38 +276,25 @@ async def update_annotation(
     annotations: DetectionAnnotationCRUD = Depends(get_detection_annotation_crud),
     current_user: User = Depends(get_current_user),
 ) -> DetectionAnnotationRead:
-    # Get existing annotation
-    existing = await annotations.get(annotation_id, strict=True)
-
-    # Start with existing data
-    update_dict = {"updated_at": datetime.now(UTC)}
-
-    # If annotation is being updated, validate it
-    if payload.annotation is not None:
-        update_dict.update(
-            {
-                "annotation": payload.annotation.model_dump(),
-            }
+    # Use CRUD method which handles contribution tracking with proper conditional logic
+    updated_annotation = await annotations.update(annotation_id, payload, current_user.id)
+    
+    if not updated_annotation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Detection annotation with id {annotation_id} not found"
         )
 
-    # Add other updateable fields
-    if payload.processing_stage is not None:
-        update_dict["processing_stage"] = payload.processing_stage
+    # Get contributors for this annotation
+    contributors = await annotations.get_annotation_contributors(annotation_id)
 
-    # Update the model and record contribution in same transaction
-    for key, value in update_dict.items():
-        setattr(existing, key, value)
+    # Convert to DetectionAnnotationRead with contributors
+    annotation_dict = updated_annotation.model_dump()
+    annotation_dict["contributors"] = [
+        {"id": user.id, "username": user.username} for user in contributors
+    ]
 
-    # Record contribution
-    contribution = DetectionAnnotationContribution(
-        detection_annotation_id=existing.id, user_id=current_user.id
-    )
-    annotations.session.add(contribution)
-
-    await annotations.session.commit()
-    await annotations.session.refresh(existing)
-
-    return existing
+    return DetectionAnnotationRead(**annotation_dict)
 
 
 @router.delete("/{annotation_id}", status_code=status.HTTP_204_NO_CONTENT)

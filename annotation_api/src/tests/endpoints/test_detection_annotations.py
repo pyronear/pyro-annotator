@@ -1125,7 +1125,7 @@ async def test_get_detection_annotation_includes_contributors(
                 ]
             }
         ),
-        "processing_stage": "visual_check",
+        "processing_stage": "annotated",
     }
 
     # Create annotation
@@ -1294,7 +1294,7 @@ async def test_list_detection_annotations_includes_contributors(
                 ]
             }
         ),
-        "processing_stage": "visual_check",
+        "processing_stage": "annotated",
     }
 
     # Create annotation
@@ -1334,6 +1334,82 @@ async def test_list_detection_annotations_includes_contributors(
     assert "username" in contributor
     assert isinstance(contributor["id"], int)
     assert isinstance(contributor["username"], str)
+
+
+@pytest.mark.asyncio
+async def test_detection_annotation_contributions_only_for_annotated_stage(
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+):
+    """Test that contributions are only recorded for annotations created/updated to 'annotated' stage."""
+    # Create detection first
+    detection_payload = {
+        "sequence_id": "1", 
+        "alert_api_id": "9004",
+        "recorded_at": (now - timedelta(days=2)).isoformat(),
+        "algo_predictions": json.dumps(
+            {
+                "predictions": [
+                    {
+                        "xyxyn": [0.15, 0.15, 0.3, 0.3],
+                        "confidence": 0.88,
+                        "class_name": "smoke",
+                    }
+                ]
+            }
+        ),
+    }
+
+    detection_response = await authenticated_client.post(
+        "/detections",
+        data=detection_payload,
+        files={"file": ("image.jpg", mock_img, "image/jpeg")},
+    )
+    assert detection_response.status_code == 201
+    detection_id = detection_response.json()["id"]
+
+    # Create annotation in visual_check stage (should NOT record contribution)
+    annotation_payload_visual = {
+        "detection_id": str(detection_id),
+        "annotation": json.dumps(
+            {
+                "annotation": [
+                    {
+                        "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                        "class_name": "smoke",
+                        "smoke_type": "wildfire",
+                    }
+                ]
+            }
+        ),
+        "processing_stage": "visual_check",
+    }
+
+    create_response = await authenticated_client.post(
+        "/annotations/detections/", data=annotation_payload_visual
+    )
+    assert create_response.status_code == 201
+    annotation_id = create_response.json()["id"]
+
+    # Verify no contributors recorded for visual_check stage
+    get_response = await authenticated_client.get(f"/annotations/detections/{annotation_id}")
+    assert get_response.status_code == 200
+    annotation_data = get_response.json()
+    assert "contributors" in annotation_data
+    assert annotation_data["contributors"] == []
+
+    # Update to annotated stage (should NOW record contribution)
+    update_payload = {"processing_stage": "annotated"}
+    update_response = await authenticated_client.patch(
+        f"/annotations/detections/{annotation_id}", json=update_payload
+    )
+    assert update_response.status_code == 200
+
+    # Verify contributor is now recorded
+    get_response_after = await authenticated_client.get(f"/annotations/detections/{annotation_id}")
+    assert get_response_after.status_code == 200
+    annotation_data_after = get_response_after.json()
+    assert len(annotation_data_after["contributors"]) == 1
+    assert annotation_data_after["contributors"][0]["username"] == "admin"
 
 
 @pytest.mark.asyncio

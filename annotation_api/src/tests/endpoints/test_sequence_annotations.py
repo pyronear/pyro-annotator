@@ -1760,7 +1760,7 @@ async def test_get_sequence_annotation_includes_contributors(
                 }
             ]
         },
-        "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
+        "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
         "created_at": datetime.now(UTC).isoformat(),
     }
 
@@ -1865,7 +1865,7 @@ async def test_list_sequence_annotations_includes_contributors(
                 }
             ]
         },
-        "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
+        "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
         "created_at": datetime.now(UTC).isoformat(),
     }
 

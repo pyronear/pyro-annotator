@@ -261,36 +261,8 @@ async def create_sequence_annotation(
     # Validate that all detection_ids exist in the database
     await validate_detection_ids(create_data.annotation, annotations.session)
 
-    # Derive values from annotation data
-    has_smoke = derive_has_smoke(create_data.annotation)
-    has_false_positives = derive_has_false_positives(create_data.annotation)
-    false_positive_types = derive_false_positive_types(create_data.annotation)
-
-    # Create database model with derived values
-
-    sequence_annotation = SequenceAnnotation(
-        sequence_id=create_data.sequence_id,
-        has_smoke=has_smoke,
-        has_false_positives=has_false_positives,
-        false_positive_types=false_positive_types,
-        has_missed_smoke=create_data.has_missed_smoke,
-        is_unsure=create_data.is_unsure,
-        annotation=create_data.annotation.model_dump(),
-        processing_stage=create_data.processing_stage,
-    )
-
-    # Create contribution record in same transaction
-    annotations.session.add(sequence_annotation)
-    await annotations.session.flush()  # Flush to get the ID
-
-    contribution = SequenceAnnotationContribution(
-        sequence_annotation_id=sequence_annotation.id, user_id=current_user.id
-    )
-    annotations.session.add(contribution)
-
-    # Commit both annotation and contribution
-    await annotations.session.commit()
-    await annotations.session.refresh(sequence_annotation)
+    # Use CRUD method which handles contribution tracking with proper conditional logic
+    sequence_annotation = await annotations.create(create_data, current_user.id)
 
     # Auto-create detection annotations if sequence annotation is marked as annotated and not unsure
     # Skip detection annotation creation for unsure sequences
@@ -300,15 +272,24 @@ async def create_sequence_annotation(
     ):
         await auto_create_detection_annotations(
             sequence_id=create_data.sequence_id,
-            has_smoke=has_smoke,
+            has_smoke=sequence_annotation.has_smoke,
             has_missed_smoke=create_data.has_missed_smoke,
-            has_false_positives=has_false_positives,
+            has_false_positives=sequence_annotation.has_false_positives,
             session=annotations.session,
         )
         # Commit the detection annotations
         await annotations.session.commit()
 
-    return sequence_annotation
+    # Get contributors for this annotation
+    contributors = await annotations.get_annotation_contributors(sequence_annotation.id)
+
+    # Convert to SequenceAnnotationRead with contributors
+    annotation_dict = sequence_annotation.model_dump()
+    annotation_dict["contributors"] = [
+        {"id": user.id, "username": user.username} for user in contributors
+    ]
+
+    return SequenceAnnotationRead(**annotation_dict)
 
 
 @router.get("/")
@@ -490,35 +471,12 @@ async def update_sequence_annotation(
     annotations: SequenceAnnotationCRUD = Depends(get_sequence_annotation_crud),
     current_user: User = Depends(get_current_user),
 ) -> SequenceAnnotationRead:
-    # Get existing annotation
-    existing = await annotations.get(annotation_id, strict=True)
-
-    # Start with existing data
-    update_dict = {"updated_at": datetime.now(UTC)}
-
-    # If annotation is being updated, validate and derive new values
+    # Validate detection_ids if annotation is being updated
     if payload.annotation is not None:
-        # Validate that all detection_ids exist in the database
         await validate_detection_ids(payload.annotation, annotations.session)
 
-        update_dict.update(
-            {
-                "has_smoke": derive_has_smoke(payload.annotation),
-                "has_false_positives": derive_has_false_positives(payload.annotation),
-                "false_positive_types": derive_false_positive_types(payload.annotation),
-                "annotation": payload.annotation.model_dump(),
-            }
-        )
-
-    # Add other updateable fields
-    if payload.has_missed_smoke is not None:
-        update_dict["has_missed_smoke"] = payload.has_missed_smoke
-    if payload.is_unsure is not None:
-        update_dict["is_unsure"] = payload.is_unsure
-    if payload.processing_stage is not None:
-        update_dict["processing_stage"] = payload.processing_stage
-
-    # Check if processing_stage is being updated to "annotated"
+    # Check if processing_stage is being updated to "annotated" for auto-creation logic
+    existing = await annotations.get(annotation_id, strict=True)
     was_annotated_before = (
         existing.processing_stage == SequenceAnnotationProcessingStage.ANNOTATED
     )
@@ -528,33 +486,38 @@ async def update_sequence_annotation(
         else existing.processing_stage == SequenceAnnotationProcessingStage.ANNOTATED
     )
 
-    # Update the model and record contribution in same transaction
-    for key, value in update_dict.items():
-        setattr(existing, key, value)
-
-    # Record contribution
-    contribution = SequenceAnnotationContribution(
-        sequence_annotation_id=existing.id, user_id=current_user.id
-    )
-    annotations.session.add(contribution)
-
-    await annotations.session.commit()
-    await annotations.session.refresh(existing)
+    # Use CRUD method which handles contribution tracking with proper conditional logic
+    updated_annotation = await annotations.update(annotation_id, payload, current_user.id)
+    
+    if not updated_annotation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Sequence annotation with id {annotation_id} not found"
+        )
 
     # Auto-create detection annotations if processing_stage is newly set to "annotated" and not unsure
     # Skip detection annotation creation for unsure sequences
-    if not was_annotated_before and will_be_annotated_after and not existing.is_unsure:
+    if not was_annotated_before and will_be_annotated_after and not updated_annotation.is_unsure:
         await auto_create_detection_annotations(
-            sequence_id=existing.sequence_id,
-            has_smoke=existing.has_smoke,
-            has_missed_smoke=existing.has_missed_smoke,
-            has_false_positives=existing.has_false_positives,
+            sequence_id=updated_annotation.sequence_id,
+            has_smoke=updated_annotation.has_smoke,
+            has_missed_smoke=updated_annotation.has_missed_smoke,
+            has_false_positives=updated_annotation.has_false_positives,
             session=annotations.session,
         )
         # Commit the detection annotations
         await annotations.session.commit()
 
-    return existing
+    # Get contributors for this annotation
+    contributors = await annotations.get_annotation_contributors(annotation_id)
+
+    # Convert to SequenceAnnotationRead with contributors
+    annotation_dict = updated_annotation.model_dump()
+    annotation_dict["contributors"] = [
+        {"id": user.id, "username": user.username} for user in contributors
+    ]
+
+    return SequenceAnnotationRead(**annotation_dict)
 
 
 @router.delete("/{annotation_id}", status_code=status.HTTP_204_NO_CONTENT)
