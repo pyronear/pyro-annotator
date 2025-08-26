@@ -72,11 +72,10 @@ from rich.progress import (
 # Import new modular components
 from .progress_management import ErrorCollector, StepManager, LogSuppressor
 from .worker_config import WorkerConfig
-from .annotation_processing import SequenceAnalyzer
 from .sequence_fetching import fetch_all_sequences_within
 from .annotation_management import (
     valid_date,
-    process_single_sequence,
+    create_simple_sequence_annotation,
 )
 
 # Import platform functionality
@@ -496,53 +495,30 @@ def main() -> None:
             step_stats,
         )
 
-        # Step 3: Initialize sequence analyzer
+        # Step 3: Create sequence annotations with auto-generation
         step_manager.start_step(
             3,
-            "Analysis Setup",
-            f"Configuring sequence analyzer (confidence={args.confidence_threshold}, iou={args.iou_threshold})",
+            "Sequence Annotation Creation", 
+            f"Creating sequence annotations for {len(sequence_ids)} sequences (auto-generation enabled)",
         )
 
-        try:
-            analyzer = SequenceAnalyzer(
-                base_url=args.url_api_annotation,
-                confidence_threshold=args.confidence_threshold,
-                iou_threshold=args.iou_threshold,
-                min_cluster_size=args.min_cluster_size,
-            )
-
-            analyzer_stats = {
-                "Confidence threshold": args.confidence_threshold,
-                "IoU threshold": args.iou_threshold,
-                "Min cluster size": args.min_cluster_size,
-                "Workers": worker_config.annotation_processing,
-            }
-            step_manager.complete_step(
-                True, "Sequence analyzer configured", analyzer_stats
-            )
-
-        except Exception as e:
-            error_collector.add_error(f"Failed to initialize sequence analyzer: {e}")
-            step_manager.complete_step(False, f"Failed to initialize analyzer: {e}")
-            sys.exit(1)
-
-        # Step 4: Process each sequence
-        step_manager.start_step(
-            4,
-            "Annotation Generation",
-            f"Processing {len(sequence_ids)} sequences with {worker_config.annotation_processing} workers",
-        )
+        # Prepare annotation configuration
+        annotation_config = {
+            "confidence_threshold": args.confidence_threshold,
+            "iou_threshold": args.iou_threshold, 
+            "min_cluster_size": args.min_cluster_size,
+        }
 
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=worker_config.annotation_processing
         ) as executor:
-            # Submit all sequence processing tasks
+            # Submit all sequence annotation tasks
             future_to_sequence_id = {
                 executor.submit(
-                    process_single_sequence,
+                    create_simple_sequence_annotation,
                     sequence_id=sequence_id,
-                    analyzer=analyzer,
                     annotation_api_url=args.url_api_annotation,
+                    config=annotation_config,
                     dry_run=args.dry_run,
                 ): sequence_id
                 for sequence_id in sequence_ids
@@ -552,7 +528,7 @@ def main() -> None:
             with LogSuppressor(suppress=suppress_logs):
                 with Progress(
                     SpinnerColumn(),
-                    TextColumn("[bold blue]Generating annotations"),
+                    TextColumn("[bold blue]Creating sequence annotations"),
                     BarColumn(bar_width=40),
                     TaskProgressColumn(),
                     console=Console(),
@@ -595,8 +571,8 @@ def main() -> None:
                             stats["annotations_failed"] += 1
                             progress_bar.advance(task)
 
-        # Complete Step 4 with annotation statistics
-        step_4_success = stats["annotations_failed"] == 0
+        # Complete Step 3 with annotation statistics
+        step_3_success = stats["annotations_failed"] == 0
         final_stats = {
             "Sequences processed": stats["total_sequences_for_annotation"],
             "Annotations successful": stats["annotations_successful"],
@@ -604,15 +580,15 @@ def main() -> None:
             "Annotations created": stats["annotations_created"],
         }
 
-        step_4_message = (
-            "All sequences processed successfully"
-            if step_4_success
+        step_3_message = (
+            "All sequence annotations created successfully"
+            if step_3_success
             else f"{stats['annotations_failed']} annotation(s) failed"
         )
         if args.dry_run:
-            step_4_message = "DRY RUN: " + step_4_message
+            step_3_message = "DRY RUN: " + step_3_message
 
-        step_manager.complete_step(step_4_success, step_4_message, final_stats)
+        step_manager.complete_step(step_3_success, step_3_message, final_stats)
 
         # Show any accumulated errors/warnings
         if error_collector.has_issues():

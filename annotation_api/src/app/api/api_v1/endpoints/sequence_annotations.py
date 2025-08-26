@@ -3,7 +3,7 @@
 import logging
 from datetime import datetime, UTC
 from enum import Enum
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from fastapi import (
     APIRouter,
@@ -40,6 +40,7 @@ from app.schemas.sequence_annotations import (
     SequenceAnnotationRead,
     SequenceAnnotationUpdate,
 )
+from app.services.annotation_generation import AnnotationGenerationService
 
 router = APIRouter()
 logger = logging.getLogger("uvicorn.error")
@@ -137,6 +138,81 @@ def convert_algo_predictions_to_annotation(
         annotation_items.append(annotation_item)
 
     return {"annotation": annotation_items}
+
+
+def should_trigger_auto_generation(
+    processing_stage: SequenceAnnotationProcessingStage,
+    annotation_data: Union[SequenceAnnotationData, dict, None]
+) -> bool:
+    """
+    Determine if automatic annotation generation should be triggered.
+
+    Args:
+        processing_stage: The processing stage of the annotation
+        annotation_data: The annotation data to check (SequenceAnnotationData model, dict, or None)
+
+    Returns:
+        True if auto-generation should be triggered, False otherwise
+    """
+    # Only trigger if processing stage is READY_TO_ANNOTATE
+    if processing_stage != SequenceAnnotationProcessingStage.READY_TO_ANNOTATE:
+        return False
+    
+    # Only trigger if annotation is empty or has no sequences_bbox
+    if not annotation_data:
+        return True
+    
+    # Handle both dict and SequenceAnnotationData inputs
+    if isinstance(annotation_data, dict):
+        sequences_bbox = annotation_data.get("sequences_bbox", [])
+    else:
+        sequences_bbox = annotation_data.sequences_bbox
+    
+    return not sequences_bbox
+
+
+async def auto_generate_annotation(
+    sequence_id: int,
+    session: AsyncSession,
+    confidence_threshold: float = 0.5,
+    iou_threshold: float = 0.3,
+    min_cluster_size: int = 1,
+) -> Optional[SequenceAnnotationData]:
+    """
+    Automatically generate annotation data for a sequence using AI predictions.
+
+    Args:
+        sequence_id: ID of the sequence to generate annotation for
+        session: Database session
+        confidence_threshold: Minimum AI prediction confidence
+        iou_threshold: Minimum IoU for clustering overlapping boxes
+        min_cluster_size: Minimum number of boxes required per cluster
+
+    Returns:
+        Generated SequenceAnnotationData or None if generation failed
+    """
+    try:
+        # Create annotation generation service
+        service = AnnotationGenerationService(
+            session=session,
+            confidence_threshold=confidence_threshold,
+            iou_threshold=iou_threshold,
+            min_cluster_size=min_cluster_size,
+        )
+        
+        # Generate annotation data
+        generated_annotation = await service.generate_annotation_for_sequence(sequence_id)
+        
+        if generated_annotation:
+            logger.info(f"Successfully auto-generated annotation for sequence {sequence_id}")
+            return generated_annotation
+        else:
+            logger.warning(f"Auto-generation returned no annotation data for sequence {sequence_id}")
+            return None
+            
+    except Exception as e:
+        logger.error(f"Error during auto-generation for sequence {sequence_id}: {e}")
+        return None
 
 
 async def auto_create_detection_annotations(
@@ -280,6 +356,24 @@ async def create_sequence_annotation(
     annotations: SequenceAnnotationCRUD = Depends(get_sequence_annotation_crud),
     current_user: User = Depends(get_current_user),
 ) -> SequenceAnnotationRead:
+    # Check if we should auto-generate annotation content
+    if should_trigger_auto_generation(create_data.processing_stage, create_data.annotation):
+        logger.info(f"Auto-generating annotation for sequence {create_data.sequence_id}")
+        generated_annotation = await auto_generate_annotation(
+            sequence_id=create_data.sequence_id,
+            session=annotations.session,
+            confidence_threshold=create_data.confidence_threshold or 0.5,
+            iou_threshold=create_data.iou_threshold or 0.3,
+            min_cluster_size=create_data.min_cluster_size or 1,
+        )
+        
+        # Use generated annotation if successful, otherwise keep original
+        if generated_annotation:
+            create_data.annotation = generated_annotation
+            logger.info(f"Using auto-generated annotation with {len(generated_annotation.sequences_bbox)} sequences_bbox for sequence {create_data.sequence_id}")
+        else:
+            logger.warning(f"Auto-generation failed for sequence {create_data.sequence_id}, proceeding with original annotation")
+
     # Validate that all detection_ids exist in the database
     await validate_detection_ids(create_data.annotation, annotations.session)
 
@@ -513,12 +607,36 @@ async def update_sequence_annotation(
     annotations: SequenceAnnotationCRUD = Depends(get_sequence_annotation_crud),
     current_user: User = Depends(get_current_user),
 ) -> SequenceAnnotationRead:
+    # Get existing annotation first
+    existing = await annotations.get(annotation_id, strict=True)
+    
+    # Determine processing stage for auto-generation check
+    target_processing_stage = payload.processing_stage if payload.processing_stage is not None else existing.processing_stage
+    target_annotation = payload.annotation if payload.annotation is not None else existing.annotation
+
+    # Check if we should auto-generate annotation content
+    if should_trigger_auto_generation(target_processing_stage, target_annotation):
+        logger.info(f"Auto-generating annotation for sequence {existing.sequence_id} during update")
+        generated_annotation = await auto_generate_annotation(
+            sequence_id=existing.sequence_id,
+            session=annotations.session,
+            confidence_threshold=payload.confidence_threshold or 0.5,
+            iou_threshold=payload.iou_threshold or 0.3,
+            min_cluster_size=payload.min_cluster_size or 1,
+        )
+        
+        # Use generated annotation if successful
+        if generated_annotation:
+            payload.annotation = generated_annotation
+            logger.info(f"Using auto-generated annotation with {len(generated_annotation.sequences_bbox)} sequences_bbox for sequence {existing.sequence_id}")
+        else:
+            logger.warning(f"Auto-generation failed for sequence {existing.sequence_id}, proceeding with original annotation")
+
     # Validate detection_ids if annotation is being updated
     if payload.annotation is not None:
         await validate_detection_ids(payload.annotation, annotations.session)
 
     # Check if processing_stage is being updated to "annotated" for auto-creation logic
-    existing = await annotations.get(annotation_id, strict=True)
     was_annotated_before = (
         existing.processing_stage == SequenceAnnotationProcessingStage.ANNOTATED
     )

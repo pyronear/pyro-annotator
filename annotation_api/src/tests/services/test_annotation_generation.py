@@ -1,38 +1,34 @@
 """
-Test suite for annotation processing functionality.
+Test suite for annotation generation service functionality.
 
-This module tests the SequenceAnalyzer class and related functions
+This module tests the AnnotationGenerationService class and related functions
 for edge cases, error handling, and validation to prevent empty sequence bboxes.
 """
 
 import pytest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
-import sys
-
-# Add the scripts directory and app src to Python path for imports
-sys.path.insert(0, "..")  # scripts directory
-sys.path.insert(0, "../../src")  # app src directory
-
-from data_transfer.ingestion.platform.annotation_processing import (
-    SequenceAnalyzer,
+from app.services.annotation_generation import (
+    AnnotationGenerationService,
     box_iou,
     filter_predictions_by_confidence,
     cluster_boxes_by_iou,
 )
-
 from app.schemas.annotation_validation import (
     SequenceBBox,
 )
 
 
-class TestSequenceAnalyzer:
-    """Test the SequenceAnalyzer class with comprehensive edge cases."""
+class TestAnnotationGenerationService:
+    """Test the AnnotationGenerationService class with comprehensive edge cases."""
 
     def setup_method(self):
         """Set up test fixtures."""
-        self.analyzer = SequenceAnalyzer(
-            base_url="http://localhost:5050",
+        # Create a mock async session
+        self.mock_session = AsyncMock()
+        
+        self.service = AnnotationGenerationService(
+            session=self.mock_session,
             confidence_threshold=0.5,
             iou_threshold=0.3,
             min_cluster_size=1,
@@ -50,7 +46,7 @@ class TestSequenceAnalyzer:
         ]
 
         for coords in valid_coords:
-            assert self.analyzer._is_valid_bbox_coords(
+            assert self.service._is_valid_bbox_coords(
                 coords
             ), f"Should be valid: {coords}"
 
@@ -89,7 +85,7 @@ class TestSequenceAnalyzer:
         ]
 
         for coords in invalid_coords:
-            assert not self.analyzer._is_valid_bbox_coords(
+            assert not self.service._is_valid_bbox_coords(
                 coords
             ), f"Should be invalid: {coords}"
 
@@ -102,7 +98,7 @@ class TestSequenceAnalyzer:
         ]
 
         for coords in null_coords:
-            assert not self.analyzer._is_valid_bbox_coords(
+            assert not self.service._is_valid_bbox_coords(
                 coords
             ), f"Null coordinates should be invalid: {coords}"
 
@@ -118,7 +114,7 @@ class TestSequenceAnalyzer:
         ]
 
         for coords in zero_area_coords:
-            assert not self.analyzer._is_valid_bbox_coords(
+            assert not self.service._is_valid_bbox_coords(
                 coords
             ), f"Zero-area coordinates should be invalid: {coords}"
 
@@ -138,8 +134,8 @@ class TestSequenceAnalyzer:
             ],
         ]
 
-        with patch.object(self.analyzer, "logger") as mock_logger:
-            result = self.analyzer._create_sequence_bboxes(bbox_clusters)
+        with patch.object(self.service, "logger") as mock_logger:
+            result = self.service._create_sequence_bboxes(bbox_clusters)
 
         # Should create only one SequenceBBox (second cluster completely skipped due to all null coordinates)
         assert len(result) == 1
@@ -172,8 +168,8 @@ class TestSequenceAnalyzer:
             ],
         ]
 
-        with patch.object(self.analyzer, "logger") as mock_logger:
-            result = self.analyzer._create_sequence_bboxes(bbox_clusters)
+        with patch.object(self.service, "logger") as mock_logger:
+            result = self.service._create_sequence_bboxes(bbox_clusters)
 
         # Should create only one SequenceBBox (second cluster completely skipped)
         assert len(result) == 1
@@ -203,7 +199,7 @@ class TestSequenceAnalyzer:
             ],
         ]
 
-        result = self.analyzer._create_sequence_bboxes(bbox_clusters)
+        result = self.service._create_sequence_bboxes(bbox_clusters)
 
         assert len(result) == 2
         assert all(isinstance(seq_bbox, SequenceBBox) for seq_bbox in result)
@@ -224,8 +220,8 @@ class TestSequenceAnalyzer:
             ],
         ]
 
-        with patch.object(self.analyzer, "logger") as mock_logger:
-            result = self.analyzer._create_sequence_bboxes(bbox_clusters)
+        with patch.object(self.service, "logger") as mock_logger:
+            result = self.service._create_sequence_bboxes(bbox_clusters)
 
         # Should create one SequenceBBox with only the valid bboxes
         assert len(result) == 1
@@ -248,8 +244,8 @@ class TestSequenceAnalyzer:
             [([0.1, 0.2, 0.8, 0.9], 126)],
         ]
 
-        with patch.object(self.analyzer, "logger") as mock_logger:
-            result = self.analyzer._create_sequence_bboxes(bbox_clusters)
+        with patch.object(self.service, "logger") as mock_logger:
+            result = self.service._create_sequence_bboxes(bbox_clusters)
 
         # Should only create one SequenceBBox (skip the all-invalid cluster)
         assert len(result) == 1
@@ -264,7 +260,7 @@ class TestSequenceAnalyzer:
         """Test sequence bbox creation with empty cluster list."""
         bbox_clusters = []
 
-        result = self.analyzer._create_sequence_bboxes(bbox_clusters)
+        result = self.service._create_sequence_bboxes(bbox_clusters)
 
         assert result == []
 
@@ -274,13 +270,13 @@ class TestSequenceAnalyzer:
             [([0.1, 0.2, 0.8, 0.9], 123)],
         ]
 
-        with patch.object(self.analyzer, "logger") as mock_logger, patch(
-            "data_transfer.ingestion.platform.annotation_processing.BoundingBox"
+        with patch.object(self.service, "logger") as mock_logger, patch(
+            "app.services.annotation_generation.BoundingBox"
         ) as mock_bbox:
             # Make BoundingBox constructor raise an exception
             mock_bbox.side_effect = ValueError("Validation failed")
 
-            result = self.analyzer._create_sequence_bboxes(bbox_clusters)
+            result = self.service._create_sequence_bboxes(bbox_clusters)
 
         # Should return empty list since BoundingBox creation failed
         assert result == []
@@ -294,91 +290,101 @@ class TestSequenceAnalyzer:
         second_warning = mock_logger.warning.call_args_list[1][0][0]
         assert "Skipping cluster" in second_warning
 
-    @patch("data_transfer.ingestion.platform.annotation_processing.get_auth_token")
-    @patch("data_transfer.ingestion.platform.annotation_processing.get_sequence")
-    def test_analyze_sequence_no_detections(
-        self, mock_get_sequence, mock_get_auth_token
-    ):
-        """Test analyze_sequence when no detections are found."""
-        mock_get_auth_token.return_value = "fake_token"
-        mock_get_sequence.return_value = {"camera_name": "Test Camera"}
+    @pytest.mark.asyncio
+    async def test_generate_annotation_for_sequence_no_detections(self):
+        """Test generate_annotation_for_sequence when no detections are found."""
+        # Mock sequence exists
+        mock_sequence = MagicMock()
+        mock_sequence.camera_name = "Test Camera"
+        
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_sequence
+        self.mock_session.execute.return_value = mock_result
 
-        with patch.object(self.analyzer, "_fetch_sequence_detections", return_value=[]):
-            result = self.analyzer.analyze_sequence(123)
+        # Mock no detections
+        with patch.object(self.service, "_fetch_sequence_detections", return_value=[]):
+            result = await self.service.generate_annotation_for_sequence(123)
 
         assert result is None
 
-    @patch("data_transfer.ingestion.platform.annotation_processing.get_auth_token")
-    @patch("data_transfer.ingestion.platform.annotation_processing.get_sequence")
-    def test_analyze_sequence_no_valid_predictions(
-        self, mock_get_sequence, mock_get_auth_token
-    ):
-        """Test analyze_sequence when no valid predictions are found."""
-        mock_get_auth_token.return_value = "fake_token"
-        mock_get_sequence.return_value = {"camera_name": "Test Camera"}
+    @pytest.mark.asyncio
+    async def test_generate_annotation_for_sequence_no_valid_predictions(self):
+        """Test generate_annotation_for_sequence when no valid predictions are found."""
+        # Mock sequence exists
+        mock_sequence = MagicMock()
+        mock_sequence.camera_name = "Test Camera"
+        
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_sequence
+        self.mock_session.execute.return_value = mock_result
 
         # Mock detections with invalid algo_predictions
-        mock_detections = [
-            {"id": 123, "algo_predictions": None},
-            {"id": 124, "algo_predictions": {"predictions": []}},
-        ]
+        mock_detection1 = MagicMock()
+        mock_detection1.id = 123
+        mock_detection1.algo_predictions = None
+        
+        mock_detection2 = MagicMock()
+        mock_detection2.id = 124
+        mock_detection2.algo_predictions = {"predictions": []}
+
+        mock_detections = [mock_detection1, mock_detection2]
 
         with patch.object(
-            self.analyzer, "_fetch_sequence_detections", return_value=mock_detections
+            self.service, "_fetch_sequence_detections", return_value=mock_detections
         ):
-            result = self.analyzer.analyze_sequence(123)
+            result = await self.service.generate_annotation_for_sequence(123)
 
         assert result is None
 
     def test_extract_predictions_from_detections_edge_cases(self):
         """Test prediction extraction with various edge cases."""
-        detections = [
-            # Valid detection
-            {
-                "id": 123,
-                "algo_predictions": {
-                    "predictions": [
-                        {
-                            "xyxyn": [0.1, 0.2, 0.8, 0.9],
-                            "confidence": 0.8,
-                            "class_name": "smoke",
-                        }
-                    ]
-                },
-            },
-            # Detection with no algo_predictions
-            {"id": 124, "algo_predictions": None},
-            # Detection with empty predictions list
-            {"id": 125, "algo_predictions": {"predictions": []}},
-            # Detection with invalid prediction format
-            {
-                "id": 126,
-                "algo_predictions": {
-                    "predictions": [
-                        {
-                            "xyxyn": [0.1, 0.2, 0.8],
-                            "confidence": 0.7,
-                            "class_name": "smoke",
-                        }  # Wrong length
-                    ]
-                },
-            },
-            # Detection with low confidence (below threshold)
-            {
-                "id": 127,
-                "algo_predictions": {
-                    "predictions": [
-                        {
-                            "xyxyn": [0.1, 0.2, 0.8, 0.9],
-                            "confidence": 0.3,
-                            "class_name": "smoke",
-                        }  # Below 0.5 threshold
-                    ]
-                },
-            },
-        ]
+        mock_detection1 = MagicMock()
+        mock_detection1.id = 123
+        mock_detection1.algo_predictions = {
+            "predictions": [
+                {
+                    "xyxyn": [0.1, 0.2, 0.8, 0.9],
+                    "confidence": 0.8,
+                    "class_name": "smoke",
+                }
+            ]
+        }
 
-        result = self.analyzer._extract_predictions_from_detections(detections)
+        mock_detection2 = MagicMock()
+        mock_detection2.id = 124
+        mock_detection2.algo_predictions = None
+
+        mock_detection3 = MagicMock()
+        mock_detection3.id = 125
+        mock_detection3.algo_predictions = {"predictions": []}
+
+        mock_detection4 = MagicMock()
+        mock_detection4.id = 126
+        mock_detection4.algo_predictions = {
+            "predictions": [
+                {
+                    "xyxyn": [0.1, 0.2, 0.8],  # Wrong length
+                    "confidence": 0.7,
+                    "class_name": "smoke",
+                }
+            ]
+        }
+
+        mock_detection5 = MagicMock()
+        mock_detection5.id = 127
+        mock_detection5.algo_predictions = {
+            "predictions": [
+                {
+                    "xyxyn": [0.1, 0.2, 0.8, 0.9],
+                    "confidence": 0.3,  # Below 0.5 threshold
+                    "class_name": "smoke",
+                }
+            ]
+        }
+
+        detections = [mock_detection1, mock_detection2, mock_detection3, mock_detection4, mock_detection5]
+
+        result = self.service._extract_predictions_from_detections(detections)
 
         # Should only return the one valid prediction above confidence threshold
         assert len(result) == 1
@@ -388,7 +394,7 @@ class TestSequenceAnalyzer:
 
 
 class TestUtilityFunctions:
-    """Test utility functions used by SequenceAnalyzer."""
+    """Test utility functions used by AnnotationGenerationService."""
 
     def test_box_iou_perfect_overlap(self):
         """Test IoU calculation for perfectly overlapping boxes."""
@@ -483,56 +489,62 @@ class TestUtilityFunctions:
         assert clusters == []
 
 
-class TestSequenceAnalyzerConfiguration:
-    """Test SequenceAnalyzer configuration and initialization."""
+class TestAnnotationGenerationServiceConfiguration:
+    """Test AnnotationGenerationService configuration and initialization."""
 
     def test_valid_configuration(self):
-        """Test analyzer initialization with valid parameters."""
-        analyzer = SequenceAnalyzer(
-            base_url="http://localhost:5050",
+        """Test service initialization with valid parameters."""
+        mock_session = AsyncMock()
+        service = AnnotationGenerationService(
+            session=mock_session,
             confidence_threshold=0.7,
             iou_threshold=0.4,
             min_cluster_size=2,
         )
 
-        config = analyzer.get_configuration()
-        assert config["base_url"] == "http://localhost:5050"
+        config = service.get_configuration()
         assert config["confidence_threshold"] == 0.7
         assert config["iou_threshold"] == 0.4
         assert config["min_cluster_size"] == 2
 
     def test_invalid_confidence_threshold(self):
-        """Test analyzer initialization with invalid confidence threshold."""
+        """Test service initialization with invalid confidence threshold."""
+        mock_session = AsyncMock()
+        
         with pytest.raises(
             ValueError, match="confidence_threshold must be between 0.0 and 1.0"
         ):
-            SequenceAnalyzer(
-                base_url="http://localhost:5050",
+            AnnotationGenerationService(
+                session=mock_session,
                 confidence_threshold=1.5,  # Invalid
             )
 
         with pytest.raises(
             ValueError, match="confidence_threshold must be between 0.0 and 1.0"
         ):
-            SequenceAnalyzer(
-                base_url="http://localhost:5050",
+            AnnotationGenerationService(
+                session=mock_session,
                 confidence_threshold=-0.1,  # Invalid
             )
 
     def test_invalid_iou_threshold(self):
-        """Test analyzer initialization with invalid IoU threshold."""
+        """Test service initialization with invalid IoU threshold."""
+        mock_session = AsyncMock()
+        
         with pytest.raises(
             ValueError, match="iou_threshold must be between 0.0 and 1.0"
         ):
-            SequenceAnalyzer(
-                base_url="http://localhost:5050",
+            AnnotationGenerationService(
+                session=mock_session,
                 iou_threshold=1.5,  # Invalid
             )
 
     def test_invalid_min_cluster_size(self):
-        """Test analyzer initialization with invalid min cluster size."""
+        """Test service initialization with invalid min cluster size."""
+        mock_session = AsyncMock()
+        
         with pytest.raises(ValueError, match="min_cluster_size must be at least 1"):
-            SequenceAnalyzer(
-                base_url="http://localhost:5050",
+            AnnotationGenerationService(
+                session=mock_session,
                 min_cluster_size=0,  # Invalid
             )
