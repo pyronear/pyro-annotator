@@ -63,14 +63,14 @@ export default function DetectionReviewPage() {
   // Date range helper functions
   const setDateRange = (preset: string) => {
     const { dateFrom: startDateStr, dateTo: endDateStr } = calculatePresetDateRange(preset);
-    
+
     setDateFrom(startDateStr);
     setDateTo(endDateStr);
-    
+
     // Convert to API datetime format if dates are valid
     const startDateTime = startDateStr ? startDateStr + 'T00:00:00' : undefined;
     const endDateTime = endDateStr ? endDateStr + 'T23:59:59' : undefined;
-    
+
     handleFilterChange({
       recorded_at_gte: startDateTime,
       recorded_at_lte: endDateTime
@@ -358,6 +358,10 @@ export default function DetectionReviewPage() {
               </div>
               <div className="flex items-center space-x-2">
                 <div className="flex items-center space-x-1">
+                  <div className="w-3 h-3 bg-orange-200 border border-orange-300 rounded"></div>
+                  <span className="text-gray-600">Smoke Types</span>
+                </div>
+                <div className="flex items-center space-x-1">
                   <div className="w-3 h-3 bg-yellow-200 border border-yellow-300 rounded"></div>
                   <span className="text-gray-600">False Positive Types</span>
                 </div>
@@ -474,11 +478,11 @@ export default function DetectionReviewPage() {
                               </span>
                             ))}
                           </div>
-                          
+
                           {/* Contributors - Bottom Right */}
                           {annotation.contributors && annotation.contributors.length > 0 && (
                             <div className="flex justify-end">
-                              <ContributorList 
+                              <ContributorList
                                 contributors={annotation.contributors}
                                 displayMode="compact"
                               />

@@ -62,14 +62,14 @@ export default function DetectionAnnotatePage() {
   // Date range helper functions
   const setDateRange = (preset: string) => {
     const { dateFrom: startDateStr, dateTo: endDateStr } = calculatePresetDateRange(preset);
-    
+
     setDateFrom(startDateStr);
     setDateTo(endDateStr);
-    
+
     // Convert to API datetime format if dates are valid
     const startDateTime = startDateStr ? startDateStr + 'T00:00:00' : undefined;
     const endDateTime = endDateStr ? endDateStr + 'T23:59:59' : undefined;
-    
+
     handleFilterChange({
       recorded_at_gte: startDateTime,
       recorded_at_lte: endDateTime
@@ -140,7 +140,7 @@ export default function DetectionAnnotatePage() {
         ...sequence,
         annotation: annotation
       });
-      
+
       return accuracy.type === selectedModelAccuracy;
     });
 
@@ -360,6 +360,10 @@ export default function DetectionAnnotatePage() {
                 </div>
               </div>
               <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-1">
+                  <div className="w-3 h-3 bg-orange-200 border border-orange-300 rounded"></div>
+                  <span className="text-gray-600">Smoke Types</span>
+                </div>
                 <div className="flex items-center space-x-1">
                   <div className="w-3 h-3 bg-yellow-200 border border-yellow-300 rounded"></div>
                   <span className="text-gray-600">False Positive Types</span>

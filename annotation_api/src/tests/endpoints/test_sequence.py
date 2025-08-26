@@ -956,6 +956,254 @@ async def test_list_sequences_false_positive_types_validation(
     assert response.status_code == 422
 
 
+@pytest.mark.asyncio
+async def test_list_sequences_filter_by_smoke_types(
+    authenticated_client: AsyncClient,
+):
+    """Test filtering sequences by smoke types."""
+    # Create test sequences with annotations containing different smoke types
+    test_sequences = [
+        {
+            "source_api": "pyronear_french",
+            "alert_api_id": "8101",
+            "camera_name": "Smoke Test Camera 1",
+            "camera_id": "801",
+            "organisation_name": "Test Org",
+            "organisation_id": "1",
+            "lat": "43.5",
+            "lon": "1.5",
+            "recorded_at": (now - timedelta(days=1)).isoformat(),
+            "last_seen_at": now.isoformat(),
+        },
+        {
+            "source_api": "pyronear_french",
+            "alert_api_id": "8102",
+            "camera_name": "Smoke Test Camera 2",
+            "camera_id": "802",
+            "organisation_name": "Test Org",
+            "organisation_id": "1",
+            "lat": "43.0",
+            "lon": "1.5",
+            "recorded_at": (now - timedelta(days=1)).isoformat(),
+            "last_seen_at": now.isoformat(),
+        },
+        {
+            "source_api": "pyronear_french",
+            "alert_api_id": "8103",
+            "camera_name": "Smoke Test Camera 3",
+            "camera_id": "803",
+            "organisation_name": "Test Org",
+            "organisation_id": "1",
+            "lat": "43.5",
+            "lon": "2.0",
+            "recorded_at": (now - timedelta(days=1)).isoformat(),
+            "last_seen_at": now.isoformat(),
+        },
+    ]
+
+    # Create sequences and get their IDs
+    sequence_ids = []
+    for seq_data in test_sequences:
+        response = await authenticated_client.post("/sequences/", data=seq_data)
+        assert response.status_code == 201
+        sequence_ids.append(response.json()["id"])
+
+    # Create detections first (required for bbox validation) and capture their IDs
+    detection_ids = []
+    for i, seq_id in enumerate(sequence_ids, 1):
+        detection_payload = {
+            "sequence_id": str(seq_id),
+            "alert_api_id": str(i),
+            "recorded_at": (now - timedelta(days=1)).isoformat(),
+            "algo_predictions": json.dumps(
+                {
+                    "predictions": [
+                        {
+                            "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                            "confidence": 0.85,
+                            "class_name": "smoke",
+                        }
+                    ]
+                }
+            ),
+        }
+
+        # Create a simple test image for the detection
+        import io
+        from PIL import Image
+
+        img = Image.new("RGB", (100, 100), color="red")
+        img_bytes = io.BytesIO()
+        img.save(img_bytes, format="JPEG")
+        img_bytes.seek(0)
+
+        files = {"file": ("test.jpg", img_bytes, "image/jpeg")}
+
+        response = await authenticated_client.post(
+            "/detections/", data=detection_payload, files=files
+        )
+        assert response.status_code == 201
+        detection_ids.append(response.json()["id"])
+
+    # Create sequence annotations with different smoke types using actual detection IDs
+    # Note: smoke_types will be derived from sequences_bbox data by derive_smoke_types function
+    annotations = [
+        {
+            "sequence_id": sequence_ids[0],
+            "has_missed_smoke": False,
+            "annotation": {
+                "sequences_bbox": [
+                    {
+                        "is_smoke": True,
+                        "smoke_type": "wildfire",
+                        "false_positive_types": [],
+                        "bboxes": [
+                            {
+                                "detection_id": detection_ids[0],
+                                "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                            }
+                        ],
+                    },
+                    {
+                        "is_smoke": True,
+                        "smoke_type": "industrial",
+                        "false_positive_types": [],
+                        "bboxes": [
+                            {
+                                "detection_id": detection_ids[0],
+                                "xyxyn": [0.15, 0.15, 0.25, 0.25],
+                            }
+                        ],
+                    }
+                ]
+            },
+            "processing_stage": "annotated",
+        },
+        {
+            "sequence_id": sequence_ids[1],
+            "has_missed_smoke": False,
+            "annotation": {
+                "sequences_bbox": [
+                    {
+                        "is_smoke": True,
+                        "smoke_type": "other",
+                        "false_positive_types": [],
+                        "bboxes": [
+                            {
+                                "detection_id": detection_ids[1],
+                                "xyxyn": [0.2, 0.2, 0.3, 0.3],
+                            }
+                        ],
+                    }
+                ]
+            },
+            "processing_stage": "annotated",
+        },
+        {
+            "sequence_id": sequence_ids[2],
+            "has_missed_smoke": False,
+            "annotation": {
+                "sequences_bbox": [
+                    {
+                        "is_smoke": False,
+                        "false_positive_types": ["antenna"],
+                        "bboxes": [
+                            {
+                                "detection_id": detection_ids[2],
+                                "xyxyn": [0.3, 0.3, 0.4, 0.4],
+                            }
+                        ],
+                    }
+                ]
+            },
+            "processing_stage": "annotated",
+        },
+    ]
+
+    # Create annotations
+    for annotation_data in annotations:
+        response = await authenticated_client.post(
+            "/annotations/sequences/", json=annotation_data
+        )
+        assert response.status_code == 201
+
+    # Test 1: Filter by single smoke type - should match first sequence
+    response = await authenticated_client.get(
+        "/sequences/?smoke_types=wildfire&include_annotation=true"
+    )
+    assert response.status_code == 200
+    data = response.json()
+    filtered_sequences = data["items"]
+
+    # Should only match first sequence
+    matching_ids = [
+        seq["id"] for seq in filtered_sequences if seq["id"] in sequence_ids
+    ]
+    assert sequence_ids[0] in matching_ids
+    assert sequence_ids[1] not in matching_ids
+    assert sequence_ids[2] not in matching_ids
+
+    # Test 2: Filter by multiple smoke types - should match first two sequences
+    response = await authenticated_client.get(
+        "/sequences/?smoke_types=wildfire&smoke_types=other&include_annotation=true"
+    )
+    assert response.status_code == 200
+    data = response.json()
+    filtered_sequences = data["items"]
+
+    # Should match first two sequences
+    matching_ids = [
+        seq["id"] for seq in filtered_sequences if seq["id"] in sequence_ids
+    ]
+    assert sequence_ids[0] in matching_ids
+    assert sequence_ids[1] in matching_ids
+    assert sequence_ids[2] not in matching_ids
+
+    # Test 3: Filter by smoke type that matches multiple sequences - industrial also in first sequence
+    response = await authenticated_client.get(
+        "/sequences/?smoke_types=industrial&include_annotation=true"
+    )
+    assert response.status_code == 200
+    data = response.json()
+    filtered_sequences = data["items"]
+
+    # Should match first sequence (which has both wildfire and industrial)
+    matching_ids = [
+        seq["id"] for seq in filtered_sequences if seq["id"] in sequence_ids
+    ]
+    assert sequence_ids[0] in matching_ids
+    assert sequence_ids[1] not in matching_ids
+    assert sequence_ids[2] not in matching_ids
+
+    # Test 4: Filter by non-existent smoke type - should return validation error
+    response = await authenticated_client.get(
+        "/sequences/?smoke_types=nonexistent&include_annotation=true"
+    )
+    assert response.status_code == 422
+    error_data = response.json()
+    assert "detail" in error_data
+    # Verify it's a validation error for the enum
+    assert any("Input should be" in str(error) for error in error_data["detail"])
+
+
+@pytest.mark.asyncio
+async def test_list_sequences_smoke_types_validation(
+    authenticated_client: AsyncClient,
+):
+    """Test that invalid smoke types return proper validation errors."""
+    # Test with invalid smoke type - should return 422 validation error
+    response = await authenticated_client.get(
+        "/sequences/?smoke_types=invalid_type"
+    )
+    assert response.status_code == 422
+
+    # Test with mix of valid and invalid types
+    response = await authenticated_client.get(
+        "/sequences/?smoke_types=wildfire&smoke_types=invalid_type"
+    )
+    assert response.status_code == 422
+
+
 # Contributor Tests for Embedded Annotations
 
 
