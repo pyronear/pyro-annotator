@@ -184,7 +184,7 @@ def create_annotation_from_data(
             # Add configuration parameters for auto-generation if provided
             if config:
                 update_dict.update({
-                    "confidence_threshold": config.get("confidence_threshold", 0.5),
+                    "confidence_threshold": config.get("confidence_threshold", 0.0),
                     "iou_threshold": config.get("iou_threshold", 0.3),
                     "min_cluster_size": config.get("min_cluster_size", 1),
                 })
@@ -222,7 +222,7 @@ def create_annotation_from_data(
             # Add configuration parameters for auto-generation if provided
             if config:
                 create_dict.update({
-                    "confidence_threshold": config.get("confidence_threshold", 0.5),
+                    "confidence_threshold": config.get("confidence_threshold", 0.0),
                     "iou_threshold": config.get("iou_threshold", 0.3),
                     "min_cluster_size": config.get("min_cluster_size", 1),
                 })

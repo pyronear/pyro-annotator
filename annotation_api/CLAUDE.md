@@ -176,9 +176,9 @@ Key environment variables (see `src/app/core/config.py`):
 ### Authentication Setup
 The API uses JWT authentication. Default credentials:
 - **Username**: `admin`
-- **Password**: `admin`
+- **Password**: `admin12345`
 
-To customize credentials, set environment variables in `docker-compose.yml`:
+Credentials are loaded from the `.envrc` file. To customize credentials, update your `.envrc` or set environment variables in `docker-compose.yml`:
 ```yaml
 environment:
   - AUTH_USERNAME=your_username
@@ -338,7 +338,7 @@ import requests
 
 # Login
 response = requests.post("http://localhost:5050/api/v1/auth/login", 
-                        json={"username": "admin", "password": "admin"})
+                        json={"username": "admin", "password": "admin12345"})
 token = response.json()["access_token"]
 
 # Make authenticated requests
@@ -406,7 +406,7 @@ def get_auth_token(base_url: str, username: str, password: str) -> str:
     return response.json()["access_token"]
 
 # Get authentication token
-token = get_auth_token("http://localhost:5050", "admin", "admin")
+token = get_auth_token("http://localhost:5050", "admin", "admin12345")
 headers = {"Authorization": f"Bearer {token}"}
 ```
 

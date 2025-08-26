@@ -72,7 +72,7 @@ class SequenceAnnotationCreate(BaseModel):
     
     # Optional configuration parameters for automatic annotation generation
     confidence_threshold: Optional[float] = Field(
-        default=0.5,
+        default=0.0,
         description="Minimum AI prediction confidence (0.0-1.0). Used when auto-generating annotations.",
         ge=0.0,
         le=1.0,

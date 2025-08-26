@@ -204,7 +204,7 @@ class AnnotationGenerationService:
     def __init__(
         self,
         session: AsyncSession,
-        confidence_threshold: float = 0.5,
+        confidence_threshold: float = 0.0,
         iou_threshold: float = 0.3,
         min_cluster_size: int = 1,
     ) -> None:
