@@ -13,7 +13,7 @@ These tests verify the fixes implemented for the detection annotation workflow i
 """
 
 import json
-from datetime import datetime, UTC
+from datetime import datetime, UTC, timedelta
 
 import pytest
 from httpx import AsyncClient
@@ -908,16 +908,55 @@ async def test_no_auto_create_when_not_annotated_stage(
 
 @pytest.mark.asyncio
 async def test_smoke_type_propagation_from_sequence_to_detection_annotations(
-    authenticated_client: AsyncClient, sequence_session, detection_session
+    authenticated_client: AsyncClient, sequence_session, detection_session, mock_img: bytes
 ):
     """Test that smoke types from sequence annotations are properly propagated to auto-created detection annotations."""
 
-    # Step 1: Use existing test sequence and detections from fixtures
-    # sequence_session fixture creates sequence ID 1 with detections 1 and 2
-    # detection_session fixture creates the detections with algo_predictions
-    test_sequence_id = 1
+    # Step 1: Create a new test sequence to avoid conflicts with existing tests
+    sequence_payload = {
+        "source_api": "pyronear_french",
+        "alert_api_id": "10001",
+        "camera_name": "Smoke Propagation Test Camera",
+        "camera_id": "10001",
+        "organisation_name": "Test Org",
+        "organisation_id": "1",
+        "lat": "43.5",
+        "lon": "1.5",
+        "recorded_at": (now - timedelta(days=1)).isoformat(),
+        "last_seen_at": now.isoformat(),
+    }
+    
+    sequence_response = await authenticated_client.post("/sequences/", data=sequence_payload)
+    assert sequence_response.status_code == 201, f"Failed to create sequence: {sequence_response.text}"
+    test_sequence_id = sequence_response.json()["id"]
+    
+    # Step 2: Create detections for this sequence
+    detection_ids = []
+    for i in range(2):
+        detection_payload = {
+            "sequence_id": str(test_sequence_id),
+            "alert_api_id": str(10100 + i),
+            "recorded_at": (now - timedelta(days=1)).isoformat(),
+            "algo_predictions": json.dumps({
+                "predictions": [
+                    {
+                        "xyxyn": [0.1 + i * 0.1, 0.1 + i * 0.1, 0.3 + i * 0.1, 0.3 + i * 0.1],
+                        "confidence": 0.85,
+                        "class_name": "smoke",  # Both detections have smoke predictions
+                    }
+                ]
+            }),
+        }
 
-    # Step 2: Create sequence annotation with specific smoke types (industrial + other)
+        files = {"file": (f"test_{i}.jpg", mock_img, "image/jpeg")}
+        
+        response = await authenticated_client.post(
+            "/detections/", data=detection_payload, files=files
+        )
+        assert response.status_code == 201, f"Failed to create detection {i}: {response.text}"
+        detection_ids.append(response.json()["id"])
+    
+    # Step 3: Create sequence annotation with specific smoke types (industrial + other)
     # This should propagate to detection annotations instead of defaulting to wildfire
     sequence_annotation_payload = {
         "sequence_id": test_sequence_id,
@@ -928,13 +967,13 @@ async def test_smoke_type_propagation_from_sequence_to_detection_annotations(
                     "is_smoke": True,
                     "smoke_type": "industrial",  # This should propagate to detection annotations
                     "false_positive_types": [],
-                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                    "bboxes": [{"detection_id": detection_ids[0], "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
                 },
                 {
                     "is_smoke": True,
                     "smoke_type": "other",  # Additional smoke type
                     "false_positive_types": [],
-                    "bboxes": [{"detection_id": 2, "xyxyn": [0.3, 0.3, 0.4, 0.4]}],
+                    "bboxes": [{"detection_id": detection_ids[1], "xyxyn": [0.3, 0.3, 0.4, 0.4]}],
                 },
             ]
         },
@@ -964,11 +1003,11 @@ async def test_smoke_type_propagation_from_sequence_to_detection_annotations(
     assert detection_annotations_response.status_code == 200
     detection_annotations = detection_annotations_response.json()["items"]
 
-    # Find detection annotations for our sequence
+    # Find detection annotations for our newly created detections
     sequence_detection_annotations = [
         ann
         for ann in detection_annotations
-        if ann.get("detection", {}).get("sequence_id") == test_sequence_id
+        if ann["detection_id"] in detection_ids
     ]
 
     assert (
@@ -1001,16 +1040,59 @@ async def test_smoke_type_propagation_from_sequence_to_detection_annotations(
 
 @pytest.mark.asyncio
 async def test_smoke_type_fallback_to_wildfire_when_no_smoke_types(
-    authenticated_client: AsyncClient, sequence_session, detection_session
+    authenticated_client: AsyncClient, sequence_session, detection_session, mock_img: bytes
 ):
     """Test that detection annotations fall back to 'wildfire' when sequence has no smoke types."""
 
-    # Step 1: Use existing test sequence and detections from fixtures
-    # sequence_session fixture creates sequence ID 2 with detection 3
-    # detection_session fixture creates the detections with algo_predictions
-    test_sequence_id = 2
+    # Step 1: Create a new test sequence to avoid conflicts with existing tests
+    sequence_payload = {
+        "source_api": "pyronear_french",
+        "alert_api_id": "10002",
+        "camera_name": "Smoke Fallback Test Camera",
+        "camera_id": "10002",
+        "organisation_name": "test_org",
+        "organisation_id": "2",
+        "azimuth": "90",
+        "lat": "0.0",
+        "lon": "0.0",
+        "created_at": datetime.now(UTC).isoformat(),
+        "recorded_at": datetime.now(UTC).isoformat(),
+        "last_seen_at": datetime.now(UTC).isoformat(),
+    }
 
-    # Step 2: Create sequence annotation without smoke_type in sequences_bbox
+    sequence_response = await authenticated_client.post(
+        "/sequences", data=sequence_payload
+    )
+    assert sequence_response.status_code == 201
+    test_sequence_id = sequence_response.json()["id"]
+
+    # Step 2: Create detections for this sequence with consistent "smoke" class_name
+    detection_ids = []
+    for i in range(2):
+        detection_payload = {
+            "sequence_id": str(test_sequence_id),
+            "alert_api_id": f"10002{i}",
+            "recorded_at": datetime.now(UTC).isoformat(),
+            "algo_predictions": json.dumps({
+                "predictions": [
+                    {
+                        "xyxyn": [0.05 + i*0.1, 0.05 + i*0.1, 0.3 + i*0.1, 0.35 + i*0.1],
+                        "confidence": 0.76 + i*0.04,
+                        "class_name": "smoke",
+                    }
+                ]
+            }),
+        }
+
+        detection_response = await authenticated_client.post(
+            "/detections",
+            data=detection_payload,
+            files={"file": (f"fallback_test_{i}.jpg", mock_img, "image/jpeg")},
+        )
+        assert detection_response.status_code == 201
+        detection_ids.append(detection_response.json()["id"])
+
+    # Step 3: Create sequence annotation without smoke_type in sequences_bbox
     # This should result in empty smoke_types and fallback to wildfire
     sequence_annotation_payload = {
         "sequence_id": test_sequence_id,
@@ -1022,8 +1104,8 @@ async def test_smoke_type_fallback_to_wildfire_when_no_smoke_types(
                     # No smoke_type specified - should result in empty derived smoke_types
                     "false_positive_types": [],
                     "bboxes": [
-                        {"detection_id": 3, "xyxyn": [0.1, 0.1, 0.2, 0.2]}
-                    ],  # Use detection 3 for sequence 2
+                        {"detection_id": detection_ids[0], "xyxyn": [0.1, 0.1, 0.2, 0.2]}
+                    ],
                 }
             ]
         },
@@ -1035,18 +1117,19 @@ async def test_smoke_type_fallback_to_wildfire_when_no_smoke_types(
     )
     assert response.status_code == 201
 
-    # Step 3: Verify detection annotation uses wildfire as fallback
+    # Step 4: Verify detection annotation uses wildfire as fallback
     detection_annotations_response = await authenticated_client.get(
         "/annotations/detections/"
     )
     assert detection_annotations_response.status_code == 200
     detection_annotations = detection_annotations_response.json()["items"]
 
+    # Find detection annotation for our newly created detection
     sequence_detection_annotation = next(
         (
             ann
             for ann in detection_annotations
-            if ann.get("detection", {}).get("sequence_id") == test_sequence_id
+            if ann["detection_id"] == detection_ids[0]
         ),
         None,
     )
