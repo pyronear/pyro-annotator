@@ -9,7 +9,9 @@ import {
   getRowBackgroundClasses,
   getFalsePositiveEmoji,
   formatFalsePositiveType,
-  parseFalsePositiveTypes
+  parseFalsePositiveTypes,
+  getSmokeTypeEmoji,
+  formatSmokeType
 } from '@/utils/modelAccuracy';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
 import TabbedFilters from '@/components/filters/TabbedFilters';
@@ -446,21 +448,35 @@ export default function DetectionAnnotatePage() {
                       </div>
                     </div>
 
-                    {/* False Positive Pills - Top Right Area */}
+                    {/* Pills - Top Right Area */}
                     {annotation && (
                       <div className="flex-shrink-0 self-start">
-                        <div className="flex flex-wrap gap-1 justify-end">
-                          {(() => {
-                            const falsePositiveTypes = parseFalsePositiveTypes(annotation.false_positive_types);
-                            return falsePositiveTypes.map((type: string) => (
+                        <div className="flex flex-col gap-2">
+                          {/* False Positive Pills */}
+                          <div className="flex flex-wrap gap-1 justify-end">
+                            {(() => {
+                              const falsePositiveTypes = parseFalsePositiveTypes(annotation.false_positive_types);
+                              return falsePositiveTypes.map((type: string) => (
+                                <span
+                                  key={type}
+                                  className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800"
+                                >
+                                  {getFalsePositiveEmoji(type)} {formatFalsePositiveType(type)}
+                                </span>
+                              ));
+                            })()}
+                          </div>
+                          {/* Smoke Type Pills */}
+                          <div className="flex flex-wrap gap-1 justify-end">
+                            {annotation.smoke_types?.map((type: string) => (
                               <span
                                 key={type}
-                                className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800"
+                                className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800"
                               >
-                                {getFalsePositiveEmoji(type)} {formatFalsePositiveType(type)}
+                                {getSmokeTypeEmoji(type)} {formatSmokeType(type)}
                               </span>
-                            ));
-                          })()}
+                            ))}
+                          </div>
                         </div>
                       </div>
                     )}
