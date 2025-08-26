@@ -438,40 +438,46 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
                         <span className="text-gray-400">•</span>
                         <span>{sequence.organisation_name}</span>
 
-                        <span className="text-gray-400">•</span>
-                        {sequence.azimuth && (
-                          <span className="text-gray-400 text-xs">
-                            Azimuth: {sequence.azimuth}°
-                          </span>
+                        {sequence.azimuth !== null && sequence.azimuth !== undefined && (
+                          <>
+                            <span className="text-gray-400">•</span>
+                            <span className="text-gray-400 text-xs">
+                              Azimuth: {sequence.azimuth}°
+                            </span>
+                          </>
                         )}
                       </div>
 
-                      {/* Contributors - Review page only */}
-                      {defaultProcessingStage === 'annotated' && sequence.annotation?.contributors && (
-                        <div className="mt-1">
-                          <ContributorList 
-                            contributors={sequence.annotation.contributors}
-                            displayMode="compact"
-                          />
-                        </div>
-                      )}
                     </div>
 
-                    {/* False Positive Pills - Top Right Area (Review page only) */}
+                    {/* Right Column - False Positive Pills and Contributors (Review page only) */}
                     {defaultProcessingStage === 'annotated' && sequence.annotation && (
                       <div className="flex-shrink-0 self-start">
-                        <div className="flex flex-wrap gap-1 justify-end">
-                          {(() => {
-                            const falsePositiveTypes = parseFalsePositiveTypes(sequence.annotation.false_positive_types);
-                            return falsePositiveTypes.map((type: string) => (
-                              <span
-                                key={type}
-                                className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800"
-                              >
-                                {getFalsePositiveEmoji(type)} {formatFalsePositiveType(type)}
-                              </span>
-                            ));
-                          })()}
+                        <div className="flex flex-col gap-2">
+                          {/* False Positive Pills */}
+                          <div className="flex flex-wrap gap-1 justify-end">
+                            {(() => {
+                              const falsePositiveTypes = parseFalsePositiveTypes(sequence.annotation.false_positive_types);
+                              return falsePositiveTypes.map((type: string) => (
+                                <span
+                                  key={type}
+                                  className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800"
+                                >
+                                  {getFalsePositiveEmoji(type)} {formatFalsePositiveType(type)}
+                                </span>
+                              ));
+                            })()}
+                          </div>
+                          
+                          {/* Contributors - Bottom Right */}
+                          {sequence.annotation.contributors && sequence.annotation.contributors.length > 0 && (
+                            <div className="flex justify-end">
+                              <ContributorList 
+                                contributors={sequence.annotation.contributors}
+                                displayMode="compact"
+                              />
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
