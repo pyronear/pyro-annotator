@@ -96,8 +96,11 @@ async def test_status_endpoint_no_auth_required(async_client: AsyncClient):
 
 # Additional Authorization Tests for User Management
 
+
 @pytest.mark.asyncio
-async def test_inactive_user_blocked(async_client: AsyncClient, inactive_user_token: str):
+async def test_inactive_user_blocked(
+    async_client: AsyncClient, inactive_user_token: str
+):
     """Test that inactive users cannot access protected endpoints."""
     headers = {"Authorization": f"Bearer {inactive_user_token}"}
     response = await async_client.get("/sequences", headers=headers)
@@ -107,7 +110,9 @@ async def test_inactive_user_blocked(async_client: AsyncClient, inactive_user_to
 
 
 @pytest.mark.asyncio
-async def test_regular_user_access_allowed(async_client: AsyncClient, regular_user_token: str):
+async def test_regular_user_access_allowed(
+    async_client: AsyncClient, regular_user_token: str
+):
     """Test that active regular users can access general endpoints."""
     headers = {"Authorization": f"Bearer {regular_user_token}"}
     response = await async_client.get("/sequences", headers=headers)
@@ -115,7 +120,9 @@ async def test_regular_user_access_allowed(async_client: AsyncClient, regular_us
 
 
 @pytest.mark.asyncio
-async def test_regular_user_admin_access_denied(async_client: AsyncClient, regular_user_token: str):
+async def test_regular_user_admin_access_denied(
+    async_client: AsyncClient, regular_user_token: str
+):
     """Test that regular users cannot access admin-only endpoints."""
     headers = {"Authorization": f"Bearer {regular_user_token}"}
     response = await async_client.get("/users/", headers=headers)

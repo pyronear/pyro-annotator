@@ -252,26 +252,9 @@ class ApiClient {
   }
 
   async getCurrentUser(): Promise<User> {
-    // Get current user info from JWT token by calling users endpoint with current credentials
-    // Since we don't have a /me endpoint, we'll get user info from the token payload
-    const authStore = localStorage.getItem('auth-store');
-    if (authStore) {
-      try {
-        const parsedStore = JSON.parse(authStore);
-        const token = parsedStore.state?.token;
-        if (token) {
-          // Decode JWT to get user_id
-          const payload = JSON.parse(atob(token.split('.')[1]));
-          if (payload.user_id) {
-            return this.getUser(payload.user_id);
-          }
-        }
-      } catch (error) {
-        // If token parsing fails, throw error
-        throw new Error('Unable to get current user: invalid token');
-      }
-    }
-    throw new Error('No authentication token found');
+    // Get current user info using the /users/me endpoint
+    const response: AxiosResponse<User> = await this.client.get(API_ENDPOINTS.USERS_ME);
+    return response.data;
   }
 
   // Users

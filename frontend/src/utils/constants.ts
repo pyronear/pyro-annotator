@@ -9,6 +9,7 @@ export const API_ENDPOINTS = {
   ORGANIZATIONS: '/organizations/',
   SOURCE_APIS: '/source-apis/',
   USERS: '/users/',
+  USERS_ME: '/users/me',
   AUTH_LOGIN: '/auth/login',
   STATUS: '/status',
 } as const;

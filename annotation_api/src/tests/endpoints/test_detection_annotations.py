@@ -11,7 +11,7 @@ now = datetime.now(UTC)
 
 def format_datetime_for_url(dt: datetime) -> str:
     """Format datetime for URL parameters, avoiding encoding issues with timezone offset."""
-    return quote(dt.isoformat(), safe='')
+    return quote(dt.isoformat(), safe="")
 
 
 @pytest.mark.asyncio
@@ -1075,3 +1075,681 @@ async def test_list_detection_annotations_combined_date_filtering(
     assert "items" in json_response
     # May or may not find this specific annotation, but response should be valid
     # The key is that the API handles combined filtering correctly
+
+
+# Contributor Tests
+
+
+@pytest.mark.asyncio
+async def test_get_detection_annotation_includes_contributors(
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+):
+    """Test that individual detection annotation GET endpoint includes contributor information."""
+    # Create detection first
+    detection_payload = {
+        "sequence_id": "1",
+        "alert_api_id": "9001",
+        "recorded_at": (now - timedelta(days=2)).isoformat(),
+        "algo_predictions": json.dumps(
+            {
+                "predictions": [
+                    {
+                        "xyxyn": [0.15, 0.15, 0.3, 0.3],
+                        "confidence": 0.88,
+                        "class_name": "smoke",
+                    }
+                ]
+            }
+        ),
+    }
+
+    detection_response = await authenticated_client.post(
+        "/detections",
+        data=detection_payload,
+        files={"file": ("image.jpg", mock_img, "image/jpeg")},
+    )
+    assert detection_response.status_code == 201
+    detection_id = detection_response.json()["id"]
+
+    # Create detection annotation
+    annotation_payload = {
+        "detection_id": str(detection_id),
+        "annotation": json.dumps(
+            {
+                "annotation": [
+                    {
+                        "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                        "class_name": "smoke",
+                        "smoke_type": "wildfire",
+                    }
+                ]
+            }
+        ),
+        "processing_stage": "annotated",
+    }
+
+    # Create annotation
+    create_response = await authenticated_client.post(
+        "/annotations/detections/", data=annotation_payload
+    )
+    assert create_response.status_code == 201
+    annotation_id = create_response.json()["id"]
+
+    # Get the annotation
+    get_response = await authenticated_client.get(
+        f"/annotations/detections/{annotation_id}"
+    )
+    assert get_response.status_code == 200
+
+    annotation_data = get_response.json()
+
+    # Verify contributors field exists
+    assert "contributors" in annotation_data
+    assert isinstance(annotation_data["contributors"], list)
+
+    # Should have at least one contributor (the user who created it)
+    assert len(annotation_data["contributors"]) >= 1
+
+    # Check contributor data structure
+    contributor = annotation_data["contributors"][0]
+    assert "id" in contributor
+    assert "username" in contributor
+    assert isinstance(contributor["id"], int)
+    assert isinstance(contributor["username"], str)
+
+
+@pytest.mark.asyncio
+async def test_get_detection_annotation_multiple_contributors(
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+):
+    """Test that detection annotation includes multiple contributors after updates."""
+    # Create detection first
+    detection_payload = {
+        "sequence_id": "1",
+        "alert_api_id": "9002",
+        "recorded_at": (now - timedelta(days=2)).isoformat(),
+        "algo_predictions": json.dumps(
+            {
+                "predictions": [
+                    {
+                        "xyxyn": [0.15, 0.15, 0.3, 0.3],
+                        "confidence": 0.88,
+                        "class_name": "smoke",
+                    }
+                ]
+            }
+        ),
+    }
+
+    detection_response = await authenticated_client.post(
+        "/detections",
+        data=detection_payload,
+        files={"file": ("image.jpg", mock_img, "image/jpeg")},
+    )
+    assert detection_response.status_code == 201
+    detection_id = detection_response.json()["id"]
+
+    # Create detection annotation
+    create_annotation_payload = {
+        "detection_id": str(detection_id),
+        "annotation": json.dumps(
+            {
+                "annotation": [
+                    {
+                        "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                        "class_name": "smoke",
+                        "smoke_type": "wildfire",
+                    }
+                ]
+            }
+        ),
+        "processing_stage": "visual_check",
+    }
+
+    # Create annotation with user 1
+    create_response = await authenticated_client.post(
+        "/annotations/detections/", data=create_annotation_payload
+    )
+    assert create_response.status_code == 201
+    annotation_id = create_response.json()["id"]
+
+    # Update annotation (this will record another contribution from same user)
+    update_payload = {
+        "annotation": {
+            "annotation": [
+                {
+                    "xyxyn": [0.2, 0.2, 0.3, 0.3],
+                    "class_name": "smoke",
+                    "smoke_type": "industrial",
+                }
+            ]
+        },
+        "processing_stage": "annotated",
+    }
+
+    update_response = await authenticated_client.patch(
+        f"/annotations/detections/{annotation_id}", json=update_payload
+    )
+    assert update_response.status_code == 200
+
+    # Get the annotation and verify contributors
+    get_response = await authenticated_client.get(
+        f"/annotations/detections/{annotation_id}"
+    )
+    assert get_response.status_code == 200
+
+    annotation_data = get_response.json()
+
+    # Verify contributors field exists and has contributions
+    assert "contributors" in annotation_data
+    assert isinstance(annotation_data["contributors"], list)
+    assert len(annotation_data["contributors"]) >= 1  # At least one contributor
+
+    # All contributors should have the same user (since we used same authenticated client)
+    for contributor in annotation_data["contributors"]:
+        assert "id" in contributor
+        assert "username" in contributor
+        assert isinstance(contributor["id"], int)
+        assert isinstance(contributor["username"], str)
+
+
+@pytest.mark.asyncio
+async def test_list_detection_annotations_includes_contributors(
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+):
+    """Test that detection annotations list endpoint includes contributor information."""
+    # Create detection first
+    detection_payload = {
+        "sequence_id": "1",
+        "alert_api_id": "9003",
+        "recorded_at": (now - timedelta(days=2)).isoformat(),
+        "algo_predictions": json.dumps(
+            {
+                "predictions": [
+                    {
+                        "xyxyn": [0.15, 0.15, 0.3, 0.3],
+                        "confidence": 0.88,
+                        "class_name": "smoke",
+                    }
+                ]
+            }
+        ),
+    }
+
+    detection_response = await authenticated_client.post(
+        "/detections",
+        data=detection_payload,
+        files={"file": ("image.jpg", mock_img, "image/jpeg")},
+    )
+    assert detection_response.status_code == 201
+    detection_id = detection_response.json()["id"]
+
+    # Create detection annotation
+    annotation_payload = {
+        "detection_id": str(detection_id),
+        "annotation": json.dumps(
+            {
+                "annotation": [
+                    {
+                        "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                        "class_name": "smoke",
+                        "smoke_type": "wildfire",
+                    }
+                ]
+            }
+        ),
+        "processing_stage": "annotated",
+    }
+
+    # Create annotation
+    create_response = await authenticated_client.post(
+        "/annotations/detections/", data=annotation_payload
+    )
+    assert create_response.status_code == 201
+    created_annotation_id = create_response.json()["id"]
+
+    # List annotations
+    list_response = await authenticated_client.get("/annotations/detections/")
+    assert list_response.status_code == 200
+
+    list_data = list_response.json()
+
+    # Verify paginated response structure
+    assert "items" in list_data
+    assert isinstance(list_data["items"], list)
+
+    # Find our created annotation in the list
+    found_annotation = None
+    for annotation in list_data["items"]:
+        if annotation["id"] == created_annotation_id:
+            found_annotation = annotation
+            break
+
+    assert found_annotation is not None, "Created annotation should be in the list"
+
+    # Verify contributors field exists for the annotation in the list
+    assert "contributors" in found_annotation
+    assert isinstance(found_annotation["contributors"], list)
+    assert len(found_annotation["contributors"]) >= 1
+
+    # Check contributor data structure
+    contributor = found_annotation["contributors"][0]
+    assert "id" in contributor
+    assert "username" in contributor
+    assert isinstance(contributor["id"], int)
+    assert isinstance(contributor["username"], str)
+
+
+@pytest.mark.asyncio
+async def test_detection_annotation_contributions_only_for_annotated_stage(
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+):
+    """Test that contributions are only recorded for annotations created/updated to 'annotated' stage."""
+    # Create detection first
+    detection_payload = {
+        "sequence_id": "1",
+        "alert_api_id": "9004",
+        "recorded_at": (now - timedelta(days=2)).isoformat(),
+        "algo_predictions": json.dumps(
+            {
+                "predictions": [
+                    {
+                        "xyxyn": [0.15, 0.15, 0.3, 0.3],
+                        "confidence": 0.88,
+                        "class_name": "smoke",
+                    }
+                ]
+            }
+        ),
+    }
+
+    detection_response = await authenticated_client.post(
+        "/detections",
+        data=detection_payload,
+        files={"file": ("image.jpg", mock_img, "image/jpeg")},
+    )
+    assert detection_response.status_code == 201
+    detection_id = detection_response.json()["id"]
+
+    # Create annotation in visual_check stage (should NOT record contribution)
+    annotation_payload_visual = {
+        "detection_id": str(detection_id),
+        "annotation": json.dumps(
+            {
+                "annotation": [
+                    {
+                        "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                        "class_name": "smoke",
+                        "smoke_type": "wildfire",
+                    }
+                ]
+            }
+        ),
+        "processing_stage": "visual_check",
+    }
+
+    create_response = await authenticated_client.post(
+        "/annotations/detections/", data=annotation_payload_visual
+    )
+    assert create_response.status_code == 201
+    annotation_id = create_response.json()["id"]
+
+    # Verify no contributors recorded for visual_check stage
+    get_response = await authenticated_client.get(
+        f"/annotations/detections/{annotation_id}"
+    )
+    assert get_response.status_code == 200
+    annotation_data = get_response.json()
+    assert "contributors" in annotation_data
+    assert annotation_data["contributors"] == []
+
+    # Update to annotated stage (should NOW record contribution)
+    update_payload = {"processing_stage": "annotated"}
+    update_response = await authenticated_client.patch(
+        f"/annotations/detections/{annotation_id}", json=update_payload
+    )
+    assert update_response.status_code == 200
+
+    # Verify contributor is now recorded
+    get_response_after = await authenticated_client.get(
+        f"/annotations/detections/{annotation_id}"
+    )
+    assert get_response_after.status_code == 200
+    annotation_data_after = get_response_after.json()
+    assert len(annotation_data_after["contributors"]) == 1
+    assert annotation_data_after["contributors"][0]["username"] == "admin"
+
+
+@pytest.mark.asyncio
+async def test_list_detection_annotations_empty_contributors(
+    authenticated_client: AsyncClient, sequence_session
+):
+    """Test that detection annotations with no contributions return empty contributors array."""
+    # List all annotations (may include some with no manual contributions)
+    list_response = await authenticated_client.get("/annotations/detections/")
+    assert list_response.status_code == 200
+
+    list_data = list_response.json()
+
+    # Verify all annotations have contributors field (even if empty)
+    assert "items" in list_data
+    for annotation in list_data["items"]:
+        assert "contributors" in annotation
+        assert isinstance(annotation["contributors"], list)
+        # Contributors array may be empty or populated, but should always be a list
+
+
+# Comprehensive Contribution Logic Tests
+
+
+@pytest.mark.asyncio
+async def test_detection_annotation_no_contributions_for_imported_stage(
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+):
+    """Test that no contributions are recorded for annotations created in 'imported' stage."""
+    # Create detection first
+    detection_payload = {
+        "sequence_id": "1",
+        "alert_api_id": "9005",
+        "recorded_at": (now - timedelta(days=2)).isoformat(),
+        "algo_predictions": json.dumps(
+            {
+                "predictions": [
+                    {
+                        "xyxyn": [0.15, 0.15, 0.3, 0.3],
+                        "confidence": 0.88,
+                        "class_name": "smoke",
+                    }
+                ]
+            }
+        ),
+    }
+    detection_response = await authenticated_client.post(
+        "/detections",
+        data=detection_payload,
+        files={"file": ("image.jpg", mock_img, "image/jpeg")},
+    )
+    assert detection_response.status_code == 201
+    detection_id = detection_response.json()["id"]
+
+    # Create annotation in imported stage (should NOT record contribution)
+    annotation_payload = {
+        "detection_id": str(detection_id),
+        "annotation": json.dumps(
+            {
+                "annotation": [
+                    {
+                        "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                        "class_name": "smoke",
+                        "smoke_type": "wildfire",
+                    }
+                ]
+            }
+        ),
+        "processing_stage": "imported",
+    }
+    create_response = await authenticated_client.post(
+        "/annotations/detections/", data=annotation_payload
+    )
+    assert create_response.status_code == 201
+    annotation_data = create_response.json()
+
+    # Verify no contributors recorded
+    assert "contributors" in annotation_data
+    assert annotation_data["contributors"] == []
+
+
+@pytest.mark.asyncio
+async def test_detection_annotation_no_contributions_for_visual_check_stage(
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+):
+    """Test that no contributions are recorded for annotations created in 'visual_check' stage."""
+    # Create detection first
+    detection_payload = {
+        "sequence_id": "1",
+        "alert_api_id": "9006",
+        "recorded_at": (now - timedelta(days=2)).isoformat(),
+        "algo_predictions": json.dumps(
+            {
+                "predictions": [
+                    {
+                        "xyxyn": [0.15, 0.15, 0.3, 0.3],
+                        "confidence": 0.88,
+                        "class_name": "smoke",
+                    }
+                ]
+            }
+        ),
+    }
+    detection_response = await authenticated_client.post(
+        "/detections",
+        data=detection_payload,
+        files={"file": ("image.jpg", mock_img, "image/jpeg")},
+    )
+    assert detection_response.status_code == 201
+    detection_id = detection_response.json()["id"]
+
+    # Create annotation in visual_check stage (should NOT record contribution)
+    annotation_payload = {
+        "detection_id": str(detection_id),
+        "annotation": json.dumps(
+            {
+                "annotation": [
+                    {
+                        "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                        "class_name": "smoke",
+                        "smoke_type": "wildfire",
+                    }
+                ]
+            }
+        ),
+        "processing_stage": "visual_check",
+    }
+    create_response = await authenticated_client.post(
+        "/annotations/detections/", data=annotation_payload
+    )
+    assert create_response.status_code == 201
+    annotation_data = create_response.json()
+
+    # Verify no contributors recorded
+    assert annotation_data["contributors"] == []
+
+
+@pytest.mark.asyncio
+async def test_detection_annotation_no_contributions_for_bbox_annotation_stage(
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+):
+    """Test that no contributions are recorded for annotations created in 'bbox_annotation' stage."""
+    # Create detection first
+    detection_payload = {
+        "sequence_id": "1",
+        "alert_api_id": "9007",
+        "recorded_at": (now - timedelta(days=2)).isoformat(),
+        "algo_predictions": json.dumps(
+            {
+                "predictions": [
+                    {
+                        "xyxyn": [0.15, 0.15, 0.3, 0.3],
+                        "confidence": 0.88,
+                        "class_name": "smoke",
+                    }
+                ]
+            }
+        ),
+    }
+    detection_response = await authenticated_client.post(
+        "/detections",
+        data=detection_payload,
+        files={"file": ("image.jpg", mock_img, "image/jpeg")},
+    )
+    assert detection_response.status_code == 201
+    detection_id = detection_response.json()["id"]
+
+    # Create annotation in bbox_annotation stage (should NOT record contribution)
+    annotation_payload = {
+        "detection_id": str(detection_id),
+        "annotation": json.dumps(
+            {
+                "annotation": [
+                    {
+                        "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                        "class_name": "smoke",
+                        "smoke_type": "wildfire",
+                    }
+                ]
+            }
+        ),
+        "processing_stage": "bbox_annotation",
+    }
+    create_response = await authenticated_client.post(
+        "/annotations/detections/", data=annotation_payload
+    )
+    assert create_response.status_code == 201
+    annotation_data = create_response.json()
+
+    # Verify no contributors recorded
+    assert annotation_data["contributors"] == []
+
+
+@pytest.mark.asyncio
+async def test_detection_annotation_contributions_for_annotated_stage_only(
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+):
+    """Test that contributions are recorded ONLY for 'annotated' stage - comprehensive workflow test."""
+    # Create detection first
+    detection_payload = {
+        "sequence_id": "1",
+        "alert_api_id": "9008",
+        "recorded_at": (now - timedelta(days=2)).isoformat(),
+        "algo_predictions": json.dumps(
+            {
+                "predictions": [
+                    {
+                        "xyxyn": [0.15, 0.15, 0.3, 0.3],
+                        "confidence": 0.88,
+                        "class_name": "smoke",
+                    }
+                ]
+            }
+        ),
+    }
+    detection_response = await authenticated_client.post(
+        "/detections",
+        data=detection_payload,
+        files={"file": ("image.jpg", mock_img, "image/jpeg")},
+    )
+    assert detection_response.status_code == 201
+    detection_id = detection_response.json()["id"]
+
+    # Step 1: Create annotation in imported stage
+    annotation_payload = {
+        "detection_id": str(detection_id),
+        "annotation": json.dumps(
+            {
+                "annotation": [
+                    {
+                        "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                        "class_name": "smoke",
+                        "smoke_type": "wildfire",
+                    }
+                ]
+            }
+        ),
+        "processing_stage": "imported",
+    }
+    create_response = await authenticated_client.post(
+        "/annotations/detections/", data=annotation_payload
+    )
+    assert create_response.status_code == 201
+    annotation_id = create_response.json()["id"]
+    assert create_response.json()["contributors"] == []  # No contributors yet
+
+    # Step 2: Update to visual_check - still no contributions
+    update_response = await authenticated_client.patch(
+        f"/annotations/detections/{annotation_id}",
+        json={"processing_stage": "visual_check"},
+    )
+    assert update_response.status_code == 200
+    assert update_response.json()["contributors"] == []
+
+    # Step 3: Update to bbox_annotation - still no contributions
+    update_response = await authenticated_client.patch(
+        f"/annotations/detections/{annotation_id}",
+        json={"processing_stage": "bbox_annotation"},
+    )
+    assert update_response.status_code == 200
+    assert update_response.json()["contributors"] == []
+
+    # Step 4: Update to annotated - NOW should have contributor
+    update_response = await authenticated_client.patch(
+        f"/annotations/detections/{annotation_id}",
+        json={"processing_stage": "annotated"},
+    )
+    assert update_response.status_code == 200
+    final_data = update_response.json()
+    assert len(final_data["contributors"]) == 1
+    assert final_data["contributors"][0]["username"] == "admin"
+
+    # Step 5: Verify via GET endpoint
+    get_response = await authenticated_client.get(
+        f"/annotations/detections/{annotation_id}"
+    )
+    assert get_response.status_code == 200
+    assert len(get_response.json()["contributors"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_detection_annotation_create_directly_in_annotated_stage(
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+):
+    """Test that creating an annotation directly in 'annotated' stage records contribution immediately."""
+    # Create detection first
+    detection_payload = {
+        "sequence_id": "1",
+        "alert_api_id": "9009",
+        "recorded_at": (now - timedelta(days=2)).isoformat(),
+        "algo_predictions": json.dumps(
+            {
+                "predictions": [
+                    {
+                        "xyxyn": [0.15, 0.15, 0.3, 0.3],
+                        "confidence": 0.88,
+                        "class_name": "smoke",
+                    }
+                ]
+            }
+        ),
+    }
+    detection_response = await authenticated_client.post(
+        "/detections",
+        data=detection_payload,
+        files={"file": ("image.jpg", mock_img, "image/jpeg")},
+    )
+    assert detection_response.status_code == 201
+    detection_id = detection_response.json()["id"]
+
+    # Create annotation directly in annotated stage (should record contribution immediately)
+    annotation_payload = {
+        "detection_id": str(detection_id),
+        "annotation": json.dumps(
+            {
+                "annotation": [
+                    {
+                        "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                        "class_name": "smoke",
+                        "smoke_type": "wildfire",
+                    }
+                ]
+            }
+        ),
+        "processing_stage": "annotated",
+    }
+    create_response = await authenticated_client.post(
+        "/annotations/detections/", data=annotation_payload
+    )
+    assert create_response.status_code == 201
+    annotation_data = create_response.json()
+
+    # Verify contributor recorded immediately
+    assert len(annotation_data["contributors"]) == 1
+    assert annotation_data["contributors"][0]["username"] == "admin"

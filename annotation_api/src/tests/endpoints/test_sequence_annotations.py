@@ -1737,3 +1737,580 @@ async def test_convert_algo_predictions_to_annotation_helper():
     assert len(result["annotation"]) == 1
     assert result["annotation"][0]["class_name"] == "smoke"  # Default value
     assert result["annotation"][0]["smoke_type"] == "wildfire"
+
+
+# Contributor Tests
+
+
+@pytest.mark.asyncio
+async def test_get_sequence_annotation_includes_contributors(
+    authenticated_client: AsyncClient, sequence_session, detection_session
+):
+    """Test that individual sequence annotation GET endpoint includes contributor information."""
+    # Create sequence annotation
+    payload = {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": True,
+                    "false_positive_types": [],
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                }
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+
+    # Create annotation
+    create_response = await authenticated_client.post(
+        "/annotations/sequences/", json=payload
+    )
+    assert create_response.status_code == 201
+    annotation_id = create_response.json()["id"]
+
+    # Get the annotation
+    get_response = await authenticated_client.get(
+        f"/annotations/sequences/{annotation_id}"
+    )
+    assert get_response.status_code == 200
+
+    annotation_data = get_response.json()
+
+    # Verify contributors field exists
+    assert "contributors" in annotation_data
+    assert isinstance(annotation_data["contributors"], list)
+
+    # Should have at least one contributor (the user who created it)
+    assert len(annotation_data["contributors"]) >= 1
+
+    # Check contributor data structure
+    contributor = annotation_data["contributors"][0]
+    assert "id" in contributor
+    assert "username" in contributor
+    assert isinstance(contributor["id"], int)
+    assert isinstance(contributor["username"], str)
+
+
+@pytest.mark.asyncio
+async def test_get_sequence_annotation_multiple_contributors(
+    authenticated_client: AsyncClient, sequence_session, detection_session
+):
+    """Test that sequence annotation includes multiple contributors after updates."""
+    # Create sequence annotation
+    create_payload = {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": True,
+                    "false_positive_types": [],
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                }
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+
+    # Create annotation with user 1
+    create_response = await authenticated_client.post(
+        "/annotations/sequences/", json=create_payload
+    )
+    assert create_response.status_code == 201
+    annotation_id = create_response.json()["id"]
+
+    # Update annotation (this will record another contribution from same user)
+    update_payload = {
+        "has_missed_smoke": True,
+        "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
+    }
+
+    update_response = await authenticated_client.patch(
+        f"/annotations/sequences/{annotation_id}", json=update_payload
+    )
+    assert update_response.status_code == 200
+
+    # Get the annotation and verify contributors
+    get_response = await authenticated_client.get(
+        f"/annotations/sequences/{annotation_id}"
+    )
+    assert get_response.status_code == 200
+
+    annotation_data = get_response.json()
+
+    # Verify contributors field exists and has contributions
+    assert "contributors" in annotation_data
+    assert isinstance(annotation_data["contributors"], list)
+    assert len(annotation_data["contributors"]) >= 1  # At least one contributor
+
+    # All contributors should have the same user (since we used same authenticated client)
+    for contributor in annotation_data["contributors"]:
+        assert "id" in contributor
+        assert "username" in contributor
+        assert isinstance(contributor["id"], int)
+        assert isinstance(contributor["username"], str)
+
+
+@pytest.mark.asyncio
+async def test_list_sequence_annotations_includes_contributors(
+    authenticated_client: AsyncClient, sequence_session, detection_session
+):
+    """Test that sequence annotations list endpoint includes contributor information."""
+    # Create sequence annotation
+    payload = {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": True,
+                    "false_positive_types": [],
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                }
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+
+    # Create annotation
+    create_response = await authenticated_client.post(
+        "/annotations/sequences/", json=payload
+    )
+    assert create_response.status_code == 201
+    created_annotation_id = create_response.json()["id"]
+
+    # List annotations
+    list_response = await authenticated_client.get("/annotations/sequences/")
+    assert list_response.status_code == 200
+
+    list_data = list_response.json()
+
+    # Verify paginated response structure
+    assert "items" in list_data
+    assert isinstance(list_data["items"], list)
+
+    # Find our created annotation in the list
+    found_annotation = None
+    for annotation in list_data["items"]:
+        if annotation["id"] == created_annotation_id:
+            found_annotation = annotation
+            break
+
+    assert found_annotation is not None, "Created annotation should be in the list"
+
+    # Verify contributors field exists for the annotation in the list
+    assert "contributors" in found_annotation
+    assert isinstance(found_annotation["contributors"], list)
+    assert len(found_annotation["contributors"]) >= 1
+
+    # Check contributor data structure
+    contributor = found_annotation["contributors"][0]
+    assert "id" in contributor
+    assert "username" in contributor
+    assert isinstance(contributor["id"], int)
+    assert isinstance(contributor["username"], str)
+
+
+@pytest.mark.asyncio
+async def test_list_sequence_annotations_empty_contributors(
+    authenticated_client: AsyncClient, sequence_session
+):
+    """Test that sequence annotations with no contributions return empty contributors array."""
+    # List all annotations (may include some with no manual contributions)
+    list_response = await authenticated_client.get("/annotations/sequences/")
+    assert list_response.status_code == 200
+
+    list_data = list_response.json()
+
+    # Verify all annotations have contributors field (even if empty)
+    assert "items" in list_data
+    for annotation in list_data["items"]:
+        assert "contributors" in annotation
+        assert isinstance(annotation["contributors"], list)
+        # Contributors array may be empty or populated, but should always be a list
+
+
+# Comprehensive Contribution Logic Tests
+
+
+@pytest.mark.asyncio
+async def test_sequence_annotation_no_contributions_for_imported_stage(
+    authenticated_client: AsyncClient, sequence_session, detection_session
+):
+    """Test that no contributions are recorded for sequence annotations created in 'imported' stage."""
+    # Create sequence annotation in imported stage
+    payload = {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": True,
+                    "false_positive_types": [],
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                },
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+    create_response = await authenticated_client.post(
+        "/annotations/sequences/", json=payload
+    )
+    assert create_response.status_code == 201
+    annotation_data = create_response.json()
+
+    # Verify no contributors recorded
+    assert "contributors" in annotation_data
+    assert annotation_data["contributors"] == []
+
+
+@pytest.mark.asyncio
+async def test_sequence_annotation_no_contributions_for_ready_to_annotate_stage(
+    authenticated_client: AsyncClient, sequence_session, detection_session
+):
+    """Test that no contributions are recorded for sequence annotations created in 'ready_to_annotate' stage."""
+    # Create sequence annotation in ready_to_annotate stage
+    payload = {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": True,
+                    "false_positive_types": [],
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                },
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.READY_TO_ANNOTATE.value,
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+    create_response = await authenticated_client.post(
+        "/annotations/sequences/", json=payload
+    )
+    assert create_response.status_code == 201
+    annotation_data = create_response.json()
+
+    # Verify no contributors recorded
+    assert annotation_data["contributors"] == []
+
+
+@pytest.mark.asyncio
+async def test_sequence_annotation_contributions_for_annotated_stage_only(
+    authenticated_client: AsyncClient, sequence_session, detection_session
+):
+    """Test that contributions are recorded ONLY for 'annotated' stage - comprehensive workflow test."""
+    # Step 1: Create annotation in imported stage
+    payload = {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": True,
+                    "false_positive_types": [],
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                },
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+    create_response = await authenticated_client.post(
+        "/annotations/sequences/", json=payload
+    )
+    assert create_response.status_code == 201
+    annotation_id = create_response.json()["id"]
+    assert create_response.json()["contributors"] == []  # No contributors yet
+
+    # Step 2: Update to ready_to_annotate - still no contributions
+    update_response = await authenticated_client.patch(
+        f"/annotations/sequences/{annotation_id}",
+        json={
+            "processing_stage": models.SequenceAnnotationProcessingStage.READY_TO_ANNOTATE.value
+        },
+    )
+    assert update_response.status_code == 200
+    assert update_response.json()["contributors"] == []
+
+    # Step 3: Update to annotated - NOW should have contributor
+    update_response = await authenticated_client.patch(
+        f"/annotations/sequences/{annotation_id}",
+        json={
+            "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value
+        },
+    )
+    assert update_response.status_code == 200
+    final_data = update_response.json()
+    assert len(final_data["contributors"]) == 1
+    assert final_data["contributors"][0]["username"] == "admin"
+
+    # Step 4: Verify via GET endpoint
+    get_response = await authenticated_client.get(
+        f"/annotations/sequences/{annotation_id}"
+    )
+    assert get_response.status_code == 200
+    assert len(get_response.json()["contributors"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_sequence_annotation_create_directly_in_annotated_stage(
+    authenticated_client: AsyncClient, sequence_session, detection_session
+):
+    """Test that creating a sequence annotation directly in 'annotated' stage records contribution immediately."""
+    # Create annotation directly in annotated stage
+    payload = {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": True,
+                    "false_positive_types": [],
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                },
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+    create_response = await authenticated_client.post(
+        "/annotations/sequences/", json=payload
+    )
+    assert create_response.status_code == 201
+    annotation_data = create_response.json()
+
+    # Verify contributor recorded immediately
+    assert len(annotation_data["contributors"]) == 1
+    assert annotation_data["contributors"][0]["username"] == "admin"
+
+
+@pytest.mark.asyncio
+async def test_sequence_annotation_list_endpoint_contribution_logic(
+    authenticated_client: AsyncClient, sequence_session, detection_session
+):
+    """Test that list endpoint correctly shows contributors only for annotated stage annotations."""
+    # Create one annotation in imported stage (no contributors)
+    payload_imported = {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": True,
+                    "false_positive_types": [],
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                },
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+    create_response_1 = await authenticated_client.post(
+        "/annotations/sequences/", json=payload_imported
+    )
+    assert create_response_1.status_code == 201
+    annotation_1_id = create_response_1.json()["id"]
+
+    # Create another annotation directly in annotated stage (has contributors)
+    payload_annotated = {
+        "sequence_id": 2,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {"is_smoke": True, "false_positive_types": [], "bboxes": []},
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+    create_response_2 = await authenticated_client.post(
+        "/annotations/sequences/", json=payload_annotated
+    )
+    assert create_response_2.status_code == 201
+    annotation_2_id = create_response_2.json()["id"]
+
+    # List all annotations and verify contributor logic
+    list_response = await authenticated_client.get("/annotations/sequences/")
+    assert list_response.status_code == 200
+    annotations = list_response.json()["items"]
+
+    # Find our annotations in the list
+    imported_annotation = None
+    annotated_annotation = None
+    for annotation in annotations:
+        if annotation["id"] == annotation_1_id:
+            imported_annotation = annotation
+        elif annotation["id"] == annotation_2_id:
+            annotated_annotation = annotation
+
+    assert imported_annotation is not None
+    assert annotated_annotation is not None
+
+    # Verify contribution logic
+    assert (
+        imported_annotation["contributors"] == []
+    )  # No contributors for imported stage
+    assert (
+        len(annotated_annotation["contributors"]) == 1
+    )  # Has contributors for annotated stage
+    assert annotated_annotation["contributors"][0]["username"] == "admin"
+
+
+@pytest.mark.asyncio
+async def test_sequence_annotation_update_with_annotation_data_conversion(
+    authenticated_client: AsyncClient, sequence_session, detection_session
+):
+    """Test that updating annotation data properly handles Pydantic-to-dict-to-Pydantic conversion.
+
+    This test specifically addresses the AttributeError bug where derive methods
+    were called with dictionaries instead of Pydantic models.
+    """
+    # Create a sequence annotation first
+    payload = {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": False,
+                    "false_positive_types": [],
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                }
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
+    }
+
+    create_response = await authenticated_client.post(
+        "/annotations/sequences/", json=payload
+    )
+    assert create_response.status_code == 201
+    annotation_id = create_response.json()["id"]
+
+    # Test updating annotation data - this would trigger the AttributeError bug
+    update_payload = {
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": True,  # Changed to True
+                    "false_positive_types": [
+                        "high_cloud",
+                        "lens_flare",
+                    ],  # Added false positives
+                    "bboxes": [
+                        {"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]},
+                        {
+                            "detection_id": 2,
+                            "xyxyn": [0.3, 0.3, 0.4, 0.4],
+                        },  # Added second bbox
+                    ],
+                }
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
+    }
+
+    # This update should succeed without AttributeError
+    update_response = await authenticated_client.patch(
+        f"/annotations/sequences/{annotation_id}", json=update_payload
+    )
+    assert update_response.status_code == 200, f"Update failed: {update_response.text}"
+
+    updated_annotation = update_response.json()
+
+    # Verify that derived fields were correctly calculated
+    assert updated_annotation["has_smoke"] is True  # Derived from is_smoke=True
+    assert (
+        updated_annotation["has_false_positives"] is True
+    )  # Derived from false_positive_types
+    assert "high_cloud" in updated_annotation["false_positive_types"]
+    assert "lens_flare" in updated_annotation["false_positive_types"]
+
+    # Verify annotation data was properly stored
+    assert len(updated_annotation["annotation"]["sequences_bbox"]) == 1
+    assert len(updated_annotation["annotation"]["sequences_bbox"][0]["bboxes"]) == 2
+
+    # Verify contributor was recorded (since we moved to annotated stage)
+    assert len(updated_annotation["contributors"]) == 1
+    assert updated_annotation["contributors"][0]["username"] == "admin"
+
+
+@pytest.mark.asyncio
+async def test_sequence_annotation_update_edge_cases(
+    authenticated_client: AsyncClient, sequence_session, detection_session
+):
+    """Test edge cases for annotation data conversion to prevent future regressions."""
+    # Create annotation
+    payload = {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": []  # Empty sequences_bbox
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
+    }
+    create_response = await authenticated_client.post(
+        "/annotations/sequences/", json=payload
+    )
+    assert create_response.status_code == 201
+    annotation_id = create_response.json()["id"]
+
+    # Test 1: Empty sequences_bbox
+    update_response = await authenticated_client.patch(
+        f"/annotations/sequences/{annotation_id}",
+        json={"annotation": {"sequences_bbox": []}},
+    )
+    assert update_response.status_code == 200
+    updated = update_response.json()
+    assert updated["has_smoke"] is False
+    assert updated["has_false_positives"] is False
+    assert updated["false_positive_types"] == []
+
+    # Test 2: Multiple sequences_bbox with mixed data
+    complex_update = {
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": True,
+                    "false_positive_types": [],
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                },
+                {
+                    "is_smoke": False,
+                    "false_positive_types": ["high_cloud"],
+                    "bboxes": [],
+                },
+                {
+                    "is_smoke": False,
+                    "false_positive_types": ["lens_flare", "other"],
+                    "bboxes": [{"detection_id": 2, "xyxyn": [0.5, 0.5, 0.6, 0.6]}],
+                },
+            ]
+        }
+    }
+
+    update_response = await authenticated_client.patch(
+        f"/annotations/sequences/{annotation_id}", json=complex_update
+    )
+    assert update_response.status_code == 200
+    updated = update_response.json()
+
+    # Verify complex derivation logic works correctly
+    assert updated["has_smoke"] is True  # At least one is_smoke=True
+    assert (
+        updated["has_false_positives"] is True
+    )  # At least one has false_positive_types
+
+    # Verify all false positive types are collected and deduplicated
+    fp_types = updated["false_positive_types"]
+    assert "high_cloud" in fp_types
+    assert "lens_flare" in fp_types
+    assert "reflection" in fp_types
+    assert len(fp_types) == 3  # No duplicates

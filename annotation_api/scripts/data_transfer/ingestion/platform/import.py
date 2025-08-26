@@ -299,7 +299,9 @@ def main() -> None:
 
     if args.loglevel == "debug":
         console.print(f"[blue]ℹ️  Date range: {args.date_from} to {args.date_end}[/]")
-        console.print(f"[blue]ℹ️  Platform: {args.url_api_platform} (source_api: {source_api})[/]")
+        console.print(
+            f"[blue]ℹ️  Platform: {args.url_api_platform} (source_api: {source_api})[/]"
+        )
         console.print(f"[blue]ℹ️  Worker config: {worker_config}[/]")
         console.print(
             f"[blue]ℹ️  Analysis config: confidence={args.confidence_threshold}, iou={args.iou_threshold}, min_cluster={args.min_cluster_size}[/]"

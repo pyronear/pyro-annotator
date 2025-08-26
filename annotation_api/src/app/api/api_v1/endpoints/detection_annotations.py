@@ -2,12 +2,12 @@
 
 import json
 import logging
-from datetime import datetime, UTC
+from datetime import datetime
 from enum import Enum
 from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, Form, HTTPException, Path, Query, status
-from fastapi_pagination import Page, Params
+from fastapi_pagination import Page, Params, create_page
 from fastapi_pagination.ext.sqlalchemy import apaginate
 from pydantic import ValidationError
 from sqlalchemy import asc, desc, select
@@ -25,6 +25,7 @@ from app.models import (
     Sequence,
 )
 from app.schemas.detection_annotations import (
+    DetectionAnnotationCreate,
     DetectionAnnotationRead,
     DetectionAnnotationUpdate,
 )
@@ -76,30 +77,28 @@ async def create_detection_annotation(
             detail=f"Invalid annotation format: {e.errors()}",
         )
 
-    # Create database model with validated data
-
-    detection_annotation = DetectionAnnotation(
+    # Create DetectionAnnotationCreate object for CRUD
+    create_data = DetectionAnnotationCreate(
         detection_id=detection_id,
-        annotation=validated_annotation.model_dump(),
+        annotation=validated_annotation,
         processing_stage=processing_stage,
-        created_at=datetime.now(UTC),
     )
 
-    # Create contribution record in same transaction
-    annotations.session.add(detection_annotation)
-    await annotations.session.flush()  # Flush to get the ID
-    
-    contribution = DetectionAnnotationContribution(
-        detection_annotation_id=detection_annotation.id,
-        user_id=current_user.id
-    )
-    annotations.session.add(contribution)
-    
-    # Commit both annotation and contribution
-    await annotations.session.commit()
-    await annotations.session.refresh(detection_annotation)
+    # Use CRUD method which handles contribution tracking with proper conditional logic
+    detection_annotation = await annotations.create(create_data, current_user.id)
 
-    return detection_annotation
+    # Get contributors for this annotation
+    contributors = await annotations.get_annotation_contributors(
+        detection_annotation.id
+    )
+
+    # Convert to DetectionAnnotationRead with contributors
+    annotation_dict = detection_annotation.model_dump()
+    annotation_dict["contributors"] = [
+        {"id": user.id, "username": user.username} for user in contributors
+    ]
+
+    return DetectionAnnotationRead(**annotation_dict)
 
 
 @router.get("/")
@@ -204,7 +203,51 @@ async def list_annotations(
         query = query.order_by(asc(order_field))
 
     # Apply pagination
-    return await apaginate(session, query, params)
+    paginated_result = await apaginate(session, query, params)
+
+    # Get annotation IDs from the paginated results
+    annotation_ids = [annotation.id for annotation in paginated_result.items]
+
+    if annotation_ids:
+        # Batch query to get all contributors for these annotations
+        contributors_query = (
+            select(
+                DetectionAnnotationContribution.detection_annotation_id,
+                User.id,
+                User.username,
+            )
+            .join(User, DetectionAnnotationContribution.user_id == User.id)
+            .where(
+                DetectionAnnotationContribution.detection_annotation_id.in_(
+                    annotation_ids
+                )
+            )
+        )
+        contributors_result = await session.execute(contributors_query)
+        contributors_data = contributors_result.all()
+
+        # Create mapping of annotation_id -> list of contributors
+        contributors_map = {}
+        for annotation_id, user_id, username in contributors_data:
+            if annotation_id not in contributors_map:
+                contributors_map[annotation_id] = []
+            contributors_map[annotation_id].append(
+                {"id": user_id, "username": username}
+            )
+    else:
+        contributors_map = {}
+
+    # Transform results to include contributor data
+    items_with_contributors = []
+    for annotation in paginated_result.items:
+        annotation_dict = annotation.model_dump()
+        annotation_dict["contributors"] = contributors_map.get(annotation.id, [])
+        items_with_contributors.append(DetectionAnnotationRead(**annotation_dict))
+
+    # Return paginated result with enhanced items
+    return create_page(
+        items_with_contributors, total=paginated_result.total, params=params
+    )
 
 
 @router.get("/{annotation_id}")
@@ -213,7 +256,19 @@ async def get_annotation(
     annotations: DetectionAnnotationCRUD = Depends(get_detection_annotation_crud),
     current_user: User = Depends(get_current_user),
 ) -> DetectionAnnotationRead:
-    return await annotations.get(annotation_id, strict=True)
+    # Get the annotation
+    annotation = await annotations.get(annotation_id, strict=True)
+
+    # Get contributors for this annotation
+    contributors = await annotations.get_annotation_contributors(annotation_id)
+
+    # Convert to DetectionAnnotationRead with contributors
+    annotation_dict = annotation.model_dump()
+    annotation_dict["contributors"] = [
+        {"id": user.id, "username": user.username} for user in contributors
+    ]
+
+    return DetectionAnnotationRead(**annotation_dict)
 
 
 @router.patch("/{annotation_id}")
@@ -223,39 +278,27 @@ async def update_annotation(
     annotations: DetectionAnnotationCRUD = Depends(get_detection_annotation_crud),
     current_user: User = Depends(get_current_user),
 ) -> DetectionAnnotationRead:
-    # Get existing annotation
-    existing = await annotations.get(annotation_id, strict=True)
+    # Use CRUD method which handles contribution tracking with proper conditional logic
+    updated_annotation = await annotations.update(
+        annotation_id, payload, current_user.id
+    )
 
-    # Start with existing data
-    update_dict = {"updated_at": datetime.now(UTC)}
-
-    # If annotation is being updated, validate it
-    if payload.annotation is not None:
-        update_dict.update(
-            {
-                "annotation": payload.annotation.model_dump(),
-            }
+    if not updated_annotation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Detection annotation with id {annotation_id} not found",
         )
 
-    # Add other updateable fields
-    if payload.processing_stage is not None:
-        update_dict["processing_stage"] = payload.processing_stage
+    # Get contributors for this annotation
+    contributors = await annotations.get_annotation_contributors(annotation_id)
 
-    # Update the model and record contribution in same transaction
-    for key, value in update_dict.items():
-        setattr(existing, key, value)
-    
-    # Record contribution
-    contribution = DetectionAnnotationContribution(
-        detection_annotation_id=existing.id,
-        user_id=current_user.id
-    )
-    annotations.session.add(contribution)
+    # Convert to DetectionAnnotationRead with contributors
+    annotation_dict = updated_annotation.model_dump()
+    annotation_dict["contributors"] = [
+        {"id": user.id, "username": user.username} for user in contributors
+    ]
 
-    await annotations.session.commit()
-    await annotations.session.refresh(existing)
-
-    return existing
+    return DetectionAnnotationRead(**annotation_dict)
 
 
 @router.delete("/{annotation_id}", status_code=status.HTTP_204_NO_CONTENT)

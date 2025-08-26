@@ -17,7 +17,6 @@ from fastapi.responses import JSONResponse
 from fastapi_pagination import add_pagination
 from pydantic import ValidationError
 from sqlalchemy import exc
-from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.api_v1.router import api_router
 from app.core.config import settings
@@ -380,14 +379,14 @@ async def startup_event():
     """Initialize database and create admin user if not exists."""
     logger.info("Initializing database...")
     await init_db()
-    
+
     # Create admin user from environment variables if not exists
     async for session in get_session():
         user_crud = UserCRUD(session)
-        
+
         # Check if admin user exists
         admin_user = await user_crud.get_by_username(settings.AUTH_USERNAME)
-        
+
         if not admin_user:
             logger.info(f"Creating admin user: {settings.AUTH_USERNAME}")
             try:
@@ -404,5 +403,5 @@ async def startup_event():
                 logger.error(f"Failed to create admin user: {e}")
         else:
             logger.info("Admin user already exists")
-        
+
         break  # Exit after first session
