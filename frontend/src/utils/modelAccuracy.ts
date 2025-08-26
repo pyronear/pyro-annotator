@@ -25,12 +25,14 @@ export function getModelAccuracyType(
   // If we don't have annotation data, we can't determine accuracy
   if (hasSmoke === null) return 'unknown';
   
+  // FALSE NEGATIVES TAKE PRECEDENCE: If there's any missed smoke, it's a false negative
+  if (hasMissedSmoke) {
+    return 'false_negative';
+  }
+  
   if (hasSmoke) {
     // Model detected something, human confirmed smoke → Model correct
     return 'true_positive';
-  } else if (hasMissedSmoke) {
-    // Model detected something, but human found different smoke that model missed
-    return 'false_negative';
   } else {
     // Model detected something, human found no smoke → Model wrong
     return 'false_positive';
