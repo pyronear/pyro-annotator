@@ -2161,3 +2161,156 @@ async def test_sequence_annotation_list_endpoint_contribution_logic(
         len(annotated_annotation["contributors"]) == 1
     )  # Has contributors for annotated stage
     assert annotated_annotation["contributors"][0]["username"] == "admin"
+
+
+@pytest.mark.asyncio
+async def test_sequence_annotation_update_with_annotation_data_conversion(
+    authenticated_client: AsyncClient, sequence_session, detection_session
+):
+    """Test that updating annotation data properly handles Pydantic-to-dict-to-Pydantic conversion.
+
+    This test specifically addresses the AttributeError bug where derive methods
+    were called with dictionaries instead of Pydantic models.
+    """
+    # Create a sequence annotation first
+    payload = {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": False,
+                    "false_positive_types": [],
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                }
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
+    }
+
+    create_response = await authenticated_client.post(
+        "/annotations/sequences/", json=payload
+    )
+    assert create_response.status_code == 201
+    annotation_id = create_response.json()["id"]
+
+    # Test updating annotation data - this would trigger the AttributeError bug
+    update_payload = {
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": True,  # Changed to True
+                    "false_positive_types": [
+                        "high_cloud",
+                        "lens_flare",
+                    ],  # Added false positives
+                    "bboxes": [
+                        {"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]},
+                        {
+                            "detection_id": 2,
+                            "xyxyn": [0.3, 0.3, 0.4, 0.4],
+                        },  # Added second bbox
+                    ],
+                }
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
+    }
+
+    # This update should succeed without AttributeError
+    update_response = await authenticated_client.patch(
+        f"/annotations/sequences/{annotation_id}", json=update_payload
+    )
+    assert update_response.status_code == 200, f"Update failed: {update_response.text}"
+
+    updated_annotation = update_response.json()
+
+    # Verify that derived fields were correctly calculated
+    assert updated_annotation["has_smoke"] is True  # Derived from is_smoke=True
+    assert (
+        updated_annotation["has_false_positives"] is True
+    )  # Derived from false_positive_types
+    assert "high_cloud" in updated_annotation["false_positive_types"]
+    assert "lens_flare" in updated_annotation["false_positive_types"]
+
+    # Verify annotation data was properly stored
+    assert len(updated_annotation["annotation"]["sequences_bbox"]) == 1
+    assert len(updated_annotation["annotation"]["sequences_bbox"][0]["bboxes"]) == 2
+
+    # Verify contributor was recorded (since we moved to annotated stage)
+    assert len(updated_annotation["contributors"]) == 1
+    assert updated_annotation["contributors"][0]["username"] == "admin"
+
+
+@pytest.mark.asyncio
+async def test_sequence_annotation_update_edge_cases(
+    authenticated_client: AsyncClient, sequence_session, detection_session
+):
+    """Test edge cases for annotation data conversion to prevent future regressions."""
+    # Create annotation
+    payload = {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": []  # Empty sequences_bbox
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.IMPORTED.value,
+    }
+    create_response = await authenticated_client.post(
+        "/annotations/sequences/", json=payload
+    )
+    assert create_response.status_code == 201
+    annotation_id = create_response.json()["id"]
+
+    # Test 1: Empty sequences_bbox
+    update_response = await authenticated_client.patch(
+        f"/annotations/sequences/{annotation_id}",
+        json={"annotation": {"sequences_bbox": []}},
+    )
+    assert update_response.status_code == 200
+    updated = update_response.json()
+    assert updated["has_smoke"] is False
+    assert updated["has_false_positives"] is False
+    assert updated["false_positive_types"] == []
+
+    # Test 2: Multiple sequences_bbox with mixed data
+    complex_update = {
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": True,
+                    "false_positive_types": [],
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                },
+                {
+                    "is_smoke": False,
+                    "false_positive_types": ["high_cloud"],
+                    "bboxes": [],
+                },
+                {
+                    "is_smoke": False,
+                    "false_positive_types": ["lens_flare", "other"],
+                    "bboxes": [{"detection_id": 2, "xyxyn": [0.5, 0.5, 0.6, 0.6]}],
+                },
+            ]
+        }
+    }
+
+    update_response = await authenticated_client.patch(
+        f"/annotations/sequences/{annotation_id}", json=complex_update
+    )
+    assert update_response.status_code == 200
+    updated = update_response.json()
+
+    # Verify complex derivation logic works correctly
+    assert updated["has_smoke"] is True  # At least one is_smoke=True
+    assert (
+        updated["has_false_positives"] is True
+    )  # At least one has false_positive_types
+
+    # Verify all false positive types are collected and deduplicated
+    fp_types = updated["false_positive_types"]
+    assert "high_cloud" in fp_types
+    assert "lens_flare" in fp_types
+    assert "reflection" in fp_types
+    assert len(fp_types) == 3  # No duplicates
