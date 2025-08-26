@@ -6,6 +6,7 @@
 import logging
 import time
 import traceback
+from contextlib import asynccontextmanager
 
 import asyncpg
 from fastapi import FastAPI, HTTPException, Request, status
@@ -28,6 +29,43 @@ from app.schemas.user import UserCreate
 logger = logging.getLogger("uvicorn.error")
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan manager for startup and shutdown events."""
+    # Startup
+    logger.info("Initializing database...")
+    await init_db()
+
+    # Create admin user from environment variables if not exists
+    async for session in get_session():
+        user_crud = UserCRUD(session)
+
+        # Check if admin user exists
+        admin_user = await user_crud.get_by_username(settings.AUTH_USERNAME)
+
+        if not admin_user:
+            logger.info(f"Creating admin user: {settings.AUTH_USERNAME}")
+            try:
+                admin_create = UserCreate(
+                    username=settings.AUTH_USERNAME,
+                    email=f"{settings.AUTH_USERNAME}@pyronear.org",
+                    password=settings.AUTH_PASSWORD,
+                    is_active=True,
+                    is_superuser=True,
+                )
+                await user_crud.create_user(admin_create)
+                logger.info("Admin user created successfully")
+            except Exception as e:
+                logger.error(f"Failed to create admin user: {e}")
+        else:
+            logger.info("Admin user already exists")
+
+        break  # Exit after first session
+    
+    yield
+    # Shutdown (if needed)
+
+
 app = FastAPI(
     title=settings.PROJECT_NAME,
     description=settings.PROJECT_DESCRIPTION,
@@ -35,6 +73,7 @@ app = FastAPI(
     version=settings.VERSION,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     docs_url=None,
+    lifespan=lifespan,
     openapi_tags=[
         {
             "name": "detections",
@@ -371,37 +410,3 @@ app.openapi = custom_openapi  # type: ignore[method-assign]
 
 # Add pagination support
 add_pagination(app)
-
-
-# Startup event to create admin user
-@app.on_event("startup")
-async def startup_event():
-    """Initialize database and create admin user if not exists."""
-    logger.info("Initializing database...")
-    await init_db()
-
-    # Create admin user from environment variables if not exists
-    async for session in get_session():
-        user_crud = UserCRUD(session)
-
-        # Check if admin user exists
-        admin_user = await user_crud.get_by_username(settings.AUTH_USERNAME)
-
-        if not admin_user:
-            logger.info(f"Creating admin user: {settings.AUTH_USERNAME}")
-            try:
-                admin_create = UserCreate(
-                    username=settings.AUTH_USERNAME,
-                    email=f"{settings.AUTH_USERNAME}@pyronear.org",
-                    password=settings.AUTH_PASSWORD,
-                    is_active=True,
-                    is_superuser=True,
-                )
-                await user_crud.create_user(admin_create)
-                logger.info("Admin user created successfully")
-            except Exception as e:
-                logger.error(f"Failed to create admin user: {e}")
-        else:
-            logger.info("Admin user already exists")
-
-        break  # Exit after first session
