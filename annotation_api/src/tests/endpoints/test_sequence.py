@@ -978,7 +978,9 @@ async def test_list_sequences_with_include_annotation_includes_contributors(
         "last_seen_at": now.isoformat(),
     }
 
-    sequence_response = await authenticated_client.post("/sequences/", data=sequence_payload)
+    sequence_response = await authenticated_client.post(
+        "/sequences/", data=sequence_payload
+    )
     assert sequence_response.status_code == 201
     sequence_id = sequence_response.json()["id"]
 
@@ -988,11 +990,7 @@ async def test_list_sequences_with_include_annotation_includes_contributors(
         "has_missed_smoke": False,
         "annotation": {
             "sequences_bbox": [
-                {
-                    "is_smoke": True,
-                    "false_positive_types": [],
-                    "bboxes": []
-                }
+                {"is_smoke": True, "false_positive_types": [], "bboxes": []}
             ]
         },
         "processing_stage": "annotated",
@@ -1005,9 +1003,11 @@ async def test_list_sequences_with_include_annotation_includes_contributors(
     assert annotation_response.status_code == 201
 
     # Get sequences with annotations included
-    list_response = await authenticated_client.get("/sequences/?include_annotation=true")
+    list_response = await authenticated_client.get(
+        "/sequences/?include_annotation=true"
+    )
     assert list_response.status_code == 200
-    
+
     data = list_response.json()
     assert "items" in data
     assert isinstance(data["items"], list)
@@ -1020,18 +1020,20 @@ async def test_list_sequences_with_include_annotation_includes_contributors(
             break
 
     assert found_sequence is not None, "Created sequence should be in the list"
-    
+
     # Verify the sequence has annotation data
     assert "annotation" in found_sequence
     assert found_sequence["annotation"] is not None
-    
+
     embedded_annotation = found_sequence["annotation"]
-    
+
     # Verify the embedded annotation includes contributors field
     assert "contributors" in embedded_annotation
     assert isinstance(embedded_annotation["contributors"], list)
-    assert len(embedded_annotation["contributors"]) >= 1  # Should have at least one contributor
-    
+    assert (
+        len(embedded_annotation["contributors"]) >= 1
+    )  # Should have at least one contributor
+
     # Check contributor data structure
     contributor = embedded_annotation["contributors"][0]
     assert "id" in contributor
@@ -1059,14 +1061,18 @@ async def test_list_sequences_without_annotation_has_empty_annotation_field(
         "last_seen_at": now.isoformat(),
     }
 
-    sequence_response = await authenticated_client.post("/sequences/", data=sequence_payload)
+    sequence_response = await authenticated_client.post(
+        "/sequences/", data=sequence_payload
+    )
     assert sequence_response.status_code == 201
     sequence_id = sequence_response.json()["id"]
 
     # Get sequences with annotations included
-    list_response = await authenticated_client.get("/sequences/?include_annotation=true")
+    list_response = await authenticated_client.get(
+        "/sequences/?include_annotation=true"
+    )
     assert list_response.status_code == 200
-    
+
     data = list_response.json()
     assert "items" in data
 
@@ -1078,7 +1084,7 @@ async def test_list_sequences_without_annotation_has_empty_annotation_field(
             break
 
     assert found_sequence is not None, "Created sequence should be in the list"
-    
+
     # Verify the sequence has annotation field but it's null
     assert "annotation" in found_sequence
     assert found_sequence["annotation"] is None  # No annotation exists
@@ -1103,7 +1109,9 @@ async def test_list_sequences_with_annotation_filter_includes_contributors(
         "last_seen_at": now.isoformat(),
     }
 
-    sequence_response = await authenticated_client.post("/sequences/", data=sequence_payload)
+    sequence_response = await authenticated_client.post(
+        "/sequences/", data=sequence_payload
+    )
     assert sequence_response.status_code == 201
     sequence_id = sequence_response.json()["id"]
 
@@ -1113,11 +1121,7 @@ async def test_list_sequences_with_annotation_filter_includes_contributors(
         "has_missed_smoke": False,
         "annotation": {
             "sequences_bbox": [
-                {
-                    "is_smoke": True,
-                    "false_positive_types": [],
-                    "bboxes": []
-                }
+                {"is_smoke": True, "false_positive_types": [], "bboxes": []}
             ]
         },
         "processing_stage": "annotated",
@@ -1134,7 +1138,7 @@ async def test_list_sequences_with_annotation_filter_includes_contributors(
         "/sequences/?include_annotation=true&processing_stage=annotated&has_smoke=true"
     )
     assert list_response.status_code == 200
-    
+
     data = list_response.json()
     assert "items" in data
 
@@ -1146,22 +1150,22 @@ async def test_list_sequences_with_annotation_filter_includes_contributors(
             break
 
     assert found_sequence is not None, "Created sequence should match the filters"
-    
+
     # Verify the sequence has annotation data with contributors
     assert "annotation" in found_sequence
     assert found_sequence["annotation"] is not None
-    
+
     embedded_annotation = found_sequence["annotation"]
-    
+
     # Verify annotation matches filter criteria
     assert embedded_annotation["processing_stage"] == "annotated"
     assert embedded_annotation["has_smoke"] is True
-    
+
     # Verify contributor information is included
     assert "contributors" in embedded_annotation
     assert isinstance(embedded_annotation["contributors"], list)
     assert len(embedded_annotation["contributors"]) >= 1  # Should have contributors
-    
+
     # Check contributor data structure
     contributor = embedded_annotation["contributors"][0]
     assert "id" in contributor
@@ -1172,6 +1176,7 @@ async def test_list_sequences_with_annotation_filter_includes_contributors(
 
 # Comprehensive Contribution Logic Tests for Sequences with Include Annotation
 
+
 @pytest.mark.asyncio
 async def test_sequences_include_annotation_no_contributors_for_non_annotated(
     authenticated_client: AsyncClient, sequence_session
@@ -1179,43 +1184,63 @@ async def test_sequences_include_annotation_no_contributors_for_non_annotated(
     """Test that embedded annotations show empty contributors for non-annotated processing stages."""
     # Create a test sequence
     sequence_payload = {
-        "source_api": "pyronear_french", "alert_api_id": "9102", "camera_name": "Non-Annotated Test Camera",
-        "camera_id": "9102", "organisation_name": "Test Org", "organisation_id": "1",
-        "lat": "43.5", "lon": "1.5", "recorded_at": (now - timedelta(days=1)).isoformat(),
+        "source_api": "pyronear_french",
+        "alert_api_id": "9102",
+        "camera_name": "Non-Annotated Test Camera",
+        "camera_id": "9102",
+        "organisation_name": "Test Org",
+        "organisation_id": "1",
+        "lat": "43.5",
+        "lon": "1.5",
+        "recorded_at": (now - timedelta(days=1)).isoformat(),
         "last_seen_at": now.isoformat(),
     }
-    sequence_response = await authenticated_client.post("/sequences/", data=sequence_payload)
+    sequence_response = await authenticated_client.post(
+        "/sequences/", data=sequence_payload
+    )
     assert sequence_response.status_code == 201
     sequence_id = sequence_response.json()["id"]
 
     # Create sequence annotation in imported stage (should NOT record contribution)
     annotation_payload = {
-        "sequence_id": sequence_id, "has_missed_smoke": False,
-        "annotation": {"sequences_bbox": [{"is_smoke": True, "false_positive_types": [], "bboxes": []}]},
-        "processing_stage": "imported", "created_at": datetime.now(UTC).isoformat(),
+        "sequence_id": sequence_id,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {"is_smoke": True, "false_positive_types": [], "bboxes": []}
+            ]
+        },
+        "processing_stage": "imported",
+        "created_at": datetime.now(UTC).isoformat(),
     }
-    annotation_response = await authenticated_client.post("/annotations/sequences/", json=annotation_payload)
+    annotation_response = await authenticated_client.post(
+        "/annotations/sequences/", json=annotation_payload
+    )
     assert annotation_response.status_code == 201
 
     # Get sequences with annotations included
-    list_response = await authenticated_client.get("/sequences/?include_annotation=true")
+    list_response = await authenticated_client.get(
+        "/sequences/?include_annotation=true"
+    )
     assert list_response.status_code == 200
-    
+
     # Find our test sequence in the results
     found_sequence = None
     for sequence in list_response.json()["items"]:
         if sequence["id"] == sequence_id:
             found_sequence = sequence
             break
-    
+
     assert found_sequence is not None, "Created sequence should be in the list"
     assert "annotation" in found_sequence
     assert found_sequence["annotation"] is not None
-    
+
     # Verify embedded annotation has empty contributors for non-annotated stage
     embedded_annotation = found_sequence["annotation"]
     assert "contributors" in embedded_annotation
-    assert embedded_annotation["contributors"] == []  # No contributors for imported stage
+    assert (
+        embedded_annotation["contributors"] == []
+    )  # No contributors for imported stage
 
 
 @pytest.mark.asyncio
@@ -1225,43 +1250,63 @@ async def test_sequences_include_annotation_contributors_for_annotated_only(
     """Test that embedded annotations show contributors only for annotated processing stage."""
     # Create a test sequence
     sequence_payload = {
-        "source_api": "pyronear_french", "alert_api_id": "9103", "camera_name": "Annotated Test Camera",
-        "camera_id": "9103", "organisation_name": "Test Org", "organisation_id": "1",
-        "lat": "43.5", "lon": "1.5", "recorded_at": (now - timedelta(days=1)).isoformat(),
+        "source_api": "pyronear_french",
+        "alert_api_id": "9103",
+        "camera_name": "Annotated Test Camera",
+        "camera_id": "9103",
+        "organisation_name": "Test Org",
+        "organisation_id": "1",
+        "lat": "43.5",
+        "lon": "1.5",
+        "recorded_at": (now - timedelta(days=1)).isoformat(),
         "last_seen_at": now.isoformat(),
     }
-    sequence_response = await authenticated_client.post("/sequences/", data=sequence_payload)
+    sequence_response = await authenticated_client.post(
+        "/sequences/", data=sequence_payload
+    )
     assert sequence_response.status_code == 201
     sequence_id = sequence_response.json()["id"]
 
     # Create sequence annotation directly in annotated stage (should record contribution)
     annotation_payload = {
-        "sequence_id": sequence_id, "has_missed_smoke": False,
-        "annotation": {"sequences_bbox": [{"is_smoke": True, "false_positive_types": [], "bboxes": []}]},
-        "processing_stage": "annotated", "created_at": datetime.now(UTC).isoformat(),
+        "sequence_id": sequence_id,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {"is_smoke": True, "false_positive_types": [], "bboxes": []}
+            ]
+        },
+        "processing_stage": "annotated",
+        "created_at": datetime.now(UTC).isoformat(),
     }
-    annotation_response = await authenticated_client.post("/annotations/sequences/", json=annotation_payload)
+    annotation_response = await authenticated_client.post(
+        "/annotations/sequences/", json=annotation_payload
+    )
     assert annotation_response.status_code == 201
 
     # Get sequences with annotations included
-    list_response = await authenticated_client.get("/sequences/?include_annotation=true")
+    list_response = await authenticated_client.get(
+        "/sequences/?include_annotation=true"
+    )
     assert list_response.status_code == 200
-    
+
     # Find our test sequence in the results
     found_sequence = None
     for sequence in list_response.json()["items"]:
         if sequence["id"] == sequence_id:
             found_sequence = sequence
             break
-    
+
     assert found_sequence is not None, "Created sequence should be in the list"
     assert "annotation" in found_sequence
     assert found_sequence["annotation"] is not None
-    
+
     # Verify embedded annotation has contributors for annotated stage
     embedded_annotation = found_sequence["annotation"]
     assert "contributors" in embedded_annotation
-    assert len(embedded_annotation["contributors"]) == 1  # Has contributors for annotated stage
+    assert (
+        len(embedded_annotation["contributors"]) == 1
+    )  # Has contributors for annotated stage
     assert embedded_annotation["contributors"][0]["username"] == "admin"
 
 
@@ -1272,51 +1317,74 @@ async def test_sequences_include_annotation_contribution_workflow(
     """Test complete workflow: create in imported → update to annotated → verify contributors in embedded annotation."""
     # Create a test sequence
     sequence_payload = {
-        "source_api": "pyronear_french", "alert_api_id": "9104", "camera_name": "Workflow Test Camera",
-        "camera_id": "9104", "organisation_name": "Test Org", "organisation_id": "1",
-        "lat": "43.5", "lon": "1.5", "recorded_at": (now - timedelta(days=1)).isoformat(),
+        "source_api": "pyronear_french",
+        "alert_api_id": "9104",
+        "camera_name": "Workflow Test Camera",
+        "camera_id": "9104",
+        "organisation_name": "Test Org",
+        "organisation_id": "1",
+        "lat": "43.5",
+        "lon": "1.5",
+        "recorded_at": (now - timedelta(days=1)).isoformat(),
         "last_seen_at": now.isoformat(),
     }
-    sequence_response = await authenticated_client.post("/sequences/", data=sequence_payload)
+    sequence_response = await authenticated_client.post(
+        "/sequences/", data=sequence_payload
+    )
     assert sequence_response.status_code == 201
     sequence_id = sequence_response.json()["id"]
 
     # Step 1: Create annotation in imported stage
     annotation_payload = {
-        "sequence_id": sequence_id, "has_missed_smoke": False,
-        "annotation": {"sequences_bbox": [{"is_smoke": True, "false_positive_types": [], "bboxes": []}]},
-        "processing_stage": "imported", "created_at": datetime.now(UTC).isoformat(),
+        "sequence_id": sequence_id,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {"is_smoke": True, "false_positive_types": [], "bboxes": []}
+            ]
+        },
+        "processing_stage": "imported",
+        "created_at": datetime.now(UTC).isoformat(),
     }
-    annotation_response = await authenticated_client.post("/annotations/sequences/", json=annotation_payload)
+    annotation_response = await authenticated_client.post(
+        "/annotations/sequences/", json=annotation_payload
+    )
     assert annotation_response.status_code == 201
     annotation_id = annotation_response.json()["id"]
 
     # Step 2: Verify sequences with include_annotation shows empty contributors
-    list_response = await authenticated_client.get("/sequences/?include_annotation=true")
+    list_response = await authenticated_client.get(
+        "/sequences/?include_annotation=true"
+    )
     assert list_response.status_code == 200
     found_sequence = None
     for sequence in list_response.json()["items"]:
         if sequence["id"] == sequence_id:
             found_sequence = sequence
             break
-    
+
     assert found_sequence is not None
     embedded_annotation = found_sequence["annotation"]
     assert embedded_annotation["contributors"] == []  # No contributors yet
 
     # Step 3: Update annotation to annotated stage
-    update_response = await authenticated_client.patch(f"/annotations/sequences/{annotation_id}", json={"processing_stage": "annotated"})
+    update_response = await authenticated_client.patch(
+        f"/annotations/sequences/{annotation_id}",
+        json={"processing_stage": "annotated"},
+    )
     assert update_response.status_code == 200
 
     # Step 4: Verify sequences with include_annotation now shows contributors
-    list_response_after = await authenticated_client.get("/sequences/?include_annotation=true")
+    list_response_after = await authenticated_client.get(
+        "/sequences/?include_annotation=true"
+    )
     assert list_response_after.status_code == 200
     found_sequence_after = None
     for sequence in list_response_after.json()["items"]:
         if sequence["id"] == sequence_id:
             found_sequence_after = sequence
             break
-    
+
     assert found_sequence_after is not None
     embedded_annotation_after = found_sequence_after["annotation"]
     assert len(embedded_annotation_after["contributors"]) == 1  # Now has contributors
@@ -1325,25 +1393,41 @@ async def test_sequences_include_annotation_contribution_workflow(
 
 @pytest.mark.asyncio
 async def test_sequences_include_annotation_mixed_contribution_stages(
-    authenticated_client: AsyncClient, sequence_session  
+    authenticated_client: AsyncClient, sequence_session
 ):
     """Test that sequences list correctly handles mixed annotation processing stages."""
     # Create two test sequences
     sequence_1_payload = {
-        "source_api": "pyronear_french", "alert_api_id": "9105", "camera_name": "Mixed Test Camera 1",
-        "camera_id": "9105", "organisation_name": "Test Org", "organisation_id": "1",
-        "lat": "43.5", "lon": "1.5", "recorded_at": (now - timedelta(days=1)).isoformat(),
+        "source_api": "pyronear_french",
+        "alert_api_id": "9105",
+        "camera_name": "Mixed Test Camera 1",
+        "camera_id": "9105",
+        "organisation_name": "Test Org",
+        "organisation_id": "1",
+        "lat": "43.5",
+        "lon": "1.5",
+        "recorded_at": (now - timedelta(days=1)).isoformat(),
         "last_seen_at": now.isoformat(),
     }
     sequence_2_payload = {
-        "source_api": "pyronear_french", "alert_api_id": "9106", "camera_name": "Mixed Test Camera 2", 
-        "camera_id": "9106", "organisation_name": "Test Org", "organisation_id": "1",
-        "lat": "43.5", "lon": "1.5", "recorded_at": (now - timedelta(days=1)).isoformat(),
+        "source_api": "pyronear_french",
+        "alert_api_id": "9106",
+        "camera_name": "Mixed Test Camera 2",
+        "camera_id": "9106",
+        "organisation_name": "Test Org",
+        "organisation_id": "1",
+        "lat": "43.5",
+        "lon": "1.5",
+        "recorded_at": (now - timedelta(days=1)).isoformat(),
         "last_seen_at": now.isoformat(),
     }
-    
-    sequence_1_response = await authenticated_client.post("/sequences/", data=sequence_1_payload)
-    sequence_2_response = await authenticated_client.post("/sequences/", data=sequence_2_payload)
+
+    sequence_1_response = await authenticated_client.post(
+        "/sequences/", data=sequence_1_payload
+    )
+    sequence_2_response = await authenticated_client.post(
+        "/sequences/", data=sequence_2_payload
+    )
     assert sequence_1_response.status_code == 201
     assert sequence_2_response.status_code == 201
     sequence_1_id = sequence_1_response.json()["id"]
@@ -1351,24 +1435,42 @@ async def test_sequences_include_annotation_mixed_contribution_stages(
 
     # Create annotation for sequence 1 in imported stage (no contributors)
     annotation_1_payload = {
-        "sequence_id": sequence_1_id, "has_missed_smoke": False,
-        "annotation": {"sequences_bbox": [{"is_smoke": True, "false_positive_types": [], "bboxes": []}]},
-        "processing_stage": "imported", "created_at": datetime.now(UTC).isoformat(),
+        "sequence_id": sequence_1_id,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {"is_smoke": True, "false_positive_types": [], "bboxes": []}
+            ]
+        },
+        "processing_stage": "imported",
+        "created_at": datetime.now(UTC).isoformat(),
     }
-    await authenticated_client.post("/annotations/sequences/", json=annotation_1_payload)
+    await authenticated_client.post(
+        "/annotations/sequences/", json=annotation_1_payload
+    )
 
     # Create annotation for sequence 2 in annotated stage (has contributors)
     annotation_2_payload = {
-        "sequence_id": sequence_2_id, "has_missed_smoke": False,
-        "annotation": {"sequences_bbox": [{"is_smoke": True, "false_positive_types": [], "bboxes": []}]},
-        "processing_stage": "annotated", "created_at": datetime.now(UTC).isoformat(),
+        "sequence_id": sequence_2_id,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {"is_smoke": True, "false_positive_types": [], "bboxes": []}
+            ]
+        },
+        "processing_stage": "annotated",
+        "created_at": datetime.now(UTC).isoformat(),
     }
-    await authenticated_client.post("/annotations/sequences/", json=annotation_2_payload)
+    await authenticated_client.post(
+        "/annotations/sequences/", json=annotation_2_payload
+    )
 
     # Get all sequences with annotations and verify contribution logic
-    list_response = await authenticated_client.get("/sequences/?include_annotation=true")
+    list_response = await authenticated_client.get(
+        "/sequences/?include_annotation=true"
+    )
     assert list_response.status_code == 200
-    
+
     imported_sequence = None
     annotated_sequence = None
     for sequence in list_response.json()["items"]:
@@ -1376,11 +1478,15 @@ async def test_sequences_include_annotation_mixed_contribution_stages(
             imported_sequence = sequence
         elif sequence["id"] == sequence_2_id:
             annotated_sequence = sequence
-    
+
     assert imported_sequence is not None
     assert annotated_sequence is not None
-    
+
     # Verify contribution logic for embedded annotations
-    assert imported_sequence["annotation"]["contributors"] == []  # No contributors for imported stage
-    assert len(annotated_sequence["annotation"]["contributors"]) == 1  # Has contributors for annotated stage
+    assert (
+        imported_sequence["annotation"]["contributors"] == []
+    )  # No contributors for imported stage
+    assert (
+        len(annotated_sequence["annotation"]["contributors"]) == 1
+    )  # Has contributors for annotated stage
     assert annotated_sequence["annotation"]["contributors"][0]["username"] == "admin"

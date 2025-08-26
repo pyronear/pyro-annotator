@@ -8,7 +8,12 @@ from sqlalchemy import select, distinct
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.crud.base import BaseCRUD
-from app.models import SequenceAnnotation, SequenceAnnotationContribution, User, SequenceAnnotationProcessingStage
+from app.models import (
+    SequenceAnnotation,
+    SequenceAnnotationContribution,
+    User,
+    SequenceAnnotationProcessingStage,
+)
 from app.schemas.sequence_annotations import (
     SequenceAnnotationCreate,
     SequenceAnnotationUpdate,
@@ -99,8 +104,11 @@ class SequenceAnnotationCRUD(
 
         # Only record contribution if moving to annotated stage or already in annotated stage
         new_stage = update_data.get("processing_stage", annotation.processing_stage)
-        if (new_stage == SequenceAnnotationProcessingStage.ANNOTATED or 
-            annotation.processing_stage == SequenceAnnotationProcessingStage.ANNOTATED):
+        if (
+            new_stage == SequenceAnnotationProcessingStage.ANNOTATED
+            or annotation.processing_stage
+            == SequenceAnnotationProcessingStage.ANNOTATED
+        ):
             contribution = SequenceAnnotationContribution(
                 sequence_annotation_id=annotation_id, user_id=user_id
             )

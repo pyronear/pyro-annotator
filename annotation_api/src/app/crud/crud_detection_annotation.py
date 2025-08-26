@@ -9,7 +9,12 @@ from sqlalchemy import select, distinct
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.crud.base import BaseCRUD
-from app.models import DetectionAnnotation, DetectionAnnotationContribution, User, DetectionAnnotationProcessingStage
+from app.models import (
+    DetectionAnnotation,
+    DetectionAnnotationContribution,
+    User,
+    DetectionAnnotationProcessingStage,
+)
 from app.schemas.detection_annotations import (
     DetectionAnnotationCreate,
     DetectionAnnotationUpdate,
@@ -66,8 +71,11 @@ class DetectionAnnotationCRUD(
 
         # Only record contribution if moving to annotated stage or already in annotated stage
         new_stage = update_data.get("processing_stage", annotation.processing_stage)
-        if (new_stage == DetectionAnnotationProcessingStage.ANNOTATED or 
-            annotation.processing_stage == DetectionAnnotationProcessingStage.ANNOTATED):
+        if (
+            new_stage == DetectionAnnotationProcessingStage.ANNOTATED
+            or annotation.processing_stage
+            == DetectionAnnotationProcessingStage.ANNOTATED
+        ):
             contribution = DetectionAnnotationContribution(
                 detection_annotation_id=annotation_id, user_id=user_id
             )

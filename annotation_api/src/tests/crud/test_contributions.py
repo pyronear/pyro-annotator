@@ -88,7 +88,8 @@ async def test_sequence_annotation_contribution_tracking(
 
     # Check that contribution WAS recorded for annotated stage
     query_annotated = select(SequenceAnnotationContribution).where(
-        SequenceAnnotationContribution.sequence_annotation_id == annotation_annotated.id,
+        SequenceAnnotationContribution.sequence_annotation_id
+        == annotation_annotated.id,
         SequenceAnnotationContribution.user_id == regular_user.id,
     )
     result = await sequence_session.execute(query_annotated)
@@ -138,7 +139,8 @@ async def test_detection_annotation_contribution_tracking(
 
     # Check that contribution WAS recorded for annotated stage
     query_annotated = select(DetectionAnnotationContribution).where(
-        DetectionAnnotationContribution.detection_annotation_id == annotation_annotated.id,
+        DetectionAnnotationContribution.detection_annotation_id
+        == annotation_annotated.id,
         DetectionAnnotationContribution.user_id == regular_user.id,
     )
     result = await detection_session.execute(query_annotated)

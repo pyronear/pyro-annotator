@@ -2,7 +2,7 @@
 
 import json
 import logging
-from datetime import datetime, UTC
+from datetime import datetime
 from enum import Enum
 from typing import Optional
 
@@ -88,7 +88,9 @@ async def create_detection_annotation(
     detection_annotation = await annotations.create(create_data, current_user.id)
 
     # Get contributors for this annotation
-    contributors = await annotations.get_annotation_contributors(detection_annotation.id)
+    contributors = await annotations.get_annotation_contributors(
+        detection_annotation.id
+    )
 
     # Convert to DetectionAnnotationRead with contributors
     annotation_dict = detection_annotation.model_dump()
@@ -277,12 +279,14 @@ async def update_annotation(
     current_user: User = Depends(get_current_user),
 ) -> DetectionAnnotationRead:
     # Use CRUD method which handles contribution tracking with proper conditional logic
-    updated_annotation = await annotations.update(annotation_id, payload, current_user.id)
-    
+    updated_annotation = await annotations.update(
+        annotation_id, payload, current_user.id
+    )
+
     if not updated_annotation:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Detection annotation with id {annotation_id} not found"
+            detail=f"Detection annotation with id {annotation_id} not found",
         )
 
     # Get contributors for this annotation

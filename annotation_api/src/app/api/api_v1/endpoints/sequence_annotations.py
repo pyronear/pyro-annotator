@@ -487,17 +487,23 @@ async def update_sequence_annotation(
     )
 
     # Use CRUD method which handles contribution tracking with proper conditional logic
-    updated_annotation = await annotations.update(annotation_id, payload, current_user.id)
-    
+    updated_annotation = await annotations.update(
+        annotation_id, payload, current_user.id
+    )
+
     if not updated_annotation:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Sequence annotation with id {annotation_id} not found"
+            detail=f"Sequence annotation with id {annotation_id} not found",
         )
 
     # Auto-create detection annotations if processing_stage is newly set to "annotated" and not unsure
     # Skip detection annotation creation for unsure sequences
-    if not was_annotated_before and will_be_annotated_after and not updated_annotation.is_unsure:
+    if (
+        not was_annotated_before
+        and will_be_annotated_after
+        and not updated_annotation.is_unsure
+    ):
         await auto_create_detection_annotations(
             sequence_id=updated_annotation.sequence_id,
             has_smoke=updated_annotation.has_smoke,
