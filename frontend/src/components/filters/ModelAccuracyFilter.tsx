@@ -13,12 +13,13 @@ export default function ModelAccuracyFilter({
   label = 'Model Accuracy',
   className = '',
 }: ModelAccuracyFilterProps) {
-  const accuracyOptions: Array<{ value: ModelAccuracyType | 'all'; label: string; icon?: string }> = [
-    { value: 'all', label: 'All Results' },
-    { value: 'true_positive', label: 'True Positive', icon: '✅' },
-    { value: 'false_positive', label: 'False Positive', icon: '❌' },
-    { value: 'false_negative', label: 'False Negative', icon: '🔍' },
-  ];
+  const accuracyOptions: Array<{ value: ModelAccuracyType | 'all'; label: string; icon?: string }> =
+    [
+      { value: 'all', label: 'All Results' },
+      { value: 'true_positive', label: 'True Positive', icon: '✅' },
+      { value: 'false_positive', label: 'False Positive', icon: '❌' },
+      { value: 'false_negative', label: 'False Negative', icon: '🔍' },
+    ];
 
   const getDisplayText = (value: ModelAccuracyType | 'all') => {
     const option = accuracyOptions.find(opt => opt.value === value);
@@ -30,14 +31,10 @@ export default function ModelAccuracyFilter({
 
   return (
     <div className={className}>
-      {label && (
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          {label}
-        </label>
-      )}
+      {label && <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>}
       <select
         value={selectedAccuracy}
-        onChange={(e) => onSelectionChange(e.target.value as ModelAccuracyType | 'all')}
+        onChange={e => onSelectionChange(e.target.value as ModelAccuracyType | 'all')}
         className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
       >
         {accuracyOptions.map(option => (

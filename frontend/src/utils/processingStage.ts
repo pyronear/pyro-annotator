@@ -1,4 +1,10 @@
-import { Sequence, SequenceAnnotation, SequenceWithProcessingStage, ProcessingStageStatus, ProcessingStage } from '@/types/api';
+import {
+  Sequence,
+  SequenceAnnotation,
+  SequenceWithProcessingStage,
+  ProcessingStageStatus,
+  ProcessingStage,
+} from '@/types/api';
 
 /**
  * Determines the processing stage status for a sequence based on its annotation
@@ -29,7 +35,7 @@ export function combineSequencesWithAnnotations(
   return sequences.map(sequence => {
     const annotation = annotationMap.get(sequence.id) || null;
     const processing_stage_status = getProcessingStageStatus(annotation);
-    
+
     return {
       ...sequence,
       processing_stage_status,
@@ -49,9 +55,7 @@ export function filterSequencesByProcessingStage(
     return sequences;
   }
 
-  return sequences.filter(sequence => 
-    sequence.processing_stage_status === processingStageFilter
-  );
+  return sequences.filter(sequence => sequence.processing_stage_status === processingStageFilter);
 }
 
 /**
@@ -59,25 +63,27 @@ export function filterSequencesByProcessingStage(
  */
 export function getProcessingStageLabel(status: ProcessingStageStatus | ProcessingStage): string {
   const labels: Record<ProcessingStageStatus, string> = {
-    'no_annotation': 'No annotation',
-    'imported': 'Imported',
-    'ready_to_annotate': 'Ready to annotate',
-    'annotated': 'Annotated',
+    no_annotation: 'No annotation',
+    imported: 'Imported',
+    ready_to_annotate: 'Ready to annotate',
+    annotated: 'Annotated',
   };
-  
+
   return labels[status as ProcessingStageStatus] || labels['no_annotation'];
 }
 
 /**
  * Gets the color class for processing stage status badges
  */
-export function getProcessingStageColorClass(status: ProcessingStageStatus | ProcessingStage): string {
+export function getProcessingStageColorClass(
+  status: ProcessingStageStatus | ProcessingStage
+): string {
   const colorClasses: Record<ProcessingStageStatus, string> = {
-    'no_annotation': 'bg-gray-100 text-gray-800',
-    'imported': 'bg-blue-100 text-blue-800',
-    'ready_to_annotate': 'bg-yellow-100 text-yellow-800',
-    'annotated': 'bg-green-100 text-green-800',
+    no_annotation: 'bg-gray-100 text-gray-800',
+    imported: 'bg-blue-100 text-blue-800',
+    ready_to_annotate: 'bg-yellow-100 text-yellow-800',
+    annotated: 'bg-green-100 text-green-800',
   };
-  
+
   return colorClasses[status as ProcessingStageStatus] || colorClasses['no_annotation'];
 }

@@ -26,10 +26,10 @@ export interface AnnotationProgress {
 
 /**
  * Calculates annotation progress for a set of bounding boxes.
- * 
+ *
  * @param bboxes - Array of sequence bounding boxes
  * @returns Progress information with completion stats
- * 
+ *
  * @example
  * ```typescript
  * const progress = getAnnotationProgress(bboxes);
@@ -42,7 +42,7 @@ export const getAnnotationProgress = (bboxes: SequenceBbox[]): AnnotationProgres
   const remaining = total - completed;
   const percentage = total === 0 ? 100 : Math.round((completed / total) * 100);
   const isComplete = completed === total && total > 0;
-  
+
   // Additional detailed statistics
   const smokeBboxes = bboxes.filter(bbox => bbox.is_smoke).length;
   const falsePositiveBboxes = bboxes.filter(bbox => bbox.false_positive_types.length > 0).length;
@@ -60,38 +60,35 @@ export const getAnnotationProgress = (bboxes: SequenceBbox[]): AnnotationProgres
     smokeBboxes,
     falsePositiveBboxes,
     unannotatedBboxes: remaining,
-    completionPercentage: percentage
+    completionPercentage: percentage,
   };
 };
 
 /**
  * Calculates completion percentage for progress display.
- * 
+ *
  * @param completed - Number of completed items
  * @param total - Total number of items
  * @returns Percentage as a number between 0-100
- * 
+ *
  * @example
  * ```typescript
  * const percentage = calculateCompletionPercentage(3, 5);
  * // Returns: 60
  * ```
  */
-export const calculateCompletionPercentage = (
-  completed: number,
-  total: number
-): number => {
+export const calculateCompletionPercentage = (completed: number, total: number): number => {
   if (total === 0) return 100;
   return Math.round((completed / total) * 100);
 };
 
 /**
  * Formats a message describing remaining annotation work.
- * 
+ *
  * @param remaining - Number of remaining items
  * @param includeMissedSmoke - Whether to include missed smoke review requirement
  * @returns Formatted message string
- * 
+ *
  * @example
  * ```typescript
  * const message = formatRemainingMessage(2, true);
@@ -103,21 +100,21 @@ export const formatRemainingMessage = (
   includeMissedSmoke: boolean = false
 ): string => {
   const detectionText = `${remaining} detection${remaining !== 1 ? 's' : ''} still need${remaining === 1 ? 's' : ''} annotation`;
-  
+
   if (includeMissedSmoke) {
     return `${detectionText} and missed smoke review is required`;
   }
-  
+
   return detectionText;
 };
 
 /**
  * Determines if annotation work is complete for saving.
- * 
+ *
  * @param bboxes - Array of sequence bounding boxes
  * @param missedSmokeReview - Missed smoke review status
  * @returns True if all annotations and reviews are complete
- * 
+ *
  * @example
  * ```typescript
  * const canSave = isAnnotationComplete(bboxes, 'yes');
@@ -135,11 +132,11 @@ export const isAnnotationComplete = (
 
 /**
  * Gets validation errors for incomplete annotation.
- * 
+ *
  * @param bboxes - Array of sequence bounding boxes
  * @param missedSmokeReview - Missed smoke review status
  * @returns Array of error messages, empty if complete
- * 
+ *
  * @example
  * ```typescript
  * const errors = getAnnotationValidationErrors(bboxes, null);
@@ -151,11 +148,11 @@ export const getAnnotationValidationErrors = (
   missedSmokeReview: 'yes' | 'no' | null
 ): string[] => {
   const errors: string[] = [];
-  
+
   const progress = getAnnotationProgress(bboxes);
   const bboxesComplete = progress.isComplete;
   const missedSmokeComplete = missedSmokeReview !== null;
-  
+
   if (!bboxesComplete && !missedSmokeComplete) {
     errors.push(`Cannot save: ${formatRemainingMessage(progress.remaining, true)}`);
   } else if (!bboxesComplete) {
@@ -163,17 +160,17 @@ export const getAnnotationValidationErrors = (
   } else if (!missedSmokeComplete) {
     errors.push('Cannot save: Please complete the missed smoke review');
   }
-  
+
   return errors;
 };
 
 /**
  * Formats progress display text.
- * 
+ *
  * @param progress - Progress information
  * @param missedSmokeReview - Missed smoke review status
  * @returns Formatted progress string
- * 
+ *
  * @example
  * ```typescript
  * const text = formatProgressDisplay(progress, 'yes');
@@ -188,14 +185,13 @@ export const formatProgressDisplay = (
   return `${reviewStatus} • ${progress.completed} of ${progress.total} detections • ${progress.percentage}% complete`;
 };
 
-
 /**
  * Gets progress status color class for UI display.
- * 
+ *
  * @param progress - Progress information
  * @param processingStage - Current processing stage
  * @returns CSS color class name
- * 
+ *
  * @example
  * ```typescript
  * const colorClass = getProgressColor(progress, 'annotated');
@@ -209,6 +205,6 @@ export const getProgressColor = (
   if (progress.isComplete) {
     return processingStage === 'annotated' ? 'bg-green-600' : 'bg-amber-600';
   }
-  
+
   return 'bg-primary-600';
 };

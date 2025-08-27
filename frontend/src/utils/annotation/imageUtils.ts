@@ -33,58 +33,52 @@ export interface DisplayDimensions {
 
 /**
  * Calculates image aspect ratio.
- * 
+ *
  * @param width - Image width
  * @param height - Image height
  * @returns Aspect ratio (width/height)
- * 
+ *
  * @example
  * ```typescript
  * const ratio = calculateAspectRatio(1920, 1080);
  * // Returns: 1.777... (16:9)
  * ```
  */
-export const calculateAspectRatio = (
-  width: number,
-  height: number
-): number => {
+export const calculateAspectRatio = (width: number, height: number): number => {
   if (height === 0) return 1;
   return width / height;
 };
 
 /**
  * Gets image dimensions with aspect ratio.
- * 
+ *
  * @param width - Image width
  * @param height - Image height
  * @returns Image dimensions object
- * 
+ *
  * @example
  * ```typescript
  * const dims = getImageDimensions(1920, 1080);
  * // Returns: { width: 1920, height: 1080, aspectRatio: 1.777... }
  * ```
  */
-export const getImageDimensions = (
-  width: number,
-  height: number
-): ImageDimensions => {
+export const getImageDimensions = (width: number, height: number): ImageDimensions => {
   return {
     width,
     height,
-    aspectRatio: calculateAspectRatio(width, height)
+    aspectRatio: calculateAspectRatio(width, height),
   };
 };
 
 /**
  * Calculates dimensions to fit image in container with object-contain behavior.
- * 
+ *
  * @param imageWidth - Original image width
  * @param imageHeight - Original image height
  * @param containerWidth - Container width
  * @param containerHeight - Container height
  * @returns Display dimensions with position
- * 
+ *
  * @example
  * ```typescript
  * const display = fitImageToContainer(1920, 1080, 800, 600);
@@ -99,11 +93,11 @@ export const fitImageToContainer = (
 ): DisplayDimensions => {
   const imageRatio = calculateAspectRatio(imageWidth, imageHeight);
   const containerRatio = calculateAspectRatio(containerWidth, containerHeight);
-  
+
   let displayWidth: number;
   let displayHeight: number;
   let scale: number;
-  
+
   if (imageRatio > containerRatio) {
     // Image is wider - fit to width
     displayWidth = containerWidth;
@@ -115,28 +109,28 @@ export const fitImageToContainer = (
     displayWidth = containerHeight * imageRatio;
     scale = containerHeight / imageHeight;
   }
-  
+
   const offsetX = (containerWidth - displayWidth) / 2;
   const offsetY = (containerHeight - displayHeight) / 2;
-  
+
   return {
     displayWidth,
     displayHeight,
     offsetX,
     offsetY,
-    scale
+    scale,
   };
 };
 
 /**
  * Calculates dimensions to cover container with image.
- * 
+ *
  * @param imageWidth - Original image width
  * @param imageHeight - Original image height
  * @param containerWidth - Container width
  * @param containerHeight - Container height
  * @returns Display dimensions for cover mode
- * 
+ *
  * @example
  * ```typescript
  * const display = coverContainer(1920, 1080, 800, 600);
@@ -151,11 +145,11 @@ export const coverContainer = (
 ): DisplayDimensions => {
   const imageRatio = calculateAspectRatio(imageWidth, imageHeight);
   const containerRatio = calculateAspectRatio(containerWidth, containerHeight);
-  
+
   let displayWidth: number;
   let displayHeight: number;
   let scale: number;
-  
+
   if (imageRatio < containerRatio) {
     // Image is narrower - fit to width
     displayWidth = containerWidth;
@@ -167,29 +161,29 @@ export const coverContainer = (
     displayWidth = containerHeight * imageRatio;
     scale = containerHeight / imageHeight;
   }
-  
+
   const offsetX = (containerWidth - displayWidth) / 2;
   const offsetY = (containerHeight - displayHeight) / 2;
-  
+
   return {
     displayWidth,
     displayHeight,
     offsetX,
     offsetY,
-    scale
+    scale,
   };
 };
 
 /**
  * Calculates the optimal zoom level for an image.
- * 
+ *
  * @param imageWidth - Image width
  * @param imageHeight - Image height
  * @param viewportWidth - Viewport width
  * @param viewportHeight - Viewport height
  * @param mode - Zoom mode ('fit' | 'fill' | 'actual')
  * @returns Optimal zoom level
- * 
+ *
  * @example
  * ```typescript
  * const zoom = calculateOptimalZoom(1920, 1080, 800, 600, 'fit');
@@ -206,10 +200,10 @@ export const calculateOptimalZoom = (
   if (mode === 'actual') {
     return 1.0;
   }
-  
+
   const widthRatio = viewportWidth / imageWidth;
   const heightRatio = viewportHeight / imageHeight;
-  
+
   if (mode === 'fit') {
     // Use smaller ratio to fit entire image
     return Math.min(widthRatio, heightRatio);
@@ -221,35 +215,31 @@ export const calculateOptimalZoom = (
 
 /**
  * Checks if image dimensions are valid.
- * 
+ *
  * @param width - Image width
  * @param height - Image height
  * @param minSize - Minimum dimension size
  * @returns True if dimensions are valid
- * 
+ *
  * @example
  * ```typescript
  * const isValid = isValidImageSize(1920, 1080, 100);
  * // Returns: true
  * ```
  */
-export const isValidImageSize = (
-  width: number,
-  height: number,
-  minSize: number = 1
-): boolean => {
+export const isValidImageSize = (width: number, height: number, minSize: number = 1): boolean => {
   return width >= minSize && height >= minSize && isFinite(width) && isFinite(height);
 };
 
 /**
  * Calculates image scale factor based on display dimensions.
- * 
+ *
  * @param originalWidth - Original image width
  * @param originalHeight - Original image height
  * @param displayWidth - Display width
  * @param displayHeight - Display height
  * @returns Scale factor
- * 
+ *
  * @example
  * ```typescript
  * const scale = getImageScale(1920, 1080, 960, 540);
@@ -264,48 +254,42 @@ export const getImageScale = (
 ): number => {
   const widthScale = displayWidth / originalWidth;
   const heightScale = displayHeight / originalHeight;
-  
+
   // Return the uniform scale factor (should be the same for both if aspect ratio maintained)
   return Math.min(widthScale, heightScale);
 };
 
 /**
  * Formats image dimension string for display.
- * 
+ *
  * @param width - Image width
  * @param height - Image height
  * @returns Formatted dimension string
- * 
+ *
  * @example
  * ```typescript
  * const dims = formatImageDimensions(1920, 1080);
  * // Returns: '1920×1080'
  * ```
  */
-export const formatImageDimensions = (
-  width: number,
-  height: number
-): string => {
+export const formatImageDimensions = (width: number, height: number): string => {
   return `${Math.round(width)}×${Math.round(height)}`;
 };
 
 /**
  * Gets common aspect ratio label.
- * 
+ *
  * @param aspectRatio - Calculated aspect ratio
  * @param tolerance - Tolerance for matching common ratios
  * @returns Common ratio label or decimal ratio
- * 
+ *
  * @example
  * ```typescript
  * const label = getAspectRatioLabel(1.777);
  * // Returns: '16:9'
  * ```
  */
-export const getAspectRatioLabel = (
-  aspectRatio: number,
-  tolerance: number = 0.01
-): string => {
+export const getAspectRatioLabel = (aspectRatio: number, tolerance: number = 0.01): string => {
   const commonRatios: Array<[number, string]> = [
     [1.0, '1:1'],
     [1.333, '4:3'],
@@ -313,14 +297,14 @@ export const getAspectRatioLabel = (
     [1.777, '16:9'],
     [1.85, '1.85:1'],
     [2.35, '2.35:1'],
-    [2.39, '21:9']
+    [2.39, '21:9'],
   ];
-  
+
   for (const [ratio, label] of commonRatios) {
     if (Math.abs(aspectRatio - ratio) < tolerance) {
       return label;
     }
   }
-  
+
   return aspectRatio.toFixed(2) + ':1';
 };

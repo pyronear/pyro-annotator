@@ -24,12 +24,12 @@ export function getModelAccuracyType(
 ): ModelAccuracyType {
   // If we don't have annotation data, we can't determine accuracy
   if (hasSmoke === null) return 'unknown';
-  
+
   // FALSE NEGATIVES TAKE PRECEDENCE: If there's any missed smoke, it's a false negative
   if (hasMissedSmoke) {
     return 'false_negative';
   }
-  
+
   if (hasSmoke) {
     // Model detected something, human confirmed smoke → Model correct
     return 'true_positive';
@@ -81,7 +81,7 @@ export function getModelAccuracyResult(accuracyType: ModelAccuracyType): ModelAc
       bgClass: 'bg-gray-50',
     },
   };
-  
+
   return results[accuracyType];
 }
 
@@ -91,7 +91,7 @@ export function getModelAccuracyResult(accuracyType: ModelAccuracyType): ModelAc
 export function analyzeSequenceAccuracy(sequence: SequenceWithAnnotation): ModelAccuracyResult {
   const hasSmoke = sequence.annotation?.has_smoke ?? null;
   const hasMissedSmoke = sequence.annotation?.has_missed_smoke ?? null;
-  
+
   const accuracyType = getModelAccuracyType(hasSmoke, hasMissedSmoke);
   return getModelAccuracyResult(accuracyType);
 }
@@ -117,7 +117,7 @@ export const getFalsePositiveEmoji = (type: string): string => {
     sky: '🌌',
     tree: '🌳',
     water_body: '🌊',
-    other: '❓'
+    other: '❓',
   };
   return emojiMap[type] || '❓';
 };
@@ -163,13 +163,15 @@ export function parseFalsePositiveTypes(value: string | string[] | null | undefi
 
   // Handle comma-separated values (e.g., "light,dust,building")
   if (value.includes(',')) {
-    return value.split(',').map(type => type.trim()).filter(type => type.length > 0);
+    return value
+      .split(',')
+      .map(type => type.trim())
+      .filter(type => type.length > 0);
   }
 
   // Handle single string value (e.g., "light")
   return [value.trim()].filter(type => type.length > 0);
 }
-
 
 /**
  * Component for displaying model accuracy badge
@@ -192,7 +194,7 @@ export function getModelAccuracyBadgeClasses(
     md: 'px-2.5 py-0.5 text-xs',
     lg: 'px-3 py-1 text-sm',
   };
-  
+
   return `inline-flex items-center rounded-full font-medium ${sizeClasses[size]} ${accuracy.colorClass} ${accuracy.bgClass}`;
 }
 
@@ -206,7 +208,7 @@ export function getRowBackgroundClasses(accuracy: ModelAccuracyResult): string {
     false_negative: 'bg-blue-50 hover:bg-blue-100',
     unknown: 'hover:bg-gray-50',
   };
-  
+
   return backgroundClasses[accuracy.type];
 }
 

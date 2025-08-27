@@ -28,10 +28,10 @@ export interface AnnotationCompleteness {
 
 /**
  * Validates that a detection has valid algorithm predictions.
- * 
+ *
  * @param detection - Detection to validate
  * @returns Validation result
- * 
+ *
  * @example
  * ```typescript
  * const result = validateDetectionPredictions(detection);
@@ -49,7 +49,10 @@ export const validateDetectionPredictions = (detection: Detection): ValidationRe
     return { isValid: false, errors, warnings };
   }
 
-  if (!detection.algo_predictions.predictions || detection.algo_predictions.predictions.length === 0) {
+  if (
+    !detection.algo_predictions.predictions ||
+    detection.algo_predictions.predictions.length === 0
+  ) {
     warnings.push('Detection has empty predictions array');
   }
 
@@ -59,15 +62,17 @@ export const validateDetectionPredictions = (detection: Detection): ValidationRe
       errors.push(`Prediction ${index} has invalid xyxyn coordinates`);
     } else {
       const [x1, y1, x2, y2] = pred.xyxyn;
-      
+
       // Check coordinate ranges
       if (x1 < 0 || x1 > 1 || y1 < 0 || y1 > 1 || x2 < 0 || x2 > 1 || y2 < 0 || y2 > 1) {
         errors.push(`Prediction ${index} has coordinates outside 0-1 range`);
       }
-      
+
       // Check that x2 > x1 and y2 > y1
       if (x2 <= x1 || y2 <= y1) {
-        errors.push(`Prediction ${index} has invalid bbox dimensions (x2=${x2}, x1=${x1}, y2=${y2}, y1=${y1})`);
+        errors.push(
+          `Prediction ${index} has invalid bbox dimensions (x2=${x2}, x1=${x1}, y2=${y2}, y1=${y1})`
+        );
       }
     }
 
@@ -85,10 +90,10 @@ export const validateDetectionPredictions = (detection: Detection): ValidationRe
 
 /**
  * Validates that drawn rectangles have valid data.
- * 
+ *
  * @param rectangles - Array of drawn rectangles to validate
  * @returns Validation result
- * 
+ *
  * @example
  * ```typescript
  * const result = validateDrawnRectangles(rectangles);
@@ -110,22 +115,26 @@ export const validateDrawnRectangles = (rectangles: DrawnRectangle[]): Validatio
       errors.push(`Rectangle ${index} has invalid xyxyn coordinates`);
     } else {
       const [x1, y1, x2, y2] = rect.xyxyn;
-      
+
       // Check coordinate ranges
       if (x1 < 0 || x1 > 1 || y1 < 0 || y1 > 1 || x2 < 0 || x2 > 1 || y2 < 0 || y2 > 1) {
         errors.push(`Rectangle ${index} has coordinates outside 0-1 range`);
       }
-      
+
       // Check that x2 > x1 and y2 > y1
       if (x2 <= x1 || y2 <= y1) {
-        errors.push(`Rectangle ${index} has invalid dimensions (x2=${x2}, x1=${x1}, y2=${y2}, y1=${y1})`);
+        errors.push(
+          `Rectangle ${index} has invalid dimensions (x2=${x2}, x1=${x1}, y2=${y2}, y1=${y1})`
+        );
       }
 
       // Check for minimum size (too small rectangles might be accidental)
       const width = x2 - x1;
       const height = y2 - y1;
       if (width < 0.01 || height < 0.01) {
-        warnings.push(`Rectangle ${index} is very small (${(width * 100).toFixed(1)}% × ${(height * 100).toFixed(1)}%)`);
+        warnings.push(
+          `Rectangle ${index} is very small (${(width * 100).toFixed(1)}% × ${(height * 100).toFixed(1)}%)`
+        );
       }
     }
 
@@ -140,10 +149,10 @@ export const validateDrawnRectangles = (rectangles: DrawnRectangle[]): Validatio
 
 /**
  * Validates that a detection annotation is complete and valid.
- * 
+ *
  * @param annotation - Detection annotation to validate
  * @returns Validation result
- * 
+ *
  * @example
  * ```typescript
  * const result = validateDetectionAnnotation(annotation);
@@ -163,7 +172,10 @@ export const validateDetectionAnnotation = (annotation: DetectionAnnotation): Va
   // Validate annotation data structure
   if (!annotation.annotation) {
     errors.push('Annotation has no annotation data');
-  } else if (!annotation.annotation.annotation || !Array.isArray(annotation.annotation.annotation)) {
+  } else if (
+    !annotation.annotation.annotation ||
+    !Array.isArray(annotation.annotation.annotation)
+  ) {
     errors.push('Annotation data has invalid structure');
   } else {
     // Validate each annotation item
@@ -188,10 +200,10 @@ export const validateDetectionAnnotation = (annotation: DetectionAnnotation): Va
 
 /**
  * Checks if a detection annotation is complete (has been reviewed).
- * 
+ *
  * @param annotation - Detection annotation to check
  * @returns True if annotation is complete
- * 
+ *
  * @example
  * ```typescript
  * const complete = isDetectionAnnotationComplete(annotation);
@@ -206,11 +218,11 @@ export const isDetectionAnnotationComplete = (annotation: DetectionAnnotation | 
 
 /**
  * Calculates annotation completeness for a set of detections.
- * 
+ *
  * @param detections - Array of detections
  * @param annotations - Map of detection ID to annotation
  * @returns Completeness statistics
- * 
+ *
  * @example
  * ```typescript
  * const stats = calculateAnnotationCompleteness(detections, annotationsMap);
@@ -231,26 +243,25 @@ export const calculateAnnotationCompleteness = (
     }
   });
 
-  const completionPercentage = totalDetections > 0 
-    ? Math.round((annotatedDetections / totalDetections) * 100)
-    : 0;
+  const completionPercentage =
+    totalDetections > 0 ? Math.round((annotatedDetections / totalDetections) * 100) : 0;
 
   return {
     isComplete: annotatedDetections === totalDetections,
     hasAnnotations: annotatedDetections > 0,
     totalDetections,
     annotatedDetections,
-    completionPercentage
+    completionPercentage,
   };
 };
 
 /**
  * Validates that rectangles don't have significant overlaps.
- * 
+ *
  * @param rectangles - Array of rectangles to check
  * @param overlapThreshold - Maximum allowed overlap ratio (default: 0.8)
  * @returns Validation result with overlap warnings
- * 
+ *
  * @example
  * ```typescript
  * const result = validateRectangleOverlaps(rectangles, 0.5);
@@ -270,9 +281,9 @@ export const validateRectangleOverlaps = (
     for (let j = i + 1; j < rectangles.length; j++) {
       const rect1 = rectangles[i];
       const rect2 = rectangles[j];
-      
+
       const overlap = calculateBoundingBoxOverlap(rect1.xyxyn, rect2.xyxyn);
-      
+
       if (overlap > overlapThreshold) {
         warnings.push(
           `Rectangles ${rect1.id} and ${rect2.id} have high overlap (${(overlap * 100).toFixed(1)}%)`
@@ -286,11 +297,11 @@ export const validateRectangleOverlaps = (
 
 /**
  * Calculates the overlap ratio between two bounding boxes.
- * 
+ *
  * @param bbox1 - First bounding box [x1, y1, x2, y2]
  * @param bbox2 - Second bounding box [x1, y1, x2, y2]
  * @returns Overlap ratio (0-1, where 1 is complete overlap)
- * 
+ *
  * @example
  * ```typescript
  * const overlap = calculateBoundingBoxOverlap(
@@ -317,7 +328,7 @@ export const calculateBoundingBoxOverlap = (
   }
 
   const intersectionArea = (xRight - xLeft) * (yBottom - yTop);
-  
+
   // Calculate union area
   const area1 = (x2_1 - x1_1) * (y2_1 - y1_1);
   const area2 = (x2_2 - x1_2) * (y2_2 - y1_2);
@@ -328,12 +339,12 @@ export const calculateBoundingBoxOverlap = (
 
 /**
  * Checks if annotation workflow is ready for submission.
- * 
+ *
  * @param detections - Array of detections in sequence
  * @param annotations - Map of detection annotations
  * @param requireAllAnnotated - Whether all detections must be annotated
  * @returns Validation result indicating readiness
- * 
+ *
  * @example
  * ```typescript
  * const result = validateWorkflowReadiness(detections, annotations, true);

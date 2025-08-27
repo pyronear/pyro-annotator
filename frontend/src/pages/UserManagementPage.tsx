@@ -26,19 +26,7 @@ export default function UserManagementPage() {
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
-  // Check if current user is superuser
-  if (!isSuperuser()) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <UserX className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-sm font-medium text-gray-900">Access denied</h3>
-          <p className="mt-1 text-sm text-gray-500">You need superuser privileges to access this page.</p>
-        </div>
-      </div>
-    );
-  }
-
+  // ALL HOOKS MUST BE BEFORE ANY CONDITIONAL RETURNS
   // Apply search filter with debounce
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -53,7 +41,11 @@ export default function UserManagementPage() {
   }, [searchTerm]);
 
   // Fetch users
-  const { data: usersData, isLoading, error } = useQuery({
+  const {
+    data: usersData,
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: [...QUERY_KEYS.USERS, filters],
     queryFn: () => apiClient.getUsers(filters),
   });
@@ -77,7 +69,8 @@ export default function UserManagementPage() {
   });
 
   const updatePasswordMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: UserPasswordUpdate }) => apiClient.updateUserPassword(id, data),
+    mutationFn: ({ id, data }: { id: number; data: UserPasswordUpdate }) =>
+      apiClient.updateUserPassword(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.USERS });
       setShowPasswordModal(false);
@@ -92,12 +85,27 @@ export default function UserManagementPage() {
     },
   });
 
+  // Check if current user is superuser - AFTER all hooks
+  if (!isSuperuser()) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <UserX className="mx-auto h-12 w-12 text-gray-400" />
+          <h3 className="mt-2 text-sm font-medium text-gray-900">Access denied</h3>
+          <p className="mt-1 text-sm text-gray-500">
+            You need superuser privileges to access this page.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const handleDeleteUser = (user: User) => {
     if (user.id === currentUser?.id) {
       alert('You cannot delete your own account.');
       return;
     }
-    
+
     if (confirm(`Are you sure you want to delete user "${user.username}"?`)) {
       deleteUserMutation.mutate(user.id);
     }
@@ -136,7 +144,9 @@ export default function UserManagementPage() {
   if (error) {
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <p className="text-red-700">Error loading users: {(error as any)?.detail || 'Unknown error'}</p>
+        <p className="text-red-700">
+          Error loading users: {(error as any)?.detail || 'Unknown error'}
+        </p>
       </div>
     );
   }
@@ -147,9 +157,7 @@ export default function UserManagementPage() {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">User Management</h1>
-          <p className="text-sm text-gray-600 mt-1">
-            Manage user accounts and permissions
-          </p>
+          <p className="text-sm text-gray-600 mt-1">Manage user accounts and permissions</p>
         </div>
         <button
           onClick={() => setShowCreateModal(true)}
@@ -169,7 +177,7 @@ export default function UserManagementPage() {
               type="text"
               placeholder="Search users..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={e => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
@@ -255,7 +263,7 @@ export default function UserManagementPage() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {usersData?.items?.map((user) => (
+              {usersData?.items?.map(user => (
                 <tr key={user.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div>
@@ -267,9 +275,7 @@ export default function UserManagementPage() {
                     <span
                       className={clsx(
                         'inline-flex px-2 py-1 text-xs font-semibold rounded-full',
-                        user.is_active
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-red-100 text-red-800'
+                        user.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
                       )}
                     >
                       {user.is_active ? 'Active' : 'Inactive'}
@@ -326,9 +332,9 @@ export default function UserManagementPage() {
           <div className="bg-white px-4 py-3 border-t border-gray-200 sm:px-6">
             <div className="flex items-center justify-between">
               <div className="text-sm text-gray-700">
-                Showing {((usersData.page - 1) * usersData.size) + 1} to{' '}
-                {Math.min(usersData.page * usersData.size, usersData.total)} of{' '}
-                {usersData.total} results
+                Showing {(usersData.page - 1) * usersData.size + 1} to{' '}
+                {Math.min(usersData.page * usersData.size, usersData.total)} of {usersData.total}{' '}
+                results
               </div>
               <div className="flex space-x-2">
                 <button
@@ -355,7 +361,7 @@ export default function UserManagementPage() {
       {showCreateModal && (
         <CreateUserModal
           onClose={() => setShowCreateModal(false)}
-          onSubmit={(data) => createUserMutation.mutate(data)}
+          onSubmit={data => createUserMutation.mutate(data)}
           isLoading={createUserMutation.isPending}
           error={createUserMutation.error as any}
         />
@@ -368,7 +374,7 @@ export default function UserManagementPage() {
             setShowEditModal(false);
             setSelectedUser(null);
           }}
-          onSubmit={(data) => updateUserMutation.mutate({ id: selectedUser.id, data })}
+          onSubmit={data => updateUserMutation.mutate({ id: selectedUser.id, data })}
           isLoading={updateUserMutation.isPending}
           error={updateUserMutation.error as any}
         />
@@ -381,7 +387,7 @@ export default function UserManagementPage() {
             setShowPasswordModal(false);
             setSelectedUser(null);
           }}
-          onSubmit={(data) => updatePasswordMutation.mutate({ id: selectedUser.id, data })}
+          onSubmit={data => updatePasswordMutation.mutate({ id: selectedUser.id, data })}
           isLoading={updatePasswordMutation.isPending}
           error={updatePasswordMutation.error as any}
         />
@@ -395,7 +401,7 @@ function CreateUserModal({
   onClose,
   onSubmit,
   isLoading,
-  error
+  error,
 }: {
   onClose: () => void;
   onSubmit: (data: UserCreate) => void;
@@ -420,7 +426,7 @@ function CreateUserModal({
       <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto">
         <div className="p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Create New User</h3>
-          
+
           {error && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">
               {error.detail || 'Failed to create user'}
@@ -434,7 +440,7 @@ function CreateUserModal({
                 type="text"
                 required
                 value={formData.username}
-                onChange={(e) => setFormData(prev => ({ ...prev, username: e.target.value }))}
+                onChange={e => setFormData(prev => ({ ...prev, username: e.target.value }))}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -445,7 +451,7 @@ function CreateUserModal({
                 type="email"
                 required
                 value={formData.email}
-                onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                onChange={e => setFormData(prev => ({ ...prev, email: e.target.value }))}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -453,7 +459,7 @@ function CreateUserModal({
             <PasswordField
               label="Password"
               value={formData.password}
-              onChange={(value) => setFormData(prev => ({ ...prev, password: value }))}
+              onChange={value => setFormData(prev => ({ ...prev, password: value }))}
               required
               showGenerator={true}
               showStrengthIndicator={true}
@@ -465,7 +471,7 @@ function CreateUserModal({
                 <input
                   type="checkbox"
                   checked={formData.is_active}
-                  onChange={(e) => setFormData(prev => ({ ...prev, is_active: e.target.checked }))}
+                  onChange={e => setFormData(prev => ({ ...prev, is_active: e.target.checked }))}
                   className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
                 <span className="ml-2 text-sm text-gray-700">Active user</span>
@@ -475,7 +481,7 @@ function CreateUserModal({
                 <input
                   type="checkbox"
                   checked={formData.is_superuser}
-                  onChange={(e) => setFormData(prev => ({ ...prev, is_superuser: e.target.checked }))}
+                  onChange={e => setFormData(prev => ({ ...prev, is_superuser: e.target.checked }))}
                   className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
                 <span className="ml-2 text-sm text-gray-700">Superuser privileges</span>
@@ -510,7 +516,7 @@ function EditUserModal({
   onClose,
   onSubmit,
   isLoading,
-  error
+  error,
 }: {
   user: User;
   onClose: () => void;
@@ -535,7 +541,7 @@ function EditUserModal({
       <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto">
         <div className="p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Edit User: {user.username}</h3>
-          
+
           {error && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">
               {error.detail || 'Failed to update user'}
@@ -549,7 +555,7 @@ function EditUserModal({
                 type="text"
                 required
                 value={formData.username}
-                onChange={(e) => setFormData(prev => ({ ...prev, username: e.target.value }))}
+                onChange={e => setFormData(prev => ({ ...prev, username: e.target.value }))}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -560,7 +566,7 @@ function EditUserModal({
                 type="email"
                 required
                 value={formData.email}
-                onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                onChange={e => setFormData(prev => ({ ...prev, email: e.target.value }))}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -570,7 +576,7 @@ function EditUserModal({
                 <input
                   type="checkbox"
                   checked={formData.is_active}
-                  onChange={(e) => setFormData(prev => ({ ...prev, is_active: e.target.checked }))}
+                  onChange={e => setFormData(prev => ({ ...prev, is_active: e.target.checked }))}
                   className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
                 <span className="ml-2 text-sm text-gray-700">Active user</span>
@@ -580,7 +586,7 @@ function EditUserModal({
                 <input
                   type="checkbox"
                   checked={formData.is_superuser}
-                  onChange={(e) => setFormData(prev => ({ ...prev, is_superuser: e.target.checked }))}
+                  onChange={e => setFormData(prev => ({ ...prev, is_superuser: e.target.checked }))}
                   className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
                 <span className="ml-2 text-sm text-gray-700">Superuser privileges</span>
@@ -615,7 +621,7 @@ function PasswordChangeModal({
   onClose,
   onSubmit,
   isLoading,
-  error
+  error,
 }: {
   user: User;
   onClose: () => void;
@@ -639,8 +645,10 @@ function PasswordChangeModal({
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto">
         <div className="p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Change Password: {user.username}</h3>
-          
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+            Change Password: {user.username}
+          </h3>
+
           {error && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">
               {error.detail || 'Failed to update password'}
@@ -659,18 +667,20 @@ function PasswordChangeModal({
             />
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Confirm Password</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Confirm Password
+              </label>
               <input
                 type="password"
                 required
                 value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
+                onChange={e => setConfirmPassword(e.target.value)}
                 className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${
                   confirmPassword && password && password !== confirmPassword
                     ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
                     : confirmPassword && password && password === confirmPassword
-                    ? 'border-green-300 focus:ring-green-500 focus:border-green-500'
-                    : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
+                      ? 'border-green-300 focus:ring-green-500 focus:border-green-500'
+                      : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
                 }`}
               />
               {confirmPassword && password && password !== confirmPassword && (

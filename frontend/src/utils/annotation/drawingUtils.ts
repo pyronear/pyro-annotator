@@ -40,10 +40,10 @@ export type DrawingMode = 'view' | 'draw' | 'select';
 
 /**
  * Gets the color scheme for a specific smoke type.
- * 
+ *
  * @param smokeType - The smoke type to get colors for
  * @returns Color configuration for borders and backgrounds
- * 
+ *
  * @example
  * ```typescript
  * const colors = getSmokeTypeColors('wildfire');
@@ -65,12 +65,12 @@ export const getSmokeTypeColors = (smokeType: SmokeType): SmokeTypeColors => {
 
 /**
  * Creates a new DrawnRectangle from current drawing state.
- * 
+ *
  * @param drawing - The current drawing state
  * @param imageBounds - Image bounds for coordinate normalization
  * @param smokeType - Smoke type to assign to the rectangle
  * @returns A new DrawnRectangle with normalized coordinates
- * 
+ *
  * @example
  * ```typescript
  * const rect = createDrawnRectangle(
@@ -99,17 +99,17 @@ export const createDrawnRectangle = (
   return {
     id: Date.now().toString(),
     xyxyn: [x1, y1, x2, y2],
-    smokeType
+    smokeType,
   };
 };
 
 /**
  * Validates that a drawing has minimum dimensions.
- * 
+ *
  * @param drawing - The current drawing state
  * @param minSize - Minimum size in pixels (default: 10)
  * @returns True if the drawing is large enough to be valid
- * 
+ *
  * @example
  * ```typescript
  * const isValid = validateDrawingSize(
@@ -117,24 +117,21 @@ export const createDrawnRectangle = (
  * ); // true (50x50 pixels)
  * ```
  */
-export const validateDrawingSize = (
-  drawing: CurrentDrawing,
-  minSize: number = 10
-): boolean => {
+export const validateDrawingSize = (drawing: CurrentDrawing, minSize: number = 10): boolean => {
   const width = Math.abs(drawing.currentX - drawing.startX);
   const height = Math.abs(drawing.currentY - drawing.startY);
-  
+
   return width >= minSize && height >= minSize;
 };
 
 /**
  * Checks if a point is inside a rectangle.
- * 
+ *
  * @param point - Point to check
  * @param rectangle - Rectangle in image coordinates
  * @param imageBounds - Image bounds for coordinate conversion
  * @returns True if the point is inside the rectangle
- * 
+ *
  * @example
  * ```typescript
  * const isInside = isPointInRectangle(
@@ -150,26 +147,25 @@ export const isPointInRectangle = (
   imageBounds: ImageBounds
 ): boolean => {
   const [x1, y1, x2, y2] = rectangle.xyxyn;
-  
+
   // Convert normalized coordinates to image coordinates
   const left = x1 * imageBounds.width;
   const top = y1 * imageBounds.height;
   const right = x2 * imageBounds.width;
   const bottom = y2 * imageBounds.height;
-  
-  return point.x >= left && point.x <= right && 
-         point.y >= top && point.y <= bottom;
+
+  return point.x >= left && point.x <= right && point.y >= top && point.y <= bottom;
 };
 
 /**
  * Finds the topmost rectangle at a given point.
  * Searches in reverse order (newest/topmost first).
- * 
+ *
  * @param point - Point to check
  * @param rectangles - Array of rectangles to search
  * @param imageBounds - Image bounds for coordinate conversion
  * @returns The rectangle at the point, or null if none found
- * 
+ *
  * @example
  * ```typescript
  * const rect = getRectangleAtPoint(
@@ -195,12 +191,12 @@ export const getRectangleAtPoint = (
 
 /**
  * Updates the smoke type of a specific rectangle.
- * 
+ *
  * @param rectangles - Array of rectangles
  * @param rectangleId - ID of rectangle to update
  * @param newSmokeType - New smoke type to assign
  * @returns New array with updated rectangle
- * 
+ *
  * @example
  * ```typescript
  * const updated = updateRectangleSmokeType(
@@ -215,20 +211,18 @@ export const updateRectangleSmokeType = (
   rectangleId: string,
   newSmokeType: SmokeType
 ): DrawnRectangle[] => {
-  return rectangles.map(rect => 
-    rect.id === rectangleId 
-      ? { ...rect, smokeType: newSmokeType }
-      : rect
+  return rectangles.map(rect =>
+    rect.id === rectangleId ? { ...rect, smokeType: newSmokeType } : rect
   );
 };
 
 /**
  * Removes a rectangle by ID.
- * 
+ *
  * @param rectangles - Array of rectangles
  * @param rectangleId - ID of rectangle to remove
  * @returns New array without the specified rectangle
- * 
+ *
  * @example
  * ```typescript
  * const remaining = removeRectangle(rectangles, 'rect-123');
@@ -243,13 +237,13 @@ export const removeRectangle = (
 
 /**
  * Converts API predictions to drawn rectangles.
- * 
+ *
  * @param predictions - Array of algorithm predictions with xyxyn coordinates
  * @param smokeType - Smoke type to assign to imported rectangles
  * @param existingRectangles - Optional array of existing rectangles to check for duplicates
  * @param duplicateThreshold - Threshold for considering rectangles duplicate (default: 0.05)
  * @returns Array of new DrawnRectangle objects
- * 
+ *
  * @example
  * ```typescript
  * const imported = importPredictionsAsRectangles(
@@ -266,33 +260,33 @@ export const importPredictionsAsRectangles = (
   duplicateThreshold: number = 0.05
 ): DrawnRectangle[] => {
   const newRectangles: DrawnRectangle[] = [];
-  
+
   predictions.forEach((pred, index) => {
     // Check for duplicates
-    const isDuplicate = existingRectangles.some(existing => 
+    const isDuplicate = existingRectangles.some(existing =>
       areBoundingBoxesSimilar(existing.xyxyn, pred.xyxyn, duplicateThreshold)
     );
-    
+
     if (!isDuplicate) {
       newRectangles.push({
         id: `imported-${Date.now()}-${index}`,
         xyxyn: pred.xyxyn,
-        smokeType
+        smokeType,
       });
     }
   });
-  
+
   return newRectangles;
 };
 
 /**
  * Checks if two bounding boxes are similar within a threshold.
- * 
+ *
  * @param bbox1 - First bounding box
  * @param bbox2 - Second bounding box
  * @param threshold - Similarity threshold (default: 0.05)
  * @returns True if bounding boxes are similar
- * 
+ *
  * @example
  * ```typescript
  * const similar = areBoundingBoxesSimilar(
@@ -309,19 +303,21 @@ export const areBoundingBoxesSimilar = (
 ): boolean => {
   const [x1_1, y1_1, x2_1, y2_1] = bbox1;
   const [x1_2, y1_2, x2_2, y2_2] = bbox2;
-  
-  return Math.abs(x1_1 - x1_2) < threshold &&
-         Math.abs(y1_1 - y1_2) < threshold &&
-         Math.abs(x2_1 - x2_2) < threshold &&
-         Math.abs(y2_1 - y2_2) < threshold;
+
+  return (
+    Math.abs(x1_1 - x1_2) < threshold &&
+    Math.abs(y1_1 - y1_2) < threshold &&
+    Math.abs(x2_1 - x2_2) < threshold &&
+    Math.abs(y2_1 - y2_2) < threshold
+  );
 };
 
 /**
  * Calculates drawing statistics.
- * 
+ *
  * @param rectangles - Array of drawn rectangles
  * @returns Statistics object with counts by smoke type
- * 
+ *
  * @example
  * ```typescript
  * const stats = calculateDrawingStats(rectangles);
@@ -333,12 +329,12 @@ export const calculateDrawingStats = (rectangles: DrawnRectangle[]) => {
     total: rectangles.length,
     wildfire: 0,
     industrial: 0,
-    other: 0
+    other: 0,
   };
-  
+
   rectangles.forEach(rect => {
     stats[rect.smokeType]++;
   });
-  
+
   return stats;
 };

@@ -17,19 +17,19 @@ export default function SequenceReviewer({
   missedSmokeReview,
   onMissedSmokeReviewChange,
   annotationLoading = false,
-  className = ''
+  className = '',
 }: SequenceReviewerProps) {
   // Playback state
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(2);
-  
+
   const playIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const hasAutoStarted = useRef(false);
 
   // Fetch sequence detections
   const { data: detections, isLoading, error } = useSequenceDetections(sequenceId);
-  
+
   // Track if images are preloaded (we'll get this from the player)
   const [imagesPreloaded, setImagesPreloaded] = useState(false);
 
@@ -120,7 +120,9 @@ export default function SequenceReviewer({
           <div className="flex items-center space-x-3">
             <div className="animate-spin w-6 h-6 border-2 border-primary-600 border-t-transparent rounded-full"></div>
             <span className="text-sm text-gray-600">
-              {annotationLoading ? 'Loading sequence annotation...' : 'Loading sequence detections...'}
+              {annotationLoading
+                ? 'Loading sequence annotation...'
+                : 'Loading sequence detections...'}
             </span>
           </div>
         </div>
@@ -133,15 +135,11 @@ export default function SequenceReviewer({
       <div className={`bg-white border border-gray-200 rounded-lg p-8 ${className}`}>
         <div className="text-center">
           <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
-          <p className="text-lg font-medium text-gray-900 mb-2">
-            Failed to Load Sequence
-          </p>
+          <p className="text-lg font-medium text-gray-900 mb-2">Failed to Load Sequence</p>
           <p className="text-gray-600">
             Could not fetch detections for this sequence. Please try again.
           </p>
-          <p className="text-xs text-red-600 mt-2">
-            Error: {String(error)}
-          </p>
+          <p className="text-xs text-red-600 mt-2">Error: {String(error)}</p>
         </div>
       </div>
     );
@@ -152,9 +150,7 @@ export default function SequenceReviewer({
       <div className={`bg-white border border-gray-200 rounded-lg p-8 ${className}`}>
         <div className="text-center">
           <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-          <p className="text-lg font-medium text-gray-900 mb-2">
-            No Detections Found
-          </p>
+          <p className="text-lg font-medium text-gray-900 mb-2">No Detections Found</p>
           <p className="text-gray-600">
             This sequence doesn't contain any detections to review for missed smoke.
           </p>

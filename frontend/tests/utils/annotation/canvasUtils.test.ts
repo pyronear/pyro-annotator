@@ -14,7 +14,6 @@ import {
   getMouseRelativeToElement,
   isValidDrawingSize,
   getCanvasScale,
-  ZoomConfig,
   PanConstraints
 } from '@/utils/annotation/canvasUtils';
 

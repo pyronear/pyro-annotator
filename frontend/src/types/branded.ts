@@ -1,20 +1,20 @@
 /**
  * Branded types for enhanced type safety in the PyroAnnotator frontend
- * 
+ *
  * These types prevent accidental mixing of different ID types and provide
  * better TypeScript intellisense and error detection at compile time.
  */
 
 /**
  * Generic branded type utility
- * 
+ *
  * Creates a unique type that wraps a base type with a brand symbol,
  * preventing accidental assignments between different branded types.
- * 
+ *
  * @example
  * type UserId = Branded<number, 'UserId'>;
  * type PostId = Branded<number, 'PostId'>;
- * 
+ *
  * const userId: UserId = 123 as UserId;
  * const postId: PostId = 456 as PostId;
  * // postId = userId; // TypeScript error!
@@ -86,7 +86,7 @@ export type NormalizedCoordinates = Branded<{ x: number; y: number }, 'Normalize
 export type Latitude = Branded<number, 'Latitude'>;
 
 /**
- * Geographic longitude (-180 to 180)  
+ * Geographic longitude (-180 to 180)
  */
 export type Longitude = Branded<number, 'Longitude'>;
 
@@ -199,15 +199,15 @@ export const create = {
    */
   normalizedBbox: (coords: [number, number, number, number]): NormalizedBbox => {
     const [x1, y1, x2, y2] = coords;
-    
+
     if (!coords.every(c => typeof c === 'number' && c >= 0 && c <= 1)) {
       throw new Error('NormalizedBbox coordinates must be between 0 and 1');
     }
-    
+
     if (x1 >= x2 || y1 >= y2) {
       throw new Error('NormalizedBbox must have positive dimensions');
     }
-    
+
     return coords as NormalizedBbox;
   },
 
@@ -270,12 +270,12 @@ export const create = {
     if (!dateRegex.test(value)) {
       throw new Error('DateInputString must be in YYYY-MM-DD format');
     }
-    
+
     const date = new Date(value);
     if (isNaN(date.getTime())) {
       throw new Error('DateInputString must represent a valid date');
     }
-    
+
     return value as DateInputString;
   },
 
@@ -358,11 +358,11 @@ export const is = {
 
 /**
  * Extracts the underlying value from a branded type
- * 
+ *
  * @pure Function extracts value without changing it
  * @param brandedValue - Branded type value
  * @returns Underlying primitive value
- * 
+ *
  * @example
  * const id: SequenceId = create.sequenceId(123);
  * const rawId: number = unwrap(id); // 123
@@ -373,12 +373,12 @@ export const unwrap = <T>(brandedValue: Branded<T, any>): T => {
 
 /**
  * Maps over an array of branded values
- * 
+ *
  * @pure Function transforms branded array
  * @param values - Array of branded values
  * @param mapper - Transformation function
  * @returns Array of transformed values
- * 
+ *
  * @example
  * const ids: SequenceId[] = [create.sequenceId(1), create.sequenceId(2)];
  * const doubled = mapBranded(ids, id => unwrap(id) * 2);
@@ -392,12 +392,12 @@ export const mapBranded = <T, Brand extends string, U>(
 
 /**
  * Filters an array of branded values
- * 
+ *
  * @pure Function filters branded array
  * @param values - Array of branded values
  * @param predicate - Filter predicate
  * @returns Filtered array of branded values
- * 
+ *
  * @example
  * const ids: SequenceId[] = [create.sequenceId(1), create.sequenceId(2), create.sequenceId(3)];
  * const evenIds = filterBranded(ids, id => unwrap(id) % 2 === 0);
@@ -433,11 +433,11 @@ export interface BrandedFieldConfig<T> {
 
 /**
  * Creates a typed form configuration
- * 
+ *
  * @pure Function creates form config with branded type support
  * @param config - Field configurations
  * @returns Typed form configuration
- * 
+ *
  * @example
  * const formConfig = createBrandedForm({
  *   sequenceId: {

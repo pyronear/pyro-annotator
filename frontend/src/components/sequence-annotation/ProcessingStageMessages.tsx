@@ -11,10 +11,11 @@ interface ProcessingStageMessagesProps {
   annotation: SequenceAnnotation;
 }
 
-export const ProcessingStageMessages: React.FC<ProcessingStageMessagesProps> = ({
-  annotation
-}) => {
-  if (annotation.processing_stage === 'ready_to_annotate' || annotation.processing_stage === 'annotated') {
+export const ProcessingStageMessages: React.FC<ProcessingStageMessagesProps> = ({ annotation }) => {
+  if (
+    annotation.processing_stage === 'ready_to_annotate' ||
+    annotation.processing_stage === 'annotated'
+  ) {
     return null;
   }
 
@@ -23,12 +24,10 @@ export const ProcessingStageMessages: React.FC<ProcessingStageMessagesProps> = (
       <div className="flex">
         <AlertCircle className="w-5 h-5 text-yellow-400" />
         <div className="ml-3">
-          <p className="text-sm font-medium text-yellow-800">
-            Processing Stage Notice
-          </p>
+          <p className="text-sm font-medium text-yellow-800">Processing Stage Notice</p>
           <p className="text-sm text-yellow-700 mt-1">
-            This annotation is currently in "{annotation.processing_stage}" stage. 
-            Typically annotations should be in "ready_to_annotate" stage before editing.
+            This annotation is currently in "{annotation.processing_stage}" stage. Typically
+            annotations should be in "ready_to_annotate" stage before editing.
           </p>
         </div>
       </div>

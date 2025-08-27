@@ -12,9 +12,7 @@ import {
   calculateAnnotationCompleteness,
   validateRectangleOverlaps,
   calculateBoundingBoxOverlap,
-  validateWorkflowReadiness,
-  ValidationResult,
-  AnnotationCompleteness
+  validateWorkflowReadiness
 } from '@/utils/annotation/validationUtils';
 import { DrawnRectangle } from '@/utils/annotation/drawingUtils';
 import { Detection, DetectionAnnotation } from '@/types/api';

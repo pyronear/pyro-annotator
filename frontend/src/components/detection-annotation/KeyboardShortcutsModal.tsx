@@ -3,7 +3,18 @@
  * Shows available keyboard shortcuts with contextual availability.
  */
 
-import { X, Keyboard, Navigation, MousePointer, Square, Trash2, Undo, Upload, CheckCircle, Eye } from 'lucide-react';
+import {
+  X,
+  Keyboard,
+  Navigation,
+  MousePointer,
+  Square,
+  Trash2,
+  Undo,
+  Upload,
+  CheckCircle,
+  Eye,
+} from 'lucide-react';
 
 interface KeyboardShortcutsModalProps {
   isVisible: boolean;
@@ -14,18 +25,20 @@ interface KeyboardShortcutsModalProps {
   isAnnotated: boolean;
 }
 
-const KeyShortcut = ({ 
-  keys, 
-  description, 
-  icon, 
-  disabled = false 
-}: { 
-  keys: string[]; 
-  description: string; 
-  icon?: React.ReactNode; 
+const KeyShortcut = ({
+  keys,
+  description,
+  icon,
+  disabled = false,
+}: {
+  keys: string[];
+  description: string;
+  icon?: React.ReactNode;
   disabled?: boolean;
 }) => (
-  <div className={`flex items-center space-x-3 py-2 px-3 rounded-md ${disabled ? 'opacity-50' : 'hover:bg-white/5'}`}>
+  <div
+    className={`flex items-center space-x-3 py-2 px-3 rounded-md ${disabled ? 'opacity-50' : 'hover:bg-white/5'}`}
+  >
     <div className="flex items-center space-x-1 min-w-20">
       {keys.map((key, index) => (
         <span key={index}>
@@ -43,13 +56,13 @@ const KeyShortcut = ({
   </div>
 );
 
-export function KeyboardShortcutsModal({ 
-  isVisible, 
-  onClose, 
-  isDrawMode, 
-  hasRectangles, 
-  hasUndoHistory, 
-  isAnnotated 
+export function KeyboardShortcutsModal({
+  isVisible,
+  onClose,
+  isDrawMode,
+  hasRectangles,
+  hasUndoHistory,
+  isAnnotated,
 }: KeyboardShortcutsModalProps) {
   if (!isVisible) return null;
 
@@ -76,13 +89,13 @@ export function KeyboardShortcutsModal({
   };
 
   return (
-    <div 
+    <div
       className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100]"
       onClick={handleOverlayClick}
       onKeyDown={handleKeyDown}
       tabIndex={-1}
     >
-      <div 
+      <div
         className="bg-gray-900 border border-gray-700 rounded-lg p-6 max-w-md w-full mx-4 max-h-96 overflow-y-auto"
         onClick={handleContentClick}
       >
@@ -92,7 +105,7 @@ export function KeyboardShortcutsModal({
             <h3 className="text-lg font-semibold text-white">Keyboard Shortcuts</h3>
           </div>
           <button
-            onClick={(e) => {
+            onClick={e => {
               e.preventDefault();
               e.stopPropagation();
               onClose();
@@ -111,9 +124,9 @@ export function KeyboardShortcutsModal({
               <span>Navigation</span>
             </h4>
             <div className="space-y-1">
-              <KeyShortcut keys={["←"]} description="Previous detection" />
-              <KeyShortcut keys={["→"]} description="Next detection" />
-              <KeyShortcut keys={["Esc"]} description="Close modal" />
+              <KeyShortcut keys={['←']} description="Previous detection" />
+              <KeyShortcut keys={['→']} description="Next detection" />
+              <KeyShortcut keys={['Esc']} description="Close modal" />
             </div>
           </div>
 
@@ -124,26 +137,38 @@ export function KeyboardShortcutsModal({
               <span>Drawing Mode</span>
             </h4>
             <div className="space-y-1">
-              <KeyShortcut 
-                keys={["D"]} 
-                description={isDrawMode ? "Switch to selection mode" : "Switch to drawing mode"}
-                icon={isDrawMode ? <MousePointer className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+              <KeyShortcut
+                keys={['D']}
+                description={isDrawMode ? 'Switch to selection mode' : 'Switch to drawing mode'}
+                icon={
+                  isDrawMode ? <MousePointer className="w-4 h-4" /> : <Square className="w-4 h-4" />
+                }
               />
-              <KeyShortcut keys={["V"]} description="Toggle AI predictions" icon={<Eye className="w-4 h-4" />} />
-              <KeyShortcut 
-                keys={["Delete", "X"]} 
-                description={hasRectangles ? "Delete selected/all rectangles" : "No rectangles to delete"} 
+              <KeyShortcut
+                keys={['V']}
+                description="Toggle AI predictions"
+                icon={<Eye className="w-4 h-4" />}
+              />
+              <KeyShortcut
+                keys={['Delete', 'X']}
+                description={
+                  hasRectangles ? 'Delete selected/all rectangles' : 'No rectangles to delete'
+                }
                 icon={<Trash2 className="w-4 h-4" />}
                 disabled={!hasRectangles}
               />
-              <KeyShortcut 
-                keys={["Ctrl", "Z"]} 
-                description="Undo last action" 
+              <KeyShortcut
+                keys={['Ctrl', 'Z']}
+                description="Undo last action"
                 icon={<Undo className="w-4 h-4" />}
                 disabled={!hasUndoHistory}
               />
-              <KeyShortcut keys={["R"]} description="Reset zoom" />
-              <KeyShortcut keys={["U"]} description="Import AI predictions" icon={<Upload className="w-4 h-4" />} />
+              <KeyShortcut keys={['R']} description="Reset zoom" />
+              <KeyShortcut
+                keys={['U']}
+                description="Import AI predictions"
+                icon={<Upload className="w-4 h-4" />}
+              />
             </div>
           </div>
 
@@ -151,9 +176,9 @@ export function KeyboardShortcutsModal({
           <div>
             <h4 className="text-sm font-medium text-primary-300 mb-2">Smoke Classification</h4>
             <div className="space-y-1">
-              <KeyShortcut keys={["1", "W"]} description="🔥 Wildfire smoke" />
-              <KeyShortcut keys={["2", "I"]} description="🏭 Industrial smoke" />
-              <KeyShortcut keys={["3", "O"]} description="💨 Other smoke" />
+              <KeyShortcut keys={['1', 'W']} description="🔥 Wildfire smoke" />
+              <KeyShortcut keys={['2', 'I']} description="🏭 Industrial smoke" />
+              <KeyShortcut keys={['3', 'O']} description="💨 Other smoke" />
             </div>
           </div>
 
@@ -161,9 +186,9 @@ export function KeyboardShortcutsModal({
           <div>
             <h4 className="text-sm font-medium text-primary-300 mb-2">Actions</h4>
             <div className="space-y-1">
-              <KeyShortcut 
-                keys={["Space"]} 
-                description={isAnnotated ? "Update annotation" : "Submit annotation"} 
+              <KeyShortcut
+                keys={['Space']}
+                description={isAnnotated ? 'Update annotation' : 'Submit annotation'}
                 icon={<CheckCircle className="w-4 h-4" />}
               />
             </div>
@@ -172,7 +197,8 @@ export function KeyboardShortcutsModal({
 
         <div className="mt-6 pt-4 border-t border-gray-700">
           <p className="text-xs text-gray-400 text-center">
-            Press <kbd className="px-1 py-0.5 text-xs bg-gray-700 rounded">?</kbd> or <kbd className="px-1 py-0.5 text-xs bg-gray-700 rounded">H</kbd> to toggle shortcuts
+            Press <kbd className="px-1 py-0.5 text-xs bg-gray-700 rounded">?</kbd> or{' '}
+            <kbd className="px-1 py-0.5 text-xs bg-gray-700 rounded">H</kbd> to toggle shortcuts
           </p>
         </div>
       </div>

@@ -84,7 +84,7 @@ export function validatePassword(password: string): PasswordStrength {
     hasUppercase: /[A-Z]/.test(password),
     hasLowercase: /[a-z]/.test(password),
     hasNumbers: /[0-9]/.test(password),
-    hasSymbols: /[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]/.test(password),
+    hasSymbols: /[!@#$%^&*()_+\-=[\]{}|;:,.<>?]/.test(password),
   };
 
   const metRequirements = Object.values(requirements).filter(Boolean).length;
@@ -136,7 +136,7 @@ export function getPasswordRequirements(): string[] {
   return [
     'At least 8 characters long',
     'Include uppercase letters (A-Z)',
-    'Include lowercase letters (a-z)', 
+    'Include lowercase letters (a-z)',
     'Include numbers (0-9)',
     'Include symbols (!@#$%^&*)',
   ];

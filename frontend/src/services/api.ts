@@ -21,7 +21,7 @@ import {
   SequenceWithAnnotation,
   SequenceAnnotationFilters,
   DetectionAnnotationFilters,
-  ApiError
+  ApiError,
 } from '@/types/api';
 import { API_ENDPOINTS } from '@/utils/constants';
 
@@ -35,17 +35,17 @@ class ApiClient {
         'Content-Type': 'application/json',
       },
       timeout: 30000,
-      paramsSerializer: (params) => {
+      paramsSerializer: params => {
         return qs.stringify(params, {
-          arrayFormat: 'repeat',  // Convert arrays to repeated params: ?false_positive_types=antenna&false_positive_types=building
-          skipNulls: true         // Skip null/undefined values
+          arrayFormat: 'repeat', // Convert arrays to repeated params: ?false_positive_types=antenna&false_positive_types=building
+          skipNulls: true, // Skip null/undefined values
         });
       },
     });
 
     // Request interceptor to add authentication token
     this.client.interceptors.request.use(
-      (config) => {
+      config => {
         // Get token from localStorage (where zustand persists it)
         const authStore = localStorage.getItem('auth-store');
         if (authStore) {
@@ -61,13 +61,13 @@ class ApiClient {
         }
         return config;
       },
-      (error) => Promise.reject(error)
+      error => Promise.reject(error)
     );
 
     // Response interceptor
     this.client.interceptors.response.use(
-      (response) => response,
-      (error) => {
+      response => response,
+      error => {
         // Handle 401 errors by triggering logout
         if (error.response?.status === 401) {
           // Clear auth store and redirect to login
@@ -85,9 +85,12 @@ class ApiClient {
 
   // Sequences
   async getSequences(filters: SequenceFilters = {}): Promise<PaginatedResponse<Sequence>> {
-    const response: AxiosResponse<PaginatedResponse<Sequence>> = await this.client.get(API_ENDPOINTS.SEQUENCES, {
-      params: filters,
-    });
+    const response: AxiosResponse<PaginatedResponse<Sequence>> = await this.client.get(
+      API_ENDPOINTS.SEQUENCES,
+      {
+        params: filters,
+      }
+    );
     return response.data;
   }
 
@@ -108,7 +111,7 @@ class ApiClient {
         order_by: 'recorded_at',
         order_direction: 'asc',
         page: page,
-        size: 100 // Max allowed by backend
+        size: 100, // Max allowed by backend
       });
 
       allDetections.push(...response.items);
@@ -121,8 +124,13 @@ class ApiClient {
     return allDetections;
   }
 
-  async createSequence(sequence: Omit<Sequence, 'id' | 'created_at' | 'updated_at'>): Promise<Sequence> {
-    const response: AxiosResponse<Sequence> = await this.client.post(API_ENDPOINTS.SEQUENCES, sequence);
+  async createSequence(
+    sequence: Omit<Sequence, 'id' | 'created_at' | 'updated_at'>
+  ): Promise<Sequence> {
+    const response: AxiosResponse<Sequence> = await this.client.post(
+      API_ENDPOINTS.SEQUENCES,
+      sequence
+    );
     return response.data;
   }
 
@@ -131,15 +139,18 @@ class ApiClient {
   }
 
   // Enhanced method to get sequences with annotations
-  async getSequencesWithAnnotations(filters: ExtendedSequenceFilters = {}): Promise<PaginatedResponse<SequenceWithAnnotation>> {
+  async getSequencesWithAnnotations(
+    filters: ExtendedSequenceFilters = {}
+  ): Promise<PaginatedResponse<SequenceWithAnnotation>> {
     const enhancedFilters = {
       ...filters,
       include_annotation: true, // Always include annotation data
     };
 
-    const response: AxiosResponse<PaginatedResponse<SequenceWithAnnotation>> = await this.client.get(API_ENDPOINTS.SEQUENCES, {
-      params: enhancedFilters,
-    });
+    const response: AxiosResponse<PaginatedResponse<SequenceWithAnnotation>> =
+      await this.client.get(API_ENDPOINTS.SEQUENCES, {
+        params: enhancedFilters,
+      });
     return response.data;
   }
 
@@ -151,7 +162,9 @@ class ApiClient {
 
   // Organizations
   async getOrganizations(): Promise<Organization[]> {
-    const response: AxiosResponse<Organization[]> = await this.client.get(API_ENDPOINTS.ORGANIZATIONS);
+    const response: AxiosResponse<Organization[]> = await this.client.get(
+      API_ENDPOINTS.ORGANIZATIONS
+    );
     return response.data;
   }
 
@@ -162,25 +175,43 @@ class ApiClient {
   }
 
   // Sequence Annotations
-  async getSequenceAnnotations(filters: SequenceAnnotationFilters = {}): Promise<PaginatedResponse<SequenceAnnotation>> {
-    const response: AxiosResponse<PaginatedResponse<SequenceAnnotation>> = await this.client.get(API_ENDPOINTS.SEQUENCE_ANNOTATIONS, {
-      params: filters,
-    });
+  async getSequenceAnnotations(
+    filters: SequenceAnnotationFilters = {}
+  ): Promise<PaginatedResponse<SequenceAnnotation>> {
+    const response: AxiosResponse<PaginatedResponse<SequenceAnnotation>> = await this.client.get(
+      API_ENDPOINTS.SEQUENCE_ANNOTATIONS,
+      {
+        params: filters,
+      }
+    );
     return response.data;
   }
 
   async getSequenceAnnotation(id: number): Promise<SequenceAnnotation> {
-    const response: AxiosResponse<SequenceAnnotation> = await this.client.get(`/annotations/sequences/${id}`);
+    const response: AxiosResponse<SequenceAnnotation> = await this.client.get(
+      `/annotations/sequences/${id}`
+    );
     return response.data;
   }
 
-  async createSequenceAnnotation(annotation: Omit<SequenceAnnotation, 'id' | 'created_at' | 'updated_at'>): Promise<SequenceAnnotation> {
-    const response: AxiosResponse<SequenceAnnotation> = await this.client.post(API_ENDPOINTS.SEQUENCE_ANNOTATIONS, annotation);
+  async createSequenceAnnotation(
+    annotation: Omit<SequenceAnnotation, 'id' | 'created_at' | 'updated_at'>
+  ): Promise<SequenceAnnotation> {
+    const response: AxiosResponse<SequenceAnnotation> = await this.client.post(
+      API_ENDPOINTS.SEQUENCE_ANNOTATIONS,
+      annotation
+    );
     return response.data;
   }
 
-  async updateSequenceAnnotation(id: number, updates: Partial<SequenceAnnotation>): Promise<SequenceAnnotation> {
-    const response: AxiosResponse<SequenceAnnotation> = await this.client.patch(`/annotations/sequences/${id}`, updates);
+  async updateSequenceAnnotation(
+    id: number,
+    updates: Partial<SequenceAnnotation>
+  ): Promise<SequenceAnnotation> {
+    const response: AxiosResponse<SequenceAnnotation> = await this.client.patch(
+      `/annotations/sequences/${id}`,
+      updates
+    );
     return response.data;
   }
 
@@ -188,12 +219,22 @@ class ApiClient {
     await this.client.delete(`/annotations/sequences/${id}`);
   }
 
-
   // Detections
-  async getDetections(filters: { sequence_id?: number; order_by?: 'created_at' | 'recorded_at'; order_direction?: 'asc' | 'desc'; page?: number; size?: number } = {}): Promise<PaginatedResponse<Detection>> {
-    const response: AxiosResponse<PaginatedResponse<Detection>> = await this.client.get(API_ENDPOINTS.DETECTIONS, {
-      params: filters,
-    });
+  async getDetections(
+    filters: {
+      sequence_id?: number;
+      order_by?: 'created_at' | 'recorded_at';
+      order_direction?: 'asc' | 'desc';
+      page?: number;
+      size?: number;
+    } = {}
+  ): Promise<PaginatedResponse<Detection>> {
+    const response: AxiosResponse<PaginatedResponse<Detection>> = await this.client.get(
+      API_ENDPOINTS.DETECTIONS,
+      {
+        params: filters,
+      }
+    );
     return response.data;
   }
 
@@ -208,36 +249,55 @@ class ApiClient {
   }
 
   // Detection Annotations (for future use)
-  async getDetectionAnnotations(filters: DetectionAnnotationFilters = {}): Promise<PaginatedResponse<DetectionAnnotation>> {
-    const response: AxiosResponse<PaginatedResponse<DetectionAnnotation>> = await this.client.get(API_ENDPOINTS.DETECTION_ANNOTATIONS, {
-      params: filters,
-    });
+  async getDetectionAnnotations(
+    filters: DetectionAnnotationFilters = {}
+  ): Promise<PaginatedResponse<DetectionAnnotation>> {
+    const response: AxiosResponse<PaginatedResponse<DetectionAnnotation>> = await this.client.get(
+      API_ENDPOINTS.DETECTION_ANNOTATIONS,
+      {
+        params: filters,
+      }
+    );
     return response.data;
   }
 
   async getDetectionAnnotation(id: number): Promise<DetectionAnnotation> {
-    const response: AxiosResponse<DetectionAnnotation> = await this.client.get(`/annotations/detections/${id}`);
+    const response: AxiosResponse<DetectionAnnotation> = await this.client.get(
+      `/annotations/detections/${id}`
+    );
     return response.data;
   }
 
-  async createDetectionAnnotation(annotation: Omit<DetectionAnnotation, 'id' | 'created_at' | 'updated_at'>): Promise<DetectionAnnotation> {
+  async createDetectionAnnotation(
+    annotation: Omit<DetectionAnnotation, 'id' | 'created_at' | 'updated_at'>
+  ): Promise<DetectionAnnotation> {
     // Backend expects form data, not JSON
     const formData = new FormData();
     formData.append('detection_id', annotation.detection_id.toString());
     formData.append('annotation', JSON.stringify(annotation.annotation));
     formData.append('processing_stage', annotation.processing_stage);
 
-    const response: AxiosResponse<DetectionAnnotation> = await this.client.post(API_ENDPOINTS.DETECTION_ANNOTATIONS, formData, {
-      headers: {
-        // Remove Content-Type to let browser set multipart/form-data with boundary
-        'Content-Type': undefined,
-      },
-    });
+    const response: AxiosResponse<DetectionAnnotation> = await this.client.post(
+      API_ENDPOINTS.DETECTION_ANNOTATIONS,
+      formData,
+      {
+        headers: {
+          // Remove Content-Type to let browser set multipart/form-data with boundary
+          'Content-Type': undefined,
+        },
+      }
+    );
     return response.data;
   }
 
-  async updateDetectionAnnotation(id: number, updates: Partial<DetectionAnnotation>): Promise<DetectionAnnotation> {
-    const response: AxiosResponse<DetectionAnnotation> = await this.client.patch(`/annotations/detections/${id}`, updates);
+  async updateDetectionAnnotation(
+    id: number,
+    updates: Partial<DetectionAnnotation>
+  ): Promise<DetectionAnnotation> {
+    const response: AxiosResponse<DetectionAnnotation> = await this.client.patch(
+      `/annotations/detections/${id}`,
+      updates
+    );
     return response.data;
   }
 
@@ -247,7 +307,10 @@ class ApiClient {
 
   // Authentication
   async login(credentials: LoginRequest): Promise<LoginResponse> {
-    const response: AxiosResponse<LoginResponse> = await this.client.post(API_ENDPOINTS.AUTH_LOGIN, credentials);
+    const response: AxiosResponse<LoginResponse> = await this.client.post(
+      API_ENDPOINTS.AUTH_LOGIN,
+      credentials
+    );
     return response.data;
   }
 
@@ -259,9 +322,12 @@ class ApiClient {
 
   // Users
   async getUsers(filters: UserFilters = {}): Promise<PaginatedResponse<User>> {
-    const response: AxiosResponse<PaginatedResponse<User>> = await this.client.get(API_ENDPOINTS.USERS, {
-      params: filters,
-    });
+    const response: AxiosResponse<PaginatedResponse<User>> = await this.client.get(
+      API_ENDPOINTS.USERS,
+      {
+        params: filters,
+      }
+    );
     return response.data;
   }
 
@@ -281,7 +347,10 @@ class ApiClient {
   }
 
   async updateUserPassword(id: number, passwordUpdate: UserPasswordUpdate): Promise<User> {
-    const response: AxiosResponse<User> = await this.client.patch(`/users/${id}/password`, passwordUpdate);
+    const response: AxiosResponse<User> = await this.client.patch(
+      `/users/${id}/password`,
+      passwordUpdate
+    );
     return response.data;
   }
 
@@ -292,7 +361,9 @@ class ApiClient {
   // Health check
   async healthCheck(): Promise<{ status: string }> {
     // Note: health check is at /status, not in /api/v1
-    const response = await axios.get(`${this.client.defaults.baseURL?.replace('/api/v1', '')}${API_ENDPOINTS.STATUS}`);
+    const response = await axios.get(
+      `${this.client.defaults.baseURL?.replace('/api/v1', '')}${API_ENDPOINTS.STATUS}`
+    );
     return response.data;
   }
 }

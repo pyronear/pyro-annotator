@@ -1,9 +1,9 @@
 /**
  * Navigation utilities for annotation interface.
- * 
+ *
  * This module handles keyboard navigation and smooth scrolling between detections
  * and the sequence reviewer section in the annotation interface.
- * 
+ *
  * @fileoverview Provides factory functions for creating navigation handlers that
  * manage active detection state and smooth scrolling behavior.
  */
@@ -73,14 +73,14 @@ export const createPreviousDetectionNavigator = (
         const lastIndex = bboxes.length - 1;
         setActiveDetectionIndex(lastIndex);
         setActiveSection('detections');
-        
+
         // Use requestAnimationFrame to ensure DOM is updated before scrolling
         requestAnimationFrame(() => {
           const lastElement = detectionRefs.current[lastIndex];
           if (lastElement) {
             lastElement.scrollIntoView({
               behavior: 'smooth',
-              block: 'center'
+              block: 'center',
             });
           }
         });
@@ -92,13 +92,13 @@ export const createPreviousDetectionNavigator = (
     if (activeSection === 'detections' && activeDetectionIndex === 0) {
       setActiveSection('sequence');
       setActiveDetectionIndex(null);
-      
+
       // Use requestAnimationFrame to ensure DOM is updated before scrolling
       requestAnimationFrame(() => {
         if (sequenceReviewerRef.current) {
           sequenceReviewerRef.current.scrollIntoView({
             behavior: 'smooth',
-            block: 'center'
+            block: 'center',
           });
         }
       });
@@ -109,17 +109,17 @@ export const createPreviousDetectionNavigator = (
     if (activeDetectionIndex === null || activeDetectionIndex <= 0) {
       return;
     }
-    
+
     const previousIndex = activeDetectionIndex - 1;
     setActiveDetectionIndex(previousIndex);
-    
+
     // Use requestAnimationFrame to ensure DOM is updated before scrolling
     requestAnimationFrame(() => {
       const previousElement = detectionRefs.current[previousIndex];
       if (previousElement) {
         previousElement.scrollIntoView({
           behavior: 'smooth',
-          block: 'center'
+          block: 'center',
         });
       }
     });
@@ -143,14 +143,14 @@ export const createNextDetectionNavigator = (
     if (activeSection === 'sequence' && bboxes.length > 0) {
       setActiveSection('detections');
       setActiveDetectionIndex(0);
-      
+
       // Use requestAnimationFrame to ensure DOM is updated before scrolling
       requestAnimationFrame(() => {
         const firstElement = detectionRefs.current[0];
         if (firstElement) {
           firstElement.scrollIntoView({
             behavior: 'smooth',
-            block: 'center'
+            block: 'center',
           });
         }
       });
@@ -166,17 +166,17 @@ export const createNextDetectionNavigator = (
     if (activeDetectionIndex === null || activeDetectionIndex >= bboxes.length - 1) {
       return;
     }
-    
+
     const nextIndex = activeDetectionIndex + 1;
     setActiveDetectionIndex(nextIndex);
-    
+
     // Use requestAnimationFrame to ensure DOM is updated before scrolling
     requestAnimationFrame(() => {
       const nextElement = detectionRefs.current[nextIndex];
       if (nextElement) {
         nextElement.scrollIntoView({
           behavior: 'smooth',
-          block: 'center'
+          block: 'center',
         });
       }
     });

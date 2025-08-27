@@ -13,9 +13,7 @@ import {
   isValidImageSize,
   getImageScale,
   formatImageDimensions,
-  getAspectRatioLabel,
-  ImageDimensions,
-  DisplayDimensions
+  getAspectRatioLabel
 } from '@/utils/annotation/imageUtils';
 
 describe('imageUtils', () => {

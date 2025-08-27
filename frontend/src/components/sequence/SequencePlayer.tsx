@@ -1,5 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
-import { AlertCircle, Eye, Loader2, Info, Play, Pause, SkipBack, SkipForward, RotateCcw, Clock, CheckCircle } from 'lucide-react';
+import {
+  AlertCircle,
+  Eye,
+  Loader2,
+  Info,
+  Play,
+  Pause,
+  SkipBack,
+  SkipForward,
+  RotateCcw,
+  Clock,
+  CheckCircle,
+} from 'lucide-react';
 import { Detection, AlgoPrediction } from '@/types/api';
 import { useImagePreloader } from '@/hooks/useImagePreloader';
 import MissedSmokeInstructionsModal from './MissedSmokeInstructionsModal';
@@ -22,9 +34,9 @@ interface SequencePlayerProps {
   className?: string;
 }
 
-export default function SequencePlayer({ 
-  detections, 
-  currentIndex, 
+export default function SequencePlayer({
+  detections,
+  currentIndex,
   // onIndexChange,
   onPreloadComplete,
   missedSmokeReview,
@@ -37,7 +49,7 @@ export default function SequencePlayer({
   onSeek,
   onSpeedChange,
   onReset,
-  className = '' 
+  className = '',
 }: SequencePlayerProps) {
   const [imageInfo, setImageInfo] = useState<{
     width: number;
@@ -48,37 +60,37 @@ export default function SequencePlayer({
   const [showInstructionsModal, setShowInstructionsModal] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
-  
+
   // Player controls state
   // const [isDragging, setIsDragging] = useState(false);
   const sliderRef = useRef<HTMLInputElement>(null);
-  
+
   // Loop detection for smooth transitions
   const isLoopingBack = useRef(false);
   const prevIndex = useRef(currentIndex);
-  
+
   // Use the image preloader hook
-  const { 
-    currentImage, 
-    // imageCache, 
-    isInitialLoading, 
+  const {
+    currentImage,
+    // imageCache,
+    isInitialLoading,
     // isImageReady,
-    getPreloadProgress 
+    getPreloadProgress,
   } = useImagePreloader(detections, currentIndex, {
     preloadAhead: 10,
-    preloadBehind: 5
+    preloadBehind: 5,
   });
-  
+
   const currentDetection = detections[currentIndex];
   const preloadProgress = getPreloadProgress();
-  
+
   // Trigger preload complete callback when initial loading is done
   useEffect(() => {
     if (!isInitialLoading && onPreloadComplete) {
       onPreloadComplete();
     }
   }, [isInitialLoading, onPreloadComplete]);
-  
+
   // Detect loop-back transitions for smooth handling
   useEffect(() => {
     // Detect loop-back: jumping from near-end to beginning
@@ -89,7 +101,7 @@ export default function SequencePlayer({
     }
     prevIndex.current = currentIndex;
   }, [currentIndex, detections.length]);
-  
+
   // Update image when index changes
   useEffect(() => {
     if (currentImage?.loaded && imgRef.current) {
@@ -99,7 +111,7 @@ export default function SequencePlayer({
       }
     }
   }, [currentImage]);
-  
+
   // Player controls keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -145,7 +157,7 @@ export default function SequencePlayer({
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isPlaying, currentIndex, detections.length, onPlay, onPause, onSeek]);
-  
+
   // Player controls utility functions
   const formatTime = (index: number) => {
     const minutes = Math.floor(index / 60);
@@ -170,106 +182,104 @@ export default function SequencePlayer({
   };
 
   const speedOptions = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2];
-  
+
   if (!currentDetection) {
     return (
       <div className={`flex items-center justify-center bg-gray-100 rounded-lg p-8 ${className}`}>
         <div className="text-center">
           <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-          <p className="text-lg font-medium text-gray-900 mb-2">
-            No Detections Found
-          </p>
-          <p className="text-gray-600">
-            This sequence doesn't contain any detections to review.
-          </p>
+          <p className="text-lg font-medium text-gray-900 mb-2">No Detections Found</p>
+          <p className="text-gray-600">This sequence doesn't contain any detections to review.</p>
         </div>
       </div>
     );
   }
-  
+
   // Handle image load to get dimensions and position using DOM positioning
   const handleImageLoad = () => {
     if (imgRef.current && containerRef.current) {
       // Get actual rendered positions from DOM
       const containerRect = containerRef.current.getBoundingClientRect();
       const imgRect = imgRef.current.getBoundingClientRect();
-      
+
       // Calculate the image position relative to the container
       const offsetX = imgRect.left - containerRect.left;
       const offsetY = imgRect.top - containerRect.top;
-      
+
       // Use the actual rendered dimensions
       const width = imgRect.width;
       const height = imgRect.height;
-      
-      
+
       setImageInfo({
         width: width,
         height: height,
         offsetX: offsetX,
-        offsetY: offsetY
+        offsetY: offsetY,
       });
     }
   };
-  
 
   // Render bounding boxes overlay
   const renderBoundingBoxes = () => {
     if (!imageInfo || !currentDetection?.algo_predictions?.predictions) return null;
-    
-    return currentDetection.algo_predictions.predictions.map((prediction: AlgoPrediction, index: number) => {
-      // Convert normalized coordinates (xyxyn) to pixel coordinates
-      const [x1, y1, x2, y2] = prediction.xyxyn;
-      
-      // Ensure x2 > x1 and y2 > y1
-      if (x2 <= x1 || y2 <= y1) {
-        return null;
-      }
-      
-      // Calculate pixel coordinates relative to the actual image position
-      const left = imageInfo.offsetX + (x1 * imageInfo.width);
-      const top = imageInfo.offsetY + (y1 * imageInfo.height);
-      const width = (x2 - x1) * imageInfo.width;
-      const height = (y2 - y1) * imageInfo.height;
-      
-      return (
-        <div
-          key={`bbox-${currentDetection.id}-${index}`}
-          className="absolute border-2 border-red-500 bg-red-500/20 pointer-events-none"
-          style={{
-            left: `${left}px`,
-            top: `${top}px`,
-            width: `${width}px`,
-            height: `${height}px`,
-          }}
-        >
-          {/* Confidence label */}
-          <div className="absolute -top-6 left-0 bg-red-500 text-white text-xs px-1 py-0.5 rounded whitespace-nowrap">
-            {prediction.class_name} {(prediction.confidence * 100).toFixed(0)}%
+
+    return currentDetection.algo_predictions.predictions
+      .map((prediction: AlgoPrediction, index: number) => {
+        // Convert normalized coordinates (xyxyn) to pixel coordinates
+        const [x1, y1, x2, y2] = prediction.xyxyn;
+
+        // Ensure x2 > x1 and y2 > y1
+        if (x2 <= x1 || y2 <= y1) {
+          return null;
+        }
+
+        // Calculate pixel coordinates relative to the actual image position
+        const left = imageInfo.offsetX + x1 * imageInfo.width;
+        const top = imageInfo.offsetY + y1 * imageInfo.height;
+        const width = (x2 - x1) * imageInfo.width;
+        const height = (y2 - y1) * imageInfo.height;
+
+        return (
+          <div
+            key={`bbox-${currentDetection.id}-${index}`}
+            className="absolute border-2 border-red-500 bg-red-500/20 pointer-events-none"
+            style={{
+              left: `${left}px`,
+              top: `${top}px`,
+              width: `${width}px`,
+              height: `${height}px`,
+            }}
+          >
+            {/* Confidence label */}
+            <div className="absolute -top-6 left-0 bg-red-500 text-white text-xs px-1 py-0.5 rounded whitespace-nowrap">
+              {prediction.class_name} {(prediction.confidence * 100).toFixed(0)}%
+            </div>
           </div>
-        </div>
-      );
-    }).filter(Boolean); // Remove null entries from invalid boxes
+        );
+      })
+      .filter(Boolean); // Remove null entries from invalid boxes
   };
-  
+
   // Only show loading spinner when image isn't loaded
   const showLoadingState = !currentImage?.loaded;
   const hasError = currentImage?.error;
-  
+
   const isCompleted = missedSmokeReview !== null;
 
   return (
-    <div className={`relative rounded-lg overflow-hidden transition-all duration-200 ${
-      isCompleted
-        ? 'border-4 border-green-500 bg-green-50 hover:border-green-600 hover:bg-green-100'
-        : 'border-4 border-orange-400 bg-orange-50 hover:border-orange-500 hover:bg-orange-100 animate-pulse-subtle'
-    } ${className}`}>
+    <div
+      className={`relative rounded-lg overflow-hidden transition-all duration-200 ${
+        isCompleted
+          ? 'border-4 border-green-500 bg-green-50 hover:border-green-600 hover:bg-green-100'
+          : 'border-4 border-orange-400 bg-orange-50 hover:border-orange-500 hover:bg-orange-100 animate-pulse-subtle'
+      } ${className}`}
+    >
       {/* Status Badge Overlay */}
-      <div className={`absolute top-3 right-3 px-2 py-1 rounded-full text-xs font-semibold backdrop-blur-sm z-30 ${
-        isCompleted 
-          ? 'bg-green-600/90 text-white' 
-          : 'bg-orange-500/90 text-white'
-      }`}>
+      <div
+        className={`absolute top-3 right-3 px-2 py-1 rounded-full text-xs font-semibold backdrop-blur-sm z-30 ${
+          isCompleted ? 'bg-green-600/90 text-white' : 'bg-orange-500/90 text-white'
+        }`}
+      >
         {isCompleted ? 'Reviewed' : 'Pending'}
       </div>
 
@@ -278,25 +288,27 @@ export default function SequencePlayer({
         <div className="bg-gray-50 px-4 py-2 border-b border-gray-200">
           <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
             <span>Preloading images...</span>
-            <span>{preloadProgress.loaded} / {preloadProgress.total}</span>
+            <span>
+              {preloadProgress.loaded} / {preloadProgress.total}
+            </span>
           </div>
           <div className="w-full bg-gray-200 rounded-full h-1">
-            <div 
+            <div
               className="bg-primary-600 h-1 rounded-full transition-all duration-300"
               style={{ width: `${preloadProgress.percentage}%` }}
             />
           </div>
         </div>
       )}
-      
+
       {/* Image Display Area */}
-      <div 
+      <div
         ref={containerRef}
         className="relative aspect-video bg-gray-900 flex items-center justify-center"
         style={{
           // GPU acceleration hints
           transform: 'translateZ(0)',
-          willChange: 'contents'
+          willChange: 'contents',
         }}
       >
         {/* Loading State */}
@@ -313,7 +325,7 @@ export default function SequencePlayer({
             </div>
           </div>
         )}
-        
+
         {/* Error State */}
         {hasError && !showLoadingState && (
           <div className="absolute inset-0 flex items-center justify-center bg-red-50 z-30">
@@ -324,7 +336,7 @@ export default function SequencePlayer({
             </div>
           </div>
         )}
-        
+
         {/* Main Image */}
         {currentImage?.url && !hasError && (
           <>
@@ -340,8 +352,7 @@ export default function SequencePlayer({
               }}
               onLoad={handleImageLoad}
             />
-            
-            
+
             {/* Bounding Boxes Overlay */}
             {imageInfo && !showLoadingState && (
               <div className="absolute inset-0 pointer-events-none z-20">
@@ -351,7 +362,6 @@ export default function SequencePlayer({
           </>
         )}
 
-        
         {/* Detection Info & Controls Overlay */}
         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4 z-25">
           <div className="space-y-3 text-white">
@@ -366,7 +376,7 @@ export default function SequencePlayer({
                   {new Date(currentDetection.recorded_at).toLocaleString()}
                 </p>
               </div>
-              
+
               {/* Center - Missed Smoke Review */}
               <div className="flex items-center space-x-4 bg-black/40 px-4 py-2 rounded-lg border border-white/20">
                 <span className="text-sm font-medium text-white">Missed smoke?</span>
@@ -380,7 +390,8 @@ export default function SequencePlayer({
                     className="w-4 h-4 text-orange-500 focus:ring-orange-500 border-gray-300 bg-white/20 mr-2"
                   />
                   <span className="text-sm font-medium text-white">
-                    Yes <kbd className="ml-1 px-1 py-0.5 bg-white/20 rounded text-xs font-mono">Y</kbd>
+                    Yes{' '}
+                    <kbd className="ml-1 px-1 py-0.5 bg-white/20 rounded text-xs font-mono">Y</kbd>
                   </span>
                 </label>
                 <label className="flex items-center cursor-pointer hover:bg-white/10 px-2 py-1 rounded transition-colors">
@@ -393,7 +404,8 @@ export default function SequencePlayer({
                     className="w-4 h-4 text-green-500 focus:ring-green-500 border-gray-300 bg-white/20 mr-2"
                   />
                   <span className="text-sm font-medium text-white">
-                    No <kbd className="ml-1 px-1 py-0.5 bg-white/20 rounded text-xs font-mono">N</kbd>
+                    No{' '}
+                    <kbd className="ml-1 px-1 py-0.5 bg-white/20 rounded text-xs font-mono">N</kbd>
                   </span>
                 </label>
                 <button
@@ -404,12 +416,13 @@ export default function SequencePlayer({
                   <Info className="w-4 h-4 text-white" />
                 </button>
               </div>
-              
+
               {/* Right - Predictions */}
               <div className="flex-1 flex items-center justify-end space-x-2">
                 <Eye className="w-4 h-4" />
                 <span className="text-xs">
-                  {currentDetection.algo_predictions?.predictions?.length || 0} prediction{currentDetection.algo_predictions?.predictions?.length !== 1 ? 's' : ''}
+                  {currentDetection.algo_predictions?.predictions?.length || 0} prediction
+                  {currentDetection.algo_predictions?.predictions?.length !== 1 ? 's' : ''}
                 </span>
               </div>
             </div>
@@ -422,11 +435,7 @@ export default function SequencePlayer({
                 className="flex-shrink-0 p-2 bg-white/20 text-white rounded-full hover:bg-white/30 transition-colors border border-white/30"
                 title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
               >
-                {isPlaying ? (
-                  <Pause className="w-5 h-5" />
-                ) : (
-                  <Play className="w-5 h-5 ml-0.5" />
-                )}
+                {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
               </button>
 
               {/* Frame Navigation */}
@@ -454,7 +463,7 @@ export default function SequencePlayer({
                 <span className="text-xs text-white/80 font-mono min-w-[3rem]">
                   {formatTime(currentIndex)}
                 </span>
-                
+
                 <div className="flex-1 relative">
                   <input
                     ref={sliderRef}
@@ -467,11 +476,11 @@ export default function SequencePlayer({
                     onMouseUp={handleSliderMouseUp}
                     className="w-full h-2 bg-white/20 rounded-lg appearance-none cursor-pointer slider"
                     style={{
-                      background: `linear-gradient(to right, #ffffff 0%, #ffffff ${(currentIndex / (detections.length - 1)) * 100}%, rgba(255,255,255,0.2) ${(currentIndex / (detections.length - 1)) * 100}%, rgba(255,255,255,0.2) 100%)`
+                      background: `linear-gradient(to right, #ffffff 0%, #ffffff ${(currentIndex / (detections.length - 1)) * 100}%, rgba(255,255,255,0.2) ${(currentIndex / (detections.length - 1)) * 100}%, rgba(255,255,255,0.2) 100%)`,
                     }}
                   />
                 </div>
-                
+
                 <span className="text-xs text-white/80 font-mono min-w-[3rem]">
                   {formatTime(detections.length - 1)}
                 </span>
@@ -489,7 +498,7 @@ export default function SequencePlayer({
                 <span className="text-xs text-white/70">Speed:</span>
                 <select
                   value={playbackSpeed}
-                  onChange={(e) => onSpeedChange(parseFloat(e.target.value))}
+                  onChange={e => onSpeedChange(parseFloat(e.target.value))}
                   className="text-xs border border-white/30 rounded px-2 py-1 bg-black/40 text-white"
                 >
                   {speedOptions.map(speed => (
@@ -514,11 +523,13 @@ export default function SequencePlayer({
       </div>
 
       {/* Enhanced Status Bar */}
-      <div className={`px-3 py-2 ${
-        isCompleted 
-          ? 'bg-green-100 border-t border-green-300' 
-          : 'bg-orange-100 border-t border-orange-300'
-      }`}>
+      <div
+        className={`px-3 py-2 ${
+          isCompleted
+            ? 'bg-green-100 border-t border-green-300'
+            : 'bg-orange-100 border-t border-orange-300'
+        }`}
+      >
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
             {isCompleted ? (
@@ -538,7 +549,7 @@ export default function SequencePlayer({
           </div>
         </div>
       </div>
-      
+
       {/* Instructions Modal */}
       <MissedSmokeInstructionsModal
         isOpen={showInstructionsModal}

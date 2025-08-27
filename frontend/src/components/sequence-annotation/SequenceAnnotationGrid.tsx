@@ -7,7 +7,11 @@ import React from 'react';
 import { Keyboard, CheckCircle, AlertCircle } from 'lucide-react';
 import { SequenceBbox, SequenceAnnotation, FalsePositiveType, SmokeType } from '@/types/api';
 import { FALSE_POSITIVE_TYPES, SMOKE_TYPES } from '@/utils/constants';
-import { getClassificationType, shouldShowAsAnnotated, isAnnotationDataValid } from '@/utils/annotation/sequenceUtils';
+import {
+  getClassificationType,
+  shouldShowAsAnnotated,
+  isAnnotationDataValid,
+} from '@/utils/annotation/sequenceUtils';
 import { getSmokeTypeEmoji, formatSmokeType } from '@/utils/modelAccuracy';
 import FullImageSequence from '@/components/annotation/FullImageSequence';
 import CroppedImageSequence from '@/components/annotation/CroppedImageSequence';
@@ -19,10 +23,12 @@ interface SequenceAnnotationGridProps {
   activeDetectionIndex: number;
   primaryClassification: Record<number, 'unselected' | 'smoke' | 'false_positive'>;
   detectionRefs: React.MutableRefObject<(HTMLDivElement | null)[]>;
-  
+
   onDetectionClick: (index: number) => void;
   onBboxChange: (index: number, updatedBbox: SequenceBbox) => void;
-  onPrimaryClassificationChange: (updates: Record<number, 'unselected' | 'smoke' | 'false_positive'>) => void;
+  onPrimaryClassificationChange: (
+    updates: Record<number, 'unselected' | 'smoke' | 'false_positive'>
+  ) => void;
 }
 
 export const SequenceAnnotationGrid: React.FC<SequenceAnnotationGridProps> = ({
@@ -34,31 +40,34 @@ export const SequenceAnnotationGrid: React.FC<SequenceAnnotationGridProps> = ({
   detectionRefs,
   onDetectionClick,
   onBboxChange,
-  onPrimaryClassificationChange
+  onPrimaryClassificationChange,
 }) => {
-  const formatLabel = (type: string) => 
-    type.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
-  
+  const formatLabel = (type: string) =>
+    type
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+
   // Get the keyboard shortcut for false positive type
   const getKeyForType = (type: string) => {
     const keyMap: Record<string, string> = {
-      'antenna': 'A',
-      'building': 'B', 
-      'cliff': 'C',
-      'dark': 'D',
-      'dust': 'U',
-      'high_cloud': 'H',
-      'low_cloud': 'L',
-      'lens_flare': 'G',
-      'lens_droplet': 'P',
-      'light': 'I',
-      'rain': 'R',
-      'trail': 'T',
-      'road': 'O',
-      'sky': 'K',
-      'tree': 'E',
-      'water_body': 'W',
-      'other': 'X',
+      antenna: 'A',
+      building: 'B',
+      cliff: 'C',
+      dark: 'D',
+      dust: 'U',
+      high_cloud: 'H',
+      low_cloud: 'L',
+      lens_flare: 'G',
+      lens_droplet: 'P',
+      light: 'I',
+      rain: 'R',
+      trail: 'T',
+      road: 'O',
+      sky: 'K',
+      tree: 'E',
+      water_body: 'W',
+      other: 'X',
     };
     return keyMap[type];
   };
@@ -68,34 +77,32 @@ export const SequenceAnnotationGrid: React.FC<SequenceAnnotationGridProps> = ({
       {bboxes.map((bbox, index) => {
         const isActive = activeDetectionIndex === index;
         const isAnnotated = shouldShowAsAnnotated(bbox, annotation?.processing_stage || '');
-        
+
         return (
-          <div 
-            key={index} 
-            ref={(el) => detectionRefs.current[index] = el}
+          <div
+            key={index}
+            ref={el => (detectionRefs.current[index] = el)}
             className={`relative rounded-lg cursor-pointer transition-all duration-200 ${
-              isActive 
-                ? 'border-4 border-blue-500 ring-2 ring-blue-200 bg-blue-50' 
+              isActive
+                ? 'border-4 border-blue-500 ring-2 ring-blue-200 bg-blue-50'
                 : isAnnotated
-                ? 'border-4 border-green-500 bg-green-50 hover:border-green-600 hover:bg-green-100'
-                : 'border-4 border-orange-400 bg-orange-50 hover:border-orange-500 hover:bg-orange-100 animate-pulse-subtle'
+                  ? 'border-4 border-green-500 bg-green-50 hover:border-green-600 hover:bg-green-100'
+                  : 'border-4 border-orange-400 bg-orange-50 hover:border-orange-500 hover:bg-orange-100 animate-pulse-subtle'
             } p-6`}
             onClick={() => onDetectionClick(index)}
           >
             {/* Status Badge Overlay */}
-            <div className={`absolute top-3 right-3 px-2 py-1 rounded-full text-xs font-semibold backdrop-blur-sm ${
-              isAnnotated 
-                ? 'bg-green-600/90 text-white' 
-                : 'bg-orange-500/90 text-white'
-            }`}>
+            <div
+              className={`absolute top-3 right-3 px-2 py-1 rounded-full text-xs font-semibold backdrop-blur-sm ${
+                isAnnotated ? 'bg-green-600/90 text-white' : 'bg-orange-500/90 text-white'
+              }`}
+            >
               {isAnnotated ? 'Reviewed' : 'Pending'}
             </div>
 
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center space-x-3">
-                <h4 className="text-lg font-medium text-gray-900">
-                  Detection {index + 1}
-                </h4>
+                <h4 className="text-lg font-medium text-gray-900">Detection {index + 1}</h4>
                 {isActive && (
                   <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
                     <Keyboard className="w-3 h-3 mr-1" />
@@ -107,18 +114,20 @@ export const SequenceAnnotationGrid: React.FC<SequenceAnnotationGridProps> = ({
                 {bbox.bboxes.length} bbox{bbox.bboxes.length !== 1 ? 'es' : ''}
               </span>
             </div>
-            
+
             {/* Visual Content - Image Sequences */}
             <div className="space-y-6 mb-8">
               {/* Image Sequences - Only render when annotation data matches current sequence */}
-              {bbox.bboxes && bbox.bboxes.length > 0 && isAnnotationDataValid(annotation, sequenceId) ? (
+              {bbox.bboxes &&
+              bbox.bboxes.length > 0 &&
+              isAnnotationDataValid(annotation, sequenceId) ? (
                 <>
                   {/* Full Image Sequence */}
                   <div className="text-center">
                     <h5 className="text-sm font-medium text-gray-700 mb-3">Full Sequence</h5>
                     <FullImageSequence bboxes={bbox.bboxes} sequenceId={sequenceId} />
                   </div>
-                  
+
                   {/* Cropped Image Sequence */}
                   <div className="text-center mt-6">
                     <h5 className="text-sm font-medium text-gray-700 mb-3">Cropped View</h5>
@@ -135,7 +144,7 @@ export const SequenceAnnotationGrid: React.FC<SequenceAnnotationGridProps> = ({
                 </div>
               )}
             </div>
-          
+
             {/* Annotation Controls */}
             <div className="space-y-4">
               {/* Step 1: Primary Classification */}
@@ -146,8 +155,12 @@ export const SequenceAnnotationGrid: React.FC<SequenceAnnotationGridProps> = ({
                 <div className="space-y-2">
                   {(() => {
                     // Use the new classification helper
-                    const classificationType = getClassificationType(bbox, index, primaryClassification);
-                    
+                    const classificationType = getClassificationType(
+                      bbox,
+                      index,
+                      primaryClassification
+                    );
+
                     return (
                       <>
                         {/* Smoke Sequence Option */}
@@ -160,9 +173,9 @@ export const SequenceAnnotationGrid: React.FC<SequenceAnnotationGridProps> = ({
                               // Update UI state
                               onPrimaryClassificationChange({
                                 ...primaryClassification,
-                                [index]: 'smoke'
+                                [index]: 'smoke',
                               });
-                              
+
                               // Update backend data
                               const updatedBbox = { ...bbox };
                               updatedBbox.is_smoke = true;
@@ -174,7 +187,9 @@ export const SequenceAnnotationGrid: React.FC<SequenceAnnotationGridProps> = ({
                           />
                           <span className="text-sm text-gray-900">🔥 This is smoke</span>
                           {isActive && (
-                            <kbd className="px-1 py-0.5 bg-gray-200 text-gray-700 rounded text-xs font-mono">S</kbd>
+                            <kbd className="px-1 py-0.5 bg-gray-200 text-gray-700 rounded text-xs font-mono">
+                              S
+                            </kbd>
                           )}
                         </label>
 
@@ -188,9 +203,9 @@ export const SequenceAnnotationGrid: React.FC<SequenceAnnotationGridProps> = ({
                               // Update UI state
                               onPrimaryClassificationChange({
                                 ...primaryClassification,
-                                [index]: 'false_positive'
+                                [index]: 'false_positive',
                               });
-                              
+
                               // Update backend data
                               const updatedBbox = { ...bbox };
                               updatedBbox.is_smoke = false;
@@ -202,7 +217,9 @@ export const SequenceAnnotationGrid: React.FC<SequenceAnnotationGridProps> = ({
                           />
                           <span className="text-sm text-gray-900">❌ This is a false positive</span>
                           {isActive && (
-                            <kbd className="px-1 py-0.5 bg-gray-200 text-gray-700 rounded text-xs font-mono">F</kbd>
+                            <kbd className="px-1 py-0.5 bg-gray-200 text-gray-700 rounded text-xs font-mono">
+                              F
+                            </kbd>
                           )}
                         </label>
                       </>
@@ -214,11 +231,9 @@ export const SequenceAnnotationGrid: React.FC<SequenceAnnotationGridProps> = ({
               {/* Step 2: Smoke Type Selection (shown when smoke is selected) */}
               {getClassificationType(bbox, index, primaryClassification) === 'smoke' && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-3">
-                    Smoke Type
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-3">Smoke Type</label>
                   <div className="space-y-2">
-                    {SMOKE_TYPES.map((smokeType) => (
+                    {SMOKE_TYPES.map(smokeType => (
                       <label key={smokeType} className="flex items-center space-x-3 cursor-pointer">
                         <input
                           type="radio"
@@ -235,13 +250,19 @@ export const SequenceAnnotationGrid: React.FC<SequenceAnnotationGridProps> = ({
                           {getSmokeTypeEmoji(smokeType)} {formatSmokeType(smokeType)}
                         </span>
                         {isActive && smokeType === 'wildfire' && (
-                          <kbd className="px-1 py-0.5 bg-gray-200 text-gray-700 rounded text-xs font-mono">1</kbd>
+                          <kbd className="px-1 py-0.5 bg-gray-200 text-gray-700 rounded text-xs font-mono">
+                            1
+                          </kbd>
                         )}
                         {isActive && smokeType === 'industrial' && (
-                          <kbd className="px-1 py-0.5 bg-gray-200 text-gray-700 rounded text-xs font-mono">2</kbd>
+                          <kbd className="px-1 py-0.5 bg-gray-200 text-gray-700 rounded text-xs font-mono">
+                            2
+                          </kbd>
                         )}
                         {isActive && smokeType === 'other' && (
-                          <kbd className="px-1 py-0.5 bg-gray-200 text-gray-700 rounded text-xs font-mono">3</kbd>
+                          <kbd className="px-1 py-0.5 bg-gray-200 text-gray-700 rounded text-xs font-mono">
+                            3
+                          </kbd>
                         )}
                       </label>
                     ))}
@@ -256,21 +277,21 @@ export const SequenceAnnotationGrid: React.FC<SequenceAnnotationGridProps> = ({
                     False Positive Types (Select all that apply)
                   </label>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 mb-4">
-                    {FALSE_POSITIVE_TYPES.map((fpType) => {
+                    {FALSE_POSITIVE_TYPES.map(fpType => {
                       const isSelected = bbox.false_positive_types.includes(fpType);
-                      
+
                       return (
                         <label key={fpType} className="flex items-center space-x-2 cursor-pointer">
                           <input
                             type="checkbox"
                             checked={isSelected}
-                            onChange={(e) => {
+                            onChange={e => {
                               const updatedBbox = { ...bbox };
                               if (e.target.checked) {
                                 // Add the false positive type
                                 updatedBbox.false_positive_types = [
                                   ...bbox.false_positive_types,
-                                  fpType as FalsePositiveType
+                                  fpType as FalsePositiveType,
                                 ];
                               } else {
                                 // Remove the false positive type
@@ -282,9 +303,7 @@ export const SequenceAnnotationGrid: React.FC<SequenceAnnotationGridProps> = ({
                             }}
                             className="w-3 h-3 text-red-600 focus:ring-red-500 border-gray-300 rounded"
                           />
-                          <span className="text-xs text-gray-600">
-                            {formatLabel(fpType)}
-                          </span>
+                          <span className="text-xs text-gray-600">{formatLabel(fpType)}</span>
                           {isActive && getKeyForType(fpType) && (
                             <kbd className="ml-1 px-1 py-0.5 bg-gray-200 text-gray-700 rounded text-xs font-mono">
                               {getKeyForType(fpType)}
@@ -294,18 +313,21 @@ export const SequenceAnnotationGrid: React.FC<SequenceAnnotationGridProps> = ({
                       );
                     })}
                   </div>
-                  
+
                   {/* Selected types display */}
                   {bbox.false_positive_types.length > 0 && (
                     <div className="mt-3">
                       <div className="text-xs font-medium text-gray-700 mb-2">Selected:</div>
                       <div className="flex flex-wrap gap-1">
-                        {bbox.false_positive_types.map((type) => (
+                        {bbox.false_positive_types.map(type => (
                           <span
                             key={type}
                             className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-red-100 text-red-800 border border-red-200"
                           >
-                            {type.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                            {type
+                              .split('_')
+                              .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                              .join(' ')}
                             <button
                               onClick={() => {
                                 const updatedBbox = { ...bbox };
@@ -325,24 +347,30 @@ export const SequenceAnnotationGrid: React.FC<SequenceAnnotationGridProps> = ({
                   )}
                 </div>
               )}
-              
+
               {/* Enhanced Status Bar */}
-              <div className={`flex items-center justify-between p-3 rounded-lg ${
-                isAnnotated ? 'bg-green-50 border border-green-200' : 'bg-orange-50 border border-orange-200'
-              }`}>
+              <div
+                className={`flex items-center justify-between p-3 rounded-lg ${
+                  isAnnotated
+                    ? 'bg-green-50 border border-green-200'
+                    : 'bg-orange-50 border border-orange-200'
+                }`}
+              >
                 <div className="flex items-center space-x-2">
                   {isAnnotated ? (
                     <CheckCircle className="w-4 h-4 text-green-600" />
                   ) : (
                     <AlertCircle className="w-4 h-4 text-orange-600" />
                   )}
-                  <span className={`text-sm font-medium ${
-                    isAnnotated ? 'text-green-700' : 'text-orange-700'
-                  }`}>
+                  <span
+                    className={`text-sm font-medium ${
+                      isAnnotated ? 'text-green-700' : 'text-orange-700'
+                    }`}
+                  >
                     {isAnnotated ? 'Detection Reviewed' : 'Needs Review'}
                   </span>
                 </div>
-                
+
                 {/* Current Selection Summary */}
                 <div className="text-xs text-gray-600">
                   {bbox.is_smoke && bbox.smoke_type && (

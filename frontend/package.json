@@ -11,11 +11,13 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "lint:ci": "eslint . --ext ts,tsx --report-unused-disable-directives",
     "lint:fix": "eslint . --ext ts,tsx --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,css,md}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json,css,md}\"",
     "type-check": "tsc --noEmit",
     "quality": "npm run type-check && npm run lint && npm run format:check",
+    "quality:ci": "npm run type-check && npm run lint:ci && npm run format:check",
     "quality:fix": "npm run type-check && npm run lint:fix && npm run format"
   },
   "dependencies": {

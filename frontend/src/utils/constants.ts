@@ -1,4 +1,3 @@
-
 // API Endpoints
 export const API_ENDPOINTS = {
   SEQUENCES: '/sequences/',
@@ -25,34 +24,25 @@ export const PAGINATION_DEFAULTS = {
 export const PAGINATION_OPTIONS = [10, 20, 50, 100] as const;
 
 // Source API types
-export const SOURCE_APIS = [
-  'pyronear_french',
-  'alert_wildfire', 
-  'api_cenia',
-] as const;
+export const SOURCE_APIS = ['pyronear_french', 'alert_wildfire', 'api_cenia'] as const;
 
 // Processing stages
-export const PROCESSING_STAGES = [
-  'imported',
-  'ready_to_annotate', 
-  'annotated',
-] as const;
+export const PROCESSING_STAGES = ['imported', 'ready_to_annotate', 'annotated'] as const;
 
 // Processing stage status options (including no annotation case)
 export const PROCESSING_STAGE_STATUS_OPTIONS = [
   'no_annotation',
   'imported',
-  'ready_to_annotate', 
+  'ready_to_annotate',
   'annotated',
 ] as const;
 
 export const PROCESSING_STAGE_LABELS = {
-  'no_annotation': 'No annotation',
-  'imported': 'Imported',
-  'ready_to_annotate': 'Ready to annotate',
-  'annotated': 'Annotated',
+  no_annotation: 'No annotation',
+  imported: 'Imported',
+  ready_to_annotate: 'Ready to annotate',
+  annotated: 'Annotated',
 } as const;
-
 
 // False positive types (matching backend enum)
 export const FALSE_POSITIVE_TYPES = [
@@ -76,11 +66,7 @@ export const FALSE_POSITIVE_TYPES = [
 ] as const;
 
 // Smoke types (matching backend enum)
-export const SMOKE_TYPES = [
-  'wildfire',
-  'industrial', 
-  'other',
-] as const;
+export const SMOKE_TYPES = ['wildfire', 'industrial', 'other'] as const;
 
 // UI Constants
 export const UI_CONSTANTS = {

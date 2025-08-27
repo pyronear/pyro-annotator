@@ -18,7 +18,7 @@ interface AuthStore {
   setError: (error: string | null) => void;
   clearError: () => void;
   initializeAuth: () => void;
-  
+
   // Computed properties
   isSuperuser: () => boolean;
 }
@@ -40,7 +40,7 @@ export const useAuthStore = create<AuthStore>()(
             set({ isLoading: true, error: null }, false, 'login:start');
 
             const response = await apiClient.login({ username, password });
-            
+
             // Store token first so getCurrentUser can use it
             set(
               {
@@ -95,14 +95,11 @@ export const useAuthStore = create<AuthStore>()(
           );
         },
 
-        setLoading: (loading: boolean) =>
-          set({ isLoading: loading }, false, 'setLoading'),
+        setLoading: (loading: boolean) => set({ isLoading: loading }, false, 'setLoading'),
 
-        setError: (error: string | null) =>
-          set({ error }, false, 'setError'),
+        setError: (error: string | null) => set({ error }, false, 'setError'),
 
-        clearError: () =>
-          set({ error: null }, false, 'clearError'),
+        clearError: () => set({ error: null }, false, 'clearError'),
 
         initializeAuth: async () => {
           const { token } = get();
@@ -111,7 +108,7 @@ export const useAuthStore = create<AuthStore>()(
             try {
               const payload = JSON.parse(atob(token.split('.')[1]));
               const now = Date.now() / 1000;
-              
+
               if (payload.exp && payload.exp < now) {
                 // Token expired, logout
                 get().logout();
@@ -120,11 +117,11 @@ export const useAuthStore = create<AuthStore>()(
                 try {
                   const user = await apiClient.getCurrentUser();
                   set(
-                    { 
+                    {
                       isAuthenticated: true,
-                      user: user
-                    }, 
-                    false, 
+                      user: user,
+                    },
+                    false,
                     'initializeAuth:restored'
                   );
                 } catch (error) {
@@ -147,10 +144,10 @@ export const useAuthStore = create<AuthStore>()(
       }),
       {
         name: 'auth-store',
-        partialize: (state) => ({ 
+        partialize: state => ({
           token: state.token,
           user: state.user,
-          isAuthenticated: state.isAuthenticated 
+          isAuthenticated: state.isAuthenticated,
         }),
       }
     ),

@@ -11,7 +11,7 @@ import {
   formatFalsePositiveType,
   parseFalsePositiveTypes,
   getSmokeTypeEmoji,
-  formatSmokeType
+  formatSmokeType,
 } from '@/utils/modelAccuracy';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
 import TabbedFilters from '@/components/filters/TabbedFilters';
@@ -72,7 +72,7 @@ export default function DetectionAnnotatePage() {
 
     handleFilterChange({
       recorded_at_gte: startDateTime,
-      recorded_at_lte: endDateTime
+      recorded_at_lte: endDateTime,
     });
   };
 
@@ -96,19 +96,28 @@ export default function DetectionAnnotatePage() {
   };
 
   // Fetch sequences with incomplete detection annotations
-  const { data: sequences, isLoading, error } = useQuery({
+  const {
+    data: sequences,
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: [...QUERY_KEYS.SEQUENCES, 'detection-annotate', filters],
     queryFn: () => apiClient.getSequences(filters),
   });
 
   // Fetch sequence annotations for model accuracy analysis
   const { data: sequenceAnnotations } = useQuery({
-    queryKey: [...QUERY_KEYS.SEQUENCE_ANNOTATIONS, 'detection-annotate', sequences?.items?.map(s => s.id)],
+    queryKey: [
+      ...QUERY_KEYS.SEQUENCE_ANNOTATIONS,
+      'detection-annotate',
+      sequences?.items?.map(s => s.id),
+    ],
     queryFn: async () => {
       if (!sequences?.items?.length) return [];
 
       const annotationPromises = sequences.items.map(sequence =>
-        apiClient.getSequenceAnnotations({ sequence_id: sequence.id, size: 1 })
+        apiClient
+          .getSequenceAnnotations({ sequence_id: sequence.id, size: 1 })
           .then(response => ({ sequenceId: sequence.id, annotation: response.items[0] || null }))
           .catch(() => ({ sequenceId: sequence.id, annotation: null }))
       );
@@ -119,10 +128,14 @@ export default function DetectionAnnotatePage() {
   });
 
   // Create a map for quick annotation lookup
-  const annotationMap = sequenceAnnotations?.reduce((acc, { sequenceId, annotation }) => {
-    acc[sequenceId] = annotation;
-    return acc;
-  }, {} as Record<number, any>) || {};
+  const annotationMap =
+    sequenceAnnotations?.reduce(
+      (acc, { sequenceId, annotation }) => {
+        acc[sequenceId] = annotation;
+        return acc;
+      },
+      {} as Record<number, any>
+    ) || {};
 
   // Filter sequences by model accuracy
   const filteredSequences = useMemo(() => {
@@ -138,7 +151,7 @@ export default function DetectionAnnotatePage() {
 
       const accuracy = analyzeSequenceAccuracy({
         ...sequence,
-        annotation: annotation
+        annotation: annotation,
       });
 
       return accuracy.type === selectedModelAccuracy;
@@ -148,7 +161,7 @@ export default function DetectionAnnotatePage() {
       ...sequences,
       items: filtered,
       total: filtered.length,
-      pages: Math.ceil(filtered.length / sequences.size)
+      pages: Math.ceil(filtered.length / sequences.size),
     };
   }, [sequences, annotationMap, selectedModelAccuracy]);
 
@@ -163,7 +176,6 @@ export default function DetectionAnnotatePage() {
   const handlePageChange = (page: number) => {
     setFilters({ ...filters, page });
   };
-
 
   const handleSequenceClick = (clickedSequence: SequenceWithDetectionProgress) => {
     // Navigate to detection annotation interface for this specific sequence
@@ -253,7 +265,9 @@ export default function DetectionAnnotatePage() {
               // Filtered results - no matches
               <>
                 <div className="text-4xl mb-4">🔍</div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">No matching sequences found</h3>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                  No matching sequences found
+                </h3>
                 <p className="text-gray-500 mb-4">
                   No sequences needing detection annotation match your current filters.
                 </p>
@@ -279,9 +293,7 @@ export default function DetectionAnnotatePage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Detection Annotations</h1>
-          <p className="text-gray-600">
-            Annotate individual detections within wildfire sequences
-          </p>
+          <p className="text-gray-600">Annotate individual detections within wildfire sequences</p>
         </div>
       </div>
 
@@ -319,9 +331,9 @@ export default function DetectionAnnotatePage() {
           <div className="px-4 py-3 border-b border-gray-200">
             <div className="flex items-center justify-between">
               <p className="text-sm text-gray-700">
-                Showing {((filteredSequences.page - 1) * filteredSequences.size) + 1} to{' '}
-                {Math.min(filteredSequences.page * filteredSequences.size, filteredSequences.total)} of{' '}
-                {filteredSequences.total} sequences requiring detection annotation
+                Showing {(filteredSequences.page - 1) * filteredSequences.size + 1} to{' '}
+                {Math.min(filteredSequences.page * filteredSequences.size, filteredSequences.total)}{' '}
+                of {filteredSequences.total} sequences requiring detection annotation
                 {selectedModelAccuracy !== 'all' && sequences && (
                   <span className="text-gray-500"> (filtered from {sequences.total} total)</span>
                 )}
@@ -330,11 +342,13 @@ export default function DetectionAnnotatePage() {
                 <label className="text-sm text-gray-700">Show:</label>
                 <select
                   value={filters.size}
-                  onChange={(e) => handleFilterChange({ size: Number(e.target.value) })}
+                  onChange={e => handleFilterChange({ size: Number(e.target.value) })}
                   className="border border-gray-300 rounded px-2 py-1 text-sm"
                 >
                   {PAGINATION_OPTIONS.map(size => (
-                    <option key={size} value={size}>{size}</option>
+                    <option key={size} value={size}>
+                      {size}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -374,18 +388,18 @@ export default function DetectionAnnotatePage() {
 
           {/* Sequence List */}
           <div className="divide-y divide-gray-200">
-            {filteredSequences.items.map((sequence) => {
+            {filteredSequences.items.map(sequence => {
               // Calculate row background based on model accuracy
-              let rowClasses = "p-4 cursor-pointer";
+              let rowClasses = 'p-4 cursor-pointer';
               const annotation = annotationMap[sequence.id];
               if (annotation) {
                 const accuracy = analyzeSequenceAccuracy({
                   ...sequence,
-                  annotation: annotation
+                  annotation: annotation,
                 });
                 rowClasses = `p-4 cursor-pointer ${getRowBackgroundClasses(accuracy)}`;
               } else {
-                rowClasses = "p-4 hover:bg-gray-50 cursor-pointer";
+                rowClasses = 'p-4 hover:bg-gray-50 cursor-pointer';
               }
 
               return (
@@ -397,10 +411,7 @@ export default function DetectionAnnotatePage() {
                   <div className="flex items-start space-x-4">
                     {/* Detection Image Thumbnail */}
                     <div className="flex-shrink-0">
-                      <DetectionImageThumbnail
-                        sequenceId={sequence.id}
-                        className="h-16"
-                      />
+                      <DetectionImageThumbnail sequenceId={sequence.id} className="h-16" />
                     </div>
 
                     {/* Sequence Info */}
@@ -427,12 +438,13 @@ export default function DetectionAnnotatePage() {
                               <div
                                 className="bg-blue-600 h-2 rounded-full"
                                 style={{
-                                  width: `${sequence.detection_annotation_stats.completion_percentage}%`
+                                  width: `${sequence.detection_annotation_stats.completion_percentage}%`,
                                 }}
                               ></div>
                             </div>
                             <span className="text-xs text-gray-500">
-                              {sequence.detection_annotation_stats.annotated_detections}/{sequence.detection_annotation_stats.total_detections} detections
+                              {sequence.detection_annotation_stats.annotated_detections}/
+                              {sequence.detection_annotation_stats.total_detections} detections
                             </span>
                           </div>
                         </div>
@@ -459,7 +471,9 @@ export default function DetectionAnnotatePage() {
                           {/* False Positive Pills */}
                           <div className="flex flex-wrap gap-1 justify-end">
                             {(() => {
-                              const falsePositiveTypes = parseFalsePositiveTypes(annotation.false_positive_types);
+                              const falsePositiveTypes = parseFalsePositiveTypes(
+                                annotation.false_positive_types
+                              );
                               return falsePositiveTypes.map((type: string) => (
                                 <span
                                   key={type}

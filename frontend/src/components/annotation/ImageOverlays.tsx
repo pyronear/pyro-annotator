@@ -5,7 +5,11 @@
 
 import { Detection, DetectionAnnotation, AlgoPrediction } from '@/types/api';
 import { DrawnRectangle, CurrentDrawing, getSmokeTypeColors } from '@/utils/annotation';
-import { normalizedToPixelBox, validateBoundingBox, ImageInfo } from '@/utils/annotation/coordinateUtils';
+import {
+  normalizedToPixelBox,
+  validateBoundingBox,
+  ImageInfo,
+} from '@/utils/annotation/coordinateUtils';
 
 /**
  * Component for rendering AI prediction bounding boxes over detection images.
@@ -21,33 +25,35 @@ export function BoundingBoxOverlay({ detection, imageInfo }: BoundingBoxOverlayP
 
   return (
     <>
-      {detection.algo_predictions.predictions.map((prediction: AlgoPrediction, index: number) => {
-        // Validate bounding box before rendering
-        if (!validateBoundingBox(prediction.xyxyn)) {
-          return null;
-        }
+      {detection.algo_predictions.predictions
+        .map((prediction: AlgoPrediction, index: number) => {
+          // Validate bounding box before rendering
+          if (!validateBoundingBox(prediction.xyxyn)) {
+            return null;
+          }
 
-        // Convert normalized coordinates to pixel coordinates
-        const { left, top, width, height } = normalizedToPixelBox(prediction.xyxyn, imageInfo);
+          // Convert normalized coordinates to pixel coordinates
+          const { left, top, width, height } = normalizedToPixelBox(prediction.xyxyn, imageInfo);
 
-        return (
-          <div
-            key={`bbox-${detection.id}-${index}`}
-            className="absolute border-2 border-red-500 bg-red-500/20 pointer-events-none"
-            style={{
-              left: `${left}px`,
-              top: `${top}px`,
-              width: `${width}px`,
-              height: `${height}px`,
-            }}
-          >
-            {/* Confidence label */}
-            <div className="absolute -top-6 left-0 bg-red-500 text-white text-xs px-1 py-0.5 rounded whitespace-nowrap">
-              {prediction.class_name} {(prediction.confidence * 100).toFixed(0)}%
+          return (
+            <div
+              key={`bbox-${detection.id}-${index}`}
+              className="absolute border-2 border-red-500 bg-red-500/20 pointer-events-none"
+              style={{
+                left: `${left}px`,
+                top: `${top}px`,
+                width: `${width}px`,
+                height: `${height}px`,
+              }}
+            >
+              {/* Confidence label */}
+              <div className="absolute -top-6 left-0 bg-red-500 text-white text-xs px-1 py-0.5 rounded whitespace-nowrap">
+                {prediction.class_name} {(prediction.confidence * 100).toFixed(0)}%
+              </div>
             </div>
-          </div>
-        );
-      }).filter(Boolean)}
+          );
+        })
+        .filter(Boolean)}
     </>
   );
 }
@@ -61,52 +67,65 @@ interface UserAnnotationOverlayProps {
   imageInfo: ImageInfo;
 }
 
-export function UserAnnotationOverlay({ detectionAnnotation, imageInfo }: UserAnnotationOverlayProps) {
-  if (!detectionAnnotation?.annotation?.annotation || detectionAnnotation.annotation.annotation.length === 0) {
+export function UserAnnotationOverlay({
+  detectionAnnotation,
+  imageInfo,
+}: UserAnnotationOverlayProps) {
+  if (
+    !detectionAnnotation?.annotation?.annotation ||
+    detectionAnnotation.annotation.annotation.length === 0
+  ) {
     return null;
   }
 
   return (
     <>
-      {detectionAnnotation.annotation.annotation.map((annotationBbox, index) => {
-        // Validate bounding box before rendering
-        if (!validateBoundingBox(annotationBbox.xyxyn)) {
-          return null;
-        }
+      {detectionAnnotation.annotation.annotation
+        .map((annotationBbox, index) => {
+          // Validate bounding box before rendering
+          if (!validateBoundingBox(annotationBbox.xyxyn)) {
+            return null;
+          }
 
-        // Convert normalized coordinates to pixel coordinates
-        const { left, top, width, height } = normalizedToPixelBox(annotationBbox.xyxyn, imageInfo);
+          // Convert normalized coordinates to pixel coordinates
+          const { left, top, width, height } = normalizedToPixelBox(
+            annotationBbox.xyxyn,
+            imageInfo
+          );
 
-        // Get colors for this smoke type
-        const colors = getSmokeTypeColors(annotationBbox.smoke_type);
+          // Get colors for this smoke type
+          const colors = getSmokeTypeColors(annotationBbox.smoke_type);
 
-        // Get emoji and label for smoke type
-        const smokeTypeDisplay = {
-          wildfire: { emoji: '🔥', label: 'Wildfire' },
-          industrial: { emoji: '🏭', label: 'Industrial' },
-          other: { emoji: '💨', label: 'Other' }
-        } as const;
+          // Get emoji and label for smoke type
+          const smokeTypeDisplay = {
+            wildfire: { emoji: '🔥', label: 'Wildfire' },
+            industrial: { emoji: '🏭', label: 'Industrial' },
+            other: { emoji: '💨', label: 'Other' },
+          } as const;
 
-        const display = smokeTypeDisplay[annotationBbox.smoke_type];
+          const display = smokeTypeDisplay[annotationBbox.smoke_type];
 
-        return (
-          <div
-            key={`user-annotation-${detectionAnnotation.detection_id}-${index}`}
-            className={`absolute border-2 ${colors.border} ${colors.background} pointer-events-none`}
-            style={{
-              left: `${left}px`,
-              top: `${top}px`,
-              width: `${width}px`,
-              height: `${height}px`,
-            }}
-          >
-            {/* Smoke type label */}
-            <div className={`absolute -top-6 left-0 ${colors.border.replace('border-', 'bg-')} text-white text-xs px-1 py-0.5 rounded whitespace-nowrap`}>
-              {display.emoji} {display.label}
+          return (
+            <div
+              key={`user-annotation-${detectionAnnotation.detection_id}-${index}`}
+              className={`absolute border-2 ${colors.border} ${colors.background} pointer-events-none`}
+              style={{
+                left: `${left}px`,
+                top: `${top}px`,
+                width: `${width}px`,
+                height: `${height}px`,
+              }}
+            >
+              {/* Smoke type label */}
+              <div
+                className={`absolute -top-6 left-0 ${colors.border.replace('border-', 'bg-')} text-white text-xs px-1 py-0.5 rounded whitespace-nowrap`}
+              >
+                {display.emoji} {display.label}
+              </div>
             </div>
-          </div>
-        );
-      }).filter(Boolean)}
+          );
+        })
+        .filter(Boolean)}
     </>
   );
 }
@@ -127,28 +146,30 @@ interface DrawingOverlayProps {
   normalizedToImage: (normX: number, normY: number) => { x: number; y: number };
 }
 
-export function DrawingOverlay({ 
-  drawnRectangles, 
-  currentDrawing, 
+export function DrawingOverlay({
+  drawnRectangles,
+  currentDrawing,
   selectedRectangleId,
-  imageInfo, 
-  zoomLevel, 
-  panOffset, 
-  transformOrigin, 
+  imageInfo,
+  zoomLevel,
+  panOffset,
+  transformOrigin,
   isDragging,
-  normalizedToImage 
+  normalizedToImage,
 }: DrawingOverlayProps) {
-  
-  const renderRectangle = (rect: { xyxyn: [number, number, number, number]; id?: string } | CurrentDrawing, type: 'completed' | 'drawing') => {
+  const renderRectangle = (
+    rect: { xyxyn: [number, number, number, number]; id?: string } | CurrentDrawing,
+    type: 'completed' | 'drawing'
+  ) => {
     let left: number, top: number, width: number, height: number;
-    
+
     if (type === 'completed') {
       // For completed rectangles, use normalized coordinates
       const rectData = rect as { xyxyn: [number, number, number, number]; id: string };
       const [x1, y1, x2, y2] = rectData.xyxyn;
       const topLeft = normalizedToImage(x1, y1);
       const bottomRight = normalizedToImage(x2, y2);
-      
+
       left = imageInfo.offsetX + topLeft.x;
       top = imageInfo.offsetY + topLeft.y;
       width = bottomRight.x - topLeft.x;
@@ -166,20 +187,20 @@ export function DrawingOverlay({
   };
 
   return (
-    <div 
+    <div
       className="absolute inset-0 pointer-events-none"
       style={{
         transform: `scale(${zoomLevel}) translate(${panOffset.x / zoomLevel}px, ${panOffset.y / zoomLevel}px)`,
         transformOrigin: `${transformOrigin.x}% ${transformOrigin.y}%`,
-        cursor: isDragging ? 'grabbing' : 'default'
+        cursor: isDragging ? 'grabbing' : 'default',
       }}
     >
       {/* Render completed rectangles */}
-      {drawnRectangles.map((rect) => {
+      {drawnRectangles.map(rect => {
         const { left, top, width, height } = renderRectangle(rect, 'completed');
         const isSelected = selectedRectangleId === rect.id;
         const colors = getSmokeTypeColors(rect.smokeType);
-        
+
         return (
           <div
             key={rect.id}
@@ -192,33 +213,37 @@ export function DrawingOverlay({
             }}
           >
             {/* Rectangle label */}
-            <div className={`absolute -top-6 left-0 ${
-              isSelected 
-                ? 'bg-yellow-400 text-black' 
-                : `${colors.border.replace('border-', 'bg-')} text-white`
-            } text-xs px-1 py-0.5 rounded whitespace-nowrap`}>
-              {rect.smokeType === 'wildfire' ? '🔥' : rect.smokeType === 'industrial' ? '🏭' : '💨'} {rect.smokeType.charAt(0).toUpperCase() + rect.smokeType.slice(1)}
+            <div
+              className={`absolute -top-6 left-0 ${
+                isSelected
+                  ? 'bg-yellow-400 text-black'
+                  : `${colors.border.replace('border-', 'bg-')} text-white`
+              } text-xs px-1 py-0.5 rounded whitespace-nowrap`}
+            >
+              {rect.smokeType === 'wildfire' ? '🔥' : rect.smokeType === 'industrial' ? '🏭' : '💨'}{' '}
+              {rect.smokeType.charAt(0).toUpperCase() + rect.smokeType.slice(1)}
               {isSelected && ' (selected)'}
             </div>
           </div>
         );
       })}
-      
+
       {/* Render current drawing */}
-      {currentDrawing && (() => {
-        const { left, top, width, height } = renderRectangle(currentDrawing, 'drawing');
-        return (
-          <div
-            className="absolute border-2 border-dashed border-blue-400 bg-blue-400/20 pointer-events-none"
-            style={{
-              left: `${left}px`,
-              top: `${top}px`,
-              width: `${width}px`,
-              height: `${height}px`,
-            }}
-          />
-        );
-      })()}
+      {currentDrawing &&
+        (() => {
+          const { left, top, width, height } = renderRectangle(currentDrawing, 'drawing');
+          return (
+            <div
+              className="absolute border-2 border-dashed border-blue-400 bg-blue-400/20 pointer-events-none"
+              style={{
+                left: `${left}px`,
+                top: `${top}px`,
+                width: `${width}px`,
+                height: `${height}px`,
+              }}
+            />
+          );
+        })()}
     </div>
   );
 }

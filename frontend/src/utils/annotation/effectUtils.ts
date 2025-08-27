@@ -1,10 +1,10 @@
 /**
  * Complex useEffect utilities for annotation interface.
- * 
+ *
  * This module contains factory functions for creating complex useEffect logic
  * that was extracted from the AnnotationInterface component, including
  * annotation initialization and intersection observer setup.
- * 
+ *
  * @fileoverview Provides reusable effect logic for annotation state initialization,
  * viewport-based active detection tracking, and state clearing operations.
  */
@@ -16,7 +16,7 @@ import { initializeCleanBbox, getInitialMissedSmokeReview } from './sequenceUtil
 /**
  * Dependencies interface for annotation initialization effect.
  * Contains all functions needed to initialize annotation state properly.
- * 
+ *
  * @interface AnnotationInitializationDeps
  */
 export interface AnnotationInitializationDeps {
@@ -39,7 +39,7 @@ export interface AnnotationInitializationDeps {
 /**
  * Dependencies interface for intersection observer effect.
  * Contains DOM refs and state setters for automatic active detection tracking.
- * 
+ *
  * @interface IntersectionObserverDeps
  */
 export interface IntersectionObserverDeps {
@@ -57,14 +57,14 @@ export interface IntersectionObserverDeps {
 
 /**
  * Creates annotation initialization effect logic.
- * 
+ *
  * This factory function creates a useEffect callback that handles smart
  * initialization of annotation state based on processing stage. It initializes
  * bboxes differently for 'ready_to_annotate' vs 'annotated' stages.
- * 
+ *
  * @param {AnnotationInitializationDeps} deps - All state setters and data needed
  * @returns {() => void} Effect callback function for useEffect
- * 
+ *
  * @example
  * ```typescript
  * useEffect(
@@ -90,26 +90,26 @@ export const createAnnotationInitializationEffect = (deps: AnnotationInitializat
       setHasMissedSmoke,
       setIsUnsure,
       setMissedSmokeReview,
-      setBboxes
+      setBboxes,
     } = deps;
 
     if (annotation && sequenceId) {
       console.log(`AnnotationInterface: Loading annotation for sequence ${sequenceId}`);
       setCurrentAnnotation(annotation);
-      
+
       // Initialize missed smoke flag from existing annotation
       setHasMissedSmoke(annotation.has_missed_smoke || false);
-      
+
       // Initialize unsure flag from existing annotation
       setIsUnsure(annotation.is_unsure || false);
-      
+
       // Initialize missed smoke review using helper function that respects processing stage
       setMissedSmokeReview(getInitialMissedSmokeReview(annotation));
-      
+
       // Smart initialization based on processing stage
       if (annotation.processing_stage === 'ready_to_annotate') {
         // For sequences ready to annotate, start with clean checkboxes
-        const cleanBboxes = annotation.annotation.sequences_bbox.map(bbox => 
+        const cleanBboxes = annotation.annotation.sequences_bbox.map(bbox =>
           initializeCleanBbox(bbox)
         );
         setBboxes(cleanBboxes);
@@ -132,31 +132,31 @@ export const createIntersectionObserverEffect = (deps: IntersectionObserverDeps)
       detectionRefs,
       sequenceReviewerRef,
       setActiveSection,
-      setActiveDetectionIndex
+      setActiveDetectionIndex,
     } = deps;
 
     // Small delay to ensure refs are set up after render
     const timeoutId = setTimeout(() => {
       const observer = new IntersectionObserver(
-        (entries) => {
+        entries => {
           const viewportCenter = window.innerHeight / 2;
           let closestDistance = Infinity;
           let activeElement: Element | null = null;
           let activeIndex: number | null = null;
           let activeType: 'sequence' | 'detection' | null = null;
-          
-          entries.forEach((entry) => {
+
+          entries.forEach(entry => {
             // Only consider elements that are reasonably visible
             if (entry.intersectionRatio < 0.3) return;
-            
+
             const rect = entry.target.getBoundingClientRect();
             const elementCenter = rect.top + rect.height / 2;
             const distance = Math.abs(elementCenter - viewportCenter);
-            
+
             if (distance < closestDistance) {
               closestDistance = distance;
               activeElement = entry.target;
-              
+
               // Check if it's the sequence reviewer
               if (entry.target === sequenceReviewerRef.current) {
                 activeType = 'sequence';
@@ -171,7 +171,7 @@ export const createIntersectionObserverEffect = (deps: IntersectionObserverDeps)
               }
             }
           });
-          
+
           // Activate the element closest to viewport center (within reasonable distance)
           if (activeElement && closestDistance < window.innerHeight * 0.6) {
             if (activeType === 'sequence') {
@@ -185,7 +185,7 @@ export const createIntersectionObserverEffect = (deps: IntersectionObserverDeps)
         },
         {
           threshold: [0.1, 0.3, 0.5],
-          rootMargin: '-20px'
+          rootMargin: '-20px',
         }
       );
 

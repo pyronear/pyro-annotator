@@ -16,7 +16,7 @@ export function usePersistedTabState<T extends string>(
       // SSR safety - return default if window is not available
       return defaultValue;
     }
-    
+
     try {
       const stored = localStorage.getItem(key);
       return stored ? (stored as T) : defaultValue;
@@ -30,7 +30,7 @@ export function usePersistedTabState<T extends string>(
   // Update localStorage whenever state changes
   const setPersistedState = (value: T) => {
     setState(value);
-    
+
     if (typeof window !== 'undefined') {
       try {
         localStorage.setItem(key, value);

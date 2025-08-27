@@ -13,7 +13,7 @@ export default function NotificationBadge({ count, className = '' }: Notificatio
   const displayCount = count > 999 ? '999+' : count.toString();
 
   return (
-    <span 
+    <span
       className={`inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 bg-red-500 text-white text-xs font-medium rounded-full transition-all duration-200 ${className}`}
       title={`${count} items need annotation`}
     >
