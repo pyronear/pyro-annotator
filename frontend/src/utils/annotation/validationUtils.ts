@@ -200,8 +200,8 @@ export const validateDetectionAnnotation = (annotation: DetectionAnnotation): Va
 export const isDetectionAnnotationComplete = (annotation: DetectionAnnotation | null): boolean => {
   if (!annotation) return false;
 
-  // An annotation is complete if it has been created and has annotation data
-  return Boolean(annotation.annotation);
+  // An annotation is complete if it has reached the 'annotated' processing stage
+  return annotation.processing_stage === 'annotated';
 };
 
 /**

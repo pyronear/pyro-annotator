@@ -28,7 +28,8 @@ import {
   imageToNormalizedCoordinates,
   normalizedToImageCoordinates,
   getRectangleAtPoint,
-  areBoundingBoxesSimilar
+  calculateAnnotationCompleteness,
+  importPredictionsAsRectangles
 } from '@/utils/annotation';
 
 // Note: DrawnRectangle and CurrentDrawing interfaces now imported from @/utils/annotation
@@ -879,64 +880,32 @@ function ImageModal({
     ));
   };
 
-  // Utility function using pure utility for coordinate matching
-  const coordinatesMatch = (coords1: [number, number, number, number], coords2: [number, number, number, number], tolerance = 0.01): boolean => {
-    return areBoundingBoxesSimilar(coords1, coords2, tolerance);
-  };
+  // Note: coordinatesMatch function replaced with direct call to areBoundingBoxesSimilar
 
-  // Get count of new (non-duplicate) predictions available to import
+  // Get count of new predictions using pure utility
   const getNewPredictionsCount = (): number => {
     if (!detection?.algo_predictions?.predictions) return 0;
     
-    const validPredictions = detection.algo_predictions.predictions.filter(pred => {
-      const [x1, y1, x2, y2] = pred.xyxyn;
-      return (
-        x1 >= 0 && x1 <= 1 && // Valid normalized coordinates
-        y1 >= 0 && y1 <= 1 &&
-        x2 >= 0 && x2 <= 1 &&
-        y2 >= 0 && y2 <= 1 &&
-        x2 > x1 && y2 > y1 // Valid rectangle dimensions
-      );
-    });
+    const newRectangles = importPredictionsAsRectangles(
+      detection.algo_predictions.predictions,
+      selectedSmokeType,
+      drawnRectangles
+    );
     
-    const newPredictions = validPredictions.filter(pred => {
-      return !drawnRectangles.some(rect => 
-        rect.id.startsWith('imported-') && // Only check AI-imported rectangles
-        coordinatesMatch(pred.xyxyn, rect.xyxyn)
-      );
-    });
-    
-    return newPredictions.length;
+    return newRectangles.length;
   };
 
-  // Import AI predictions as drawable rectangles
+  // Import AI predictions using pure utility
   const importAIPredictions = () => {
     if (!detection?.algo_predictions?.predictions) return;
     
-    // Filter predictions with valid bounding box coordinates
-    const validPredictions = detection.algo_predictions.predictions.filter(pred => {
-      const [x1, y1, x2, y2] = pred.xyxyn;
-      return (
-        x1 >= 0 && x1 <= 1 && // Valid normalized coordinates
-        y1 >= 0 && y1 <= 1 &&
-        x2 >= 0 && x2 <= 1 &&
-        y2 >= 0 && y2 <= 1 &&
-        x2 > x1 && y2 > y1 // Valid rectangle dimensions
-      );
-    });
+    const newRectangles = importPredictionsAsRectangles(
+      detection.algo_predictions.predictions,
+      selectedSmokeType,
+      drawnRectangles
+    );
     
-    if (validPredictions.length === 0) return;
-    
-    // Filter out predictions that already exist as AI-imported rectangles
-    const newPredictions = validPredictions.filter(pred => {
-      return !drawnRectangles.some(rect => 
-        rect.id.startsWith('imported-') && // Only check AI-imported rectangles
-        coordinatesMatch(pred.xyxyn, rect.xyxyn)
-      );
-    });
-    
-    // If no new predictions to import, provide user feedback
-    if (newPredictions.length === 0) {
+    if (newRectangles.length === 0) {
       // Visual feedback: brief button animation to indicate no action taken
       const button = document.querySelector('button[title*="All AI predictions already imported"]') as HTMLElement;
       if (button) {
@@ -951,22 +920,11 @@ function ImageModal({
     // Save current state to undo stack before importing
     pushUndoState();
     
-    // Convert new predictions to drawable rectangles with selected smoke type
-    const importedRectangles: DrawnRectangle[] = newPredictions.map((pred, index) => ({
-      id: `imported-${Date.now()}-${index}`,
-      xyxyn: pred.xyxyn,
-      smokeType: selectedSmokeType
-    }));
-    
     // Add imported rectangles to existing ones
-    setDrawnRectangles(prev => [...prev, ...importedRectangles]);
+    setDrawnRectangles(prev => [...prev, ...newRectangles]);
     
-    // Show success feedback with duplicate info in console (can be enhanced with toast later)
-    const skippedCount = validPredictions.length - newPredictions.length;
-    const message = skippedCount > 0
-      ? `✅ Imported ${importedRectangles.length} new predictions as ${selectedSmokeType} smoke (${skippedCount} duplicates skipped)`
-      : `✅ Imported ${importedRectangles.length} AI predictions as ${selectedSmokeType} smoke`;
-    console.log(message);
+    // Show success feedback
+    console.log(`✅ Imported ${newRectangles.length} AI predictions as ${selectedSmokeType} smoke`);
   };
 
   const handleUndo = () => {
@@ -2092,12 +2050,14 @@ export default function DetectionSequenceAnnotatePage() {
            annotationValues.every(annotation => annotation.processing_stage === 'visual_check');
   };
 
-  // Calculate progress
-  const annotatedCount = Array.from(detectionAnnotations.values()).filter(
-    a => a.processing_stage === 'annotated'
-  ).length;
-  const totalCount = detections?.length || 0;
-  const completionPercentage = totalCount > 0 ? Math.round((annotatedCount / totalCount) * 100) : 0;
+  // Calculate progress using pure utility function
+  const progressStats = detections 
+    ? calculateAnnotationCompleteness(detections, detectionAnnotations)
+    : { annotatedDetections: 0, totalDetections: 0, completionPercentage: 0, isComplete: false, hasAnnotations: false };
+  
+  const { annotatedDetections, totalDetections, completionPercentage } = progressStats;
+  const annotatedCount = annotatedDetections;
+  const totalCount = totalDetections;
   const allInVisualCheck = areAllInVisualCheckStage();
 
   // Helper to get annotation pills
