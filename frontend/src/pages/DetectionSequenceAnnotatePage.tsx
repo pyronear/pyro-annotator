@@ -34,200 +34,8 @@ import {
 } from '@/utils/annotation';
 import { SmokeTypeSelector } from '@/components/annotation/SmokeTypeSelector';
 import { BoundingBoxOverlay, DrawingOverlay } from '@/components/annotation/ImageOverlays';
-import { DetectionImageCard } from '@/components/detection-annotation';
+import { DetectionImageCard, KeyboardShortcutsModal } from '@/components/detection-annotation';
 import { useKeyboardShortcuts } from '@/hooks/annotation';
-
-// Note: DrawnRectangle and CurrentDrawing interfaces now imported from @/utils/annotation
-
-// Note: Overlay components now imported from @/components/annotation/ImageOverlays
-
-
-
-// Keyboard Shortcuts Info Component
-interface KeyboardShortcutsInfoProps {
-  isVisible: boolean;
-  onClose: () => void;
-  isDrawMode: boolean;
-  hasRectangles: boolean;
-  hasUndoHistory: boolean;
-  isAnnotated: boolean;
-}
-
-function KeyboardShortcutsInfo({ 
-  isVisible, 
-  onClose, 
-  isDrawMode, 
-  hasRectangles, 
-  hasUndoHistory, 
-  isAnnotated 
-}: KeyboardShortcutsInfoProps) {
-  if (!isVisible) return null;
-
-  // Handle escape key for this modal specifically
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      onClose();
-      e.preventDefault();
-      e.stopPropagation();
-    }
-  };
-
-  // Handle overlay click with proper event stopping
-  const handleOverlayClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    onClose();
-  };
-
-  // Prevent modal content clicks from propagating
-  const handleContentClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-  };
-
-  const KeyShortcut = ({ keys, description, icon, disabled = false }: { 
-    keys: string[]; 
-    description: string; 
-    icon?: React.ReactNode; 
-    disabled?: boolean;
-  }) => (
-    <div className={`flex items-center space-x-3 py-2 px-3 rounded-md ${disabled ? 'opacity-50' : 'hover:bg-white/5'}`}>
-      <div className="flex items-center space-x-1 min-w-20">
-        {keys.map((key, index) => (
-          <span key={index}>
-            <kbd className="px-2 py-1 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-md">
-              {key}
-            </kbd>
-            {index < keys.length - 1 && <span className="text-gray-400 mx-1">+</span>}
-          </span>
-        ))}
-      </div>
-      <div className="flex items-center space-x-2 flex-1">
-        {icon && <div className="text-gray-400 w-4 h-4">{icon}</div>}
-        <span className="text-sm text-white">{description}</span>
-      </div>
-    </div>
-  );
-
-  return (
-    <div 
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100]"
-      onClick={handleOverlayClick}
-      onKeyDown={handleKeyDown}
-      tabIndex={-1}
-    >
-      <div 
-        className="bg-gray-900 border border-gray-700 rounded-lg p-6 max-w-md w-full mx-4 max-h-96 overflow-y-auto"
-        onClick={handleContentClick}
-      >
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center space-x-2">
-            <Keyboard className="w-5 h-5 text-primary-400" />
-            <h3 className="text-lg font-semibold text-white">Keyboard Shortcuts</h3>
-          </div>
-          <button
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onClose();
-            }}
-            className="p-1 hover:bg-white/10 rounded-full transition-colors"
-          >
-            <X className="w-4 h-4 text-gray-400" />
-          </button>
-        </div>
-
-        <div className="space-y-4">
-          {/* Navigation */}
-          <div>
-            <h4 className="text-sm font-medium text-primary-300 mb-2 flex items-center space-x-2">
-              <Navigation className="w-4 h-4" />
-              <span>Navigation</span>
-            </h4>
-            <div className="space-y-1">
-              <KeyShortcut keys={["←"]} description="Previous detection" />
-              <KeyShortcut keys={["→"]} description="Next detection" />
-              <KeyShortcut keys={["Esc"]} description="Close modal" />
-            </div>
-          </div>
-
-          {/* View Controls */}
-          <div>
-            <h4 className="text-sm font-medium text-primary-300 mb-2 flex items-center space-x-2">
-              <Eye className="w-4 h-4" />
-              <span>View Controls</span>
-            </h4>
-            <div className="space-y-1">
-              <KeyShortcut keys={["P"]} description="Toggle predictions" icon={<Eye className="w-4 h-4" />} />
-              <KeyShortcut keys={["R"]} description="Reset zoom" />
-            </div>
-          </div>
-
-          {/* Drawing Tools */}
-          <div>
-            <h4 className="text-sm font-medium text-primary-300 mb-2 flex items-center space-x-2">
-              <MousePointer className="w-4 h-4" />
-              <span>Drawing Tools</span>
-            </h4>
-            <div className="space-y-1">
-              <KeyShortcut 
-                keys={["D"]} 
-                description={isDrawMode ? "Exit draw mode" : "Enter draw mode"} 
-                icon={<Square className="w-4 h-4" />} 
-              />
-              <KeyShortcut 
-                keys={["Del", "⌫"]} 
-                description={hasRectangles ? "Delete rectangles" : "Delete rectangles"} 
-                icon={<Trash2 className="w-4 h-4" />}
-                disabled={!hasRectangles}
-              />
-              <KeyShortcut 
-                keys={["Ctrl", "Z"]} 
-                description="Undo" 
-                icon={<Undo className="w-4 h-4" />}
-                disabled={!hasUndoHistory}
-              />
-              <KeyShortcut 
-                keys={["A"]} 
-                description="Import AI predictions" 
-                icon={<Brain className="w-4 h-4" />}
-              />
-            </div>
-          </div>
-
-          {/* Smoke Type Selection */}
-          <div>
-            <h4 className="text-sm font-medium text-primary-300 mb-2">Smoke Types</h4>
-            <div className="space-y-1">
-              <KeyShortcut keys={["1", "W"]} description="🔥 Wildfire smoke" />
-              <KeyShortcut keys={["2", "I"]} description="🏭 Industrial smoke" />
-              <KeyShortcut keys={["3", "O"]} description="💨 Other smoke" />
-            </div>
-          </div>
-
-          {/* Actions */}
-          <div>
-            <h4 className="text-sm font-medium text-primary-300 mb-2">Actions</h4>
-            <div className="space-y-1">
-              <KeyShortcut 
-                keys={["Space"]} 
-                description={isAnnotated ? "Update annotation" : "Submit annotation"} 
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-6 pt-4 border-t border-gray-700">
-          <p className="text-xs text-gray-400 text-center">
-            Press <kbd className="px-1 py-0.5 text-xs bg-gray-700 rounded">?</kbd> or <kbd className="px-1 py-0.5 text-xs bg-gray-700 rounded">H</kbd> to toggle shortcuts
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// DetectionImageCard now imported from focused components
 
 interface ImageModalProps {
   detection: Detection;
@@ -281,7 +89,7 @@ function ImageModal({
   } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
-  
+
   // Zoom state management
   const [zoomLevel, setZoomLevel] = useState(1.0);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
@@ -324,7 +132,7 @@ function ImageModal({
         offsetX: offsetX,
         offsetY: offsetY
       });
-      
+
       // If transitioning, complete the fade-in animation
       if (isTransitioning) {
         setTimeout(() => {
@@ -337,34 +145,34 @@ function ImageModal({
 
   // Track previous detection ID to know when it actually changes
   const prevDetectionIdRef = useRef(detection.id);
-  
+
   // Reset zoom and drawing when detection changes, load existing annotations
   useEffect(() => {
     // Only reset states if detection actually changed
     if (prevDetectionIdRef.current !== detection.id) {
       prevDetectionIdRef.current = detection.id;
-      
+
       setZoomLevel(1.0);
       setPanOffset({ x: 0, y: 0 });
       setTransformOrigin({ x: 50, y: 50 });
-      
+
       // Start transition: fade out overlays smoothly
       console.log('Detection changed, starting transition:', detection.id);
       setIsTransitioning(true);
       setOverlaysVisible(false);
-      
+
       // Reset imageInfo to null to prevent stale overlays during image loading
       setTimeout(() => {
         setImageInfo(null);
       }, 150); // Allow fade out animation to start
-      
+
       // Fallback: recalculate imageInfo after a short delay if handleImageLoad doesn't fire
       setTimeout(() => {
         if (imgRef.current && containerRef.current) {
           const img = imgRef.current;
           const containerRect = containerRef.current.getBoundingClientRect();
           const imgRect = img.getBoundingClientRect();
-          
+
           // Only recalculate if we have valid dimensions (image is loaded)
           if (imgRect.width > 0 && imgRect.height > 0) {
             const offsetX = imgRect.left - containerRect.left;
@@ -379,7 +187,7 @@ function ImageModal({
               offsetX: offsetX,
               offsetY: offsetY
             });
-            
+
             // Complete transition: fade overlays back in
             setTimeout(() => {
               setOverlaysVisible(true);
@@ -390,7 +198,7 @@ function ImageModal({
           }
         }
       }, 200); // Give image time to load
-      
+
       // Handle drawing mode based on navigation type
       if (isAutoAdvance) {
         // During auto-advance, preserve the drawing mode state
@@ -399,13 +207,13 @@ function ImageModal({
         // Manual navigation - reset drawing mode
         setIsDrawMode(false);
       }
-      
+
       setIsActivelyDrawing(false);
       setCurrentDrawing(null);
       setSelectedRectangleId(null);
       setUndoStack([]);
     }
-    
+
     // Always update rectangles based on annotation (even if detection didn't change)
     if (existingAnnotation?.annotation?.annotation) {
       const existingRects: DrawnRectangle[] = existingAnnotation.annotation.annotation.map((item, index) => ({
@@ -422,36 +230,36 @@ function ImageModal({
   // Get current image and container information for coordinate transformations
   const getImageInfo = (): { containerOffset: Point; imageBounds: ImageBounds; transform: { zoomLevel: number; panOffset: Point; transformOrigin: Point } } | null => {
     if (!imgRef.current || !containerRef.current) return null;
-    
+
     const containerRect = containerRef.current.getBoundingClientRect();
     const img = imgRef.current;
-    
+
     const containerOffset: Point = {
       x: containerRect.left,
       y: containerRect.top
     };
-    
+
     const imageBounds = calculateImageBounds({
       containerWidth: containerRect.width,
       containerHeight: containerRect.height,
       imageNaturalWidth: img.naturalWidth,
       imageNaturalHeight: img.naturalHeight
     });
-    
+
     const transform = {
       zoomLevel,
       panOffset,
       transformOrigin
     };
-    
+
     return { containerOffset, imageBounds, transform };
   };
-  
+
   // Wrapper function to maintain compatibility with existing code
   const screenToImageCoords = (screenX: number, screenY: number) => {
     const info = getImageInfo();
     if (!info) return { x: 0, y: 0 };
-    
+
     return screenToImageCoordinates(
       { x: screenX, y: screenY },
       info.containerOffset,
@@ -464,7 +272,7 @@ function ImageModal({
   const imageToNormalized = (imageX: number, imageY: number) => {
     const info = getImageInfo();
     if (!info) return { x: 0, y: 0 };
-    
+
     return imageToNormalizedCoordinates(
       { x: imageX, y: imageY },
       info.imageBounds
@@ -475,7 +283,7 @@ function ImageModal({
   const normalizedToImage = (normX: number, normY: number) => {
     const info = getImageInfo();
     if (!info) return { x: 0, y: 0 };
-    
+
     return normalizedToImageCoordinates(
       { x: normX, y: normY },
       info.imageBounds
@@ -486,7 +294,7 @@ function ImageModal({
   const getRectAtPoint = (x: number, y: number): DrawnRectangle | null => {
     const info = getImageInfo();
     if (!info) return null;
-    
+
     return getRectangleAtPoint(
       { x, y },
       drawnRectangles,
@@ -506,7 +314,7 @@ function ImageModal({
   // Change smoke type of selected rectangle using pure utility
   const changeSelectedRectangleSmokeType = (newSmokeType: SmokeType) => {
     if (!selectedRectangleId) return;
-    
+
     pushUndoState();
     setDrawnRectangles(prev => updateRectangleSmokeType(prev, selectedRectangleId, newSmokeType));
   };
@@ -516,26 +324,26 @@ function ImageModal({
   // Get count of new predictions using pure utility
   const getNewPredictionsCount = (): number => {
     if (!detection?.algo_predictions?.predictions) return 0;
-    
+
     const newRectangles = importPredictionsAsRectangles(
       detection.algo_predictions.predictions,
       selectedSmokeType,
       drawnRectangles
     );
-    
+
     return newRectangles.length;
   };
 
   // Import AI predictions using pure utility
   const importAIPredictions = () => {
     if (!detection?.algo_predictions?.predictions) return;
-    
+
     const newRectangles = importPredictionsAsRectangles(
       detection.algo_predictions.predictions,
       selectedSmokeType,
       drawnRectangles
     );
-    
+
     if (newRectangles.length === 0) {
       // Visual feedback: brief button animation to indicate no action taken
       const button = document.querySelector('button[title*="All AI predictions already imported"]') as HTMLElement;
@@ -547,31 +355,31 @@ function ImageModal({
       }
       return;
     }
-    
+
     // Save current state to undo stack before importing
     pushUndoState();
-    
+
     // Add imported rectangles to existing ones
     setDrawnRectangles(prev => [...prev, ...newRectangles]);
-    
+
     // Show success feedback
     console.log(`✅ Imported ${newRectangles.length} AI predictions as ${selectedSmokeType} smoke`);
   };
 
   const handleUndo = () => {
     if (undoStack.length === 0) return;
-    
+
     // Cancel any active drawing first
     if (isActivelyDrawing) {
       setCurrentDrawing(null);
       setIsActivelyDrawing(false);
     }
-    
+
     // Pop last state and restore
     const lastState = undoStack[undoStack.length - 1];
     setDrawnRectangles(lastState);
     setUndoStack(prev => prev.slice(0, -1));
-    
+
     // Clear selection since rectangles changed
     setSelectedRectangleId(null);
   };
@@ -579,27 +387,27 @@ function ImageModal({
   // Mouse wheel zoom handler
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
-    
+
     if (!containerRef.current || !imgRef.current) return;
-    
+
     const imgRect = imgRef.current.getBoundingClientRect();
-    
+
     // Calculate mouse position relative to the image
     const mouseX = e.clientX - imgRect.left;
     const mouseY = e.clientY - imgRect.top;
-    
+
     // Convert to percentage for transform-origin
     const originX = (mouseX / imgRect.width) * 100;
     const originY = (mouseY / imgRect.height) * 100;
-    
+
     setTransformOrigin({ x: originX, y: originY });
-    
+
     // Calculate new zoom level
     const zoomDelta = e.deltaY < 0 ? 0.2 : -0.2;
     const newZoomLevel = Math.max(1.0, Math.min(4.0, zoomLevel + zoomDelta));
-    
+
     setZoomLevel(newZoomLevel);
-    
+
     // Reset pan if zoomed back to 1x
     if (newZoomLevel === 1.0) {
       setPanOffset({ x: 0, y: 0 });
@@ -610,15 +418,15 @@ function ImageModal({
   // Pan boundary constraint helper
   const constrainPan = (offset: { x: number, y: number }) => {
     if (!imgRef.current || zoomLevel <= 1) return offset;
-    
+
     const imgRect = imgRef.current.getBoundingClientRect();
     const scaledWidth = imgRect.width * zoomLevel;
     const scaledHeight = imgRect.height * zoomLevel;
-    
+
     // Calculate max pan distance to keep image centered in viewport
     const maxPanX = (scaledWidth - imgRect.width) / 2;
     const maxPanY = (scaledHeight - imgRect.height) / 2;
-    
+
     return {
       x: Math.max(-maxPanX, Math.min(maxPanX, offset.x)),
       y: Math.max(-maxPanY, Math.min(maxPanY, offset.y))
@@ -638,13 +446,13 @@ function ImageModal({
   const handleClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     const coords = screenToImageCoords(e.clientX, e.clientY);
-    
+
     // First, check if we clicked on an existing rectangle for selection
     // Selection works regardless of drawing mode - it takes priority
     const hitRectangle = getRectAtPoint(coords.x, coords.y);
-    
+
     if (hitRectangle) {
       // Select the rectangle and cancel any active drawing
       setSelectedRectangleId(hitRectangle.id);
@@ -652,13 +460,13 @@ function ImageModal({
       setCurrentDrawing(null);
       return;
     }
-    
+
     // No rectangle hit - deselect any current selection
     setSelectedRectangleId(null);
-    
+
     // Only proceed with drawing if in drawing mode
     if (!isDrawMode) return;
-    
+
     // Proceed with drawing logic
     if (!isActivelyDrawing) {
       // First click: Start drawing rectangle
@@ -674,29 +482,29 @@ function ImageModal({
       if (currentDrawing) {
         const startNorm = imageToNormalized(currentDrawing.startX, currentDrawing.startY);
         const endNorm = imageToNormalized(coords.x, coords.y);
-        
+
         // Ensure we have a minimum rectangle size
         const minX = Math.min(startNorm.x, endNorm.x);
         const maxX = Math.max(startNorm.x, endNorm.x);
         const minY = Math.min(startNorm.y, endNorm.y);
         const maxY = Math.max(startNorm.y, endNorm.y);
-        
+
         // Only create rectangle if it has meaningful size (at least 10 pixels)
         const sizeThreshold = 10 / (imgRef.current?.getBoundingClientRect().width || 1000);
         if ((maxX - minX) > sizeThreshold && (maxY - minY) > sizeThreshold) {
           // Save current state to undo stack before adding rectangle
           pushUndoState();
-          
+
           const newRect: DrawnRectangle = {
             id: Date.now().toString(),
             xyxyn: [minX, minY, maxX, maxY],
             smokeType: selectedSmokeType
           };
-          
+
           setDrawnRectangles(prev => [...prev, newRect]);
         }
       }
-      
+
       // Reset drawing state
       setCurrentDrawing(null);
       setIsActivelyDrawing(false);
@@ -707,10 +515,10 @@ function ImageModal({
     if (isActivelyDrawing && currentDrawing) {
       // Update live preview rectangle
       const coords = screenToImageCoords(e.clientX, e.clientY);
-      setCurrentDrawing(prev => prev ? { 
-        ...prev, 
-        currentX: coords.x, 
-        currentY: coords.y 
+      setCurrentDrawing(prev => prev ? {
+        ...prev,
+        currentX: coords.x,
+        currentY: coords.y
       } : null);
     } else if (isDragging && !isDrawMode && zoomLevel > 1.0) {
       // Handle panning
@@ -751,7 +559,7 @@ function ImageModal({
     onDeleteRectangle: () => {
       // Save current state to undo stack before deleting
       pushUndoState();
-      
+
       // Smart delete: selected rectangle or all rectangles using pure utilities
       if (selectedRectangleId) {
         // Delete only the selected rectangle
@@ -839,7 +647,7 @@ function ImageModal({
 
     // Add with passive: false to allow preventDefault
     container.addEventListener('wheel', wheelHandler, { passive: false });
-    
+
     return () => {
       container.removeEventListener('wheel', wheelHandler);
     };
@@ -932,7 +740,7 @@ function ImageModal({
               />
 
               {/* Bounding Boxes Overlay */}
-              <div 
+              <div
                 className="absolute inset-0 pointer-events-none z-10 transition-opacity duration-300 ease-in-out"
                 style={{
                   transform: `scale(${zoomLevel}) translate(${panOffset.x}px, ${panOffset.y}px)`,
@@ -948,7 +756,7 @@ function ImageModal({
               </div>
 
               {/* Drawing Overlay */}
-              <div 
+              <div
                 className="absolute inset-0 z-20 transition-opacity duration-300 ease-in-out"
                 style={{
                   opacity: imageInfo && overlaysVisible ? 1 : 0
@@ -993,7 +801,7 @@ function ImageModal({
                 const newPredictionsCount = getNewPredictionsCount();
                 const totalPredictionsCount = detection?.algo_predictions?.predictions?.length || 0;
                 const hasNewPredictions = newPredictionsCount > 0;
-                
+
                 return (
                   <button
                     onClick={importAIPredictions}
@@ -1003,8 +811,8 @@ function ImageModal({
                       totalPredictionsCount === 0
                         ? "No AI predictions available"
                         : hasNewPredictions
-                        ? `Import ${newPredictionsCount} new AI predictions as ${selectedSmokeType} smoke (A)`
-                        : "All AI predictions already imported"
+                          ? `Import ${newPredictionsCount} new AI predictions as ${selectedSmokeType} smoke (A)`
+                          : "All AI predictions already imported"
                     }
                   >
                     <Brain className={`w-5 h-5 ${hasNewPredictions ? 'text-white' : 'text-gray-500'}`} />
@@ -1024,31 +832,30 @@ function ImageModal({
                   setIsDrawMode(newDrawMode);
                   onDrawModeChange(newDrawMode);
                 }}
-                className={`p-2 rounded-full transition-colors backdrop-blur-sm ${
-                  isActivelyDrawing 
-                    ? 'bg-green-500 bg-opacity-40 hover:bg-opacity-50 ring-2 ring-green-400' 
-                    : isDrawMode 
-                    ? 'bg-green-500 bg-opacity-20 hover:bg-opacity-30' 
+                className={`p-2 rounded-full transition-colors backdrop-blur-sm ${isActivelyDrawing
+                  ? 'bg-green-500 bg-opacity-40 hover:bg-opacity-50 ring-2 ring-green-400'
+                  : isDrawMode
+                    ? 'bg-green-500 bg-opacity-20 hover:bg-opacity-30'
                     : 'bg-white bg-opacity-10 hover:bg-opacity-20'
-                }`}
+                  }`}
                 title={
-                  isActivelyDrawing 
-                    ? "Drawing in progress... (Click to finish, Esc to cancel)" 
-                    : isDrawMode 
-                    ? `Draw Mode Active (D to exit)${selectedRectangleId ? ' • Rectangle selected' : ''}${drawnRectangles.length > 0 ? ` • ${drawnRectangles.length} rectangles` : ''} • Click rectangles to select` 
-                    : `Enter Draw Mode (D)${drawnRectangles.length > 0 ? ` • Click any of ${drawnRectangles.length} rectangles to select` : ''}`
+                  isActivelyDrawing
+                    ? "Drawing in progress... (Click to finish, Esc to cancel)"
+                    : isDrawMode
+                      ? `Draw Mode Active (D to exit)${selectedRectangleId ? ' • Rectangle selected' : ''}${drawnRectangles.length > 0 ? ` • ${drawnRectangles.length} rectangles` : ''} • Click rectangles to select`
+                      : `Enter Draw Mode (D)${drawnRectangles.length > 0 ? ` • Click any of ${drawnRectangles.length} rectangles to select` : ''}`
                 }
               >
                 <Square className={`w-5 h-5 ${isDrawMode ? 'text-green-400' : 'text-white'}`} />
               </button>
-              
+
               {/* Delete Button - Smart delete (selected or all) */}
               {drawnRectangles.length > 0 && (
                 <button
                   onClick={() => {
                     // Save current state to undo stack before deleting
                     pushUndoState();
-                    
+
                     if (selectedRectangleId) {
                       // Delete only the selected rectangle using pure utility
                       setDrawnRectangles(prev => removeRectangle(prev, selectedRectangleId));
@@ -1060,15 +867,15 @@ function ImageModal({
                   }}
                   className="p-2 bg-white bg-opacity-10 hover:bg-opacity-20 rounded-full transition-colors backdrop-blur-sm"
                   title={
-                    selectedRectangleId 
-                      ? "Delete Selected Rectangle (Delete/Backspace)" 
+                    selectedRectangleId
+                      ? "Delete Selected Rectangle (Delete/Backspace)"
                       : `Delete All ${drawnRectangles.length} Rectangles (Delete/Backspace) • Select a rectangle to delete individually`
                   }
                 >
                   <Trash2 className="w-5 h-5 text-white" />
                 </button>
               )}
-              
+
               {/* Reset Zoom Button - Only visible when zoomed */}
               {zoomLevel > 1.0 && (
                 <button
@@ -1097,7 +904,7 @@ function ImageModal({
                 </>
               )}
             </div>
-            
+
             {/* Submit Button - Centered below info */}
             <div className="flex justify-center mt-4">
               <button
@@ -1121,7 +928,7 @@ function ImageModal({
           </div>
 
           {/* Keyboard Shortcuts Info Overlay */}
-          <KeyboardShortcutsInfo
+          <KeyboardShortcutsModal
             isVisible={showKeyboardShortcuts}
             onClose={() => setShowKeyboardShortcuts(false)}
             isDrawMode={isDrawMode}
@@ -1162,7 +969,7 @@ export default function DetectionSequenceAnnotatePage() {
 
   // Persistent smoke type selection across detections
   const [persistentSmokeType, setPersistentSmokeType] = useState<SmokeType>('wildfire');
-  
+
   // Track drawing mode state across auto-advance navigation
   const [persistentDrawMode, setPersistentDrawMode] = useState(false);
   const isAutoAdvanceRef = useRef(false);
@@ -1170,17 +977,17 @@ export default function DetectionSequenceAnnotatePage() {
   // Detect source page from URL search params
   const [searchParams] = useSearchParams();
   const fromParam = searchParams.get('from');
-  
+
   // Determine source page and appropriate filter storage key
   const sourcePage = fromParam === 'detections-review' ? 'review' : 'annotate';
   const filterStorageKey = sourcePage === 'review' ? 'filters-detections-review' : 'filters-detections-annotate';
-  
+
   // Load persisted filters from the appropriate source page
   const sourcePageFilters = useMemo(() => {
     if (typeof window === 'undefined') {
       return null;
     }
-    
+
     let storedFilters = null;
     try {
       const stored = localStorage.getItem(filterStorageKey);
@@ -1190,7 +997,7 @@ export default function DetectionSequenceAnnotatePage() {
     } catch (error) {
       console.warn(`[DetectionSequenceAnnotate] Failed to read filters from localStorage key "${filterStorageKey}":`, error);
     }
-    
+
     // Always return something (either stored filters or defaults)
     const defaultState = {
       ...createDefaultFilterState('annotated'),
@@ -1201,7 +1008,7 @@ export default function DetectionSequenceAnnotatePage() {
         processing_stage: 'annotated' as const,
       },
     };
-    
+
     return storedFilters || defaultState;
   }, [filterStorageKey, sourcePage]);
 
@@ -1326,7 +1133,7 @@ export default function DetectionSequenceAnnotatePage() {
         ...sequence,
         annotation: annotation
       });
-      
+
       return accuracy.type === modelAccuracy;
     });
 
@@ -1452,7 +1259,7 @@ export default function DetectionSequenceAnnotatePage() {
     onSuccess: (result, { detection }) => {
       // Update local state
       setDetectionAnnotations(prev => new Map(prev).set(detection.id, result));
-      
+
       // Invalidate queries to refresh data
       queryClient.invalidateQueries({ queryKey: [...QUERY_KEYS.DETECTION_ANNOTATIONS] });
       // Invalidate sequences queries for both annotate and review pages
@@ -1462,7 +1269,7 @@ export default function DetectionSequenceAnnotatePage() {
       queryClient.invalidateQueries({ queryKey: [...QUERY_KEYS.SEQUENCES, 'navigation-context'] });
       // Invalidate annotation counts to update sidebar badges
       queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
-      
+
       setToastMessage(`Detection ${detection.id} annotated successfully`);
       setShowToast(true);
 
@@ -1470,7 +1277,7 @@ export default function DetectionSequenceAnnotatePage() {
       if (selectedDetectionIndex !== null && detections && selectedDetectionIndex < detections.length - 1) {
         // Mark as auto-advance (drawing mode already stored in onSubmit above)
         isAutoAdvanceRef.current = true;
-        
+
         // Move to next detection
         const nextDetectionId = getDetectionIdByIndex(selectedDetectionIndex + 1);
         if (nextDetectionId && sequenceId) {
@@ -1568,7 +1375,7 @@ export default function DetectionSequenceAnnotatePage() {
     if (detectionId && detections) {
       const detectionIdNum = parseInt(detectionId, 10);
       const index = getDetectionIndexById(detectionIdNum);
-      
+
       if (index !== null) {
         // Valid detection ID found - open modal to this detection
         setSelectedDetectionIndex(index);
@@ -1640,7 +1447,7 @@ export default function DetectionSequenceAnnotatePage() {
       return () => clearTimeout(timer);
     }
   }, [selectedDetectionIndex]);
-  
+
   // Toast auto-dismiss
   useEffect(() => {
     if (showToast) {
@@ -1652,19 +1459,19 @@ export default function DetectionSequenceAnnotatePage() {
   // Helper function to check if all detection annotations are in visual_check stage
   const areAllInVisualCheckStage = () => {
     if (!detections || detections.length === 0) return false;
-    
+
     const annotationValues = Array.from(detectionAnnotations.values());
-    
+
     // All detections must have annotations and all must be in visual_check stage
-    return detections.length === annotationValues.length && 
-           annotationValues.every(annotation => annotation.processing_stage === 'visual_check');
+    return detections.length === annotationValues.length &&
+      annotationValues.every(annotation => annotation.processing_stage === 'visual_check');
   };
 
   // Calculate progress using pure utility function
-  const progressStats = detections 
+  const progressStats = detections
     ? calculateAnnotationCompleteness(detections, detectionAnnotations)
     : { annotatedDetections: 0, totalDetections: 0, completionPercentage: 0, isComplete: false, hasAnnotations: false };
-  
+
   const { annotatedDetections, totalDetections, completionPercentage } = progressStats;
   const annotatedCount = annotatedDetections;
   const totalCount = totalDetections;
@@ -1695,7 +1502,7 @@ export default function DetectionSequenceAnnotatePage() {
     if (sequenceAnnotation.has_false_positives) {
       // Add individual false positive type pills
       const falsePositiveTypes = parseFalsePositiveTypes(sequenceAnnotation.false_positive_types);
-      
+
       falsePositiveTypes.forEach((type: string) => {
         pills.push(
           <span
