@@ -1,94 +1,34 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, RotateCcw, CheckCircle, AlertCircle, Keyboard, X, Upload, ChevronLeft, ChevronRight, Clock } from 'lucide-react';
+import { AlertCircle, X } from 'lucide-react';
 import { apiClient } from '@/services/api';
-import { QUERY_KEYS, FALSE_POSITIVE_TYPES, SMOKE_TYPES } from '@/utils/constants';
-import { SequenceAnnotation, SequenceBbox, FalsePositiveType, SmokeType } from '@/types/api';
-import SequenceReviewer from '@/components/sequence/SequenceReviewer';
-import CroppedImageSequence from '@/components/annotation/CroppedImageSequence';
-import FullImageSequence from '@/components/annotation/FullImageSequence';
+import { QUERY_KEYS } from '@/utils/constants';
+import { SequenceAnnotation, SequenceBbox } from '@/types/api';
 import { useSequenceStore } from '@/store/useSequenceStore';
-import { getSmokeTypeEmoji, formatSmokeType } from '@/utils/modelAccuracy';
-
-// Helper functions for annotation state management
-const getClassificationType = (bbox: SequenceBbox, index: number, primaryClassification: Record<number, 'unselected' | 'smoke' | 'false_positive'>): 'unselected' | 'smoke' | 'false_positive' => {
-  const userChoice = primaryClassification[index] || 'unselected';
-  
-  // If user explicitly chose smoke and bbox data matches
-  if (userChoice === 'smoke' && bbox.is_smoke) {
-    return 'smoke';
-  }
-  
-  // If user explicitly chose false positive (regardless of bbox data completeness)  
-  if (userChoice === 'false_positive') {
-    return 'false_positive';
-  }
-  
-  // If no explicit choice made, derive from existing data for backwards compatibility
-  if (userChoice === 'unselected') {
-    if (bbox.is_smoke) {
-      return 'smoke';
-    } else if (bbox.false_positive_types.length > 0) {
-      return 'false_positive';
-    }
-  }
-  
-  return 'unselected';
-};
-
-const hasUserAnnotations = (bbox: SequenceBbox): boolean => {
-  if (bbox.is_smoke) {
-    // If smoke is selected, smoke_type must also be selected
-    return bbox.smoke_type !== undefined;
-  } else if (bbox.false_positive_types.length > 0) {
-    // If false positive is selected (has false positive types), it's annotated
-    return true;
-  } else {
-    // If neither smoke nor false positive types are selected, it's unselected
-    return false;
-  }
-};
-
-const initializeCleanBbox = (originalBbox: SequenceBbox): SequenceBbox => {
-  return {
-    ...originalBbox,
-    is_smoke: false,
-    smoke_type: undefined,
-    false_positive_types: [],
-    // Preserve structure with bboxes containing detection_ids
-  };
-};
-
-const shouldShowAsAnnotated = (bbox: SequenceBbox, processingStage: string): boolean => {
-  // If already marked as annotated in processing stage, show as annotated
-  if (processingStage === 'annotated') {
-    return true;
-  }
-  // If ready to annotate, only show as annotated if user has made selections
-  if (processingStage === 'ready_to_annotate') {
-    return hasUserAnnotations(bbox);
-  }
-  // For other stages, default to checking user annotations
-  return hasUserAnnotations(bbox);
-};
-
-// Helper function to validate that annotation data matches current sequence
-const isAnnotationDataValid = (annotation: SequenceAnnotation | null, currentSequenceId: number | null): boolean => {
-  if (!annotation || !currentSequenceId) return false;
-  return annotation.sequence_id === currentSequenceId;
-};
-
-// Helper function to determine initial missed smoke review state based on processing stage
-const getInitialMissedSmokeReview = (annotation: SequenceAnnotation): 'yes' | 'no' | null => {
-  if (annotation.processing_stage === 'annotated') {
-    // For annotated sequences, the has_missed_smoke boolean reflects the actual review result
-    return annotation.has_missed_smoke ? 'yes' : 'no';
-  } else {
-    // For other stages (like ready_to_annotate), null means not reviewed yet
-    return annotation.has_missed_smoke ? 'yes' : null;
-  }
-};
+import { 
+  getAnnotationProgress,
+  isAnnotationComplete
+} from '@/utils/annotation/progressUtils';
+import {
+  createBboxChangeHandler,
+  createMissedSmokeHandler,
+  createSaveHandler,
+  createResetHandler
+} from '@/utils/annotation/annotationHandlers';
+import {
+  createPreviousDetectionNavigator,
+  createNextDetectionNavigator
+} from '@/utils/annotation/navigationUtils';
+import { createKeyboardHandler } from '@/utils/annotation/keyboardUtils';
+import {
+  createAnnotationInitializationEffect,
+  createIntersectionObserverEffect,
+  createSequenceStateClearing
+} from '@/utils/annotation/effectUtils';
+import { AnnotationHeader, ProcessingStageMessages, MissedSmokePanel, SequenceAnnotationGrid } from '@/components/sequence-annotation';
+import { NotificationSystem } from '@/components/ui/NotificationSystem';
+import { useToastNotifications } from '@/utils/notification/toastUtils';
 
 export default function AnnotationInterface() {
   const { id } = useParams<{ id: string }>();
@@ -127,10 +67,8 @@ export default function AnnotationInterface() {
   const detectionRefs = useRef<(HTMLDivElement | null)[]>([]);
   const sequenceReviewerRef = useRef<HTMLDivElement | null>(null);
 
-  // Toast notification state
-  const [showToast, setShowToast] = useState(false);
-  const [toastMessage, setToastMessage] = useState('');
-  const [toastType, setToastType] = useState<'success' | 'error' | 'info'>('success');
+  // Toast notification system
+  const { showToast, toastMessage, toastType, showToastNotification, dismissToast } = useToastNotifications();
 
 
   // Fetch sequence annotation by sequence ID
@@ -154,43 +92,31 @@ export default function AnnotationInterface() {
 
 
   // Clear state immediately when sequence changes to prevent stale data
-  useEffect(() => {
-    console.log(`AnnotationInterface: Sequence changed to ${sequenceId}, clearing stale state`);
-    setBboxes([]);
-    setCurrentAnnotation(null);
-    setHasMissedSmoke(false);
-    setMissedSmokeReview(null);
-    setIsUnsure(false);
-  }, [sequenceId]);
+  useEffect(
+    createSequenceStateClearing(
+      sequenceId,
+      setBboxes,
+      setCurrentAnnotation,
+      setHasMissedSmoke,
+      setMissedSmokeReview,
+      setIsUnsure
+    ),
+    [sequenceId]
+  );
 
   // Initialize bboxes and missed smoke when annotation loads - respecting processing stage
-  useEffect(() => {
-    if (annotation && sequenceId) {
-      console.log(`AnnotationInterface: Loading annotation for sequence ${sequenceId}`);
-      setCurrentAnnotation(annotation);
-      
-      // Initialize missed smoke flag from existing annotation
-      setHasMissedSmoke(annotation.has_missed_smoke || false);
-      
-      // Initialize unsure flag from existing annotation
-      setIsUnsure(annotation.is_unsure || false);
-      
-      // Initialize missed smoke review using helper function that respects processing stage
-      setMissedSmokeReview(getInitialMissedSmokeReview(annotation));
-      
-      // Smart initialization based on processing stage
-      if (annotation.processing_stage === 'ready_to_annotate') {
-        // For sequences ready to annotate, start with clean checkboxes
-        const cleanBboxes = annotation.annotation.sequences_bbox.map(bbox => 
-          initializeCleanBbox(bbox)
-        );
-        setBboxes(cleanBboxes);
-      } else {
-        // For other stages (like 'annotated'), preserve existing data
-        setBboxes([...annotation.annotation.sequences_bbox]);
-      }
-    }
-  }, [annotation, sequenceId]);
+  useEffect(
+    createAnnotationInitializationEffect({
+      annotation,
+      sequenceId,
+      setCurrentAnnotation,
+      setHasMissedSmoke,
+      setIsUnsure,
+      setMissedSmokeReview,
+      setBboxes
+    }),
+    [annotation, sequenceId]
+  );
 
 
   // Clean up detection refs when bboxes change
@@ -200,394 +126,54 @@ export default function AnnotationInterface() {
   }, [bboxes.length]);
 
   // Intersection Observer for viewport-based active detection
+  useEffect(
+    createIntersectionObserverEffect({
+      bboxes,
+      detectionRefs,
+      sequenceReviewerRef,
+      setActiveSection,
+      setActiveDetectionIndex
+    }),
+    [bboxes.length]
+  );
+
+  // Keyboard shortcuts handler using utility function
   useEffect(() => {
-    // Small delay to ensure refs are set up after render
-    const timeoutId = setTimeout(() => {
-      const observer = new IntersectionObserver(
-        (entries) => {
-          const viewportCenter = window.innerHeight / 2;
-          let closestDistance = Infinity;
-          let activeElement: Element | null = null;
-          let activeIndex: number | null = null;
-          let activeType: 'sequence' | 'detection' | null = null;
-          
-          entries.forEach((entry) => {
-            // Only consider elements that are reasonably visible
-            if (entry.intersectionRatio < 0.3) return;
-            
-            const rect = entry.target.getBoundingClientRect();
-            const elementCenter = rect.top + rect.height / 2;
-            const distance = Math.abs(elementCenter - viewportCenter);
-            
-            if (distance < closestDistance) {
-              closestDistance = distance;
-              activeElement = entry.target;
-              
-              // Check if it's the sequence reviewer
-              if (entry.target === sequenceReviewerRef.current) {
-                activeType = 'sequence';
-                activeIndex = null;
-              } else {
-                // Check detection elements
-                const detectionIndex = detectionRefs.current.findIndex(ref => ref === entry.target);
-                if (detectionIndex !== -1) {
-                  activeType = 'detection';
-                  activeIndex = detectionIndex;
-                }
-              }
-            }
-          });
-          
-          // Activate the element closest to viewport center (within reasonable distance)
-          if (activeElement && closestDistance < window.innerHeight * 0.6) {
-            if (activeType === 'sequence') {
-              setActiveSection('sequence');
-              setActiveDetectionIndex(null);
-            } else if (activeType === 'detection' && activeIndex !== null) {
-              setActiveSection('detections');
-              setActiveDetectionIndex(activeIndex);
-            }
-          }
-        },
-        {
-          threshold: [0.1, 0.3, 0.5],
-          rootMargin: '-20px'
-        }
-      );
-
-      // Observe all detection cards
-      detectionRefs.current.forEach((ref, idx) => {
-        // Only observe refs that correspond to current bboxes
-        if (ref && idx < bboxes.length) {
-          observer.observe(ref);
-        }
-      });
-
-      // Observe sequence reviewer
-      if (sequenceReviewerRef.current) {
-        observer.observe(sequenceReviewerRef.current);
-      }
-
-      return () => {
-        observer.disconnect();
-      };
-    }, 100); // Small delay to ensure DOM is ready
-
-    return () => {
-      clearTimeout(timeoutId);
-    };
-  }, [bboxes.length]);
-
-  // Keyboard shortcuts handler
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Handle help modal first (works regardless of focus)
-      // Note: '?' key requires Shift to be pressed, so we shouldn't check for !e.shiftKey
-      if (e.key === '?') {
-        setShowKeyboardModal(!showKeyboardModal);
-        e.preventDefault();
-        return;
-      }
-      
-      // Handle Escape to close modal
-      if (e.key === 'Escape' && showKeyboardModal) {
-        setShowKeyboardModal(false);
-        e.preventDefault();
-        return;
-      }
-
-      // Handle global shortcuts (work regardless of active detection)
-      // Reset annotation (Ctrl + Z)
-      if (e.key === 'z' && e.ctrlKey) {
-        handleReset();
-        e.preventDefault();
-        return;
-      }
-
-      // Complete annotation (Enter)
-      if (e.key === 'Enter' && !showKeyboardModal) {
-        if (isAnnotationComplete()) {
-          handleSave();
-        } else {
-          handleSave(); // Use the same error logic as handleSave
-        }
-        e.preventDefault();
-        return;
-      }
-
-      // Navigation shortcuts (Arrow Up/Down)
-      if (e.key === 'ArrowUp' && !showKeyboardModal) {
-        navigateToPreviousDetection();
-        e.preventDefault();
-        return;
-      }
-
-      if (e.key === 'ArrowDown' && !showKeyboardModal) {
-        navigateToNextDetection();
-        e.preventDefault();
-        return;
-      }
-
-      // Missed smoke review shortcuts (Y/N)
-      if ((e.key === 'y' || e.key === 'Y') && !showKeyboardModal) {
-        handleMissedSmokeReviewChange('yes');
-        e.preventDefault();
-        return;
-      }
-
-      if ((e.key === 'n' || e.key === 'N') && !showKeyboardModal) {
-        handleMissedSmokeReviewChange('no');
-        e.preventDefault();
-        return;
-      }
-
-      // Ignore if focused on input elements, no active detection, modal is open, or modifier keys are pressed
-      if (e.target instanceof HTMLInputElement || 
-          e.target instanceof HTMLTextAreaElement || 
-          activeDetectionIndex === null ||
-          showKeyboardModal ||
-          e.ctrlKey || e.metaKey || e.altKey) {
-        return;
-      }
-
-      const key = e.key.toLowerCase();
-      
-      if (key === 's') {
-        // Set as smoke sequence for active detection
-        const bbox = bboxes[activeDetectionIndex];
-        if (bbox) {
-          // Update UI state
-          setPrimaryClassification(prev => ({
-            ...prev,
-            [activeDetectionIndex]: 'smoke'
-          }));
-          
-          // Update bbox data
-          const updatedBbox = { 
-            ...bbox, 
-            is_smoke: true,
-            false_positive_types: [] // Clear conflicting data
-          };
-          handleBboxChange(activeDetectionIndex, updatedBbox);
-          e.preventDefault();
-        }
-      } else if (key === 'f') {
-        // Set as false positive for active detection
-        const bbox = bboxes[activeDetectionIndex];
-        if (bbox) {
-          // Update UI state
-          setPrimaryClassification(prev => ({
-            ...prev,
-            [activeDetectionIndex]: 'false_positive'
-          }));
-          
-          // Update bbox data - clear conflicting data but DON'T add false positive types yet
-          const updatedBbox = { 
-            ...bbox, 
-            is_smoke: false,
-            smoke_type: undefined // Clear conflicting data
-            // Keep existing false_positive_types if any, don't auto-add new ones
-          };
-          handleBboxChange(activeDetectionIndex, updatedBbox);
-          e.preventDefault();
-        }
-      } else if (key === '1' || key === '2' || key === '3') {
-        // Handle smoke type shortcuts (only when smoke is selected)
-        const bbox = bboxes[activeDetectionIndex];
-        if (bbox && bbox.is_smoke) {
-          const smokeTypeIndex = parseInt(key) - 1;
-          if (smokeTypeIndex >= 0 && smokeTypeIndex < SMOKE_TYPES.length) {
-            const updatedBbox = { 
-              ...bbox, 
-              smoke_type: SMOKE_TYPES[smokeTypeIndex] as SmokeType
-            };
-            handleBboxChange(activeDetectionIndex, updatedBbox);
-            e.preventDefault();
-          }
-        }
-      } else {
-        // Handle letter-based shortcuts for false positive types (only when false positive is selected)
-        const bbox = bboxes[activeDetectionIndex];
-        if (bbox && !bbox.is_smoke) {
-          const typeIndex = getTypeIndexForKey(key);
-          if (typeIndex !== -1) {
-            toggleFalsePositiveType(activeDetectionIndex, typeIndex);
-            e.preventDefault();
-          }
-        }
-      }
-    };
+    const handleKeyDown = createKeyboardHandler({
+      activeDetectionIndex,
+      bboxes,
+      showKeyboardModal,
+      missedSmokeReview,
+      primaryClassification,
+      setShowKeyboardModal,
+      handleReset,
+      handleSave,
+      navigateToPreviousDetection,
+      navigateToNextDetection,
+      handleMissedSmokeReviewChange,
+      handleBboxChange,
+      onPrimaryClassificationChange: setPrimaryClassification
+    });
 
     // Use capture phase to ensure we get events before other handlers
     document.addEventListener('keydown', handleKeyDown, true);
     return () => document.removeEventListener('keydown', handleKeyDown, true);
-  }, [activeDetectionIndex, bboxes, showKeyboardModal]);
+  }, [activeDetectionIndex, bboxes, showKeyboardModal, missedSmokeReview, primaryClassification]);
 
-  // Toast auto-dismiss logic
-  useEffect(() => {
-    if (showToast) {
-      const timer = setTimeout(() => {
-        setShowToast(false);
-      }, 3500); // Auto-dismiss after 3.5 seconds
 
-      return () => clearTimeout(timer);
-    }
-  }, [showToast]);
 
-  // Helper function to show toast notifications
-  const showToastNotification = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
-    setToastMessage(message);
-    setToastType(type);
-    setShowToast(true);
-  };
+  // Navigation functions using utility creators
+  const navigateToPreviousDetection = createPreviousDetectionNavigator(
+    { activeDetectionIndex, activeSection, bboxes, showKeyboardModal },
+    { setActiveDetectionIndex, setActiveSection },
+    { detectionRefs, sequenceReviewerRef }
+  );
 
-  // Helper function to map keyboard keys to false positive type indices
-  const getTypeIndexForKey = (key: string): number => {
-    const keyMap: Record<string, number> = {
-      'a': FALSE_POSITIVE_TYPES.indexOf('antenna'),
-      'b': FALSE_POSITIVE_TYPES.indexOf('building'),
-      'c': FALSE_POSITIVE_TYPES.indexOf('cliff'),
-      'd': FALSE_POSITIVE_TYPES.indexOf('dark'),
-      'u': FALSE_POSITIVE_TYPES.indexOf('dust'), // 'd' taken by dark
-      'h': FALSE_POSITIVE_TYPES.indexOf('high_cloud'),
-      'l': FALSE_POSITIVE_TYPES.indexOf('low_cloud'),
-      'g': FALSE_POSITIVE_TYPES.indexOf('lens_flare'),
-      'p': FALSE_POSITIVE_TYPES.indexOf('lens_droplet'), // 'l' taken by low_cloud, use 'p' for droplet
-      'i': FALSE_POSITIVE_TYPES.indexOf('light'), // 'l' taken
-      'r': FALSE_POSITIVE_TYPES.indexOf('rain'),
-      't': FALSE_POSITIVE_TYPES.indexOf('trail'),
-      'o': FALSE_POSITIVE_TYPES.indexOf('road'), // 'r' taken by rain, use 'o' for road
-      'k': FALSE_POSITIVE_TYPES.indexOf('sky'), // 's' taken by smoke
-      'e': FALSE_POSITIVE_TYPES.indexOf('tree'), // 't' taken by trail
-      'w': FALSE_POSITIVE_TYPES.indexOf('water_body'),
-      'x': FALSE_POSITIVE_TYPES.indexOf('other'), // 'o' taken by road
-    };
-    
-    return keyMap[key] ?? -1;
-  };
-
-  // Helper function to toggle false positive types
-  const toggleFalsePositiveType = (detectionIndex: number, typeIndex: number) => {
-    const bbox = bboxes[detectionIndex];
-    if (!bbox || bbox.is_smoke) return; // Don't allow if it's marked as smoke
-    
-    const fpType = FALSE_POSITIVE_TYPES[typeIndex] as FalsePositiveType;
-    const updatedBbox = { ...bbox };
-    
-    if (bbox.false_positive_types.includes(fpType)) {
-      // Remove the type
-      updatedBbox.false_positive_types = bbox.false_positive_types.filter(type => type !== fpType);
-    } else {
-      // Add the type
-      updatedBbox.false_positive_types = [...bbox.false_positive_types, fpType];
-    }
-    
-    handleBboxChange(detectionIndex, updatedBbox);
-  };
-
-  // Navigation helper functions
-  const navigateToPreviousDetection = () => {
-    // If we're in sequence section, go back to last detection
-    if (activeSection === 'sequence') {
-      if (bboxes.length > 0) {
-        const lastIndex = bboxes.length - 1;
-        setActiveDetectionIndex(lastIndex);
-        setActiveSection('detections');
-        
-        // Use requestAnimationFrame to ensure DOM is updated before scrolling
-        requestAnimationFrame(() => {
-          const lastElement = detectionRefs.current[lastIndex];
-          if (lastElement) {
-            lastElement.scrollIntoView({
-              behavior: 'smooth',
-              block: 'center'
-            });
-          }
-        });
-      }
-      return;
-    }
-
-    // If at first detection, go to sequence reviewer
-    if (activeSection === 'detections' && activeDetectionIndex === 0) {
-      setActiveSection('sequence');
-      setActiveDetectionIndex(null);
-      
-      // Use requestAnimationFrame to ensure DOM is updated before scrolling
-      requestAnimationFrame(() => {
-        if (sequenceReviewerRef.current) {
-          sequenceReviewerRef.current.scrollIntoView({
-            behavior: 'smooth',
-            block: 'center'
-          });
-        }
-      });
-      return;
-    }
-
-    // Regular detection navigation
-    if (activeDetectionIndex === null || activeDetectionIndex <= 0) {
-      return;
-    }
-    
-    const previousIndex = activeDetectionIndex - 1;
-    setActiveDetectionIndex(previousIndex);
-    
-    // Use requestAnimationFrame to ensure DOM is updated before scrolling
-    requestAnimationFrame(() => {
-      const previousElement = detectionRefs.current[previousIndex];
-      if (previousElement) {
-        previousElement.scrollIntoView({
-          behavior: 'smooth',
-          block: 'center'
-        });
-      }
-    });
-  };
-
-  const navigateToNextDetection = () => {
-    // If in sequence section with detections, go to first detection
-    if (activeSection === 'sequence' && bboxes.length > 0) {
-      setActiveSection('detections');
-      setActiveDetectionIndex(0);
-      
-      // Use requestAnimationFrame to ensure DOM is updated before scrolling
-      requestAnimationFrame(() => {
-        const firstElement = detectionRefs.current[0];
-        if (firstElement) {
-          firstElement.scrollIntoView({
-            behavior: 'smooth',
-            block: 'center'
-          });
-        }
-      });
-      return;
-    }
-
-    // If in sequence section and no detections, stay in sequence
-    if (activeSection === 'sequence' && bboxes.length === 0) {
-      return;
-    }
-
-    // Regular detection navigation
-    if (activeDetectionIndex === null || activeDetectionIndex >= bboxes.length - 1) {
-      return;
-    }
-    
-    const nextIndex = activeDetectionIndex + 1;
-    setActiveDetectionIndex(nextIndex);
-    
-    // Use requestAnimationFrame to ensure DOM is updated before scrolling
-    requestAnimationFrame(() => {
-      const nextElement = detectionRefs.current[nextIndex];
-      if (nextElement) {
-        nextElement.scrollIntoView({
-          behavior: 'smooth',
-          block: 'center'
-        });
-      }
-    });
-  };
+  const navigateToNextDetection = createNextDetectionNavigator(
+    { activeDetectionIndex, activeSection, bboxes, showKeyboardModal },
+    { setActiveDetectionIndex, setActiveSection },
+    { detectionRefs, sequenceReviewerRef }
+  );
 
   // Save annotation mutation
   const saveAnnotation = useMutation({
@@ -642,84 +228,27 @@ export default function AnnotationInterface() {
     },
   });
 
-  const handleBboxChange = (index: number, updatedBbox: SequenceBbox) => {
-    const newBboxes = [...bboxes];
-    newBboxes[index] = updatedBbox;
-    setBboxes(newBboxes);
-  };
+  // Event handlers created using utility functions
+  const handleBboxChange = createBboxChangeHandler(setBboxes);
+  const handleMissedSmokeReviewChange = createMissedSmokeHandler(setMissedSmokeReview, setHasMissedSmoke);
 
-  const handleMissedSmokeReviewChange = (review: 'yes' | 'no') => {
-    setMissedSmokeReview(review);
-    // Sync with the boolean hasMissedSmoke state for backward compatibility
-    setHasMissedSmoke(review === 'yes');
-  };
+  const handleSave = createSaveHandler(
+    bboxes, 
+    missedSmokeReview, 
+    isUnsure, 
+    saveAnnotation, 
+    showToastNotification
+  );
 
-  const handleSave = () => {
-    // If marked as unsure, skip all validation and allow immediate submission
-    if (isUnsure) {
-      saveAnnotation.mutate(bboxes);
-      return;
-    }
-
-    const bboxesComplete = bboxes.every(bbox => 
-      bbox.is_smoke || bbox.false_positive_types.length > 0
-    );
-    const missedSmokeComplete = missedSmokeReview !== null;
-
-    if (!bboxesComplete && !missedSmokeComplete) {
-      const progress = getAnnotationProgress();
-      const remaining = progress.total - progress.completed;
-      showToastNotification(
-        `Cannot save: ${remaining} detection${remaining !== 1 ? 's' : ''} still need${remaining === 1 ? 's' : ''} annotation and missed smoke review is required`,
-        'error'
-      );
-      return;
-    } else if (!bboxesComplete) {
-      const progress = getAnnotationProgress();
-      const remaining = progress.total - progress.completed;
-      showToastNotification(
-        `Cannot save: ${remaining} detection${remaining !== 1 ? 's' : ''} still need${remaining === 1 ? 's' : ''} annotation`,
-        'error'
-      );
-      return;
-    } else if (!missedSmokeComplete) {
-      showToastNotification(
-        'Cannot save: Please complete the missed smoke review',
-        'error'
-      );
-      return;
-    }
-    
-    saveAnnotation.mutate(bboxes);
-  };
-
-  const handleReset = () => {
-    if (annotation) {
-      // Reset missed smoke to original value
-      setHasMissedSmoke(annotation.has_missed_smoke || false);
-      
-      // Reset unsure flag to original value
-      setIsUnsure(annotation.is_unsure || false);
-      
-      // Reset missed smoke review using helper function that respects processing stage
-      setMissedSmokeReview(getInitialMissedSmokeReview(annotation));
-      
-      // Use the same logic as initialization to respect processing stage
-      if (annotation.processing_stage === 'ready_to_annotate') {
-        // For sequences ready to annotate, reset to clean checkboxes
-        const cleanBboxes = annotation.annotation.sequences_bbox.map(bbox => 
-          initializeCleanBbox(bbox)
-        );
-        setBboxes(cleanBboxes);
-      } else {
-        // For other stages (like 'annotated'), reset to original server data
-        setBboxes([...annotation.annotation.sequences_bbox]);
-      }
-      
-      // Show success toast notification
-      showToastNotification('Annotation reset successfully', 'success');
-    }
-  };
+  const handleReset = createResetHandler(
+    annotation || null,
+    setHasMissedSmoke,
+    setIsUnsure,
+    setMissedSmokeReview,
+    setBboxes,
+    setPrimaryClassification,
+    showToastNotification
+  );
 
   // Manual Navigation Handlers
   const handlePreviousSequence = () => {
@@ -736,16 +265,7 @@ export default function AnnotationInterface() {
     }
   };
 
-  const isAnnotationComplete = () => {
-    const bboxesComplete = bboxes.every(bbox => hasUserAnnotations(bbox));
-    const missedSmokeComplete = missedSmokeReview !== null;
-    return bboxesComplete && missedSmokeComplete;
-  };
 
-  const getAnnotationProgress = () => {
-    const completed = bboxes.filter(bbox => hasUserAnnotations(bbox)).length;
-    return { completed, total: bboxes.length };
-  };
 
   if (isLoading) {
     return (
@@ -772,556 +292,59 @@ export default function AnnotationInterface() {
     );
   }
 
-  const progress = getAnnotationProgress();
+  const progress = getAnnotationProgress(bboxes);
 
   return (
     <>
-      {/* Fixed Header - Always at top */}
-      <div className={`fixed top-0 left-0 md:left-64 right-0 backdrop-blur-sm shadow-sm z-30 ${
-        isUnsure
-          ? 'bg-amber-50/90 border-b border-amber-200 border-l-4 border-l-amber-500'
-          : annotation?.processing_stage === 'annotated' 
-          ? 'bg-green-50/90 border-b border-green-200 border-l-4 border-l-green-500' 
-          : 'bg-white/85 border-b border-gray-200'
-      }`}>
-        <div className="px-10 py-3">
-          {/* Top Row: Context + Action Buttons + Keyboard Shortcuts */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={() => {
-                  clearAnnotationWorkflow(); // Clear workflow when manually navigating back
-                  navigate(backUrl);
-                }}
-                className="p-1.5 rounded-md hover:bg-gray-100 hover:bg-opacity-75"
-                title="Back to sequence"
-              >
-                <ArrowLeft className="w-4 h-4" />
-              </button>
-              <div className="flex items-center space-x-2">
-                <span className="text-sm font-medium text-gray-900">
-                  {sequence?.organisation_name || 'Loading...'}
-                </span>
-                <span className="text-gray-400">•</span>
-                <span className="text-sm text-gray-600">
-                  {sequence?.camera_name || 'Loading...'}
-                </span>
-                <span className="text-gray-400">•</span>
-                <span className="text-sm text-gray-600">
-                  {sequence?.recorded_at ? new Date(sequence.recorded_at).toLocaleString() : 'Loading...'}
-                </span>
-                {sequence?.azimuth !== null && sequence?.azimuth !== undefined && (
-                  <>
-                    <span className="text-gray-400">•</span>
-                    <span className="text-xs text-gray-500">
-                      {sequence.azimuth}°
-                    </span>
-                  </>
-                )}
-                {sequence?.lat !== null && sequence?.lat !== undefined && sequence?.lon !== null && sequence?.lon !== undefined && (
-                  <>
-                    <span className="text-gray-400">•</span>
-                    <span className="text-xs text-gray-500">
-                      {sequence.lat.toFixed(3)}, {sequence.lon.toFixed(3)}
-                    </span>
-                  </>
-                )}
-                
-                {/* Workflow Progress Indicator */}
-                {annotationWorkflow && annotationWorkflow.isActive && (
-                  <>
-                    <span className="text-gray-400">•</span>
-                    <span className="text-xs text-blue-600 font-medium">
-                      Sequence {annotationWorkflow.currentIndex + 1} of {annotationWorkflow.sequences.length}
-                    </span>
-                  </>
-                )}
-                
-                {/* Completion Badge for Annotated Sequences */}
-                {annotation?.processing_stage === 'annotated' && fromParam !== 'review' && (
-                  <>
-                    <span className="text-gray-400">•</span>
-                    <span className="inline-flex items-center text-xs text-green-600 font-medium">
-                      <CheckCircle className="w-3 h-3 mr-1" />
-                      Completed
-                    </span>
-                  </>
-                )}
-              </div>
-            </div>
-            
-            <div className="flex items-center space-x-2">
-              {/* Workflow Navigation Buttons */}
-              {annotationWorkflow && annotationWorkflow.isActive && (
-                <>
-                  <button
-                    onClick={handlePreviousSequence}
-                    disabled={!canNavigatePrevious()}
-                    className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
-                    title={canNavigatePrevious() ? "Previous sequence" : "Already at first sequence"}
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={handleNextSequence}
-                    disabled={!canNavigateNext()}
-                    className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
-                    title={canNavigateNext() ? "Next sequence" : "Already at last sequence"}
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </>
-              )}
-              <label className="flex items-center space-x-1 px-2 py-1.5 border border-gray-200 rounded-md bg-white">
-                <input
-                  type="checkbox"
-                  checked={isUnsure}
-                  onChange={(e) => setIsUnsure(e.target.checked)}
-                  className="rounded border-gray-300 text-amber-600 focus:ring-amber-500"
-                />
-                <span className="text-xs font-medium text-gray-700">Unsure</span>
-              </label>
-              <button
-                onClick={handleReset}
-                className="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50"
-                title="Reset annotation (Ctrl+Z)"
-              >
-                <RotateCcw className="w-3 h-3 mr-1" />
-                Reset
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={(!isAnnotationComplete() && !isUnsure) || saveAnnotation.isPending}
-                className="inline-flex items-center px-3 py-1.5 border border-transparent rounded-md shadow-sm text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                title={isUnsure ? "Submit as unsure (Enter)" : annotation?.processing_stage === 'annotated' ? "Save changes (Enter)" : "Submit annotation (Enter)"}
-              >
-                {saveAnnotation.isPending ? (
-                  <div className="w-3 h-3 mr-1 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                ) : (
-                  <Upload className="w-3 h-3 mr-1" />
-                )}
-                {isUnsure ? 'Submit Unsure' : annotation?.processing_stage === 'annotated' ? 'Save Changes' : 'Submit'}
-              </button>
-              <button
-                onClick={() => setShowKeyboardModal(true)}
-                className="inline-flex items-center px-2 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50"
-                title="Show keyboard shortcuts (?)"
-              >
-                <Keyboard className="w-3 h-3" />
-              </button>
-            </div>
-          </div>
-
-          {/* Bottom Row: Progress + Status + Shortcuts Hint */}
-          <div className="flex items-center justify-between mt-2">
-            <div className="flex items-center space-x-4">
-              <span className="text-xs font-medium text-gray-900">
-                Review: {
-                  missedSmokeReview ? (
-                    <span className="text-green-600">Done</span>
-                  ) : (
-                    <span className="text-orange-600">Pending</span>
-                  )
-                } • {progress.completed} of {progress.total} detections • {progress.total === 0 ? 0 : Math.round((progress.completed / progress.total) * 100)}% complete
-              </span>
-            </div>
-            
-            <div className="flex items-center space-x-3">
-              <span className="text-xs text-gray-500">
-                Press <kbd className="px-1 py-0.5 bg-gray-100 rounded text-xs font-mono">?</kbd> for shortcuts
-              </span>
-              {progress.completed === progress.total ? (
-                <CheckCircle className="w-4 h-4 text-green-500" />
-              ) : (
-                <AlertCircle className="w-4 h-4 text-orange-500" />
-              )}
-              <div className="w-24 bg-gray-200 rounded-full h-1.5">
-                <div 
-                  className={`h-1.5 rounded-full transition-all duration-300 ${
-                    isUnsure 
-                      ? 'bg-amber-600' 
-                      : annotation?.processing_stage === 'annotated' 
-                      ? 'bg-green-600' 
-                      : 'bg-primary-600'
-                  }`}
-                  style={{ width: `${progress.total === 0 ? 0 : (progress.completed / progress.total) * 100}%` }}
-                ></div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <AnnotationHeader
+        onBack={() => {
+          clearAnnotationWorkflow();
+          navigate(backUrl);
+        }}
+        sequence={sequence}
+        annotation={annotation}
+        progress={progress}
+        isUnsure={isUnsure}
+        missedSmokeReview={missedSmokeReview}
+        annotationWorkflow={annotationWorkflow}
+        canNavigatePrevious={canNavigatePrevious}
+        canNavigateNext={canNavigateNext}
+        onPreviousSequence={handlePreviousSequence}
+        onNextSequence={handleNextSequence}
+        onToggleKeyboardModal={() => setShowKeyboardModal(true)}
+        onReset={handleReset}
+        onSave={handleSave}
+        isAnnotationComplete={isAnnotationComplete(bboxes, missedSmokeReview)}
+        isSaving={saveAnnotation.isPending}
+        onUnsureChange={setIsUnsure}
+        fromParam={fromParam}
+      />
 
       {/* Content with top padding to account for fixed header */}
       <div className="space-y-6 pt-20">
-        {/* Processing Stage Messages */}
-        {annotation.processing_stage !== 'ready_to_annotate' && annotation.processing_stage !== 'annotated' && (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
-            <div className="flex">
-              <AlertCircle className="w-5 h-5 text-yellow-400" />
-              <div className="ml-3">
-                <p className="text-sm font-medium text-yellow-800">
-                  Processing Stage Notice
-                </p>
-                <p className="text-sm text-yellow-700 mt-1">
-                  This annotation is currently in "{annotation.processing_stage}" stage. 
-                  Typically annotations should be in "ready_to_annotate" stage before editing.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
+        <ProcessingStageMessages annotation={annotation} />
 
-      {/* Sequence Review for Missed Smoke */}
-      <div 
-        ref={sequenceReviewerRef}
-        className={`${activeSection === 'sequence' ? 'ring-2 ring-blue-500 ring-offset-2 rounded-lg' : ''}`}
-      >
-        <SequenceReviewer
-          sequenceId={sequenceId!}
+        <MissedSmokePanel
+          sequenceId={sequenceId || 0}
           missedSmokeReview={missedSmokeReview}
           onMissedSmokeReviewChange={handleMissedSmokeReviewChange}
           annotationLoading={isLoading}
+          activeSection={activeSection}
+          sequenceReviewerRef={sequenceReviewerRef}
         />
-      </div>
 
 
-      {/* Unified Detection Cards - Image Sequences + Annotation Controls */}
-      <div className="space-y-8">
-        {bboxes.map((bbox, index) => {
-          
-          const isActive = activeDetectionIndex === index;
-          const isAnnotated = shouldShowAsAnnotated(bbox, annotation?.processing_stage || '');
-          
-          return (
-            <div 
-              key={index} 
-              ref={(el) => detectionRefs.current[index] = el}
-              className={`relative rounded-lg cursor-pointer transition-all duration-200 ${
-                isActive 
-                  ? 'border-4 border-blue-500 ring-2 ring-blue-200 bg-blue-50' 
-                  : isAnnotated
-                  ? 'border-4 border-green-500 bg-green-50 hover:border-green-600 hover:bg-green-100'
-                  : 'border-4 border-orange-400 bg-orange-50 hover:border-orange-500 hover:bg-orange-100 animate-pulse-subtle'
-              } p-6`}
-              onClick={() => setActiveDetectionIndex(index)}
-            >
-              {/* Status Badge Overlay */}
-              <div className={`absolute top-3 right-3 px-2 py-1 rounded-full text-xs font-semibold backdrop-blur-sm ${
-                isAnnotated 
-                  ? 'bg-green-600/90 text-white' 
-                  : 'bg-orange-500/90 text-white'
-              }`}>
-                {isAnnotated ? 'Reviewed' : 'Pending'}
-              </div>
-
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center space-x-3">
-                  <h4 className="text-lg font-medium text-gray-900">
-                    Detection {index + 1}
-                  </h4>
-                  {isActive && (
-                    <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                      <Keyboard className="w-3 h-3 mr-1" />
-                      Active
-                    </span>
-                  )}
-                </div>
-                <span className="text-sm text-gray-500">
-                  {bbox.bboxes.length} bbox{bbox.bboxes.length !== 1 ? 'es' : ''}
-                </span>
-              </div>
-              
-              {/* Visual Content - Image Sequences */}
-              <div className="space-y-6 mb-8">
-                {/* Image Sequences - Only render when annotation data matches current sequence */}
-                {bbox.bboxes && bbox.bboxes.length > 0 && isAnnotationDataValid(annotation, sequenceId) ? (
-                  <>
-                    {/* Full Image Sequence */}
-                    <div className="text-center">
-                      <h5 className="text-sm font-medium text-gray-700 mb-3">Full Sequence</h5>
-                      <FullImageSequence bboxes={bbox.bboxes} sequenceId={sequenceId!} />
-                    </div>
-                    
-                    {/* Cropped Image Sequence */}
-                    <div className="text-center mt-6">
-                      <h5 className="text-sm font-medium text-gray-700 mb-3">Cropped View</h5>
-                      <CroppedImageSequence bboxes={bbox.bboxes} sequenceId={sequenceId!} />
-                    </div>
-                  </>
-                ) : (
-                  /* Loading state when annotation data is being fetched */
-                  <div className="text-center py-8">
-                    <div className="flex items-center justify-center space-x-2 text-gray-500">
-                      <div className="animate-spin w-5 h-5 border-2 border-gray-300 border-t-gray-600 rounded-full"></div>
-                      <span>Loading sequence images...</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            
-            {/* Annotation Controls */}
-            <div className="space-y-4">
-              {/* Step 1: Primary Classification */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-3">
-                  Sequence Classification
-                </label>
-                <div className="space-y-2">
-                  {(() => {
-                    // Use the new classification helper
-                    const classificationType = getClassificationType(bbox, index, primaryClassification);
-                    
-                    return (
-                      <>
-                        {/* Smoke Sequence Option */}
-                        <label className="flex items-center space-x-3 cursor-pointer">
-                          <input
-                            type="radio"
-                            name={`classification-${index}`}
-                            checked={classificationType === 'smoke'}
-                            onChange={() => {
-                              // Update UI state
-                              setPrimaryClassification(prev => ({
-                                ...prev,
-                                [index]: 'smoke'
-                              }));
-                              
-                              // Update bbox data
-                              const updatedBbox = { 
-                                ...bbox, 
-                                is_smoke: true,
-                                false_positive_types: [] // Clear conflicting data
-                              };
-                              handleBboxChange(index, updatedBbox);
-                            }}
-                            className="w-4 h-4 text-orange-600 focus:ring-orange-500 border-gray-300"
-                          />
-                          <span className="text-sm font-medium text-gray-900">
-                            🔥 Smoke Sequence
-                          </span>
-                          {isActive && (
-                            <kbd className="ml-2 px-1.5 py-0.5 bg-gray-200 text-gray-700 rounded text-xs font-mono">
-                              S
-                            </kbd>
-                          )}
-                        </label>
-                        
-                        {/* False Positive Option */}
-                        <label className="flex items-center space-x-3 cursor-pointer">
-                          <input
-                            type="radio"
-                            name={`classification-${index}`}
-                            checked={classificationType === 'false_positive'}
-                            onChange={() => {
-                              // Update UI state
-                              setPrimaryClassification(prev => ({
-                                ...prev,
-                                [index]: 'false_positive'
-                              }));
-                              
-                              // Update bbox data - clear conflicting data but DON'T add false positive types yet
-                              const updatedBbox = { 
-                                ...bbox, 
-                                is_smoke: false,
-                                smoke_type: undefined // Clear conflicting data
-                                // Keep existing false_positive_types if any, don't auto-add new ones
-                              };
-                              handleBboxChange(index, updatedBbox);
-                            }}
-                            className="w-4 h-4 text-red-600 focus:ring-red-500 border-gray-300"
-                          />
-                          <span className="text-sm font-medium text-gray-900">
-                            ❌ False Positive
-                          </span>
-                          {isActive && (
-                            <kbd className="ml-2 px-1.5 py-0.5 bg-gray-200 text-gray-700 rounded text-xs font-mono">
-                              F
-                            </kbd>
-                          )}
-                        </label>
-                      </>
-                    );
-                  })()}
-                </div>
-              </div>
-
-              {/* Step 2: Smoke Type Selection (when smoke sequence selected) */}
-              {bbox.is_smoke && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-3">
-                    Smoke Type
-                  </label>
-                  <div className="space-y-2">
-                    {SMOKE_TYPES.map((smokeType, smokeIndex) => (
-                      <label key={smokeType} className="flex items-center space-x-3 cursor-pointer">
-                        <input
-                          type="radio"
-                          name={`smoke-type-${index}`}
-                          checked={bbox.smoke_type === smokeType}
-                          onChange={() => {
-                            const updatedBbox = { 
-                              ...bbox, 
-                              smoke_type: smokeType as SmokeType
-                            };
-                            handleBboxChange(index, updatedBbox);
-                          }}
-                          className="w-4 h-4 text-orange-600 focus:ring-orange-500 border-gray-300"
-                        />
-                        <span className="text-sm text-gray-900">
-                          {getSmokeTypeEmoji(smokeType)} {formatSmokeType(smokeType)}
-                        </span>
-                        {isActive && (
-                          <kbd className="ml-2 px-1.5 py-0.5 bg-gray-200 text-gray-700 rounded text-xs font-mono">
-                            {smokeIndex + 1}
-                          </kbd>
-                        )}
-                      </label>
-                    ))}
-                  </div>
-                  
-                  {/* Show selected smoke type as a pill */}
-                  {bbox.smoke_type && (
-                    <div className="mt-3">
-                      <div className="text-xs font-medium text-gray-700 mb-2">Selected:</div>
-                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800 border border-orange-200">
-                        {getSmokeTypeEmoji(bbox.smoke_type)} {formatSmokeType(bbox.smoke_type)}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Step 2: False Positive Types Selection (when false positive selected) */}
-              {getClassificationType(bbox, index, primaryClassification) === 'false_positive' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-3">
-                    False Positive Types (Select all that apply)
-                  </label>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 mb-4">
-                    {FALSE_POSITIVE_TYPES.map((fpType) => {
-                      const isSelected = bbox.false_positive_types.includes(fpType);
-                      const formatLabel = (type: string) => 
-                        type.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
-                      
-                      // Get the keyboard shortcut for this type
-                      const getKeyForType = (type: string) => {
-                        const keyMap: Record<string, string> = {
-                          'antenna': 'A',
-                          'building': 'B',
-                          'cliff': 'C',
-                          'dark': 'D',
-                          'dust': 'U',
-                          'high_cloud': 'H',
-                          'low_cloud': 'L',
-                          'lens_flare': 'G',
-                          'lens_droplet': 'P',
-                          'light': 'I',
-                          'rain': 'R',
-                          'trail': 'T',
-                          'road': 'O',
-                          'sky': 'K',
-                          'tree': 'E',
-                          'water_body': 'W',
-                          'other': 'X',
-                        };
-                        return keyMap[type];
-                      };
-                      
-                      return (
-                        <label key={fpType} className="flex items-center space-x-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={(e) => {
-                              const updatedBbox = { ...bbox };
-                              if (e.target.checked) {
-                                // Add the false positive type
-                                updatedBbox.false_positive_types = [
-                                  ...bbox.false_positive_types,
-                                  fpType as FalsePositiveType
-                                ];
-                              } else {
-                                // Remove the false positive type
-                                updatedBbox.false_positive_types = bbox.false_positive_types.filter(
-                                  type => type !== fpType
-                                );
-                              }
-                              handleBboxChange(index, updatedBbox);
-                            }}
-                            className="w-3 h-3 text-red-600 focus:ring-red-500 border-gray-300 rounded"
-                          />
-                          <span className="text-xs text-gray-600">
-                            {formatLabel(fpType)}
-                          </span>
-                          {isActive && getKeyForType(fpType) && (
-                            <kbd className="ml-1 px-1 py-0.5 bg-gray-200 text-gray-700 rounded text-xs font-mono">
-                              {getKeyForType(fpType)}
-                            </kbd>
-                          )}
-                        </label>
-                      );
-                    })}
-                  </div>
-                  
-                  {/* Selected types display */}
-                  {bbox.false_positive_types.length > 0 && (
-                    <div className="mt-3">
-                      <div className="text-xs font-medium text-gray-700 mb-2">Selected:</div>
-                      <div className="flex flex-wrap gap-1">
-                        {bbox.false_positive_types.map((type) => (
-                          <span
-                            key={type}
-                            className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-red-100 text-red-800 border border-red-200"
-                          >
-                            {type.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
-                            <button
-                              onClick={() => {
-                                const updatedBbox = { ...bbox };
-                                updatedBbox.false_positive_types = bbox.false_positive_types.filter(
-                                  t => t !== type
-                                );
-                                handleBboxChange(index, updatedBbox);
-                              }}
-                              className="ml-1 hover:opacity-80 text-red-600"
-                            >
-                              ×
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-              
-              {/* Enhanced Status Bar */}
-              <div className={`px-3 py-2 rounded-md ${
-                isAnnotated 
-                  ? 'bg-green-100 border border-green-300' 
-                  : 'bg-orange-100 border border-orange-300'
-              }`}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    {isAnnotated ? (
-                      <>
-                        <CheckCircle className="w-5 h-5 text-green-600" />
-                        <span className="text-sm font-medium text-green-700">Completed</span>
-                      </>
-                    ) : (
-                      <>
-                        <Clock className="w-5 h-5 text-orange-600 animate-pulse" />
-                        <span className="text-sm font-medium text-orange-700">Needs Review</span>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          );
-        })}
-      </div>
+        <SequenceAnnotationGrid
+          bboxes={bboxes}
+          annotation={annotation}
+          sequenceId={sequenceId || 0}
+          activeDetectionIndex={activeDetectionIndex || 0}
+          primaryClassification={primaryClassification}
+          detectionRefs={detectionRefs}
+          onDetectionClick={setActiveDetectionIndex}
+          onBboxChange={handleBboxChange}
+          onPrimaryClassificationChange={setPrimaryClassification}
+        />
 
       {/* Empty State */}
       {bboxes.length === 0 && (
@@ -1337,50 +360,13 @@ export default function AnnotationInterface() {
       )}
 
       {/* Toast Notification */}
-      {showToast && (
-        <div className={`fixed top-4 right-4 z-50 transition-all duration-300 ease-in-out transform ${
-          showToast ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'
-        }`}>
-          <div className={`px-4 py-3 rounded-lg shadow-lg flex items-center space-x-3 min-w-80 ${
-            toastType === 'success' ? 'bg-green-50 border border-green-200' :
-            toastType === 'error' ? 'bg-red-50 border border-red-200' :
-            'bg-blue-50 border border-blue-200'
-          }`}>
-            <div className={`flex-shrink-0 w-5 h-5 ${
-              toastType === 'success' ? 'text-green-600' :
-              toastType === 'error' ? 'text-red-600' :
-              'text-blue-600'
-            }`}>
-              {toastType === 'success' && (
-                <CheckCircle className="w-5 h-5" />
-              )}
-              {toastType === 'error' && (
-                <AlertCircle className="w-5 h-5" />
-              )}
-              {toastType === 'info' && (
-                <AlertCircle className="w-5 h-5" />
-              )}
-            </div>
-            <p className={`text-sm font-medium ${
-              toastType === 'success' ? 'text-green-800' :
-              toastType === 'error' ? 'text-red-800' :
-              'text-blue-800'
-            }`}>
-              {toastMessage}
-            </p>
-            <button
-              onClick={() => setShowToast(false)}
-              className={`flex-shrink-0 ml-auto pl-3 ${
-                toastType === 'success' ? 'text-green-600 hover:text-green-800' :
-                toastType === 'error' ? 'text-red-600 hover:text-red-800' :
-                'text-blue-600 hover:text-blue-800'
-              }`}
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
+      <NotificationSystem
+        showToast={showToast}
+        toastMessage={toastMessage}
+        toastType={toastType}
+        onDismiss={dismissToast}
+        autoDismissMs={3500}
+      />
 
       {/* Keyboard Shortcuts Modal */}
       {showKeyboardModal && (

@@ -13,7 +13,6 @@ import {
   validateAnnotationData,
   formatWorkflowStatus,
   calculateRemainingItems,
-  getTimeEstimate,
   WorkflowState
 } from '@/utils/annotation/workflowUtils';
 import { DrawnRectangle } from '@/utils/annotation/drawingUtils';
@@ -332,45 +331,4 @@ describe('workflowUtils', () => {
     });
   });
 
-  describe('getTimeEstimate', () => {
-    it('should format seconds correctly', () => {
-      const estimate = getTimeEstimate(1, 30);
-      expect(estimate).toBe('30 seconds');
-    });
-
-    it('should format single minute correctly', () => {
-      const estimate = getTimeEstimate(2, 30);
-      expect(estimate).toBe('1 minute');
-    });
-
-    it('should format multiple minutes correctly', () => {
-      const estimate = getTimeEstimate(10, 30);
-      expect(estimate).toBe('5 minutes');
-    });
-
-    it('should format single hour correctly', () => {
-      const estimate = getTimeEstimate(120, 30);
-      expect(estimate).toBe('1 hour');
-    });
-
-    it('should format multiple hours correctly', () => {
-      const estimate = getTimeEstimate(240, 30);
-      expect(estimate).toBe('2 hours');
-    });
-
-    it('should use default average time per item', () => {
-      const estimate = getTimeEstimate(2); // Default 30 seconds per item
-      expect(estimate).toBe('1 minute');
-    });
-
-    it('should handle zero remaining items', () => {
-      const estimate = getTimeEstimate(0, 30);
-      expect(estimate).toBe('0 seconds');
-    });
-
-    it('should round minutes correctly', () => {
-      const estimate = getTimeEstimate(5, 25); // 125 seconds = 2.08 minutes
-      expect(estimate).toBe('2 minutes');
-    });
-  });
 });

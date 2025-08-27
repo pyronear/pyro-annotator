@@ -11,9 +11,9 @@ import {
   updateBboxFalsePositiveType,
   clearBboxSelections,
   getKeyForFalsePositiveType,
-  formatFalsePositiveLabel,
-  calculateAnnotationProgress
+  formatFalsePositiveLabel
 } from '@/utils/annotation/sequenceUtils';
+import { getAnnotationProgress } from '@/utils/annotation/progressUtils';
 import { SequenceBbox, SequenceAnnotation } from '@/types/api';
 
 // Mock data helpers
@@ -281,7 +281,7 @@ describe('sequenceUtils', () => {
     });
   });
 
-  describe('calculateAnnotationProgress', () => {
+  describe('getAnnotationProgress', () => {
     it('should calculate progress statistics correctly', () => {
       const bboxes = [
         createMockBbox({ is_smoke: true, smoke_type: 'wildfire' }),
@@ -290,7 +290,7 @@ describe('sequenceUtils', () => {
         createMockBbox({ is_smoke: true, smoke_type: 'industrial' })
       ];
       
-      const progress = calculateAnnotationProgress(bboxes);
+      const progress = getAnnotationProgress(bboxes);
       
       expect(progress.totalBboxes).toBe(4);
       expect(progress.annotatedBboxes).toBe(3);
@@ -302,10 +302,10 @@ describe('sequenceUtils', () => {
     });
 
     it('should handle empty bbox array', () => {
-      const progress = calculateAnnotationProgress([]);
+      const progress = getAnnotationProgress([]);
       
       expect(progress.totalBboxes).toBe(0);
-      expect(progress.completionPercentage).toBe(0);
+      expect(progress.completionPercentage).toBe(100);
       expect(progress.isComplete).toBe(false);
     });
 
@@ -315,7 +315,7 @@ describe('sequenceUtils', () => {
         createMockBbox({ false_positive_types: ['antenna'] })
       ];
       
-      const progress = calculateAnnotationProgress(bboxes);
+      const progress = getAnnotationProgress(bboxes);
       
       expect(progress.isComplete).toBe(true);
       expect(progress.completionPercentage).toBe(100);

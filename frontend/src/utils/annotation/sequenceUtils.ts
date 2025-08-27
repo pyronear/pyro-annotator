@@ -219,35 +219,3 @@ export const formatFalsePositiveLabel = (type: string): string => {
   return type.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
 };
 
-/**
- * Calculates annotation progress statistics.
- */
-export interface AnnotationProgress {
-  totalBboxes: number;
-  annotatedBboxes: number;
-  smokeBboxes: number;
-  falsePositiveBboxes: number;
-  unannotatedBboxes: number;
-  completionPercentage: number;
-  isComplete: boolean;
-}
-
-export const calculateAnnotationProgress = (bboxes: SequenceBbox[]): AnnotationProgress => {
-  const totalBboxes = bboxes.length;
-  const annotatedBboxes = bboxes.filter(hasUserAnnotations).length;
-  const smokeBboxes = bboxes.filter(bbox => bbox.is_smoke).length;
-  const falsePositiveBboxes = bboxes.filter(bbox => bbox.false_positive_types.length > 0).length;
-  const unannotatedBboxes = totalBboxes - annotatedBboxes;
-  const completionPercentage = totalBboxes > 0 ? Math.round((annotatedBboxes / totalBboxes) * 100) : 0;
-  const isComplete = annotatedBboxes === totalBboxes && totalBboxes > 0;
-  
-  return {
-    totalBboxes,
-    annotatedBboxes,
-    smokeBboxes,
-    falsePositiveBboxes,
-    unannotatedBboxes,
-    completionPercentage,
-    isComplete
-  };
-};
