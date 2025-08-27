@@ -60,3 +60,80 @@ export type {
   ValidationResult,
   AnnotationCompleteness
 } from './validationUtils';
+
+// Canvas utilities
+export {
+  calculateZoomLevel,
+  calculateTransformOrigin,
+  calculatePanConstraints,
+  constrainPan,
+  isWithinCanvas,
+  calculateSizeThreshold,
+  getMouseRelativeToElement,
+  isValidDrawingSize,
+  getCanvasScale
+} from './canvasUtils';
+
+export type {
+  ZoomConfig,
+  PanConstraints
+} from './canvasUtils';
+
+// Image utilities
+export {
+  calculateAspectRatio,
+  getImageDimensions,
+  fitImageToContainer,
+  coverContainer,
+  calculateOptimalZoom,
+  isValidImageSize,
+  getImageScale,
+  formatImageDimensions,
+  getAspectRatioLabel
+} from './imageUtils';
+
+export type {
+  ImageDimensions,
+  ImageFitConfig,
+  DisplayDimensions
+} from './imageUtils';
+
+// Workflow utilities
+export {
+  getWorkflowStep,
+  calculateWorkflowProgress,
+  getNextDetectionIndex,
+  getPreviousDetectionIndex,
+  isWorkflowComplete,
+  validateAnnotationData,
+  formatWorkflowStatus,
+  calculateRemainingItems,
+  getTimeEstimate
+} from './workflowUtils';
+
+export type {
+  WorkflowStep,
+  WorkflowState,
+  WorkflowProgress
+} from './workflowUtils';
+
+// Sequence utilities
+export {
+  getClassificationType,
+  hasUserAnnotations,
+  initializeCleanBbox,
+  shouldShowAsAnnotated,
+  isAnnotationDataValid,
+  getInitialMissedSmokeReview,
+  createAnnotationPayload,
+  updateBboxSmokeType,
+  updateBboxFalsePositiveType,
+  clearBboxSelections,
+  getKeyForFalsePositiveType,
+  formatFalsePositiveLabel,
+  calculateAnnotationProgress
+} from './sequenceUtils';
+
+export type {
+  AnnotationProgress
+} from './sequenceUtils';

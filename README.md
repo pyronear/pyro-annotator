@@ -88,21 +88,72 @@ uv run python -m scripts.data_transfer.ingestion.platform.import \
 
 ### Key Parameters
 
+**Date & Environment:**
 - `--date-from` / `--date-end`: Date range (YYYY-MM-DD format)
-- `--confidence-threshold`: Minimum AI confidence (0.0-1.0, default: 0.0) 
+- `--url-api-platform`: Platform API URL (default: https://alertapi.pyronear.org)
+- `--url-api-annotation`: Annotation API URL (default: http://localhost:5050)
+
+**Processing Options:**
 - `--iou-threshold`: IoU threshold for clustering overlapping boxes (default: 0.3)
 - `--dry-run`: Preview actions without execution
 - `--loglevel`: Logging level (debug/info/warning/error)
 
 ### Example Workflows
 
-**Daily import routine:**
+**Local Development:**
 ```bash
-# Import yesterday's data
+# Import to local annotation API (default)
+uv run python -m scripts.data_transfer.ingestion.platform.import \
+  --date-from 2024-01-01 --date-end 2024-01-02 \
+  --loglevel info
+
+# Daily import routine (local)
 uv run python -m scripts.data_transfer.ingestion.platform.import \
   --date-from $(date -d '1 day ago' '+%Y-%m-%d') \
   --loglevel info
 ```
+
+**Deployed Annotation API:**
+```bash
+# Import to deployed annotation API
+uv run python -m scripts.data_transfer.ingestion.platform.import \
+  --date-from 2024-01-01 --date-end 2024-01-02 \
+  --url-api-annotation https://annotationdev.pyronear.org \
+  --loglevel info
+
+# Mixed environment: production platform + staging annotation API
+uv run python -m scripts.data_transfer.ingestion.platform.import \
+  --date-from 2024-01-01 \
+  --url-api-platform https://alertapi.pyronear.org \
+  --url-api-annotation https://annotationdev.pyronear.org \
+  --loglevel info
+
+# CENIA platform to deployed annotation API
+uv run python -m scripts.data_transfer.ingestion.platform.import \
+  --date-from 2024-01-01 \
+  --url-api-platform https://apicenia.pyronear.org \
+  --url-api-annotation https://annotationdev.pyronear.org \
+  --loglevel info
+```
+
+### Deployment Environments
+
+**Local Development (default):**
+- **Annotation API**: `http://localhost:5050` (requires `docker compose up -d`)
+- **Platform API**: `https://alertapi.pyronear.org` (Pyronear French) or `https://apicenia.pyronear.org` (CENIA)
+- **Authentication**: Uses local admin credentials (`admin`/`admin12345`)
+
+**Deployed/Staging Annotation API:**
+- **Annotation API**: `https://annotationdev.pyronear.org`
+- **Platform API**: Any platform API endpoint
+- **Authentication**: Requires proper credentials for the deployed annotation API
+- **Network**: Ensure firewall/network access to deployed services
+
+**Authentication Notes:**
+- Platform API credentials are always required via environment variables
+- Deployed annotation APIs may have different authentication requirements
+- Test connectivity: `curl https://annotationdev.pyronear.org/docs`
+- Check API health: `curl https://annotationdev.pyronear.org/status`
 
 For detailed documentation, parameter reference, and troubleshooting, see [Data Ingestion Guide](annotation_api/docs/data-ingestion-guide.md).
 
@@ -117,6 +168,12 @@ For detailed documentation, parameter reference, and troubleshooting, see [Data 
 - Verify backend is healthy: `curl http://localhost:5050/status`
 - Check backend logs for errors
 - Ensure database and S3 services are running
+
+**Remote annotation API connection issues:**
+- Test API connectivity: `curl https://annotationdev.pyronear.org/status`
+- Check network access and firewall settings
+- Verify authentication credentials for deployed services
+- Review import script logs for connection timeouts or SSL errors
 
 **Database connection issues:**
 - Wait for database to be healthy (may take 10-20 seconds on first start)
