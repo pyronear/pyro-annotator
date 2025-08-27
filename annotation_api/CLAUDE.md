@@ -99,7 +99,7 @@ The API provides enhanced endpoints with pagination, filtering, and ordering:
 ### Testing
 
 - `make test` - Run comprehensive test suite with coverage in Docker containers (includes live code mounting)
-- `make test-specific TEST=test_auth.py::test_login_valid_credentials` - Run specific test
+- `make test-specific TEST=tests/endpoints/test_auth.py::test_login_valid_credentials` - Run specific test
 - `uv run pytest src/tests/ -s --cov=app` - Run tests locally with coverage (requires local setup)
 
 **Note**: The `make test` command uses a specialized Docker setup with:
