@@ -34,6 +34,7 @@ import {
   removeRectangle
 } from '@/utils/annotation';
 import { SmokeTypeSelector } from '@/components/annotation/SmokeTypeSelector';
+import { useKeyboardShortcuts } from '@/hooks/annotation';
 
 // Note: DrawnRectangle and CurrentDrawing interfaces now imported from @/utils/annotation
 
@@ -325,7 +326,7 @@ function KeyboardShortcutsInfo({
 
   return (
     <div 
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-60"
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100]"
       onClick={handleOverlayClick}
       onKeyDown={handleKeyDown}
       tabIndex={-1}
@@ -1103,28 +1104,80 @@ function ImageModal({
     setTransformOrigin({ x: 50, y: 50 });
   };
 
-  // Keyboard handler for zoom reset, draw mode, escape, and deletion
+  // Keyboard shortcuts using reusable hook - no memoization, simple and direct
+  useKeyboardShortcuts({
+    onToggleDrawMode: () => {
+      // When toggling draw mode, cancel any active drawing
+      if (isDrawMode && isActivelyDrawing) {
+        setCurrentDrawing(null);
+        setIsActivelyDrawing(false);
+      }
+      const newDrawMode = !isDrawMode;
+      setIsDrawMode(newDrawMode);
+      onDrawModeChange(newDrawMode);
+    },
+    onTogglePredictions: () => onTogglePredictions(!showPredictions),
+    onDeleteRectangle: () => {
+      // Save current state to undo stack before deleting
+      pushUndoState();
+      
+      // Smart delete: selected rectangle or all rectangles using pure utilities
+      if (selectedRectangleId) {
+        // Delete only the selected rectangle
+        setDrawnRectangles(prev => removeRectangle(prev, selectedRectangleId));
+        setSelectedRectangleId(null);
+      } else {
+        // Delete all rectangles when none selected
+        setDrawnRectangles([]);
+      }
+    },
+    onUndo: handleUndo,
+    onSubmit: () => onSubmit(detection, drawnRectangles, isDrawMode),
+    onImportPredictions: importAIPredictions,
+    onShowHelp: () => setShowKeyboardShortcuts(!showKeyboardShortcuts),
+    onSelectWildfire: () => {
+      if (selectedRectangleId !== null) {
+        changeSelectedRectangleSmokeType('wildfire');
+      } else {
+        onSmokeTypeChange('wildfire');
+      }
+    },
+    onSelectIndustrial: () => {
+      if (selectedRectangleId !== null) {
+        changeSelectedRectangleSmokeType('industrial');
+      } else {
+        onSmokeTypeChange('industrial');
+      }
+    },
+    onSelectOther: () => {
+      if (selectedRectangleId !== null) {
+        changeSelectedRectangleSmokeType('other');
+      } else {
+        onSmokeTypeChange('other');
+      }
+    },
+    onResetZoom: handleZoomReset
+  }, {
+    isDrawMode,
+    isActivelyDrawing,
+    hasSelectedRectangle: selectedRectangleId !== null,
+    hasRectangles: drawnRectangles.length > 0,
+    canUndo: undoStack.length > 0,
+    showPredictions,
+    isSubmitting,
+    showKeyboardShortcuts
+  });
+
+  // Additional keyboard handlers for drawing-specific logic (not covered by the generic hook)
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
+    const handleDrawingKeys = (e: KeyboardEvent) => {
       if (e.key === 'r' || e.key === 'R') {
+        // R key for zoom reset
         handleZoomReset();
         e.preventDefault();
-      } else if (e.key === 'd' || e.key === 'D') {
-        // When toggling draw mode, cancel any active drawing
-        if (isDrawMode && isActivelyDrawing) {
-          setCurrentDrawing(null);
-          setIsActivelyDrawing(false);
-        }
-        const newDrawMode = !isDrawMode;
-        setIsDrawMode(newDrawMode);
-        onDrawModeChange(newDrawMode);
-        e.preventDefault();
       } else if (e.key === 'Escape') {
-        // If shortcuts modal is open, close it first and prevent other actions
+        // If shortcuts modal is open, let the hook handle it
         if (showKeyboardShortcuts) {
-          setShowKeyboardShortcuts(false);
-          e.preventDefault();
-          e.stopPropagation();
           return;
         }
         // Cancel current drawing if in progress
@@ -1137,70 +1190,12 @@ function ImageModal({
           setSelectedRectangleId(null);
           e.preventDefault();
         }
-      } else if ((e.key === 'Delete' || e.key === 'Backspace') && drawnRectangles.length > 0) {
-        // Save current state to undo stack before deleting
-        pushUndoState();
-        
-        // Smart delete: selected rectangle or all rectangles using pure utilities
-        if (selectedRectangleId) {
-          // Delete only the selected rectangle
-          setDrawnRectangles(prev => removeRectangle(prev, selectedRectangleId));
-          setSelectedRectangleId(null);
-        } else {
-          // Delete all rectangles when none selected
-          setDrawnRectangles([]);
-        }
-        e.preventDefault();
-      } else if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
-        // Undo with Ctrl-Z (Windows/Linux) or Cmd-Z (Mac)
-        handleUndo();
-        e.preventDefault();
-      } else if (e.key === 'p' || e.key === 'P') {
-        // Toggle predictions visibility
-        onTogglePredictions(!showPredictions);
-        e.preventDefault();
-      } else if (e.key === '?' || (e.key === 'h' && (e.ctrlKey || e.metaKey)) || (e.key === 'h' || e.key === 'H')) {
-        // Toggle keyboard shortcuts info with ? key or H key
-        setShowKeyboardShortcuts(!showKeyboardShortcuts);
-        e.preventDefault();
-      } else if (e.key === 'a' || e.key === 'A') {
-        // Import AI predictions as rectangles
-        importAIPredictions();
-        e.preventDefault();
-      } else if (e.key === '1' || e.key === 'w' || e.key === 'W') {
-        // Set smoke type to wildfire
-        if (selectedRectangleId) {
-          changeSelectedRectangleSmokeType('wildfire');
-        } else {
-          onSmokeTypeChange('wildfire');
-        }
-        e.preventDefault();
-      } else if (e.key === '2' || e.key === 'i' || e.key === 'I') {
-        // Set smoke type to industrial
-        if (selectedRectangleId) {
-          changeSelectedRectangleSmokeType('industrial');
-        } else {
-          onSmokeTypeChange('industrial');
-        }
-        e.preventDefault();
-      } else if (e.key === '3' || e.key === 'o' || e.key === 'O') {
-        // Set smoke type to other
-        if (selectedRectangleId) {
-          changeSelectedRectangleSmokeType('other');
-        } else {
-          onSmokeTypeChange('other');
-        }
-        e.preventDefault();
-      } else if (e.key === ' ' && !isSubmitting) {
-        // Space key to submit/update annotation with current drawn rectangles
-        onSubmit(detection, drawnRectangles, isDrawMode);
-        e.preventDefault();
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isDrawMode, isActivelyDrawing, selectedRectangleId, drawnRectangles.length, undoStack.length, showKeyboardShortcuts, showPredictions, onTogglePredictions, isSubmitting, detection, drawnRectangles, onSubmit, selectedSmokeType, changeSelectedRectangleSmokeType, onSmokeTypeChange, onDrawModeChange, importAIPredictions]);
+    window.addEventListener('keydown', handleDrawingKeys);
+    return () => window.removeEventListener('keydown', handleDrawingKeys);
+  }, [showKeyboardShortcuts, isActivelyDrawing, selectedRectangleId, handleZoomReset]);
 
   // Add non-passive wheel event listener
   useEffect(() => {
