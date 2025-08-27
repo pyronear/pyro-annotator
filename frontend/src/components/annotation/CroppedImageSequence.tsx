@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { BoundingBox } from '@/types/api';
 import { apiClient } from '@/services/api';
@@ -46,7 +46,6 @@ export default function CroppedImageSequence({
 
   // Clear state immediately when props change to prevent stale data
   useEffect(() => {
-    console.log(`CroppedImageSequence: Props changed, clearing state for sequence ${sequenceId}`);
     setImages([]);
     setCurrentIndex(0);
     setIsLoading(true);
@@ -62,10 +61,6 @@ export default function CroppedImageSequence({
         return;
       }
 
-      console.log(
-        `CroppedImageSequence: Fetching images for sequence ${sequenceId}, ${bboxes.length} detections`
-      );
-
       try {
         // Fetch all detection image URLs
         const imagePromises = bboxes.map(async bbox => {
@@ -77,7 +72,7 @@ export default function CroppedImageSequence({
               error: false,
             };
           } catch (err) {
-            console.error(`Failed to fetch image for detection ${bbox.detection_id}:`, err);
+            // Failed to fetch image for detection
             return {
               url: '',
               loaded: false,
@@ -111,7 +106,7 @@ export default function CroppedImageSequence({
         });
       } catch (err) {
         setError('Failed to fetch detection images');
-        console.error('Error fetching images:', err);
+        // Error fetching images
       } finally {
         setIsLoading(false);
       }
@@ -155,7 +150,7 @@ export default function CroppedImageSequence({
   }, []);
 
   // Draw current image to canvas with cropping
-  const drawToCanvas = () => {
+  const drawToCanvas = useCallback(() => {
     if (!canvasRef.current || !images.length || currentIndex >= images.length) return;
 
     const currentImage = images[currentIndex];
@@ -218,12 +213,12 @@ export default function CroppedImageSequence({
       canvasWidth,
       canvasHeight // destination rectangle
     );
-  };
+  }, [bboxes, currentIndex, images, zoomLevel]);
 
   // Redraw canvas when current index or zoom level changes
   useEffect(() => {
     drawToCanvas();
-  }, [currentIndex, images, zoomLevel]);
+  }, [currentIndex, images, zoomLevel, drawToCanvas]);
 
   if (isLoading) {
     return (

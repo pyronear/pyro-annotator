@@ -50,12 +50,6 @@ export function DetectionImageCard({
       const width = imgRect.width;
       const height = imgRect.height;
 
-      console.log('handleImageLoad called for detection:', detection.id, {
-        width,
-        height,
-        offsetX,
-        offsetY,
-      });
       setImageInfo({
         width,
         height,

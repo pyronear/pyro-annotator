@@ -37,7 +37,6 @@ export default function FullImageSequence({
 
   // Clear state immediately when props change to prevent stale data
   useEffect(() => {
-    console.log(`FullImageSequence: Props changed, clearing state for sequence ${sequenceId}`);
     setImages([]);
     setCurrentIndex(0);
     setIsLoading(true);
@@ -53,10 +52,6 @@ export default function FullImageSequence({
         return;
       }
 
-      console.log(
-        `FullImageSequence: Fetching images for sequence ${sequenceId}, ${bboxes.length} detections`
-      );
-
       try {
         // Fetch all detection image URLs
         const imagePromises = bboxes.map(async bbox => {
@@ -68,7 +63,7 @@ export default function FullImageSequence({
               error: false,
             };
           } catch (err) {
-            console.error(`Failed to fetch image for detection ${bbox.detection_id}:`, err);
+            // Failed to fetch image for detection
             return {
               url: '',
               loaded: false,
@@ -99,7 +94,7 @@ export default function FullImageSequence({
         });
       } catch (err) {
         setError('Failed to fetch detection images');
-        console.error('Error fetching images:', err);
+        // Error fetching images
       } finally {
         setIsLoading(false);
       }

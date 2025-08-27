@@ -71,7 +71,7 @@ export function getProcessingStageStatus(
  * ```typescript
  * const sequences = [{ id: 1, name: 'seq1' }, { id: 2, name: 'seq2' }];
  * const annotations = [{ id: 101, sequence_id: 1, processing_stage: 'annotated' }];
- * 
+ *
  * const combined = combineSequencesWithAnnotations(sequences, annotations);
  * // Returns: [
  * //   { id: 1, name: 'seq1', processing_stage_status: 'annotated', annotation_id: 101 },
