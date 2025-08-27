@@ -235,13 +235,13 @@ export const SequenceAnnotationGrid: React.FC<SequenceAnnotationGridProps> = ({
                           {getSmokeTypeEmoji(smokeType)} {formatSmokeType(smokeType)}
                         </span>
                         {isActive && smokeType === 'wildfire' && (
-                          <kbd className="px-1 py-0.5 bg-gray-200 text-gray-700 rounded text-xs font-mono">W</kbd>
+                          <kbd className="px-1 py-0.5 bg-gray-200 text-gray-700 rounded text-xs font-mono">1</kbd>
                         )}
                         {isActive && smokeType === 'industrial' && (
-                          <kbd className="px-1 py-0.5 bg-gray-200 text-gray-700 rounded text-xs font-mono">N</kbd>
+                          <kbd className="px-1 py-0.5 bg-gray-200 text-gray-700 rounded text-xs font-mono">2</kbd>
                         )}
                         {isActive && smokeType === 'other' && (
-                          <kbd className="px-1 py-0.5 bg-gray-200 text-gray-700 rounded text-xs font-mono">M</kbd>
+                          <kbd className="px-1 py-0.5 bg-gray-200 text-gray-700 rounded text-xs font-mono">3</kbd>
                         )}
                       </label>
                     ))}
