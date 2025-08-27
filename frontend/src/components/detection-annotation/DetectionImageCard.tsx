@@ -4,7 +4,7 @@
  */
 
 import { useState, useRef } from 'react';
-import { CheckCircle, AlertCircle } from 'lucide-react';
+import { CheckCircle, AlertCircle, Clock } from 'lucide-react';
 import { Detection, DetectionAnnotation } from '@/types/api';
 import { useDetectionImage } from '@/hooks/useDetectionImage';
 import { BoundingBoxOverlay, UserAnnotationOverlay } from '@/components/annotation/ImageOverlays';
@@ -91,9 +91,12 @@ export function DetectionImageCard({
   return (
     <div 
       className={`
-        bg-white rounded-lg p-3 shadow-sm border-2 cursor-pointer transition-all duration-200
-        hover:shadow-md hover:scale-[1.02] active:scale-[0.98]
-        ${isAnnotated ? 'border-green-200 bg-green-50' : 'border-gray-200 hover:border-blue-300'}
+        rounded-lg p-3 cursor-pointer transition-all duration-200
+        hover:shadow-lg hover:scale-[1.02] active:scale-[0.98]
+        ${isAnnotated 
+          ? 'border-4 border-green-500 bg-green-50 shadow-md shadow-green-200' 
+          : 'border-4 border-orange-400 bg-white hover:border-orange-500 shadow-md shadow-orange-100'
+        }
       `}
       onClick={onClick}
     >
@@ -123,6 +126,19 @@ export function DetectionImageCard({
             imageInfo={imageInfo}
           />
         )}
+
+        {/* Status Overlay Badge */}
+        {isAnnotated ? (
+          <div className="absolute top-2 right-2 flex items-center space-x-1 bg-green-600 text-white px-2 py-1 rounded-lg shadow-lg border border-green-700">
+            <CheckCircle className="w-4 h-4" />
+            <span className="text-xs font-bold">COMPLETED</span>
+          </div>
+        ) : (
+          <div className="absolute top-2 right-2 flex items-center space-x-1 bg-orange-500 text-white px-2 py-1 rounded-lg shadow-lg border border-orange-600 animate-pulse">
+            <Clock className="w-4 h-4" />
+            <span className="text-xs font-bold">PENDING</span>
+          </div>
+        )}
       </div>
 
       {/* Card Footer */}
@@ -148,7 +164,7 @@ export function DetectionImageCard({
 
         {/* Status Indicator */}
         <div className="flex flex-col items-end space-y-1">
-          {detection.algo_predictions?.predictions?.length && (
+          {(detection.algo_predictions?.predictions?.length || 0) > 0 && (
             <div className="flex items-center space-x-1">
               <AlertCircle className="w-3 h-3 text-blue-500" />
               <span className="text-xs text-blue-600">
@@ -157,11 +173,11 @@ export function DetectionImageCard({
             </div>
           )}
           
-          {userAnnotation?.annotation?.annotation?.length && (
+          {(userAnnotation?.annotation?.annotation?.length || 0) > 0 && (
             <div className="flex items-center space-x-1">
               <CheckCircle className="w-3 h-3 text-green-500" />
               <span className="text-xs text-green-600">
-                {userAnnotation.annotation.annotation.length} annotation{userAnnotation.annotation.annotation.length > 1 ? 's' : ''}
+                {userAnnotation?.annotation?.annotation?.length} annotation{(userAnnotation?.annotation?.annotation?.length || 0) > 1 ? 's' : ''}
               </span>
             </div>
           )}

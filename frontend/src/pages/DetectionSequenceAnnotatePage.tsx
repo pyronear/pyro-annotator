@@ -1525,13 +1525,15 @@ export default function DetectionSequenceAnnotatePage() {
   const openModal = (index: number) => {
     const detectionId = getDetectionIdByIndex(index);
     if (detectionId && sequenceId) {
-      navigate(`/detections/${sequenceId}/annotate/${detectionId}`);
+      const sourceParam = fromParam ? `?from=${fromParam}` : '';
+      navigate(`/detections/${sequenceId}/annotate/${detectionId}${sourceParam}`);
     }
   };
 
   const closeModal = () => {
     if (sequenceId) {
-      navigate(`/detections/${sequenceId}/annotate`);
+      const sourceParam = fromParam ? `?from=${fromParam}` : '';
+      navigate(`/detections/${sequenceId}/annotate${sourceParam}`);
     }
   };
 
@@ -1544,7 +1546,8 @@ export default function DetectionSequenceAnnotatePage() {
 
     const newDetectionId = getDetectionIdByIndex(newIndex);
     if (newDetectionId) {
-      navigate(`/detections/${sequenceId}/annotate/${newDetectionId}`);
+      const sourceParam = fromParam ? `?from=${fromParam}` : '';
+      navigate(`/detections/${sequenceId}/annotate/${newDetectionId}${sourceParam}`);
     }
   };
 

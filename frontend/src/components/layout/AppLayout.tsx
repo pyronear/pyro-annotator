@@ -131,13 +131,13 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
     if (currentPath.startsWith('/detections/')) {
       // Handle nested detection routes like /detections/{id}/annotate
       if (href === '/detections/annotate' && currentPath.match(/^\/detections\/\d+\/annotate$/)) {
-        const searchParams = new URLSearchParams(window.location.search);
+        const searchParams = new URLSearchParams(location.search);
         const fromParam = searchParams.get('from');
         // Only highlight Detections > Annotate if not coming from detections-review
         return fromParam !== 'detections-review';
       }
       if (href === '/detections/review' && currentPath.match(/^\/detections\/\d+\/annotate$/)) {
-        const searchParams = new URLSearchParams(window.location.search);
+        const searchParams = new URLSearchParams(location.search);
         const fromParam = searchParams.get('from');
         // Highlight Detections > Review when coming from detections-review
         return fromParam === 'detections-review';
