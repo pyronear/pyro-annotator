@@ -1135,6 +1135,18 @@ function ImageModal({
   );
 }
 
+// Helper function for context-aware annotation status
+const getIsAnnotated = (annotation: DetectionAnnotation | undefined, fromContext: string | null): boolean => {
+  if (fromContext === 'detections-review') {
+    // Review context: optimistically assume completed unless explicitly not
+    if (!annotation) return true; // Loading state: assume completed
+    return annotation.processing_stage === 'annotated' || annotation.processing_stage === 'bbox_annotation';
+  } else {
+    // Annotate context: conservatively assume pending unless explicitly completed
+    return annotation?.processing_stage === 'annotated';
+  }
+};
+
 export default function DetectionSequenceAnnotatePage() {
   const { sequenceId, detectionId } = useParams<{ sequenceId: string; detectionId?: string }>();
   const navigate = useNavigate();
@@ -2022,7 +2034,7 @@ export default function DetectionSequenceAnnotatePage() {
               key={detection.id}
               detection={detection}
               onClick={() => openModal(index)}
-              isAnnotated={detectionAnnotations.get(detection.id)?.processing_stage === 'annotated'}
+              isAnnotated={getIsAnnotated(detectionAnnotations.get(detection.id), fromParam)}
               showPredictions={showPredictions}
               userAnnotation={detectionAnnotations.get(detection.id) || null}
             />
@@ -2048,7 +2060,7 @@ export default function DetectionSequenceAnnotatePage() {
           totalCount={detections.length}
           showPredictions={showPredictions}
           isSubmitting={annotateIndividualDetection.isPending}
-          isAnnotated={detectionAnnotations.get(detections[selectedDetectionIndex].id)?.processing_stage === 'annotated'}
+          isAnnotated={getIsAnnotated(detectionAnnotations.get(detections[selectedDetectionIndex].id), fromParam)}
           existingAnnotation={detectionAnnotations.get(detections[selectedDetectionIndex].id)}
           selectedSmokeType={persistentSmokeType}
           onSmokeTypeChange={setPersistentSmokeType}
