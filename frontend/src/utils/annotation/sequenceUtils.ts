@@ -9,22 +9,22 @@ import { SequenceAnnotation, SequenceBbox, FalsePositiveType, SmokeType } from '
  * Determines the classification type for a bbox based on user choice and existing data.
  */
 export const getClassificationType = (
-  bbox: SequenceBbox, 
-  index: number, 
+  bbox: SequenceBbox,
+  index: number,
   primaryClassification: Record<number, 'unselected' | 'smoke' | 'false_positive'>
 ): 'unselected' | 'smoke' | 'false_positive' => {
   const userChoice = primaryClassification[index] || 'unselected';
-  
+
   // If user explicitly chose smoke and bbox data matches
   if (userChoice === 'smoke' && bbox.is_smoke) {
     return 'smoke';
   }
-  
-  // If user explicitly chose false positive (regardless of bbox data completeness)  
+
+  // If user explicitly chose false positive (regardless of bbox data completeness)
   if (userChoice === 'false_positive') {
     return 'false_positive';
   }
-  
+
   // If no explicit choice made, derive from existing data for backwards compatibility
   if (userChoice === 'unselected') {
     if (bbox.is_smoke) {
@@ -33,7 +33,7 @@ export const getClassificationType = (
       return 'false_positive';
     }
   }
-  
+
   return 'unselected';
 };
 
@@ -86,7 +86,7 @@ export const shouldShowAsAnnotated = (bbox: SequenceBbox, processingStage: strin
  * Validates that annotation data matches current sequence.
  */
 export const isAnnotationDataValid = (
-  annotation: SequenceAnnotation | null, 
+  annotation: SequenceAnnotation | null,
   currentSequenceId: number | null
 ): boolean => {
   if (!annotation || !currentSequenceId) return false;
@@ -96,7 +96,9 @@ export const isAnnotationDataValid = (
 /**
  * Determines initial missed smoke review state based on processing stage.
  */
-export const getInitialMissedSmokeReview = (annotation: SequenceAnnotation): 'yes' | 'no' | null => {
+export const getInitialMissedSmokeReview = (
+  annotation: SequenceAnnotation
+): 'yes' | 'no' | null => {
   if (annotation.processing_stage === 'annotated') {
     // For annotated sequences, the has_missed_smoke boolean reflects the actual review result
     return annotation.has_missed_smoke ? 'yes' : 'no';
@@ -116,15 +118,17 @@ export const createAnnotationPayload = (
 ): Partial<SequenceAnnotation> => {
   return {
     annotation: {
-      sequences_bbox: updatedBboxes // Always preserve the actual bbox data
+      sequences_bbox: updatedBboxes, // Always preserve the actual bbox data
     },
     processing_stage: 'annotated', // Move to annotated stage
     // Update derived fields - all false for unsure sequences
     has_smoke: isUnsure ? false : updatedBboxes.some(bbox => bbox.is_smoke),
-    has_false_positives: isUnsure ? false : updatedBboxes.some(bbox => bbox.false_positive_types.length > 0),
-    false_positive_types: isUnsure ? "[]" : JSON.stringify(
-      [...new Set(updatedBboxes.flatMap(bbox => bbox.false_positive_types))]
-    ),
+    has_false_positives: isUnsure
+      ? false
+      : updatedBboxes.some(bbox => bbox.false_positive_types.length > 0),
+    false_positive_types: isUnsure
+      ? '[]'
+      : JSON.stringify([...new Set(updatedBboxes.flatMap(bbox => bbox.false_positive_types))]),
     // Include missed smoke flag - false for unsure sequences
     has_missed_smoke: isUnsure ? false : hasMissedSmoke,
     // Include unsure flag
@@ -140,7 +144,7 @@ export const updateBboxSmokeType = (bbox: SequenceBbox, smokeType: SmokeType): S
     ...bbox,
     is_smoke: true,
     smoke_type: smokeType,
-    false_positive_types: [] // Clear false positives when selecting smoke
+    false_positive_types: [], // Clear false positives when selecting smoke
   };
 };
 
@@ -148,29 +152,24 @@ export const updateBboxSmokeType = (bbox: SequenceBbox, smokeType: SmokeType): S
  * Updates a bbox with false positive type selection.
  */
 export const updateBboxFalsePositiveType = (
-  bbox: SequenceBbox, 
-  fpType: FalsePositiveType, 
+  bbox: SequenceBbox,
+  fpType: FalsePositiveType,
   isSelected: boolean
 ): SequenceBbox => {
-  const updatedBbox = { 
+  const updatedBbox = {
     ...bbox,
     is_smoke: false, // Clear smoke when selecting false positive
-    smoke_type: undefined // Clear smoke type
+    smoke_type: undefined, // Clear smoke type
   };
-  
+
   if (isSelected) {
     // Add the false positive type
-    updatedBbox.false_positive_types = [
-      ...bbox.false_positive_types,
-      fpType
-    ];
+    updatedBbox.false_positive_types = [...bbox.false_positive_types, fpType];
   } else {
     // Remove the false positive type
-    updatedBbox.false_positive_types = bbox.false_positive_types.filter(
-      type => type !== fpType
-    );
+    updatedBbox.false_positive_types = bbox.false_positive_types.filter(type => type !== fpType);
   }
-  
+
   return updatedBbox;
 };
 
@@ -182,7 +181,7 @@ export const clearBboxSelections = (bbox: SequenceBbox): SequenceBbox => {
     ...bbox,
     is_smoke: false,
     smoke_type: undefined,
-    false_positive_types: []
+    false_positive_types: [],
   };
 };
 
@@ -191,23 +190,23 @@ export const clearBboxSelections = (bbox: SequenceBbox): SequenceBbox => {
  */
 export const getKeyForFalsePositiveType = (type: string): string => {
   const keyMap: Record<string, string> = {
-    'antenna': 'A',
-    'building': 'B', 
-    'cliff': 'C',
-    'dark': 'D',
-    'dust': 'U',
-    'high_cloud': 'H',
-    'low_cloud': 'L',
-    'lens_flare': 'G',
-    'lens_droplet': 'P',
-    'light': 'I',
-    'rain': 'R',
-    'trail': 'T',
-    'road': 'O',
-    'sky': 'K',
-    'tree': 'E',
-    'water_body': 'W',
-    'other': 'X',
+    antenna: 'A',
+    building: 'B',
+    cliff: 'C',
+    dark: 'D',
+    dust: 'U',
+    high_cloud: 'H',
+    low_cloud: 'L',
+    lens_flare: 'G',
+    lens_droplet: 'P',
+    light: 'I',
+    rain: 'R',
+    trail: 'T',
+    road: 'O',
+    sky: 'K',
+    tree: 'E',
+    water_body: 'W',
+    other: 'X',
   };
   return keyMap[type] || '';
 };
@@ -216,6 +215,8 @@ export const getKeyForFalsePositiveType = (type: string): string => {
  * Formats false positive type label for display.
  */
 export const formatFalsePositiveLabel = (type: string): string => {
-  return type.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+  return type
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
 };
-

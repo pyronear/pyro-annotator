@@ -28,7 +28,7 @@ export interface DatePresetOption {
 
 /**
  * Default preset options for common date ranges
- * 
+ *
  * @pure Constant array of preset configurations
  */
 export const DEFAULT_DATE_PRESETS: readonly DatePresetOption[] = [
@@ -39,17 +39,17 @@ export const DEFAULT_DATE_PRESETS: readonly DatePresetOption[] = [
 
 /**
  * Pure date range filter component with preset buttons
- * 
+ *
  * Provides a complete date range selection interface with:
  * - From/To date inputs
  * - Preset quick selection buttons (7d, 30d, 90d)
  * - Clear functionality
  * - Consistent styling and accessibility
- * 
+ *
  * @pure Component renders consistently for same props
  * @param props - Date range filter configuration
  * @returns JSX element for date range selection
- * 
+ *
  * @example
  * <DateRangeFilter
  *   label="Date Range (Recorded)"
@@ -74,10 +74,9 @@ export default function DateRangeFilter({
   showPresets = true,
   'data-testid': testId,
 }: DateRangeFilterProps) {
-  
   /**
    * Handles date input changes and ensures valid values
-   * 
+   *
    * @pure Function processes date input events
    */
   const handleDateFromChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -90,7 +89,7 @@ export default function DateRangeFilter({
 
   /**
    * Determines which preset (if any) matches the current date range
-   * 
+   *
    * @pure Function analyzes current date values against presets
    */
   const getCurrentPreset = (): string | null => {
@@ -99,7 +98,7 @@ export default function DateRangeFilter({
 
   /**
    * Handles preset button clicks
-   * 
+   *
    * @pure Function delegates preset selection to parent component
    */
   const handlePresetClick = (presetKey: string) => {
@@ -110,14 +109,12 @@ export default function DateRangeFilter({
 
   return (
     <div className={className} data-testid={testId}>
-      <label className="block text-sm font-medium text-gray-700 mb-1">
-        {label}
-      </label>
+      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
 
       {/* Preset Buttons */}
       {showPresets && (
         <div className="flex gap-1 mb-3">
-          {presetOptions.map((preset) => {
+          {presetOptions.map(preset => {
             const isActive = currentPreset === preset.key;
             return (
               <button
@@ -180,12 +177,12 @@ export default function DateRangeFilter({
 
 /**
  * Calculates date range based on preset selection
- * 
+ *
  * @pure Function calculates dates without side effects
  * @param preset - Preset key (e.g., '7d', '30d', '90d')
  * @param referenceDate - Reference date to calculate from (defaults to now)
  * @returns Object with formatted date strings
- * 
+ *
  * @example
  * const { dateFrom, dateTo } = calculatePresetDateRange('30d');
  * setDateFrom(dateFrom);
@@ -200,7 +197,7 @@ export const calculatePresetDateRange = (
 
   // Find preset configuration
   const presetConfig = DEFAULT_DATE_PRESETS.find(p => p.key === preset);
-  
+
   if (!presetConfig || !presetConfig.days) {
     return { dateFrom: '', dateTo: todayString };
   }
@@ -212,17 +209,17 @@ export const calculatePresetDateRange = (
 
   return {
     dateFrom: startDateString,
-    dateTo: todayString
+    dateTo: todayString,
   };
 };
 
 /**
  * Formats Date object to YYYY-MM-DD string for date inputs
- * 
+ *
  * @pure Function formats dates consistently
  * @param date - Date object to format
  * @returns Date string in YYYY-MM-DD format
- * 
+ *
  * @example
  * const dateString = formatDateForInput(new Date());
  * // Returns: "2024-01-15"
@@ -236,12 +233,12 @@ export const formatDateForInput = (date: Date): string => {
 
 /**
  * Validates if date range is valid (from <= to)
- * 
+ *
  * @pure Function validates date range
  * @param dateFrom - Start date string
- * @param dateTo - End date string  
+ * @param dateTo - End date string
  * @returns True if range is valid or either date is empty
- * 
+ *
  * @example
  * const isValid = isValidDateRange('2024-01-01', '2024-01-31');
  * // Returns: true
@@ -253,62 +250,64 @@ export const isValidDateRange = (dateFrom: string, dateTo: string): boolean => {
 
 /**
  * Counts active date filters for badge display
- * 
+ *
  * @pure Function counts non-empty date values
  * @param dateFrom - Start date string
  * @param dateTo - End date string
  * @returns Number of active date filters (0-1)
- * 
+ *
  * @example
  * const activeCount = countActiveDateFilters('2024-01-01', '2024-01-31');
  * // Returns: 1
  */
 export const countActiveDateFilters = (dateFrom: string, dateTo: string): number => {
-  return (dateFrom || dateTo) ? 1 : 0;
+  return dateFrom || dateTo ? 1 : 0;
 };
 
 /**
  * Determines which preset matches the given date range
- * 
+ *
  * @pure Function analyzes date values against preset options
  * @param dateFrom - Start date string (YYYY-MM-DD)
- * @param dateTo - End date string (YYYY-MM-DD) 
+ * @param dateTo - End date string (YYYY-MM-DD)
  * @param presetOptions - Array of preset configurations
  * @returns Preset key if match found, null otherwise
- * 
+ *
  * @example
  * const preset = detectActivePreset('2024-01-24', '2024-01-31', DEFAULT_DATE_PRESETS);
  * // Returns: '7d' (if dates match 7-day preset)
  */
 export const detectActivePreset = (
-  dateFrom: string, 
-  dateTo: string, 
+  dateFrom: string,
+  dateTo: string,
   presetOptions: readonly DatePresetOption[] = DEFAULT_DATE_PRESETS
 ): string | null => {
   if (!dateFrom || !dateTo) return null;
-  
+
   const fromDate = new Date(dateFrom);
   const toDate = new Date(dateTo);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  
+
   // Check if 'to' date is today (allow some tolerance)
   const isToDateToday = Math.abs(toDate.getTime() - today.getTime()) <= 24 * 60 * 60 * 1000;
   if (!isToDateToday) return null;
-  
+
   // Check each preset
   for (const preset of presetOptions) {
     if (preset.days) {
       const expectedFromDate = new Date(today);
       expectedFromDate.setDate(expectedFromDate.getDate() - preset.days);
-      
+
       // Allow 1-day tolerance for date matching
-      const daysDiff = Math.abs((fromDate.getTime() - expectedFromDate.getTime()) / (24 * 60 * 60 * 1000));
+      const daysDiff = Math.abs(
+        (fromDate.getTime() - expectedFromDate.getTime()) / (24 * 60 * 60 * 1000)
+      );
       if (daysDiff <= 1) {
         return preset.key;
       }
     }
   }
-  
+
   return null;
 };

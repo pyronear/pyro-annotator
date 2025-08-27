@@ -26,7 +26,7 @@ interface TabbedFiltersProps {
   // Current filter values
   filters: ExtendedSequenceFilters;
   onFiltersChange: (filters: Partial<ExtendedSequenceFilters>) => void;
-  
+
   // Additional states
   dateFrom: string;
   dateTo: string;
@@ -34,19 +34,19 @@ interface TabbedFiltersProps {
   onDateToChange: (value: string) => void;
   onDateRangeSet: (preset: string) => void;
   onDateRangeClear: () => void;
-  
+
   selectedFalsePositiveTypes: string[];
   onFalsePositiveTypesChange: (types: string[]) => void;
-  
+
   selectedSmokeTypes: string[];
   onSmokeTypesChange: (types: string[]) => void;
-  
+
   selectedModelAccuracy: ModelAccuracyType | 'all';
   onModelAccuracyChange: (accuracy: ModelAccuracyType | 'all') => void;
-  
+
   selectedUnsure?: 'all' | 'unsure' | 'not-unsure';
   onUnsureChange?: (unsure: 'all' | 'unsure' | 'not-unsure') => void;
-  
+
   // Data
   cameras: Camera[];
   organizations: Organization[];
@@ -54,16 +54,16 @@ interface TabbedFiltersProps {
   camerasLoading: boolean;
   organizationsLoading: boolean;
   sourceApisLoading: boolean;
-  
+
   // Configuration
   showModelAccuracy?: boolean; // for review pages only
   showFalsePositiveTypes?: boolean; // for review pages only
   showSmokeTypes?: boolean; // for review pages only
   showUnsureFilter?: boolean; // for sequence review page only
-  
+
   // Reset handler
   onResetFilters?: () => void;
-  
+
   className?: string;
   defaultTab?: 'simple' | 'advanced';
   simpleTabLabel?: string;
@@ -106,7 +106,7 @@ export default function TabbedFilters({
   const [activeTab, setActiveTab] = usePersistedTabState('tabbed-filters-active-tab', defaultTab);
 
   // Count active filters for each tab
-  // Note: We exclude system filters like 'processing_stage', 'page', 'size', 'include_annotation' 
+  // Note: We exclude system filters like 'processing_stage', 'page', 'size', 'include_annotation'
   // which are not user-visible filters
   const countActiveSimpleFilters = () => {
     let count = 0;
@@ -143,17 +143,15 @@ export default function TabbedFilters({
   const renderSimpleFilters = () => (
     <>
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Camera
-        </label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Camera</label>
         <select
           value={filters.camera_name || ''}
-          onChange={(e) => onFiltersChange({ camera_name: e.target.value || undefined })}
+          onChange={e => onFiltersChange({ camera_name: e.target.value || undefined })}
           className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
           disabled={camerasLoading}
         >
           <option value="">All Cameras</option>
-          {cameras.map((camera) => (
+          {cameras.map(camera => (
             <option key={camera.id} value={camera.name}>
               {camera.name}
             </option>
@@ -162,17 +160,15 @@ export default function TabbedFilters({
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Organization
-        </label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Organization</label>
         <select
           value={filters.organisation_name || ''}
-          onChange={(e) => onFiltersChange({ organisation_name: e.target.value || undefined })}
+          onChange={e => onFiltersChange({ organisation_name: e.target.value || undefined })}
           className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
           disabled={organizationsLoading}
         >
           <option value="">All Organizations</option>
-          {organizations.map((organization) => (
+          {organizations.map(organization => (
             <option key={organization.id} value={organization.name}>
               {organization.name}
             </option>
@@ -188,7 +184,6 @@ export default function TabbedFilters({
           className="w-full"
         />
       )}
-
     </>
   );
 
@@ -196,17 +191,15 @@ export default function TabbedFilters({
   const renderAdvancedFilters = () => (
     <>
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Camera
-        </label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Camera</label>
         <select
           value={filters.camera_name || ''}
-          onChange={(e) => onFiltersChange({ camera_name: e.target.value || undefined })}
+          onChange={e => onFiltersChange({ camera_name: e.target.value || undefined })}
           className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
           disabled={camerasLoading}
         >
           <option value="">All Cameras</option>
-          {cameras.map((camera) => (
+          {cameras.map(camera => (
             <option key={camera.id} value={camera.name}>
               {camera.name}
             </option>
@@ -215,17 +208,15 @@ export default function TabbedFilters({
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Organization
-        </label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Organization</label>
         <select
           value={filters.organisation_name || ''}
-          onChange={(e) => onFiltersChange({ organisation_name: e.target.value || undefined })}
+          onChange={e => onFiltersChange({ organisation_name: e.target.value || undefined })}
           className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
           disabled={organizationsLoading}
         >
           <option value="">All Organizations</option>
-          {organizations.map((organization) => (
+          {organizations.map(organization => (
             <option key={organization.id} value={organization.name}>
               {organization.name}
             </option>
@@ -234,17 +225,15 @@ export default function TabbedFilters({
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Source API
-        </label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Source API</label>
         <select
           value={filters.source_api || ''}
-          onChange={(e) => onFiltersChange({ source_api: e.target.value as any || undefined })}
+          onChange={e => onFiltersChange({ source_api: (e.target.value as any) || undefined })}
           className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
           disabled={sourceApisLoading}
         >
           <option value="">All Sources</option>
-          {sourceApis.map((sourceApi) => (
+          {sourceApis.map(sourceApi => (
             <option key={sourceApi.id} value={sourceApi.id}>
               {sourceApi.name}
             </option>
@@ -253,15 +242,17 @@ export default function TabbedFilters({
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Wildfire Alert
-        </label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Wildfire Alert</label>
         <select
-          value={filters.is_wildfire_alertapi === undefined ? '' : filters.is_wildfire_alertapi.toString()}
-          onChange={(e) => {
+          value={
+            filters.is_wildfire_alertapi === undefined
+              ? ''
+              : filters.is_wildfire_alertapi.toString()
+          }
+          onChange={e => {
             const value = e.target.value;
             onFiltersChange({
-              is_wildfire_alertapi: value === '' ? undefined : value === 'true'
+              is_wildfire_alertapi: value === '' ? undefined : value === 'true',
             });
           }}
           className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
@@ -284,12 +275,10 @@ export default function TabbedFilters({
       {/* Unsure Filter - Only show on sequence review page */}
       {showUnsureFilter && (
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Certainty
-          </label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Certainty</label>
           <select
             value={selectedUnsure}
-            onChange={(e) => onUnsureChange(e.target.value as 'all' | 'unsure' | 'not-unsure')}
+            onChange={e => onUnsureChange(e.target.value as 'all' | 'unsure' | 'not-unsure')}
             className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
           >
             <option value="all">All</option>
@@ -403,7 +392,9 @@ export default function TabbedFilters({
         <div
           className={clsx(
             'transition-all duration-200 ease-in-out',
-            activeTab === 'simple' ? 'opacity-100 visible' : 'opacity-0 invisible h-0 overflow-hidden'
+            activeTab === 'simple'
+              ? 'opacity-100 visible'
+              : 'opacity-0 invisible h-0 overflow-hidden'
           )}
         >
           {activeTab === 'simple' && (
@@ -416,7 +407,9 @@ export default function TabbedFilters({
         <div
           className={clsx(
             'transition-all duration-200 ease-in-out',
-            activeTab === 'advanced' ? 'opacity-100 visible' : 'opacity-0 invisible h-0 overflow-hidden'
+            activeTab === 'advanced'
+              ? 'opacity-100 visible'
+              : 'opacity-0 invisible h-0 overflow-hidden'
           )}
         >
           {activeTab === 'advanced' && (

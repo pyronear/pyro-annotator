@@ -14,9 +14,8 @@ interface SubmissionControlsProps {
 export function SubmissionControls({
   isSubmitting,
   isAnnotated,
-  onSubmit
+  onSubmit,
 }: SubmissionControlsProps) {
-
   return (
     <div className="flex justify-center mt-4">
       <button

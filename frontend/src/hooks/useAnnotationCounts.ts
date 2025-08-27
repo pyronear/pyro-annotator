@@ -10,10 +10,10 @@ export interface AnnotationCounts {
 
 export function useAnnotationCounts(): AnnotationCounts {
   // Query for sequences needing sequence-level annotation
-  const { 
-    data: sequenceData, 
-    isLoading: sequenceLoading, 
-    error: sequenceError 
+  const {
+    data: sequenceData,
+    isLoading: sequenceLoading,
+    error: sequenceError,
   } = useQuery({
     queryKey: ['annotation-counts', 'sequences'],
     queryFn: async () => {
@@ -29,10 +29,10 @@ export function useAnnotationCounts(): AnnotationCounts {
   });
 
   // Query for sequences needing detection-level annotation
-  const { 
-    data: detectionData, 
-    isLoading: detectionLoading, 
-    error: detectionError 
+  const {
+    data: detectionData,
+    isLoading: detectionLoading,
+    error: detectionError,
   } = useQuery({
     queryKey: ['annotation-counts', 'detections'],
     queryFn: async () => {

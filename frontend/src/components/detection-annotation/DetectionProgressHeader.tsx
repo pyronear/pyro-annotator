@@ -3,7 +3,14 @@
  * Displays current position, progress bar, and navigation controls.
  */
 
-import { ArrowLeft, ChevronLeft, ChevronRight, CheckCircle, Clock, AlertCircle } from 'lucide-react';
+import {
+  ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
+  CheckCircle,
+  Clock,
+  AlertCircle,
+} from 'lucide-react';
 import { Detection } from '@/types/api';
 import { calculateWorkflowProgress } from '@/utils/annotation';
 
@@ -30,10 +37,10 @@ export function DetectionProgressHeader({
   canNavigateNext,
   onClose,
   onNavigate,
-  completedCount = 0
+  completedCount = 0,
 }: DetectionProgressHeaderProps) {
   const progress = calculateWorkflowProgress(completedCount, totalCount);
-  
+
   return (
     <div className="bg-white border-b border-gray-200 px-6 py-4">
       {/* Top row - Title and close button */}
@@ -46,14 +53,10 @@ export function DetectionProgressHeader({
           >
             <ArrowLeft className="w-5 h-5 text-gray-600" />
           </button>
-          
+
           <div>
-            <h1 className="text-xl font-semibold text-gray-900">
-              Detection Annotation
-            </h1>
-            <p className="text-sm text-gray-500">
-              Sequence detection #{detection.id}
-            </p>
+            <h1 className="text-xl font-semibold text-gray-900">Detection Annotation</h1>
+            <p className="text-sm text-gray-500">Sequence detection #{detection.id}</p>
           </div>
         </div>
 
@@ -87,9 +90,10 @@ export function DetectionProgressHeader({
             disabled={!canNavigatePrev}
             className={`
               flex items-center space-x-1 px-3 py-2 rounded-lg border transition-colors
-              ${canNavigatePrev
-                ? 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'
-                : 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
+              ${
+                canNavigatePrev
+                  ? 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'
+                  : 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
               }
             `}
             title="Previous detection (←)"
@@ -103,9 +107,10 @@ export function DetectionProgressHeader({
             disabled={!canNavigateNext}
             className={`
               flex items-center space-x-1 px-3 py-2 rounded-lg border transition-colors
-              ${canNavigateNext
-                ? 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'
-                : 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
+              ${
+                canNavigateNext
+                  ? 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'
+                  : 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
               }
             `}
             title="Next detection (→)"
@@ -125,10 +130,10 @@ export function DetectionProgressHeader({
               {progress.message} ({progress.percentage}%)
             </span>
           </div>
-          
+
           {/* Progress bar */}
           <div className="w-full bg-gray-200 rounded-full h-2">
-            <div 
+            <div
               className="bg-blue-600 h-2 rounded-full transition-all duration-300"
               style={{ width: `${progress.percentage}%` }}
             />
@@ -137,25 +142,22 @@ export function DetectionProgressHeader({
 
         {/* Detection metadata */}
         <div className="text-right">
-          <div className="text-sm text-gray-900 font-medium">
-            ID #{detection.id}
-          </div>
-          
+          <div className="text-sm text-gray-900 font-medium">ID #{detection.id}</div>
+
           <div className="text-xs text-gray-500">
-            {detection.confidence && (
-              <>Confidence: {(detection.confidence * 100).toFixed(1)}%</>
-            )}
+            {detection.confidence && <>Confidence: {(detection.confidence * 100).toFixed(1)}%</>}
           </div>
-          
+
           <div className="text-xs text-gray-500">
             {new Date(detection.recorded_at).toLocaleString()}
           </div>
-          
+
           {detection.algo_predictions?.predictions?.length && (
             <div className="flex items-center justify-end space-x-1 text-xs text-blue-600 mt-1">
               <AlertCircle className="w-3 h-3" />
               <span>
-                {detection.algo_predictions.predictions.length} AI prediction{detection.algo_predictions.predictions.length > 1 ? 's' : ''}
+                {detection.algo_predictions.predictions.length} AI prediction
+                {detection.algo_predictions.predictions.length > 1 ? 's' : ''}
               </span>
             </div>
           )}

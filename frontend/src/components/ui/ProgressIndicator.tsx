@@ -14,10 +14,10 @@ interface ProgressIndicatorProps {
   className?: string;
 }
 
-export default function ProgressIndicator({ 
-  steps, 
-  currentStep, 
-  className 
+export default function ProgressIndicator({
+  steps,
+  currentStep,
+  className,
 }: ProgressIndicatorProps) {
   return (
     <div className={clsx('w-full', className)}>
@@ -31,7 +31,7 @@ export default function ProgressIndicator({
             />
           </div>
         </div>
-        
+
         <div className="relative flex justify-between">
           {steps.map((step, stepIdx) => (
             <div key={step.id} className="flex flex-col items-center">
@@ -51,22 +51,18 @@ export default function ProgressIndicator({
                   <Circle className="h-4 w-4" />
                 )}
               </div>
-              
+
               <div className="mt-2 text-center">
                 <div
                   className={clsx(
                     'text-sm font-medium',
-                    stepIdx <= currentStep
-                      ? 'text-primary-600'
-                      : 'text-gray-500'
+                    stepIdx <= currentStep ? 'text-primary-600' : 'text-gray-500'
                   )}
                 >
                   {step.name}
                 </div>
                 {step.description && (
-                  <div className="text-xs text-gray-400 mt-1 max-w-24">
-                    {step.description}
-                  </div>
+                  <div className="text-xs text-gray-400 mt-1 max-w-24">{step.description}</div>
                 )}
               </div>
             </div>
@@ -84,19 +80,19 @@ interface CircularProgressProps {
   className?: string;
 }
 
-export function CircularProgress({ 
-  percentage, 
-  size = 'md', 
+export function CircularProgress({
+  percentage,
+  size = 'md',
   showText = true,
-  className 
+  className,
 }: CircularProgressProps) {
   const sizeClasses = {
     sm: 'h-12 w-12',
-    md: 'h-16 w-16', 
+    md: 'h-16 w-16',
     lg: 'h-24 w-24',
     xl: 'h-32 w-32',
   };
-  
+
   const textSizes = {
     sm: 'text-xs',
     md: 'text-sm',
@@ -111,7 +107,13 @@ export function CircularProgress({
   const strokeDashoffset = circumference - (percentage / 100) * circumference;
 
   return (
-    <div className={clsx('relative inline-flex items-center justify-center', sizeClasses[size], className)}>
+    <div
+      className={clsx(
+        'relative inline-flex items-center justify-center',
+        sizeClasses[size],
+        className
+      )}
+    >
       <svg
         className="transform -rotate-90"
         width="100%"
@@ -128,7 +130,7 @@ export function CircularProgress({
           fill="transparent"
           className="text-gray-200"
         />
-        
+
         {/* Progress circle */}
         <circle
           cx={radius + 4}
@@ -143,13 +145,15 @@ export function CircularProgress({
           strokeLinecap="round"
         />
       </svg>
-      
+
       {showText && (
-        <div className={clsx(
-          'absolute inset-0 flex items-center justify-center',
-          textSizes[size],
-          'font-semibold text-gray-900'
-        )}>
+        <div
+          className={clsx(
+            'absolute inset-0 flex items-center justify-center',
+            textSizes[size],
+            'font-semibold text-gray-900'
+          )}
+        >
           {Math.round(percentage)}%
         </div>
       )}
@@ -164,12 +168,7 @@ interface AnnotationStatsProps {
   className?: string;
 }
 
-export function AnnotationStats({ 
-  total, 
-  completed, 
-  pending, 
-  className 
-}: AnnotationStatsProps) {
+export function AnnotationStats({ total, completed, pending, className }: AnnotationStatsProps) {
   const completionPercentage = total > 0 ? (completed / total) * 100 : 0;
 
   return (
@@ -178,24 +177,24 @@ export function AnnotationStats({
         <h3 className="text-lg font-medium text-gray-900">Annotation Progress</h3>
         <CircularProgress percentage={completionPercentage} size="md" />
       </div>
-      
+
       <div className="grid grid-cols-3 gap-4">
         <div className="text-center">
           <div className="text-2xl font-bold text-gray-900">{total}</div>
           <div className="text-sm text-gray-600">Total</div>
         </div>
-        
+
         <div className="text-center">
           <div className="text-2xl font-bold text-green-600">{completed}</div>
           <div className="text-sm text-gray-600">Completed</div>
         </div>
-        
+
         <div className="text-center">
           <div className="text-2xl font-bold text-amber-600">{pending}</div>
           <div className="text-sm text-gray-600">Pending</div>
         </div>
       </div>
-      
+
       {/* Progress bar */}
       <div className="mt-4">
         <div className="flex justify-between text-sm text-gray-600 mb-2">

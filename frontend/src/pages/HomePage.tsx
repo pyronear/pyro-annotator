@@ -6,12 +6,10 @@ export default function HomePage() {
     <div className="min-h-screen bg-gradient-to-br from-primary-50 to-primary-100">
       <div className="container mx-auto px-4 py-16">
         <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">
-            PyroAnnotator
-          </h1>
+          <h1 className="text-4xl font-bold text-gray-900 mb-4">PyroAnnotator</h1>
           <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-            Professional wildfire detection annotation tool for reviewing and labeling 
-            image sequences with AI-assisted predictions.
+            Professional wildfire detection annotation tool for reviewing and labeling image
+            sequences with AI-assisted predictions.
           </p>
         </div>
 
@@ -20,12 +18,10 @@ export default function HomePage() {
             <div className="w-12 h-12 bg-primary-100 rounded-lg flex items-center justify-center mb-4">
               <Database className="w-6 h-6 text-primary-600" />
             </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              Sequence Management
-            </h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Sequence Management</h3>
             <p className="text-gray-600">
-              Browse, filter, and manage wildfire detection sequences from multiple sources 
-              with advanced search capabilities.
+              Browse, filter, and manage wildfire detection sequences from multiple sources with
+              advanced search capabilities.
             </p>
           </div>
 
@@ -33,11 +29,9 @@ export default function HomePage() {
             <div className="w-12 h-12 bg-primary-100 rounded-lg flex items-center justify-center mb-4">
               <Activity className="w-6 h-6 text-primary-600" />
             </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              Annotation Interface
-            </h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Annotation Interface</h3>
             <p className="text-gray-600">
-              Streamlined annotation workflow with interactive image sequences, multi-label 
+              Streamlined annotation workflow with interactive image sequences, multi-label
               classification, and batch processing capabilities.
             </p>
           </div>
@@ -46,12 +40,10 @@ export default function HomePage() {
             <div className="w-12 h-12 bg-primary-100 rounded-lg flex items-center justify-center mb-4">
               <BarChart3 className="w-6 h-6 text-primary-600" />
             </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              Progress Dashboard
-            </h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Progress Dashboard</h3>
             <p className="text-gray-600">
-              Track annotation progress in real-time with visual indicators and 
-              comprehensive reporting tools.
+              Track annotation progress in real-time with visual indicators and comprehensive
+              reporting tools.
             </p>
           </div>
         </div>

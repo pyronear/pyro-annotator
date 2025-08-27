@@ -62,7 +62,6 @@ export default function PasswordField({
     }
   };
 
-
   return (
     <div className={`space-y-2 ${className}`}>
       <label className="block text-sm font-medium text-gray-700">
@@ -74,7 +73,7 @@ export default function PasswordField({
         <input
           type={showPassword ? 'text' : 'password'}
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={e => onChange(e.target.value)}
           placeholder={placeholder}
           required={required}
           minLength={8}
@@ -116,34 +115,32 @@ export default function PasswordField({
             className="p-1 text-gray-400 hover:text-gray-600 focus:outline-none focus:text-gray-600"
             title={showPassword ? 'Hide password' : 'Show password'}
           >
-            {showPassword ? (
-              <EyeOff className="w-4 h-4" />
-            ) : (
-              <Eye className="w-4 h-4" />
-            )}
+            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
           </button>
         </div>
       </div>
 
       {/* Error message */}
-      {error && (
-        <p className="text-sm text-red-600">{error}</p>
-      )}
+      {error && <p className="text-sm text-red-600">{error}</p>}
 
       {/* Password strength indicator */}
       {showStrengthIndicator && strength && value && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-xs text-gray-500">Password Strength:</span>
-            <span className={`text-xs font-medium ${
-              strength.score >= 3 ? 'text-green-600' : 
-              strength.score >= 2 ? 'text-yellow-600' : 
-              'text-red-600'
-            }`}>
+            <span
+              className={`text-xs font-medium ${
+                strength.score >= 3
+                  ? 'text-green-600'
+                  : strength.score >= 2
+                    ? 'text-yellow-600'
+                    : 'text-red-600'
+              }`}
+            >
               {strength.label}
             </span>
           </div>
-          
+
           <div className="w-full bg-gray-200 rounded-full h-2">
             <div
               className={`h-2 rounded-full transition-all duration-300 ${strength.color}`}
@@ -158,41 +155,51 @@ export default function PasswordField({
         <div className="space-y-1">
           <p className="text-xs text-gray-500">Password requirements:</p>
           <div className="space-y-1">
-            <div className={`flex items-center text-xs ${
-              strength.requirements.minLength ? 'text-green-600' : 'text-gray-400'
-            }`}>
+            <div
+              className={`flex items-center text-xs ${
+                strength.requirements.minLength ? 'text-green-600' : 'text-gray-400'
+              }`}
+            >
               <span className={`mr-2 ${strength.requirements.minLength ? '✓' : '×'}`}>
                 {strength.requirements.minLength ? '✓' : '×'}
               </span>
               At least 8 characters
             </div>
-            <div className={`flex items-center text-xs ${
-              strength.requirements.hasUppercase ? 'text-green-600' : 'text-gray-400'
-            }`}>
+            <div
+              className={`flex items-center text-xs ${
+                strength.requirements.hasUppercase ? 'text-green-600' : 'text-gray-400'
+              }`}
+            >
               <span className={`mr-2 ${strength.requirements.hasUppercase ? '✓' : '×'}`}>
                 {strength.requirements.hasUppercase ? '✓' : '×'}
               </span>
               Uppercase letters (A-Z)
             </div>
-            <div className={`flex items-center text-xs ${
-              strength.requirements.hasLowercase ? 'text-green-600' : 'text-gray-400'
-            }`}>
+            <div
+              className={`flex items-center text-xs ${
+                strength.requirements.hasLowercase ? 'text-green-600' : 'text-gray-400'
+              }`}
+            >
               <span className={`mr-2 ${strength.requirements.hasLowercase ? '✓' : '×'}`}>
                 {strength.requirements.hasLowercase ? '✓' : '×'}
               </span>
               Lowercase letters (a-z)
             </div>
-            <div className={`flex items-center text-xs ${
-              strength.requirements.hasNumbers ? 'text-green-600' : 'text-gray-400'
-            }`}>
+            <div
+              className={`flex items-center text-xs ${
+                strength.requirements.hasNumbers ? 'text-green-600' : 'text-gray-400'
+              }`}
+            >
               <span className={`mr-2 ${strength.requirements.hasNumbers ? '✓' : '×'}`}>
                 {strength.requirements.hasNumbers ? '✓' : '×'}
               </span>
               Numbers (0-9)
             </div>
-            <div className={`flex items-center text-xs ${
-              strength.requirements.hasSymbols ? 'text-green-600' : 'text-gray-400'
-            }`}>
+            <div
+              className={`flex items-center text-xs ${
+                strength.requirements.hasSymbols ? 'text-green-600' : 'text-gray-400'
+              }`}
+            >
               <span className={`mr-2 ${strength.requirements.hasSymbols ? '✓' : '×'}`}>
                 {strength.requirements.hasSymbols ? '✓' : '×'}
               </span>

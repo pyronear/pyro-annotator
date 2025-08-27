@@ -11,7 +11,6 @@ interface SmokeTypeFilterProps {
   className?: string;
 }
 
-
 export default function SmokeTypeFilter({
   selectedTypes,
   onSelectionChange,
@@ -69,12 +68,8 @@ export default function SmokeTypeFilter({
 
   return (
     <div className={`relative ${className}`}>
-      {label && (
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          {label}
-        </label>
-      )}
-      
+      {label && <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>}
+
       {/* Selected Pills - Show above dropdown when selections exist */}
       {selectedTypes.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-1">
@@ -107,10 +102,11 @@ export default function SmokeTypeFilter({
           <span className={selectedTypes.length > 0 ? 'text-gray-900' : 'text-gray-500'}>
             {selectedTypes.length > 0
               ? `${selectedTypes.length} type${selectedTypes.length !== 1 ? 's' : ''} selected`
-              : placeholder
-            }
+              : placeholder}
           </span>
-          <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+          <ChevronDown
+            className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+          />
         </button>
 
         {/* Dropdown Menu */}
@@ -124,7 +120,7 @@ export default function SmokeTypeFilter({
                   type="text"
                   placeholder="Search types..."
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onChange={e => setSearchTerm(e.target.value)}
                   className="w-full pl-8 pr-3 py-1 text-sm border border-gray-300 rounded focus:ring-primary-500 focus:border-primary-500"
                 />
               </div>
@@ -168,7 +164,9 @@ export default function SmokeTypeFilter({
                       />
                       <span className="flex items-center space-x-2">
                         <span>{getSmokeTypeEmoji(type)}</span>
-                        <span className={isSelected ? 'text-primary-900 font-medium' : 'text-gray-700'}>
+                        <span
+                          className={isSelected ? 'text-primary-900 font-medium' : 'text-gray-700'}
+                        >
                           {formatSmokeType(type)}
                         </span>
                       </span>

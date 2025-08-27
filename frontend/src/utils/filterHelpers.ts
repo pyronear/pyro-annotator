@@ -4,7 +4,7 @@ import { ModelAccuracyType } from './modelAccuracy';
 /**
  * Determines if the user has applied any filters beyond the default system filters.
  * This helps distinguish between "no data available" vs "no data matching filters".
- * 
+ *
  * @param filters - The current filter state
  * @param dateFrom - Date from value
  * @param dateTo - Date to value

@@ -12,7 +12,7 @@ import {
   getRowBackgroundClasses,
   parseFalsePositiveTypes,
   getSmokeTypeEmoji,
-  formatSmokeType
+  formatSmokeType,
 } from '@/utils/modelAccuracy';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
 import TabbedFilters from '@/components/filters/TabbedFilters';
@@ -29,15 +29,17 @@ interface SequencesPageProps {
   defaultProcessingStage?: ProcessingStageStatus;
 }
 
-
-export default function SequencesPage({ defaultProcessingStage = 'ready_to_annotate' }: SequencesPageProps = {}) {
+export default function SequencesPage({
+  defaultProcessingStage = 'ready_to_annotate',
+}: SequencesPageProps = {}) {
   const navigate = useNavigate();
   const { startAnnotationWorkflow } = useSequenceStore();
 
   // Determine storage key based on processing stage to separate annotate vs review filters
-  const storageKey = defaultProcessingStage === 'annotated'
-    ? 'filters-sequences-review'
-    : 'filters-sequences-annotate';
+  const storageKey =
+    defaultProcessingStage === 'annotated'
+      ? 'filters-sequences-review'
+      : 'filters-sequences-annotate';
 
   // Use persisted filters hook
   const {
@@ -56,11 +58,7 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
     setSelectedModelAccuracy,
     setSelectedUnsure,
     resetFilters,
-  } = usePersistedFilters(
-    storageKey,
-    createDefaultFilterState(defaultProcessingStage)
-  );
-
+  } = usePersistedFilters(storageKey, createDefaultFilterState(defaultProcessingStage));
 
   // Fetch cameras, organizations, and source APIs for dropdown options
   const { data: cameras = [], isLoading: camerasLoading } = useCameras();
@@ -80,7 +78,7 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
 
     handleFilterChange({
       recorded_at_gte: startDateTime,
-      recorded_at_lte: endDateTime
+      recorded_at_lte: endDateTime,
     });
   };
 
@@ -103,9 +101,12 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
     handleFilterChange({ recorded_at_lte: dateTimeValue });
   };
 
-
   // Fetch sequences with annotations in a single efficient call
-  const { data: sequences, isLoading, error } = useQuery({
+  const {
+    data: sequences,
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: [...QUERY_KEYS.SEQUENCES, 'with-annotations', filters],
     queryFn: () => apiClient.getSequencesWithAnnotations(filters),
   });
@@ -129,7 +130,7 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
       ...sequences,
       items: filtered,
       total: filtered.length,
-      pages: Math.ceil(filtered.length / sequences.size)
+      pages: Math.ceil(filtered.length / sequences.size),
     };
   }, [sequences, selectedModelAccuracy, defaultProcessingStage]);
 
@@ -144,7 +145,6 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
   const handlePageChange = (page: number) => {
     setFilters({ ...filters, page });
   };
-
 
   const handleSequenceClick = (clickedSequence: any) => {
     // Initialize annotation workflow if we have sequences data
@@ -199,9 +199,7 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Sequences</h1>
-            <p className="text-gray-600">
-              Manage and annotate wildfire detection sequences
-            </p>
+            <p className="text-gray-600">Manage and annotate wildfire detection sequences</p>
           </div>
         </div>
 
@@ -243,12 +241,13 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
               // Filtered results - no matches
               <>
                 <div className="text-4xl mb-4">🔍</div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">No matching sequences found</h3>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                  No matching sequences found
+                </h3>
                 <p className="text-gray-500 mb-4">
                   {defaultProcessingStage === 'annotated'
                     ? 'No completed sequences match your current filters.'
-                    : 'No sequences match your current filters.'
-                  }
+                    : 'No sequences match your current filters.'}
                 </p>
                 <p className="text-gray-400 text-sm">Try adjusting your search criteria above.</p>
               </>
@@ -260,7 +259,9 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
               <>
                 <div className="text-6xl mb-4">🎉</div>
                 <h3 className="text-xl font-semibold text-gray-900 mb-2">All caught up!</h3>
-                <p className="text-gray-500">No sequences available for annotation at the moment.</p>
+                <p className="text-gray-500">
+                  No sequences available for annotation at the moment.
+                </p>
               </>
             )}
           </div>
@@ -275,9 +276,7 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Sequences</h1>
-          <p className="text-gray-600">
-            Manage and annotate wildfire detection sequences
-          </p>
+          <p className="text-gray-600">Manage and annotate wildfire detection sequences</p>
         </div>
       </div>
 
@@ -318,22 +317,26 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
           <div className="px-4 py-3 border-b border-gray-200">
             <div className="flex items-center justify-between">
               <p className="text-sm text-gray-700">
-                Showing {((filteredSequences.page - 1) * filteredSequences.size) + 1} to{' '}
-                {Math.min(filteredSequences.page * filteredSequences.size, filteredSequences.total)} of{' '}
-                {filteredSequences.total} results
-                {selectedModelAccuracy !== 'all' && defaultProcessingStage === 'annotated' && sequences && (
-                  <span className="text-gray-500"> (filtered from {sequences.total} total)</span>
-                )}
+                Showing {(filteredSequences.page - 1) * filteredSequences.size + 1} to{' '}
+                {Math.min(filteredSequences.page * filteredSequences.size, filteredSequences.total)}{' '}
+                of {filteredSequences.total} results
+                {selectedModelAccuracy !== 'all' &&
+                  defaultProcessingStage === 'annotated' &&
+                  sequences && (
+                    <span className="text-gray-500"> (filtered from {sequences.total} total)</span>
+                  )}
               </p>
               <div className="flex items-center space-x-2">
                 <label className="text-sm text-gray-700">Show:</label>
                 <select
                   value={filters.size}
-                  onChange={(e) => handleFilterChange({ size: Number(e.target.value) })}
+                  onChange={e => handleFilterChange({ size: Number(e.target.value) })}
                   className="border border-gray-300 rounded px-2 py-1 text-sm"
                 >
                   {PAGINATION_OPTIONS.map(size => (
-                    <option key={size} value={size}>{size}</option>
+                    <option key={size} value={size}>
+                      {size}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -379,19 +382,19 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
 
           {/* Sequence List */}
           <div className="divide-y divide-gray-200">
-            {filteredSequences.items.map((sequence) => {
+            {filteredSequences.items.map(sequence => {
               // Calculate row background based on model accuracy for review pages
-              let rowClasses = "p-4 cursor-pointer";
+              let rowClasses = 'p-4 cursor-pointer';
               if (defaultProcessingStage === 'annotated' && sequence.annotation) {
                 // Special background for unsure sequences
                 if (sequence.annotation.is_unsure) {
-                  rowClasses = "p-4 cursor-pointer bg-amber-50 hover:bg-amber-100";
+                  rowClasses = 'p-4 cursor-pointer bg-amber-50 hover:bg-amber-100';
                 } else {
                   const accuracy = analyzeSequenceAccuracy(sequence);
                   rowClasses = `p-4 cursor-pointer ${getRowBackgroundClasses(accuracy)}`;
                 }
               } else {
-                rowClasses = "p-4 hover:bg-gray-50 cursor-pointer";
+                rowClasses = 'p-4 hover:bg-gray-50 cursor-pointer';
               }
 
               return (
@@ -403,10 +406,7 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
                   <div className="flex items-start space-x-4">
                     {/* Detection Image Thumbnail */}
                     <div className="flex-shrink-0">
-                      <DetectionImageThumbnail
-                        sequenceId={sequence.id}
-                        className="h-16"
-                      />
+                      <DetectionImageThumbnail sequenceId={sequence.id} className="h-16" />
                     </div>
 
                     {/* Sequence Info */}
@@ -424,24 +424,29 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
                           </span>
                         )}
                         {/* Unsure indicator for review page */}
-                        {defaultProcessingStage === 'annotated' && sequence.annotation?.is_unsure && (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
-                            ⚠️ Unsure
-                          </span>
-                        )}
+                        {defaultProcessingStage === 'annotated' &&
+                          sequence.annotation?.is_unsure && (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                              ⚠️ Unsure
+                            </span>
+                          )}
                         {/* Processing stage pill - conditionally hidden based on page context */}
                         {(() => {
-                          const processingStage = sequence.annotation?.processing_stage || 'no_annotation';
+                          const processingStage =
+                            sequence.annotation?.processing_stage || 'no_annotation';
                           // Hide "ready_to_annotate" pills on annotate page, hide "annotated" pills on review page
-                          const shouldHidePill = (
-                            (defaultProcessingStage === 'ready_to_annotate' && processingStage === 'ready_to_annotate') ||
-                            (defaultProcessingStage === 'annotated' && processingStage === 'annotated')
-                          );
+                          const shouldHidePill =
+                            (defaultProcessingStage === 'ready_to_annotate' &&
+                              processingStage === 'ready_to_annotate') ||
+                            (defaultProcessingStage === 'annotated' &&
+                              processingStage === 'annotated');
 
                           if (shouldHidePill) return null;
 
                           return (
-                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getProcessingStageColorClass(processingStage)}`}>
+                            <span
+                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getProcessingStageColorClass(processingStage)}`}
+                            >
                               {getProcessingStageLabel(processingStage)}
                             </span>
                           );
@@ -463,7 +468,6 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
                           </>
                         )}
                       </div>
-
                     </div>
 
                     {/* Right Column - False Positive Pills and Contributors (Review page only) */}
@@ -473,7 +477,9 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
                           {/* False Positive Pills */}
                           <div className="flex flex-wrap gap-1 justify-end">
                             {(() => {
-                              const falsePositiveTypes = parseFalsePositiveTypes(sequence.annotation.false_positive_types);
+                              const falsePositiveTypes = parseFalsePositiveTypes(
+                                sequence.annotation.false_positive_types
+                              );
                               return falsePositiveTypes.map((type: string) => (
                                 <span
                                   key={type}
@@ -498,14 +504,15 @@ export default function SequencesPage({ defaultProcessingStage = 'ready_to_annot
                           </div>
 
                           {/* Contributors - Bottom Right */}
-                          {sequence.annotation.contributors && sequence.annotation.contributors.length > 0 && (
-                            <div className="flex justify-end">
-                              <ContributorList
-                                contributors={sequence.annotation.contributors}
-                                displayMode="compact"
-                              />
-                            </div>
-                          )}
+                          {sequence.annotation.contributors &&
+                            sequence.annotation.contributors.length > 0 && (
+                              <div className="flex justify-end">
+                                <ContributorList
+                                  contributors={sequence.annotation.contributors}
+                                  displayMode="compact"
+                                />
+                              </div>
+                            )}
                         </div>
                       </div>
                     )}

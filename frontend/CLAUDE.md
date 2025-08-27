@@ -70,12 +70,14 @@ npm run dev                 # Start Vite dev server on port 5173
 # Build & Quality
 npm run build              # TypeScript compile + Vite build
 npm run preview            # Preview production build
-npm run lint               # ESLint check
+npm run lint               # ESLint check (strict: fails on warnings)
+npm run lint:ci            # ESLint check (CI-friendly: allows warnings)
 npm run lint:fix           # ESLint auto-fix
 npm run format             # Prettier formatting
 npm run format:check       # Check formatting
 npm run type-check         # TypeScript type checking
-npm run quality            # Run all quality checks
+npm run quality            # Run all quality checks (strict)
+npm run quality:ci         # Run all quality checks (CI-friendly)
 npm run quality:fix        # Fix all quality issues
 
 # Docker

@@ -21,10 +21,10 @@ export const MissedSmokePanel: React.FC<MissedSmokePanelProps> = ({
   onMissedSmokeReviewChange,
   annotationLoading,
   activeSection,
-  sequenceReviewerRef
+  sequenceReviewerRef,
 }) => {
   return (
-    <div 
+    <div
       ref={sequenceReviewerRef}
       className={`${activeSection === 'sequence' ? 'ring-2 ring-blue-500 ring-offset-2 rounded-lg' : ''}`}
     >

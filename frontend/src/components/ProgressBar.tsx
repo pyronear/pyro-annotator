@@ -1,4 +1,3 @@
-
 interface ProgressBarProps {
   /** Current progress value (0-100) */
   value: number;
@@ -16,21 +15,21 @@ interface ProgressBarProps {
   ariaLabel?: string;
 }
 
-export default function ProgressBar({ 
-  value, 
-  max = 100, 
+export default function ProgressBar({
+  value,
+  max = 100,
   height = 24,
   color = 'primary',
   showPercentage = true,
   className = '',
-  ariaLabel 
+  ariaLabel,
 }: ProgressBarProps) {
   const percentage = max > 0 ? Math.min(Math.max((value / max) * 100, 0), 100) : 0;
-  
+
   const colorClasses = {
     primary: 'bg-primary-600',
     green: 'bg-green-600',
-    orange: 'bg-orange-600', 
+    orange: 'bg-orange-600',
     red: 'bg-red-600',
   };
 
@@ -42,7 +41,7 @@ export default function ProgressBar({
   };
 
   return (
-    <div 
+    <div
       className={`relative w-full rounded-full overflow-hidden ${backgroundColorClasses[color]} ${className}`}
       style={{ height: `${height}px` }}
       role="progressbar"
@@ -52,19 +51,19 @@ export default function ProgressBar({
       aria-label={ariaLabel || `Progress: ${Math.round(percentage)}%`}
     >
       {/* Progress fill */}
-      <div 
+      <div
         className={`h-full ${colorClasses[color]} transition-all duration-500 ease-out`}
         style={{ width: `${percentage}%` }}
       />
-      
+
       {/* Percentage text overlay */}
       {showPercentage && (
         <div className="absolute inset-0 flex items-center justify-center">
-          <span className={`text-xs font-medium px-1.5 py-0.5 rounded text-shadow-sm ${
-            percentage < 50 
-              ? 'text-gray-800 bg-white/40' 
-              : 'text-white bg-black/20'
-          }`}>
+          <span
+            className={`text-xs font-medium px-1.5 py-0.5 rounded text-shadow-sm ${
+              percentage < 50 ? 'text-gray-800 bg-white/40' : 'text-white bg-black/20'
+            }`}
+          >
             {Math.round(percentage)}%
           </span>
         </div>
@@ -90,12 +89,12 @@ interface MultiStageProgressBarProps {
   className?: string;
 }
 
-export function MultiStageProgressBar({ 
-  stages, 
-  total, 
+export function MultiStageProgressBar({
+  stages,
+  total,
   height = 32,
   showLabels = true,
-  className = ''
+  className = '',
 }: MultiStageProgressBarProps) {
   const colorClasses = {
     primary: 'bg-primary-600',
@@ -108,7 +107,7 @@ export function MultiStageProgressBar({
   return (
     <div className={className}>
       {/* Multi-segment progress bar */}
-      <div 
+      <div
         className="relative w-full rounded-full overflow-hidden bg-gray-100"
         style={{ height: `${height}px` }}
         role="progressbar"
@@ -119,7 +118,7 @@ export function MultiStageProgressBar({
           const leftPosition = stages.slice(0, index).reduce((sum, s) => {
             return sum + (total > 0 ? (s.value / total) * 100 : 0);
           }, 0);
-          
+
           return stagePercentage > 0 ? (
             <div
               key={stage.label}
@@ -136,11 +135,9 @@ export function MultiStageProgressBar({
       {/* Stage labels */}
       {showLabels && (
         <div className="flex justify-between mt-2 text-xs text-gray-600">
-          {stages.map((stage) => (
+          {stages.map(stage => (
             <div key={stage.label} className="flex items-center space-x-1">
-              <div 
-                className={`w-2 h-2 rounded-full ${colorClasses[stage.color]}`}
-              />
+              <div className={`w-2 h-2 rounded-full ${colorClasses[stage.color]}`} />
               <span className="capitalize">
                 {stage.label.replace('_', ' ')}: {stage.value}
               </span>

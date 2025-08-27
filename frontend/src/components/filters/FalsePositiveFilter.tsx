@@ -18,7 +18,6 @@ export default function FalsePositiveFilter({
   placeholder = 'Filter by false positive types...',
   className = '',
 }: FalsePositiveFilterProps) {
-  console.log('[FalsePositiveFilter] Component rendered with selectedTypes:', selectedTypes);
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -30,22 +29,16 @@ export default function FalsePositiveFilter({
 
   // Handle selection toggle
   const toggleSelection = (type: string) => {
-    console.log('[FalsePositiveFilter] toggleSelection called with type:', type);
-    console.log('[FalsePositiveFilter] Current selectedTypes:', selectedTypes);
     const isSelected = selectedTypes.includes(type);
-    console.log('[FalsePositiveFilter] isSelected:', isSelected);
-    
+
     let newSelection;
     if (isSelected) {
       newSelection = selectedTypes.filter(t => t !== type);
     } else {
       newSelection = [...selectedTypes, type];
     }
-    
-    console.log('[FalsePositiveFilter] New selection:', newSelection);
-    console.log('[FalsePositiveFilter] Calling onSelectionChange callback...');
+
     onSelectionChange(newSelection);
-    console.log('[FalsePositiveFilter] onSelectionChange callback completed');
   };
 
   // Handle select all
@@ -77,12 +70,8 @@ export default function FalsePositiveFilter({
 
   return (
     <div className={`relative ${className}`}>
-      {label && (
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          {label}
-        </label>
-      )}
-      
+      {label && <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>}
+
       {/* Selected Pills - Show above dropdown when selections exist */}
       {selectedTypes.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-1">
@@ -115,10 +104,11 @@ export default function FalsePositiveFilter({
           <span className={selectedTypes.length > 0 ? 'text-gray-900' : 'text-gray-500'}>
             {selectedTypes.length > 0
               ? `${selectedTypes.length} type${selectedTypes.length !== 1 ? 's' : ''} selected`
-              : placeholder
-            }
+              : placeholder}
           </span>
-          <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+          <ChevronDown
+            className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+          />
         </button>
 
         {/* Dropdown Menu */}
@@ -132,7 +122,7 @@ export default function FalsePositiveFilter({
                   type="text"
                   placeholder="Search types..."
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onChange={e => setSearchTerm(e.target.value)}
                   className="w-full pl-8 pr-3 py-1 text-sm border border-gray-300 rounded focus:ring-primary-500 focus:border-primary-500"
                 />
               </div>
@@ -161,7 +151,6 @@ export default function FalsePositiveFilter({
               {filteredTypes.length > 0 ? (
                 filteredTypes.map(type => {
                   const isSelected = selectedTypes.includes(type);
-                  console.log('[FalsePositiveFilter] Rendering type:', type, 'isSelected:', isSelected);
                   return (
                     <label
                       key={type}
@@ -173,14 +162,15 @@ export default function FalsePositiveFilter({
                         type="checkbox"
                         checked={isSelected}
                         onChange={() => {
-                          console.log('[FalsePositiveFilter] Checkbox onChange fired for:', type);
                           toggleSelection(type);
                         }}
                         className="w-4 h-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded mr-3"
                       />
                       <span className="flex items-center space-x-2">
                         <span>{getFalsePositiveEmoji(type)}</span>
-                        <span className={isSelected ? 'text-primary-900 font-medium' : 'text-gray-700'}>
+                        <span
+                          className={isSelected ? 'text-primary-900 font-medium' : 'text-gray-700'}
+                        >
                           {formatFalsePositiveType(type)}
                         </span>
                       </span>

@@ -1,9 +1,9 @@
 /**
  * Keyboard shortcuts utilities for annotation interface.
- * 
+ *
  * This module handles complex keyboard event processing and shortcuts for the
  * annotation interface, including navigation, classification, and global actions.
- * 
+ *
  * @fileoverview Provides a comprehensive keyboard handler factory that manages
  * all keyboard shortcuts in the annotation interface, from basic navigation to
  * complex classification workflows.
@@ -11,12 +11,17 @@
 
 import { SequenceBbox, SmokeType } from '@/types/api';
 import { isAnnotationComplete } from './progressUtils';
-import { getTypeIndexForKey, toggleFalsePositiveType, BboxChangeHandler, MissedSmokeHandler } from './annotationHandlers';
+import {
+  getTypeIndexForKey,
+  toggleFalsePositiveType,
+  BboxChangeHandler,
+  MissedSmokeHandler,
+} from './annotationHandlers';
 
 /**
  * Dependencies interface for the keyboard handler.
  * Contains all state and action functions needed for keyboard shortcut handling.
- * 
+ *
  * @interface KeyboardHandlerDependencies
  */
 export interface KeyboardHandlerDependencies {
@@ -31,7 +36,7 @@ export interface KeyboardHandlerDependencies {
   missedSmokeReview: 'yes' | 'no' | null;
   /** Primary classification state for each detection */
   primaryClassification: Record<number, 'unselected' | 'smoke' | 'false_positive'>;
-  
+
   // Actions
   /** Function to show/hide keyboard shortcuts modal */
   setShowKeyboardModal: (show: boolean) => void;
@@ -48,19 +53,21 @@ export interface KeyboardHandlerDependencies {
   /** Function to handle bbox changes */
   handleBboxChange: BboxChangeHandler;
   /** Function to handle primary classification changes */
-  onPrimaryClassificationChange: (updates: Record<number, 'unselected' | 'smoke' | 'false_positive'>) => void;
+  onPrimaryClassificationChange: (
+    updates: Record<number, 'unselected' | 'smoke' | 'false_positive'>
+  ) => void;
 }
 
 /**
  * Creates a comprehensive keyboard event handler for annotation interface.
- * 
+ *
  * This factory function creates a complete keyboard event handler that supports
  * all annotation interface shortcuts including navigation, classification,
  * smoke type selection, and false positive type toggling.
- * 
+ *
  * @param {KeyboardHandlerDependencies} deps - All state and action dependencies
  * @returns {(e: KeyboardEvent) => void} Keyboard event handler function
- * 
+ *
  * @example
  * ```typescript
  * const handleKeyDown = createKeyboardHandler({
@@ -69,13 +76,13 @@ export interface KeyboardHandlerDependencies {
  *   showKeyboardModal,
  *   // ... other dependencies
  * });
- * 
+ *
  * useEffect(() => {
  *   document.addEventListener('keydown', handleKeyDown, true);
  *   return () => document.removeEventListener('keydown', handleKeyDown, true);
  * }, [dependencies]);
  * ```
- * 
+ *
  * Supported shortcuts:
  * - ?: Show/hide keyboard shortcuts modal
  * - Escape: Close modal
@@ -103,7 +110,7 @@ export const createKeyboardHandler = (deps: KeyboardHandlerDependencies) => {
       navigateToNextDetection,
       handleMissedSmokeReviewChange,
       handleBboxChange,
-      onPrimaryClassificationChange
+      onPrimaryClassificationChange,
     } = deps;
 
     // Handle help modal first (works regardless of focus)
@@ -113,7 +120,7 @@ export const createKeyboardHandler = (deps: KeyboardHandlerDependencies) => {
       e.preventDefault();
       return;
     }
-    
+
     // Handle Escape to close modal
     if (e.key === 'Escape' && showKeyboardModal) {
       setShowKeyboardModal(false);
@@ -174,9 +181,9 @@ export const createKeyboardHandler = (deps: KeyboardHandlerDependencies) => {
       // Update UI state
       onPrimaryClassificationChange({
         ...primaryClassification,
-        [activeDetectionIndex]: 'smoke'
+        [activeDetectionIndex]: 'smoke',
       });
-      
+
       // Update backend data
       const bbox = bboxes[activeDetectionIndex];
       if (bbox) {
@@ -194,9 +201,9 @@ export const createKeyboardHandler = (deps: KeyboardHandlerDependencies) => {
       // Update UI state
       onPrimaryClassificationChange({
         ...primaryClassification,
-        [activeDetectionIndex]: 'false_positive'
+        [activeDetectionIndex]: 'false_positive',
       });
-      
+
       // Update backend data
       const bbox = bboxes[activeDetectionIndex];
       if (bbox) {
@@ -211,8 +218,13 @@ export const createKeyboardHandler = (deps: KeyboardHandlerDependencies) => {
 
     // Smoke type shortcuts (1, 2, 3 keys) - Only when smoke is selected
     const bbox = bboxes[activeDetectionIndex];
-    const classificationType = primaryClassification[activeDetectionIndex] || 
-      (bbox?.is_smoke ? 'smoke' : bbox?.false_positive_types.length > 0 ? 'false_positive' : 'unselected');
+    const classificationType =
+      primaryClassification[activeDetectionIndex] ||
+      (bbox?.is_smoke
+        ? 'smoke'
+        : bbox?.false_positive_types.length > 0
+          ? 'false_positive'
+          : 'unselected');
 
     if (classificationType === 'smoke') {
       if (e.key === '1') {

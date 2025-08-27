@@ -3,18 +3,15 @@
  */
 
 export { useDrawingCanvas } from './useDrawingCanvas';
-export type { 
-  DrawingCanvasConfig, 
-  DrawingCanvasState 
-} from './useDrawingCanvas';
+export type { DrawingCanvasConfig, DrawingCanvasState } from './useDrawingCanvas';
 
-export { 
-  useKeyboardShortcuts, 
+export {
+  useKeyboardShortcuts,
   createSmokeTypeHandler,
-  KEYBOARD_SHORTCUTS 
+  KEYBOARD_SHORTCUTS,
 } from './useKeyboardShortcuts';
 export type {
   KeyboardShortcutHandlers,
   KeyboardShortcutState,
-  KeyboardShortcutConfig
+  KeyboardShortcutConfig,
 } from './useKeyboardShortcuts';

@@ -16,11 +16,9 @@ import {
   areBoundingBoxesSimilar,
   calculateDrawingStats,
   DrawnRectangle,
-  CurrentDrawing,
-  SmokeTypeColors
+  CurrentDrawing
 } from '@/utils/annotation/drawingUtils';
 import { Point, ImageBounds } from '@/utils/annotation/coordinateUtils';
-import { SmokeType } from '@/types/api';
 
 describe('drawingUtils', () => {
   describe('getSmokeTypeColors', () => {

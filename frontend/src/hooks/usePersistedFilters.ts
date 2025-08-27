@@ -19,9 +19,7 @@ export interface PersistedFilterState {
 /**
  * Default filter state factory
  */
-export function createDefaultFilterState(
-  defaultProcessingStage?: string
-): PersistedFilterState {
+export function createDefaultFilterState(defaultProcessingStage?: string): PersistedFilterState {
   return {
     filters: {
       page: PAGINATION_DEFAULTS.PAGE,
@@ -45,31 +43,28 @@ export function createDefaultFilterState(
  * @param defaultState - default filter state if none exists in localStorage
  * @returns [filterState, updateFunctions] object with state and individual setters
  */
-export function usePersistedFilters(
-  storageKey: string,
-  defaultState: PersistedFilterState
-) {
+export function usePersistedFilters(storageKey: string, defaultState: PersistedFilterState) {
   // Initialize state with value from localStorage or default
   const [state, setState] = useState<PersistedFilterState>(() => {
     if (typeof window === 'undefined') {
       // SSR safety - return default if window is not available
       return defaultState;
     }
-    
+
     try {
       const stored = localStorage.getItem(storageKey);
       if (stored) {
         const parsed = JSON.parse(stored) as PersistedFilterState;
-        
+
         // Clean up filters - only keep user-visible filter values, not empty strings
         const cleanedFilters = { ...parsed.filters };
-        
+
         // Remove empty string values that should be undefined
         if (cleanedFilters.camera_name === '') delete cleanedFilters.camera_name;
         if (cleanedFilters.organisation_name === '') delete cleanedFilters.organisation_name;
         // source_api is an enum type, so we check differently
         if (!cleanedFilters.source_api) delete cleanedFilters.source_api;
-        
+
         // Merge with defaults to handle missing properties in stored data
         // Always preserve the processing_stage from defaultState as it's a system filter
         return {
@@ -94,7 +89,7 @@ export function usePersistedFilters(
   // Update localStorage whenever state changes
   const updateState = (newState: PersistedFilterState) => {
     setState(newState);
-    
+
     if (typeof window !== 'undefined') {
       try {
         localStorage.setItem(storageKey, JSON.stringify(newState));
@@ -108,9 +103,9 @@ export function usePersistedFilters(
   // Individual setter functions for each piece of state
   const setFilters = (filters: ExtendedSequenceFilters) => {
     // Use functional update to get the latest state
-    setState((currentState) => {
+    setState(currentState => {
       const newState = { ...currentState, filters };
-      
+
       // Update localStorage
       if (typeof window !== 'undefined') {
         try {
@@ -119,16 +114,16 @@ export function usePersistedFilters(
           console.warn(`Failed to write to localStorage key "${storageKey}":`, error);
         }
       }
-      
+
       return newState;
     });
   };
 
   const setDateFrom = (dateFrom: string) => {
     // Use functional update to get the latest state
-    setState((currentState) => {
+    setState(currentState => {
       const newState = { ...currentState, dateFrom };
-      
+
       // Update localStorage
       if (typeof window !== 'undefined') {
         try {
@@ -137,16 +132,16 @@ export function usePersistedFilters(
           console.warn(`Failed to write to localStorage key "${storageKey}":`, error);
         }
       }
-      
+
       return newState;
     });
   };
 
   const setDateTo = (dateTo: string) => {
     // Use functional update to get the latest state
-    setState((currentState) => {
+    setState(currentState => {
       const newState = { ...currentState, dateTo };
-      
+
       // Update localStorage
       if (typeof window !== 'undefined') {
         try {
@@ -155,7 +150,7 @@ export function usePersistedFilters(
           console.warn(`Failed to write to localStorage key "${storageKey}":`, error);
         }
       }
-      
+
       return newState;
     });
   };
@@ -164,16 +159,17 @@ export function usePersistedFilters(
     // ATOMIC UPDATE: Update both selectedFalsePositiveTypes AND filters together
     const newFilters = {
       ...state.filters,
-      false_positive_types: selectedFalsePositiveTypes.length > 0 ? selectedFalsePositiveTypes : undefined,
-      page: 1
+      false_positive_types:
+        selectedFalsePositiveTypes.length > 0 ? selectedFalsePositiveTypes : undefined,
+      page: 1,
     };
-    
-    const newState = { 
-      ...state, 
+
+    const newState = {
+      ...state,
       selectedFalsePositiveTypes,
-      filters: newFilters
+      filters: newFilters,
     };
-    
+
     updateState(newState);
   };
 
@@ -182,15 +178,15 @@ export function usePersistedFilters(
     const newFilters = {
       ...state.filters,
       smoke_types: selectedSmokeTypes.length > 0 ? selectedSmokeTypes : undefined,
-      page: 1
+      page: 1,
     };
-    
-    const newState = { 
-      ...state, 
+
+    const newState = {
+      ...state,
       selectedSmokeTypes,
-      filters: newFilters
+      filters: newFilters,
     };
-    
+
     updateState(newState);
   };
 
@@ -203,34 +199,35 @@ export function usePersistedFilters(
     const newFilters = {
       ...state.filters,
       is_unsure: selectedUnsure === 'all' ? undefined : selectedUnsure === 'unsure',
-      page: 1
+      page: 1,
     };
-    
-    const newState = { 
-      ...state, 
+
+    const newState = {
+      ...state,
       selectedUnsure,
-      filters: newFilters
+      filters: newFilters,
     };
-    
+
     updateState(newState);
   };
 
   // Atomic update for false positive types + filters to avoid race conditions
   const setSelectedFalsePositiveTypesAndFilters = (
-    selectedFalsePositiveTypes: string[], 
+    selectedFalsePositiveTypes: string[],
     additionalFilters: Partial<ExtendedSequenceFilters> = {}
   ) => {
     const newFilters = {
       ...state.filters,
-      false_positive_types: selectedFalsePositiveTypes.length > 0 ? selectedFalsePositiveTypes : undefined,
+      false_positive_types:
+        selectedFalsePositiveTypes.length > 0 ? selectedFalsePositiveTypes : undefined,
       page: 1,
-      ...additionalFilters
+      ...additionalFilters,
     };
-    
-    updateState({ 
-      ...state, 
+
+    updateState({
+      ...state,
       selectedFalsePositiveTypes,
-      filters: newFilters
+      filters: newFilters,
     });
   };
 
@@ -267,7 +264,7 @@ export function usePersistedFilters(
     selectedSmokeTypes: state.selectedSmokeTypes,
     selectedModelAccuracy: state.selectedModelAccuracy,
     selectedUnsure: state.selectedUnsure,
-    
+
     // Setters
     setFilters,
     setDateFrom,

@@ -43,15 +43,9 @@ function App() {
       <QueryClientProvider client={queryClient}>
         <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <Routes>
-            <Route 
-              path="/login" 
-              element={
-                <LoginPage 
-                  onLogin={handleLogin} 
-                  isLoading={isLoading} 
-                  error={error} 
-                />
-              } 
+            <Route
+              path="/login"
+              element={<LoginPage onLogin={handleLogin} isLoading={isLoading} error={error} />}
             />
             <Route path="*" element={<Navigate to="/login" replace />} />
           </Routes>
@@ -66,24 +60,36 @@ function App() {
       <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
           <Route path="/login" element={<Navigate to="/" replace />} />
-          <Route path="/" element={
-            <AppLayout>
-              <DashboardPage />
-            </AppLayout>
-          } />
-          <Route path="/*" element={
-            <AppLayout>
-              <Routes>
-                <Route path="/sequences/annotate" element={<SequencesPage />} />
-                <Route path="/sequences/review" element={<SequencesPageWrapper defaultProcessingStage="annotated" />} />
-                <Route path="/sequences/:id/annotate" element={<AnnotationInterface />} />
-                <Route path="/detections/annotate" element={<DetectionAnnotatePage />} />
-                <Route path="/detections/review" element={<DetectionReviewPage />} />
-                <Route path="/detections/:sequenceId/annotate/:detectionId?" element={<DetectionSequenceAnnotatePage />} />
-                <Route path="/users" element={<UserManagementPage />} />
-              </Routes>
-            </AppLayout>
-          } />
+          <Route
+            path="/"
+            element={
+              <AppLayout>
+                <DashboardPage />
+              </AppLayout>
+            }
+          />
+          <Route
+            path="/*"
+            element={
+              <AppLayout>
+                <Routes>
+                  <Route path="/sequences/annotate" element={<SequencesPage />} />
+                  <Route
+                    path="/sequences/review"
+                    element={<SequencesPageWrapper defaultProcessingStage="annotated" />}
+                  />
+                  <Route path="/sequences/:id/annotate" element={<AnnotationInterface />} />
+                  <Route path="/detections/annotate" element={<DetectionAnnotatePage />} />
+                  <Route path="/detections/review" element={<DetectionReviewPage />} />
+                  <Route
+                    path="/detections/:sequenceId/annotate/:detectionId?"
+                    element={<DetectionSequenceAnnotatePage />}
+                  />
+                  <Route path="/users" element={<UserManagementPage />} />
+                </Routes>
+              </AppLayout>
+            }
+          />
         </Routes>
       </Router>
     </QueryClientProvider>

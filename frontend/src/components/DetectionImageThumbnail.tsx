@@ -6,10 +6,13 @@ interface DetectionImageThumbnailProps {
   className?: string;
 }
 
-export default function DetectionImageThumbnail({ sequenceId, className = '' }: DetectionImageThumbnailProps) {
+export default function DetectionImageThumbnail({
+  sequenceId,
+  className = '',
+}: DetectionImageThumbnailProps) {
   const { data: detections, isLoading: loadingDetections } = useSequenceDetections(sequenceId);
   const firstDetection = detections?.[0];
-  
+
   const { data: imageData, isLoading: loadingImage } = useDetectionImage(
     firstDetection?.id || null
   );
@@ -26,7 +29,9 @@ export default function DetectionImageThumbnail({ sequenceId, className = '' }: 
 
   if (!imageData?.url) {
     return (
-      <div className={`bg-gray-100 border border-gray-200 rounded flex items-center justify-center ${className}`}>
+      <div
+        className={`bg-gray-100 border border-gray-200 rounded flex items-center justify-center ${className}`}
+      >
         <span className="text-gray-400 text-xs">No Image</span>
       </div>
     );
@@ -38,12 +43,13 @@ export default function DetectionImageThumbnail({ sequenceId, className = '' }: 
         src={imageData.url}
         alt="Detection preview"
         className="w-full h-full object-contain"
-        onError={(e) => {
+        onError={e => {
           const target = e.target as HTMLImageElement;
           target.style.display = 'none';
           const parent = target.parentElement;
           if (parent) {
-            parent.innerHTML = '<span class="text-gray-400 text-xs flex items-center justify-center h-full">Error</span>';
+            parent.innerHTML =
+              '<span class="text-gray-400 text-xs flex items-center justify-center h-full">Error</span>';
           }
         }}
       />

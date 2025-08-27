@@ -1,10 +1,10 @@
 import { Play, Pause, SkipBack, SkipForward, RotateCcw } from 'lucide-react';
-import { 
-  PlaybackSpeed, 
-  DEFAULT_SPEED_OPTIONS, 
+import {
+  PlaybackSpeed,
+  DEFAULT_SPEED_OPTIONS,
   calculateSliderGradient,
   calculatePlaybackProgress,
-  PlaybackState 
+  PlaybackState,
 } from '@/utils/playback-calculations';
 
 /**
@@ -13,14 +13,14 @@ import {
 interface MediaControlsProps {
   // Playback state
   readonly playbackState: PlaybackState;
-  
+
   // Control handlers
   readonly onPlay: () => void;
   readonly onPause: () => void;
   readonly onSeek: (index: number) => void;
   readonly onSpeedChange: (speed: PlaybackSpeed) => void;
   readonly onReset: () => void;
-  
+
   // Configuration
   readonly speedOptions?: readonly PlaybackSpeed[];
   readonly showFrameCounter?: boolean;
@@ -28,7 +28,7 @@ interface MediaControlsProps {
   readonly showSpeedControl?: boolean;
   readonly showResetButton?: boolean;
   readonly frameRate?: number;
-  
+
   // Styling
   readonly className?: string;
   readonly 'data-testid'?: string;
@@ -36,7 +36,7 @@ interface MediaControlsProps {
 
 /**
  * Pure media controls component for sequence playback
- * 
+ *
  * Provides complete playback controls with:
  * - Play/pause toggle
  * - Frame navigation (previous/next)
@@ -44,11 +44,11 @@ interface MediaControlsProps {
  * - Speed control dropdown
  * - Reset to beginning
  * - Time and frame counter displays
- * 
+ *
  * @pure Component renders consistently for same props
  * @param props - Media control configuration
  * @returns JSX element for media controls
- * 
+ *
  * @example
  * <MediaControls
  *   playbackState={{
@@ -80,18 +80,17 @@ export default function MediaControls({
   className = '',
   'data-testid': testId,
 }: MediaControlsProps) {
-  
   const { currentIndex, totalFrames, isPlaying, playbackSpeed } = playbackState;
-  
+
   // Calculate progress information using pure utility
   const progress = calculatePlaybackProgress(playbackState, frameRate);
-  
+
   // Calculate slider background using pure utility
   const sliderBackground = calculateSliderGradient(progress.percentage);
-  
+
   /**
    * Handles slider change events
-   * 
+   *
    * @pure Function processes slider input events
    */
   const handleSliderChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -141,11 +140,7 @@ export default function MediaControls({
         title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
         aria-label={isPlaying ? 'Pause playback' : 'Start playback'}
       >
-        {isPlaying ? (
-          <Pause className="w-5 h-5" />
-        ) : (
-          <Play className="w-5 h-5 ml-0.5" />
-        )}
+        {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
       </button>
 
       {/* Frame Navigation */}
@@ -177,7 +172,7 @@ export default function MediaControls({
             {progress.currentTime}
           </span>
         )}
-        
+
         <div className="flex-1 relative">
           <input
             type="range"
@@ -189,7 +184,7 @@ export default function MediaControls({
             disabled={totalFrames <= 1}
             className="w-full h-2 bg-white/20 rounded-lg appearance-none cursor-pointer slider disabled:cursor-not-allowed disabled:opacity-50"
             style={{
-              background: sliderBackground
+              background: sliderBackground,
             }}
             aria-label="Playback progress"
             aria-valuemin={0}
@@ -198,11 +193,9 @@ export default function MediaControls({
             aria-valuetext={`Frame ${progress.currentFrame} of ${progress.totalFrames}`}
           />
         </div>
-        
+
         {showTimeDisplay && (
-          <span className="text-xs text-white/80 font-mono min-w-[3rem]">
-            {progress.totalTime}
-          </span>
+          <span className="text-xs text-white/80 font-mono min-w-[3rem]">{progress.totalTime}</span>
         )}
       </div>
 
@@ -286,11 +279,11 @@ export default function MediaControls({
 
 /**
  * Minimal media controls variant with only essential controls
- * 
+ *
  * @pure Component renders minimal control set
  * @param props - Subset of MediaControlsProps
  * @returns JSX element for minimal controls
- * 
+ *
  * @example
  * <MinimalMediaControls
  *   playbackState={playbackState}
@@ -299,9 +292,12 @@ export default function MediaControls({
  *   onSeek={onSeek}
  * />
  */
-export function MinimalMediaControls(props: Pick<MediaControlsProps, 
-  'playbackState' | 'onPlay' | 'onPause' | 'onSeek' | 'className' | 'data-testid'
->) {
+export function MinimalMediaControls(
+  props: Pick<
+    MediaControlsProps,
+    'playbackState' | 'onPlay' | 'onPause' | 'onSeek' | 'className' | 'data-testid'
+  >
+) {
   return (
     <MediaControls
       {...props}
@@ -318,11 +314,11 @@ export function MinimalMediaControls(props: Pick<MediaControlsProps,
 
 /**
  * Full-featured media controls with all options enabled
- * 
+ *
  * @pure Component renders complete control set
  * @param props - Complete MediaControlsProps
  * @returns JSX element for full controls
- * 
+ *
  * @example
  * <FullMediaControls
  *   playbackState={playbackState}

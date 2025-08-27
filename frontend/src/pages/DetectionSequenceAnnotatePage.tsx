@@ -1,7 +1,16 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, X, ChevronLeft, ChevronRight, CheckCircle, AlertCircle, Keyboard, Upload } from 'lucide-react';
+import {
+  ArrowLeft,
+  X,
+  ChevronLeft,
+  ChevronRight,
+  CheckCircle,
+  AlertCircle,
+  Keyboard,
+  Upload,
+} from 'lucide-react';
 import { useSequenceDetections } from '@/hooks/useSequenceDetections';
 // useDetectionImage now handled by DetectionAnnotationCanvas
 import { apiClient } from '@/services/api';
@@ -11,7 +20,7 @@ import {
   getFalsePositiveEmoji,
   formatFalsePositiveType,
   getModelAccuracyBadgeClasses,
-  parseFalsePositiveTypes
+  parseFalsePositiveTypes,
 } from '@/utils/modelAccuracy';
 import { Detection, DetectionAnnotation, SmokeType } from '@/types/api';
 import { createDefaultFilterState } from '@/hooks/usePersistedFilters';
@@ -30,17 +39,27 @@ import {
   calculateAnnotationCompleteness,
   importPredictionsAsRectangles,
   updateRectangleSmokeType,
-  removeRectangle
+  removeRectangle,
 } from '@/utils/annotation';
 // Canvas overlays are now handled by DetectionAnnotationCanvas
-import { DetectionImageCard, KeyboardShortcutsModal, AnnotationToolbar, SubmissionControls, DetectionAnnotationCanvas } from '@/components/detection-annotation';
+import {
+  DetectionImageCard,
+  KeyboardShortcutsModal,
+  AnnotationToolbar,
+  SubmissionControls,
+  DetectionAnnotationCanvas,
+} from '@/components/detection-annotation';
 import { useKeyboardShortcuts } from '@/hooks/annotation';
 
 interface ImageModalProps {
   detection: Detection;
   onClose: () => void;
   onNavigate: (direction: 'prev' | 'next') => void;
-  onSubmit: (detection: Detection, drawnRectangles: DrawnRectangle[], currentDrawMode: boolean) => void;
+  onSubmit: (
+    detection: Detection,
+    drawnRectangles: DrawnRectangle[],
+    currentDrawMode: boolean
+  ) => void;
   onTogglePredictions: (show: boolean) => void;
   canNavigatePrev: boolean;
   canNavigateNext: boolean;
@@ -77,7 +96,7 @@ function ImageModal({
   onSmokeTypeChange,
   persistentDrawMode,
   onDrawModeChange,
-  isAutoAdvance
+  isAutoAdvance,
 }: ImageModalProps) {
   // Image data is now handled by DetectionAnnotationCanvas
   const [imageInfo, setImageInfo] = useState<{
@@ -124,12 +143,17 @@ function ImageModal({
       const width = imgRect.width;
       const height = imgRect.height;
 
-      console.log('handleImageLoad called for detection:', detection.id, { width, height, offsetX, offsetY });
+      console.log('handleImageLoad called for detection:', detection.id, {
+        width,
+        height,
+        offsetX,
+        offsetY,
+      });
       setImageInfo({
         width: width,
         height: height,
         offsetX: offsetX,
-        offsetY: offsetY
+        offsetY: offsetY,
       });
 
       // If transitioning, complete the fade-in animation
@@ -184,7 +208,7 @@ function ImageModal({
               width: width,
               height: height,
               offsetX: offsetX,
-              offsetY: offsetY
+              offsetY: offsetY,
             });
 
             // Complete transition: fade overlays back in
@@ -193,7 +217,10 @@ function ImageModal({
               setIsTransitioning(false);
             }, 50); // Small delay to ensure imageInfo is set
           } else {
-            console.log('Fallback skipped - image not loaded yet:', { imgWidth: imgRect.width, imgHeight: imgRect.height });
+            console.log('Fallback skipped - image not loaded yet:', {
+              imgWidth: imgRect.width,
+              imgHeight: imgRect.height,
+            });
           }
         }
       }, 200); // Give image time to load
@@ -215,11 +242,13 @@ function ImageModal({
 
     // Always update rectangles based on annotation (even if detection didn't change)
     if (existingAnnotation?.annotation?.annotation) {
-      const existingRects: DrawnRectangle[] = existingAnnotation.annotation.annotation.map((item, index) => ({
-        id: `existing-${index}`,
-        xyxyn: item.xyxyn,
-        smokeType: item.smoke_type
-      }));
+      const existingRects: DrawnRectangle[] = existingAnnotation.annotation.annotation.map(
+        (item, index) => ({
+          id: `existing-${index}`,
+          xyxyn: item.xyxyn,
+          smokeType: item.smoke_type,
+        })
+      );
       setDrawnRectangles(existingRects);
     } else {
       setDrawnRectangles([]);
@@ -227,7 +256,11 @@ function ImageModal({
   }, [detection.id, existingAnnotation, isAutoAdvance]);
 
   // Get current image and container information for coordinate transformations
-  const getImageInfo = (): { containerOffset: Point; imageBounds: ImageBounds; transform: { zoomLevel: number; panOffset: Point; transformOrigin: Point } } | null => {
+  const getImageInfo = (): {
+    containerOffset: Point;
+    imageBounds: ImageBounds;
+    transform: { zoomLevel: number; panOffset: Point; transformOrigin: Point };
+  } | null => {
     if (!imgRef.current || !containerRef.current) return null;
 
     const containerRect = containerRef.current.getBoundingClientRect();
@@ -235,20 +268,20 @@ function ImageModal({
 
     const containerOffset: Point = {
       x: containerRect.left,
-      y: containerRect.top
+      y: containerRect.top,
     };
 
     const imageBounds = calculateImageBounds({
       containerWidth: containerRect.width,
       containerHeight: containerRect.height,
       imageNaturalWidth: img.naturalWidth,
-      imageNaturalHeight: img.naturalHeight
+      imageNaturalHeight: img.naturalHeight,
     });
 
     const transform = {
       zoomLevel,
       panOffset,
-      transformOrigin
+      transformOrigin,
     };
 
     return { containerOffset, imageBounds, transform };
@@ -272,10 +305,7 @@ function ImageModal({
     const info = getImageInfo();
     if (!info) return { x: 0, y: 0 };
 
-    return imageToNormalizedCoordinates(
-      { x: imageX, y: imageY },
-      info.imageBounds
-    );
+    return imageToNormalizedCoordinates({ x: imageX, y: imageY }, info.imageBounds);
   };
 
   // Wrapper function for normalized to image coordinates
@@ -283,10 +313,7 @@ function ImageModal({
     const info = getImageInfo();
     if (!info) return { x: 0, y: 0 };
 
-    return normalizedToImageCoordinates(
-      { x: normX, y: normY },
-      info.imageBounds
-    );
+    return normalizedToImageCoordinates({ x: normX, y: normY }, info.imageBounds);
   };
 
   // Hit testing function using pure utilities
@@ -294,11 +321,7 @@ function ImageModal({
     const info = getImageInfo();
     if (!info) return null;
 
-    return getRectangleAtPoint(
-      { x, y },
-      drawnRectangles,
-      info.imageBounds
-    );
+    return getRectangleAtPoint({ x, y }, drawnRectangles, info.imageBounds);
   };
 
   // Undo functionality
@@ -345,7 +368,9 @@ function ImageModal({
 
     if (newRectangles.length === 0) {
       // Visual feedback: brief button animation to indicate no action taken
-      const button = document.querySelector('button[title*="All AI predictions already imported"]') as HTMLElement;
+      const button = document.querySelector(
+        'button[title*="All AI predictions already imported"]'
+      ) as HTMLElement;
       if (button) {
         button.style.transform = 'scale(0.95)';
         setTimeout(() => {
@@ -415,7 +440,7 @@ function ImageModal({
   };
 
   // Pan boundary constraint helper
-  const constrainPan = (offset: { x: number, y: number }) => {
+  const constrainPan = (offset: { x: number; y: number }) => {
     if (!imgRef.current || zoomLevel <= 1) return offset;
 
     const imgRect = imgRef.current.getBoundingClientRect();
@@ -428,7 +453,7 @@ function ImageModal({
 
     return {
       x: Math.max(-maxPanX, Math.min(maxPanX, offset.x)),
-      y: Math.max(-maxPanY, Math.min(maxPanY, offset.y))
+      y: Math.max(-maxPanY, Math.min(maxPanY, offset.y)),
     };
   };
 
@@ -473,7 +498,7 @@ function ImageModal({
         startX: coords.x,
         startY: coords.y,
         currentX: coords.x,
-        currentY: coords.y
+        currentY: coords.y,
       });
       setIsActivelyDrawing(true);
     } else {
@@ -490,14 +515,14 @@ function ImageModal({
 
         // Only create rectangle if it has meaningful size (at least 10 pixels)
         const sizeThreshold = 10 / (imgRef.current?.getBoundingClientRect().width || 1000);
-        if ((maxX - minX) > sizeThreshold && (maxY - minY) > sizeThreshold) {
+        if (maxX - minX > sizeThreshold && maxY - minY > sizeThreshold) {
           // Save current state to undo stack before adding rectangle
           pushUndoState();
 
           const newRect: DrawnRectangle = {
             id: Date.now().toString(),
             xyxyn: [minX, minY, maxX, maxY],
-            smokeType: selectedSmokeType
+            smokeType: selectedSmokeType,
           };
 
           setDrawnRectangles(prev => [...prev, newRect]);
@@ -514,11 +539,15 @@ function ImageModal({
     if (isActivelyDrawing && currentDrawing) {
       // Update live preview rectangle
       const coords = screenToImageCoords(e.clientX, e.clientY);
-      setCurrentDrawing(prev => prev ? {
-        ...prev,
-        currentX: coords.x,
-        currentY: coords.y
-      } : null);
+      setCurrentDrawing(prev =>
+        prev
+          ? {
+              ...prev,
+              currentX: coords.x,
+              currentY: coords.y,
+            }
+          : null
+      );
     } else if (isDragging && !isDrawMode && zoomLevel > 1.0) {
       // Handle panning
       const newX = e.clientX - dragStart.x;
@@ -543,68 +572,71 @@ function ImageModal({
   };
 
   // Keyboard shortcuts using reusable hook - no memoization, simple and direct
-  useKeyboardShortcuts({
-    onToggleDrawMode: () => {
-      // When toggling draw mode, cancel any active drawing
-      if (isDrawMode && isActivelyDrawing) {
-        setCurrentDrawing(null);
-        setIsActivelyDrawing(false);
-      }
-      const newDrawMode = !isDrawMode;
-      setIsDrawMode(newDrawMode);
-      onDrawModeChange(newDrawMode);
-    },
-    onTogglePredictions: () => onTogglePredictions(!showPredictions),
-    onDeleteRectangle: () => {
-      // Save current state to undo stack before deleting
-      pushUndoState();
+  useKeyboardShortcuts(
+    {
+      onToggleDrawMode: () => {
+        // When toggling draw mode, cancel any active drawing
+        if (isDrawMode && isActivelyDrawing) {
+          setCurrentDrawing(null);
+          setIsActivelyDrawing(false);
+        }
+        const newDrawMode = !isDrawMode;
+        setIsDrawMode(newDrawMode);
+        onDrawModeChange(newDrawMode);
+      },
+      onTogglePredictions: () => onTogglePredictions(!showPredictions),
+      onDeleteRectangle: () => {
+        // Save current state to undo stack before deleting
+        pushUndoState();
 
-      // Smart delete: selected rectangle or all rectangles using pure utilities
-      if (selectedRectangleId) {
-        // Delete only the selected rectangle
-        setDrawnRectangles(prev => removeRectangle(prev, selectedRectangleId));
-        setSelectedRectangleId(null);
-      } else {
-        // Delete all rectangles when none selected
-        setDrawnRectangles([]);
-      }
+        // Smart delete: selected rectangle or all rectangles using pure utilities
+        if (selectedRectangleId) {
+          // Delete only the selected rectangle
+          setDrawnRectangles(prev => removeRectangle(prev, selectedRectangleId));
+          setSelectedRectangleId(null);
+        } else {
+          // Delete all rectangles when none selected
+          setDrawnRectangles([]);
+        }
+      },
+      onUndo: handleUndo,
+      onSubmit: () => onSubmit(detection, drawnRectangles, isDrawMode),
+      onImportPredictions: importAIPredictions,
+      onShowHelp: () => setShowKeyboardShortcuts(!showKeyboardShortcuts),
+      onSelectWildfire: () => {
+        if (selectedRectangleId !== null) {
+          changeSelectedRectangleSmokeType('wildfire');
+        } else {
+          onSmokeTypeChange('wildfire');
+        }
+      },
+      onSelectIndustrial: () => {
+        if (selectedRectangleId !== null) {
+          changeSelectedRectangleSmokeType('industrial');
+        } else {
+          onSmokeTypeChange('industrial');
+        }
+      },
+      onSelectOther: () => {
+        if (selectedRectangleId !== null) {
+          changeSelectedRectangleSmokeType('other');
+        } else {
+          onSmokeTypeChange('other');
+        }
+      },
+      onResetZoom: handleZoomReset,
     },
-    onUndo: handleUndo,
-    onSubmit: () => onSubmit(detection, drawnRectangles, isDrawMode),
-    onImportPredictions: importAIPredictions,
-    onShowHelp: () => setShowKeyboardShortcuts(!showKeyboardShortcuts),
-    onSelectWildfire: () => {
-      if (selectedRectangleId !== null) {
-        changeSelectedRectangleSmokeType('wildfire');
-      } else {
-        onSmokeTypeChange('wildfire');
-      }
-    },
-    onSelectIndustrial: () => {
-      if (selectedRectangleId !== null) {
-        changeSelectedRectangleSmokeType('industrial');
-      } else {
-        onSmokeTypeChange('industrial');
-      }
-    },
-    onSelectOther: () => {
-      if (selectedRectangleId !== null) {
-        changeSelectedRectangleSmokeType('other');
-      } else {
-        onSmokeTypeChange('other');
-      }
-    },
-    onResetZoom: handleZoomReset
-  }, {
-    isDrawMode,
-    isActivelyDrawing,
-    hasSelectedRectangle: selectedRectangleId !== null,
-    hasRectangles: drawnRectangles.length > 0,
-    canUndo: undoStack.length > 0,
-    showPredictions,
-    isSubmitting,
-    showKeyboardShortcuts
-  });
+    {
+      isDrawMode,
+      isActivelyDrawing,
+      hasSelectedRectangle: selectedRectangleId !== null,
+      hasRectangles: drawnRectangles.length > 0,
+      canUndo: undoStack.length > 0,
+      showPredictions,
+      isSubmitting,
+      showKeyboardShortcuts,
+    }
+  );
 
   // Additional keyboard handlers for drawing-specific logic (not covered by the generic hook)
   useEffect(() => {
@@ -672,13 +704,13 @@ function ImageModal({
           <X className="w-6 h-6 text-white" />
         </button>
 
-
         {/* Navigation buttons */}
         <button
           onClick={() => onNavigate('prev')}
           disabled={!canNavigatePrev}
-          className={`absolute left-4 p-3 bg-white bg-opacity-10 hover:bg-opacity-20 rounded-full transition-colors ${!canNavigatePrev ? 'opacity-40 cursor-not-allowed' : ''
-            }`}
+          className={`absolute left-4 p-3 bg-white bg-opacity-10 hover:bg-opacity-20 rounded-full transition-colors ${
+            !canNavigatePrev ? 'opacity-40 cursor-not-allowed' : ''
+          }`}
         >
           <ChevronLeft className="w-6 h-6 text-white" />
         </button>
@@ -686,8 +718,9 @@ function ImageModal({
         <button
           onClick={() => onNavigate('next')}
           disabled={!canNavigateNext}
-          className={`absolute right-16 p-3 bg-white bg-opacity-10 hover:bg-opacity-20 rounded-full transition-colors ${!canNavigateNext ? 'opacity-40 cursor-not-allowed' : ''
-            }`}
+          className={`absolute right-16 p-3 bg-white bg-opacity-10 hover:bg-opacity-20 rounded-full transition-colors ${
+            !canNavigateNext ? 'opacity-40 cursor-not-allowed' : ''
+          }`}
         >
           <ChevronRight className="w-6 h-6 text-white" />
         </button>
@@ -706,7 +739,7 @@ function ImageModal({
           <input
             type="checkbox"
             checked={showPredictions}
-            onChange={(e) => onTogglePredictions(e.target.checked)}
+            onChange={e => onTogglePredictions(e.target.checked)}
             className="w-3 h-3 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
           />
           <span>Show predictions</span>
@@ -778,7 +811,9 @@ function ImageModal({
           {/* Detection info and submission controls */}
           <div className="mt-4 bg-white bg-opacity-10 backdrop-blur-sm rounded-lg p-4 text-white">
             <div className="flex items-center justify-center space-x-4 mb-4">
-              <span className="font-medium">Detection {currentIndex + 1} of {totalCount}</span>
+              <span className="font-medium">
+                Detection {currentIndex + 1} of {totalCount}
+              </span>
               <span className="text-gray-300">•</span>
               <span className="text-gray-300">
                 {new Date(detection.recorded_at).toLocaleString()}
@@ -814,11 +849,17 @@ function ImageModal({
 }
 
 // Helper function for context-aware annotation status
-const getIsAnnotated = (annotation: DetectionAnnotation | undefined, fromContext: string | null): boolean => {
+const getIsAnnotated = (
+  annotation: DetectionAnnotation | undefined,
+  fromContext: string | null
+): boolean => {
   if (fromContext === 'detections-review') {
     // Review context: optimistically assume completed unless explicitly not
     if (!annotation) return true; // Loading state: assume completed
-    return annotation.processing_stage === 'annotated' || annotation.processing_stage === 'bbox_annotation';
+    return (
+      annotation.processing_stage === 'annotated' ||
+      annotation.processing_stage === 'bbox_annotation'
+    );
   } else {
     // Annotate context: conservatively assume pending unless explicitly completed
     return annotation?.processing_stage === 'annotated';
@@ -833,7 +874,9 @@ export default function DetectionSequenceAnnotatePage() {
 
   const [selectedDetectionIndex, setSelectedDetectionIndex] = useState<number | null>(null);
   const [showModal, setShowModal] = useState(false);
-  const [detectionAnnotations, setDetectionAnnotations] = useState<Map<number, DetectionAnnotation>>(new Map());
+  const [detectionAnnotations, setDetectionAnnotations] = useState<
+    Map<number, DetectionAnnotation>
+  >(new Map());
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [showPredictions, setShowPredictions] = useState(false);
@@ -851,7 +894,8 @@ export default function DetectionSequenceAnnotatePage() {
 
   // Determine source page and appropriate filter storage key
   const sourcePage = fromParam === 'detections-review' ? 'review' : 'annotate';
-  const filterStorageKey = sourcePage === 'review' ? 'filters-detections-review' : 'filters-detections-annotate';
+  const filterStorageKey =
+    sourcePage === 'review' ? 'filters-detections-review' : 'filters-detections-annotate';
 
   // Load persisted filters from the appropriate source page
   const sourcePageFilters = useMemo(() => {
@@ -866,7 +910,10 @@ export default function DetectionSequenceAnnotatePage() {
         storedFilters = JSON.parse(stored);
       }
     } catch (error) {
-      console.warn(`[DetectionSequenceAnnotate] Failed to read filters from localStorage key "${filterStorageKey}":`, error);
+      console.warn(
+        `[DetectionSequenceAnnotate] Failed to read filters from localStorage key "${filterStorageKey}":`,
+        error
+      );
     }
 
     // Always return something (either stored filters or defaults)
@@ -874,7 +921,8 @@ export default function DetectionSequenceAnnotatePage() {
       ...createDefaultFilterState('annotated'),
       filters: {
         ...createDefaultFilterState('annotated').filters,
-        detection_annotation_completion: sourcePage === 'review' ? 'complete' as const : 'incomplete' as const,
+        detection_annotation_completion:
+          sourcePage === 'review' ? ('complete' as const) : ('incomplete' as const),
         include_detection_stats: true,
         processing_stage: 'annotated' as const,
       },
@@ -908,7 +956,10 @@ export default function DetectionSequenceAnnotatePage() {
   const { data: sequenceAnnotationResponse } = useQuery({
     queryKey: [...QUERY_KEYS.SEQUENCE_ANNOTATIONS, 'by-sequence', sequenceIdNum],
     queryFn: async () => {
-      const response = await apiClient.getSequenceAnnotations({ sequence_id: sequenceIdNum!, size: 1 });
+      const response = await apiClient.getSequenceAnnotations({
+        sequence_id: sequenceIdNum!,
+        size: 1,
+      });
       return response.items[0] || null;
     },
     enabled: !!sequenceIdNum,
@@ -917,12 +968,22 @@ export default function DetectionSequenceAnnotatePage() {
   const sequenceAnnotation = sequenceAnnotationResponse;
 
   // Fetch all sequences for navigation using filters from the source page
-  const { data: rawSequences, isLoading: rawSequencesLoading, error: rawSequencesError } = useQuery({
-    queryKey: [...QUERY_KEYS.SEQUENCES, 'navigation-context', sourcePage, sourcePageFilters?.filters],
+  const {
+    data: rawSequences,
+    isLoading: rawSequencesLoading,
+    error: rawSequencesError,
+  } = useQuery({
+    queryKey: [
+      ...QUERY_KEYS.SEQUENCES,
+      'navigation-context',
+      sourcePage,
+      sourcePageFilters?.filters,
+    ],
     queryFn: () => {
       // Always provide a fallback query - use stored filters if available, otherwise use basic filters
       const baseFilters = {
-        detection_annotation_completion: sourcePage === 'review' ? 'complete' as const : 'incomplete' as const,
+        detection_annotation_completion:
+          sourcePage === 'review' ? ('complete' as const) : ('incomplete' as const),
         include_detection_stats: true,
         processing_stage: 'annotated' as const,
         size: 100, // Backend maximum limit is 100 - may limit navigation with large datasets
@@ -946,7 +1007,12 @@ export default function DetectionSequenceAnnotatePage() {
 
   // Fetch sequence annotations for model accuracy filtering (if applicable)
   const { data: allSequenceAnnotations } = useQuery({
-    queryKey: [...QUERY_KEYS.SEQUENCE_ANNOTATIONS, 'navigation-context', rawSequences?.items?.map(s => s.id), sourcePageFilters?.selectedModelAccuracy],
+    queryKey: [
+      ...QUERY_KEYS.SEQUENCE_ANNOTATIONS,
+      'navigation-context',
+      rawSequences?.items?.map(s => s.id),
+      sourcePageFilters?.selectedModelAccuracy,
+    ],
     queryFn: async () => {
       if (!rawSequences?.items?.length) {
         return [];
@@ -959,7 +1025,8 @@ export default function DetectionSequenceAnnotatePage() {
       }
 
       const annotationPromises = rawSequences.items.map(sequence =>
-        apiClient.getSequenceAnnotations({ sequence_id: sequence.id, size: 1 })
+        apiClient
+          .getSequenceAnnotations({ sequence_id: sequence.id, size: 1 })
           .then(response => ({ sequenceId: sequence.id, annotation: response.items[0] || null }))
           .catch(error => {
             console.warn(`Failed to fetch annotation for sequence ${sequence.id}:`, error);
@@ -989,10 +1056,13 @@ export default function DetectionSequenceAnnotatePage() {
       return rawSequences; // Return unfiltered if annotations not loaded yet
     }
 
-    const annotationMap = allSequenceAnnotations.reduce((acc, { sequenceId, annotation }) => {
-      acc[sequenceId] = annotation;
-      return acc;
-    }, {} as Record<number, any>);
+    const annotationMap = allSequenceAnnotations.reduce(
+      (acc, { sequenceId, annotation }) => {
+        acc[sequenceId] = annotation;
+        return acc;
+      },
+      {} as Record<number, any>
+    );
 
     const filtered = rawSequences.items.filter(sequence => {
       const annotation = annotationMap[sequence.id];
@@ -1002,7 +1072,7 @@ export default function DetectionSequenceAnnotatePage() {
 
       const accuracy = analyzeSequenceAccuracy({
         ...sequence,
-        annotation: annotation
+        annotation: annotation,
       });
 
       return accuracy.type === modelAccuracy;
@@ -1012,7 +1082,7 @@ export default function DetectionSequenceAnnotatePage() {
       ...rawSequences,
       items: filtered,
       total: filtered.length,
-      pages: Math.ceil(filtered.length / rawSequences.size)
+      pages: Math.ceil(filtered.length / rawSequences.size),
     };
   }, [rawSequences, allSequenceAnnotations, sourcePageFilters?.selectedModelAccuracy]);
 
@@ -1022,7 +1092,7 @@ export default function DetectionSequenceAnnotatePage() {
     queryFn: async () => {
       const response = await apiClient.getDetectionAnnotations({
         sequence_id: sequenceIdNum!,
-        size: 100
+        size: 100,
       });
       return response.items;
     },
@@ -1046,7 +1116,7 @@ export default function DetectionSequenceAnnotatePage() {
       if (!detections) return;
 
       // Update annotations for all detections (should already exist from sequence annotation)
-      const promises = detections.map(async (detection) => {
+      const promises = detections.map(async detection => {
         const existingAnnotation = detectionAnnotations.get(detection.id);
 
         if (existingAnnotation) {
@@ -1083,7 +1153,11 @@ export default function DetectionSequenceAnnotatePage() {
       setTimeout(() => {
         // Check if there's a next sequence to auto-advance to
         const currentIndex = getCurrentSequenceIndex();
-        if (currentIndex >= 0 && allSequences?.items && currentIndex < allSequences.items.length - 1) {
+        if (
+          currentIndex >= 0 &&
+          allSequences?.items &&
+          currentIndex < allSequences.items.length - 1
+        ) {
           // Auto-advance to next filtered sequence
           const nextSequence = allSequences.items[currentIndex + 1];
           const sourceParam = fromParam ? `?from=${fromParam}` : '';
@@ -1103,28 +1177,36 @@ export default function DetectionSequenceAnnotatePage() {
 
   // Individual detection annotation mutation
   const annotateIndividualDetection = useMutation({
-    mutationFn: async ({ detection, drawnRectangles }: { detection: Detection; drawnRectangles: DrawnRectangle[] }) => {
+    mutationFn: async ({
+      detection,
+      drawnRectangles,
+    }: {
+      detection: Detection;
+      drawnRectangles: DrawnRectangle[];
+    }) => {
       const existingAnnotation = detectionAnnotations.get(detection.id);
 
       if (existingAnnotation) {
         // Convert drawn rectangles to annotation format
         const annotationItems = drawnRectangles.map(rect => ({
           xyxyn: rect.xyxyn,
-          class_name: "smoke",
-          smoke_type: rect.smokeType
+          class_name: 'smoke',
+          smoke_type: rect.smokeType,
         }));
 
         // Update existing annotation with proper annotation data and 'annotated' stage
         return apiClient.updateDetectionAnnotation(existingAnnotation.id, {
           annotation: {
-            annotation: annotationItems
+            annotation: annotationItems,
           },
           processing_stage: 'annotated',
         });
       } else {
         // No annotation exists - this shouldn't happen if sequence annotation was submitted first
         // But in case it does, throw an error to guide the user
-        throw new Error(`No detection annotation found for detection ${detection.id}. Please ensure the sequence annotation has been submitted first to auto-create detection annotations.`);
+        throw new Error(
+          `No detection annotation found for detection ${detection.id}. Please ensure the sequence annotation has been submitted first to auto-create detection annotations.`
+        );
       }
     },
     onSuccess: (result, { detection }) => {
@@ -1145,7 +1227,11 @@ export default function DetectionSequenceAnnotatePage() {
       setShowToast(true);
 
       // Auto-advance to next detection if available
-      if (selectedDetectionIndex !== null && detections && selectedDetectionIndex < detections.length - 1) {
+      if (
+        selectedDetectionIndex !== null &&
+        detections &&
+        selectedDetectionIndex < detections.length - 1
+      ) {
         // Mark as auto-advance (drawing mode already stored in onSubmit above)
         isAutoAdvanceRef.current = true;
 
@@ -1154,7 +1240,11 @@ export default function DetectionSequenceAnnotatePage() {
         if (nextDetectionId && sequenceId) {
           navigate(`/detections/${sequenceId}/annotate/${nextDetectionId}`);
         }
-      } else if (selectedDetectionIndex !== null && detections && selectedDetectionIndex === detections.length - 1) {
+      } else if (
+        selectedDetectionIndex !== null &&
+        detections &&
+        selectedDetectionIndex === detections.length - 1
+      ) {
         // At last detection - close modal after a brief delay to show success message
         setTimeout(() => {
           if (sequenceId) {
@@ -1230,9 +1320,10 @@ export default function DetectionSequenceAnnotatePage() {
   const navigateModal = (direction: 'prev' | 'next') => {
     if (!detections || selectedDetectionIndex === null || !sequenceId) return;
 
-    const newIndex = direction === 'prev'
-      ? Math.max(0, selectedDetectionIndex - 1)
-      : Math.min(detections.length - 1, selectedDetectionIndex + 1);
+    const newIndex =
+      direction === 'prev'
+        ? Math.max(0, selectedDetectionIndex - 1)
+        : Math.min(detections.length - 1, selectedDetectionIndex + 1);
 
     const newDetectionId = getDetectionIdByIndex(newIndex);
     if (newDetectionId) {
@@ -1306,7 +1397,14 @@ export default function DetectionSequenceAnnotatePage() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showModal, selectedDetectionIndex, detections, detectionAnnotations, annotateIndividualDetection, showPredictions]);
+  }, [
+    showModal,
+    selectedDetectionIndex,
+    detections,
+    detectionAnnotations,
+    annotateIndividualDetection,
+    showPredictions,
+  ]);
 
   // Reset auto-advance flag after navigation
   useEffect(() => {
@@ -1334,14 +1432,22 @@ export default function DetectionSequenceAnnotatePage() {
     const annotationValues = Array.from(detectionAnnotations.values());
 
     // All detections must have annotations and all must be in visual_check stage
-    return detections.length === annotationValues.length &&
-      annotationValues.every(annotation => annotation.processing_stage === 'visual_check');
+    return (
+      detections.length === annotationValues.length &&
+      annotationValues.every(annotation => annotation.processing_stage === 'visual_check')
+    );
   };
 
   // Calculate progress using pure utility function
   const progressStats = detections
     ? calculateAnnotationCompleteness(detections, detectionAnnotations)
-    : { annotatedDetections: 0, totalDetections: 0, completionPercentage: 0, isComplete: false, hasAnnotations: false };
+    : {
+        annotatedDetections: 0,
+        totalDetections: 0,
+        completionPercentage: 0,
+        isComplete: false,
+        hasAnnotations: false,
+      };
 
   const { annotatedDetections, totalDetections, completionPercentage } = progressStats;
   const annotatedCount = annotatedDetections;
@@ -1356,7 +1462,10 @@ export default function DetectionSequenceAnnotatePage() {
 
     if (sequenceAnnotation.has_smoke) {
       pills.push(
-        <span key="smoke" className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+        <span
+          key="smoke"
+          className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800"
+        >
           Smoke
         </span>
       );
@@ -1364,7 +1473,10 @@ export default function DetectionSequenceAnnotatePage() {
 
     if (sequenceAnnotation.has_missed_smoke) {
       pills.push(
-        <span key="missed" className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+        <span
+          key="missed"
+          className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800"
+        >
           Missed Smoke
         </span>
       );
@@ -1386,9 +1498,16 @@ export default function DetectionSequenceAnnotatePage() {
       });
     }
 
-    if (!sequenceAnnotation.has_smoke && !sequenceAnnotation.has_missed_smoke && !sequenceAnnotation.has_false_positives) {
+    if (
+      !sequenceAnnotation.has_smoke &&
+      !sequenceAnnotation.has_missed_smoke &&
+      !sequenceAnnotation.has_false_positives
+    ) {
       pills.push(
-        <span key="no-smoke" className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+        <span
+          key="no-smoke"
+          className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800"
+        >
           No Smoke
         </span>
       );
@@ -1477,10 +1596,13 @@ export default function DetectionSequenceAnnotatePage() {
   return (
     <>
       {/* Fixed Header */}
-      <div className={`fixed top-0 left-0 md:left-64 right-0 backdrop-blur-sm shadow-sm z-30 ${isAllAnnotated
-        ? 'bg-green-50/90 border-b border-green-200 border-l-4 border-l-green-500'
-        : 'bg-white/85 border-b border-gray-200'
-        }`}>
+      <div
+        className={`fixed top-0 left-0 md:left-64 right-0 backdrop-blur-sm shadow-sm z-30 ${
+          isAllAnnotated
+            ? 'bg-green-50/90 border-b border-green-200 border-l-4 border-l-green-500'
+            : 'bg-white/85 border-b border-gray-200'
+        }`}
+      >
         <div className="px-10 py-3">
           {/* Top Row: Context + Action Buttons */}
           <div className="flex items-center justify-between">
@@ -1502,24 +1624,27 @@ export default function DetectionSequenceAnnotatePage() {
                 </span>
                 <span className="text-gray-400">•</span>
                 <span className="text-sm text-gray-600">
-                  {sequence?.recorded_at ? new Date(sequence.recorded_at).toLocaleString() : 'Loading...'}
+                  {sequence?.recorded_at
+                    ? new Date(sequence.recorded_at).toLocaleString()
+                    : 'Loading...'}
                 </span>
                 {sequence?.azimuth !== null && sequence?.azimuth !== undefined && (
                   <>
                     <span className="text-gray-400">•</span>
-                    <span className="text-xs text-gray-500">
-                      {sequence.azimuth}°
-                    </span>
+                    <span className="text-xs text-gray-500">{sequence.azimuth}°</span>
                   </>
                 )}
-                {sequence?.lat !== null && sequence?.lat !== undefined && sequence?.lon !== null && sequence?.lon !== undefined && (
-                  <>
-                    <span className="text-gray-400">•</span>
-                    <span className="text-xs text-gray-500">
-                      {sequence.lat.toFixed(3)}, {sequence.lon.toFixed(3)}
-                    </span>
-                  </>
-                )}
+                {sequence?.lat !== null &&
+                  sequence?.lat !== undefined &&
+                  sequence?.lon !== null &&
+                  sequence?.lon !== undefined && (
+                    <>
+                      <span className="text-gray-400">•</span>
+                      <span className="text-xs text-gray-500">
+                        {sequence.lat.toFixed(3)}, {sequence.lon.toFixed(3)}
+                      </span>
+                    </>
+                  )}
 
                 {/* Sequence context */}
                 {rawSequencesLoading ? (
@@ -1532,9 +1657,7 @@ export default function DetectionSequenceAnnotatePage() {
                 ) : rawSequencesError ? (
                   <>
                     <span className="text-gray-400">•</span>
-                    <span className="text-xs text-red-500">
-                      Error loading sequences
-                    </span>
+                    <span className="text-xs text-red-500">Error loading sequences</span>
                   </>
                 ) : allSequences && allSequences.total > 0 ? (
                   <>
@@ -1546,9 +1669,7 @@ export default function DetectionSequenceAnnotatePage() {
                 ) : (
                   <>
                     <span className="text-gray-400">•</span>
-                    <span className="text-xs text-gray-500">
-                      No sequences found
-                    </span>
+                    <span className="text-xs text-gray-500">No sequences found</span>
                   </>
                 )}
 
@@ -1607,7 +1728,9 @@ export default function DetectionSequenceAnnotatePage() {
                     onClick={handlePreviousSequence}
                     disabled={!canNavigatePrevious()}
                     className="p-1.5 rounded-md hover:bg-gray-100 hover:bg-opacity-75 disabled:opacity-40 disabled:cursor-not-allowed"
-                    title={canNavigatePrevious() ? "Previous sequence" : "Already at first sequence"}
+                    title={
+                      canNavigatePrevious() ? 'Previous sequence' : 'Already at first sequence'
+                    }
                   >
                     <ChevronLeft className="w-4 h-4" />
                   </button>
@@ -1615,7 +1738,7 @@ export default function DetectionSequenceAnnotatePage() {
                     onClick={handleNextSequence}
                     disabled={!canNavigateNext()}
                     className="p-1.5 rounded-md hover:bg-gray-100 hover:bg-opacity-75 disabled:opacity-40 disabled:cursor-not-allowed"
-                    title={canNavigateNext() ? "Next sequence" : "Already at last sequence"}
+                    title={canNavigateNext() ? 'Next sequence' : 'Already at last sequence'}
                   >
                     <ChevronRight className="w-4 h-4" />
                   </button>
@@ -1627,7 +1750,7 @@ export default function DetectionSequenceAnnotatePage() {
                 <input
                   type="checkbox"
                   checked={showPredictions}
-                  onChange={(e) => setShowPredictions(e.target.checked)}
+                  onChange={e => setShowPredictions(e.target.checked)}
                   className="w-3 h-3 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
                 />
                 <span>Show predictions</span>
@@ -1655,11 +1778,13 @@ export default function DetectionSequenceAnnotatePage() {
           <div className="flex items-center justify-between mt-2">
             <div className="flex items-center space-x-4">
               <span className="text-xs font-medium text-gray-900">
-                Review: {isAllAnnotated ? (
+                Review:{' '}
+                {isAllAnnotated ? (
                   <span className="text-green-600">Done</span>
                 ) : (
                   <span className="text-orange-600">Pending</span>
-                )} • {annotatedCount} of {totalCount} detections • {completionPercentage}% complete
+                )}{' '}
+                • {annotatedCount} of {totalCount} detections • {completionPercentage}% complete
               </span>
 
               {/* Model Accuracy Context */}
@@ -1668,7 +1793,7 @@ export default function DetectionSequenceAnnotatePage() {
                   {(() => {
                     const accuracy = analyzeSequenceAccuracy({
                       ...sequence,
-                      annotation: sequenceAnnotation
+                      annotation: sequenceAnnotation,
                     });
                     return (
                       <span className={getModelAccuracyBadgeClasses(accuracy, 'sm')}>
@@ -1680,9 +1805,7 @@ export default function DetectionSequenceAnnotatePage() {
               )}
 
               {/* Annotation pills */}
-              <div className="flex items-center space-x-2">
-                {getAnnotationPills()}
-              </div>
+              <div className="flex items-center space-x-2">{getAnnotationPills()}</div>
             </div>
 
             <div className="flex items-center space-x-3">
@@ -1693,8 +1816,9 @@ export default function DetectionSequenceAnnotatePage() {
               )}
               <div className="w-24 bg-gray-200 rounded-full h-1.5">
                 <div
-                  className={`h-1.5 rounded-full transition-all duration-300 ${isAllAnnotated ? 'bg-green-600' : 'bg-primary-600'
-                    }`}
+                  className={`h-1.5 rounded-full transition-all duration-300 ${
+                    isAllAnnotated ? 'bg-green-600' : 'bg-primary-600'
+                  }`}
                   style={{ width: `${completionPercentage}%` }}
                 ></div>
               </div>
@@ -1738,7 +1862,10 @@ export default function DetectionSequenceAnnotatePage() {
           totalCount={detections.length}
           showPredictions={showPredictions}
           isSubmitting={annotateIndividualDetection.isPending}
-          isAnnotated={getIsAnnotated(detectionAnnotations.get(detections[selectedDetectionIndex].id), fromParam)}
+          isAnnotated={getIsAnnotated(
+            detectionAnnotations.get(detections[selectedDetectionIndex].id),
+            fromParam
+          )}
           existingAnnotation={detectionAnnotations.get(detections[selectedDetectionIndex].id)}
           selectedSmokeType={persistentSmokeType}
           onSmokeTypeChange={setPersistentSmokeType}
@@ -1750,8 +1877,11 @@ export default function DetectionSequenceAnnotatePage() {
 
       {/* Toast Notification */}
       {showToast && (
-        <div className={`fixed top-24 right-4 z-50 transition-all duration-300 ease-in-out transform ${showToast ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'
-          }`}>
+        <div
+          className={`fixed top-24 right-4 z-50 transition-all duration-300 ease-in-out transform ${
+            showToast ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'
+          }`}
+        >
           <div className="px-4 py-3 rounded-lg shadow-lg flex items-center space-x-3 min-w-80 bg-green-50 border border-green-200">
             <CheckCircle className="w-5 h-5 text-green-600" />
             <span className="text-sm font-medium text-green-800">{toastMessage}</span>

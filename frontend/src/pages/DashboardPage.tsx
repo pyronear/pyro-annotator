@@ -1,29 +1,29 @@
 import { Link } from 'react-router-dom';
-import { 
-  Target, 
-  CheckCircle2, 
-  Clock, 
+import {
+  Target,
+  CheckCircle2,
+  Clock,
   Database,
   Zap,
   ArrowRight,
   AlertTriangle,
   Activity,
   BarChart3,
-  Layers
+  Layers,
 } from 'lucide-react';
 import { useAnnotationStats } from '@/hooks/useAnnotationStats';
 import ProgressBar, { MultiStageProgressBar } from '@/components/ProgressBar';
 import logoImg from '@/assets/logo.png';
 
 export default function DashboardPage() {
-  const { 
+  const {
     totalSequences,
     processingStages,
     sequencesWithCompleteDetections,
     sequencesWithIncompleteDetections,
     detectionCompletionPercentage,
-    isLoading, 
-    error 
+    isLoading,
+    error,
   } = useAnnotationStats();
 
   return (
@@ -32,15 +32,9 @@ export default function DashboardPage() {
       <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-xl p-8 text-white">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
-            <img 
-              src={logoImg} 
-              alt="PyroAnnotator Logo" 
-              className="w-16 h-16 object-contain"
-            />
+            <img src={logoImg} alt="PyroAnnotator Logo" className="w-16 h-16 object-contain" />
             <div>
-              <h1 className="text-3xl font-bold mb-2">
-                Welcome to PyroAnnotator
-              </h1>
+              <h1 className="text-3xl font-bold mb-2">Welcome to PyroAnnotator</h1>
               <p className="text-blue-100 text-lg">
                 Wildfire detection annotation system - Track your progress and manage workflows
               </p>
@@ -55,7 +49,9 @@ export default function DashboardPage() {
             </div>
             <div className="text-center">
               <div className="text-3xl font-bold text-green-300">
-                {isLoading ? '–' : `${Math.round((processingStages.annotated / Math.max(totalSequences, 1)) * 100)}%`}
+                {isLoading
+                  ? '–'
+                  : `${Math.round((processingStages.annotated / Math.max(totalSequences, 1)) * 100)}%`}
               </div>
               <div className="text-blue-200 text-sm">Complete</div>
             </div>
@@ -73,12 +69,8 @@ export default function DashboardPage() {
                 <Layers className="w-6 h-6 text-green-600" />
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-gray-900">
-                  Sequence Annotations
-                </h3>
-                <p className="text-sm text-gray-600">
-                  Complete sequence-level work
-                </p>
+                <h3 className="text-lg font-semibold text-gray-900">Sequence Annotations</h3>
+                <p className="text-sm text-gray-600">Complete sequence-level work</p>
               </div>
             </div>
           </div>
@@ -97,17 +89,19 @@ export default function DashboardPage() {
               {isLoading ? (
                 <div className="animate-pulse bg-gray-200 h-2 rounded-full"></div>
               ) : (
-                <ProgressBar 
-                  value={processingStages.annotated} 
+                <ProgressBar
+                  value={processingStages.annotated}
                   max={totalSequences}
-                  color="green" 
+                  color="green"
                   height={20}
                   ariaLabel="Sequence annotation progress"
                 />
               )}
             </div>
             <p className="text-xs text-gray-500 mt-2">
-              {isLoading ? 'Loading...' : `${Math.round((processingStages.annotated / Math.max(totalSequences, 1)) * 100)}% of all sequences`}
+              {isLoading
+                ? 'Loading...'
+                : `${Math.round((processingStages.annotated / Math.max(totalSequences, 1)) * 100)}% of all sequences`}
             </p>
           </div>
         </div>
@@ -120,12 +114,8 @@ export default function DashboardPage() {
                 <Target className="w-6 h-6 text-blue-600" />
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-gray-900">
-                  Detection Annotations
-                </h3>
-                <p className="text-sm text-gray-600">
-                  All detections annotated
-                </p>
+                <h3 className="text-lg font-semibold text-gray-900">Detection Annotations</h3>
+                <p className="text-sm text-gray-600">All detections annotated</p>
               </div>
             </div>
           </div>
@@ -144,17 +134,19 @@ export default function DashboardPage() {
               {isLoading ? (
                 <div className="animate-pulse bg-gray-200 h-2 rounded-full"></div>
               ) : (
-                <ProgressBar 
-                  value={sequencesWithCompleteDetections} 
+                <ProgressBar
+                  value={sequencesWithCompleteDetections}
                   max={sequencesWithCompleteDetections + sequencesWithIncompleteDetections}
-                  color="primary" 
+                  color="primary"
                   height={20}
                   ariaLabel="Detection annotation progress"
                 />
               )}
             </div>
             <p className="text-xs text-gray-500 mt-2">
-              {isLoading ? 'Loading...' : `${isNaN(detectionCompletionPercentage) ? 0 : detectionCompletionPercentage}% of sequences with detections`}
+              {isLoading
+                ? 'Loading...'
+                : `${isNaN(detectionCompletionPercentage) ? 0 : detectionCompletionPercentage}% of sequences with detections`}
             </p>
           </div>
         </div>
@@ -167,12 +159,8 @@ export default function DashboardPage() {
                 <Clock className="w-6 h-6 text-orange-600" />
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-gray-900">
-                  Ready to Annotate
-                </h3>
-                <p className="text-sm text-gray-600">
-                  Pending annotation work
-                </p>
+                <h3 className="text-lg font-semibold text-gray-900">Ready to Annotate</h3>
+                <p className="text-sm text-gray-600">Pending annotation work</p>
               </div>
             </div>
           </div>
@@ -189,7 +177,7 @@ export default function DashboardPage() {
             </div>
             <div className="mt-3">
               {processingStages.ready_to_annotate > 0 ? (
-                <Link 
+                <Link
                   to="/sequences/annotate"
                   className="inline-flex items-center text-sm font-medium text-orange-600 hover:text-orange-700"
                 >
@@ -205,7 +193,7 @@ export default function DashboardPage() {
 
       {/* Workflow Actions */}
       <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Link 
+        <Link
           to="/sequences/annotate"
           className="bg-white rounded-lg p-4 shadow-sm border border-gray-200 hover:shadow-md hover:border-blue-300 transition-all group"
         >
@@ -220,7 +208,7 @@ export default function DashboardPage() {
           </div>
         </Link>
 
-        <Link 
+        <Link
           to="/detections/annotate"
           className="bg-white rounded-lg p-4 shadow-sm border border-gray-200 hover:shadow-md hover:border-purple-300 transition-all group"
         >
@@ -235,7 +223,7 @@ export default function DashboardPage() {
           </div>
         </Link>
 
-        <Link 
+        <Link
           to="/sequences/review"
           className="bg-white rounded-lg p-4 shadow-sm border border-gray-200 hover:shadow-md hover:border-green-300 transition-all group"
         >
@@ -250,7 +238,7 @@ export default function DashboardPage() {
           </div>
         </Link>
 
-        <Link 
+        <Link
           to="/detections/review"
           className="bg-white rounded-lg p-4 shadow-sm border border-gray-200 hover:shadow-md hover:border-gray-400 transition-all group"
         >
@@ -271,9 +259,7 @@ export default function DashboardPage() {
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center space-x-3">
             <Activity className="w-6 h-6 text-gray-600" />
-            <h2 className="text-xl font-bold text-gray-900">
-              Processing Pipeline
-            </h2>
+            <h2 className="text-xl font-bold text-gray-900">Processing Pipeline</h2>
           </div>
           {error && (
             <div className="flex items-center text-red-600 text-sm">
@@ -295,10 +281,10 @@ export default function DashboardPage() {
             {isLoading ? (
               <div className="animate-pulse bg-gray-200 h-6 rounded-full"></div>
             ) : (
-              <ProgressBar 
-                value={processingStages.annotated} 
+              <ProgressBar
+                value={processingStages.annotated}
                 max={totalSequences}
-                color="green" 
+                color="green"
                 height={24}
                 showPercentage={true}
                 ariaLabel="Overall annotation completion"
@@ -323,20 +309,24 @@ export default function DashboardPage() {
                   {
                     label: 'imported',
                     value: processingStages.imported,
-                    color: 'gray'
+                    color: 'gray',
                   },
                   {
-                    label: 'ready to annotate', 
+                    label: 'ready to annotate',
                     value: processingStages.ready_to_annotate,
-                    color: 'orange'
+                    color: 'orange',
                   },
                   {
                     label: 'annotated',
                     value: processingStages.annotated,
-                    color: 'green'
-                  }
+                    color: 'green',
+                  },
                 ]}
-                total={processingStages.imported + processingStages.ready_to_annotate + processingStages.annotated}
+                total={
+                  processingStages.imported +
+                  processingStages.ready_to_annotate +
+                  processingStages.annotated
+                }
                 height={32}
                 showLabels={true}
               />
@@ -348,16 +338,17 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-lg font-medium text-gray-900">Detection Annotation Progress</h3>
               <span className="text-sm text-gray-500">
-                {sequencesWithCompleteDetections} of {sequencesWithCompleteDetections + sequencesWithIncompleteDetections} sequences
+                {sequencesWithCompleteDetections} of{' '}
+                {sequencesWithCompleteDetections + sequencesWithIncompleteDetections} sequences
               </span>
             </div>
             {isLoading ? (
               <div className="animate-pulse bg-gray-200 h-6 rounded-full"></div>
             ) : (
-              <ProgressBar 
-                value={sequencesWithCompleteDetections} 
+              <ProgressBar
+                value={sequencesWithCompleteDetections}
                 max={sequencesWithCompleteDetections + sequencesWithIncompleteDetections}
-                color="primary" 
+                color="primary"
                 height={24}
                 showPercentage={true}
                 ariaLabel="Detection annotation completion"

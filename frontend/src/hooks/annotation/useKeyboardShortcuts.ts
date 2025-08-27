@@ -75,17 +75,17 @@ export interface KeyboardShortcutConfig {
 const defaultConfig: KeyboardShortcutConfig = {
   enabled: true,
   preventDefault: true,
-  stopPropagation: true
+  stopPropagation: true,
 };
 
 /**
  * Pure keyboard shortcuts hook with no internal state.
  * All behavior is determined by passed state and handlers.
- * 
+ *
  * @param handlers - Callback functions for different shortcuts
  * @param state - Current application state
  * @param config - Configuration options
- * 
+ *
  * @example
  * ```typescript
  * useKeyboardShortcuts({
@@ -108,152 +108,145 @@ export const useKeyboardShortcuts = (
 ): void => {
   const finalConfig = { ...defaultConfig, ...config };
 
-  const handleKeyDown = useCallback((event: KeyboardEvent) => {
-    if (!finalConfig.enabled) return;
-    
-    // Don't handle shortcuts if keyboard shortcuts modal is open
-    if (state.showKeyboardShortcuts) {
-      // Only handle Escape to close modal
-      if (event.key === 'Escape') {
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent) => {
+      if (!finalConfig.enabled) return;
+
+      // Don't handle shortcuts if keyboard shortcuts modal is open
+      if (state.showKeyboardShortcuts) {
+        // Only handle Escape to close modal
+        if (event.key === 'Escape') {
+          handlers.onShowHelp();
+          if (finalConfig.preventDefault) event.preventDefault();
+          if (finalConfig.stopPropagation) event.stopPropagation();
+        }
+        return;
+      }
+
+      // Don't handle shortcuts if user is typing in an input/textarea
+      const target = event.target as HTMLElement;
+      if (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.contentEditable === 'true'
+      ) {
+        return;
+      }
+
+      const { key, ctrlKey, metaKey, shiftKey } = event;
+      let handled = false;
+
+      // Drawing mode shortcuts
+      if (key === 'd' || key === 'D') {
+        handlers.onToggleDrawMode();
+        handled = true;
+      }
+
+      // Predictions visibility
+      else if (key === 'p' || key === 'P') {
+        handlers.onTogglePredictions();
+        handled = true;
+      }
+
+      // Delete shortcuts
+      else if (key === 'Delete' || key === 'Backspace') {
+        if (state.hasSelectedRectangle || state.hasRectangles) {
+          handlers.onDeleteRectangle();
+          handled = true;
+        }
+      }
+
+      // Undo shortcut
+      else if ((ctrlKey || metaKey) && key === 'z' && !shiftKey) {
+        if (state.canUndo) {
+          handlers.onUndo();
+          handled = true;
+        }
+      }
+
+      // Submit shortcuts
+      else if ((key === 'Enter' || key === ' ') && !state.isSubmitting) {
+        // Only submit if not actively drawing
+        if (!state.isActivelyDrawing) {
+          handlers.onSubmit();
+          handled = true;
+        }
+      }
+
+      // Import predictions
+      else if (key === 'a' || key === 'A') {
+        handlers.onImportPredictions();
+        handled = true;
+      }
+
+      // Help modal
+      else if (key === '?' || (shiftKey && key === '/')) {
         handlers.onShowHelp();
-        if (finalConfig.preventDefault) event.preventDefault();
-        if (finalConfig.stopPropagation) event.stopPropagation();
-      }
-      return;
-    }
-
-    // Don't handle shortcuts if user is typing in an input/textarea
-    const target = event.target as HTMLElement;
-    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.contentEditable === 'true') {
-      return;
-    }
-
-    const { key, ctrlKey, metaKey, shiftKey } = event;
-    let handled = false;
-
-    // Drawing mode shortcuts
-    if (key === 'd' || key === 'D') {
-      handlers.onToggleDrawMode();
-      handled = true;
-    }
-
-    // Predictions visibility
-    else if (key === 'p' || key === 'P') {
-      handlers.onTogglePredictions();
-      handled = true;
-    }
-
-    // Delete shortcuts
-    else if (key === 'Delete' || key === 'Backspace') {
-      if (state.hasSelectedRectangle || state.hasRectangles) {
-        handlers.onDeleteRectangle();
         handled = true;
       }
-    }
 
-    // Undo shortcut
-    else if ((ctrlKey || metaKey) && key === 'z' && !shiftKey) {
-      if (state.canUndo) {
-        handlers.onUndo();
+      // Smoke type shortcuts
+      else if (key === '1') {
+        // If a rectangle is selected, update its smoke type
+        if (state.hasSelectedRectangle) {
+          handlers.onSelectWildfire();
+        } else {
+          // Otherwise, set as default smoke type for new drawings
+          handlers.onSelectWildfire();
+        }
+        handled = true;
+      } else if (key === '2' || key === 'i' || key === 'I') {
+        if (state.hasSelectedRectangle) {
+          handlers.onSelectIndustrial();
+        } else {
+          handlers.onSelectIndustrial();
+        }
+        handled = true;
+      } else if (key === '3' || key === 'o' || key === 'O') {
+        if (state.hasSelectedRectangle) {
+          handlers.onSelectOther();
+        } else {
+          handlers.onSelectOther();
+        }
         handled = true;
       }
-    }
 
-    // Submit shortcuts
-    else if ((key === 'Enter' || key === ' ') && !state.isSubmitting) {
-      // Only submit if not actively drawing
-      if (!state.isActivelyDrawing) {
-        handlers.onSubmit();
-        handled = true;
+      // Zoom shortcuts (optional)
+      else if (key === '+' || key === '=') {
+        if (handlers.onZoomIn) {
+          handlers.onZoomIn();
+          handled = true;
+        }
+      } else if (key === '-') {
+        if (handlers.onZoomOut) {
+          handlers.onZoomOut();
+          handled = true;
+        }
+      } else if (key === '0') {
+        if (handlers.onResetZoom) {
+          handlers.onResetZoom();
+          handled = true;
+        }
       }
-    }
 
-    // Import predictions
-    else if (key === 'a' || key === 'A') {
-      handlers.onImportPredictions();
-      handled = true;
-    }
-
-    // Help modal
-    else if (key === '?' || (shiftKey && key === '/')) {
-      handlers.onShowHelp();
-      handled = true;
-    }
-
-    // Smoke type shortcuts
-    else if (key === '1') {
-      // If a rectangle is selected, update its smoke type
-      if (state.hasSelectedRectangle) {
-        handlers.onSelectWildfire();
-      } else {
-        // Otherwise, set as default smoke type for new drawings
-        handlers.onSelectWildfire();
+      // Handle event if a shortcut was matched
+      if (handled) {
+        if (finalConfig.preventDefault) {
+          event.preventDefault();
+        }
+        if (finalConfig.stopPropagation) {
+          event.stopPropagation();
+        }
       }
-      handled = true;
-    }
-
-    else if (key === '2' || key === 'i' || key === 'I') {
-      if (state.hasSelectedRectangle) {
-        handlers.onSelectIndustrial();
-      } else {
-        handlers.onSelectIndustrial();
-      }
-      handled = true;
-    }
-
-    else if (key === '3' || key === 'o' || key === 'O') {
-      if (state.hasSelectedRectangle) {
-        handlers.onSelectOther();
-      } else {
-        handlers.onSelectOther();
-      }
-      handled = true;
-    }
-
-    // Zoom shortcuts (optional)
-    else if (key === '+' || key === '=') {
-      if (handlers.onZoomIn) {
-        handlers.onZoomIn();
-        handled = true;
-      }
-    }
-
-    else if (key === '-') {
-      if (handlers.onZoomOut) {
-        handlers.onZoomOut();
-        handled = true;
-      }
-    }
-
-    else if (key === '0') {
-      if (handlers.onResetZoom) {
-        handlers.onResetZoom();
-        handled = true;
-      }
-    }
-
-    // Handle event if a shortcut was matched
-    if (handled) {
-      if (finalConfig.preventDefault) {
-        event.preventDefault();
-      }
-      if (finalConfig.stopPropagation) {
-        event.stopPropagation();
-      }
-    }
-  }, [
-    handlers,
-    state,
-    finalConfig.enabled,
-    finalConfig.preventDefault,
-    finalConfig.stopPropagation
-  ]);
+    },
+    [handlers, state, finalConfig.enabled, finalConfig.preventDefault, finalConfig.stopPropagation]
+  );
 
   useEffect(() => {
     if (!finalConfig.enabled) return;
 
     document.addEventListener('keydown', handleKeyDown);
-    
+
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
@@ -262,13 +255,13 @@ export const useKeyboardShortcuts = (
 
 /**
  * Helper function to create smoke type handler that works for both selected rectangles and default type.
- * 
+ *
  * @param smokeType - The smoke type to set
  * @param hasSelectedRectangle - Whether a rectangle is currently selected
  * @param onUpdateSelectedRectangle - Handler to update selected rectangle smoke type
  * @param onSetDefaultSmokeType - Handler to set default smoke type
  * @returns Combined handler function
- * 
+ *
  * @example
  * ```typescript
  * const handleWildfireShortcut = createSmokeTypeHandler(
@@ -319,5 +312,5 @@ export const KEYBOARD_SHORTCUTS = {
     { key: '+', description: 'Zoom in' },
     { key: '-', description: 'Zoom out' },
     { key: '0', description: 'Reset zoom' },
-  ]
+  ],
 } as const;

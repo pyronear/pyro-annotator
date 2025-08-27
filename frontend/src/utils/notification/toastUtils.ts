@@ -1,7 +1,7 @@
 /**
  * Toast notification utilities.
  * Provides helper functions and custom hooks for toast notification management.
- * 
+ *
  * @fileoverview This module contains utilities for managing toast notifications
  * in the annotation interface, including state management and user interactions.
  */
@@ -40,22 +40,22 @@ export interface ToastActions {
 
 /**
  * Custom hook for managing toast notification state and actions.
- * 
+ *
  * Provides a complete toast notification system with state management,
  * including functions to show and dismiss notifications.
- * 
+ *
  * @returns {ToastState & ToastActions} Combined state and actions for toast management
- * 
+ *
  * @example
  * ```tsx
  * const { showToast, toastMessage, toastType, showToastNotification, dismissToast } = useToastNotifications();
- * 
+ *
  * // Show a success notification
  * showToastNotification('Operation completed successfully');
- * 
+ *
  * // Show an error notification
  * showToastNotification('Something went wrong', 'error');
- * 
+ *
  * // Dismiss current notification
  * dismissToast();
  * ```
@@ -67,7 +67,7 @@ export const useToastNotifications = (): ToastState & ToastActions => {
 
   /**
    * Shows a toast notification with the specified message and type.
-   * 
+   *
    * @param {string} message - The message to display in the toast
    * @param {ToastType} [type='success'] - The type of toast (success, error, or info)
    */
@@ -89,6 +89,6 @@ export const useToastNotifications = (): ToastState & ToastActions => {
     toastMessage,
     toastType,
     showToastNotification,
-    dismissToast
+    dismissToast,
   };
 };

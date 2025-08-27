@@ -12,7 +12,7 @@ export {
   normalizedBboxToPixels,
   validateBoundingBox,
   calculateBoundingBoxArea,
-  normalizedToPixelBox
+  normalizedToPixelBox,
 } from './coordinateUtils';
 
 export type {
@@ -20,7 +20,7 @@ export type {
   ImageBounds,
   Point,
   TransformConfig,
-  ImageInfo
+  ImageInfo,
 } from './coordinateUtils';
 
 // Drawing utilities
@@ -34,15 +34,10 @@ export {
   removeRectangle,
   importPredictionsAsRectangles,
   areBoundingBoxesSimilar,
-  calculateDrawingStats
+  calculateDrawingStats,
 } from './drawingUtils';
 
-export type {
-  DrawnRectangle,
-  CurrentDrawing,
-  SmokeTypeColors,
-  DrawingMode
-} from './drawingUtils';
+export type { DrawnRectangle, CurrentDrawing, SmokeTypeColors, DrawingMode } from './drawingUtils';
 
 // Validation utilities
 export {
@@ -53,13 +48,10 @@ export {
   calculateAnnotationCompleteness,
   validateRectangleOverlaps,
   calculateBoundingBoxOverlap,
-  validateWorkflowReadiness
+  validateWorkflowReadiness,
 } from './validationUtils';
 
-export type {
-  ValidationResult,
-  AnnotationCompleteness
-} from './validationUtils';
+export type { ValidationResult, AnnotationCompleteness } from './validationUtils';
 
 // Canvas utilities
 export {
@@ -71,13 +63,10 @@ export {
   calculateSizeThreshold,
   getMouseRelativeToElement,
   isValidDrawingSize,
-  getCanvasScale
+  getCanvasScale,
 } from './canvasUtils';
 
-export type {
-  ZoomConfig,
-  PanConstraints
-} from './canvasUtils';
+export type { ZoomConfig, PanConstraints } from './canvasUtils';
 
 // Image utilities
 export {
@@ -89,14 +78,10 @@ export {
   isValidImageSize,
   getImageScale,
   formatImageDimensions,
-  getAspectRatioLabel
+  getAspectRatioLabel,
 } from './imageUtils';
 
-export type {
-  ImageDimensions,
-  ImageFitConfig,
-  DisplayDimensions
-} from './imageUtils';
+export type { ImageDimensions, ImageFitConfig, DisplayDimensions } from './imageUtils';
 
 // Workflow utilities
 export {
@@ -107,14 +92,10 @@ export {
   isWorkflowComplete,
   validateAnnotationData,
   formatWorkflowStatus,
-  calculateRemainingItems
+  calculateRemainingItems,
 } from './workflowUtils';
 
-export type {
-  WorkflowStep,
-  WorkflowState,
-  WorkflowProgress
-} from './workflowUtils';
+export type { WorkflowStep, WorkflowState, WorkflowProgress } from './workflowUtils';
 
 // Sequence utilities
 export {
@@ -129,9 +110,8 @@ export {
   updateBboxFalsePositiveType,
   clearBboxSelections,
   getKeyForFalsePositiveType,
-  formatFalsePositiveLabel
+  formatFalsePositiveLabel,
 } from './sequenceUtils';
-
 
 // Progress utilities
 export {
@@ -141,9 +121,7 @@ export {
   isAnnotationComplete,
   getAnnotationValidationErrors,
   formatProgressDisplay,
-  getProgressColor
+  getProgressColor,
 } from './progressUtils';
 
-export type {
-  AnnotationProgress
-} from './progressUtils';
+export type { AnnotationProgress } from './progressUtils';

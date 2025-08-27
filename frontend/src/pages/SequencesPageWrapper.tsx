@@ -5,6 +5,8 @@ interface SequencesPageWrapperProps {
   defaultProcessingStage?: ProcessingStageStatus;
 }
 
-export default function SequencesPageWrapper({ defaultProcessingStage }: SequencesPageWrapperProps) {
+export default function SequencesPageWrapper({
+  defaultProcessingStage,
+}: SequencesPageWrapperProps) {
   return <SequencesPage defaultProcessingStage={defaultProcessingStage} />;
 }

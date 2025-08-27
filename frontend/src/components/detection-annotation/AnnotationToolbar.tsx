@@ -40,17 +40,21 @@ export function AnnotationToolbar({
   canImportPredictions,
   newPredictionsCount = 0,
   zoomLevel,
-  onSelectedRectangleSmokeTypeChange
+  onSelectedRectangleSmokeTypeChange,
 }: AnnotationToolbarProps) {
   const hasRectangles = drawnRectangles.length > 0;
-  
+
   return (
     <div className="mt-4 flex justify-end">
       <div className="flex items-center space-x-2">
         {/* Smoke Type Selector */}
         <SmokeTypeSelector
           selectedSmokeType={selectedSmokeType}
-          selectedRectangleSmokeType={selectedRectangleId ? drawnRectangles.find(r => r.id === selectedRectangleId)?.smokeType : undefined}
+          selectedRectangleSmokeType={
+            selectedRectangleId
+              ? drawnRectangles.find(r => r.id === selectedRectangleId)?.smokeType
+              : undefined
+          }
           hasSelectedRectangle={!!selectedRectangleId}
           onSmokeTypeChange={onSmokeTypeChange}
           onSelectedRectangleSmokeTypeChange={onSelectedRectangleSmokeTypeChange}
@@ -64,10 +68,10 @@ export function AnnotationToolbar({
           className="p-2 bg-white bg-opacity-10 hover:bg-opacity-20 disabled:bg-opacity-5 disabled:cursor-not-allowed rounded-full transition-colors backdrop-blur-sm"
           title={
             newPredictionsCount === 0
-              ? "No AI predictions available"
+              ? 'No AI predictions available'
               : canImportPredictions
                 ? `Import ${newPredictionsCount} new AI predictions as ${selectedSmokeType} smoke (A)`
-                : "All AI predictions already imported"
+                : 'All AI predictions already imported'
           }
         >
           <Brain className={`w-5 h-5 ${canImportPredictions ? 'text-white' : 'text-gray-500'}`} />
@@ -76,15 +80,16 @@ export function AnnotationToolbar({
         {/* Drawing Mode Toggle */}
         <button
           onClick={onDrawModeToggle}
-          className={`p-2 rounded-full transition-colors backdrop-blur-sm ${isActivelyDrawing
-            ? 'bg-green-500 bg-opacity-40 hover:bg-opacity-50 ring-2 ring-green-400'
-            : isDrawMode
-              ? 'bg-green-500 bg-opacity-20 hover:bg-opacity-30'
-              : 'bg-white bg-opacity-10 hover:bg-opacity-20'
-            }`}
+          className={`p-2 rounded-full transition-colors backdrop-blur-sm ${
+            isActivelyDrawing
+              ? 'bg-green-500 bg-opacity-40 hover:bg-opacity-50 ring-2 ring-green-400'
+              : isDrawMode
+                ? 'bg-green-500 bg-opacity-20 hover:bg-opacity-30'
+                : 'bg-white bg-opacity-10 hover:bg-opacity-20'
+          }`}
           title={
             isActivelyDrawing
-              ? "Drawing in progress... (Click to finish, Esc to cancel)"
+              ? 'Drawing in progress... (Click to finish, Esc to cancel)'
               : isDrawMode
                 ? `Draw Mode Active (D to exit)${selectedRectangleId ? ' • Rectangle selected' : ''}${drawnRectangles.length > 0 ? ` • ${drawnRectangles.length} rectangles` : ''} • Click rectangles to select`
                 : `Enter Draw Mode (D)${drawnRectangles.length > 0 ? ` • Click any of ${drawnRectangles.length} rectangles to select` : ''}`
@@ -100,7 +105,7 @@ export function AnnotationToolbar({
             className="p-2 bg-white bg-opacity-10 hover:bg-opacity-20 rounded-full transition-colors backdrop-blur-sm"
             title={
               selectedRectangleId
-                ? "Delete Selected Rectangle (Delete/Backspace)"
+                ? 'Delete Selected Rectangle (Delete/Backspace)'
                 : `Delete All ${drawnRectangles.length} Rectangles (Delete/Backspace) • Select a rectangle to delete individually`
             }
           >

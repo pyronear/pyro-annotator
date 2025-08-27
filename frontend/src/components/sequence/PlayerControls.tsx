@@ -24,7 +24,7 @@ export default function PlayerControls({
   onSeek,
   onSpeedChange,
   onReset,
-  className = ''
+  className = '',
 }: PlayerControlsProps) {
   // const [isDragging, setIsDragging] = useState(false);
   const sliderRef = useRef<HTMLInputElement>(null);
@@ -108,11 +108,7 @@ export default function PlayerControls({
           className="flex-shrink-0 p-2 bg-primary-600 text-white rounded-full hover:bg-primary-700 transition-colors"
           title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
         >
-          {isPlaying ? (
-            <Pause className="w-5 h-5" />
-          ) : (
-            <Play className="w-5 h-5 ml-0.5" />
-          )}
+          {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
         </button>
 
         {/* Frame Navigation */}
@@ -140,7 +136,7 @@ export default function PlayerControls({
           <span className="text-sm text-gray-600 font-mono min-w-[3rem]">
             {formatTime(currentIndex)}
           </span>
-          
+
           <div className="flex-1 relative">
             <input
               ref={sliderRef}
@@ -153,11 +149,11 @@ export default function PlayerControls({
               onMouseUp={handleSliderMouseUp}
               className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
               style={{
-                background: `linear-gradient(to right, #2563eb 0%, #2563eb ${(currentIndex / (totalFrames - 1)) * 100}%, #e5e7eb ${(currentIndex / (totalFrames - 1)) * 100}%, #e5e7eb 100%)`
+                background: `linear-gradient(to right, #2563eb 0%, #2563eb ${(currentIndex / (totalFrames - 1)) * 100}%, #e5e7eb ${(currentIndex / (totalFrames - 1)) * 100}%, #e5e7eb 100%)`,
               }}
             />
           </div>
-          
+
           <span className="text-sm text-gray-600 font-mono min-w-[3rem]">
             {formatTime(totalFrames - 1)}
           </span>
@@ -175,7 +171,7 @@ export default function PlayerControls({
           <span className="text-xs text-gray-500">Speed:</span>
           <select
             value={playbackSpeed}
-            onChange={(e) => onSpeedChange(parseFloat(e.target.value))}
+            onChange={e => onSpeedChange(parseFloat(e.target.value))}
             className="text-xs border border-gray-300 rounded px-2 py-1 bg-white"
           >
             {speedOptions.map(speed => (

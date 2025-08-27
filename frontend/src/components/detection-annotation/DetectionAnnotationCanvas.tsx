@@ -33,7 +33,7 @@ interface DetectionAnnotationCanvasProps {
   isDragging: boolean;
   // Event handlers
   onMouseDown: (e: React.MouseEvent) => void;
-  onMouseMove: (e: React.MouseEvent) => void;  
+  onMouseMove: (e: React.MouseEvent) => void;
   onMouseUp: (e: React.MouseEvent) => void;
   onClick: (e: React.MouseEvent) => void;
   getCursorStyle: () => string;
@@ -62,7 +62,7 @@ export function DetectionAnnotationCanvas({
   getCursorStyle,
   handleImageLoad,
   normalizedToImage,
-  overlaysVisible
+  overlaysVisible,
 }: DetectionAnnotationCanvasProps) {
   const { data: imageData } = useDetectionImage(detection.id);
 
@@ -85,7 +85,7 @@ export function DetectionAnnotationCanvas({
         style={{
           transform: `scale(${zoomLevel}) translate(${panOffset.x}px, ${panOffset.y}px)`,
           transformOrigin: `${transformOrigin.x}% ${transformOrigin.y}%`,
-          transition: isDragging ? 'none' : 'transform 0.1s ease-out'
+          transition: isDragging ? 'none' : 'transform 0.1s ease-out',
         }}
         onLoad={handleImageLoad}
       />
@@ -98,7 +98,7 @@ export function DetectionAnnotationCanvas({
           transformOrigin: `${transformOrigin.x}% ${transformOrigin.y}%`,
           transition: isDragging ? 'none' : 'transform 0.1s ease-out, opacity 0.3s ease-in-out',
           opacity: showPredictions && imageInfo && overlaysVisible ? 1 : 0,
-          pointerEvents: showPredictions && imageInfo && overlaysVisible ? 'none' : 'none'
+          pointerEvents: showPredictions && imageInfo && overlaysVisible ? 'none' : 'none',
         }}
       >
         {showPredictions && imageInfo && (
@@ -110,7 +110,7 @@ export function DetectionAnnotationCanvas({
       <div
         className="absolute inset-0 z-20 transition-opacity duration-300 ease-in-out"
         style={{
-          opacity: imageInfo && overlaysVisible ? 1 : 0
+          opacity: imageInfo && overlaysVisible ? 1 : 0,
         }}
       >
         {imageInfo && (

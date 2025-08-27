@@ -102,7 +102,7 @@ export interface DetectionAnnotationData {
 // Enums
 export type SmokeType = 'wildfire' | 'industrial' | 'other';
 
-export type FalsePositiveType = 
+export type FalsePositiveType =
   | 'antenna'
   | 'building'
   | 'cliff'
@@ -123,9 +123,12 @@ export type FalsePositiveType =
 
 export type ProcessingStage = 'imported' | 'ready_to_annotate' | 'annotated';
 
-// Detection-specific processing stages  
-export type DetectionProcessingStage = 'imported' | 'visual_check' | 'bbox_annotation' | 'annotated';
-
+// Detection-specific processing stages
+export type DetectionProcessingStage =
+  | 'imported'
+  | 'visual_check'
+  | 'bbox_annotation'
+  | 'annotated';
 
 // API Request/Response interfaces
 export interface PaginatedResponse<T> {
@@ -179,7 +182,6 @@ export interface DetectionAnnotationFilters {
   page?: number;
   size?: number;
 }
-
 
 // Processing stage status including "no annotation" case
 export type ProcessingStageStatus = ProcessingStage | 'no_annotation';

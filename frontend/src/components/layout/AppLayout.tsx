@@ -1,6 +1,17 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Menu, X, BarChart3, ChevronRight, ChevronDown, Layers, Target, LogOut, User, Users } from 'lucide-react';
+import {
+  Menu,
+  X,
+  BarChart3,
+  ChevronRight,
+  ChevronDown,
+  Layers,
+  Target,
+  LogOut,
+  User,
+  Users,
+} from 'lucide-react';
 import { clsx } from 'clsx';
 import { useAnnotationCounts } from '@/hooks/useAnnotationCounts';
 import NotificationBadge from '@/components/ui/NotificationBadge';
@@ -87,8 +98,8 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
 function SidebarContent({ currentPath }: { currentPath: string }) {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
-    'Sequences': true,
-    'Detections': true,
+    Sequences: true,
+    Detections: true,
   });
 
   // Get annotation counts for badges and current user
@@ -98,21 +109,21 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
   // Create dynamic navigation with badge counts
   const navigationWithBadges: NavigationItem[] = [
     { name: 'Dashboard', href: '/', icon: BarChart3 },
-    { 
-      name: 'Sequences', 
+    {
+      name: 'Sequences',
       icon: Layers,
       children: [
         { name: 'Annotate', href: '/sequences/annotate', badgeCount: sequenceCount },
         { name: 'Review', href: '/sequences/review' },
-      ]
+      ],
     },
-    { 
-      name: 'Detections', 
+    {
+      name: 'Detections',
       icon: Target,
       children: [
         { name: 'Annotate', href: '/detections/annotate', badgeCount: detectionCount },
         { name: 'Review', href: '/detections/review' },
-      ]
+      ],
     },
     ...(isSuperuser() ? [{ name: 'User Management', href: '/users', icon: Users }] : []),
   ];
@@ -120,13 +131,13 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
   const toggleSection = (sectionName: string) => {
     setExpandedSections(prev => ({
       ...prev,
-      [sectionName]: !prev[sectionName]
+      [sectionName]: !prev[sectionName],
     }));
   };
 
   const isPathActive = (href?: string) => {
     if (!href || href === '#') return false;
-    
+
     // Handle detection pages directly
     if (currentPath.startsWith('/detections/')) {
       // Handle nested detection routes like /detections/{id}/annotate
@@ -147,19 +158,19 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
       }
       return currentPath === href;
     }
-    
+
     // Special handling for sequence annotation pages to respect source context
     if (currentPath.includes('/sequences/') && currentPath.includes('/annotate')) {
       const searchParams = new URLSearchParams(window.location.search);
       const fromParam = searchParams.get('from');
-      
+
       if (fromParam === 'review' && href === '/sequences/review') return true;
       if (fromParam === 'detections' && href === '/detections/annotate') return true;
       if (fromParam === 'detections-review' && href === '/detections/review') return true;
       if (!fromParam && href === '/sequences/annotate') return true;
       return false;
     }
-    
+
     return currentPath === href || currentPath.startsWith(href + '/');
   };
 
@@ -179,13 +190,11 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
         <div className="flex items-center flex-shrink-0 px-4">
           <div className="flex items-center">
             <img src={logoImg} alt="PyroAnnotator Logo" className="w-8 h-8" />
-            <h1 className="ml-2 text-xl font-bold text-gray-900">
-              PyroAnnotator
-            </h1>
+            <h1 className="ml-2 text-xl font-bold text-gray-900">PyroAnnotator</h1>
           </div>
         </div>
         <nav className="mt-8 flex-1 px-2 bg-white space-y-1">
-          {navigationWithBadges.map((item) => {
+          {navigationWithBadges.map(item => {
             const isActive = isSectionActive(item);
             const isExpanded = expandedSections[item.name];
 
@@ -240,20 +249,20 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
                 </button>
                 {isExpanded && item.children && (
                   <div className="mt-1 space-y-1">
-                    {item.children.map((subItem) => {
+                    {item.children.map(subItem => {
                       const isSubActive = isPathActive(subItem.href);
                       const isDisabled = subItem.href === '#';
                       return (
                         <Link
                           key={subItem.name}
                           to={isDisabled ? '#' : subItem.href}
-                          onClick={(e) => isDisabled && e.preventDefault()}
+                          onClick={e => isDisabled && e.preventDefault()}
                           className={clsx(
                             isSubActive
                               ? 'bg-primary-50 border-r-4 border-primary-600 text-primary-700'
                               : isDisabled
-                              ? 'text-gray-400 cursor-not-allowed'
-                              : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
+                                ? 'text-gray-400 cursor-not-allowed'
+                                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
                             'group flex items-center justify-between pl-11 pr-2 py-2 text-sm font-medium rounded-l-md'
                           )}
                         >
