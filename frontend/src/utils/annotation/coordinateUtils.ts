@@ -265,3 +265,43 @@ export const calculateBoundingBoxArea = (bbox: [number, number, number, number])
   const [x1, y1, x2, y2] = bbox;
   return Math.max(0, (x2 - x1) * (y2 - y1));
 };
+
+/**
+ * Image positioning information for overlay calculations.
+ */
+export interface ImageInfo {
+  width: number;
+  height: number;
+  offsetX: number;
+  offsetY: number;
+}
+
+/**
+ * Converts normalized bounding box coordinates to pixel coordinates for overlay rendering.
+ * Includes offset calculations for proper positioning within the container.
+ * 
+ * @param xyxyn - Normalized coordinates [x1, y1, x2, y2]
+ * @param imageInfo - Image positioning information including offsets
+ * @returns Pixel coordinates and dimensions for CSS positioning
+ * 
+ * @example
+ * ```typescript
+ * const pixelBox = normalizedToPixelBox([0.1, 0.2, 0.8, 0.9], {
+ *   width: 500, height: 400, offsetX: 50, offsetY: 25
+ * });
+ * // Returns: { left: 100, top: 105, width: 350, height: 280 }
+ * ```
+ */
+export const normalizedToPixelBox = (
+  xyxyn: [number, number, number, number],
+  imageInfo: ImageInfo
+): { left: number; top: number; width: number; height: number } => {
+  const [x1, y1, x2, y2] = xyxyn;
+  
+  return {
+    left: imageInfo.offsetX + (x1 * imageInfo.width),
+    top: imageInfo.offsetY + (y1 * imageInfo.height),
+    width: (x2 - x1) * imageInfo.width,
+    height: (y2 - y1) * imageInfo.height
+  };
+};

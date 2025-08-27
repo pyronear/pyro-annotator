@@ -13,7 +13,7 @@ import {
   getModelAccuracyBadgeClasses,
   parseFalsePositiveTypes
 } from '@/utils/modelAccuracy';
-import { Detection, DetectionAnnotation, AlgoPrediction, SmokeType } from '@/types/api';
+import { Detection, DetectionAnnotation, SmokeType } from '@/types/api';
 import { createDefaultFilterState } from '@/hooks/usePersistedFilters';
 
 // New imports for refactored utilities
@@ -22,7 +22,6 @@ import {
   CurrentDrawing,
   Point,
   ImageBounds,
-  getSmokeTypeColors,
   calculateImageBounds,
   screenToImageCoordinates,
   imageToNormalizedCoordinates,
@@ -34,229 +33,14 @@ import {
   removeRectangle
 } from '@/utils/annotation';
 import { SmokeTypeSelector } from '@/components/annotation/SmokeTypeSelector';
+import { BoundingBoxOverlay, UserAnnotationOverlay, DrawingOverlay } from '@/components/annotation/ImageOverlays';
 import { useKeyboardShortcuts } from '@/hooks/annotation';
 
 // Note: DrawnRectangle and CurrentDrawing interfaces now imported from @/utils/annotation
 
-// Component for rendering bounding boxes over detection images
-interface BoundingBoxOverlayProps {
-  detection: Detection;
-  imageInfo: {
-    width: number;
-    height: number;
-    offsetX: number;
-    offsetY: number;
-  };
-}
+// Note: Overlay components now imported from @/components/annotation/ImageOverlays
 
-function BoundingBoxOverlay({ detection, imageInfo }: BoundingBoxOverlayProps) {
-  if (!detection?.algo_predictions?.predictions) return null;
 
-  return (
-    <>
-      {detection.algo_predictions.predictions.map((prediction: AlgoPrediction, index: number) => {
-        // Convert normalized coordinates (xyxyn) to pixel coordinates
-        const [x1, y1, x2, y2] = prediction.xyxyn;
-
-        // Ensure x2 > x1 and y2 > y1
-        if (x2 <= x1 || y2 <= y1) {
-          return null;
-        }
-
-        // Calculate pixel coordinates relative to the actual image position
-        const left = imageInfo.offsetX + (x1 * imageInfo.width);
-        const top = imageInfo.offsetY + (y1 * imageInfo.height);
-        const width = (x2 - x1) * imageInfo.width;
-        const height = (y2 - y1) * imageInfo.height;
-
-        return (
-          <div
-            key={`bbox-${detection.id}-${index}`}
-            className="absolute border-2 border-red-500 bg-red-500/20 pointer-events-none"
-            style={{
-              left: `${left}px`,
-              top: `${top}px`,
-              width: `${width}px`,
-              height: `${height}px`,
-            }}
-          >
-            {/* Confidence label */}
-            <div className="absolute -top-6 left-0 bg-red-500 text-white text-xs px-1 py-0.5 rounded whitespace-nowrap">
-              {prediction.class_name} {(prediction.confidence * 100).toFixed(0)}%
-            </div>
-          </div>
-        );
-      }).filter(Boolean)} {/* Remove null entries from invalid boxes */}
-    </>
-  );
-}
-
-// Note: getSmokeTypeColors now imported from @/utils/annotation
-
-// Component for rendering user annotations on detection images
-interface UserAnnotationOverlayProps {
-  detectionAnnotation: DetectionAnnotation | null;
-  imageInfo: {
-    width: number;
-    height: number;
-    offsetX: number;
-    offsetY: number;
-  };
-}
-
-function UserAnnotationOverlay({ detectionAnnotation, imageInfo }: UserAnnotationOverlayProps) {
-  if (!detectionAnnotation?.annotation?.annotation || detectionAnnotation.annotation.annotation.length === 0) {
-    return null;
-  }
-
-  return (
-    <>
-      {detectionAnnotation.annotation.annotation.map((annotationBbox, index) => {
-        // Convert normalized coordinates (xyxyn) to pixel coordinates
-        const [x1, y1, x2, y2] = annotationBbox.xyxyn;
-
-        // Ensure x2 > x1 and y2 > y1
-        if (x2 <= x1 || y2 <= y1) {
-          return null;
-        }
-
-        // Calculate pixel coordinates relative to the actual image position
-        const left = imageInfo.offsetX + (x1 * imageInfo.width);
-        const top = imageInfo.offsetY + (y1 * imageInfo.height);
-        const width = (x2 - x1) * imageInfo.width;
-        const height = (y2 - y1) * imageInfo.height;
-
-        // Get colors for this smoke type
-        const colors = getSmokeTypeColors(annotationBbox.smoke_type);
-
-        return (
-          <div
-            key={`user-annotation-${detectionAnnotation.detection_id}-${index}`}
-            className={`absolute border-2 ${colors.border} ${colors.background} pointer-events-none`}
-            style={{
-              left: `${left}px`,
-              top: `${top}px`,
-              width: `${width}px`,
-              height: `${height}px`,
-            }}
-          >
-            {/* Smoke type label */}
-            <div className={`absolute -top-6 left-0 ${colors.border.replace('border-', 'bg-')} text-white text-xs px-1 py-0.5 rounded whitespace-nowrap`}>
-              {annotationBbox.smoke_type === 'wildfire' ? '🔥' : annotationBbox.smoke_type === 'industrial' ? '🏭' : '💨'} {annotationBbox.smoke_type.charAt(0).toUpperCase() + annotationBbox.smoke_type.slice(1)}
-            </div>
-          </div>
-        );
-      }).filter(Boolean)} {/* Remove null entries from invalid boxes */}
-    </>
-  );
-}
-
-// Component for rendering user-drawn rectangles
-interface DrawingOverlayProps {
-  drawnRectangles: DrawnRectangle[];
-  currentDrawing: CurrentDrawing | null;
-  selectedRectangleId: string | null;
-  imageInfo: {
-    width: number;
-    height: number;
-    offsetX: number;
-    offsetY: number;
-  };
-  zoomLevel: number;
-  panOffset: { x: number; y: number };
-  transformOrigin: { x: number; y: number };
-  isDragging: boolean;
-  normalizedToImage: (normX: number, normY: number) => { x: number; y: number };
-}
-
-function DrawingOverlay({ 
-  drawnRectangles, 
-  currentDrawing, 
-  selectedRectangleId,
-  imageInfo, 
-  zoomLevel, 
-  panOffset, 
-  transformOrigin, 
-  isDragging,
-  normalizedToImage 
-}: DrawingOverlayProps) {
-  
-  const renderRectangle = (rect: { xyxyn: [number, number, number, number]; id?: string } | CurrentDrawing, type: 'completed' | 'drawing') => {
-    let left: number, top: number, width: number, height: number;
-    
-    if (type === 'completed') {
-      // For completed rectangles, use normalized coordinates
-      const rectData = rect as { xyxyn: [number, number, number, number]; id: string };
-      const [x1, y1, x2, y2] = rectData.xyxyn;
-      const topLeft = normalizedToImage(x1, y1);
-      const bottomRight = normalizedToImage(x2, y2);
-      
-      left = imageInfo.offsetX + topLeft.x;
-      top = imageInfo.offsetY + topLeft.y;
-      width = bottomRight.x - topLeft.x;
-      height = bottomRight.y - topLeft.y;
-    } else {
-      // For current drawing, use image coordinates directly
-      const drawingData = rect as CurrentDrawing;
-      const minX = Math.min(drawingData.startX, drawingData.currentX);
-      const minY = Math.min(drawingData.startY, drawingData.currentY);
-      const maxX = Math.max(drawingData.startX, drawingData.currentX);
-      const maxY = Math.max(drawingData.startY, drawingData.currentY);
-      
-      left = imageInfo.offsetX + minX;
-      top = imageInfo.offsetY + minY;
-      width = maxX - minX;
-      height = maxY - minY;
-    }
-    
-    // Determine styling based on selection state and smoke type
-    const isSelected = type === 'completed' && selectedRectangleId === (rect as any).id;
-    const smokeType = type === 'completed' ? (rect as DrawnRectangle).smokeType : undefined;
-    
-    // Use shared color mapping function
-
-    const colors = smokeType ? getSmokeTypeColors(smokeType) : { border: 'border-green-500', background: 'bg-green-500/10' };
-    const borderColor = isSelected ? 'border-yellow-400' : colors.border;
-    const backgroundColor = isSelected ? 'bg-yellow-400/25' : colors.background;
-    const borderWidth = isSelected ? 'border-4' : 'border-2';
-    
-    // Make completed rectangles clickable, but keep drawing preview non-interactive
-    const pointerEvents = type === 'completed' ? 'pointer-events-auto' : 'pointer-events-none';
-    const cursorStyle = type === 'completed' ? 'cursor-pointer' : '';
-    const hoverEffect = type === 'completed' ? 'hover:brightness-110' : '';
-    
-    return (
-      <div
-        key={type === 'completed' ? (rect as any).id : 'current-drawing'}
-        className={`absolute ${borderWidth} ${borderColor} ${backgroundColor} ${pointerEvents} ${cursorStyle} ${hoverEffect} transition-all duration-150`}
-        style={{
-          left: `${left}px`,
-          top: `${top}px`,
-          width: `${width}px`,
-          height: `${height}px`,
-        }}
-        title={type === 'completed' ? 'Click to select rectangle' : undefined}
-      />
-    );
-  };
-  
-  return (
-    <div 
-      className="absolute inset-0 pointer-events-none z-20"
-      style={{
-        transform: `scale(${zoomLevel}) translate(${panOffset.x}px, ${panOffset.y}px)`,
-        transformOrigin: `${transformOrigin.x}% ${transformOrigin.y}%`,
-        transition: isDragging ? 'none' : 'transform 0.1s ease-out'
-      }}
-    >
-      {/* Completed rectangles */}
-      {drawnRectangles.map(rect => renderRectangle(rect, 'completed'))}
-      
-      {/* Current drawing rectangle */}
-      {currentDrawing && renderRectangle(currentDrawing, 'drawing')}
-    </div>
-  );
-}
 
 // Keyboard Shortcuts Info Component
 interface KeyboardShortcutsInfoProps {

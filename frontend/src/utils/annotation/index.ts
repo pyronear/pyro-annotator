@@ -11,14 +11,16 @@ export {
   normalizedToImageCoordinates,
   normalizedBboxToPixels,
   validateBoundingBox,
-  calculateBoundingBoxArea
+  calculateBoundingBoxArea,
+  normalizedToPixelBox
 } from './coordinateUtils';
 
 export type {
   ImageContainConfig,
   ImageBounds,
   Point,
-  TransformConfig
+  TransformConfig,
+  ImageInfo
 } from './coordinateUtils';
 
 // Drawing utilities
