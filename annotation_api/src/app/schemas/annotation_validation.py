@@ -49,7 +49,9 @@ class BoundingBox(BaseModel):
 
         # Reject zero-area bounding boxes (no area for cropping)
         if x1 == x2 or y1 == y2:
-            raise ValueError(f"Zero-area bounding boxes are not allowed (width={x2-x1:.6f}, height={y2-y1:.6f})")
+            raise ValueError(
+                f"Zero-area bounding boxes are not allowed (width={x2-x1:.6f}, height={y2-y1:.6f})"
+            )
 
         return v
 
@@ -95,7 +97,9 @@ class AlgoPrediction(BaseModel):
 
         # Reject zero-area bounding boxes (no area for cropping)
         if x1 == x2 or y1 == y2:
-            raise ValueError(f"Zero-area bounding boxes are not allowed (width={x2-x1:.6f}, height={y2-y1:.6f})")
+            raise ValueError(
+                f"Zero-area bounding boxes are not allowed (width={x2-x1:.6f}, height={y2-y1:.6f})"
+            )
 
         return v
 
@@ -134,7 +138,9 @@ class DetectionAnnotationItem(BaseModel):
 
         # Reject zero-area bounding boxes (no area for cropping)
         if x1 == x2 or y1 == y2:
-            raise ValueError(f"Zero-area bounding boxes are not allowed (width={x2-x1:.6f}, height={y2-y1:.6f})")
+            raise ValueError(
+                f"Zero-area bounding boxes are not allowed (width={x2-x1:.6f}, height={y2-y1:.6f})"
+            )
 
         return v
 

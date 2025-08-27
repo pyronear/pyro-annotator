@@ -28,7 +28,7 @@ class TestAnnotationGenerationService:
         """Set up test fixtures."""
         # Create a mock async session
         self.mock_session = AsyncMock()
-        
+
         self.service = AnnotationGenerationService(
             session=self.mock_session,
             confidence_threshold=0.5,
@@ -48,9 +48,13 @@ class TestAnnotationGenerationService:
         for coords in valid_coords:
             try:
                 bbox = BoundingBox(detection_id=123, xyxyn=coords)
-                assert bbox.xyxyn == coords, f"BoundingBox should accept valid coords: {coords}"
+                assert (
+                    bbox.xyxyn == coords
+                ), f"BoundingBox should accept valid coords: {coords}"
             except Exception as e:
-                pytest.fail(f"BoundingBox should accept valid coords {coords}, but got error: {e}")
+                pytest.fail(
+                    f"BoundingBox should accept valid coords {coords}, but got error: {e}"
+                )
 
     def test_pydantic_bbox_validation_invalid_cases(self):
         """Test Pydantic BoundingBox validation with invalid coordinates."""
@@ -104,7 +108,9 @@ class TestAnnotationGenerationService:
         ]
 
         for coords in zero_area_coords:
-            with pytest.raises(ValueError, match="Zero-area bounding boxes are not allowed"):
+            with pytest.raises(
+                ValueError, match="Zero-area bounding boxes are not allowed"
+            ):
                 BoundingBox(detection_id=123, xyxyn=coords)
 
     def test_create_sequence_bboxes_with_null_coordinates(self):
@@ -146,9 +152,15 @@ class TestAnnotationGenerationService:
             # Cluster with mix of valid and zero-area coordinates
             [
                 ([0.1, 0.2, 0.8, 0.9], 123),  # Valid
-                ([0.5, 0.5, 0.5, 0.5], 124),  # Zero-area point - should be filtered out by Pydantic
+                (
+                    [0.5, 0.5, 0.5, 0.5],
+                    124,
+                ),  # Zero-area point - should be filtered out by Pydantic
                 ([0.2, 0.3, 0.7, 0.8], 125),  # Valid
-                ([0.1, 0.3, 0.1, 0.3], 126),  # Zero-area point - should be filtered out by Pydantic
+                (
+                    [0.1, 0.3, 0.1, 0.3],
+                    126,
+                ),  # Zero-area point - should be filtered out by Pydantic
             ],
             # Cluster with only zero-area coordinates - should be completely skipped
             [
@@ -241,8 +253,12 @@ class TestAnnotationGenerationService:
         assert len(result[0].bboxes) == 1
 
         # Should have logged warnings - updated for new Pydantic validation
-        assert mock_logger.debug.call_count == 3  # Three invalid coordinates rejected by Pydantic
-        assert mock_logger.warning.call_count >= 1  # At least one skipped cluster (possibly more due to summary logs)
+        assert (
+            mock_logger.debug.call_count == 3
+        )  # Three invalid coordinates rejected by Pydantic
+        assert (
+            mock_logger.warning.call_count >= 1
+        )  # At least one skipped cluster (possibly more due to summary logs)
 
     def test_create_sequence_bboxes_empty_clusters(self):
         """Test sequence bbox creation with empty cluster list."""
@@ -270,8 +286,12 @@ class TestAnnotationGenerationService:
         assert result == []
 
         # Should have logged the error - updated for new debug-level logging
-        assert mock_logger.debug.call_count == 1  # Failed BoundingBox creation is now logged as debug
-        assert mock_logger.warning.call_count >= 1  # At least one skipped cluster warning
+        assert (
+            mock_logger.debug.call_count == 1
+        )  # Failed BoundingBox creation is now logged as debug
+        assert (
+            mock_logger.warning.call_count >= 1
+        )  # At least one skipped cluster warning
         # Second warning should be about skipped cluster
         second_warning = mock_logger.warning.call_args_list[1][0][0]
         assert "Skipping cluster" in second_warning
@@ -282,7 +302,7 @@ class TestAnnotationGenerationService:
         # Mock sequence exists
         mock_sequence = MagicMock()
         mock_sequence.camera_name = "Test Camera"
-        
+
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_sequence
         self.mock_session.execute.return_value = mock_result
@@ -299,7 +319,7 @@ class TestAnnotationGenerationService:
         # Mock sequence exists
         mock_sequence = MagicMock()
         mock_sequence.camera_name = "Test Camera"
-        
+
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_sequence
         self.mock_session.execute.return_value = mock_result
@@ -308,7 +328,7 @@ class TestAnnotationGenerationService:
         mock_detection1 = MagicMock()
         mock_detection1.id = 123
         mock_detection1.algo_predictions = None
-        
+
         mock_detection2 = MagicMock()
         mock_detection2.id = 124
         mock_detection2.algo_predictions = {"predictions": []}
@@ -368,7 +388,13 @@ class TestAnnotationGenerationService:
             ]
         }
 
-        detections = [mock_detection1, mock_detection2, mock_detection3, mock_detection4, mock_detection5]
+        detections = [
+            mock_detection1,
+            mock_detection2,
+            mock_detection3,
+            mock_detection4,
+            mock_detection5,
+        ]
 
         result = self.service._extract_predictions_from_detections(detections)
 
@@ -496,7 +522,7 @@ class TestAnnotationGenerationServiceConfiguration:
     def test_invalid_confidence_threshold(self):
         """Test service initialization with invalid confidence threshold."""
         mock_session = AsyncMock()
-        
+
         with pytest.raises(
             ValueError, match="confidence_threshold must be between 0.0 and 1.0"
         ):
@@ -516,7 +542,7 @@ class TestAnnotationGenerationServiceConfiguration:
     def test_invalid_iou_threshold(self):
         """Test service initialization with invalid IoU threshold."""
         mock_session = AsyncMock()
-        
+
         with pytest.raises(
             ValueError, match="iou_threshold must be between 0.0 and 1.0"
         ):
@@ -528,7 +554,7 @@ class TestAnnotationGenerationServiceConfiguration:
     def test_invalid_min_cluster_size(self):
         """Test service initialization with invalid min cluster size."""
         mock_session = AsyncMock()
-        
+
         with pytest.raises(ValueError, match="min_cluster_size must be at least 1"):
             AnnotationGenerationService(
                 session=mock_session,

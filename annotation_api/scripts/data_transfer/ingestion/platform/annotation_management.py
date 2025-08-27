@@ -180,14 +180,16 @@ def create_annotation_from_data(
                 "processing_stage": processing_stage.value,
                 "has_missed_smoke": False,
             }
-            
+
             # Add configuration parameters for auto-generation if provided
             if config:
-                update_dict.update({
-                    "confidence_threshold": config.get("confidence_threshold", 0.0),
-                    "iou_threshold": config.get("iou_threshold", 0.3),
-                    "min_cluster_size": config.get("min_cluster_size", 1),
-                })
+                update_dict.update(
+                    {
+                        "confidence_threshold": config.get("confidence_threshold", 0.0),
+                        "iou_threshold": config.get("iou_threshold", 0.3),
+                        "min_cluster_size": config.get("min_cluster_size", 1),
+                    }
+                )
 
             if dry_run:
                 logging.info(
@@ -218,14 +220,16 @@ def create_annotation_from_data(
                 "processing_stage": processing_stage.value,
                 "has_missed_smoke": False,
             }
-            
+
             # Add configuration parameters for auto-generation if provided
             if config:
-                create_dict.update({
-                    "confidence_threshold": config.get("confidence_threshold", 0.0),
-                    "iou_threshold": config.get("iou_threshold", 0.3),
-                    "min_cluster_size": config.get("min_cluster_size", 1),
-                })
+                create_dict.update(
+                    {
+                        "confidence_threshold": config.get("confidence_threshold", 0.0),
+                        "iou_threshold": config.get("iou_threshold", 0.3),
+                        "min_cluster_size": config.get("min_cluster_size", 1),
+                    }
+                )
 
             if dry_run:
                 logging.info(

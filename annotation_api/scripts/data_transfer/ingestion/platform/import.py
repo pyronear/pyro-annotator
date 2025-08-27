@@ -498,14 +498,14 @@ def main() -> None:
         # Step 3: Create sequence annotations with auto-generation
         step_manager.start_step(
             3,
-            "Sequence Annotation Creation", 
+            "Sequence Annotation Creation",
             f"Creating sequence annotations for {len(sequence_ids)} sequences (auto-generation enabled)",
         )
 
         # Prepare annotation configuration
         annotation_config = {
             "confidence_threshold": args.confidence_threshold,
-            "iou_threshold": args.iou_threshold, 
+            "iou_threshold": args.iou_threshold,
             "min_cluster_size": args.min_cluster_size,
         }
 

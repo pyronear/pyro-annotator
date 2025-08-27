@@ -233,7 +233,9 @@ class AnnotationGenerationService:
         self.min_cluster_size = min_cluster_size
         self.logger = logging.getLogger(__name__)
 
-    async def generate_annotation_for_sequence(self, sequence_id: int) -> Optional[SequenceAnnotationData]:
+    async def generate_annotation_for_sequence(
+        self, sequence_id: int
+    ) -> Optional[SequenceAnnotationData]:
         """
         Analyze a sequence and generate annotation data.
 
@@ -258,7 +260,7 @@ class AnnotationGenerationService:
             sequence_query = select(Sequence).where(Sequence.id == sequence_id)
             sequence_result = await self.session.execute(sequence_query)
             sequence = sequence_result.scalar_one_or_none()
-            
+
             if not sequence:
                 self.logger.warning(f"Sequence {sequence_id} not found")
                 return None
@@ -325,7 +327,11 @@ class AnnotationGenerationService:
             List of detection objects
         """
         try:
-            query = select(Detection).where(Detection.sequence_id == sequence_id).order_by(Detection.recorded_at.asc())
+            query = (
+                select(Detection)
+                .where(Detection.sequence_id == sequence_id)
+                .order_by(Detection.recorded_at.asc())
+            )
             result = await self.session.execute(query)
             detections = result.scalars().all()
             return list(detections)
@@ -445,7 +451,6 @@ class AnnotationGenerationService:
             sequences_bbox.append(sequence_bbox)
 
         return sequences_bbox
-
 
     def get_configuration(self) -> Dict[str, Any]:
         """

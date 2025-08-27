@@ -7,7 +7,7 @@
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, Field, ConfigDict, field_validator
+from pydantic import BaseModel, Field, ConfigDict
 
 from app.models import SequenceAnnotationProcessingStage
 from app.schemas.annotation_validation import SequenceAnnotationData
@@ -69,7 +69,7 @@ class SequenceAnnotationCreate(BaseModel):
         description="Current processing stage in the sequence annotation workflow. Tracks progress from import through annotation completion.",
         examples=["imported", "ready_to_annotate", "annotated"],
     )
-    
+
     # Optional configuration parameters for automatic annotation generation
     confidence_threshold: Optional[float] = Field(
         default=0.0,
@@ -123,7 +123,7 @@ class SequenceAnnotationUpdate(BaseModel):
         examples=["ready_to_annotate", "annotated"],
     )
     updated_at: Optional[datetime] = None
-    
+
     # Optional configuration parameters for automatic annotation generation
     confidence_threshold: Optional[float] = Field(
         default=None,

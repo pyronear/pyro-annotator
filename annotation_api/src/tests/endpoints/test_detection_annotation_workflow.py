@@ -908,7 +908,10 @@ async def test_no_auto_create_when_not_annotated_stage(
 
 @pytest.mark.asyncio
 async def test_smoke_type_propagation_from_sequence_to_detection_annotations(
-    authenticated_client: AsyncClient, sequence_session, detection_session, mock_img: bytes
+    authenticated_client: AsyncClient,
+    sequence_session,
+    detection_session,
+    mock_img: bytes,
 ):
     """Test that smoke types from sequence annotations are properly propagated to auto-created detection annotations."""
 
@@ -925,11 +928,15 @@ async def test_smoke_type_propagation_from_sequence_to_detection_annotations(
         "recorded_at": (now - timedelta(days=1)).isoformat(),
         "last_seen_at": now.isoformat(),
     }
-    
-    sequence_response = await authenticated_client.post("/sequences/", data=sequence_payload)
-    assert sequence_response.status_code == 201, f"Failed to create sequence: {sequence_response.text}"
+
+    sequence_response = await authenticated_client.post(
+        "/sequences/", data=sequence_payload
+    )
+    assert (
+        sequence_response.status_code == 201
+    ), f"Failed to create sequence: {sequence_response.text}"
     test_sequence_id = sequence_response.json()["id"]
-    
+
     # Step 2: Create detections for this sequence
     detection_ids = []
     for i in range(2):
@@ -937,25 +944,34 @@ async def test_smoke_type_propagation_from_sequence_to_detection_annotations(
             "sequence_id": str(test_sequence_id),
             "alert_api_id": str(10100 + i),
             "recorded_at": (now - timedelta(days=1)).isoformat(),
-            "algo_predictions": json.dumps({
-                "predictions": [
-                    {
-                        "xyxyn": [0.1 + i * 0.1, 0.1 + i * 0.1, 0.3 + i * 0.1, 0.3 + i * 0.1],
-                        "confidence": 0.85,
-                        "class_name": "smoke",  # Both detections have smoke predictions
-                    }
-                ]
-            }),
+            "algo_predictions": json.dumps(
+                {
+                    "predictions": [
+                        {
+                            "xyxyn": [
+                                0.1 + i * 0.1,
+                                0.1 + i * 0.1,
+                                0.3 + i * 0.1,
+                                0.3 + i * 0.1,
+                            ],
+                            "confidence": 0.85,
+                            "class_name": "smoke",  # Both detections have smoke predictions
+                        }
+                    ]
+                }
+            ),
         }
 
         files = {"file": (f"test_{i}.jpg", mock_img, "image/jpeg")}
-        
+
         response = await authenticated_client.post(
             "/detections/", data=detection_payload, files=files
         )
-        assert response.status_code == 201, f"Failed to create detection {i}: {response.text}"
+        assert (
+            response.status_code == 201
+        ), f"Failed to create detection {i}: {response.text}"
         detection_ids.append(response.json()["id"])
-    
+
     # Step 3: Create sequence annotation with specific smoke types (industrial + other)
     # This should propagate to detection annotations instead of defaulting to wildfire
     sequence_annotation_payload = {
@@ -967,13 +983,23 @@ async def test_smoke_type_propagation_from_sequence_to_detection_annotations(
                     "is_smoke": True,
                     "smoke_type": "industrial",  # This should propagate to detection annotations
                     "false_positive_types": [],
-                    "bboxes": [{"detection_id": detection_ids[0], "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                    "bboxes": [
+                        {
+                            "detection_id": detection_ids[0],
+                            "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                        }
+                    ],
                 },
                 {
                     "is_smoke": True,
                     "smoke_type": "other",  # Additional smoke type
                     "false_positive_types": [],
-                    "bboxes": [{"detection_id": detection_ids[1], "xyxyn": [0.3, 0.3, 0.4, 0.4]}],
+                    "bboxes": [
+                        {
+                            "detection_id": detection_ids[1],
+                            "xyxyn": [0.3, 0.3, 0.4, 0.4],
+                        }
+                    ],
                 },
             ]
         },
@@ -1005,9 +1031,7 @@ async def test_smoke_type_propagation_from_sequence_to_detection_annotations(
 
     # Find detection annotations for our newly created detections
     sequence_detection_annotations = [
-        ann
-        for ann in detection_annotations
-        if ann["detection_id"] in detection_ids
+        ann for ann in detection_annotations if ann["detection_id"] in detection_ids
     ]
 
     assert (
@@ -1040,7 +1064,10 @@ async def test_smoke_type_propagation_from_sequence_to_detection_annotations(
 
 @pytest.mark.asyncio
 async def test_smoke_type_fallback_to_wildfire_when_no_smoke_types(
-    authenticated_client: AsyncClient, sequence_session, detection_session, mock_img: bytes
+    authenticated_client: AsyncClient,
+    sequence_session,
+    detection_session,
+    mock_img: bytes,
 ):
     """Test that detection annotations fall back to 'wildfire' when sequence has no smoke types."""
 
@@ -1073,15 +1100,22 @@ async def test_smoke_type_fallback_to_wildfire_when_no_smoke_types(
             "sequence_id": str(test_sequence_id),
             "alert_api_id": f"10002{i}",
             "recorded_at": datetime.now(UTC).isoformat(),
-            "algo_predictions": json.dumps({
-                "predictions": [
-                    {
-                        "xyxyn": [0.05 + i*0.1, 0.05 + i*0.1, 0.3 + i*0.1, 0.35 + i*0.1],
-                        "confidence": 0.76 + i*0.04,
-                        "class_name": "smoke",
-                    }
-                ]
-            }),
+            "algo_predictions": json.dumps(
+                {
+                    "predictions": [
+                        {
+                            "xyxyn": [
+                                0.05 + i * 0.1,
+                                0.05 + i * 0.1,
+                                0.3 + i * 0.1,
+                                0.35 + i * 0.1,
+                            ],
+                            "confidence": 0.76 + i * 0.04,
+                            "class_name": "smoke",
+                        }
+                    ]
+                }
+            ),
         }
 
         detection_response = await authenticated_client.post(
@@ -1104,7 +1138,10 @@ async def test_smoke_type_fallback_to_wildfire_when_no_smoke_types(
                     # No smoke_type specified - should result in empty derived smoke_types
                     "false_positive_types": [],
                     "bboxes": [
-                        {"detection_id": detection_ids[0], "xyxyn": [0.1, 0.1, 0.2, 0.2]}
+                        {
+                            "detection_id": detection_ids[0],
+                            "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                        }
                     ],
                 }
             ]
