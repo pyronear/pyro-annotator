@@ -20,7 +20,15 @@ import { createDefaultFilterState } from '@/hooks/usePersistedFilters';
 import {
   DrawnRectangle,
   CurrentDrawing,
-  getSmokeTypeColors
+  Point,
+  ImageBounds,
+  getSmokeTypeColors,
+  calculateImageBounds,
+  screenToImageCoordinates,
+  imageToNormalizedCoordinates,
+  normalizedToImageCoordinates,
+  getRectangleAtPoint,
+  areBoundingBoxesSimilar
 } from '@/utils/annotation';
 
 // Note: DrawnRectangle and CurrentDrawing interfaces now imported from @/utils/annotation
@@ -775,138 +783,79 @@ function ImageModal({
     }
   }, [detection.id, existingAnnotation, isAutoAdvance, persistentDrawMode]);
 
-  // Coordinate transformation functions
-  const screenToImageCoordinates = (screenX: number, screenY: number) => {
-    if (!imgRef.current || !containerRef.current) return { x: 0, y: 0 };
+  // Get current image and container information for coordinate transformations
+  const getImageInfo = (): { containerOffset: Point; imageBounds: ImageBounds; transform: { zoomLevel: number; panOffset: Point; transformOrigin: Point } } | null => {
+    if (!imgRef.current || !containerRef.current) return null;
     
     const containerRect = containerRef.current.getBoundingClientRect();
-    
-    // Get mouse position relative to container
-    const relativeX = screenX - containerRect.left;
-    const relativeY = screenY - containerRect.top;
-    
-    // Get original image dimensions and position (before any transforms)
     const img = imgRef.current;
-    const containerWidth = containerRect.width;
-    const containerHeight = containerRect.height;
     
-    // Calculate original image bounds using object-contain logic
-    const imgAspectRatio = img.naturalWidth / img.naturalHeight;
-    const containerAspectRatio = containerWidth / containerHeight;
+    const containerOffset: Point = {
+      x: containerRect.left,
+      y: containerRect.top
+    };
     
-    let originalWidth: number, originalHeight: number, originalX: number, originalY: number;
+    const imageBounds = calculateImageBounds({
+      containerWidth: containerRect.width,
+      containerHeight: containerRect.height,
+      imageNaturalWidth: img.naturalWidth,
+      imageNaturalHeight: img.naturalHeight
+    });
     
-    if (imgAspectRatio > containerAspectRatio) {
-      // Image is wider - fit to width
-      originalWidth = containerWidth;
-      originalHeight = containerWidth / imgAspectRatio;
-      originalX = 0;
-      originalY = (containerHeight - originalHeight) / 2;
-    } else {
-      // Image is taller - fit to height
-      originalWidth = containerHeight * imgAspectRatio;
-      originalHeight = containerHeight;
-      originalX = (containerWidth - originalWidth) / 2;
-      originalY = 0;
-    }
+    const transform = {
+      zoomLevel,
+      panOffset,
+      transformOrigin
+    };
     
-    // Calculate transform origin in original image pixel coordinates
-    const originX = (transformOrigin.x / 100) * originalWidth;
-    const originY = (transformOrigin.y / 100) * originalHeight;
+    return { containerOffset, imageBounds, transform };
+  };
+  
+  // Wrapper function to maintain compatibility with existing code
+  const screenToImageCoords = (screenX: number, screenY: number) => {
+    const info = getImageInfo();
+    if (!info) return { x: 0, y: 0 };
     
-    // Transform origin in container coordinates
-    const originContainerX = originalX + originX;
-    const originContainerY = originalY + originY;
-    
-    // Reverse the CSS transform: scale(zoomLevel) translate(panOffset.x, panOffset.y)
-    // Step 1: Reverse translation (panOffset is applied in scaled coordinate space)
-    const afterTranslateX = relativeX - panOffset.x;
-    const afterTranslateY = relativeY - panOffset.y;
-    
-    // Step 2: Reverse scaling around transform origin
-    const imageX = (afterTranslateX - originContainerX) / zoomLevel + originContainerX - originalX;
-    const imageY = (afterTranslateY - originContainerY) / zoomLevel + originContainerY - originalY;
-    
-    return { x: imageX, y: imageY };
+    return screenToImageCoordinates(
+      { x: screenX, y: screenY },
+      info.containerOffset,
+      info.imageBounds,
+      info.transform
+    );
   };
 
+  // Wrapper function for image to normalized coordinates
   const imageToNormalized = (imageX: number, imageY: number) => {
-    if (!imgRef.current || !containerRef.current) return { x: 0, y: 0 };
+    const info = getImageInfo();
+    if (!info) return { x: 0, y: 0 };
     
-    const containerRect = containerRef.current.getBoundingClientRect();
-    const img = imgRef.current;
-    const containerWidth = containerRect.width;
-    const containerHeight = containerRect.height;
-    
-    // Calculate original image bounds using object-contain logic
-    const imgAspectRatio = img.naturalWidth / img.naturalHeight;
-    const containerAspectRatio = containerWidth / containerHeight;
-    
-    let originalWidth: number, originalHeight: number;
-    
-    if (imgAspectRatio > containerAspectRatio) {
-      // Image is wider - fit to width
-      originalWidth = containerWidth;
-      originalHeight = containerWidth / imgAspectRatio;
-    } else {
-      // Image is taller - fit to height
-      originalWidth = containerHeight * imgAspectRatio;
-      originalHeight = containerHeight;
-    }
-    
-    return {
-      x: Math.max(0, Math.min(1, imageX / originalWidth)),
-      y: Math.max(0, Math.min(1, imageY / originalHeight))
-    };
+    return imageToNormalizedCoordinates(
+      { x: imageX, y: imageY },
+      info.imageBounds
+    );
   };
 
+  // Wrapper function for normalized to image coordinates
   const normalizedToImage = (normX: number, normY: number) => {
-    if (!imgRef.current || !containerRef.current) return { x: 0, y: 0 };
+    const info = getImageInfo();
+    if (!info) return { x: 0, y: 0 };
     
-    const containerRect = containerRef.current.getBoundingClientRect();
-    const img = imgRef.current;
-    const containerWidth = containerRect.width;
-    const containerHeight = containerRect.height;
-    
-    // Calculate original image bounds using object-contain logic
-    const imgAspectRatio = img.naturalWidth / img.naturalHeight;
-    const containerAspectRatio = containerWidth / containerHeight;
-    
-    let originalWidth: number, originalHeight: number;
-    
-    if (imgAspectRatio > containerAspectRatio) {
-      // Image is wider - fit to width
-      originalWidth = containerWidth;
-      originalHeight = containerWidth / imgAspectRatio;
-    } else {
-      // Image is taller - fit to height
-      originalWidth = containerHeight * imgAspectRatio;
-      originalHeight = containerHeight;
-    }
-    
-    return {
-      x: normX * originalWidth,
-      y: normY * originalHeight
-    };
+    return normalizedToImageCoordinates(
+      { x: normX, y: normY },
+      info.imageBounds
+    );
   };
 
-  // Hit testing functions for rectangle selection
-  const isPointInRectangle = (pointX: number, pointY: number, rect: DrawnRectangle): boolean => {
-    const topLeft = normalizedToImage(rect.xyxyn[0], rect.xyxyn[1]);
-    const bottomRight = normalizedToImage(rect.xyxyn[2], rect.xyxyn[3]);
+  // Hit testing function using pure utilities
+  const getRectAtPoint = (x: number, y: number): DrawnRectangle | null => {
+    const info = getImageInfo();
+    if (!info) return null;
     
-    return pointX >= topLeft.x && pointX <= bottomRight.x &&
-           pointY >= topLeft.y && pointY <= bottomRight.y;
-  };
-
-  const getRectangleAtPoint = (x: number, y: number): DrawnRectangle | null => {
-    // Check rectangles in reverse order (topmost/newest first)
-    for (let i = drawnRectangles.length - 1; i >= 0; i--) {
-      if (isPointInRectangle(x, y, drawnRectangles[i])) {
-        return drawnRectangles[i];
-      }
-    }
-    return null;
+    return getRectangleAtPoint(
+      { x, y },
+      drawnRectangles,
+      info.imageBounds
+    );
   };
 
   // Undo functionality
@@ -930,12 +879,9 @@ function ImageModal({
     ));
   };
 
-  // Utility function to check if coordinates match within tolerance
+  // Utility function using pure utility for coordinate matching
   const coordinatesMatch = (coords1: [number, number, number, number], coords2: [number, number, number, number], tolerance = 0.01): boolean => {
-    return Math.abs(coords1[0] - coords2[0]) < tolerance &&
-           Math.abs(coords1[1] - coords2[1]) < tolerance &&
-           Math.abs(coords1[2] - coords2[2]) < tolerance &&
-           Math.abs(coords1[3] - coords2[3]) < tolerance;
+    return areBoundingBoxesSimilar(coords1, coords2, tolerance);
   };
 
   // Get count of new (non-duplicate) predictions available to import
@@ -1104,11 +1050,11 @@ function ImageModal({
     e.preventDefault();
     e.stopPropagation();
     
-    const coords = screenToImageCoordinates(e.clientX, e.clientY);
+    const coords = screenToImageCoords(e.clientX, e.clientY);
     
     // First, check if we clicked on an existing rectangle for selection
     // Selection works regardless of drawing mode - it takes priority
-    const hitRectangle = getRectangleAtPoint(coords.x, coords.y);
+    const hitRectangle = getRectAtPoint(coords.x, coords.y);
     
     if (hitRectangle) {
       // Select the rectangle and cancel any active drawing
@@ -1171,7 +1117,7 @@ function ImageModal({
   const handleMouseMove = (e: React.MouseEvent) => {
     if (isActivelyDrawing && currentDrawing) {
       // Update live preview rectangle
-      const coords = screenToImageCoordinates(e.clientX, e.clientY);
+      const coords = screenToImageCoords(e.clientX, e.clientY);
       setCurrentDrawing(prev => prev ? { 
         ...prev, 
         currentX: coords.x, 
