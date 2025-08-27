@@ -10,85 +10,20 @@ import CroppedImageSequence from '@/components/annotation/CroppedImageSequence';
 import FullImageSequence from '@/components/annotation/FullImageSequence';
 import { useSequenceStore } from '@/store/useSequenceStore';
 import { getSmokeTypeEmoji, formatSmokeType } from '@/utils/modelAccuracy';
-
-// Helper functions for annotation state management
-const getClassificationType = (bbox: SequenceBbox, index: number, primaryClassification: Record<number, 'unselected' | 'smoke' | 'false_positive'>): 'unselected' | 'smoke' | 'false_positive' => {
-  const userChoice = primaryClassification[index] || 'unselected';
-  
-  // If user explicitly chose smoke and bbox data matches
-  if (userChoice === 'smoke' && bbox.is_smoke) {
-    return 'smoke';
-  }
-  
-  // If user explicitly chose false positive (regardless of bbox data completeness)  
-  if (userChoice === 'false_positive') {
-    return 'false_positive';
-  }
-  
-  // If no explicit choice made, derive from existing data for backwards compatibility
-  if (userChoice === 'unselected') {
-    if (bbox.is_smoke) {
-      return 'smoke';
-    } else if (bbox.false_positive_types.length > 0) {
-      return 'false_positive';
-    }
-  }
-  
-  return 'unselected';
-};
-
-const hasUserAnnotations = (bbox: SequenceBbox): boolean => {
-  if (bbox.is_smoke) {
-    // If smoke is selected, smoke_type must also be selected
-    return bbox.smoke_type !== undefined;
-  } else if (bbox.false_positive_types.length > 0) {
-    // If false positive is selected (has false positive types), it's annotated
-    return true;
-  } else {
-    // If neither smoke nor false positive types are selected, it's unselected
-    return false;
-  }
-};
-
-const initializeCleanBbox = (originalBbox: SequenceBbox): SequenceBbox => {
-  return {
-    ...originalBbox,
-    is_smoke: false,
-    smoke_type: undefined,
-    false_positive_types: [],
-    // Preserve structure with bboxes containing detection_ids
-  };
-};
-
-const shouldShowAsAnnotated = (bbox: SequenceBbox, processingStage: string): boolean => {
-  // If already marked as annotated in processing stage, show as annotated
-  if (processingStage === 'annotated') {
-    return true;
-  }
-  // If ready to annotate, only show as annotated if user has made selections
-  if (processingStage === 'ready_to_annotate') {
-    return hasUserAnnotations(bbox);
-  }
-  // For other stages, default to checking user annotations
-  return hasUserAnnotations(bbox);
-};
-
-// Helper function to validate that annotation data matches current sequence
-const isAnnotationDataValid = (annotation: SequenceAnnotation | null, currentSequenceId: number | null): boolean => {
-  if (!annotation || !currentSequenceId) return false;
-  return annotation.sequence_id === currentSequenceId;
-};
-
-// Helper function to determine initial missed smoke review state based on processing stage
-const getInitialMissedSmokeReview = (annotation: SequenceAnnotation): 'yes' | 'no' | null => {
-  if (annotation.processing_stage === 'annotated') {
-    // For annotated sequences, the has_missed_smoke boolean reflects the actual review result
-    return annotation.has_missed_smoke ? 'yes' : 'no';
-  } else {
-    // For other stages (like ready_to_annotate), null means not reviewed yet
-    return annotation.has_missed_smoke ? 'yes' : null;
-  }
-};
+import { 
+  getClassificationType,
+  initializeCleanBbox,
+  shouldShowAsAnnotated,
+  isAnnotationDataValid,
+  getInitialMissedSmokeReview
+} from '@/utils/annotation/sequenceUtils';
+import { 
+  getAnnotationProgress,
+  isAnnotationComplete,
+  getAnnotationValidationErrors,
+  formatProgressDisplay,
+  getProgressColor
+} from '@/utils/annotation/progressUtils';
 
 export default function AnnotationInterface() {
   const { id } = useParams<{ id: string }>();
@@ -306,7 +241,7 @@ export default function AnnotationInterface() {
 
       // Complete annotation (Enter)
       if (e.key === 'Enter' && !showKeyboardModal) {
-        if (isAnnotationComplete()) {
+        if (isAnnotationComplete(bboxes, missedSmokeReview)) {
           handleSave();
         } else {
           handleSave(); // Use the same error logic as handleSave
@@ -661,32 +596,10 @@ export default function AnnotationInterface() {
       return;
     }
 
-    const bboxesComplete = bboxes.every(bbox => 
-      bbox.is_smoke || bbox.false_positive_types.length > 0
-    );
-    const missedSmokeComplete = missedSmokeReview !== null;
-
-    if (!bboxesComplete && !missedSmokeComplete) {
-      const progress = getAnnotationProgress();
-      const remaining = progress.total - progress.completed;
-      showToastNotification(
-        `Cannot save: ${remaining} detection${remaining !== 1 ? 's' : ''} still need${remaining === 1 ? 's' : ''} annotation and missed smoke review is required`,
-        'error'
-      );
-      return;
-    } else if (!bboxesComplete) {
-      const progress = getAnnotationProgress();
-      const remaining = progress.total - progress.completed;
-      showToastNotification(
-        `Cannot save: ${remaining} detection${remaining !== 1 ? 's' : ''} still need${remaining === 1 ? 's' : ''} annotation`,
-        'error'
-      );
-      return;
-    } else if (!missedSmokeComplete) {
-      showToastNotification(
-        'Cannot save: Please complete the missed smoke review',
-        'error'
-      );
+    // Validate annotation completeness
+    const validationErrors = getAnnotationValidationErrors(bboxes, missedSmokeReview);
+    if (validationErrors.length > 0) {
+      showToastNotification(validationErrors[0], 'error');
       return;
     }
     
@@ -736,16 +649,7 @@ export default function AnnotationInterface() {
     }
   };
 
-  const isAnnotationComplete = () => {
-    const bboxesComplete = bboxes.every(bbox => hasUserAnnotations(bbox));
-    const missedSmokeComplete = missedSmokeReview !== null;
-    return bboxesComplete && missedSmokeComplete;
-  };
 
-  const getAnnotationProgress = () => {
-    const completed = bboxes.filter(bbox => hasUserAnnotations(bbox)).length;
-    return { completed, total: bboxes.length };
-  };
 
   if (isLoading) {
     return (
@@ -772,7 +676,7 @@ export default function AnnotationInterface() {
     );
   }
 
-  const progress = getAnnotationProgress();
+  const progress = getAnnotationProgress(bboxes);
 
   return (
     <>
@@ -891,7 +795,7 @@ export default function AnnotationInterface() {
               </button>
               <button
                 onClick={handleSave}
-                disabled={(!isAnnotationComplete() && !isUnsure) || saveAnnotation.isPending}
+                disabled={(!isAnnotationComplete(bboxes, missedSmokeReview) && !isUnsure) || saveAnnotation.isPending}
                 className="inline-flex items-center px-3 py-1.5 border border-transparent rounded-md shadow-sm text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 title={isUnsure ? "Submit as unsure (Enter)" : annotation?.processing_stage === 'annotated' ? "Save changes (Enter)" : "Submit annotation (Enter)"}
               >
@@ -916,13 +820,7 @@ export default function AnnotationInterface() {
           <div className="flex items-center justify-between mt-2">
             <div className="flex items-center space-x-4">
               <span className="text-xs font-medium text-gray-900">
-                Review: {
-                  missedSmokeReview ? (
-                    <span className="text-green-600">Done</span>
-                  ) : (
-                    <span className="text-orange-600">Pending</span>
-                  )
-                } • {progress.completed} of {progress.total} detections • {progress.total === 0 ? 0 : Math.round((progress.completed / progress.total) * 100)}% complete
+                Review: {formatProgressDisplay(progress, missedSmokeReview)}
               </span>
             </div>
             
@@ -930,7 +828,7 @@ export default function AnnotationInterface() {
               <span className="text-xs text-gray-500">
                 Press <kbd className="px-1 py-0.5 bg-gray-100 rounded text-xs font-mono">?</kbd> for shortcuts
               </span>
-              {progress.completed === progress.total ? (
+              {progress.isComplete ? (
                 <CheckCircle className="w-4 h-4 text-green-500" />
               ) : (
                 <AlertCircle className="w-4 h-4 text-orange-500" />
@@ -940,11 +838,9 @@ export default function AnnotationInterface() {
                   className={`h-1.5 rounded-full transition-all duration-300 ${
                     isUnsure 
                       ? 'bg-amber-600' 
-                      : annotation?.processing_stage === 'annotated' 
-                      ? 'bg-green-600' 
-                      : 'bg-primary-600'
+                      : getProgressColor(progress, annotation?.processing_stage)
                   }`}
-                  style={{ width: `${progress.total === 0 ? 0 : (progress.completed / progress.total) * 100}%` }}
+                  style={{ width: `${progress.percentage}%` }}
                 ></div>
               </div>
             </div>
