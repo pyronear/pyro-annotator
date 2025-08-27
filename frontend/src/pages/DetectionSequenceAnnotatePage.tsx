@@ -3,7 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, X, ChevronLeft, ChevronRight, CheckCircle, AlertCircle, Keyboard, Upload } from 'lucide-react';
 import { useSequenceDetections } from '@/hooks/useSequenceDetections';
-import { useDetectionImage } from '@/hooks/useDetectionImage';
+// useDetectionImage now handled by DetectionAnnotationCanvas
 import { apiClient } from '@/services/api';
 import { QUERY_KEYS } from '@/utils/constants';
 import {
@@ -32,8 +32,8 @@ import {
   updateRectangleSmokeType,
   removeRectangle
 } from '@/utils/annotation';
-import { BoundingBoxOverlay, DrawingOverlay } from '@/components/annotation/ImageOverlays';
-import { DetectionImageCard, KeyboardShortcutsModal, AnnotationToolbar, SubmissionControls } from '@/components/detection-annotation';
+// Canvas overlays are now handled by DetectionAnnotationCanvas
+import { DetectionImageCard, KeyboardShortcutsModal, AnnotationToolbar, SubmissionControls, DetectionAnnotationCanvas } from '@/components/detection-annotation';
 import { useKeyboardShortcuts } from '@/hooks/annotation';
 
 interface ImageModalProps {
@@ -79,7 +79,7 @@ function ImageModal({
   onDrawModeChange,
   isAutoAdvance
 }: ImageModalProps) {
-  const { data: imageData } = useDetectionImage(detection.id);
+  // Image data is now handled by DetectionAnnotationCanvas
   const [imageInfo, setImageInfo] = useState<{
     width: number;
     height: number;
@@ -714,73 +714,28 @@ function ImageModal({
 
         {/* Image container */}
         <div className="relative max-w-7xl flex flex-col items-center">
-          {imageData?.url ? (
-            <div
-              ref={containerRef}
-              className="relative overflow-hidden"
-              onMouseDown={handleMouseDown}
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleMouseUp}
-              onMouseLeave={handleMouseUp}
-              onClick={handleClick}
-              style={{ cursor: getCursorStyle() }}
-            >
-              <img
-                ref={imgRef}
-                src={imageData.url}
-                alt={`Detection ${detection.id}`}
-                className="max-w-full max-h-[95vh] object-contain block"
-                style={{
-                  transform: `scale(${zoomLevel}) translate(${panOffset.x}px, ${panOffset.y}px)`,
-                  transformOrigin: `${transformOrigin.x}% ${transformOrigin.y}%`,
-                  transition: isDragging ? 'none' : 'transform 0.1s ease-out'
-                }}
-                onLoad={handleImageLoad}
-              />
-
-              {/* Bounding Boxes Overlay */}
-              <div
-                className="absolute inset-0 pointer-events-none z-10 transition-opacity duration-300 ease-in-out"
-                style={{
-                  transform: `scale(${zoomLevel}) translate(${panOffset.x}px, ${panOffset.y}px)`,
-                  transformOrigin: `${transformOrigin.x}% ${transformOrigin.y}%`,
-                  transition: isDragging ? 'none' : 'transform 0.1s ease-out, opacity 0.3s ease-in-out',
-                  opacity: showPredictions && imageInfo && overlaysVisible ? 1 : 0,
-                  pointerEvents: showPredictions && imageInfo && overlaysVisible ? 'none' : 'none'
-                }}
-              >
-                {showPredictions && imageInfo && (
-                  <BoundingBoxOverlay detection={detection} imageInfo={imageInfo} />
-                )}
-              </div>
-
-              {/* Drawing Overlay */}
-              <div
-                className="absolute inset-0 z-20 transition-opacity duration-300 ease-in-out"
-                style={{
-                  opacity: imageInfo && overlaysVisible ? 1 : 0
-                }}
-              >
-                {imageInfo && (
-                  <DrawingOverlay
-                    drawnRectangles={drawnRectangles}
-                    currentDrawing={currentDrawing}
-                    selectedRectangleId={selectedRectangleId}
-                    imageInfo={imageInfo}
-                    zoomLevel={zoomLevel}
-                    panOffset={panOffset}
-                    transformOrigin={transformOrigin}
-                    isDragging={isDragging || isActivelyDrawing}
-                    normalizedToImage={normalizedToImage}
-                  />
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="w-96 h-96 bg-gray-800 flex items-center justify-center rounded-lg">
-              <span className="text-gray-400">No image available</span>
-            </div>
-          )}
+          <DetectionAnnotationCanvas
+            detection={detection}
+            drawnRectangles={drawnRectangles}
+            selectedRectangleId={selectedRectangleId}
+            showPredictions={showPredictions}
+            currentDrawing={currentDrawing}
+            containerRef={containerRef}
+            imgRef={imgRef}
+            imageInfo={imageInfo}
+            zoomLevel={zoomLevel}
+            panOffset={panOffset}
+            transformOrigin={transformOrigin}
+            isDragging={isDragging}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onClick={handleClick}
+            getCursorStyle={getCursorStyle}
+            handleImageLoad={handleImageLoad}
+            normalizedToImage={normalizedToImage}
+            overlaysVisible={overlaysVisible}
+          />
 
           {/* Control buttons - Bottom right */}
           <AnnotationToolbar
@@ -820,7 +775,6 @@ function ImageModal({
             zoomLevel={zoomLevel}
             onSelectedRectangleSmokeTypeChange={changeSelectedRectangleSmokeType}
           />
-
           {/* Detection info and submission controls */}
           <div className="mt-4 bg-white bg-opacity-10 backdrop-blur-sm rounded-lg p-4 text-white">
             <div className="flex items-center justify-center space-x-4 mb-4">
@@ -839,24 +793,21 @@ function ImageModal({
           </div>
 
           <SubmissionControls
-            drawnRectangles={drawnRectangles}
             isSubmitting={isSubmitting}
             isAnnotated={isAnnotated}
             onSubmit={() => onSubmit(detection, drawnRectangles, isDrawMode)}
-            canNavigateNext={canNavigateNext}
-            onNavigateNext={() => onNavigate('next')}
-          />
-
-          {/* Keyboard Shortcuts Info Overlay */}
-          <KeyboardShortcutsModal
-            isVisible={showKeyboardShortcuts}
-            onClose={() => setShowKeyboardShortcuts(false)}
-            isDrawMode={isDrawMode}
-            hasRectangles={drawnRectangles.length > 0}
-            hasUndoHistory={undoStack.length > 0}
-            isAnnotated={isAnnotated}
           />
         </div>
+
+        {/* Keyboard Shortcuts Info Overlay */}
+        <KeyboardShortcutsModal
+          isVisible={showKeyboardShortcuts}
+          onClose={() => setShowKeyboardShortcuts(false)}
+          isDrawMode={isDrawMode}
+          hasRectangles={drawnRectangles.length > 0}
+          hasUndoHistory={undoStack.length > 0}
+          isAnnotated={isAnnotated}
+        />
       </div>
     </div>
   );

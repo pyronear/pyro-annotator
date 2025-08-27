@@ -3,35 +3,19 @@
  * Handles annotation submission with validation and feedback.
  */
 
-import { CheckCircle, AlertTriangle, Upload } from 'lucide-react';
-import { SmokeType } from '@/types/api';
-import { DrawnRectangle, validateAnnotationData } from '@/utils/annotation';
+// Simple submission button component
 
 interface SubmissionControlsProps {
-  drawnRectangles: DrawnRectangle[];
   isSubmitting: boolean;
   isAnnotated: boolean;
   onSubmit: () => void;
-  canNavigateNext: boolean;
-  onNavigateNext: () => void;
 }
 
 export function SubmissionControls({
-  drawnRectangles,
   isSubmitting,
   isAnnotated,
-  onSubmit,
-  canNavigateNext,
-  onNavigateNext
+  onSubmit
 }: SubmissionControlsProps) {
-  const validation = validateAnnotationData(drawnRectangles, 0);
-  const hasRectangles = drawnRectangles.length > 0;
-  
-  // Calculate annotation statistics
-  const smokeTypeStats = drawnRectangles.reduce((stats, rect) => {
-    stats[rect.smokeType] = (stats[rect.smokeType] || 0) + 1;
-    return stats;
-  }, {} as Record<SmokeType, number>);
 
   return (
     <div className="flex justify-center mt-4">
