@@ -195,11 +195,12 @@ export const isWorkflowComplete = (
 export const validateAnnotationData = (
   rectangles: DrawnRectangle[],
   minRectangles: number = 0
-): { isValid: boolean; message: string } => {
+): { isValid: boolean; message: string; warnings: string[] } => {
   if (rectangles.length < minRectangles) {
     return {
       isValid: false,
-      message: `At least ${minRectangles} annotation${minRectangles > 1 ? 's' : ''} required`
+      message: `At least ${minRectangles} annotation${minRectangles > 1 ? 's' : ''} required`,
+      warnings: []
     };
   }
   
@@ -211,7 +212,8 @@ export const validateAnnotationData = (
   if (invalidRectangles.length > 0) {
     return {
       isValid: false,
-      message: 'All annotations must have a valid smoke type'
+      message: 'All annotations must have a valid smoke type',
+      warnings: []
     };
   }
   
@@ -228,13 +230,15 @@ export const validateAnnotationData = (
   if (invalidCoords.length > 0) {
     return {
       isValid: false,
-      message: 'Some annotations have invalid coordinates'
+      message: 'Some annotations have invalid coordinates',
+      warnings: []
     };
   }
   
   return {
     isValid: true,
-    message: 'Ready to submit'
+    message: 'Ready to submit',
+    warnings: []
   };
 };
 

@@ -31,6 +31,7 @@ export interface Detection {
   recorded_at: string;
   algo_predictions: AlgoPredictions;
   last_modified_at: string | null;
+  confidence?: number;
 }
 
 export interface SequenceAnnotation {
