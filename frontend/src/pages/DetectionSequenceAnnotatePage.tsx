@@ -33,7 +33,7 @@ import {
   removeRectangle
 } from '@/utils/annotation';
 import { BoundingBoxOverlay, DrawingOverlay } from '@/components/annotation/ImageOverlays';
-import { DetectionImageCard, KeyboardShortcutsModal, AnnotationToolbar } from '@/components/detection-annotation';
+import { DetectionImageCard, KeyboardShortcutsModal, AnnotationToolbar, SubmissionControls } from '@/components/detection-annotation';
 import { useKeyboardShortcuts } from '@/hooks/annotation';
 
 interface ImageModalProps {
@@ -821,9 +821,9 @@ function ImageModal({
             onSelectedRectangleSmokeTypeChange={changeSelectedRectangleSmokeType}
           />
 
-          {/* Detection info */}
+          {/* Detection info and submission controls */}
           <div className="mt-4 bg-white bg-opacity-10 backdrop-blur-sm rounded-lg p-4 text-white">
-            <div className="flex items-center justify-center space-x-4">
+            <div className="flex items-center justify-center space-x-4 mb-4">
               <span className="font-medium">Detection {currentIndex + 1} of {totalCount}</span>
               <span className="text-gray-300">•</span>
               <span className="text-gray-300">
@@ -836,28 +836,16 @@ function ImageModal({
                 </>
               )}
             </div>
-
-            {/* Submit Button - Centered below info */}
-            <div className="flex justify-center mt-4">
-              <button
-                onClick={() => onSubmit(detection, drawnRectangles, isDrawMode)}
-                disabled={isSubmitting}
-                className="inline-flex items-center px-4 py-2 bg-primary-600 hover:bg-primary-700 disabled:bg-primary-400 text-white text-sm font-medium rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500"
-              >
-                {isSubmitting ? (
-                  <>
-                    <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    {isAnnotated ? 'Updating...' : 'Submitting...'}
-                  </>
-                ) : (
-                  <>
-                    {isAnnotated ? 'Update' : 'Submit'}
-                    <span className="ml-2 text-xs text-primary-200">(Space)</span>
-                  </>
-                )}
-              </button>
-            </div>
           </div>
+
+          <SubmissionControls
+            drawnRectangles={drawnRectangles}
+            isSubmitting={isSubmitting}
+            isAnnotated={isAnnotated}
+            onSubmit={() => onSubmit(detection, drawnRectangles, isDrawMode)}
+            canNavigateNext={canNavigateNext}
+            onNavigateNext={() => onNavigate('next')}
+          />
 
           {/* Keyboard Shortcuts Info Overlay */}
           <KeyboardShortcutsModal
