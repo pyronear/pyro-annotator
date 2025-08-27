@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle, AlertCircle, X } from 'lucide-react';
+import { AlertCircle, X } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { QUERY_KEYS, FALSE_POSITIVE_TYPES, SMOKE_TYPES } from '@/utils/constants';
 import { SequenceAnnotation, SequenceBbox, FalsePositiveType, SmokeType } from '@/types/api';
@@ -16,6 +16,8 @@ import {
   getAnnotationValidationErrors
 } from '@/utils/annotation/progressUtils';
 import { AnnotationHeader, ProcessingStageMessages, MissedSmokePanel, SequenceAnnotationGrid } from '@/components/sequence-annotation';
+import { NotificationSystem } from '@/components/ui/NotificationSystem';
+import { useToastNotifications } from '@/utils/notification/toastUtils';
 
 export default function AnnotationInterface() {
   const { id } = useParams<{ id: string }>();
@@ -54,10 +56,8 @@ export default function AnnotationInterface() {
   const detectionRefs = useRef<(HTMLDivElement | null)[]>([]);
   const sequenceReviewerRef = useRef<HTMLDivElement | null>(null);
 
-  // Toast notification state
-  const [showToast, setShowToast] = useState(false);
-  const [toastMessage, setToastMessage] = useState('');
-  const [toastType, setToastType] = useState<'success' | 'error' | 'info'>('success');
+  // Toast notification system
+  const { showToast, toastMessage, toastType, showToastNotification, dismissToast } = useToastNotifications();
 
 
   // Fetch sequence annotation by sequence ID
@@ -350,23 +350,6 @@ export default function AnnotationInterface() {
     return () => document.removeEventListener('keydown', handleKeyDown, true);
   }, [activeDetectionIndex, bboxes, showKeyboardModal]);
 
-  // Toast auto-dismiss logic
-  useEffect(() => {
-    if (showToast) {
-      const timer = setTimeout(() => {
-        setShowToast(false);
-      }, 3500); // Auto-dismiss after 3.5 seconds
-
-      return () => clearTimeout(timer);
-    }
-  }, [showToast]);
-
-  // Helper function to show toast notifications
-  const showToastNotification = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
-    setToastMessage(message);
-    setToastType(type);
-    setShowToast(true);
-  };
 
   // Helper function to map keyboard keys to false positive type indices
   const getTypeIndexForKey = (key: string): number => {
@@ -736,50 +719,13 @@ export default function AnnotationInterface() {
       )}
 
       {/* Toast Notification */}
-      {showToast && (
-        <div className={`fixed top-4 right-4 z-50 transition-all duration-300 ease-in-out transform ${
-          showToast ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'
-        }`}>
-          <div className={`px-4 py-3 rounded-lg shadow-lg flex items-center space-x-3 min-w-80 ${
-            toastType === 'success' ? 'bg-green-50 border border-green-200' :
-            toastType === 'error' ? 'bg-red-50 border border-red-200' :
-            'bg-blue-50 border border-blue-200'
-          }`}>
-            <div className={`flex-shrink-0 w-5 h-5 ${
-              toastType === 'success' ? 'text-green-600' :
-              toastType === 'error' ? 'text-red-600' :
-              'text-blue-600'
-            }`}>
-              {toastType === 'success' && (
-                <CheckCircle className="w-5 h-5" />
-              )}
-              {toastType === 'error' && (
-                <AlertCircle className="w-5 h-5" />
-              )}
-              {toastType === 'info' && (
-                <AlertCircle className="w-5 h-5" />
-              )}
-            </div>
-            <p className={`text-sm font-medium ${
-              toastType === 'success' ? 'text-green-800' :
-              toastType === 'error' ? 'text-red-800' :
-              'text-blue-800'
-            }`}>
-              {toastMessage}
-            </p>
-            <button
-              onClick={() => setShowToast(false)}
-              className={`flex-shrink-0 ml-auto pl-3 ${
-                toastType === 'success' ? 'text-green-600 hover:text-green-800' :
-                toastType === 'error' ? 'text-red-600 hover:text-red-800' :
-                'text-blue-600 hover:text-blue-800'
-              }`}
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
+      <NotificationSystem
+        showToast={showToast}
+        toastMessage={toastMessage}
+        toastType={toastType}
+        onDismiss={dismissToast}
+        autoDismissMs={3500}
+      />
 
       {/* Keyboard Shortcuts Modal */}
       {showKeyboardModal && (
