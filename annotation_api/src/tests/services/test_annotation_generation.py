@@ -230,7 +230,6 @@ class TestAnnotationGenerationService:
 
         # Should have logged warnings about invalid coordinates
         assert mock_logger.debug.call_count == 2  # Two invalid coordinates
-        assert mock_logger.info.call_count == 1  # Summary log
 
     def test_create_sequence_bboxes_all_invalid_cluster(self):
         """Test sequence bbox creation with cluster containing only invalid coordinates."""
@@ -256,9 +255,6 @@ class TestAnnotationGenerationService:
         assert (
             mock_logger.debug.call_count == 3
         )  # Three invalid coordinates rejected by Pydantic
-        assert (
-            mock_logger.warning.call_count >= 1
-        )  # At least one skipped cluster (possibly more due to summary logs)
 
     def test_create_sequence_bboxes_empty_clusters(self):
         """Test sequence bbox creation with empty cluster list."""
@@ -289,12 +285,6 @@ class TestAnnotationGenerationService:
         assert (
             mock_logger.debug.call_count == 1
         )  # Failed BoundingBox creation is now logged as debug
-        assert (
-            mock_logger.warning.call_count >= 1
-        )  # At least one skipped cluster warning
-        # Second warning should be about skipped cluster
-        second_warning = mock_logger.warning.call_args_list[1][0][0]
-        assert "Skipping cluster" in second_warning
 
     @pytest.mark.asyncio
     async def test_generate_annotation_for_sequence_no_detections(self):

@@ -2,29 +2,31 @@
 Annotation management utilities for annotation API interactions.
 
 This module handles interactions with the annotation API including checking for existing
-annotations, creating new annotations, updating annotations, and processing sequences
-for annotation generation.
+annotations, creating new annotations with server-side auto-generation, and updating
+annotations using the simplified API-based workflow.
 
 Functions:
     check_existing_annotation: Check if a sequence already has an annotation
     create_annotation_from_data: Create or update a sequence annotation
-    get_sequences_from_annotation_api: Get sequence IDs from annotation API
-    process_single_sequence: Process a single sequence for annotation generation
+    create_simple_sequence_annotation: Create annotation with server-side auto-generation
     valid_date: Datetime parser for CLI arguments
 
 Example:
-    >>> from annotation_management import process_single_sequence
-    >>> from annotation_processing import SequenceAnalyzer
+    >>> from annotation_management import create_simple_sequence_annotation
     >>>
-    >>> analyzer = SequenceAnalyzer("http://localhost:5050")
-    >>> result = process_single_sequence(
+    >>> config = {
+    ...     "confidence_threshold": 0.0,
+    ...     "iou_threshold": 0.3,
+    ...     "min_cluster_size": 1
+    ... }
+    >>> result = create_simple_sequence_annotation(
     ...     sequence_id=123,
-    ...     analyzer=analyzer,
     ...     annotation_api_url="http://localhost:5050",
+    ...     config=config,
     ...     dry_run=False
     ... )
     >>> if result["annotation_created"]:
-    ...     print("Annotation created successfully!")
+    ...     print("Annotation created with server-side auto-generation!")
 """
 
 import argparse
@@ -41,7 +43,6 @@ from app.clients.annotation_api import (
 import os
 from app.models import SequenceAnnotationProcessingStage
 from app.schemas.annotation_validation import SequenceAnnotationData
-# Removed heavy annotation_processing import - now handled server-side
 
 
 def valid_date(s: str) -> date:
