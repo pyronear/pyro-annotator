@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, X, ChevronLeft, ChevronRight, CheckCircle, AlertCircle, Upload, RotateCcw, Square, Trash2, Keyboard, Eye, MousePointer, Undo, Navigation, Clock, Brain } from 'lucide-react';
+import { ArrowLeft, X, ChevronLeft, ChevronRight, CheckCircle, AlertCircle, Upload, RotateCcw, Square, Trash2, Keyboard, Eye, MousePointer, Undo, Navigation, Brain } from 'lucide-react';
 import { useSequenceDetections } from '@/hooks/useSequenceDetections';
 import { useDetectionImage } from '@/hooks/useDetectionImage';
 import { apiClient } from '@/services/api';
@@ -33,7 +33,8 @@ import {
   removeRectangle
 } from '@/utils/annotation';
 import { SmokeTypeSelector } from '@/components/annotation/SmokeTypeSelector';
-import { BoundingBoxOverlay, UserAnnotationOverlay, DrawingOverlay } from '@/components/annotation/ImageOverlays';
+import { BoundingBoxOverlay, DrawingOverlay } from '@/components/annotation/ImageOverlays';
+import { DetectionImageCard } from '@/components/detection-annotation';
 import { useKeyboardShortcuts } from '@/hooks/annotation';
 
 // Note: DrawnRectangle and CurrentDrawing interfaces now imported from @/utils/annotation
@@ -226,161 +227,7 @@ function KeyboardShortcutsInfo({
   );
 }
 
-interface DetectionImageCardProps {
-  detection: Detection;
-  onClick: () => void;
-  isAnnotated?: boolean;
-  showPredictions?: boolean;
-  userAnnotation?: DetectionAnnotation | null;
-}
-
-function DetectionImageCard({ detection, onClick, isAnnotated = false, showPredictions = false, userAnnotation = null }: DetectionImageCardProps) {
-  const { data: imageData, isLoading } = useDetectionImage(detection.id);
-  const [imageInfo, setImageInfo] = useState<{
-    width: number;
-    height: number;
-    offsetX: number;
-    offsetY: number;
-  } | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const imgRef = useRef<HTMLImageElement>(null);
-
-  // Handle image load to get dimensions and position using DOM positioning
-  const handleImageLoad = () => {
-    if (imgRef.current && containerRef.current) {
-      // Get actual rendered positions from DOM
-      const containerRect = containerRef.current.getBoundingClientRect();
-      const imgRect = imgRef.current.getBoundingClientRect();
-
-      // Calculate the image position relative to the container
-      const offsetX = imgRect.left - containerRect.left;
-      const offsetY = imgRect.top - containerRect.top;
-
-      // Use the actual rendered dimensions
-      const width = imgRect.width;
-      const height = imgRect.height;
-
-      console.log('handleImageLoad called for detection:', detection.id, { width, height, offsetX, offsetY });
-      setImageInfo({
-        width: width,
-        height: height,
-        offsetX: offsetX,
-        offsetY: offsetY
-      });
-    }
-  };
-
-  if (isLoading) {
-    return (
-      <div className="bg-gray-50 rounded-lg p-3 shadow-sm">
-        <div className="aspect-video bg-gray-200 animate-pulse rounded-lg">
-          <div className="w-full h-full flex items-center justify-center">
-            <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
-          </div>
-        </div>
-        <div className="mt-3 h-8 bg-gray-200 animate-pulse rounded"></div>
-      </div>
-    );
-  }
-
-  if (!imageData?.url) {
-    return (
-      <div className="bg-gray-50 rounded-lg p-3 shadow-sm border-2 border-gray-200">
-        <div className="aspect-video bg-gray-100 rounded-lg flex items-center justify-center">
-          <span className="text-gray-400 text-sm">No Image</span>
-        </div>
-        <div className="mt-3 py-2">
-          <p className="text-xs text-gray-500">
-            {new Date(detection.recorded_at).toLocaleString()}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div 
-      className={`group cursor-pointer rounded-lg transition-all duration-200 transform hover:scale-[1.02] hover:shadow-lg ${
-        isAnnotated 
-          ? 'bg-green-50 border-4 border-green-500 shadow-md hover:border-green-600 hover:bg-green-100' 
-          : 'bg-orange-50 border-4 border-orange-400 shadow-md hover:border-orange-500 hover:bg-orange-100 animate-pulse-subtle'
-      }`}
-      onClick={onClick}
-    >
-      <div className="p-3">
-        <div
-          ref={containerRef}
-          className="relative aspect-video overflow-hidden rounded-lg bg-white"
-        >
-          <img
-            ref={imgRef}
-            src={imageData.url}
-            alt={`Detection ${detection.id}`}
-            className="w-full h-full object-contain"
-            onLoad={handleImageLoad}
-            onError={(e) => {
-              const target = e.target as HTMLImageElement;
-              target.style.display = 'none';
-              const parent = target.parentElement;
-              if (parent) {
-                parent.innerHTML = '<span class="text-gray-400 text-sm flex items-center justify-center h-full">Error loading image</span>';
-              }
-            }}
-          />
-
-          {/* Bounding Boxes Overlay */}
-          {showPredictions && imageInfo && (
-            <div className="absolute inset-0 pointer-events-none transition-opacity duration-300 ease-in-out animate-in fade-in">
-              <BoundingBoxOverlay detection={detection} imageInfo={imageInfo} />
-            </div>
-          )}
-
-          {/* User Annotations Overlay */}
-          {userAnnotation && imageInfo && (
-            <div className="absolute inset-0 pointer-events-none transition-opacity duration-300 ease-in-out animate-in fade-in">
-              <UserAnnotationOverlay detectionAnnotation={userAnnotation} imageInfo={imageInfo} />
-            </div>
-          )}
-
-          {/* Status Badge Overlay */}
-          <div className={`absolute top-2 right-2 px-2 py-1 rounded-full text-xs font-semibold backdrop-blur-sm ${
-            isAnnotated 
-              ? 'bg-green-600/90 text-white' 
-              : 'bg-orange-500/90 text-white'
-          }`}>
-            {isAnnotated ? 'Reviewed' : 'Pending'}
-          </div>
-        </div>
-        
-        {/* Status Bar */}
-        <div className={`mt-3 px-3 py-2 rounded-md ${
-          isAnnotated 
-            ? 'bg-green-100 border border-green-300' 
-            : 'bg-orange-100 border border-orange-300'
-        }`}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              {isAnnotated ? (
-                <>
-                  <CheckCircle className="w-5 h-5 text-green-600" />
-                  <span className="text-sm font-medium text-green-700">Completed</span>
-                </>
-              ) : (
-                <>
-                  <Clock className="w-5 h-5 text-orange-600 animate-pulse" />
-                  <span className="text-sm font-medium text-orange-700">Needs Review</span>
-                </>
-              )}
-            </div>
-          </div>
-          <p className="text-xs text-gray-600 mt-1">
-            {new Date(detection.recorded_at).toLocaleString()}
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
+// DetectionImageCard now imported from focused components
 
 interface ImageModalProps {
   detection: Detection;

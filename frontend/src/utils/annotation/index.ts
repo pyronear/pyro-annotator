@@ -116,3 +116,24 @@ export type {
   WorkflowState,
   WorkflowProgress
 } from './workflowUtils';
+
+// Sequence utilities
+export {
+  getClassificationType,
+  hasUserAnnotations,
+  initializeCleanBbox,
+  shouldShowAsAnnotated,
+  isAnnotationDataValid,
+  getInitialMissedSmokeReview,
+  createAnnotationPayload,
+  updateBboxSmokeType,
+  updateBboxFalsePositiveType,
+  clearBboxSelections,
+  getKeyForFalsePositiveType,
+  formatFalsePositiveLabel,
+  calculateAnnotationProgress
+} from './sequenceUtils';
+
+export type {
+  AnnotationProgress
+} from './sequenceUtils';
