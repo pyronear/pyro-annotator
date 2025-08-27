@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, X, ChevronLeft, ChevronRight, CheckCircle, AlertCircle, Upload, RotateCcw, Square, Trash2, Keyboard, Eye, MousePointer, Undo, Navigation, Brain } from 'lucide-react';
+import { ArrowLeft, X, ChevronLeft, ChevronRight, CheckCircle, AlertCircle, Keyboard, Upload } from 'lucide-react';
 import { useSequenceDetections } from '@/hooks/useSequenceDetections';
 import { useDetectionImage } from '@/hooks/useDetectionImage';
 import { apiClient } from '@/services/api';
@@ -32,9 +32,8 @@ import {
   updateRectangleSmokeType,
   removeRectangle
 } from '@/utils/annotation';
-import { SmokeTypeSelector } from '@/components/annotation/SmokeTypeSelector';
 import { BoundingBoxOverlay, DrawingOverlay } from '@/components/annotation/ImageOverlays';
-import { DetectionImageCard, KeyboardShortcutsModal } from '@/components/detection-annotation';
+import { DetectionImageCard, KeyboardShortcutsModal, AnnotationToolbar } from '@/components/detection-annotation';
 import { useKeyboardShortcuts } from '@/hooks/annotation';
 
 interface ImageModalProps {
@@ -784,110 +783,43 @@ function ImageModal({
           )}
 
           {/* Control buttons - Bottom right */}
-          <div className="mt-4 flex justify-end">
-            <div className="flex items-center space-x-2">
-              {/* Smoke Type Selector */}
-              <SmokeTypeSelector
-                selectedSmokeType={selectedSmokeType}
-                selectedRectangleSmokeType={selectedRectangleId ? drawnRectangles.find(r => r.id === selectedRectangleId)?.smokeType : undefined}
-                hasSelectedRectangle={!!selectedRectangleId}
-                onSmokeTypeChange={onSmokeTypeChange}
-                onSelectedRectangleSmokeTypeChange={changeSelectedRectangleSmokeType}
-                size="md"
-              />
+          <AnnotationToolbar
+            isDrawMode={isDrawMode}
+            isActivelyDrawing={isActivelyDrawing}
+            onDrawModeToggle={() => {
+              // Cancel any active drawing when toggling draw mode
+              if (isDrawMode && isActivelyDrawing) {
+                setCurrentDrawing(null);
+                setIsActivelyDrawing(false);
+              }
+              const newDrawMode = !isDrawMode;
+              setIsDrawMode(newDrawMode);
+              onDrawModeChange(newDrawMode);
+            }}
+            selectedSmokeType={selectedSmokeType}
+            onSmokeTypeChange={onSmokeTypeChange}
+            drawnRectangles={drawnRectangles}
+            selectedRectangleId={selectedRectangleId}
+            onDeleteRectangles={() => {
+              // Save current state to undo stack before deleting
+              pushUndoState();
 
-              {/* AI Import Button */}
-              {(() => {
-                const newPredictionsCount = getNewPredictionsCount();
-                const totalPredictionsCount = detection?.algo_predictions?.predictions?.length || 0;
-                const hasNewPredictions = newPredictionsCount > 0;
-
-                return (
-                  <button
-                    onClick={importAIPredictions}
-                    disabled={!hasNewPredictions}
-                    className="p-2 bg-white bg-opacity-10 hover:bg-opacity-20 disabled:bg-opacity-5 disabled:cursor-not-allowed rounded-full transition-colors backdrop-blur-sm"
-                    title={
-                      totalPredictionsCount === 0
-                        ? "No AI predictions available"
-                        : hasNewPredictions
-                          ? `Import ${newPredictionsCount} new AI predictions as ${selectedSmokeType} smoke (A)`
-                          : "All AI predictions already imported"
-                    }
-                  >
-                    <Brain className={`w-5 h-5 ${hasNewPredictions ? 'text-white' : 'text-gray-500'}`} />
-                  </button>
-                );
-              })()}
-
-              {/* Drawing Mode Toggle */}
-              <button
-                onClick={() => {
-                  // Cancel any active drawing when toggling draw mode
-                  if (isDrawMode && isActivelyDrawing) {
-                    setCurrentDrawing(null);
-                    setIsActivelyDrawing(false);
-                  }
-                  const newDrawMode = !isDrawMode;
-                  setIsDrawMode(newDrawMode);
-                  onDrawModeChange(newDrawMode);
-                }}
-                className={`p-2 rounded-full transition-colors backdrop-blur-sm ${isActivelyDrawing
-                  ? 'bg-green-500 bg-opacity-40 hover:bg-opacity-50 ring-2 ring-green-400'
-                  : isDrawMode
-                    ? 'bg-green-500 bg-opacity-20 hover:bg-opacity-30'
-                    : 'bg-white bg-opacity-10 hover:bg-opacity-20'
-                  }`}
-                title={
-                  isActivelyDrawing
-                    ? "Drawing in progress... (Click to finish, Esc to cancel)"
-                    : isDrawMode
-                      ? `Draw Mode Active (D to exit)${selectedRectangleId ? ' • Rectangle selected' : ''}${drawnRectangles.length > 0 ? ` • ${drawnRectangles.length} rectangles` : ''} • Click rectangles to select`
-                      : `Enter Draw Mode (D)${drawnRectangles.length > 0 ? ` • Click any of ${drawnRectangles.length} rectangles to select` : ''}`
-                }
-              >
-                <Square className={`w-5 h-5 ${isDrawMode ? 'text-green-400' : 'text-white'}`} />
-              </button>
-
-              {/* Delete Button - Smart delete (selected or all) */}
-              {drawnRectangles.length > 0 && (
-                <button
-                  onClick={() => {
-                    // Save current state to undo stack before deleting
-                    pushUndoState();
-
-                    if (selectedRectangleId) {
-                      // Delete only the selected rectangle using pure utility
-                      setDrawnRectangles(prev => removeRectangle(prev, selectedRectangleId));
-                      setSelectedRectangleId(null);
-                    } else {
-                      // Delete all rectangles when none selected
-                      setDrawnRectangles([]);
-                    }
-                  }}
-                  className="p-2 bg-white bg-opacity-10 hover:bg-opacity-20 rounded-full transition-colors backdrop-blur-sm"
-                  title={
-                    selectedRectangleId
-                      ? "Delete Selected Rectangle (Delete/Backspace)"
-                      : `Delete All ${drawnRectangles.length} Rectangles (Delete/Backspace) • Select a rectangle to delete individually`
-                  }
-                >
-                  <Trash2 className="w-5 h-5 text-white" />
-                </button>
-              )}
-
-              {/* Reset Zoom Button - Only visible when zoomed */}
-              {zoomLevel > 1.0 && (
-                <button
-                  onClick={handleZoomReset}
-                  className="p-2 bg-white bg-opacity-10 hover:bg-opacity-20 rounded-full transition-colors backdrop-blur-sm"
-                  title="Reset Zoom (R)"
-                >
-                  <RotateCcw className="w-6 h-6 text-white" />
-                </button>
-              )}
-            </div>
-          </div>
+              if (selectedRectangleId) {
+                // Delete only the selected rectangle using pure utility
+                setDrawnRectangles(prev => removeRectangle(prev, selectedRectangleId));
+                setSelectedRectangleId(null);
+              } else {
+                // Delete all rectangles when none selected
+                setDrawnRectangles([]);
+              }
+            }}
+            onImportPredictions={importAIPredictions}
+            onResetZoom={handleZoomReset}
+            canImportPredictions={getNewPredictionsCount() > 0}
+            newPredictionsCount={getNewPredictionsCount()}
+            zoomLevel={zoomLevel}
+            onSelectedRectangleSmokeTypeChange={changeSelectedRectangleSmokeType}
+          />
 
           {/* Detection info */}
           <div className="mt-4 bg-white bg-opacity-10 backdrop-blur-sm rounded-lg p-4 text-white">

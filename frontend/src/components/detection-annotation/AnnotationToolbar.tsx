@@ -1,229 +1,123 @@
 /**
- * Annotation toolbar with drawing controls and actions.
+ * Annotation toolbar with floating overlay controls for ImageModal.
  * Provides tools for drawing mode, smoke type selection, and annotation actions.
+ * Designed to match the ImageModal's backdrop blur circular button style.
  */
 
-import { MousePointer, Square, Eye, EyeOff, Upload, Trash2, Undo, RotateCcw, Keyboard } from 'lucide-react';
+import { Square, Trash2, RotateCcw, Brain } from 'lucide-react';
 import { SmokeType } from '@/types/api';
 import { SmokeTypeSelector } from '@/components/annotation/SmokeTypeSelector';
 import { DrawnRectangle } from '@/utils/annotation';
 
 interface AnnotationToolbarProps {
   isDrawMode: boolean;
+  isActivelyDrawing: boolean;
   onDrawModeToggle: () => void;
-  showPredictions: boolean;
-  onTogglePredictions: () => void;
   selectedSmokeType: SmokeType;
   onSmokeTypeChange: (type: SmokeType) => void;
   drawnRectangles: DrawnRectangle[];
   selectedRectangleId: string | null;
   onDeleteRectangles: () => void;
-  onUndo: () => void;
   onImportPredictions: () => void;
   onResetZoom: () => void;
-  onShowKeyboardShortcuts: () => void;
-  canUndo: boolean;
   canImportPredictions: boolean;
   newPredictionsCount?: number;
+  zoomLevel: number;
+  onSelectedRectangleSmokeTypeChange?: (smokeType: SmokeType) => void;
 }
 
 export function AnnotationToolbar({
   isDrawMode,
+  isActivelyDrawing,
   onDrawModeToggle,
-  showPredictions,
-  onTogglePredictions,
   selectedSmokeType,
   onSmokeTypeChange,
   drawnRectangles,
   selectedRectangleId,
   onDeleteRectangles,
-  onUndo,
   onImportPredictions,
   onResetZoom,
-  onShowKeyboardShortcuts,
-  canUndo,
   canImportPredictions,
-  newPredictionsCount = 0
+  newPredictionsCount = 0,
+  zoomLevel,
+  onSelectedRectangleSmokeTypeChange
 }: AnnotationToolbarProps) {
   const hasRectangles = drawnRectangles.length > 0;
   
   return (
-    <div className="bg-white border-b border-gray-200 px-4 py-3">
-      <div className="flex items-center justify-between">
-        {/* Left side - Drawing mode and visibility controls */}
-        <div className="flex items-center space-x-3">
-          {/* Drawing Mode Toggle */}
-          <button
-            onClick={onDrawModeToggle}
-            className={`
-              flex items-center space-x-2 px-3 py-2 rounded-lg border transition-colors
-              ${isDrawMode 
-                ? 'bg-blue-50 border-blue-200 text-blue-700' 
-                : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'
-              }
-            `}
-            title={isDrawMode ? 'Switch to selection mode (D)' : 'Switch to drawing mode (D)'}
-          >
-            {isDrawMode ? (
-              <>
-                <Square className="w-4 h-4" />
-                <span className="text-sm font-medium">Drawing</span>
-              </>
-            ) : (
-              <>
-                <MousePointer className="w-4 h-4" />
-                <span className="text-sm font-medium">Selection</span>
-              </>
-            )}
-          </button>
+    <div className="mt-4 flex justify-end">
+      <div className="flex items-center space-x-2">
+        {/* Smoke Type Selector */}
+        <SmokeTypeSelector
+          selectedSmokeType={selectedSmokeType}
+          selectedRectangleSmokeType={selectedRectangleId ? drawnRectangles.find(r => r.id === selectedRectangleId)?.smokeType : undefined}
+          hasSelectedRectangle={!!selectedRectangleId}
+          onSmokeTypeChange={onSmokeTypeChange}
+          onSelectedRectangleSmokeTypeChange={onSelectedRectangleSmokeTypeChange}
+          size="md"
+        />
 
-          {/* Predictions Toggle */}
-          <button
-            onClick={onTogglePredictions}
-            className={`
-              flex items-center space-x-2 px-3 py-2 rounded-lg border transition-colors
-              ${showPredictions
-                ? 'bg-green-50 border-green-200 text-green-700'
-                : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'
-              }
-            `}
-            title={showPredictions ? 'Hide AI predictions (V)' : 'Show AI predictions (V)'}
-          >
-            {showPredictions ? (
-              <>
-                <Eye className="w-4 h-4" />
-                <span className="text-sm font-medium">AI Visible</span>
-              </>
-            ) : (
-              <>
-                <EyeOff className="w-4 h-4" />
-                <span className="text-sm font-medium">AI Hidden</span>
-              </>
-            )}
-          </button>
+        {/* AI Import Button */}
+        <button
+          onClick={onImportPredictions}
+          disabled={!canImportPredictions}
+          className="p-2 bg-white bg-opacity-10 hover:bg-opacity-20 disabled:bg-opacity-5 disabled:cursor-not-allowed rounded-full transition-colors backdrop-blur-sm"
+          title={
+            newPredictionsCount === 0
+              ? "No AI predictions available"
+              : canImportPredictions
+                ? `Import ${newPredictionsCount} new AI predictions as ${selectedSmokeType} smoke (A)`
+                : "All AI predictions already imported"
+          }
+        >
+          <Brain className={`w-5 h-5 ${canImportPredictions ? 'text-white' : 'text-gray-500'}`} />
+        </button>
 
-          {/* Smoke Type Selector */}
-          <div className="flex items-center space-x-2">
-            <span className="text-sm text-gray-600 font-medium">Smoke Type:</span>
-            <SmokeTypeSelector
-              selectedSmokeType={selectedSmokeType}
-              hasSelectedRectangle={false}
-              onSmokeTypeChange={onSmokeTypeChange}
-              size="sm"
-            />
-          </div>
-        </div>
+        {/* Drawing Mode Toggle */}
+        <button
+          onClick={onDrawModeToggle}
+          className={`p-2 rounded-full transition-colors backdrop-blur-sm ${isActivelyDrawing
+            ? 'bg-green-500 bg-opacity-40 hover:bg-opacity-50 ring-2 ring-green-400'
+            : isDrawMode
+              ? 'bg-green-500 bg-opacity-20 hover:bg-opacity-30'
+              : 'bg-white bg-opacity-10 hover:bg-opacity-20'
+            }`}
+          title={
+            isActivelyDrawing
+              ? "Drawing in progress... (Click to finish, Esc to cancel)"
+              : isDrawMode
+                ? `Draw Mode Active (D to exit)${selectedRectangleId ? ' • Rectangle selected' : ''}${drawnRectangles.length > 0 ? ` • ${drawnRectangles.length} rectangles` : ''} • Click rectangles to select`
+                : `Enter Draw Mode (D)${drawnRectangles.length > 0 ? ` • Click any of ${drawnRectangles.length} rectangles to select` : ''}`
+          }
+        >
+          <Square className={`w-5 h-5 ${isDrawMode ? 'text-green-400' : 'text-white'}`} />
+        </button>
 
-        {/* Right side - Action buttons */}
-        <div className="flex items-center space-x-2">
-          {/* Import AI Predictions */}
-          <button
-            onClick={onImportPredictions}
-            disabled={!canImportPredictions}
-            className={`
-              flex items-center space-x-1 px-3 py-2 rounded-lg text-sm font-medium border transition-colors
-              ${canImportPredictions
-                ? 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100'
-                : 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
-              }
-            `}
-            title={`Import AI predictions (U)${newPredictionsCount > 0 ? ` - ${newPredictionsCount} new` : ''}`}
-          >
-            <Upload className="w-4 h-4" />
-            <span>Import AI</span>
-            {newPredictionsCount > 0 && (
-              <span className="bg-blue-600 text-white text-xs rounded-full px-1.5 py-0.5 min-w-5">
-                {newPredictionsCount}
-              </span>
-            )}
-          </button>
-
-          {/* Delete Rectangles */}
+        {/* Delete Button - Smart delete (selected or all) */}
+        {hasRectangles && (
           <button
             onClick={onDeleteRectangles}
-            disabled={!hasRectangles}
-            className={`
-              flex items-center space-x-1 px-3 py-2 rounded-lg text-sm font-medium border transition-colors
-              ${hasRectangles
-                ? 'bg-red-50 border-red-200 text-red-700 hover:bg-red-100'
-                : 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
-              }
-            `}
+            className="p-2 bg-white bg-opacity-10 hover:bg-opacity-20 rounded-full transition-colors backdrop-blur-sm"
             title={
-              selectedRectangleId 
-                ? 'Delete selected rectangle (Delete/X)' 
-                : hasRectangles 
-                  ? 'Delete all rectangles (Delete/X)'
-                  : 'No rectangles to delete'
+              selectedRectangleId
+                ? "Delete Selected Rectangle (Delete/Backspace)"
+                : `Delete All ${drawnRectangles.length} Rectangles (Delete/Backspace) • Select a rectangle to delete individually`
             }
           >
-            <Trash2 className="w-4 h-4" />
-            <span>
-              {selectedRectangleId ? 'Delete Selected' : 'Delete All'}
-            </span>
+            <Trash2 className="w-5 h-5 text-white" />
           </button>
+        )}
 
-          {/* Undo */}
-          <button
-            onClick={onUndo}
-            disabled={!canUndo}
-            className={`
-              flex items-center space-x-1 px-2 py-2 rounded-lg border transition-colors
-              ${canUndo
-                ? 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'
-                : 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
-              }
-            `}
-            title="Undo last action (Ctrl+Z)"
-          >
-            <Undo className="w-4 h-4" />
-          </button>
-
-          {/* Reset Zoom */}
+        {/* Reset Zoom Button - Only visible when zoomed */}
+        {zoomLevel > 1.0 && (
           <button
             onClick={onResetZoom}
-            className="flex items-center space-x-1 px-2 py-2 rounded-lg border bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100 transition-colors"
-            title="Reset zoom (R)"
+            className="p-2 bg-white bg-opacity-10 hover:bg-opacity-20 rounded-full transition-colors backdrop-blur-sm"
+            title="Reset Zoom (R)"
           >
-            <RotateCcw className="w-4 h-4" />
+            <RotateCcw className="w-6 h-6 text-white" />
           </button>
-
-          {/* Keyboard Shortcuts */}
-          <button
-            onClick={onShowKeyboardShortcuts}
-            className="flex items-center space-x-1 px-2 py-2 rounded-lg border bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100 transition-colors"
-            title="Show keyboard shortcuts (? or H)"
-          >
-            <Keyboard className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-
-      {/* Status Bar */}
-      <div className="mt-3 pt-3 border-t border-gray-100">
-        <div className="flex items-center justify-between text-sm text-gray-600">
-          <div className="flex items-center space-x-4">
-            <span>
-              {hasRectangles ? `${drawnRectangles.length} annotation${drawnRectangles.length > 1 ? 's' : ''}` : 'No annotations'}
-            </span>
-            
-            {selectedRectangleId && (
-              <span className="text-blue-600 font-medium">
-                Rectangle selected
-              </span>
-            )}
-          </div>
-
-          <div className="flex items-center space-x-4">
-            <span>
-              Mode: <span className="font-medium">{isDrawMode ? 'Drawing' : 'Selection'}</span>
-            </span>
-            
-            <span>
-              Type: <span className="font-medium capitalize">{selectedSmokeType}</span>
-            </span>
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );
