@@ -16,19 +16,14 @@ import {
 import { Detection, DetectionAnnotation, AlgoPrediction, SmokeType } from '@/types/api';
 import { createDefaultFilterState } from '@/hooks/usePersistedFilters';
 
-// Drawing-related interfaces
-interface DrawnRectangle {
-  id: string;
-  xyxyn: [number, number, number, number]; // normalized coordinates
-  smokeType: SmokeType;
-}
+// New imports for refactored utilities
+import {
+  DrawnRectangle,
+  CurrentDrawing,
+  getSmokeTypeColors
+} from '@/utils/annotation';
 
-interface CurrentDrawing {
-  startX: number;
-  startY: number;
-  currentX: number;
-  currentY: number;
-}
+// Note: DrawnRectangle and CurrentDrawing interfaces now imported from @/utils/annotation
 
 // Component for rendering bounding boxes over detection images
 interface BoundingBoxOverlayProps {
@@ -83,19 +78,7 @@ function BoundingBoxOverlay({ detection, imageInfo }: BoundingBoxOverlayProps) {
   );
 }
 
-// Reusable smoke type color mapping (shared between modal and grid)
-const getSmokeTypeColors = (smokeType: SmokeType) => {
-  switch (smokeType) {
-    case 'wildfire':
-      return { border: 'border-red-500', background: 'bg-red-500/15' };
-    case 'industrial':
-      return { border: 'border-purple-500', background: 'bg-purple-500/15' };
-    case 'other':
-      return { border: 'border-blue-500', background: 'bg-blue-500/15' };
-    default:
-      return { border: 'border-green-500', background: 'bg-green-500/10' };
-  }
-};
+// Note: getSmokeTypeColors now imported from @/utils/annotation
 
 // Component for rendering user annotations on detection images
 interface UserAnnotationOverlayProps {
