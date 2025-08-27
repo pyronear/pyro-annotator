@@ -43,6 +43,14 @@ class BoundingBox(BaseModel):
         if y1 > y2:
             raise ValueError("y1 must be <= y2")
 
+        # Reject null coordinates [0, 0, 0, 0] from failed detections
+        if v == [0, 0, 0, 0]:
+            raise ValueError("Null coordinates [0,0,0,0] are not allowed")
+
+        # Reject zero-area bounding boxes (no area for cropping)
+        if x1 == x2 or y1 == y2:
+            raise ValueError(f"Zero-area bounding boxes are not allowed (width={x2-x1:.6f}, height={y2-y1:.6f})")
+
         return v
 
 
@@ -81,6 +89,14 @@ class AlgoPrediction(BaseModel):
         if y1 > y2:
             raise ValueError("y1 must be <= y2")
 
+        # Reject null coordinates [0, 0, 0, 0] from failed detections
+        if v == [0, 0, 0, 0]:
+            raise ValueError("Null coordinates [0,0,0,0] are not allowed")
+
+        # Reject zero-area bounding boxes (no area for cropping)
+        if x1 == x2 or y1 == y2:
+            raise ValueError(f"Zero-area bounding boxes are not allowed (width={x2-x1:.6f}, height={y2-y1:.6f})")
+
         return v
 
 
@@ -111,6 +127,14 @@ class DetectionAnnotationItem(BaseModel):
             raise ValueError("x1 must be <= x2")
         if y1 > y2:
             raise ValueError("y1 must be <= y2")
+
+        # Reject null coordinates [0, 0, 0, 0] from failed detections
+        if v == [0, 0, 0, 0]:
+            raise ValueError("Null coordinates [0,0,0,0] are not allowed")
+
+        # Reject zero-area bounding boxes (no area for cropping)
+        if x1 == x2 or y1 == y2:
+            raise ValueError(f"Zero-area bounding boxes are not allowed (width={x2-x1:.6f}, height={y2-y1:.6f})")
 
         return v
 

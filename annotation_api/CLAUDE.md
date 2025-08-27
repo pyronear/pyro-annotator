@@ -578,6 +578,39 @@ uv run python -m scripts.data_transfer.ingestion.platform.import \
 - **Validation Helpers**: Client-side validation to catch errors before API calls
 - **Integration Patterns**: Examples for web apps, background tasks, and batch processing
 
+## Data Import Scripts
+
+### Platform Data Import
+Single comprehensive script for fetching data from the Pyronear platform API and generating annotations:
+
+```bash
+# Load environment variables from .envrc file (required for platform credentials)
+source .envrc
+
+# End-to-end processing: fetch platform data → generate annotations
+uv run python -m scripts.data_transfer.ingestion.platform.import \
+  --date-from 2025-07-31 --date-end 2025-07-31 --loglevel info
+
+# Process with custom annotation parameters
+uv run python -m scripts.data_transfer.ingestion.platform.import \
+  --date-from 2025-07-31 --confidence-threshold 0.0 --iou-threshold 0.4 --loglevel info
+```
+
+#### Required Environment Variables (in .envrc)
+- `PLATFORM_LOGIN` - Platform API login (e.g., sis-67)
+- `PLATFORM_PASSWORD` - Platform API password  
+- `PLATFORM_ADMIN_LOGIN` - Admin login for organization access
+- `PLATFORM_ADMIN_PASSWORD` - Admin password for organization access
+- `ANNOTATOR_LOGIN` - Annotation API login for script authentication (default: `admin`)
+- `ANNOTATOR_PASSWORD` - Annotation API password for script authentication (default: `admin12345`)
+
+#### Script Features
+- **End-to-end workflow**: Complete pipeline from platform data to annotation-ready sequences
+- **Automatic annotation generation**: Server-side clustering of AI predictions with confidence threshold 0.0 (includes all predictions)
+- **Concurrent processing**: Multi-threading for faster data fetching
+- **Progress tracking**: Rich progress bars for long-running operations
+- **Stage management**: Automatic transitions to READY_TO_ANNOTATE stage
+
 ## Troubleshooting
 
 ### Common Issues

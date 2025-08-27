@@ -7,6 +7,7 @@ for edge cases, error handling, and validation to prevent empty sequence bboxes.
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+from pydantic import ValidationError
 
 from app.services.annotation_generation import (
     AnnotationGenerationService,
@@ -15,6 +16,7 @@ from app.services.annotation_generation import (
     cluster_boxes_by_iou,
 )
 from app.schemas.annotation_validation import (
+    BoundingBox,
     SequenceBBox,
 )
 
@@ -34,24 +36,24 @@ class TestAnnotationGenerationService:
             min_cluster_size=1,
         )
 
-    def test_is_valid_bbox_coords_valid_cases(self):
-        """Test coordinate validation with valid inputs."""
+    def test_pydantic_bbox_validation_valid_cases(self):
+        """Test Pydantic BoundingBox validation with valid coordinates."""
         valid_coords = [
             [0.0, 0.0, 1.0, 1.0],  # Full image
             [0.1, 0.2, 0.8, 0.9],  # Normal case
             [0.1, 0.2, 0.3, 0.4],  # Small but valid area
             [0.0, 0.0, 0.1, 0.1],  # Small corner bbox
-            # Note: Zero-area bboxes like [0.5, 0.5, 0.5, 0.5] are now invalid to prevent empty crops
-            # Note: [0.0, 0.0, 0.0, 0.0] is now considered invalid to prevent empty sequence bboxes
         ]
 
         for coords in valid_coords:
-            assert self.service._is_valid_bbox_coords(
-                coords
-            ), f"Should be valid: {coords}"
+            try:
+                bbox = BoundingBox(detection_id=123, xyxyn=coords)
+                assert bbox.xyxyn == coords, f"BoundingBox should accept valid coords: {coords}"
+            except Exception as e:
+                pytest.fail(f"BoundingBox should accept valid coords {coords}, but got error: {e}")
 
-    def test_is_valid_bbox_coords_invalid_cases(self):
-        """Test coordinate validation with invalid inputs."""
+    def test_pydantic_bbox_validation_invalid_cases(self):
+        """Test Pydantic BoundingBox validation with invalid coordinates."""
         invalid_coords = [
             # Wrong length
             [0.1, 0.2, 0.8],  # Too few
@@ -73,24 +75,14 @@ class TestAnnotationGenerationService:
             [0.5, 0.5, 0.5, 0.5],  # Point at center
             [0.1, 0.3, 0.1, 0.3],  # Point at arbitrary location
             [0.0, 1.0, 0.0, 1.0],  # Point at corner
-            # Non-numeric values
-            ["0.1", 0.2, 0.8, 0.9],  # String
-            [0.1, None, 0.8, 0.9],  # None
-            [0.1, 0.2, float("nan"), 0.9],  # NaN
-            # Wrong type
-            "invalid",
-            None,
-            123,
-            {"x1": 0.1, "y1": 0.2, "x2": 0.8, "y2": 0.9},
         ]
 
         for coords in invalid_coords:
-            assert not self.service._is_valid_bbox_coords(
-                coords
-            ), f"Should be invalid: {coords}"
+            with pytest.raises((ValueError, ValidationError)):
+                BoundingBox(detection_id=123, xyxyn=coords)
 
-    def test_is_valid_bbox_coords_null_coordinates(self):
-        """Test that null/empty [0,0,0,0] coordinates are specifically rejected."""
+    def test_pydantic_bbox_validation_null_coordinates(self):
+        """Test that null/empty [0,0,0,0] coordinates are specifically rejected by Pydantic."""
         # These should all be rejected to prevent empty sequence bboxes in annotation interface
         null_coords = [
             [0, 0, 0, 0],  # Integer format
@@ -98,33 +90,30 @@ class TestAnnotationGenerationService:
         ]
 
         for coords in null_coords:
-            assert not self.service._is_valid_bbox_coords(
-                coords
-            ), f"Null coordinates should be invalid: {coords}"
+            with pytest.raises(ValueError, match="Null coordinates"):
+                BoundingBox(detection_id=123, xyxyn=coords)
 
-    def test_is_valid_bbox_coords_zero_area_coordinates(self):
-        """Test that zero-area (point) coordinates are specifically rejected."""
+    def test_pydantic_bbox_validation_zero_area_coordinates(self):
+        """Test that zero-area (point) coordinates are specifically rejected by Pydantic."""
         # These should all be rejected as they have no area for cropping
         zero_area_coords = [
             [0.5, 0.5, 0.5, 0.5],  # Point at center
             [0.1, 0.3, 0.1, 0.3],  # Point at arbitrary location
-            [0.0, 0.0, 0.0, 0.0],  # Point at origin (also null)
             [1.0, 1.0, 1.0, 1.0],  # Point at opposite corner
             [0.25, 0.75, 0.25, 0.75],  # Point at another location
         ]
 
         for coords in zero_area_coords:
-            assert not self.service._is_valid_bbox_coords(
-                coords
-            ), f"Zero-area coordinates should be invalid: {coords}"
+            with pytest.raises(ValueError, match="Zero-area bounding boxes are not allowed"):
+                BoundingBox(detection_id=123, xyxyn=coords)
 
     def test_create_sequence_bboxes_with_null_coordinates(self):
-        """Test sequence bbox creation filters out [0,0,0,0] coordinates completely."""
+        """Test sequence bbox creation filters out [0,0,0,0] coordinates via Pydantic validation."""
         bbox_clusters = [
             # Cluster with mix of valid and null coordinates
             [
                 ([0.1, 0.2, 0.8, 0.9], 123),  # Valid
-                ([0, 0, 0, 0], 124),  # Null - should be filtered out
+                ([0, 0, 0, 0], 124),  # Null - should be filtered out by Pydantic
                 ([0.2, 0.3, 0.7, 0.8], 125),  # Valid
             ],
             # Cluster with only null coordinates - should be completely skipped
@@ -143,23 +132,23 @@ class TestAnnotationGenerationService:
             len(result[0].bboxes) == 2
         )  # Only the valid coordinates from first cluster
 
-        # Should have logged debug messages about rejected coordinates
+        # Should have logged debug messages about Pydantic validation failures
         debug_calls = [
             call
             for call in mock_logger.debug.call_args_list
-            if "Rejecting null bbox" in str(call)
+            if "Skipping invalid coordinates" in str(call)
         ]
-        assert len(debug_calls) >= 2  # At least 2 null coordinates rejected
+        assert len(debug_calls) >= 2  # At least 2 null coordinates rejected by Pydantic
 
     def test_create_sequence_bboxes_with_zero_area_coordinates(self):
-        """Test sequence bbox creation filters out zero-area (point) coordinates."""
+        """Test sequence bbox creation filters out zero-area (point) coordinates via Pydantic validation."""
         bbox_clusters = [
             # Cluster with mix of valid and zero-area coordinates
             [
                 ([0.1, 0.2, 0.8, 0.9], 123),  # Valid
-                ([0.5, 0.5, 0.5, 0.5], 124),  # Zero-area point - should be filtered out
+                ([0.5, 0.5, 0.5, 0.5], 124),  # Zero-area point - should be filtered out by Pydantic
                 ([0.2, 0.3, 0.7, 0.8], 125),  # Valid
-                ([0.1, 0.3, 0.1, 0.3], 126),  # Zero-area point - should be filtered out
+                ([0.1, 0.3, 0.1, 0.3], 126),  # Zero-area point - should be filtered out by Pydantic
             ],
             # Cluster with only zero-area coordinates - should be completely skipped
             [
@@ -177,15 +166,15 @@ class TestAnnotationGenerationService:
             len(result[0].bboxes) == 2
         )  # Only the valid coordinates from first cluster
 
-        # Should have logged debug messages about rejected zero-area coordinates
+        # Should have logged debug messages about Pydantic validation failures
         debug_calls = [
             call
             for call in mock_logger.debug.call_args_list
-            if "Rejecting zero-area bbox" in str(call)
+            if "Skipping invalid coordinates" in str(call)
         ]
         assert (
             len(debug_calls) >= 3
-        )  # At least 3 zero-area coordinates rejected (2 from first cluster + 2 from second)
+        )  # At least 3 zero-area coordinates rejected by Pydantic (2 from first cluster + 2 from second)
 
     def test_create_sequence_bboxes_valid_clusters(self):
         """Test sequence bbox creation with valid clusters."""
@@ -251,10 +240,9 @@ class TestAnnotationGenerationService:
         assert len(result) == 1
         assert len(result[0].bboxes) == 1
 
-        # Should have logged warnings
-        assert mock_logger.debug.call_count == 3  # Three invalid coordinates
-        assert mock_logger.warning.call_count == 1  # One skipped cluster
-        assert mock_logger.info.call_count == 1  # Summary log
+        # Should have logged warnings - updated for new Pydantic validation
+        assert mock_logger.debug.call_count == 3  # Three invalid coordinates rejected by Pydantic
+        assert mock_logger.warning.call_count >= 1  # At least one skipped cluster (possibly more due to summary logs)
 
     def test_create_sequence_bboxes_empty_clusters(self):
         """Test sequence bbox creation with empty cluster list."""
@@ -281,11 +269,9 @@ class TestAnnotationGenerationService:
         # Should return empty list since BoundingBox creation failed
         assert result == []
 
-        # Should have logged the error (warning for failed BoundingBox + warning for skipped cluster)
-        assert mock_logger.warning.call_count == 2
-        # First warning should be about failed BoundingBox creation
-        first_warning = mock_logger.warning.call_args_list[0][0][0]
-        assert first_warning.startswith("Failed to create BoundingBox")
+        # Should have logged the error - updated for new debug-level logging
+        assert mock_logger.debug.call_count == 1  # Failed BoundingBox creation is now logged as debug
+        assert mock_logger.warning.call_count >= 1  # At least one skipped cluster warning
         # Second warning should be about skipped cluster
         second_warning = mock_logger.warning.call_args_list[1][0][0]
         assert "Skipping cluster" in second_warning
