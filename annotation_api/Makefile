@@ -44,15 +44,18 @@ clean:
 	docker compose -f docker-compose.yml down -v
 
 # Run comprehensive test suite (main app, services, and API endpoints)
-# the "-" are used to launch the next command even if a command fails
 test:
 	docker compose -f docker-compose-dev.yml up -d --wait --build
-	- docker compose -f docker-compose-dev.yml exec -T backend /app/.venv/bin/python -m pytest -s --cov=app
-	docker compose -f docker-compose-dev.yml down --volumes
+	docker compose -f docker-compose-dev.yml exec -T backend /app/.venv/bin/python -m pytest -s --cov=app; \
+	TEST_EXIT_CODE=$$?; \
+	docker compose -f docker-compose-dev.yml down --volumes; \
+	exit $$TEST_EXIT_CODE
 
 # Run specific test class or method
 # Usage: make test-specific TEST=test_auth.py::test_login_valid_credentials
 test-specific:
 	docker compose -f docker-compose-dev.yml up -d --wait --build
-	- docker compose -f docker-compose-dev.yml exec -T backend /app/.venv/bin/python -m pytest -s $(TEST) -v
-	docker compose -f docker-compose-dev.yml down --volumes
+	docker compose -f docker-compose-dev.yml exec -T backend /app/.venv/bin/python -m pytest -s $(TEST) -v; \
+	TEST_EXIT_CODE=$$?; \
+	docker compose -f docker-compose-dev.yml down --volumes; \
+	exit $$TEST_EXIT_CODE
