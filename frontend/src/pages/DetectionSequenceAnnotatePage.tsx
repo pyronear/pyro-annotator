@@ -13,254 +13,34 @@ import {
   getModelAccuracyBadgeClasses,
   parseFalsePositiveTypes
 } from '@/utils/modelAccuracy';
-import { Detection, DetectionAnnotation, AlgoPrediction, SmokeType } from '@/types/api';
+import { Detection, DetectionAnnotation, SmokeType } from '@/types/api';
 import { createDefaultFilterState } from '@/hooks/usePersistedFilters';
 
-// Drawing-related interfaces
-interface DrawnRectangle {
-  id: string;
-  xyxyn: [number, number, number, number]; // normalized coordinates
-  smokeType: SmokeType;
-}
+// New imports for refactored utilities
+import {
+  DrawnRectangle,
+  CurrentDrawing,
+  Point,
+  ImageBounds,
+  calculateImageBounds,
+  screenToImageCoordinates,
+  imageToNormalizedCoordinates,
+  normalizedToImageCoordinates,
+  getRectangleAtPoint,
+  calculateAnnotationCompleteness,
+  importPredictionsAsRectangles,
+  updateRectangleSmokeType,
+  removeRectangle
+} from '@/utils/annotation';
+import { SmokeTypeSelector } from '@/components/annotation/SmokeTypeSelector';
+import { BoundingBoxOverlay, UserAnnotationOverlay, DrawingOverlay } from '@/components/annotation/ImageOverlays';
+import { useKeyboardShortcuts } from '@/hooks/annotation';
 
-interface CurrentDrawing {
-  startX: number;
-  startY: number;
-  currentX: number;
-  currentY: number;
-}
+// Note: DrawnRectangle and CurrentDrawing interfaces now imported from @/utils/annotation
 
-// Component for rendering bounding boxes over detection images
-interface BoundingBoxOverlayProps {
-  detection: Detection;
-  imageInfo: {
-    width: number;
-    height: number;
-    offsetX: number;
-    offsetY: number;
-  };
-}
+// Note: Overlay components now imported from @/components/annotation/ImageOverlays
 
-function BoundingBoxOverlay({ detection, imageInfo }: BoundingBoxOverlayProps) {
-  if (!detection?.algo_predictions?.predictions) return null;
 
-  return (
-    <>
-      {detection.algo_predictions.predictions.map((prediction: AlgoPrediction, index: number) => {
-        // Convert normalized coordinates (xyxyn) to pixel coordinates
-        const [x1, y1, x2, y2] = prediction.xyxyn;
-
-        // Ensure x2 > x1 and y2 > y1
-        if (x2 <= x1 || y2 <= y1) {
-          return null;
-        }
-
-        // Calculate pixel coordinates relative to the actual image position
-        const left = imageInfo.offsetX + (x1 * imageInfo.width);
-        const top = imageInfo.offsetY + (y1 * imageInfo.height);
-        const width = (x2 - x1) * imageInfo.width;
-        const height = (y2 - y1) * imageInfo.height;
-
-        return (
-          <div
-            key={`bbox-${detection.id}-${index}`}
-            className="absolute border-2 border-red-500 bg-red-500/20 pointer-events-none"
-            style={{
-              left: `${left}px`,
-              top: `${top}px`,
-              width: `${width}px`,
-              height: `${height}px`,
-            }}
-          >
-            {/* Confidence label */}
-            <div className="absolute -top-6 left-0 bg-red-500 text-white text-xs px-1 py-0.5 rounded whitespace-nowrap">
-              {prediction.class_name} {(prediction.confidence * 100).toFixed(0)}%
-            </div>
-          </div>
-        );
-      }).filter(Boolean)} {/* Remove null entries from invalid boxes */}
-    </>
-  );
-}
-
-// Reusable smoke type color mapping (shared between modal and grid)
-const getSmokeTypeColors = (smokeType: SmokeType) => {
-  switch (smokeType) {
-    case 'wildfire':
-      return { border: 'border-red-500', background: 'bg-red-500/15' };
-    case 'industrial':
-      return { border: 'border-purple-500', background: 'bg-purple-500/15' };
-    case 'other':
-      return { border: 'border-blue-500', background: 'bg-blue-500/15' };
-    default:
-      return { border: 'border-green-500', background: 'bg-green-500/10' };
-  }
-};
-
-// Component for rendering user annotations on detection images
-interface UserAnnotationOverlayProps {
-  detectionAnnotation: DetectionAnnotation | null;
-  imageInfo: {
-    width: number;
-    height: number;
-    offsetX: number;
-    offsetY: number;
-  };
-}
-
-function UserAnnotationOverlay({ detectionAnnotation, imageInfo }: UserAnnotationOverlayProps) {
-  if (!detectionAnnotation?.annotation?.annotation || detectionAnnotation.annotation.annotation.length === 0) {
-    return null;
-  }
-
-  return (
-    <>
-      {detectionAnnotation.annotation.annotation.map((annotationBbox, index) => {
-        // Convert normalized coordinates (xyxyn) to pixel coordinates
-        const [x1, y1, x2, y2] = annotationBbox.xyxyn;
-
-        // Ensure x2 > x1 and y2 > y1
-        if (x2 <= x1 || y2 <= y1) {
-          return null;
-        }
-
-        // Calculate pixel coordinates relative to the actual image position
-        const left = imageInfo.offsetX + (x1 * imageInfo.width);
-        const top = imageInfo.offsetY + (y1 * imageInfo.height);
-        const width = (x2 - x1) * imageInfo.width;
-        const height = (y2 - y1) * imageInfo.height;
-
-        // Get colors for this smoke type
-        const colors = getSmokeTypeColors(annotationBbox.smoke_type);
-
-        return (
-          <div
-            key={`user-annotation-${detectionAnnotation.detection_id}-${index}`}
-            className={`absolute border-2 ${colors.border} ${colors.background} pointer-events-none`}
-            style={{
-              left: `${left}px`,
-              top: `${top}px`,
-              width: `${width}px`,
-              height: `${height}px`,
-            }}
-          >
-            {/* Smoke type label */}
-            <div className={`absolute -top-6 left-0 ${colors.border.replace('border-', 'bg-')} text-white text-xs px-1 py-0.5 rounded whitespace-nowrap`}>
-              {annotationBbox.smoke_type === 'wildfire' ? '🔥' : annotationBbox.smoke_type === 'industrial' ? '🏭' : '💨'} {annotationBbox.smoke_type.charAt(0).toUpperCase() + annotationBbox.smoke_type.slice(1)}
-            </div>
-          </div>
-        );
-      }).filter(Boolean)} {/* Remove null entries from invalid boxes */}
-    </>
-  );
-}
-
-// Component for rendering user-drawn rectangles
-interface DrawingOverlayProps {
-  drawnRectangles: DrawnRectangle[];
-  currentDrawing: CurrentDrawing | null;
-  selectedRectangleId: string | null;
-  imageInfo: {
-    width: number;
-    height: number;
-    offsetX: number;
-    offsetY: number;
-  };
-  zoomLevel: number;
-  panOffset: { x: number; y: number };
-  transformOrigin: { x: number; y: number };
-  isDragging: boolean;
-  normalizedToImage: (normX: number, normY: number) => { x: number; y: number };
-}
-
-function DrawingOverlay({ 
-  drawnRectangles, 
-  currentDrawing, 
-  selectedRectangleId,
-  imageInfo, 
-  zoomLevel, 
-  panOffset, 
-  transformOrigin, 
-  isDragging,
-  normalizedToImage 
-}: DrawingOverlayProps) {
-  
-  const renderRectangle = (rect: { xyxyn: [number, number, number, number]; id?: string } | CurrentDrawing, type: 'completed' | 'drawing') => {
-    let left: number, top: number, width: number, height: number;
-    
-    if (type === 'completed') {
-      // For completed rectangles, use normalized coordinates
-      const rectData = rect as { xyxyn: [number, number, number, number]; id: string };
-      const [x1, y1, x2, y2] = rectData.xyxyn;
-      const topLeft = normalizedToImage(x1, y1);
-      const bottomRight = normalizedToImage(x2, y2);
-      
-      left = imageInfo.offsetX + topLeft.x;
-      top = imageInfo.offsetY + topLeft.y;
-      width = bottomRight.x - topLeft.x;
-      height = bottomRight.y - topLeft.y;
-    } else {
-      // For current drawing, use image coordinates directly
-      const drawingData = rect as CurrentDrawing;
-      const minX = Math.min(drawingData.startX, drawingData.currentX);
-      const minY = Math.min(drawingData.startY, drawingData.currentY);
-      const maxX = Math.max(drawingData.startX, drawingData.currentX);
-      const maxY = Math.max(drawingData.startY, drawingData.currentY);
-      
-      left = imageInfo.offsetX + minX;
-      top = imageInfo.offsetY + minY;
-      width = maxX - minX;
-      height = maxY - minY;
-    }
-    
-    // Determine styling based on selection state and smoke type
-    const isSelected = type === 'completed' && selectedRectangleId === (rect as any).id;
-    const smokeType = type === 'completed' ? (rect as DrawnRectangle).smokeType : undefined;
-    
-    // Use shared color mapping function
-
-    const colors = smokeType ? getSmokeTypeColors(smokeType) : { border: 'border-green-500', background: 'bg-green-500/10' };
-    const borderColor = isSelected ? 'border-yellow-400' : colors.border;
-    const backgroundColor = isSelected ? 'bg-yellow-400/25' : colors.background;
-    const borderWidth = isSelected ? 'border-4' : 'border-2';
-    
-    // Make completed rectangles clickable, but keep drawing preview non-interactive
-    const pointerEvents = type === 'completed' ? 'pointer-events-auto' : 'pointer-events-none';
-    const cursorStyle = type === 'completed' ? 'cursor-pointer' : '';
-    const hoverEffect = type === 'completed' ? 'hover:brightness-110' : '';
-    
-    return (
-      <div
-        key={type === 'completed' ? (rect as any).id : 'current-drawing'}
-        className={`absolute ${borderWidth} ${borderColor} ${backgroundColor} ${pointerEvents} ${cursorStyle} ${hoverEffect} transition-all duration-150`}
-        style={{
-          left: `${left}px`,
-          top: `${top}px`,
-          width: `${width}px`,
-          height: `${height}px`,
-        }}
-        title={type === 'completed' ? 'Click to select rectangle' : undefined}
-      />
-    );
-  };
-  
-  return (
-    <div 
-      className="absolute inset-0 pointer-events-none z-20"
-      style={{
-        transform: `scale(${zoomLevel}) translate(${panOffset.x}px, ${panOffset.y}px)`,
-        transformOrigin: `${transformOrigin.x}% ${transformOrigin.y}%`,
-        transition: isDragging ? 'none' : 'transform 0.1s ease-out'
-      }}
-    >
-      {/* Completed rectangles */}
-      {drawnRectangles.map(rect => renderRectangle(rect, 'completed'))}
-      
-      {/* Current drawing rectangle */}
-      {currentDrawing && renderRectangle(currentDrawing, 'drawing')}
-    </div>
-  );
-}
 
 // Keyboard Shortcuts Info Component
 interface KeyboardShortcutsInfoProps {
@@ -330,7 +110,7 @@ function KeyboardShortcutsInfo({
 
   return (
     <div 
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-60"
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100]"
       onClick={handleOverlayClick}
       onKeyDown={handleKeyDown}
       tabIndex={-1}
@@ -790,140 +570,81 @@ function ImageModal({
     } else {
       setDrawnRectangles([]);
     }
-  }, [detection.id, existingAnnotation, isAutoAdvance, persistentDrawMode]);
+  }, [detection.id, existingAnnotation, isAutoAdvance]);
 
-  // Coordinate transformation functions
-  const screenToImageCoordinates = (screenX: number, screenY: number) => {
-    if (!imgRef.current || !containerRef.current) return { x: 0, y: 0 };
+  // Get current image and container information for coordinate transformations
+  const getImageInfo = (): { containerOffset: Point; imageBounds: ImageBounds; transform: { zoomLevel: number; panOffset: Point; transformOrigin: Point } } | null => {
+    if (!imgRef.current || !containerRef.current) return null;
     
     const containerRect = containerRef.current.getBoundingClientRect();
-    
-    // Get mouse position relative to container
-    const relativeX = screenX - containerRect.left;
-    const relativeY = screenY - containerRect.top;
-    
-    // Get original image dimensions and position (before any transforms)
     const img = imgRef.current;
-    const containerWidth = containerRect.width;
-    const containerHeight = containerRect.height;
     
-    // Calculate original image bounds using object-contain logic
-    const imgAspectRatio = img.naturalWidth / img.naturalHeight;
-    const containerAspectRatio = containerWidth / containerHeight;
+    const containerOffset: Point = {
+      x: containerRect.left,
+      y: containerRect.top
+    };
     
-    let originalWidth: number, originalHeight: number, originalX: number, originalY: number;
+    const imageBounds = calculateImageBounds({
+      containerWidth: containerRect.width,
+      containerHeight: containerRect.height,
+      imageNaturalWidth: img.naturalWidth,
+      imageNaturalHeight: img.naturalHeight
+    });
     
-    if (imgAspectRatio > containerAspectRatio) {
-      // Image is wider - fit to width
-      originalWidth = containerWidth;
-      originalHeight = containerWidth / imgAspectRatio;
-      originalX = 0;
-      originalY = (containerHeight - originalHeight) / 2;
-    } else {
-      // Image is taller - fit to height
-      originalWidth = containerHeight * imgAspectRatio;
-      originalHeight = containerHeight;
-      originalX = (containerWidth - originalWidth) / 2;
-      originalY = 0;
-    }
+    const transform = {
+      zoomLevel,
+      panOffset,
+      transformOrigin
+    };
     
-    // Calculate transform origin in original image pixel coordinates
-    const originX = (transformOrigin.x / 100) * originalWidth;
-    const originY = (transformOrigin.y / 100) * originalHeight;
+    return { containerOffset, imageBounds, transform };
+  };
+  
+  // Wrapper function to maintain compatibility with existing code
+  const screenToImageCoords = (screenX: number, screenY: number) => {
+    const info = getImageInfo();
+    if (!info) return { x: 0, y: 0 };
     
-    // Transform origin in container coordinates
-    const originContainerX = originalX + originX;
-    const originContainerY = originalY + originY;
-    
-    // Reverse the CSS transform: scale(zoomLevel) translate(panOffset.x, panOffset.y)
-    // Step 1: Reverse translation (panOffset is applied in scaled coordinate space)
-    const afterTranslateX = relativeX - panOffset.x;
-    const afterTranslateY = relativeY - panOffset.y;
-    
-    // Step 2: Reverse scaling around transform origin
-    const imageX = (afterTranslateX - originContainerX) / zoomLevel + originContainerX - originalX;
-    const imageY = (afterTranslateY - originContainerY) / zoomLevel + originContainerY - originalY;
-    
-    return { x: imageX, y: imageY };
+    return screenToImageCoordinates(
+      { x: screenX, y: screenY },
+      info.containerOffset,
+      info.imageBounds,
+      info.transform
+    );
   };
 
+  // Wrapper function for image to normalized coordinates
   const imageToNormalized = (imageX: number, imageY: number) => {
-    if (!imgRef.current || !containerRef.current) return { x: 0, y: 0 };
+    const info = getImageInfo();
+    if (!info) return { x: 0, y: 0 };
     
-    const containerRect = containerRef.current.getBoundingClientRect();
-    const img = imgRef.current;
-    const containerWidth = containerRect.width;
-    const containerHeight = containerRect.height;
-    
-    // Calculate original image bounds using object-contain logic
-    const imgAspectRatio = img.naturalWidth / img.naturalHeight;
-    const containerAspectRatio = containerWidth / containerHeight;
-    
-    let originalWidth: number, originalHeight: number;
-    
-    if (imgAspectRatio > containerAspectRatio) {
-      // Image is wider - fit to width
-      originalWidth = containerWidth;
-      originalHeight = containerWidth / imgAspectRatio;
-    } else {
-      // Image is taller - fit to height
-      originalWidth = containerHeight * imgAspectRatio;
-      originalHeight = containerHeight;
-    }
-    
-    return {
-      x: Math.max(0, Math.min(1, imageX / originalWidth)),
-      y: Math.max(0, Math.min(1, imageY / originalHeight))
-    };
+    return imageToNormalizedCoordinates(
+      { x: imageX, y: imageY },
+      info.imageBounds
+    );
   };
 
+  // Wrapper function for normalized to image coordinates
   const normalizedToImage = (normX: number, normY: number) => {
-    if (!imgRef.current || !containerRef.current) return { x: 0, y: 0 };
+    const info = getImageInfo();
+    if (!info) return { x: 0, y: 0 };
     
-    const containerRect = containerRef.current.getBoundingClientRect();
-    const img = imgRef.current;
-    const containerWidth = containerRect.width;
-    const containerHeight = containerRect.height;
-    
-    // Calculate original image bounds using object-contain logic
-    const imgAspectRatio = img.naturalWidth / img.naturalHeight;
-    const containerAspectRatio = containerWidth / containerHeight;
-    
-    let originalWidth: number, originalHeight: number;
-    
-    if (imgAspectRatio > containerAspectRatio) {
-      // Image is wider - fit to width
-      originalWidth = containerWidth;
-      originalHeight = containerWidth / imgAspectRatio;
-    } else {
-      // Image is taller - fit to height
-      originalWidth = containerHeight * imgAspectRatio;
-      originalHeight = containerHeight;
-    }
-    
-    return {
-      x: normX * originalWidth,
-      y: normY * originalHeight
-    };
+    return normalizedToImageCoordinates(
+      { x: normX, y: normY },
+      info.imageBounds
+    );
   };
 
-  // Hit testing functions for rectangle selection
-  const isPointInRectangle = (pointX: number, pointY: number, rect: DrawnRectangle): boolean => {
-    const topLeft = normalizedToImage(rect.xyxyn[0], rect.xyxyn[1]);
-    const bottomRight = normalizedToImage(rect.xyxyn[2], rect.xyxyn[3]);
+  // Hit testing function using pure utilities
+  const getRectAtPoint = (x: number, y: number): DrawnRectangle | null => {
+    const info = getImageInfo();
+    if (!info) return null;
     
-    return pointX >= topLeft.x && pointX <= bottomRight.x &&
-           pointY >= topLeft.y && pointY <= bottomRight.y;
-  };
-
-  const getRectangleAtPoint = (x: number, y: number): DrawnRectangle | null => {
-    // Check rectangles in reverse order (topmost/newest first)
-    for (let i = drawnRectangles.length - 1; i >= 0; i--) {
-      if (isPointInRectangle(x, y, drawnRectangles[i])) {
-        return drawnRectangles[i];
-      }
-    }
-    return null;
+    return getRectangleAtPoint(
+      { x, y },
+      drawnRectangles,
+      info.imageBounds
+    );
   };
 
   // Undo functionality
@@ -935,79 +656,40 @@ function ImageModal({
     });
   };
 
-  // Change smoke type of selected rectangle
+  // Change smoke type of selected rectangle using pure utility
   const changeSelectedRectangleSmokeType = (newSmokeType: SmokeType) => {
     if (!selectedRectangleId) return;
     
     pushUndoState();
-    setDrawnRectangles(prev => prev.map(rect => 
-      rect.id === selectedRectangleId 
-        ? { ...rect, smokeType: newSmokeType }
-        : rect
-    ));
+    setDrawnRectangles(prev => updateRectangleSmokeType(prev, selectedRectangleId, newSmokeType));
   };
 
-  // Utility function to check if coordinates match within tolerance
-  const coordinatesMatch = (coords1: [number, number, number, number], coords2: [number, number, number, number], tolerance = 0.01): boolean => {
-    return Math.abs(coords1[0] - coords2[0]) < tolerance &&
-           Math.abs(coords1[1] - coords2[1]) < tolerance &&
-           Math.abs(coords1[2] - coords2[2]) < tolerance &&
-           Math.abs(coords1[3] - coords2[3]) < tolerance;
-  };
+  // Note: coordinatesMatch function replaced with direct call to areBoundingBoxesSimilar
 
-  // Get count of new (non-duplicate) predictions available to import
+  // Get count of new predictions using pure utility
   const getNewPredictionsCount = (): number => {
     if (!detection?.algo_predictions?.predictions) return 0;
     
-    const validPredictions = detection.algo_predictions.predictions.filter(pred => {
-      const [x1, y1, x2, y2] = pred.xyxyn;
-      return (
-        x1 >= 0 && x1 <= 1 && // Valid normalized coordinates
-        y1 >= 0 && y1 <= 1 &&
-        x2 >= 0 && x2 <= 1 &&
-        y2 >= 0 && y2 <= 1 &&
-        x2 > x1 && y2 > y1 // Valid rectangle dimensions
-      );
-    });
+    const newRectangles = importPredictionsAsRectangles(
+      detection.algo_predictions.predictions,
+      selectedSmokeType,
+      drawnRectangles
+    );
     
-    const newPredictions = validPredictions.filter(pred => {
-      return !drawnRectangles.some(rect => 
-        rect.id.startsWith('imported-') && // Only check AI-imported rectangles
-        coordinatesMatch(pred.xyxyn, rect.xyxyn)
-      );
-    });
-    
-    return newPredictions.length;
+    return newRectangles.length;
   };
 
-  // Import AI predictions as drawable rectangles
+  // Import AI predictions using pure utility
   const importAIPredictions = () => {
     if (!detection?.algo_predictions?.predictions) return;
     
-    // Filter predictions with valid bounding box coordinates
-    const validPredictions = detection.algo_predictions.predictions.filter(pred => {
-      const [x1, y1, x2, y2] = pred.xyxyn;
-      return (
-        x1 >= 0 && x1 <= 1 && // Valid normalized coordinates
-        y1 >= 0 && y1 <= 1 &&
-        x2 >= 0 && x2 <= 1 &&
-        y2 >= 0 && y2 <= 1 &&
-        x2 > x1 && y2 > y1 // Valid rectangle dimensions
-      );
-    });
+    const newRectangles = importPredictionsAsRectangles(
+      detection.algo_predictions.predictions,
+      selectedSmokeType,
+      drawnRectangles
+    );
     
-    if (validPredictions.length === 0) return;
-    
-    // Filter out predictions that already exist as AI-imported rectangles
-    const newPredictions = validPredictions.filter(pred => {
-      return !drawnRectangles.some(rect => 
-        rect.id.startsWith('imported-') && // Only check AI-imported rectangles
-        coordinatesMatch(pred.xyxyn, rect.xyxyn)
-      );
-    });
-    
-    // If no new predictions to import, provide user feedback
-    if (newPredictions.length === 0) {
+    if (newRectangles.length === 0) {
       // Visual feedback: brief button animation to indicate no action taken
       const button = document.querySelector('button[title*="All AI predictions already imported"]') as HTMLElement;
       if (button) {
@@ -1022,22 +704,11 @@ function ImageModal({
     // Save current state to undo stack before importing
     pushUndoState();
     
-    // Convert new predictions to drawable rectangles with selected smoke type
-    const importedRectangles: DrawnRectangle[] = newPredictions.map((pred, index) => ({
-      id: `imported-${Date.now()}-${index}`,
-      xyxyn: pred.xyxyn,
-      smokeType: selectedSmokeType
-    }));
-    
     // Add imported rectangles to existing ones
-    setDrawnRectangles(prev => [...prev, ...importedRectangles]);
+    setDrawnRectangles(prev => [...prev, ...newRectangles]);
     
-    // Show success feedback with duplicate info in console (can be enhanced with toast later)
-    const skippedCount = validPredictions.length - newPredictions.length;
-    const message = skippedCount > 0
-      ? `✅ Imported ${importedRectangles.length} new predictions as ${selectedSmokeType} smoke (${skippedCount} duplicates skipped)`
-      : `✅ Imported ${importedRectangles.length} AI predictions as ${selectedSmokeType} smoke`;
-    console.log(message);
+    // Show success feedback
+    console.log(`✅ Imported ${newRectangles.length} AI predictions as ${selectedSmokeType} smoke`);
   };
 
   const handleUndo = () => {
@@ -1121,11 +792,11 @@ function ImageModal({
     e.preventDefault();
     e.stopPropagation();
     
-    const coords = screenToImageCoordinates(e.clientX, e.clientY);
+    const coords = screenToImageCoords(e.clientX, e.clientY);
     
     // First, check if we clicked on an existing rectangle for selection
     // Selection works regardless of drawing mode - it takes priority
-    const hitRectangle = getRectangleAtPoint(coords.x, coords.y);
+    const hitRectangle = getRectAtPoint(coords.x, coords.y);
     
     if (hitRectangle) {
       // Select the rectangle and cancel any active drawing
@@ -1188,7 +859,7 @@ function ImageModal({
   const handleMouseMove = (e: React.MouseEvent) => {
     if (isActivelyDrawing && currentDrawing) {
       // Update live preview rectangle
-      const coords = screenToImageCoordinates(e.clientX, e.clientY);
+      const coords = screenToImageCoords(e.clientX, e.clientY);
       setCurrentDrawing(prev => prev ? { 
         ...prev, 
         currentX: coords.x, 
@@ -1217,28 +888,80 @@ function ImageModal({
     setTransformOrigin({ x: 50, y: 50 });
   };
 
-  // Keyboard handler for zoom reset, draw mode, escape, and deletion
+  // Keyboard shortcuts using reusable hook - no memoization, simple and direct
+  useKeyboardShortcuts({
+    onToggleDrawMode: () => {
+      // When toggling draw mode, cancel any active drawing
+      if (isDrawMode && isActivelyDrawing) {
+        setCurrentDrawing(null);
+        setIsActivelyDrawing(false);
+      }
+      const newDrawMode = !isDrawMode;
+      setIsDrawMode(newDrawMode);
+      onDrawModeChange(newDrawMode);
+    },
+    onTogglePredictions: () => onTogglePredictions(!showPredictions),
+    onDeleteRectangle: () => {
+      // Save current state to undo stack before deleting
+      pushUndoState();
+      
+      // Smart delete: selected rectangle or all rectangles using pure utilities
+      if (selectedRectangleId) {
+        // Delete only the selected rectangle
+        setDrawnRectangles(prev => removeRectangle(prev, selectedRectangleId));
+        setSelectedRectangleId(null);
+      } else {
+        // Delete all rectangles when none selected
+        setDrawnRectangles([]);
+      }
+    },
+    onUndo: handleUndo,
+    onSubmit: () => onSubmit(detection, drawnRectangles, isDrawMode),
+    onImportPredictions: importAIPredictions,
+    onShowHelp: () => setShowKeyboardShortcuts(!showKeyboardShortcuts),
+    onSelectWildfire: () => {
+      if (selectedRectangleId !== null) {
+        changeSelectedRectangleSmokeType('wildfire');
+      } else {
+        onSmokeTypeChange('wildfire');
+      }
+    },
+    onSelectIndustrial: () => {
+      if (selectedRectangleId !== null) {
+        changeSelectedRectangleSmokeType('industrial');
+      } else {
+        onSmokeTypeChange('industrial');
+      }
+    },
+    onSelectOther: () => {
+      if (selectedRectangleId !== null) {
+        changeSelectedRectangleSmokeType('other');
+      } else {
+        onSmokeTypeChange('other');
+      }
+    },
+    onResetZoom: handleZoomReset
+  }, {
+    isDrawMode,
+    isActivelyDrawing,
+    hasSelectedRectangle: selectedRectangleId !== null,
+    hasRectangles: drawnRectangles.length > 0,
+    canUndo: undoStack.length > 0,
+    showPredictions,
+    isSubmitting,
+    showKeyboardShortcuts
+  });
+
+  // Additional keyboard handlers for drawing-specific logic (not covered by the generic hook)
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
+    const handleDrawingKeys = (e: KeyboardEvent) => {
       if (e.key === 'r' || e.key === 'R') {
+        // R key for zoom reset
         handleZoomReset();
         e.preventDefault();
-      } else if (e.key === 'd' || e.key === 'D') {
-        // When toggling draw mode, cancel any active drawing
-        if (isDrawMode && isActivelyDrawing) {
-          setCurrentDrawing(null);
-          setIsActivelyDrawing(false);
-        }
-        const newDrawMode = !isDrawMode;
-        setIsDrawMode(newDrawMode);
-        onDrawModeChange(newDrawMode);
-        e.preventDefault();
       } else if (e.key === 'Escape') {
-        // If shortcuts modal is open, close it first and prevent other actions
+        // If shortcuts modal is open, let the hook handle it
         if (showKeyboardShortcuts) {
-          setShowKeyboardShortcuts(false);
-          e.preventDefault();
-          e.stopPropagation();
           return;
         }
         // Cancel current drawing if in progress
@@ -1251,70 +974,12 @@ function ImageModal({
           setSelectedRectangleId(null);
           e.preventDefault();
         }
-      } else if ((e.key === 'Delete' || e.key === 'Backspace') && drawnRectangles.length > 0) {
-        // Save current state to undo stack before deleting
-        pushUndoState();
-        
-        // Smart delete: selected rectangle or all rectangles
-        if (selectedRectangleId) {
-          // Delete only the selected rectangle
-          setDrawnRectangles(prev => prev.filter(rect => rect.id !== selectedRectangleId));
-          setSelectedRectangleId(null);
-        } else {
-          // Delete all rectangles when none selected
-          setDrawnRectangles([]);
-        }
-        e.preventDefault();
-      } else if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
-        // Undo with Ctrl-Z (Windows/Linux) or Cmd-Z (Mac)
-        handleUndo();
-        e.preventDefault();
-      } else if (e.key === 'p' || e.key === 'P') {
-        // Toggle predictions visibility
-        onTogglePredictions(!showPredictions);
-        e.preventDefault();
-      } else if (e.key === '?' || (e.key === 'h' && (e.ctrlKey || e.metaKey)) || (e.key === 'h' || e.key === 'H')) {
-        // Toggle keyboard shortcuts info with ? key or H key
-        setShowKeyboardShortcuts(!showKeyboardShortcuts);
-        e.preventDefault();
-      } else if (e.key === 'a' || e.key === 'A') {
-        // Import AI predictions as rectangles
-        importAIPredictions();
-        e.preventDefault();
-      } else if (e.key === '1' || e.key === 'w' || e.key === 'W') {
-        // Set smoke type to wildfire
-        if (selectedRectangleId) {
-          changeSelectedRectangleSmokeType('wildfire');
-        } else {
-          onSmokeTypeChange('wildfire');
-        }
-        e.preventDefault();
-      } else if (e.key === '2' || e.key === 'i' || e.key === 'I') {
-        // Set smoke type to industrial
-        if (selectedRectangleId) {
-          changeSelectedRectangleSmokeType('industrial');
-        } else {
-          onSmokeTypeChange('industrial');
-        }
-        e.preventDefault();
-      } else if (e.key === '3' || e.key === 'o' || e.key === 'O') {
-        // Set smoke type to other
-        if (selectedRectangleId) {
-          changeSelectedRectangleSmokeType('other');
-        } else {
-          onSmokeTypeChange('other');
-        }
-        e.preventDefault();
-      } else if (e.key === ' ' && !isSubmitting) {
-        // Space key to submit/update annotation with current drawn rectangles
-        onSubmit(detection, drawnRectangles, isDrawMode);
-        e.preventDefault();
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isDrawMode, isActivelyDrawing, selectedRectangleId, drawnRectangles.length, undoStack.length, showKeyboardShortcuts, showPredictions, onTogglePredictions, isSubmitting, detection, drawnRectangles, onSubmit, selectedSmokeType, changeSelectedRectangleSmokeType, onSmokeTypeChange, onDrawModeChange, importAIPredictions]);
+    window.addEventListener('keydown', handleDrawingKeys);
+    return () => window.removeEventListener('keydown', handleDrawingKeys);
+  }, [showKeyboardShortcuts, isActivelyDrawing, selectedRectangleId, handleZoomReset]);
 
   // Add non-passive wheel event listener
   useEffect(() => {
@@ -1467,44 +1132,14 @@ function ImageModal({
           <div className="mt-4 flex justify-end">
             <div className="flex items-center space-x-2">
               {/* Smoke Type Selector */}
-              <div className="flex items-center space-x-1 bg-white bg-opacity-10 backdrop-blur-sm rounded-md p-1">
-                {(['wildfire', 'industrial', 'other'] as const).map((smokeType) => {
-                  const isSelected = selectedRectangleId 
-                    ? drawnRectangles.find(r => r.id === selectedRectangleId)?.smokeType === smokeType
-                    : selectedSmokeType === smokeType;
-                  const colors = {
-                    wildfire: 'bg-red-500 text-white',
-                    industrial: 'bg-purple-500 text-white',
-                    other: 'bg-blue-500 text-white'
-                  };
-                  const inactiveColors = {
-                    wildfire: 'text-red-300 hover:bg-red-500 hover:bg-opacity-20',
-                    industrial: 'text-purple-300 hover:bg-purple-500 hover:bg-opacity-20',
-                    other: 'text-blue-300 hover:bg-blue-500 hover:bg-opacity-20'
-                  };
-                  
-                  return (
-                    <button
-                      key={smokeType}
-                      onClick={() => {
-                        if (selectedRectangleId) {
-                          changeSelectedRectangleSmokeType(smokeType);
-                        } else {
-                          onSmokeTypeChange(smokeType);
-                        }
-                      }}
-                      className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
-                        isSelected 
-                          ? colors[smokeType]
-                          : `${inactiveColors[smokeType]} text-white`
-                      }`}
-                      title={`${smokeType.charAt(0).toUpperCase() + smokeType.slice(1)} smoke (${smokeType === 'wildfire' ? '1/W' : smokeType === 'industrial' ? '2/I' : '3/O'})`}
-                    >
-                      {smokeType === 'wildfire' ? '🔥' : smokeType === 'industrial' ? '🏭' : '💨'} {smokeType.charAt(0).toUpperCase() + smokeType.slice(1)}
-                    </button>
-                  );
-                })}
-              </div>
+              <SmokeTypeSelector
+                selectedSmokeType={selectedSmokeType}
+                selectedRectangleSmokeType={selectedRectangleId ? drawnRectangles.find(r => r.id === selectedRectangleId)?.smokeType : undefined}
+                hasSelectedRectangle={!!selectedRectangleId}
+                onSmokeTypeChange={onSmokeTypeChange}
+                onSelectedRectangleSmokeTypeChange={changeSelectedRectangleSmokeType}
+                size="md"
+              />
 
               {/* AI Import Button */}
               {(() => {
@@ -1568,8 +1203,8 @@ function ImageModal({
                     pushUndoState();
                     
                     if (selectedRectangleId) {
-                      // Delete only the selected rectangle
-                      setDrawnRectangles(prev => prev.filter(rect => rect.id !== selectedRectangleId));
+                      // Delete only the selected rectangle using pure utility
+                      setDrawnRectangles(prev => removeRectangle(prev, selectedRectangleId));
                       setSelectedRectangleId(null);
                     } else {
                       // Delete all rectangles when none selected
@@ -2163,12 +1798,14 @@ export default function DetectionSequenceAnnotatePage() {
            annotationValues.every(annotation => annotation.processing_stage === 'visual_check');
   };
 
-  // Calculate progress
-  const annotatedCount = Array.from(detectionAnnotations.values()).filter(
-    a => a.processing_stage === 'annotated'
-  ).length;
-  const totalCount = detections?.length || 0;
-  const completionPercentage = totalCount > 0 ? Math.round((annotatedCount / totalCount) * 100) : 0;
+  // Calculate progress using pure utility function
+  const progressStats = detections 
+    ? calculateAnnotationCompleteness(detections, detectionAnnotations)
+    : { annotatedDetections: 0, totalDetections: 0, completionPercentage: 0, isComplete: false, hasAnnotations: false };
+  
+  const { annotatedDetections, totalDetections, completionPercentage } = progressStats;
+  const annotatedCount = annotatedDetections;
+  const totalCount = totalDetections;
   const allInVisualCheck = areAllInVisualCheckStage();
 
   // Helper to get annotation pills
