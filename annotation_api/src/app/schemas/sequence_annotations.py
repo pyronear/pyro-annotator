@@ -70,6 +70,25 @@ class SequenceAnnotationCreate(BaseModel):
         examples=["imported", "ready_to_annotate", "annotated"],
     )
 
+    # Optional configuration parameters for automatic annotation generation
+    confidence_threshold: Optional[float] = Field(
+        default=0.0,
+        description="Minimum AI prediction confidence (0.0-1.0). Used when auto-generating annotations.",
+        ge=0.0,
+        le=1.0,
+    )
+    iou_threshold: Optional[float] = Field(
+        default=0.3,
+        description="Minimum IoU for clustering overlapping boxes (0.0-1.0). Used when auto-generating annotations.",
+        ge=0.0,
+        le=1.0,
+    )
+    min_cluster_size: Optional[int] = Field(
+        default=1,
+        description="Minimum number of boxes required per cluster. Used when auto-generating annotations.",
+        ge=1,
+    )
+
 
 class SequenceAnnotationRead(BaseModel):
     id: int
@@ -104,3 +123,22 @@ class SequenceAnnotationUpdate(BaseModel):
         examples=["ready_to_annotate", "annotated"],
     )
     updated_at: Optional[datetime] = None
+
+    # Optional configuration parameters for automatic annotation generation
+    confidence_threshold: Optional[float] = Field(
+        default=None,
+        description="Minimum AI prediction confidence (0.0-1.0). Used when auto-generating annotations.",
+        ge=0.0,
+        le=1.0,
+    )
+    iou_threshold: Optional[float] = Field(
+        default=None,
+        description="Minimum IoU for clustering overlapping boxes (0.0-1.0). Used when auto-generating annotations.",
+        ge=0.0,
+        le=1.0,
+    )
+    min_cluster_size: Optional[int] = Field(
+        default=None,
+        description="Minimum number of boxes required per cluster. Used when auto-generating annotations.",
+        ge=1,
+    )

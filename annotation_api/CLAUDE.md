@@ -98,32 +98,26 @@ The API provides enhanced endpoints with pagination, filtering, and ordering:
 
 ### Testing
 
-#### Main Application Tests
-- `make test` - Run full test suite with coverage in Docker containers (includes live code mounting)
-- `make test-specific TEST=test_auth.py::test_login_valid_credentials` - Run specific main app test
+- `make test` - Run comprehensive test suite with coverage in Docker containers (includes live code mounting)
+- `make test-specific TEST=tests/endpoints/test_auth.py::test_login_valid_credentials` - Run specific test
 - `uv run pytest src/tests/ -s --cov=app` - Run tests locally with coverage (requires local setup)
 
-#### Scripts Tests (Annotation Processing, Data Import)
-- `make test-scripts` - Run scripts tests (annotation processing, data import, etc.)
-- `make test-scripts-cov` - Run scripts tests with coverage report
-- `make test-scripts-specific TEST=TestSequenceAnalyzer::test_create_sequence_bboxes_all_invalid_cluster` - Run specific scripts test
-- `make test-all` - Run all tests (main app + scripts)
-
-**Note**: The main `make test` command uses a specialized Docker setup with:
+**Note**: The `make test` command uses a specialized Docker setup with:
 - Multi-stage Dockerfile with dedicated test target that includes dev dependencies
 - Live code mounting via volumes (`./src/app:/app/app`, `./src/tests:/app/tests`) 
 - Proper test isolation with database cleanup between tests
 - Fixed HTTPX AsyncClient integration using `ASGITransport` for FastAPI testing
-- Comprehensive test suite with 192 test cases covering all endpoints and edge cases
+- Comprehensive test suite with 192+ test cases covering all endpoints, services, and edge cases
 - Authenticated test fixtures for API endpoint testing
 - Clean test output with silenced debug messages and deprecation warnings
 
-**Scripts tests** are located in `scripts/tests/` and cover:
-- Coordinate validation and error handling for annotation processing
-- Empty sequence bbox prevention (critical bug fix)
+**Test Coverage** includes:
+- API endpoint testing with authentication
+- Service layer testing for annotation generation
+- Coordinate validation and error handling
 - IoU clustering and temporal bbox grouping algorithms  
 - Edge cases like invalid predictions, malformed data, and clustering failures
-- 20 comprehensive test cases with 74% code coverage of annotation processing module
+- Database model validation and JSONB field validation
 
 ### Development Server
 - `make start` - Start development environment with Docker Compose
@@ -182,9 +176,9 @@ Key environment variables (see `src/app/core/config.py`):
 ### Authentication Setup
 The API uses JWT authentication. Default credentials:
 - **Username**: `admin`
-- **Password**: `admin`
+- **Password**: `admin12345`
 
-To customize credentials, set environment variables in `docker-compose.yml`:
+Credentials are loaded from the `.envrc` file. To customize credentials, update your `.envrc` or set environment variables in `docker-compose.yml`:
 ```yaml
 environment:
   - AUTH_USERNAME=your_username
@@ -247,7 +241,52 @@ The API implements comprehensive Pydantic validation for JSONB fields:
 - **Filtering**: Advanced filtering capabilities on key fields
 - **Ordering**: Configurable ordering by timestamp fields with asc/desc direction
 - **Error Handling**: Comprehensive exception handling with detailed validation messages
+- **Automatic Annotation Generation**: Server-side annotation generation from AI predictions (see section below)
 
+## Automatic Annotation Generation
+
+### Overview
+The API now provides automatic annotation generation when creating or updating sequence annotations with `processing_stage=READY_TO_ANNOTATE` and empty `annotation.sequences_bbox`. This feature moved complex annotation processing logic from import scripts to the API server, providing better architecture and reusability.
+
+### Service Architecture
+**New Service**: `app/services/annotation_generation.py`
+- **AnnotationGenerationService**: Main service class for generating annotations
+- **IoU Clustering**: Groups overlapping bounding boxes across temporal frames
+- **Confidence Filtering**: Filters AI predictions by minimum confidence threshold
+- **Coordinate Validation**: Robust validation preventing null [0,0,0,0] and zero-area bounding boxes
+- **Error Handling**: Comprehensive edge case handling and logging
+
+### Automatic Trigger Conditions
+Auto-generation triggers when **both** conditions are met:
+1. **processing_stage** = `READY_TO_ANNOTATE`
+2. **annotation.sequences_bbox** is empty or None
+
+### Configuration Parameters
+Sequence annotation endpoints now accept optional configuration parameters:
+
+```json
+{
+  "sequence_id": 123,
+  "processing_stage": "ready_to_annotate",
+  "annotation": {"sequences_bbox": []},
+  "confidence_threshold": 0.7,    // Optional: AI prediction confidence (0.0-1.0, default: 0.5)
+  "iou_threshold": 0.3,           // Optional: IoU for clustering (0.0-1.0, default: 0.3)
+  "min_cluster_size": 2           // Optional: Min boxes per cluster (≥1, default: 1)
+}
+```
+
+### API Endpoints Enhanced
+- **POST /api/v1/sequence_annotations/** - Creates annotation with auto-generation
+- **PATCH /api/v1/sequence_annotations/{id}** - Updates annotation with auto-generation
+
+### Generation Process
+1. **Fetch Detections**: Retrieves all detections for the sequence from database
+2. **Extract Predictions**: Processes `algo_predictions` JSONB field from each detection
+3. **Filter by Confidence**: Removes predictions below confidence threshold
+4. **Cluster by IoU**: Groups overlapping bounding boxes temporally using IoU similarity
+5. **Validate Coordinates**: Rejects invalid/null coordinates to prevent empty crops
+6. **Create SequenceBBox**: Generates structured annotation data for human review
+7. **Conservative Classification**: Marks all clusters as `is_smoke: true` for manual verification
 
 ## Authentication & Security
 
@@ -273,7 +312,7 @@ import requests
 
 # Login
 response = requests.post("http://localhost:5050/api/v1/auth/login", 
-                        json={"username": "admin", "password": "admin"})
+                        json={"username": "admin", "password": "admin12345"})
 token = response.json()["access_token"]
 
 # Make authenticated requests
@@ -341,7 +380,7 @@ def get_auth_token(base_url: str, username: str, password: str) -> str:
     return response.json()["access_token"]
 
 # Get authentication token
-token = get_auth_token("http://localhost:5050", "admin", "admin")
+token = get_auth_token("http://localhost:5050", "admin", "admin12345")
 headers = {"Authorization": f"Bearer {token}"}
 ```
 
@@ -512,6 +551,39 @@ uv run python -m scripts.data_transfer.ingestion.platform.import \
 - **Professional Documentation**: Complete user guides, API reference, and real-world examples
 - **Validation Helpers**: Client-side validation to catch errors before API calls
 - **Integration Patterns**: Examples for web apps, background tasks, and batch processing
+
+## Data Import Scripts
+
+### Platform Data Import
+Single comprehensive script for fetching data from the Pyronear platform API and generating annotations:
+
+```bash
+# Load environment variables from .envrc file (required for platform credentials)
+source .envrc
+
+# End-to-end processing: fetch platform data → generate annotations
+uv run python -m scripts.data_transfer.ingestion.platform.import \
+  --date-from 2025-07-31 --date-end 2025-07-31 --loglevel info
+
+# Process with custom annotation parameters
+uv run python -m scripts.data_transfer.ingestion.platform.import \
+  --date-from 2025-07-31 --confidence-threshold 0.0 --iou-threshold 0.4 --loglevel info
+```
+
+#### Required Environment Variables (in .envrc)
+- `PLATFORM_LOGIN` - Platform API login (e.g., sis-67)
+- `PLATFORM_PASSWORD` - Platform API password  
+- `PLATFORM_ADMIN_LOGIN` - Admin login for organization access
+- `PLATFORM_ADMIN_PASSWORD` - Admin password for organization access
+- `ANNOTATOR_LOGIN` - Annotation API login for script authentication (default: `admin`)
+- `ANNOTATOR_PASSWORD` - Annotation API password for script authentication (default: `admin12345`)
+
+#### Script Features
+- **End-to-end workflow**: Complete pipeline from platform data to annotation-ready sequences
+- **Automatic annotation generation**: Server-side clustering of AI predictions with confidence threshold 0.0 (includes all predictions)
+- **Concurrent processing**: Multi-threading for faster data fetching
+- **Progress tracking**: Rich progress bars for long-running operations
+- **Stage management**: Automatic transitions to READY_TO_ANNOTATE stage
 
 ## Troubleshooting
 

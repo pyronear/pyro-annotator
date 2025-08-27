@@ -451,7 +451,7 @@ export default function AnnotationInterface() {
       'u': FALSE_POSITIVE_TYPES.indexOf('dust'), // 'd' taken by dark
       'h': FALSE_POSITIVE_TYPES.indexOf('high_cloud'),
       'l': FALSE_POSITIVE_TYPES.indexOf('low_cloud'),
-      'f': FALSE_POSITIVE_TYPES.indexOf('lens_flare'),
+      'g': FALSE_POSITIVE_TYPES.indexOf('lens_flare'),
       'p': FALSE_POSITIVE_TYPES.indexOf('lens_droplet'), // 'l' taken by low_cloud, use 'p' for droplet
       'i': FALSE_POSITIVE_TYPES.indexOf('light'), // 'l' taken
       'r': FALSE_POSITIVE_TYPES.indexOf('rain'),
@@ -1214,7 +1214,7 @@ export default function AnnotationInterface() {
                           'dust': 'U',
                           'high_cloud': 'H',
                           'low_cloud': 'L',
-                          'lens_flare': 'Z',
+                          'lens_flare': 'G',
                           'lens_droplet': 'P',
                           'light': 'I',
                           'rain': 'R',
@@ -1503,7 +1503,7 @@ export default function AnnotationInterface() {
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-gray-700">Lens Flare</span>
-                      <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">Z</kbd>
+                      <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">G</kbd>
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-gray-700">Lens Droplet</span>

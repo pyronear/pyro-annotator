@@ -1,11 +1,13 @@
-"""
-Annotation processing and machine learning utilities for sequence analysis.
+# Copyright (C) 2025, Pyronear.
 
-This module contains functionality for analyzing sequences, processing AI predictions,
-clustering bounding boxes, and generating automatic annotations from platform data.
+"""
+Annotation generation service for sequence analysis.
+
+This service contains functionality for analyzing sequences, processing AI predictions,
+clustering bounding boxes, and generating automatic annotations from detection data.
 
 Classes:
-    SequenceAnalyzer: Main class for analyzing sequences and generating annotations
+    AnnotationGenerationService: Main service for analyzing sequences and generating annotations
 
 Functions:
     box_iou: Calculate Intersection over Union between bounding boxes
@@ -13,21 +15,23 @@ Functions:
     cluster_boxes_by_iou: Cluster overlapping bounding boxes using IoU similarity
 
 Example:
-    >>> from annotation_processing import SequenceAnalyzer, box_iou
+    >>> from annotation_generation import AnnotationGenerationService, box_iou
     >>>
-    >>> analyzer = SequenceAnalyzer(
-    ...     base_url="http://localhost:5050",
+    >>> service = AnnotationGenerationService(
+    ...     session=session,
     ...     confidence_threshold=0.7,
     ...     iou_threshold=0.3
     ... )
-    >>> annotation_data = analyzer.analyze_sequence(sequence_id=123)
+    >>> annotation_data = await service.generate_annotation_for_sequence(sequence_id=123)
 """
 
 import logging
 from typing import List, Dict, Any, Optional, Tuple
 
-from app.clients.annotation_api import get_auth_token, list_detections, get_sequence
-import os
+from sqlalchemy import select
+from sqlmodel.ext.asyncio.session import AsyncSession
+
+from app.models import Detection, Sequence
 from app.schemas.annotation_validation import (
     BoundingBox,
     SequenceBBox,
@@ -170,45 +174,45 @@ def cluster_boxes_by_iou(
     return clusters
 
 
-class SequenceAnalyzer:
+class AnnotationGenerationService:
     """
-    Analyzes sequences to generate automatic annotations based on AI predictions.
+    Service for analyzing sequences to generate automatic annotations based on AI predictions.
 
-    This class fetches detections for a sequence, processes AI predictions,
+    This service fetches detections for a sequence, processes AI predictions,
     clusters temporal bounding boxes, and generates structured annotation data
     suitable for human review and correction.
 
     Attributes:
-        base_url: Base URL of the annotation API
+        session: Database session for querying detections and sequences
         confidence_threshold: Minimum confidence for AI predictions (0.0-1.0)
         iou_threshold: Minimum IoU for clustering overlapping boxes (0.0-1.0)
         min_cluster_size: Minimum number of boxes required per cluster
         logger: Logger instance for debugging and error reporting
 
     Example:
-        >>> analyzer = SequenceAnalyzer(
-        ...     base_url="http://localhost:5050",
+        >>> service = AnnotationGenerationService(
+        ...     session=session,
         ...     confidence_threshold=0.7,
         ...     iou_threshold=0.3,
         ...     min_cluster_size=2
         ... )
-        >>> annotation = analyzer.analyze_sequence(sequence_id=123)
+        >>> annotation = await service.generate_annotation_for_sequence(sequence_id=123)
         >>> if annotation:
         ...     print(f"Generated {len(annotation.sequences_bbox)} bounding box clusters")
     """
 
     def __init__(
         self,
-        base_url: str,
-        confidence_threshold: float = 0.5,
+        session: AsyncSession,
+        confidence_threshold: float = 0.0,
         iou_threshold: float = 0.3,
         min_cluster_size: int = 1,
     ) -> None:
         """
-        Initialize the sequence analyzer.
+        Initialize the annotation generation service.
 
         Args:
-            base_url: Base URL of the annotation API
+            session: Database session for querying data
             confidence_threshold: Minimum AI prediction confidence (0.0-1.0)
             iou_threshold: Minimum IoU for clustering overlapping boxes (0.0-1.0)
             min_cluster_size: Minimum number of boxes required per cluster
@@ -223,14 +227,15 @@ class SequenceAnalyzer:
         if min_cluster_size < 1:
             raise ValueError("min_cluster_size must be at least 1")
 
-        self.base_url = base_url
+        self.session = session
         self.confidence_threshold = confidence_threshold
         self.iou_threshold = iou_threshold
-        self._auth_token = None  # Cache token for session
         self.min_cluster_size = min_cluster_size
         self.logger = logging.getLogger(__name__)
 
-    def analyze_sequence(self, sequence_id: int) -> Optional[SequenceAnnotationData]:
+    async def generate_annotation_for_sequence(
+        self, sequence_id: int
+    ) -> Optional[SequenceAnnotationData]:
         """
         Analyze a sequence and generate annotation data.
 
@@ -245,19 +250,26 @@ class SequenceAnalyzer:
             SequenceAnnotationData if analysis successful, None if failed or no valid data
 
         Example:
-            >>> annotation_data = analyzer.analyze_sequence(123)
+            >>> annotation_data = await service.generate_annotation_for_sequence(123)
             >>> if annotation_data:
             ...     for bbox_cluster in annotation_data.sequences_bbox:
             ...         print(f"Cluster has {len(bbox_cluster.bboxes)} detections")
         """
         try:
-            auth_token = self._get_auth_token()
-            sequence = get_sequence(self.base_url, auth_token, sequence_id)
+            # Get sequence for logging
+            sequence_query = select(Sequence).where(Sequence.id == sequence_id)
+            sequence_result = await self.session.execute(sequence_query)
+            sequence = sequence_result.scalar_one_or_none()
+
+            if not sequence:
+                self.logger.warning(f"Sequence {sequence_id} not found")
+                return None
+
             self.logger.info(
-                f"Analyzing sequence {sequence_id}: {sequence.get('camera_name', 'Unknown')}"
+                f"Analyzing sequence {sequence_id}: {sequence.camera_name}"
             )
 
-            detections = self._fetch_sequence_detections(sequence_id)
+            detections = await self._fetch_sequence_detections(sequence_id)
             if not detections:
                 self.logger.warning(f"No detections found for sequence {sequence_id}")
                 return None
@@ -287,6 +299,12 @@ class SequenceAnalyzer:
             self.logger.info(f"Created {len(bbox_clusters)} temporal bbox clusters")
 
             sequences_bbox = self._create_sequence_bboxes(bbox_clusters)
+            if not sequences_bbox:
+                self.logger.warning(
+                    f"No valid sequence bboxes created for sequence {sequence_id}"
+                )
+                return None
+
             annotation_data = SequenceAnnotationData(sequences_bbox=sequences_bbox)
 
             self.logger.info(
@@ -298,66 +316,25 @@ class SequenceAnalyzer:
             self.logger.error(f"Error analyzing sequence {sequence_id}: {e}")
             return None
 
-    def _get_auth_token(self) -> str:
+    async def _fetch_sequence_detections(self, sequence_id: int) -> List[Detection]:
         """
-        Get cached authentication token, or fetch a new one if needed.
-
-        Returns:
-            JWT authentication token
-        """
-        if not self._auth_token:
-            self._auth_token = get_auth_token(
-                self.base_url,
-                os.environ.get("ANNOTATOR_LOGIN", "admin"),
-                os.environ.get("ANNOTATOR_PASSWORD", "admin"),
-            )
-        return self._auth_token
-
-    def _fetch_sequence_detections(self, sequence_id: int) -> List[Dict[str, Any]]:
-        """
-        Fetch all detections for a sequence using pagination.
+        Fetch all detections for a sequence.
 
         Args:
             sequence_id: ID of the sequence
 
         Returns:
-            List of detection dictionaries
+            List of detection objects
         """
         try:
-            all_detections = []
-            page = 1
-            page_size = 100
-
-            while True:
-                auth_token = self._get_auth_token()
-                response = list_detections(
-                    self.base_url,
-                    auth_token,
-                    sequence_id=sequence_id,
-                    order_by="recorded_at",
-                    order_direction="asc",
-                    page=page,
-                    size=page_size,
-                )
-
-                if isinstance(response, dict) and "items" in response:
-                    detections = response["items"]
-                    total_pages = response.get("pages", 1)
-                else:
-                    detections = response
-                    total_pages = 1
-
-                if not detections:
-                    break
-
-                all_detections.extend(detections)
-
-                if page >= total_pages:
-                    break
-
-                page += 1
-
-            return all_detections
+            query = (
+                select(Detection)
+                .where(Detection.sequence_id == sequence_id)
+                .order_by(Detection.recorded_at.asc())
+            )
+            result = await self.session.execute(query)
+            detections = result.scalars().all()
+            return list(detections)
 
         except Exception as e:
             self.logger.error(
@@ -366,13 +343,13 @@ class SequenceAnalyzer:
             return []
 
     def _extract_predictions_from_detections(
-        self, detections: List[Dict[str, Any]]
+        self, detections: List[Detection]
     ) -> List[Tuple[List[float], int, Dict[str, Any]]]:
         """
         Extract and validate AI predictions from detection records.
 
         Args:
-            detections: List of detection dictionaries
+            detections: List of detection objects
 
         Returns:
             List of tuples (bbox_coords, detection_id, prediction_data)
@@ -380,8 +357,8 @@ class SequenceAnalyzer:
         predictions_with_ids = []
 
         for detection in detections:
-            detection_id = detection["id"]
-            algo_predictions = detection.get("algo_predictions")
+            detection_id = detection.id
+            algo_predictions = detection.algo_predictions
 
             if not algo_predictions or not isinstance(algo_predictions, dict):
                 continue
@@ -447,39 +424,22 @@ class SequenceAnalyzer:
             List of SequenceBBox objects ready for annotation
         """
         sequences_bbox = []
-        invalid_bbox_count = 0
-        skipped_cluster_count = 0
 
-        for cluster_idx, cluster in enumerate(bbox_clusters):
+        for cluster in bbox_clusters:
             bboxes = []
 
             for bbox_coords, detection_id in cluster:
-                # Pre-validate coordinates before BoundingBox creation
-                if not self._is_valid_bbox_coords(bbox_coords):
-                    self.logger.debug(
-                        f"Skipping invalid coordinates for detection {detection_id}: {bbox_coords}"
-                    )
-                    invalid_bbox_count += 1
-                    continue
-
                 try:
                     bbox = BoundingBox(detection_id=detection_id, xyxyn=bbox_coords)
                     bboxes.append(bbox)
                 except Exception as e:
-                    self.logger.warning(
-                        f"Failed to create BoundingBox for detection {detection_id} "
-                        f"with coords {bbox_coords}: {e}"
+                    self.logger.debug(
+                        f"Skipping invalid coordinates for detection {detection_id}: {e}"
                     )
-                    invalid_bbox_count += 1
                     continue
 
             # Only create SequenceBBox if we have valid bboxes
             if not bboxes:
-                self.logger.warning(
-                    f"Skipping cluster {cluster_idx} - no valid bounding boxes "
-                    f"(attempted {len(cluster)} bboxes)"
-                )
-                skipped_cluster_count += 1
                 continue
 
             # Conservative classification - mark as smoke for human review
@@ -490,71 +450,16 @@ class SequenceAnalyzer:
             )
             sequences_bbox.append(sequence_bbox)
 
-        # Log summary statistics
-        if invalid_bbox_count > 0 or skipped_cluster_count > 0:
-            self.logger.info(
-                f"Annotation processing summary: "
-                f"created {len(sequences_bbox)} sequence bboxes, "
-                f"skipped {invalid_bbox_count} invalid bboxes, "
-                f"skipped {skipped_cluster_count} empty clusters"
-            )
-
         return sequences_bbox
-
-    def _is_valid_bbox_coords(self, coords: List[float]) -> bool:
-        """
-        Validate bounding box coordinates before BoundingBox creation.
-
-        Args:
-            coords: List of coordinates [x1, y1, x2, y2]
-
-        Returns:
-            True if coordinates are valid, False otherwise
-        """
-        try:
-            # Check basic structure
-            if not isinstance(coords, list) or len(coords) != 4:
-                return False
-
-            # Check if all values are numeric
-            for coord in coords:
-                if not isinstance(coord, (int, float)):
-                    return False
-
-            x1, y1, x2, y2 = coords
-
-            # Check range constraints (0 <= value <= 1)
-            if not all(0 <= coord <= 1 for coord in coords):
-                return False
-
-            # Check ordering constraints (x1 <= x2 and y1 <= y2)
-            if x1 > x2 or y1 > y2:
-                return False
-
-            # Explicitly reject [0, 0, 0, 0] null coordinates (empty/null detections from platform API)
-            if coords == [0, 0, 0, 0]:
-                self.logger.debug(f"Rejecting null bbox coordinates: {coords}")
-                return False
-
-            # Reject zero-area bounding boxes (point boxes with no area for cropping)
-            if x1 == x2 and y1 == y2:
-                self.logger.debug(f"Rejecting zero-area bbox (point): {coords}")
-                return False
-
-            return True
-
-        except (TypeError, ValueError):
-            return False
 
     def get_configuration(self) -> Dict[str, Any]:
         """
-        Get the current analyzer configuration.
+        Get the current service configuration.
 
         Returns:
             Dictionary with all configuration parameters
         """
         return {
-            "base_url": self.base_url,
             "confidence_threshold": self.confidence_threshold,
             "iou_threshold": self.iou_threshold,
             "min_cluster_size": self.min_cluster_size,

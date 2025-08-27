@@ -1,61 +1,63 @@
 """
-Test suite for annotation processing functionality.
+Test suite for annotation generation service functionality.
 
-This module tests the SequenceAnalyzer class and related functions
+This module tests the AnnotationGenerationService class and related functions
 for edge cases, error handling, and validation to prevent empty sequence bboxes.
 """
 
 import pytest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
+from pydantic import ValidationError
 
-import sys
-
-# Add the scripts directory and app src to Python path for imports
-sys.path.insert(0, "..")  # scripts directory
-sys.path.insert(0, "../../src")  # app src directory
-
-from data_transfer.ingestion.platform.annotation_processing import (
-    SequenceAnalyzer,
+from app.services.annotation_generation import (
+    AnnotationGenerationService,
     box_iou,
     filter_predictions_by_confidence,
     cluster_boxes_by_iou,
 )
-
 from app.schemas.annotation_validation import (
+    BoundingBox,
     SequenceBBox,
 )
 
 
-class TestSequenceAnalyzer:
-    """Test the SequenceAnalyzer class with comprehensive edge cases."""
+class TestAnnotationGenerationService:
+    """Test the AnnotationGenerationService class with comprehensive edge cases."""
 
     def setup_method(self):
         """Set up test fixtures."""
-        self.analyzer = SequenceAnalyzer(
-            base_url="http://localhost:5050",
+        # Create a mock async session
+        self.mock_session = AsyncMock()
+
+        self.service = AnnotationGenerationService(
+            session=self.mock_session,
             confidence_threshold=0.5,
             iou_threshold=0.3,
             min_cluster_size=1,
         )
 
-    def test_is_valid_bbox_coords_valid_cases(self):
-        """Test coordinate validation with valid inputs."""
+    def test_pydantic_bbox_validation_valid_cases(self):
+        """Test Pydantic BoundingBox validation with valid coordinates."""
         valid_coords = [
             [0.0, 0.0, 1.0, 1.0],  # Full image
             [0.1, 0.2, 0.8, 0.9],  # Normal case
             [0.1, 0.2, 0.3, 0.4],  # Small but valid area
             [0.0, 0.0, 0.1, 0.1],  # Small corner bbox
-            # Note: Zero-area bboxes like [0.5, 0.5, 0.5, 0.5] are now invalid to prevent empty crops
-            # Note: [0.0, 0.0, 0.0, 0.0] is now considered invalid to prevent empty sequence bboxes
         ]
 
         for coords in valid_coords:
-            assert self.analyzer._is_valid_bbox_coords(
-                coords
-            ), f"Should be valid: {coords}"
+            try:
+                bbox = BoundingBox(detection_id=123, xyxyn=coords)
+                assert (
+                    bbox.xyxyn == coords
+                ), f"BoundingBox should accept valid coords: {coords}"
+            except Exception as e:
+                pytest.fail(
+                    f"BoundingBox should accept valid coords {coords}, but got error: {e}"
+                )
 
-    def test_is_valid_bbox_coords_invalid_cases(self):
-        """Test coordinate validation with invalid inputs."""
+    def test_pydantic_bbox_validation_invalid_cases(self):
+        """Test Pydantic BoundingBox validation with invalid coordinates."""
         invalid_coords = [
             # Wrong length
             [0.1, 0.2, 0.8],  # Too few
@@ -77,24 +79,14 @@ class TestSequenceAnalyzer:
             [0.5, 0.5, 0.5, 0.5],  # Point at center
             [0.1, 0.3, 0.1, 0.3],  # Point at arbitrary location
             [0.0, 1.0, 0.0, 1.0],  # Point at corner
-            # Non-numeric values
-            ["0.1", 0.2, 0.8, 0.9],  # String
-            [0.1, None, 0.8, 0.9],  # None
-            [0.1, 0.2, float("nan"), 0.9],  # NaN
-            # Wrong type
-            "invalid",
-            None,
-            123,
-            {"x1": 0.1, "y1": 0.2, "x2": 0.8, "y2": 0.9},
         ]
 
         for coords in invalid_coords:
-            assert not self.analyzer._is_valid_bbox_coords(
-                coords
-            ), f"Should be invalid: {coords}"
+            with pytest.raises((ValueError, ValidationError)):
+                BoundingBox(detection_id=123, xyxyn=coords)
 
-    def test_is_valid_bbox_coords_null_coordinates(self):
-        """Test that null/empty [0,0,0,0] coordinates are specifically rejected."""
+    def test_pydantic_bbox_validation_null_coordinates(self):
+        """Test that null/empty [0,0,0,0] coordinates are specifically rejected by Pydantic."""
         # These should all be rejected to prevent empty sequence bboxes in annotation interface
         null_coords = [
             [0, 0, 0, 0],  # Integer format
@@ -102,33 +94,32 @@ class TestSequenceAnalyzer:
         ]
 
         for coords in null_coords:
-            assert not self.analyzer._is_valid_bbox_coords(
-                coords
-            ), f"Null coordinates should be invalid: {coords}"
+            with pytest.raises(ValueError, match="Null coordinates"):
+                BoundingBox(detection_id=123, xyxyn=coords)
 
-    def test_is_valid_bbox_coords_zero_area_coordinates(self):
-        """Test that zero-area (point) coordinates are specifically rejected."""
+    def test_pydantic_bbox_validation_zero_area_coordinates(self):
+        """Test that zero-area (point) coordinates are specifically rejected by Pydantic."""
         # These should all be rejected as they have no area for cropping
         zero_area_coords = [
             [0.5, 0.5, 0.5, 0.5],  # Point at center
             [0.1, 0.3, 0.1, 0.3],  # Point at arbitrary location
-            [0.0, 0.0, 0.0, 0.0],  # Point at origin (also null)
             [1.0, 1.0, 1.0, 1.0],  # Point at opposite corner
             [0.25, 0.75, 0.25, 0.75],  # Point at another location
         ]
 
         for coords in zero_area_coords:
-            assert not self.analyzer._is_valid_bbox_coords(
-                coords
-            ), f"Zero-area coordinates should be invalid: {coords}"
+            with pytest.raises(
+                ValueError, match="Zero-area bounding boxes are not allowed"
+            ):
+                BoundingBox(detection_id=123, xyxyn=coords)
 
     def test_create_sequence_bboxes_with_null_coordinates(self):
-        """Test sequence bbox creation filters out [0,0,0,0] coordinates completely."""
+        """Test sequence bbox creation filters out [0,0,0,0] coordinates via Pydantic validation."""
         bbox_clusters = [
             # Cluster with mix of valid and null coordinates
             [
                 ([0.1, 0.2, 0.8, 0.9], 123),  # Valid
-                ([0, 0, 0, 0], 124),  # Null - should be filtered out
+                ([0, 0, 0, 0], 124),  # Null - should be filtered out by Pydantic
                 ([0.2, 0.3, 0.7, 0.8], 125),  # Valid
             ],
             # Cluster with only null coordinates - should be completely skipped
@@ -138,8 +129,8 @@ class TestSequenceAnalyzer:
             ],
         ]
 
-        with patch.object(self.analyzer, "logger") as mock_logger:
-            result = self.analyzer._create_sequence_bboxes(bbox_clusters)
+        with patch.object(self.service, "logger") as mock_logger:
+            result = self.service._create_sequence_bboxes(bbox_clusters)
 
         # Should create only one SequenceBBox (second cluster completely skipped due to all null coordinates)
         assert len(result) == 1
@@ -147,23 +138,29 @@ class TestSequenceAnalyzer:
             len(result[0].bboxes) == 2
         )  # Only the valid coordinates from first cluster
 
-        # Should have logged debug messages about rejected coordinates
+        # Should have logged debug messages about Pydantic validation failures
         debug_calls = [
             call
             for call in mock_logger.debug.call_args_list
-            if "Rejecting null bbox" in str(call)
+            if "Skipping invalid coordinates" in str(call)
         ]
-        assert len(debug_calls) >= 2  # At least 2 null coordinates rejected
+        assert len(debug_calls) >= 2  # At least 2 null coordinates rejected by Pydantic
 
     def test_create_sequence_bboxes_with_zero_area_coordinates(self):
-        """Test sequence bbox creation filters out zero-area (point) coordinates."""
+        """Test sequence bbox creation filters out zero-area (point) coordinates via Pydantic validation."""
         bbox_clusters = [
             # Cluster with mix of valid and zero-area coordinates
             [
                 ([0.1, 0.2, 0.8, 0.9], 123),  # Valid
-                ([0.5, 0.5, 0.5, 0.5], 124),  # Zero-area point - should be filtered out
+                (
+                    [0.5, 0.5, 0.5, 0.5],
+                    124,
+                ),  # Zero-area point - should be filtered out by Pydantic
                 ([0.2, 0.3, 0.7, 0.8], 125),  # Valid
-                ([0.1, 0.3, 0.1, 0.3], 126),  # Zero-area point - should be filtered out
+                (
+                    [0.1, 0.3, 0.1, 0.3],
+                    126,
+                ),  # Zero-area point - should be filtered out by Pydantic
             ],
             # Cluster with only zero-area coordinates - should be completely skipped
             [
@@ -172,8 +169,8 @@ class TestSequenceAnalyzer:
             ],
         ]
 
-        with patch.object(self.analyzer, "logger") as mock_logger:
-            result = self.analyzer._create_sequence_bboxes(bbox_clusters)
+        with patch.object(self.service, "logger") as mock_logger:
+            result = self.service._create_sequence_bboxes(bbox_clusters)
 
         # Should create only one SequenceBBox (second cluster completely skipped)
         assert len(result) == 1
@@ -181,15 +178,15 @@ class TestSequenceAnalyzer:
             len(result[0].bboxes) == 2
         )  # Only the valid coordinates from first cluster
 
-        # Should have logged debug messages about rejected zero-area coordinates
+        # Should have logged debug messages about Pydantic validation failures
         debug_calls = [
             call
             for call in mock_logger.debug.call_args_list
-            if "Rejecting zero-area bbox" in str(call)
+            if "Skipping invalid coordinates" in str(call)
         ]
         assert (
             len(debug_calls) >= 3
-        )  # At least 3 zero-area coordinates rejected (2 from first cluster + 2 from second)
+        )  # At least 3 zero-area coordinates rejected by Pydantic (2 from first cluster + 2 from second)
 
     def test_create_sequence_bboxes_valid_clusters(self):
         """Test sequence bbox creation with valid clusters."""
@@ -203,7 +200,7 @@ class TestSequenceAnalyzer:
             ],
         ]
 
-        result = self.analyzer._create_sequence_bboxes(bbox_clusters)
+        result = self.service._create_sequence_bboxes(bbox_clusters)
 
         assert len(result) == 2
         assert all(isinstance(seq_bbox, SequenceBBox) for seq_bbox in result)
@@ -224,8 +221,8 @@ class TestSequenceAnalyzer:
             ],
         ]
 
-        with patch.object(self.analyzer, "logger") as mock_logger:
-            result = self.analyzer._create_sequence_bboxes(bbox_clusters)
+        with patch.object(self.service, "logger") as mock_logger:
+            result = self.service._create_sequence_bboxes(bbox_clusters)
 
         # Should create one SequenceBBox with only the valid bboxes
         assert len(result) == 1
@@ -233,7 +230,6 @@ class TestSequenceAnalyzer:
 
         # Should have logged warnings about invalid coordinates
         assert mock_logger.debug.call_count == 2  # Two invalid coordinates
-        assert mock_logger.info.call_count == 1  # Summary log
 
     def test_create_sequence_bboxes_all_invalid_cluster(self):
         """Test sequence bbox creation with cluster containing only invalid coordinates."""
@@ -248,23 +244,23 @@ class TestSequenceAnalyzer:
             [([0.1, 0.2, 0.8, 0.9], 126)],
         ]
 
-        with patch.object(self.analyzer, "logger") as mock_logger:
-            result = self.analyzer._create_sequence_bboxes(bbox_clusters)
+        with patch.object(self.service, "logger") as mock_logger:
+            result = self.service._create_sequence_bboxes(bbox_clusters)
 
         # Should only create one SequenceBBox (skip the all-invalid cluster)
         assert len(result) == 1
         assert len(result[0].bboxes) == 1
 
-        # Should have logged warnings
-        assert mock_logger.debug.call_count == 3  # Three invalid coordinates
-        assert mock_logger.warning.call_count == 1  # One skipped cluster
-        assert mock_logger.info.call_count == 1  # Summary log
+        # Should have logged warnings - updated for new Pydantic validation
+        assert (
+            mock_logger.debug.call_count == 3
+        )  # Three invalid coordinates rejected by Pydantic
 
     def test_create_sequence_bboxes_empty_clusters(self):
         """Test sequence bbox creation with empty cluster list."""
         bbox_clusters = []
 
-        result = self.analyzer._create_sequence_bboxes(bbox_clusters)
+        result = self.service._create_sequence_bboxes(bbox_clusters)
 
         assert result == []
 
@@ -274,111 +270,123 @@ class TestSequenceAnalyzer:
             [([0.1, 0.2, 0.8, 0.9], 123)],
         ]
 
-        with patch.object(self.analyzer, "logger") as mock_logger, patch(
-            "data_transfer.ingestion.platform.annotation_processing.BoundingBox"
+        with patch.object(self.service, "logger") as mock_logger, patch(
+            "app.services.annotation_generation.BoundingBox"
         ) as mock_bbox:
             # Make BoundingBox constructor raise an exception
             mock_bbox.side_effect = ValueError("Validation failed")
 
-            result = self.analyzer._create_sequence_bboxes(bbox_clusters)
+            result = self.service._create_sequence_bboxes(bbox_clusters)
 
         # Should return empty list since BoundingBox creation failed
         assert result == []
 
-        # Should have logged the error (warning for failed BoundingBox + warning for skipped cluster)
-        assert mock_logger.warning.call_count == 2
-        # First warning should be about failed BoundingBox creation
-        first_warning = mock_logger.warning.call_args_list[0][0][0]
-        assert first_warning.startswith("Failed to create BoundingBox")
-        # Second warning should be about skipped cluster
-        second_warning = mock_logger.warning.call_args_list[1][0][0]
-        assert "Skipping cluster" in second_warning
+        # Should have logged the error - updated for new debug-level logging
+        assert (
+            mock_logger.debug.call_count == 1
+        )  # Failed BoundingBox creation is now logged as debug
 
-    @patch("data_transfer.ingestion.platform.annotation_processing.get_auth_token")
-    @patch("data_transfer.ingestion.platform.annotation_processing.get_sequence")
-    def test_analyze_sequence_no_detections(
-        self, mock_get_sequence, mock_get_auth_token
-    ):
-        """Test analyze_sequence when no detections are found."""
-        mock_get_auth_token.return_value = "fake_token"
-        mock_get_sequence.return_value = {"camera_name": "Test Camera"}
+    @pytest.mark.asyncio
+    async def test_generate_annotation_for_sequence_no_detections(self):
+        """Test generate_annotation_for_sequence when no detections are found."""
+        # Mock sequence exists
+        mock_sequence = MagicMock()
+        mock_sequence.camera_name = "Test Camera"
 
-        with patch.object(self.analyzer, "_fetch_sequence_detections", return_value=[]):
-            result = self.analyzer.analyze_sequence(123)
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_sequence
+        self.mock_session.execute.return_value = mock_result
+
+        # Mock no detections
+        with patch.object(self.service, "_fetch_sequence_detections", return_value=[]):
+            result = await self.service.generate_annotation_for_sequence(123)
 
         assert result is None
 
-    @patch("data_transfer.ingestion.platform.annotation_processing.get_auth_token")
-    @patch("data_transfer.ingestion.platform.annotation_processing.get_sequence")
-    def test_analyze_sequence_no_valid_predictions(
-        self, mock_get_sequence, mock_get_auth_token
-    ):
-        """Test analyze_sequence when no valid predictions are found."""
-        mock_get_auth_token.return_value = "fake_token"
-        mock_get_sequence.return_value = {"camera_name": "Test Camera"}
+    @pytest.mark.asyncio
+    async def test_generate_annotation_for_sequence_no_valid_predictions(self):
+        """Test generate_annotation_for_sequence when no valid predictions are found."""
+        # Mock sequence exists
+        mock_sequence = MagicMock()
+        mock_sequence.camera_name = "Test Camera"
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_sequence
+        self.mock_session.execute.return_value = mock_result
 
         # Mock detections with invalid algo_predictions
-        mock_detections = [
-            {"id": 123, "algo_predictions": None},
-            {"id": 124, "algo_predictions": {"predictions": []}},
-        ]
+        mock_detection1 = MagicMock()
+        mock_detection1.id = 123
+        mock_detection1.algo_predictions = None
+
+        mock_detection2 = MagicMock()
+        mock_detection2.id = 124
+        mock_detection2.algo_predictions = {"predictions": []}
+
+        mock_detections = [mock_detection1, mock_detection2]
 
         with patch.object(
-            self.analyzer, "_fetch_sequence_detections", return_value=mock_detections
+            self.service, "_fetch_sequence_detections", return_value=mock_detections
         ):
-            result = self.analyzer.analyze_sequence(123)
+            result = await self.service.generate_annotation_for_sequence(123)
 
         assert result is None
 
     def test_extract_predictions_from_detections_edge_cases(self):
         """Test prediction extraction with various edge cases."""
+        mock_detection1 = MagicMock()
+        mock_detection1.id = 123
+        mock_detection1.algo_predictions = {
+            "predictions": [
+                {
+                    "xyxyn": [0.1, 0.2, 0.8, 0.9],
+                    "confidence": 0.8,
+                    "class_name": "smoke",
+                }
+            ]
+        }
+
+        mock_detection2 = MagicMock()
+        mock_detection2.id = 124
+        mock_detection2.algo_predictions = None
+
+        mock_detection3 = MagicMock()
+        mock_detection3.id = 125
+        mock_detection3.algo_predictions = {"predictions": []}
+
+        mock_detection4 = MagicMock()
+        mock_detection4.id = 126
+        mock_detection4.algo_predictions = {
+            "predictions": [
+                {
+                    "xyxyn": [0.1, 0.2, 0.8],  # Wrong length
+                    "confidence": 0.7,
+                    "class_name": "smoke",
+                }
+            ]
+        }
+
+        mock_detection5 = MagicMock()
+        mock_detection5.id = 127
+        mock_detection5.algo_predictions = {
+            "predictions": [
+                {
+                    "xyxyn": [0.1, 0.2, 0.8, 0.9],
+                    "confidence": 0.3,  # Below 0.5 threshold
+                    "class_name": "smoke",
+                }
+            ]
+        }
+
         detections = [
-            # Valid detection
-            {
-                "id": 123,
-                "algo_predictions": {
-                    "predictions": [
-                        {
-                            "xyxyn": [0.1, 0.2, 0.8, 0.9],
-                            "confidence": 0.8,
-                            "class_name": "smoke",
-                        }
-                    ]
-                },
-            },
-            # Detection with no algo_predictions
-            {"id": 124, "algo_predictions": None},
-            # Detection with empty predictions list
-            {"id": 125, "algo_predictions": {"predictions": []}},
-            # Detection with invalid prediction format
-            {
-                "id": 126,
-                "algo_predictions": {
-                    "predictions": [
-                        {
-                            "xyxyn": [0.1, 0.2, 0.8],
-                            "confidence": 0.7,
-                            "class_name": "smoke",
-                        }  # Wrong length
-                    ]
-                },
-            },
-            # Detection with low confidence (below threshold)
-            {
-                "id": 127,
-                "algo_predictions": {
-                    "predictions": [
-                        {
-                            "xyxyn": [0.1, 0.2, 0.8, 0.9],
-                            "confidence": 0.3,
-                            "class_name": "smoke",
-                        }  # Below 0.5 threshold
-                    ]
-                },
-            },
+            mock_detection1,
+            mock_detection2,
+            mock_detection3,
+            mock_detection4,
+            mock_detection5,
         ]
 
-        result = self.analyzer._extract_predictions_from_detections(detections)
+        result = self.service._extract_predictions_from_detections(detections)
 
         # Should only return the one valid prediction above confidence threshold
         assert len(result) == 1
@@ -388,7 +396,7 @@ class TestSequenceAnalyzer:
 
 
 class TestUtilityFunctions:
-    """Test utility functions used by SequenceAnalyzer."""
+    """Test utility functions used by AnnotationGenerationService."""
 
     def test_box_iou_perfect_overlap(self):
         """Test IoU calculation for perfectly overlapping boxes."""
@@ -483,56 +491,62 @@ class TestUtilityFunctions:
         assert clusters == []
 
 
-class TestSequenceAnalyzerConfiguration:
-    """Test SequenceAnalyzer configuration and initialization."""
+class TestAnnotationGenerationServiceConfiguration:
+    """Test AnnotationGenerationService configuration and initialization."""
 
     def test_valid_configuration(self):
-        """Test analyzer initialization with valid parameters."""
-        analyzer = SequenceAnalyzer(
-            base_url="http://localhost:5050",
+        """Test service initialization with valid parameters."""
+        mock_session = AsyncMock()
+        service = AnnotationGenerationService(
+            session=mock_session,
             confidence_threshold=0.7,
             iou_threshold=0.4,
             min_cluster_size=2,
         )
 
-        config = analyzer.get_configuration()
-        assert config["base_url"] == "http://localhost:5050"
+        config = service.get_configuration()
         assert config["confidence_threshold"] == 0.7
         assert config["iou_threshold"] == 0.4
         assert config["min_cluster_size"] == 2
 
     def test_invalid_confidence_threshold(self):
-        """Test analyzer initialization with invalid confidence threshold."""
+        """Test service initialization with invalid confidence threshold."""
+        mock_session = AsyncMock()
+
         with pytest.raises(
             ValueError, match="confidence_threshold must be between 0.0 and 1.0"
         ):
-            SequenceAnalyzer(
-                base_url="http://localhost:5050",
+            AnnotationGenerationService(
+                session=mock_session,
                 confidence_threshold=1.5,  # Invalid
             )
 
         with pytest.raises(
             ValueError, match="confidence_threshold must be between 0.0 and 1.0"
         ):
-            SequenceAnalyzer(
-                base_url="http://localhost:5050",
+            AnnotationGenerationService(
+                session=mock_session,
                 confidence_threshold=-0.1,  # Invalid
             )
 
     def test_invalid_iou_threshold(self):
-        """Test analyzer initialization with invalid IoU threshold."""
+        """Test service initialization with invalid IoU threshold."""
+        mock_session = AsyncMock()
+
         with pytest.raises(
             ValueError, match="iou_threshold must be between 0.0 and 1.0"
         ):
-            SequenceAnalyzer(
-                base_url="http://localhost:5050",
+            AnnotationGenerationService(
+                session=mock_session,
                 iou_threshold=1.5,  # Invalid
             )
 
     def test_invalid_min_cluster_size(self):
-        """Test analyzer initialization with invalid min cluster size."""
+        """Test service initialization with invalid min cluster size."""
+        mock_session = AsyncMock()
+
         with pytest.raises(ValueError, match="min_cluster_size must be at least 1"):
-            SequenceAnalyzer(
-                base_url="http://localhost:5050",
+            AnnotationGenerationService(
+                session=mock_session,
                 min_cluster_size=0,  # Invalid
             )

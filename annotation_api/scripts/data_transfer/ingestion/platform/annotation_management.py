@@ -2,29 +2,31 @@
 Annotation management utilities for annotation API interactions.
 
 This module handles interactions with the annotation API including checking for existing
-annotations, creating new annotations, updating annotations, and processing sequences
-for annotation generation.
+annotations, creating new annotations with server-side auto-generation, and updating
+annotations using the simplified API-based workflow.
 
 Functions:
     check_existing_annotation: Check if a sequence already has an annotation
     create_annotation_from_data: Create or update a sequence annotation
-    get_sequences_from_annotation_api: Get sequence IDs from annotation API
-    process_single_sequence: Process a single sequence for annotation generation
+    create_simple_sequence_annotation: Create annotation with server-side auto-generation
     valid_date: Datetime parser for CLI arguments
 
 Example:
-    >>> from annotation_management import process_single_sequence
-    >>> from annotation_processing import SequenceAnalyzer
+    >>> from annotation_management import create_simple_sequence_annotation
     >>>
-    >>> analyzer = SequenceAnalyzer("http://localhost:5050")
-    >>> result = process_single_sequence(
+    >>> config = {
+    ...     "confidence_threshold": 0.0,
+    ...     "iou_threshold": 0.3,
+    ...     "min_cluster_size": 1
+    ... }
+    >>> result = create_simple_sequence_annotation(
     ...     sequence_id=123,
-    ...     analyzer=analyzer,
     ...     annotation_api_url="http://localhost:5050",
+    ...     config=config,
     ...     dry_run=False
     ... )
     >>> if result["annotation_created"]:
-    ...     print("Annotation created successfully!")
+    ...     print("Annotation created with server-side auto-generation!")
 """
 
 import argparse
@@ -41,7 +43,6 @@ from app.clients.annotation_api import (
 import os
 from app.models import SequenceAnnotationProcessingStage
 from app.schemas.annotation_validation import SequenceAnnotationData
-from .annotation_processing import SequenceAnalyzer
 
 
 def valid_date(s: str) -> date:
@@ -124,6 +125,7 @@ def create_annotation_from_data(
     dry_run: bool = False,
     existing_annotation_id: Optional[int] = None,
     processing_stage: SequenceAnnotationProcessingStage = SequenceAnnotationProcessingStage.READY_TO_ANNOTATE,
+    config: Optional[Dict[str, Any]] = None,
 ) -> bool:
     """
     Create or update a sequence annotation from analyzed data.
@@ -180,6 +182,16 @@ def create_annotation_from_data(
                 "has_missed_smoke": False,
             }
 
+            # Add configuration parameters for auto-generation if provided
+            if config:
+                update_dict.update(
+                    {
+                        "confidence_threshold": config.get("confidence_threshold", 0.0),
+                        "iou_threshold": config.get("iou_threshold", 0.3),
+                        "min_cluster_size": config.get("min_cluster_size", 1),
+                    }
+                )
+
             if dry_run:
                 logging.info(
                     f"DRY RUN: Would update annotation {existing_annotation_id} for sequence {sequence_id}"
@@ -210,6 +222,16 @@ def create_annotation_from_data(
                 "has_missed_smoke": False,
             }
 
+            # Add configuration parameters for auto-generation if provided
+            if config:
+                create_dict.update(
+                    {
+                        "confidence_threshold": config.get("confidence_threshold", 0.0),
+                        "iou_threshold": config.get("iou_threshold", 0.3),
+                        "min_cluster_size": config.get("min_cluster_size", 1),
+                    }
+                )
+
             if dry_run:
                 logging.info(
                     f"DRY RUN: Would create new annotation for sequence {sequence_id}"
@@ -234,24 +256,26 @@ def create_annotation_from_data(
         return False
 
 
-def process_single_sequence(
+def create_simple_sequence_annotation(
     sequence_id: int,
-    analyzer: SequenceAnalyzer,
     annotation_api_url: str,
+    config: Dict[str, Any],
     dry_run: bool = False,
 ) -> Dict[str, Any]:
     """
-    Process a single sequence: generate annotation and set ready for annotation stage.
+    Create a simple sequence annotation with auto-generation enabled.
 
-    This function is the main entry point for processing a sequence. It:
-    1. Uses the analyzer to generate annotation data from AI predictions
-    2. Checks for existing annotations to avoid duplicates
-    3. Creates or updates the annotation with READY_TO_ANNOTATE stage
+    This simplified function creates a sequence annotation with READY_TO_ANNOTATE stage
+    and empty annotation content, allowing the API to automatically generate the annotation
+    content server-side using the provided configuration parameters.
 
     Args:
         sequence_id: Sequence ID to process
-        analyzer: SequenceAnalyzer instance configured with processing parameters
         annotation_api_url: Annotation API base URL
+        config: Configuration parameters for auto-generation including:
+                - confidence_threshold: float
+                - iou_threshold: float
+                - min_cluster_size: int
         dry_run: If True, preview actions without executing them
 
     Returns:
@@ -263,13 +287,15 @@ def process_single_sequence(
         - final_stage: Processing stage set for the annotation
 
     Example:
-        >>> from annotation_processing import SequenceAnalyzer
-        >>>
-        >>> analyzer = SequenceAnalyzer("http://localhost:5050")
-        >>> result = process_single_sequence(
+        >>> config = {
+        ...     "confidence_threshold": 0.7,
+        ...     "iou_threshold": 0.3,
+        ...     "min_cluster_size": 2
+        ... }
+        >>> result = create_simple_sequence_annotation(
         ...     sequence_id=123,
-        ...     analyzer=analyzer,
         ...     annotation_api_url="http://localhost:5050",
+        ...     config=config,
         ...     dry_run=False
         ... )
         >>>
@@ -287,31 +313,25 @@ def process_single_sequence(
     }
 
     try:
-        logging.info(f"Processing sequence {sequence_id}")
-
-        # Step 1: Generate annotation
-        logging.debug(f"Analyzing sequence {sequence_id}")
-        annotation_data = analyzer.analyze_sequence(sequence_id)
-
-        if annotation_data is None:
-            error_msg = f"Failed to analyze sequence {sequence_id} - no detections or analysis failed"
-            logging.warning(error_msg)
-            result["errors"].append(error_msg)
-            return result
+        logging.info(f"Creating sequence annotation for sequence {sequence_id}")
 
         # Check for existing annotation
         existing_annotation_id = check_existing_annotation(
             annotation_api_url, sequence_id
         )
 
-        # Create or update annotation
+        # Create empty annotation data (will be auto-generated by API)
+        empty_annotation_data = SequenceAnnotationData(sequences_bbox=[])
+
+        # Create annotation with auto-generation parameters
         if create_annotation_from_data(
             annotation_api_url,
             sequence_id,
-            annotation_data,
+            empty_annotation_data,
             dry_run,
             existing_annotation_id,
             SequenceAnnotationProcessingStage.READY_TO_ANNOTATE,
+            config,  # Pass config for auto-generation
         ):
             result["annotation_created"] = True
             result["annotation_id"] = (
@@ -321,7 +341,7 @@ def process_single_sequence(
                 SequenceAnnotationProcessingStage.READY_TO_ANNOTATE.value
             )
             logging.info(
-                f"Successfully created/updated annotation for sequence {sequence_id} - ready for annotation"
+                f"Successfully created sequence annotation for sequence {sequence_id} - auto-generation enabled"
             )
             return result
         else:
