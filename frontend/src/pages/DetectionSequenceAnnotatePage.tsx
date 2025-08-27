@@ -29,7 +29,9 @@ import {
   normalizedToImageCoordinates,
   getRectangleAtPoint,
   calculateAnnotationCompleteness,
-  importPredictionsAsRectangles
+  importPredictionsAsRectangles,
+  updateRectangleSmokeType,
+  removeRectangle
 } from '@/utils/annotation';
 
 // Note: DrawnRectangle and CurrentDrawing interfaces now imported from @/utils/annotation
@@ -782,7 +784,7 @@ function ImageModal({
     } else {
       setDrawnRectangles([]);
     }
-  }, [detection.id, existingAnnotation, isAutoAdvance, persistentDrawMode]);
+  }, [detection.id, existingAnnotation, isAutoAdvance]);
 
   // Get current image and container information for coordinate transformations
   const getImageInfo = (): { containerOffset: Point; imageBounds: ImageBounds; transform: { zoomLevel: number; panOffset: Point; transformOrigin: Point } } | null => {
@@ -868,16 +870,12 @@ function ImageModal({
     });
   };
 
-  // Change smoke type of selected rectangle
+  // Change smoke type of selected rectangle using pure utility
   const changeSelectedRectangleSmokeType = (newSmokeType: SmokeType) => {
     if (!selectedRectangleId) return;
     
     pushUndoState();
-    setDrawnRectangles(prev => prev.map(rect => 
-      rect.id === selectedRectangleId 
-        ? { ...rect, smokeType: newSmokeType }
-        : rect
-    ));
+    setDrawnRectangles(prev => updateRectangleSmokeType(prev, selectedRectangleId, newSmokeType));
   };
 
   // Note: coordinatesMatch function replaced with direct call to areBoundingBoxesSimilar
@@ -1142,10 +1140,10 @@ function ImageModal({
         // Save current state to undo stack before deleting
         pushUndoState();
         
-        // Smart delete: selected rectangle or all rectangles
+        // Smart delete: selected rectangle or all rectangles using pure utilities
         if (selectedRectangleId) {
           // Delete only the selected rectangle
-          setDrawnRectangles(prev => prev.filter(rect => rect.id !== selectedRectangleId));
+          setDrawnRectangles(prev => removeRectangle(prev, selectedRectangleId));
           setSelectedRectangleId(null);
         } else {
           // Delete all rectangles when none selected
@@ -1455,8 +1453,8 @@ function ImageModal({
                     pushUndoState();
                     
                     if (selectedRectangleId) {
-                      // Delete only the selected rectangle
-                      setDrawnRectangles(prev => prev.filter(rect => rect.id !== selectedRectangleId));
+                      // Delete only the selected rectangle using pure utility
+                      setDrawnRectangles(prev => removeRectangle(prev, selectedRectangleId));
                       setSelectedRectangleId(null);
                     } else {
                       // Delete all rectangles when none selected
