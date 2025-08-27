@@ -33,6 +33,7 @@ import {
   updateRectangleSmokeType,
   removeRectangle
 } from '@/utils/annotation';
+import { SmokeTypeSelector } from '@/components/annotation/SmokeTypeSelector';
 
 // Note: DrawnRectangle and CurrentDrawing interfaces now imported from @/utils/annotation
 
@@ -1352,44 +1353,14 @@ function ImageModal({
           <div className="mt-4 flex justify-end">
             <div className="flex items-center space-x-2">
               {/* Smoke Type Selector */}
-              <div className="flex items-center space-x-1 bg-white bg-opacity-10 backdrop-blur-sm rounded-md p-1">
-                {(['wildfire', 'industrial', 'other'] as const).map((smokeType) => {
-                  const isSelected = selectedRectangleId 
-                    ? drawnRectangles.find(r => r.id === selectedRectangleId)?.smokeType === smokeType
-                    : selectedSmokeType === smokeType;
-                  const colors = {
-                    wildfire: 'bg-red-500 text-white',
-                    industrial: 'bg-purple-500 text-white',
-                    other: 'bg-blue-500 text-white'
-                  };
-                  const inactiveColors = {
-                    wildfire: 'text-red-300 hover:bg-red-500 hover:bg-opacity-20',
-                    industrial: 'text-purple-300 hover:bg-purple-500 hover:bg-opacity-20',
-                    other: 'text-blue-300 hover:bg-blue-500 hover:bg-opacity-20'
-                  };
-                  
-                  return (
-                    <button
-                      key={smokeType}
-                      onClick={() => {
-                        if (selectedRectangleId) {
-                          changeSelectedRectangleSmokeType(smokeType);
-                        } else {
-                          onSmokeTypeChange(smokeType);
-                        }
-                      }}
-                      className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
-                        isSelected 
-                          ? colors[smokeType]
-                          : `${inactiveColors[smokeType]} text-white`
-                      }`}
-                      title={`${smokeType.charAt(0).toUpperCase() + smokeType.slice(1)} smoke (${smokeType === 'wildfire' ? '1/W' : smokeType === 'industrial' ? '2/I' : '3/O'})`}
-                    >
-                      {smokeType === 'wildfire' ? '🔥' : smokeType === 'industrial' ? '🏭' : '💨'} {smokeType.charAt(0).toUpperCase() + smokeType.slice(1)}
-                    </button>
-                  );
-                })}
-              </div>
+              <SmokeTypeSelector
+                selectedSmokeType={selectedSmokeType}
+                selectedRectangleSmokeType={selectedRectangleId ? drawnRectangles.find(r => r.id === selectedRectangleId)?.smokeType : undefined}
+                hasSelectedRectangle={!!selectedRectangleId}
+                onSmokeTypeChange={onSmokeTypeChange}
+                onSelectedRectangleSmokeTypeChange={changeSelectedRectangleSmokeType}
+                size="md"
+              />
 
               {/* AI Import Button */}
               {(() => {
