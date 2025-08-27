@@ -1,20 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle, AlertCircle, Keyboard, X, Clock } from 'lucide-react';
+import { CheckCircle, AlertCircle, X } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { QUERY_KEYS, FALSE_POSITIVE_TYPES, SMOKE_TYPES } from '@/utils/constants';
 import { SequenceAnnotation, SequenceBbox, FalsePositiveType, SmokeType } from '@/types/api';
-import SequenceReviewer from '@/components/sequence/SequenceReviewer';
-import CroppedImageSequence from '@/components/annotation/CroppedImageSequence';
-import FullImageSequence from '@/components/annotation/FullImageSequence';
 import { useSequenceStore } from '@/store/useSequenceStore';
-import { getSmokeTypeEmoji, formatSmokeType } from '@/utils/modelAccuracy';
 import { 
-  getClassificationType,
   initializeCleanBbox,
-  shouldShowAsAnnotated,
-  isAnnotationDataValid,
   getInitialMissedSmokeReview
 } from '@/utils/annotation/sequenceUtils';
 import { 
@@ -22,7 +15,7 @@ import {
   isAnnotationComplete,
   getAnnotationValidationErrors
 } from '@/utils/annotation/progressUtils';
-import { AnnotationHeader } from '@/components/sequence-annotation';
+import { AnnotationHeader, ProcessingStageMessages, MissedSmokePanel, SequenceAnnotationGrid } from '@/components/sequence-annotation';
 
 export default function AnnotationInterface() {
   const { id } = useParams<{ id: string }>();
@@ -705,374 +698,29 @@ export default function AnnotationInterface() {
 
       {/* Content with top padding to account for fixed header */}
       <div className="space-y-6 pt-20">
-        {/* Processing Stage Messages */}
-        {annotation.processing_stage !== 'ready_to_annotate' && annotation.processing_stage !== 'annotated' && (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
-            <div className="flex">
-              <AlertCircle className="w-5 h-5 text-yellow-400" />
-              <div className="ml-3">
-                <p className="text-sm font-medium text-yellow-800">
-                  Processing Stage Notice
-                </p>
-                <p className="text-sm text-yellow-700 mt-1">
-                  This annotation is currently in "{annotation.processing_stage}" stage. 
-                  Typically annotations should be in "ready_to_annotate" stage before editing.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
+        <ProcessingStageMessages annotation={annotation} />
 
-      {/* Sequence Review for Missed Smoke */}
-      <div 
-        ref={sequenceReviewerRef}
-        className={`${activeSection === 'sequence' ? 'ring-2 ring-blue-500 ring-offset-2 rounded-lg' : ''}`}
-      >
-        <SequenceReviewer
-          sequenceId={sequenceId!}
+        <MissedSmokePanel
+          sequenceId={sequenceId || 0}
           missedSmokeReview={missedSmokeReview}
           onMissedSmokeReviewChange={handleMissedSmokeReviewChange}
           annotationLoading={isLoading}
+          activeSection={activeSection}
+          sequenceReviewerRef={sequenceReviewerRef}
         />
-      </div>
 
 
-      {/* Unified Detection Cards - Image Sequences + Annotation Controls */}
-      <div className="space-y-8">
-        {bboxes.map((bbox, index) => {
-          
-          const isActive = activeDetectionIndex === index;
-          const isAnnotated = shouldShowAsAnnotated(bbox, annotation?.processing_stage || '');
-          
-          return (
-            <div 
-              key={index} 
-              ref={(el) => detectionRefs.current[index] = el}
-              className={`relative rounded-lg cursor-pointer transition-all duration-200 ${
-                isActive 
-                  ? 'border-4 border-blue-500 ring-2 ring-blue-200 bg-blue-50' 
-                  : isAnnotated
-                  ? 'border-4 border-green-500 bg-green-50 hover:border-green-600 hover:bg-green-100'
-                  : 'border-4 border-orange-400 bg-orange-50 hover:border-orange-500 hover:bg-orange-100 animate-pulse-subtle'
-              } p-6`}
-              onClick={() => setActiveDetectionIndex(index)}
-            >
-              {/* Status Badge Overlay */}
-              <div className={`absolute top-3 right-3 px-2 py-1 rounded-full text-xs font-semibold backdrop-blur-sm ${
-                isAnnotated 
-                  ? 'bg-green-600/90 text-white' 
-                  : 'bg-orange-500/90 text-white'
-              }`}>
-                {isAnnotated ? 'Reviewed' : 'Pending'}
-              </div>
-
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center space-x-3">
-                  <h4 className="text-lg font-medium text-gray-900">
-                    Detection {index + 1}
-                  </h4>
-                  {isActive && (
-                    <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                      <Keyboard className="w-3 h-3 mr-1" />
-                      Active
-                    </span>
-                  )}
-                </div>
-                <span className="text-sm text-gray-500">
-                  {bbox.bboxes.length} bbox{bbox.bboxes.length !== 1 ? 'es' : ''}
-                </span>
-              </div>
-              
-              {/* Visual Content - Image Sequences */}
-              <div className="space-y-6 mb-8">
-                {/* Image Sequences - Only render when annotation data matches current sequence */}
-                {bbox.bboxes && bbox.bboxes.length > 0 && isAnnotationDataValid(annotation, sequenceId) ? (
-                  <>
-                    {/* Full Image Sequence */}
-                    <div className="text-center">
-                      <h5 className="text-sm font-medium text-gray-700 mb-3">Full Sequence</h5>
-                      <FullImageSequence bboxes={bbox.bboxes} sequenceId={sequenceId!} />
-                    </div>
-                    
-                    {/* Cropped Image Sequence */}
-                    <div className="text-center mt-6">
-                      <h5 className="text-sm font-medium text-gray-700 mb-3">Cropped View</h5>
-                      <CroppedImageSequence bboxes={bbox.bboxes} sequenceId={sequenceId!} />
-                    </div>
-                  </>
-                ) : (
-                  /* Loading state when annotation data is being fetched */
-                  <div className="text-center py-8">
-                    <div className="flex items-center justify-center space-x-2 text-gray-500">
-                      <div className="animate-spin w-5 h-5 border-2 border-gray-300 border-t-gray-600 rounded-full"></div>
-                      <span>Loading sequence images...</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            
-            {/* Annotation Controls */}
-            <div className="space-y-4">
-              {/* Step 1: Primary Classification */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-3">
-                  Sequence Classification
-                </label>
-                <div className="space-y-2">
-                  {(() => {
-                    // Use the new classification helper
-                    const classificationType = getClassificationType(bbox, index, primaryClassification);
-                    
-                    return (
-                      <>
-                        {/* Smoke Sequence Option */}
-                        <label className="flex items-center space-x-3 cursor-pointer">
-                          <input
-                            type="radio"
-                            name={`classification-${index}`}
-                            checked={classificationType === 'smoke'}
-                            onChange={() => {
-                              // Update UI state
-                              setPrimaryClassification(prev => ({
-                                ...prev,
-                                [index]: 'smoke'
-                              }));
-                              
-                              // Update bbox data
-                              const updatedBbox = { 
-                                ...bbox, 
-                                is_smoke: true,
-                                false_positive_types: [] // Clear conflicting data
-                              };
-                              handleBboxChange(index, updatedBbox);
-                            }}
-                            className="w-4 h-4 text-orange-600 focus:ring-orange-500 border-gray-300"
-                          />
-                          <span className="text-sm font-medium text-gray-900">
-                            🔥 Smoke Sequence
-                          </span>
-                          {isActive && (
-                            <kbd className="ml-2 px-1.5 py-0.5 bg-gray-200 text-gray-700 rounded text-xs font-mono">
-                              S
-                            </kbd>
-                          )}
-                        </label>
-                        
-                        {/* False Positive Option */}
-                        <label className="flex items-center space-x-3 cursor-pointer">
-                          <input
-                            type="radio"
-                            name={`classification-${index}`}
-                            checked={classificationType === 'false_positive'}
-                            onChange={() => {
-                              // Update UI state
-                              setPrimaryClassification(prev => ({
-                                ...prev,
-                                [index]: 'false_positive'
-                              }));
-                              
-                              // Update bbox data - clear conflicting data but DON'T add false positive types yet
-                              const updatedBbox = { 
-                                ...bbox, 
-                                is_smoke: false,
-                                smoke_type: undefined // Clear conflicting data
-                                // Keep existing false_positive_types if any, don't auto-add new ones
-                              };
-                              handleBboxChange(index, updatedBbox);
-                            }}
-                            className="w-4 h-4 text-red-600 focus:ring-red-500 border-gray-300"
-                          />
-                          <span className="text-sm font-medium text-gray-900">
-                            ❌ False Positive
-                          </span>
-                          {isActive && (
-                            <kbd className="ml-2 px-1.5 py-0.5 bg-gray-200 text-gray-700 rounded text-xs font-mono">
-                              F
-                            </kbd>
-                          )}
-                        </label>
-                      </>
-                    );
-                  })()}
-                </div>
-              </div>
-
-              {/* Step 2: Smoke Type Selection (when smoke sequence selected) */}
-              {bbox.is_smoke && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-3">
-                    Smoke Type
-                  </label>
-                  <div className="space-y-2">
-                    {SMOKE_TYPES.map((smokeType, smokeIndex) => (
-                      <label key={smokeType} className="flex items-center space-x-3 cursor-pointer">
-                        <input
-                          type="radio"
-                          name={`smoke-type-${index}`}
-                          checked={bbox.smoke_type === smokeType}
-                          onChange={() => {
-                            const updatedBbox = { 
-                              ...bbox, 
-                              smoke_type: smokeType as SmokeType
-                            };
-                            handleBboxChange(index, updatedBbox);
-                          }}
-                          className="w-4 h-4 text-orange-600 focus:ring-orange-500 border-gray-300"
-                        />
-                        <span className="text-sm text-gray-900">
-                          {getSmokeTypeEmoji(smokeType)} {formatSmokeType(smokeType)}
-                        </span>
-                        {isActive && (
-                          <kbd className="ml-2 px-1.5 py-0.5 bg-gray-200 text-gray-700 rounded text-xs font-mono">
-                            {smokeIndex + 1}
-                          </kbd>
-                        )}
-                      </label>
-                    ))}
-                  </div>
-                  
-                  {/* Show selected smoke type as a pill */}
-                  {bbox.smoke_type && (
-                    <div className="mt-3">
-                      <div className="text-xs font-medium text-gray-700 mb-2">Selected:</div>
-                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800 border border-orange-200">
-                        {getSmokeTypeEmoji(bbox.smoke_type)} {formatSmokeType(bbox.smoke_type)}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Step 2: False Positive Types Selection (when false positive selected) */}
-              {getClassificationType(bbox, index, primaryClassification) === 'false_positive' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-3">
-                    False Positive Types (Select all that apply)
-                  </label>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 mb-4">
-                    {FALSE_POSITIVE_TYPES.map((fpType) => {
-                      const isSelected = bbox.false_positive_types.includes(fpType);
-                      const formatLabel = (type: string) => 
-                        type.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
-                      
-                      // Get the keyboard shortcut for this type
-                      const getKeyForType = (type: string) => {
-                        const keyMap: Record<string, string> = {
-                          'antenna': 'A',
-                          'building': 'B',
-                          'cliff': 'C',
-                          'dark': 'D',
-                          'dust': 'U',
-                          'high_cloud': 'H',
-                          'low_cloud': 'L',
-                          'lens_flare': 'G',
-                          'lens_droplet': 'P',
-                          'light': 'I',
-                          'rain': 'R',
-                          'trail': 'T',
-                          'road': 'O',
-                          'sky': 'K',
-                          'tree': 'E',
-                          'water_body': 'W',
-                          'other': 'X',
-                        };
-                        return keyMap[type];
-                      };
-                      
-                      return (
-                        <label key={fpType} className="flex items-center space-x-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={(e) => {
-                              const updatedBbox = { ...bbox };
-                              if (e.target.checked) {
-                                // Add the false positive type
-                                updatedBbox.false_positive_types = [
-                                  ...bbox.false_positive_types,
-                                  fpType as FalsePositiveType
-                                ];
-                              } else {
-                                // Remove the false positive type
-                                updatedBbox.false_positive_types = bbox.false_positive_types.filter(
-                                  type => type !== fpType
-                                );
-                              }
-                              handleBboxChange(index, updatedBbox);
-                            }}
-                            className="w-3 h-3 text-red-600 focus:ring-red-500 border-gray-300 rounded"
-                          />
-                          <span className="text-xs text-gray-600">
-                            {formatLabel(fpType)}
-                          </span>
-                          {isActive && getKeyForType(fpType) && (
-                            <kbd className="ml-1 px-1 py-0.5 bg-gray-200 text-gray-700 rounded text-xs font-mono">
-                              {getKeyForType(fpType)}
-                            </kbd>
-                          )}
-                        </label>
-                      );
-                    })}
-                  </div>
-                  
-                  {/* Selected types display */}
-                  {bbox.false_positive_types.length > 0 && (
-                    <div className="mt-3">
-                      <div className="text-xs font-medium text-gray-700 mb-2">Selected:</div>
-                      <div className="flex flex-wrap gap-1">
-                        {bbox.false_positive_types.map((type) => (
-                          <span
-                            key={type}
-                            className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-red-100 text-red-800 border border-red-200"
-                          >
-                            {type.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
-                            <button
-                              onClick={() => {
-                                const updatedBbox = { ...bbox };
-                                updatedBbox.false_positive_types = bbox.false_positive_types.filter(
-                                  t => t !== type
-                                );
-                                handleBboxChange(index, updatedBbox);
-                              }}
-                              className="ml-1 hover:opacity-80 text-red-600"
-                            >
-                              ×
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-              
-              {/* Enhanced Status Bar */}
-              <div className={`px-3 py-2 rounded-md ${
-                isAnnotated 
-                  ? 'bg-green-100 border border-green-300' 
-                  : 'bg-orange-100 border border-orange-300'
-              }`}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    {isAnnotated ? (
-                      <>
-                        <CheckCircle className="w-5 h-5 text-green-600" />
-                        <span className="text-sm font-medium text-green-700">Completed</span>
-                      </>
-                    ) : (
-                      <>
-                        <Clock className="w-5 h-5 text-orange-600 animate-pulse" />
-                        <span className="text-sm font-medium text-orange-700">Needs Review</span>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          );
-        })}
-      </div>
+        <SequenceAnnotationGrid
+          bboxes={bboxes}
+          annotation={annotation}
+          sequenceId={sequenceId || 0}
+          activeDetectionIndex={activeDetectionIndex || 0}
+          primaryClassification={primaryClassification}
+          detectionRefs={detectionRefs}
+          onDetectionClick={setActiveDetectionIndex}
+          onBboxChange={handleBboxChange}
+          onPrimaryClassificationChange={setPrimaryClassification}
+        />
 
       {/* Empty State */}
       {bboxes.length === 0 && (
