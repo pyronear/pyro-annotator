@@ -1,33 +1,92 @@
 /**
  * Keyboard shortcuts utilities for annotation interface.
- * Handles complex keyboard event processing and shortcuts.
+ * 
+ * This module handles complex keyboard event processing and shortcuts for the
+ * annotation interface, including navigation, classification, and global actions.
+ * 
+ * @fileoverview Provides a comprehensive keyboard handler factory that manages
+ * all keyboard shortcuts in the annotation interface, from basic navigation to
+ * complex classification workflows.
  */
 
 import { SequenceBbox, SmokeType } from '@/types/api';
 import { isAnnotationComplete } from './progressUtils';
 import { getTypeIndexForKey, toggleFalsePositiveType, BboxChangeHandler, MissedSmokeHandler } from './annotationHandlers';
 
+/**
+ * Dependencies interface for the keyboard handler.
+ * Contains all state and action functions needed for keyboard shortcut handling.
+ * 
+ * @interface KeyboardHandlerDependencies
+ */
 export interface KeyboardHandlerDependencies {
   // State
+  /** Currently active detection index (null if in sequence section) */
   activeDetectionIndex: number | null;
+  /** Array of sequence bounding boxes */
   bboxes: SequenceBbox[];
+  /** Whether the keyboard shortcuts modal is visible */
   showKeyboardModal: boolean;
+  /** Current missed smoke review state */
   missedSmokeReview: 'yes' | 'no' | null;
+  /** Primary classification state for each detection */
   primaryClassification: Record<number, 'unselected' | 'smoke' | 'false_positive'>;
   
   // Actions
+  /** Function to show/hide keyboard shortcuts modal */
   setShowKeyboardModal: (show: boolean) => void;
+  /** Function to reset annotation state */
   handleReset: () => void;
+  /** Function to save current annotation */
   handleSave: () => void;
+  /** Function to navigate to previous detection */
   navigateToPreviousDetection: () => void;
+  /** Function to navigate to next detection */
   navigateToNextDetection: () => void;
+  /** Function to handle missed smoke review changes */
   handleMissedSmokeReviewChange: MissedSmokeHandler;
+  /** Function to handle bbox changes */
   handleBboxChange: BboxChangeHandler;
+  /** Function to handle primary classification changes */
   onPrimaryClassificationChange: (updates: Record<number, 'unselected' | 'smoke' | 'false_positive'>) => void;
 }
 
 /**
  * Creates a comprehensive keyboard event handler for annotation interface.
+ * 
+ * This factory function creates a complete keyboard event handler that supports
+ * all annotation interface shortcuts including navigation, classification,
+ * smoke type selection, and false positive type toggling.
+ * 
+ * @param {KeyboardHandlerDependencies} deps - All state and action dependencies
+ * @returns {(e: KeyboardEvent) => void} Keyboard event handler function
+ * 
+ * @example
+ * ```typescript
+ * const handleKeyDown = createKeyboardHandler({
+ *   activeDetectionIndex,
+ *   bboxes,
+ *   showKeyboardModal,
+ *   // ... other dependencies
+ * });
+ * 
+ * useEffect(() => {
+ *   document.addEventListener('keydown', handleKeyDown, true);
+ *   return () => document.removeEventListener('keydown', handleKeyDown, true);
+ * }, [dependencies]);
+ * ```
+ * 
+ * Supported shortcuts:
+ * - ?: Show/hide keyboard shortcuts modal
+ * - Escape: Close modal
+ * - Ctrl+Z: Reset annotation
+ * - Enter: Save annotation
+ * - Arrow Up/Down: Navigate between detections
+ * - Y/N: Missed smoke review
+ * - S: Mark as smoke
+ * - F: Mark as false positive
+ * - 1,2,3: Select smoke type (wildfire, industrial, other)
+ * - A-Z: Toggle false positive types (various letter mappings)
  */
 export const createKeyboardHandler = (deps: KeyboardHandlerDependencies) => {
   return (e: KeyboardEvent) => {

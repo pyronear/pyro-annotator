@@ -1,21 +1,67 @@
 /**
  * Toast notification system component.
- * Provides configurable toast notifications with auto-dismiss functionality.
+ * 
+ * A comprehensive toast notification component that displays success, error, and info
+ * messages with auto-dismiss functionality and user interaction support.
+ * 
+ * @fileoverview Provides a reusable toast notification component with configurable
+ * auto-dismiss timing, different visual styles for different message types, and
+ * smooth animations for show/hide transitions.
  */
 
 import React, { useEffect } from 'react';
 import { CheckCircle, AlertCircle, X } from 'lucide-react';
 
+/**
+ * Types of toast notifications supported.
+ * @typedef {'success' | 'error' | 'info'} ToastType
+ */
 export type ToastType = 'success' | 'error' | 'info';
 
+/**
+ * Props interface for the NotificationSystem component.
+ * @interface NotificationSystemProps
+ */
 interface NotificationSystemProps {
+  /** Whether the toast should be visible */
   showToast: boolean;
+  /** The message content to display */
   toastMessage: string;
+  /** The type of notification (determines styling and icon) */
   toastType: ToastType;
+  /** Callback function called when the toast should be dismissed */
   onDismiss: () => void;
+  /** Auto-dismiss timeout in milliseconds (default: 3000ms, 0 to disable) */
   autoDismissMs?: number;
 }
 
+/**
+ * Toast notification system component.
+ * 
+ * Displays toast notifications with different styles based on type (success, error, info).
+ * Features automatic dismissal after a configurable timeout, manual dismiss via close button,
+ * and smooth slide-in/slide-out animations.
+ * 
+ * @param {NotificationSystemProps} props - The component props
+ * @param {boolean} props.showToast - Whether the toast should be visible
+ * @param {string} props.toastMessage - The message to display in the toast
+ * @param {ToastType} props.toastType - The type of toast (affects styling and icon)
+ * @param {() => void} props.onDismiss - Callback when toast should be dismissed
+ * @param {number} [props.autoDismissMs=3000] - Auto-dismiss timeout (0 disables auto-dismiss)
+ * 
+ * @returns {React.ReactElement | null} The toast notification element or null if not shown
+ * 
+ * @example
+ * ```tsx
+ * <NotificationSystem
+ *   showToast={true}
+ *   toastMessage="Operation completed successfully"
+ *   toastType="success"
+ *   onDismiss={() => setShowToast(false)}
+ *   autoDismissMs={5000}
+ * />
+ * ```
+ */
 export const NotificationSystem: React.FC<NotificationSystemProps> = ({
   showToast,
   toastMessage,

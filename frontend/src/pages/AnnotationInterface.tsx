@@ -3,18 +3,29 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertCircle, X } from 'lucide-react';
 import { apiClient } from '@/services/api';
-import { QUERY_KEYS, FALSE_POSITIVE_TYPES, SMOKE_TYPES } from '@/utils/constants';
-import { SequenceAnnotation, SequenceBbox, FalsePositiveType, SmokeType } from '@/types/api';
+import { QUERY_KEYS } from '@/utils/constants';
+import { SequenceAnnotation, SequenceBbox } from '@/types/api';
 import { useSequenceStore } from '@/store/useSequenceStore';
 import { 
-  initializeCleanBbox,
-  getInitialMissedSmokeReview
-} from '@/utils/annotation/sequenceUtils';
-import { 
   getAnnotationProgress,
-  isAnnotationComplete,
-  getAnnotationValidationErrors
+  isAnnotationComplete
 } from '@/utils/annotation/progressUtils';
+import {
+  createBboxChangeHandler,
+  createMissedSmokeHandler,
+  createSaveHandler,
+  createResetHandler
+} from '@/utils/annotation/annotationHandlers';
+import {
+  createPreviousDetectionNavigator,
+  createNextDetectionNavigator
+} from '@/utils/annotation/navigationUtils';
+import { createKeyboardHandler } from '@/utils/annotation/keyboardUtils';
+import {
+  createAnnotationInitializationEffect,
+  createIntersectionObserverEffect,
+  createSequenceStateClearing
+} from '@/utils/annotation/effectUtils';
 import { AnnotationHeader, ProcessingStageMessages, MissedSmokePanel, SequenceAnnotationGrid } from '@/components/sequence-annotation';
 import { NotificationSystem } from '@/components/ui/NotificationSystem';
 import { useToastNotifications } from '@/utils/notification/toastUtils';
@@ -81,43 +92,31 @@ export default function AnnotationInterface() {
 
 
   // Clear state immediately when sequence changes to prevent stale data
-  useEffect(() => {
-    console.log(`AnnotationInterface: Sequence changed to ${sequenceId}, clearing stale state`);
-    setBboxes([]);
-    setCurrentAnnotation(null);
-    setHasMissedSmoke(false);
-    setMissedSmokeReview(null);
-    setIsUnsure(false);
-  }, [sequenceId]);
+  useEffect(
+    createSequenceStateClearing(
+      sequenceId,
+      setBboxes,
+      setCurrentAnnotation,
+      setHasMissedSmoke,
+      setMissedSmokeReview,
+      setIsUnsure
+    ),
+    [sequenceId]
+  );
 
   // Initialize bboxes and missed smoke when annotation loads - respecting processing stage
-  useEffect(() => {
-    if (annotation && sequenceId) {
-      console.log(`AnnotationInterface: Loading annotation for sequence ${sequenceId}`);
-      setCurrentAnnotation(annotation);
-      
-      // Initialize missed smoke flag from existing annotation
-      setHasMissedSmoke(annotation.has_missed_smoke || false);
-      
-      // Initialize unsure flag from existing annotation
-      setIsUnsure(annotation.is_unsure || false);
-      
-      // Initialize missed smoke review using helper function that respects processing stage
-      setMissedSmokeReview(getInitialMissedSmokeReview(annotation));
-      
-      // Smart initialization based on processing stage
-      if (annotation.processing_stage === 'ready_to_annotate') {
-        // For sequences ready to annotate, start with clean checkboxes
-        const cleanBboxes = annotation.annotation.sequences_bbox.map(bbox => 
-          initializeCleanBbox(bbox)
-        );
-        setBboxes(cleanBboxes);
-      } else {
-        // For other stages (like 'annotated'), preserve existing data
-        setBboxes([...annotation.annotation.sequences_bbox]);
-      }
-    }
-  }, [annotation, sequenceId]);
+  useEffect(
+    createAnnotationInitializationEffect({
+      annotation,
+      sequenceId,
+      setCurrentAnnotation,
+      setHasMissedSmoke,
+      setIsUnsure,
+      setMissedSmokeReview,
+      setBboxes
+    }),
+    [annotation, sequenceId]
+  );
 
 
   // Clean up detection refs when bboxes change
@@ -127,377 +126,54 @@ export default function AnnotationInterface() {
   }, [bboxes.length]);
 
   // Intersection Observer for viewport-based active detection
+  useEffect(
+    createIntersectionObserverEffect({
+      bboxes,
+      detectionRefs,
+      sequenceReviewerRef,
+      setActiveSection,
+      setActiveDetectionIndex
+    }),
+    [bboxes.length]
+  );
+
+  // Keyboard shortcuts handler using utility function
   useEffect(() => {
-    // Small delay to ensure refs are set up after render
-    const timeoutId = setTimeout(() => {
-      const observer = new IntersectionObserver(
-        (entries) => {
-          const viewportCenter = window.innerHeight / 2;
-          let closestDistance = Infinity;
-          let activeElement: Element | null = null;
-          let activeIndex: number | null = null;
-          let activeType: 'sequence' | 'detection' | null = null;
-          
-          entries.forEach((entry) => {
-            // Only consider elements that are reasonably visible
-            if (entry.intersectionRatio < 0.3) return;
-            
-            const rect = entry.target.getBoundingClientRect();
-            const elementCenter = rect.top + rect.height / 2;
-            const distance = Math.abs(elementCenter - viewportCenter);
-            
-            if (distance < closestDistance) {
-              closestDistance = distance;
-              activeElement = entry.target;
-              
-              // Check if it's the sequence reviewer
-              if (entry.target === sequenceReviewerRef.current) {
-                activeType = 'sequence';
-                activeIndex = null;
-              } else {
-                // Check detection elements
-                const detectionIndex = detectionRefs.current.findIndex(ref => ref === entry.target);
-                if (detectionIndex !== -1) {
-                  activeType = 'detection';
-                  activeIndex = detectionIndex;
-                }
-              }
-            }
-          });
-          
-          // Activate the element closest to viewport center (within reasonable distance)
-          if (activeElement && closestDistance < window.innerHeight * 0.6) {
-            if (activeType === 'sequence') {
-              setActiveSection('sequence');
-              setActiveDetectionIndex(null);
-            } else if (activeType === 'detection' && activeIndex !== null) {
-              setActiveSection('detections');
-              setActiveDetectionIndex(activeIndex);
-            }
-          }
-        },
-        {
-          threshold: [0.1, 0.3, 0.5],
-          rootMargin: '-20px'
-        }
-      );
-
-      // Observe all detection cards
-      detectionRefs.current.forEach((ref, idx) => {
-        // Only observe refs that correspond to current bboxes
-        if (ref && idx < bboxes.length) {
-          observer.observe(ref);
-        }
-      });
-
-      // Observe sequence reviewer
-      if (sequenceReviewerRef.current) {
-        observer.observe(sequenceReviewerRef.current);
-      }
-
-      return () => {
-        observer.disconnect();
-      };
-    }, 100); // Small delay to ensure DOM is ready
-
-    return () => {
-      clearTimeout(timeoutId);
-    };
-  }, [bboxes.length]);
-
-  // Keyboard shortcuts handler
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Handle help modal first (works regardless of focus)
-      // Note: '?' key requires Shift to be pressed, so we shouldn't check for !e.shiftKey
-      if (e.key === '?') {
-        setShowKeyboardModal(!showKeyboardModal);
-        e.preventDefault();
-        return;
-      }
-      
-      // Handle Escape to close modal
-      if (e.key === 'Escape' && showKeyboardModal) {
-        setShowKeyboardModal(false);
-        e.preventDefault();
-        return;
-      }
-
-      // Handle global shortcuts (work regardless of active detection)
-      // Reset annotation (Ctrl + Z)
-      if (e.key === 'z' && e.ctrlKey) {
-        handleReset();
-        e.preventDefault();
-        return;
-      }
-
-      // Complete annotation (Enter)
-      if (e.key === 'Enter' && !showKeyboardModal) {
-        if (isAnnotationComplete(bboxes, missedSmokeReview)) {
-          handleSave();
-        } else {
-          handleSave(); // Use the same error logic as handleSave
-        }
-        e.preventDefault();
-        return;
-      }
-
-      // Navigation shortcuts (Arrow Up/Down)
-      if (e.key === 'ArrowUp' && !showKeyboardModal) {
-        navigateToPreviousDetection();
-        e.preventDefault();
-        return;
-      }
-
-      if (e.key === 'ArrowDown' && !showKeyboardModal) {
-        navigateToNextDetection();
-        e.preventDefault();
-        return;
-      }
-
-      // Missed smoke review shortcuts (Y/N)
-      if ((e.key === 'y' || e.key === 'Y') && !showKeyboardModal) {
-        handleMissedSmokeReviewChange('yes');
-        e.preventDefault();
-        return;
-      }
-
-      if ((e.key === 'n' || e.key === 'N') && !showKeyboardModal) {
-        handleMissedSmokeReviewChange('no');
-        e.preventDefault();
-        return;
-      }
-
-      // Ignore if focused on input elements, no active detection, modal is open, or modifier keys are pressed
-      if (e.target instanceof HTMLInputElement || 
-          e.target instanceof HTMLTextAreaElement || 
-          activeDetectionIndex === null ||
-          showKeyboardModal ||
-          e.ctrlKey || e.metaKey || e.altKey) {
-        return;
-      }
-
-      const key = e.key.toLowerCase();
-      
-      if (key === 's') {
-        // Set as smoke sequence for active detection
-        const bbox = bboxes[activeDetectionIndex];
-        if (bbox) {
-          // Update UI state
-          setPrimaryClassification(prev => ({
-            ...prev,
-            [activeDetectionIndex]: 'smoke'
-          }));
-          
-          // Update bbox data
-          const updatedBbox = { 
-            ...bbox, 
-            is_smoke: true,
-            false_positive_types: [] // Clear conflicting data
-          };
-          handleBboxChange(activeDetectionIndex, updatedBbox);
-          e.preventDefault();
-        }
-      } else if (key === 'f') {
-        // Set as false positive for active detection
-        const bbox = bboxes[activeDetectionIndex];
-        if (bbox) {
-          // Update UI state
-          setPrimaryClassification(prev => ({
-            ...prev,
-            [activeDetectionIndex]: 'false_positive'
-          }));
-          
-          // Update bbox data - clear conflicting data but DON'T add false positive types yet
-          const updatedBbox = { 
-            ...bbox, 
-            is_smoke: false,
-            smoke_type: undefined // Clear conflicting data
-            // Keep existing false_positive_types if any, don't auto-add new ones
-          };
-          handleBboxChange(activeDetectionIndex, updatedBbox);
-          e.preventDefault();
-        }
-      } else if (key === '1' || key === '2' || key === '3') {
-        // Handle smoke type shortcuts (only when smoke is selected)
-        const bbox = bboxes[activeDetectionIndex];
-        if (bbox && bbox.is_smoke) {
-          const smokeTypeIndex = parseInt(key) - 1;
-          if (smokeTypeIndex >= 0 && smokeTypeIndex < SMOKE_TYPES.length) {
-            const updatedBbox = { 
-              ...bbox, 
-              smoke_type: SMOKE_TYPES[smokeTypeIndex] as SmokeType
-            };
-            handleBboxChange(activeDetectionIndex, updatedBbox);
-            e.preventDefault();
-          }
-        }
-      } else {
-        // Handle letter-based shortcuts for false positive types (only when false positive is selected)
-        const bbox = bboxes[activeDetectionIndex];
-        if (bbox && !bbox.is_smoke) {
-          const typeIndex = getTypeIndexForKey(key);
-          if (typeIndex !== -1) {
-            toggleFalsePositiveType(activeDetectionIndex, typeIndex);
-            e.preventDefault();
-          }
-        }
-      }
-    };
+    const handleKeyDown = createKeyboardHandler({
+      activeDetectionIndex,
+      bboxes,
+      showKeyboardModal,
+      missedSmokeReview,
+      primaryClassification,
+      setShowKeyboardModal,
+      handleReset,
+      handleSave,
+      navigateToPreviousDetection,
+      navigateToNextDetection,
+      handleMissedSmokeReviewChange,
+      handleBboxChange,
+      onPrimaryClassificationChange: setPrimaryClassification
+    });
 
     // Use capture phase to ensure we get events before other handlers
     document.addEventListener('keydown', handleKeyDown, true);
     return () => document.removeEventListener('keydown', handleKeyDown, true);
-  }, [activeDetectionIndex, bboxes, showKeyboardModal]);
+  }, [activeDetectionIndex, bboxes, showKeyboardModal, missedSmokeReview, primaryClassification]);
 
 
-  // Helper function to map keyboard keys to false positive type indices
-  const getTypeIndexForKey = (key: string): number => {
-    const keyMap: Record<string, number> = {
-      'a': FALSE_POSITIVE_TYPES.indexOf('antenna'),
-      'b': FALSE_POSITIVE_TYPES.indexOf('building'),
-      'c': FALSE_POSITIVE_TYPES.indexOf('cliff'),
-      'd': FALSE_POSITIVE_TYPES.indexOf('dark'),
-      'u': FALSE_POSITIVE_TYPES.indexOf('dust'), // 'd' taken by dark
-      'h': FALSE_POSITIVE_TYPES.indexOf('high_cloud'),
-      'l': FALSE_POSITIVE_TYPES.indexOf('low_cloud'),
-      'g': FALSE_POSITIVE_TYPES.indexOf('lens_flare'),
-      'p': FALSE_POSITIVE_TYPES.indexOf('lens_droplet'), // 'l' taken by low_cloud, use 'p' for droplet
-      'i': FALSE_POSITIVE_TYPES.indexOf('light'), // 'l' taken
-      'r': FALSE_POSITIVE_TYPES.indexOf('rain'),
-      't': FALSE_POSITIVE_TYPES.indexOf('trail'),
-      'o': FALSE_POSITIVE_TYPES.indexOf('road'), // 'r' taken by rain, use 'o' for road
-      'k': FALSE_POSITIVE_TYPES.indexOf('sky'), // 's' taken by smoke
-      'e': FALSE_POSITIVE_TYPES.indexOf('tree'), // 't' taken by trail
-      'w': FALSE_POSITIVE_TYPES.indexOf('water_body'),
-      'x': FALSE_POSITIVE_TYPES.indexOf('other'), // 'o' taken by road
-    };
-    
-    return keyMap[key] ?? -1;
-  };
 
-  // Helper function to toggle false positive types
-  const toggleFalsePositiveType = (detectionIndex: number, typeIndex: number) => {
-    const bbox = bboxes[detectionIndex];
-    if (!bbox || bbox.is_smoke) return; // Don't allow if it's marked as smoke
-    
-    const fpType = FALSE_POSITIVE_TYPES[typeIndex] as FalsePositiveType;
-    const updatedBbox = { ...bbox };
-    
-    if (bbox.false_positive_types.includes(fpType)) {
-      // Remove the type
-      updatedBbox.false_positive_types = bbox.false_positive_types.filter(type => type !== fpType);
-    } else {
-      // Add the type
-      updatedBbox.false_positive_types = [...bbox.false_positive_types, fpType];
-    }
-    
-    handleBboxChange(detectionIndex, updatedBbox);
-  };
+  // Navigation functions using utility creators
+  const navigateToPreviousDetection = createPreviousDetectionNavigator(
+    { activeDetectionIndex, activeSection, bboxes, showKeyboardModal },
+    { setActiveDetectionIndex, setActiveSection },
+    { detectionRefs, sequenceReviewerRef }
+  );
 
-  // Navigation helper functions
-  const navigateToPreviousDetection = () => {
-    // If we're in sequence section, go back to last detection
-    if (activeSection === 'sequence') {
-      if (bboxes.length > 0) {
-        const lastIndex = bboxes.length - 1;
-        setActiveDetectionIndex(lastIndex);
-        setActiveSection('detections');
-        
-        // Use requestAnimationFrame to ensure DOM is updated before scrolling
-        requestAnimationFrame(() => {
-          const lastElement = detectionRefs.current[lastIndex];
-          if (lastElement) {
-            lastElement.scrollIntoView({
-              behavior: 'smooth',
-              block: 'center'
-            });
-          }
-        });
-      }
-      return;
-    }
-
-    // If at first detection, go to sequence reviewer
-    if (activeSection === 'detections' && activeDetectionIndex === 0) {
-      setActiveSection('sequence');
-      setActiveDetectionIndex(null);
-      
-      // Use requestAnimationFrame to ensure DOM is updated before scrolling
-      requestAnimationFrame(() => {
-        if (sequenceReviewerRef.current) {
-          sequenceReviewerRef.current.scrollIntoView({
-            behavior: 'smooth',
-            block: 'center'
-          });
-        }
-      });
-      return;
-    }
-
-    // Regular detection navigation
-    if (activeDetectionIndex === null || activeDetectionIndex <= 0) {
-      return;
-    }
-    
-    const previousIndex = activeDetectionIndex - 1;
-    setActiveDetectionIndex(previousIndex);
-    
-    // Use requestAnimationFrame to ensure DOM is updated before scrolling
-    requestAnimationFrame(() => {
-      const previousElement = detectionRefs.current[previousIndex];
-      if (previousElement) {
-        previousElement.scrollIntoView({
-          behavior: 'smooth',
-          block: 'center'
-        });
-      }
-    });
-  };
-
-  const navigateToNextDetection = () => {
-    // If in sequence section with detections, go to first detection
-    if (activeSection === 'sequence' && bboxes.length > 0) {
-      setActiveSection('detections');
-      setActiveDetectionIndex(0);
-      
-      // Use requestAnimationFrame to ensure DOM is updated before scrolling
-      requestAnimationFrame(() => {
-        const firstElement = detectionRefs.current[0];
-        if (firstElement) {
-          firstElement.scrollIntoView({
-            behavior: 'smooth',
-            block: 'center'
-          });
-        }
-      });
-      return;
-    }
-
-    // If in sequence section and no detections, stay in sequence
-    if (activeSection === 'sequence' && bboxes.length === 0) {
-      return;
-    }
-
-    // Regular detection navigation
-    if (activeDetectionIndex === null || activeDetectionIndex >= bboxes.length - 1) {
-      return;
-    }
-    
-    const nextIndex = activeDetectionIndex + 1;
-    setActiveDetectionIndex(nextIndex);
-    
-    // Use requestAnimationFrame to ensure DOM is updated before scrolling
-    requestAnimationFrame(() => {
-      const nextElement = detectionRefs.current[nextIndex];
-      if (nextElement) {
-        nextElement.scrollIntoView({
-          behavior: 'smooth',
-          block: 'center'
-        });
-      }
-    });
-  };
+  const navigateToNextDetection = createNextDetectionNavigator(
+    { activeDetectionIndex, activeSection, bboxes, showKeyboardModal },
+    { setActiveDetectionIndex, setActiveSection },
+    { detectionRefs, sequenceReviewerRef }
+  );
 
   // Save annotation mutation
   const saveAnnotation = useMutation({
@@ -552,62 +228,27 @@ export default function AnnotationInterface() {
     },
   });
 
-  const handleBboxChange = (index: number, updatedBbox: SequenceBbox) => {
-    const newBboxes = [...bboxes];
-    newBboxes[index] = updatedBbox;
-    setBboxes(newBboxes);
-  };
+  // Event handlers created using utility functions
+  const handleBboxChange = createBboxChangeHandler(setBboxes);
+  const handleMissedSmokeReviewChange = createMissedSmokeHandler(setMissedSmokeReview, setHasMissedSmoke);
 
-  const handleMissedSmokeReviewChange = (review: 'yes' | 'no') => {
-    setMissedSmokeReview(review);
-    // Sync with the boolean hasMissedSmoke state for backward compatibility
-    setHasMissedSmoke(review === 'yes');
-  };
+  const handleSave = createSaveHandler(
+    bboxes, 
+    missedSmokeReview, 
+    isUnsure, 
+    saveAnnotation, 
+    showToastNotification
+  );
 
-  const handleSave = () => {
-    // If marked as unsure, skip all validation and allow immediate submission
-    if (isUnsure) {
-      saveAnnotation.mutate(bboxes);
-      return;
-    }
-
-    // Validate annotation completeness
-    const validationErrors = getAnnotationValidationErrors(bboxes, missedSmokeReview);
-    if (validationErrors.length > 0) {
-      showToastNotification(validationErrors[0], 'error');
-      return;
-    }
-    
-    saveAnnotation.mutate(bboxes);
-  };
-
-  const handleReset = () => {
-    if (annotation) {
-      // Reset missed smoke to original value
-      setHasMissedSmoke(annotation.has_missed_smoke || false);
-      
-      // Reset unsure flag to original value
-      setIsUnsure(annotation.is_unsure || false);
-      
-      // Reset missed smoke review using helper function that respects processing stage
-      setMissedSmokeReview(getInitialMissedSmokeReview(annotation));
-      
-      // Use the same logic as initialization to respect processing stage
-      if (annotation.processing_stage === 'ready_to_annotate') {
-        // For sequences ready to annotate, reset to clean checkboxes
-        const cleanBboxes = annotation.annotation.sequences_bbox.map(bbox => 
-          initializeCleanBbox(bbox)
-        );
-        setBboxes(cleanBboxes);
-      } else {
-        // For other stages (like 'annotated'), reset to original server data
-        setBboxes([...annotation.annotation.sequences_bbox]);
-      }
-      
-      // Show success toast notification
-      showToastNotification('Annotation reset successfully', 'success');
-    }
-  };
+  const handleReset = createResetHandler(
+    annotation || null,
+    setHasMissedSmoke,
+    setIsUnsure,
+    setMissedSmokeReview,
+    setBboxes,
+    setPrimaryClassification,
+    showToastNotification
+  );
 
   // Manual Navigation Handlers
   const handlePreviousSequence = () => {

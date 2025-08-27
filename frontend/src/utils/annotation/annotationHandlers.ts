@@ -1,6 +1,11 @@
 /**
  * Event handler utilities for annotation interface.
- * Contains complex event handling logic extracted from AnnotationInterface component.
+ * 
+ * This module contains complex event handling logic extracted from the AnnotationInterface
+ * component, including bbox changes, save/reset operations, and false positive type handling.
+ * 
+ * @fileoverview Provides factory functions for creating annotation event handlers with
+ * proper state management integration and validation logic.
  */
 
 import { SequenceBbox, FalsePositiveType, SequenceAnnotation } from '@/types/api';
@@ -8,20 +13,49 @@ import { FALSE_POSITIVE_TYPES } from '@/utils/constants';
 import { initializeCleanBbox, getInitialMissedSmokeReview } from './sequenceUtils';
 import { getAnnotationValidationErrors } from './progressUtils';
 
+/**
+ * Handler function type for bbox changes.
+ * @callback BboxChangeHandler
+ * @param {number} index - The index of the bbox being changed
+ * @param {SequenceBbox} updatedBbox - The updated bbox data
+ */
 export interface BboxChangeHandler {
   (index: number, updatedBbox: SequenceBbox): void;
 }
 
+/**
+ * Handler function type for missed smoke review changes.
+ * @callback MissedSmokeHandler
+ * @param {'yes' | 'no'} review - The missed smoke review value
+ */
 export interface MissedSmokeHandler {
   (review: 'yes' | 'no'): void;
 }
 
+/**
+ * Handler function type for toast notifications.
+ * @callback ToastHandler
+ * @param {string} message - The message to display
+ * @param {'success' | 'error' | 'info'} [type] - The type of notification
+ */
 export interface ToastHandler {
   (message: string, type?: 'success' | 'error' | 'info'): void;
 }
 
 /**
- * Creates bbox change handler with state setter integration.
+ * Creates a bbox change handler with state setter integration.
+ * 
+ * This factory function creates a handler that updates the bboxes array immutably
+ * when a specific bbox is modified. The handler integrates with React state setters.
+ * 
+ * @param {Function} setBboxes - React state setter for the bboxes array
+ * @returns {BboxChangeHandler} Handler function for bbox changes
+ * 
+ * @example
+ * ```typescript
+ * const handleBboxChange = createBboxChangeHandler(setBboxes);
+ * handleBboxChange(0, updatedBbox); // Updates bbox at index 0
+ * ```
  */
 export const createBboxChangeHandler = (
   setBboxes: (bboxes: SequenceBbox[] | ((prev: SequenceBbox[]) => SequenceBbox[])) => void
@@ -36,7 +70,23 @@ export const createBboxChangeHandler = (
 };
 
 /**
- * Creates missed smoke review change handler.
+ * Creates a missed smoke review change handler.
+ * 
+ * This factory function creates a handler that updates both the missed smoke review
+ * state and the boolean has missed smoke flag when the user provides feedback.
+ * 
+ * @param {Function} setMissedSmokeReview - React state setter for missed smoke review
+ * @param {Function} setHasMissedSmoke - React state setter for has missed smoke boolean
+ * @returns {MissedSmokeHandler} Handler function for missed smoke review changes
+ * 
+ * @example
+ * ```typescript
+ * const handleMissedSmokeChange = createMissedSmokeHandler(
+ *   setMissedSmokeReview, 
+ *   setHasMissedSmoke
+ * );
+ * handleMissedSmokeChange('yes'); // Sets review to 'yes' and hasSmoke to true
+ * ```
  */
 export const createMissedSmokeHandler = (
   setMissedSmokeReview: (review: 'yes' | 'no' | null) => void,
@@ -49,7 +99,17 @@ export const createMissedSmokeHandler = (
 };
 
 /**
- * Creates save annotation handler with validation.
+ * Creates a save annotation handler with validation.
+ * 
+ * This factory function creates a handler that validates annotation completeness
+ * before saving, with support for unsure submissions that skip validation.
+ * 
+ * @param {SequenceBbox[]} bboxes - Current bbox annotations
+ * @param {'yes' | 'no' | null} missedSmokeReview - Current missed smoke review state
+ * @param {boolean} isUnsure - Whether this is an unsure submission
+ * @param {Object} saveMutation - TanStack Query mutation object with mutate method
+ * @param {ToastHandler} showToast - Function to show toast notifications
+ * @returns {Function} Handler function for save operations
  */
 export const createSaveHandler = (
   bboxes: SequenceBbox[],

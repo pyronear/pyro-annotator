@@ -1,27 +1,56 @@
 /**
  * Navigation utilities for annotation interface.
- * Handles keyboard navigation and detection scrolling.
+ * 
+ * This module handles keyboard navigation and smooth scrolling between detections
+ * and the sequence reviewer section in the annotation interface.
+ * 
+ * @fileoverview Provides factory functions for creating navigation handlers that
+ * manage active detection state and smooth scrolling behavior.
  */
 
 import React from 'react';
 import { SequenceBbox } from '@/types/api';
 
+/**
+ * Active section types in the annotation interface.
+ * @typedef {'detections' | 'sequence'} ActiveSection
+ */
 export type ActiveSection = 'detections' | 'sequence';
 
+/**
+ * Navigation state interface containing current navigation context.
+ * @interface NavigationState
+ */
 export interface NavigationState {
+  /** Index of currently active detection (null if in sequence section) */
   activeDetectionIndex: number | null;
+  /** Currently active section of the interface */
   activeSection: ActiveSection;
+  /** Array of detection bboxes */
   bboxes: SequenceBbox[];
+  /** Whether keyboard shortcuts modal is open */
   showKeyboardModal: boolean;
 }
 
+/**
+ * Navigation actions interface for updating navigation state.
+ * @interface NavigationActions
+ */
 export interface NavigationActions {
+  /** Function to set the active detection index */
   setActiveDetectionIndex: (index: number | null) => void;
+  /** Function to set the active section */
   setActiveSection: (section: ActiveSection) => void;
 }
 
+/**
+ * References interface for DOM elements used in navigation.
+ * @interface ScrollRefs
+ */
 export interface ScrollRefs {
+  /** Array of refs to detection card elements */
   detectionRefs: React.MutableRefObject<(HTMLDivElement | null)[]>;
+  /** Ref to the sequence reviewer element */
   sequenceReviewerRef: React.RefObject<HTMLDivElement>;
 }
 
