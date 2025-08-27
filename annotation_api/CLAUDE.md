@@ -288,32 +288,6 @@ Sequence annotation endpoints now accept optional configuration parameters:
 6. **Create SequenceBBox**: Generates structured annotation data for human review
 7. **Conservative Classification**: Marks all clusters as `is_smoke: true` for manual verification
 
-### Import Script Simplification
-The import script (`scripts/data_transfer/ingestion/platform/import.py`) has been dramatically simplified:
-
-**Before**: ~600 lines with complex SequenceAnalyzer, IoU clustering, and annotation processing
-**After**: Simple API calls with configuration parameters
-
-**Key Changes**:
-- Removed `SequenceAnalyzer` instantiation
-- Removed local annotation processing (~150 lines of complex logic)
-- Simplified to `create_simple_sequence_annotation()` function
-- Configuration parameters passed to API for server-side processing
-- Removed obsolete `annotation_processing.py` file entirely
-
-### Benefits
-1. **Cleaner Architecture**: Business logic properly placed in service layer
-2. **Reusability**: Any API client gets automatic annotation generation
-3. **Maintainability**: Centralized logic easier to test and modify
-4. **Performance**: Server-side processing with database access optimization
-5. **Consistency**: All clients get same annotation generation behavior
-
-### Testing
-- **Service Tests**: 24 comprehensive tests covering edge cases, validation, and error handling
-- **API Tests**: Integration tests for auto-generation trigger conditions
-- **Regression Tests**: Ensures existing functionality preserved during refactoring
-
-
 ## Authentication & Security
 
 ### JWT Authentication System
