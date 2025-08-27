@@ -296,35 +296,3 @@ export const calculateRemainingItems = (
   return Math.max(0, total - completed);
 };
 
-/**
- * Gets time estimate for completing remaining items.
- * 
- * @param remainingItems - Number of remaining items
- * @param averageTimePerItem - Average time per item in seconds
- * @returns Formatted time estimate
- * 
- * @example
- * ```typescript
- * const estimate = getTimeEstimate(10, 30);
- * // Returns: '5 minutes'
- * ```
- */
-export const getTimeEstimate = (
-  remainingItems: number,
-  averageTimePerItem: number = 30
-): string => {
-  const totalSeconds = remainingItems * averageTimePerItem;
-  
-  if (totalSeconds < 60) {
-    return `${totalSeconds} seconds`;
-  }
-  
-  const minutes = Math.round(totalSeconds / 60);
-  
-  if (minutes < 60) {
-    return `${minutes} minute${minutes > 1 ? 's' : ''}`;
-  }
-  
-  const hours = Math.round(minutes / 60);
-  return `${hours} hour${hours > 1 ? 's' : ''}`;
-};

@@ -107,8 +107,7 @@ export {
   isWorkflowComplete,
   validateAnnotationData,
   formatWorkflowStatus,
-  calculateRemainingItems,
-  getTimeEstimate
+  calculateRemainingItems
 } from './workflowUtils';
 
 export type {
@@ -130,10 +129,21 @@ export {
   updateBboxFalsePositiveType,
   clearBboxSelections,
   getKeyForFalsePositiveType,
-  formatFalsePositiveLabel,
-  calculateAnnotationProgress
+  formatFalsePositiveLabel
 } from './sequenceUtils';
+
+
+// Progress utilities
+export {
+  getAnnotationProgress,
+  calculateCompletionPercentage,
+  formatRemainingMessage,
+  isAnnotationComplete,
+  getAnnotationValidationErrors,
+  formatProgressDisplay,
+  getProgressColor
+} from './progressUtils';
 
 export type {
   AnnotationProgress
-} from './sequenceUtils';
+} from './progressUtils';

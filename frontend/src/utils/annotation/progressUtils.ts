@@ -15,6 +15,13 @@ export interface AnnotationProgress {
   percentage: number;
   remaining: number;
   isComplete: boolean;
+  // Legacy interface compatibility
+  totalBboxes: number;
+  annotatedBboxes: number;
+  smokeBboxes: number;
+  falsePositiveBboxes: number;
+  unannotatedBboxes: number;
+  completionPercentage: number;
 }
 
 /**
@@ -35,13 +42,25 @@ export const getAnnotationProgress = (bboxes: SequenceBbox[]): AnnotationProgres
   const remaining = total - completed;
   const percentage = total === 0 ? 100 : Math.round((completed / total) * 100);
   const isComplete = completed === total && total > 0;
+  
+  // Additional detailed statistics
+  const smokeBboxes = bboxes.filter(bbox => bbox.is_smoke).length;
+  const falsePositiveBboxes = bboxes.filter(bbox => bbox.false_positive_types.length > 0).length;
 
   return {
+    // New interface
     completed,
     total,
     percentage,
     remaining,
-    isComplete
+    isComplete,
+    // Legacy interface compatibility
+    totalBboxes: total,
+    annotatedBboxes: completed,
+    smokeBboxes,
+    falsePositiveBboxes,
+    unannotatedBboxes: remaining,
+    completionPercentage: percentage
   };
 };
 
@@ -169,38 +188,6 @@ export const formatProgressDisplay = (
   return `${reviewStatus} • ${progress.completed} of ${progress.total} detections • ${progress.percentage}% complete`;
 };
 
-/**
- * Calculates estimated time remaining for annotation work.
- * 
- * @param remaining - Number of remaining items
- * @param averageTimePerItem - Average time per item in seconds (default: 45)
- * @returns Formatted time estimate
- * 
- * @example
- * ```typescript
- * const estimate = getTimeEstimate(5, 45);
- * // Returns: '4 minutes'
- * ```
- */
-export const getTimeEstimate = (
-  remaining: number,
-  averageTimePerItem: number = 45
-): string => {
-  const totalSeconds = remaining * averageTimePerItem;
-  
-  if (totalSeconds < 60) {
-    return `${totalSeconds} seconds`;
-  }
-  
-  const minutes = Math.round(totalSeconds / 60);
-  
-  if (minutes < 60) {
-    return `${minutes} minute${minutes > 1 ? 's' : ''}`;
-  }
-  
-  const hours = Math.round(minutes / 60);
-  return `${hours} hour${hours > 1 ? 's' : ''}`;
-};
 
 /**
  * Gets progress status color class for UI display.
