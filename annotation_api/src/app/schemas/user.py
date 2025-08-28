@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 __all__ = [
     "UserCreate",
@@ -15,7 +15,6 @@ __all__ = [
 
 class UserBase(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
-    email: EmailStr
     is_active: bool = True
     is_superuser: bool = False
 
@@ -26,7 +25,6 @@ class UserCreate(UserBase):
 
 class UserUpdate(BaseModel):
     username: Optional[str] = Field(None, min_length=3, max_length=50)
-    email: Optional[EmailStr] = None
     is_active: Optional[bool] = None
     is_superuser: Optional[bool] = None
 
@@ -37,7 +35,7 @@ class UserPasswordUpdate(BaseModel):
 
 class UserRead(UserBase):
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: int
     created_at: datetime
     updated_at: Optional[datetime] = None
@@ -45,7 +43,7 @@ class UserRead(UserBase):
 
 class UserInDB(UserBase):
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: int
     hashed_password: str
     created_at: datetime
@@ -54,6 +52,7 @@ class UserInDB(UserBase):
 
 class ContributorRead(BaseModel):
     """Lightweight user schema for contributor information in API responses."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: int

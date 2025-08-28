@@ -270,7 +270,7 @@ class TestHTTPUtilities:
         mock_response.json.return_value = {
             "detail": [
                 {
-                    "loc": ["body", "email"],
+                    "loc": ["body", "username"],
                     "msg": "field required",
                     "type": "value_error.missing",
                 },
@@ -289,7 +289,7 @@ class TestHTTPUtilities:
         assert error.status_code == 422
         assert error.operation == "create user"
         assert len(error.field_errors) == 2
-        assert error.field_errors[0]["field"] == "body.email"
+        assert error.field_errors[0]["field"] == "body.username"
         assert error.field_errors[0]["message"] == "field required"
         assert "Validation error during create user" in str(error)
 
@@ -402,7 +402,7 @@ class TestExceptions:
     def test_validation_error(self):
         """Test ValidationError creation."""
         field_errors = [
-            {"field": "email", "message": "Invalid email format"},
+            {"field": "username", "message": "Username too short"},
             {"field": "password", "message": "Password too short"},
         ]
         error = ValidationError(

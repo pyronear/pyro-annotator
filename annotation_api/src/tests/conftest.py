@@ -188,7 +188,6 @@ async def test_user(async_session: AsyncSession) -> User:
     user_crud = UserCRUD(async_session)
     user_create = UserCreate(
         username=settings.AUTH_USERNAME,
-        email=f"{settings.AUTH_USERNAME}@test.com",
         password=settings.AUTH_PASSWORD,
         is_active=True,
         is_superuser=True,
@@ -203,7 +202,6 @@ async def regular_user(async_session: AsyncSession) -> User:
     user_crud = UserCRUD(async_session)
     user_create = UserCreate(
         username="regularuser",
-        email="regular@test.com",
         password="testpassword123",
         is_active=True,
         is_superuser=False,  # Regular user, not admin
@@ -218,7 +216,6 @@ async def inactive_user(async_session: AsyncSession) -> User:
     user_crud = UserCRUD(async_session)
     user_create = UserCreate(
         username="inactiveuser",
-        email="inactive@test.com",
         password="testpassword123",
         is_active=False,  # Inactive user
         is_superuser=False,

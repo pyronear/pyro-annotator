@@ -15,7 +15,6 @@ class TestUserCreation:
         user_crud = UserCRUD(async_session)
         user_create = UserCreate(
             username="testuser",
-            email="test@example.com",
             password="testpassword123",
             is_active=True,
             is_superuser=False,
@@ -24,7 +23,6 @@ class TestUserCreation:
         user = await user_crud.create_user(user_create)
 
         assert user.username == user_create.username
-        assert user.email == user_create.email
         assert user.is_active == user_create.is_active
         assert user.is_superuser == user_create.is_superuser
         assert user.hashed_password != user_create.password  # Should be hashed
@@ -40,7 +38,6 @@ class TestUserCreation:
 
         user_create = UserCreate(
             username="hashtest",
-            email="hash@example.com",
             password=plain_password,
         )
 
@@ -70,7 +67,6 @@ class TestUserRetrieval:
         assert retrieved_user is not None
         assert retrieved_user.id == test_user.id
         assert retrieved_user.username == test_user.username
-        assert retrieved_user.email == test_user.email
 
     @pytest.mark.asyncio
     async def test_get_by_username_not_found(self, async_session: AsyncSession):
@@ -78,28 +74,6 @@ class TestUserRetrieval:
         user_crud = UserCRUD(async_session)
 
         user = await user_crud.get_by_username("nonexistent")
-
-        assert user is None
-
-    @pytest.mark.asyncio
-    async def test_get_by_email_success(
-        self, async_session: AsyncSession, test_user: User
-    ):
-        """Test retrieving user by email."""
-        user_crud = UserCRUD(async_session)
-
-        retrieved_user = await user_crud.get_by_email(test_user.email)
-
-        assert retrieved_user is not None
-        assert retrieved_user.id == test_user.id
-        assert retrieved_user.email == test_user.email
-
-    @pytest.mark.asyncio
-    async def test_get_by_email_not_found(self, async_session: AsyncSession):
-        """Test retrieving non-existent user by email."""
-        user_crud = UserCRUD(async_session)
-
-        user = await user_crud.get_by_email("nonexistent@example.com")
 
         assert user is None
 
@@ -168,7 +142,6 @@ class TestUserAuthentication:
         password = "testpassword123"
         user_create = UserCreate(
             username="authtest",
-            email="auth@example.com",
             password=password,
         )
         created_user = await user_crud.create_user(user_create)
@@ -234,7 +207,6 @@ class TestUserUpdates:
 
         update_data = UserUpdate(
             username="updatedname",
-            email="updated@example.com",
             is_active=False,
             is_superuser=True,
         )
@@ -243,7 +215,6 @@ class TestUserUpdates:
 
         assert updated_user is not None
         assert updated_user.username == update_data.username
-        assert updated_user.email == update_data.email
         assert updated_user.is_active == update_data.is_active
         assert updated_user.is_superuser == update_data.is_superuser
         assert updated_user.updated_at is not None
@@ -275,15 +246,12 @@ class TestUserUpdates:
     ):
         """Test partial user update (only some fields)."""
         user_crud = UserCRUD(async_session)
-        old_email = regular_user.email
-
         update_data = UserUpdate(username="onlyusername")
 
         updated_user = await user_crud.update_user(regular_user.id, update_data)
 
         assert updated_user is not None
         assert updated_user.username == "onlyusername"
-        assert updated_user.email == old_email  # Should remain unchanged
 
     @pytest.mark.asyncio
     async def test_update_user_not_found(self, async_session: AsyncSession):
@@ -308,7 +276,6 @@ class TestUserDeletion:
         # Create user to delete
         user_create = UserCreate(
             username="deleteme",
-            email="delete@example.com",
             password="password123",
         )
         user = await user_crud.create_user(user_create)
