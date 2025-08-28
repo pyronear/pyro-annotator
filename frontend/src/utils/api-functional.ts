@@ -19,14 +19,14 @@ export interface ExtendedAxiosRequestConfig extends AxiosRequestConfig {
   metadata?: {
     timestamp?: number;
     requestId?: string;
-    [key: string]: any;
+    [key: string]: unknown;
   };
 }
 
 /**
  * Generic API request configuration
  */
-export interface ApiRequestConfig<TParams = any>
+export interface ApiRequestConfig<TParams = Record<string, unknown>>
   extends Omit<AxiosRequestConfig, 'method' | 'url'> {
   readonly method: HttpMethod;
   readonly url: string;
@@ -36,7 +36,7 @@ export interface ApiRequestConfig<TParams = any>
 /**
  * API response wrapper with metadata
  */
-export interface ApiResponse<TData = any> {
+export interface ApiResponse<TData = unknown> {
   readonly data: TData;
   readonly status: number;
   readonly statusText: string;
@@ -53,19 +53,19 @@ export interface ApiErrorDetails {
   readonly status?: number;
   readonly statusText?: string;
   readonly code?: string;
-  readonly details?: any;
+  readonly details?: unknown;
   readonly requestConfig?: ApiRequestConfig;
 }
 
 /**
  * Request transformation function type
  */
-export type RequestTransformer<TInput = any, TOutput = any> = (input: TInput) => TOutput;
+export type RequestTransformer<TInput = unknown, TOutput = unknown> = (input: TInput) => TOutput;
 
 /**
  * Response transformation function type
  */
-export type ResponseTransformer<TInput = any, TOutput = any> = (input: TInput) => TOutput;
+export type ResponseTransformer<TInput = unknown, TOutput = unknown> = (input: TInput) => TOutput;
 
 /**
  * Error transformation function type
@@ -84,7 +84,7 @@ export type ErrorTransformer = (error: AxiosError) => ApiErrorDetails;
  * const config = buildRequest('GET', '/api/users', { limit: 10 });
  */
 export const createRequestBuilder = (baseConfig: Partial<AxiosRequestConfig> = {}) => {
-  return <TParams = any>(
+  return <TParams = Record<string, unknown>>(
     method: HttpMethod,
     url: string,
     params?: TParams,
@@ -117,6 +117,7 @@ export const createRequestTransformer = <TInput, TOutput>(
   ...transformers: RequestTransformer[]
 ): RequestTransformer<TInput, TOutput> => {
   return (input: TInput): TOutput => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return transformers.reduce((acc, transformer) => transformer(acc), input as any);
   };
 };
@@ -140,6 +141,7 @@ export const createResponseTransformer = <TInput, TOutput>(
   ...transformers: ResponseTransformer[]
 ): ResponseTransformer<TInput, TOutput> => {
   return (input: TInput): TOutput => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return transformers.reduce((acc, transformer) => transformer(acc), input as any);
   };
 };
@@ -292,6 +294,7 @@ export const responseTransformers = {
       return data.map(item => responseTransformers.parseDates(item)) as T;
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = { ...data } as any;
     const dateFields = [
       'created_at',
@@ -341,23 +344,24 @@ export const createFunctionalClient = (
 ) => {
   const buildRequest = createRequestBuilder();
 
-  const executeRequest = async <TResponse = any, TParams = any>(
+  const executeRequest = async <TResponse = unknown, TParams = Record<string, unknown>>(
     config: ApiRequestConfig<TParams>
   ): Promise<TResponse> => {
     try {
       // Apply request transformation
-      const finalConfig = requestTransformer ? requestTransformer(config) : config;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const finalConfig = requestTransformer ? requestTransformer(config) : (config as any);
 
       // Execute request
       const response = await axiosInstance.request(finalConfig);
 
       // Apply response transformation
-      return responseTransformer ? responseTransformer(response) : response.data;
+      return responseTransformer ? (responseTransformer(response) as TResponse) : response.data;
     } catch (error) {
       // Transform error and re-throw
       const transformedError = errorTransformer(error as AxiosError);
-      const apiError = new Error(transformedError.message);
-      (apiError as any).details = transformedError;
+      const apiError = new Error(transformedError.message) as Error & { details: ApiErrorDetails };
+      apiError.details = transformedError;
       throw apiError;
     }
   };
@@ -366,7 +370,7 @@ export const createFunctionalClient = (
     /**
      * Executes GET request
      */
-    get: <TResponse = any, TParams = any>(
+    get: <TResponse = unknown, TParams = Record<string, unknown>>(
       url: string,
       params?: TParams,
       config?: Partial<AxiosRequestConfig>
@@ -377,7 +381,7 @@ export const createFunctionalClient = (
     /**
      * Executes POST request
      */
-    post: <TResponse = any, TData = any>(
+    post: <TResponse = unknown, TData = unknown>(
       url: string,
       data?: TData,
       config?: Partial<AxiosRequestConfig>
@@ -388,7 +392,7 @@ export const createFunctionalClient = (
     /**
      * Executes PUT request
      */
-    put: <TResponse = any, TData = any>(
+    put: <TResponse = unknown, TData = unknown>(
       url: string,
       data?: TData,
       config?: Partial<AxiosRequestConfig>
@@ -399,7 +403,7 @@ export const createFunctionalClient = (
     /**
      * Executes PATCH request
      */
-    patch: <TResponse = any, TData = any>(
+    patch: <TResponse = unknown, TData = unknown>(
       url: string,
       data?: TData,
       config?: Partial<AxiosRequestConfig>
@@ -410,7 +414,7 @@ export const createFunctionalClient = (
     /**
      * Executes DELETE request
      */
-    delete: <TResponse = any>(
+    delete: <TResponse = unknown>(
       url: string,
       config?: Partial<AxiosRequestConfig>
     ): Promise<TResponse> => {
@@ -457,34 +461,35 @@ export const createRetryWrapper = (
   };
 
   return {
-    get: <TResponse = any, TParams = any>(
+    get: <TResponse = unknown, TParams = Record<string, unknown>>(
       url: string,
       params?: TParams,
       config?: Partial<AxiosRequestConfig>
     ) => withRetry(() => client.get<TResponse, TParams>(url, params, config)),
 
-    post: <TResponse = any, TData = any>(
+    post: <TResponse = unknown, TData = unknown>(
       url: string,
       data?: TData,
       config?: Partial<AxiosRequestConfig>
     ) => withRetry(() => client.post<TResponse, TData>(url, data, config)),
 
-    put: <TResponse = any, TData = any>(
+    put: <TResponse = unknown, TData = unknown>(
       url: string,
       data?: TData,
       config?: Partial<AxiosRequestConfig>
     ) => withRetry(() => client.put<TResponse, TData>(url, data, config)),
 
-    patch: <TResponse = any, TData = any>(
+    patch: <TResponse = unknown, TData = unknown>(
       url: string,
       data?: TData,
       config?: Partial<AxiosRequestConfig>
     ) => withRetry(() => client.patch<TResponse, TData>(url, data, config)),
 
-    delete: <TResponse = any>(url: string, config?: Partial<AxiosRequestConfig>) =>
+    delete: <TResponse = unknown>(url: string, config?: Partial<AxiosRequestConfig>) =>
       withRetry(() => client.delete<TResponse>(url, config)),
 
-    request: <TResponse = any, TParams = any>(config: ApiRequestConfig<TParams>) =>
-      withRetry(() => client.request<TResponse, TParams>(config)),
+    request: <TResponse = unknown, TParams = Record<string, unknown>>(
+      config: ApiRequestConfig<TParams>
+    ) => withRetry(() => client.request<TResponse, TParams>(config)),
   };
 };

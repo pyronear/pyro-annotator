@@ -94,7 +94,6 @@ export const createAnnotationInitializationEffect = (deps: AnnotationInitializat
     } = deps;
 
     if (annotation && sequenceId) {
-      console.log(`AnnotationInterface: Loading annotation for sequence ${sequenceId}`);
       setCurrentAnnotation(annotation);
 
       // Initialize missed smoke flag from existing annotation
@@ -218,7 +217,7 @@ export const createIntersectionObserverEffect = (deps: IntersectionObserverDeps)
  * Clears all annotation state when the sequence ID changes.
  */
 export const createSequenceStateClearing = (
-  sequenceId: number | null,
+  _sequenceId: number | null,
   setBboxes: (bboxes: SequenceBbox[]) => void,
   setCurrentAnnotation: (annotation: SequenceAnnotation | null) => void,
   setHasMissedSmoke: (hasSmoke: boolean) => void,
@@ -226,7 +225,6 @@ export const createSequenceStateClearing = (
   setIsUnsure: (isUnsure: boolean) => void
 ) => {
   return () => {
-    console.log(`AnnotationInterface: Sequence changed to ${sequenceId}, clearing stale state`);
     setBboxes([]);
     setCurrentAnnotation(null);
     setHasMissedSmoke(false);

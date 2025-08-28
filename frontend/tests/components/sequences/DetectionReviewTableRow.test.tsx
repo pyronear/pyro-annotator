@@ -33,7 +33,7 @@ vi.mock('@/components/DetectionImageThumbnail', () => ({
 }));
 
 vi.mock('@/components/ui/ContributorList', () => ({
-  default: ({ contributors, displayMode }: { contributors: any[]; displayMode: string }) => (
+  default: ({ contributors, displayMode }: { contributors: Array<{id: number; username: string}>; displayMode: string }) => (
     <div data-testid="contributor-list" data-display-mode={displayMode}>
       {contributors.length} contributors
     </div>
@@ -417,7 +417,7 @@ describe('DetectionReviewTableRow', () => {
     });
 
     it('should handle null smoke_types', () => {
-      const annotation = createAnnotation({ smoke_types: null as any });
+      const annotation = createAnnotation({ smoke_types: null as unknown as string[] });
       const props = {
         ...defaultProps,
         annotation,
