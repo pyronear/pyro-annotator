@@ -3,6 +3,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Edit, Trash2, Key, Search, Filter, UserCheck, UserX } from 'lucide-react';
 import { clsx } from 'clsx';
 import { User, UserCreate, UserUpdate, UserPasswordUpdate, UserFilters } from '@/types/api';
+
+// Error type for mutation errors
+type MutationError = {
+  detail?: string;
+  message?: string;
+} | null;
 import { apiClient } from '@/services/api';
 import { QUERY_KEYS, PAGINATION_DEFAULTS } from '@/utils/constants';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -125,7 +131,7 @@ export default function UserManagementPage() {
     setFilters(prev => ({ ...prev, page }));
   };
 
-  const toggleFilter = (key: keyof UserFilters, value: any) => {
+  const toggleFilter = (key: keyof UserFilters, value: UserFilters[keyof UserFilters]) => {
     setFilters(prev => ({
       ...prev,
       [key]: prev[key] === value ? undefined : value,
@@ -145,7 +151,7 @@ export default function UserManagementPage() {
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-4">
         <p className="text-red-700">
-          Error loading users: {(error as any)?.detail || 'Unknown error'}
+          Error loading users: {error?.message || 'Unknown error'}
         </p>
       </div>
     );
@@ -362,7 +368,7 @@ export default function UserManagementPage() {
           onClose={() => setShowCreateModal(false)}
           onSubmit={data => createUserMutation.mutate(data)}
           isLoading={createUserMutation.isPending}
-          error={createUserMutation.error as any}
+          error={createUserMutation.error}
         />
       )}
 
@@ -375,7 +381,7 @@ export default function UserManagementPage() {
           }}
           onSubmit={data => updateUserMutation.mutate({ id: selectedUser.id, data })}
           isLoading={updateUserMutation.isPending}
-          error={updateUserMutation.error as any}
+          error={updateUserMutation.error}
         />
       )}
 
@@ -388,7 +394,7 @@ export default function UserManagementPage() {
           }}
           onSubmit={data => updatePasswordMutation.mutate({ id: selectedUser.id, data })}
           isLoading={updatePasswordMutation.isPending}
-          error={updatePasswordMutation.error as any}
+          error={updatePasswordMutation.error}
         />
       )}
     </div>
@@ -405,7 +411,7 @@ function CreateUserModal({
   onClose: () => void;
   onSubmit: (data: UserCreate) => void;
   isLoading: boolean;
-  error: any;
+  error: MutationError;
 }) {
   const [formData, setFormData] = useState<UserCreate>({
     username: '',
@@ -509,7 +515,7 @@ function EditUserModal({
   onClose: () => void;
   onSubmit: (data: UserUpdate) => void;
   isLoading: boolean;
-  error: any;
+  error: MutationError;
 }) {
   const [formData, setFormData] = useState<UserUpdate>({
     username: user.username,
@@ -602,7 +608,7 @@ function PasswordChangeModal({
   onClose: () => void;
   onSubmit: (data: UserPasswordUpdate) => void;
   isLoading: boolean;
-  error: any;
+  error: MutationError;
 }) {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');

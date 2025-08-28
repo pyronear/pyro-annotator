@@ -90,7 +90,7 @@ global.Image = class {
       if (this.onload) this.onload();
     }, 0);
   }
-} as any;
+} as typeof Image;
 
 // Mock external utilities
 vi.mock('@/utils/annotation/coordinateUtils', () => ({
@@ -550,7 +550,7 @@ describe('ImageModal', () => {
             if (this.onerror) this.onerror();
           }, 0);
         }
-      } as any;
+      } as typeof Image;
       
       expect(() => {
         renderWithProviders(<ImageModal {...defaultProps} />);

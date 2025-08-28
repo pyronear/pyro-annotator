@@ -102,6 +102,7 @@ export default function AnnotationInterface() {
   });
 
   // Clear state immediately when sequence changes to prevent stale data
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(
     createSequenceStateClearing(
       sequenceId,
@@ -115,6 +116,7 @@ export default function AnnotationInterface() {
   );
 
   // Initialize bboxes and missed smoke when annotation loads - respecting processing stage
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(
     createAnnotationInitializationEffect({
       annotation,
@@ -135,6 +137,7 @@ export default function AnnotationInterface() {
   }, [bboxes.length]);
 
   // Intersection Observer for viewport-based active detection
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(
     createIntersectionObserverEffect({
       bboxes,
@@ -167,6 +170,7 @@ export default function AnnotationInterface() {
     // Use capture phase to ensure we get events before other handlers
     document.addEventListener('keydown', handleKeyDown, true);
     return () => document.removeEventListener('keydown', handleKeyDown, true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeDetectionIndex, bboxes, showKeyboardModal, missedSmokeReview, primaryClassification]);
 
   // Navigation functions using utility creators

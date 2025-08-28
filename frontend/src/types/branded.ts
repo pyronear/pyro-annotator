@@ -367,7 +367,7 @@ export const is = {
  * const id: SequenceId = create.sequenceId(123);
  * const rawId: number = unwrap(id); // 123
  */
-export const unwrap = <T>(brandedValue: Branded<T, any>): T => {
+export const unwrap = <T>(brandedValue: Branded<T, string>): T => {
   return brandedValue as T;
 };
 
@@ -414,7 +414,7 @@ export const filterBranded = <T, Brand extends string>(
 /**
  * Form state with branded types and validation
  */
-export interface BrandedFormState<T extends Record<string, any>> {
+export interface BrandedFormState<T extends Record<string, unknown>> {
   readonly values: T;
   readonly errors: Partial<Record<keyof T, readonly string[]>>;
   readonly touched: Partial<Record<keyof T, boolean>>;
@@ -428,7 +428,7 @@ export interface BrandedFormState<T extends Record<string, any>> {
 export interface BrandedFieldConfig<T> {
   readonly defaultValue: T;
   readonly validator?: (value: T) => readonly string[];
-  readonly transformer?: (rawValue: any) => T;
+  readonly transformer?: (rawValue: unknown) => T;
 }
 
 /**
@@ -450,7 +450,7 @@ export interface BrandedFieldConfig<T> {
  *   }
  * });
  */
-export const createBrandedForm = <T extends Record<string, any>>(
+export const createBrandedForm = <T extends Record<string, unknown>>(
   config: Record<keyof T, BrandedFieldConfig<T[keyof T]>>
 ) => {
   return config;

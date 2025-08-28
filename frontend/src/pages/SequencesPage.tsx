@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '@/services/api';
-import { ExtendedSequenceFilters, ProcessingStageStatus } from '@/types/api';
+import { ExtendedSequenceFilters, ProcessingStageStatus, SequenceWithAnnotation } from '@/types/api';
 import { QUERY_KEYS } from '@/utils/constants';
 import { analyzeSequenceAccuracy } from '@/utils/modelAccuracy';
 import TabbedFilters from '@/components/filters/TabbedFilters';
@@ -141,7 +141,7 @@ export default function SequencesPage({
     setFilters({ ...filters, page });
   };
 
-  const handleSequenceClick = (clickedSequence: any) => {
+  const handleSequenceClick = (clickedSequence: SequenceWithAnnotation) => {
     // Initialize annotation workflow if we have sequences data
     if (sequences?.items) {
       startAnnotationWorkflow(sequences.items, clickedSequence.id, filters);

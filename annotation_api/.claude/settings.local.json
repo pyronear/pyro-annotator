@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(/home/chouffe/earth-tools-maker/projects/pyronear/pyro-annotator/frontend/src/utils/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

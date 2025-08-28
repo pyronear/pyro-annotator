@@ -247,7 +247,7 @@ describe('validationUtils', () => {
       const rectangles: DrawnRectangle[] = [
         {
           id: '1',
-          xyxyn: [0.1, 0.2, 1.5] as any, // Invalid: wrong length
+          xyxyn: [0.1, 0.2, 1.5] as [number, number, number], // Invalid: wrong length
           smokeType: 'wildfire'
         }
       ];
@@ -308,7 +308,7 @@ describe('validationUtils', () => {
         {
           id: '1',
           xyxyn: [0.1, 0.2, 0.8, 0.9],
-          smokeType: 'invalid' as any
+          smokeType: 'invalid' as 'wildfire'
         }
       ];
 
@@ -346,7 +346,7 @@ describe('validationUtils', () => {
     it('should fail validation for invalid detection_id', () => {
       const annotation: DetectionAnnotation = {
         id: 1,
-        detection_id: 'invalid' as any,
+        detection_id: 'invalid' as unknown as number,
         annotation: {
           annotation: []
         },
@@ -365,7 +365,7 @@ describe('validationUtils', () => {
       const annotation: DetectionAnnotation = {
         id: 1,
         detection_id: 1,
-        annotation: null as any,
+        annotation: null as unknown as object,
         processing_stage: 'annotated',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
@@ -382,7 +382,7 @@ describe('validationUtils', () => {
         id: 1,
         detection_id: 1,
         annotation: {
-          annotation: 'invalid' as any
+          annotation: 'invalid' as unknown as object
         },
         processing_stage: 'annotated',
         created_at: new Date().toISOString(),
@@ -402,7 +402,7 @@ describe('validationUtils', () => {
         annotation: {
           annotation: [
             {
-              xyxyn: [0.1, 0.2] as any, // Invalid: wrong length
+              xyxyn: [0.1, 0.2] as [number, number], // Invalid: wrong length
               smoke_type: 'wildfire'
             }
           ]
@@ -426,7 +426,7 @@ describe('validationUtils', () => {
           annotation: [
             {
               xyxyn: [0.1, 0.2, 0.8, 0.9],
-              smoke_type: 'invalid' as any
+              smoke_type: 'invalid' as 'wildfire'
             }
           ]
         },
@@ -698,7 +698,7 @@ describe('validationUtils', () => {
     it('should fail validation for invalid annotation', () => {
       const detections = [createDetection(1)];
       const invalidAnnotation = createAnnotation(1, 1);
-      invalidAnnotation.annotation = null as any; // Make it invalid
+      invalidAnnotation.annotation = null as unknown as object; // Make it invalid
 
       const annotations = new Map([
         [1, invalidAnnotation]

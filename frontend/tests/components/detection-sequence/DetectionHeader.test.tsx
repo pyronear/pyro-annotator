@@ -377,8 +377,8 @@ describe('DetectionHeader', () => {
   describe('Edge Cases', () => {
     it('should handle null/undefined coordinates', () => {
       const sequenceWithoutCoords = createSequence({ 
-        lat: null as any, 
-        lon: null as any,
+        lat: null as unknown as number, 
+        lon: null as unknown as number,
         azimuth: null 
       });
       

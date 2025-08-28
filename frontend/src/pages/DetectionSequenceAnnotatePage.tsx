@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, CheckCircle } from 'lucide-react';
@@ -12,7 +12,7 @@ import {
   formatFalsePositiveType,
   parseFalsePositiveTypes,
 } from '@/utils/modelAccuracy';
-import { Detection, DetectionAnnotation, SmokeType } from '@/types/api';
+import { Detection, DetectionAnnotation, SmokeType, SequenceAnnotation } from '@/types/api';
 import { createDefaultFilterState } from '@/hooks/usePersistedFilters';
 
 // New imports for refactored utilities
@@ -105,16 +105,16 @@ export default function DetectionSequenceAnnotatePage() {
   const { data: detections, isLoading, error } = useSequenceDetections(sequenceIdNum);
 
   // Helper functions to map between detection ID and array index
-  const getDetectionIndexById = (detectionId: number): number | null => {
+  const getDetectionIndexById = useCallback((detectionId: number): number | null => {
     if (!detections) return null;
     const index = detections.findIndex(detection => detection.id === detectionId);
     return index >= 0 ? index : null;
-  };
+  }, [detections]);
 
-  const getDetectionIdByIndex = (index: number): number | null => {
+  const getDetectionIdByIndex = useCallback((index: number): number | null => {
     if (!detections || index < 0 || index >= detections.length) return null;
     return detections[index].id;
-  };
+  }, [detections]);
 
   // Fetch sequence data for header info
   const { data: sequence } = useQuery({
@@ -229,10 +229,10 @@ export default function DetectionSequenceAnnotatePage() {
 
     const annotationMap = allSequenceAnnotations.reduce(
       (acc, { sequenceId, annotation }) => {
-        acc[sequenceId] = annotation;
+        acc[sequenceId] = annotation || undefined;
         return acc;
       },
-      {} as Record<number, any>
+      {} as Record<number, SequenceAnnotation | undefined>
     );
 
     const filtered = rawSequences.items.filter(sequence => {
@@ -435,9 +435,9 @@ export default function DetectionSequenceAnnotatePage() {
     navigate(backPath);
   };
 
-  const handleSave = () => {
+  const handleSave = useCallback(() => {
     saveAnnotations.mutate();
-  };
+  }, [saveAnnotations]);
 
   // Navigation logic
   const getCurrentSequenceIndex = () => {
@@ -485,14 +485,14 @@ export default function DetectionSequenceAnnotatePage() {
     }
   };
 
-  const closeModal = () => {
+  const closeModal = useCallback(() => {
     if (sequenceId) {
       const sourceParam = fromParam ? `?from=${fromParam}` : '';
       navigate(`/detections/${sequenceId}/annotate${sourceParam}`);
     }
-  };
+  }, [sequenceId, fromParam, navigate]);
 
-  const navigateModal = (direction: 'prev' | 'next') => {
+  const navigateModal = useCallback((direction: 'prev' | 'next') => {
     if (!detections || selectedDetectionIndex === null || !sequenceId) return;
 
     const newIndex =
@@ -505,7 +505,7 @@ export default function DetectionSequenceAnnotatePage() {
       const sourceParam = fromParam ? `?from=${fromParam}` : '';
       navigate(`/detections/${sequenceId}/annotate/${newDetectionId}${sourceParam}`);
     }
-  };
+  }, [detections, selectedDetectionIndex, sequenceId, getDetectionIdByIndex, fromParam, navigate]);
 
   // State restoration based on URL parameters
   useEffect(() => {
@@ -579,6 +579,9 @@ export default function DetectionSequenceAnnotatePage() {
     detectionAnnotations,
     annotateIndividualDetection,
     showPredictions,
+    closeModal,
+    handleSave,
+    navigateModal,
   ]);
 
   // Reset auto-advance flag after navigation

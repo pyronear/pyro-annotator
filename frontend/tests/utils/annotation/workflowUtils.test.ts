@@ -200,7 +200,7 @@ describe('workflowUtils', () => {
     const createRectangle = (smokeType: string, coordinates: [number, number, number, number] = [0.1, 0.2, 0.8, 0.9]): DrawnRectangle => ({
       id: '1',
       xyxyn: coordinates,
-      smokeType: smokeType as any
+      smokeType: smokeType as 'wildfire'
     });
 
     it('should validate correct annotation data', () => {

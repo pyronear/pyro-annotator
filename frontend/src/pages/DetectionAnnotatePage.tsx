@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '@/services/api';
-import { ExtendedSequenceFilters, SequenceWithDetectionProgress } from '@/types/api';
+import { ExtendedSequenceFilters, SequenceWithDetectionProgress, SequenceAnnotation } from '@/types/api';
 import { QUERY_KEYS } from '@/utils/constants';
 import { analyzeSequenceAccuracy } from '@/utils/modelAccuracy';
 import TabbedFilters from '@/components/filters/TabbedFilters';
@@ -113,14 +113,17 @@ export default function DetectionAnnotatePage() {
   });
 
   // Create a map for quick annotation lookup
-  const annotationMap =
-    sequenceAnnotations?.reduce(
-      (acc, { sequenceId, annotation }) => {
-        acc[sequenceId] = annotation;
-        return acc;
-      },
-      {} as Record<number, any>
-    ) || {};
+  const annotationMap = useMemo(
+    () =>
+      sequenceAnnotations?.reduce(
+        (acc, { sequenceId, annotation }) => {
+          acc[sequenceId] = annotation || undefined;
+          return acc;
+        },
+        {} as Record<number, SequenceAnnotation | undefined>
+      ) || {},
+    [sequenceAnnotations]
+  );
 
   // Filter sequences by model accuracy
   const filteredSequences = useMemo(() => {
@@ -343,7 +346,7 @@ export default function DetectionAnnotatePage() {
               <DetectionAnnotateTableRow
                 key={sequence.id}
                 sequence={sequence}
-                annotation={annotationMap[sequence.id]}
+                annotation={annotationMap[sequence.id] || undefined}
                 onSequenceClick={handleSequenceClick}
               />
             ))}

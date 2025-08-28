@@ -65,14 +65,19 @@ export const useAuthStore = create<AuthStore>()(
               false,
               'login:success'
             );
-          } catch (error: any) {
+          } catch (error: unknown) {
             set(
               {
                 user: null,
                 token: null,
                 isAuthenticated: false,
                 isLoading: false,
-                error: error?.detail || error?.message || 'Login failed',
+                error: 
+                  typeof error === 'object' && error !== null && 'detail' in error 
+                    ? (error as {detail: string}).detail
+                    : typeof error === 'object' && error !== null && 'message' in error 
+                    ? (error as {message: string}).message 
+                    : 'Login failed',
               },
               false,
               'login:error'
