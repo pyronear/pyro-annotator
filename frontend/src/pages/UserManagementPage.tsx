@@ -268,7 +268,6 @@ export default function UserManagementPage() {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div>
                       <div className="text-sm font-medium text-gray-900">{user.username}</div>
-                      <div className="text-sm text-gray-500">{user.email}</div>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -410,7 +409,6 @@ function CreateUserModal({
 }) {
   const [formData, setFormData] = useState<UserCreate>({
     username: '',
-    email: '',
     password: '',
     is_active: true,
     is_superuser: false,
@@ -441,17 +439,6 @@ function CreateUserModal({
                 required
                 value={formData.username}
                 onChange={e => setFormData(prev => ({ ...prev, username: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-              <input
-                type="email"
-                required
-                value={formData.email}
-                onChange={e => setFormData(prev => ({ ...prev, email: e.target.value }))}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -526,7 +513,6 @@ function EditUserModal({
 }) {
   const [formData, setFormData] = useState<UserUpdate>({
     username: user.username,
-    email: user.email,
     is_active: user.is_active,
     is_superuser: user.is_superuser,
   });
@@ -556,17 +542,6 @@ function EditUserModal({
                 required
                 value={formData.username}
                 onChange={e => setFormData(prev => ({ ...prev, username: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-              <input
-                type="email"
-                required
-                value={formData.email}
-                onChange={e => setFormData(prev => ({ ...prev, email: e.target.value }))}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>

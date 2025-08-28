@@ -18,7 +18,6 @@ class TestCurrentUser:
         data = response.json()
         assert data["id"] == test_user.id
         assert data["username"] == test_user.username
-        assert data["email"] == test_user.email
         assert data["is_active"] == test_user.is_active
         assert data["is_superuser"] == test_user.is_superuser
         assert "hashed_password" not in data  # Should not expose password
@@ -135,7 +134,6 @@ class TestCreateUser:
         """Test admin can create new user."""
         user_data = {
             "username": "newuser",
-            "email": "newuser@test.com",
             "password": "newpassword123",
             "is_active": True,
             "is_superuser": False,
@@ -146,7 +144,6 @@ class TestCreateUser:
         assert response.status_code == 201
         data = response.json()
         assert data["username"] == user_data["username"]
-        assert data["email"] == user_data["email"]
         assert data["is_active"] == user_data["is_active"]
         assert data["is_superuser"] == user_data["is_superuser"]
         assert "hashed_password" not in data
@@ -158,7 +155,6 @@ class TestCreateUser:
         """Test regular user cannot create users."""
         user_data = {
             "username": "forbidden",
-            "email": "forbidden@test.com",
             "password": "password123",
         }
         headers = {"Authorization": f"Bearer {regular_user_token}"}
@@ -176,7 +172,6 @@ class TestCreateUser:
         """Test creating user with duplicate username."""
         user_data = {
             "username": test_user.username,  # Duplicate username
-            "email": "different@test.com",
             "password": "password123",
         }
 
@@ -187,40 +182,10 @@ class TestCreateUser:
         assert "Username already registered" in data["detail"]
 
     @pytest.mark.asyncio
-    async def test_create_user_duplicate_email(
-        self, authenticated_client: AsyncClient, test_user: User
-    ):
-        """Test creating user with duplicate email."""
-        user_data = {
-            "username": "differentuser",
-            "email": test_user.email,  # Duplicate email
-            "password": "password123",
-        }
-
-        response = await authenticated_client.post("/users/", json=user_data)
-
-        assert response.status_code == 400
-        data = response.json()
-        assert "Email already registered" in data["detail"]
-
-    @pytest.mark.asyncio
-    async def test_create_user_invalid_email(self, authenticated_client: AsyncClient):
-        """Test creating user with invalid email format."""
-        user_data = {
-            "username": "testuser",
-            "email": "invalid-email",  # Invalid email
-            "password": "password123",
-        }
-
-        response = await authenticated_client.post("/users/", json=user_data)
-        assert response.status_code == 422
-
-    @pytest.mark.asyncio
     async def test_create_user_short_password(self, authenticated_client: AsyncClient):
         """Test creating user with too short password."""
         user_data = {
             "username": "testuser",
-            "email": "test@test.com",
             "password": "short",  # Too short
         }
 
@@ -273,7 +238,6 @@ class TestUpdateUser:
         """Test admin can update user."""
         update_data = {
             "username": "updateduser",
-            "email": "updated@test.com",
             "is_active": False,
         }
 
@@ -284,7 +248,6 @@ class TestUpdateUser:
         assert response.status_code == 200
         data = response.json()
         assert data["username"] == update_data["username"]
-        assert data["email"] == update_data["email"]
         assert data["is_active"] == update_data["is_active"]
 
     @pytest.mark.asyncio

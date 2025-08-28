@@ -25,7 +25,7 @@ async def read_current_user(
 
 @router.get("/", response_model=Page[UserRead])
 async def list_users(
-    search: Optional[str] = Query(None, description="Search in username or email"),
+    search: Optional[str] = Query(None, description="Search in username"),
     is_active: Optional[bool] = Query(None, description="Filter by active status"),
     is_superuser: Optional[bool] = Query(
         None, description="Filter by superuser status"
@@ -37,7 +37,7 @@ async def list_users(
     """
     List users with filtering, pagination and search.
 
-    - **search**: Search in username or email fields
+    - **search**: Search in username field
     - **is_active**: Filter by active/inactive status
     - **is_superuser**: Filter by superuser status
     - **page**: Page number (default: 1)
@@ -74,13 +74,6 @@ async def create_user(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Username already registered",
-        )
-
-    # Check if email already exists
-    existing_user = await user_crud.get_by_email(user_create.email)
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered"
         )
 
     user = await user_crud.create_user(user_create)
@@ -120,15 +113,6 @@ async def update_user(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Username already registered",
-            )
-
-    # Check if email is being updated and already exists
-    if user_update.email:
-        existing_user = await user_crud.get_by_email(user_update.email)
-        if existing_user and existing_user.id != user_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email already registered",
             )
 
     user = await user_crud.update_user(user_id, user_update)

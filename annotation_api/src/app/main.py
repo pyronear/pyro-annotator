@@ -48,7 +48,6 @@ async def lifespan(app: FastAPI):
             try:
                 admin_create = UserCreate(
                     username=settings.AUTH_USERNAME,
-                    email=f"{settings.AUTH_USERNAME}@pyronear.org",
                     password=settings.AUTH_PASSWORD,
                     is_active=True,
                     is_superuser=True,
@@ -61,7 +60,7 @@ async def lifespan(app: FastAPI):
             logger.info("Admin user already exists")
 
         break  # Exit after first session
-    
+
     yield
     # Shutdown (if needed)
 

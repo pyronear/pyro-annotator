@@ -282,9 +282,7 @@ class User(SQLModel, table=True):
     __tablename__ = "users"
     __table_args__ = (
         UniqueConstraint("username", name="uq_user_username"),
-        UniqueConstraint("email", name="uq_user_email"),
         Index("ix_user_username", "username"),
-        Index("ix_user_email", "email"),
     )
     id: int = Field(
         default=None,
@@ -292,7 +290,6 @@ class User(SQLModel, table=True):
         sa_column_kwargs={"autoincrement": True},
     )
     username: str = Field(max_length=50)
-    email: str = Field(max_length=255)
     hashed_password: str
     is_active: bool = Field(default=True)
     is_superuser: bool = Field(default=False)

@@ -29,7 +29,6 @@ async def second_user(async_session: AsyncSession) -> User:
     """Create a second test user."""
     user = User(
         username="seconduser",
-        email="second@example.com",
         hashed_password="hashed_password_456",
         is_active=True,
         is_superuser=False,

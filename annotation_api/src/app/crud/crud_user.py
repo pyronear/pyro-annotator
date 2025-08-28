@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from typing import List, Optional
 
 from passlib.context import CryptContext
-from sqlalchemy import select, or_, and_
+from sqlalchemy import select, and_
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.crud.base import BaseCRUD
@@ -27,7 +27,6 @@ class UserCRUD(BaseCRUD[User, UserCreate, UserUpdate]):
     async def create_user(self, user_create: UserCreate) -> User:
         db_user = User(
             username=user_create.username,
-            email=user_create.email,
             hashed_password=self.get_password_hash(user_create.password),
             is_active=user_create.is_active,
             is_superuser=user_create.is_superuser,
@@ -39,12 +38,6 @@ class UserCRUD(BaseCRUD[User, UserCreate, UserUpdate]):
 
     async def get_by_username(self, username: str) -> Optional[User]:
         statement = select(User).where(User.username == username)
-        result = await self.session.execute(statement)
-        user = result.scalar_one_or_none()
-        return user
-
-    async def get_by_email(self, email: str) -> Optional[User]:
-        statement = select(User).where(User.email == email)
         result = await self.session.execute(statement)
         user = result.scalar_one_or_none()
         return user
@@ -128,12 +121,10 @@ class UserCRUD(BaseCRUD[User, UserCreate, UserUpdate]):
 
         conditions = []
 
-        # Add search filter (username or email)
+        # Add search filter (username only)
         if search:
             search_term = f"%{search}%"
-            conditions.append(
-                or_(User.username.ilike(search_term), User.email.ilike(search_term))
-            )
+            conditions.append(User.username.ilike(search_term))
 
         # Add is_active filter
         if is_active is not None:

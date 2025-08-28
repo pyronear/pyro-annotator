@@ -28,7 +28,7 @@ class TestBoundingBox:
         # Test when x1 == x2 and y1 == y2 (should be invalid - zero area)
         with pytest.raises(ValidationError) as exc_info:
             BoundingBox(detection_id=1, xyxyn=[0.5, 0.5, 0.5, 0.5])
-        
+
         error_details = str(exc_info.value)
         assert "Zero-area bounding boxes are not allowed" in error_details
 
