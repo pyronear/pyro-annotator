@@ -16,7 +16,7 @@ import { useCameras } from '@/hooks/useCameras';
 import { useOrganizations } from '@/hooks/useOrganizations';
 import { useSourceApis } from '@/hooks/useSourceApis';
 import { usePersistedFilters, createDefaultFilterState } from '@/hooks/usePersistedFilters';
-import { calculatePresetDateRange } from '@/components/filters/shared/DateRangeFilter';
+import { calculatePresetDateRange } from '@/components/filters/shared/dateRangeUtils';
 import { hasActiveUserFilters } from '@/utils/filterHelpers';
 
 export default function DetectionReviewPage() {
