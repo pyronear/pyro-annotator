@@ -50,9 +50,19 @@ export function DetectionReviewTableRow({
               {sequence.source_api}
             </span>
 
-            {sequence.is_wildfire_alertapi && (
+            {sequence.is_wildfire_alertapi === 'wildfire_smoke' && (
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                🔥 Wildfire
+              </span>
+            )}
+            {sequence.is_wildfire_alertapi === 'other_smoke' && (
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
-                🔥 Wildfire Alert
+                💨 Other Smoke
+              </span>
+            )}
+            {sequence.is_wildfire_alertapi === 'other' && (
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                ○ Other
               </span>
             )}
           </div>

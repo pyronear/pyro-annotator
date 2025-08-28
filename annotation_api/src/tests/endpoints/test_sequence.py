@@ -16,7 +16,7 @@ async def test_create_sequence(authenticated_client: AsyncClient):
         "camera_id": "1",
         "organisation_name": "test_org",
         "organisation_id": "1",
-        "is_wildfire_alertapi": "true",
+        "is_wildfire_alertapi": "wildfire_smoke",
         "azimuth": "90",
         "lat": "0.0",
         "lon": "0.0",
@@ -30,7 +30,7 @@ async def test_create_sequence(authenticated_client: AsyncClient):
     sequence = response.json()
     assert "id" in sequence
     assert sequence["source_api"] == payload["source_api"]
-    assert sequence["is_wildfire_alertapi"] is True
+    assert sequence["is_wildfire_alertapi"] == "wildfire_smoke"
     assert sequence["camera_name"] == payload["camera_name"]
 
 
@@ -108,7 +108,7 @@ async def test_create_sequence_with_is_wildfire_alertapi_true(
         "camera_id": "102",
         "organisation_name": "test_org",
         "organisation_id": "1",
-        "is_wildfire_alertapi": "true",
+        "is_wildfire_alertapi": "wildfire_smoke",
         "azimuth": "90",
         "lat": "0.0",
         "lon": "0.0",
@@ -122,7 +122,7 @@ async def test_create_sequence_with_is_wildfire_alertapi_true(
     sequence = response.json()
     assert "id" in sequence
     assert sequence["source_api"] == payload["source_api"]
-    assert sequence["is_wildfire_alertapi"] is True
+    assert sequence["is_wildfire_alertapi"] == "wildfire_smoke"
     assert sequence["camera_name"] == payload["camera_name"]
 
 
@@ -233,7 +233,7 @@ async def test_create_sequence_with_is_wildfire_alertapi_false(
         "camera_id": "103",
         "organisation_name": "test_org",
         "organisation_id": "1",
-        "is_wildfire_alertapi": "false",
+        "is_wildfire_alertapi": "other",
         "azimuth": "90",
         "lat": "0.0",
         "lon": "0.0",
@@ -247,7 +247,7 @@ async def test_create_sequence_with_is_wildfire_alertapi_false(
     sequence = response.json()
     assert "id" in sequence
     assert sequence["source_api"] == payload["source_api"]
-    assert sequence["is_wildfire_alertapi"] is False
+    assert sequence["is_wildfire_alertapi"] == "other"
     assert sequence["camera_name"] == payload["camera_name"]
 
 

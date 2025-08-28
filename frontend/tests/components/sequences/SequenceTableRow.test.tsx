@@ -75,7 +75,7 @@ describe('SequenceTableRow', () => {
     lat: 45.123456,
     lon: -122.987654,
     azimuth: 180,
-    is_wildfire_alertapi: false,
+    is_wildfire_alertapi: 'other',
     organisation_name: 'Test Org',
     organisation_id: 1,
     annotation: null,
@@ -151,21 +151,21 @@ describe('SequenceTableRow', () => {
       expect(screen.queryByText(/Azimuth:/)).not.toBeInTheDocument();
     });
 
-    it('should render wildfire alert badge when is_wildfire_alertapi is true', () => {
+    it('should render wildfire alert badge when is_wildfire_alertapi is wildfire_smoke', () => {
       const props = {
         ...defaultProps,
-        sequence: createSequence({ is_wildfire_alertapi: true }),
+        sequence: createSequence({ is_wildfire_alertapi: 'wildfire_smoke' }),
       };
       
       render(<SequenceTableRow {...props} />);
       
-      expect(screen.getByText('🔥 Wildfire Alert')).toBeInTheDocument();
+      expect(screen.getByText('🔥 Wildfire')).toBeInTheDocument();
     });
 
-    it('should not render wildfire alert badge when is_wildfire_alertapi is false', () => {
+    it('should not render wildfire alert badge when is_wildfire_alertapi is other', () => {
       render(<SequenceTableRow {...defaultProps} />);
       
-      expect(screen.queryByText('🔥 Wildfire Alert')).not.toBeInTheDocument();
+      expect(screen.queryByText('🔥 Wildfire')).not.toBeInTheDocument();
     });
   });
 
@@ -354,7 +354,7 @@ describe('SequenceTableRow', () => {
     it('should apply correct badge styling', () => {
       const props = {
         ...defaultProps,
-        sequence: createSequence({ is_wildfire_alertapi: true }),
+        sequence: createSequence({ is_wildfire_alertapi: 'wildfire_smoke' }),
       };
       
       render(<SequenceTableRow {...props} />);

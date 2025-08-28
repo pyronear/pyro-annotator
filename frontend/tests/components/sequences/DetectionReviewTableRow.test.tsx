@@ -54,7 +54,7 @@ describe('DetectionReviewTableRow', () => {
     lat: 45.123456,
     lon: -122.987654,
     azimuth: 180,
-    is_wildfire_alertapi: false,
+    is_wildfire_alertapi: 'other',
     organisation_name: 'Test Org',
     organisation_id: 1,
     detection_annotation_stats: null,
@@ -133,7 +133,7 @@ describe('DetectionReviewTableRow', () => {
     it('should render wildfire alert badge with orange styling', () => {
       const props = {
         ...defaultProps,
-        sequence: createSequence({ is_wildfire_alertapi: true }),
+        sequence: createSequence({ is_wildfire_alertapi: 'wildfire_smoke' }),
       };
       
       render(<DetectionReviewTableRow {...props} />);
@@ -143,7 +143,7 @@ describe('DetectionReviewTableRow', () => {
       expect(wildfireBadge).toHaveClass('bg-orange-100', 'text-orange-800');
     });
 
-    it('should not render wildfire alert badge when is_wildfire_alertapi is false', () => {
+    it('should not render wildfire alert badge when is_wildfire_alertapi is other', () => {
       render(<DetectionReviewTableRow {...defaultProps} />);
       
       expect(screen.queryByText('🔥 Wildfire Alert')).not.toBeInTheDocument();
@@ -308,7 +308,7 @@ describe('DetectionReviewTableRow', () => {
     it('should apply correct badge styling', () => {
       const props = {
         ...defaultProps,
-        sequence: createSequence({ is_wildfire_alertapi: true }),
+        sequence: createSequence({ is_wildfire_alertapi: 'wildfire_smoke' }),
       };
       
       render(<DetectionReviewTableRow {...props} />);

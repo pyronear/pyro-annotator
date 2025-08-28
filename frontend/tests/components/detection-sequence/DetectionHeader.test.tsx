@@ -47,7 +47,7 @@ describe('DetectionHeader', () => {
     lat: 45.123456,
     lon: -122.987654,
     azimuth: 180,
-    is_wildfire_alertapi: true,
+    is_wildfire_alertapi: 'wildfire_smoke',
     organisation_name: 'Test Org',
     organisation_id: 1,
     ...overrides,

@@ -17,7 +17,7 @@ export interface Sequence {
   lat: number;
   lon: number;
   azimuth: number | null;
-  is_wildfire_alertapi: boolean | null;
+  is_wildfire_alertapi: AnnotationType | null;
   organisation_name: string;
   organisation_id: number;
   detection_annotation_stats?: DetectionAnnotationStats;
@@ -102,6 +102,8 @@ export interface DetectionAnnotationData {
 // Enums
 export type SmokeType = 'wildfire' | 'industrial' | 'other';
 
+export type AnnotationType = 'wildfire_smoke' | 'other_smoke' | 'other';
+
 export type FalsePositiveType =
   | 'antenna'
   | 'building'
@@ -145,7 +147,7 @@ export interface SequenceFilters {
   camera_name?: string;
   organisation_id?: number;
   organisation_name?: string;
-  is_wildfire_alertapi?: boolean;
+  is_wildfire_alertapi?: AnnotationType;
   recorded_at_gte?: string;
   recorded_at_lte?: string;
   detection_annotation_completion?: 'complete' | 'incomplete' | 'all';

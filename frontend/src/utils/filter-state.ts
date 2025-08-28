@@ -303,7 +303,9 @@ export const deserializeFilterState = (searchParams: URLSearchParams): ExtendedF
   if (source) filters.source_api = source;
 
   const wildfire = searchParams.get('wildfire');
-  if (wildfire) filters.is_wildfire_alertapi = wildfire === 'true';
+  if (wildfire && ['wildfire_smoke', 'other_smoke', 'other'].includes(wildfire)) {
+    filters.is_wildfire_alertapi = wildfire as any;
+  }
 
   // Parse dates
   const dateFrom = searchParams.get('from') || '';

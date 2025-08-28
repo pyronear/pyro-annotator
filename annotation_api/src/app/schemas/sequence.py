@@ -9,7 +9,7 @@ from typing import Optional
 
 from pydantic import BaseModel, Field, ConfigDict
 
-from app.models import SourceApi
+from app.models import SourceApi, AnnotationType
 from app.schemas.annotation_validation import SequenceAnnotationData
 
 __all__ = [
@@ -45,7 +45,7 @@ class SequenceCreate(Azimuth):
                     "lat": 43.6047,
                     "lon": 1.4442,
                     "azimuth": 125,
-                    "is_wildfire_alertapi": True,
+                    "is_wildfire_alertapi": "wildfire_smoke",
                     "organisation_name": "Pyronear France",
                     "organisation_id": 1,
                 },
@@ -59,7 +59,7 @@ class SequenceCreate(Azimuth):
                     "lat": 37.7749,
                     "lon": -122.4194,
                     "azimuth": 270,
-                    "is_wildfire_alertapi": False,
+                    "is_wildfire_alertapi": "other",
                     "organisation_name": "AlertWildfire Network",
                     "organisation_id": 2,
                 },
@@ -80,7 +80,11 @@ class SequenceCreate(Azimuth):
     lat: float
     lon: float
     azimuth: Optional[int] = Field(default=None)
-    is_wildfire_alertapi: Optional[bool] = Field(default=None)
+    is_wildfire_alertapi: Optional[AnnotationType] = Field(
+        default=None,
+        description="Classification from external API: 'wildfire_smoke' (confirmed wildfire), 'other_smoke' (non-wildfire smoke), 'other' (false positive or other detection)",
+        examples=["wildfire_smoke", "other_smoke", "other", None]
+    )
     organisation_name: str
     organisation_id: int
 
@@ -101,7 +105,7 @@ class SequenceRead(Azimuth):
     lat: float
     lon: float
     azimuth: Optional[int]
-    is_wildfire_alertapi: Optional[bool]
+    is_wildfire_alertapi: Optional[AnnotationType]
     organisation_name: str
     organisation_id: int
 

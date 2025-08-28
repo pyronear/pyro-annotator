@@ -242,24 +242,21 @@ export default function TabbedFilters({
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Wildfire Alert</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Wildfire Classification</label>
         <select
-          value={
-            filters.is_wildfire_alertapi === undefined
-              ? ''
-              : filters.is_wildfire_alertapi.toString()
-          }
+          value={filters.is_wildfire_alertapi || ''}
           onChange={e => {
             const value = e.target.value;
             onFiltersChange({
-              is_wildfire_alertapi: value === '' ? undefined : value === 'true',
+              is_wildfire_alertapi: value === '' ? undefined : (value as any),
             });
           }}
           className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
         >
           <option value="">All</option>
-          <option value="true">Wildfire Alert</option>
-          <option value="false">No Alert</option>
+          <option value="wildfire_smoke">🔥 Wildfire Smoke</option>
+          <option value="other_smoke">💨 Other Smoke</option>
+          <option value="other">○ Other</option>
         </select>
       </div>
 
