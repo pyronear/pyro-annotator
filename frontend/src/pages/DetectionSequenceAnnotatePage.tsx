@@ -28,10 +28,7 @@ import {
   DrawnRectangle,
   calculateAnnotationCompleteness,
 } from '@/utils/annotation';
-import {
-  DetectionImageCard,
-} from '@/components/detection-annotation';
-import { ImageModal } from '@/components/detection-sequence';
+import { ImageModal, DetectionGrid } from '@/components/detection-sequence';
 
 // Helper function for context-aware annotation status
 const getIsAnnotated = (
@@ -1012,22 +1009,14 @@ export default function DetectionSequenceAnnotatePage() {
         </div>
       </div>
 
-      {/* Content with top padding to account for fixed header */}
-      <div className="space-y-6 pt-20">
-        {/* Detection Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-          {detections.map((detection, index) => (
-            <DetectionImageCard
-              key={detection.id}
-              detection={detection}
-              onClick={() => openModal(index)}
-              isAnnotated={getIsAnnotated(detectionAnnotations.get(detection.id), fromParam)}
-              showPredictions={showPredictions}
-              userAnnotation={detectionAnnotations.get(detection.id) || null}
-            />
-          ))}
-        </div>
-      </div>
+      <DetectionGrid
+        detections={detections}
+        onDetectionClick={openModal}
+        showPredictions={showPredictions}
+        detectionAnnotations={detectionAnnotations}
+        fromParam={fromParam}
+        getIsAnnotated={getIsAnnotated}
+      />
 
       {/* Image Modal */}
       {showModal && selectedDetectionIndex !== null && detections[selectedDetectionIndex] && (
