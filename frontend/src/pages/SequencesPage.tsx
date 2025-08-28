@@ -3,20 +3,15 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '@/services/api';
 import { ExtendedSequenceFilters, ProcessingStageStatus } from '@/types/api';
-import { QUERY_KEYS, PAGINATION_OPTIONS } from '@/utils/constants';
-import { getProcessingStageLabel, getProcessingStageColorClass } from '@/utils/processingStage';
-import {
-  analyzeSequenceAccuracy,
-  getFalsePositiveEmoji,
-  formatFalsePositiveType,
-  getRowBackgroundClasses,
-  parseFalsePositiveTypes,
-  getSmokeTypeEmoji,
-  formatSmokeType,
-} from '@/utils/modelAccuracy';
-import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
+import { QUERY_KEYS } from '@/utils/constants';
+import { analyzeSequenceAccuracy } from '@/utils/modelAccuracy';
 import TabbedFilters from '@/components/filters/TabbedFilters';
-import ContributorList from '@/components/ui/ContributorList';
+import {
+  SequencesTableHeader,
+  SequencesLegend,
+  SequenceTableRow,
+  SequencesPagination,
+} from '@/components/sequences';
 import { useSequenceStore } from '@/store/useSequenceStore';
 import { useCameras } from '@/hooks/useCameras';
 import { useOrganizations } from '@/hooks/useOrganizations';
@@ -314,238 +309,34 @@ export default function SequencesPage({
       {/* Results */}
       {filteredSequences && (
         <div className="bg-white rounded-lg border border-gray-200">
-          <div className="px-4 py-3 border-b border-gray-200">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-gray-700">
-                Showing {(filteredSequences.page - 1) * filteredSequences.size + 1} to{' '}
-                {Math.min(filteredSequences.page * filteredSequences.size, filteredSequences.total)}{' '}
-                of {filteredSequences.total} results
-                {selectedModelAccuracy !== 'all' &&
-                  defaultProcessingStage === 'annotated' &&
-                  sequences && (
-                    <span className="text-gray-500"> (filtered from {sequences.total} total)</span>
-                  )}
-              </p>
-              <div className="flex items-center space-x-2">
-                <label className="text-sm text-gray-700">Show:</label>
-                <select
-                  value={filters.size}
-                  onChange={e => handleFilterChange({ size: Number(e.target.value) })}
-                  className="border border-gray-300 rounded px-2 py-1 text-sm"
-                >
-                  {PAGINATION_OPTIONS.map(size => (
-                    <option key={size} value={size}>
-                      {size}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
+          <SequencesTableHeader
+            filteredSequences={filteredSequences}
+            sequences={sequences}
+            defaultProcessingStage={defaultProcessingStage}
+            selectedModelAccuracy={selectedModelAccuracy}
+            filters={filters}
+            onFilterChange={handleFilterChange}
+          />
 
           {/* Row Background Color Legend - Only show on review page */}
-          {defaultProcessingStage === 'annotated' && (
-            <div className="px-4 py-2 bg-gray-50 border-b border-gray-200">
-              <div className="flex items-center justify-between text-xs">
-                <div className="flex items-center space-x-6">
-                  <span className="font-medium text-gray-700">Row Colors:</span>
-                  <div className="flex items-center space-x-1">
-                    <div className="w-3 h-3 bg-green-200 border border-green-300 rounded"></div>
-                    <span className="text-gray-600">True Positive (Model correct)</span>
-                  </div>
-                  <div className="flex items-center space-x-1">
-                    <div className="w-3 h-3 bg-red-200 border border-red-300 rounded"></div>
-                    <span className="text-gray-600">False Positive (Model incorrect)</span>
-                  </div>
-                  <div className="flex items-center space-x-1">
-                    <div className="w-3 h-3 bg-blue-200 border border-blue-300 rounded"></div>
-                    <span className="text-gray-600">False Negative (Model missed smoke)</span>
-                  </div>
-                  <div className="flex items-center space-x-1">
-                    <div className="w-3 h-3 bg-amber-50 border border-amber-300 rounded"></div>
-                    <span className="text-gray-600">Unsure (Needs review)</span>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <div className="flex items-center space-x-1">
-                    <div className="w-3 h-3 bg-orange-200 border border-orange-300 rounded"></div>
-                    <span className="text-gray-600">Smoke Types</span>
-                  </div>
-                  <div className="flex items-center space-x-1">
-                    <div className="w-3 h-3 bg-yellow-200 border border-yellow-300 rounded"></div>
-                    <span className="text-gray-600">False Positive Types</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
+          {defaultProcessingStage === 'annotated' && <SequencesLegend />}
 
           {/* Sequence List */}
           <div className="divide-y divide-gray-200">
-            {filteredSequences.items.map(sequence => {
-              // Calculate row background based on model accuracy for review pages
-              let rowClasses = 'p-4 cursor-pointer';
-              if (defaultProcessingStage === 'annotated' && sequence.annotation) {
-                // Special background for unsure sequences
-                if (sequence.annotation.is_unsure) {
-                  rowClasses = 'p-4 cursor-pointer bg-amber-50 hover:bg-amber-100';
-                } else {
-                  const accuracy = analyzeSequenceAccuracy(sequence);
-                  rowClasses = `p-4 cursor-pointer ${getRowBackgroundClasses(accuracy)}`;
-                }
-              } else {
-                rowClasses = 'p-4 hover:bg-gray-50 cursor-pointer';
-              }
-
-              return (
-                <div
-                  key={sequence.id}
-                  className={rowClasses}
-                  onClick={() => handleSequenceClick(sequence)}
-                >
-                  <div className="flex items-start space-x-4">
-                    {/* Detection Image Thumbnail */}
-                    <div className="flex-shrink-0">
-                      <DetectionImageThumbnail sequenceId={sequence.id} className="h-16" />
-                    </div>
-
-                    {/* Sequence Info */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center space-x-3">
-                        <h3 className="text-sm font-medium text-gray-900 truncate">
-                          {sequence.camera_name}
-                        </h3>
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                          {sequence.source_api}
-                        </span>
-                        {sequence.is_wildfire_alertapi && (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                            🔥 Wildfire Alert
-                          </span>
-                        )}
-                        {/* Unsure indicator for review page */}
-                        {defaultProcessingStage === 'annotated' &&
-                          sequence.annotation?.is_unsure && (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
-                              ⚠️ Unsure
-                            </span>
-                          )}
-                        {/* Processing stage pill - conditionally hidden based on page context */}
-                        {(() => {
-                          const processingStage =
-                            sequence.annotation?.processing_stage || 'no_annotation';
-                          // Hide "ready_to_annotate" pills on annotate page, hide "annotated" pills on review page
-                          const shouldHidePill =
-                            (defaultProcessingStage === 'ready_to_annotate' &&
-                              processingStage === 'ready_to_annotate') ||
-                            (defaultProcessingStage === 'annotated' &&
-                              processingStage === 'annotated');
-
-                          if (shouldHidePill) return null;
-
-                          return (
-                            <span
-                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getProcessingStageColorClass(processingStage)}`}
-                            >
-                              {getProcessingStageLabel(processingStage)}
-                            </span>
-                          );
-                        })()}
-                      </div>
-
-                      <div className="mt-2 flex items-center text-sm text-gray-500 space-x-2">
-                        <span>{new Date(sequence.recorded_at).toLocaleString()}</span>
-
-                        <span className="text-gray-400">•</span>
-                        <span>{sequence.organisation_name}</span>
-
-                        {sequence.azimuth !== null && sequence.azimuth !== undefined && (
-                          <>
-                            <span className="text-gray-400">•</span>
-                            <span className="text-gray-400 text-xs">
-                              Azimuth: {sequence.azimuth}°
-                            </span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Right Column - False Positive Pills and Contributors (Review page only) */}
-                    {defaultProcessingStage === 'annotated' && sequence.annotation && (
-                      <div className="flex-shrink-0 self-start">
-                        <div className="flex flex-col gap-2">
-                          {/* False Positive Pills */}
-                          <div className="flex flex-wrap gap-1 justify-end">
-                            {(() => {
-                              const falsePositiveTypes = parseFalsePositiveTypes(
-                                sequence.annotation.false_positive_types
-                              );
-                              return falsePositiveTypes.map((type: string) => (
-                                <span
-                                  key={type}
-                                  className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800"
-                                >
-                                  {getFalsePositiveEmoji(type)} {formatFalsePositiveType(type)}
-                                </span>
-                              ));
-                            })()}
-                          </div>
-
-                          {/* Smoke Type Pills */}
-                          <div className="flex flex-wrap gap-1 justify-end">
-                            {sequence.annotation.smoke_types?.map((type: string) => (
-                              <span
-                                key={type}
-                                className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800"
-                              >
-                                {getSmokeTypeEmoji(type)} {formatSmokeType(type)}
-                              </span>
-                            ))}
-                          </div>
-
-                          {/* Contributors - Bottom Right */}
-                          {sequence.annotation.contributors &&
-                            sequence.annotation.contributors.length > 0 && (
-                              <div className="flex justify-end">
-                                <ContributorList
-                                  contributors={sequence.annotation.contributors}
-                                  displayMode="compact"
-                                />
-                              </div>
-                            )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+            {filteredSequences.items.map(sequence => (
+              <SequenceTableRow
+                key={sequence.id}
+                sequence={sequence}
+                defaultProcessingStage={defaultProcessingStage}
+                onSequenceClick={handleSequenceClick}
+              />
+            ))}
           </div>
 
-          {/* Pagination */}
-          {filteredSequences.pages > 1 && (
-            <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => handlePageChange(filteredSequences.page - 1)}
-                  disabled={filteredSequences.page === 1}
-                  className="px-3 py-1 border border-gray-300 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-                >
-                  Previous
-                </button>
-                <span className="text-sm text-gray-700">
-                  Page {filteredSequences.page} of {filteredSequences.pages}
-                </span>
-                <button
-                  onClick={() => handlePageChange(filteredSequences.page + 1)}
-                  disabled={filteredSequences.page === filteredSequences.pages}
-                  className="px-3 py-1 border border-gray-300 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          )}
+          <SequencesPagination
+            filteredSequences={filteredSequences}
+            onPageChange={handlePageChange}
+          />
         </div>
       )}
     </div>
