@@ -170,7 +170,7 @@ export default function AnnotationInterface() {
     // Use capture phase to ensure we get events before other handlers
     document.addEventListener('keydown', handleKeyDown, true);
     return () => document.removeEventListener('keydown', handleKeyDown, true);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeDetectionIndex, bboxes, showKeyboardModal, missedSmokeReview, primaryClassification]);
 
   // Navigation functions using utility creators

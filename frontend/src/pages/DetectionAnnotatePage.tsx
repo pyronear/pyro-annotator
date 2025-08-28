@@ -2,7 +2,11 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '@/services/api';
-import { ExtendedSequenceFilters, SequenceWithDetectionProgress, SequenceAnnotation } from '@/types/api';
+import {
+  ExtendedSequenceFilters,
+  SequenceWithDetectionProgress,
+  SequenceAnnotation,
+} from '@/types/api';
 import { QUERY_KEYS } from '@/utils/constants';
 import { analyzeSequenceAccuracy } from '@/utils/modelAccuracy';
 import TabbedFilters from '@/components/filters/TabbedFilters';

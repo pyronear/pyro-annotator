@@ -253,7 +253,11 @@ export default function TabbedFilters({
             const value = e.target.value;
             onFiltersChange({
               is_wildfire_alertapi:
-                value === '' ? undefined : value === 'null' ? null : (value as 'wildfire_smoke' | 'other_smoke' | 'other'),
+                value === ''
+                  ? undefined
+                  : value === 'null'
+                    ? null
+                    : (value as 'wildfire_smoke' | 'other_smoke' | 'other'),
             });
           }}
           className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"

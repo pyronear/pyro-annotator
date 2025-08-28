@@ -488,7 +488,8 @@ export const createRetryWrapper = (
     delete: <TResponse = unknown>(url: string, config?: Partial<AxiosRequestConfig>) =>
       withRetry(() => client.delete<TResponse>(url, config)),
 
-    request: <TResponse = unknown, TParams = Record<string, unknown>>(config: ApiRequestConfig<TParams>) =>
-      withRetry(() => client.request<TResponse, TParams>(config)),
+    request: <TResponse = unknown, TParams = Record<string, unknown>>(
+      config: ApiRequestConfig<TParams>
+    ) => withRetry(() => client.request<TResponse, TParams>(config)),
   };
 };

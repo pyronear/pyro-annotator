@@ -150,9 +150,7 @@ export default function UserManagementPage() {
   if (error) {
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <p className="text-red-700">
-          Error loading users: {error?.message || 'Unknown error'}
-        </p>
+        <p className="text-red-700">Error loading users: {error?.message || 'Unknown error'}</p>
       </div>
     );
   }

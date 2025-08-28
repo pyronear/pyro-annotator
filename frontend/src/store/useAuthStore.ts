@@ -72,12 +72,12 @@ export const useAuthStore = create<AuthStore>()(
                 token: null,
                 isAuthenticated: false,
                 isLoading: false,
-                error: 
-                  typeof error === 'object' && error !== null && 'detail' in error 
-                    ? (error as {detail: string}).detail
-                    : typeof error === 'object' && error !== null && 'message' in error 
-                    ? (error as {message: string}).message 
-                    : 'Login failed',
+                error:
+                  typeof error === 'object' && error !== null && 'detail' in error
+                    ? (error as { detail: string }).detail
+                    : typeof error === 'object' && error !== null && 'message' in error
+                      ? (error as { message: string }).message
+                      : 'Login failed',
               },
               false,
               'login:error'

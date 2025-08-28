@@ -306,7 +306,8 @@ export const deserializeFilterState = (searchParams: URLSearchParams): ExtendedF
 
   const wildfire = searchParams.get('wildfire');
   if (wildfire && ['wildfire_smoke', 'other_smoke', 'other', 'null'].includes(wildfire)) {
-    filters.is_wildfire_alertapi = wildfire === 'null' ? null : (wildfire as 'wildfire_smoke' | 'other_smoke' | 'other');
+    filters.is_wildfire_alertapi =
+      wildfire === 'null' ? null : (wildfire as 'wildfire_smoke' | 'other_smoke' | 'other');
   }
 
   // Parse dates

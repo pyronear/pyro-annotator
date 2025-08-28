@@ -105,16 +105,22 @@ export default function DetectionSequenceAnnotatePage() {
   const { data: detections, isLoading, error } = useSequenceDetections(sequenceIdNum);
 
   // Helper functions to map between detection ID and array index
-  const getDetectionIndexById = useCallback((detectionId: number): number | null => {
-    if (!detections) return null;
-    const index = detections.findIndex(detection => detection.id === detectionId);
-    return index >= 0 ? index : null;
-  }, [detections]);
+  const getDetectionIndexById = useCallback(
+    (detectionId: number): number | null => {
+      if (!detections) return null;
+      const index = detections.findIndex(detection => detection.id === detectionId);
+      return index >= 0 ? index : null;
+    },
+    [detections]
+  );
 
-  const getDetectionIdByIndex = useCallback((index: number): number | null => {
-    if (!detections || index < 0 || index >= detections.length) return null;
-    return detections[index].id;
-  }, [detections]);
+  const getDetectionIdByIndex = useCallback(
+    (index: number): number | null => {
+      if (!detections || index < 0 || index >= detections.length) return null;
+      return detections[index].id;
+    },
+    [detections]
+  );
 
   // Fetch sequence data for header info
   const { data: sequence } = useQuery({
@@ -492,20 +498,23 @@ export default function DetectionSequenceAnnotatePage() {
     }
   }, [sequenceId, fromParam, navigate]);
 
-  const navigateModal = useCallback((direction: 'prev' | 'next') => {
-    if (!detections || selectedDetectionIndex === null || !sequenceId) return;
+  const navigateModal = useCallback(
+    (direction: 'prev' | 'next') => {
+      if (!detections || selectedDetectionIndex === null || !sequenceId) return;
 
-    const newIndex =
-      direction === 'prev'
-        ? Math.max(0, selectedDetectionIndex - 1)
-        : Math.min(detections.length - 1, selectedDetectionIndex + 1);
+      const newIndex =
+        direction === 'prev'
+          ? Math.max(0, selectedDetectionIndex - 1)
+          : Math.min(detections.length - 1, selectedDetectionIndex + 1);
 
-    const newDetectionId = getDetectionIdByIndex(newIndex);
-    if (newDetectionId) {
-      const sourceParam = fromParam ? `?from=${fromParam}` : '';
-      navigate(`/detections/${sequenceId}/annotate/${newDetectionId}${sourceParam}`);
-    }
-  }, [detections, selectedDetectionIndex, sequenceId, getDetectionIdByIndex, fromParam, navigate]);
+      const newDetectionId = getDetectionIdByIndex(newIndex);
+      if (newDetectionId) {
+        const sourceParam = fromParam ? `?from=${fromParam}` : '';
+        navigate(`/detections/${sequenceId}/annotate/${newDetectionId}${sourceParam}`);
+      }
+    },
+    [detections, selectedDetectionIndex, sequenceId, getDetectionIdByIndex, fromParam, navigate]
+  );
 
   // State restoration based on URL parameters
   useEffect(() => {
