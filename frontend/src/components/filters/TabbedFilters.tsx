@@ -228,7 +228,7 @@ export default function TabbedFilters({
         <label className="block text-sm font-medium text-gray-700 mb-1">Source API</label>
         <select
           value={filters.source_api || ''}
-          onChange={e => onFiltersChange({ source_api: (e.target.value as any) || undefined })}
+          onChange={e => onFiltersChange({ source_api: e.target.value || undefined })}
           className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
           disabled={sourceApisLoading}
         >

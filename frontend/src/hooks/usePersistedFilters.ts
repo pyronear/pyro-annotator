@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ExtendedSequenceFilters } from '@/types/api';
+import { ExtendedSequenceFilters, ProcessingStageStatus } from '@/types/api';
 import { ModelAccuracyType } from '@/utils/modelAccuracy';
 import { PAGINATION_DEFAULTS } from '@/utils/constants';
 
@@ -26,7 +26,7 @@ export function createDefaultFilterState(defaultProcessingStage?: string): Persi
       size: PAGINATION_DEFAULTS.SIZE,
       // Note: processing_stage is a system filter, not a user-visible filter
       // It's used to determine which sequences to show based on the page context
-      processing_stage: defaultProcessingStage as any,
+      processing_stage: defaultProcessingStage as ProcessingStageStatus | undefined,
     },
     dateFrom: '',
     dateTo: '',

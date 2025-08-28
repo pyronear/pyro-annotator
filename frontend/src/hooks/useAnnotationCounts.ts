@@ -5,7 +5,7 @@ export interface AnnotationCounts {
   sequenceCount: number;
   detectionCount: number;
   isLoading: boolean;
-  error: any;
+  error: Error | null;
 }
 
 export function useAnnotationCounts(): AnnotationCounts {

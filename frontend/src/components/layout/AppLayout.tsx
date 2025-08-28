@@ -11,6 +11,7 @@ import {
   LogOut,
   User,
   Users,
+  LucideIcon,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useAnnotationCounts } from '@/hooks/useAnnotationCounts';
@@ -25,7 +26,7 @@ interface AppLayoutProps {
 interface NavigationItem {
   name: string;
   href?: string;
-  icon: any;
+  icon: LucideIcon;
   children?: NavigationSubItem[];
 }
 

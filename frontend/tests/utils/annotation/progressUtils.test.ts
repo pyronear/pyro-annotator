@@ -14,15 +14,15 @@ import {
   getProgressColor,
   AnnotationProgress
 } from '@/utils/annotation/progressUtils';
-import { SequenceBbox } from '@/types/api';
+import { SequenceBbox, SmokeType, FalsePositiveType } from '@/types/api';
 
 // Mock SequenceBbox data for testing
-const createMockBbox = (isSmoke: boolean, smokeType?: string, falsePositiveTypes: string[] = []): SequenceBbox => ({
+const createMockBbox = (isSmoke: boolean, smokeType?: SmokeType, falsePositiveTypes: FalsePositiveType[] = []): SequenceBbox => ({
   id: Math.random(),
   xyxyn: [0.1, 0.2, 0.8, 0.9],
   is_smoke: isSmoke,
-  smoke_type: smokeType as any,
-  false_positive_types: falsePositiveTypes as any[],
+  smoke_type: smokeType,
+  false_positive_types: falsePositiveTypes,
   bboxes: []
 });
 

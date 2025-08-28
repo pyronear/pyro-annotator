@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Detection } from '@/types/api';
 import { apiClient } from '@/services/api';
 
@@ -33,7 +33,7 @@ export function useImagePreloader(
   const loadingQueue = useRef<Set<number>>(new Set());
 
   // Calculate which images should be preloaded (with loop-aware logic)
-  const getPreloadRange = () => {
+  const getPreloadRange = useCallback(() => {
     let start = Math.max(0, currentIndex - preloadBehind);
     let end = Math.min(detections.length - 1, currentIndex + preloadAhead);
 
@@ -47,55 +47,58 @@ export function useImagePreloader(
     }
 
     return { start, end };
-  };
+  }, [currentIndex, preloadBehind, preloadAhead, detections.length]);
 
   // Preload a single image
-  const preloadImage = async (detection: Detection) => {
-    if (imageCache[detection.id]?.loaded || loadingQueue.current.has(detection.id)) {
-      return;
-    }
+  const preloadImage = useCallback(
+    async (detection: Detection) => {
+      if (imageCache[detection.id]?.loaded || loadingQueue.current.has(detection.id)) {
+        return;
+      }
 
-    loadingQueue.current.add(detection.id);
+      loadingQueue.current.add(detection.id);
 
-    try {
-      // Fetch the image URL from the API
-      const { url } = await apiClient.getDetectionImageUrl(detection.id);
+      try {
+        // Fetch the image URL from the API
+        const { url } = await apiClient.getDetectionImageUrl(detection.id);
 
-      // Create an Image object to preload
-      const img = new Image();
-      imageRefs.current[detection.id] = img;
+        // Create an Image object to preload
+        const img = new Image();
+        imageRefs.current[detection.id] = img;
 
-      // Set up promise-based loading
-      await new Promise<void>((resolve, reject) => {
-        img.onload = () => {
-          setImageCache(prev => ({
-            ...prev,
-            [detection.id]: { url, loaded: true, error: false },
-          }));
-          resolve();
-        };
+        // Set up promise-based loading
+        await new Promise<void>((resolve, reject) => {
+          img.onload = () => {
+            setImageCache(prev => ({
+              ...prev,
+              [detection.id]: { url, loaded: true, error: false },
+            }));
+            resolve();
+          };
 
-        img.onerror = () => {
-          setImageCache(prev => ({
-            ...prev,
-            [detection.id]: { url, loaded: false, error: true },
-          }));
-          reject(new Error(`Failed to load image for detection ${detection.id}`));
-        };
+          img.onerror = () => {
+            setImageCache(prev => ({
+              ...prev,
+              [detection.id]: { url, loaded: false, error: true },
+            }));
+            reject(new Error(`Failed to load image for detection ${detection.id}`));
+          };
 
-        // Start loading
-        img.src = url;
-      });
-    } catch (error) {
-      console.error(`Error preloading image for detection ${detection.id}:`, error);
-      setImageCache(prev => ({
-        ...prev,
-        [detection.id]: { url: '', loaded: false, error: true },
-      }));
-    } finally {
-      loadingQueue.current.delete(detection.id);
-    }
-  };
+          // Start loading
+          img.src = url;
+        });
+      } catch (error) {
+        console.error(`Error preloading image for detection ${detection.id}:`, error);
+        setImageCache(prev => ({
+          ...prev,
+          [detection.id]: { url: '', loaded: false, error: true },
+        }));
+      } finally {
+        loadingQueue.current.delete(detection.id);
+      }
+    },
+    [imageCache]
+  );
 
   // Preload images in the sliding window
   useEffect(() => {
@@ -175,7 +178,15 @@ export function useImagePreloader(
         });
       }
     });
-  }, [detections, currentIndex, preloadAhead, preloadBehind]);
+  }, [
+    detections,
+    currentIndex,
+    preloadAhead,
+    preloadBehind,
+    getPreloadRange,
+    preloadImage,
+    imageCache,
+  ]);
 
   // Get current image info
   const currentImage = detections[currentIndex] ? imageCache[detections[currentIndex].id] : null;

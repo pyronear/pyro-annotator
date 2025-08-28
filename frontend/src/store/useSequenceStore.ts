@@ -8,7 +8,7 @@ import {
 } from '@/types/api';
 import { PAGINATION_DEFAULTS } from '@/utils/constants';
 
-interface AnnotationWorkflow {
+export interface AnnotationWorkflow {
   sequences: SequenceWithAnnotation[];
   currentIndex: number;
   filters: ExtendedSequenceFilters;

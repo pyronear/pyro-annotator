@@ -2,39 +2,37 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '@/services/api';
-import { ExtendedSequenceFilters, ProcessingStageStatus } from '@/types/api';
+import { ExtendedSequenceFilters, SequenceWithDetectionProgress } from '@/types/api';
 import { QUERY_KEYS } from '@/utils/constants';
 import { analyzeSequenceAccuracy } from '@/utils/modelAccuracy';
 import TabbedFilters from '@/components/filters/TabbedFilters';
 import {
-  SequencesTableHeader,
+  DetectionReviewTableHeader,
   SequencesLegend,
-  SequenceTableRow,
-  SequencesPagination,
+  DetectionReviewTableRow,
+  DetectionReviewPagination,
 } from '@/components/sequences';
-import { useSequenceStore } from '@/store/useSequenceStore';
 import { useCameras } from '@/hooks/useCameras';
 import { useOrganizations } from '@/hooks/useOrganizations';
 import { useSourceApis } from '@/hooks/useSourceApis';
 import { usePersistedFilters, createDefaultFilterState } from '@/hooks/usePersistedFilters';
-import { calculatePresetDateRange } from '@/components/filters/shared/dateRangeUtils';
+import { calculatePresetDateRange } from '@/components/filters/shared/DateRangeFilter';
 import { hasActiveUserFilters } from '@/utils/filterHelpers';
 
-interface SequencesPageProps {
-  defaultProcessingStage?: ProcessingStageStatus;
-}
-
-export default function SequencesPage({
-  defaultProcessingStage = 'ready_to_annotate',
-}: SequencesPageProps = {}) {
+export default function DetectionReviewPage() {
   const navigate = useNavigate();
-  const { startAnnotationWorkflow } = useSequenceStore();
 
-  // Determine storage key based on processing stage to separate annotate vs review filters
-  const storageKey =
-    defaultProcessingStage === 'annotated'
-      ? 'filters-sequences-review'
-      : 'filters-sequences-annotate';
+  // Create default state specific to detection review page
+  const defaultState = {
+    ...createDefaultFilterState('annotated'),
+    filters: {
+      ...createDefaultFilterState('annotated').filters,
+      detection_annotation_completion: 'complete' as const,
+      include_detection_stats: true,
+      processing_stage: 'annotated' as const, // Only show sequences that have completed sequence-level annotation
+      is_unsure: false, // Exclude unsure sequences from detection annotation workflow
+    },
+  };
 
   // Use persisted filters hook
   const {
@@ -44,16 +42,14 @@ export default function SequencesPage({
     selectedFalsePositiveTypes,
     selectedSmokeTypes,
     selectedModelAccuracy,
-    selectedUnsure,
     setFilters,
     setDateFrom,
     setDateTo,
     setSelectedFalsePositiveTypes,
     setSelectedSmokeTypes,
     setSelectedModelAccuracy,
-    setSelectedUnsure,
     resetFilters,
-  } = usePersistedFilters(storageKey, createDefaultFilterState(defaultProcessingStage));
+  } = usePersistedFilters('filters-detections-review', defaultState);
 
   // Fetch cameras, organizations, and source APIs for dropdown options
   const { data: cameras = [], isLoading: camerasLoading } = useCameras();
@@ -96,28 +92,65 @@ export default function SequencesPage({
     handleFilterChange({ recorded_at_lte: dateTimeValue });
   };
 
-  // Fetch sequences with annotations in a single efficient call
+  // Fetch sequences with complete detection annotations
   const {
     data: sequences,
     isLoading,
     error,
   } = useQuery({
-    queryKey: [...QUERY_KEYS.SEQUENCES, 'with-annotations', filters],
-    queryFn: () => apiClient.getSequencesWithAnnotations(filters),
+    queryKey: [...QUERY_KEYS.SEQUENCES, 'detection-review', filters],
+    queryFn: () => apiClient.getSequences(filters),
   });
 
-  // Filter sequences by model accuracy (only for review page)
+  // Fetch sequence annotations for model accuracy analysis
+  const { data: sequenceAnnotations } = useQuery({
+    queryKey: [
+      ...QUERY_KEYS.SEQUENCE_ANNOTATIONS,
+      'detection-review',
+      sequences?.items?.map(s => s.id),
+    ],
+    queryFn: async () => {
+      if (!sequences?.items?.length) return [];
+
+      const annotationPromises = sequences.items.map(sequence =>
+        apiClient
+          .getSequenceAnnotations({ sequence_id: sequence.id, size: 1 })
+          .then(response => ({ sequenceId: sequence.id, annotation: response.items[0] || null }))
+          .catch(() => ({ sequenceId: sequence.id, annotation: null }))
+      );
+
+      return Promise.all(annotationPromises);
+    },
+    enabled: !!sequences?.items?.length,
+  });
+
+  // Create a map for quick annotation lookup
+  const annotationMap =
+    sequenceAnnotations?.reduce(
+      (acc, { sequenceId, annotation }) => {
+        acc[sequenceId] = annotation;
+        return acc;
+      },
+      {} as Record<number, any>
+    ) || {};
+
+  // Filter sequences by model accuracy
   const filteredSequences = useMemo(() => {
-    if (!sequences || selectedModelAccuracy === 'all' || defaultProcessingStage !== 'annotated') {
+    if (!sequences || selectedModelAccuracy === 'all') {
       return sequences;
     }
 
     const filtered = sequences.items.filter(sequence => {
-      if (!sequence.annotation) {
+      const annotation = annotationMap[sequence.id];
+      if (!annotation) {
         return selectedModelAccuracy === 'unknown';
       }
 
-      const accuracy = analyzeSequenceAccuracy(sequence);
+      const accuracy = analyzeSequenceAccuracy({
+        ...sequence,
+        annotation: annotation,
+      });
+
       return accuracy.type === selectedModelAccuracy;
     });
 
@@ -127,13 +160,14 @@ export default function SequencesPage({
       total: filtered.length,
       pages: Math.ceil(filtered.length / sequences.size),
     };
-  }, [sequences, selectedModelAccuracy, defaultProcessingStage]);
+  }, [sequences, annotationMap, selectedModelAccuracy]);
 
   const handleFilterChange = (newFilters: Partial<ExtendedSequenceFilters>) => {
     setFilters({ ...filters, ...newFilters, page: 1 });
   };
 
-  const handleFalsePositiveFilterChangeV2 = (selectedTypes: string[]) => {
+  const handleFalsePositiveFilterChange = (selectedTypes: string[]) => {
+    // Only call setSelectedFalsePositiveTypes (which now does atomic update)
     setSelectedFalsePositiveTypes(selectedTypes);
   };
 
@@ -141,15 +175,9 @@ export default function SequencesPage({
     setFilters({ ...filters, page });
   };
 
-  const handleSequenceClick = (clickedSequence: any) => {
-    // Initialize annotation workflow if we have sequences data
-    if (sequences?.items) {
-      startAnnotationWorkflow(sequences.items, clickedSequence.id, filters);
-    }
-
-    // Navigate to annotation interface with context about source page
-    const queryParam = defaultProcessingStage === 'annotated' ? '?from=review' : '';
-    navigate(`/sequences/${clickedSequence.id}/annotate${queryParam}`);
+  const handleSequenceClick = (clickedSequence: SequenceWithDetectionProgress) => {
+    // Navigate to detection annotation interface for review purposes
+    navigate(`/detections/${clickedSequence.id}/annotate?from=detections-review`);
   };
 
   if (isLoading) {
@@ -171,8 +199,8 @@ export default function SequencesPage({
     );
   }
 
-  // Empty state when no sequences are available
-  if (sequences && sequences.items.length === 0) {
+  // Empty state when no sequences are available for review
+  if (filteredSequences && filteredSequences.items.length === 0) {
     // Check if user has applied filters
     const hasFilters = hasActiveUserFilters(
       filters,
@@ -181,11 +209,11 @@ export default function SequencesPage({
       selectedFalsePositiveTypes,
       selectedSmokeTypes,
       selectedModelAccuracy,
-      selectedUnsure,
-      defaultProcessingStage === 'annotated',
-      defaultProcessingStage === 'annotated',
-      defaultProcessingStage === 'annotated',
-      defaultProcessingStage === 'annotated'
+      'all', // selectedUnsure
+      true, // showModelAccuracy
+      true, // showFalsePositiveTypes
+      true, // showSmokeTypes
+      false // showUnsureFilter
     );
 
     return (
@@ -193,8 +221,8 @@ export default function SequencesPage({
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Sequences</h1>
-            <p className="text-gray-600">Manage and annotate wildfire detection sequences</p>
+            <h1 className="text-2xl font-bold text-gray-900">Detections</h1>
+            <p className="text-gray-600">Review and verify annotated wildfire detections</p>
           </div>
         </div>
 
@@ -209,13 +237,11 @@ export default function SequencesPage({
           onDateRangeSet={setDateRange}
           onDateRangeClear={clearDateRange}
           selectedFalsePositiveTypes={selectedFalsePositiveTypes}
-          onFalsePositiveTypesChange={handleFalsePositiveFilterChangeV2}
+          onFalsePositiveTypesChange={handleFalsePositiveFilterChange}
           selectedSmokeTypes={selectedSmokeTypes}
           onSmokeTypesChange={setSelectedSmokeTypes}
           selectedModelAccuracy={selectedModelAccuracy}
           onModelAccuracyChange={setSelectedModelAccuracy}
-          selectedUnsure={selectedUnsure}
-          onUnsureChange={setSelectedUnsure}
           onResetFilters={resetFilters}
           cameras={cameras}
           organizations={organizations}
@@ -223,10 +249,9 @@ export default function SequencesPage({
           camerasLoading={camerasLoading}
           organizationsLoading={organizationsLoading}
           sourceApisLoading={sourceApisLoading}
-          showModelAccuracy={defaultProcessingStage === 'annotated'}
-          showFalsePositiveTypes={defaultProcessingStage === 'annotated'}
-          showSmokeTypes={defaultProcessingStage === 'annotated'}
-          showUnsureFilter={defaultProcessingStage === 'annotated'}
+          showModelAccuracy={true}
+          showFalsePositiveTypes={true}
+          showSmokeTypes={true}
         />
 
         {/* Empty state message */}
@@ -240,24 +265,15 @@ export default function SequencesPage({
                   No matching sequences found
                 </h3>
                 <p className="text-gray-500 mb-4">
-                  {defaultProcessingStage === 'annotated'
-                    ? 'No completed sequences match your current filters.'
-                    : 'No sequences match your current filters.'}
+                  No sequences with completed detection annotations match your current filters.
                 </p>
                 <p className="text-gray-400 text-sm">Try adjusting your search criteria above.</p>
               </>
-            ) : defaultProcessingStage === 'annotated' ? (
-              // Review page - simple message without celebration
-              <p className="text-gray-500">No completed sequences to review at the moment.</p>
             ) : (
-              // Annotation page - celebratory message
-              <>
-                <div className="text-6xl mb-4">🎉</div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">All caught up!</h3>
-                <p className="text-gray-500">
-                  No sequences available for annotation at the moment.
-                </p>
-              </>
+              // No filters - no sequences available
+              <p className="text-gray-500">
+                No sequences with completed detection annotations to review at the moment.
+              </p>
             )}
           </div>
         </div>
@@ -270,8 +286,8 @@ export default function SequencesPage({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Sequences</h1>
-          <p className="text-gray-600">Manage and annotate wildfire detection sequences</p>
+          <h1 className="text-2xl font-bold text-gray-900">Detection Review</h1>
+          <p className="text-gray-600">Review and verify annotated wildfire detections</p>
         </div>
       </div>
 
@@ -286,13 +302,9 @@ export default function SequencesPage({
         onDateRangeSet={setDateRange}
         onDateRangeClear={clearDateRange}
         selectedFalsePositiveTypes={selectedFalsePositiveTypes}
-        onFalsePositiveTypesChange={handleFalsePositiveFilterChangeV2}
-        selectedSmokeTypes={selectedSmokeTypes}
-        onSmokeTypesChange={setSelectedSmokeTypes}
+        onFalsePositiveTypesChange={handleFalsePositiveFilterChange}
         selectedModelAccuracy={selectedModelAccuracy}
         onModelAccuracyChange={setSelectedModelAccuracy}
-        selectedUnsure={selectedUnsure}
-        onUnsureChange={setSelectedUnsure}
         onResetFilters={resetFilters}
         cameras={cameras}
         organizations={organizations}
@@ -300,40 +312,39 @@ export default function SequencesPage({
         camerasLoading={camerasLoading}
         organizationsLoading={organizationsLoading}
         sourceApisLoading={sourceApisLoading}
-        showModelAccuracy={defaultProcessingStage === 'annotated'}
-        showFalsePositiveTypes={defaultProcessingStage === 'annotated'}
-        showSmokeTypes={defaultProcessingStage === 'annotated'}
-        showUnsureFilter={defaultProcessingStage === 'annotated'}
+        showModelAccuracy={true}
+        showFalsePositiveTypes={true}
+        selectedSmokeTypes={selectedSmokeTypes}
+        onSmokeTypesChange={setSelectedSmokeTypes}
+        showSmokeTypes={true}
       />
 
       {/* Results */}
       {filteredSequences && (
         <div className="bg-white rounded-lg border border-gray-200">
-          <SequencesTableHeader
+          <DetectionReviewTableHeader
             filteredSequences={filteredSequences}
             sequences={sequences}
-            defaultProcessingStage={defaultProcessingStage}
             selectedModelAccuracy={selectedModelAccuracy}
             filters={filters}
             onFilterChange={handleFilterChange}
           />
 
-          {/* Row Background Color Legend - Only show on review page */}
-          {defaultProcessingStage === 'annotated' && <SequencesLegend />}
+          <SequencesLegend />
 
           {/* Sequence List */}
           <div className="divide-y divide-gray-200">
             {filteredSequences.items.map(sequence => (
-              <SequenceTableRow
+              <DetectionReviewTableRow
                 key={sequence.id}
                 sequence={sequence}
-                defaultProcessingStage={defaultProcessingStage}
+                annotation={annotationMap[sequence.id]}
                 onSequenceClick={handleSequenceClick}
               />
             ))}
           </div>
 
-          <SequencesPagination
+          <DetectionReviewPagination
             filteredSequences={filteredSequences}
             onPageChange={handlePageChange}
           />
