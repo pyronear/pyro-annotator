@@ -375,7 +375,7 @@ describe('SequenceTableRow', () => {
       const sourceApiBadge = screen.getByText('test-api');
       expect(sourceApiBadge).toHaveClass('bg-blue-100', 'text-blue-800');
       
-      const wildfireBadge = screen.getByText('🔥 Wildfire Alert');
+      const wildfireBadge = screen.getByText('🔥 Wildfire');
       expect(wildfireBadge).toHaveClass('bg-red-100', 'text-red-800');
     });
   });
