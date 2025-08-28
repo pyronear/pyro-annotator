@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { X, ChevronLeft, ChevronRight, Keyboard } from 'lucide-react';
 import { Detection, DetectionAnnotation, SmokeType } from '@/types/api';
 import {
@@ -115,12 +115,6 @@ export function ImageModal({
       const width = imgRect.width;
       const height = imgRect.height;
 
-      console.log('handleImageLoad called for detection:', detection.id, {
-        width,
-        height,
-        offsetX,
-        offsetY,
-      });
       setImageInfo({
         width: width,
         height: height,
@@ -152,7 +146,6 @@ export function ImageModal({
       setTransformOrigin({ x: 50, y: 50 });
 
       // Start transition: fade out overlays smoothly
-      console.log('Detection changed, starting transition:', detection.id);
       setIsTransitioning(true);
       setOverlaysVisible(false);
 
@@ -175,7 +168,6 @@ export function ImageModal({
             const width = imgRect.width;
             const height = imgRect.height;
 
-            console.log('Fallback imageInfo calculation:', { width, height, offsetX, offsetY });
             setImageInfo({
               width: width,
               height: height,
@@ -188,11 +180,6 @@ export function ImageModal({
               setOverlaysVisible(true);
               setIsTransitioning(false);
             }, 50); // Small delay to ensure imageInfo is set
-          } else {
-            console.log('Fallback skipped - image not loaded yet:', {
-              imgWidth: imgRect.width,
-              imgHeight: imgRect.height,
-            });
           }
         }
       }, 200); // Give image time to load
@@ -359,7 +346,6 @@ export function ImageModal({
     setDrawnRectangles(prev => [...prev, ...newRectangles]);
 
     // Show success feedback
-    console.log(`✅ Imported ${newRectangles.length} AI predictions as ${selectedSmokeType} smoke`);
   };
 
   const handleUndo = () => {
@@ -381,7 +367,7 @@ export function ImageModal({
   };
 
   // Mouse wheel zoom handler
-  const handleWheel = (e: React.WheelEvent) => {
+  const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
 
     if (!containerRef.current || !imgRef.current) return;
@@ -409,7 +395,7 @@ export function ImageModal({
       setPanOffset({ x: 0, y: 0 });
       setTransformOrigin({ x: 50, y: 50 });
     }
-  };
+  }, [zoomLevel]);
 
   // Pan boundary constraint helper
   const constrainPan = (offset: { x: number; y: number }) => {
@@ -537,11 +523,11 @@ export function ImageModal({
   };
 
   // Reset zoom function
-  const handleZoomReset = () => {
+  const handleZoomReset = useCallback(() => {
     setZoomLevel(1.0);
     setPanOffset({ x: 0, y: 0 });
     setTransformOrigin({ x: 50, y: 50 });
-  };
+  }, []);
 
   // Keyboard shortcuts using reusable hook - no memoization, simple and direct
   useKeyboardShortcuts(
@@ -645,7 +631,17 @@ export function ImageModal({
     if (!container) return;
 
     const wheelHandler = (e: WheelEvent) => {
-      handleWheel(e as any); // Cast to React.WheelEvent for compatibility
+      // Convert native WheelEvent to React.WheelEvent structure
+      const reactWheelEvent = {
+        ...e,
+        currentTarget: e.currentTarget as HTMLElement,
+        target: e.target as HTMLElement,
+        clientX: e.clientX,
+        clientY: e.clientY,
+        deltaY: e.deltaY,
+        preventDefault: () => e.preventDefault(),
+      } as React.WheelEvent;
+      handleWheel(reactWheelEvent);
     };
 
     // Add with passive: false to allow preventDefault

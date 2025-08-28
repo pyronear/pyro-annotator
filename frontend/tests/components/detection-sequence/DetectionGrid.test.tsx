@@ -21,8 +21,16 @@ vi.mock('lucide-react', async (importOriginal) => {
 });
 
 // Mock the DetectionImageCard component
+interface MockDetectionCardProps {
+  detection: Detection;
+  onClick: () => void;
+  isAnnotated: boolean;
+  showPredictions: boolean;
+  userAnnotation?: DetectionAnnotation;
+}
+
 vi.mock('@/components/detection-annotation', () => ({
-  DetectionImageCard: ({ detection, onClick, isAnnotated, showPredictions, userAnnotation }: any) => (
+  DetectionImageCard: ({ detection, onClick, isAnnotated, showPredictions, userAnnotation }: MockDetectionCardProps) => (
     <div 
       data-testid={`detection-card-${detection.id}`}
       data-annotated={isAnnotated}
@@ -76,7 +84,7 @@ describe('DetectionGrid', () => {
     showPredictions: true,
     detectionAnnotations: new Map(),
     fromParam: null,
-    getIsAnnotated: vi.fn((annotation, fromContext) => !!annotation),
+    getIsAnnotated: vi.fn((annotation) => !!annotation),
   };
 
   beforeEach(() => {

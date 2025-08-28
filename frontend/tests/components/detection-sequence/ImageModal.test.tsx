@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ImageModal } from '@/components/detection-sequence/ImageModal';
 import type { Detection, DetectionAnnotation } from '@/types/api';
@@ -253,7 +253,7 @@ describe('ImageModal', () => {
 
     it('should call onClose when overlay is clicked', () => {
       const onClose = vi.fn();
-      const { container } = renderWithProviders(<ImageModal {...defaultProps} onClose={onClose} />);
+      renderWithProviders(<ImageModal {...defaultProps} onClose={onClose} />);
       
       // Test that close functionality works via the close button
       // (overlay click behavior depends on event handling setup)
