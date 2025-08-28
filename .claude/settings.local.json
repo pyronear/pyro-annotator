@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(make test-specific:*)"
-    ],
-    "deny": [],
-    "ask": []
-  }
-}
