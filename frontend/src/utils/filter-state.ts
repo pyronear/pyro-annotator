@@ -258,8 +258,10 @@ export const serializeFilterState = (state: ExtendedFilterState): URLSearchParam
   if (state.filters.camera_name) params.set('camera', state.filters.camera_name);
   if (state.filters.organisation_name) params.set('org', state.filters.organisation_name);
   if (state.filters.source_api) params.set('source', state.filters.source_api);
-  if (state.filters.is_wildfire_alertapi !== undefined) {
+  if (state.filters.is_wildfire_alertapi != null) {
     params.set('wildfire', state.filters.is_wildfire_alertapi.toString());
+  } else if (state.filters.is_wildfire_alertapi === null) {
+    params.set('wildfire', 'null');
   }
 
   // Add date range
