@@ -132,7 +132,7 @@ def transform_sequence_data(record: dict, source_api: str = "pyronear_french") -
         "camera_id": record["camera_id"],
         "organisation_name": record["organization_name"],
         "organisation_id": record["organization_id"],
-        "is_wildfire_alertapi": record["sequence_is_wildfire"],
+        "is_wildfire_alertapi": record["sequence_is_wildfire"],  # Platform enum: 'wildfire_smoke', 'other_smoke', 'other'
         "lat": record["camera_lat"],
         "lon": record["camera_lon"],
         "azimuth": record["sequence_azimuth"],

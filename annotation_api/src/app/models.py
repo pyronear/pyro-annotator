@@ -2,11 +2,11 @@ from datetime import UTC, datetime
 from enum import Enum
 from typing import List, Optional
 
-from sqlalchemy import Column, DateTime, ForeignKey, Index, UniqueConstraint
+from sqlalchemy import Column, DateTime, ForeignKey, Index, UniqueConstraint, Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
-__all__ = ["Detection", "DetectionAnnotation", "Sequence", "SequenceAnnotation", "User"]
+__all__ = ["Detection", "DetectionAnnotation", "Sequence", "SequenceAnnotation", "User", "AnnotationType"]
 
 # -------------------- ENUMS --------------------
 
@@ -109,6 +109,20 @@ class FalsePositiveType(str, Enum):
     )
 
 
+class AnnotationType(str, Enum):
+    """
+    Classification of annotation types from external wildfire detection APIs.
+    
+    These values correspond to the classification provided by platform APIs
+    to indicate the type of detection (wildfire smoke vs other sources).
+    Used to maintain the original classification from external systems.
+    """
+
+    WILDFIRE_SMOKE = "wildfire_smoke"  # Confirmed wildfire smoke detection
+    OTHER_SMOKE = "other_smoke"  # Smoke from non-wildfire sources (industrial, controlled burns, etc.)
+    OTHER = "other"  # Other type of detection or false positive
+
+
 # -------------------- TABLES --------------------
 
 
@@ -173,7 +187,9 @@ class Sequence(SQLModel, table=True):
     lat: float
     lon: float
     azimuth: Optional[int] = Field(default=None)
-    is_wildfire_alertapi: Optional[bool] = Field(default=None)
+    is_wildfire_alertapi: Optional[AnnotationType] = Field(
+        default=None, sa_column=Column(SQLEnum(AnnotationType))
+    )
     organisation_name: str
     organisation_id: int
 

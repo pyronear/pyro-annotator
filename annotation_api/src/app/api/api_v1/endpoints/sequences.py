@@ -42,6 +42,7 @@ from app.models import (
     SequenceAnnotationContribution,
     SequenceAnnotationProcessingStage,
     User,
+    AnnotationType,
 )
 from app.schemas.sequence import (
     SequenceCreate,
@@ -78,7 +79,10 @@ async def create_sequence(
     camera_id: int = Form(...),
     organisation_name: str = Form(...),
     organisation_id: int = Form(...),
-    is_wildfire_alertapi: Optional[bool] = Form(None),
+    is_wildfire_alertapi: Optional[AnnotationType] = Form(
+        None,
+        description="Classification from external API: 'wildfire_smoke', 'other_smoke', or 'other'"
+    ),
     lat: float = Form(...),
     lon: float = Form(...),
     azimuth: Optional[int] = Form(None),
@@ -122,8 +126,8 @@ async def list_sequences(
     organisation_name: Optional[str] = Query(
         None, description="Filter by organisation name (exact match)"
     ),
-    is_wildfire_alertapi: Optional[bool] = Query(
-        None, description="Filter by wildfire alert API status"
+    is_wildfire_alertapi: Optional[str] = Query(
+        None, description="Filter by wildfire classification: 'wildfire_smoke', 'other_smoke', 'other', or 'null' for unclassified"
     ),
     has_annotation: Optional[bool] = Query(
         None,
@@ -186,7 +190,7 @@ async def list_sequences(
     - **source_api**: Filter sequences by source API
     - **camera_id**: Filter sequences by camera ID
     - **organisation_id**: Filter sequences by organisation ID
-    - **is_wildfire_alertapi**: Filter sequences by wildfire alert API status
+    - **is_wildfire_alertapi**: Filter sequences by wildfire classification ('wildfire_smoke', 'other_smoke', 'other')
     - **has_annotation**: Filter by annotation presence (True: with annotations, False: without annotations)
     - **include_annotation**: Include complete annotation data in response (default: False)
     - **processing_stage**: Filter by processing stage ('imported', 'ready_to_annotate', 'annotated', 'no_annotation')
@@ -243,7 +247,17 @@ async def list_sequences(
         query = query.where(Sequence.organisation_name == organisation_name)
 
     if is_wildfire_alertapi is not None:
-        query = query.where(Sequence.is_wildfire_alertapi == is_wildfire_alertapi)
+        # Special handling for filtering null values (sent as "null" string from frontend)
+        if is_wildfire_alertapi == "null":
+            query = query.where(Sequence.is_wildfire_alertapi.is_(None))
+        else:
+            # Validate that the value is a valid AnnotationType
+            try:
+                enum_value = AnnotationType(is_wildfire_alertapi)
+                query = query.where(Sequence.is_wildfire_alertapi == enum_value)
+            except ValueError:
+                # Invalid enum value, ignore filter (could also raise an error)
+                pass
 
     if has_annotation is not None:
         if has_annotation:

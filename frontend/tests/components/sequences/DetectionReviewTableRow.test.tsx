@@ -54,7 +54,7 @@ describe('DetectionReviewTableRow', () => {
     lat: 45.123456,
     lon: -122.987654,
     azimuth: 180,
-    is_wildfire_alertapi: false,
+    is_wildfire_alertapi: 'other',
     organisation_name: 'Test Org',
     organisation_id: 1,
     detection_annotation_stats: null,
@@ -130,20 +130,20 @@ describe('DetectionReviewTableRow', () => {
       expect(screen.queryByText(/Azimuth:/)).not.toBeInTheDocument();
     });
 
-    it('should render wildfire alert badge with orange styling', () => {
+    it('should render wildfire alert badge with red styling', () => {
       const props = {
         ...defaultProps,
-        sequence: createSequence({ is_wildfire_alertapi: true }),
+        sequence: createSequence({ is_wildfire_alertapi: 'wildfire_smoke' }),
       };
       
       render(<DetectionReviewTableRow {...props} />);
       
-      const wildfireBadge = screen.getByText('🔥 Wildfire Alert');
+      const wildfireBadge = screen.getByText('🔥 Wildfire');
       expect(wildfireBadge).toBeInTheDocument();
-      expect(wildfireBadge).toHaveClass('bg-orange-100', 'text-orange-800');
+      expect(wildfireBadge).toHaveClass('bg-red-100', 'text-red-800');
     });
 
-    it('should not render wildfire alert badge when is_wildfire_alertapi is false', () => {
+    it('should not render wildfire alert badge when is_wildfire_alertapi is other', () => {
       render(<DetectionReviewTableRow {...defaultProps} />);
       
       expect(screen.queryByText('🔥 Wildfire Alert')).not.toBeInTheDocument();
@@ -308,7 +308,7 @@ describe('DetectionReviewTableRow', () => {
     it('should apply correct badge styling', () => {
       const props = {
         ...defaultProps,
-        sequence: createSequence({ is_wildfire_alertapi: true }),
+        sequence: createSequence({ is_wildfire_alertapi: 'wildfire_smoke' }),
       };
       
       render(<DetectionReviewTableRow {...props} />);
@@ -316,8 +316,8 @@ describe('DetectionReviewTableRow', () => {
       const sourceApiBadge = screen.getByText('test-api');
       expect(sourceApiBadge).toHaveClass('bg-blue-100', 'text-blue-800');
       
-      const wildfireBadge = screen.getByText('🔥 Wildfire Alert');
-      expect(wildfireBadge).toHaveClass('bg-orange-100', 'text-orange-800');
+      const wildfireBadge = screen.getByText('🔥 Wildfire');
+      expect(wildfireBadge).toHaveClass('bg-red-100', 'text-red-800');
     });
 
     it('should apply correct pill styling for false positive types', () => {

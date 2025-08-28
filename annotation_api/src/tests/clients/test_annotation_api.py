@@ -60,7 +60,7 @@ def mock_sequence_data():
         "organisation_name": "Test Org",
         "lat": 43.6047,
         "lon": 1.4442,
-        "is_wildfire_alertapi": True,
+        "is_wildfire_alertapi": "wildfire_smoke",
     }
 
 
@@ -99,7 +99,7 @@ def mock_sequence_response():
         "organisation_name": "Test Org",
         "lat": 43.6047,
         "lon": 1.4442,
-        "is_wildfire_alertapi": True,
+        "is_wildfire_alertapi": "wildfire_smoke",
     }
 
 

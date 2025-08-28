@@ -258,8 +258,10 @@ export const serializeFilterState = (state: ExtendedFilterState): URLSearchParam
   if (state.filters.camera_name) params.set('camera', state.filters.camera_name);
   if (state.filters.organisation_name) params.set('org', state.filters.organisation_name);
   if (state.filters.source_api) params.set('source', state.filters.source_api);
-  if (state.filters.is_wildfire_alertapi !== undefined) {
+  if (state.filters.is_wildfire_alertapi != null) {
     params.set('wildfire', state.filters.is_wildfire_alertapi.toString());
+  } else if (state.filters.is_wildfire_alertapi === null) {
+    params.set('wildfire', 'null');
   }
 
   // Add date range
@@ -303,7 +305,9 @@ export const deserializeFilterState = (searchParams: URLSearchParams): ExtendedF
   if (source) filters.source_api = source;
 
   const wildfire = searchParams.get('wildfire');
-  if (wildfire) filters.is_wildfire_alertapi = wildfire === 'true';
+  if (wildfire && ['wildfire_smoke', 'other_smoke', 'other', 'null'].includes(wildfire)) {
+    filters.is_wildfire_alertapi = wildfire === 'null' ? null : (wildfire as any);
+  }
 
   // Parse dates
   const dateFrom = searchParams.get('from') || '';
