@@ -631,17 +631,9 @@ export function ImageModal({
     if (!container) return;
 
     const wheelHandler = (e: WheelEvent) => {
-      // Convert native WheelEvent to React.WheelEvent structure
-      const reactWheelEvent = {
-        ...e,
-        currentTarget: e.currentTarget as HTMLElement,
-        target: e.target as HTMLElement,
-        clientX: e.clientX,
-        clientY: e.clientY,
-        deltaY: e.deltaY,
-        preventDefault: () => e.preventDefault(),
-      } as React.WheelEvent;
-      handleWheel(reactWheelEvent);
+      // Create React-compatible wheel event wrapper
+      const wheelEvent = e as unknown as React.WheelEvent;
+      handleWheel(wheelEvent);
     };
 
     // Add with passive: false to allow preventDefault
