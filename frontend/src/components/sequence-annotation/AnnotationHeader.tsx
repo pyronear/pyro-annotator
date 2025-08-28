@@ -15,6 +15,7 @@ import {
   Upload,
 } from 'lucide-react';
 import { Sequence, SequenceAnnotation } from '@/types/api';
+import { AnnotationWorkflow } from '@/store/useSequenceStore';
 import {
   AnnotationProgress,
   formatProgressDisplay,
@@ -35,7 +36,7 @@ interface AnnotationHeaderProps {
   missedSmokeReview: 'yes' | 'no' | null;
 
   // Workflow
-  annotationWorkflow: any; // TODO: type this properly
+  annotationWorkflow: AnnotationWorkflow | null;
   canNavigatePrevious: () => boolean;
   canNavigateNext: () => boolean;
   onPreviousSequence: () => void;

@@ -300,7 +300,7 @@ export const deserializeFilterState = (searchParams: URLSearchParams): ExtendedF
   if (org) filters.organisation_name = org;
 
   const source = searchParams.get('source');
-  if (source) filters.source_api = source as any;
+  if (source) filters.source_api = source;
 
   const wildfire = searchParams.get('wildfire');
   if (wildfire) filters.is_wildfire_alertapi = wildfire === 'true';
