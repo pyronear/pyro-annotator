@@ -3,18 +3,15 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '@/services/api';
 import { ExtendedSequenceFilters, SequenceWithDetectionProgress } from '@/types/api';
-import { QUERY_KEYS, PAGINATION_OPTIONS } from '@/utils/constants';
-import {
-  analyzeSequenceAccuracy,
-  getRowBackgroundClasses,
-  getFalsePositiveEmoji,
-  formatFalsePositiveType,
-  parseFalsePositiveTypes,
-  getSmokeTypeEmoji,
-  formatSmokeType,
-} from '@/utils/modelAccuracy';
-import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
+import { QUERY_KEYS } from '@/utils/constants';
+import { analyzeSequenceAccuracy } from '@/utils/modelAccuracy';
 import TabbedFilters from '@/components/filters/TabbedFilters';
+import {
+  DetectionAnnotateTableHeader,
+  SequencesLegend,
+  DetectionAnnotateTableRow,
+  DetectionReviewPagination,
+} from '@/components/sequences';
 import { useCameras } from '@/hooks/useCameras';
 import { useOrganizations } from '@/hooks/useOrganizations';
 import { useSourceApis } from '@/hooks/useSourceApis';
@@ -52,31 +49,19 @@ export default function DetectionAnnotatePage() {
     setSelectedSmokeTypes,
     setSelectedModelAccuracy,
     resetFilters,
-  } = usePersistedFilters('filters-detections-annotate', defaultState);
+  } = usePersistedFilters('filters-detection-annotate', defaultState);
 
-  // Fetch cameras, organizations, and source APIs for dropdown options
-  const { data: cameras = [], isLoading: camerasLoading } = useCameras();
-  const { data: organizations = [], isLoading: organizationsLoading } = useOrganizations();
-  const { data: sourceApis = [], isLoading: sourceApisLoading } = useSourceApis();
-
-  // Date range helper functions
-  const setDateRange = (preset: string) => {
-    const { dateFrom: startDateStr, dateTo: endDateStr } = calculatePresetDateRange(preset);
-
-    setDateFrom(startDateStr);
-    setDateTo(endDateStr);
-
-    // Convert to API datetime format if dates are valid
-    const startDateTime = startDateStr ? startDateStr + 'T00:00:00' : undefined;
-    const endDateTime = endDateStr ? endDateStr + 'T23:59:59' : undefined;
-
-    handleFilterChange({
-      recorded_at_gte: startDateTime,
-      recorded_at_lte: endDateTime,
-    });
+  // Filter change handlers
+  const handleFilterChange = (newFilters: Partial<ExtendedSequenceFilters>) => {
+    setFilters({ ...filters, ...newFilters, page: 1 });
   };
 
-  const clearDateRange = () => {
+  const handlePageChange = (page: number) => {
+    setFilters({ ...filters, page });
+  };
+
+  // Clear preset date range
+  const handleClearPresetDateRange = () => {
     setDateFrom('');
     setDateTo('');
     handleFilterChange({ recorded_at_gte: undefined, recorded_at_lte: undefined });
@@ -95,7 +80,7 @@ export default function DetectionAnnotatePage() {
     handleFilterChange({ recorded_at_lte: dateTimeValue });
   };
 
-  // Fetch sequences with incomplete detection annotations
+  // Fetch sequences for annotation
   const {
     data: sequences,
     isLoading,
@@ -165,23 +150,19 @@ export default function DetectionAnnotatePage() {
     };
   }, [sequences, annotationMap, selectedModelAccuracy]);
 
-  const handleFilterChange = (newFilters: Partial<ExtendedSequenceFilters>) => {
-    setFilters({ ...filters, ...newFilters, page: 1 });
+  // Navigation handlers
+  const handleSequenceClick = (sequence: SequenceWithDetectionProgress) => {
+    // Store current state before navigation
+    localStorage.setItem('detection-annotate-return-filters', JSON.stringify(filters));
+    navigate(`/detections/${sequence.id}/annotate?from=detections-annotate`);
   };
 
-  const handleFalsePositiveFilterChange = (selectedTypes: string[]) => {
-    setSelectedFalsePositiveTypes(selectedTypes);
-  };
+  // Fetch cameras, organizations, and source APIs for dropdown options
+  const { data: cameras = [], isLoading: camerasLoading } = useCameras();
+  const { data: organizations = [], isLoading: organizationsLoading } = useOrganizations();
+  const { data: sourceApis = [], isLoading: sourceApisLoading } = useSourceApis();
 
-  const handlePageChange = (page: number) => {
-    setFilters({ ...filters, page });
-  };
-
-  const handleSequenceClick = (clickedSequence: SequenceWithDetectionProgress) => {
-    // Navigate to detection annotation interface for this specific sequence
-    navigate(`/detections/${clickedSequence.id}/annotate?from=detections-annotate`);
-  };
-
+  // Loading state
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-96">
@@ -190,42 +171,27 @@ export default function DetectionAnnotatePage() {
     );
   }
 
+  // Error state
   if (error) {
     return (
       <div className="flex items-center justify-center min-h-96">
         <div className="text-center">
-          <p className="text-red-600 mb-2">Failed to load sequences</p>
-          <p className="text-gray-500 text-sm">{String(error)}</p>
+          <p className="text-gray-500">Failed to load sequences</p>
         </div>
       </div>
     );
   }
 
-  // Empty state when no sequences need detection annotation
-  if (sequences && sequences.items.length === 0) {
-    // Check if user has applied filters
-    const hasFilters = hasActiveUserFilters(
-      filters,
-      dateFrom,
-      dateTo,
-      selectedFalsePositiveTypes,
-      selectedSmokeTypes,
-      selectedModelAccuracy,
-      'all', // selectedUnsure
-      true, // showModelAccuracy
-      true, // showFalsePositiveTypes
-      true, // showSmokeTypes
-      false // showUnsureFilter
-    );
-
+  // No sequences found
+  if (!filteredSequences || filteredSequences.items.length === 0) {
     return (
       <div className="space-y-6">
-        {/* Header */}
+        {/* Page Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Detections</h1>
-            <p className="text-gray-600">
-              Annotate individual detections within wildfire sequences
+            <h1 className="text-2xl font-bold text-gray-900">Detection Annotation</h1>
+            <p className="mt-1 text-sm text-gray-500">
+              Annotate individual detections within sequences
             </p>
           </div>
         </div>
@@ -238,10 +204,17 @@ export default function DetectionAnnotatePage() {
           dateTo={dateTo}
           onDateFromChange={handleDateFromChange}
           onDateToChange={handleDateToChange}
-          onDateRangeSet={setDateRange}
-          onDateRangeClear={clearDateRange}
+          onDateRangeSet={(preset: string) => {
+            const { dateFrom: startDateStr, dateTo: endDateStr } = calculatePresetDateRange(preset);
+            setDateFrom(startDateStr);
+            setDateTo(endDateStr);
+            const startDateTime = startDateStr ? startDateStr + 'T00:00:00' : undefined;
+            const endDateTime = endDateStr ? endDateStr + 'T23:59:59' : undefined;
+            handleFilterChange({ recorded_at_gte: startDateTime, recorded_at_lte: endDateTime });
+          }}
+          onDateRangeClear={handleClearPresetDateRange}
           selectedFalsePositiveTypes={selectedFalsePositiveTypes}
-          onFalsePositiveTypesChange={handleFalsePositiveFilterChange}
+          onFalsePositiveTypesChange={setSelectedFalsePositiveTypes}
           selectedSmokeTypes={selectedSmokeTypes}
           onSmokeTypesChange={setSelectedSmokeTypes}
           selectedModelAccuracy={selectedModelAccuracy}
@@ -258,27 +231,40 @@ export default function DetectionAnnotatePage() {
           showSmokeTypes={true}
         />
 
-        {/* Empty state message */}
+        {/* Empty State */}
         <div className="flex items-center justify-center min-h-96">
           <div className="text-center">
-            {hasFilters ? (
-              // Filtered results - no matches
+            {hasActiveUserFilters(
+              filters,
+              dateFrom,
+              dateTo,
+              selectedFalsePositiveTypes,
+              selectedSmokeTypes,
+              selectedModelAccuracy,
+              'all', // selectedUnsure
+              true, // showModelAccuracy
+              true, // showFalsePositiveTypes
+              true, // showSmokeTypes
+              false // showUnsureFilter
+            ) ? (
               <>
                 <div className="text-4xl mb-4">🔍</div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                  No matching sequences found
-                </h3>
+                <h3 className="text-lg font-medium text-gray-900 mb-2">No sequences match your filters</h3>
                 <p className="text-gray-500 mb-4">
-                  No sequences needing detection annotation match your current filters.
+                  Try adjusting your search criteria or clearing some filters.
                 </p>
-                <p className="text-gray-400 text-sm">Try adjusting your search criteria above.</p>
+                <button
+                  onClick={resetFilters}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
+                >
+                  Clear all filters
+                </button>
               </>
             ) : (
-              // No filters - all caught up
               <>
                 <div className="text-6xl mb-4">🎉</div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">All caught up!</h3>
-                <p className="text-gray-500">No detection annotations needed at the moment.</p>
+                <h3 className="text-lg font-medium text-gray-900 mb-2">All sequences annotated!</h3>
+                <p className="text-gray-500">There are no sequences requiring detection annotation at this time.</p>
               </>
             )}
           </div>
@@ -289,11 +275,13 @@ export default function DetectionAnnotatePage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Detection Annotations</h1>
-          <p className="text-gray-600">Annotate individual detections within wildfire sequences</p>
+          <h1 className="text-2xl font-bold text-gray-900">Detection Annotation</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            Annotate individual detections within sequences
+          </p>
         </div>
       </div>
 
@@ -305,10 +293,19 @@ export default function DetectionAnnotatePage() {
         dateTo={dateTo}
         onDateFromChange={handleDateFromChange}
         onDateToChange={handleDateToChange}
-        onDateRangeSet={setDateRange}
-        onDateRangeClear={clearDateRange}
+        onDateRangeSet={(preset: string) => {
+          const { dateFrom: startDateStr, dateTo: endDateStr } = calculatePresetDateRange(preset);
+          setDateFrom(startDateStr);
+          setDateTo(endDateStr);
+          const startDateTime = startDateStr ? startDateStr + 'T00:00:00' : undefined;
+          const endDateTime = endDateStr ? endDateStr + 'T23:59:59' : undefined;
+          handleFilterChange({ recorded_at_gte: startDateTime, recorded_at_lte: endDateTime });
+        }}
+        onDateRangeClear={handleClearPresetDateRange}
         selectedFalsePositiveTypes={selectedFalsePositiveTypes}
-        onFalsePositiveTypesChange={handleFalsePositiveFilterChange}
+        onFalsePositiveTypesChange={setSelectedFalsePositiveTypes}
+        selectedSmokeTypes={selectedSmokeTypes}
+        onSmokeTypesChange={setSelectedSmokeTypes}
         selectedModelAccuracy={selectedModelAccuracy}
         onModelAccuracyChange={setSelectedModelAccuracy}
         onResetFilters={resetFilters}
@@ -320,214 +317,38 @@ export default function DetectionAnnotatePage() {
         sourceApisLoading={sourceApisLoading}
         showModelAccuracy={true}
         showFalsePositiveTypes={true}
-        selectedSmokeTypes={selectedSmokeTypes}
-        onSmokeTypesChange={setSelectedSmokeTypes}
         showSmokeTypes={true}
       />
 
       {/* Results */}
       {filteredSequences && (
         <div className="bg-white rounded-lg border border-gray-200">
-          <div className="px-4 py-3 border-b border-gray-200">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-gray-700">
-                Showing {(filteredSequences.page - 1) * filteredSequences.size + 1} to{' '}
-                {Math.min(filteredSequences.page * filteredSequences.size, filteredSequences.total)}{' '}
-                of {filteredSequences.total} sequences requiring detection annotation
-                {selectedModelAccuracy !== 'all' && sequences && (
-                  <span className="text-gray-500"> (filtered from {sequences.total} total)</span>
-                )}
-              </p>
-              <div className="flex items-center space-x-2">
-                <label className="text-sm text-gray-700">Show:</label>
-                <select
-                  value={filters.size}
-                  onChange={e => handleFilterChange({ size: Number(e.target.value) })}
-                  className="border border-gray-300 rounded px-2 py-1 text-sm"
-                >
-                  {PAGINATION_OPTIONS.map(size => (
-                    <option key={size} value={size}>
-                      {size}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
+          <DetectionAnnotateTableHeader
+            filteredSequences={filteredSequences}
+            sequences={sequences}
+            selectedModelAccuracy={selectedModelAccuracy}
+            filters={filters}
+            onFilterChange={handleFilterChange}
+          />
 
-          {/* Row Background Color Legend */}
-          <div className="px-4 py-2 bg-gray-50 border-b border-gray-200">
-            <div className="flex items-center justify-between text-xs">
-              <div className="flex items-center space-x-6">
-                <span className="font-medium text-gray-700">Row Colors:</span>
-                <div className="flex items-center space-x-1">
-                  <div className="w-3 h-3 bg-green-200 border border-green-300 rounded"></div>
-                  <span className="text-gray-600">True Positive (Model correct)</span>
-                </div>
-                <div className="flex items-center space-x-1">
-                  <div className="w-3 h-3 bg-red-200 border border-red-300 rounded"></div>
-                  <span className="text-gray-600">False Positive (Model incorrect)</span>
-                </div>
-                <div className="flex items-center space-x-1">
-                  <div className="w-3 h-3 bg-blue-200 border border-blue-300 rounded"></div>
-                  <span className="text-gray-600">False Negative (Model missed smoke)</span>
-                </div>
-              </div>
-              <div className="flex items-center space-x-2">
-                <div className="flex items-center space-x-1">
-                  <div className="w-3 h-3 bg-orange-200 border border-orange-300 rounded"></div>
-                  <span className="text-gray-600">Smoke Types</span>
-                </div>
-                <div className="flex items-center space-x-1">
-                  <div className="w-3 h-3 bg-yellow-200 border border-yellow-300 rounded"></div>
-                  <span className="text-gray-600">False Positive Types</span>
-                </div>
-              </div>
-            </div>
-          </div>
+          <SequencesLegend />
 
           {/* Sequence List */}
           <div className="divide-y divide-gray-200">
-            {filteredSequences.items.map(sequence => {
-              // Calculate row background based on model accuracy
-              let rowClasses = 'p-4 cursor-pointer';
-              const annotation = annotationMap[sequence.id];
-              if (annotation) {
-                const accuracy = analyzeSequenceAccuracy({
-                  ...sequence,
-                  annotation: annotation,
-                });
-                rowClasses = `p-4 cursor-pointer ${getRowBackgroundClasses(accuracy)}`;
-              } else {
-                rowClasses = 'p-4 hover:bg-gray-50 cursor-pointer';
-              }
-
-              return (
-                <div
-                  key={sequence.id}
-                  className={rowClasses}
-                  onClick={() => handleSequenceClick(sequence)}
-                >
-                  <div className="flex items-start space-x-4">
-                    {/* Detection Image Thumbnail */}
-                    <div className="flex-shrink-0">
-                      <DetectionImageThumbnail sequenceId={sequence.id} className="h-16" />
-                    </div>
-
-                    {/* Sequence Info */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center space-x-3">
-                        <h3 className="text-sm font-medium text-gray-900 truncate">
-                          {sequence.camera_name}
-                        </h3>
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                          {sequence.source_api}
-                        </span>
-                        {sequence.is_wildfire_alertapi && (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                            🔥 Wildfire Alert
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Detection Progress - placeholder for future statistics */}
-                      {sequence.detection_annotation_stats && (
-                        <div className="mt-2 flex items-center space-x-4">
-                          <div className="flex items-center space-x-2">
-                            <div className="w-32 bg-gray-200 rounded-full h-2">
-                              <div
-                                className="bg-blue-600 h-2 rounded-full"
-                                style={{
-                                  width: `${sequence.detection_annotation_stats.completion_percentage}%`,
-                                }}
-                              ></div>
-                            </div>
-                            <span className="text-xs text-gray-500">
-                              {sequence.detection_annotation_stats.annotated_detections}/
-                              {sequence.detection_annotation_stats.total_detections} detections
-                            </span>
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="mt-2 flex items-center text-sm text-gray-500 space-x-2">
-                        <span>{new Date(sequence.recorded_at).toLocaleString()}</span>
-                        <span className="text-gray-400">•</span>
-                        <span>{sequence.organisation_name}</span>
-
-                        <span className="text-gray-400">•</span>
-                        {sequence.azimuth && (
-                          <span className="text-gray-400 text-xs">
-                            Azimuth: {sequence.azimuth}°
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Pills - Top Right Area */}
-                    {annotation && (
-                      <div className="flex-shrink-0 self-start">
-                        <div className="flex flex-col gap-2">
-                          {/* False Positive Pills */}
-                          <div className="flex flex-wrap gap-1 justify-end">
-                            {(() => {
-                              const falsePositiveTypes = parseFalsePositiveTypes(
-                                annotation.false_positive_types
-                              );
-                              return falsePositiveTypes.map((type: string) => (
-                                <span
-                                  key={type}
-                                  className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800"
-                                >
-                                  {getFalsePositiveEmoji(type)} {formatFalsePositiveType(type)}
-                                </span>
-                              ));
-                            })()}
-                          </div>
-                          {/* Smoke Type Pills */}
-                          <div className="flex flex-wrap gap-1 justify-end">
-                            {annotation.smoke_types?.map((type: string) => (
-                              <span
-                                key={type}
-                                className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800"
-                              >
-                                {getSmokeTypeEmoji(type)} {formatSmokeType(type)}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+            {filteredSequences.items.map(sequence => (
+              <DetectionAnnotateTableRow
+                key={sequence.id}
+                sequence={sequence}
+                annotation={annotationMap[sequence.id]}
+                onSequenceClick={handleSequenceClick}
+              />
+            ))}
           </div>
 
-          {/* Pagination */}
-          {filteredSequences.pages > 1 && (
-            <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => handlePageChange(filteredSequences.page - 1)}
-                  disabled={filteredSequences.page === 1}
-                  className="px-3 py-1 border border-gray-300 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-                >
-                  Previous
-                </button>
-                <span className="text-sm text-gray-700">
-                  Page {filteredSequences.page} of {filteredSequences.pages}
-                </span>
-                <button
-                  onClick={() => handlePageChange(filteredSequences.page + 1)}
-                  disabled={filteredSequences.page === filteredSequences.pages}
-                  className="px-3 py-1 border border-gray-300 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          )}
+          <DetectionReviewPagination
+            filteredSequences={filteredSequences}
+            onPageChange={handlePageChange}
+          />
         </div>
       )}
     </div>
