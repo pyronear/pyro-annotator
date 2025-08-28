@@ -147,7 +147,7 @@ export interface SequenceFilters {
   camera_name?: string;
   organisation_id?: number;
   organisation_name?: string;
-  is_wildfire_alertapi?: AnnotationType;
+  is_wildfire_alertapi?: AnnotationType | null;
   recorded_at_gte?: string;
   recorded_at_lte?: string;
   detection_annotation_completion?: 'complete' | 'incomplete' | 'all';

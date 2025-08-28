@@ -167,6 +167,19 @@ describe('SequenceTableRow', () => {
       
       expect(screen.queryByText('🔥 Wildfire')).not.toBeInTheDocument();
     });
+
+    it('should not render any badge when is_wildfire_alertapi is null', () => {
+      const props = {
+        ...defaultProps,
+        sequence: createSequence({ is_wildfire_alertapi: null }),
+      };
+      
+      render(<SequenceTableRow {...props} />);
+      
+      expect(screen.queryByText('🔥 Wildfire')).not.toBeInTheDocument();
+      expect(screen.queryByText('💨 Other Smoke')).not.toBeInTheDocument();
+      expect(screen.queryByText('○ Other')).not.toBeInTheDocument();
+    });
   });
 
   describe('Processing Stage Tests', () => {

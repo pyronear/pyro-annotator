@@ -126,8 +126,8 @@ async def list_sequences(
     organisation_name: Optional[str] = Query(
         None, description="Filter by organisation name (exact match)"
     ),
-    is_wildfire_alertapi: Optional[AnnotationType] = Query(
-        None, description="Filter by wildfire classification: 'wildfire_smoke', 'other_smoke', or 'other'"
+    is_wildfire_alertapi: Optional[str] = Query(
+        None, description="Filter by wildfire classification: 'wildfire_smoke', 'other_smoke', 'other', or 'null' for unclassified"
     ),
     has_annotation: Optional[bool] = Query(
         None,
@@ -247,7 +247,17 @@ async def list_sequences(
         query = query.where(Sequence.organisation_name == organisation_name)
 
     if is_wildfire_alertapi is not None:
-        query = query.where(Sequence.is_wildfire_alertapi == is_wildfire_alertapi)
+        # Special handling for filtering null values (sent as "null" string from frontend)
+        if is_wildfire_alertapi == "null":
+            query = query.where(Sequence.is_wildfire_alertapi.is_(None))
+        else:
+            # Validate that the value is a valid AnnotationType
+            try:
+                enum_value = AnnotationType(is_wildfire_alertapi)
+                query = query.where(Sequence.is_wildfire_alertapi == enum_value)
+            except ValueError:
+                # Invalid enum value, ignore filter (could also raise an error)
+                pass
 
     if has_annotation is not None:
         if has_annotation:

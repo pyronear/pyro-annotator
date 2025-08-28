@@ -244,11 +244,19 @@ export default function TabbedFilters({
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">Wildfire Classification</label>
         <select
-          value={filters.is_wildfire_alertapi || ''}
+          value={
+            filters.is_wildfire_alertapi === null 
+              ? 'null' 
+              : filters.is_wildfire_alertapi || ''
+          }
           onChange={e => {
             const value = e.target.value;
             onFiltersChange({
-              is_wildfire_alertapi: value === '' ? undefined : (value as any),
+              is_wildfire_alertapi: value === '' 
+                ? undefined 
+                : value === 'null' 
+                ? null 
+                : (value as any),
             });
           }}
           className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
@@ -257,6 +265,7 @@ export default function TabbedFilters({
           <option value="wildfire_smoke">🔥 Wildfire Smoke</option>
           <option value="other_smoke">💨 Other Smoke</option>
           <option value="other">○ Other</option>
+          <option value="null">📝 Unclassified</option>
         </select>
       </div>
 
