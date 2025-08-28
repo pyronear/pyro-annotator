@@ -5,10 +5,7 @@ interface SequencesPaginationProps {
   onPageChange: (page: number) => void;
 }
 
-export function SequencesPagination({
-  filteredSequences,
-  onPageChange,
-}: SequencesPaginationProps) {
+export function SequencesPagination({ filteredSequences, onPageChange }: SequencesPaginationProps) {
   if (filteredSequences.pages <= 1) return null;
 
   return (

@@ -16,7 +16,7 @@ import { useCameras } from '@/hooks/useCameras';
 import { useOrganizations } from '@/hooks/useOrganizations';
 import { useSourceApis } from '@/hooks/useSourceApis';
 import { usePersistedFilters, createDefaultFilterState } from '@/hooks/usePersistedFilters';
-import { calculatePresetDateRange } from '@/components/filters/shared/DateRangeFilter';
+import { calculatePresetDateRange } from '@/components/filters/shared/dateRangeUtils';
 import { hasActiveUserFilters } from '@/utils/filterHelpers';
 
 export default function DetectionAnnotatePage() {
@@ -249,7 +249,9 @@ export default function DetectionAnnotatePage() {
             ) ? (
               <>
                 <div className="text-4xl mb-4">🔍</div>
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No sequences match your filters</h3>
+                <h3 className="text-lg font-medium text-gray-900 mb-2">
+                  No sequences match your filters
+                </h3>
                 <p className="text-gray-500 mb-4">
                   Try adjusting your search criteria or clearing some filters.
                 </p>
@@ -264,7 +266,9 @@ export default function DetectionAnnotatePage() {
               <>
                 <div className="text-6xl mb-4">🎉</div>
                 <h3 className="text-lg font-medium text-gray-900 mb-2">All sequences annotated!</h3>
-                <p className="text-gray-500">There are no sequences requiring detection annotation at this time.</p>
+                <p className="text-gray-500">
+                  There are no sequences requiring detection annotation at this time.
+                </p>
               </>
             )}
           </div>

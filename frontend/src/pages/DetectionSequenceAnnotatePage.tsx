@@ -1,10 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  ArrowLeft,
-  CheckCircle,
-} from 'lucide-react';
+import { ArrowLeft, CheckCircle } from 'lucide-react';
 import { useSequenceDetections } from '@/hooks/useSequenceDetections';
 // useDetectionImage now handled by DetectionAnnotationCanvas
 import { apiClient } from '@/services/api';
@@ -19,10 +16,7 @@ import { Detection, DetectionAnnotation, SmokeType } from '@/types/api';
 import { createDefaultFilterState } from '@/hooks/usePersistedFilters';
 
 // New imports for refactored utilities
-import {
-  DrawnRectangle,
-  calculateAnnotationCompleteness,
-} from '@/utils/annotation';
+import { DrawnRectangle, calculateAnnotationCompleteness } from '@/utils/annotation';
 import { ImageModal, DetectionGrid, DetectionHeader } from '@/components/detection-sequence';
 
 // Helper function for context-aware annotation status
@@ -458,7 +452,11 @@ export default function DetectionSequenceAnnotatePage() {
 
   const canNavigateNext = () => {
     const currentIndex = getCurrentSequenceIndex();
-    return !!(currentIndex >= 0 && allSequences?.items && currentIndex < allSequences.items.length - 1);
+    return !!(
+      currentIndex >= 0 &&
+      allSequences?.items &&
+      currentIndex < allSequences.items.length - 1
+    );
   };
 
   const handlePreviousSequence = () => {

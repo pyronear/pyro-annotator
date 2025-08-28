@@ -1,4 +1,8 @@
-import { PaginatedResponse, SequenceWithDetectionProgress, ExtendedSequenceFilters } from '@/types/api';
+import {
+  PaginatedResponse,
+  SequenceWithDetectionProgress,
+  ExtendedSequenceFilters,
+} from '@/types/api';
 import { PAGINATION_OPTIONS } from '@/utils/constants';
 
 interface DetectionAnnotateTableHeaderProps {
@@ -21,8 +25,8 @@ export function DetectionAnnotateTableHeader({
       <div className="flex items-center justify-between">
         <p className="text-sm text-gray-700">
           Showing {(filteredSequences.page - 1) * filteredSequences.size + 1} to{' '}
-          {Math.min(filteredSequences.page * filteredSequences.size, filteredSequences.total)}{' '}
-          of {filteredSequences.total} sequences requiring detection annotation
+          {Math.min(filteredSequences.page * filteredSequences.size, filteredSequences.total)} of{' '}
+          {filteredSequences.total} sequences requiring detection annotation
           {selectedModelAccuracy !== 'all' && sequences && (
             <span className="text-gray-500"> (filtered from {sequences.total} total)</span>
           )}

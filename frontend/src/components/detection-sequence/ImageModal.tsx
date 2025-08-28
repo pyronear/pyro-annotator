@@ -367,35 +367,38 @@ export function ImageModal({
   };
 
   // Mouse wheel zoom handler
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
+  const handleWheel = useCallback(
+    (e: React.WheelEvent) => {
+      e.preventDefault();
 
-    if (!containerRef.current || !imgRef.current) return;
+      if (!containerRef.current || !imgRef.current) return;
 
-    const imgRect = imgRef.current.getBoundingClientRect();
+      const imgRect = imgRef.current.getBoundingClientRect();
 
-    // Calculate mouse position relative to the image
-    const mouseX = e.clientX - imgRect.left;
-    const mouseY = e.clientY - imgRect.top;
+      // Calculate mouse position relative to the image
+      const mouseX = e.clientX - imgRect.left;
+      const mouseY = e.clientY - imgRect.top;
 
-    // Convert to percentage for transform-origin
-    const originX = (mouseX / imgRect.width) * 100;
-    const originY = (mouseY / imgRect.height) * 100;
+      // Convert to percentage for transform-origin
+      const originX = (mouseX / imgRect.width) * 100;
+      const originY = (mouseY / imgRect.height) * 100;
 
-    setTransformOrigin({ x: originX, y: originY });
+      setTransformOrigin({ x: originX, y: originY });
 
-    // Calculate new zoom level
-    const zoomDelta = e.deltaY < 0 ? 0.2 : -0.2;
-    const newZoomLevel = Math.max(1.0, Math.min(4.0, zoomLevel + zoomDelta));
+      // Calculate new zoom level
+      const zoomDelta = e.deltaY < 0 ? 0.2 : -0.2;
+      const newZoomLevel = Math.max(1.0, Math.min(4.0, zoomLevel + zoomDelta));
 
-    setZoomLevel(newZoomLevel);
+      setZoomLevel(newZoomLevel);
 
-    // Reset pan if zoomed back to 1x
-    if (newZoomLevel === 1.0) {
-      setPanOffset({ x: 0, y: 0 });
-      setTransformOrigin({ x: 50, y: 50 });
-    }
-  }, [zoomLevel]);
+      // Reset pan if zoomed back to 1x
+      if (newZoomLevel === 1.0) {
+        setPanOffset({ x: 0, y: 0 });
+        setTransformOrigin({ x: 50, y: 50 });
+      }
+    },
+    [zoomLevel]
+  );
 
   // Pan boundary constraint helper
   const constrainPan = (offset: { x: number; y: number }) => {

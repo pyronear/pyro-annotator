@@ -1,9 +1,5 @@
 import React from 'react';
-import {
-  DatePresetOption,
-  DEFAULT_DATE_PRESETS,
-  detectActivePreset,
-} from './dateRangeUtils';
+import { DatePresetOption, DEFAULT_DATE_PRESETS, detectActivePreset } from './dateRangeUtils';
 
 /**
  * Props for the DateRangeFilter component
@@ -21,7 +17,6 @@ interface DateRangeFilterProps {
   readonly showPresets?: boolean;
   readonly 'data-testid'?: string;
 }
-
 
 /**
  * Pure date range filter component with preset buttons
@@ -160,4 +155,3 @@ export default function DateRangeFilter({
     </div>
   );
 }
-

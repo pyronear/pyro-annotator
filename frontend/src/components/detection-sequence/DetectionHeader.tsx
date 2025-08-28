@@ -7,22 +7,19 @@ import {
   Upload,
 } from 'lucide-react';
 import { Sequence, SequenceAnnotation } from '@/types/api';
-import {
-  analyzeSequenceAccuracy,
-  getModelAccuracyBadgeClasses,
-} from '@/utils/modelAccuracy';
+import { analyzeSequenceAccuracy, getModelAccuracyBadgeClasses } from '@/utils/modelAccuracy';
 
 interface DetectionHeaderProps {
   // Sequence data
   sequence?: Sequence;
   sequenceAnnotation?: SequenceAnnotation;
-  
+
   // Progress data
   annotatedCount: number;
   totalCount: number;
   completionPercentage: number;
   isAllAnnotated: boolean;
-  
+
   // Navigation
   onBack: () => void;
   canNavigatePrevious: () => boolean;
@@ -30,21 +27,21 @@ interface DetectionHeaderProps {
   onPreviousSequence: () => void;
   onNextSequence: () => void;
   getCurrentSequenceIndex: () => number;
-  
+
   // Sequences context
   rawSequencesLoading: boolean;
   rawSequencesError: boolean;
   allSequences?: { total: number };
-  
+
   // Controls
   showPredictions: boolean;
   onTogglePredictions: (show: boolean) => void;
-  
+
   // Submit functionality
   allInVisualCheck: boolean;
   onSave: () => void;
   saveAnnotations: { isPending: boolean };
-  
+
   // Annotation pills
   getAnnotationPills: () => React.ReactNode[];
 }
@@ -96,9 +93,7 @@ export function DetectionHeader({
                 {sequence?.organisation_name || 'Loading...'}
               </span>
               <span className="text-gray-400">•</span>
-              <span className="text-sm text-gray-600">
-                {sequence?.camera_name || 'Loading...'}
-              </span>
+              <span className="text-sm text-gray-600">{sequence?.camera_name || 'Loading...'}</span>
               <span className="text-gray-400">•</span>
               <span className="text-sm text-gray-600">
                 {sequence?.recorded_at
@@ -127,9 +122,7 @@ export function DetectionHeader({
               {rawSequencesLoading ? (
                 <>
                   <span className="text-gray-400">•</span>
-                  <span className="text-xs text-gray-500 animate-pulse">
-                    Loading sequences...
-                  </span>
+                  <span className="text-xs text-gray-500 animate-pulse">Loading sequences...</span>
                 </>
               ) : rawSequencesError ? (
                 <>
@@ -205,9 +198,7 @@ export function DetectionHeader({
                   onClick={onPreviousSequence}
                   disabled={!canNavigatePrevious()}
                   className="p-1.5 rounded-md hover:bg-gray-100 hover:bg-opacity-75 disabled:opacity-40 disabled:cursor-not-allowed"
-                  title={
-                    canNavigatePrevious() ? 'Previous sequence' : 'Already at first sequence'
-                  }
+                  title={canNavigatePrevious() ? 'Previous sequence' : 'Already at first sequence'}
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </button>

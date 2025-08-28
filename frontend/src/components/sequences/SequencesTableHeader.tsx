@@ -1,4 +1,9 @@
-import { ProcessingStageStatus, PaginatedResponse, SequenceWithAnnotation, ExtendedSequenceFilters } from '@/types/api';
+import {
+  ProcessingStageStatus,
+  PaginatedResponse,
+  SequenceWithAnnotation,
+  ExtendedSequenceFilters,
+} from '@/types/api';
 import { PAGINATION_OPTIONS } from '@/utils/constants';
 
 interface SequencesTableHeaderProps {
@@ -23,8 +28,8 @@ export function SequencesTableHeader({
       <div className="flex items-center justify-between">
         <p className="text-sm text-gray-700">
           Showing {(filteredSequences.page - 1) * filteredSequences.size + 1} to{' '}
-          {Math.min(filteredSequences.page * filteredSequences.size, filteredSequences.total)}{' '}
-          of {filteredSequences.total} results
+          {Math.min(filteredSequences.page * filteredSequences.size, filteredSequences.total)} of{' '}
+          {filteredSequences.total} results
           {selectedModelAccuracy !== 'all' &&
             defaultProcessingStage === 'annotated' &&
             sequences && (
