@@ -9,7 +9,7 @@ import concurrent.futures
 import logging
 import os
 from collections import defaultdict
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 
 import requests
 from rich.progress import (
@@ -30,8 +30,9 @@ from app.clients.annotation_api import (
     ValidationError,
 )
 
-# Import LogSuppressor from import module
-
+# ------------------------------
+# Logging helper
+# ------------------------------
 
 class LogSuppressor:
     """Context manager to suppress logging during progress displays."""
@@ -42,9 +43,8 @@ class LogSuppressor:
 
     def __enter__(self):
         if self.suppress:
-            # Store original levels and suppress ALL loggers except CRITICAL level
             loggers_to_suppress = [
-                "",  # root logger - most important
+                "",  # root
                 "__main__",
                 "root",
                 "scripts.data_transfer.ingestion.platform.import",
@@ -59,35 +59,33 @@ class LogSuppressor:
                 "concurrent.futures",
                 "multiprocessing",
             ]
-
             for logger_name in loggers_to_suppress:
                 logger = logging.getLogger(logger_name)
                 self.original_levels[logger_name] = logger.level
-                logger.setLevel(logging.CRITICAL)  # Only show critical errors
+                logger.setLevel(logging.CRITICAL)
 
-            # Also suppress all existing loggers to catch any dynamically created ones
+            # Also suppress any dynamically created loggers
             for logger_name in logging.getLogger().manager.loggerDict:
                 if logger_name not in self.original_levels:
                     logger = logging.getLogger(logger_name)
                     self.original_levels[logger_name] = logger.level
                     logger.setLevel(logging.CRITICAL)
-
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.suppress:
-            # Restore original log levels
             for logger_name, original_level in self.original_levels.items():
                 logging.getLogger(logger_name).setLevel(original_level)
 
 
-# Remove settings import to avoid database dependency for import scripts
-
+# ------------------------------
+# Env validation (platform side)
+# ------------------------------
 
 def validate_available_env_variables() -> bool:
     """
     Check whether the environment variables required for
-    hitting the API are properly set.
+    hitting the *platform* API are properly set.
 
     PLATFORM_LOGIN (str): login
     PLATFORM_PASSWORD (str): password
@@ -114,17 +112,77 @@ def validate_available_env_variables() -> bool:
         return True
 
 
+# ------------------------------
+# Annotation API auth handling
+# ------------------------------
+
+_TOKEN_ENV_VARS = ("ANNOTATION_API_TOKEN", "ANNOTATION_TOKEN")
+_USERNAME_ENV_VARS = ("AUTH_USERNAME", "ANNOTATOR_LOGIN", "ANNOTATION_LOGIN")
+_PASSWORD_ENV_VARS = ("AUTH_PASSWORD", "ANNOTATOR_PASSWORD", "ANNOTATION_PASSWORD")
+
+_CACHED_TOKEN: Optional[str] = None
+
+
+def _env_first(keys: List[str], default: Optional[str] = None) -> Optional[str]:
+    for k in keys:
+        val = os.getenv(k)
+        if val:
+            return val
+    return default
+
+
+def _resolve_annotation_token(base_url: str) -> str:
+    """
+    Resolve a bearer token for the annotation API:
+    1) Use a token from env if present
+    2) Otherwise login once using discovered username/password (cached)
+    """
+    global _CACHED_TOKEN
+
+    print("_resolve_annotation_token_resolve_annotation_token_resolve_annotation_token_resolve_annotation_token!!!!")
+
+    # # 1) Token provided by env
+    # token_from_env = _env_first(list(_TOKEN_ENV_VARS))
+    # if token_from_env:
+    #     if _CACHED_TOKEN != token_from_env:
+    #         logging.debug("Using annotation token from environment.")
+    #     _CACHED_TOKEN = token_from_env
+    #     return _CACHED_TOKEN
+
+    # # 2) Already logged in
+    # if _CACHED_TOKEN:
+    #     return _CACHED_TOKEN
+
+    # 3) Login once
+    username = _env_first(list(_USERNAME_ENV_VARS), default="admin")
+    password = _env_first(list(_PASSWORD_ENV_VARS), default="admin12345")
+    logging.debug(
+        f"Logging into annotation API as '{username}' "
+        f"(user envs checked: {', '.join(_USERNAME_ENV_VARS)}; "
+        f"pass envs checked: {', '.join(_PASSWORD_ENV_VARS)})"
+    )
+    _CACHED_TOKEN = get_auth_token(base_url, username, password)
+    return _CACHED_TOKEN
+
+
+# ------------------------------
+# Transform helpers
+# ------------------------------
+
 def transform_sequence_data(record: dict, source_api: str = "pyronear_french") -> dict:
     """
     Transform platform sequence data to annotation API format.
-
-    Args:
-        record: Platform record containing sequence metadata
-        source_api: Source API enum value (pyronear_french, api_cenia, etc.)
-
-    Returns:
-        Dictionary formatted for annotation API sequence creation
     """
+    # Ensure azimuth matches schema Optional[int]
+    az = record.get("sequence_azimuth")
+    az_int = None
+    if az is not None:
+        try:
+            az_int = int(round(float(az)))
+        except Exception:
+            # Keep None if it cannot be parsed
+            az_int = None
+
     return {
         "source_api": source_api,
         "alert_api_id": record["sequence_id"],  # Platform sequence ID
@@ -132,10 +190,11 @@ def transform_sequence_data(record: dict, source_api: str = "pyronear_french") -
         "camera_id": record["camera_id"],
         "organisation_name": record["organization_name"],
         "organisation_id": record["organization_id"],
-        "is_wildfire_alertapi": record["sequence_is_wildfire"],  # Platform enum: 'wildfire_smoke', 'other_smoke', 'other'
+        # Platform enum: 'wildfire_smoke', 'other_smoke', 'other'
+        "is_wildfire_alertapi": record["sequence_is_wildfire"],
         "lat": record["camera_lat"],
         "lon": record["camera_lon"],
-        "azimuth": record["sequence_azimuth"],
+        "azimuth": az_int,
         "recorded_at": record["sequence_started_at"],
         "last_seen_at": record["sequence_last_seen_at"],
     }
@@ -145,53 +204,32 @@ def parse_platform_bboxes(bboxes_str: str) -> dict:
     """
     Parse platform bboxes string into AlgoPredictions format.
 
-    Args:
-        bboxes_str: String representation of bounding boxes from platform API
-
-    Returns:
-        Dictionary in AlgoPredictions format with predictions list
-
     Note:
         This function needs to be refined based on actual platform bbox format.
         Currently assumes a simple format that can be eval'd.
     """
     try:
-        # Parse the bboxes string - format needs to be determined from actual data
-        bboxes_data = eval(bboxes_str) if bboxes_str else []
-
+        bboxes_data = eval(bboxes_str) if bboxes_str else []  # nosec - trusted source within org context
         predictions = []
         for bbox in bboxes_data:
-            # Assuming bbox format: [x1, y1, x2, y2, confidence, ...]
-            # This will need to be adjusted based on actual platform format
             if len(bbox) >= 5:
                 prediction = {
-                    "xyxyn": bbox[:4],  # First 4 values as coordinates
-                    "confidence": float(bbox[4]),  # 5th value as confidence
-                    "class_name": "smoke",  # Default class name
+                    "xyxyn": bbox[:4],
+                    "confidence": float(bbox[4]),
+                    "class_name": "smoke",
                 }
                 predictions.append(prediction)
-
         return {"predictions": predictions}
     except Exception as e:
         logging.warning(f"Failed to parse bboxes '{bboxes_str}': {e}")
-        # Return empty predictions on error
         return {"predictions": []}
 
 
 def transform_detection_data(record: dict, annotation_sequence_id: int) -> dict:
     """
     Transform platform detection data to annotation API format.
-
-    Args:
-        record: Platform record containing detection metadata
-        annotation_sequence_id: The sequence ID from annotation API (not platform ID)
-
-    Returns:
-        Dictionary formatted for annotation API detection creation
     """
-    # Transform detection_bboxes to algo_predictions format
     algo_predictions = parse_platform_bboxes(record["detection_bboxes"])
-
     return {
         "sequence_id": annotation_sequence_id,  # NEW sequence ID from annotation API
         "alert_api_id": record["detection_id"],  # Platform detection ID
@@ -200,57 +238,39 @@ def transform_detection_data(record: dict, annotation_sequence_id: int) -> dict:
     }
 
 
+# ------------------------------
+# Network helpers
+# ------------------------------
+
 def download_image(url: str, timeout: int = 30) -> bytes:
     """
     Download image from platform detection URL.
-
-    Args:
-        url: Image URL from platform API
-        timeout: Request timeout in seconds
-
-    Returns:
-        Image content as bytes
-
-    Raises:
-        requests.RequestException: If download fails
     """
     logging.debug(f"Downloading image from: {url}")
-    response = requests.get(url, timeout=timeout)
-    response.raise_for_status()
-    return response.content
+    resp = requests.get(url, timeout=timeout)
+    resp.raise_for_status()
+    return resp.content
 
 
 def group_records_by_sequence(records: List[dict]) -> Dict[int, List[dict]]:
     """
     Group records by sequence_id to avoid duplicate sequence creation.
-
-    Args:
-        records: List of detection records from platform API
-
-    Returns:
-        Dictionary mapping sequence_id to list of detection records
     """
     grouped = defaultdict(list)
     for record in records:
-        sequence_id = record["sequence_id"]
-        grouped[sequence_id].append(record)
+        grouped[record["sequence_id"]].append(record)
     return dict(grouped)
 
+
+# ------------------------------
+# Posting flows
+# ------------------------------
 
 def _process_single_detection(
     record: dict, annotation_api_url: str, auth_token: str, annotation_sequence_id: int
 ) -> Dict[str, Any]:
     """
     Process a single detection: download image and create detection in API.
-
-    Args:
-        record: Detection record from platform
-        annotation_api_url: Annotation API base URL
-        auth_token: JWT authentication token
-        annotation_sequence_id: Sequence ID in annotation API
-
-    Returns:
-        Dictionary with processing results
     """
     result = {
         "detection_id": record["detection_id"],
@@ -259,13 +279,9 @@ def _process_single_detection(
     }
 
     try:
-        # Download image
         image_data = download_image(record["detection_url"])
-
-        # Transform detection data
         detection_data = transform_detection_data(record, annotation_sequence_id)
 
-        # Create detection in annotation API
         filename = f"detection_{record['detection_id']}.jpg"
         annotation_detection = create_detection(
             annotation_api_url, auth_token, detection_data, image_data, filename
@@ -291,9 +307,7 @@ def _process_single_detection(
         return result
 
     except AnnotationAPIError as e:
-        error_msg = (
-            f"API error processing detection {record['detection_id']}: {e.message}"
-        )
+        error_msg = f"API error processing detection {record['detection_id']}: {e.message}"
         logging.error(error_msg)
         if e.status_code:
             logging.error(f"HTTP Status: {e.status_code}")
@@ -301,9 +315,7 @@ def _process_single_detection(
         return result
 
     except Exception as e:
-        error_msg = (
-            f"Unexpected error processing detection {record['detection_id']}: {e}"
-        )
+        error_msg = f"Unexpected error processing detection {record['detection_id']}: {e}"
         logging.error(error_msg)
         result["error"] = error_msg
         return result
@@ -314,72 +326,50 @@ def post_sequence_to_annotation_api(
     sequence_records: List[dict],
     max_detection_workers: int = 4,
     source_api: str = "pyronear_french",
+    auth_token: Optional[str] = None,
 ) -> Dict:
     """
     Post a sequence and its detections to the annotation API.
-
-    Args:
-        annotation_api_url: Base URL of annotation API
-        sequence_records: List of detection records for a single sequence
-        max_detection_workers: Max workers for parallel detection creation
-        source_api: Source API enum value (pyronear_french, api_cenia, etc.)
-
-    Returns:
-        Dictionary with success status and created sequence info
-
-    Raises:
-        ValidationError, AnnotationAPIError: API errors
     """
     if not sequence_records:
         raise ValueError("No records provided for sequence")
 
-    # Get authentication token
-    auth_token = get_auth_token(
-        annotation_api_url,
-        os.environ.get("ANNOTATOR_LOGIN", "admin"),
-        os.environ.get("ANNOTATOR_PASSWORD", "admin"),
-    )
+    # Resolve token once (use provided token if any)
+    token = auth_token or _resolve_annotation_token(annotation_api_url)
 
-    # Use first record for sequence data (all records have same sequence info)
+    # Use first record for sequence data (all records share the same seq info)
     first_record = sequence_records[0]
     sequence_data = transform_sequence_data(first_record, source_api)
 
-    # Create sequence
     logging.info(f"Creating sequence with alert_api_id={first_record['sequence_id']}")
-    annotation_sequence = create_sequence(annotation_api_url, auth_token, sequence_data)
+    annotation_sequence = create_sequence(annotation_api_url, token, sequence_data)
     annotation_sequence_id = annotation_sequence["id"]
 
-    # Create detections for this sequence using parallel processing
     successful_detections = 0
     failed_detections = 0
 
     if len(sequence_records) == 1:
-        # Single detection - process directly to avoid thread overhead
         result = _process_single_detection(
-            sequence_records[0], annotation_api_url, auth_token, annotation_sequence_id
+            sequence_records[0], annotation_api_url, token, annotation_sequence_id
         )
         if result["success"]:
             successful_detections = 1
         else:
             failed_detections = 1
     else:
-        # Multiple detections - use parallel processing
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=max_detection_workers
         ) as executor:
-            # Submit all detection processing tasks
             future_to_record = {
                 executor.submit(
                     _process_single_detection,
                     record,
                     annotation_api_url,
-                    auth_token,
+                    token,
                     annotation_sequence_id,
                 ): record
                 for record in sequence_records
             }
-
-            # Collect results
             for future in concurrent.futures.as_completed(future_to_record):
                 record = future_to_record[future]
                 try:
@@ -414,17 +404,6 @@ def post_records_to_annotation_api(
 ) -> Dict:
     """
     Post multiple sequences and their detections to the annotation API.
-
-    Args:
-        annotation_api_url: Base URL of annotation API
-        records: List of all detection records from platform API
-        max_workers: Maximum number of workers for parallel sequence posting
-        max_detection_workers: Maximum number of workers for detection creation within each sequence
-        suppress_logs: Whether to suppress log output during progress display
-        source_api: Source API enum value (pyronear_french, api_cenia, etc.)
-
-    Returns:
-        Dictionary with summary statistics including list of successfully imported sequence IDs
     """
     if not records:
         logging.warning("No records to post")
@@ -438,9 +417,10 @@ def post_records_to_annotation_api(
             "successful_sequence_ids": [],
         }
 
-    # Group records by sequence
-    grouped_records = group_records_by_sequence(records)
+    # Resolve a single token once for the whole batch
+    token = _resolve_annotation_token(annotation_api_url)
 
+    grouped_records = group_records_by_sequence(records)
     logging.info(
         f"Processing {len(grouped_records)} unique sequences with {len(records)} total detections using {max_workers} workers"
     )
@@ -452,7 +432,6 @@ def post_records_to_annotation_api(
     successful_sequence_ids = []
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # Submit all sequence posting tasks
         future_to_sequence = {
             executor.submit(
                 post_sequence_to_annotation_api,
@@ -460,11 +439,11 @@ def post_records_to_annotation_api(
                 sequence_records,
                 max_detection_workers,
                 source_api,
+                token,  # pass the same token to all workers
             ): (platform_sequence_id, sequence_records)
             for platform_sequence_id, sequence_records in grouped_records.items()
         }
 
-        # Collect results with progress tracking
         with LogSuppressor(suppress=suppress_logs):
             with Progress(
                 SpinnerColumn(),
@@ -487,7 +466,6 @@ def post_records_to_annotation_api(
                         total_failed_detections += result["failed_detections"]
                         successful_sequence_ids.append(result["sequence_id"])
 
-                        # Success logs are suppressed, only errors will show
                         logging.info(
                             f"✅ Sequence {platform_sequence_id} -> {result['sequence_id']}: "
                             f"{result['successful_detections']}/{result['total_detections']} detections"
@@ -495,7 +473,6 @@ def post_records_to_annotation_api(
                         progress_bar.advance(task)
 
                     except ValidationError as e:
-                        # Errors will still show since we set log level to ERROR
                         logging.error(
                             f"❌ Sequence {platform_sequence_id} validation failed: {e.message}"
                         )
@@ -507,6 +484,7 @@ def post_records_to_annotation_api(
                         failed_sequences += 1
                         total_failed_detections += len(sequence_records)
                         progress_bar.advance(task)
+
                     except AnnotationAPIError as e:
                         logging.error(
                             f"❌ Sequence {platform_sequence_id} API error: {e.message}"
@@ -516,6 +494,7 @@ def post_records_to_annotation_api(
                         failed_sequences += 1
                         total_failed_detections += len(sequence_records)
                         progress_bar.advance(task)
+
                     except Exception as e:
                         logging.error(
                             f"❌ Sequence {platform_sequence_id} unexpected error: {e}"
