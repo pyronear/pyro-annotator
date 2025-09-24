@@ -154,13 +154,14 @@ def _resolve_annotation_token(base_url: str) -> str:
     #     return _CACHED_TOKEN
 
     # 3) Login once
-    username = _env_first(list(_USERNAME_ENV_VARS), default="admin")
-    password = _env_first(list(_PASSWORD_ENV_VARS), default="admin12345")
-    logging.debug(
-        f"Logging into annotation API as '{username}' "
-        f"(user envs checked: {', '.join(_USERNAME_ENV_VARS)}; "
-        f"pass envs checked: {', '.join(_PASSWORD_ENV_VARS)})"
-    )
+    username = "admin"
+    password = "admin12345"
+    # print(
+    #     f"Logging into annotation API as '{username}' "
+    #     f"(user envs checked: {', '.join(_USERNAME_ENV_VARS)}; "
+    #     f"pass envs checked: {', '.join(_PASSWORD_ENV_VARS)})"
+    # )
+    print((base_url, username, password))
     _CACHED_TOKEN = get_auth_token(base_url, username, password)
     return _CACHED_TOKEN
 
