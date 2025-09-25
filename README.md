@@ -66,6 +66,19 @@ export PLATFORM_LOGIN="sdis-77"
 export PLATFORM_PASSWORD="Pyro@Sdis77"
 export PLATFORM_ADMIN_LOGIN="mateo"
 export PLATFORM_ADMIN_PASSWORD="mateo"
+
+
+
+
+
+
+export PLATFORM_LOGIN="your_platform_username"
+export PLATFORM_PASSWORD="your_platform_password"
+export PLATFORM_ADMIN_LOGIN="your_admin_username"
+export PLATFORM_ADMIN_PASSWORD="your_admin_password"
+
+
+
 ```
 
 ### Basic Usage
@@ -76,7 +89,7 @@ cd annotation_api
 
 # Import and generate annotations for January 1-2, 2024
 uv run python -m scripts.data_transfer.ingestion.platform.import \
-  --date-from 2025-07-01 --date-end 2025-07-01 --loglevel debug
+  --date-from 2025-08-01 --date-end 2025-08-31 --loglevel info
 ```
 
 ### What the Script Does
