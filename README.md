@@ -62,16 +62,6 @@ curl http://localhost:5050/docs
 **Required Environment Variables:**
 ```bash
 # Platform API credentials (both regular and admin access required)
-export PLATFORM_LOGIN="sdis-77"
-export PLATFORM_PASSWORD="Pyro@Sdis77"
-export PLATFORM_ADMIN_LOGIN="mateo"
-export PLATFORM_ADMIN_PASSWORD="mateo"
-
-
-
-
-
-
 export PLATFORM_LOGIN="your_platform_username"
 export PLATFORM_PASSWORD="your_platform_password"
 export PLATFORM_ADMIN_LOGIN="your_admin_username"
