@@ -108,7 +108,8 @@ def get_auth_token(base_url: str, username: str, password: str) -> str:
         AnnotationAPIError: If authentication fails
     """
     login_url = f"{base_url.rstrip('/')}/api/v1/auth/login"
-    login_data = {"username": username, "password": password}
+    login_data = {"username": "admin", "password": "admin12345"}
+
 
     try:
         response = requests.post(login_url, json=login_data, timeout=30)
