@@ -337,7 +337,7 @@ def post_sequence_to_annotation_api(
     auth_token = get_auth_token(
         annotation_api_url,
         os.environ.get("ANNOTATOR_LOGIN", "admin"),
-        os.environ.get("ANNOTATOR_PASSWORD", "admin"),
+        os.environ.get("ANNOTATOR_PASSWORD", "admin12345"),
     )
 
     # Use first record for sequence data (all records have same sequence info)

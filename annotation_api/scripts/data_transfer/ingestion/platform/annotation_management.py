@@ -96,7 +96,7 @@ def check_existing_annotation(base_url: str, sequence_id: int) -> Optional[int]:
         auth_token = get_auth_token(
             base_url,
             os.environ.get("ANNOTATOR_LOGIN", "admin"),
-            os.environ.get("ANNOTATOR_PASSWORD", "admin"),
+            os.environ.get("ANNOTATOR_PASSWORD", "admin12345"),
         )
         response = list_sequence_annotations(
             base_url, auth_token, sequence_id=sequence_id
@@ -171,7 +171,7 @@ def create_annotation_from_data(
         auth_token = get_auth_token(
             base_url,
             os.environ.get("ANNOTATOR_LOGIN", "admin"),
-            os.environ.get("ANNOTATOR_PASSWORD", "admin"),
+            os.environ.get("ANNOTATOR_PASSWORD", "admin12345"),
         )
 
         if existing_annotation_id:
