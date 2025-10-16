@@ -2,7 +2,7 @@
 Export all sequences and annotations from the local annotation API to a single JSON file.
 
 Example:
-uv run python -m scripts.data_transfer.ingestion.platform.export \
+uv run python -m scripts.data_transfer.ingestion.platform.export_annotations \
   --api-base http://localhost:5050/api/v1 \
   --username admin --password admin12345 \
   --output outputs/sequences_and_annotations.json \
