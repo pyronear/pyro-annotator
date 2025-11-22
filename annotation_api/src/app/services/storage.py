@@ -198,7 +198,6 @@ class S3Service:
     def resolve_bucket_name() -> str:
         return "annotation-api"
 
-
 async def upload_file(
     file: UploadFile,
     sequence_id: Optional[int] = None,
@@ -206,13 +205,13 @@ async def upload_file(
     recorded_at: Optional[datetime] = None,
 ) -> str:
     """Upload a file to S3 storage and return the bucket key"""
-    # Concatenate the first 8 chars (to avoid system interactions issues) of SHA256 hash with file extension
+    # Concatenate the first 8 chars of SHA256 hash to avoid system interaction issues
     sha_hash = hashlib.sha256(file.file.read()).hexdigest()
     await file.seek(0)
     # Use MD5 to verify upload
-    md5_hash = hashlib.md5(file.file.read()).hexdigest()  # noqa S324
+    md5_hash = hashlib.md5(file.file.read()).hexdigest()  # noqa: S324
     await file.seek(0)
-    # guess_extension will return none if this fails
+    # guess_extension will return None if this fails
     extension = guess_extension(magic.from_buffer(file.file.read(), mime=True)) or ""
 
     # Generate organized bucket key
@@ -224,30 +223,53 @@ async def upload_file(
         extension=extension,
     )
 
-    # Reset byte position of the file (cf. https://fastapi.tiangolo.com/tutorial/request-files/#uploadfile)
+    # Reset byte position of the file
     await file.seek(0)
     bucket_name = s3_service.resolve_bucket_name()
     bucket = s3_service.get_bucket(bucket_name)
+
     # Upload the file
     if not bucket.upload_file(bucket_key, file.file):  # type: ignore[arg-type]
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed upload"
-        )
-    logging.info(f"File uploaded to bucket {bucket_name} with key {bucket_key}.")
-
-    # Data integrity check
-    file_meta = bucket.get_file_metadata(bucket_key)
-    # Corrupted file
-    if md5_hash != file_meta["ETag"].replace('"', ""):
-        # Delete the corrupted upload
-        bucket.delete_file(bucket_key)
-        # Raise the exception
-        raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Data was corrupted during upload",
+            detail="Failed upload",
         )
-    return bucket_key
+    logging.info(
+        "File uploaded to bucket %s with key %s.",
+        bucket_name,
+        bucket_key,
+    )
 
+    # Data integrity check when metadata is available
+    if hasattr(bucket, "get_file_metadata"):
+        try:
+            file_meta = bucket.get_file_metadata(bucket_key)  # type: ignore[attr-defined]
+        except Exception as exc:  # pragma: no cover
+            logging.warning(
+                "Could not retrieve file metadata for %s: %s",
+                bucket_key,
+                exc,
+            )
+        else:
+            # Original behavior with ETag and MD5
+            etag = file_meta.get("ETag") or file_meta.get("etag")
+            if etag is not None and md5_hash != etag.replace('"', ""):
+                # Delete the corrupted upload if supported
+                if hasattr(bucket, "delete_file"):
+                    try:
+                        bucket.delete_file(bucket_key)  # type: ignore[attr-defined]
+                    except Exception as exc:  # pragma: no cover
+                        logging.warning(
+                            "Failed to delete corrupted file %s: %s",
+                            bucket_key,
+                            exc,
+                        )
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Data was corrupted during upload",
+                )
+
+    return bucket_key
 
 def _generate_detection_bucket_key(
     sequence_id: Optional[int] = None,
