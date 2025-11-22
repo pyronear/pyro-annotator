@@ -201,6 +201,11 @@ async def export_detections(
         le=100_000,
         description="Maximum number of rows to export in a single call",
     ),
+    offset: int = Query(
+        0,
+        ge=0,
+        description="Number of rows to skip before starting to return results",
+    ),
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> List[DetectionExportRow]:
@@ -351,7 +356,7 @@ async def export_detections(
     )
     stmt = stmt.order_by(desc(order_column) if order_desc else asc(order_column))
 
-    stmt = stmt.limit(limit)
+    stmt = stmt.offset(offset).limit(limit)
 
     result = await session.execute(stmt)
     rows = result.mappings().all()

@@ -831,3 +831,111 @@ async def test_export_detections_filters_by_false_positive_and_smoke_types(
     rows_mixed = resp_mixed.json()
     seq_ids_mixed = {row["sequence_id"] for row in rows_mixed}
     assert seq_ids[2] in seq_ids_mixed
+
+@pytest.mark.asyncio
+async def test_export_detections_pagination(
+    authenticated_client: AsyncClient,
+    sequence_session,
+    detection_session,
+    monkeypatch,
+):
+    """
+    limit and offset should allow pagination through multiple pages
+    while maintaining ordering, when scoped to a dedicated sequence.
+    """
+    dummy_bucket = DummyBucket()
+
+    def fake_get_bucket(_bucket_name: str) -> DummyBucket:
+        return dummy_bucket
+
+    monkeypatch.setattr(storage_module.s3_service, "get_bucket", fake_get_bucket)
+
+    # Create a dedicated sequence for this test
+    seq_payload = {
+        "source_api": "pyronear_french",  # must be a valid enum value
+        "alert_api_id": "9000",
+        "camera_name": "Pagination Camera",
+        "camera_id": "900",
+        "organisation_name": "Org Pagination",
+        "organisation_id": "900",
+        "lat": "43.0",
+        "lon": "1.0",
+        "recorded_at": now.isoformat(),
+        "last_seen_at": now.isoformat(),
+    }
+    seq_resp = await authenticated_client.post("/sequences", data=seq_payload)
+    assert seq_resp.status_code == 201
+    seq_id = seq_resp.json()["id"]
+
+    # Annotate this sequence so export works
+    seq_ann_payload = {
+        "sequence_id": seq_id,
+        "has_missed_smoke": False,
+        "annotation": {"sequences_bbox": []},
+        "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
+        "created_at": now.isoformat(),
+    }
+    seq_ann_resp = await authenticated_client.post(
+        "/annotations/sequences/", json=seq_ann_payload
+    )
+    assert seq_ann_resp.status_code == 201
+
+    # Create 5 detections with increasing recorded_at
+    detection_ids = []
+    for i in range(5):
+        det_payload = {
+            "sequence_id": str(seq_id),
+            "alert_api_id": f"900{i}",
+            "recorded_at": (now - timedelta(minutes=5 - i)).isoformat(),
+            "algo_predictions": json.dumps({"predictions": []}),
+        }
+        img = Image.new("RGB", (64, 64), color="white")
+        img_b = io.BytesIO()
+        img.save(img_b, format="JPEG")
+        img_b.seek(0)
+        files = {"file": ("t.jpg", img_b, "image/jpeg")}
+
+        resp = await authenticated_client.post(
+            "/detections", data=det_payload, files=files
+        )
+        assert resp.status_code == 201
+        detection_ids.append(resp.json()["id"])
+
+    # Filters that scope export exactly to our dedicated sequence
+    base_params = {
+        "source_api": "pyronear_french",
+        "organisation_name": "Org Pagination",
+        "camera_name": "Pagination Camera",
+        "order_by": "recorded_at",
+        "order_desc": "false",
+    }
+
+    # Page 1
+    r1 = await authenticated_client.get(
+        "/export/detections", params={**base_params, "limit": 2, "offset": 0}
+    )
+    assert r1.status_code == 200
+    rows1 = r1.json()
+    assert len(rows1) == 2
+
+    # Page 2
+    r2 = await authenticated_client.get(
+        "/export/detections", params={**base_params, "limit": 2, "offset": 2}
+    )
+    assert r2.status_code == 200
+    rows2 = r2.json()
+    assert len(rows2) == 2
+
+    # Page 3, remaining one
+    r3 = await authenticated_client.get(
+        "/export/detections", params={**base_params, "limit": 2, "offset": 4}
+    )
+    assert r3.status_code == 200
+    rows3 = r3.json()
+    assert len(rows3) == 1
+
+    # Check global ordering and count
+    all_rows = rows1 + rows2 + rows3
+    rec_times = [datetime.fromisoformat(r["recorded_at"]) for r in all_rows]
+    assert rec_times == sorted(rec_times)
+    assert len(all_rows) == 5

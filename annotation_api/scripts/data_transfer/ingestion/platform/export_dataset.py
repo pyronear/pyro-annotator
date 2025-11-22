@@ -2,7 +2,7 @@
 Export a YOLO style dataset from the local annotation API.
 
 For each detection, this script:
-- Calls the /export/detections endpoint
+- Calls the /export/detections endpoint in pages with limit and offset
 - Downloads the image from image_url
 - Uses sequence level annotations (sequences_bbox) to create YOLO labels
 - Organizes data as:
@@ -22,6 +22,7 @@ uv run python -m scripts.data_transfer.ingestion.platform.export_dataset \
   --api-base http://localhost:5050/api/v1 \
   --username admin --password admin12345 \
   --limit 5000 \
+  --max-rows 50000 \
   --annotation-created-gte 2025-01-01T00:00:00Z \
   --annotation-created-lte 2025-01-31T23:59:59Z \
   --output-dir outputs/datasets \
@@ -57,7 +58,13 @@ def parse_args() -> argparse.Namespace:
         "--limit",
         type=int,
         default=10000,
-        help="Maximum number of detections to export in a single call to /export/detections",
+        help="Number of detections to request per page from /export/detections",
+    )
+    parser.add_argument(
+        "--max-rows",
+        type=int,
+        default=0,
+        help="Maximum total number of detections to fetch, zero means no limit",
     )
     parser.add_argument(
         "--annotation-created-gte",
@@ -327,39 +334,74 @@ def fetch_detections(
     headers: Dict[str, str],
     timeout: int,
     verify_ssl: bool,
-    limit: int,
+    page_size: int,
+    max_rows: int,
     annotation_created_gte: str,
     annotation_created_lte: str,
     source_api: str,
     organisation_name: str,
 ) -> List[Dict[str, Any]]:
     """
-    Call /export/detections once with the given filters.
+    Fetch detections from /export/detections using pagination with limit and offset.
     """
     url = f"{api_base}/export/detections"
-    params: Dict[str, Any] = {
-        "limit": limit,
-    }
+    all_rows: List[Dict[str, Any]] = []
+    offset = 0
+    page_index = 0
 
-    if annotation_created_gte:
-        params["sequence_annotation_created_gte"] = annotation_created_gte
-    if annotation_created_lte:
-        params["sequence_annotation_created_lte"] = annotation_created_lte
-    if source_api:
-        params["source_api"] = source_api
-    if organisation_name:
-        params["organisation_name"] = organisation_name
+    while True:
+        # respect max_rows if provided
+        if max_rows > 0 and len(all_rows) >= max_rows:
+            logging.info("Reached max_rows limit %s, stopping pagination", max_rows)
+            break
 
-    logging.info("Requesting detections export with params: %s", params)
-    resp = requests.get(url, headers=headers, params=params, timeout=timeout, verify=verify_ssl)
-    resp.raise_for_status()
-    data = resp.json()
+        effective_limit = page_size
+        if max_rows > 0:
+            remaining = max_rows - len(all_rows)
+            if remaining <= 0:
+                break
+            if remaining < effective_limit:
+                effective_limit = remaining
 
-    if not isinstance(data, list):
-        raise RuntimeError("Expected a list from /export/detections")
+        params: Dict[str, Any] = {
+            "limit": effective_limit,
+            "offset": offset,
+        }
 
-    logging.info("Received %s detections from export endpoint", len(data))
-    return data
+        if annotation_created_gte:
+            params["sequence_annotation_created_gte"] = annotation_created_gte
+        if annotation_created_lte:
+            params["sequence_annotation_created_lte"] = annotation_created_lte
+        if source_api:
+            params["source_api"] = source_api
+        if organisation_name:
+            params["organisation_name"] = organisation_name
+
+        logging.info("Requesting page %s, offset=%s, limit=%s, params=%s", page_index, offset, effective_limit, params)
+        resp = requests.get(url, headers=headers, params=params, timeout=timeout, verify=verify_ssl)
+        resp.raise_for_status()
+        data = resp.json()
+
+        if not isinstance(data, list):
+            raise RuntimeError("Expected a list from /export/detections")
+
+        num_rows = len(data)
+        logging.info("Received %s detections in this page", num_rows)
+
+        if num_rows == 0:
+            break
+
+        all_rows.extend(data)
+
+        if num_rows < effective_limit:
+            # last page
+            break
+
+        offset += effective_limit
+        page_index += 1
+
+    logging.info("Total detections fetched from export endpoint: %s", len(all_rows))
+    return all_rows
 
 
 def build_dataset(
@@ -503,7 +545,8 @@ def main() -> None:
         headers=headers,
         timeout=args.timeout,
         verify_ssl=args.verify_ssl,
-        limit=args.limit,
+        page_size=args.limit,
+        max_rows=args.max_rows,
         annotation_created_gte=args.annotation_created_gte,
         annotation_created_lte=args.annotation_created_lte,
         source_api=args.source_api,
