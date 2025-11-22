@@ -64,7 +64,15 @@ async def test_export_detections_empty_without_annotated_sequence(
         "alert_api_id": "8001",
         "recorded_at": now.isoformat(),
         "algo_predictions": json.dumps(
-            {"predictions": [{"xyxyn": [0.1, 0.1, 0.2, 0.2], "confidence": 0.9}]}
+            {
+                "predictions": [
+                    {
+                        "class_name": "smoke",
+                        "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                        "confidence": 0.9,
+                    }
+                ]
+            }
         ),
     }
 
@@ -112,7 +120,15 @@ async def test_export_detections_basic_row_and_image_url(
         "alert_api_id": "8101",
         "recorded_at": now.isoformat(),
         "algo_predictions": json.dumps(
-            {"predictions": [{"xyxyn": [0.1, 0.1, 0.3, 0.3], "confidence": 0.95}]}
+            {
+                "predictions": [
+                    {
+                        "class_name": "smoke",
+                        "xyxyn": [0.1, 0.1, 0.3, 0.3],
+                        "confidence": 0.95,
+                    }
+                ]
+            }
         ),
     }
 
@@ -249,7 +265,15 @@ async def test_export_detections_filters_by_organisation_and_source(
             "alert_api_id": f"83{seq_id}",
             "recorded_at": now.isoformat(),
             "algo_predictions": json.dumps(
-                {"predictions": [{"xyxyn": [0.1, 0.1, 0.2, 0.2], "confidence": 0.9}]}
+                {
+                    "predictions": [
+                        {
+                            "class_name": "smoke",
+                            "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                            "confidence": 0.9,
+                        }
+                    ]
+                }
             ),
         }
         img = Image.new("RGB", (64, 64), color="green")
@@ -349,7 +373,15 @@ async def test_export_detections_filters_by_sequence_annotation_created_window(
             "alert_api_id": f"840{idx}",
             "recorded_at": created_at.isoformat(),
             "algo_predictions": json.dumps(
-                {"predictions": [{"xyxyn": [0.1, 0.1, 0.2, 0.2], "confidence": 0.9}]}
+                {
+                    "predictions": [
+                        {
+                            "class_name": "smoke",
+                            "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                            "confidence": 0.9,
+                        }
+                    ]
+                }
             ),
         }
         img = Image.new("RGB", (64, 64), color="yellow")
@@ -378,8 +410,14 @@ async def test_export_detections_filters_by_sequence_annotation_created_window(
                     "smoke_type": "wildfire",
                     "false_positive_types": [],
                     "bboxes": [
-                        {"detection_id": detection_ids[0], "xyxyn": [0.1, 0.1, 0.2, 0.2]},
-                        {"detection_id": detection_ids[1], "xyxyn": [0.3, 0.3, 0.4, 0.4]},
+                        {
+                            "detection_id": detection_ids[0],
+                            "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                        },
+                        {
+                            "detection_id": detection_ids[1],
+                            "xyxyn": [0.3, 0.3, 0.4, 0.4],
+                        },
                     ],
                 }
             ]
@@ -481,7 +519,15 @@ async def test_export_detections_ordering_and_limit(
             "alert_api_id": f"850{idx}",
             "recorded_at": rec.isoformat(),
             "algo_predictions": json.dumps(
-                {"predictions": [{"xyxyn": [0.1, 0.1, 0.2, 0.2], "confidence": 0.8}]}
+                {
+                    "predictions": [
+                        {
+                            "class_name": "smoke",
+                            "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                            "confidence": 0.8,
+                        }
+                    ]
+                }
             ),
         }
         img = Image.new("RGB", (64, 64), color="pink")
@@ -596,7 +642,15 @@ async def test_export_detections_filters_by_false_positive_and_smoke_types(
             "alert_api_id": f"869{idx}",
             "recorded_at": now.isoformat(),
             "algo_predictions": json.dumps(
-                {"predictions": [{"xyxyn": [0.1, 0.1, 0.2, 0.2], "confidence": 0.9}]}
+                {
+                    "predictions": [
+                        {
+                            "class_name": "smoke",
+                            "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                            "confidence": 0.9,
+                        }
+                    ]
+                }
             ),
         }
         img = Image.new("RGB", (64, 64), color="cyan")
