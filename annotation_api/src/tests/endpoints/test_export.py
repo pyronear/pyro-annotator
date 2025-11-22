@@ -832,7 +832,6 @@ async def test_export_detections_filters_by_false_positive_and_smoke_types(
     seq_ids_mixed = {row["sequence_id"] for row in rows_mixed}
     assert seq_ids[2] in seq_ids_mixed
 
-
 @pytest.mark.asyncio
 async def test_export_detections_pagination(
     authenticated_client: AsyncClient,
@@ -851,9 +850,9 @@ async def test_export_detections_pagination(
 
     monkeypatch.setattr(storage_module.s3_service, "get_bucket", fake_get_bucket)
 
-    # Create a dedicated sequence for this test so we can filter on it
+    # Create a dedicated sequence for this test
     seq_payload = {
-        "source_api": "pyronear_pagination",
+        "source_api": "pyronear_french",  # must be a valid enum value
         "alert_api_id": "9000",
         "camera_name": "Pagination Camera",
         "camera_id": "900",
@@ -868,7 +867,7 @@ async def test_export_detections_pagination(
     assert seq_resp.status_code == 201
     seq_id = seq_resp.json()["id"]
 
-    # Create required sequence annotation in annotated stage so export works
+    # Annotate this sequence so export works
     seq_ann_payload = {
         "sequence_id": seq_id,
         "has_missed_smoke": False,
@@ -881,7 +880,7 @@ async def test_export_detections_pagination(
     )
     assert seq_ann_resp.status_code == 201
 
-    # Create 5 detections with increasing recorded_at so ordering is deterministic
+    # Create 5 detections with increasing recorded_at
     detection_ids = []
     for i in range(5):
         det_payload = {
@@ -902,10 +901,11 @@ async def test_export_detections_pagination(
         assert resp.status_code == 201
         detection_ids.append(resp.json()["id"])
 
-    # Common filter to restrict export to our dedicated sequence only
+    # Filters that scope export exactly to our dedicated sequence
     base_params = {
-        "source_api": "pyronear_pagination",
+        "source_api": "pyronear_french",
         "organisation_name": "Org Pagination",
+        "camera_name": "Pagination Camera",
         "order_by": "recorded_at",
         "order_desc": "false",
     }
@@ -926,7 +926,7 @@ async def test_export_detections_pagination(
     rows2 = r2.json()
     assert len(rows2) == 2
 
-    # Page 3 (remaining 1)
+    # Page 3, remaining one
     r3 = await authenticated_client.get(
         "/export/detections", params={**base_params, "limit": 2, "offset": 4}
     )
@@ -934,9 +934,8 @@ async def test_export_detections_pagination(
     rows3 = r3.json()
     assert len(rows3) == 1
 
-    # Check that ordering is consistent across pages
+    # Check global ordering and count
     all_rows = rows1 + rows2 + rows3
     rec_times = [datetime.fromisoformat(r["recorded_at"]) for r in all_rows]
     assert rec_times == sorted(rec_times)
-    # And we really only got our 5 detections
     assert len(all_rows) == 5
