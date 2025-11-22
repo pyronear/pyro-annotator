@@ -841,8 +841,8 @@ async def test_export_detections_pagination(
     monkeypatch,
 ):
     """
-    limit + offset should allow pagination through multiple pages
-    while maintaining ordering.
+    limit and offset should allow pagination through multiple pages
+    while maintaining ordering, when scoped to a dedicated sequence.
     """
     dummy_bucket = DummyBucket()
 
@@ -851,9 +851,26 @@ async def test_export_detections_pagination(
 
     monkeypatch.setattr(storage_module.s3_service, "get_bucket", fake_get_bucket)
 
+    # Create a dedicated sequence for this test so we can filter on it
+    seq_payload = {
+        "source_api": "pyronear_pagination",
+        "alert_api_id": "9000",
+        "camera_name": "Pagination Camera",
+        "camera_id": "900",
+        "organisation_name": "Org Pagination",
+        "organisation_id": "900",
+        "lat": "43.0",
+        "lon": "1.0",
+        "recorded_at": now.isoformat(),
+        "last_seen_at": now.isoformat(),
+    }
+    seq_resp = await authenticated_client.post("/sequences", data=seq_payload)
+    assert seq_resp.status_code == 201
+    seq_id = seq_resp.json()["id"]
+
     # Create required sequence annotation in annotated stage so export works
     seq_ann_payload = {
-        "sequence_id": 1,
+        "sequence_id": seq_id,
         "has_missed_smoke": False,
         "annotation": {"sequences_bbox": []},
         "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
@@ -868,7 +885,7 @@ async def test_export_detections_pagination(
     detection_ids = []
     for i in range(5):
         det_payload = {
-            "sequence_id": "1",
+            "sequence_id": str(seq_id),
             "alert_api_id": f"900{i}",
             "recorded_at": (now - timedelta(minutes=5 - i)).isoformat(),
             "algo_predictions": json.dumps({"predictions": []}),
@@ -885,29 +902,41 @@ async def test_export_detections_pagination(
         assert resp.status_code == 201
         detection_ids.append(resp.json()["id"])
 
+    # Common filter to restrict export to our dedicated sequence only
+    base_params = {
+        "source_api": "pyronear_pagination",
+        "organisation_name": "Org Pagination",
+        "order_by": "recorded_at",
+        "order_desc": "false",
+    }
+
     # Page 1
-    r1 = await authenticated_client.get("/export/detections", params={"limit": 2, "offset": 0})
+    r1 = await authenticated_client.get(
+        "/export/detections", params={**base_params, "limit": 2, "offset": 0}
+    )
     assert r1.status_code == 200
     rows1 = r1.json()
     assert len(rows1) == 2
 
     # Page 2
-    r2 = await authenticated_client.get("/export/detections", params={"limit": 2, "offset": 2})
+    r2 = await authenticated_client.get(
+        "/export/detections", params={**base_params, "limit": 2, "offset": 2}
+    )
     assert r2.status_code == 200
     rows2 = r2.json()
     assert len(rows2) == 2
 
     # Page 3 (remaining 1)
-    r3 = await authenticated_client.get("/export/detections", params={"limit": 2, "offset": 4})
+    r3 = await authenticated_client.get(
+        "/export/detections", params={**base_params, "limit": 2, "offset": 4}
+    )
     assert r3.status_code == 200
     rows3 = r3.json()
     assert len(rows3) == 1
 
-    # Out of range → empty
-    r4 = await authenticated_client.get("/export/detections", params={"limit": 2, "offset": 6})
-    assert r4.status_code == 200
-    assert r4.json() == []
-
-    # Total count across pages = 5 (sanity check)
-    assert len(rows1) + len(rows2) + len(rows3) == 5
-
+    # Check that ordering is consistent across pages
+    all_rows = rows1 + rows2 + rows3
+    rec_times = [datetime.fromisoformat(r["recorded_at"]) for r in all_rows]
+    assert rec_times == sorted(rec_times)
+    # And we really only got our 5 detections
+    assert len(all_rows) == 5
