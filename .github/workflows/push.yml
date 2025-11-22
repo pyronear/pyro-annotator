@@ -1,0 +1,83 @@
+name: build-and-push
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  BACKEND_IMAGE_NAME: annotation-backend
+  FRONTEND_IMAGE_NAME: annotation-frontend
+  DOCKERHUB_USER: ${{ secrets.DOCKERHUB_LOGIN }}
+  PYTHON_VERSION: "3.11"
+  POETRY_VERSION: "1.8.3"
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: abatilo/actions-poetry@v4
+        with:
+          poetry-version: ${{ env.POETRY_VERSION }}
+
+      - name: Export backend dependencies (only if Dockerfile installs requirements.txt)
+        run: poetry export -f requirements.txt --without-hashes --output requirements.txt
+
+      # Build backend image
+      - name: Build backend Docker image
+        run: |
+          docker build \
+            -f Dockerfile \
+            . \
+            -t $DOCKERHUB_USER/$BACKEND_IMAGE_NAME:latest
+
+      # Build frontend image (adjust paths if needed)
+      - name: Build frontend Docker image
+        run: |
+          docker build \
+            -f frontend/Dockerfile \
+            frontend \
+            -t $DOCKERHUB_USER/$FRONTEND_IMAGE_NAME:latest
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_LOGIN }}
+          password: ${{ secrets.DOCKERHUB_PW }}
+
+      - name: Push backend image
+        run: docker push $DOCKERHUB_USER/$BACKEND_IMAGE_NAME:latest
+
+      - name: Push frontend image
+        run: docker push $DOCKERHUB_USER/$FRONTEND_IMAGE_NAME:latest
+
+      # Optional, only if you also want to push to GHCR
+      - name: Login to GHCR
+        if: ${{ secrets.GITHUB_TOKEN != '' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push both images to GHCR
+        if: ${{ secrets.GITHUB_TOKEN != '' }}
+        run: |
+          BACKEND_ID=ghcr.io/${{ github.repository_owner }}/$BACKEND_IMAGE_NAME
+          FRONTEND_ID=ghcr.io/${{ github.repository_owner }}/$FRONTEND_IMAGE_NAME
+          BACKEND_ID=$(echo "$BACKEND_ID" | tr '[A-Z]' '[a-z]')
+          FRONTEND_ID=$(echo "$FRONTEND_ID" | tr '[A-Z]' '[a-z]')
+
+          docker tag $DOCKERHUB_USER/$BACKEND_IMAGE_NAME:latest $BACKEND_ID:latest
+          docker tag $DOCKERHUB_USER/$FRONTEND_IMAGE_NAME:latest $FRONTEND_ID:latest
+
+          docker push $BACKEND_ID:latest
+          docker push $FRONTEND_ID:latest
+
