@@ -831,3 +831,83 @@ async def test_export_detections_filters_by_false_positive_and_smoke_types(
     rows_mixed = resp_mixed.json()
     seq_ids_mixed = {row["sequence_id"] for row in rows_mixed}
     assert seq_ids[2] in seq_ids_mixed
+
+
+@pytest.mark.asyncio
+async def test_export_detections_pagination(
+    authenticated_client: AsyncClient,
+    sequence_session,
+    detection_session,
+    monkeypatch,
+):
+    """
+    limit + offset should allow pagination through multiple pages
+    while maintaining ordering.
+    """
+    dummy_bucket = DummyBucket()
+
+    def fake_get_bucket(_bucket_name: str) -> DummyBucket:
+        return dummy_bucket
+
+    monkeypatch.setattr(storage_module.s3_service, "get_bucket", fake_get_bucket)
+
+    # Create required sequence annotation in annotated stage so export works
+    seq_ann_payload = {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "annotation": {"sequences_bbox": []},
+        "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
+        "created_at": now.isoformat(),
+    }
+    seq_ann_resp = await authenticated_client.post(
+        "/annotations/sequences/", json=seq_ann_payload
+    )
+    assert seq_ann_resp.status_code == 201
+
+    # Create 5 detections with increasing recorded_at so ordering is deterministic
+    detection_ids = []
+    for i in range(5):
+        det_payload = {
+            "sequence_id": "1",
+            "alert_api_id": f"900{i}",
+            "recorded_at": (now - timedelta(minutes=5 - i)).isoformat(),
+            "algo_predictions": json.dumps({"predictions": []}),
+        }
+        img = Image.new("RGB", (64, 64), color="white")
+        img_b = io.BytesIO()
+        img.save(img_b, format="JPEG")
+        img_b.seek(0)
+        files = {"file": ("t.jpg", img_b, "image/jpeg")}
+
+        resp = await authenticated_client.post(
+            "/detections", data=det_payload, files=files
+        )
+        assert resp.status_code == 201
+        detection_ids.append(resp.json()["id"])
+
+    # Page 1
+    r1 = await authenticated_client.get("/export/detections", params={"limit": 2, "offset": 0})
+    assert r1.status_code == 200
+    rows1 = r1.json()
+    assert len(rows1) == 2
+
+    # Page 2
+    r2 = await authenticated_client.get("/export/detections", params={"limit": 2, "offset": 2})
+    assert r2.status_code == 200
+    rows2 = r2.json()
+    assert len(rows2) == 2
+
+    # Page 3 (remaining 1)
+    r3 = await authenticated_client.get("/export/detections", params={"limit": 2, "offset": 4})
+    assert r3.status_code == 200
+    rows3 = r3.json()
+    assert len(rows3) == 1
+
+    # Out of range → empty
+    r4 = await authenticated_client.get("/export/detections", params={"limit": 2, "offset": 6})
+    assert r4.status_code == 200
+    assert r4.json() == []
+
+    # Total count across pages = 5 (sanity check)
+    assert len(rows1) + len(rows2) + len(rows3) == 5
+
