@@ -14,6 +14,7 @@ from app.api.api_v1.endpoints import (
     sequences,
     source_apis,
     users,
+    export
 )
 from app.auth import endpoints as auth
 
@@ -43,4 +44,10 @@ api_router.include_router(
 )
 api_router.include_router(
     source_apis.router, prefix="/source-apis", tags=["source apis"]
+)
+
+api_router.include_router(
+    export.router,
+    prefix="/export",
+    tags=["export"]
 )
