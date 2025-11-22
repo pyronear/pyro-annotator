@@ -1,7 +1,9 @@
 from datetime import datetime, timedelta, UTC
 import io
 import json
-
+import hashlib
+from io import BytesIO
+from typing import Dict
 import pytest
 from httpx import AsyncClient
 from PIL import Image
@@ -11,15 +13,60 @@ from app.services import storage as storage_module
 
 now = datetime.now(UTC)
 
-
 class DummyBucket:
+    """
+    Very small in memory S3 like bucket used in tests.
+
+    It stores file contents in a dict keyed by the S3 key
+    and exposes the minimal API that app.services.storage.upload_file
+    and the export endpoints expect.
+    """
+
     def __init__(self) -> None:
-        self.public_urls = {}
+        self._files: Dict[str, bytes] = {}
+        # Map S3 keys to fake public URLs, used by tests
+        self.public_urls: Dict[str, str] = {}
+
+    def upload_file(self, key: str, file_obj) -> bool:
+        """
+        Mimic S3Bucket.upload_file
+
+        Read bytes from the file like object and store them in memory
+        Return True to indicate success.
+        """
+        pos = file_obj.tell()
+        data = file_obj.read()
+        file_obj.seek(pos)
+        self._files[key] = data
+
+        # Also register a deterministic public URL
+        self.public_urls[key] = f"https://dummy-bucket.local/{key}"
+        return True
+
+    def get_file_metadata(self, key: str) -> dict:
+        """
+        Mimic the subset of metadata used in upload_file
+
+        Compute MD5 and expose it under ETag with quotes
+        so the MD5 integrity check passes.
+        """
+        data = self._files[key]
+        md5_hash = hashlib.md5(data).hexdigest()  # noqa: S324
+        return {"ETag": f'"{md5_hash}"'}
 
     def get_public_url(self, key: str) -> str:
-        url = f"https://example.com/{key}"
-        self.public_urls[key] = url
-        return url
+        """
+        Return the same URL that tests expect in public_urls.
+        """
+        if key not in self.public_urls:
+            self.public_urls[key] = f"https://dummy-bucket.local/{key}"
+        return self.public_urls[key]
+
+    def get_file(self, key: str) -> BytesIO:
+        """
+        Optional helper if export code ever wants to read back the file.
+        """
+        return BytesIO(self._files[key])
 
 
 @pytest.mark.asyncio
@@ -395,11 +442,8 @@ async def test_export_detections_filters_by_sequence_annotation_created_window(
         assert det_resp.status_code == 201
         detection_ids.append(det_resp.json()["id"])
 
-    # One sequence annotation older, one newer, we overwrite since there is unique constraint
-    # So instead we use created_at field itself as filter on a single annotation
-    # Create annotation at a known created_at timestamp
-    annotation_created_at = base_time + timedelta(days=3)
-
+        # One sequence annotation older, one newer, we overwrite since there is unique constraint
+    # So instead we rely on whatever created_at the backend actually stores
     seq_ann_payload = {
         "sequence_id": 1,
         "has_missed_smoke": False,
@@ -423,13 +467,31 @@ async def test_export_detections_filters_by_sequence_annotation_created_window(
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
-        "created_at": annotation_created_at.isoformat(),
+        # created_at is controlled by the backend, the field in payload is ignored
     }
 
     seq_ann_resp = await authenticated_client.post(
         "/annotations/sequences/", json=seq_ann_payload
     )
     assert seq_ann_resp.status_code == 201
+
+    # Fetch export once to discover the actual annotation_created_at stored
+    resp_all = await authenticated_client.get("/export/detections")
+    assert resp_all.status_code == 200
+    rows_all = resp_all.json()
+    # We expect our two detections for sequence 1 to be present
+    assert len(rows_all) >= 2
+
+    # All rows for this sequence share the same annotation metadata
+    # Use the first one to get the authoritative created_at
+    ann_created_str = rows_all[0]["sequence_annotation_created_at"]
+    # Handle the trailing Z if present
+    if ann_created_str.endswith("Z"):
+        annotation_created_at = datetime.fromisoformat(
+            ann_created_str.replace("Z", "+00:00")
+        )
+    else:
+        annotation_created_at = datetime.fromisoformat(ann_created_str)
 
     # Window that includes annotation_created_at should return both detections
     resp = await authenticated_client.get(
@@ -463,6 +525,7 @@ async def test_export_detections_filters_by_sequence_annotation_created_window(
     )
     assert resp_before.status_code == 200
     assert resp_before.json() == []
+
 
 
 @pytest.mark.asyncio
@@ -559,20 +622,26 @@ async def test_export_detections_ordering_and_limit(
     rec1 = datetime.fromisoformat(rows[1]["recorded_at"])
     assert rec0 >= rec1
 
-    # When ordering ascending, first row should be oldest
+    # When ordering ascending, restrict to the window of detections we just created
+    oldest_rec = min(recorded_times)
+    newest_rec = max(recorded_times)
+
     resp_asc = await authenticated_client.get(
         "/export/detections",
         params={
             "order_by": "recorded_at",
             "order_desc": "false",
             "limit": 1,
+            # Restrict to our three detections
+            "recorded_at_gte": oldest_rec.isoformat(),
+            "recorded_at_lte": newest_rec.isoformat(),
         },
     )
     assert resp_asc.status_code == 200
     rows_asc = resp_asc.json()
     assert len(rows_asc) == 1
-    oldest_rec = min(recorded_times)
     assert datetime.fromisoformat(rows_asc[0]["recorded_at"]) == oldest_rec
+
 
 
 @pytest.mark.asyncio
