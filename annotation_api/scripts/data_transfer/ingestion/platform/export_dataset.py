@@ -19,28 +19,35 @@ YOLO format per line:
 
 Example:
 uv run python -m scripts.data_transfer.ingestion.platform.export_dataset \
-  --api-base http://localhost:5050/api/v1 \
-  --username admin --password admin12345 \
-  --limit 5000 \
-  --max-rows 50000 \
-  --annotation-created-gte 2025-01-01T00:00:00Z \
-  --annotation-created-lte 2025-01-31T23:59:59Z \
+  --api-base https://annotationdev.pyronear.org/api/v1 \
+  --limit 500 \
+  --max-rows 2000 \
+  --timeout 120 \
   --output-dir outputs/datasets \
+  --verify-ssl \
   --loglevel info
+# username and password will be read from .env if not provided as flags
 """
 
 from __future__ import annotations
 
 import argparse
 import logging
-import unicodedata
+import os
 import re
+import unicodedata
 from collections import defaultdict
 from datetime import datetime
+from multiprocessing import Pool, cpu_count
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
+from dotenv import load_dotenv
+from tqdm.auto import tqdm
+
+# Load environment variables early so argparse defaults can see them
+load_dotenv()
 
 
 # ---------------------------------------------------------------------------
@@ -49,11 +56,30 @@ import requests
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Export YOLO style dataset from annotation API")
-    parser.add_argument("--api-base", default="http://localhost:5050/api/v1", help="Base URL of the API")
-    parser.add_argument("--username", default="admin", help="API username")
-    parser.add_argument("--password", default="admin12345", help="API password")
-    parser.add_argument("--timeout", type=int, default=30, help="HTTP request timeout in seconds")
+    parser = argparse.ArgumentParser(
+        description="Export YOLO style dataset from annotation API"
+    )
+    parser.add_argument(
+        "--api-base",
+        default="http://localhost:5050/api/v1",
+        help="Base URL of the API",
+    )
+    parser.add_argument(
+        "--username",
+        default=os.getenv("ANNOTATOR_LOGIN", "admin"),
+        help="API username, defaults to ANNOTATOR_LOGIN env var or 'admin'",
+    )
+    parser.add_argument(
+        "--password",
+        default=os.getenv("ANNOTATOR_PASSWORD", "admin12345"),
+        help="API password, defaults to ANNOTATOR_PASSWORD env var or 'admin12345'",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=30,
+        help="HTTP request timeout in seconds",
+    )
     parser.add_argument(
         "--limit",
         type=int,
@@ -79,7 +105,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--source-api",
         default="",
-        help="Optional filter by source API, for example pyronear_french, alert_wildfire, api_cenia",
+        help=(
+            "Optional filter by source API, for example "
+            "pyronear_french, alert_wildfire, api_cenia"
+        ),
     )
     parser.add_argument(
         "--organisation-name",
@@ -105,11 +134,20 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Verify TLS certificates when connecting to the API and image URLs",
     )
+    parser.add_argument(
+        "--num-workers",
+        type=int,
+        default=0,
+        help="Number of worker processes for downloads, zero uses CPU count",
+    )
     return parser.parse_args()
 
 
 def setup_logging(level: str) -> None:
-    logging.basicConfig(level=getattr(logging, level.upper()), format="[%(levelname)s] %(message)s")
+    logging.basicConfig(
+        level=getattr(logging, level.upper()),
+        format="[%(levelname)s] %(message)s",
+    )
 
 
 def default_dataset_root(base_output_dir: Optional[str] = None) -> Path:
@@ -123,7 +161,13 @@ def default_dataset_root(base_output_dir: Optional[str] = None) -> Path:
     return root
 
 
-def get_token(api_base: str, username: str, password: str, timeout: int, verify_ssl: bool) -> str:
+def get_token(
+    api_base: str,
+    username: str,
+    password: str,
+    timeout: int,
+    verify_ssl: bool,
+) -> str:
     login_url = f"{api_base}/auth/login"
     payload = {"username": username, "password": password}
     resp = requests.post(login_url, json=payload, timeout=timeout, verify=verify_ssl)
@@ -323,7 +367,10 @@ def extract_labels_for_detection(row: Dict[str, Any]) -> Dict[str, List[str]]:
             width = x2 - x1
             height = y2 - y1
 
-            line = f"{class_id} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}"
+            line = (
+                f"{class_id} "
+                f"{x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}"
+            )
             labels_by_type.setdefault(seq_type, []).append(line)
 
     return labels_by_type
@@ -350,7 +397,6 @@ def fetch_detections(
     page_index = 0
 
     while True:
-        # respect max_rows if provided
         if max_rows > 0 and len(all_rows) >= max_rows:
             logging.info("Reached max_rows limit %s, stopping pagination", max_rows)
             break
@@ -377,8 +423,20 @@ def fetch_detections(
         if organisation_name:
             params["organisation_name"] = organisation_name
 
-        logging.info("Requesting page %s, offset=%s, limit=%s, params=%s", page_index, offset, effective_limit, params)
-        resp = requests.get(url, headers=headers, params=params, timeout=timeout, verify=verify_ssl)
+        logging.info(
+            "Requesting page %s, offset=%s, limit=%s, params=%s",
+            page_index,
+            offset,
+            effective_limit,
+            params,
+        )
+        resp = requests.get(
+            url,
+            headers=headers,
+            params=params,
+            timeout=timeout,
+            verify=verify_ssl,
+        )
         resp.raise_for_status()
         data = resp.json()
 
@@ -394,7 +452,6 @@ def fetch_detections(
         all_rows.extend(data)
 
         if num_rows < effective_limit:
-            # last page
             break
 
         offset += effective_limit
@@ -404,12 +461,106 @@ def fetch_detections(
     return all_rows
 
 
+# ---------------------------------------------------------------------------
+# Multiprocessing worker setup
+# ---------------------------------------------------------------------------
+
+FOLDER_NAME_MAP: Dict[Tuple[str, int], str] = {}
+BASE_DIR: Optional[Path] = None
+TIMEOUT_G: int = 30
+VERIFY_SSL_G: bool = False
+HEADERS_G: Dict[str, str] = {}
+SESSION: Optional[requests.Session] = None
+
+
+def _init_worker(
+    folder_name_map: Dict[Tuple[str, int], str],
+    base_dir_str: str,
+    timeout: int,
+    verify_ssl: bool,
+    headers: Dict[str, str],
+) -> None:
+    global FOLDER_NAME_MAP, BASE_DIR, TIMEOUT_G, VERIFY_SSL_G, HEADERS_G, SESSION
+    FOLDER_NAME_MAP = folder_name_map
+    BASE_DIR = Path(base_dir_str)
+    TIMEOUT_G = timeout
+    VERIFY_SSL_G = verify_ssl
+    HEADERS_G = headers
+    SESSION = None
+
+
+def _get_session() -> requests.Session:
+    global SESSION
+    if SESSION is None:
+        SESSION = requests.Session()
+        SESSION.verify = VERIFY_SSL_G
+        SESSION.headers.update(HEADERS_G)
+    return SESSION
+
+
+def _process_task(task: Dict[str, Any]) -> Tuple[int, int]:
+    """
+    Worker function that downloads one image and writes image and labels.
+
+    Returns a tuple (images_written, labels_nonempty).
+    """
+    seq_id_int: int = task["seq_id_int"]
+    file_base: str = task["file_base"]
+    image_url: str = task["image_url"]
+    types_for_seq: List[str] = task["types_for_seq"]
+    labels_by_type: Dict[str, List[str]] = task["labels_by_type"]
+
+    try:
+        session = _get_session()
+        resp_img = session.get(image_url, timeout=TIMEOUT_G, stream=True)
+        resp_img.raise_for_status()
+        img_bytes = resp_img.content
+    except Exception as exc:
+        logging.warning("Failed to download %s: %s", image_url, exc)
+        return 0, 0
+
+    img_filename = f"{file_base}.jpg"
+    label_filename = f"{file_base}.txt"
+
+    images_written = 0
+    labels_nonempty = 0
+
+    for seq_type in types_for_seq:
+        lines = labels_by_type.get(seq_type, [])
+
+        key = (seq_type, seq_id_int)
+        seq_folder_name = FOLDER_NAME_MAP.get(key, file_base)
+
+        base = BASE_DIR / seq_type / seq_folder_name  # type: ignore[operator]
+        img_dir = base / "images"
+        label_dir = base / "labels"
+        img_dir.mkdir(parents=True, exist_ok=True)
+        label_dir.mkdir(parents=True, exist_ok=True)
+
+        img_path = img_dir / img_filename
+        label_path = label_dir / label_filename
+
+        if not img_path.exists():
+            with open(img_path, "wb") as f:
+                f.write(img_bytes)
+            images_written += 1
+
+        with open(label_path, "w", encoding="utf-8") as f:
+            if lines:
+                f.write("\n".join(lines) + "\n")
+        if lines:
+            labels_nonempty += 1
+
+    return images_written, labels_nonempty
+
+
 def build_dataset(
     rows: List[Dict[str, Any]],
     root_dir: Path,
     timeout: int,
     verify_ssl: bool,
     headers: Dict[str, str],
+    num_workers: int,
 ) -> None:
     """
     Build the dataset folder structure from the exported rows.
@@ -422,28 +573,21 @@ def build_dataset(
     For each sequence and seq_type, all images of the sequence are copied
     in that seq_type folder. Label content depends on the annotation
     for that detection and type.
-    """
-    session = requests.Session()
-    session.verify = verify_ssl
-    session.headers.update(headers)
 
+    Processing is parallelized across worker processes and progress
+    is tracked with a tqdm progress bar.
+    """
     # sort rows by (sequence_id, recorded_at)
     rows_sorted = sorted(rows, key=recorded_at_sort_key)
 
     # compute sequence -> list of seq_types present in annotation
     seq_types_map = compute_sequence_types(rows_sorted)
 
-    num_images = 0
-    num_labels = 0
-    total_rows = len(rows_sorted)
-
-    # map (seq_type, sequence_id) -> folder name (first file_base)
+    # Prepare folder name map and tasks
     folder_name_map: Dict[Tuple[str, int], str] = {}
+    tasks: List[Dict[str, Any]] = []
 
-    for idx, row in enumerate(rows_sorted, start=1):
-        if idx % 100 == 0 or idx == total_rows:
-            logging.info("Processing detection %s/%s", idx, total_rows)
-
+    for row in rows_sorted:
         image_url = row.get("image_url")
         if not image_url:
             continue
@@ -454,69 +598,68 @@ def build_dataset(
             continue
         seq_id_int = int(seq_id)
 
-        # for this sequence, which seq_types do we have
         types_for_seq = seq_types_map.get(seq_id_int)
         if not types_for_seq:
-            # no annotated bbox at sequence level, put everything under "no_label"
             types_for_seq = ["no_label"]
 
-        # base filename for this detection
         try:
             file_base = build_file_basename(row)
         except Exception as exc:
-            logging.warning("Could not build filename for detection %s: %s", detection_id, exc)
+            logging.warning(
+                "Could not build filename for detection %s: %s",
+                detection_id,
+                exc,
+            )
             continue
 
-        # labels of this detection per type
         labels_by_type = extract_labels_for_detection(row)
 
-        # download image once for this detection
-        try:
-            resp_img = session.get(image_url, timeout=timeout, stream=True)
-            resp_img.raise_for_status()
-            img_bytes = resp_img.content
-        except Exception as exc:
-            logging.warning("Failed to download %s: %s", image_url, exc)
-            continue
-
-        img_filename = f"{file_base}.jpg"
-        label_filename = f"{file_base}.txt"
-
+        # record first file_base per (seq_type, seq_id) for folder naming
         for seq_type in types_for_seq:
-            # get lines for this detection and this type (can be empty)
-            lines = labels_by_type.get(seq_type, [])
-
             key = (seq_type, seq_id_int)
             if key not in folder_name_map:
                 folder_name_map[key] = file_base
 
-            seq_folder_name = folder_name_map[key]
+        tasks.append(
+            {
+                "seq_id_int": seq_id_int,
+                "file_base": file_base,
+                "image_url": image_url,
+                "types_for_seq": types_for_seq,
+                "labels_by_type": labels_by_type,
+            }
+        )
 
-            base = root_dir / seq_type / seq_folder_name
-            img_dir = base / "images"
-            label_dir = base / "labels"
-            img_dir.mkdir(parents=True, exist_ok=True)
-            label_dir.mkdir(parents=True, exist_ok=True)
+    if not tasks:
+        logging.warning("No tasks built from export rows, nothing to write")
+        return
 
-            img_path = img_dir / img_filename
-            label_path = label_dir / label_filename
+    logging.info("Prepared %s download tasks", len(tasks))
 
-            if not img_path.exists():
-                with open(img_path, "wb") as f:
-                    f.write(img_bytes)
-                num_images += 1
+    if num_workers <= 0:
+        num_workers = cpu_count()
+    logging.info("Using %s worker processes", num_workers)
 
-            # always create label file, possibly empty
-            with open(label_path, "w", encoding="utf-8") as f:
-                if lines:
-                    f.write("\n".join(lines) + "\n")
-            if lines:
-                num_labels += 1
+    images_total = 0
+    labels_total = 0
+
+    with Pool(
+        processes=num_workers,
+        initializer=_init_worker,
+        initargs=(folder_name_map, str(root_dir), timeout, verify_ssl, headers),
+    ) as pool:
+        for img_count, label_count in tqdm(
+            pool.imap_unordered(_process_task, tasks),
+            total=len(tasks),
+            desc="Building dataset",
+        ):
+            images_total += img_count
+            labels_total += label_count
 
     logging.info("Dataset build complete")
     logging.info("Root directory: %s", root_dir)
-    logging.info("Images saved: %s", num_images)
-    logging.info("Label files written (non empty): %s", num_labels)
+    logging.info("Images saved: %s", images_total)
+    logging.info("Label files written (non empty): %s", labels_total)
 
 
 # ---------------------------------------------------------------------------
@@ -538,7 +681,10 @@ def main() -> None:
         timeout=args.timeout,
         verify_ssl=args.verify_ssl,
     )
-    headers = {"accept": "application/json", "Authorization": f"Bearer {token}"}
+    headers = {
+        "accept": "application/json",
+        "Authorization": f"Bearer {token}",
+    }
 
     rows = fetch_detections(
         api_base=args.api_base,
@@ -563,6 +709,7 @@ def main() -> None:
         timeout=args.timeout,
         verify_ssl=args.verify_ssl,
         headers=headers,
+        num_workers=args.num_workers,
     )
 
 
