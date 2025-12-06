@@ -48,6 +48,50 @@ npm run dev  # Vite dev server on port 5173
 
 The project includes a comprehensive data import script that fetches sequences and detections from the Pyronear platform API and automatically generates annotations ready for human review.
 
+## Working with Remote Data
+
+There are two workflows depending on your role:
+
+### Annotators (duplicate from remote API, no platform access)
+
+If you only need to annotate Pyronear data locally:
+
+1) Ask an admin for credentials to the remote annotation API.
+2) Duplicate a subset into your local API (no platform creds needed):
+
+```bash
+MAIN_ANNOTATION_LOGIN=<remote_user> MAIN_ANNOTATION_PASSWORD=<remote_pass> \
+uv run python -m scripts.data_transfer.ingestion.platform.import \
+  --source-annotation-url https://annotationdev.pyronear.org \
+  --url-api-annotation http://localhost:5050 \
+  --max-sequences 10 \
+  --clone-processing-stage ready_to_annotate \
+  --sequence-list "1234,5678"  # optional alert_api_id filter
+```
+
+- `--max-sequences` caps how many sequences you pull.
+- `--clone-processing-stage` defaults to `no_annotation`; set to `ready_to_annotate` to grab ready items.
+- `--sequence-list` lets you restrict by alert_api_id (comma/space-separated or a file path).
+
+Then open http://localhost:3000 to annotate locally.
+
+### Admins (populate main from platform)
+
+If you manage the main dataset and have platform credentials, import directly from the platform into the target annotation API:
+
+```bash
+MAIN_ANNOTATION_LOGIN=<target_user> MAIN_ANNOTATION_PASSWORD=<target_pass> \
+PLATFORM_LOGIN=<platform_user> PLATFORM_PASSWORD=<platform_pass> \
+PLATFORM_ADMIN_LOGIN=<platform_admin_user> PLATFORM_ADMIN_PASSWORD=<platform_admin_pass> \
+uv run python -m scripts.data_transfer.ingestion.platform.import \
+  --date-from 2025-03-04 --date-end 2025-03-04 \
+  --url-api-annotation https://annotationdev.pyronear.org \
+  --max-sequences 10 \
+  --sequence-list "1234,5678"  # optional alert_api_id filter
+```
+
+Use `--loglevel debug` if you need more detail during imports.
+
 ### Prerequisites
 
 **Services must be running first:**
