@@ -55,9 +55,11 @@ import argparse
 import concurrent.futures
 import logging
 import os
+import re
 import sys
 import time
 from datetime import datetime
+from typing import List
 
 from rich.console import Console
 from rich.panel import Panel
@@ -138,6 +140,14 @@ def make_cli_parser() -> argparse.ArgumentParser:
         choices=["desc", "asc"],
         type=str,
         default="asc",
+    )
+    parser.add_argument(
+        "--sequence-list",
+        help=(
+            "Comma-separated list of sequence alert_api_id (e.g. 158,16851,168468) "
+            "or path to a text file containing the list"
+        ),
+        type=str,
     )
 
     # Annotation analysis options
@@ -239,6 +249,38 @@ def validate_args(args: argparse.Namespace) -> bool:
     return True
 
 
+def parse_sequence_selection(sequence_arg: str) -> List[int]:
+    """
+    Parse a comma/whitespace-separated sequence list from CLI or a file.
+
+    Args:
+        sequence_arg: Raw CLI input or file path
+
+    Returns:
+        List of sequence IDs (alert_api_id)
+
+    Raises:
+        ValueError: If any entry cannot be parsed as int
+    """
+    if not sequence_arg:
+        return []
+
+    content = sequence_arg
+    if os.path.isfile(sequence_arg):
+        with open(sequence_arg, "r", encoding="utf-8") as handle:
+            content = handle.read()
+
+    tokens = [token.strip() for token in re.split(r"[,\s]+", content) if token.strip()]
+    sequence_ids: List[int] = []
+    for token in tokens:
+        try:
+            sequence_ids.append(int(token))
+        except ValueError as exc:
+            raise ValueError(f"Invalid sequence id '{token}' in sequence list") from exc
+
+    return sequence_ids
+
+
 def main() -> None:
     """Main execution function with comprehensive error handling and progress tracking."""
     parser = make_cli_parser()
@@ -284,6 +326,23 @@ def main() -> None:
 
     # Initialize organization early to avoid reference errors in exception handlers
     organization = os.getenv("PLATFORM_LOGIN") or "unknown"
+    selected_sequence_list: List[int] = []
+    sequence_list_source = "CLI input"
+
+    # Parse optional sequence restriction
+    if args.sequence_list:
+        try:
+            if os.path.isfile(args.sequence_list):
+                sequence_list_source = f"file {args.sequence_list}"
+            selected_sequence_list = parse_sequence_selection(args.sequence_list)
+        except ValueError as exc:
+            logging.error(exc)
+            sys.exit(1)
+
+    if selected_sequence_list:
+        console.print(
+            f"[blue]ℹ️  Restricting to {len(selected_sequence_list)} sequence alert_api_id(s) ({sequence_list_source})[/]"
+        )
 
     # Print header
     console.print()
@@ -382,6 +441,7 @@ def main() -> None:
                 access_token=access_token,
                 access_token_admin=access_token_admin,
                 worker_config=worker_config,
+                selected_sequence_list=selected_sequence_list or None,
                 suppress_logs=suppress_logs,
                 console=console,
                 error_collector=error_collector,

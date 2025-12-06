@@ -198,6 +198,7 @@ def fetch_all_sequences_within(
     access_token: str,
     access_token_admin: str,
     worker_config: WorkerConfig,
+    selected_sequence_list: Optional[List[int]] = None,
     suppress_logs: bool = True,
     console: Optional[Console] = None,
     error_collector: Optional[ErrorCollector] = None,
@@ -221,6 +222,7 @@ def fetch_all_sequences_within(
         access_token: Regular user access token
         access_token_admin: Admin access token (for organization access)
         worker_config: WorkerConfig instance for intelligent scaling
+        selected_sequence_list: Optional list of alert_api_id to restrict processing
         suppress_logs: Whether to suppress log output during progress display
         console: Rich console for enhanced output (created if None)
         error_collector: Error collector for clean error reporting (created if None)
@@ -328,6 +330,20 @@ def fetch_all_sequences_within(
                 for future in concurrent.futures.as_completed(future_to_date):
                     sequences.extend(future.result())
                     progress_bar.advance(task)
+
+    # Optionally filter sequences by alert_api_id
+    if selected_sequence_list:
+        pre_filter_count = len(sequences)
+        sequences = [
+            sequence
+            for sequence in sequences
+            if sequence.get("id") in selected_sequence_list
+        ]
+        filtered_out = pre_filter_count - len(sequences)
+        console.print(
+            f"[blue]🔍 Filtered sequences by alert_api_id[/] "
+            f"[dim]({filtered_out} skipped, {len(sequences)} remaining)[/]"
+        )
 
     console.print(f"[green]✅ Found {len(sequences)} sequences[/]")
 
