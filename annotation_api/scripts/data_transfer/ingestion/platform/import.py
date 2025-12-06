@@ -61,6 +61,7 @@ import time
 from datetime import datetime
 from typing import List, Optional
 
+from dotenv import load_dotenv
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import (
@@ -75,15 +76,13 @@ from rich.progress import (
 from .progress_management import ErrorCollector, StepManager, LogSuppressor
 from .worker_config import WorkerConfig
 from .sequence_fetching import fetch_all_sequences_within
-from .annotation_management import (
-    valid_date,
-    create_simple_sequence_annotation,
-)
+from .annotation_management import valid_date, create_simple_sequence_annotation
 from . import shared
+from . import client as platform_client
 from app.clients import annotation_api
 
-# Import platform functionality
-from . import client as platform_client
+load_dotenv()
+
 
 
 def make_cli_parser() -> argparse.ArgumentParser:
