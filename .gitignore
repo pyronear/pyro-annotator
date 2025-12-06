@@ -117,6 +117,8 @@ pyroengine/version.py
 # Release
 conda-dist/
 
+.vscode/
+
 data
 example_bboxs.default.json
 cache-directory
