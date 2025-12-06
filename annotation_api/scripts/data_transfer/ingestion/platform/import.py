@@ -76,10 +76,15 @@ from rich.progress import (
 from .progress_management import ErrorCollector, StepManager, LogSuppressor
 from .worker_config import WorkerConfig
 from .sequence_fetching import fetch_all_sequences_within
-from .annotation_management import valid_date, create_simple_sequence_annotation
+from .annotation_management import (
+    valid_date,
+    create_simple_sequence_annotation,
+    create_placeholder_sequence_annotation,
+)
 from . import shared
 from . import client as platform_client
 from app.clients import annotation_api
+from app.models import SequenceAnnotationProcessingStage
 
 load_dotenv()
 
@@ -901,7 +906,11 @@ def main() -> None:
         step_manager.start_step(
             3,
             "Sequence Annotation Creation",
-            f"Creating sequence annotations for {len(sequence_ids)} sequences (auto-generation enabled)",
+            (
+                f"Creating sequence annotations for {len(sequence_ids)} sequences (auto-generation enabled)"
+                if not clone_from_annotation
+                else f"Creating placeholder sequence annotations for {len(sequence_ids)} sequences (under annotation)"
+            ),
         )
 
         # Prepare annotation configuration
@@ -916,12 +925,23 @@ def main() -> None:
         ) as executor:
             # Submit all sequence annotation tasks
             future_to_sequence_id = {
-                executor.submit(
-                    create_simple_sequence_annotation,
-                    sequence_id=sequence_id,
-                    annotation_api_url=args.url_api_annotation,
-                    config=annotation_config,
-                    dry_run=args.dry_run,
+                (
+                    executor.submit(
+                        create_simple_sequence_annotation,
+                        sequence_id=sequence_id,
+                        annotation_api_url=args.url_api_annotation,
+                        config=annotation_config,
+                        dry_run=args.dry_run,
+                        processing_stage=SequenceAnnotationProcessingStage.READY_TO_ANNOTATE,
+                    )
+                    if not clone_from_annotation
+                    else executor.submit(
+                        create_placeholder_sequence_annotation,
+                        sequence_id=sequence_id,
+                        annotation_api_url=args.url_api_annotation,
+                        processing_stage=SequenceAnnotationProcessingStage.UNDER_ANNOTATION,
+                        dry_run=args.dry_run,
+                    )
                 ): sequence_id
                 for sequence_id in sequence_ids
             }

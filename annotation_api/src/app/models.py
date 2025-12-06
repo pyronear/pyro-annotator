@@ -34,12 +34,25 @@ class SequenceAnnotationProcessingStage(str, Enum):
     Processing stages for sequence annotations in the wildfire monitoring workflow.
 
     These stages track the lifecycle of sequence annotations from initial data
-    import through preparation and final human annotation completion.
+    import through preparation and final human annotation completion, including
+    exclusive-annotation and review phases.
     """
 
     IMPORTED = "imported"  # Initial stage when sequence is imported from source API
     READY_TO_ANNOTATE = "ready_to_annotate"  # Sequence has been processed and is ready for human annotation
-    ANNOTATED = "annotated"  # Sequence has been fully annotated with smoke/false positive classifications
+    UNDER_ANNOTATION = (
+        "under_annotation"  # Someone is actively annotating this sequence locally to avoid contention
+    )
+    SEQ_ANNOTATION_DONE = (
+        "seq_annotation_done"  # Sequence annotation finished locally and ready to upload/share
+    )
+    IN_REVIEW = "in_review"  # Human is reviewing/QA the annotation
+    NEEDS_MANUAL = (
+        "needs_manual"  # Auto/triage flagged the sequence for manual intervention
+    )
+    ANNOTATED = (
+        "annotated"  # Sequence has been fully annotated and validated (final state)
+    )
 
 
 class SourceApi(str, Enum):

@@ -14,6 +14,7 @@ from typing import List, Optional, Dict, Any
 from dotenv import load_dotenv
 
 from app.clients import annotation_api
+from app.models import SequenceAnnotationProcessingStage
 from . import shared
 
 # Load environment variables from .env automatically
@@ -319,7 +320,7 @@ def main() -> None:
         payload = {
             "sequence_id": remote_seq_id,
             "annotation": remapped_annotation,
-            "processing_stage": local_ann.get("processing_stage", "annotated"),
+            "processing_stage": SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE.value,
             "has_missed_smoke": local_ann.get("has_missed_smoke", False),
         }
 
