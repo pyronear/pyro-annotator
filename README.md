@@ -65,8 +65,6 @@ uv run python -m scripts.data_transfer.ingestion.platform.import \
   --source-annotation-url https://annotationdev.pyronear.org \
   --url-api-annotation http://localhost:5050 \
   --max-sequences 10 \
-  --clone-processing-stage ready_to_annotate \
-  --sequence-list "1234,5678"  # optional alert_api_id filter
 ```
 
 - `--max-sequences` caps how many sequences you pull.
@@ -87,7 +85,7 @@ uv run python -m scripts.data_transfer.ingestion.platform.import \
   --date-from 2025-03-04 --date-end 2025-03-04 \
   --url-api-annotation https://annotationdev.pyronear.org \
   --max-sequences 10 \
-  --sequence-list "1234,5678"  # optional alert_api_id filter
+  --sequence-list alerts_id_list.txt  # optional alert_api_id filter
 ```
 
 Use `--loglevel debug` if you need more detail during imports.
