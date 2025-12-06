@@ -86,6 +86,7 @@ def find_remote_sequence_by_alert_id(
     """Lookup a remote sequence by alert_api_id (and optional source_api) via pagination."""
     page = 1
     size = 100
+    target_alert = str(alert_api_id)
     while True:
         params = {"page": page, "size": size}
         if source_api:
@@ -93,12 +94,94 @@ def find_remote_sequence_by_alert_id(
         resp = annotation_api.list_sequences(base_url, token, **params)
         items = resp.get("items", [])
         for seq in items:
-            if seq.get("alert_api_id") == alert_api_id:
+            remote_alert = str(seq.get("alert_api_id"))
+            if remote_alert == target_alert and (
+                not source_api or seq.get("source_api") == source_api
+            ):
                 return seq
         if page >= resp.get("pages", 1):
             break
         page += 1
     return None
+
+
+def build_detection_id_map(
+    local_api: str,
+    local_token: str,
+    remote_api: str,
+    remote_token: str,
+    local_seq_id: int,
+    remote_seq_id: int,
+) -> Dict[int, int]:
+    """
+    Map local detection_id -> remote detection_id using alert_api_id as the stable key.
+    """
+    local_map: Dict[int, int] = {}
+    alert_to_remote: Dict[str, int] = {}
+
+    # Fetch remote detections
+    page = 1
+    size = 100
+    while True:
+        resp = annotation_api.list_detections(
+            remote_api,
+            remote_token,
+            sequence_id=remote_seq_id,
+            page=page,
+            size=size,
+        )
+        for det in resp.get("items", []):
+            alert = det.get("alert_api_id")
+            if alert is not None:
+                alert_to_remote[str(alert)] = det["id"]
+        if page >= resp.get("pages", 1):
+            break
+        page += 1
+
+    # Fetch local detections and build mapping
+    page = 1
+    while True:
+        resp = annotation_api.list_detections(
+            local_api,
+            local_token,
+            sequence_id=local_seq_id,
+            page=page,
+            size=size,
+        )
+        for det in resp.get("items", []):
+            alert = det.get("alert_api_id")
+            if alert is None:
+                continue
+            remote_id = alert_to_remote.get(str(alert))
+            if remote_id:
+                local_map[det["id"]] = remote_id
+        if page >= resp.get("pages", 1):
+            break
+        page += 1
+
+    return local_map
+
+
+def remap_annotation_bboxes(annotation: Dict[str, Any], id_map: Dict[int, int]) -> Dict[str, Any]:
+    """
+    Replace detection_id in annotation bboxes using the provided mapping.
+    Bboxes without a mapping are dropped.
+    """
+    remapped_sequences = []
+    for seq_bbox in annotation.get("sequences_bbox", []):
+        bboxes = []
+        for bbox in seq_bbox.get("bboxes", []):
+            local_id = bbox.get("detection_id")
+            remote_id = id_map.get(local_id)
+            if remote_id:
+                new_bbox = dict(bbox)
+                new_bbox["detection_id"] = remote_id
+                bboxes.append(new_bbox)
+        if bboxes:
+            new_seq = dict(seq_bbox)
+            new_seq["bboxes"] = bboxes
+            remapped_sequences.append(new_seq)
+    return {"sequences_bbox": remapped_sequences}
 
 
 def main() -> None:
@@ -175,6 +258,7 @@ def main() -> None:
         "synced_new": 0,
         "synced_updated": 0,
         "skipped_no_annotation": 0,
+        "skipped_no_detections_mapped": 0,
         "missing_remote": 0,
         "errors": 0,
     }
@@ -202,6 +286,29 @@ def main() -> None:
             stats["missing_remote"] += 1
             continue
         remote_seq_id = remote_seq["id"]
+        logging.debug(
+            f"Matched alert_api_id={alert_id} to remote_seq_id={remote_seq_id} "
+            f"(remote alert_api_id={remote_seq.get('alert_api_id')}, source_api={remote_seq.get('source_api')})"
+        )
+
+        # Build detection id mapping and remap annotation bboxes
+        det_id_map = build_detection_id_map(
+            args.local_api,
+            local_token,
+            args.remote_api,
+            remote_token,
+            seq["id"],
+            remote_seq_id,
+        )
+        remapped_annotation = remap_annotation_bboxes(
+            local_ann.get("annotation", {}), det_id_map
+        )
+        if not remapped_annotation.get("sequences_bbox"):
+            logging.warning(
+                f"Skipping alert_api_id={alert_id}: no detection mappings found"
+            )
+            stats["skipped_no_detections_mapped"] += 1
+            continue
 
         # Check if remote already has an annotation
         remote_ann = get_sequence_annotation_single(
@@ -211,7 +318,7 @@ def main() -> None:
         # Build payload from local annotation
         payload = {
             "sequence_id": remote_seq_id,
-            "annotation": local_ann.get("annotation", {}),
+            "annotation": remapped_annotation,
             "processing_stage": local_ann.get("processing_stage", "annotated"),
             "has_missed_smoke": local_ann.get("has_missed_smoke", False),
         }
@@ -254,6 +361,7 @@ def main() -> None:
         f"created={stats['synced_new']}, updated={stats['synced_updated']}, "
         f"missing_remote={stats['missing_remote']}, "
         f"no_local_annotation={stats['skipped_no_annotation']}, "
+        f"no_detections_mapped={stats['skipped_no_detections_mapped']}, "
         f"errors={stats['errors']}"
     )
 
