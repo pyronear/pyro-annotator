@@ -61,6 +61,8 @@ import time
 from datetime import datetime
 from typing import List, Optional
 
+from dotenv import load_dotenv
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import (
@@ -81,6 +83,9 @@ from .annotation_management import (
 )
 from . import shared
 from app.clients import annotation_api
+
+# Load environment variables from .env automatically
+load_dotenv()
 
 # Import platform functionality
 from . import client as platform_client
