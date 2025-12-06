@@ -41,7 +41,6 @@ from app.clients.annotation_api import (
     create_sequence_annotation,
     update_sequence_annotation,
 )
-import os
 from app.models import SequenceAnnotationProcessingStage
 from app.schemas.annotation_validation import SequenceAnnotationData
 
