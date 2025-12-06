@@ -34,6 +34,7 @@ import logging
 from datetime import date, datetime
 from typing import Dict, Any, Optional
 
+from . import shared
 from app.clients.annotation_api import (
     get_auth_token,
     list_sequence_annotations,
@@ -93,11 +94,8 @@ def check_existing_annotation(base_url: str, sequence_id: int) -> Optional[int]:
     """
     try:
         # Get authentication token
-        auth_token = get_auth_token(
-            base_url,
-            os.environ.get("ANNOTATOR_LOGIN", "admin"),
-            os.environ.get("ANNOTATOR_PASSWORD", "admin12345"),
-        )
+        login, password = shared.get_annotation_credentials(base_url)
+        auth_token = get_auth_token(base_url, login, password)
         response = list_sequence_annotations(
             base_url, auth_token, sequence_id=sequence_id
         )
@@ -168,11 +166,8 @@ def create_annotation_from_data(
     """
     try:
         # Get authentication token
-        auth_token = get_auth_token(
-            base_url,
-            os.environ.get("ANNOTATOR_LOGIN", "admin"),
-            os.environ.get("ANNOTATOR_PASSWORD", "admin12345"),
-        )
+        login, password = shared.get_annotation_credentials(base_url)
+        auth_token = get_auth_token(base_url, login, password)
 
         if existing_annotation_id:
             # Update existing annotation (PATCH)
