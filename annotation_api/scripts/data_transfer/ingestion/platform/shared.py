@@ -10,6 +10,7 @@ import logging
 import os
 from collections import defaultdict
 from typing import Dict, List, Any
+from urllib.parse import urlparse
 
 import requests
 from rich.progress import (
@@ -63,14 +64,15 @@ class LogSuppressor:
             for logger_name in loggers_to_suppress:
                 logger = logging.getLogger(logger_name)
                 self.original_levels[logger_name] = logger.level
-                logger.setLevel(logging.CRITICAL)  # Only show critical errors
+                # Keep errors visible, suppress info/debug
+                logger.setLevel(logging.ERROR)
 
             # Also suppress all existing loggers to catch any dynamically created ones
             for logger_name in logging.getLogger().manager.loggerDict:
                 if logger_name not in self.original_levels:
                     logger = logging.getLogger(logger_name)
                     self.original_levels[logger_name] = logger.level
-                    logger.setLevel(logging.CRITICAL)
+                    logger.setLevel(logging.ERROR)
 
         return self
 
@@ -82,6 +84,34 @@ class LogSuppressor:
 
 
 # Remove settings import to avoid database dependency for import scripts
+
+
+def get_annotation_credentials(annotation_api_url: str) -> tuple[str, str]:
+    """
+    Determine which credentials to use for the target annotation API.
+
+    - If the host is localhost/127.* -> prefer LOCAL_ANNOTATION_LOGIN/PASSWORD, fallback to ANNOTATOR_*
+    - Otherwise -> prefer MAIN_ANNOTATION_LOGIN/PASSWORD, fallback to ANNOTATOR_*
+    """
+    hostname = urlparse(annotation_api_url).hostname or ""
+    is_local = hostname in {"localhost", "127.0.0.1", "127.0.1.1"}
+
+    if is_local:
+        login = os.getenv("LOCAL_ANNOTATION_LOGIN") or os.getenv(
+            "ANNOTATOR_LOGIN", "admin"
+        )
+        password = os.getenv("LOCAL_ANNOTATION_PASSWORD") or os.getenv(
+            "ANNOTATOR_PASSWORD", "admin12345"
+        )
+    else:
+        login = os.getenv("MAIN_ANNOTATION_LOGIN") or os.getenv(
+            "ANNOTATOR_LOGIN", "admin"
+        )
+        password = os.getenv("MAIN_ANNOTATION_PASSWORD") or os.getenv(
+            "ANNOTATOR_PASSWORD", "admin12345"
+        )
+
+    return login, password
 
 
 def validate_available_env_variables() -> bool:
@@ -146,7 +176,7 @@ def parse_platform_bboxes(bboxes_str: str) -> dict:
     Parse platform bboxes string into AlgoPredictions format.
 
     Args:
-        bboxes_str: String representation of bounding boxes from platform API
+        bboxes_str: String representation or object of bounding boxes
 
     Returns:
         Dictionary in AlgoPredictions format with predictions list
@@ -156,8 +186,15 @@ def parse_platform_bboxes(bboxes_str: str) -> dict:
         Currently assumes a simple format that can be eval'd.
     """
     try:
-        # Parse the bboxes string - format needs to be determined from actual data
-        bboxes_data = eval(bboxes_str) if bboxes_str else []
+        if isinstance(bboxes_str, dict) and "predictions" in bboxes_str:
+            # Already in AlgoPredictions format
+            return {"predictions": bboxes_str.get("predictions", [])}
+
+        if isinstance(bboxes_str, list):
+            bboxes_data = bboxes_str
+        else:
+            # Parse the bboxes string - format needs to be determined from actual data
+            bboxes_data = eval(bboxes_str) if bboxes_str else []
 
         predictions = []
         for bbox in bboxes_data:
@@ -178,6 +215,22 @@ def parse_platform_bboxes(bboxes_str: str) -> dict:
         return {"predictions": []}
 
 
+def _sanitize_predictions(predictions: list) -> list:
+    """
+    Remove invalid predictions (null/zero boxes).
+    """
+    clean = []
+    for pred in predictions:
+        xy = pred.get("xyxyn") if isinstance(pred, dict) else None
+        if (
+            isinstance(xy, (list, tuple))
+            and len(xy) == 4
+            and any(coord != 0 for coord in xy)
+        ):
+            clean.append(pred)
+    return clean
+
+
 def transform_detection_data(record: dict, annotation_sequence_id: int) -> dict:
     """
     Transform platform detection data to annotation API format.
@@ -190,7 +243,10 @@ def transform_detection_data(record: dict, annotation_sequence_id: int) -> dict:
         Dictionary formatted for annotation API detection creation
     """
     # Transform detection_bboxes to algo_predictions format
-    algo_predictions = parse_platform_bboxes(record["detection_bboxes"])
+    parsed = parse_platform_bboxes(record["detection_bboxes"])
+    predictions = parsed.get("predictions", [])
+    predictions = _sanitize_predictions(predictions)
+    algo_predictions = {"predictions": predictions}
 
     return {
         "sequence_id": annotation_sequence_id,  # NEW sequence ID from annotation API
@@ -238,7 +294,10 @@ def group_records_by_sequence(records: List[dict]) -> Dict[int, List[dict]]:
 
 
 def _process_single_detection(
-    record: dict, annotation_api_url: str, auth_token: str, annotation_sequence_id: int
+    record: dict,
+    annotation_api_url: str,
+    auth_token: str,
+    annotation_sequence_id: int,
 ) -> Dict[str, Any]:
     """
     Process a single detection: download image and create detection in API.
@@ -312,6 +371,7 @@ def _process_single_detection(
 def post_sequence_to_annotation_api(
     annotation_api_url: str,
     sequence_records: List[dict],
+    auth_token: str,
     max_detection_workers: int = 4,
     source_api: str = "pyronear_french",
 ) -> Dict:
@@ -333,21 +393,30 @@ def post_sequence_to_annotation_api(
     if not sequence_records:
         raise ValueError("No records provided for sequence")
 
-    # Get authentication token
-    auth_token = get_auth_token(
-        annotation_api_url,
-        os.environ.get("ANNOTATOR_LOGIN", "admin"),
-        os.environ.get("ANNOTATOR_PASSWORD", "admin12345"),
-    )
-
     # Use first record for sequence data (all records have same sequence info)
     first_record = sequence_records[0]
     sequence_data = transform_sequence_data(first_record, source_api)
 
     # Create sequence
     logging.info(f"Creating sequence with alert_api_id={first_record['sequence_id']}")
-    annotation_sequence = create_sequence(annotation_api_url, auth_token, sequence_data)
-    annotation_sequence_id = annotation_sequence["id"]
+    try:
+        annotation_sequence = create_sequence(
+            annotation_api_url, auth_token, sequence_data
+        )
+        annotation_sequence_id = annotation_sequence["id"]
+    except AnnotationAPIError as exc:
+        if exc.status_code == 409:
+            return {
+                "success": False,
+                "skipped": True,
+                "skip_reason": "already exists",
+                "sequence_id": None,
+                "platform_sequence_id": first_record["sequence_id"],
+                "successful_detections": 0,
+                "failed_detections": len(sequence_records),
+                "total_detections": len(sequence_records),
+            }
+        raise
 
     # Create detections for this sequence using parallel processing
     successful_detections = 0
@@ -438,6 +507,10 @@ def post_records_to_annotation_api(
             "successful_sequence_ids": [],
         }
 
+    # Resolve credentials and get a single auth token up-front to avoid repeated logins
+    login, password = get_annotation_credentials(annotation_api_url)
+    auth_token = get_auth_token(annotation_api_url, username=login, password=password)
+
     # Group records by sequence
     grouped_records = group_records_by_sequence(records)
 
@@ -447,6 +520,7 @@ def post_records_to_annotation_api(
 
     successful_sequences = 0
     failed_sequences = 0
+    skipped_sequences = 0
     total_successful_detections = 0
     total_failed_detections = 0
     successful_sequence_ids = []
@@ -458,6 +532,7 @@ def post_records_to_annotation_api(
                 post_sequence_to_annotation_api,
                 annotation_api_url,
                 sequence_records,
+                auth_token,
                 max_detection_workers,
                 source_api,
             ): (platform_sequence_id, sequence_records)
@@ -482,16 +557,25 @@ def post_records_to_annotation_api(
                     try:
                         result = future.result()
 
-                        successful_sequences += 1
-                        total_successful_detections += result["successful_detections"]
-                        total_failed_detections += result["failed_detections"]
-                        successful_sequence_ids.append(result["sequence_id"])
+                        if result.get("skipped"):
+                            skipped_sequences += 1
+                            total_failed_detections += result["failed_detections"]
+                            reason = result.get("skip_reason", "already exists")
+                            logging.warning(
+                                f"⚠️ Sequence {platform_sequence_id} skipped ({reason})"
+                            )
+                        else:
+                            successful_sequences += 1
+                            total_successful_detections += result[
+                                "successful_detections"
+                            ]
+                            total_failed_detections += result["failed_detections"]
+                            successful_sequence_ids.append(result["sequence_id"])
 
-                        # Success logs are suppressed, only errors will show
-                        logging.info(
-                            f"✅ Sequence {platform_sequence_id} -> {result['sequence_id']}: "
-                            f"{result['successful_detections']}/{result['total_detections']} detections"
-                        )
+                            logging.info(
+                                f"✅ Sequence {platform_sequence_id} -> {result['sequence_id']}: "
+                                f"{result['successful_detections']}/{result['total_detections']} detections"
+                            )
                         progress_bar.advance(task)
 
                     except ValidationError as e:
@@ -527,6 +611,7 @@ def post_records_to_annotation_api(
     return {
         "successful_sequences": successful_sequences,
         "failed_sequences": failed_sequences,
+        "skipped_sequences": skipped_sequences,
         "total_sequences": len(grouped_records),
         "successful_detections": total_successful_detections,
         "failed_detections": total_failed_detections,
