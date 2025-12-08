@@ -198,7 +198,7 @@ def main() -> None:
     parser.add_argument(
         "--remote-api",
         type=str,
-        default="https://annotationdev.pyronear.org",
+        default="https://annotationapi.pyronear.org",
         help="Remote (main) annotation API base URL",
     )
     parser.add_argument(
