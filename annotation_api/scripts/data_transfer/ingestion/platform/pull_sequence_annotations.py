@@ -6,8 +6,9 @@ save locally, and transition remote annotations to in_review.
 import argparse
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import requests
 from dotenv import load_dotenv
@@ -47,6 +48,12 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=0,
         help="Optional cap on number of sequences to pull (0 = all)",
+    )
+    parser.add_argument(
+        "--max-workers",
+        type=int,
+        default=4,
+        help="Number of worker threads for parallel downloads",
     )
     parser.add_argument(
         "--output-dir",
@@ -132,25 +139,21 @@ def main() -> None:
     token = annotation_api.get_auth_token(args.remote_api, args.username, args.password)
     sequences = fetch_sequences(args.remote_api, token, args.max_sequences)
     logging.info(f"Found {len(sequences)} sequence(s) with stage seq_annotation_done")
+    logging.info("Processing with %s worker(s)", args.max_workers)
 
     base = Path(args.output_dir)
     ensure_dir(base)
 
-    for seq in sequences:
+    def process_sequence(seq: Dict) -> Tuple[str, int]:
         seq_id = seq["id"]
         ann = get_sequence_annotation(args.remote_api, token, seq_id)
         if not ann:
-            logging.warning(f"No annotation for sequence {seq_id}, skipping")
-            continue
+            logging.warning("No annotation for sequence %s, skipping", seq_id)
+            return ("no_annotation", seq_id)
 
         if args.smoke_type and args.smoke_type not in ann.get("smoke_types", []):
-            logging.info(
-                "Skipping sequence %s (smoke_types=%s not matching %s)",
-                seq_id,
-                ann.get("smoke_types"),
-                args.smoke_type,
-            )
-            continue
+            logging.info("Skipping sequence %s (smoke_types=%s not matching %s)", seq_id, ann.get("smoke_types"), args.smoke_type)
+            return ("filter_skip", seq_id)
 
         det_resp = annotation_api.list_detections(
             args.remote_api, token, sequence_id=seq_id, page=1, size=100
@@ -163,7 +166,16 @@ def main() -> None:
         ensure_dir(img_dir)
         ensure_dir(lbl_dir)
 
-        ann_bboxes = {bbox["detection_id"]: bbox for sb in ann.get("annotation", {}).get("sequences_bbox", []) for bbox in sb.get("bboxes", [])}
+        ann_bboxes = {}
+        for sb in ann.get("annotation", {}).get("sequences_bbox", []):
+            class_name = sb.get("smoke_type", "wildfire")
+            for bbox in sb.get("bboxes", []):
+                det_key = bbox.get("detection_id")
+                if det_key is not None:
+                    ann_bboxes[det_key] = {
+                        "xyxyn": bbox.get("xyxyn", []),
+                        "class_name": class_name,
+                    }
         for det in detections:
             det_id = det["id"]
             image_url = annotation_api.get_detection_url(args.remote_api, token, det_id)
@@ -176,12 +188,13 @@ def main() -> None:
                 resp.raise_for_status()
                 img_path.write_bytes(resp.content)
             except Exception as exc:
-                logging.error(f"Failed to download image for detection {det_id}: {exc}")
+                logging.error("Failed to download image for detection %s: %s", det_id, exc)
                 continue
 
-            bbox = ann_bboxes.get(det.get("alert_api_id") or det_id)
+            # Match by annotation detection_id (primary) then fall back to alert_api_id if present.
+            bbox = ann_bboxes.get(det_id) or ann_bboxes.get(det.get("alert_api_id"))
             if bbox:
-                write_label(label_path, bbox["xyxyn"], bbox.get("class_name", "wildfire"))
+                write_label(label_path, bbox.get("xyxyn", []), bbox.get("class_name", "wildfire"))
             else:
                 label_path.write_text("")
 
@@ -195,7 +208,32 @@ def main() -> None:
                 {"processing_stage": "in_review"},
             )
         except Exception as exc:
-            logging.warning(f"Failed to set sequence {seq_id} to in_review: {exc}")
+            logging.warning("Failed to set sequence %s to in_review: %s", seq_id, exc)
+            return ("stage_update_failed", seq_id)
+
+        return ("ok", seq_id)
+
+    results: Dict[str, int] = {"ok": 0, "filter_skip": 0, "no_annotation": 0, "stage_update_failed": 0, "errors": 0}
+
+    with ThreadPoolExecutor(max_workers=args.max_workers) as executor:
+        future_map = {executor.submit(process_sequence, seq): seq for seq in sequences}
+        for future in as_completed(future_map):
+            try:
+                status, _ = future.result()
+                results[status] = results.get(status, 0) + 1
+            except Exception as exc:  # noqa: BLE001
+                results["errors"] = results.get("errors", 0) + 1
+                seq = future_map[future]
+                logging.error("Unhandled error on sequence %s: %s", seq.get("id"), exc)
+
+    logging.info(
+        "Finished: ok=%s, skipped_filter=%s, no_annotation=%s, stage_update_failed=%s, errors=%s",
+        results["ok"],
+        results["filter_skip"],
+        results["no_annotation"],
+        results["stage_update_failed"],
+        results["errors"],
+    )
 
 
 if __name__ == "__main__":
