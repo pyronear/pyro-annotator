@@ -62,10 +62,11 @@ If you only need to annotate Pyronear data locally:
 ```bash
 MAIN_ANNOTATION_LOGIN=<remote_user> MAIN_ANNOTATION_PASSWORD=<remote_pass> \
 uv run python -m scripts.data_transfer.ingestion.platform.import \
-  --source-annotation-url https://annotationdev.pyronear.org \
+  --source-annotation-url https://annotationapi.pyronear.org \
   --url-api-annotation http://localhost:5050 \
   --max-sequences 10 \
-  --clone-processing-stage ready_to_annotate
+  --clone-processing-stage ready_to_annotate \
+  --loglevel info
 ```
 
 - `--max-sequences` caps how many sequences you pull.
@@ -80,8 +81,9 @@ When you're done annotating locally, push your sequence annotations back to the 
 MAIN_ANNOTATION_LOGIN=<remote_user> MAIN_ANNOTATION_PASSWORD=<remote_pass> \
 uv run python -m scripts.data_transfer.ingestion.platform.push_sequence_annotations \
   --local-api http://localhost:5050 \
-  --remote-api https://annotationdev.pyronear.org \
-  --max-sequences 10
+  --remote-api https://annotationapi.pyronear.org \
+  --max-sequences 10 \
+  --loglevel info
 ```
 
 ### Admins (populate main from platform)
@@ -94,7 +96,7 @@ PLATFORM_LOGIN=<platform_user> PLATFORM_PASSWORD=<platform_pass> \
 PLATFORM_ADMIN_LOGIN=<platform_admin_user> PLATFORM_ADMIN_PASSWORD=<platform_admin_pass> \
 uv run python -m scripts.data_transfer.ingestion.platform.import \
   --date-from 2025-03-04 --date-end 2025-03-04 \
-  --url-api-annotation https://annotationdev.pyronear.org \
+  --url-api-annotation https://annotationapi.pyronear.org \
   --max-sequences 10 \
   --sequence-list alerts_id_list.txt  # optional alert_api_id filter
 ```
@@ -171,21 +173,21 @@ uv run python -m scripts.data_transfer.ingestion.platform.import \
 # Import to deployed annotation API
 uv run python -m scripts.data_transfer.ingestion.platform.import \
   --date-from 2024-01-01 --date-end 2024-01-02 \
-  --url-api-annotation https://annotationdev.pyronear.org \
+  --url-api-annotation https://annotationapi.pyronear.org \
   --loglevel info
 
 # Mixed environment: production platform + staging annotation API
 uv run python -m scripts.data_transfer.ingestion.platform.import \
   --date-from 2024-01-01 \
   --url-api-platform https://alertapi.pyronear.org \
-  --url-api-annotation https://annotationdev.pyronear.org \
+  --url-api-annotation https://annotationapi.pyronear.org \
   --loglevel info
 
 # CENIA platform to deployed annotation API
 uv run python -m scripts.data_transfer.ingestion.platform.import \
   --date-from 2024-01-01 \
   --url-api-platform https://apicenia.pyronear.org \
-  --url-api-annotation https://annotationdev.pyronear.org \
+  --url-api-annotation https://annotationapi.pyronear.org \
   --loglevel info
 ```
 
@@ -197,7 +199,7 @@ uv run python -m scripts.data_transfer.ingestion.platform.import \
 - **Authentication**: Uses local admin credentials (`admin`/`admin12345`)
 
 **Deployed/Staging Annotation API:**
-- **Annotation API**: `https://annotationdev.pyronear.org`
+- **Annotation API**: `https://annotationapi.pyronear.org`
 - **Platform API**: Any platform API endpoint
 - **Authentication**: Requires proper credentials for the deployed annotation API
 - **Network**: Ensure firewall/network access to deployed services
@@ -205,8 +207,8 @@ uv run python -m scripts.data_transfer.ingestion.platform.import \
 **Authentication Notes:**
 - Platform API credentials are always required via environment variables
 - Deployed annotation APIs may have different authentication requirements
-- Test connectivity: `curl https://annotationdev.pyronear.org/docs`
-- Check API health: `curl https://annotationdev.pyronear.org/status`
+- Test connectivity: `curl https://annotationapi.pyronear.org/docs`
+- Check API health: `curl https://annotationapi.pyronear.org/status`
 
 For detailed documentation, parameter reference, and troubleshooting, see [Data Ingestion Guide](annotation_api/docs/data-ingestion-guide.md).
 
@@ -223,7 +225,7 @@ For detailed documentation, parameter reference, and troubleshooting, see [Data 
 - Ensure database and S3 services are running
 
 **Remote annotation API connection issues:**
-- Test API connectivity: `curl https://annotationdev.pyronear.org/status`
+- Test API connectivity: `curl https://annotationapi.pyronear.org/status`
 - Check network access and firewall settings
 - Verify authentication credentials for deployed services
 - Review import script logs for connection timeouts or SSL errors
