@@ -5,6 +5,10 @@ import { QUERY_KEYS } from '@/utils/constants';
 export interface ProcessingStageStats {
   imported: number;
   ready_to_annotate: number;
+  under_annotation: number;
+  seq_annotation_done: number;
+  in_review: number;
+  needs_manual: number;
   annotated: number;
 }
 
@@ -84,6 +88,54 @@ export function useAnnotationStats(): AnnotationStats {
     gcTime: 10 * 60 * 1000,
   });
 
+  const { data: underAnnotationData, isLoading: underAnnotationLoading } = useQuery({
+    queryKey: [...QUERY_KEYS.ANNOTATION_STATS, 'under_annotation'],
+    queryFn: () =>
+      apiClient.getSequenceAnnotations({
+        processing_stage: 'under_annotation',
+        size: 1,
+        page: 1,
+      }),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+  });
+
+  const { data: seqAnnotationDoneData, isLoading: seqAnnotationDoneLoading } = useQuery({
+    queryKey: [...QUERY_KEYS.ANNOTATION_STATS, 'seq_annotation_done'],
+    queryFn: () =>
+      apiClient.getSequenceAnnotations({
+        processing_stage: 'seq_annotation_done',
+        size: 1,
+        page: 1,
+      }),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+  });
+
+  const { data: inReviewData, isLoading: inReviewLoading } = useQuery({
+    queryKey: [...QUERY_KEYS.ANNOTATION_STATS, 'in_review'],
+    queryFn: () =>
+      apiClient.getSequenceAnnotations({
+        processing_stage: 'in_review',
+        size: 1,
+        page: 1,
+      }),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+  });
+
+  const { data: needsManualData, isLoading: needsManualLoading } = useQuery({
+    queryKey: [...QUERY_KEYS.ANNOTATION_STATS, 'needs_manual'],
+    queryFn: () =>
+      apiClient.getSequenceAnnotations({
+        processing_stage: 'needs_manual',
+        size: 1,
+        page: 1,
+      }),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+  });
+
   // Fetch sequences with complete detection annotations
   const { data: completeDetectionsData, isLoading: completeDetectionsLoading } = useQuery({
     queryKey: [...QUERY_KEYS.ANNOTATION_STATS, 'complete_detections'],
@@ -131,6 +183,10 @@ export function useAnnotationStats(): AnnotationStats {
   const processingStages: ProcessingStageStats = {
     imported: importedData?.total ?? 0,
     ready_to_annotate: readyToAnnotateData?.total ?? 0,
+    under_annotation: underAnnotationData?.total ?? 0,
+    seq_annotation_done: seqAnnotationDoneData?.total ?? 0,
+    in_review: inReviewData?.total ?? 0,
+    needs_manual: needsManualData?.total ?? 0,
     annotated: annotatedData?.total ?? 0,
   };
 
@@ -140,6 +196,10 @@ export function useAnnotationStats(): AnnotationStats {
     importedLoading ||
     readyToAnnotateLoading ||
     annotatedLoading ||
+    underAnnotationLoading ||
+    seqAnnotationDoneLoading ||
+    inReviewLoading ||
+    needsManualLoading ||
     completeDetectionsLoading ||
     incompleteDetectionsLoading;
   const error = sequencesError || annotationsError;
