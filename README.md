@@ -113,6 +113,27 @@ uv run python -m scripts.data_transfer.ingestion.platform.update_annotation_stag
 - Use `--max-sequences 0` to update all matching sequences, or set a cap.
 - Add `--update-sequence-stage` if your API allows patching sequence rows; otherwise omit it to update annotations only.
 
+To auto-fill missing boxes on exported sequences using the pyronear YOLO11s model (downloads on first run):
+
+```bash
+uv run --active python -m scripts.data_transfer.ingestion.platform.auto_annotate \
+  --data-root outputs/seq_annotation_done \
+  --conf-th 0.05 \
+  --iou-nms 0.0 \
+  --iou-assign 0.0 \
+  --model-format onnx \
+  --loglevel info
+```
+
+To review the exported sequences (images + YOLO labels) in FiftyOne:
+
+```bash
+uv run --active python -m scripts.data_transfer.ingestion.platform.visual_check_fiftyone \
+  --data-root outputs/seq_annotation_done \
+  --dataset-name visual_check \
+  --conf-th 0.0
+```
+
 ### Admins (populate main from platform)
 
 If you manage the main dataset and have platform credentials, import directly from the platform into the target annotation API:
