@@ -28,12 +28,12 @@ export default function DetectionAnnotatePage() {
 
   // Create default state specific to detection annotation page
   const defaultState = {
-    ...createDefaultFilterState('annotated'),
+    ...createDefaultFilterState('needs_manual'),
     filters: {
-      ...createDefaultFilterState('annotated').filters,
+      ...createDefaultFilterState('needs_manual').filters,
       detection_annotation_completion: 'incomplete' as const,
       include_detection_stats: true,
-      processing_stage: 'annotated' as const, // Only show sequences that have completed sequence-level annotation
+      processing_stage: 'needs_manual' as const, // Show sequences flagged for manual detection annotation
       is_unsure: false, // Exclude unsure sequences from detection annotation workflow
     },
   };
