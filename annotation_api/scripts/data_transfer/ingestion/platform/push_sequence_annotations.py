@@ -351,6 +351,21 @@ def main() -> None:
                     f"Created remote annotation for alert_api_id={alert_id} "
                     f"(remote_seq_id={remote_seq_id})"
                 )
+
+            # Update local annotation stage to seq_annotation_done for bookkeeping
+            try:
+                local_ann_id = local_ann.get("id")
+                if local_ann_id:
+                    annotation_api.update_sequence_annotation(
+                        args.local_api,
+                        local_token,
+                        local_ann_id,
+                        {"processing_stage": SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE.value},
+                    )
+            except Exception as exc:
+                logging.warning(
+                    f"Could not update local annotation stage for alert_api_id={alert_id}: {exc}"
+                )
         except Exception as exc:
             logging.error(
                 f"Failed to sync annotation for alert_api_id={alert_id}: {exc}"
