@@ -14,6 +14,7 @@ from typing import List, Optional, Dict, Any
 from dotenv import load_dotenv
 
 from app.clients import annotation_api
+from app.models import SequenceAnnotationProcessingStage
 from . import shared
 
 # Load environment variables from .env automatically
@@ -197,7 +198,7 @@ def main() -> None:
     parser.add_argument(
         "--remote-api",
         type=str,
-        default="https://annotationdev.pyronear.org",
+        default="https://annotationapi.pyronear.org",
         help="Remote (main) annotation API base URL",
     )
     parser.add_argument(
@@ -319,7 +320,7 @@ def main() -> None:
         payload = {
             "sequence_id": remote_seq_id,
             "annotation": remapped_annotation,
-            "processing_stage": local_ann.get("processing_stage", "annotated"),
+            "processing_stage": SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE.value,
             "has_missed_smoke": local_ann.get("has_missed_smoke", False),
         }
 
@@ -349,6 +350,21 @@ def main() -> None:
                 logging.info(
                     f"Created remote annotation for alert_api_id={alert_id} "
                     f"(remote_seq_id={remote_seq_id})"
+                )
+
+            # Update local annotation stage to seq_annotation_done for bookkeeping
+            try:
+                local_ann_id = local_ann.get("id")
+                if local_ann_id:
+                    annotation_api.update_sequence_annotation(
+                        args.local_api,
+                        local_token,
+                        local_ann_id,
+                        {"processing_stage": SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE.value},
+                    )
+            except Exception as exc:
+                logging.warning(
+                    f"Could not update local annotation stage for alert_api_id={alert_id}: {exc}"
                 )
         except Exception as exc:
             logging.error(

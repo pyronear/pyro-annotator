@@ -19,7 +19,7 @@ YOLO format per line:
 
 Example:
 uv run python -m scripts.data_transfer.ingestion.platform.export_dataset \
-  --api-base https://annotationdev.pyronear.org/api/v1 \
+  --api-base https://annotationapi.pyronear.org/api/v1 \
   --limit 500 \
   --max-rows 2000 \
   --timeout 120 \

@@ -214,6 +214,11 @@ def create_annotation_from_data(
                 "annotation": annotation_data.model_dump(),
                 "processing_stage": processing_stage.value,
                 "has_missed_smoke": False,
+                "has_smoke": False,
+                "has_false_positives": False,
+                "false_positive_types": [],
+                "smoke_types": [],
+                "is_unsure": False,
             }
 
             # Add configuration parameters for auto-generation if provided
@@ -255,6 +260,7 @@ def create_simple_sequence_annotation(
     annotation_api_url: str,
     config: Dict[str, Any],
     dry_run: bool = False,
+    processing_stage: SequenceAnnotationProcessingStage = SequenceAnnotationProcessingStage.READY_TO_ANNOTATE,
 ) -> Dict[str, Any]:
     """
     Create a simple sequence annotation with auto-generation enabled.
@@ -324,7 +330,7 @@ def create_simple_sequence_annotation(
             empty_annotation_data,
             dry_run,
             existing_annotation_id,
-            SequenceAnnotationProcessingStage.READY_TO_ANNOTATE,
+            processing_stage,
             config,  # Pass config for auto-generation
         ):
             result["annotation_created"] = True
@@ -344,6 +350,57 @@ def create_simple_sequence_annotation(
             result["errors"].append(error_msg)
             return result
 
+    except Exception as e:
+        error_msg = f"Unexpected error processing sequence {sequence_id}: {e}"
+        logging.error(error_msg)
+        result["errors"].append(error_msg)
+        return result
+
+
+def create_placeholder_sequence_annotation(
+    sequence_id: int,
+    annotation_api_url: str,
+    processing_stage: SequenceAnnotationProcessingStage,
+    dry_run: bool = False,
+) -> Dict[str, Any]:
+    """
+    Create an empty sequence annotation with a specific processing stage (no auto-generation).
+    """
+    result = {
+        "sequence_id": sequence_id,
+        "annotation_created": False,
+        "annotation_id": None,
+        "errors": [],
+        "final_stage": None,
+    }
+
+    try:
+        existing_annotation_id = check_existing_annotation(annotation_api_url, sequence_id)
+        empty_annotation_data = SequenceAnnotationData(sequences_bbox=[])
+
+        if create_annotation_from_data(
+            annotation_api_url,
+            sequence_id,
+            empty_annotation_data,
+            dry_run,
+            existing_annotation_id,
+            processing_stage,
+            config=None,
+        ):
+            result["annotation_created"] = True
+            result["annotation_id"] = (
+                existing_annotation_id if existing_annotation_id else "new"
+            )
+            result["final_stage"] = processing_stage.value
+            logging.info(
+                f"Created placeholder sequence annotation for sequence {sequence_id} "
+                f"with stage {processing_stage.value}"
+            )
+        else:
+            error_msg = f"Failed to create placeholder annotation for sequence {sequence_id}"
+            logging.error(error_msg)
+            result["errors"].append(error_msg)
+        return result
     except Exception as e:
         error_msg = f"Unexpected error processing sequence {sequence_id}: {e}"
         logging.error(error_msg)

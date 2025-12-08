@@ -308,24 +308,48 @@ export default function DashboardPage() {
                 stages={[
                   {
                     label: 'imported',
-                    value: processingStages.imported,
+                    value: processingStages.imported ?? 0,
                     color: 'gray',
                   },
                   {
                     label: 'ready to annotate',
-                    value: processingStages.ready_to_annotate,
+                    value: processingStages.ready_to_annotate ?? 0,
                     color: 'orange',
                   },
                   {
+                    label: 'under annotation',
+                    value: processingStages.under_annotation ?? 0,
+                    color: 'orange',
+                  },
+                  {
+                    label: 'seq annotation done',
+                    value: processingStages.seq_annotation_done ?? 0,
+                    color: 'primary',
+                  },
+                  {
+                    label: 'in review',
+                    value: processingStages.in_review ?? 0,
+                    color: 'gray',
+                  },
+                  {
+                    label: 'needs manual',
+                    value: processingStages.needs_manual ?? 0,
+                    color: 'red',
+                  },
+                  {
                     label: 'annotated',
-                    value: processingStages.annotated,
+                    value: processingStages.annotated ?? 0,
                     color: 'green',
                   },
                 ]}
                 total={
-                  processingStages.imported +
-                  processingStages.ready_to_annotate +
-                  processingStages.annotated
+                  (processingStages.imported ?? 0) +
+                  (processingStages.ready_to_annotate ?? 0) +
+                  (processingStages.under_annotation ?? 0) +
+                  (processingStages.seq_annotation_done ?? 0) +
+                  (processingStages.in_review ?? 0) +
+                  (processingStages.needs_manual ?? 0) +
+                  (processingStages.annotated ?? 0)
                 }
                 height={32}
                 showLabels={true}
