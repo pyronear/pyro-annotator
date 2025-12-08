@@ -86,6 +86,34 @@ uv run python -m scripts.data_transfer.ingestion.platform.push_sequence_annotati
   --loglevel info
 ```
 
+If you need to review completed annotations from the main API, pull sequences in `seq_annotation_done`, download images/labels locally, and move the remote stage to `in_review`:
+
+```bash
+MAIN_ANNOTATION_LOGIN=<remote_user> MAIN_ANNOTATION_PASSWORD=<remote_pass> \
+uv run python -m scripts.data_transfer.ingestion.platform.pull_sequence_annotations \
+  --remote-api https://annotationapi.pyronear.org \
+  --max-sequences 20 \
+  --output-dir outputs/seq_annotation_done \
+  --smoke-type wildfire \
+  --loglevel info
+```
+- Set `--max-sequences 0` to pull all; drop `--smoke-type` to pull every smoke type.
+- TLS is verified by default; add `--skip-ssl-verify` only if you trust the host and need to silence self-signed cert issues.
+
+If you need to reset stages (e.g., move `in_review` back to `seq_annotation_done` to retry a workflow):
+
+```bash
+MAIN_ANNOTATION_LOGIN=<remote_user> MAIN_ANNOTATION_PASSWORD=<remote_pass> \
+uv run python -m scripts.data_transfer.ingestion.platform.update_annotation_stage \
+  --api-url https://annotationapi.pyronear.org \
+  --from-stage in_review \
+  --to-stage seq_annotation_done \
+  --update-sequence-stage \
+  --loglevel info
+```
+- Use `--max-sequences 0` to update all matching sequences, or set a cap.
+- Drop `--update-sequence-stage` if you only want to update annotations, not sequence rows.
+
 ### Admins (populate main from platform)
 
 If you manage the main dataset and have platform credentials, import directly from the platform into the target annotation API:
