@@ -108,11 +108,10 @@ uv run python -m scripts.data_transfer.ingestion.platform.update_annotation_stag
   --api-url https://annotationapi.pyronear.org \
   --from-stage in_review \
   --to-stage seq_annotation_done \
-  --update-sequence-stage \
   --loglevel info
 ```
 - Use `--max-sequences 0` to update all matching sequences, or set a cap.
-- Drop `--update-sequence-stage` if you only want to update annotations, not sequence rows.
+- Add `--update-sequence-stage` if your API allows patching sequence rows; otherwise omit it to update annotations only.
 
 ### Admins (populate main from platform)
 
