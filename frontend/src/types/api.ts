@@ -123,7 +123,14 @@ export type FalsePositiveType =
   | 'water_body'
   | 'other';
 
-export type ProcessingStage = 'imported' | 'ready_to_annotate' | 'annotated';
+export type ProcessingStage =
+  | 'imported'
+  | 'ready_to_annotate'
+  | 'under_annotation'
+  | 'seq_annotation_done'
+  | 'in_review'
+  | 'needs_manual'
+  | 'annotated';
 
 // Detection-specific processing stages
 export type DetectionProcessingStage =

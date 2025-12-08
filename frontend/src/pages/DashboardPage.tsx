@@ -319,17 +319,17 @@ export default function DashboardPage() {
                   {
                     label: 'under annotation',
                     value: processingStages.under_annotation ?? 0,
-                    color: 'yellow',
+                    color: 'orange',
                   },
                   {
                     label: 'seq annotation done',
                     value: processingStages.seq_annotation_done ?? 0,
-                    color: 'blue',
+                    color: 'primary',
                   },
                   {
                     label: 'in review',
                     value: processingStages.in_review ?? 0,
-                    color: 'purple',
+                    color: 'gray',
                   },
                   {
                     label: 'needs manual',

@@ -168,6 +168,10 @@ export function getProcessingStageLabel(status: ProcessingStageStatus | Processi
     no_annotation: 'No annotation',
     imported: 'Imported',
     ready_to_annotate: 'Ready to annotate',
+    under_annotation: 'Under annotation',
+    seq_annotation_done: 'Seq annotation done',
+    in_review: 'In review',
+    needs_manual: 'Needs manual',
     annotated: 'Annotated',
   };
 
@@ -203,6 +207,10 @@ export function getProcessingStageColorClass(
     no_annotation: 'bg-gray-100 text-gray-800',
     imported: 'bg-blue-100 text-blue-800',
     ready_to_annotate: 'bg-yellow-100 text-yellow-800',
+    under_annotation: 'bg-yellow-200 text-yellow-900',
+    seq_annotation_done: 'bg-blue-100 text-blue-800',
+    in_review: 'bg-gray-100 text-gray-800',
+    needs_manual: 'bg-red-100 text-red-800',
     annotated: 'bg-green-100 text-green-800',
   };
 
