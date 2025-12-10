@@ -203,6 +203,7 @@ def ensure_detection_annotations(
     detection_ids: List[int],
     default_stage: str = "bbox_annotation",
     dry_run: bool = False,
+    annotation_map: Optional[Dict[int, List[Dict]]] = None,
 ) -> List[int]:
     """
     Ensure each detection has an annotation row; create placeholder if missing.
@@ -233,11 +234,12 @@ def ensure_detection_annotations(
             logging.info("[DRY-RUN] Would create detection annotation for detection_id=%s", det_id)
             continue
         try:
+            ann_payload = {"annotation": annotation_map[det_id]} if annotation_map and det_id in annotation_map else {"annotation": []}
             annotation_api.create_detection_annotation(
                 remote_api,
                 token,
                 det_id,
-                {"annotation": []},
+                ann_payload,
                 default_stage,
             )
             logging.info("Created detection annotation placeholder for detection_id=%s", det_id)
@@ -261,6 +263,40 @@ def list_all_detections(remote_api: str, token: str, sequence_id: int) -> List[D
             break
         page += 1
     return results
+
+
+def delete_detection_annotations_for_sequence(
+    remote_api: str, token: str, sequence_id: int, dry_run: bool
+) -> int:
+    """
+    Delete all detection annotations linked to a sequence (via sequence_id filter).
+    Returns the number of annotations deleted (or that would be deleted in dry-run).
+    """
+    page = 1
+    size = 100
+    ann_ids: List[int] = []
+    while True:
+        resp = annotation_api.list_detection_annotations(
+            remote_api, token, sequence_id=sequence_id, page=page, size=size
+        )
+        items = resp.get("items", [])
+        ann_ids.extend([it["id"] for it in items if "id" in it])
+        if page >= resp.get("pages", 1):
+            break
+        page += 1
+
+    if not ann_ids:
+        return 0
+
+    for ann_id in ann_ids:
+        if dry_run:
+            logging.info("[DRY-RUN] Would delete detection annotation %s", ann_id)
+        else:
+            try:
+                annotation_api.delete_detection_annotation(remote_api, token, ann_id)
+            except Exception as exc:  # noqa: BLE001
+                logging.error("Failed to delete detection annotation %s: %s", ann_id, exc)
+    return len(ann_ids)
 
 
 SMOKE_CLASSES = ["wildfire", "industrial", "other"]
@@ -334,6 +370,13 @@ def main() -> None:
             continue
         seq_id = seq["id"]
 
+        # Remove any existing detection annotations so we can recreate from labels cleanly
+        deleted_count = delete_detection_annotations_for_sequence(
+            args.remote_api, token, seq_id, args.dry_run
+        )
+        if args.dry_run and deleted_count:
+            logging.info("[DRY-RUN] Would delete %s detection annotations for sequence_id=%s", deleted_count, seq_id)
+
         # Load detections and ensure annotations exist for them
         detections = list_all_detections(args.remote_api, token, seq_id)
         detection_ids = [d["id"] for d in detections]
@@ -349,6 +392,7 @@ def main() -> None:
             detection_ids,
             default_stage="bbox_annotation",
             dry_run=args.dry_run,
+            annotation_map=annotation_map,
         )
         if args.dry_run and missing_dets:
             logging.info(
