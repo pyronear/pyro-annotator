@@ -17,7 +17,8 @@ import logging
 import os
 import re
 from collections import defaultdict
-from typing import Dict, List, Set
+from pathlib import Path
+from typing import Dict, List, Optional, Set
 
 import fiftyone as fo
 from dotenv import load_dotenv
@@ -59,6 +60,12 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=0,
         help="Optional cap on number of sequences to process (0 = all)",
+    )
+    parser.add_argument(
+        "--labels-root",
+        type=Path,
+        default=Path("outputs/seq_annotation_done"),
+        help="Root folder containing seq_<alert_api_id>/labels/detection_<id>.txt files",
     )
     parser.add_argument(
         "--dry-run",
@@ -158,7 +165,14 @@ def update_sequence_stage(remote_api: str, token: str, seq_id: int, stage: str, 
     return True
 
 
-def update_detection_stage(remote_api: str, token: str, det_id: int, stage: str, dry_run: bool) -> bool:
+def update_detection_stage(
+    remote_api: str,
+    token: str,
+    det_id: int,
+    stage: str,
+    dry_run: bool,
+    annotation_data: Optional[List[Dict]] = None,
+) -> bool:
     ann_resp = annotation_api.list_detection_annotations(remote_api, token, detection_id=det_id, page=1, size=1)
     items = ann_resp.get("items", []) if isinstance(ann_resp, dict) else ann_resp
     if not items:
@@ -166,9 +180,18 @@ def update_detection_stage(remote_api: str, token: str, det_id: int, stage: str,
         return False
     ann_id = items[0]["id"]
     if dry_run:
-        logging.info("[DRY-RUN] Would set detection_id=%s annotation_id=%s stage=%s", det_id, ann_id, stage)
+        logging.info(
+            "[DRY-RUN] Would set detection_id=%s annotation_id=%s stage=%s%s",
+            det_id,
+            ann_id,
+            stage,
+            " (and update annotation payload)" if annotation_data is not None else "",
+        )
         return True
-    annotation_api.update_detection_annotation(remote_api, token, ann_id, {"processing_stage": stage})
+    payload: Dict = {"processing_stage": stage}
+    if annotation_data is not None:
+        payload["annotation"] = {"annotation": annotation_data}
+    annotation_api.update_detection_annotation(remote_api, token, ann_id, payload)
     logging.debug("Updated detection_id=%s annotation_id=%s stage=%s", det_id, ann_id, stage)
     return True
 
@@ -213,9 +236,9 @@ def ensure_detection_annotations(
             annotation_api.create_detection_annotation(
                 remote_api,
                 token,
-                detection_id=det_id,
-                annotation={"annotation": []},
-                processing_stage=default_stage,
+                det_id,
+                {"annotation": []},
+                default_stage,
             )
             logging.info("Created detection annotation placeholder for detection_id=%s", det_id)
         except Exception as exc:  # noqa: BLE001
@@ -238,6 +261,50 @@ def list_all_detections(remote_api: str, token: str, sequence_id: int) -> List[D
             break
         page += 1
     return results
+
+
+SMOKE_CLASSES = ["wildfire", "industrial", "other"]
+
+
+def load_yolo_annotation(labels_root: Path, alert_id: int, det_id: int) -> Optional[List[Dict]]:
+    """
+    Load YOLO label file for a detection and convert to DetectionAnnotationData items.
+    """
+    lbl_path = labels_root / f"seq_{alert_id}" / "labels" / f"detection_{det_id}.txt"
+    if not lbl_path.exists() or lbl_path.stat().st_size == 0:
+        return None
+
+    items: List[Dict] = []
+    try:
+        with lbl_path.open() as f:
+            for raw in f:
+                raw = raw.strip()
+                if not raw:
+                    continue
+                parts = raw.split()
+                if len(parts) < 5:
+                    continue
+                cls_id = int(parts[0])
+                cx, cy, w, h = map(float, parts[1:5])
+                x1 = cx - w / 2.0
+                y1 = cy - h / 2.0
+                x2 = cx + w / 2.0
+                y2 = cy + h / 2.0
+                # clip to [0,1]
+                xyxyn = [max(0.0, min(1.0, v)) for v in (x1, y1, x2, y2)]
+                smoke_type = SMOKE_CLASSES[cls_id] if 0 <= cls_id < len(SMOKE_CLASSES) else "other"
+                items.append(
+                    {
+                        "xyxyn": xyxyn,
+                        "class_name": smoke_type,
+                        "smoke_type": smoke_type,
+                    }
+                )
+    except Exception as exc:  # noqa: BLE001
+        logging.error("Failed to read label file %s: %s", lbl_path, exc)
+        return None
+
+    return items if items else None
 
 
 def main() -> None:
@@ -270,6 +337,11 @@ def main() -> None:
         # Load detections and ensure annotations exist for them
         detections = list_all_detections(args.remote_api, token, seq_id)
         detection_ids = [d["id"] for d in detections]
+        annotation_map: Dict[int, List[Dict]] = {}
+        for det in detections:
+            data = load_yolo_annotation(args.labels_root, alert_id, det["id"])
+            if data is not None:
+                annotation_map[det["id"]] = data
         missing_dets = ensure_detection_annotations(
             args.remote_api,
             token,
@@ -294,7 +366,14 @@ def main() -> None:
             if update_sequence_stage(args.remote_api, token, seq_id, "annotated", args.dry_run):
                 seq_ok += 1
             for det_id in all_frames:
-                update_detection_stage(args.remote_api, token, det_id, "annotated", args.dry_run)
+                update_detection_stage(
+                    args.remote_api,
+                    token,
+                    det_id,
+                    "annotated",
+                    args.dry_run,
+                    annotation_map.get(det_id),
+                )
             continue
 
         if update_sequence_stage(args.remote_api, token, seq_id, "needs_manual", args.dry_run):
@@ -304,7 +383,29 @@ def main() -> None:
                 seq_partial_issue += 1
         target_dets: List[int] = list(all_frames) if whole_issue else list(issue_frames)
         for det_id in target_dets:
-            update_detection_stage(args.remote_api, token, det_id, "bbox_annotation", args.dry_run)
+            update_detection_stage(
+                args.remote_api,
+                token,
+                det_id,
+                "bbox_annotation",
+                args.dry_run,
+                annotation_map.get(det_id),
+            )
+
+        # For any remaining detections that have label data but were not staged above,
+        # push the annotation payload while keeping them annotated.
+        updated = set(target_dets) if target_dets else set()
+        for det_id, ann_payload in annotation_map.items():
+            if det_id in updated:
+                continue
+            update_detection_stage(
+                args.remote_api,
+                token,
+                det_id,
+                "annotated",
+                args.dry_run,
+                ann_payload,
+            )
 
     logging.info(
         "Done. Processed=%s, ok=%s, whole_issue=%s, partial_issue=%s, not_found=%s",
