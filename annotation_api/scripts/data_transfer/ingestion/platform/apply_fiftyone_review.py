@@ -173,6 +173,73 @@ def update_detection_stage(remote_api: str, token: str, det_id: int, stage: str,
     return True
 
 
+def ensure_detection_annotations(
+    remote_api: str,
+    token: str,
+    sequence_id: int,
+    detection_ids: List[int],
+    default_stage: str = "bbox_annotation",
+    dry_run: bool = False,
+) -> List[int]:
+    """
+    Ensure each detection has an annotation row; create placeholder if missing.
+    Returns the list of detection_ids that were missing.
+    """
+    # Fetch existing detection annotations for this sequence (paged)
+    page = 1
+    size = 100
+    annotated_dets: set[int] = set()
+    while True:
+        ann_resp = annotation_api.list_detection_annotations(
+            remote_api, token, sequence_id=sequence_id, page=page, size=size
+        )
+        items = ann_resp.get("items", []) if isinstance(ann_resp, dict) else ann_resp
+        for item in items:
+            if "detection_id" in item:
+                annotated_dets.add(item["detection_id"])
+        if page >= ann_resp.get("pages", 1):
+            break
+        page += 1
+
+    missing: List[int] = []
+    for det_id in detection_ids:
+        if det_id in annotated_dets:
+            continue
+        missing.append(det_id)
+        if dry_run:
+            logging.info("[DRY-RUN] Would create detection annotation for detection_id=%s", det_id)
+            continue
+        try:
+            annotation_api.create_detection_annotation(
+                remote_api,
+                token,
+                detection_id=det_id,
+                annotation={"annotation": []},
+                processing_stage=default_stage,
+            )
+            logging.info("Created detection annotation placeholder for detection_id=%s", det_id)
+        except Exception as exc:  # noqa: BLE001
+            logging.error("Failed to create detection annotation for detection_id=%s: %s", det_id, exc)
+    return missing
+
+
+def list_all_detections(remote_api: str, token: str, sequence_id: int) -> List[Dict]:
+    """Fetch all detections for a sequence with pagination (size capped at 100)."""
+    page = 1
+    size = 100
+    results: List[Dict] = []
+    while True:
+        resp = annotation_api.list_detections(
+            remote_api, token, sequence_id=sequence_id, page=page, size=size
+        )
+        items = resp.get("items", [])
+        results.extend(items)
+        if page >= resp.get("pages", 1):
+            break
+        page += 1
+    return results
+
+
 def main() -> None:
     args = parse_args()
     logging.basicConfig(level=args.loglevel.upper(), format="%(levelname)s - %(message)s")
@@ -199,6 +266,25 @@ def main() -> None:
             seq_not_found += 1
             continue
         seq_id = seq["id"]
+
+        # Load detections and ensure annotations exist for them
+        detections = list_all_detections(args.remote_api, token, seq_id)
+        detection_ids = [d["id"] for d in detections]
+        missing_dets = ensure_detection_annotations(
+            args.remote_api,
+            token,
+            seq_id,
+            detection_ids,
+            default_stage="bbox_annotation",
+            dry_run=args.dry_run,
+        )
+        if args.dry_run and missing_dets:
+            logging.info(
+                "[DRY-RUN] Sequence %s would need %d detection annotations created (ids: %s)",
+                seq_id,
+                len(missing_dets),
+                missing_dets,
+            )
 
         issue_frames = info["issue_frames"]
         whole_issue = info["whole_issue"]
