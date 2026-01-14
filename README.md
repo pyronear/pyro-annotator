@@ -182,6 +182,7 @@ uv run python -m scripts.data_transfer.ingestion.platform.import_yolo_sequence \
   --api-base http://localhost:5050 \
   --alert-api-id 123456 \
   --source-api pyronear_french \
+  --sequence-stage ready_to_annotate \
   --organisation-id 1 \
   --organisation-name "Pyronear France" \
   --camera-id 101 \
@@ -194,7 +195,8 @@ uv run python -m scripts.data_transfer.ingestion.platform.import_yolo_sequence \
 - The script reads `recorded_at` from image filenames and sets sequence `recorded_at`/`last_seen_at`.
 - It tries to infer org/camera IDs from existing sequences by slug; if it cannot, pass the IDs/names.
 - If `--alert-api-id` is omitted, it generates one from the folder name (use a stable ID to avoid duplicates).
-- Smoke classes create detection annotations; false positive classes are stored at sequence level.
+- Default stage is `ready_to_annotate`. Use `--sequence-stage annotated` if you want detection annotations created immediately.
+- Smoke classes create detection annotations (only when stage is `annotated`); false positive classes are stored at sequence level.
 
 ### Admins (populate main from platform)
 
