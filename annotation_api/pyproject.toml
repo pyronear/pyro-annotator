@@ -19,6 +19,8 @@ dependencies = [
     "sqlmodel>=0.0.16",
     "pydantic>=2.0.0,<3.0.0",
     "pydantic-settings>=2.0.0,<3.0.0",
+    "onnxruntime>=1.17.0",
+    "opencv-python>=4.8.0",
     "requests>=2.32.0",
     "PyJWT>=2.8.0",
     "passlib[bcrypt]>=1.7.4",
@@ -56,10 +58,14 @@ dev = [
     "aiosqlite>=0.16.0,<1.0.0",
     "pyyaml>=6.0",
     "pillow>=10.0.0",
+    "fiftyone>=0.25.0",
 ]
 
 [tool.coverage.run]
 source = ["src/app"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

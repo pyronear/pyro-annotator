@@ -147,7 +147,16 @@ def make_cli_parser() -> argparse.ArgumentParser:
             "Default: no_annotation (only sequences without annotation record). Use 'all' to disable filter."
         ),
         type=str,
-        choices=["no_annotation", "imported", "ready_to_annotate", "annotated", "all"],
+        choices=[
+            "no_annotation",
+            "imported",
+            "ready_to_annotate",
+            "under_annotation",
+            "seq_annotation_done",
+            "needs_manual",
+            "annotated",
+            "all",
+        ],
         default="no_annotation",
     )
     parser.add_argument(
@@ -157,7 +166,7 @@ def make_cli_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--max-sequences",
-        help="Maximum number of sequences to clone from source annotation API",
+        help="Maximum number of sequences to clone from source annotation API (0 = all)",
         type=int,
         default=10,
     )
@@ -281,8 +290,8 @@ def validate_args(args: argparse.Namespace, clone_from_annotation: bool) -> bool
         logging.error("--min-cluster-size must be at least 1")
         return False
 
-    if args.max_sequences is not None and args.max_sequences < 1:
-        logging.error("--max-sequences must be at least 1 when provided")
+    if args.max_sequences is not None and args.max_sequences < 0:
+        logging.error("--max-sequences must be 0 or greater when provided")
         return False
 
     # Validate worker count

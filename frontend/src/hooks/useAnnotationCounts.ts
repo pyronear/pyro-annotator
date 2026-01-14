@@ -36,10 +36,10 @@ export function useAnnotationCounts(): AnnotationCounts {
   } = useQuery({
     queryKey: ['annotation-counts', 'detections'],
     queryFn: async () => {
-      const response = await apiClient.getSequences({
-        detection_annotation_completion: 'incomplete', // Sequences that still need detection annotation
-        include_detection_stats: true,
-        is_unsure: false, // Exclude unsure sequences to match DetectionAnnotatePage filtering
+      // Count sequences whose annotation stage is needs_manual (detection work pending)
+      const response = await apiClient.getSequencesWithAnnotations({
+        processing_stage: 'needs_manual',
+        include_annotation: true,
         size: 1, // Only need the total count
       });
       return response.total;

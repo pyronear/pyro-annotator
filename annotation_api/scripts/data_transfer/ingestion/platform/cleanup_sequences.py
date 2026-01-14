@@ -31,6 +31,7 @@ def fetch_sequences(
     auth_token: str,
     processing_stage: str,
     alert_ids: Optional[List[int]],
+    organisation_name: Optional[str],
 ) -> List[dict]:
     """Fetch sequences from annotation API matching filters."""
     page = 1
@@ -44,6 +45,8 @@ def fetch_sequences(
         items = resp.get("items", [])
         for seq in items:
             if alert_ids and seq.get("alert_api_id") not in alert_ids:
+                continue
+            if organisation_name and seq.get("organisation_name") != organisation_name:
                 continue
             results.append(seq)
         if page >= resp.get("pages", 1):
@@ -75,6 +78,11 @@ def main() -> None:
         help="Optional comma/space-separated alert_api_id list to restrict deletions",
     )
     parser.add_argument(
+        "--organisation-name",
+        type=str,
+        help="Optional organisation_name filter (exact match), e.g., sdis-07",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="List matching sequences without deleting them",
@@ -90,12 +98,17 @@ def main() -> None:
     token = annotation_api.get_auth_token(args.url_api_annotation, login, password)
 
     sequences = fetch_sequences(
-        args.url_api_annotation, token, args.processing_stage, alert_ids
+        args.url_api_annotation,
+        token,
+        args.processing_stage,
+        alert_ids,
+        args.organisation_name,
     )
 
     logging.info(
         f"Found {len(sequences)} sequence(s) matching processing_stage={args.processing_stage}"
         + (f" and alert_ids filter ({len(alert_ids)} provided)" if alert_ids else "")
+        + (f" and organisation_name={args.organisation_name}" if args.organisation_name else "")
     )
 
     if args.dry_run or not sequences:

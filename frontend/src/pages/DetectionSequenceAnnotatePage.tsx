@@ -32,8 +32,8 @@ const getIsAnnotated = (
       annotation.processing_stage === 'bbox_annotation'
     );
   } else {
-    // Annotate context: conservatively assume pending unless explicitly completed
-    return annotation?.processing_stage === 'annotated';
+    // Annotate context: always allow edits regardless of stage
+    return false;
   }
 };
 
@@ -267,13 +267,23 @@ export default function DetectionSequenceAnnotatePage() {
   const { data: existingAnnotations } = useQuery({
     queryKey: [...QUERY_KEYS.DETECTION_ANNOTATIONS, 'by-sequence', sequenceIdNum],
     queryFn: async () => {
-      const response = await apiClient.getDetectionAnnotations({
-        sequence_id: sequenceIdNum!,
-        size: 100,
-      });
-      return response.items;
+      const all: DetectionAnnotation[] = [];
+      let page = 1;
+      let pages = 1;
+      while (page <= pages) {
+        const response = await apiClient.getDetectionAnnotations({
+          sequence_id: sequenceIdNum!,
+          size: 100,
+          page,
+        });
+        all.push(...response.items);
+        pages = response.pages || 1;
+        page += 1;
+      }
+      return all;
     },
     enabled: !!sequenceIdNum,
+    staleTime: 30 * 1000,
   });
 
   // Initialize detection annotations map when data loads
@@ -372,18 +382,30 @@ export default function DetectionSequenceAnnotatePage() {
         }));
 
         // Update existing annotation with proper annotation data and 'annotated' stage
-        return apiClient.updateDetectionAnnotation(existingAnnotation.id, {
+        const payload = {
           annotation: {
             annotation: annotationItems,
           },
-          processing_stage: 'annotated',
-        });
+          processing_stage: 'annotated' as const,
+        };
+        console.debug('Annotating detection', detection.id, 'with payload', payload);
+        return apiClient.updateDetectionAnnotation(existingAnnotation.id, payload);
       } else {
-        // No annotation exists - this shouldn't happen if sequence annotation was submitted first
-        // But in case it does, throw an error to guide the user
-        throw new Error(
-          `No detection annotation found for detection ${detection.id}. Please ensure the sequence annotation has been submitted first to auto-create detection annotations.`
-        );
+        // Create detection annotation on the fly if missing
+        const annotationItems = drawnRectangles.map(rect => ({
+          xyxyn: rect.xyxyn,
+          class_name: 'smoke',
+          smoke_type: rect.smokeType,
+        }));
+        const payload = {
+          detection_id: detection.id,
+          annotation: {
+            annotation: annotationItems,
+          },
+          processing_stage: 'annotated' as const,
+        };
+        console.debug('Creating detection annotation for', detection.id, 'with payload', payload);
+        return apiClient.createDetectionAnnotation(payload);
       }
     },
     onSuccess: (result, { detection }) => {
@@ -430,8 +452,11 @@ export default function DetectionSequenceAnnotatePage() {
         }, 1000);
       }
     },
-    onError: (_, { detection }) => {
-      setToastMessage(`Failed to annotate detection ${detection.id}`);
+    onError: (err, { detection }) => {
+      const msg =
+        (err as { detail?: string })?.detail || (err as Error)?.message || 'Unknown error';
+      console.error('Failed to annotate detection', detection.id, err);
+      setToastMessage(`Failed to annotate detection ${detection.id}: ${msg}`);
       setShowToast(true);
     },
   });

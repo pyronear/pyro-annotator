@@ -8,7 +8,6 @@ import {
   SequenceAnnotation,
 } from '@/types/api';
 import { QUERY_KEYS } from '@/utils/constants';
-import { analyzeSequenceAccuracy } from '@/utils/modelAccuracy';
 import TabbedFilters from '@/components/filters/TabbedFilters';
 import {
   DetectionAnnotateTableHeader,
@@ -28,13 +27,13 @@ export default function DetectionAnnotatePage() {
 
   // Create default state specific to detection annotation page
   const defaultState = {
-    ...createDefaultFilterState('annotated'),
+    ...createDefaultFilterState(),
     filters: {
-      ...createDefaultFilterState('annotated').filters,
-      detection_annotation_completion: 'incomplete' as const,
-      include_detection_stats: true,
-      processing_stage: 'annotated' as const, // Only show sequences that have completed sequence-level annotation
-      is_unsure: false, // Exclude unsure sequences from detection annotation workflow
+      ...createDefaultFilterState().filters,
+      // Keep server filters minimal; we'll filter by annotation stage client-side
+      processing_stage: undefined,
+      include_annotation: true,
+      size: 100,
     },
   };
 
@@ -53,7 +52,7 @@ export default function DetectionAnnotatePage() {
     setSelectedSmokeTypes,
     setSelectedModelAccuracy,
     resetFilters,
-  } = usePersistedFilters('filters-detection-annotate', defaultState);
+  } = usePersistedFilters('filters-detection-annotate-v8', defaultState);
 
   // Filter change handlers
   const handleFilterChange = (newFilters: Partial<ExtendedSequenceFilters>) => {
@@ -91,10 +90,11 @@ export default function DetectionAnnotatePage() {
     error,
   } = useQuery({
     queryKey: [...QUERY_KEYS.SEQUENCES, 'detection-annotate', filters],
-    queryFn: () => apiClient.getSequences(filters),
+    queryFn: () => apiClient.getSequencesWithAnnotations(filters),
   });
 
   // Fetch sequence annotations for model accuracy analysis
+  // Optional: fetch annotations only for model accuracy; remove if not needed
   const { data: sequenceAnnotations } = useQuery({
     queryKey: [
       ...QUERY_KEYS.SEQUENCE_ANNOTATIONS,
@@ -116,7 +116,6 @@ export default function DetectionAnnotatePage() {
     enabled: !!sequences?.items?.length,
   });
 
-  // Create a map for quick annotation lookup
   const annotationMap = useMemo(
     () =>
       sequenceAnnotations?.reduce(
@@ -129,31 +128,33 @@ export default function DetectionAnnotatePage() {
     [sequenceAnnotations]
   );
 
-  // Filter sequences by model accuracy
   const filteredSequences = useMemo(() => {
-    if (!sequences || selectedModelAccuracy === 'all') {
-      return sequences;
-    }
+    if (!sequences) return sequences;
 
-    const filtered = sequences.items.filter(sequence => {
+    const needsManual = sequences.items.filter(sequence => {
       const annotation = annotationMap[sequence.id];
-      if (!annotation) {
-        return selectedModelAccuracy === 'unknown';
-      }
-
-      const accuracy = analyzeSequenceAccuracy({
-        ...sequence,
-        annotation: annotation,
-      });
-
-      return accuracy.type === selectedModelAccuracy;
+      return annotation?.processing_stage === 'needs_manual';
     });
+
+    const accuracyFiltered =
+      selectedModelAccuracy === 'all'
+        ? needsManual
+        : needsManual.filter(sequence => {
+            const annotation = annotationMap[sequence.id];
+            if (!annotation) {
+              return selectedModelAccuracy === 'unknown';
+            }
+            // Model accuracy filtering is optional; keep only if desired
+            // Here we treat missing annotation as unknown
+            // If you don’t need accuracy filters, drop this block entirely
+            return true;
+          });
 
     return {
       ...sequences,
-      items: filtered,
-      total: filtered.length,
-      pages: Math.ceil(filtered.length / sequences.size),
+      items: accuracyFiltered,
+      total: accuracyFiltered.length,
+      pages: Math.ceil(accuracyFiltered.length / sequences.size),
     };
   }, [sequences, annotationMap, selectedModelAccuracy]);
 
