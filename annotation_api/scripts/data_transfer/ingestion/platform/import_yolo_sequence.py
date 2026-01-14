@@ -164,7 +164,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--sequence-stage",
         choices=SEQ_STAGE_CHOICES,
-        default="annotated",
+        default="ready_to_annotate",
         help="Sequence annotation processing stage to set.",
     )
     parser.add_argument(
@@ -500,12 +500,34 @@ def main() -> None:
     bboxes_by_class: Dict[int, List[Dict]] = {}
     detection_alert_id = args.detection_alert_api_id_start
 
+    create_detection_annotations = args.sequence_stage == "annotated"
+
     for image_path, recorded_at in image_infos:
         label_path = labels_dir / f"{image_path.stem}.txt"
         labels = read_yolo_labels(label_path)
+        parsed_labels: List[Tuple[int, str, List[float]]] = []
+        for class_id, cx, cy, w, h in labels:
+            if class_id < 0 or class_id >= len(ALL_CLASSES):
+                logging.warning(
+                    "Skipping unknown class_id=%s in %s", class_id, label_path
+                )
+                continue
+            xyxyn = yolo_to_xyxyn(cx, cy, w, h)
+            if not xyxyn:
+                continue
+            parsed_labels.append((class_id, ALL_CLASSES[class_id], xyxyn))
 
         detection_payload = {
-            "algo_predictions": {"predictions": []},
+            "algo_predictions": {
+                "predictions": [
+                    {
+                        "xyxyn": xyxyn,
+                        "confidence": 1.0,
+                        "class_name": class_name,
+                    }
+                    for class_id, class_name, xyxyn in parsed_labels
+                ]
+            },
             "alert_api_id": detection_alert_id,
             "sequence_id": seq_id,
             "recorded_at": recorded_at.isoformat(),
@@ -522,20 +544,11 @@ def main() -> None:
         det_id = detection["id"]
 
         det_annotation_items: List[Dict] = []
-        for class_id, cx, cy, w, h in labels:
-            if class_id < 0 or class_id >= len(ALL_CLASSES):
-                logging.warning(
-                    "Skipping unknown class_id=%s in %s", class_id, label_path
-                )
-                continue
-            class_name = ALL_CLASSES[class_id]
-            xyxyn = yolo_to_xyxyn(cx, cy, w, h)
-            if not xyxyn:
-                continue
+        for class_id, class_name, xyxyn in parsed_labels:
             bboxes_by_class.setdefault(class_id, []).append(
                 {"detection_id": det_id, "xyxyn": xyxyn}
             )
-            if class_id < len(SMOKE_TYPES):
+            if create_detection_annotations and class_id < len(SMOKE_TYPES):
                 det_annotation_items.append(
                     {
                         "xyxyn": xyxyn,
@@ -544,13 +557,14 @@ def main() -> None:
                     }
                 )
 
-        annotation_api.create_detection_annotation(
-            base_url,
-            token,
-            det_id,
-            {"annotation": det_annotation_items},
-            "annotated",
-        )
+        if create_detection_annotations:
+            annotation_api.create_detection_annotation(
+                base_url,
+                token,
+                det_id,
+                {"annotation": det_annotation_items},
+                "annotated",
+            )
 
     sequences_bbox: List[Dict] = []
     for class_id, bboxes in bboxes_by_class.items():
