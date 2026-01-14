@@ -160,6 +160,42 @@ uv run --active python -m scripts.data_transfer.ingestion.platform.apply_fiftyon
 - Use `--dry-run` to preview changes without writing to the API.
 - Use `--max-sequences 0` to process all sequences.
 
+To export images + YOLO labels from the remote API (use smaller pages and a longer timeout for large datasets):
+
+```bash
+uv run python -m scripts.data_transfer.ingestion.platform.export_dataset \
+  --api-base https://annotationapi.pyronear.org/api/v1 \
+  --username <remote_user> \
+  --password <remote_pass> \
+  --verify-ssl \
+  --output-dir outputs/datasets \
+  --limit 1000 \
+  --timeout 120 \
+  --loglevel info
+```
+
+To import a single sequence from an exported YOLO folder (images + labels) into an API:
+
+```bash
+uv run python -m scripts.data_transfer.ingestion.platform.import_yolo_sequence \
+  --sequence-dir outputs/datasets/dataset_exported_20260114_211415/antenna/pyronear-sdis-77-croix-augas-01-285-2025-08-02T16-38-42 \
+  --api-base http://localhost:5050 \
+  --alert-api-id 123456 \
+  --source-api pyronear_french \
+  --organisation-id 1 \
+  --organisation-name "Pyronear France" \
+  --camera-id 101 \
+  --camera-name "Croix Augas 01" \
+  --lat 43.6047 \
+  --lon 1.4442 \
+  --loglevel info
+```
+
+- The script reads `recorded_at` from image filenames and sets sequence `recorded_at`/`last_seen_at`.
+- It tries to infer org/camera IDs from existing sequences by slug; if it cannot, pass the IDs/names.
+- If `--alert-api-id` is omitted, it generates one from the folder name (use a stable ID to avoid duplicates).
+- Smoke classes create detection annotations; false positive classes are stored at sequence level.
+
 ### Admins (populate main from platform)
 
 If you manage the main dataset and have platform credentials, import directly from the platform into the target annotation API:
