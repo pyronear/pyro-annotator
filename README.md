@@ -69,8 +69,8 @@ uv run python -m scripts.data_transfer.ingestion.platform.import \
   --loglevel info
 ```
 
-- `--max-sequences` caps how many sequences you pull.
-- `--clone-processing-stage` defaults to `no_annotation`; set to `ready_to_annotate` to grab ready items.
+- `--max-sequences` caps how many sequences you pull; use `0` for all.
+- `--clone-processing-stage` defaults to `no_annotation`; set to `ready_to_annotate`, `under_annotation`, `seq_annotation_done`, or `needs_manual` to grab those stages.
 - `--sequence-list` lets you restrict by alert_api_id (comma/space-separated or a file path).
 
 Then open http://localhost:3000 to annotate locally.
@@ -113,6 +113,19 @@ uv run python -m scripts.data_transfer.ingestion.platform.update_annotation_stag
 - Use `--max-sequences 0` to update all matching sequences, or set a cap.
 - Add `--update-sequence-stage` if your API allows patching sequence rows; otherwise omit it to update annotations only.
 
+To update stages on your local API (e.g., move `seq_annotation_done` to `needs_manual`):
+
+```bash
+uv run python -m scripts.data_transfer.ingestion.platform.update_annotation_stage \
+  --api-url http://localhost:5050 \
+  --username admin \
+  --password admin12345 \
+  --from-stage seq_annotation_done \
+  --to-stage needs_manual \
+  --max-sequences 0 \
+  --loglevel info
+```
+
 To auto-fill missing boxes on exported sequences using the pyronear YOLO11s model (downloads on first run):
 
 ```bash
@@ -133,6 +146,19 @@ uv run --active python -m scripts.data_transfer.ingestion.platform.visual_check_
   --dataset-name visual_check \
   --conf-th 0.0
 ```
+
+To apply the FiftyOne review tags back to the remote annotation API (after `visual_check_fiftyone`):
+
+```bash
+MAIN_ANNOTATION_LOGIN=<remote_user> MAIN_ANNOTATION_PASSWORD=<remote_pass> \
+uv run --active python -m scripts.data_transfer.ingestion.platform.apply_fiftyone_review \
+  --dataset-name visual_check \
+  --labels-root outputs/seq_annotation_done \
+  --remote-api https://annotationapi.pyronear.org \
+  --loglevel info
+```
+- Use `--dry-run` to preview changes without writing to the API.
+- Use `--max-sequences 0` to process all sequences.
 
 ### Admins (populate main from platform)
 
