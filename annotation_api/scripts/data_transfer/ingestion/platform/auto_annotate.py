@@ -124,7 +124,7 @@ class DownloadProgressBar(tqdm):
 def read_file(label_path: Path, default_conf: float = 1.0) -> np.ndarray:
     """
     Read YOLO txt into [x1,y1,x2,y2,conf] array.
-    Supports 'cls cx cy w h' and 'cls conf cx cy w h'.
+    Supports 'cls cx cy w h' and 'cls cx cy w h conf' (matching write_bboxes_to_label_file).
     """
     if not label_path.exists() or label_path.stat().st_size == 0:
         return np.zeros((0, 5), dtype=np.float64)
@@ -139,7 +139,8 @@ def read_file(label_path: Path, default_conf: float = 1.0) -> np.ndarray:
             _, cx, cy, w, h = parts
             conf = default_conf
         elif len(parts) == 6:
-            _, conf, cx, cy, w, h = parts
+            # Must match write_bboxes_to_label_file: "cls cx cy w h conf"
+            _, cx, cy, w, h, conf = parts
         else:
             continue
         bbox_xyxy = xywh2xyxy(np.array([float(cx), float(cy), float(w), float(h)], dtype=np.float64))
@@ -342,46 +343,130 @@ class Classifier:
 
         return self.post_process(pred, pad)
 
+def _format_boxes(boxes: np.ndarray, max_rows: int = 20) -> str:
+    """Compact pretty-printer for an (N, 5) xyxy+conf array used in debug logs."""
+    if boxes.size == 0:
+        return "  <none>"
+    lines = []
+    for i, b in enumerate(boxes[:max_rows]):
+        x1, y1, x2, y2, c = b.tolist()
+        lines.append(f"  [{i:02d}] x1={x1:.4f} y1={y1:.4f} x2={x2:.4f} y2={y2:.4f} conf={c:.4f}")
+    if boxes.shape[0] > max_rows:
+        lines.append(f"  ... ({boxes.shape[0] - max_rows} more)")
+    return "\n".join(lines)
+
+
 def process_sequence(seq_dir: Path, model: Classifier, conf_th: float, iou_nms: float, iou_assign: float) -> int:
     img_dir = seq_dir / "images"
     lbl_dir = seq_dir / "labels"
     if not img_dir.exists():
+        logging.info("[%s] skipped: no images/ directory", seq_dir.name)
         return 0
 
     imgs = sorted(img_dir.glob("*.jpg"))
     if not imgs:
+        logging.info("[%s] skipped: no jpg images", seq_dir.name)
         return 0
 
-    # aggregate boxes across sequence
+    logging.info("[%s] === START === %d frames", seq_dir.name, len(imgs))
+
+    # ----- Step 2: aggregate existing labels -----
     all_boxes = np.zeros((0, 5), dtype=np.float64)
+    per_frame_counts: List[Tuple[str, int]] = []
     for img_path in imgs:
         label_path = lbl_dir / (img_path.stem + ".txt")
         box = read_file(label_path)
+        per_frame_counts.append((img_path.stem, box.shape[0]))
         if box.shape[0] > 0:
             all_boxes = np.concatenate([all_boxes, box])
 
+    logging.info(
+        "[%s] step 2: aggregated %d existing boxes across %d/%d frames with labels",
+        seq_dir.name,
+        all_boxes.shape[0],
+        sum(1 for _, n in per_frame_counts if n > 0),
+        len(imgs),
+    )
+    if logging.getLogger().isEnabledFor(logging.DEBUG):
+        for stem, n in per_frame_counts:
+            logging.debug("[%s]   frame %s: %d existing box(es)", seq_dir.name, stem, n)
+        logging.debug("[%s] step 2: all_boxes (xyxy+conf, normalized):\n%s",
+                      seq_dir.name, _format_boxes(all_boxes))
+
     if all_boxes.shape[0] == 0:
+        logging.info("[%s] no seed labels — skipping (auto-annotate only enriches existing labels)", seq_dir.name)
         return 0
 
-    _, grouped = group_and_merge_boxes(all_boxes, iou_nms=iou_nms, threshold=iou_assign)
+    # ----- Step 3: cluster boxes into persistent groups -----
+    main_bboxes, grouped = group_and_merge_boxes(all_boxes, iou_nms=iou_nms, threshold=iou_assign)
+    logging.info(
+        "[%s] step 3: clustered into %d persistent group(s) (iou_nms=%.2f, iou_assign=%.2f)",
+        seq_dir.name, len(grouped), iou_nms, iou_assign,
+    )
+    if logging.getLogger().isEnabledFor(logging.DEBUG):
+        logging.debug("[%s] step 3: main representative boxes:\n%s",
+                      seq_dir.name, _format_boxes(main_bboxes))
+        for gid, gboxes in grouped.items():
+            logging.debug("[%s] step 3: group %d (%d boxes):\n%s",
+                          seq_dir.name, gid, gboxes.shape[0], _format_boxes(gboxes))
+
+    # ----- Steps 4-6: per-frame inference, filter, write -----
     changed = 0
+    total_raw = 0
+    total_after_conf = 0
+    total_kept = 0
 
     for img_path in imgs:
         label_path = lbl_dir / (img_path.stem + ".txt")
         im = Image.open(img_path)
-        preds = model(im)
-        preds = preds[preds[:, 4] >= conf_th]
 
+        # Step 4: model inference (post-processing already applied inside Classifier.__call__)
+        preds_raw = model(im)
+        total_raw += preds_raw.shape[0]
+        logging.debug(
+            "[%s] frame %s step 4: model returned %d prediction(s) (after internal NMS / max-size filter):\n%s",
+            seq_dir.name, img_path.stem, preds_raw.shape[0], _format_boxes(preds_raw),
+        )
+
+        # Confidence gate (--conf-th)
+        preds = preds_raw[preds_raw[:, 4] >= conf_th] if preds_raw.shape[0] else preds_raw
+        total_after_conf += preds.shape[0]
+        logging.debug(
+            "[%s] frame %s step 4b: %d pred(s) survive conf>=%.3f:\n%s",
+            seq_dir.name, img_path.stem, preds.shape[0], conf_th, _format_boxes(preds),
+        )
+
+        # Step 5: keep only predictions overlapping any existing group.
+        # box_iou(preds, group_boxes) returns shape (M_group, N_preds);
+        # max over axis 0 gives the best-IoU per prediction against this group.
         keep_any = np.zeros(preds.shape[0], dtype=bool)
-        for group_boxes in grouped.values():
-            ious = box_iou(preds[:, :4], group_boxes[:, :4])
-            keep_any |= (ious.max(0) > 0)
+        if preds.shape[0]:
+            for gid, group_boxes in grouped.items():
+                ious = box_iou(preds[:, :4], group_boxes[:, :4])
+                hits = ious.max(0) > 0
+                if logging.getLogger().isEnabledFor(logging.DEBUG):
+                    logging.debug(
+                        "[%s] frame %s step 5: group %d → %d/%d preds overlap",
+                        seq_dir.name, img_path.stem, gid, int(hits.sum()), preds.shape[0],
+                    )
+                keep_any |= hits
 
         new_bbox = preds[keep_any, :] if preds.shape[0] else np.zeros((0, 5))
+        total_kept += new_bbox.shape[0]
+        logging.debug(
+            "[%s] frame %s step 5: %d pred(s) kept after group-overlap filter:\n%s",
+            seq_dir.name, img_path.stem, new_bbox.shape[0], _format_boxes(new_bbox),
+        )
+
+        # Step 6: overwrite label file
         write_bboxes_to_label_file(label_path, [new_bbox], class_id=1)
         if new_bbox.shape[0]:
             changed += 1
 
+    logging.info(
+        "[%s] === DONE === %d frame(s) updated | raw_preds=%d  after_conf>=%.3f=%d  kept_after_groups=%d",
+        seq_dir.name, changed, total_raw, conf_th, total_after_conf, total_kept,
+    )
     return changed
 
 
