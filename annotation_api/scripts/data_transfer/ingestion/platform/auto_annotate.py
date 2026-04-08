@@ -10,7 +10,6 @@ Auto-annotate exported sequences by running the YOLO11s (pyronear) classifier an
 import argparse
 import logging
 import os
-import platform
 import tarfile
 from pathlib import Path
 from typing import Dict, List, Tuple
