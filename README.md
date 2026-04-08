@@ -44,176 +44,134 @@ cd frontend
 npm run dev  # Vite dev server on port 5173
 ```
 
-## Importing Platform Data
+## Main Workflow
 
-The project includes a comprehensive data import script that fetches sequences and detections from the Pyronear platform API and automatically generates annotations ready for human review.
+All workflows below assume the services are running locally (`docker compose up -d`) and that you have credentials to the remote annotation API. Run the `make` targets from the `annotation_api/` directory.
 
-## Working with Remote Data
-
-There are two workflows depending on your role:
-
-### Annotators (duplicate from remote API, no platform access)
-
-If you only need to annotate Pyronear data locally:
-
-1) Ask an admin for credentials to the remote annotation API.
-2) Duplicate a subset into your local API (no platform creds needed):
+Before anything that talks to the remote API, export your credentials once per shell (or put them in `.envrc`):
 
 ```bash
-MAIN_ANNOTATION_LOGIN=<remote_user> MAIN_ANNOTATION_PASSWORD=<remote_pass> \
-uv run python -m scripts.data_transfer.ingestion.platform.import \
-  --source-annotation-url https://annotationapi.pyronear.org \
-  --url-api-annotation http://localhost:5050 \
-  --max-sequences 10 \
-  --clone-processing-stage ready_to_annotate \
-  --loglevel info
+export MAIN_ANNOTATION_LOGIN=<remote_user>
+export MAIN_ANNOTATION_PASSWORD=<remote_pass>
 ```
 
-- `--max-sequences` caps how many sequences you pull; use `0` for all.
-- `--clone-processing-stage` defaults to `no_annotation`; set to `ready_to_annotate`, `under_annotation`, `seq_annotation_done`, or `needs_manual` to grab those stages.
-- `--sequence-list` lets you restrict by alert_api_id (comma/space-separated or a file path).
+All make targets accept variable overrides inline, e.g. `make pull-sequences MAX_SEQUENCES=50 CLONE_STAGE=under_annotation`. Common variables: `REMOTE_API`, `LOCAL_API`, `MAX_SEQUENCES`, `CLONE_STAGE`, `DATA_ROOT`, `SMOKE_TYPE`, `DATASET_NAME`, `LOGLEVEL`. See `make help` for the full list.
 
-Then open http://localhost:3000 to annotate locally.
+### 1. Annotations
 
-When you're done annotating locally, push your sequence annotations back to the remote API:
+#### A. Annotate Sequences (standard annotator workflow)
+
+This is the main scenario: you do **not** need platform credentials — only access to the remote annotation API. Ask an admin for `MAIN_ANNOTATION_LOGIN` / `MAIN_ANNOTATION_PASSWORD`.
+
+**Step 1 — Duplicate N sequences from the remote API into your local API**
 
 ```bash
-MAIN_ANNOTATION_LOGIN=<remote_user> MAIN_ANNOTATION_PASSWORD=<remote_pass> \
-uv run python -m scripts.data_transfer.ingestion.platform.push_sequence_annotations \
-  --local-api http://localhost:5050 \
-  --remote-api https://annotationapi.pyronear.org \
-  --max-sequences 10 \
-  --loglevel info
+cd annotation_api
+make pull-sequences MAX_SEQUENCES=10 CLONE_STAGE=ready_to_annotate
 ```
 
-If you need to review completed annotations from the main API, pull sequences in `seq_annotation_done`, download images/labels locally, and move the remote stage to `in_review`:
+- `MAX_SEQUENCES` caps how many sequences you pull; use `0` for all.
+- `CLONE_STAGE` defaults to `ready_to_annotate`; set to `under_annotation`, `seq_annotation_done`, `needs_manual`, or `no_annotation` to grab those stages.
+- To restrict by `alert_api_id`, call the underlying script directly with `--sequence-list <file_or_csv>`.
+
+**Step 2 — Annotate sequences locally**
+
+Open the frontend at http://localhost:3000 and annotate. Sequences transition `READY_TO_ANNOTATE → UNDER_ANNOTATION → SEQ_ANNOTATION_DONE`.
+
+**Step 3 — Push results back to the remote API**
 
 ```bash
-MAIN_ANNOTATION_LOGIN=<remote_user> MAIN_ANNOTATION_PASSWORD=<remote_pass> \
-uv run python -m scripts.data_transfer.ingestion.platform.pull_sequence_annotations \
-  --remote-api https://annotationapi.pyronear.org \
-  --max-sequences 20 \
-  --output-dir outputs/seq_annotation_done \
-  --smoke-type wildfire \
-  --loglevel info
-```
-- Set `--max-sequences 0` to pull all; drop `--smoke-type` to pull every smoke type.
-- TLS is verified by default; add `--skip-ssl-verify` only if you trust the host and need to silence self-signed cert issues.
-
-If you need to reset stages (e.g., move `in_review` back to `seq_annotation_done` to retry a workflow):
-
-```bash
-MAIN_ANNOTATION_LOGIN=<remote_user> MAIN_ANNOTATION_PASSWORD=<remote_pass> \
-uv run python -m scripts.data_transfer.ingestion.platform.update_annotation_stage \
-  --api-url https://annotationapi.pyronear.org \
-  --from-stage in_review \
-  --to-stage seq_annotation_done \
-  --loglevel info
-```
-- Use `--max-sequences 0` to update all matching sequences, or set a cap.
-- Add `--update-sequence-stage` if your API allows patching sequence rows; otherwise omit it to update annotations only.
-
-To update stages on your local API (e.g., move `seq_annotation_done` to `needs_manual`):
-
-```bash
-uv run python -m scripts.data_transfer.ingestion.platform.update_annotation_stage \
-  --api-url http://localhost:5050 \
-  --username admin \
-  --password admin12345 \
-  --from-stage seq_annotation_done \
-  --to-stage needs_manual \
-  --max-sequences 0 \
-  --loglevel info
+make push-annotations MAX_SEQUENCES=10
 ```
 
-To auto-fill missing boxes on exported sequences using the pyronear YOLO11s model (downloads on first run):
+#### B. Detection Annotation
+
+Once sequence annotations are in `seq_annotation_done` on the remote API, refine them at the detection level using the YOLO model + FiftyOne review loop.
+
+**Step 1 — `pull-seq-annotations`**: pull completed sequences locally (moves remote stage to `in_review`):
 
 ```bash
-uv run --active python -m scripts.data_transfer.ingestion.platform.auto_annotate \
-  --data-root outputs/seq_annotation_done \
-  --conf-th 0.05 \
-  --iou-nms 0.0 \
-  --iou-assign 0.0 \
-  --model-format onnx \
-  --loglevel info
+make pull-seq-annotations MAX_SEQUENCES=20 SMOKE_TYPE=wildfire
+```
+- Set `MAX_SEQUENCES=0` to pull all; override `SMOKE_TYPE` (or call the script directly without `--smoke-type`) to pull every smoke type.
+- TLS is verified by default; pass `--skip-ssl-verify` to the underlying script if you trust the host and need to silence self-signed cert issues.
+
+**Step 2 — `auto-annotate`**: auto-fill missing boxes with the pyronear YOLO11s model (downloads on first run):
+
+```bash
+make auto-annotate CONF_TH=0.05
 ```
 
-To review the exported sequences (images + YOLO labels) in FiftyOne:
+**Step 3 — `visual-check`**: review the exported sequences (images + YOLO labels) in FiftyOne:
 
 ```bash
-uv run --active python -m scripts.data_transfer.ingestion.platform.visual_check_fiftyone \
-  --data-root outputs/seq_annotation_done \
-  --dataset-name visual_check \
-  --conf-th 0.0
+make visual-check
 ```
 
-To apply the FiftyOne review tags back to the remote annotation API (after `visual_check_fiftyone`):
+**Step 4 — `apply-review`**: apply the FiftyOne review tags back to the remote API:
 
 ```bash
-MAIN_ANNOTATION_LOGIN=<remote_user> MAIN_ANNOTATION_PASSWORD=<remote_pass> \
-uv run --active python -m scripts.data_transfer.ingestion.platform.apply_fiftyone_review \
-  --dataset-name visual_check \
-  --labels-root outputs/seq_annotation_done \
-  --remote-api https://annotationapi.pyronear.org \
-  --loglevel info
+make apply-review
 ```
-- Use `--dry-run` to preview changes without writing to the API.
-- Use `--max-sequences 0` to process all sequences.
+- To preview changes without writing to the API, call the underlying script with `--dry-run`.
+- Override `DATASET_NAME` / `DATA_ROOT` if you used non-default values.
 
-To export images + YOLO labels from the remote API (use smaller pages and a longer timeout for large datasets):
+##### Other commands
+
+**Reset stages on the remote API** (e.g., move `in_review` back to `seq_annotation_done` to retry a workflow):
 
 ```bash
-uv run python -m scripts.data_transfer.ingestion.platform.export_dataset \
-  --api-base https://annotationapi.pyronear.org/api/v1 \
-  --username <remote_user> \
-  --password <remote_pass> \
-  --verify-ssl \
-  --output-dir outputs/datasets \
-  --limit 1000 \
-  --timeout 120 \
-  --loglevel info
+make update-stage-remote FROM_STAGE=in_review TO_STAGE=seq_annotation_done MAX_SEQUENCES=0
 ```
 
-To import a single sequence from an exported YOLO folder (images + labels) into an API:
+**Update stages on your local API** (e.g., move `seq_annotation_done` to `needs_manual`):
 
 ```bash
-uv run python -m scripts.data_transfer.ingestion.platform.import_yolo_sequence \
-  --sequence-dir outputs/datasets/dataset_exported_20260114_211415/antenna/pyronear-sdis-77-croix-augas-01-285-2025-08-02T16-38-42 \
-  --api-base http://localhost:5050 \
-  --alert-api-id 123456 \
-  --source-api pyronear_french \
-  --sequence-stage ready_to_annotate \
-  --organisation-id 1 \
-  --organisation-name "Pyronear France" \
-  --camera-id 101 \
-  --camera-name "Croix Augas 01" \
-  --lat 43.6047 \
-  --lon 1.4442 \
-  --loglevel info
+make update-stage-local FROM_STAGE=seq_annotation_done TO_STAGE=needs_manual MAX_SEQUENCES=0
+```
+
+**Export images + YOLO labels from the remote API** (use smaller pages and a longer timeout for large datasets):
+
+```bash
+make export-dataset USERNAME=<remote_user> PASSWORD=<remote_pass> OUTPUT_DIR=outputs/datasets LIMIT=1000 TIMEOUT=120
+```
+
+**Import a single sequence from an exported YOLO folder** (images + labels) into an API:
+
+```bash
+make import-yolo-sequence \
+  SEQUENCE_DIR=outputs/datasets/dataset_exported_20260114_211415/antenna/pyronear-sdis-77-croix-augas-01-285-2025-08-02T16-38-42 \
+  ALERT_API_ID=123456 \
+  API_BASE=http://localhost:5050 \
+  SEQUENCE_STAGE=ready_to_annotate
 ```
 
 - The script reads `recorded_at` from image filenames and sets sequence `recorded_at`/`last_seen_at`.
-- It tries to infer org/camera IDs from existing sequences by slug; if it cannot, pass the IDs/names.
-- If `--alert-api-id` is omitted, it generates one from the folder name (use a stable ID to avoid duplicates).
-- Default stage is `ready_to_annotate`. Use `--sequence-stage annotated` if you want detection annotations created immediately.
+- It tries to infer org/camera IDs from existing sequences by slug; if it cannot, call the underlying script with `--organisation-id/--camera-id/--camera-name/--lat/--lon`.
+- If `ALERT_API_ID` is omitted, it generates one from the folder name (use a stable ID to avoid duplicates).
+- Default stage is `ready_to_annotate`. Use `SEQUENCE_STAGE=annotated` if you want detection annotations created immediately.
 - Smoke classes create detection annotations (only when stage is `annotated`); false positive classes are stored at sequence level.
 
-### Admins (populate main from platform)
+## Admin Workflow — Populate the main API from the platform
 
-If you manage the main dataset and have platform credentials, import directly from the platform into the target annotation API:
+If you manage the main dataset and have platform credentials, import directly from the platform into the target annotation API. This is the only entry point that brings new data into the system.
 
 ```bash
-MAIN_ANNOTATION_LOGIN=<target_user> MAIN_ANNOTATION_PASSWORD=<target_pass> \
-PLATFORM_LOGIN=<platform_user> PLATFORM_PASSWORD=<platform_pass> \
-PLATFORM_ADMIN_LOGIN=<platform_admin_user> PLATFORM_ADMIN_PASSWORD=<platform_admin_pass> \
-uv run python -m scripts.data_transfer.ingestion.platform.import \
-  --date-from 2025-03-04 --date-end 2025-03-04 \
-  --url-api-annotation https://annotationapi.pyronear.org \
-  --max-sequences 10 \
-  --sequence-list alerts_id_list.txt  # optional alert_api_id filter
+export PLATFORM_LOGIN=<platform_user>
+export PLATFORM_PASSWORD=<platform_pass>
+export PLATFORM_ADMIN_LOGIN=<platform_admin_user>
+export PLATFORM_ADMIN_PASSWORD=<platform_admin_pass>
+export MAIN_ANNOTATION_LOGIN=<target_user>
+export MAIN_ANNOTATION_PASSWORD=<target_pass>
+
+cd annotation_api
+make import-platform DATE_FROM=2025-03-04 DATE_END=2025-03-04 MAX_SEQUENCES=10
 ```
 
-Use `--loglevel debug` if you need more detail during imports.
+- `DATE_END` defaults to `DATE_FROM` if omitted.
+- `REMOTE_API` defaults to `https://annotationapi.pyronear.org`; override to target staging/local.
+- To use an alert-id filter, call the underlying script directly with `--sequence-list alerts_id_list.txt`.
+- Use `LOGLEVEL=debug` if you need more detail during imports.
 
 ### Prerequisites
 
@@ -228,79 +186,15 @@ curl http://localhost:5050/docs
 
 **Required Environment Variables:**
 ```bash
-# Platform API credentials (both regular and admin access required)
+# Remote annotation API credentials (required for all workflows)
+export MAIN_ANNOTATION_LOGIN="remote_user"
+export MAIN_ANNOTATION_PASSWORD="remote_pass"
+
+# Platform API credentials (admin ingestion only)
 export PLATFORM_LOGIN="your_platform_username"
 export PLATFORM_PASSWORD="your_platform_password"
 export PLATFORM_ADMIN_LOGIN="your_admin_username"
 export PLATFORM_ADMIN_PASSWORD="your_admin_password"
-```
-
-### Basic Usage
-
-**Import platform data for a date range:**
-```bash
-cd annotation_api
-
-# Import and generate annotations for January 1-2, 2024
-uv run python -m scripts.data_transfer.ingestion.platform.import \
-  --date-from 2024-01-01 --date-end 2024-01-02 --loglevel info
-```
-
-### What the Script Does
-
-1. **Fetches Platform Data**: Retrieves sequences, detections, and images from platform API
-2. **Posts to Annotation API**: Creates sequences and detections in your local system
-3. **Generates Annotations**: Analyzes AI predictions and creates sequence annotations
-4. **Sets Ready for Review**: Moves sequences to `READY_TO_ANNOTATE` stage
-
-### Key Parameters
-
-**Date & Environment:**
-- `--date-from` / `--date-end`: Date range (YYYY-MM-DD format)
-- `--url-api-platform`: Platform API URL (default: https://alertapi.pyronear.org)
-- `--url-api-annotation`: Annotation API URL (default: http://localhost:5050)
-
-**Processing Options:**
-- `--iou-threshold`: IoU threshold for clustering overlapping boxes (default: 0.3)
-- `--dry-run`: Preview actions without execution
-- `--loglevel`: Logging level (debug/info/warning/error)
-
-### Example Workflows
-
-**Local Development:**
-```bash
-# Import to local annotation API (default)
-uv run python -m scripts.data_transfer.ingestion.platform.import \
-  --date-from 2024-01-01 --date-end 2024-01-02 \
-  --loglevel info
-
-# Daily import routine (local)
-uv run python -m scripts.data_transfer.ingestion.platform.import \
-  --date-from $(date -d '1 day ago' '+%Y-%m-%d') \
-  --loglevel info
-```
-
-**Deployed Annotation API:**
-```bash
-# Import to deployed annotation API
-uv run python -m scripts.data_transfer.ingestion.platform.import \
-  --date-from 2024-01-01 --date-end 2024-01-02 \
-  --url-api-annotation https://annotationapi.pyronear.org \
-  --loglevel info
-
-# Mixed environment: production platform + staging annotation API
-uv run python -m scripts.data_transfer.ingestion.platform.import \
-  --date-from 2024-01-01 \
-  --url-api-platform https://alertapi.pyronear.org \
-  --url-api-annotation https://annotationapi.pyronear.org \
-  --loglevel info
-
-# CENIA platform to deployed annotation API
-uv run python -m scripts.data_transfer.ingestion.platform.import \
-  --date-from 2024-01-01 \
-  --url-api-platform https://apicenia.pyronear.org \
-  --url-api-annotation https://annotationapi.pyronear.org \
-  --loglevel info
 ```
 
 ### Deployment Environments
