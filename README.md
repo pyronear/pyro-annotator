@@ -96,10 +96,10 @@ make pull-seq-annotations MAX_SEQUENCES=20 SMOKE_TYPE=wildfire
 - Set `MAX_SEQUENCES=0` to pull all; override `SMOKE_TYPE` (or call the script directly without `--smoke-type`) to pull every smoke type.
 - TLS is verified by default; pass `--skip-ssl-verify` to the underlying script if you trust the host and need to silence self-signed cert issues.
 
-**Step 2 — `auto-annotate`**: auto-fill missing boxes with the pyronear YOLO11s model (downloads on first run):
+**Step 2 — `auto-annotate`**: auto-fill missing boxes with the pyronear YOLO11s sensitive-detector model (downloads on first run):
 
 ```bash
-make auto-annotate CONF_TH=0.05
+make auto-annotate CONF_TH=0.01
 ```
 
 **Step 3 — `visual-check`**: review the exported sequences (images + YOLO labels) in FiftyOne:

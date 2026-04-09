@@ -21,8 +21,8 @@ from PIL import Image
 from tqdm import tqdm
 
 
-MODEL_URL_FOLDER = "https://huggingface.co/pyronear/yolo11s_mighty-mongoose_v5.1.0/resolve/main/"
-MODEL_NAME = "ncnn_cpu_yolo11s_mighty-mongoose_v5.1.0.tar.gz"
+MODEL_URL_FOLDER = "https://huggingface.co/pyronear/yolo11s_sensitive-detector_v1.0.0/resolve/main/"
+MODEL_NAME = "ncnn_cpu.tar.gz"
 
 
 def parse_args() -> argparse.Namespace:
@@ -36,7 +36,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--conf-th",
         type=float,
-        default=0.05,
+        default=0.01,
         help="Confidence threshold for model predictions",
     )
     parser.add_argument(
@@ -261,21 +261,32 @@ class Classifier:
                 base_name = os.path.basename(model_path).replace(".tar.gz", "")
                 extract_path = os.path.join(model_folder, base_name)
                 if not os.path.isdir(extract_path):
+                    os.makedirs(extract_path, exist_ok=True)
                     with tarfile.open(model_path, "r:gz") as tar:
-                        tar.extractall(model_folder)
+                        tar.extractall(extract_path)
                     logging.info("Extracted model to: %s", extract_path)
                 model_path = extract_path
             if format == "onnx":
-                onnx_file = model_path if model_path.endswith(".onnx") else os.path.join(model_path, "best.onnx")
+                if model_path.endswith(".onnx"):
+                    onnx_file = model_path
+                else:
+                    candidates = sorted(Path(model_path).rglob("*.onnx"))
+                    if not candidates:
+                        raise RuntimeError(f"No .onnx file found under {model_path}")
+                    onnx_file = str(candidates[0])
 
         if self.format == "ncnn":
             try:
                 import ncnn  # type: ignore
             except ImportError as exc:  # noqa: BLE001
                 raise RuntimeError("ncnn package is required for format='ncnn'") from exc
+            param_candidates = sorted(Path(model_path).rglob("*.ncnn.param"))
+            bin_candidates = sorted(Path(model_path).rglob("*.ncnn.bin"))
+            if not param_candidates or not bin_candidates:
+                raise RuntimeError(f"No ncnn .param/.bin files found under {model_path}")
             self.model = ncnn.Net()
-            self.model.load_param(os.path.join(model_path, "best_ncnn_model", "model.ncnn.param"))
-            self.model.load_model(os.path.join(model_path, "best_ncnn_model", "model.ncnn.bin"))
+            self.model.load_param(str(param_candidates[0]))
+            self.model.load_model(str(bin_candidates[0]))
         else:
             try:
                 import onnxruntime  # type: ignore
@@ -410,7 +421,10 @@ def process_sequence(seq_dir: Path, model: Classifier, conf_th: float, iou_nms: 
             logging.debug("[%s] step 3: group %d (%d boxes):\n%s",
                           seq_dir.name, gid, gboxes.shape[0], _format_boxes(gboxes))
 
-    # ----- Steps 4-6: per-frame inference, filter, write -----
+    # ----- Steps 4-6: per-frame inference, filter by group overlap, write -----
+    # Strategy: drop the seed labels and write only the model's predictions that
+    # overlap at least one persistent group. The seed labels are used solely to
+    # localize the smoke region (via the clusters built in step 3).
     changed = 0
     total_raw = 0
     total_after_conf = 0
@@ -420,15 +434,13 @@ def process_sequence(seq_dir: Path, model: Classifier, conf_th: float, iou_nms: 
         label_path = lbl_dir / (img_path.stem + ".txt")
         im = Image.open(img_path)
 
-        # Step 4: model inference (post-processing already applied inside Classifier.__call__)
+        # Step 4: model inference
         preds_raw = model(im)
         total_raw += preds_raw.shape[0]
         logging.debug(
             "[%s] frame %s step 4: model returned %d prediction(s) (after internal NMS / max-size filter):\n%s",
             seq_dir.name, img_path.stem, preds_raw.shape[0], _format_boxes(preds_raw),
         )
-
-        # Confidence gate (--conf-th)
         preds = preds_raw[preds_raw[:, 4] >= conf_th] if preds_raw.shape[0] else preds_raw
         total_after_conf += preds.shape[0]
         logging.debug(
@@ -436,7 +448,7 @@ def process_sequence(seq_dir: Path, model: Classifier, conf_th: float, iou_nms: 
             seq_dir.name, img_path.stem, preds.shape[0], conf_th, _format_boxes(preds),
         )
 
-        # Step 5: keep only predictions overlapping any existing group.
+        # Step 5: keep only predictions overlapping any persistent group.
         # box_iou(preds, group_boxes) returns shape (M_group, N_preds);
         # max over axis 0 gives the best-IoU per prediction against this group.
         keep_any = np.zeros(preds.shape[0], dtype=bool)
@@ -450,7 +462,6 @@ def process_sequence(seq_dir: Path, model: Classifier, conf_th: float, iou_nms: 
                         seq_dir.name, img_path.stem, gid, int(hits.sum()), preds.shape[0],
                     )
                 keep_any |= hits
-
         new_bbox = preds[keep_any, :] if preds.shape[0] else np.zeros((0, 5))
         total_kept += new_bbox.shape[0]
         logging.debug(
@@ -458,7 +469,7 @@ def process_sequence(seq_dir: Path, model: Classifier, conf_th: float, iou_nms: 
             seq_dir.name, img_path.stem, new_bbox.shape[0], _format_boxes(new_bbox),
         )
 
-        # Step 6: overwrite label file
+        # Step 6: overwrite label file with model preds only
         write_bboxes_to_label_file(label_path, [new_bbox], class_id=1)
         if new_bbox.shape[0]:
             changed += 1

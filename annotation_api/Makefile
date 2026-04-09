@@ -40,7 +40,7 @@ DATA_ROOT        ?= outputs/seq_annotation_done
 SMOKE_TYPE       ?= wildfire
 DATASET_NAME     ?= visual_check
 LOGLEVEL         ?= info
-CONF_TH          ?= 0.05
+CONF_TH          ?= 0.01
 FROM_STAGE       ?= in_review
 TO_STAGE         ?= seq_annotation_done
 OUTPUT_DIR       ?= outputs/datasets
@@ -136,7 +136,7 @@ pull-seq-annotations:
 		--loglevel $(LOGLEVEL)
 
 # Auto-fill missing boxes using the pyronear YOLO11s model.
-# Usage: make auto-annotate [DATA_ROOT=...] [CONF_TH=0.05]
+# Usage: make auto-annotate [DATA_ROOT=...] [CONF_TH=0.01]
 auto-annotate:
 	uv run --active python -m scripts.data_transfer.ingestion.platform.auto_annotate \
 		--data-root $(DATA_ROOT) \
