@@ -371,7 +371,7 @@ async def export_detections(
         bucket_key = data.get("bucket_key")
         image_url: Optional[str] = None
         if bucket_key:
-            image_url = bucket.get_public_url(bucket_key)
+            image_url = bucket.generate_presigned_url(bucket_key)
 
         data["image_url"] = image_url
 

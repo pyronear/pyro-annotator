@@ -62,6 +62,12 @@ class DummyBucket:
             self.public_urls[key] = f"https://dummy-bucket.local/{key}"
         return self.public_urls[key]
 
+    def generate_presigned_url(self, key: str, url_expiration: int = 3600) -> str:
+        """
+        Fast presigned URL generation without existence check (used by export).
+        """
+        return self.get_public_url(key)
+
     def get_file(self, key: str) -> BytesIO:
         """
         Optional helper if export code ever wants to read back the file.

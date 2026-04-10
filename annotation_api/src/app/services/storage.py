@@ -111,7 +111,16 @@ class S3Bucket:
                 detail="File cannot be found on the bucket storage",
             )
 
-        # Generate a public URL for it using boto3 presign URL generation\
+        return self.generate_presigned_url(bucket_key, url_expiration)
+
+    def generate_presigned_url(
+        self, bucket_key: str, url_expiration: int = settings.S3_URL_EXPIRATION
+    ) -> str:
+        """Generate a presigned URL without checking file existence.
+
+        Use this for bulk operations where the file is known to exist
+        (e.g. exporting rows from the database).
+        """
         presigned_url = self._s3.generate_presigned_url(
             "get_object",
             Params={"Bucket": self.name, "Key": bucket_key},
