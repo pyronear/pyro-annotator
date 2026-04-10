@@ -8,6 +8,7 @@ and fetch_platform_sequences.py to avoid code duplication.
 import concurrent.futures
 import logging
 import os
+import time
 from collections import defaultdict
 from typing import Dict, List, Any
 from urllib.parse import urlparse
@@ -298,15 +299,22 @@ def _process_single_detection(
     annotation_api_url: str,
     auth_token: str,
     annotation_sequence_id: int,
+    max_retries: int = 3,
+    base_delay: float = 5.0,
 ) -> Dict[str, Any]:
     """
     Process a single detection: download image and create detection in API.
+
+    Retries on transient server errors (502, 503, 504) and network errors
+    with exponential backoff.
 
     Args:
         record: Detection record from platform
         annotation_api_url: Annotation API base URL
         auth_token: JWT authentication token
         annotation_sequence_id: Sequence ID in annotation API
+        max_retries: Maximum number of retry attempts for transient errors
+        base_delay: Base delay in seconds between retries (doubles each attempt)
 
     Returns:
         Dictionary with processing results
@@ -317,55 +325,71 @@ def _process_single_detection(
         "error": None,
     }
 
-    try:
-        # Download image
-        image_data = download_image(record["detection_url"])
+    for attempt in range(max_retries + 1):
+        try:
+            # Download image
+            image_data = download_image(record["detection_url"])
 
-        # Transform detection data
-        detection_data = transform_detection_data(record, annotation_sequence_id)
+            # Transform detection data
+            detection_data = transform_detection_data(record, annotation_sequence_id)
 
-        # Create detection in annotation API
-        filename = f"detection_{record['detection_id']}.jpg"
-        annotation_detection = create_detection(
-            annotation_api_url, auth_token, detection_data, image_data, filename
-        )
+            # Create detection in annotation API
+            filename = f"detection_{record['detection_id']}.jpg"
+            annotation_detection = create_detection(
+                annotation_api_url, auth_token, detection_data, image_data, filename
+            )
 
-        logging.debug(f"Created detection with ID: {annotation_detection['id']}")
-        result["success"] = True
-        return result
+            logging.debug(f"Created detection with ID: {annotation_detection['id']}")
+            result["success"] = True
+            return result
 
-    except ValidationError as e:
-        error_msg = f"Detection {record['detection_id']} validation failed: {e.message}"
-        logging.error(error_msg)
-        if e.field_errors:
-            for field_error in e.field_errors:
-                logging.error(f"  - {field_error['field']}: {field_error['message']}")
-        result["error"] = error_msg
-        return result
+        except ValidationError as e:
+            error_msg = f"Detection {record['detection_id']} validation failed: {e.message}"
+            logging.error(error_msg)
+            if e.field_errors:
+                for field_error in e.field_errors:
+                    logging.error(f"  - {field_error['field']}: {field_error['message']}")
+            result["error"] = error_msg
+            return result
 
-    except requests.RequestException as e:
-        error_msg = f"Network error downloading image for detection {record['detection_id']}: {e}"
-        logging.error(error_msg)
-        result["error"] = error_msg
-        return result
+        except requests.RequestException as e:
+            error_msg = f"Network error downloading image for detection {record['detection_id']}: {e}"
+            if attempt < max_retries:
+                delay = base_delay * (2 ** attempt)
+                logging.warning(f"⚠️ {error_msg} — retrying in {delay:.0f}s (attempt {attempt + 1}/{max_retries})")
+                time.sleep(delay)
+                continue
+            logging.error(error_msg)
+            result["error"] = error_msg
+            return result
 
-    except AnnotationAPIError as e:
-        error_msg = (
-            f"API error processing detection {record['detection_id']}: {e.message}"
-        )
-        logging.error(error_msg)
-        if e.status_code:
-            logging.error(f"HTTP Status: {e.status_code}")
-        result["error"] = error_msg
-        return result
+        except AnnotationAPIError as e:
+            if e.status_code in (502, 503, 504) and attempt < max_retries:
+                delay = base_delay * (2 ** attempt)
+                logging.warning(
+                    f"⚠️ Detection {record['detection_id']} got HTTP {e.status_code} "
+                    f"— retrying in {delay:.0f}s (attempt {attempt + 1}/{max_retries})"
+                )
+                time.sleep(delay)
+                continue
+            error_msg = (
+                f"API error processing detection {record['detection_id']}: {e.message}"
+            )
+            logging.error(error_msg)
+            if e.status_code:
+                logging.error(f"HTTP Status: {e.status_code}")
+            result["error"] = error_msg
+            return result
 
-    except Exception as e:
-        error_msg = (
-            f"Unexpected error processing detection {record['detection_id']}: {e}"
-        )
-        logging.error(error_msg)
-        result["error"] = error_msg
-        return result
+        except Exception as e:
+            error_msg = (
+                f"Unexpected error processing detection {record['detection_id']}: {e}"
+            )
+            logging.error(error_msg)
+            result["error"] = error_msg
+            return result
+
+    return result
 
 
 def post_sequence_to_annotation_api(
