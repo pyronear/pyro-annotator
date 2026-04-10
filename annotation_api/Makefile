@@ -21,6 +21,11 @@ help:
 	@echo "  visual-check         - Review exported sequences in FiftyOne"
 	@echo "  apply-review         - Apply FiftyOne review tags back to remote API"
 	@echo ""
+	@echo "False-positive workflow:"
+	@echo "  pull-fp              - Pull seq_annotation_done sequences for FP review"
+	@echo "  visual-check-fp      - Review FP sequences in FiftyOne (check no fire missed)"
+	@echo "  apply-review-fp      - Push clean FP sequences as 'managed' (no labels)"
+	@echo ""
 	@echo "Other data commands:"
 	@echo "  export-dataset       - Export images + YOLO labels from remote API"
 	@echo "  import-yolo-sequence - Import one YOLO folder into an API (needs SEQUENCE_DIR=...)"
@@ -40,6 +45,7 @@ DATA_ROOT        ?= outputs/seq_annotation_done
 SMOKE_TYPE       ?= wildfire
 DATASET_NAME     ?= visual_check
 LOGLEVEL         ?= info
+MAX_WORKERS      ?= 4
 CONF_TH          ?= 0.01
 FROM_STAGE       ?= in_review
 TO_STAGE         ?= seq_annotation_done
@@ -163,6 +169,41 @@ apply-review:
 		--remote-api $(REMOTE_API) \
 		--loglevel $(LOGLEVEL)
 
+# --- 1C. False-positive workflow ---
+# Same pull as detection workflow but uses a separate output dir and FiftyOne dataset
+# to avoid collisions with the TP pipeline.
+
+FP_DATA_ROOT   ?= outputs/fp_review
+FP_DATASET     ?= fp_check
+
+# Pull seq_annotation_done sequences for FP review.
+# Usage: make pull-fp [MAX_SEQUENCES=20] [SMOKE_TYPE=wildfire]
+pull-fp:
+	uv run python -m scripts.data_transfer.ingestion.platform.pull_sequence_annotations \
+		--remote-api $(REMOTE_API) \
+		--max-sequences $(MAX_SEQUENCES) \
+		--output-dir $(FP_DATA_ROOT) \
+		--smoke-type $(SMOKE_TYPE) \
+		--loglevel $(LOGLEVEL)
+
+# Visual check FP sequences in FiftyOne (confirm no fire was missed).
+# Usage: make visual-check-fp [FP_DATA_ROOT=outputs/fp_review]
+visual-check-fp:
+	uv run --active python -m scripts.data_transfer.ingestion.platform.visual_check_fiftyone \
+		--data-root $(FP_DATA_ROOT) \
+		--dataset-name $(FP_DATASET) \
+		--conf-th 0.0
+
+# Apply FP review: clean sequences → managed (no labels), issue sequences → needs_manual.
+# Usage: make apply-review-fp [FP_DATASET=fp_check] [FP_DATA_ROOT=outputs/fp_review]
+apply-review-fp:
+	uv run --active python -m scripts.data_transfer.ingestion.platform.apply_fiftyone_review \
+		--dataset-name $(FP_DATASET) \
+		--labels-root $(FP_DATA_ROOT) \
+		--remote-api $(REMOTE_API) \
+		--fp-mode \
+		--loglevel $(LOGLEVEL)
+
 # --- Other data commands ---
 
 # Export images + YOLO labels from a remote API.
@@ -237,10 +278,12 @@ import-platform:
 		--date-from $(DATE_FROM) --date-end $(DATE_END) \
 		--url-api-annotation $(REMOTE_API) \
 		--max-sequences $(MAX_SEQUENCES) \
+		--max-workers $(MAX_WORKERS) \
 		--loglevel $(LOGLEVEL)
 
 .PHONY: help lint fix setup docker-build start stop clean test test-specific \
 	pull-sequences push-annotations \
 	pull-seq-annotations auto-annotate visual-check apply-review \
+	pull-fp visual-check-fp apply-review-fp \
 	export-dataset import-yolo-sequence update-stage-remote update-stage-local \
 	import-platform

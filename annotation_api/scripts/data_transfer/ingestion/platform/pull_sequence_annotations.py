@@ -69,9 +69,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--smoke-type",
         type=str,
-        choices=["wildfire", "industrial", "other"],
+        choices=["wildfire", "industrial", "other", "any"],
         default=None,
-        help="Only pull sequences whose annotation smoke_types includes this value",
+        help="Only pull sequences whose annotation smoke_types includes this value (use 'any' to include all smoke types)",
     )
     parser.add_argument(
         "--loglevel",
@@ -151,9 +151,15 @@ def main() -> None:
             logging.warning("No annotation for sequence %s, skipping", seq_id)
             return ("no_annotation", seq_id)
 
-        if args.smoke_type and args.smoke_type not in ann.get("smoke_types", []):
-            logging.info("Skipping sequence %s (smoke_types=%s not matching %s)", seq_id, ann.get("smoke_types"), args.smoke_type)
-            return ("filter_skip", seq_id)
+        smoke_types = ann.get("smoke_types", [])
+        if args.smoke_type and args.smoke_type != "any":
+            if args.smoke_type not in smoke_types:
+                logging.info("Skipping sequence %s (smoke_types=%s not matching %s)", seq_id, smoke_types, args.smoke_type)
+                return ("filter_skip", seq_id)
+        elif args.smoke_type == "any":
+            if not smoke_types:
+                logging.info("Skipping sequence %s (no smoke_types)", seq_id)
+                return ("filter_skip", seq_id)
 
         det_resp = annotation_api.list_detections(
             args.remote_api, token, sequence_id=seq_id, page=1, size=100

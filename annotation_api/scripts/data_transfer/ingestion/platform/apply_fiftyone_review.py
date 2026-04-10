@@ -17,6 +17,7 @@ import logging
 import os
 import re
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 
@@ -66,6 +67,17 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=Path("outputs/seq_annotation_done"),
         help="Root folder containing seq_<alert_api_id>/labels/detection_<id>.txt files",
+    )
+    parser.add_argument(
+        "--max-workers",
+        type=int,
+        default=4,
+        help="Number of worker threads for parallel processing",
+    )
+    parser.add_argument(
+        "--fp-mode",
+        action="store_true",
+        help="False-positive mode: clean sequences get 'managed' stage with empty annotations instead of 'annotated'",
     )
     parser.add_argument(
         "--dry-run",
@@ -126,28 +138,31 @@ def group_reviews(dataset: fo.Dataset) -> Dict[int, Dict[str, Set[int]]]:
     return per_seq
 
 
-def find_remote_sequence(remote_api: str, token: str, alert_id: int) -> Dict | None:
+def fetch_all_sequences(remote_api: str, token: str) -> Dict[int, Dict]:
     """
-    Find a remote sequence by alert_api_id by scanning pages to avoid relying on backend filters.
+    Fetch in_review sequences and return a lookup dict keyed by alert_api_id.
     """
     page = 1
     size = 100
+    lookup: Dict[int, Dict] = {}
     while True:
         resp = annotation_api.list_sequences(
             remote_api,
             token,
+            processing_stage="in_review",
             page=page,
             size=size,
             include_annotation=True,
         )
         items = resp.get("items", [])
         for item in items:
-            if item.get("alert_api_id") == alert_id:
-                return item
+            aid = item.get("alert_api_id")
+            if aid is not None:
+                lookup[aid] = item
         if page >= resp.get("pages", 1):
             break
         page += 1
-    return None
+    return lookup
 
 
 def update_sequence_stage(remote_api: str, token: str, seq_id: int, stage: str, dry_run: bool) -> bool:
@@ -225,26 +240,22 @@ def ensure_detection_annotations(
             break
         page += 1
 
-    missing: List[int] = []
-    for det_id in detection_ids:
-        if det_id in annotated_dets:
-            continue
-        missing.append(det_id)
-        if dry_run:
-            logging.info("[DRY-RUN] Would create detection annotation for detection_id=%s", det_id)
-            continue
+    missing = [det_id for det_id in detection_ids if det_id not in annotated_dets]
+    if not missing or dry_run:
+        if dry_run and missing:
+            logging.info("[DRY-RUN] Would create %d detection annotations", len(missing))
+        return missing
+
+    def _create_one(det_id: int) -> None:
         try:
             ann_payload = {"annotation": annotation_map[det_id]} if annotation_map and det_id in annotation_map else {"annotation": []}
-            annotation_api.create_detection_annotation(
-                remote_api,
-                token,
-                det_id,
-                ann_payload,
-                default_stage,
-            )
-            logging.info("Created detection annotation placeholder for detection_id=%s", det_id)
+            annotation_api.create_detection_annotation(remote_api, token, det_id, ann_payload, default_stage)
         except Exception as exc:  # noqa: BLE001
             logging.error("Failed to create detection annotation for detection_id=%s: %s", det_id, exc)
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        pool.map(_create_one, missing)
+    logging.info("Created %d detection annotation placeholders", len(missing))
     return missing
 
 
@@ -288,14 +299,19 @@ def delete_detection_annotations_for_sequence(
     if not ann_ids:
         return 0
 
-    for ann_id in ann_ids:
-        if dry_run:
-            logging.info("[DRY-RUN] Would delete detection annotation %s", ann_id)
-        else:
-            try:
-                annotation_api.delete_detection_annotation(remote_api, token, ann_id)
-            except Exception as exc:  # noqa: BLE001
-                logging.error("Failed to delete detection annotation %s: %s", ann_id, exc)
+    if dry_run:
+        logging.info("[DRY-RUN] Would delete %d detection annotations", len(ann_ids))
+        return len(ann_ids)
+
+    def _delete_one(ann_id: int) -> None:
+        try:
+            annotation_api.delete_detection_annotation(remote_api, token, ann_id)
+        except Exception as exc:  # noqa: BLE001
+            logging.error("Failed to delete detection annotation %s: %s", ann_id, exc)
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        pool.map(_delete_one, ann_ids)
+    logging.info("Deleted %d detection annotations", len(ann_ids))
     return len(ann_ids)
 
 
@@ -343,6 +359,78 @@ def load_yolo_annotation(labels_root: Path, alert_id: int, det_id: int) -> Optio
     return items if items else None
 
 
+def process_one_sequence(
+    alert_id: int,
+    info: Dict,
+    seq_lookup: Dict[int, Dict],
+    remote_api: str,
+    token: str,
+    labels_root: Path,
+    dry_run: bool,
+    fp_mode: bool = False,
+) -> str:
+    """Process a single sequence. Returns status string."""
+    seq = seq_lookup.get(alert_id)
+    if not seq:
+        logging.warning("No remote sequence found for alert_api_id=%s", alert_id)
+        return "not_found"
+    seq_id = seq["id"]
+
+    # Remove any existing detection annotations so we can recreate from labels cleanly
+    deleted_count = delete_detection_annotations_for_sequence(remote_api, token, seq_id, dry_run)
+    if dry_run and deleted_count:
+        logging.info("[DRY-RUN] Would delete %s detection annotations for sequence_id=%s", deleted_count, seq_id)
+
+    # Load detections and ensure annotations exist for them
+    detections = list_all_detections(remote_api, token, seq_id)
+    detection_ids = [d["id"] for d in detections]
+    annotation_map: Dict[int, List[Dict]] = {}
+    for det in detections:
+        data = load_yolo_annotation(labels_root, alert_id, det["id"])
+        if data is not None:
+            annotation_map[det["id"]] = data
+    ensure_detection_annotations(
+        remote_api, token, seq_id, detection_ids,
+        default_stage="bbox_annotation", dry_run=dry_run, annotation_map=annotation_map,
+    )
+
+    issue_frames = info["issue_frames"]
+    whole_issue = info["whole_issue"]
+    all_frames = info["all_frames"]
+
+    if not issue_frames and not whole_issue:
+        update_sequence_stage(remote_api, token, seq_id, "annotated", dry_run)
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            # In FP mode, push empty annotations (no bboxes); otherwise push the YOLO labels
+            pool.map(
+                lambda det_id: update_detection_stage(
+                    remote_api, token, det_id, "annotated", dry_run,
+                    [] if fp_mode else annotation_map.get(det_id),
+                ),
+                all_frames,
+            )
+        return "ok"
+
+    update_sequence_stage(remote_api, token, seq_id, "needs_manual", dry_run)
+    status = "whole_issue" if whole_issue else "partial_issue"
+    target_dets: List[int] = list(all_frames) if whole_issue else list(issue_frames)
+
+    # Build list of (det_id, stage, annotation_data) for all detections
+    updates: List[tuple] = [(det_id, "bbox_annotation", annotation_map.get(det_id)) for det_id in target_dets]
+    updated_set = set(target_dets)
+    for det_id, ann_payload in annotation_map.items():
+        if det_id not in updated_set:
+            updates.append((det_id, "annotated", ann_payload))
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        pool.map(
+            lambda args: update_detection_stage(remote_api, token, args[0], args[1], dry_run, args[2]),
+            updates,
+        )
+
+    return status
+
+
 def main() -> None:
     args = parse_args()
     logging.basicConfig(level=args.loglevel.upper(), format="%(levelname)s - %(message)s")
@@ -352,112 +440,43 @@ def main() -> None:
 
     token = annotation_api.get_auth_token(args.remote_api, args.username, args.password)
 
-    processed = 0
-    seq_ok = 0
-    seq_whole_issue = 0
-    seq_partial_issue = 0
-    seq_not_found = 0
+    # Fetch in_review sequences once upfront instead of per-alert_id
+    logging.info("Fetching in_review sequences...")
+    seq_lookup = fetch_all_sequences(args.remote_api, token)
+    logging.info("Loaded %d remote sequences", len(seq_lookup))
 
-    for alert_id, info in reviews.items():
-        if args.max_sequences and processed >= args.max_sequences:
-            break
-        processed += 1
+    items = list(reviews.items())
+    if args.max_sequences:
+        items = items[: args.max_sequences]
 
-        seq = find_remote_sequence(args.remote_api, token, alert_id)
-        if not seq:
-            logging.warning("No remote sequence found for alert_api_id=%s", alert_id)
-            seq_not_found += 1
-            continue
-        seq_id = seq["id"]
+    results: Dict[str, int] = {"ok": 0, "whole_issue": 0, "partial_issue": 0, "not_found": 0, "errors": 0}
 
-        # Remove any existing detection annotations so we can recreate from labels cleanly
-        deleted_count = delete_detection_annotations_for_sequence(
-            args.remote_api, token, seq_id, args.dry_run
-        )
-        if args.dry_run and deleted_count:
-            logging.info("[DRY-RUN] Would delete %s detection annotations for sequence_id=%s", deleted_count, seq_id)
-
-        # Load detections and ensure annotations exist for them
-        detections = list_all_detections(args.remote_api, token, seq_id)
-        detection_ids = [d["id"] for d in detections]
-        annotation_map: Dict[int, List[Dict]] = {}
-        for det in detections:
-            data = load_yolo_annotation(args.labels_root, alert_id, det["id"])
-            if data is not None:
-                annotation_map[det["id"]] = data
-        missing_dets = ensure_detection_annotations(
-            args.remote_api,
-            token,
-            seq_id,
-            detection_ids,
-            default_stage="bbox_annotation",
-            dry_run=args.dry_run,
-            annotation_map=annotation_map,
-        )
-        if args.dry_run and missing_dets:
-            logging.info(
-                "[DRY-RUN] Sequence %s would need %d detection annotations created (ids: %s)",
-                seq_id,
-                len(missing_dets),
-                missing_dets,
-            )
-
-        issue_frames = info["issue_frames"]
-        whole_issue = info["whole_issue"]
-        all_frames = info["all_frames"]
-
-        if not issue_frames and not whole_issue:
-            if update_sequence_stage(args.remote_api, token, seq_id, "annotated", args.dry_run):
-                seq_ok += 1
-            for det_id in all_frames:
-                update_detection_stage(
-                    args.remote_api,
-                    token,
-                    det_id,
-                    "annotated",
-                    args.dry_run,
-                    annotation_map.get(det_id),
-                )
-            continue
-
-        if update_sequence_stage(args.remote_api, token, seq_id, "needs_manual", args.dry_run):
-            if whole_issue:
-                seq_whole_issue += 1
-            else:
-                seq_partial_issue += 1
-        target_dets: List[int] = list(all_frames) if whole_issue else list(issue_frames)
-        for det_id in target_dets:
-            update_detection_stage(
-                args.remote_api,
-                token,
-                det_id,
-                "bbox_annotation",
-                args.dry_run,
-                annotation_map.get(det_id),
-            )
-
-        # For any remaining detections that have label data but were not staged above,
-        # push the annotation payload while keeping them annotated.
-        updated = set(target_dets) if target_dets else set()
-        for det_id, ann_payload in annotation_map.items():
-            if det_id in updated:
-                continue
-            update_detection_stage(
-                args.remote_api,
-                token,
-                det_id,
-                "annotated",
-                args.dry_run,
-                ann_payload,
-            )
+    with ThreadPoolExecutor(max_workers=args.max_workers) as executor:
+        future_map = {
+            executor.submit(
+                process_one_sequence,
+                alert_id, info, seq_lookup,
+                args.remote_api, token, args.labels_root, args.dry_run, args.fp_mode,
+            ): alert_id
+            for alert_id, info in items
+        }
+        for future in as_completed(future_map):
+            alert_id = future_map[future]
+            try:
+                status = future.result()
+                results[status] = results.get(status, 0) + 1
+            except Exception as exc:  # noqa: BLE001
+                results["errors"] += 1
+                logging.error("Unhandled error on alert_api_id=%s: %s", alert_id, exc)
 
     logging.info(
-        "Done. Processed=%s, ok=%s, whole_issue=%s, partial_issue=%s, not_found=%s",
-        processed,
-        seq_ok,
-        seq_whole_issue,
-        seq_partial_issue,
-        seq_not_found,
+        "Done. Processed=%s, ok=%s, whole_issue=%s, partial_issue=%s, not_found=%s, errors=%s",
+        len(items),
+        results["ok"],
+        results["whole_issue"],
+        results["partial_issue"],
+        results["not_found"],
+        results["errors"],
     )
 
 
