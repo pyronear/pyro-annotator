@@ -7,12 +7,17 @@ For each detection, this script:
 - Uses sequence level annotations (sequences_bbox) to create YOLO labels
 - Organizes data as:
     dataset_exported_{timestamp}/
-        <seq_type>/                # smoke type, false positive type or "no_label"
-            <sequence_folder>/     # named after first image basename for this sequence and type
+        <category>/                # wildfire, other_smoke, fp, or no_label
+            <sequence_folder>/     # named {prefix}-{org}_{camera}_{azimuth}_{datetime}
                 images/
-                    pyronear-{organisation_name}-{camera_name}-{azimuth}-{recorded_at}.jpg
+                    {prefix}-{org}_{camera}_{azimuth}_{recorded_at}.jpg
                 labels/
-                    pyronear-{organisation_name}-{camera_name}-{azimuth}-{recorded_at}.txt  # empty if no bbox
+                    {prefix}-{org}_{camera}_{azimuth}_{recorded_at}.txt  # empty if no bbox
+
+Categories:
+    wildfire     - smoke_type == wildfire
+    other_smoke  - smoke_type == industrial or other
+    fp           - all false positive types
 
 YOLO format per line:
     class_id x_center y_center width height
@@ -210,6 +215,22 @@ FALSE_POSITIVE_TYPES: List[str] = [
 ALL_CLASSES: List[str] = SMOKE_TYPES + FALSE_POSITIVE_TYPES
 CLASS_ID: Dict[str, int] = {name: idx for idx, name in enumerate(ALL_CLASSES)}
 
+# Top-level folder categories
+CATEGORY_WILDFIRE = "wildfire"
+CATEGORY_OTHER_SMOKE = "other_smoke"
+CATEGORY_FP = "fp"
+
+
+def seq_type_to_category(seq_type: str) -> str:
+    """Map a detailed seq_type to one of the three top-level categories."""
+    if seq_type == "wildfire":
+        return CATEGORY_WILDFIRE
+    if seq_type in ("industrial", "other"):
+        return CATEGORY_OTHER_SMOKE
+    if seq_type in FALSE_POSITIVE_TYPES:
+        return CATEGORY_FP
+    return CATEGORY_FP
+
 
 def format_recorded_at(raw: Any) -> str:
     """
@@ -247,28 +268,39 @@ def normalize_slug(s: str) -> str:
     return s.strip("-")
 
 
+SOURCE_API_PREFIX: Dict[str, str] = {
+    "pyronear_french": "pyronear",
+    "alert_wildfire": "awf",
+    "api_cenia": "cenia",
+}
+
+
 def build_file_basename(row: Dict[str, Any]) -> str:
     """
     Build base filename:
-        pyronear-{organisation_name}-{camera_name}-{azimuth}-{recorded_at}
-    where recorded_at is formatted as YYYY-MM-DDTHH-MM-SS.
-    If azimuth is missing use 000.
+        {prefix}-{org}_{camera}_{azimuth}_{recorded_at}
+    where prefix is derived from source_api (pyronear, awf, cenia),
+    recorded_at is formatted as YYYY-MM-DDTHH-MM-SS,
+    and azimuth defaults to 0.
     """
-    org_raw = row.get("organisation_name", "unknown_org")
-    cam_raw = row.get("camera_name", "unknown_camera")
+    source_raw = str(row.get("source_api", "unknown"))
+    prefix = SOURCE_API_PREFIX.get(source_raw, normalize_slug(source_raw))
 
+    org_raw = row.get("organisation_name", "unknown")
     org = normalize_slug(str(org_raw))
+
+    cam_raw = row.get("camera_name", "unknown_camera")
     cam = normalize_slug(str(cam_raw))
 
     az = row.get("azimuth", None)
-    az_str = f"{az:03d}" if isinstance(az, int) else "000"
+    az_str = str(az) if isinstance(az, int) else "0"
 
     recorded_at_raw = row.get("recorded_at")
     if recorded_at_raw is None:
         raise ValueError("Missing recorded_at in export row")
     recorded_at_str = format_recorded_at(recorded_at_raw)
 
-    return f"pyronear-{org}-{cam}-{az_str}-{recorded_at_str}"
+    return f"{prefix}-{org}_{cam}_{az_str}_{recorded_at_str}"
 
 
 def recorded_at_sort_key(row: Dict[str, Any]) -> Tuple[int, str]:
@@ -285,13 +317,12 @@ def recorded_at_sort_key(row: Dict[str, Any]) -> Tuple[int, str]:
     return int(seq_id), rec_str
 
 
-def compute_sequence_types(rows: List[Dict[str, Any]]) -> Dict[int, List[str]]:
+def compute_sequence_categories(rows: List[Dict[str, Any]]) -> Dict[int, List[str]]:
     """
-    For each sequence, compute the set of seq_types present in sequences_bbox.
-    seq_type is smoke_type if is_smoke is true,
-    otherwise the first false_positive_type if present.
+    For each sequence, compute the set of top-level categories
+    (wildfire, other_smoke, fp) present in sequences_bbox.
     """
-    seq_types: Dict[int, set] = defaultdict(set)
+    seq_cats: Dict[int, set] = defaultdict(set)
     for row in rows:
         seq_id = row.get("sequence_id")
         if seq_id is None:
@@ -312,19 +343,18 @@ def compute_sequence_types(rows: List[Dict[str, Any]]) -> Dict[int, List[str]]:
 
             if seq_type not in CLASS_ID:
                 seq_type = "other"
-            seq_types[int(seq_id)].add(seq_type)
+            seq_cats[int(seq_id)].add(seq_type_to_category(seq_type))
 
-    return {seq_id: sorted(types) for seq_id, types in seq_types.items()}
+    return {seq_id: sorted(cats) for seq_id, cats in seq_cats.items()}
 
 
 def extract_labels_for_detection(row: Dict[str, Any]) -> Dict[str, List[str]]:
     """
     From one export row, build:
-      { seq_type: [ 'class_id x_center y_center width height', ... ] }
+      { category: [ 'class_id x_center y_center width height', ... ] }
 
-    seq_type is smoke_type if is_smoke is true,
-    otherwise the first false_positive_type if present,
-    otherwise "other".
+    category is one of wildfire, other_smoke, fp.
+    class_id uses the detailed type index from ALL_CLASSES.
 
     Only boxes whose detection_id matches row["detection_id"] are used.
 
@@ -334,7 +364,7 @@ def extract_labels_for_detection(row: Dict[str, Any]) -> Dict[str, List[str]]:
     seq_ann = row.get("sequence_annotation") or {}
     sequences_bbox = seq_ann.get("sequences_bbox") or []
 
-    labels_by_type: Dict[str, List[str]] = {}
+    labels_by_category: Dict[str, List[str]] = {}
 
     for group in sequences_bbox:
         is_smoke = group.get("is_smoke", False)
@@ -352,6 +382,7 @@ def extract_labels_for_detection(row: Dict[str, Any]) -> Dict[str, List[str]]:
             seq_type = "other"
 
         class_id = CLASS_ID[seq_type]
+        category = seq_type_to_category(seq_type)
 
         for bbox in group.get("bboxes", []):
             if bbox.get("detection_id") != detection_id:
@@ -371,9 +402,9 @@ def extract_labels_for_detection(row: Dict[str, Any]) -> Dict[str, List[str]]:
                 f"{class_id} "
                 f"{x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}"
             )
-            labels_by_type.setdefault(seq_type, []).append(line)
+            labels_by_category.setdefault(category, []).append(line)
 
-    return labels_by_type
+    return labels_by_category
 
 
 def fetch_detections(
@@ -580,8 +611,8 @@ def build_dataset(
     # sort rows by (sequence_id, recorded_at)
     rows_sorted = sorted(rows, key=recorded_at_sort_key)
 
-    # compute sequence -> list of seq_types present in annotation
-    seq_types_map = compute_sequence_types(rows_sorted)
+    # compute sequence -> list of categories present in annotation
+    seq_types_map = compute_sequence_categories(rows_sorted)
 
     # Prepare folder name map and tasks
     folder_name_map: Dict[Tuple[str, int], str] = {}
