@@ -30,10 +30,11 @@ from app.db import get_session
 from app.models import Detection
 from app.schemas.annotation_validation import AlgoPredictions
 from app.schemas.detection import (
+    DetectionCreateFromUrl,
     DetectionRead,
     DetectionUrl,
 )
-from app.services.storage import s3_service, upload_file
+from app.services.storage import s3_service, upload_file, upload_file_from_url
 
 router = APIRouter()
 logger = logging.getLogger("uvicorn.error")
@@ -110,6 +111,49 @@ async def create_detection(
     )
 
     # Update detection with the actual bucket key
+    detection.bucket_key = bucket_key
+    detections.session.add(detection)
+    await detections.session.commit()
+    await detections.session.refresh(detection)
+
+    return detection
+
+
+@router.post(
+    "/from-url",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create detection from a source image URL (server-side fetch)",
+)
+async def create_detection_from_url(
+    payload: DetectionCreateFromUrl,
+    detections: DetectionCRUD = Depends(get_detection_crud),
+    current_user: User = Depends(get_current_user),
+) -> DetectionRead:
+    """Create a detection by having the server download the image from a URL.
+
+    This is faster than the multipart upload endpoint for bulk imports
+    because the client does not need to download and re-upload the image.
+    """
+    detection = Detection(
+        sequence_id=payload.sequence_id,
+        alert_api_id=payload.alert_api_id,
+        recorded_at=payload.recorded_at,
+        bucket_key="",
+        algo_predictions=payload.algo_predictions.model_dump(),
+        created_at=datetime.now(UTC),
+    )
+
+    detections.session.add(detection)
+    await detections.session.commit()
+    await detections.session.refresh(detection)
+
+    bucket_key = await upload_file_from_url(
+        source_url=payload.source_url,
+        sequence_id=payload.sequence_id,
+        detection_id=detection.id,
+        recorded_at=payload.recorded_at,
+    )
+
     detection.bucket_key = bucket_key
     detections.session.add(detection)
     await detections.session.commit()

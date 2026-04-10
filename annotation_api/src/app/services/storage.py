@@ -305,6 +305,96 @@ def _generate_detection_bucket_key(
     return f"detections/legacy/{timestamp_str}_{sha_hash}{extension}"
 
 
+async def upload_file_from_url(
+    source_url: str,
+    sequence_id: Optional[int] = None,
+    detection_id: Optional[int] = None,
+    recorded_at: Optional[datetime] = None,
+    download_timeout: int = 30,
+) -> str:
+    """Download image from a URL and upload to S3. Returns the bucket key.
+
+    This avoids the client downloading the image and re-uploading it via
+    multipart form, cutting out one full network round-trip per detection.
+    """
+    import httpx
+
+    try:
+        async with httpx.AsyncClient(timeout=download_timeout) as client:
+            resp = await client.get(source_url)
+            resp.raise_for_status()
+            image_bytes = resp.content
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail=f"Timeout downloading image from source URL: {source_url}",
+        )
+    except httpx.ConnectError:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Could not connect to source URL: {source_url}",
+        )
+    except httpx.HTTPStatusError as exc:
+        code = exc.response.status_code
+        if 400 <= code < 500:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Source URL returned HTTP {code}",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Source URL server error: HTTP {code}",
+        )
+
+    if not image_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Source URL returned empty response",
+        )
+
+    sha_hash = hashlib.sha256(image_bytes).hexdigest()
+    md5_hash = hashlib.md5(image_bytes).hexdigest()  # noqa: S324
+    extension = guess_extension(magic.from_buffer(image_bytes, mime=True)) or ""
+
+    bucket_key = _generate_detection_bucket_key(
+        sequence_id=sequence_id,
+        detection_id=detection_id,
+        recorded_at=recorded_at,
+        sha_hash=sha_hash[:8],
+        extension=extension,
+    )
+
+    bucket_name = s3_service.resolve_bucket_name()
+    bucket = s3_service.get_bucket(bucket_name)
+
+    content_type = magic.from_buffer(image_bytes, mime=True) or "application/octet-stream"
+    if not bucket.upload_file_bytes(image_bytes, bucket_key, content_type):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed upload",
+        )
+    logging.info("File uploaded to bucket %s with key %s.", bucket_name, bucket_key)
+
+    # Data integrity check
+    try:
+        file_meta = bucket.get_file_metadata(bucket_key)
+    except Exception as exc:
+        logging.warning("Could not retrieve file metadata for %s: %s", bucket_key, exc)
+    else:
+        etag = file_meta.get("ETag") or file_meta.get("etag")
+        if etag is not None and md5_hash != etag.replace('"', ""):
+            try:
+                bucket.delete_file(bucket_key)
+            except Exception as exc:
+                logging.warning("Failed to delete corrupted file %s: %s", bucket_key, exc)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Data was corrupted during upload",
+            )
+
+    return bucket_key
+
+
 s3_service = S3Service(
     settings.S3_REGION,
     settings.S3_ENDPOINT_URL,
