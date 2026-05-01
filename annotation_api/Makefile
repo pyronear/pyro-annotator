@@ -29,6 +29,7 @@ help:
 	@echo "Other data commands:"
 	@echo "  export-dataset       - Export images + YOLO labels from remote API"
 	@echo "  import-yolo-sequence - Import one YOLO folder into an API (needs SEQUENCE_DIR=...)"
+	@echo "  import-local-yolo    - Batch-import local YOLO sequences + sequences.csv (needs ROOT_DIR=...)"
 	@echo "  update-stage-remote  - Move annotations between stages on the remote API"
 	@echo "  update-stage-local   - Move annotations between stages on the local API"
 	@echo "  import-platform      - (Admin) Import from platform API into annotation API"
@@ -176,14 +177,14 @@ apply-review:
 FP_DATA_ROOT   ?= outputs/fp_review
 FP_DATASET     ?= fp_check
 
-# Pull seq_annotation_done sequences for FP review.
-# Usage: make pull-fp [MAX_SEQUENCES=20] [SMOKE_TYPE=wildfire]
+# Pull seq_annotation_done sequences for FP review (empty smoke_types = false positives).
+# Usage: make pull-fp [MAX_SEQUENCES=20] [SMOKE_TYPE=empty]
 pull-fp:
 	uv run python -m scripts.data_transfer.ingestion.platform.pull_sequence_annotations \
 		--remote-api $(REMOTE_API) \
 		--max-sequences $(MAX_SEQUENCES) \
 		--output-dir $(FP_DATA_ROOT) \
-		--smoke-type $(SMOKE_TYPE) \
+		--smoke-type empty \
 		--loglevel $(LOGLEVEL)
 
 # Visual check FP sequences in FiftyOne (confirm no fire was missed).
@@ -207,20 +208,22 @@ apply-review-fp:
 # --- Other data commands ---
 
 # Export images + YOLO labels from a remote API.
-# Usage: make export-dataset USERNAME=<u> PASSWORD=<p> [OUTPUT_DIR=outputs/datasets] [LIMIT=1000]
+# Usage: make export-dataset [OUTPUT_DIR=outputs/datasets] [LIMIT=1000] [CATEGORY=fp]
+# Requires MAIN_ANNOTATION_LOGIN / MAIN_ANNOTATION_PASSWORD in the environment.
 export-dataset:
-	@if [ -z "$(USERNAME)" ] || [ -z "$(PASSWORD)" ]; then \
-		echo "ERROR: set USERNAME=<user> PASSWORD=<pass> when invoking make export-dataset"; exit 1; \
+	@if [ -z "$(MAIN_ANNOTATION_LOGIN)" ] || [ -z "$(MAIN_ANNOTATION_PASSWORD)" ]; then \
+		echo "ERROR: set MAIN_ANNOTATION_LOGIN and MAIN_ANNOTATION_PASSWORD in your environment"; exit 1; \
 	fi
 	uv run python -m scripts.data_transfer.ingestion.platform.export_dataset \
 		--api-base $(REMOTE_API)/api/v1 \
-		--username $(USERNAME) \
-		--password $(PASSWORD) \
+		--username $(MAIN_ANNOTATION_LOGIN) \
+		--password $(MAIN_ANNOTATION_PASSWORD) \
 		--verify-ssl \
 		--output-dir $(OUTPUT_DIR) \
 		--limit $(LIMIT) \
 		--timeout $(TIMEOUT) \
-		--loglevel $(LOGLEVEL)
+		--loglevel $(LOGLEVEL) \
+		$(if $(CATEGORY),--category $(CATEGORY),)
 
 # Import one YOLO sequence folder (images + labels) into an API.
 # Usage: make import-yolo-sequence SEQUENCE_DIR=path/to/seq ALERT_API_ID=123456 \
@@ -238,6 +241,30 @@ import-yolo-sequence:
 		$(if $(ALERT_API_ID),--alert-api-id $(ALERT_API_ID),) \
 		--source-api $(SOURCE_API) \
 		--sequence-stage $(SEQUENCE_STAGE) \
+		--loglevel $(LOGLEVEL)
+
+# Batch-import a directory of local YOLO sequence folders paired with a sequences.csv.
+# Usage: make import-local-yolo ROOT_DIR=/path/to/sdis-77-new_model \
+#        [SEQUENCES_SUBDIR=sdis-77] [LABELS_DIR=labels_predictions] \
+#        [API_BASE=http://localhost:5050] [MAX_WORKERS=4] [LIMIT=0] [SKIP=0]
+SEQUENCES_SUBDIR ?= sdis-77
+LABELS_DIR       ?= labels_predictions
+LIMIT_FOLDERS    ?= 0
+SKIP_FOLDERS     ?= 0
+import-local-yolo:
+	@if [ -z "$(ROOT_DIR)" ]; then \
+		echo "ERROR: set ROOT_DIR=path/to/dataset/root"; exit 1; \
+	fi
+	uv run python -m scripts.data_transfer.ingestion.platform.batch_import_local_yolo \
+		--root-dir $(ROOT_DIR) \
+		--sequences-subdir $(SEQUENCES_SUBDIR) \
+		--labels-dir-name $(LABELS_DIR) \
+		--api-base $(API_BASE) \
+		--source-api $(SOURCE_API) \
+		--sequence-stage $(SEQUENCE_STAGE) \
+		--max-workers $(MAX_WORKERS) \
+		--limit $(LIMIT_FOLDERS) \
+		--skip $(SKIP_FOLDERS) \
 		--loglevel $(LOGLEVEL)
 
 # Move annotations between stages on the remote API.
@@ -285,5 +312,6 @@ import-platform:
 	pull-sequences push-annotations \
 	pull-seq-annotations auto-annotate visual-check apply-review \
 	pull-fp visual-check-fp apply-review-fp \
-	export-dataset import-yolo-sequence update-stage-remote update-stage-local \
+	export-dataset import-yolo-sequence import-local-yolo \
+	update-stage-remote update-stage-local \
 	import-platform

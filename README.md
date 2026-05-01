@@ -116,6 +116,30 @@ make apply-review
 - To preview changes without writing to the API, call the underlying script with `--dry-run`.
 - Override `DATASET_NAME` / `DATA_ROOT` if you used non-default values.
 
+#### C. False-Positive (FP) Review
+
+For sequences with no fire (`smoke_types` is empty), confirm they are true false positives and push them as annotated with empty labels.
+
+**Step 1 — `pull-fp`**: pull `seq_annotation_done` FP sequences locally (moves remote stage to `in_review`):
+
+```bash
+make pull-fp MAX_SEQUENCES=20
+```
+
+**Step 2 — `visual-check-fp`**: review in FiftyOne — tag frames with `"issue"` if fire was actually missed:
+
+```bash
+make visual-check-fp
+```
+
+**Step 3 — `apply-review-fp`**: push results back to the remote API:
+
+```bash
+make apply-review-fp
+```
+- Clean sequences (no `"issue"` tags) → moved to `annotated` with empty labels (confirmed FP).
+- Issue sequences → moved to `needs_manual` for reannotation.
+
 ##### Other commands
 
 **Reset stages on the remote API** (e.g., move `in_review` back to `seq_annotation_done` to retry a workflow):
@@ -133,8 +157,9 @@ make update-stage-local FROM_STAGE=seq_annotation_done TO_STAGE=needs_manual MAX
 **Export images + YOLO labels from the remote API** (use smaller pages and a longer timeout for large datasets):
 
 ```bash
-make export-dataset USERNAME=<remote_user> PASSWORD=<remote_pass> OUTPUT_DIR=outputs/datasets LIMIT=1000 TIMEOUT=120
+make export-dataset OUTPUT_DIR=outputs/datasets LIMIT=1000 TIMEOUT=120
 ```
+- Filter by category: `make export-dataset CATEGORY=fp` (also `wildfire`, `other_smoke`). Omit to export all.
 
 **Import a single sequence from an exported YOLO folder** (images + labels) into an API:
 
