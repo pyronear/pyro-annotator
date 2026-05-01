@@ -27,6 +27,9 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import requests
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Globals
 TOKEN: Optional[str] = None
@@ -218,15 +221,11 @@ def build_payload_keep_bboxes_update_labels(
 
     ann_curr = deepcopy(curr_ann.get("annotation", {}))
     curr_groups = (
-        ann_curr.get("sequences_bbox", [])
-        if isinstance(ann_curr, dict)
-        else []
+        ann_curr.get("sequences_bbox", []) if isinstance(ann_curr, dict) else []
     )
     old_ann_raw = old_ann.get("annotation", {})
     old_groups = (
-        old_ann_raw.get("sequences_bbox", [])
-        if isinstance(old_ann_raw, dict)
-        else []
+        old_ann_raw.get("sequences_bbox", []) if isinstance(old_ann_raw, dict) else []
     )
 
     for idx in range(min(len(curr_groups), len(old_groups))):
@@ -376,9 +375,7 @@ def run_import(
     logging.info("Fetched new annotations: %s", len(new_annotations))
 
     new_seq_by_id = {
-        seq.get("id"): seq
-        for seq in new_sequences
-        if seq.get("id") is not None
+        seq.get("id"): seq for seq in new_sequences if seq.get("id") is not None
     }
 
     # Loop and patch
