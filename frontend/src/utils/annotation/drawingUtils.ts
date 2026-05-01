@@ -37,6 +37,12 @@ export interface SmokeTypeColors {
  */
 export type DrawingMode = 'view' | 'draw' | 'select';
 
+const SMOKE_TYPE_BORDER: Record<SmokeType, string> = {
+  wildfire: 'border-red-500',
+  industrial: 'border-purple-500',
+  other: 'border-blue-500',
+};
+
 /**
  * Gets the color scheme for a specific smoke type.
  *
@@ -49,18 +55,9 @@ export type DrawingMode = 'view' | 'draw' | 'select';
  * // Returns: { border: 'border-red-500' }
  * ```
  */
-export const getSmokeTypeColors = (smokeType: SmokeType): SmokeTypeColors => {
-  switch (smokeType) {
-    case 'wildfire':
-      return { border: 'border-red-500' };
-    case 'industrial':
-      return { border: 'border-purple-500' };
-    case 'other':
-      return { border: 'border-blue-500' };
-    default:
-      return { border: 'border-green-500' };
-  }
-};
+export const getSmokeTypeColors = (smokeType: SmokeType): SmokeTypeColors => ({
+  border: SMOKE_TYPE_BORDER[smokeType],
+});
 
 /**
  * Creates a new DrawnRectangle from current drawing state.
