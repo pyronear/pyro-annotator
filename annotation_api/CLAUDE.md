@@ -37,7 +37,7 @@ annotation_api/
 │   │   ├── models.py        # SQLModel database models
 │   │   ├── main.py          # FastAPI application entry point
 │   │   └── db.py            # Database initialization
-│   └── tests/               # Comprehensive test suite (192 tests)
+│   └── tests/               # Test suite
 ├── docs/                    # Complete user documentation
 │   ├── README.md           # Documentation index
 │   ├── api-client-guide.md # User guide with examples
@@ -97,26 +97,11 @@ The API provides enhanced endpoints with pagination, filtering, and ordering:
 
 ### Testing
 
-- `make test` - Run comprehensive test suite with coverage in Docker containers (includes live code mounting)
-- `make test-specific TEST=tests/endpoints/test_auth.py::test_login_valid_credentials` - Run specific test
-- `uv run pytest src/tests/ -s --cov=app` - Run tests locally with coverage (requires local setup)
+- `make test` - Run the test suite with coverage in Docker
+- `make test-specific TEST=tests/endpoints/test_auth.py::test_login_valid_credentials` - Run a specific test
+- `uv run pytest src/tests/ -s --cov=app` - Run tests locally (requires `uv sync --group dev`)
 
-**Note**: The `make test` command uses a specialized Docker setup with:
-- Multi-stage Dockerfile with dedicated test target that includes dev dependencies
-- Live code mounting via volumes (`./src/app:/app/app`, `./src/tests:/app/tests`) 
-- Proper test isolation with database cleanup between tests
-- Fixed HTTPX AsyncClient integration using `ASGITransport` for FastAPI testing
-- Comprehensive test suite with 192+ test cases covering all endpoints, services, and edge cases
-- Authenticated test fixtures for API endpoint testing
-- Clean test output with silenced debug messages and deprecation warnings
-
-**Test Coverage** includes:
-- API endpoint testing with authentication
-- Service layer testing for annotation generation
-- Coordinate validation and error handling
-- IoU clustering and temporal bbox grouping algorithms  
-- Edge cases like invalid predictions, malformed data, and clustering failures
-- Database model validation and JSONB field validation
+`make test` uses `docker-compose-dev.yml` to spin up an ephemeral stack, mounts `./src/app` and `./src/tests` for live code, and tears down volumes when done.
 
 ### Development Server
 - `make start` - Start development environment with Docker Compose
@@ -169,21 +154,7 @@ Key environment variables (see `src/app/core/config.py`):
 6. Access API docs at: http://localhost:5050/docs
 
 ### Authentication Setup
-The API uses JWT authentication. Default credentials:
-- **Username**: `admin`
-- **Password**: `admin12345`
-
-Credentials are loaded from the `.envrc` file. To customize credentials, update your `.envrc` or set environment variables in `docker-compose.yml`:
-```yaml
-environment:
-  - AUTH_USERNAME=your_username
-  - AUTH_PASSWORD=your_password
-  - JWT_SECRET=your_secure_jwt_secret
-```
-
-### Setup Commands
-- `make start` - Start the development environment
-- `make stop` - Stop the environment
+The API uses JWT authentication. Default dev credentials are `admin` / `admin12345`. Override via the `AUTH_USERNAME`, `AUTH_PASSWORD`, `JWT_SECRET` keys in `annotation_api/.env` (copied from `.env.example`).
 
 ## Code Standards
 - Python 3.11+ with type hints
@@ -483,100 +454,6 @@ uv run python -m scripts.data_transfer.ingestion.platform.import \
 - **Annotation generation** - Automatic clustering of AI predictions into sequence annotations
 - **Stage management** - Automatic transitions from platform data to READY_TO_ANNOTATE stage
 - **Parameter tuning** - Configurable confidence thresholds, IoU thresholds, and cluster sizes
-
-## Migration Notes (Poetry → uv)
-
-### What Changed
-- **Package Manager**: Migrated from Poetry to uv for 10-15x faster dependency installation
-- **pyproject.toml**: Converted from Poetry format to standard PEP 621 format
-- **Lock File**: `uv.lock` replaces `poetry.lock` for deterministic builds
-- **Docker**: Multi-stage builds with better layer caching and performance optimizations
-- **Dependencies**: Consolidated dev/quality/test groups into single `dev` group
-
-### Key Benefits
-- **Performance**: Dramatically faster dependency resolution and installation
-- **Standards Compliance**: Uses standard Python packaging specifications (PEP 621)
-- **Docker Optimization**: Multi-stage builds with selective volume mounts for development
-- **Simplified Workflow**: Single dependency group for all development tools
-
-### Docker Development Notes
-- Development mode uses selective volume mounts to preserve virtual environment
-- Production mode runs without volume mounts for optimal performance
-- Both configurations use the same multi-stage Dockerfile with uv
-
-### Dependency Management
-- Production dependencies: `uv sync`
-- Development dependencies: `uv sync --group dev`
-- Add dependencies: `uv add <package>` or `uv add --group dev <package>`
-- Lock file automatically updated when dependencies change
-
-## Recent Enhancements (2024)
-
-### Authentication System Implementation
-- **JWT Authentication**: Complete JWT-based authentication system protecting all API endpoints
-- **Configurable Credentials**: Environment variable-based login credentials (AUTH_USERNAME/AUTH_PASSWORD)
-- **Token Management**: Configurable token expiration and JWT secret management
-- **Login Endpoint**: Dedicated `/api/v1/auth/login` endpoint for token acquisition
-- **Middleware Integration**: FastAPI dependency injection for automatic endpoint protection
-- **Test Authentication**: All 192 tests updated with authenticated client fixtures
-
-### Database & Schema Improvements
-- **Added recorded_at field** to Sequence model as required field for temporal tracking
-- **Enhanced database indexing** for optimal query performance on timestamp and filter fields
-- **Improved unique constraints** to prevent data duplication and maintain integrity
-
-### API Enhancements
-- **Pagination Support**: All list endpoints now return paginated responses with metadata
-- **Advanced Filtering**: Filter sequences by source_api, camera_id, organisation_id, is_wildfire_alertapi
-- **Flexible Ordering**: Order by created_at or recorded_at in ascending/descending order
-- **Enhanced Error Handling**: Detailed validation messages with field-level error reporting
-
-### Test Suite Improvements
-- **Comprehensive Coverage**: 192 test cases covering all endpoints and edge cases including authentication
-- **Authentication Testing**: Authenticated client fixtures and JWT token validation tests
-- **Clean Test Output**: Silenced debug messages and deprecation warnings for cleaner CI
-- **Proper Isolation**: Database cleanup and sequence resets between tests
-- **Pagination Testing**: Updated tests to handle new paginated response format
-- **Modern AsyncClient**: Using ASGITransport for FastAPI testing best practices
-
-### Client Library & Documentation
-- **Rich Exception Hierarchy**: Detailed error types with contextual information
-- **Professional Documentation**: Complete user guides, API reference, and real-world examples
-- **Validation Helpers**: Client-side validation to catch errors before API calls
-- **Integration Patterns**: Examples for web apps, background tasks, and batch processing
-
-## Data Import Scripts
-
-### Platform Data Import
-Single comprehensive script for fetching data from the Pyronear platform API and generating annotations:
-
-```bash
-# Load environment variables from .envrc file (required for platform credentials)
-source .envrc
-
-# End-to-end processing: fetch platform data → generate annotations
-uv run python -m scripts.data_transfer.ingestion.platform.import \
-  --date-from 2025-07-31 --date-end 2025-07-31 --loglevel info
-
-# Process with custom annotation parameters
-uv run python -m scripts.data_transfer.ingestion.platform.import \
-  --date-from 2025-07-31 --confidence-threshold 0.0 --iou-threshold 0.4 --loglevel info
-```
-
-#### Required Environment Variables (in .envrc)
-- `PLATFORM_LOGIN` - Platform API login (e.g., sis-67)
-- `PLATFORM_PASSWORD` - Platform API password  
-- `PLATFORM_ADMIN_LOGIN` - Admin login for organization access
-- `PLATFORM_ADMIN_PASSWORD` - Admin password for organization access
-- `ANNOTATOR_LOGIN` - Annotation API login for script authentication (default: `admin`)
-- `ANNOTATOR_PASSWORD` - Annotation API password for script authentication (default: `admin12345`)
-
-#### Script Features
-- **End-to-end workflow**: Complete pipeline from platform data to annotation-ready sequences
-- **Automatic annotation generation**: Server-side clustering of AI predictions with confidence threshold 0.0 (includes all predictions)
-- **Concurrent processing**: Multi-threading for faster data fetching
-- **Progress tracking**: Rich progress bars for long-running operations
-- **Stage management**: Automatic transitions to READY_TO_ANNOTATE stage
 
 ## Troubleshooting
 
