@@ -84,18 +84,27 @@ def make_request_headers(access_token: str) -> dict[str, str]:
     }
 
 
-def list_cameras(api_endpoint: str, access_token: str) -> list[dict]:
+def list_cameras(
+    api_endpoint: str,
+    access_token: str,
+    include_non_trustable: bool = True,
+) -> list[dict]:
     """
     List all cameras using the platform API.
 
     Args:
         api_endpoint (str): The base URL for the API endpoint.
         access_token (str): The access token for API authentication.
+        include_non_trustable (bool): If True, include cameras flagged as
+            non-trustable (default). The platform's `/cameras/` endpoint
+            otherwise hides them, which would leave detections from those
+            cameras without metadata when sequences are imported.
 
     Returns:
         list[dict]: A list of dictionaries containing camera information.
     """
-    url = f"{api_endpoint}/api/v1/cameras/"
+    flag = "true" if include_non_trustable else "false"
+    url = f"{api_endpoint}/api/v1/cameras/?include_non_trustable={flag}"
     return api_get(route=url, access_token=access_token)
 
 

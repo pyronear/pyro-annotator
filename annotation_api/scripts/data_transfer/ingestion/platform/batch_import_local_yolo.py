@@ -170,7 +170,12 @@ def build_command(
         "--loglevel",
         args.loglevel,
     ]
-    azimuth_raw = row.get("sequence_azimuth") or row.get("detection_azimuth") or ""
+    azimuth_raw = (
+        row.get("camera_azimuth")
+        or row.get("sequence_azimuth")  # legacy CSVs
+        or row.get("detection_azimuth")
+        or ""
+    )
     try:
         cmd.extend(["--azimuth", str(int(float(azimuth_raw)))])
     except ValueError:
