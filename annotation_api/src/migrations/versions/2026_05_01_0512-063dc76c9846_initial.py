@@ -198,3 +198,13 @@ def downgrade() -> None:
     op.drop_index('ix_sequence_camera_id', table_name='sequences')
     op.drop_table('sequences')
     # ### end Alembic commands ###
+
+    # Drop enum types created implicitly by sa.Enum columns above.
+    bind = op.get_bind()
+    for enum_name in (
+        'detectionannotationprocessingstage',
+        'sequenceannotationprocessingstage',
+        'annotationtype',
+        'sourceapi',
+    ):
+        postgresql.ENUM(name=enum_name).drop(bind, checkfirst=True)

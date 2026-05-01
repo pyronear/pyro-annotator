@@ -55,6 +55,7 @@ def do_run_migrations(connection: Connection) -> None:
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
+        compare_type=True,
         render_item=render_item,
     )
 
