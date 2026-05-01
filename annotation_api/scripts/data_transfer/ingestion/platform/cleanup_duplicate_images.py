@@ -26,10 +26,13 @@ from pathlib import Path
 from typing import Optional
 
 import requests
+from dotenv import load_dotenv
 
 from app.clients import annotation_api
 
 from . import shared
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +111,9 @@ def check_duplicate_images(
             hashes.append(image_hash(img_bytes))
             images.append(img_bytes)
         except Exception:
-            logger.warning(f"Failed to download detection {det_id} for sequence {sequence_id}")
+            logger.warning(
+                f"Failed to download detection {det_id} for sequence {sequence_id}"
+            )
             hashes.append(None)
             images.append(None)
 
@@ -194,7 +199,9 @@ def main() -> None:
     def process_one(i: int, ann: dict) -> Optional[dict]:
         seq_id = ann["sequence_id"]
         try:
-            seq_info = annotation_api.get_sequence(args.url_api_annotation, token, seq_id)
+            seq_info = annotation_api.get_sequence(
+                args.url_api_annotation, token, seq_id
+            )
         except Exception:
             seq_info = {"id": seq_id}
 
@@ -211,13 +218,17 @@ def main() -> None:
 
     duplicates: list[dict] = []
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
-        futures = {pool.submit(process_one, i, ann): ann for i, ann in enumerate(annotations)}
+        futures = {
+            pool.submit(process_one, i, ann): ann for i, ann in enumerate(annotations)
+        }
         for future in as_completed(futures):
             result = future.result()
             if result is not None:
                 duplicates.append(result)
 
-    logger.info(f"\nFound {len(duplicates)} sequences with duplicate images out of {len(annotations)}")
+    logger.info(
+        f"\nFound {len(duplicates)} sequences with duplicate images out of {len(annotations)}"
+    )
 
     if args.dry_run or not duplicates:
         for dup in duplicates:
@@ -232,7 +243,9 @@ def main() -> None:
         seq_id = dup["sequence"].get("id", dup["annotation"]["sequence_id"])
         try:
             annotation_api.delete_sequence(args.url_api_annotation, token, seq_id)
-            logger.info(f"Deleted sequence {seq_id} | {format_seq_info(dup['sequence'])}")
+            logger.info(
+                f"Deleted sequence {seq_id} | {format_seq_info(dup['sequence'])}"
+            )
         except Exception:
             logger.exception(f"Failed to delete sequence {seq_id}")
 

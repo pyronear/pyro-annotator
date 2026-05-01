@@ -14,28 +14,58 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
 import requests
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Export sequences and annotations to JSON")
-    parser.add_argument("--api-base", default="http://localhost:5050/api/v1", help="Base URL of the API")
-    parser.add_argument("--username", default="admin", help="API username")
-    parser.add_argument("--password", default="admin12345", help="API password")
-    parser.add_argument("--page-size", type=int, default=50, help="Page size for pagination")
-    parser.add_argument("--timeout", type=int, default=30, help="HTTP request timeout in seconds")
-    parser.add_argument("--output", default="", help="Output JSON path, defaults to outputs/sequences_and_annotations_YYYYMMDD.json")
-    parser.add_argument("--loglevel", default="info", choices=["debug", "info", "warning", "error"])
-    parser.add_argument("--verify-ssl", action="store_true", help="Verify TLS certificates")
+    parser = argparse.ArgumentParser(
+        description="Export sequences and annotations to JSON"
+    )
+    parser.add_argument(
+        "--api-base", default="http://localhost:5050/api/v1", help="Base URL of the API"
+    )
+    parser.add_argument(
+        "--username",
+        default=os.getenv("ANNOTATOR_LOGIN", "admin"),
+        help="API username, defaults to ANNOTATOR_LOGIN or admin",
+    )
+    parser.add_argument(
+        "--password",
+        default=os.getenv("ANNOTATOR_PASSWORD", "admin12345"),
+        help="API password, defaults to ANNOTATOR_PASSWORD or admin12345",
+    )
+    parser.add_argument(
+        "--page-size", type=int, default=50, help="Page size for pagination"
+    )
+    parser.add_argument(
+        "--timeout", type=int, default=30, help="HTTP request timeout in seconds"
+    )
+    parser.add_argument(
+        "--output",
+        default="",
+        help="Output JSON path, defaults to outputs/sequences_and_annotations_YYYYMMDD.json",
+    )
+    parser.add_argument(
+        "--loglevel", default="info", choices=["debug", "info", "warning", "error"]
+    )
+    parser.add_argument(
+        "--verify-ssl", action="store_true", help="Verify TLS certificates"
+    )
     return parser.parse_args()
 
 
 def setup_logging(level: str) -> None:
-    logging.basicConfig(level=getattr(logging, level.upper()), format="[%(levelname)s] %(message)s")
+    logging.basicConfig(
+        level=getattr(logging, level.upper()), format="[%(levelname)s] %(message)s"
+    )
 
 
 def iso_utc_now() -> str:
@@ -49,7 +79,9 @@ def default_output_path() -> Path:
     return p
 
 
-def get_token(api_base: str, username: str, password: str, timeout: int, verify_ssl: bool) -> str:
+def get_token(
+    api_base: str, username: str, password: str, timeout: int, verify_ssl: bool
+) -> str:
     login_url = f"{api_base}/auth/login"
     payload = {"username": username, "password": password}
     resp = requests.post(login_url, json=payload, timeout=timeout, verify=verify_ssl)
@@ -62,12 +94,21 @@ def get_token(api_base: str, username: str, password: str, timeout: int, verify_
     return token
 
 
-def fetch_all_pages(url: str, headers: Dict[str, str], params_common: Dict[str, Any], page_size: int, timeout: int, verify_ssl: bool) -> List[Dict[str, Any]]:
+def fetch_all_pages(
+    url: str,
+    headers: Dict[str, str],
+    params_common: Dict[str, Any],
+    page_size: int,
+    timeout: int,
+    verify_ssl: bool,
+) -> List[Dict[str, Any]]:
     items: List[Dict[str, Any]] = []
     page = 1
     while True:
         params = {**params_common, "page": page, "size": page_size}
-        resp = requests.get(url, headers=headers, params=params, timeout=timeout, verify=verify_ssl)
+        resp = requests.get(
+            url, headers=headers, params=params, timeout=timeout, verify=verify_ssl
+        )
         resp.raise_for_status()
         data = resp.json()
         page_items = data.get("items", [])
@@ -75,14 +116,23 @@ def fetch_all_pages(url: str, headers: Dict[str, str], params_common: Dict[str, 
             break
         items.extend(page_items)
         pages = data.get("pages")
-        logging.debug("Fetched page %s, items %s, total pages %s", page, len(page_items), pages)
+        logging.debug(
+            "Fetched page %s, items %s, total pages %s", page, len(page_items), pages
+        )
         if pages is not None and page >= pages:
             break
         page += 1
     return items
 
 
-def export_all(api_base: str, username: str, password: str, page_size: int, timeout: int, verify_ssl: bool) -> Dict[str, Any]:
+def export_all(
+    api_base: str,
+    username: str,
+    password: str,
+    page_size: int,
+    timeout: int,
+    verify_ssl: bool,
+) -> Dict[str, Any]:
     token = get_token(api_base, username, password, timeout, verify_ssl)
     headers = {"accept": "application/json", "Authorization": f"Bearer {token}"}
 
@@ -99,16 +149,22 @@ def export_all(api_base: str, username: str, password: str, page_size: int, time
     }
 
     logging.info("Fetching annotations")
-    annotations = fetch_all_pages(base_annot, headers, annot_params, page_size, timeout, verify_ssl)
+    annotations = fetch_all_pages(
+        base_annot, headers, annot_params, page_size, timeout, verify_ssl
+    )
     logging.info("Fetching sequences")
-    sequences = fetch_all_pages(base_seq, headers, seq_params, page_size, timeout, verify_ssl)
+    sequences = fetch_all_pages(
+        base_seq, headers, seq_params, page_size, timeout, verify_ssl
+    )
 
     payload = {
         "generated_at": iso_utc_now(),
         "annotations": {"count": len(annotations), "items": annotations},
         "sequences": {"count": len(sequences), "items": sequences},
     }
-    logging.info("Collected %s annotations and %s sequences", len(annotations), len(sequences))
+    logging.info(
+        "Collected %s annotations and %s sequences", len(annotations), len(sequences)
+    )
     return payload
 
 
@@ -128,7 +184,9 @@ def main() -> None:
         verify_ssl=args.verify_ssl,
     )
 
-    out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    out_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     logging.info("Saved export to %s", out_path)
 
 

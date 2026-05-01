@@ -34,13 +34,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--username",
         type=str,
-        default=os.getenv("MAIN_ANNOTATION_LOGIN", os.getenv("ANNOTATOR_LOGIN", "admin")),
+        default=os.getenv(
+            "MAIN_ANNOTATION_LOGIN", os.getenv("ANNOTATOR_LOGIN", "admin")
+        ),
         help="Remote API username",
     )
     parser.add_argument(
         "--password",
         type=str,
-        default=os.getenv("MAIN_ANNOTATION_PASSWORD", os.getenv("ANNOTATOR_PASSWORD", "admin12345")),
+        default=os.getenv(
+            "MAIN_ANNOTATION_PASSWORD", os.getenv("ANNOTATOR_PASSWORD", "admin12345")
+        ),
         help="Remote API password",
     )
     parser.add_argument(
@@ -101,10 +105,39 @@ def write_label(label_path: Path, bbox: List[float], class_name: str) -> None:
     label_path.write_text(f"{cid} " + " ".join(f"{v:.6f}" for v in yolo) + "\n")
 
 
-def fetch_sequences(remote_api: str, token: str, max_sequences: int) -> List[Dict]:
+def _passes_smoke_filter(seq: Dict, smoke_type: Optional[str]) -> bool:
+    """Apply the --smoke-type filter against the sequence's embedded annotation.
+
+    Returns True if the sequence should be kept. Sequences without an embedded
+    annotation are always kept (the worker will fetch one and decide).
+    """
+    if not smoke_type:
+        return True
+    ann = seq.get("annotation")
+    if not ann:
+        return True
+    smoke_types = ann.get("smoke_types") or []
+    if smoke_type == "empty":
+        return not smoke_types
+    if smoke_type == "any":
+        return bool(smoke_types)
+    return smoke_type in smoke_types
+
+
+def fetch_sequences(
+    remote_api: str,
+    token: str,
+    max_sequences: int,
+    smoke_type: Optional[str] = None,
+) -> List[Dict]:
+    """Page through seq_annotation_done sequences, keeping only those that pass
+    the smoke-type filter, until we have ``max_sequences`` accepted (or we
+    exhaust all pages). This matters for FP pulls (smoke_type=empty) where the
+    first page can be entirely smoke sequences.
+    """
     page = 1
     size = 100
-    results: List[Dict] = []
+    accepted: List[Dict] = []
     while True:
         resp = annotation_api.list_sequences(
             remote_api,
@@ -115,13 +148,16 @@ def fetch_sequences(remote_api: str, token: str, max_sequences: int) -> List[Dic
             include_annotation=True,
         )
         items = resp.get("items", [])
-        results.extend(items)
-        if max_sequences and len(results) >= max_sequences:
-            return results[:max_sequences]
+        for item in items:
+            if not _passes_smoke_filter(item, smoke_type):
+                continue
+            accepted.append(item)
+            if max_sequences and len(accepted) >= max_sequences:
+                return accepted
         if page >= resp.get("pages", 1):
             break
         page += 1
-    return results
+    return accepted
 
 
 def get_sequence_annotation(remote_api: str, token: str, seq_id: int) -> Optional[Dict]:
@@ -134,10 +170,17 @@ def get_sequence_annotation(remote_api: str, token: str, seq_id: int) -> Optiona
 
 def main() -> None:
     args = parse_args()
-    logging.basicConfig(level=args.loglevel.upper(), format="%(levelname)s - %(message)s")
+    logging.basicConfig(
+        level=args.loglevel.upper(), format="%(levelname)s - %(message)s"
+    )
 
     token = annotation_api.get_auth_token(args.remote_api, args.username, args.password)
-    sequences = fetch_sequences(args.remote_api, token, args.max_sequences)
+    sequences = fetch_sequences(
+        args.remote_api,
+        token,
+        args.max_sequences,
+        smoke_type=args.smoke_type,
+    )
     logging.info(f"Found {len(sequences)} sequence(s) with stage seq_annotation_done")
     logging.info("Processing with %s worker(s)", args.max_workers)
 
@@ -151,14 +194,24 @@ def main() -> None:
             logging.warning("No annotation for sequence %s, skipping", seq_id)
             return ("no_annotation", seq_id)
 
+        # Re-check against the freshly fetched annotation; the page payload is only a prefilter.
         smoke_types = ann.get("smoke_types", [])
         if args.smoke_type == "empty":
             if smoke_types:
-                logging.info("Skipping sequence %s (smoke_types=%s, expected empty)", seq_id, smoke_types)
+                logging.info(
+                    "Skipping sequence %s (smoke_types=%s, expected empty)",
+                    seq_id,
+                    smoke_types,
+                )
                 return ("filter_skip", seq_id)
         elif args.smoke_type and args.smoke_type != "any":
             if args.smoke_type not in smoke_types:
-                logging.info("Skipping sequence %s (smoke_types=%s not matching %s)", seq_id, smoke_types, args.smoke_type)
+                logging.info(
+                    "Skipping sequence %s (smoke_types=%s not matching %s)",
+                    seq_id,
+                    smoke_types,
+                    args.smoke_type,
+                )
                 return ("filter_skip", seq_id)
         elif args.smoke_type == "any":
             if not smoke_types:
@@ -194,17 +247,25 @@ def main() -> None:
             label_path = lbl_dir / (img_name.replace(".jpg", ".txt"))
 
             try:
-                resp = requests.get(image_url, timeout=30, verify=not args.skip_ssl_verify)
+                resp = requests.get(
+                    image_url, timeout=30, verify=not args.skip_ssl_verify
+                )
                 resp.raise_for_status()
                 img_path.write_bytes(resp.content)
             except Exception as exc:
-                logging.error("Failed to download image for detection %s: %s", det_id, exc)
+                logging.error(
+                    "Failed to download image for detection %s: %s", det_id, exc
+                )
                 continue
 
             # Match by annotation detection_id (primary) then fall back to alert_api_id if present.
             bbox = ann_bboxes.get(det_id) or ann_bboxes.get(det.get("alert_api_id"))
             if bbox:
-                write_label(label_path, bbox.get("xyxyn", []), bbox.get("class_name", "wildfire"))
+                write_label(
+                    label_path,
+                    bbox.get("xyxyn", []),
+                    bbox.get("class_name", "wildfire"),
+                )
             else:
                 label_path.write_text("")
 
@@ -223,7 +284,13 @@ def main() -> None:
 
         return ("ok", seq_id)
 
-    results: Dict[str, int] = {"ok": 0, "filter_skip": 0, "no_annotation": 0, "stage_update_failed": 0, "errors": 0}
+    results: Dict[str, int] = {
+        "ok": 0,
+        "filter_skip": 0,
+        "no_annotation": 0,
+        "stage_update_failed": 0,
+        "errors": 0,
+    }
 
     with ThreadPoolExecutor(max_workers=args.max_workers) as executor:
         future_map = {executor.submit(process_sequence, seq): seq for seq in sequences}

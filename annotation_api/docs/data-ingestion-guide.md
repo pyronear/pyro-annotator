@@ -27,17 +27,8 @@ You need **both regular and admin credentials** for the platform API:
 
 ### Environment Variables
 
-Create a `.env` file in your project root or export these environment variables:
+All credentials live in `annotation_api/.env`. Copy `annotation_api/.env.example` to `annotation_api/.env` and fill in the values:
 
-```bash
-# Platform API Credentials
-export PLATFORM_LOGIN="your_platform_username"
-export PLATFORM_PASSWORD="your_platform_password"
-export PLATFORM_ADMIN_LOGIN="your_admin_username"  
-export PLATFORM_ADMIN_PASSWORD="your_admin_password"
-```
-
-Or in a `.env` file:
 ```env
 PLATFORM_LOGIN=your_platform_username
 PLATFORM_PASSWORD=your_platform_password
@@ -45,19 +36,7 @@ PLATFORM_ADMIN_LOGIN=your_admin_username
 PLATFORM_ADMIN_PASSWORD=your_admin_password
 ```
 
-### Load Environment Variables
-
-If using a `.env` file, load it before running scripts:
-```bash
-# Load environment variables from .env file
-source .env
-
-# Or export individual variables
-export PLATFORM_LOGIN="myusername"
-export PLATFORM_PASSWORD="mypassword"
-export PLATFORM_ADMIN_LOGIN="myadmin"
-export PLATFORM_ADMIN_PASSWORD="myadminpassword"
-```
+Each script in `scripts/data_transfer/ingestion/platform/` loads `.env` at startup via `python-dotenv` (which handles dotenv quoting correctly, including values with `$`). Make does **not** parse `.env`. Shell-level env vars take priority, so `MAIN_ANNOTATION_LOGIN=foo make ...` still overrides the file.
 
 ## Script Usage
 
@@ -251,13 +230,14 @@ Final Statistics:
 
 #### 1. Missing Environment Variables
 **Error**: `Missing platform credentials...`
-**Solution**: Ensure all four environment variables are set:
-```bash
-export PLATFORM_LOGIN="your_username"
-export PLATFORM_PASSWORD="your_password"
-export PLATFORM_ADMIN_LOGIN="your_admin"
-export PLATFORM_ADMIN_PASSWORD="your_admin_password"
+**Solution**: Ensure all four variables are set in `annotation_api/.env`:
+```env
+PLATFORM_LOGIN=your_username
+PLATFORM_PASSWORD=your_password
+PLATFORM_ADMIN_LOGIN=your_admin
+PLATFORM_ADMIN_PASSWORD=your_admin_password
 ```
+(copied from `annotation_api/.env.example`).
 
 #### 2. Authentication Failures
 **Error**: `Failed to fetch access token` or `401 Unauthorized`

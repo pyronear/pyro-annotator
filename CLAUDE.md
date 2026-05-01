@@ -117,11 +117,11 @@ make apply-review-fp
 
 ### Platform Import
 
-```bash
-# Import sequences from platform API (requires credentials)
-export PLATFORM_LOGIN=<user> PLATFORM_PASSWORD=<pass>
-export PLATFORM_ADMIN_LOGIN=<admin> PLATFORM_ADMIN_PASSWORD=<admin_pass>
+Credentials live in `annotation_api/.env` (copy from `.env.example` once). Each data-transfer script loads it at startup via `python-dotenv`; Make does not parse `.env`.
 
+```bash
+# Import sequences from platform API (.env must define PLATFORM_LOGIN, PLATFORM_PASSWORD,
+# PLATFORM_ADMIN_LOGIN, PLATFORM_ADMIN_PASSWORD, MAIN_ANNOTATION_LOGIN, MAIN_ANNOTATION_PASSWORD)
 make import-platform DATE_FROM=2024-01-01 DATE_END=2024-01-02
 ```
 

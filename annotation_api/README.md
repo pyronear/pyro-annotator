@@ -25,29 +25,15 @@ cd annotation_api
 The setup is now automated! Simply run:
 
 ```bash
-# For development (recommended)
 make start
-
-# For production
-make start-prod
-
-# Or run setup separately
-make setup
 ```
 
-The setup automatically:
-- Creates the required `acme.json` file for Let's Encrypt certificates
-- Sets proper file permissions (600)
-- Checks prerequisites (Docker, Docker Compose)
+This builds the images (if needed) and starts the development stack via `docker-compose.yml`.
 
 #### 3 - Stop the services
 
 ```bash
-# Stop development environment
 make stop
-
-# Stop production environment  
-make stop-prod
 ```
 
 #### 4 - Check what you've deployed

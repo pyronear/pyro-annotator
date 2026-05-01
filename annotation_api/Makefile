@@ -1,9 +1,16 @@
+# Note: .env is intentionally NOT included here. Make parses .env as Make
+# syntax, which mangles values containing $, spaces, or quotes (e.g.
+# pa$word becomes paord). Each Python script in scripts/data_transfer/
+# loads .env itself via python-dotenv, which handles dotenv quoting
+# correctly and does not override existing shell variables. So:
+#   - Put credentials in annotation_api/.env (see .env.example).
+#   - Or override via your shell: MAIN_ANNOTATION_LOGIN=... make ...
+
 # Show help with available commands
 help:
 	@echo "Available commands:"
 	@echo "  lint                 - Run format check, linting, and type checking"
 	@echo "  fix                  - Auto-format code and fix linting issues"
-	@echo "  setup                - Setup project (creates acme.json, checks prerequisites)"
 	@echo "  docker-build         - Build Docker image"
 	@echo "  start                - Start development environment"
 	@echo "  stop                 - Stop development environment (preserves volumes)"
@@ -26,7 +33,7 @@ help:
 	@echo "False-positive workflow:"
 	@echo "  pull-fp              - Pull seq_annotation_done sequences for FP review"
 	@echo "  visual-check-fp      - Review FP sequences in FiftyOne (check no fire missed)"
-	@echo "  apply-review-fp      - Push clean FP sequences as 'managed' (no labels)"
+	@echo "  apply-review-fp      - Push clean FP sequences as 'annotated' (no labels)"
 	@echo ""
 	@echo "Other data commands:"
 	@echo "  export-dataset       - Export images + YOLO labels from remote API"
@@ -67,17 +74,12 @@ fix:
 	uv run ruff format .
 	uv run ruff check --fix .
 
-# Setup the project (creates acme.json and checks prerequisites)
-setup:
-	@bash scripts/setup.sh
-
 # Build the docker
 docker-build:
 	docker build -f Dockerfile . -t pyronear/annotation-api:latest
 
-# Run the development environment (with automatic setup)
+# Run the development environment
 start:
-	@bash scripts/setup.sh
 	docker compose -f docker-compose.yml up --build
 
 # Stop the development environment (preserves volumes)
@@ -117,8 +119,9 @@ migrate-up:
 
 # =========================================================================
 # Data workflow targets
-# All targets requiring remote auth expect MAIN_ANNOTATION_LOGIN / MAIN_ANNOTATION_PASSWORD
-# to be set in the environment (e.g. via .envrc or `export`).
+# Targets that hit the remote API expect MAIN_ANNOTATION_LOGIN /
+# MAIN_ANNOTATION_PASSWORD in annotation_api/.env. Each script loads .env
+# itself via python-dotenv (Make does not parse .env, see note at top).
 # =========================================================================
 
 # --- 1A. Sequence annotation workflow ---
@@ -190,7 +193,8 @@ FP_DATA_ROOT   ?= outputs/fp_review
 FP_DATASET     ?= fp_check
 
 # Pull seq_annotation_done sequences for FP review (empty smoke_types = false positives).
-# Usage: make pull-fp [MAX_SEQUENCES=20] [SMOKE_TYPE=empty]
+# Usage: make pull-fp [MAX_SEQUENCES=20]
+# Note: smoke-type is hardcoded to "empty" for FP pulls.
 pull-fp:
 	uv run python -m scripts.data_transfer.ingestion.platform.pull_sequence_annotations \
 		--remote-api $(REMOTE_API) \
@@ -221,15 +225,12 @@ apply-review-fp:
 
 # Export images + YOLO labels from a remote API.
 # Usage: make export-dataset [OUTPUT_DIR=outputs/datasets] [LIMIT=1000] [CATEGORY=fp]
-# Requires MAIN_ANNOTATION_LOGIN / MAIN_ANNOTATION_PASSWORD in the environment.
+# Requires MAIN_ANNOTATION_LOGIN / MAIN_ANNOTATION_PASSWORD in
+# annotation_api/.env (loaded by the script) or in your shell environment.
+# Authentication will fail with a clear HTTP 401 if creds are missing/wrong.
 export-dataset:
-	@if [ -z "$(MAIN_ANNOTATION_LOGIN)" ] || [ -z "$(MAIN_ANNOTATION_PASSWORD)" ]; then \
-		echo "ERROR: set MAIN_ANNOTATION_LOGIN and MAIN_ANNOTATION_PASSWORD in your environment"; exit 1; \
-	fi
 	uv run python -m scripts.data_transfer.ingestion.platform.export_dataset \
 		--api-base $(REMOTE_API)/api/v1 \
-		--username $(MAIN_ANNOTATION_LOGIN) \
-		--password $(MAIN_ANNOTATION_PASSWORD) \
 		--verify-ssl \
 		--output-dir $(OUTPUT_DIR) \
 		--limit $(LIMIT) \
@@ -258,7 +259,7 @@ import-yolo-sequence:
 # Batch-import a directory of local YOLO sequence folders paired with a sequences.csv.
 # Usage: make import-local-yolo ROOT_DIR=/path/to/sdis-77-new_model \
 #        [SEQUENCES_SUBDIR=sdis-77] [LABELS_DIR=labels_predictions] \
-#        [API_BASE=http://localhost:5050] [MAX_WORKERS=4] [LIMIT=0] [SKIP=0]
+#        [API_BASE=http://localhost:5050] [MAX_WORKERS=4] [LIMIT_FOLDERS=0] [SKIP_FOLDERS=0]
 SEQUENCES_SUBDIR ?= sdis-77
 LABELS_DIR       ?= labels_predictions
 LIMIT_FOLDERS    ?= 0
@@ -320,7 +321,7 @@ import-platform:
 		--max-workers $(MAX_WORKERS) \
 		--loglevel $(LOGLEVEL)
 
-.PHONY: help lint fix setup docker-build start stop clean test test-specific \
+.PHONY: help lint fix docker-build start stop clean test test-specific \
 	migrate migrate-up \
 	pull-sequences push-annotations \
 	pull-seq-annotations auto-annotate visual-check apply-review \
