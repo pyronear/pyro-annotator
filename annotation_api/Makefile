@@ -17,6 +17,8 @@ help:
 	@echo "  clean                - Remove containers and volumes (fresh start)"
 	@echo "  test                 - Run comprehensive test suite with coverage"
 	@echo "  test-specific        - Run specific test (TEST=test_file.py::test_method)"
+	@echo "  migrate              - Autogenerate alembic revision (m=\"description\")"
+	@echo "  migrate-up           - Apply pending alembic revisions"
 	@echo ""
 	@echo "Sequence annotation workflow (A):"
 	@echo "  pull-sequences       - Duplicate N sequences from remote API to local API"
@@ -104,6 +106,16 @@ test-specific:
 	TEST_EXIT_CODE=$$?; \
 	docker compose -f docker-compose-dev.yml down --volumes; \
 	exit $$TEST_EXIT_CODE
+
+# Generate a new alembic migration from the current models.
+# Requires the dev stack to be running (make start). Usage: make migrate m="add foo column"
+migrate:
+	@if [ -z "$(m)" ]; then echo "Usage: make migrate m=\"short description\""; exit 1; fi
+	docker compose -f docker-compose.yml exec -T backend alembic revision --autogenerate -m "$(m)"
+
+# Apply pending alembic migrations to the running DB.
+migrate-up:
+	docker compose -f docker-compose.yml exec -T backend alembic upgrade head
 
 # =========================================================================
 # Data workflow targets
@@ -310,6 +322,7 @@ import-platform:
 		--loglevel $(LOGLEVEL)
 
 .PHONY: help lint fix docker-build start stop clean test test-specific \
+	migrate migrate-up \
 	pull-sequences push-annotations \
 	pull-seq-annotations auto-annotate visual-check apply-review \
 	pull-fp visual-check-fp apply-review-fp \

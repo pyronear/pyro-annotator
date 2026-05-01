@@ -1,10 +1,14 @@
+import asyncio
 import io
 from datetime import datetime, timedelta, UTC
+from pathlib import Path
 from typing import AsyncGenerator
 
 import pytest
 import pytest_asyncio
 import requests
+from alembic import command
+from alembic.config import Config
 from botocore.exceptions import ClientError
 from httpx import AsyncClient
 from sqlalchemy.orm import sessionmaker
@@ -19,6 +23,24 @@ from app.main import app
 from app.models import Detection, Sequence, User
 from app.schemas.user import UserCreate
 from app.services.storage import s3_service
+
+ALEMBIC_INI = Path(__file__).resolve().parents[1] / "alembic.ini"
+
+
+def _alembic_config() -> Config:
+    cfg = Config(str(ALEMBIC_INI))
+    cfg.set_main_option("script_location", str(ALEMBIC_INI.parent / "migrations"))
+    return cfg
+
+
+async def _run_alembic_upgrade() -> None:
+    """Run ``alembic upgrade head`` from inside a running event loop.
+
+    ``env.py`` calls ``asyncio.run`` which cannot nest, so we offload the
+    command to a worker thread that owns its own event loop.
+    """
+    cfg = _alembic_config()
+    await asyncio.to_thread(command.upgrade, cfg, "head")
 
 dt_format = "%Y-%m-%dT%H:%M:%S.%f"
 now = datetime.now(UTC)
@@ -142,11 +164,15 @@ async def async_client(
 
 @pytest_asyncio.fixture(scope="function")
 async def async_session() -> AsyncSession:
+    # Reset schema using Alembic so tests exercise the same migration path
+    # as production startup. We drop everything first to guarantee a clean
+    # slate (including the alembic_version table) and then upgrade to head.
     async with engine.begin() as conn:
-        # Drop all tables first to ensure clean schema
         await conn.run_sync(SQLModel.metadata.drop_all)
-        # Then recreate with current schema including all fields
-        await conn.run_sync(SQLModel.metadata.create_all)
+        await conn.exec_driver_sql("DROP TABLE IF EXISTS alembic_version")
+    await engine.dispose()
+
+    await _run_alembic_upgrade()
 
     async_session_maker = sessionmaker(
         engine, class_=AsyncSession, expire_on_commit=False

@@ -1,20 +1,19 @@
-# Copyright (C) 2024, Pyronear.
+# Copyright (C) 2024-2026, Pyronear.
 
 # This program is licensed under the Apache License 2.0.
 # See LICENSE or go to <https://www.apache.org/licenses/LICENSE-2.0> for full license details.
 
-import asyncio
 import logging
 
 from sqlalchemy.ext.asyncio.engine import AsyncEngine
 from sqlalchemy.orm import sessionmaker
-from sqlmodel import SQLModel, create_engine
+from sqlmodel import create_engine
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.config import settings
 from app.models import *  # noqa
 
-__all__ = ["get_session", "init_db"]
+__all__ = ["get_session"]
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -52,16 +51,3 @@ async def get_session() -> AsyncSession:  # type: ignore[misc]
     )
     async with async_session() as session:
         yield session
-
-
-async def init_db() -> None:
-    async with engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.create_all)
-
-
-async def main() -> None:
-    await init_db()
-
-
-if __name__ == "__main__":
-    asyncio.run(main())

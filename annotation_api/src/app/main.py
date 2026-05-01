@@ -22,7 +22,7 @@ from sqlalchemy import exc
 from app.api.api_v1.router import api_router
 from app.core.config import settings
 from app.crud import UserCRUD
-from app.db import get_session, init_db
+from app.db import get_session
 from app.schemas.base import Status
 from app.schemas.user import UserCreate
 
@@ -31,11 +31,11 @@ logger = logging.getLogger("uvicorn.error")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan manager for startup and shutdown events."""
-    # Startup
-    logger.info("Initializing database...")
-    await init_db()
+    """Application lifespan manager for startup and shutdown events.
 
+    Database schema is managed by Alembic (see ``src/migrations``); migrations
+    are applied by the container entrypoint before uvicorn starts.
+    """
     # Create admin user from environment variables if not exists
     async for session in get_session():
         user_crud = UserCRUD(session)

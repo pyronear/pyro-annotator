@@ -33,6 +33,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 # Copy project files
 COPY src/alembic.ini /app/alembic.ini
+COPY src/migrations /app/migrations
 COPY src/app /app/app
 
 # Install project
