@@ -45,10 +45,9 @@ annotation_api/
 │   └── examples.md         # Real-world implementation patterns
 ├── Dockerfile               # Container configuration
 ├── scripts/                 # Utility and data transfer scripts
-│   ├── data_transfer/       # Data ingestion scripts
-│   │   └── ingestion/
-│   │       └── platform/    # Platform API data fetching
-│   └── setup.sh            # Project setup automation
+│   └── data_transfer/       # Data ingestion scripts
+│       └── ingestion/
+│           └── platform/    # Platform API data fetching
 ├── pyproject.toml          # uv dependencies and tool config
 ├── uv.lock                 # Locked dependencies for reproducible builds
 ├── docker-compose-dev.yml  # Development environment
@@ -123,10 +122,7 @@ The API provides enhanced endpoints with pagination, filtering, and ordering:
 - `make start` - Start development environment with Docker Compose
 - `make stop` - Stop development environment (preserves data volumes)
 - `make clean` - Remove containers and volumes (fresh start, deletes all data)
-- `make start-prod` - Start production environment
-- `make stop-prod` - Stop production environment
 - `make docker-build` - Build Docker image
-- `make setup` - Run setup tasks (creates acme.json, checks prerequisites)
 
 ### Database
 - Database migrations handled via Alembic
@@ -167,11 +163,10 @@ Key environment variables (see `src/app/core/config.py`):
 ## Development Setup
 1. Clone repository
 2. Install uv: `curl -LsSf https://astral.sh/uv/install.sh | sh`
-3. Copy `.env.template` to `.env` and configure (if needed)
-4. **Automated setup**: Run `make start` - this automatically creates `acme.json` and checks prerequisites
-5. Install dependencies (for local dev): `uv sync --group dev`
-6. Run: `make start` (Docker - recommended) or `uv run uvicorn app.main:app --reload --app-dir src` (local)
-7. Access API docs at: http://localhost:5050/docs
+3. Copy `.env.example` to `.env` and configure
+4. Install dependencies (for local dev): `uv sync --group dev`
+5. Run: `make start` (Docker - recommended) or `uv run uvicorn app.main:app --reload --app-dir src` (local)
+6. Access API docs at: http://localhost:5050/docs
 
 ### Authentication Setup
 The API uses JWT authentication. Default credentials:
@@ -187,10 +182,8 @@ environment:
 ```
 
 ### Setup Commands
-- `make setup` - Run setup tasks only (creates acme.json, checks prerequisites)
-- `make start` - Development environment with automatic setup
-- `make start-prod` - Production environment with automatic setup
-- `make stop` / `make stop-prod` - Stop respective environments
+- `make start` - Start the development environment
+- `make stop` - Stop the environment
 
 ## Code Standards
 - Python 3.11+ with type hints

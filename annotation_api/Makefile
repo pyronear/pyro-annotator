@@ -10,7 +10,6 @@ help:
 	@echo "Available commands:"
 	@echo "  lint                 - Run format check, linting, and type checking"
 	@echo "  fix                  - Auto-format code and fix linting issues"
-	@echo "  setup                - Setup project (creates acme.json, checks prerequisites)"
 	@echo "  docker-build         - Build Docker image"
 	@echo "  start                - Start development environment"
 	@echo "  stop                 - Stop development environment (preserves volumes)"
@@ -31,7 +30,7 @@ help:
 	@echo "False-positive workflow:"
 	@echo "  pull-fp              - Pull seq_annotation_done sequences for FP review"
 	@echo "  visual-check-fp      - Review FP sequences in FiftyOne (check no fire missed)"
-	@echo "  apply-review-fp      - Push clean FP sequences as 'managed' (no labels)"
+	@echo "  apply-review-fp      - Push clean FP sequences as 'annotated' (no labels)"
 	@echo ""
 	@echo "Other data commands:"
 	@echo "  export-dataset       - Export images + YOLO labels from remote API"
@@ -72,17 +71,12 @@ fix:
 	uv run ruff format .
 	uv run ruff check --fix .
 
-# Setup the project (creates acme.json and checks prerequisites)
-setup:
-	@bash scripts/setup.sh
-
 # Build the docker
 docker-build:
 	docker build -f Dockerfile . -t pyronear/annotation-api:latest
 
-# Run the development environment (with automatic setup)
+# Run the development environment
 start:
-	@bash scripts/setup.sh
 	docker compose -f docker-compose.yml up --build
 
 # Stop the development environment (preserves volumes)
@@ -185,7 +179,8 @@ FP_DATA_ROOT   ?= outputs/fp_review
 FP_DATASET     ?= fp_check
 
 # Pull seq_annotation_done sequences for FP review (empty smoke_types = false positives).
-# Usage: make pull-fp [MAX_SEQUENCES=20] [SMOKE_TYPE=empty]
+# Usage: make pull-fp [MAX_SEQUENCES=20]
+# Note: smoke-type is hardcoded to "empty" for FP pulls.
 pull-fp:
 	uv run python -m scripts.data_transfer.ingestion.platform.pull_sequence_annotations \
 		--remote-api $(REMOTE_API) \
@@ -253,7 +248,7 @@ import-yolo-sequence:
 # Batch-import a directory of local YOLO sequence folders paired with a sequences.csv.
 # Usage: make import-local-yolo ROOT_DIR=/path/to/sdis-77-new_model \
 #        [SEQUENCES_SUBDIR=sdis-77] [LABELS_DIR=labels_predictions] \
-#        [API_BASE=http://localhost:5050] [MAX_WORKERS=4] [LIMIT=0] [SKIP=0]
+#        [API_BASE=http://localhost:5050] [MAX_WORKERS=4] [LIMIT_FOLDERS=0] [SKIP_FOLDERS=0]
 SEQUENCES_SUBDIR ?= sdis-77
 LABELS_DIR       ?= labels_predictions
 LIMIT_FOLDERS    ?= 0
@@ -315,7 +310,7 @@ import-platform:
 		--max-workers $(MAX_WORKERS) \
 		--loglevel $(LOGLEVEL)
 
-.PHONY: help lint fix setup docker-build start stop clean test test-specific \
+.PHONY: help lint fix docker-build start stop clean test test-specific \
 	pull-sequences push-annotations \
 	pull-seq-annotations auto-annotate visual-check apply-review \
 	pull-fp visual-check-fp apply-review-fp \
