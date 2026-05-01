@@ -101,10 +101,37 @@ def write_label(label_path: Path, bbox: List[float], class_name: str) -> None:
     label_path.write_text(f"{cid} " + " ".join(f"{v:.6f}" for v in yolo) + "\n")
 
 
-def fetch_sequences(remote_api: str, token: str, max_sequences: int) -> List[Dict]:
+def _passes_smoke_filter(seq: Dict, smoke_type: Optional[str]) -> bool:
+    """Apply the --smoke-type filter against the sequence's embedded annotation.
+
+    Returns True if the sequence should be kept. Sequences without an embedded
+    annotation are always kept (the worker will fetch one and decide).
+    """
+    if not smoke_type:
+        return True
+    ann = seq.get("annotation") or {}
+    smoke_types = ann.get("smoke_types") or []
+    if smoke_type == "empty":
+        return not smoke_types
+    if smoke_type == "any":
+        return bool(smoke_types)
+    return smoke_type in smoke_types
+
+
+def fetch_sequences(
+    remote_api: str,
+    token: str,
+    max_sequences: int,
+    smoke_type: Optional[str] = None,
+) -> List[Dict]:
+    """Page through seq_annotation_done sequences, keeping only those that pass
+    the smoke-type filter, until we have ``max_sequences`` accepted (or we
+    exhaust all pages). This matters for FP pulls (smoke_type=empty) where the
+    first page can be entirely smoke sequences.
+    """
     page = 1
     size = 100
-    results: List[Dict] = []
+    accepted: List[Dict] = []
     while True:
         resp = annotation_api.list_sequences(
             remote_api,
@@ -115,13 +142,16 @@ def fetch_sequences(remote_api: str, token: str, max_sequences: int) -> List[Dic
             include_annotation=True,
         )
         items = resp.get("items", [])
-        results.extend(items)
-        if max_sequences and len(results) >= max_sequences:
-            return results[:max_sequences]
+        for item in items:
+            if not _passes_smoke_filter(item, smoke_type):
+                continue
+            accepted.append(item)
+            if max_sequences and len(accepted) >= max_sequences:
+                return accepted
         if page >= resp.get("pages", 1):
             break
         page += 1
-    return results
+    return accepted
 
 
 def get_sequence_annotation(remote_api: str, token: str, seq_id: int) -> Optional[Dict]:
@@ -137,7 +167,12 @@ def main() -> None:
     logging.basicConfig(level=args.loglevel.upper(), format="%(levelname)s - %(message)s")
 
     token = annotation_api.get_auth_token(args.remote_api, args.username, args.password)
-    sequences = fetch_sequences(args.remote_api, token, args.max_sequences)
+    sequences = fetch_sequences(
+        args.remote_api,
+        token,
+        args.max_sequences,
+        smoke_type=args.smoke_type,
+    )
     logging.info(f"Found {len(sequences)} sequence(s) with stage seq_annotation_done")
     logging.info("Processing with %s worker(s)", args.max_workers)
 

@@ -70,13 +70,14 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--username",
-        default=os.getenv("ANNOTATOR_LOGIN", "admin"),
-        help="API username, defaults to ANNOTATOR_LOGIN env var or 'admin'",
+        default=os.getenv("MAIN_ANNOTATION_LOGIN") or os.getenv("ANNOTATOR_LOGIN", "admin"),
+        help="API username, defaults to MAIN_ANNOTATION_LOGIN / ANNOTATOR_LOGIN env vars",
     )
     parser.add_argument(
         "--password",
-        default=os.getenv("ANNOTATOR_PASSWORD", "admin12345"),
-        help="API password, defaults to ANNOTATOR_PASSWORD env var or 'admin12345'",
+        default=os.getenv("MAIN_ANNOTATION_PASSWORD")
+        or os.getenv("ANNOTATOR_PASSWORD", "admin12345"),
+        help="API password, defaults to MAIN_ANNOTATION_PASSWORD / ANNOTATOR_PASSWORD env vars",
     )
     parser.add_argument(
         "--timeout",
@@ -323,30 +324,34 @@ def recorded_at_sort_key(row: Dict[str, Any]) -> Tuple[int, str]:
     return int(seq_id), rec_str
 
 
-def sequence_category_from_row(row: Dict[str, Any]) -> Optional[str]:
+def sequence_category_from_row(row: Dict[str, Any]) -> str:
     """Derive a single category from the sequence-level annotation fields.
+
+    The export endpoint already filters to processing_stage=annotated, so
+    rows reaching this function come from annotated sequences. Sequences
+    with empty smoke_types and empty false_positive_types therefore
+    represent confirmed false positives from the FP review workflow
+    (a deliberate "no smoke, no FP type" annotation), not unannotated
+    sequences.
 
     Priority:
       1. "wildfire" in sequence_smoke_types → wildfire
       2. any other smoke type present       → other_smoke
-      3. has false positive types           → fp
-      4. None (skipped sequence, no annotation)
+      3. otherwise (includes empty + empty)  → fp
     """
     smoke_types = row.get("sequence_smoke_types") or []
-    fp_types = row.get("sequence_false_positive_types") or []
     if "wildfire" in smoke_types:
         return CATEGORY_WILDFIRE
     if smoke_types:
         return CATEGORY_OTHER_SMOKE
-    if fp_types:
-        return CATEGORY_FP
-    return None
+    return CATEGORY_FP
 
 
 def compute_sequence_categories(rows: List[Dict[str, Any]]) -> Dict[int, str]:
     """Map each sequence_id to a single category (wildfire, other_smoke, fp).
 
-    Sequences with no smoke types and no false positive types are excluded.
+    The export endpoint filters to annotated sequences, so every row gets a
+    category (empty smoke_types + empty false_positive_types → fp).
     """
     seq_cats: Dict[int, str] = {}
     for row in rows:
@@ -355,9 +360,7 @@ def compute_sequence_categories(rows: List[Dict[str, Any]]) -> Dict[int, str]:
             continue
         seq_id_int = int(seq_id)
         if seq_id_int not in seq_cats:
-            cat = sequence_category_from_row(row)
-            if cat is not None:
-                seq_cats[seq_id_int] = cat
+            seq_cats[seq_id_int] = sequence_category_from_row(row)
     return seq_cats
 
 

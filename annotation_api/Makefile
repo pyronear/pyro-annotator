@@ -211,15 +211,16 @@ apply-review-fp:
 
 # Export images + YOLO labels from a remote API.
 # Usage: make export-dataset [OUTPUT_DIR=outputs/datasets] [LIMIT=1000] [CATEGORY=fp]
-# Requires MAIN_ANNOTATION_LOGIN / MAIN_ANNOTATION_PASSWORD in the environment.
+# Requires MAIN_ANNOTATION_LOGIN / MAIN_ANNOTATION_PASSWORD in the environment
+# (typically via annotation_api/.env). Credentials are passed through the
+# subprocess environment, not interpolated into the recipe — so values
+# containing $, spaces, or quotes are not mangled by Make.
 export-dataset:
-	@if [ -z "$(MAIN_ANNOTATION_LOGIN)" ] || [ -z "$(MAIN_ANNOTATION_PASSWORD)" ]; then \
-		echo "ERROR: set MAIN_ANNOTATION_LOGIN and MAIN_ANNOTATION_PASSWORD in your environment"; exit 1; \
+	@if [ -z "$$MAIN_ANNOTATION_LOGIN" ] || [ -z "$$MAIN_ANNOTATION_PASSWORD" ]; then \
+		echo "ERROR: set MAIN_ANNOTATION_LOGIN and MAIN_ANNOTATION_PASSWORD in annotation_api/.env"; exit 1; \
 	fi
 	uv run python -m scripts.data_transfer.ingestion.platform.export_dataset \
 		--api-base $(REMOTE_API)/api/v1 \
-		--username $(MAIN_ANNOTATION_LOGIN) \
-		--password $(MAIN_ANNOTATION_PASSWORD) \
 		--verify-ssl \
 		--output-dir $(OUTPUT_DIR) \
 		--limit $(LIMIT) \
