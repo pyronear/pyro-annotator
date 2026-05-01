@@ -34,13 +34,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--username",
         type=str,
-        default=os.getenv("MAIN_ANNOTATION_LOGIN", os.getenv("ANNOTATOR_LOGIN", "admin")),
+        default=os.getenv(
+            "MAIN_ANNOTATION_LOGIN", os.getenv("ANNOTATOR_LOGIN", "admin")
+        ),
         help="Remote API username",
     )
     parser.add_argument(
         "--password",
         type=str,
-        default=os.getenv("MAIN_ANNOTATION_PASSWORD", os.getenv("ANNOTATOR_PASSWORD", "admin12345")),
+        default=os.getenv(
+            "MAIN_ANNOTATION_PASSWORD", os.getenv("ANNOTATOR_PASSWORD", "admin12345")
+        ),
         help="Remote API password",
     )
     parser.add_argument(
@@ -164,7 +168,9 @@ def get_sequence_annotation(remote_api: str, token: str, seq_id: int) -> Optiona
 
 def main() -> None:
     args = parse_args()
-    logging.basicConfig(level=args.loglevel.upper(), format="%(levelname)s - %(message)s")
+    logging.basicConfig(
+        level=args.loglevel.upper(), format="%(levelname)s - %(message)s"
+    )
 
     token = annotation_api.get_auth_token(args.remote_api, args.username, args.password)
     sequences = fetch_sequences(
@@ -189,11 +195,20 @@ def main() -> None:
         smoke_types = ann.get("smoke_types", [])
         if args.smoke_type == "empty":
             if smoke_types:
-                logging.info("Skipping sequence %s (smoke_types=%s, expected empty)", seq_id, smoke_types)
+                logging.info(
+                    "Skipping sequence %s (smoke_types=%s, expected empty)",
+                    seq_id,
+                    smoke_types,
+                )
                 return ("filter_skip", seq_id)
         elif args.smoke_type and args.smoke_type != "any":
             if args.smoke_type not in smoke_types:
-                logging.info("Skipping sequence %s (smoke_types=%s not matching %s)", seq_id, smoke_types, args.smoke_type)
+                logging.info(
+                    "Skipping sequence %s (smoke_types=%s not matching %s)",
+                    seq_id,
+                    smoke_types,
+                    args.smoke_type,
+                )
                 return ("filter_skip", seq_id)
         elif args.smoke_type == "any":
             if not smoke_types:
@@ -229,17 +244,25 @@ def main() -> None:
             label_path = lbl_dir / (img_name.replace(".jpg", ".txt"))
 
             try:
-                resp = requests.get(image_url, timeout=30, verify=not args.skip_ssl_verify)
+                resp = requests.get(
+                    image_url, timeout=30, verify=not args.skip_ssl_verify
+                )
                 resp.raise_for_status()
                 img_path.write_bytes(resp.content)
             except Exception as exc:
-                logging.error("Failed to download image for detection %s: %s", det_id, exc)
+                logging.error(
+                    "Failed to download image for detection %s: %s", det_id, exc
+                )
                 continue
 
             # Match by annotation detection_id (primary) then fall back to alert_api_id if present.
             bbox = ann_bboxes.get(det_id) or ann_bboxes.get(det.get("alert_api_id"))
             if bbox:
-                write_label(label_path, bbox.get("xyxyn", []), bbox.get("class_name", "wildfire"))
+                write_label(
+                    label_path,
+                    bbox.get("xyxyn", []),
+                    bbox.get("class_name", "wildfire"),
+                )
             else:
                 label_path.write_text("")
 
@@ -258,7 +281,13 @@ def main() -> None:
 
         return ("ok", seq_id)
 
-    results: Dict[str, int] = {"ok": 0, "filter_skip": 0, "no_annotation": 0, "stage_update_failed": 0, "errors": 0}
+    results: Dict[str, int] = {
+        "ok": 0,
+        "filter_skip": 0,
+        "no_annotation": 0,
+        "stage_update_failed": 0,
+        "errors": 0,
+    }
 
     with ThreadPoolExecutor(max_workers=args.max_workers) as executor:
         future_map = {executor.submit(process_sequence, seq): seq for seq in sequences}

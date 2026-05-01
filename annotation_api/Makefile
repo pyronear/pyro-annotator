@@ -1,9 +1,10 @@
-# Auto-load .env (if present) and propagate variables to recipe subprocesses.
-# Copy .env.example to .env and fill in your secrets.
-ifneq (,$(wildcard .env))
-    include .env
-    export
-endif
+# Note: .env is intentionally NOT included here. Make parses .env as Make
+# syntax, which mangles values containing $, spaces, or quotes (e.g.
+# pa$word becomes paord). Each Python script in scripts/data_transfer/
+# loads .env itself via python-dotenv, which handles dotenv quoting
+# correctly and does not override existing shell variables. So:
+#   - Put credentials in annotation_api/.env (see .env.example).
+#   - Or override via your shell: MAIN_ANNOTATION_LOGIN=... make ...
 
 # Show help with available commands
 help:
@@ -211,14 +212,10 @@ apply-review-fp:
 
 # Export images + YOLO labels from a remote API.
 # Usage: make export-dataset [OUTPUT_DIR=outputs/datasets] [LIMIT=1000] [CATEGORY=fp]
-# Requires MAIN_ANNOTATION_LOGIN / MAIN_ANNOTATION_PASSWORD in the environment
-# (typically via annotation_api/.env). Credentials are passed through the
-# subprocess environment, not interpolated into the recipe — so values
-# containing $, spaces, or quotes are not mangled by Make.
+# Requires MAIN_ANNOTATION_LOGIN / MAIN_ANNOTATION_PASSWORD in
+# annotation_api/.env (loaded by the script) or in your shell environment.
+# Authentication will fail with a clear HTTP 401 if creds are missing/wrong.
 export-dataset:
-	@if [ -z "$$MAIN_ANNOTATION_LOGIN" ] || [ -z "$$MAIN_ANNOTATION_PASSWORD" ]; then \
-		echo "ERROR: set MAIN_ANNOTATION_LOGIN and MAIN_ANNOTATION_PASSWORD in annotation_api/.env"; exit 1; \
-	fi
 	uv run python -m scripts.data_transfer.ingestion.platform.export_dataset \
 		--api-base $(REMOTE_API)/api/v1 \
 		--verify-ssl \

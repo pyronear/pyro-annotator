@@ -232,7 +232,7 @@ PLATFORM_ADMIN_LOGIN=your_admin_username
 PLATFORM_ADMIN_PASSWORD=your_admin_password
 ```
 
-The Makefile auto-loads this file and exports the variables to all targets — no shell `export` needed.
+Each data-transfer script loads `annotation_api/.env` via `python-dotenv` at startup — no shell `export` or manual `source` needed. (Make does **not** parse `.env`, because Make's variable expansion would mangle values containing `$`, spaces, or quotes.) Shell-level env vars still take priority, so you can override per-invocation with `MAIN_ANNOTATION_LOGIN=foo make ...`.
 
 ### Deployment Environments
 

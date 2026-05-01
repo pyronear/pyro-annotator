@@ -70,7 +70,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--username",
-        default=os.getenv("MAIN_ANNOTATION_LOGIN") or os.getenv("ANNOTATOR_LOGIN", "admin"),
+        default=os.getenv("MAIN_ANNOTATION_LOGIN")
+        or os.getenv("ANNOTATOR_LOGIN", "admin"),
         help="API username, defaults to MAIN_ANNOTATION_LOGIN / ANNOTATOR_LOGIN env vars",
     )
     parser.add_argument(
@@ -417,8 +418,7 @@ def extract_labels_for_detection(row: Dict[str, Any]) -> List[str]:
             height = y2 - y1
 
             labels.append(
-                f"{class_id} "
-                f"{x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}"
+                f"{class_id} " f"{x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}"
             )
 
     return labels
@@ -628,7 +628,12 @@ def build_dataset(
     if category_filter:
         before = len(seq_cat_map)
         seq_cat_map = {k: v for k, v in seq_cat_map.items() if v == category_filter}
-        logging.info("Category filter '%s': kept %s/%s sequences", category_filter, len(seq_cat_map), before)
+        logging.info(
+            "Category filter '%s': kept %s/%s sequences",
+            category_filter,
+            len(seq_cat_map),
+            before,
+        )
 
     # Prepare folder name map and tasks
     folder_name_map: Dict[Tuple[str, int], str] = {}
