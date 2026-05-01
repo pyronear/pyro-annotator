@@ -82,6 +82,9 @@ celerybeat-schedule
 # Environments
 *.env
 .venv
+
+# Per-environment credential files (do not commit)
+creds.json
 env/
 venv/
 ENV/

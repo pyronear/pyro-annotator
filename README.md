@@ -48,11 +48,12 @@ npm run dev  # Vite dev server on port 5173
 
 All workflows below assume the services are running locally (`docker compose up -d`) and that you have credentials to the remote annotation API. Run the `make` targets from the `annotation_api/` directory.
 
-Before anything that talks to the remote API, export your credentials once per shell (or put them in `.envrc`):
+Before anything that talks to the remote API, configure your credentials in `annotation_api/.env` (loaded by the data-transfer scripts at startup via python-dotenv):
 
 ```bash
-export MAIN_ANNOTATION_LOGIN=<remote_user>
-export MAIN_ANNOTATION_PASSWORD=<remote_pass>
+cd annotation_api
+cp .env.example .env
+# then edit .env and set MAIN_ANNOTATION_LOGIN / MAIN_ANNOTATION_PASSWORD
 ```
 
 All make targets accept variable overrides inline, e.g. `make pull-sequences MAX_SEQUENCES=50 CLONE_STAGE=under_annotation`. Common variables: `REMOTE_API`, `LOCAL_API`, `MAX_SEQUENCES`, `CLONE_STAGE`, `DATA_ROOT`, `SMOKE_TYPE`, `DATASET_NAME`, `LOGLEVEL`. See `make help` for the full list.
@@ -116,6 +117,30 @@ make apply-review
 - To preview changes without writing to the API, call the underlying script with `--dry-run`.
 - Override `DATASET_NAME` / `DATA_ROOT` if you used non-default values.
 
+#### C. False-Positive (FP) Review
+
+For sequences with no fire (`smoke_types` is empty), confirm they are true false positives and push them as annotated with empty labels.
+
+**Step 1 — `pull-fp`**: pull `seq_annotation_done` FP sequences locally (moves remote stage to `in_review`):
+
+```bash
+make pull-fp MAX_SEQUENCES=20
+```
+
+**Step 2 — `visual-check-fp`**: review in FiftyOne — tag frames with `"issue"` if fire was actually missed:
+
+```bash
+make visual-check-fp
+```
+
+**Step 3 — `apply-review-fp`**: push results back to the remote API:
+
+```bash
+make apply-review-fp
+```
+- Clean sequences (no `"issue"` tags) → moved to `annotated` with empty labels (confirmed FP).
+- Issue sequences → moved to `needs_manual` for reannotation.
+
 ##### Other commands
 
 **Reset stages on the remote API** (e.g., move `in_review` back to `seq_annotation_done` to retry a workflow):
@@ -133,8 +158,9 @@ make update-stage-local FROM_STAGE=seq_annotation_done TO_STAGE=needs_manual MAX
 **Export images + YOLO labels from the remote API** (use smaller pages and a longer timeout for large datasets):
 
 ```bash
-make export-dataset USERNAME=<remote_user> PASSWORD=<remote_pass> OUTPUT_DIR=outputs/datasets LIMIT=1000 TIMEOUT=120
+make export-dataset OUTPUT_DIR=outputs/datasets LIMIT=1000 TIMEOUT=120
 ```
+- Filter by category: `make export-dataset CATEGORY=fp` (also `wildfire`, `other_smoke`). Omit to export all.
 
 **Import a single sequence from an exported YOLO folder** (images + labels) into an API:
 
@@ -156,14 +182,20 @@ make import-yolo-sequence \
 
 If you manage the main dataset and have platform credentials, import directly from the platform into the target annotation API. This is the only entry point that brings new data into the system.
 
-```bash
-export PLATFORM_LOGIN=<platform_user>
-export PLATFORM_PASSWORD=<platform_pass>
-export PLATFORM_ADMIN_LOGIN=<platform_admin_user>
-export PLATFORM_ADMIN_PASSWORD=<platform_admin_pass>
-export MAIN_ANNOTATION_LOGIN=<target_user>
-export MAIN_ANNOTATION_PASSWORD=<target_pass>
+Set the platform + target credentials in `annotation_api/.env` (see `.env.example`):
 
+```
+PLATFORM_LOGIN=...
+PLATFORM_PASSWORD=...
+PLATFORM_ADMIN_LOGIN=...
+PLATFORM_ADMIN_PASSWORD=...
+MAIN_ANNOTATION_LOGIN=...
+MAIN_ANNOTATION_PASSWORD=...
+```
+
+Then run:
+
+```bash
 cd annotation_api
 make import-platform DATE_FROM=2025-03-04 DATE_END=2025-03-04 MAX_SEQUENCES=10
 ```
@@ -184,18 +216,23 @@ docker compose up -d
 curl http://localhost:5050/docs
 ```
 
-**Required Environment Variables:**
-```bash
+**Required Environment Variables (in `annotation_api/.env`):**
+
+Copy `annotation_api/.env.example` to `annotation_api/.env` and fill in the values you need:
+
+```
 # Remote annotation API credentials (required for all workflows)
-export MAIN_ANNOTATION_LOGIN="remote_user"
-export MAIN_ANNOTATION_PASSWORD="remote_pass"
+MAIN_ANNOTATION_LOGIN=remote_user
+MAIN_ANNOTATION_PASSWORD=remote_pass
 
 # Platform API credentials (admin ingestion only)
-export PLATFORM_LOGIN="your_platform_username"
-export PLATFORM_PASSWORD="your_platform_password"
-export PLATFORM_ADMIN_LOGIN="your_admin_username"
-export PLATFORM_ADMIN_PASSWORD="your_admin_password"
+PLATFORM_LOGIN=your_platform_username
+PLATFORM_PASSWORD=your_platform_password
+PLATFORM_ADMIN_LOGIN=your_admin_username
+PLATFORM_ADMIN_PASSWORD=your_admin_password
 ```
+
+Each data-transfer script loads `annotation_api/.env` via `python-dotenv` at startup — no shell `export` or manual `source` needed. (Make does **not** parse `.env`, because Make's variable expansion would mangle values containing `$`, spaces, or quotes.) Shell-level env vars still take priority, so you can override per-invocation with `MAIN_ANNOTATION_LOGIN=foo make ...`.
 
 ### Deployment Environments
 

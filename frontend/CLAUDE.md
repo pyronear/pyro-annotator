@@ -1,263 +1,147 @@
 # PyroAnnotator Frontend - Claude Context
 
-## Project Overview
-The PyroAnnotator Frontend is a React/TypeScript application for wildfire detection annotation. It provides a modern interface for annotating detection sequences with smoke type classifications and false positive identification using data from the PyroAnnotator annotation API backend.
+React/TypeScript SPA for annotating wildfire detection sequences against the PyroAnnotator API.
 
-## Technology Stack
-- **Framework**: React 18 with TypeScript
-- **Build Tool**: Vite 5.x
-- **Package Manager**: npm
-- **Styling**: Tailwind CSS 3.x
-- **State Management**: Zustand 4.x
-- **API Client**: TanStack Query v5 (React Query) + Axios
-- **Routing**: React Router DOM v6
-- **Forms**: React Hook Form + Zod validation
-- **Icons**: Lucide React
-- **UI Components**: Headless UI + custom components
-- **Container**: Docker with Nginx
-- **Development**: Hot reload with Vite dev server
+## Stack
+- React 18 + TypeScript, Vite 5
+- Tailwind CSS 3, Headless UI, Lucide icons
+- React Router v6
+- TanStack Query v5 (server state) + Zustand 4 (client state)
+- React Hook Form + Zod
+- Axios
+- Vitest + Testing Library
+- ESLint (strict, max-warnings 0) + Prettier
 
 ## Project Structure
+
 ```
-frontend/
-├── src/
-│   ├── components/
-│   │   ├── annotation/          # Annotation-specific components
-│   │   │   ├── AnnotationInterface.tsx
-│   │   │   └── SequenceBboxCard.tsx
-│   │   ├── layout/              # Layout components
-│   │   │   └── AppLayout.tsx
-│   │   ├── media/               # Media display components
-│   │   └── ui/                  # Reusable UI components
-│   │       └── ProgressIndicator.tsx
-│   ├── hooks/                   # Custom React hooks
-│   │   ├── useAnnotationStats.ts
-│   │   └── useDetectionImage.ts
-│   ├── pages/                   # Route components
-│   │   ├── AnnotationInterface.tsx
-│   │   ├── AnnotationPage.tsx   # Main annotation workflow
-│   │   ├── AnnotationsPage.tsx  # List view
-│   │   ├── DashboardPage.tsx
-│   │   ├── HomePage.tsx
-│   │   ├── SequenceDetailPage.tsx
-│   │   └── SequencesPage.tsx
-│   ├── services/
-│   │   └── api.ts               # API client with axios
-│   ├── store/                   # Zustand state management
-│   │   ├── useAnnotationStore.ts
-│   │   └── useSequenceStore.ts
-│   ├── types/
-│   │   └── api.ts               # TypeScript type definitions
-│   ├── utils/
-│   │   └── constants.ts         # App constants and enums
-│   ├── App.tsx
-│   └── main.tsx
-├── public/                      # Static assets
-├── docker-compose.yml          # Container orchestration
-├── Dockerfile                  # Multi-stage build
-├── nginx.conf                  # Nginx configuration
-├── package.json
-├── tsconfig.json
-├── tailwind.config.js
-└── vite.config.ts
+frontend/src/
+├── App.tsx                      # Router shell, auth gate, react-query provider
+├── main.tsx                     # Entry point
+├── components/
+│   ├── annotation/              # Sequence annotation pieces (CroppedImageSequence, FullImageSequence, ImageOverlays, SmokeTypeSelector)
+│   ├── detection-annotation/    # Detection-level bbox annotation (canvas, toolbar, shortcuts modal, image card, progress header, submission)
+│   ├── detection-sequence/      # DetectionGrid, DetectionHeader, ImageModal
+│   ├── filters/                 # FalsePositiveFilter, ModelAccuracyFilter, SmokeTypeFilter, TabbedFilters, shared/
+│   ├── layout/                  # AppLayout
+│   ├── sequence/                # SequencePlayer, SequenceReviewer, MediaControls, PlayerControls, MissedSmokePanel, MissedSmokeInstructionsModal
+│   ├── sequence-annotation/     # AnnotationHeader, MissedSmokePanel, ProcessingStageMessages, SequenceAnnotationGrid
+│   ├── sequences/               # Table headers/rows + pagination for annotate / review queues, plus SequencesLegend
+│   └── ui/                      # ContributorList, NotificationBadge, NotificationSystem, PasswordField, ProgressIndicator
+├── hooks/
+│   ├── annotation/              # useDrawingCanvas, useKeyboardShortcuts
+│   └── *.ts                     # useAnnotationCounts/Stats, useCameras, useOrganizations, useSourceApis, useSequenceDetections, useDetectionImage, useImagePreloader, usePersistedFilters, usePersistedTabState
+├── pages/
+│   ├── LoginPage.tsx
+│   ├── HomePage.tsx
+│   ├── DashboardPage.tsx
+│   ├── SequencesPage.tsx              # Annotate queue
+│   ├── SequencesPageWrapper.tsx       # Stage-parameterized list (annotated, etc.)
+│   ├── AnnotationInterface.tsx        # Annotate one sequence
+│   ├── DetectionAnnotatePage.tsx
+│   ├── DetectionReviewPage.tsx
+│   ├── DetectionSequenceAnnotatePage.tsx
+│   └── UserManagementPage.tsx
+├── services/api.ts              # Axios client (interceptors, JWT)
+├── store/
+│   ├── useAuthStore.ts          # Token + user (persisted)
+│   └── useSequenceStore.ts      # Selection / in-progress sequence state
+├── types/
+│   ├── api.ts                   # Mirrors backend schemas (Sequence, Detection, *Annotation, enums)
+│   └── branded.ts               # Branded ID types
+└── utils/
+    ├── annotation/              # annotationHandlers, canvasUtils, coordinateUtils, drawingUtils, effectUtils, imageUtils, keyboardUtils, navigationUtils, progressUtils, sequenceUtils, validationUtils, workflowUtils, index
+    ├── notification/toastUtils.ts
+    ├── api-functional.ts
+    ├── constants.ts
+    ├── filter-state.ts / filterHelpers.ts
+    ├── modelAccuracy.ts
+    ├── passwordUtils.ts
+    ├── playback-calculations.ts
+    └── processingStage.ts
 ```
+
+## Routes (declared in `App.tsx`)
+
+| Path                                                  | Component                         |
+| ----------------------------------------------------- | --------------------------------- |
+| `/login`                                              | `LoginPage`                       |
+| `/sequences/annotate`                                 | `SequencesPage`                   |
+| `/sequences/review`                                   | `SequencesPageWrapper`            |
+| `/sequences/:id/annotate`                             | `AnnotationInterface`             |
+| `/detections/annotate`                                | `DetectionAnnotatePage`           |
+| `/detections/review`                                  | `DetectionReviewPage`             |
+| `/detections/:sequenceId/annotate/:detectionId?`      | `DetectionSequenceAnnotatePage`   |
+| `/users`                                              | `UserManagementPage`              |
 
 ## Development Commands
+
 ```bash
-# Development server
-npm run dev                 # Start Vite dev server on port 5173
+npm run dev               # Vite dev server, port 3000
+npm run build             # tsc + vite build
+npm run preview           # serve dist/
 
-# Build & Quality
-npm run build              # TypeScript compile + Vite build
-npm run preview            # Preview production build
-npm run lint               # ESLint check (strict: fails on warnings)
-npm run lint:ci            # ESLint check (CI-friendly: allows warnings)
-npm run lint:fix           # ESLint auto-fix
-npm run format             # Prettier formatting
-npm run format:check       # Check formatting
-npm run type-check         # TypeScript type checking
-npm run quality            # Run all quality checks (strict)
-npm run quality:ci         # Run all quality checks (CI-friendly)
-npm run quality:fix        # Fix all quality issues
+npm run lint              # ESLint, --max-warnings 0
+npm run lint:ci           # ESLint, --max-warnings 100 (CI lenient)
+npm run lint:fix
+npm run format            # Prettier write
+npm run format:check
+npm run type-check        # tsc --noEmit
+npm run quality           # type-check + lint + format:check
+npm run quality:fix       # type-check + lint:fix + format
 
-# Docker
-docker compose up          # Start production container on port 3000
-docker compose up -d       # Detached mode
-docker compose down        # Stop and remove containers
-docker compose build      # Rebuild image
-docker compose build --no-cache  # Force rebuild
+npm test                  # Vitest run
+npm run test:watch
+npm run test:coverage
+```
+
+Docker:
+
+```bash
+docker compose up         # builds and serves at http://localhost:3000
+docker compose build --no-cache
 ```
 
 ## API Integration
-The frontend integrates with the PyroAnnotator annotation API backend:
 
-### Type Definitions (`src/types/api.ts`)
-Based on backend SQLModel schemas with comprehensive typing:
-- `Sequence` - Detection sequence metadata
-- `SequenceAnnotation` - Human annotations for sequences  
-- `Detection` - Individual detection data
-- `DetectionAnnotation` - Human annotations for detections
-- `SmokeType` - 'wildfire' | 'industrial' | 'other' (from backend enum)
-- `FalsePositiveType` - Extensive enum matching backend (antenna, building, cliff, etc.)
-- `PaginatedResponse<T>` - Paginated API responses
+- Client: `src/services/api.ts` (Axios). Base URL: `VITE_API_BASE_URL` (default `http://localhost:5050`). Request interceptor injects the JWT from `useAuthStore`.
+- Types: `src/types/api.ts` mirrors backend schemas. Backend enums (`SmokeType`, `FalsePositiveType`) are the source of truth — no hardcoded label strings in components.
+- Error type: `ApiError` for typed catch.
 
-### API Client (`src/services/api.ts`)
-Axios-based client with:
-- **Base Configuration**: Configurable base URL via `VITE_API_BASE_URL`
-- **Request/Response Interceptors**: Logging and error handling
-- **Comprehensive Methods**:
-  - Sequences: CRUD operations with filtering/pagination
-  - Detections: CRUD with image upload support
-  - Sequence Annotations: CRUD with complex filtering
-  - Detection Annotations: CRUD operations
-- **Error Handling**: Typed `ApiError` responses
+Endpoints used: `/api/v1/sequences`, `/api/v1/detections`, `/api/v1/annotations/sequences`, `/api/v1/annotations/detections`, `/api/v1/auth/login`.
 
-### State Management
-**Zustand Stores**:
-- `useAnnotationStore`: Current annotation work, progress tracking
-- `useSequenceStore`: Sequence data, filtering, pagination
+## State Management
 
-**TanStack Query Integration**:
-- Caching with query keys from constants
-- Optimistic updates for mutations
-- Background refetching and error retry
+- **`useAuthStore`** — JWT token, current user. Persisted to localStorage.
+- **`useSequenceStore`** — selection / in-progress sequence state during an annotation session.
+- **TanStack Query** — all server reads. Query keys live alongside the hooks that own them. Use `invalidateQueries` after mutations rather than manual cache writes.
+- **Local component state** — for transient UI only.
 
-## Key Features & Components
+## Conventions
 
-### Annotation Workflow
-- **SequenceBboxCard**: Individual bbox annotation
-- **AnnotationInterface**: Complete annotation workflow UI
-- **Progress Tracking**: Visual progress indicators and statistics
+- Path alias `@/*` → `./src/*`.
+- TypeScript strict mode; `noUnusedLocals` / `noUnusedParameters` enabled — don't leave unused imports.
+- Annotation logic lives in `src/utils/annotation/` and `src/hooks/annotation/`. Prefer extending those modules over inlining canvas/keyboard/coordinate logic into components.
+- Notifications: use `src/utils/notification/toastUtils.ts` and the `NotificationSystem` UI — don't roll your own.
+- Filter state: persisted via `usePersistedFilters` / `usePersistedTabState`.
 
-### Data Management  
-- **Pagination**: All list views support server-side pagination
-- **Filtering**: Advanced filtering by smoke type, false positive type, processing stage
-- **Search**: Real-time search across sequences and annotations
-- **Caching**: Intelligent caching with TanStack Query
+## Common Issues
 
-### UI/UX
-- **Responsive Design**: Mobile-friendly with Tailwind CSS
-- **Dark Mode Ready**: CSS custom properties for theming
-- **Accessible**: Semantic HTML and ARIA labels
-- **Performance**: Code splitting and lazy loading
+- **TanStack Query v5**: `cacheTime` is `gcTime`; query keys are arrays.
+- **Build fails after API change**: regenerate / update `src/types/api.ts`, then `npm run type-check`.
+- **Auth bounces to `/login`**: check token persistence in `useAuthStore`; clear localStorage to reset.
+- **CORS errors** in dev: backend must allow `http://localhost:3000`.
+- **Cache rebuild**: `rm -rf node_modules dist && npm ci && npm run build`. For Docker: `docker compose build --no-cache`.
 
-## Environment Configuration
-```bash
-# Development (.env.local)
-VITE_API_BASE_URL=http://localhost:5050  # Backend API URL
-VITE_ENVIRONMENT=development
+## Docker
 
-# Production (docker-compose.yml)
-VITE_API_BASE_URL=http://localhost:5050  # Backend API URL
-VITE_ENVIRONMENT=production
-```
+- Multi-stage Dockerfile: Node 18 builder → nginx Alpine runtime.
+- `nginx.conf` handles SPA routing (`try_files`), gzip, cache headers, and a `/health` endpoint.
+- Container port 80, mapped to host 3000 in compose.
 
-## Docker Configuration
+## Environment Variables
 
-### Multi-stage Dockerfile
-- **Builder Stage**: Node 18 Alpine for building
-- **Production Stage**: Nginx Alpine for serving
-- **Build Process**: npm ci → npm run build → copy to nginx
-- **Security**: Non-root user, minimal attack surface
-
-### Nginx Configuration (`nginx.conf`)
-- **SPA Support**: Client-side routing with try_files
-- **Compression**: Gzip for static assets
-- **Caching**: Appropriate cache headers for different file types
-- **Security Headers**: XSS protection, content type sniffing prevention
-- **Health Check**: `/health` endpoint for container orchestration
-
-### Docker Compose
-- **Port Mapping**: Host 3000 → Container 80
-- **Health Checks**: Built-in curl-based health monitoring
-- **Restart Policy**: `unless-stopped` for reliability
-- **Network**: Uses default bridge network (external network removed)
-
-## Common Issues & Solutions
-
-### TypeScript Configuration
-- **Strict Mode**: Full TypeScript strict mode enabled
-- **Path Mapping**: `@/*` aliases to `./src/*`
-- **Unused Variable Detection**: `noUnusedLocals` and `noUnusedParameters` enabled
-
-### React Query v5 Migration
-- **Breaking Change**: `cacheTime` → `gcTime`
-- **Query Keys**: Use array format consistently
-- **Error Handling**: Proper error type definitions
-
-### Build Issues
-```bash
-# Clear caches and rebuild
-rm -rf node_modules dist
-npm ci
-npm run build
-
-# Docker cache issues
-docker compose down
-docker compose build --no-cache
-docker compose up
-```
-
-### Nginx Configuration
-- **gzip_proxied**: Valid values only (removed `must-revalidate`)
-- **try_files**: Essential for SPA routing support
-- **Cache Headers**: Different strategies for HTML vs assets
-
-## Data Flow Architecture
-
-### API Data Sources
-Backend enums are the source of truth:
-- `SmokeType` enum from backend models
-- `FalsePositiveType` enum from backend models
-- No hardcoded label arrays in frontend
-
-### Annotation Workflow
-1. **Sequence Selection**: Browse paginated sequence list
-2. **Annotation Creation**: Auto-create annotation record if none exists
-3. **Bbox Processing**: Iterate through detection bboxes
-4. **Classification**: Select smoke type or false positive types
-5. **Completion**: Mark annotation as complete
-
-### State Synchronization
-- **Optimistic Updates**: Immediate UI updates with server sync
-- **Cache Invalidation**: Strategic cache updates after mutations
-- **Error Recovery**: Rollback on failed mutations
-
-## Migration Notes
-
-### From Old Sequence Labeler
-- **Removed Components**: Old `LabelSelector` component removed
-- **Updated Types**: Use backend enum types instead of hardcoded labels
-- **API Integration**: Full integration with new annotation API
-- **State Management**: Migrated to Zustand from previous state solution
-
-### Recent Fixes (2024)
-- **React Query v5**: Updated for latest API changes
-- **Type Safety**: Comprehensive TypeScript error resolution
-- **Docker Optimization**: Removed external network dependencies
-- **Build Pipeline**: Fixed all compilation errors for production builds
-
-## Performance Considerations
-- **Code Splitting**: Route-based code splitting with React Router
-- **Image Optimization**: Lazy loading for image previews
-- **API Efficiency**: Pagination and filtering to reduce data transfer
-- **Caching Strategy**: Aggressive caching for static data, fresh data for annotations
-
-## Security
-- **Environment Variables**: No secrets in frontend code
-- **Content Security Policy**: Basic CSP headers in nginx
-- **XSS Protection**: Browser security headers enabled
-- **HTTPS Ready**: Production deployment assumes HTTPS termination upstream
-
-## Future Enhancements
-- **Real-time Updates**: WebSocket integration for live annotation status
-- **Batch Operations**: Bulk annotation processing
-- **Export Features**: Annotation data export in various formats
-- **Advanced Filtering**: More sophisticated search and filter options
-- **Mobile App**: React Native version for field annotations
-
-## Troubleshooting
-- **Build Failures**: Check TypeScript configuration and dependency versions
-- **Docker Issues**: Verify nginx config syntax and port mappings
-- **API Connection**: Confirm backend is running and CORS is configured
-- **State Issues**: Clear browser storage and check Zustand devtools
+| Variable             | Default                  | Description           |
+| -------------------- | ------------------------ | --------------------- |
+| `VITE_API_BASE_URL`  | `http://localhost:5050`  | Backend API base URL  |
+| `VITE_ENVIRONMENT`   | `development`            | Label only            |

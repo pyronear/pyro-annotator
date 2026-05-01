@@ -4,6 +4,7 @@ acme.json
 # Environment files (may contain secrets)
 .env
 .env.*
+!.env.example
 
 # Python
 .venv/

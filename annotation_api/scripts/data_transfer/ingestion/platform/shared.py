@@ -14,6 +14,7 @@ from typing import Dict, List, Any
 from urllib.parse import urlparse
 
 import requests
+from dotenv import load_dotenv
 from rich.progress import (
     Progress,
     SpinnerColumn,
@@ -31,6 +32,12 @@ from app.clients.annotation_api import (
     AnnotationAPIError,
     ValidationError,
 )
+
+# Load .env at import time so any script that imports from this module
+# (e.g. via get_annotation_credentials) picks up secrets from
+# annotation_api/.env, even if the script forgets to call load_dotenv()
+# itself.
+load_dotenv()
 
 # Import LogSuppressor from import module
 
@@ -163,7 +170,9 @@ def transform_sequence_data(record: dict, source_api: str = "pyronear_french") -
         "camera_id": record["camera_id"],
         "organisation_name": record["organization_name"],
         "organisation_id": record["organization_id"],
-        "is_wildfire_alertapi": record["sequence_is_wildfire"],  # Platform enum: 'wildfire_smoke', 'other_smoke', 'other'
+        "is_wildfire_alertapi": record[
+            "sequence_is_wildfire"
+        ],  # Platform enum: 'wildfire_smoke', 'other_smoke', 'other'
         "lat": record["camera_lat"],
         "lon": record["camera_lon"],
         "azimuth": record["sequence_azimuth"],
@@ -341,17 +350,21 @@ def _process_single_detection(
             return result
 
         except ValidationError as e:
-            error_msg = f"Detection {record['detection_id']} validation failed: {e.message}"
+            error_msg = (
+                f"Detection {record['detection_id']} validation failed: {e.message}"
+            )
             logging.error(error_msg)
             if e.field_errors:
                 for field_error in e.field_errors:
-                    logging.error(f"  - {field_error['field']}: {field_error['message']}")
+                    logging.error(
+                        f"  - {field_error['field']}: {field_error['message']}"
+                    )
             result["error"] = error_msg
             return result
 
         except AnnotationAPIError as e:
             if e.status_code in (502, 503, 504) and attempt < max_retries:
-                delay = base_delay * (2 ** attempt)
+                delay = base_delay * (2**attempt)
                 logging.warning(
                     f"⚠️ Detection {record['detection_id']} got HTTP {e.status_code} "
                     f"— retrying in {delay:.0f}s (attempt {attempt + 1}/{max_retries})"

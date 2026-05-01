@@ -77,7 +77,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--fp-mode",
         action="store_true",
-        help="False-positive mode: clean sequences get 'managed' stage with empty annotations instead of 'annotated'",
+        help="False-positive mode: clean sequences get 'annotated' stage with empty annotations (no detection labels)",
     )
     parser.add_argument(
         "--dry-run",

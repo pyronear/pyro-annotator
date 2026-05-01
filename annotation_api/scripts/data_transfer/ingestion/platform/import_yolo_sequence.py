@@ -66,7 +66,7 @@ SEQ_STAGE_CHOICES = [
 ]
 ANNOTATION_TYPE_CHOICES = ["wildfire_smoke", "other_smoke", "other", "none"]
 
-RECORDED_AT_RE = re.compile(r"-(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2})$")
+RECORDED_AT_RE = re.compile(r"[-_](\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2})$")
 
 
 @dataclass
@@ -182,6 +182,11 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=1,
         help="Starting alert_api_id for detections (incremented per image).",
+    )
+    parser.add_argument(
+        "--labels-dir-name",
+        default="labels",
+        help="Labels subdirectory name inside the sequence folder (e.g. 'labels' or 'labels_predictions').",
     )
     parser.add_argument(
         "--dry-run",
@@ -422,7 +427,7 @@ def main() -> None:
 
     sequence_dir = Path(args.sequence_dir)
     images_dir = sequence_dir / "images"
-    labels_dir = sequence_dir / "labels"
+    labels_dir = sequence_dir / args.labels_dir_name
     if not images_dir.exists():
         raise FileNotFoundError(f"Missing images folder: {images_dir}")
     if not labels_dir.exists():
