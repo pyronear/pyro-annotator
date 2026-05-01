@@ -1,4 +1,4 @@
-import { ReactNode, useMemo } from 'react';
+import { ReactNode, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '@/services/api';
@@ -27,17 +27,17 @@ import { hasActiveUserFilters } from '@/utils/filterHelpers';
 
 interface SequencesPageProps {
   defaultProcessingStage?: ProcessingStageStatus;
+  isReviewPage?: boolean;
   stageSelector?: ReactNode;
 }
 
 export default function SequencesPage({
   defaultProcessingStage = 'ready_to_annotate',
+  isReviewPage = false,
   stageSelector,
 }: SequencesPageProps = {}) {
   const navigate = useNavigate();
   const { startAnnotationWorkflow } = useSequenceStore();
-
-  const isReviewPage = stageSelector !== undefined;
 
   // Storage key separates review vs annotate filters; review filters are shared across stages.
   const storageKey = isReviewPage ? 'filters-sequences-review' : 'filters-sequences-annotate';
@@ -60,6 +60,15 @@ export default function SequencesPage({
     setSelectedUnsure,
     resetFilters,
   } = usePersistedFilters(storageKey, createDefaultFilterState(defaultProcessingStage));
+
+  // Keep filters.processing_stage in sync with the parent-controlled stage prop
+  // (used by the review page stage selector). Reset to page 1 on stage change.
+  useEffect(() => {
+    if (filters.processing_stage !== defaultProcessingStage) {
+      setFilters({ ...filters, processing_stage: defaultProcessingStage, page: 1 });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultProcessingStage]);
 
   // Fetch cameras, organizations, and source APIs for dropdown options
   const { data: cameras = [], isLoading: camerasLoading } = useCameras();
