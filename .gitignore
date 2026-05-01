@@ -128,3 +128,4 @@ cache-directory
 runs
 .DS_Store
 **annotation_api/outputs
+.claude/

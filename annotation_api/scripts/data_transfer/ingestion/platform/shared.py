@@ -163,6 +163,12 @@ def transform_sequence_data(record: dict, source_api: str = "pyronear_french") -
     Returns:
         Dictionary formatted for annotation API sequence creation
     """
+    raw_azimuth = record.get("camera_azimuth")
+    # Platform stores azimuth as a float in [0, 360); rounding can land on 360
+    # (e.g. 359.6 → 360), which is out of range. Wrap with modulo to keep
+    # the canonical 0–359 convention.
+    azimuth = int(round(float(raw_azimuth))) % 360 if raw_azimuth is not None else None
+
     return {
         "source_api": source_api,
         "alert_api_id": record["sequence_id"],  # Platform sequence ID
@@ -175,7 +181,7 @@ def transform_sequence_data(record: dict, source_api: str = "pyronear_french") -
         ],  # Platform enum: 'wildfire_smoke', 'other_smoke', 'other'
         "lat": record["camera_lat"],
         "lon": record["camera_lon"],
-        "azimuth": record["sequence_azimuth"],
+        "azimuth": azimuth,
         "recorded_at": record["sequence_started_at"],
         "last_seen_at": record["sequence_last_seen_at"],
     }

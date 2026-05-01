@@ -156,37 +156,58 @@ def process_single_sequence_detections(
         ...     detections_order_by="asc"
         ... )
     """
-    try:
-        camera_id = sequence.get("camera_id")
-        camera = indexed_cameras.get(camera_id, {})
-        org_id = camera.get("organization_id")
-        organization = indexed_organizations.get(org_id, {})
+    camera_id = sequence.get("camera_id")
+    camera = indexed_cameras.get(camera_id, {})
+    org_id = camera.get("organization_id")
+    organization = indexed_organizations.get(org_id, {})
 
-        # Fetch detections for this sequence
-        detections = platform_client.list_sequence_detections(
-            api_endpoint=api_endpoint,
-            sequence_id=sequence["id"],
-            access_token=access_token,
-            limit=detections_limit,
-            desc=(detections_order_by == "desc"),
+    # The platform stores one Detection row per bbox even when several boxes
+    # share the same image (each row carries `bbox` + the siblings in
+    # `others_bboxes`). We dedupe by `bucket_key` below to import one record
+    # per image, and `to_record` then re-assembles all boxes for that image
+    # from the retained row's bbox + others_bboxes.
+    #
+    # The platform's /sequences/{id}/detections endpoint doesn't support
+    # offset pagination and caps `limit` at 100. When `detections_limit > 0`
+    # we fetch a small buffer above the requested count so the unique-image
+    # count stays close to what the caller asked for even when a few images
+    # carry multiple bboxes; `<= 0` means "no limit, fetch all the API will
+    # return" (matches the `--max-sequences 0` convention used elsewhere).
+    if detections_limit and detections_limit > 0:
+        fetch_limit = min(detections_limit + 10, 100)
+        unique_cap: Optional[int] = detections_limit
+    else:
+        fetch_limit = 100
+        unique_cap = None
+
+    detections = platform_client.list_sequence_detections(
+        api_endpoint=api_endpoint,
+        sequence_id=sequence["id"],
+        access_token=access_token,
+        limit=fetch_limit,
+        desc=(detections_order_by == "desc"),
+    )
+
+    unique_detections: list[dict] = []
+    seen_bucket_keys: set[str] = set()
+    for detection in detections:
+        if unique_cap is not None and len(unique_detections) >= unique_cap:
+            break
+        bucket_key = detection.get("bucket_key")
+        if bucket_key is None or bucket_key in seen_bucket_keys:
+            continue
+        seen_bucket_keys.add(bucket_key)
+        unique_detections.append(detection)
+
+    return [
+        platform_utils.to_record(
+            detection=detection,
+            camera=camera,
+            organization=organization,
+            sequence=sequence,
         )
-
-        # Build flattened records (one per detection) using the proven platform_utils.to_record function
-        records = []
-        for detection in detections:
-            record = platform_utils.to_record(
-                detection=detection,
-                camera=camera,
-                organization=organization,
-                sequence=sequence,
-            )
-            records.append(record)
-
-        return records
-
-    except Exception as e:
-        logging.error(f"Error processing sequence {sequence.get('id', 'unknown')}: {e}")
-        return []
+        for detection in unique_detections
+    ]
 
 
 def fetch_all_sequences_within(

@@ -551,7 +551,7 @@ def fetch_records_from_annotation_api(
                                 "sequence_started_at": seq.get("recorded_at"),
                                 "sequence_last_seen_at": seq.get("last_seen_at")
                                 or seq.get("recorded_at"),
-                                "sequence_azimuth": seq.get("azimuth"),
+                                "camera_azimuth": seq.get("azimuth"),
                                 "detection_id": det.get("alert_api_id") or det["id"],
                                 "detection_created_at": det.get("created_at")
                                 or det.get("recorded_at"),

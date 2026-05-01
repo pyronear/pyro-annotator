@@ -1,6 +1,8 @@
 """ """
 
+import ast
 from pathlib import Path
+from typing import Optional
 
 import yaml
 
@@ -37,6 +39,31 @@ def index_by(xs: list[dict], key: str) -> dict[str, dict]:
     return {x[key]: x for x in xs}
 
 
+def _parse_bbox_string(s: Optional[str]) -> list:
+    """Parse a platform bbox string into a list of [x1,y1,x2,y2,conf] lists.
+
+    Accepts the canonical wrapped form `"[(x1,y1,x2,y2,conf), ...]"` (what the
+    platform validates against), and is defensive about edge variants such as
+    a flat singular tuple `"(x1,y1,x2,y2,conf)"` that might leak through.
+    """
+    if not s:
+        return []
+    try:
+        parsed = ast.literal_eval(s)
+    except (ValueError, SyntaxError):
+        return []
+    if not isinstance(parsed, (list, tuple)):
+        return []
+    # Flat 5-element box: wrap as a single-box list.
+    if len(parsed) == 5 and all(isinstance(x, (int, float)) for x in parsed):
+        return [list(parsed)]
+    out = []
+    for box in parsed:
+        if isinstance(box, (list, tuple)) and len(box) >= 4:
+            out.append(list(box))
+    return out
+
+
 def to_record(
     detection: dict,
     camera: dict,
@@ -56,28 +83,36 @@ def to_record(
         dict: A structured record containing relevant metadata for the detection.
     """
 
+    bboxes = _parse_bbox_string(detection.get("bbox")) + _parse_bbox_string(
+        detection.get("others_bboxes")
+    )
+
     return {
         # Organization metadata
-        "organization_id": camera["organization_id"],
-        "organization_name": organization["name"],
+        "organization_id": camera.get("organization_id"),
+        "organization_name": organization.get("name"),
         # Camera metadata
         "camera_id": sequence["camera_id"],
-        "camera_name": camera["name"],
-        "camera_lat": camera["lat"],
-        "camera_lon": camera["lon"],
-        "camera_is_trustable": camera["is_trustable"],
-        "camera_angle_of_view": camera["angle_of_view"],
+        "camera_name": camera.get("name"),
+        "camera_lat": camera.get("lat"),
+        "camera_lon": camera.get("lon"),
+        "camera_is_trustable": camera.get("is_trustable"),
+        "camera_angle_of_view": camera.get("angle_of_view"),
         # Sequence metadata
         "sequence_id": sequence["id"],
-        "sequence_is_wildfire": sequence["is_wildfire"],
+        "sequence_is_wildfire": sequence.get("is_wildfire"),
         "sequence_started_at": sequence["started_at"],
         "sequence_last_seen_at": sequence["last_seen_at"],
-        "sequence_azimuth": sequence["azimuth"],
+        # Camera/pose pointing direction. The platform also exposes
+        # `sequence_azimuth` (the inferred smoke cone direction); we
+        # deliberately ignore that one — annotators care about where the
+        # camera was looking, not where the smoke is.
+        "camera_azimuth": sequence.get("camera_azimuth"),
         # Detection metadata
         "detection_id": detection["id"],
         "detection_created_at": detection["created_at"],
-        "detection_azimuth": detection["azimuth"],
-        "detection_url": detection["url"],
-        "detection_bboxes": detection["bboxes"],
+        "detection_azimuth": None,
+        "detection_url": detection.get("url"),
+        "detection_bboxes": bboxes,
         "detection_bucket_key": detection["bucket_key"],
     }
