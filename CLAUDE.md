@@ -117,7 +117,7 @@ make apply-review-fp
 
 ### Platform Import
 
-Credentials live in `annotation_api/.env` (copy from `.env.example` once). The Makefile auto-loads it.
+Credentials live in `annotation_api/.env` (copy from `.env.example` once). Each data-transfer script loads it at startup via `python-dotenv`; Make does not parse `.env`.
 
 ```bash
 # Import sequences from platform API (.env must define PLATFORM_LOGIN, PLATFORM_PASSWORD,

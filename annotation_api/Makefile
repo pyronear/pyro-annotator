@@ -107,8 +107,9 @@ test-specific:
 
 # =========================================================================
 # Data workflow targets
-# All targets requiring remote auth expect MAIN_ANNOTATION_LOGIN / MAIN_ANNOTATION_PASSWORD
-# to be set in the environment — put them in annotation_api/.env (auto-loaded above).
+# Targets that hit the remote API expect MAIN_ANNOTATION_LOGIN /
+# MAIN_ANNOTATION_PASSWORD in annotation_api/.env. Each script loads .env
+# itself via python-dotenv (Make does not parse .env, see note at top).
 # =========================================================================
 
 # --- 1A. Sequence annotation workflow ---

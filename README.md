@@ -48,7 +48,7 @@ npm run dev  # Vite dev server on port 5173
 
 All workflows below assume the services are running locally (`docker compose up -d`) and that you have credentials to the remote annotation API. Run the `make` targets from the `annotation_api/` directory.
 
-Before anything that talks to the remote API, configure your credentials in `annotation_api/.env` (auto-loaded by the Makefile):
+Before anything that talks to the remote API, configure your credentials in `annotation_api/.env` (loaded by the data-transfer scripts at startup via python-dotenv):
 
 ```bash
 cd annotation_api

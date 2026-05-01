@@ -36,7 +36,7 @@ PLATFORM_ADMIN_LOGIN=your_admin_username
 PLATFORM_ADMIN_PASSWORD=your_admin_password
 ```
 
-The `annotation_api/Makefile` auto-loads `.env` and exports the variables to every recipe — no manual `source` or `export` step is needed when running through `make`.
+Each script in `scripts/data_transfer/ingestion/platform/` loads `.env` at startup via `python-dotenv` (which handles dotenv quoting correctly, including values with `$`). Make does **not** parse `.env`. Shell-level env vars take priority, so `MAIN_ANNOTATION_LOGIN=foo make ...` still overrides the file.
 
 ## Script Usage
 
