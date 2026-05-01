@@ -242,7 +242,7 @@ export default function SequencePlayer({
         return (
           <div
             key={`bbox-${currentDetection.id}-${index}`}
-            className="absolute border-2 border-red-500 bg-red-500/20 pointer-events-none"
+            className="absolute border-2 border-red-500 pointer-events-none"
             style={{
               left: `${left}px`,
               top: `${top}px`,

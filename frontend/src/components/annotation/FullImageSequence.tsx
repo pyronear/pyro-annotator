@@ -178,7 +178,7 @@ export default function FullImageSequence({
 
     return (
       <div
-        className="absolute border-2 border-red-500 bg-red-500/20 pointer-events-none"
+        className="absolute border-2 border-red-500 pointer-events-none"
         style={{
           left: `${bboxLeft}px`,
           top: `${bboxTop}px`,
