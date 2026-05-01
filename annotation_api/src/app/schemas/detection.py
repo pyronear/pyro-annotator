@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 from app.schemas.annotation_validation import AlgoPredictions
 
-__all__ = ["DetectionCreate", "DetectionRead", "DetectionUrl", "DetectionWithUrl"]
+__all__ = ["DetectionCreate", "DetectionCreateFromUrl", "DetectionRead", "DetectionUrl", "DetectionWithUrl"]
 
 
 class DetectionCreate(BaseModel):
@@ -19,6 +19,14 @@ class DetectionCreate(BaseModel):
     recorded_at: datetime
     alert_api_id: int
     bucket_key: str
+    algo_predictions: AlgoPredictions
+
+
+class DetectionCreateFromUrl(BaseModel):
+    source_url: str
+    sequence_id: Optional[int]
+    recorded_at: datetime
+    alert_api_id: int
     algo_predictions: AlgoPredictions
 
 

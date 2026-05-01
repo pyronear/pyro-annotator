@@ -69,9 +69,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--smoke-type",
         type=str,
-        choices=["wildfire", "industrial", "other", "any"],
+        choices=["wildfire", "industrial", "other", "any", "empty"],
         default=None,
-        help="Only pull sequences whose annotation smoke_types includes this value (use 'any' to include all smoke types)",
+        help="Only pull sequences whose annotation smoke_types includes this value (use 'any' to include all smoke types, 'empty' to only include sequences with no smoke_types)",
     )
     parser.add_argument(
         "--loglevel",
@@ -152,7 +152,11 @@ def main() -> None:
             return ("no_annotation", seq_id)
 
         smoke_types = ann.get("smoke_types", [])
-        if args.smoke_type and args.smoke_type != "any":
+        if args.smoke_type == "empty":
+            if smoke_types:
+                logging.info("Skipping sequence %s (smoke_types=%s, expected empty)", seq_id, smoke_types)
+                return ("filter_skip", seq_id)
+        elif args.smoke_type and args.smoke_type != "any":
             if args.smoke_type not in smoke_types:
                 logging.info("Skipping sequence %s (smoke_types=%s not matching %s)", seq_id, smoke_types, args.smoke_type)
                 return ("filter_skip", seq_id)

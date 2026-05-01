@@ -411,6 +411,49 @@ def create_detection(
     return _handle_response(response, operation=operation)
 
 
+def create_detection_from_url(
+    base_url: str,
+    auth_token: str,
+    detection_data: Dict,
+    source_url: str,
+) -> Dict:
+    """
+    Create a detection by having the server fetch the image from a URL.
+
+    This is faster for bulk imports because the client does not need to
+    download and re-upload the image bytes.
+
+    Args:
+        base_url: Base URL of the annotation API
+        auth_token: JWT authentication token
+        detection_data: Dictionary with algo_predictions, alert_api_id,
+                        sequence_id, recorded_at
+        source_url: HTTP(S) URL the server will download the image from
+
+    Returns:
+        Dictionary containing the created detection data
+
+    Raises:
+        ValidationError: If detection data is invalid
+        AnnotationAPIError: For other API errors
+    """
+    url = f"{base_url.rstrip('/')}/api/v1/detections/from-url"
+
+    json_payload = {
+        "source_url": source_url,
+        "algo_predictions": detection_data["algo_predictions"],
+        "alert_api_id": detection_data["alert_api_id"],
+        "sequence_id": detection_data["sequence_id"],
+        "recorded_at": detection_data["recorded_at"],
+    }
+
+    operation = f"create detection from URL with alert_api_id={detection_data.get('alert_api_id', 'unknown')}"
+    response = _make_request(
+        "POST", url, auth_token, operation=operation, json=json_payload
+    )
+    return _handle_response(response, operation=operation)
+
+
 def get_detection(base_url: str, auth_token: str, detection_id: int) -> Dict:
     """
     Get a specific detection by ID.

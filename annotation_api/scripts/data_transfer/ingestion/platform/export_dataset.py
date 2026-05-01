@@ -14,10 +14,10 @@ For each detection, this script:
                 labels/
                     {prefix}-{org}_{camera}_{azimuth}_{recorded_at}.txt  # empty if no bbox
 
-Categories:
-    wildfire     - smoke_type == wildfire
-    other_smoke  - smoke_type == industrial or other
-    fp           - all false positive types
+Categories (from sequence_smoke_types):
+    wildfire     - "wildfire" in sequence_smoke_types
+    other_smoke  - any other smoke type in sequence_smoke_types
+    fp           - no smoke types (false positive sequence)
 
 YOLO format per line:
     class_id x_center y_center width height
@@ -41,7 +41,6 @@ import logging
 import os
 import re
 import unicodedata
-from collections import defaultdict
 from datetime import datetime
 from multiprocessing import Pool, cpu_count
 from pathlib import Path
@@ -144,6 +143,13 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=0,
         help="Number of worker processes for downloads, zero uses CPU count",
+    )
+    parser.add_argument(
+        "--category",
+        type=str,
+        choices=["wildfire", "other_smoke", "fp"],
+        default=None,
+        help="Only export sequences of this category (wildfire, other_smoke, fp). Default: all.",
     )
     return parser.parse_args()
 
@@ -317,62 +323,72 @@ def recorded_at_sort_key(row: Dict[str, Any]) -> Tuple[int, str]:
     return int(seq_id), rec_str
 
 
-def compute_sequence_categories(rows: List[Dict[str, Any]]) -> Dict[int, List[str]]:
+def sequence_category_from_row(row: Dict[str, Any]) -> Optional[str]:
+    """Derive a single category from the sequence-level annotation fields.
+
+    Priority:
+      1. "wildfire" in sequence_smoke_types → wildfire
+      2. any other smoke type present       → other_smoke
+      3. has false positive types           → fp
+      4. None (skipped sequence, no annotation)
     """
-    For each sequence, compute the set of top-level categories
-    (wildfire, other_smoke, fp) present in sequences_bbox.
+    smoke_types = row.get("sequence_smoke_types") or []
+    fp_types = row.get("sequence_false_positive_types") or []
+    if "wildfire" in smoke_types:
+        return CATEGORY_WILDFIRE
+    if smoke_types:
+        return CATEGORY_OTHER_SMOKE
+    if fp_types:
+        return CATEGORY_FP
+    return None
+
+
+def compute_sequence_categories(rows: List[Dict[str, Any]]) -> Dict[int, str]:
+    """Map each sequence_id to a single category (wildfire, other_smoke, fp).
+
+    Sequences with no smoke types and no false positive types are excluded.
     """
-    seq_cats: Dict[int, set] = defaultdict(set)
+    seq_cats: Dict[int, str] = {}
     for row in rows:
         seq_id = row.get("sequence_id")
         if seq_id is None:
             continue
-        seq_ann = row.get("sequence_annotation") or {}
-        groups = seq_ann.get("sequences_bbox") or []
-        for group in groups:
-            is_smoke = group.get("is_smoke", False)
-            smoke_type = group.get("smoke_type")
-            fp_types = group.get("false_positive_types") or []
-
-            if is_smoke and smoke_type:
-                seq_type = smoke_type
-            elif fp_types:
-                seq_type = fp_types[0]
-            else:
-                continue
-
-            if seq_type not in CLASS_ID:
-                seq_type = "other"
-            seq_cats[int(seq_id)].add(seq_type_to_category(seq_type))
-
-    return {seq_id: sorted(cats) for seq_id, cats in seq_cats.items()}
+        seq_id_int = int(seq_id)
+        if seq_id_int not in seq_cats:
+            cat = sequence_category_from_row(row)
+            if cat is not None:
+                seq_cats[seq_id_int] = cat
+    return seq_cats
 
 
-def extract_labels_for_detection(row: Dict[str, Any]) -> Dict[str, List[str]]:
+def extract_labels_for_detection(row: Dict[str, Any]) -> List[str]:
     """
-    From one export row, build:
-      { category: [ 'class_id x_center y_center width height', ... ] }
+    From one export row, build a list of YOLO label lines for this detection.
 
-    category is one of wildfire, other_smoke, fp.
     class_id uses the detailed type index from ALL_CLASSES.
-
     Only boxes whose detection_id matches row["detection_id"] are used.
-
     Boxes use normalized xyxyn coordinates [x1, y1, x2, y2].
+
+    When a group has is_smoke=True but no smoke_type, falls back to
+    the sequence-level smoke_types field.
     """
     detection_id = row.get("detection_id")
     seq_ann = row.get("sequence_annotation") or {}
     sequences_bbox = seq_ann.get("sequences_bbox") or []
 
-    labels_by_category: Dict[str, List[str]] = {}
+    # Fallback smoke type from the sequence-level derived field
+    seq_smoke_types = row.get("sequence_smoke_types") or []
+    default_smoke_type = seq_smoke_types[0] if seq_smoke_types else "wildfire"
+
+    labels: List[str] = []
 
     for group in sequences_bbox:
         is_smoke = group.get("is_smoke", False)
         smoke_type = group.get("smoke_type")
         fp_types = group.get("false_positive_types") or []
 
-        if is_smoke and smoke_type:
-            seq_type = smoke_type
+        if is_smoke:
+            seq_type = smoke_type if smoke_type else default_smoke_type
         elif fp_types:
             seq_type = fp_types[0]
         else:
@@ -382,7 +398,6 @@ def extract_labels_for_detection(row: Dict[str, Any]) -> Dict[str, List[str]]:
             seq_type = "other"
 
         class_id = CLASS_ID[seq_type]
-        category = seq_type_to_category(seq_type)
 
         for bbox in group.get("bboxes", []):
             if bbox.get("detection_id") != detection_id:
@@ -398,13 +413,12 @@ def extract_labels_for_detection(row: Dict[str, Any]) -> Dict[str, List[str]]:
             width = x2 - x1
             height = y2 - y1
 
-            line = (
+            labels.append(
                 f"{class_id} "
                 f"{x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}"
             )
-            labels_by_category.setdefault(category, []).append(line)
 
-    return labels_by_category
+    return labels
 
 
 def fetch_detections(
@@ -538,8 +552,8 @@ def _process_task(task: Dict[str, Any]) -> Tuple[int, int]:
     seq_id_int: int = task["seq_id_int"]
     file_base: str = task["file_base"]
     image_url: str = task["image_url"]
-    types_for_seq: List[str] = task["types_for_seq"]
-    labels_by_type: Dict[str, List[str]] = task["labels_by_type"]
+    category: str = task["category"]
+    labels: List[str] = task["labels"]
 
     try:
         session = _get_session()
@@ -550,37 +564,30 @@ def _process_task(task: Dict[str, Any]) -> Tuple[int, int]:
         logging.warning("Failed to download %s: %s", image_url, exc)
         return 0, 0
 
-    img_filename = f"{file_base}.jpg"
-    label_filename = f"{file_base}.txt"
+    seq_folder_name = FOLDER_NAME_MAP.get((category, seq_id_int), file_base)
+
+    base = BASE_DIR / category / seq_folder_name  # type: ignore[operator]
+    img_dir = base / "images"
+    label_dir = base / "labels"
+    img_dir.mkdir(parents=True, exist_ok=True)
+    label_dir.mkdir(parents=True, exist_ok=True)
+
+    img_path = img_dir / f"{file_base}.jpg"
+    label_path = label_dir / f"{file_base}.txt"
 
     images_written = 0
     labels_nonempty = 0
 
-    for seq_type in types_for_seq:
-        lines = labels_by_type.get(seq_type, [])
+    if not img_path.exists():
+        with open(img_path, "wb") as f:
+            f.write(img_bytes)
+        images_written = 1
 
-        key = (seq_type, seq_id_int)
-        seq_folder_name = FOLDER_NAME_MAP.get(key, file_base)
-
-        base = BASE_DIR / seq_type / seq_folder_name  # type: ignore[operator]
-        img_dir = base / "images"
-        label_dir = base / "labels"
-        img_dir.mkdir(parents=True, exist_ok=True)
-        label_dir.mkdir(parents=True, exist_ok=True)
-
-        img_path = img_dir / img_filename
-        label_path = label_dir / label_filename
-
-        if not img_path.exists():
-            with open(img_path, "wb") as f:
-                f.write(img_bytes)
-            images_written += 1
-
-        with open(label_path, "w", encoding="utf-8") as f:
-            if lines:
-                f.write("\n".join(lines) + "\n")
-        if lines:
-            labels_nonempty += 1
+    with open(label_path, "w", encoding="utf-8") as f:
+        if labels:
+            f.write("\n".join(labels) + "\n")
+    if labels:
+        labels_nonempty = 1
 
     return images_written, labels_nonempty
 
@@ -592,6 +599,7 @@ def build_dataset(
     verify_ssl: bool,
     headers: Dict[str, str],
     num_workers: int,
+    category_filter: Optional[str] = None,
 ) -> None:
     """
     Build the dataset folder structure from the exported rows.
@@ -611,8 +619,13 @@ def build_dataset(
     # sort rows by (sequence_id, recorded_at)
     rows_sorted = sorted(rows, key=recorded_at_sort_key)
 
-    # compute sequence -> list of categories present in annotation
-    seq_types_map = compute_sequence_categories(rows_sorted)
+    # compute sequence -> single category
+    seq_cat_map = compute_sequence_categories(rows_sorted)
+
+    if category_filter:
+        before = len(seq_cat_map)
+        seq_cat_map = {k: v for k, v in seq_cat_map.items() if v == category_filter}
+        logging.info("Category filter '%s': kept %s/%s sequences", category_filter, len(seq_cat_map), before)
 
     # Prepare folder name map and tasks
     folder_name_map: Dict[Tuple[str, int], str] = {}
@@ -629,9 +642,9 @@ def build_dataset(
             continue
         seq_id_int = int(seq_id)
 
-        types_for_seq = seq_types_map.get(seq_id_int)
-        if not types_for_seq:
-            types_for_seq = ["no_label"]
+        category = seq_cat_map.get(seq_id_int)
+        if category is None:
+            continue
 
         try:
             file_base = build_file_basename(row)
@@ -643,21 +656,20 @@ def build_dataset(
             )
             continue
 
-        labels_by_type = extract_labels_for_detection(row)
+        labels = extract_labels_for_detection(row)
 
-        # record first file_base per (seq_type, seq_id) for folder naming
-        for seq_type in types_for_seq:
-            key = (seq_type, seq_id_int)
-            if key not in folder_name_map:
-                folder_name_map[key] = file_base
+        # record first file_base per (category, seq_id) for folder naming
+        key = (category, seq_id_int)
+        if key not in folder_name_map:
+            folder_name_map[key] = file_base
 
         tasks.append(
             {
                 "seq_id_int": seq_id_int,
                 "file_base": file_base,
                 "image_url": image_url,
-                "types_for_seq": types_for_seq,
-                "labels_by_type": labels_by_type,
+                "category": category,
+                "labels": labels,
             }
         )
 
@@ -741,6 +753,7 @@ def main() -> None:
         verify_ssl=args.verify_ssl,
         headers=headers,
         num_workers=args.num_workers,
+        category_filter=args.category,
     )
 
 
