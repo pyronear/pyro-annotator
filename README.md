@@ -48,11 +48,12 @@ npm run dev  # Vite dev server on port 5173
 
 All workflows below assume the services are running locally (`docker compose up -d`) and that you have credentials to the remote annotation API. Run the `make` targets from the `annotation_api/` directory.
 
-Before anything that talks to the remote API, export your credentials once per shell (or put them in `.envrc`):
+Before anything that talks to the remote API, configure your credentials in `annotation_api/.env` (auto-loaded by the Makefile):
 
 ```bash
-export MAIN_ANNOTATION_LOGIN=<remote_user>
-export MAIN_ANNOTATION_PASSWORD=<remote_pass>
+cd annotation_api
+cp .env.example .env
+# then edit .env and set MAIN_ANNOTATION_LOGIN / MAIN_ANNOTATION_PASSWORD
 ```
 
 All make targets accept variable overrides inline, e.g. `make pull-sequences MAX_SEQUENCES=50 CLONE_STAGE=under_annotation`. Common variables: `REMOTE_API`, `LOCAL_API`, `MAX_SEQUENCES`, `CLONE_STAGE`, `DATA_ROOT`, `SMOKE_TYPE`, `DATASET_NAME`, `LOGLEVEL`. See `make help` for the full list.
@@ -181,14 +182,20 @@ make import-yolo-sequence \
 
 If you manage the main dataset and have platform credentials, import directly from the platform into the target annotation API. This is the only entry point that brings new data into the system.
 
-```bash
-export PLATFORM_LOGIN=<platform_user>
-export PLATFORM_PASSWORD=<platform_pass>
-export PLATFORM_ADMIN_LOGIN=<platform_admin_user>
-export PLATFORM_ADMIN_PASSWORD=<platform_admin_pass>
-export MAIN_ANNOTATION_LOGIN=<target_user>
-export MAIN_ANNOTATION_PASSWORD=<target_pass>
+Set the platform + target credentials in `annotation_api/.env` (see `.env.example`):
 
+```
+PLATFORM_LOGIN=...
+PLATFORM_PASSWORD=...
+PLATFORM_ADMIN_LOGIN=...
+PLATFORM_ADMIN_PASSWORD=...
+MAIN_ANNOTATION_LOGIN=...
+MAIN_ANNOTATION_PASSWORD=...
+```
+
+Then run:
+
+```bash
 cd annotation_api
 make import-platform DATE_FROM=2025-03-04 DATE_END=2025-03-04 MAX_SEQUENCES=10
 ```
@@ -209,18 +216,23 @@ docker compose up -d
 curl http://localhost:5050/docs
 ```
 
-**Required Environment Variables:**
-```bash
+**Required Environment Variables (in `annotation_api/.env`):**
+
+Copy `annotation_api/.env.example` to `annotation_api/.env` and fill in the values you need:
+
+```
 # Remote annotation API credentials (required for all workflows)
-export MAIN_ANNOTATION_LOGIN="remote_user"
-export MAIN_ANNOTATION_PASSWORD="remote_pass"
+MAIN_ANNOTATION_LOGIN=remote_user
+MAIN_ANNOTATION_PASSWORD=remote_pass
 
 # Platform API credentials (admin ingestion only)
-export PLATFORM_LOGIN="your_platform_username"
-export PLATFORM_PASSWORD="your_platform_password"
-export PLATFORM_ADMIN_LOGIN="your_admin_username"
-export PLATFORM_ADMIN_PASSWORD="your_admin_password"
+PLATFORM_LOGIN=your_platform_username
+PLATFORM_PASSWORD=your_platform_password
+PLATFORM_ADMIN_LOGIN=your_admin_username
+PLATFORM_ADMIN_PASSWORD=your_admin_password
 ```
+
+The Makefile auto-loads this file and exports the variables to all targets — no shell `export` needed.
 
 ### Deployment Environments
 

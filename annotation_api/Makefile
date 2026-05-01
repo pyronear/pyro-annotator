@@ -1,3 +1,10 @@
+# Auto-load .env (if present) and propagate variables to recipe subprocesses.
+# Copy .env.example to .env and fill in your secrets.
+ifneq (,$(wildcard .env))
+    include .env
+    export
+endif
+
 # Show help with available commands
 help:
 	@echo "Available commands:"
@@ -106,7 +113,7 @@ test-specific:
 # =========================================================================
 # Data workflow targets
 # All targets requiring remote auth expect MAIN_ANNOTATION_LOGIN / MAIN_ANNOTATION_PASSWORD
-# to be set in the environment (e.g. via .envrc or `export`).
+# to be set in the environment — put them in annotation_api/.env (auto-loaded above).
 # =========================================================================
 
 # --- 1A. Sequence annotation workflow ---
