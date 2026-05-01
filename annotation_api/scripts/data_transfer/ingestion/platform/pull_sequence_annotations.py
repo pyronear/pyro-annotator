@@ -113,7 +113,9 @@ def _passes_smoke_filter(seq: Dict, smoke_type: Optional[str]) -> bool:
     """
     if not smoke_type:
         return True
-    ann = seq.get("annotation") or {}
+    ann = seq.get("annotation")
+    if not ann:
+        return True
     smoke_types = ann.get("smoke_types") or []
     if smoke_type == "empty":
         return not smoke_types
@@ -192,6 +194,7 @@ def main() -> None:
             logging.warning("No annotation for sequence %s, skipping", seq_id)
             return ("no_annotation", seq_id)
 
+        # Re-check against the freshly fetched annotation; the page payload is only a prefilter.
         smoke_types = ann.get("smoke_types", [])
         if args.smoke_type == "empty":
             if smoke_types:
