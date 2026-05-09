@@ -21,6 +21,7 @@ import {
   formatProgressDisplay,
   getProgressColor,
 } from '@/utils/annotation/progressUtils';
+import { isSequenceAnnotationSubmitted } from '@/utils/processingStage';
 
 interface AnnotationHeaderProps {
   // Navigation
@@ -74,9 +75,10 @@ export const AnnotationHeader: React.FC<AnnotationHeaderProps> = ({
   onUnsureChange,
   fromParam,
 }) => {
+  const isSubmitted = isSequenceAnnotationSubmitted(annotation?.processing_stage);
   const headerBgClass = isUnsure
     ? 'bg-amber-50/90 border-b border-amber-200 border-l-4 border-l-amber-500'
-    : annotation?.processing_stage === 'annotated'
+    : isSubmitted
       ? 'bg-green-50/90 border-b border-green-200 border-l-4 border-l-green-500'
       : 'bg-white/85 border-b border-gray-200';
 
@@ -142,7 +144,7 @@ export const AnnotationHeader: React.FC<AnnotationHeaderProps> = ({
               )}
 
               {/* Completion Badge for Annotated Sequences */}
-              {annotation?.processing_stage === 'annotated' && fromParam !== 'review' && (
+              {isSubmitted && fromParam !== 'review' && (
                 <>
                   <span className="text-gray-400">•</span>
                   <span className="inline-flex items-center text-xs text-green-600 font-medium">
@@ -203,7 +205,7 @@ export const AnnotationHeader: React.FC<AnnotationHeaderProps> = ({
               title={
                 isUnsure
                   ? 'Submit as unsure (Enter)'
-                  : annotation?.processing_stage === 'annotated'
+                  : isSubmitted
                     ? 'Save changes (Enter)'
                     : 'Submit annotation (Enter)'
               }
@@ -213,11 +215,7 @@ export const AnnotationHeader: React.FC<AnnotationHeaderProps> = ({
               ) : (
                 <Upload className="w-3 h-3 mr-1" />
               )}
-              {isUnsure
-                ? 'Submit Unsure'
-                : annotation?.processing_stage === 'annotated'
-                  ? 'Save Changes'
-                  : 'Submit'}
+              {isUnsure ? 'Submit Unsure' : isSubmitted ? 'Save Changes' : 'Submit'}
             </button>
 
             <button

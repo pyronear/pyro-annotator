@@ -4,6 +4,7 @@
  */
 
 import { SequenceAnnotation, SequenceBbox, FalsePositiveType, SmokeType } from '@/types/api';
+import { isSequenceAnnotationSubmitted } from '@/utils/processingStage';
 
 /**
  * Determines the classification type for a bbox based on user choice and existing data.
@@ -70,8 +71,8 @@ export const initializeCleanBbox = (originalBbox: SequenceBbox): SequenceBbox =>
  * Determines if a bbox should show as annotated based on processing stage.
  */
 export const shouldShowAsAnnotated = (bbox: SequenceBbox, processingStage: string): boolean => {
-  // If already marked as annotated in processing stage, show as annotated
-  if (processingStage === 'annotated') {
+  // If the user has already submitted, treat the bbox as annotated
+  if (isSequenceAnnotationSubmitted(processingStage)) {
     return true;
   }
   // If ready to annotate, only show as annotated if user has made selections
@@ -99,8 +100,8 @@ export const isAnnotationDataValid = (
 export const getInitialMissedSmokeReview = (
   annotation: SequenceAnnotation
 ): 'yes' | 'no' | null => {
-  if (annotation.processing_stage === 'annotated') {
-    // For annotated sequences, the has_missed_smoke boolean reflects the actual review result
+  if (isSequenceAnnotationSubmitted(annotation.processing_stage)) {
+    // Once submitted, the has_missed_smoke boolean reflects the annotator's actual answer
     return annotation.has_missed_smoke ? 'yes' : 'no';
   } else {
     // For other stages (like ready_to_annotate), null means not reviewed yet
@@ -110,17 +111,21 @@ export const getInitialMissedSmokeReview = (
 
 /**
  * Creates updated annotation payload for API submission.
+ *
+ * If the annotation is already in the post-review `annotated` stage, the stage
+ * is preserved so reviewer edits don't demote it back into the review pipeline.
  */
 export const createAnnotationPayload = (
   updatedBboxes: SequenceBbox[],
   isUnsure: boolean,
-  hasMissedSmoke: boolean
+  hasMissedSmoke: boolean,
+  currentStage?: SequenceAnnotation['processing_stage']
 ): Partial<SequenceAnnotation> => {
   return {
     annotation: {
       sequences_bbox: updatedBboxes, // Always preserve the actual bbox data
     },
-    processing_stage: 'annotated', // Move to annotated stage
+    processing_stage: currentStage === 'annotated' ? 'annotated' : 'seq_annotation_done',
     // Update derived fields - all false for unsure sequences
     has_smoke: isUnsure ? false : updatedBboxes.some(bbox => bbox.is_smoke),
     has_false_positives: isUnsure

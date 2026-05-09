@@ -27,11 +27,11 @@ export default function DetectionAnnotatePage() {
 
   // Create default state specific to detection annotation page
   const defaultState = {
-    ...createDefaultFilterState(),
+    ...createDefaultFilterState('needs_manual'),
     filters: {
-      ...createDefaultFilterState().filters,
-      // Keep server filters minimal; we'll filter by annotation stage client-side
-      processing_stage: undefined,
+      ...createDefaultFilterState('needs_manual').filters,
+      // Server-side filter: only sequences flagged for manual detection-level rework.
+      processing_stage: 'needs_manual' as const,
       include_annotation: true,
       size: 100,
     },
@@ -128,35 +128,8 @@ export default function DetectionAnnotatePage() {
     [sequenceAnnotations]
   );
 
-  const filteredSequences = useMemo(() => {
-    if (!sequences) return sequences;
-
-    const needsManual = sequences.items.filter(sequence => {
-      const annotation = annotationMap[sequence.id];
-      return annotation?.processing_stage === 'needs_manual';
-    });
-
-    const accuracyFiltered =
-      selectedModelAccuracy === 'all'
-        ? needsManual
-        : needsManual.filter(sequence => {
-            const annotation = annotationMap[sequence.id];
-            if (!annotation) {
-              return selectedModelAccuracy === 'unknown';
-            }
-            // Model accuracy filtering is optional; keep only if desired
-            // Here we treat missing annotation as unknown
-            // If you don’t need accuracy filters, drop this block entirely
-            return true;
-          });
-
-    return {
-      ...sequences,
-      items: accuracyFiltered,
-      total: accuracyFiltered.length,
-      pages: Math.ceil(accuracyFiltered.length / sequences.size),
-    };
-  }, [sequences, annotationMap, selectedModelAccuracy]);
+  // Server already filters on processing_stage=needs_manual; no client-side narrow.
+  const filteredSequences = sequences;
 
   // Navigation handlers
   const handleSequenceClick = (sequence: SequenceWithDetectionProgress) => {

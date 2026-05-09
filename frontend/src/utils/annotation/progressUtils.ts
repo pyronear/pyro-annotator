@@ -5,6 +5,7 @@
 
 import { SequenceBbox } from '@/types/api';
 import { hasUserAnnotations } from './sequenceUtils';
+import { isSequenceAnnotationSubmitted } from '@/utils/processingStage';
 
 /**
  * Progress information for annotation workflow.
@@ -203,7 +204,7 @@ export const getProgressColor = (
   processingStage?: string
 ): string => {
   if (progress.isComplete) {
-    return processingStage === 'annotated' ? 'bg-green-600' : 'bg-amber-600';
+    return isSequenceAnnotationSubmitted(processingStage) ? 'bg-green-600' : 'bg-amber-600';
   }
 
   return 'bg-primary-600';
