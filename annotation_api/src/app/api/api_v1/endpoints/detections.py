@@ -87,33 +87,41 @@ async def create_detection(
             detail=f"Invalid algo_predictions format: {e.errors()}",
         )
 
-    # Create detection record first to get the detection ID
     detection = Detection(
         sequence_id=sequence_id,
         alert_api_id=alert_api_id,
         recorded_at=recorded_at,
-        bucket_key="",  # Temporary placeholder
-        algo_predictions=validated_predictions.model_dump(),  # Store as dict
+        bucket_key="",
+        algo_predictions=validated_predictions.model_dump(),
         created_at=datetime.now(UTC),
     )
 
-    # Add and commit to get the detection ID
     detections.session.add(detection)
-    await detections.session.commit()
-    await detections.session.refresh(detection)
+    # flush to get the autoincrement id without committing the transaction
+    await detections.session.flush()
 
-    # Upload image to S3 with detection metadata
-    bucket_key = await upload_file(
-        file=file,
-        sequence_id=sequence_id,
-        detection_id=detection.id,
-        recorded_at=recorded_at,
-    )
+    try:
+        bucket_key = await upload_file(
+            file=file,
+            sequence_id=sequence_id,
+            detection_id=detection.id,
+            recorded_at=recorded_at,
+        )
+    except Exception:
+        await detections.session.rollback()
+        raise
 
-    # Update detection with the actual bucket key
     detection.bucket_key = bucket_key
-    detections.session.add(detection)
-    await detections.session.commit()
+    try:
+        await detections.session.commit()
+    except Exception:
+        # DB failed after S3 succeeded — best-effort cleanup of the orphan object
+        bucket = s3_service.get_bucket(s3_service.resolve_bucket_name())
+        try:
+            bucket.delete_file(bucket_key)
+        except Exception:
+            logger.exception("Failed to clean up orphaned S3 object %s", bucket_key)
+        raise
     await detections.session.refresh(detection)
 
     return detection
@@ -144,19 +152,29 @@ async def create_detection_from_url(
     )
 
     detections.session.add(detection)
-    await detections.session.commit()
-    await detections.session.refresh(detection)
+    await detections.session.flush()
 
-    bucket_key = await upload_file_from_url(
-        source_url=payload.source_url,
-        sequence_id=payload.sequence_id,
-        detection_id=detection.id,
-        recorded_at=payload.recorded_at,
-    )
+    try:
+        bucket_key = await upload_file_from_url(
+            source_url=payload.source_url,
+            sequence_id=payload.sequence_id,
+            detection_id=detection.id,
+            recorded_at=payload.recorded_at,
+        )
+    except Exception:
+        await detections.session.rollback()
+        raise
 
     detection.bucket_key = bucket_key
-    detections.session.add(detection)
-    await detections.session.commit()
+    try:
+        await detections.session.commit()
+    except Exception:
+        bucket = s3_service.get_bucket(s3_service.resolve_bucket_name())
+        try:
+            bucket.delete_file(bucket_key)
+        except Exception:
+            logger.exception("Failed to clean up orphaned S3 object %s", bucket_key)
+        raise
     await detections.session.refresh(detection)
 
     return detection
