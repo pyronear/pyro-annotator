@@ -27,7 +27,7 @@ from app.api.dependencies import get_current_user, get_detection_crud
 from app.models import User
 from app.crud import DetectionCRUD
 from app.db import get_session
-from app.models import Detection
+from app.models import Detection, Sequence
 from app.schemas.annotation_validation import AlgoPredictions
 from app.core.config import settings
 from app.schemas.detection import (
@@ -197,12 +197,19 @@ async def create_detection_from_bucket_key(
 ) -> DetectionRead:
     """Create a detection by server-side copying an object from a platform bucket.
 
-    The source bucket name is derived server-side from PLATFORM_SERVER_NAME and
-    the caller-supplied organization_id, so authenticated callers cannot point
-    the copy at arbitrary buckets the API credentials can read.
+    The source bucket is derived server-side from PLATFORM_SERVER_NAME and the
+    organisation_id of the supplied sequence (looked up in the DB), so the
+    caller cannot pick which platform org bucket the copy reads from.
     """
+    sequence = await detections.session.get(Sequence, payload.sequence_id)
+    if sequence is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Sequence {payload.sequence_id} not found",
+        )
+
     source_bucket = (
-        f"{settings.PLATFORM_SERVER_NAME}-alert-api-{payload.organization_id}"
+        f"{settings.PLATFORM_SERVER_NAME}-alert-api-{sequence.organisation_id}"
     )
 
     detection = Detection(

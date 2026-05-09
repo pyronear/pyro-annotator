@@ -38,13 +38,10 @@ class DetectionCreateFromUrl(BaseModel):
 
 
 class DetectionCreateFromBucketKey(BaseModel):
-    organization_id: int = Field(
-        ..., ge=1, description="Platform organization id; selects the source bucket"
-    )
     source_key: str = Field(
         ..., min_length=1, description="Object key within the source bucket"
     )
-    sequence_id: Optional[int]
+    sequence_id: int = Field(..., ge=1, description="Annotation API sequence id")
     recorded_at: datetime
     alert_api_id: int
     algo_predictions: AlgoPredictions

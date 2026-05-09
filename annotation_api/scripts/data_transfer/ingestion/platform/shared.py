@@ -343,21 +343,19 @@ def _process_single_detection(
 
     # Transform detection data
     detection_data = transform_detection_data(record, annotation_sequence_id)
+    # Only platform-fetch records carry a platform bucket_key. Clone-from-
+    # annotation records intentionally omit detection_bucket_key because their
+    # key lives in the source annotation bucket, not the platform bucket.
     source_key = record.get("detection_bucket_key")
-    organization_id = record.get("organization_id")
     source_url = record.get("detection_url")
 
     for attempt in range(max_retries + 1):
         try:
-            # Prefer server-side S3 copy when both source bucket coordinates are
-            # available. Falls back to URL-based fetch (clone-from-annotation
-            # mode produces presigned URLs without exposing bucket_key).
-            if source_key and organization_id is not None:
+            if source_key:
                 annotation_detection = create_detection_from_bucket_key(
                     annotation_api_url,
                     auth_token,
                     detection_data,
-                    organization_id=organization_id,
                     source_key=source_key,
                 )
             elif source_url:
@@ -366,7 +364,7 @@ def _process_single_detection(
                 )
             else:
                 raise ValueError(
-                    "Detection record is missing both bucket_key/organization_id and detection_url"
+                    "Detection record is missing both detection_bucket_key and detection_url"
                 )
 
             logging.debug(f"Created detection with ID: {annotation_detection['id']}")

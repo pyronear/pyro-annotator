@@ -458,22 +458,21 @@ def create_detection_from_bucket_key(
     base_url: str,
     auth_token: str,
     detection_data: Dict,
-    organization_id: int,
     source_key: str,
 ) -> Dict:
     """
     Create a detection by having the server-side copy an object from a platform bucket.
 
     The annotation API derives the source bucket name from PLATFORM_SERVER_NAME
-    and the supplied organization_id, then runs a same-provider boto3 copy_object
-    to its own bucket. Image bytes never transit the API process.
+    and the organisation_id of the existing sequence (looked up by sequence_id),
+    then runs a same-provider boto3 copy_object to its own bucket. Image bytes
+    never transit the API process.
 
     Args:
         base_url: Base URL of the annotation API
         auth_token: JWT authentication token
         detection_data: Dictionary with algo_predictions, alert_api_id,
                         sequence_id, recorded_at
-        organization_id: Platform organization id (selects the source bucket)
         source_key: Object key inside the source bucket
 
     Returns:
@@ -486,7 +485,6 @@ def create_detection_from_bucket_key(
     url = f"{base_url.rstrip('/')}/api/v1/detections/from-bucket-key"
 
     json_payload = {
-        "organization_id": organization_id,
         "source_key": source_key,
         "algo_predictions": detection_data["algo_predictions"],
         "alert_api_id": detection_data["alert_api_id"],
