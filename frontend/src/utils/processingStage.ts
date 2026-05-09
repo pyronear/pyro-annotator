@@ -201,12 +201,14 @@ export function getProcessingStageLabel(status: ProcessingStageStatus | Processi
  * ```
  */
 /**
- * Returns true when the sequence annotation has been submitted by an annotator.
- * Covers both the freshly-submitted state (`seq_annotation_done`) and the
- * post-review final state (`annotated`).
+ * Returns true when the annotator has handed the sequence off — i.e. it has
+ * moved past `under_annotation`. Covers the freshly-submitted state
+ * (`seq_annotation_done`), the review handoff (`in_review`, set locally
+ * after `make push-annotations`), and the post-review final state
+ * (`annotated`).
  */
 export function isSequenceAnnotationSubmitted(status: string | undefined | null): boolean {
-  return status === 'seq_annotation_done' || status === 'annotated';
+  return status === 'seq_annotation_done' || status === 'in_review' || status === 'annotated';
 }
 
 export function getProcessingStageColorClass(

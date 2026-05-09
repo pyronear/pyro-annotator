@@ -378,9 +378,9 @@ def main() -> None:
                     f"(remote_seq_id={remote_seq_id})"
                 )
 
-            # Park the local annotation in `annotated` so a rerun does not
-            # reselect this row and force-demote the remote back to
-            # seq_annotation_done.
+            # Park the local annotation in `in_review` to mirror the remote
+            # progression (the next op on the remote moves it to in_review)
+            # and to keep this row out of the next push selection.
             try:
                 local_ann_id = local_ann.get("id")
                 if local_ann_id:
@@ -389,7 +389,7 @@ def main() -> None:
                         local_token,
                         local_ann_id,
                         {
-                            "processing_stage": SequenceAnnotationProcessingStage.ANNOTATED.value
+                            "processing_stage": SequenceAnnotationProcessingStage.IN_REVIEW.value
                         },
                     )
             except Exception as exc:

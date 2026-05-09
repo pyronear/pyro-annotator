@@ -8,16 +8,16 @@ Start both the annotation API backend and frontend with a single command:
 
 ```bash
 # Start all services (database, backend API, frontend)
-docker compose up -d
+make up
 
 # View logs
-docker compose logs -f
+make logs
 
 # Stop all services
-docker compose down
+make down
 
 # Stop and remove all data (fresh start)
-docker compose down -v
+make clean
 ```
 
 ### Service Access
@@ -30,23 +30,9 @@ Once running, access the services at:
 - **PostgreSQL Database**: localhost:5432
 - **LocalStack S3**: http://localhost:4566
 
-### Build and Development
-
-The root docker-compose.yml orchestrates both services for production-like deployment. For active development on individual services, use their respective docker-compose files:
-
-```bash
-# Backend development (with live code reload)
-cd annotation_api
-make start  # Uses docker-compose-dev.yml with volume mounts
-
-# Frontend development (with hot reload)
-cd frontend
-npm run dev  # Vite dev server on port 5173
-```
-
 ## Main Workflow
 
-All workflows below assume the services are running locally (`docker compose up -d`) and that you have credentials to the remote annotation API. Run the `make` targets from the `annotation_api/` directory.
+All workflows below assume the services are running locally (`make up`) and that you have credentials to the remote annotation API. Run the `make` targets from the `annotation_api/` directory.
 
 Before anything that talks to the remote API, configure your credentials in `annotation_api/.env` (loaded by the data-transfer scripts at startup via python-dotenv):
 
@@ -84,6 +70,8 @@ Open the frontend at http://localhost:3000 and annotate. Sequences transition `R
 ```bash
 make push-annotations MAX_SEQUENCES=10
 ```
+
+After a successful push the local annotation is parked at `in_review` to mirror the remote progression and keep the row out of the next push selection. Re-runs are guarded: rows whose remote is already in `in_review`, `needs_manual`, or `annotated` are skipped instead of overwritten.
 
 #### B. Detection Annotation
 
@@ -210,7 +198,7 @@ make import-platform DATE_FROM=2025-03-04 DATE_END=2025-03-04 MAX_SEQUENCES=10
 **Services must be running first:**
 ```bash
 # Start all services
-docker compose up -d
+make up
 
 # Verify annotation API is accessible
 curl http://localhost:5050/docs
@@ -279,8 +267,8 @@ For detailed documentation, parameter reference, and troubleshooting, see [Data 
 
 **Fresh start (clear all data):**
 ```bash
-docker compose down -v  # Removes containers and volumes
-docker compose up -d    # Fresh start
+make clean  # Removes containers and volumes
+make up     # Fresh start
 ```
 
 ## Individual Modules
