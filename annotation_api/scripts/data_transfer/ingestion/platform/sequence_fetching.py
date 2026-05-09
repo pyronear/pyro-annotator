@@ -101,19 +101,27 @@ def fetch_sequences_for_date(
     Returns:
         List of sequence dictionaries for the specified date
     """
+    page_size = 1000
+    offset = 0
+    sequences: List[Dict[str, Any]] = []
     try:
-        sequences = platform_client.list_sequences_for_date(
-            api_endpoint=api_endpoint,
-            date=target_date,
-            limit=1000,  # Large limit to get all sequences for the date
-            offset=0,
-            access_token=access_token,
-            risk_score=risk_score,
-        )
+        while True:
+            page = platform_client.list_sequences_for_date(
+                api_endpoint=api_endpoint,
+                date=target_date,
+                limit=page_size,
+                offset=offset,
+                access_token=access_token,
+                risk_score=risk_score,
+            )
+            sequences.extend(page)
+            if len(page) < page_size:
+                break
+            offset += page_size
         return sequences
     except Exception as e:
         logging.error(f"Error fetching sequences for date {target_date}: {e}")
-        return []
+        return sequences
 
 
 def process_single_sequence_detections(

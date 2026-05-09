@@ -21,6 +21,7 @@ Functions:
 import logging
 from datetime import date
 from typing import Optional
+from urllib.parse import urlencode
 
 import requests
 
@@ -186,9 +187,14 @@ def list_sequences_for_date(
     Returns:
         list[dict]: A list of dictionaries containing sequence information.
     """
-    url = f"{api_endpoint}/api/v1/sequences/all/fromdate?from_date={date:%Y-%m-%d}&limit={limit}&offset={offset}"
+    params: dict[str, object] = {
+        "from_date": f"{date:%Y-%m-%d}",
+        "limit": limit,
+        "offset": offset,
+    }
     if risk_score:
-        url += f"&risk_score={risk_score}"
+        params["risk_score"] = risk_score
+    url = f"{api_endpoint}/api/v1/sequences/all/fromdate?{urlencode(params)}"
     return api_get(route=url, access_token=access_token)
 
 
