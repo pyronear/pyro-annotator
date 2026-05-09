@@ -195,7 +195,7 @@ describe('sequenceUtils', () => {
       
       const payload = createAnnotationPayload(bboxes, false, true);
       
-      expect(payload.processing_stage).toBe('annotated');
+      expect(payload.processing_stage).toBe('seq_annotation_done');
       expect(payload.has_smoke).toBe(true);
       expect(payload.has_false_positives).toBe(true);
       expect(payload.has_missed_smoke).toBe(true);

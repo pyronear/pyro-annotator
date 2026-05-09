@@ -193,7 +193,7 @@ export default function AnnotationInterface() {
         annotation: {
           sequences_bbox: updatedBboxes, // Always preserve the actual bbox data
         },
-        processing_stage: 'annotated', // Move to annotated stage
+        processing_stage: 'seq_annotation_done', // Hand off to the review pipeline
         // Update derived fields - all false for unsure sequences
         has_smoke: isUnsure ? false : updatedBboxes.some(bbox => bbox.is_smoke),
         has_false_positives: isUnsure

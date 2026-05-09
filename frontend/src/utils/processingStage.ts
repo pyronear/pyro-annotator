@@ -200,6 +200,15 @@ export function getProcessingStageLabel(status: ProcessingStageStatus | Processi
  * // Returns: 'bg-gray-100 text-gray-800'
  * ```
  */
+/**
+ * Returns true when the sequence annotation has been submitted by an annotator.
+ * Covers both the freshly-submitted state (`seq_annotation_done`) and the
+ * post-review final state (`annotated`).
+ */
+export function isSequenceAnnotationSubmitted(status: string | undefined | null): boolean {
+  return status === 'seq_annotation_done' || status === 'annotated';
+}
+
 export function getProcessingStageColorClass(
   status: ProcessingStageStatus | ProcessingStage
 ): string {

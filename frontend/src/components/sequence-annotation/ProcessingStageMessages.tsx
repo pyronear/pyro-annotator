@@ -6,6 +6,7 @@
 import React from 'react';
 import { AlertCircle } from 'lucide-react';
 import { SequenceAnnotation } from '@/types/api';
+import { isSequenceAnnotationSubmitted } from '@/utils/processingStage';
 
 interface ProcessingStageMessagesProps {
   annotation: SequenceAnnotation;
@@ -14,7 +15,7 @@ interface ProcessingStageMessagesProps {
 export const ProcessingStageMessages: React.FC<ProcessingStageMessagesProps> = ({ annotation }) => {
   if (
     annotation.processing_stage === 'ready_to_annotate' ||
-    annotation.processing_stage === 'annotated'
+    isSequenceAnnotationSubmitted(annotation.processing_stage)
   ) {
     return null;
   }
