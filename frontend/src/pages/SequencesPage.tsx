@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { ReactNode, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '@/services/api';
@@ -9,6 +9,7 @@ import {
 } from '@/types/api';
 import { QUERY_KEYS } from '@/utils/constants';
 import { analyzeSequenceAccuracy } from '@/utils/modelAccuracy';
+import { getProcessingStageLabel } from '@/utils/processingStage';
 import TabbedFilters from '@/components/filters/TabbedFilters';
 import {
   SequencesTableHeader,
@@ -26,19 +27,20 @@ import { hasActiveUserFilters } from '@/utils/filterHelpers';
 
 interface SequencesPageProps {
   defaultProcessingStage?: ProcessingStageStatus;
+  isReviewPage?: boolean;
+  stageSelector?: ReactNode;
 }
 
 export default function SequencesPage({
   defaultProcessingStage = 'ready_to_annotate',
+  isReviewPage = false,
+  stageSelector,
 }: SequencesPageProps = {}) {
   const navigate = useNavigate();
   const { startAnnotationWorkflow } = useSequenceStore();
 
-  // Determine storage key based on processing stage to separate annotate vs review filters
-  const storageKey =
-    defaultProcessingStage === 'annotated'
-      ? 'filters-sequences-review'
-      : 'filters-sequences-annotate';
+  // Storage key separates review vs annotate filters; review filters are shared across stages.
+  const storageKey = isReviewPage ? 'filters-sequences-review' : 'filters-sequences-annotate';
 
   // Use persisted filters hook
   const {
@@ -58,6 +60,15 @@ export default function SequencesPage({
     setSelectedUnsure,
     resetFilters,
   } = usePersistedFilters(storageKey, createDefaultFilterState(defaultProcessingStage));
+
+  // Keep filters.processing_stage in sync with the parent-controlled stage prop
+  // (used by the review page stage selector). Reset to page 1 on stage change.
+  useEffect(() => {
+    if (filters.processing_stage !== defaultProcessingStage) {
+      setFilters({ ...filters, processing_stage: defaultProcessingStage, page: 1 });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultProcessingStage]);
 
   // Fetch cameras, organizations, and source APIs for dropdown options
   const { data: cameras = [], isLoading: camerasLoading } = useCameras();
@@ -100,14 +111,26 @@ export default function SequencesPage({
     handleFilterChange({ recorded_at_lte: dateTimeValue });
   };
 
+  // Annotated-only filters are hidden on other review stages, but their values
+  // persist in shared state. Strip them from API calls so they don't silently
+  // narrow results on stages where the controls aren't visible.
+  const apiFilters = useMemo<ExtendedSequenceFilters>(() => {
+    if (defaultProcessingStage === 'annotated') return filters;
+    const stripped: ExtendedSequenceFilters = { ...filters };
+    delete stripped.false_positive_types;
+    delete stripped.smoke_types;
+    delete stripped.is_unsure;
+    return stripped;
+  }, [filters, defaultProcessingStage]);
+
   // Fetch sequences with annotations in a single efficient call
   const {
     data: sequences,
     isLoading,
     error,
   } = useQuery({
-    queryKey: [...QUERY_KEYS.SEQUENCES, 'with-annotations', filters],
-    queryFn: () => apiClient.getSequencesWithAnnotations(filters),
+    queryKey: [...QUERY_KEYS.SEQUENCES, 'with-annotations', apiFilters],
+    queryFn: () => apiClient.getSequencesWithAnnotations(apiFilters),
   });
 
   // Filter sequences by model accuracy (only for review page)
@@ -148,11 +171,11 @@ export default function SequencesPage({
   const handleSequenceClick = (clickedSequence: SequenceWithAnnotation) => {
     // Initialize annotation workflow if we have sequences data
     if (sequences?.items) {
-      startAnnotationWorkflow(sequences.items, clickedSequence.id, filters);
+      startAnnotationWorkflow(sequences.items, clickedSequence.id, apiFilters);
     }
 
     // Navigate to annotation interface with context about source page
-    const queryParam = defaultProcessingStage === 'annotated' ? '?from=review' : '';
+    const queryParam = isReviewPage ? '?from=review' : '';
     navigate(`/sequences/${clickedSequence.id}/annotate${queryParam}`);
   };
 
@@ -200,6 +223,7 @@ export default function SequencesPage({
             <h1 className="text-2xl font-bold text-gray-900">Sequences</h1>
             <p className="text-gray-600">Manage and annotate wildfire detection sequences</p>
           </div>
+          {stageSelector}
         </div>
 
         {/* Filters */}
@@ -243,16 +267,15 @@ export default function SequencesPage({
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">
                   No matching sequences found
                 </h3>
-                <p className="text-gray-500 mb-4">
-                  {defaultProcessingStage === 'annotated'
-                    ? 'No completed sequences match your current filters.'
-                    : 'No sequences match your current filters.'}
-                </p>
+                <p className="text-gray-500 mb-4">No sequences match your current filters.</p>
                 <p className="text-gray-400 text-sm">Try adjusting your search criteria above.</p>
               </>
-            ) : defaultProcessingStage === 'annotated' ? (
-              // Review page - simple message without celebration
-              <p className="text-gray-500">No completed sequences to review at the moment.</p>
+            ) : isReviewPage ? (
+              // Review page - simple message scoped to the selected stage
+              <p className="text-gray-500">
+                No sequences in &quot;{getProcessingStageLabel(defaultProcessingStage)}&quot; at the
+                moment.
+              </p>
             ) : (
               // Annotation page - celebratory message
               <>
@@ -277,6 +300,7 @@ export default function SequencesPage({
           <h1 className="text-2xl font-bold text-gray-900">Sequences</h1>
           <p className="text-gray-600">Manage and annotate wildfire detection sequences</p>
         </div>
+        {stageSelector}
       </div>
 
       {/* Filters */}
