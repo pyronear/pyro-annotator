@@ -89,7 +89,6 @@ from app.models import SequenceAnnotationProcessingStage
 load_dotenv()
 
 
-
 def make_cli_parser() -> argparse.ArgumentParser:
     """
     Create the CLI argument parser with comprehensive options.
@@ -310,14 +309,10 @@ def test_annotation_credentials(
     """
     try:
         annotation_api.get_auth_token(base_url, username=login, password=password)
-        console.print(
-            f"[green]✅ {label} auth OK[/] [dim]({login}@{base_url})[/]"
-        )
+        console.print(f"[green]✅ {label} auth OK[/] [dim]({login}@{base_url})[/]")
         return True
     except Exception as exc:
-        console.print(
-            f"[red]❌ {label} auth failed[/]: {exc}"
-        )
+        console.print(f"[red]❌ {label} auth failed[/]: {exc}")
         return False
 
 
@@ -357,9 +352,7 @@ def get_source_annotation_credentials() -> tuple[str, str]:
     """
     Resolve credentials for the source annotation API (clone mode).
     """
-    login = os.getenv("MAIN_ANNOTATION_LOGIN") or os.getenv(
-        "ANNOTATOR_LOGIN", "admin"
-    )
+    login = os.getenv("MAIN_ANNOTATION_LOGIN") or os.getenv("ANNOTATOR_LOGIN", "admin")
     password = os.getenv("MAIN_ANNOTATION_PASSWORD") or os.getenv(
         "ANNOTATOR_PASSWORD", "admin12345"
     )
@@ -500,7 +493,9 @@ def fetch_records_from_annotation_api(
                 auth_token,
                 page=page,
                 size=size,
-                processing_stage=None if clone_processing_stage == "all" else clone_processing_stage,
+                processing_stage=None
+                if clone_processing_stage == "all"
+                else clone_processing_stage,
             )
             items = seq_page.get("items", [])
             console.print(
@@ -545,9 +540,7 @@ def fetch_records_from_annotation_api(
                                 "camera_is_trustable": seq.get("camera_is_trustable"),
                                 "camera_angle_of_view": seq.get("camera_angle_of_view"),
                                 "sequence_id": seq.get("alert_api_id"),
-                                "sequence_is_wildfire": seq.get(
-                                    "is_wildfire_alertapi"
-                                ),
+                                "sequence_is_wildfire": seq.get("is_wildfire_alertapi"),
                                 "sequence_started_at": seq.get("recorded_at"),
                                 "sequence_last_seen_at": seq.get("last_seen_at")
                                 or seq.get("recorded_at"),
@@ -558,9 +551,13 @@ def fetch_records_from_annotation_api(
                                 "detection_azimuth": det.get("azimuth"),
                                 "detection_url": det_url,
                                 "detection_bboxes": det.get("algo_predictions", {}),
-                            "detection_bucket_key": det.get("bucket_key"),
-                        }
-                    )
+                                # Intentionally omit detection_bucket_key here:
+                                # the source key lives in the source annotation
+                                # bucket, not a platform bucket, so the
+                                # /from-bucket-key path would look in the wrong
+                                # place. Force the URL fallback instead.
+                            }
+                        )
 
                     if det_page_num >= det_page.get("pages", 1):
                         break
@@ -588,9 +585,7 @@ def fetch_records_from_annotation_api(
         f"   • [bold]{cloned_sequences}[/] sequences, [bold]{total_detections}[/] detections"
     )
 
-    missing = (
-        targets - found_ids if targets else set()
-    )
+    missing = targets - found_ids if targets else set()
     if missing:
         console.print(
             f"[yellow]⚠️ Missing {len(missing)} requested sequence(s) in source annotation API: {sorted(missing)}[/]"
@@ -680,7 +675,11 @@ def main() -> None:
         args.url_api_annotation
     )
     target_ok = test_annotation_credentials(
-        args.url_api_annotation, target_login, target_password, "Target annotation", console
+        args.url_api_annotation,
+        target_login,
+        target_password,
+        "Target annotation",
+        console,
     )
 
     source_ok = True
@@ -722,9 +721,7 @@ def main() -> None:
                 f"[blue]ℹ️  Clone source annotation API: {args.source_annotation_url}[/]"
             )
             if max_sequences:
-                console.print(
-                    f"[blue]ℹ️  Max sequences to clone: {max_sequences}[/]"
-                )
+                console.print(f"[blue]ℹ️  Max sequences to clone: {max_sequences}[/]")
             console.print(
                 f"[blue]ℹ️  Clone processing_stage filter: {clone_processing_stage}[/]"
             )
@@ -763,13 +760,15 @@ def main() -> None:
         if clone_from_annotation:
             # Fetch records directly from another annotation API instance
             try:
-                records, source_api, source_sequence_ids = fetch_records_from_annotation_api(
-                    source_annotation_url=args.source_annotation_url,
-                    selected_sequence_list=selected_sequence_list,
-                    console=console,
-                    suppress_logs=suppress_logs,
-                    max_sequences=max_sequences,
-                    clone_processing_stage=clone_processing_stage,
+                records, source_api, source_sequence_ids = (
+                    fetch_records_from_annotation_api(
+                        source_annotation_url=args.source_annotation_url,
+                        selected_sequence_list=selected_sequence_list,
+                        console=console,
+                        suppress_logs=suppress_logs,
+                        max_sequences=max_sequences,
+                        clone_processing_stage=clone_processing_stage,
+                    )
                 )
             except Exception as e:
                 error_collector.add_error(f"Annotation clone failed: {e}")
@@ -809,7 +808,9 @@ def main() -> None:
                 spinner="dots",
             ) as status:
                 try:
-                    status.update(f"[bold blue]🔐 Getting {organization} access token...")
+                    status.update(
+                        f"[bold blue]🔐 Getting {organization} access token..."
+                    )
                     access_token = platform_client.get_api_access_token(
                         api_endpoint=args.url_api_platform,
                         username=platform_login,
