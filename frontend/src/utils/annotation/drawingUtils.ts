@@ -30,7 +30,6 @@ export interface CurrentDrawing {
  */
 export interface SmokeTypeColors {
   border: string;
-  background: string;
 }
 
 /**
@@ -38,30 +37,27 @@ export interface SmokeTypeColors {
  */
 export type DrawingMode = 'view' | 'draw' | 'select';
 
+const SMOKE_TYPE_BORDER: Record<SmokeType, string> = {
+  wildfire: 'border-red-500',
+  industrial: 'border-purple-500',
+  other: 'border-blue-500',
+};
+
 /**
  * Gets the color scheme for a specific smoke type.
  *
  * @param smokeType - The smoke type to get colors for
- * @returns Color configuration for borders and backgrounds
+ * @returns Color configuration for the bbox border
  *
  * @example
  * ```typescript
  * const colors = getSmokeTypeColors('wildfire');
- * // Returns: { border: 'border-red-500', background: 'bg-red-500/15' }
+ * // Returns: { border: 'border-red-500' }
  * ```
  */
-export const getSmokeTypeColors = (smokeType: SmokeType): SmokeTypeColors => {
-  switch (smokeType) {
-    case 'wildfire':
-      return { border: 'border-red-500', background: 'bg-red-500/15' };
-    case 'industrial':
-      return { border: 'border-purple-500', background: 'bg-purple-500/15' };
-    case 'other':
-      return { border: 'border-blue-500', background: 'bg-blue-500/15' };
-    default:
-      return { border: 'border-green-500', background: 'bg-green-500/10' };
-  }
-};
+export const getSmokeTypeColors = (smokeType: SmokeType): SmokeTypeColors => ({
+  border: SMOKE_TYPE_BORDER[smokeType],
+});
 
 /**
  * Creates a new DrawnRectangle from current drawing state.

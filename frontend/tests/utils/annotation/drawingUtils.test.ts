@@ -25,19 +25,16 @@ describe('drawingUtils', () => {
     it('should return correct colors for wildfire', () => {
       const colors = getSmokeTypeColors('wildfire');
       expect(colors.border).toBe('border-red-500');
-      expect(colors.background).toBe('bg-red-500/15');
     });
 
     it('should return correct colors for industrial', () => {
       const colors = getSmokeTypeColors('industrial');
       expect(colors.border).toBe('border-purple-500');
-      expect(colors.background).toBe('bg-purple-500/15');
     });
 
     it('should return correct colors for other', () => {
       const colors = getSmokeTypeColors('other');
       expect(colors.border).toBe('border-blue-500');
-      expect(colors.background).toBe('bg-blue-500/15');
     });
   });
 

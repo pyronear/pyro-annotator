@@ -38,7 +38,7 @@ export function BoundingBoxOverlay({ detection, imageInfo }: BoundingBoxOverlayP
           return (
             <div
               key={`bbox-${detection.id}-${index}`}
-              className="absolute border-2 border-red-500 bg-red-500/20 pointer-events-none"
+              className="absolute border-2 border-red-500 pointer-events-none"
               style={{
                 left: `${left}px`,
                 top: `${top}px`,
@@ -108,7 +108,7 @@ export function UserAnnotationOverlay({
           return (
             <div
               key={`user-annotation-${detectionAnnotation.detection_id}-${index}`}
-              className={`absolute border-2 ${colors.border} ${colors.background} pointer-events-none`}
+              className={`absolute border-2 ${colors.border} pointer-events-none`}
               style={{
                 left: `${left}px`,
                 top: `${top}px`,
@@ -204,7 +204,7 @@ export function DrawingOverlay({
         return (
           <div
             key={rect.id}
-            className={`absolute border-2 ${isSelected ? 'border-yellow-400' : colors.border} ${colors.background} pointer-events-auto cursor-pointer`}
+            className={`absolute border-2 ${isSelected ? 'border-yellow-400' : colors.border} pointer-events-auto cursor-pointer`}
             style={{
               left: `${left}px`,
               top: `${top}px`,
@@ -234,7 +234,7 @@ export function DrawingOverlay({
           const { left, top, width, height } = renderRectangle(currentDrawing, 'drawing');
           return (
             <div
-              className="absolute border-2 border-dashed border-blue-400 bg-blue-400/20 pointer-events-none"
+              className="absolute border-2 border-dashed border-blue-400 pointer-events-none"
               style={{
                 left: `${left}px`,
                 top: `${top}px`,
