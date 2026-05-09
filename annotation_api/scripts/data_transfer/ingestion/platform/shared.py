@@ -28,6 +28,7 @@ from rich.console import Console
 from app.clients.annotation_api import (
     get_auth_token,
     create_sequence,
+    create_detection_from_bucket_key,
     create_detection_from_url,
     AnnotationAPIError,
     ValidationError,
@@ -342,14 +343,29 @@ def _process_single_detection(
 
     # Transform detection data
     detection_data = transform_detection_data(record, annotation_sequence_id)
-    source_url = record["detection_url"]
+    # Only platform-fetch records carry a platform bucket_key. Clone-from-
+    # annotation records intentionally omit detection_bucket_key because their
+    # key lives in the source annotation bucket, not the platform bucket.
+    source_key = record.get("detection_bucket_key")
+    source_url = record.get("detection_url")
 
     for attempt in range(max_retries + 1):
         try:
-            # Let the server fetch the image directly from source URL
-            annotation_detection = create_detection_from_url(
-                annotation_api_url, auth_token, detection_data, source_url
-            )
+            if source_key:
+                annotation_detection = create_detection_from_bucket_key(
+                    annotation_api_url,
+                    auth_token,
+                    detection_data,
+                    source_key=source_key,
+                )
+            elif source_url:
+                annotation_detection = create_detection_from_url(
+                    annotation_api_url, auth_token, detection_data, source_url
+                )
+            else:
+                raise ValueError(
+                    "Detection record is missing both detection_bucket_key and detection_url"
+                )
 
             logging.debug(f"Created detection with ID: {annotation_detection['id']}")
             result["success"] = True

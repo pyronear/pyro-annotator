@@ -61,6 +61,12 @@ class Settings(BaseSettings):
     S3_ENDPOINT_URL: str = os.environ["S3_ENDPOINT_URL"]
     S3_PROXY_URL: str = os.environ.get("S3_PROXY_URL", "")
     S3_URL_EXPIRATION: int = int(os.environ.get("S3_URL_EXPIRATION") or 24 * 3600)
+    S3_BUCKET_NAME: str = os.environ.get("S3_BUCKET_NAME", "annotation-api")
+
+    # Platform (used to derive source bucket name for server-side S3 copies)
+    PLATFORM_SERVER_NAME: str = os.environ.get(
+        "PLATFORM_SERVER_NAME", "ovh-alert-api-prod-v2"
+    )
 
     DEBUG: bool = os.environ.get("DEBUG", "").lower() != "false"
     LOGO_URL: str = ""

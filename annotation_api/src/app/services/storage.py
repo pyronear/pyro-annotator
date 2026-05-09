@@ -5,6 +5,7 @@
 
 import hashlib
 import logging
+import os
 from datetime import datetime, UTC
 from mimetypes import guess_extension
 from typing import Any, Dict, Optional, Union
@@ -21,7 +22,12 @@ from fastapi import HTTPException, UploadFile, status
 
 from app.core.config import settings
 
-__all__ = ["s3_service", "upload_file"]
+__all__ = [
+    "copy_file_from_bucket",
+    "s3_service",
+    "upload_file",
+    "upload_file_from_url",
+]
 
 
 logger = logging.getLogger("uvicorn.warning")
@@ -101,6 +107,20 @@ class S3Bucket:
         # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3.html#S3.Client.delete_object
         self._s3.delete_object(Bucket=self.name, Key=bucket_key)
 
+    def copy_from(
+        self, source_bucket: str, source_key: str, dest_key: str
+    ) -> Dict[str, Any]:
+        """Server-side copy of an object from another bucket on the same S3 service.
+
+        Returns the destination head_object response so callers can verify size.
+        """
+        self._s3.copy_object(
+            Bucket=self.name,
+            Key=dest_key,
+            CopySource={"Bucket": source_bucket, "Key": source_key},
+        )
+        return self.get_file_metadata(dest_key)
+
     def get_public_url(
         self, bucket_key: str, url_expiration: int = settings.S3_URL_EXPIRATION
     ) -> str:
@@ -162,15 +182,16 @@ class S3Service:
     ) -> None:
         _session = boto3.Session(access_key, secret_key, region_name=region)
         self._s3 = _session.client("s3", endpoint_url=endpoint_url)
-        # Ensure S3 is connected
+        # Probe with head_bucket on the configured destination bucket so least-
+        # privilege credentials (without s3:ListAllMyBuckets) still validate.
         try:
-            self._s3.list_buckets()
+            self._s3.head_bucket(Bucket=settings.S3_BUCKET_NAME)
         except (NoCredentialsError, PartialCredentialsError):
             raise ValueError("invalid S3 credentials")
         except EndpointConnectionError:
             raise ValueError(f"unable to access endpoint {endpoint_url}")
         except ClientError:
-            raise ValueError("unable to access S3")
+            raise ValueError(f"unable to access bucket {settings.S3_BUCKET_NAME} on S3")
         logger.info(f"S3 connected on {endpoint_url}")
         self.proxy_url = proxy_url
 
@@ -205,7 +226,8 @@ class S3Service:
 
     @staticmethod
     def resolve_bucket_name() -> str:
-        return "annotation-api"
+        return settings.S3_BUCKET_NAME
+
 
 async def upload_file(
     file: UploadFile,
@@ -279,6 +301,7 @@ async def upload_file(
                 )
 
     return bucket_key
+
 
 def _generate_detection_bucket_key(
     sequence_id: Optional[int] = None,
@@ -367,7 +390,9 @@ async def upload_file_from_url(
     bucket_name = s3_service.resolve_bucket_name()
     bucket = s3_service.get_bucket(bucket_name)
 
-    content_type = magic.from_buffer(image_bytes, mime=True) or "application/octet-stream"
+    content_type = (
+        magic.from_buffer(image_bytes, mime=True) or "application/octet-stream"
+    )
     if not bucket.upload_file_bytes(image_bytes, bucket_key, content_type):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -386,13 +411,94 @@ async def upload_file_from_url(
             try:
                 bucket.delete_file(bucket_key)
             except Exception as exc:
-                logging.warning("Failed to delete corrupted file %s: %s", bucket_key, exc)
+                logging.warning(
+                    "Failed to delete corrupted file %s: %s", bucket_key, exc
+                )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Data was corrupted during upload",
             )
 
     return bucket_key
+
+
+async def copy_file_from_bucket(
+    source_bucket: str,
+    source_key: str,
+    sequence_id: Optional[int] = None,
+    detection_id: Optional[int] = None,
+    recorded_at: Optional[datetime] = None,
+) -> str:
+    """Server-side copy from another bucket on the same S3 service.
+
+    Returns the destination bucket key. Verifies the destination is non-empty
+    via head_object and cleans up if the copy produced a zero-byte object.
+    """
+    extension = os.path.splitext(source_key)[1]
+    sha_hash = hashlib.sha256(f"{source_bucket}/{source_key}".encode()).hexdigest()[:8]
+    dest_key = _generate_detection_bucket_key(
+        sequence_id=sequence_id,
+        detection_id=detection_id,
+        recorded_at=recorded_at,
+        sha_hash=sha_hash,
+        extension=extension,
+    )
+
+    bucket_name = s3_service.resolve_bucket_name()
+    bucket = s3_service.get_bucket(bucket_name)
+
+    try:
+        head = bucket.copy_from(source_bucket, source_key, dest_key)
+    except ClientError as exc:
+        code = exc.response.get("Error", {}).get("Code", "")
+        logging.warning(
+            "S3 copy failed (code=%s) %s/%s -> %s/%s: %s",
+            code,
+            source_bucket,
+            source_key,
+            bucket_name,
+            dest_key,
+            exc,
+        )
+        if code in ("NoSuchKey", "NoSuchBucket", "404"):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Source object not found",
+            ) from exc
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="S3 copy failed",
+        ) from exc
+
+    # The platform uploader does not set ContentType when storing detection
+    # images, so source metadata is unreliable for content validation. Trust
+    # the size signal only — non-zero copied bytes from a known platform
+    # bucket suffice for an image we already accepted upstream.
+    content_length = head.get("ContentLength", 0) or 0
+    if content_length <= 0:
+        try:
+            bucket.delete_file(dest_key)
+        except Exception:
+            logging.warning("Failed to delete empty copied object %s", dest_key)
+        logging.warning(
+            "Rejected empty copied object %s/%s",
+            source_bucket,
+            source_key,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Copied object is empty",
+        )
+
+    logging.info(
+        "Copied %s/%s -> %s/%s (%d bytes)",
+        source_bucket,
+        source_key,
+        bucket_name,
+        dest_key,
+        content_length,
+    )
+    return dest_key
 
 
 s3_service = S3Service(
