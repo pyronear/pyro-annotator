@@ -454,6 +454,56 @@ def create_detection_from_url(
     return _handle_response(response, operation=operation)
 
 
+def create_detection_from_bucket_key(
+    base_url: str,
+    auth_token: str,
+    detection_data: Dict,
+    organization_id: int,
+    source_key: str,
+) -> Dict:
+    """
+    Create a detection by having the server-side copy an object from a platform bucket.
+
+    The annotation API derives the source bucket name from PLATFORM_SERVER_NAME
+    and the supplied organization_id, then runs a same-provider boto3 copy_object
+    to its own bucket. Image bytes never transit the API process.
+
+    Args:
+        base_url: Base URL of the annotation API
+        auth_token: JWT authentication token
+        detection_data: Dictionary with algo_predictions, alert_api_id,
+                        sequence_id, recorded_at
+        organization_id: Platform organization id (selects the source bucket)
+        source_key: Object key inside the source bucket
+
+    Returns:
+        Dictionary containing the created detection data
+
+    Raises:
+        ValidationError: If detection data is invalid
+        AnnotationAPIError: For other API errors
+    """
+    url = f"{base_url.rstrip('/')}/api/v1/detections/from-bucket-key"
+
+    json_payload = {
+        "organization_id": organization_id,
+        "source_key": source_key,
+        "algo_predictions": detection_data["algo_predictions"],
+        "alert_api_id": detection_data["alert_api_id"],
+        "sequence_id": detection_data["sequence_id"],
+        "recorded_at": detection_data["recorded_at"],
+    }
+
+    operation = (
+        f"create detection from bucket key with alert_api_id="
+        f"{detection_data.get('alert_api_id', 'unknown')}"
+    )
+    response = _make_request(
+        "POST", url, auth_token, operation=operation, json=json_payload
+    )
+    return _handle_response(response, operation=operation)
+
+
 def get_detection(base_url: str, auth_token: str, detection_id: int) -> Dict:
     """
     Get a specific detection by ID.
