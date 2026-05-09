@@ -101,6 +101,20 @@ class S3Bucket:
         # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3.html#S3.Client.delete_object
         self._s3.delete_object(Bucket=self.name, Key=bucket_key)
 
+    def copy_from(
+        self, source_bucket: str, source_key: str, dest_key: str
+    ) -> Dict[str, Any]:
+        """Server-side copy of an object from another bucket on the same S3 service.
+
+        Returns the destination head_object response so callers can verify size.
+        """
+        self._s3.copy_object(
+            Bucket=self.name,
+            Key=dest_key,
+            CopySource={"Bucket": source_bucket, "Key": source_key},
+        )
+        return self.get_file_metadata(dest_key)
+
     def get_public_url(
         self, bucket_key: str, url_expiration: int = settings.S3_URL_EXPIRATION
     ) -> str:
