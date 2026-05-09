@@ -164,7 +164,9 @@ def build_detection_id_map(
     return local_map
 
 
-def remap_annotation_bboxes(annotation: Dict[str, Any], id_map: Dict[int, int]) -> Dict[str, Any]:
+def remap_annotation_bboxes(
+    annotation: Dict[str, Any], id_map: Dict[int, int]
+) -> Dict[str, Any]:
     """
     Replace detection_id in annotation bboxes using the provided mapping.
     Bboxes without a mapping are dropped.
@@ -253,7 +255,17 @@ def main() -> None:
     local_sequences = fetch_local_sequences_to_push(
         args.local_api, local_token, sequence_filter, args.max_sequences
     )
-    logging.info(f"Found {len(local_sequences)} seq_annotation_done sequence(s) locally")
+    logging.info(
+        f"Found {len(local_sequences)} seq_annotation_done sequence(s) locally"
+    )
+
+    # Stages that mean the remote has already moved past the seq_annotation_done
+    # handoff. Re-pushing into these would clobber review progress, so we skip.
+    remote_downstream_stages = {
+        SequenceAnnotationProcessingStage.IN_REVIEW.value,
+        SequenceAnnotationProcessingStage.NEEDS_MANUAL.value,
+        SequenceAnnotationProcessingStage.ANNOTATED.value,
+    }
 
     stats = {
         "attempted": 0,
@@ -261,6 +273,7 @@ def main() -> None:
         "synced_updated": 0,
         "skipped_no_annotation": 0,
         "skipped_no_detections_mapped": 0,
+        "skipped_remote_downstream": 0,
         "missing_remote": 0,
         "errors": 0,
     }
@@ -271,7 +284,9 @@ def main() -> None:
         source_api = seq.get("source_api")
 
         # Fetch local annotation
-        local_ann = get_sequence_annotation_single(args.local_api, local_token, seq["id"])
+        local_ann = get_sequence_annotation_single(
+            args.local_api, local_token, seq["id"]
+        )
         if not local_ann:
             logging.warning(f"Skipping alert_api_id={alert_id}: no local annotation")
             stats["skipped_no_annotation"] += 1
@@ -316,6 +331,16 @@ def main() -> None:
         remote_ann = get_sequence_annotation_single(
             args.remote_api, remote_token, remote_seq_id
         )
+        if (
+            remote_ann
+            and remote_ann.get("processing_stage") in remote_downstream_stages
+        ):
+            logging.warning(
+                f"Skipping alert_api_id={alert_id}: remote already in "
+                f"'{remote_ann['processing_stage']}', refusing to overwrite"
+            )
+            stats["skipped_remote_downstream"] += 1
+            continue
 
         # Build payload from local annotation
         payload = {
@@ -353,7 +378,9 @@ def main() -> None:
                     f"(remote_seq_id={remote_seq_id})"
                 )
 
-            # Update local annotation stage to seq_annotation_done for bookkeeping
+            # Park the local annotation in `annotated` so a rerun does not
+            # reselect this row and force-demote the remote back to
+            # seq_annotation_done.
             try:
                 local_ann_id = local_ann.get("id")
                 if local_ann_id:
@@ -361,7 +388,9 @@ def main() -> None:
                         args.local_api,
                         local_token,
                         local_ann_id,
-                        {"processing_stage": SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE.value},
+                        {
+                            "processing_stage": SequenceAnnotationProcessingStage.ANNOTATED.value
+                        },
                     )
             except Exception as exc:
                 logging.warning(
@@ -379,6 +408,7 @@ def main() -> None:
         f"missing_remote={stats['missing_remote']}, "
         f"no_local_annotation={stats['skipped_no_annotation']}, "
         f"no_detections_mapped={stats['skipped_no_detections_mapped']}, "
+        f"remote_downstream={stats['skipped_remote_downstream']}, "
         f"errors={stats['errors']}"
     )
 
