@@ -5,6 +5,7 @@
 
 import hashlib
 import logging
+import os
 from datetime import datetime, UTC
 from mimetypes import guess_extension
 from typing import Any, Dict, Optional, Union
@@ -414,6 +415,67 @@ async def upload_file_from_url(
             )
 
     return bucket_key
+
+
+async def copy_file_from_bucket(
+    source_bucket: str,
+    source_key: str,
+    sequence_id: Optional[int] = None,
+    detection_id: Optional[int] = None,
+    recorded_at: Optional[datetime] = None,
+) -> str:
+    """Server-side copy from another bucket on the same S3 service.
+
+    Returns the destination bucket key. Verifies the destination is non-empty
+    via head_object and cleans up if the copy produced a zero-byte object.
+    """
+    extension = os.path.splitext(source_key)[1]
+    sha_hash = hashlib.sha256(f"{source_bucket}/{source_key}".encode()).hexdigest()[:8]
+    dest_key = _generate_detection_bucket_key(
+        sequence_id=sequence_id,
+        detection_id=detection_id,
+        recorded_at=recorded_at,
+        sha_hash=sha_hash,
+        extension=extension,
+    )
+
+    bucket_name = s3_service.resolve_bucket_name()
+    bucket = s3_service.get_bucket(bucket_name)
+
+    try:
+        head = bucket.copy_from(source_bucket, source_key, dest_key)
+    except ClientError as exc:
+        code = exc.response.get("Error", {}).get("Code", "")
+        if code in ("NoSuchKey", "NoSuchBucket", "404"):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Source object not found: {source_bucket}/{source_key}",
+            ) from exc
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"S3 copy failed: {exc}",
+        ) from exc
+
+    content_length = head.get("ContentLength", 0) or 0
+    if content_length <= 0:
+        try:
+            bucket.delete_file(dest_key)
+        except Exception:
+            logging.warning("Failed to delete empty copied object %s", dest_key)
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Copied object is empty",
+        )
+
+    logging.info(
+        "Copied %s/%s -> %s/%s (%d bytes)",
+        source_bucket,
+        source_key,
+        bucket_name,
+        dest_key,
+        content_length,
+    )
+    return dest_key
 
 
 s3_service = S3Service(

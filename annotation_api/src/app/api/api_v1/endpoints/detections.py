@@ -29,12 +29,19 @@ from app.crud import DetectionCRUD
 from app.db import get_session
 from app.models import Detection
 from app.schemas.annotation_validation import AlgoPredictions
+from app.core.config import settings
 from app.schemas.detection import (
+    DetectionCreateFromBucketKey,
     DetectionCreateFromUrl,
     DetectionRead,
     DetectionUrl,
 )
-from app.services.storage import s3_service, upload_file, upload_file_from_url
+from app.services.storage import (
+    copy_file_from_bucket,
+    s3_service,
+    upload_file,
+    upload_file_from_url,
+)
 
 router = APIRouter()
 logger = logging.getLogger("uvicorn.error")
@@ -157,6 +164,65 @@ async def create_detection_from_url(
     try:
         bucket_key = await upload_file_from_url(
             source_url=payload.source_url,
+            sequence_id=payload.sequence_id,
+            detection_id=detection.id,
+            recorded_at=payload.recorded_at,
+        )
+    except Exception:
+        await detections.session.rollback()
+        raise
+
+    detection.bucket_key = bucket_key
+    try:
+        await detections.session.commit()
+    except Exception:
+        bucket = s3_service.get_bucket(s3_service.resolve_bucket_name())
+        try:
+            bucket.delete_file(bucket_key)
+        except Exception:
+            logger.exception("Failed to clean up orphaned S3 object %s", bucket_key)
+        raise
+    await detections.session.refresh(detection)
+
+    return detection
+
+
+@router.post(
+    "/from-bucket-key",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create detection by server-side S3 copy from a platform bucket",
+)
+async def create_detection_from_bucket_key(
+    payload: DetectionCreateFromBucketKey,
+    detections: DetectionCRUD = Depends(get_detection_crud),
+    current_user: User = Depends(get_current_user),
+) -> DetectionRead:
+    """Create a detection by server-side copying an object from a platform bucket.
+
+    The source bucket name is derived server-side from PLATFORM_SERVER_NAME and
+    the caller-supplied organization_id, so authenticated callers cannot point
+    the copy at arbitrary buckets the API credentials can read.
+    """
+    source_bucket = (
+        f"{settings.PLATFORM_SERVER_NAME}-alert-api-{payload.organization_id}"
+    )
+
+    detection = Detection(
+        sequence_id=payload.sequence_id,
+        alert_api_id=payload.alert_api_id,
+        recorded_at=payload.recorded_at,
+        bucket_key="",
+        algo_predictions=payload.algo_predictions.model_dump(),
+        created_at=datetime.now(UTC),
+    )
+
+    detections.session.add(detection)
+    await detections.session.flush()
+
+    try:
+        bucket_key = await copy_file_from_bucket(
+            source_bucket=source_bucket,
+            source_key=payload.source_key,
             sequence_id=payload.sequence_id,
             detection_id=detection.id,
             recorded_at=payload.recorded_at,
