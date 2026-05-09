@@ -205,7 +205,7 @@ class S3Service:
 
     @staticmethod
     def resolve_bucket_name() -> str:
-        return "annotation-api"
+        return settings.S3_BUCKET_NAME
 
 async def upload_file(
     file: UploadFile,
