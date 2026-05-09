@@ -28,6 +28,7 @@ from rich.console import Console
 from app.clients.annotation_api import (
     get_auth_token,
     create_sequence,
+    create_detection_from_bucket_key,
     create_detection_from_url,
     AnnotationAPIError,
     ValidationError,
@@ -342,14 +343,31 @@ def _process_single_detection(
 
     # Transform detection data
     detection_data = transform_detection_data(record, annotation_sequence_id)
-    source_url = record["detection_url"]
+    source_key = record.get("detection_bucket_key")
+    organization_id = record.get("organization_id")
+    source_url = record.get("detection_url")
 
     for attempt in range(max_retries + 1):
         try:
-            # Let the server fetch the image directly from source URL
-            annotation_detection = create_detection_from_url(
-                annotation_api_url, auth_token, detection_data, source_url
-            )
+            # Prefer server-side S3 copy when both source bucket coordinates are
+            # available. Falls back to URL-based fetch (clone-from-annotation
+            # mode produces presigned URLs without exposing bucket_key).
+            if source_key and organization_id is not None:
+                annotation_detection = create_detection_from_bucket_key(
+                    annotation_api_url,
+                    auth_token,
+                    detection_data,
+                    organization_id=organization_id,
+                    source_key=source_key,
+                )
+            elif source_url:
+                annotation_detection = create_detection_from_url(
+                    annotation_api_url, auth_token, detection_data, source_url
+                )
+            else:
+                raise ValueError(
+                    "Detection record is missing both bucket_key/organization_id and detection_url"
+                )
 
             logging.debug(f"Created detection with ID: {annotation_detection['id']}")
             result["success"] = True
