@@ -20,6 +20,8 @@ Functions:
 
 import logging
 from datetime import date
+from typing import Optional
+from urllib.parse import urlencode
 
 import requests
 
@@ -165,6 +167,7 @@ def list_sequences_for_date(
     limit: int,
     offset: int,
     access_token: str,
+    risk_score: Optional[str] = None,
 ) -> list[dict]:
     """
     List all sequences for a given date using the platform API.
@@ -175,11 +178,23 @@ def list_sequences_for_date(
         limit (int): The maximum number of sequences to return.
         offset (int): The number of sequences to skip before starting to collect the result set.
         access_token (str): The access token for API authentication.
+        risk_score (str | None): Optional FWI class override. When set (e.g. "extreme"),
+            the platform applies that single class to every camera and the FWI confidence
+            filter becomes a no-op for classes whose threshold is 0.0. Pass None to use
+            the platform's default per-camera risk-api lookup (which filters out low-FWI
+            sequences).
 
     Returns:
         list[dict]: A list of dictionaries containing sequence information.
     """
-    url = f"{api_endpoint}/api/v1/sequences/all/fromdate?from_date={date:%Y-%m-%d}&limit={limit}&offset={offset}"
+    params: dict[str, object] = {
+        "from_date": f"{date:%Y-%m-%d}",
+        "limit": limit,
+        "offset": offset,
+    }
+    if risk_score:
+        params["risk_score"] = risk_score
+    url = f"{api_endpoint}/api/v1/sequences/all/fromdate?{urlencode(params)}"
     return api_get(route=url, access_token=access_token)
 
 

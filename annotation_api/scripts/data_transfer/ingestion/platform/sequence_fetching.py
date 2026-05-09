@@ -83,7 +83,10 @@ def get_dates_within(date_from: date, date_end: date) -> List[date]:
 
 
 def fetch_sequences_for_date(
-    api_endpoint: str, target_date: date, access_token: str
+    api_endpoint: str,
+    target_date: date,
+    access_token: str,
+    risk_score: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
     Fetch sequences for a specific date from the platform API.
@@ -92,30 +95,33 @@ def fetch_sequences_for_date(
         api_endpoint: Platform API endpoint URL
         target_date: Date to fetch sequences for
         access_token: API access token for authentication
+        risk_score: Optional FWI class override forwarded to the platform.
+            None applies the default per-camera risk filter (drops low-FWI sequences).
 
     Returns:
         List of sequence dictionaries for the specified date
-
-    Example:
-        >>> sequences = fetch_sequences_for_date(
-        ...     "https://api.example.com",
-        ...     date(2024, 1, 1),
-        ...     "token123"
-        ... )
-        >>> print(f"Found {len(sequences)} sequences")
     """
+    page_size = 1000
+    offset = 0
+    sequences: List[Dict[str, Any]] = []
     try:
-        sequences = platform_client.list_sequences_for_date(
-            api_endpoint=api_endpoint,
-            date=target_date,
-            limit=1000,  # Large limit to get all sequences for the date
-            offset=0,
-            access_token=access_token,
-        )
+        while True:
+            page = platform_client.list_sequences_for_date(
+                api_endpoint=api_endpoint,
+                date=target_date,
+                limit=page_size,
+                offset=offset,
+                access_token=access_token,
+                risk_score=risk_score,
+            )
+            sequences.extend(page)
+            if len(page) < page_size:
+                break
+            offset += page_size
         return sequences
     except Exception as e:
         logging.error(f"Error fetching sequences for date {target_date}: {e}")
-        return []
+        return sequences
 
 
 def process_single_sequence_detections(
@@ -225,6 +231,7 @@ def fetch_all_sequences_within(
     console: Optional[Console] = None,
     error_collector: Optional[ErrorCollector] = None,
     organization: Optional[str] = None,
+    risk_score: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
     Fetch all sequences and detections between date_from and date_end.
@@ -334,7 +341,11 @@ def fetch_all_sequences_within(
     with concurrent.futures.ProcessPoolExecutor() as executor:
         future_to_date = {
             executor.submit(
-                fetch_sequences_for_date, api_endpoint, mdate, access_token
+                fetch_sequences_for_date,
+                api_endpoint,
+                mdate,
+                access_token,
+                risk_score,
             ): mdate
             for mdate in dates
         }
@@ -369,7 +380,11 @@ def fetch_all_sequences_within(
         )
 
     # Optionally cap total sequences
-    if max_sequences is not None and max_sequences > 0 and len(sequences) > max_sequences:
+    if (
+        max_sequences is not None
+        and max_sequences > 0
+        and len(sequences) > max_sequences
+    ):
         sequences = sequences[:max_sequences]
         console.print(
             f"[blue]🔍 Applying max_sequences cap[/] "

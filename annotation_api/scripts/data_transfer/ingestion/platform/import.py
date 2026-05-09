@@ -192,6 +192,18 @@ def make_cli_parser() -> argparse.ArgumentParser:
         ),
         type=str,
     )
+    parser.add_argument(
+        "--risk-score",
+        help=(
+            "FWI class override sent to the platform's /sequences/all/fromdate. "
+            "Defaults to 'extreme' so the platform's per-camera risk filter is "
+            "bypassed and every sequence for the date is returned. Pass 'none' "
+            "to keep the platform default (filters low-FWI sequences)."
+        ),
+        type=str,
+        choices=["very_low", "low", "moderate", "high", "very_high", "extreme", "none"],
+        default="extreme",
+    )
 
     # Annotation analysis options
     parser.add_argument(
@@ -836,6 +848,9 @@ def main() -> None:
 
             # Fetch platform records
             try:
+                # "none" means: do not pass risk_score → platform applies its
+                # per-camera risk filter (default behaviour).
+                risk_score = args.risk_score if args.risk_score != "none" else None
                 records = fetch_all_sequences_within(
                     date_from=args.date_from,
                     date_end=args.date_end,
@@ -851,6 +866,7 @@ def main() -> None:
                     console=console,
                     error_collector=error_collector,
                     organization=organization,
+                    risk_score=risk_score,
                 )
             except Exception as e:
                 error_collector.add_error(f"Platform data fetching failed: {e}")
