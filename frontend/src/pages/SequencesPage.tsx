@@ -111,14 +111,26 @@ export default function SequencesPage({
     handleFilterChange({ recorded_at_lte: dateTimeValue });
   };
 
+  // Annotated-only filters are hidden on other review stages, but their values
+  // persist in shared state. Strip them from API calls so they don't silently
+  // narrow results on stages where the controls aren't visible.
+  const apiFilters = useMemo<ExtendedSequenceFilters>(() => {
+    if (defaultProcessingStage === 'annotated') return filters;
+    const stripped: ExtendedSequenceFilters = { ...filters };
+    delete stripped.false_positive_types;
+    delete stripped.smoke_types;
+    delete stripped.is_unsure;
+    return stripped;
+  }, [filters, defaultProcessingStage]);
+
   // Fetch sequences with annotations in a single efficient call
   const {
     data: sequences,
     isLoading,
     error,
   } = useQuery({
-    queryKey: [...QUERY_KEYS.SEQUENCES, 'with-annotations', filters],
-    queryFn: () => apiClient.getSequencesWithAnnotations(filters),
+    queryKey: [...QUERY_KEYS.SEQUENCES, 'with-annotations', apiFilters],
+    queryFn: () => apiClient.getSequencesWithAnnotations(apiFilters),
   });
 
   // Filter sequences by model accuracy (only for review page)
@@ -159,7 +171,7 @@ export default function SequencesPage({
   const handleSequenceClick = (clickedSequence: SequenceWithAnnotation) => {
     // Initialize annotation workflow if we have sequences data
     if (sequences?.items) {
-      startAnnotationWorkflow(sequences.items, clickedSequence.id, filters);
+      startAnnotationWorkflow(sequences.items, clickedSequence.id, apiFilters);
     }
 
     // Navigate to annotation interface with context about source page
