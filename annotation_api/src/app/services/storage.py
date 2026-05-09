@@ -470,33 +470,33 @@ async def copy_file_from_bucket(
             detail="S3 copy failed",
         ) from exc
 
+    # The platform uploader does not set ContentType when storing detection
+    # images, so source metadata is unreliable for content validation. Trust
+    # the size signal only — non-zero copied bytes from a known platform
+    # bucket suffice for an image we already accepted upstream.
     content_length = head.get("ContentLength", 0) or 0
-    content_type = head.get("ContentType") or ""
-    if content_length <= 0 or not content_type.startswith("image/"):
+    if content_length <= 0:
         try:
             bucket.delete_file(dest_key)
         except Exception:
-            logging.warning("Failed to delete invalid copied object %s", dest_key)
+            logging.warning("Failed to delete empty copied object %s", dest_key)
         logging.warning(
-            "Rejected copied object (size=%d, content_type=%r) %s/%s",
-            content_length,
-            content_type,
+            "Rejected empty copied object %s/%s",
             source_bucket,
             source_key,
         )
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Copied object is empty or not an image",
+            detail="Copied object is empty",
         )
 
     logging.info(
-        "Copied %s/%s -> %s/%s (%d bytes, %s)",
+        "Copied %s/%s -> %s/%s (%d bytes)",
         source_bucket,
         source_key,
         bucket_name,
         dest_key,
         content_length,
-        content_type,
     )
     return dest_key
 
