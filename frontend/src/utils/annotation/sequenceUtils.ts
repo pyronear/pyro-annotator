@@ -111,17 +111,21 @@ export const getInitialMissedSmokeReview = (
 
 /**
  * Creates updated annotation payload for API submission.
+ *
+ * If the annotation is already in the post-review `annotated` stage, the stage
+ * is preserved so reviewer edits don't demote it back into the review pipeline.
  */
 export const createAnnotationPayload = (
   updatedBboxes: SequenceBbox[],
   isUnsure: boolean,
-  hasMissedSmoke: boolean
+  hasMissedSmoke: boolean,
+  currentStage?: SequenceAnnotation['processing_stage']
 ): Partial<SequenceAnnotation> => {
   return {
     annotation: {
       sequences_bbox: updatedBboxes, // Always preserve the actual bbox data
     },
-    processing_stage: 'seq_annotation_done', // Hand off to the review pipeline
+    processing_stage: currentStage === 'annotated' ? 'annotated' : 'seq_annotation_done',
     // Update derived fields - all false for unsure sequences
     has_smoke: isUnsure ? false : updatedBboxes.some(bbox => bbox.is_smoke),
     has_false_positives: isUnsure

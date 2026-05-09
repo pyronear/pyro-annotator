@@ -2,7 +2,8 @@
 Sync local sequence annotations to a remote annotation API.
 
 Workflow:
-1. List annotated sequences on the local API (optionally filter by alert_api_id and limit).
+1. List sequences in `seq_annotation_done` on the local API (optionally filter by
+   alert_api_id and limit).
 2. For each, find the corresponding sequence on the remote API by alert_api_id.
 3. Create or update the sequence annotation on the remote API.
 """
@@ -33,13 +34,13 @@ def parse_sequence_selection(sequence_arg: str) -> List[int]:
     return ids
 
 
-def fetch_local_annotated_sequences(
+def fetch_local_sequences_to_push(
     base_url: str,
     token: str,
     sequence_filter: Optional[List[int]],
     max_sequences: Optional[int],
 ) -> List[Dict[str, Any]]:
-    """Fetch annotated sequences from local API with optional filtering/limit."""
+    """Fetch sequences in seq_annotation_done from local API with optional filtering/limit."""
     page = 1
     size = 100
     results: List[Dict[str, Any]] = []
@@ -49,7 +50,7 @@ def fetch_local_annotated_sequences(
         params = {
             "page": page,
             "size": size,
-            "processing_stage": "annotated",
+            "processing_stage": SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE.value,
         }
         resp = annotation_api.list_sequences(base_url, token, **params)
         items = resp.get("items", [])
@@ -246,13 +247,13 @@ def main() -> None:
     )
 
     logging.info(
-        f"Fetching annotated sequences from local API {args.local_api} "
+        f"Fetching seq_annotation_done sequences from local API {args.local_api} "
         f"(filter={sequence_filter or 'none'}, max={args.max_sequences or 'all'})"
     )
-    local_sequences = fetch_local_annotated_sequences(
+    local_sequences = fetch_local_sequences_to_push(
         args.local_api, local_token, sequence_filter, args.max_sequences
     )
-    logging.info(f"Found {len(local_sequences)} annotated sequence(s) locally")
+    logging.info(f"Found {len(local_sequences)} seq_annotation_done sequence(s) locally")
 
     stats = {
         "attempted": 0,

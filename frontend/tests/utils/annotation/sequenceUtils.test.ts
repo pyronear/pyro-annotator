@@ -208,14 +208,20 @@ describe('sequenceUtils', () => {
         createMockBbox({ is_smoke: true, smoke_type: 'wildfire' }),
         createMockBbox({ false_positive_types: ['antenna'] })
       ];
-      
+
       const payload = createAnnotationPayload(bboxes, true, true);
-      
+
       expect(payload.has_smoke).toBe(false);
       expect(payload.has_false_positives).toBe(false);
       expect(payload.has_missed_smoke).toBe(false);
       expect(payload.is_unsure).toBe(true);
       expect(payload.false_positive_types).toBe("[]");
+    });
+
+    it('should preserve annotated stage when reviewer re-saves', () => {
+      const bboxes = [createMockBbox({ is_smoke: true, smoke_type: 'wildfire' })];
+      const payload = createAnnotationPayload(bboxes, false, false, 'annotated');
+      expect(payload.processing_stage).toBe('annotated');
     });
   });
 

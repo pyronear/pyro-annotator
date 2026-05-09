@@ -189,11 +189,14 @@ export default function AnnotationInterface() {
   // Save annotation mutation
   const saveAnnotation = useMutation({
     mutationFn: async (updatedBboxes: SequenceBbox[]) => {
+      // Don't demote a post-review 'annotated' sequence back into the review pipeline
+      // when a reviewer edits it from the review page.
+      const isAlreadyFinalised = annotation?.processing_stage === 'annotated';
       const updatedAnnotation: Partial<SequenceAnnotation> = {
         annotation: {
           sequences_bbox: updatedBboxes, // Always preserve the actual bbox data
         },
-        processing_stage: 'seq_annotation_done', // Hand off to the review pipeline
+        processing_stage: isAlreadyFinalised ? 'annotated' : 'seq_annotation_done',
         // Update derived fields - all false for unsure sequences
         has_smoke: isUnsure ? false : updatedBboxes.some(bbox => bbox.is_smoke),
         has_false_positives: isUnsure
