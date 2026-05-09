@@ -162,15 +162,16 @@ class S3Service:
     ) -> None:
         _session = boto3.Session(access_key, secret_key, region_name=region)
         self._s3 = _session.client("s3", endpoint_url=endpoint_url)
-        # Ensure S3 is connected
+        # Probe with head_bucket on the configured destination bucket so least-
+        # privilege credentials (without s3:ListAllMyBuckets) still validate.
         try:
-            self._s3.list_buckets()
+            self._s3.head_bucket(Bucket=settings.S3_BUCKET_NAME)
         except (NoCredentialsError, PartialCredentialsError):
             raise ValueError("invalid S3 credentials")
         except EndpointConnectionError:
             raise ValueError(f"unable to access endpoint {endpoint_url}")
         except ClientError:
-            raise ValueError("unable to access S3")
+            raise ValueError(f"unable to access bucket {settings.S3_BUCKET_NAME} on S3")
         logger.info(f"S3 connected on {endpoint_url}")
         self.proxy_url = proxy_url
 
