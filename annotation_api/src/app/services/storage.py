@@ -22,7 +22,12 @@ from fastapi import HTTPException, UploadFile, status
 
 from app.core.config import settings
 
-__all__ = ["s3_service", "upload_file"]
+__all__ = [
+    "copy_file_from_bucket",
+    "s3_service",
+    "upload_file",
+    "upload_file_from_url",
+]
 
 
 logger = logging.getLogger("uvicorn.warning")
@@ -446,34 +451,52 @@ async def copy_file_from_bucket(
         head = bucket.copy_from(source_bucket, source_key, dest_key)
     except ClientError as exc:
         code = exc.response.get("Error", {}).get("Code", "")
+        logging.warning(
+            "S3 copy failed (code=%s) %s/%s -> %s/%s: %s",
+            code,
+            source_bucket,
+            source_key,
+            bucket_name,
+            dest_key,
+            exc,
+        )
         if code in ("NoSuchKey", "NoSuchBucket", "404"):
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Source object not found: {source_bucket}/{source_key}",
+                detail="Source object not found",
             ) from exc
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"S3 copy failed: {exc}",
+            detail="S3 copy failed",
         ) from exc
 
     content_length = head.get("ContentLength", 0) or 0
-    if content_length <= 0:
+    content_type = head.get("ContentType") or ""
+    if content_length <= 0 or not content_type.startswith("image/"):
         try:
             bucket.delete_file(dest_key)
         except Exception:
-            logging.warning("Failed to delete empty copied object %s", dest_key)
+            logging.warning("Failed to delete invalid copied object %s", dest_key)
+        logging.warning(
+            "Rejected copied object (size=%d, content_type=%r) %s/%s",
+            content_length,
+            content_type,
+            source_bucket,
+            source_key,
+        )
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Copied object is empty",
+            detail="Copied object is empty or not an image",
         )
 
     logging.info(
-        "Copied %s/%s -> %s/%s (%d bytes)",
+        "Copied %s/%s -> %s/%s (%d bytes, %s)",
         source_bucket,
         source_key,
         bucket_name,
         dest_key,
         content_length,
+        content_type,
     )
     return dest_key
 

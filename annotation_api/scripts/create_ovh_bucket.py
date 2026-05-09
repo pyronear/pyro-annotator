@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from pathlib import Path
 
 import boto3
 from botocore.exceptions import ClientError
@@ -22,16 +23,25 @@ from dotenv import load_dotenv
 
 
 def main() -> int:
-    load_dotenv()
+    # Load annotation_api/.env regardless of cwd so the script behaves the
+    # same when run from the repo root or annotation_api/.
+    env_path = Path(__file__).resolve().parent.parent / ".env"
+    load_dotenv(dotenv_path=env_path if env_path.exists() else None)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
-    required = ["S3_ENDPOINT_URL", "S3_REGION", "S3_ACCESS_KEY", "S3_SECRET_KEY"]
+    required = [
+        "S3_ENDPOINT_URL",
+        "S3_REGION",
+        "S3_ACCESS_KEY",
+        "S3_SECRET_KEY",
+        "S3_BUCKET_NAME",
+    ]
     missing = [name for name in required if not os.environ.get(name)]
     if missing:
         logging.error("Missing required env vars: %s", ", ".join(missing))
         return 1
 
-    bucket_name = os.environ.get("S3_BUCKET_NAME", "annotation-api")
+    bucket_name = os.environ["S3_BUCKET_NAME"]
     region = os.environ["S3_REGION"]
     endpoint_url = os.environ["S3_ENDPOINT_URL"]
 

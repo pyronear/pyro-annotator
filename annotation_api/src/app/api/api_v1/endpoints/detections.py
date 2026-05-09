@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import datetime, UTC
 from enum import Enum
-from typing import Optional
+from typing import Awaitable, Callable, Optional
 
 from fastapi import (
     APIRouter,
@@ -45,6 +45,40 @@ from app.services.storage import (
 
 router = APIRouter()
 logger = logging.getLogger("uvicorn.error")
+
+
+async def _persist_detection(
+    detection: Detection,
+    detections: DetectionCRUD,
+    storage_op: Callable[[int], Awaitable[str]],
+) -> Detection:
+    """Persist a detection alongside its S3 storage operation atomically.
+
+    The DB row is flushed (id assigned) before the storage op runs. If the
+    storage op fails, the row is rolled back. If the final commit fails after
+    the storage op succeeded, the orphaned S3 object is best-effort deleted.
+    """
+    detections.session.add(detection)
+    await detections.session.flush()
+
+    try:
+        bucket_key = await storage_op(detection.id)
+    except Exception:
+        await detections.session.rollback()
+        raise
+
+    detection.bucket_key = bucket_key
+    try:
+        await detections.session.commit()
+    except Exception:
+        bucket = s3_service.get_bucket(s3_service.resolve_bucket_name())
+        try:
+            bucket.delete_file(bucket_key)
+        except Exception:
+            logger.exception("Failed to clean up orphaned S3 object %s", bucket_key)
+        raise
+    await detections.session.refresh(detection)
+    return detection
 
 
 class OrderByField(str, Enum):
@@ -103,35 +137,16 @@ async def create_detection(
         created_at=datetime.now(UTC),
     )
 
-    detections.session.add(detection)
-    # flush to get the autoincrement id without committing the transaction
-    await detections.session.flush()
-
-    try:
-        bucket_key = await upload_file(
+    return await _persist_detection(
+        detection,
+        detections,
+        lambda detection_id: upload_file(
             file=file,
             sequence_id=sequence_id,
-            detection_id=detection.id,
+            detection_id=detection_id,
             recorded_at=recorded_at,
-        )
-    except Exception:
-        await detections.session.rollback()
-        raise
-
-    detection.bucket_key = bucket_key
-    try:
-        await detections.session.commit()
-    except Exception:
-        # DB failed after S3 succeeded — best-effort cleanup of the orphan object
-        bucket = s3_service.get_bucket(s3_service.resolve_bucket_name())
-        try:
-            bucket.delete_file(bucket_key)
-        except Exception:
-            logger.exception("Failed to clean up orphaned S3 object %s", bucket_key)
-        raise
-    await detections.session.refresh(detection)
-
-    return detection
+        ),
+    )
 
 
 @router.post(
@@ -158,33 +173,16 @@ async def create_detection_from_url(
         created_at=datetime.now(UTC),
     )
 
-    detections.session.add(detection)
-    await detections.session.flush()
-
-    try:
-        bucket_key = await upload_file_from_url(
+    return await _persist_detection(
+        detection,
+        detections,
+        lambda detection_id: upload_file_from_url(
             source_url=payload.source_url,
             sequence_id=payload.sequence_id,
-            detection_id=detection.id,
+            detection_id=detection_id,
             recorded_at=payload.recorded_at,
-        )
-    except Exception:
-        await detections.session.rollback()
-        raise
-
-    detection.bucket_key = bucket_key
-    try:
-        await detections.session.commit()
-    except Exception:
-        bucket = s3_service.get_bucket(s3_service.resolve_bucket_name())
-        try:
-            bucket.delete_file(bucket_key)
-        except Exception:
-            logger.exception("Failed to clean up orphaned S3 object %s", bucket_key)
-        raise
-    await detections.session.refresh(detection)
-
-    return detection
+        ),
+    )
 
 
 @router.post(
@@ -216,34 +214,17 @@ async def create_detection_from_bucket_key(
         created_at=datetime.now(UTC),
     )
 
-    detections.session.add(detection)
-    await detections.session.flush()
-
-    try:
-        bucket_key = await copy_file_from_bucket(
+    return await _persist_detection(
+        detection,
+        detections,
+        lambda detection_id: copy_file_from_bucket(
             source_bucket=source_bucket,
             source_key=payload.source_key,
             sequence_id=payload.sequence_id,
-            detection_id=detection.id,
+            detection_id=detection_id,
             recorded_at=payload.recorded_at,
-        )
-    except Exception:
-        await detections.session.rollback()
-        raise
-
-    detection.bucket_key = bucket_key
-    try:
-        await detections.session.commit()
-    except Exception:
-        bucket = s3_service.get_bucket(s3_service.resolve_bucket_name())
-        try:
-            bucket.delete_file(bucket_key)
-        except Exception:
-            logger.exception("Failed to clean up orphaned S3 object %s", bucket_key)
-        raise
-    await detections.session.refresh(detection)
-
-    return detection
+        ),
+    )
 
 
 @router.get("/{detection_id}")
