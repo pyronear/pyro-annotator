@@ -207,6 +207,7 @@ class S3Service:
     def resolve_bucket_name() -> str:
         return settings.S3_BUCKET_NAME
 
+
 async def upload_file(
     file: UploadFile,
     sequence_id: Optional[int] = None,
@@ -279,6 +280,7 @@ async def upload_file(
                 )
 
     return bucket_key
+
 
 def _generate_detection_bucket_key(
     sequence_id: Optional[int] = None,
@@ -367,7 +369,9 @@ async def upload_file_from_url(
     bucket_name = s3_service.resolve_bucket_name()
     bucket = s3_service.get_bucket(bucket_name)
 
-    content_type = magic.from_buffer(image_bytes, mime=True) or "application/octet-stream"
+    content_type = (
+        magic.from_buffer(image_bytes, mime=True) or "application/octet-stream"
+    )
     if not bucket.upload_file_bytes(image_bytes, bucket_key, content_type):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -386,7 +390,9 @@ async def upload_file_from_url(
             try:
                 bucket.delete_file(bucket_key)
             except Exception as exc:
-                logging.warning("Failed to delete corrupted file %s: %s", bucket_key, exc)
+                logging.warning(
+                    "Failed to delete corrupted file %s: %s", bucket_key, exc
+                )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Data was corrupted during upload",
