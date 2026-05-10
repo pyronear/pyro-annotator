@@ -44,8 +44,10 @@ router = APIRouter()
 
 # Cross-sequence grouping threshold. Stricter than within-sequence clustering
 # (IoU=0) because the precision cost of mis-grouping is much higher: a wrong
-# match auto-applies inherited labels to an unrelated event.
-_GROUP_IOU_THRESHOLD = 0.5
+# match auto-applies inherited labels to an unrelated event. R&D on 857
+# real sequences shows 0.3 captures natural smoke drift while filtering
+# accidental tiny overlaps; 0.5 was too strict in practice.
+_GROUP_IOU_THRESHOLD = 0.3
 
 
 @router.get(
