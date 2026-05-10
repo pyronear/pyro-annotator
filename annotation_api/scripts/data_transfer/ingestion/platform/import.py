@@ -231,6 +231,15 @@ def make_cli_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Preview actions without executing them",
     )
+    parser.add_argument(
+        "--prefer-url",
+        action="store_true",
+        help=(
+            "Skip the server-side bucket-key copy and post detections via "
+            "the /from-url endpoint instead. Useful for local dev where the "
+            "annotation API can't see the platform's S3 bucket (e.g. LocalStack)."
+        ),
+    )
 
     # Concurrency control
     parser.add_argument(
@@ -897,6 +906,7 @@ def main() -> None:
                     max_detection_workers=worker_config.detection_per_sequence,
                     suppress_logs=suppress_logs,
                     source_api=source_api,
+                    prefer_url=args.prefer_url,
                 )
 
                 # Capture import statistics in main stats and get successfully imported sequence IDs
