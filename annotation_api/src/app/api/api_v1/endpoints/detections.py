@@ -106,6 +106,7 @@ async def create_detection(
     sequence_id: int = Form(...),
     recorded_at: datetime = Form(),
     file: UploadFile = File(..., alias="file"),
+    others_bboxes: Optional[str] = Form(default=None),
     detections: DetectionCRUD = Depends(get_detection_crud),
     current_user: User = Depends(get_current_user),
 ) -> DetectionRead:
@@ -128,12 +129,23 @@ async def create_detection(
             detail=f"Invalid algo_predictions format: {e.errors()}",
         )
 
+    validated_others = None
+    if others_bboxes:
+        try:
+            validated_others = AlgoPredictions(**json.loads(others_bboxes))
+        except (ValidationError, json.JSONDecodeError) as e:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid others_bboxes format: {e}",
+            )
+
     detection = Detection(
         sequence_id=sequence_id,
         alert_api_id=alert_api_id,
         recorded_at=recorded_at,
         bucket_key="",
         algo_predictions=validated_predictions.model_dump(),
+        others_bboxes=validated_others.model_dump() if validated_others else None,
         created_at=datetime.now(UTC),
     )
 
@@ -170,6 +182,9 @@ async def create_detection_from_url(
         recorded_at=payload.recorded_at,
         bucket_key="",
         algo_predictions=payload.algo_predictions.model_dump(),
+        others_bboxes=payload.others_bboxes.model_dump()
+        if payload.others_bboxes
+        else None,
         created_at=datetime.now(UTC),
     )
 
@@ -218,6 +233,9 @@ async def create_detection_from_bucket_key(
         recorded_at=payload.recorded_at,
         bucket_key="",
         algo_predictions=payload.algo_predictions.model_dump(),
+        others_bboxes=payload.others_bboxes.model_dump()
+        if payload.others_bboxes
+        else None,
         created_at=datetime.now(UTC),
     )
 

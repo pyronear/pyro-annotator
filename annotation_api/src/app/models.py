@@ -2,11 +2,25 @@ from datetime import UTC, datetime
 from enum import Enum
 from typing import List, Optional
 
-from sqlalchemy import Column, DateTime, ForeignKey, Index, UniqueConstraint, Enum as SQLEnum
+from sqlalchemy import (
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    UniqueConstraint,
+    Enum as SQLEnum,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
-__all__ = ["Detection", "DetectionAnnotation", "Sequence", "SequenceAnnotation", "User", "AnnotationType"]
+__all__ = [
+    "Detection",
+    "DetectionAnnotation",
+    "Sequence",
+    "SequenceAnnotation",
+    "User",
+    "AnnotationType",
+]
 
 # -------------------- ENUMS --------------------
 
@@ -40,12 +54,8 @@ class SequenceAnnotationProcessingStage(str, Enum):
 
     IMPORTED = "imported"  # Initial stage when sequence is imported from source API
     READY_TO_ANNOTATE = "ready_to_annotate"  # Sequence has been processed and is ready for human annotation
-    UNDER_ANNOTATION = (
-        "under_annotation"  # Someone is actively annotating this sequence locally to avoid contention
-    )
-    SEQ_ANNOTATION_DONE = (
-        "seq_annotation_done"  # Sequence annotation finished locally and ready to upload/share
-    )
+    UNDER_ANNOTATION = "under_annotation"  # Someone is actively annotating this sequence locally to avoid contention
+    SEQ_ANNOTATION_DONE = "seq_annotation_done"  # Sequence annotation finished locally and ready to upload/share
     IN_REVIEW = "in_review"  # Human is reviewing/QA the annotation
     NEEDS_MANUAL = (
         "needs_manual"  # Auto/triage flagged the sequence for manual intervention
@@ -125,7 +135,7 @@ class FalsePositiveType(str, Enum):
 class AnnotationType(str, Enum):
     """
     Classification of annotation types from external wildfire detection APIs.
-    
+
     These values correspond to the classification provided by platform APIs
     to indicate the type of detection (wildfire smoke vs other sources).
     Used to maintain the original classification from external systems.
@@ -279,6 +289,10 @@ class Detection(SQLModel, table=True):
     )
     bucket_key: str
     algo_predictions: Optional[dict] = Field(default=None, sa_column=Column(JSONB))
+    # Sibling boxes seen on the same image but not part of the tracked sequence.
+    # Stored read-only for the UI so annotators can spot missed smoke; never fed
+    # into auto-annotation.
+    others_bboxes: Optional[dict] = Field(default=None, sa_column=Column(JSONB))
 
 
 class DetectionAnnotation(SQLModel, table=True):
