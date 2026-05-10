@@ -6,9 +6,11 @@
 from statistics import median
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Path, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi_pagination import Page, Params
+from fastapi_pagination.ext.sqlalchemy import apaginate
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import desc, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.dependencies import get_current_user, get_sequence_group_crud
@@ -26,6 +28,7 @@ from app.models import (
 )
 from app.schemas.sequence_annotations import SequenceAnnotationCreate
 from app.schemas.sequence_group import (
+    SequenceGroupListItem,
     SequenceGroupMember,
     SequenceGroupRead,
     SequenceGroupReadWithMembers,
@@ -41,6 +44,64 @@ router = APIRouter()
 # (IoU=0) because the precision cost of mis-grouping is much higher: a wrong
 # match auto-applies inherited labels to an unrelated event.
 _GROUP_IOU_THRESHOLD = 0.5
+
+
+@router.get(
+    "/",
+    response_model=Page[SequenceGroupListItem],
+    summary="List sequence groups (paginated, with member counts)",
+)
+async def list_sequence_groups(
+    labeled: Optional[bool] = Query(
+        None,
+        description=(
+            "Filter by label presence: true = only labeled groups, "
+            "false = only unlabeled, omit for both."
+        ),
+    ),
+    params: Params = Depends(),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> Page[SequenceGroupListItem]:
+    member_count_subq = (
+        select(
+            Sequence.sequence_group_id.label("group_id"),
+            func.count(Sequence.id).label("member_count"),
+        )
+        .where(Sequence.sequence_group_id.is_not(None))
+        .group_by(Sequence.sequence_group_id)
+        .subquery()
+    )
+    query = (
+        select(
+            SequenceGroup.id,
+            SequenceGroup.camera_id,
+            SequenceGroup.azimuth,
+            SequenceGroup.representative_bbox,
+            SequenceGroup.smoke_type,
+            SequenceGroup.false_positive_type,
+            SequenceGroup.is_unsure,
+            SequenceGroup.labeled_at,
+            SequenceGroup.created_at,
+            func.coalesce(member_count_subq.c.member_count, 0).label("member_count"),
+        )
+        .outerjoin(
+            member_count_subq, member_count_subq.c.group_id == SequenceGroup.id
+        )
+        .order_by(desc(SequenceGroup.created_at))
+    )
+    if labeled is True:
+        query = query.where(
+            (SequenceGroup.smoke_type.is_not(None))
+            | (SequenceGroup.false_positive_type.is_not(None))
+        )
+    elif labeled is False:
+        query = query.where(
+            SequenceGroup.smoke_type.is_(None)
+            & SequenceGroup.false_positive_type.is_(None)
+        )
+
+    return await apaginate(session, query, params)
 
 
 @router.get(
@@ -61,7 +122,32 @@ async def get_sequence_group(
             detail=f"Sequence group {group_id} not found",
         )
 
-    # Members joined to their (optional) annotation in one query.
+    # First detection per sequence in the group (lowest recorded_at). Used
+    # for the UI thumbnail + bbox overlay.
+    first_det_subq = (
+        select(
+            Detection.sequence_id.label("seq_id"),
+            func.min(Detection.recorded_at).label("first_recorded_at"),
+        )
+        .join(Sequence, Sequence.id == Detection.sequence_id)
+        .where(Sequence.sequence_group_id == group_id)
+        .group_by(Detection.sequence_id)
+        .subquery()
+    )
+    first_det_join = (
+        select(
+            Detection.sequence_id.label("seq_id"),
+            Detection.id.label("det_id"),
+            Detection.algo_predictions.label("det_algo"),
+        )
+        .join(
+            first_det_subq,
+            (first_det_subq.c.seq_id == Detection.sequence_id)
+            & (first_det_subq.c.first_recorded_at == Detection.recorded_at),
+        )
+        .subquery()
+    )
+
     member_query = (
         select(
             Sequence.id,
@@ -70,8 +156,11 @@ async def get_sequence_group(
             Sequence.recorded_at,
             Sequence.last_seen_at,
             SequenceAnnotation.id,
+            first_det_join.c.det_id,
+            first_det_join.c.det_algo,
         )
         .outerjoin(SequenceAnnotation, SequenceAnnotation.sequence_id == Sequence.id)
+        .outerjoin(first_det_join, first_det_join.c.seq_id == Sequence.id)
         .where(Sequence.sequence_group_id == group_id)
         .order_by(Sequence.recorded_at)
     )
@@ -84,6 +173,8 @@ async def get_sequence_group(
             recorded_at=row[3],
             last_seen_at=row[4],
             has_annotation=row[5] is not None,
+            first_detection_id=row[6],
+            first_detection_algo_predictions=row[7],
         )
         for row in result.all()
     ]

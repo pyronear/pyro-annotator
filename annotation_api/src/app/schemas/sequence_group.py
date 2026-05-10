@@ -14,6 +14,7 @@ __all__ = [
     "RepresentativeBbox",
     "SequenceGroupCreate",
     "SequenceGroupRead",
+    "SequenceGroupListItem",
     "SequenceGroupMember",
     "SequenceGroupReadWithMembers",
 ]
@@ -50,7 +51,10 @@ class SequenceGroupCreate(BaseModel):
 
 
 class SequenceGroupMember(BaseModel):
-    """Lightweight projection of a sequence inside a group's members list."""
+    """Lightweight projection of a sequence inside a group's members list.
+    Includes the first detection's id + algo_predictions so the UI can
+    render a thumbnail with bbox overlays without an extra round trip per
+    member."""
 
     sequence_id: int
     alert_api_id: int
@@ -60,6 +64,24 @@ class SequenceGroupMember(BaseModel):
     has_annotation: bool = Field(
         description="True if a SequenceAnnotation already exists for this sequence"
     )
+    first_detection_id: Optional[int] = None
+    first_detection_algo_predictions: Optional[dict] = None
+
+
+class SequenceGroupListItem(BaseModel):
+    """Lightweight row for the groups list page; includes member_count to
+    avoid an N+1 in the UI."""
+
+    id: int
+    camera_id: int
+    azimuth: int
+    representative_bbox: RepresentativeBbox
+    smoke_type: Optional[SmokeType]
+    false_positive_type: Optional[FalsePositiveType]
+    is_unsure: bool
+    labeled_at: Optional[datetime]
+    created_at: datetime
+    member_count: int
 
 
 class SequenceGroupRead(BaseModel):
