@@ -5,9 +5,11 @@ import { Loader2, AlertCircle, CheckCircle, Clock } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { useDetectionImage } from '@/hooks/useDetectionImage';
 import {
+  AlgoPrediction,
   BulkAnnotateRequest,
   FalsePositiveType,
   SmokeType,
+  SequenceGroup,
   SequenceGroupMember,
 } from '@/types/api';
 
@@ -36,26 +38,22 @@ type LabelKind = 'smoke' | 'false_positive';
 
 function MemberThumb({
   member,
+  groupBbox,
   selected,
   onToggle,
 }: {
   member: SequenceGroupMember;
+  groupBbox: SequenceGroup['representative_bbox'];
   selected: boolean;
   onToggle: () => void;
 }) {
-  // Use the first detection of the sequence as a thumbnail proxy.
-  const { data: detectionsPage } = useQuery({
-    queryKey: ['sequenceFirstDetection', member.sequence_id],
-    queryFn: () =>
-      apiClient.getDetections({
-        sequence_id: member.sequence_id,
-        size: 1,
-        order_by: 'recorded_at',
-        order_direction: 'asc',
-      }),
-  });
-  const firstDetectionId = detectionsPage?.items[0]?.id ?? null;
-  const { data: image } = useDetectionImage(firstDetectionId);
+  const { data: image } = useDetectionImage(member.first_detection_id);
+  const [imgLoaded, setImgLoaded] = useState(false);
+
+  // Tracked predictions for this sequence's first detection — used to
+  // visually validate that the matched bbox really overlaps the group's
+  // reference region (drawn as a yellow dashed outline on top).
+  const predictions: AlgoPrediction[] = member.first_detection_algo_predictions?.predictions ?? [];
 
   return (
     <label
@@ -67,15 +65,57 @@ function MemberThumb({
         type="checkbox"
         checked={selected}
         onChange={onToggle}
-        className="absolute top-2 left-2 z-10 w-5 h-5 cursor-pointer"
+        className="absolute top-2 left-2 z-20 w-5 h-5 cursor-pointer"
       />
-      <div className="aspect-video bg-gray-100 overflow-hidden rounded-t-md flex items-center justify-center">
+      <div className="relative aspect-video bg-gray-100 overflow-hidden rounded-t-md flex items-center justify-center">
         {image?.url ? (
-          <img
-            src={image.url}
-            alt={`seq ${member.sequence_id}`}
-            className="w-full h-full object-cover"
-          />
+          <>
+            <img
+              src={image.url}
+              alt={`seq ${member.sequence_id}`}
+              className="w-full h-full object-cover"
+              onLoad={() => setImgLoaded(true)}
+            />
+            {imgLoaded && (
+              <>
+                {/* This sequence's tracked predictions (red, solid). */}
+                {predictions.map((p, i) => {
+                  const [x1, y1, x2, y2] = p.xyxyn;
+                  if (x2 <= x1 || y2 <= y1) return null;
+                  return (
+                    <div
+                      key={`pred-${i}`}
+                      className="absolute border-2 border-red-500 pointer-events-none"
+                      style={{
+                        left: `${x1 * 100}%`,
+                        top: `${y1 * 100}%`,
+                        width: `${(x2 - x1) * 100}%`,
+                        height: `${(y2 - y1) * 100}%`,
+                      }}
+                    />
+                  );
+                })}
+                {/* Group's reference region (yellow, dashed) — same on every
+                    thumbnail; lets the annotator eyeball whether the
+                    sequence's tracked region actually overlaps. */}
+                {(() => {
+                  const [gx1, gy1, gx2, gy2] = groupBbox.xyxyn;
+                  if (gx2 <= gx1 || gy2 <= gy1) return null;
+                  return (
+                    <div
+                      className="absolute border-2 border-dashed border-yellow-400 pointer-events-none"
+                      style={{
+                        left: `${gx1 * 100}%`,
+                        top: `${gy1 * 100}%`,
+                        width: `${(gx2 - gx1) * 100}%`,
+                        height: `${(gy2 - gy1) * 100}%`,
+                      }}
+                    />
+                  );
+                })()}
+              </>
+            )}
+          </>
         ) : (
           <Loader2 className="animate-spin w-5 h-5 text-gray-400" />
         )}
@@ -209,11 +249,23 @@ export default function SequenceGroupAnnotatePage() {
         <span className="text-sm text-gray-600">{selectedIds.size} selected</span>
       </section>
 
+      <div className="mb-3 flex items-center gap-4 text-xs text-gray-600">
+        <span className="inline-flex items-center gap-1">
+          <span className="inline-block w-4 h-3 border-2 border-red-500" />
+          tracked prediction (per-sequence)
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span className="inline-block w-4 h-3 border-2 border-dashed border-yellow-400" />
+          group reference region (same on all thumbnails)
+        </span>
+      </div>
+
       <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
         {group.members.map(m => (
           <MemberThumb
             key={m.sequence_id}
             member={m}
+            groupBbox={group.representative_bbox}
             selected={selectedIds.has(m.sequence_id)}
             onToggle={() => toggleSelect(m.sequence_id)}
           />

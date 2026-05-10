@@ -115,6 +115,21 @@ export interface SequenceGroupMember {
   recorded_at: string;
   last_seen_at: string;
   has_annotation: boolean;
+  first_detection_id: number | null;
+  first_detection_algo_predictions: AlgoPredictions | null;
+}
+
+export interface SequenceGroupListItem {
+  id: number;
+  camera_id: number;
+  azimuth: number;
+  representative_bbox: SequenceGroupRepresentativeBbox;
+  smoke_type: SmokeType | null;
+  false_positive_type: FalsePositiveType | null;
+  is_unsure: boolean;
+  labeled_at: string | null;
+  created_at: string;
+  member_count: number;
 }
 
 export interface SequenceGroup {

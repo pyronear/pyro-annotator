@@ -11,6 +11,7 @@ import {
   LogOut,
   User,
   Users,
+  Boxes,
   LucideIcon,
 } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -126,6 +127,7 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
         { name: 'Review', href: '/detections/review' },
       ],
     },
+    { name: 'Sequence groups', href: '/sequence-groups', icon: Boxes },
     ...(isSuperuser() ? [{ name: 'User Management', href: '/users', icon: Users }] : []),
   ];
 
