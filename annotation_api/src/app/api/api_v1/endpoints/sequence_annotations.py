@@ -32,10 +32,14 @@ from app.models import (
     SequenceAnnotation,
     SequenceAnnotationContribution,
     SequenceAnnotationProcessingStage,
+    SequenceGroup,
     SmokeType,
 )
 from app.schemas.annotation_validation import SequenceAnnotationData
 from app.schemas.sequence_annotations import (
+    SequenceAnnotationBulkRequest,
+    SequenceAnnotationBulkResponse,
+    SequenceAnnotationBulkResult,
     SequenceAnnotationCreate,
     SequenceAnnotationRead,
     SequenceAnnotationUpdate,
@@ -720,3 +724,205 @@ async def delete_sequence_annotation(
     current_user: User = Depends(get_current_user),
 ) -> None:
     await annotations.delete(annotation_id)
+
+
+# Stages past which we don't overwrite an annotation in bulk-annotate. The
+# review pipeline marks annotations as SEQ_ANNOTATION_DONE when the labels
+# are filled but the geometry still needs visual check; anything past that
+# is reviewed work the bulk action must not clobber.
+_BULK_LOCKED_STAGES = {
+    SequenceAnnotationProcessingStage.IN_REVIEW,
+    SequenceAnnotationProcessingStage.NEEDS_MANUAL,
+    SequenceAnnotationProcessingStage.ANNOTATED,
+}
+
+
+def _apply_label_to_sequences_bbox(
+    annotation: SequenceAnnotationData,
+    *,
+    smoke_type: Optional[SmokeType],
+    false_positive_type: Optional[FalsePositiveType],
+) -> None:
+    """In-place rewrite of every bbox cluster's labels. Either marks the
+    cluster as smoke of the given type (and clears FP flags), or marks it as
+    a single false-positive type (and clears smoke fields)."""
+    for bbox in annotation.sequences_bbox:
+        if smoke_type is not None:
+            bbox.is_smoke = True
+            bbox.smoke_type = smoke_type
+            bbox.false_positive_types = []
+        else:
+            bbox.is_smoke = False
+            bbox.smoke_type = None
+            bbox.false_positive_types = (
+                [false_positive_type] if false_positive_type else []
+            )
+
+
+@router.post(
+    "/bulk",
+    status_code=status.HTTP_200_OK,
+    response_model=SequenceAnnotationBulkResponse,
+    summary="Apply one label to many sequences in a single transaction",
+)
+async def bulk_annotate_sequences(
+    payload: SequenceAnnotationBulkRequest = Body(...),
+    annotations: SequenceAnnotationCRUD = Depends(get_sequence_annotation_crud),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> SequenceAnnotationBulkResponse:
+    # Resolve target group (if provided) and validate membership / conflict.
+    group: Optional[SequenceGroup] = None
+    if payload.group_id is not None:
+        group = await session.get(SequenceGroup, payload.group_id)
+        if group is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Sequence group {payload.group_id} not found",
+            )
+
+        member_ids_query = select(Sequence.id).where(
+            Sequence.sequence_group_id == payload.group_id,
+            Sequence.id.in_(payload.sequence_ids),
+        )
+        member_ids = {row[0] for row in (await session.execute(member_ids_query)).all()}
+        outsiders = [sid for sid in payload.sequence_ids if sid not in member_ids]
+        if outsiders:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Sequences {outsiders} do not belong to group {payload.group_id}"
+                ),
+            )
+
+        # Reject if the group already carries a different label, unless force.
+        existing_smoke = group.smoke_type
+        existing_fp = group.false_positive_type
+        new_smoke = payload.smoke_type.value if payload.smoke_type else None
+        new_fp = (
+            payload.false_positive_type.value if payload.false_positive_type else None
+        )
+        has_conflict = (
+            (existing_smoke is not None and existing_smoke != new_smoke)
+            or (existing_fp is not None and existing_fp != new_fp)
+            or (existing_smoke is not None and new_fp is not None)
+            or (existing_fp is not None and new_smoke is not None)
+        )
+        if has_conflict and not payload.force:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Group already has a different label; pass force=true to "
+                    "overwrite"
+                ),
+            )
+
+    # Auto-generation service uses IoU=0 strict-overlap clustering inside
+    # each sequence (matches the production default since #130).
+    gen_service = AnnotationGenerationService(
+        session=session,
+        confidence_threshold=0.0,
+        iou_threshold=0.0,
+        min_cluster_size=1,
+    )
+
+    applied: List[SequenceAnnotationBulkResult] = []
+    skipped: List[SequenceAnnotationBulkResult] = []
+
+    for sid in payload.sequence_ids:
+        seq = await session.get(Sequence, sid)
+        if seq is None:
+            skipped.append(
+                SequenceAnnotationBulkResult(
+                    sequence_id=sid, status="skipped", reason="sequence not found"
+                )
+            )
+            continue
+
+        existing_query = select(SequenceAnnotation).where(
+            SequenceAnnotation.sequence_id == sid
+        )
+        existing = (await session.execute(existing_query)).scalar_one_or_none()
+        if existing is not None and existing.processing_stage in _BULK_LOCKED_STAGES:
+            skipped.append(
+                SequenceAnnotationBulkResult(
+                    sequence_id=sid,
+                    status="skipped",
+                    reason=f"already {existing.processing_stage.value}",
+                    annotation_id=existing.id,
+                )
+            )
+            continue
+
+        generated = await gen_service.generate_annotation_for_sequence(sid)
+        if generated is None:
+            # No usable predictions — skip rather than create an empty annotation.
+            skipped.append(
+                SequenceAnnotationBulkResult(
+                    sequence_id=sid,
+                    status="skipped",
+                    reason="no AI predictions to seed annotation",
+                )
+            )
+            continue
+
+        _apply_label_to_sequences_bbox(
+            generated,
+            smoke_type=payload.smoke_type,
+            false_positive_type=payload.false_positive_type,
+        )
+
+        if existing is None:
+            create_data = SequenceAnnotationCreate(
+                sequence_id=sid,
+                has_missed_smoke=False,
+                is_unsure=payload.is_unsure,
+                annotation=generated,
+                processing_stage=SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
+            )
+            sequence_annotation = await annotations.create(create_data, current_user.id)
+            applied.append(
+                SequenceAnnotationBulkResult(
+                    sequence_id=sid,
+                    status="applied",
+                    annotation_id=sequence_annotation.id,
+                )
+            )
+        else:
+            update_data = SequenceAnnotationUpdate(
+                is_unsure=payload.is_unsure,
+                annotation=generated,
+                processing_stage=SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
+            )
+            sequence_annotation = await annotations.update(
+                existing.id, update_data, current_user.id
+            )
+            applied.append(
+                SequenceAnnotationBulkResult(
+                    sequence_id=sid,
+                    status="applied",
+                    annotation_id=sequence_annotation.id,
+                )
+            )
+
+    # Write the label onto the group so future joiners inherit it.
+    group_label_updated = False
+    if group is not None:
+        group.smoke_type = payload.smoke_type.value if payload.smoke_type else None
+        group.false_positive_type = (
+            payload.false_positive_type.value if payload.false_positive_type else None
+        )
+        group.is_unsure = payload.is_unsure
+        group.labeled_at = datetime.now(UTC)
+        group.labeled_by_user_id = current_user.id
+        group.updated_at = datetime.now(UTC)
+        session.add(group)
+        group_label_updated = True
+
+    await session.commit()
+
+    return SequenceAnnotationBulkResponse(
+        applied=applied,
+        skipped=skipped,
+        group_label_updated=group_label_updated,
+    )
