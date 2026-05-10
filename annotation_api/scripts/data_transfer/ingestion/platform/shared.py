@@ -317,6 +317,7 @@ def _process_single_detection(
     annotation_sequence_id: int,
     max_retries: int = 3,
     base_delay: float = 5.0,
+    force_url: bool = False,
 ) -> Dict[str, Any]:
     """
     Process a single detection: download image and create detection in API.
@@ -346,7 +347,9 @@ def _process_single_detection(
     # Only platform-fetch records carry a platform bucket_key. Clone-from-
     # annotation records intentionally omit detection_bucket_key because their
     # key lives in the source annotation bucket, not the platform bucket.
-    source_key = record.get("detection_bucket_key")
+    # `force_url` forces the URL fallback even when bucket_key is set — useful
+    # for local dev where the API can't reach the platform's S3 bucket.
+    source_key = None if force_url else record.get("detection_bucket_key")
     source_url = record.get("detection_url")
 
     for attempt in range(max_retries + 1):
@@ -419,6 +422,7 @@ def post_sequence_to_annotation_api(
     auth_token: str,
     max_detection_workers: int = 4,
     source_api: str = "pyronear_french",
+    force_url: bool = False,
 ) -> Dict:
     """
     Post a sequence and its detections to the annotation API.
@@ -470,7 +474,11 @@ def post_sequence_to_annotation_api(
     if len(sequence_records) == 1:
         # Single detection - process directly to avoid thread overhead
         result = _process_single_detection(
-            sequence_records[0], annotation_api_url, auth_token, annotation_sequence_id
+            sequence_records[0],
+            annotation_api_url,
+            auth_token,
+            annotation_sequence_id,
+            force_url=force_url,
         )
         if result["success"]:
             successful_detections = 1
@@ -489,6 +497,7 @@ def post_sequence_to_annotation_api(
                     annotation_api_url,
                     auth_token,
                     annotation_sequence_id,
+                    force_url=force_url,
                 ): record
                 for record in sequence_records
             }
@@ -525,6 +534,7 @@ def post_records_to_annotation_api(
     max_detection_workers: int = 4,
     suppress_logs: bool = True,
     source_api: str = "pyronear_french",
+    force_url: bool = False,
 ) -> Dict:
     """
     Post multiple sequences and their detections to the annotation API.
@@ -578,8 +588,9 @@ def post_records_to_annotation_api(
                 annotation_api_url,
                 sequence_records,
                 auth_token,
-                max_detection_workers,
-                source_api,
+                max_detection_workers=max_detection_workers,
+                source_api=source_api,
+                force_url=force_url,
             ): (platform_sequence_id, sequence_records)
             for platform_sequence_id, sequence_records in grouped_records.items()
         }
