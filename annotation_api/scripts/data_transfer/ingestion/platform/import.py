@@ -563,6 +563,7 @@ def fetch_records_from_annotation_api(
                                 "detection_azimuth": det.get("azimuth"),
                                 "detection_url": det_url,
                                 "detection_bboxes": det.get("algo_predictions", {}),
+                                "detection_others_bboxes": det.get("others_bboxes"),
                                 # Intentionally omit detection_bucket_key here:
                                 # the source key lives in the source annotation
                                 # bucket, not a platform bucket, so the
