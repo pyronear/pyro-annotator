@@ -125,8 +125,10 @@ export function DetectionImageCard({
           <BoundingBoxOverlay detection={detection} imageInfo={imageInfo} />
         )}
 
-        {/* Sibling bboxes overlay (read-only hint for missed smoke) */}
-        {showSiblingBboxes && imageInfo && (
+        {/* Sibling bboxes overlay (read-only hint for missed smoke) —
+            gated on showPredictions so toggling predictions off hides
+            everything algorithmic at once. */}
+        {showPredictions && showSiblingBboxes && imageInfo && (
           <SiblingBoundingBoxOverlay detection={detection} imageInfo={imageInfo} />
         )}
 

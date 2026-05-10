@@ -173,7 +173,7 @@ async def test_auto_generation_uses_default_parameters(
         assert (
             call_args[1]["confidence_threshold"] == 0.0
         )  # Default (changed to include all predictions)
-        assert call_args[1]["iou_threshold"] == 0.3  # Default
+        assert call_args[1]["iou_threshold"] == 0.0  # Default
         assert call_args[1]["min_cluster_size"] == 1  # Default
 
 

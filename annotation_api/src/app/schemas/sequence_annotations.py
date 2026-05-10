@@ -78,8 +78,8 @@ class SequenceAnnotationCreate(BaseModel):
         le=1.0,
     )
     iou_threshold: Optional[float] = Field(
-        default=0.3,
-        description="Minimum IoU for clustering overlapping boxes (0.0-1.0). Used when auto-generating annotations.",
+        default=0.0,
+        description="IoU threshold for clustering overlapping boxes (0.0-1.0). 0.0 means any positive overlap merges.",
         ge=0.0,
         le=1.0,
     )

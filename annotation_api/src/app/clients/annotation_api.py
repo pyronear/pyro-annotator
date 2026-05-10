@@ -400,6 +400,8 @@ def create_detection(
         "sequence_id": detection_data["sequence_id"],
         "recorded_at": detection_data["recorded_at"],
     }
+    if detection_data.get("others_bboxes") is not None:
+        data["others_bboxes"] = json.dumps(detection_data["others_bboxes"])
 
     # Prepare file upload
     files = {"file": (filename, image_file, "image/jpeg")}

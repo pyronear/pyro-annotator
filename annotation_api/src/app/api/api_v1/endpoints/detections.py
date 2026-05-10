@@ -1,6 +1,5 @@
 # Copyright (C) 2024, Pyronear.
 
-import json
 import logging
 from datetime import datetime, UTC
 from enum import Enum
@@ -110,30 +109,29 @@ async def create_detection(
     detections: DetectionCRUD = Depends(get_detection_crud),
     current_user: User = Depends(get_current_user),
 ) -> DetectionRead:
-    # Parse string JSON -> dict
-    parsed_predictions = json.loads(algo_predictions)
-
-    # Validate the parsed predictions using Pydantic model
+    # Validate the algo_predictions JSON. Catch JSON decode errors and
+    # non-object payloads (`null`, lists, etc.) the same way as schema
+    # violations so callers get a clean 422 instead of a 500.
     try:
-        validated_predictions = AlgoPredictions(**parsed_predictions)
-    except ValidationError as e:
+        validated_predictions = AlgoPredictions.model_validate_json(algo_predictions)
+    except (ValidationError, ValueError) as e:
         logger.error(
             f"Detection algo_predictions validation failed for sequence_id={sequence_id}\n"
             f"Alert API ID: {alert_api_id}\n"
             f"Recorded at: {recorded_at}\n"
-            f"Algo predictions data: {parsed_predictions}\n"
-            f"Validation errors: {e.errors()}"
+            f"Algo predictions data: {algo_predictions}\n"
+            f"Error: {e}"
         )
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Invalid algo_predictions format: {e.errors()}",
+            detail=f"Invalid algo_predictions format: {e}",
         )
 
     validated_others = None
     if others_bboxes:
         try:
-            validated_others = AlgoPredictions(**json.loads(others_bboxes))
-        except (ValidationError, json.JSONDecodeError) as e:
+            validated_others = AlgoPredictions.model_validate_json(others_bboxes)
+        except (ValidationError, ValueError) as e:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Invalid others_bboxes format: {e}",
