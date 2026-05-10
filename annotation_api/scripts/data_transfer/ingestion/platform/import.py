@@ -232,7 +232,7 @@ def make_cli_parser() -> argparse.ArgumentParser:
         help="Preview actions without executing them",
     )
     parser.add_argument(
-        "--prefer-url",
+        "--force-url",
         action="store_true",
         help=(
             "Skip the server-side bucket-key copy and post detections via "
@@ -906,7 +906,7 @@ def main() -> None:
                     max_detection_workers=worker_config.detection_per_sequence,
                     suppress_logs=suppress_logs,
                     source_api=source_api,
-                    prefer_url=args.prefer_url,
+                    force_url=args.force_url,
                 )
 
                 # Capture import statistics in main stats and get successfully imported sequence IDs
