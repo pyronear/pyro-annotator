@@ -85,10 +85,7 @@ export function SiblingBoundingBoxOverlay({
             return null;
           }
 
-          const { left, top, width, height } = normalizedToPixelBox(
-            prediction.xyxyn,
-            imageInfo
-          );
+          const { left, top, width, height } = normalizedToPixelBox(prediction.xyxyn, imageInfo);
 
           return (
             <div
