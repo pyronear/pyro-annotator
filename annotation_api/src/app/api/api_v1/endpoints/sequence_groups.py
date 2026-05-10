@@ -101,7 +101,9 @@ async def list_sequence_groups(
             & SequenceGroup.false_positive_type.is_(None)
         )
 
-    return await apaginate(session, query, params)
+    # `unique=False` is required because the row tuple includes the JSONB
+    # `representative_bbox`, which is a dict and therefore not hashable.
+    return await apaginate(session, query, params, unique=False)
 
 
 @router.get(
