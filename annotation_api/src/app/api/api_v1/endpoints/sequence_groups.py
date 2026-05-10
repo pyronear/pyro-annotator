@@ -67,6 +67,8 @@ async def list_sequence_groups(
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> Page[SequenceGroupListItem]:
+    # Singletons (size-1 groups) are excluded from the list because the
+    # whole point of this page is to find groups worth bulk-annotating.
     member_count_subq = (
         select(
             Sequence.sequence_group_id.label("group_id"),
@@ -74,6 +76,7 @@ async def list_sequence_groups(
         )
         .where(Sequence.sequence_group_id.is_not(None))
         .group_by(Sequence.sequence_group_id)
+        .having(func.count(Sequence.id) >= 2)
         .subquery()
     )
     query = (
@@ -88,11 +91,10 @@ async def list_sequence_groups(
             SequenceGroup.is_validated,
             SequenceGroup.labeled_at,
             SequenceGroup.created_at,
-            func.coalesce(member_count_subq.c.member_count, 0).label("member_count"),
+            member_count_subq.c.member_count,
         )
-        .outerjoin(
-            member_count_subq, member_count_subq.c.group_id == SequenceGroup.id
-        )
+        # Inner-join so singletons (no row in the subquery) drop out.
+        .join(member_count_subq, member_count_subq.c.group_id == SequenceGroup.id)
         .order_by(desc(SequenceGroup.created_at))
     )
     if labeled is True:
