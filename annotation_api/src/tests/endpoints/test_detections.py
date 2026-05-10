@@ -42,6 +42,55 @@ async def test_create_detection(
 
 
 @pytest.mark.asyncio
+async def test_create_detection_with_others_bboxes(
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+):
+    """`others_bboxes` is optional sibling-box context for the UI: it must
+    persist alongside `algo_predictions` and round-trip on GET, but it never
+    flows into auto-annotation."""
+    others = {
+        "predictions": [
+            {
+                "xyxyn": [0.5, 0.5, 0.6, 0.6],
+                "confidence": 0.42,
+                "class_name": "smoke",
+            }
+        ]
+    }
+    payload = {
+        "sequence_id": "1",
+        "alert_api_id": "9001",
+        "recorded_at": (now - timedelta(days=2)).isoformat(),
+        "algo_predictions": json.dumps(
+            {
+                "predictions": [
+                    {
+                        "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                        "confidence": 0.95,
+                        "class_name": "smoke",
+                    }
+                ]
+            }
+        ),
+        "others_bboxes": json.dumps(others),
+    }
+
+    response = await authenticated_client.post(
+        "/detections/",
+        data=payload,
+        files={"file": ("image.jpg", mock_img, "image/jpeg")},
+    )
+    assert response.status_code == 201
+    created = response.json()
+    assert created["others_bboxes"] == others
+
+    # Round-trip via GET to confirm DB persistence + serialization.
+    fetched = await authenticated_client.get(f"/detections/{created['id']}")
+    assert fetched.status_code == 200
+    assert fetched.json()["others_bboxes"] == others
+
+
+@pytest.mark.asyncio
 async def test_get_detection(authenticated_client: AsyncClient):
     detection_id = 1
     response = await authenticated_client.get(f"/detections/{detection_id}")

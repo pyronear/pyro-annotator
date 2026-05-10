@@ -214,9 +214,12 @@ def make_cli_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--iou-threshold",
-        help="Minimum IoU for clustering overlapping boxes (0.0-1.0)",
+        help=(
+            "IoU threshold for clustering overlapping boxes (0.0-1.0). "
+            "0.0 = any positive overlap merges (default)."
+        ),
         type=float,
-        default=0.3,
+        default=0.0,
     )
     parser.add_argument(
         "--min-cluster-size",
@@ -572,6 +575,7 @@ def fetch_records_from_annotation_api(
                                 "detection_azimuth": det.get("azimuth"),
                                 "detection_url": det_url,
                                 "detection_bboxes": det.get("algo_predictions", {}),
+                                "detection_others_bboxes": det.get("others_bboxes"),
                                 # Intentionally omit detection_bucket_key here:
                                 # the source key lives in the source annotation
                                 # bucket, not a platform bucket, so the

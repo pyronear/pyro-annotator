@@ -400,6 +400,8 @@ def create_detection(
         "sequence_id": detection_data["sequence_id"],
         "recorded_at": detection_data["recorded_at"],
     }
+    if detection_data.get("others_bboxes") is not None:
+        data["others_bboxes"] = json.dumps(detection_data["others_bboxes"])
 
     # Prepare file upload
     files = {"file": (filename, image_file, "image/jpeg")}
@@ -446,6 +448,8 @@ def create_detection_from_url(
         "sequence_id": detection_data["sequence_id"],
         "recorded_at": detection_data["recorded_at"],
     }
+    if detection_data.get("others_bboxes") is not None:
+        json_payload["others_bboxes"] = detection_data["others_bboxes"]
 
     operation = f"create detection from URL with alert_api_id={detection_data.get('alert_api_id', 'unknown')}"
     response = _make_request(
@@ -491,6 +495,8 @@ def create_detection_from_bucket_key(
         "sequence_id": detection_data["sequence_id"],
         "recorded_at": detection_data["recorded_at"],
     }
+    if detection_data.get("others_bboxes") is not None:
+        json_payload["others_bboxes"] = detection_data["others_bboxes"]
 
     operation = (
         f"create detection from bucket key with alert_api_id="

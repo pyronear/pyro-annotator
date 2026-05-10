@@ -123,14 +123,15 @@ def cluster_boxes_by_iou(
     """
     Cluster bounding boxes by IoU similarity using greedy clustering.
 
-    This function groups bounding boxes that overlap significantly (IoU >= threshold)
-    into clusters. This is useful for temporal clustering of detections across frames
-    or for grouping multiple detections of the same object.
+    Boxes are grouped together when their IoU is *strictly greater* than
+    `iou_threshold`. Using `>` (rather than `>=`) lets `iou_threshold=0.0`
+    mean "any positive overlap merges" — at `>=` it would collapse every
+    box into one cluster regardless of overlap.
 
     Args:
         boxes_with_ids: List of tuples (bbox_coords, identifier) where bbox_coords
                        is [x1, y1, x2, y2] and identifier can be any type
-        iou_threshold: Minimum IoU for boxes to be considered part of the same cluster
+        iou_threshold: Boxes are clustered together iff their IoU is > this value
 
     Returns:
         List of clusters, where each cluster is a list of (bbox, id) tuples
@@ -141,7 +142,7 @@ def cluster_boxes_by_iou(
         ...     ([0.15, 0.15, 0.35, 0.35], "detection_2"),  # Overlaps with first
         ...     ([0.7, 0.7, 0.9, 0.9], "detection_3")       # Separate
         ... ]
-        >>> clusters = cluster_boxes_by_iou(boxes, iou_threshold=0.3)
+        >>> clusters = cluster_boxes_by_iou(boxes, iou_threshold=0.0)
         >>> len(clusters)  # Returns 2 clusters
         2
     """
@@ -160,7 +161,7 @@ def cluster_boxes_by_iou(
 
             overlaps = False
             for cluster_box, _ in current_cluster:
-                if box_iou(box_to_test, cluster_box) >= iou_threshold:
+                if box_iou(box_to_test, cluster_box) > iou_threshold:
                     overlaps = True
                     break
 
@@ -205,7 +206,7 @@ class AnnotationGenerationService:
         self,
         session: AsyncSession,
         confidence_threshold: float = 0.0,
-        iou_threshold: float = 0.3,
+        iou_threshold: float = 0.0,
         min_cluster_size: int = 1,
     ) -> None:
         """

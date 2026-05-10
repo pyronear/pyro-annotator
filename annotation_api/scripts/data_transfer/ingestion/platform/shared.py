@@ -5,6 +5,7 @@ This module contains common functions used by both fetch_platform_sequence_id.py
 and fetch_platform_sequences.py to avoid code duplication.
 """
 
+import ast
 import concurrent.futures
 import logging
 import os
@@ -192,15 +193,11 @@ def parse_platform_bboxes(bboxes_str: str) -> dict:
     """
     Parse platform bboxes string into AlgoPredictions format.
 
-    Args:
-        bboxes_str: String representation or object of bounding boxes
-
-    Returns:
-        Dictionary in AlgoPredictions format with predictions list
-
-    Note:
-        This function needs to be refined based on actual platform bbox format.
-        Currently assumes a simple format that can be eval'd.
+    Accepts:
+        - dict already in AlgoPredictions shape
+        - list of `[x1, y1, x2, y2, conf, ...]` boxes
+        - string representation of such a list (parsed safely with
+          `ast.literal_eval`, never `eval`)
     """
     try:
         if isinstance(bboxes_str, dict) and "predictions" in bboxes_str:
@@ -210,8 +207,7 @@ def parse_platform_bboxes(bboxes_str: str) -> dict:
         if isinstance(bboxes_str, list):
             bboxes_data = bboxes_str
         else:
-            # Parse the bboxes string - format needs to be determined from actual data
-            bboxes_data = eval(bboxes_str) if bboxes_str else []
+            bboxes_data = ast.literal_eval(bboxes_str) if bboxes_str else []
 
         predictions = []
         for bbox in bboxes_data:
@@ -252,6 +248,11 @@ def transform_detection_data(record: dict, annotation_sequence_id: int) -> dict:
     """
     Transform platform detection data to annotation API format.
 
+    `detection_bboxes` (the tracked `bbox`) becomes `algo_predictions` and
+    drives auto-annotation. `detection_others_bboxes` (sibling boxes on the
+    same image) is forwarded separately so the UI can show them read-only
+    without injecting them into the auto-generated annotation.
+
     Args:
         record: Platform record containing detection metadata
         annotation_sequence_id: The sequence ID from annotation API (not platform ID)
@@ -259,18 +260,27 @@ def transform_detection_data(record: dict, annotation_sequence_id: int) -> dict:
     Returns:
         Dictionary formatted for annotation API detection creation
     """
-    # Transform detection_bboxes to algo_predictions format
     parsed = parse_platform_bboxes(record["detection_bboxes"])
-    predictions = parsed.get("predictions", [])
-    predictions = _sanitize_predictions(predictions)
+    predictions = _sanitize_predictions(parsed.get("predictions", []))
     algo_predictions = {"predictions": predictions}
 
-    return {
+    others_payload: dict | None = None
+    raw_others = record.get("detection_others_bboxes")
+    if raw_others:
+        others_parsed = parse_platform_bboxes(raw_others)
+        others_clean = _sanitize_predictions(others_parsed.get("predictions", []))
+        if others_clean:
+            others_payload = {"predictions": others_clean}
+
+    payload = {
         "sequence_id": annotation_sequence_id,  # NEW sequence ID from annotation API
         "alert_api_id": record["detection_id"],  # Platform detection ID
         "recorded_at": record["detection_created_at"],
         "algo_predictions": algo_predictions,
     }
+    if others_payload is not None:
+        payload["others_bboxes"] = others_payload
+    return payload
 
 
 def download_image(url: str, timeout: int = 30) -> bytes:

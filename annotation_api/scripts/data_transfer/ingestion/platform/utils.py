@@ -83,9 +83,12 @@ def to_record(
         dict: A structured record containing relevant metadata for the detection.
     """
 
-    bboxes = _parse_bbox_string(detection.get("bbox")) + _parse_bbox_string(
-        detection.get("others_bboxes")
-    )
+    # `bbox` = the tracked detection that drives auto-annotation.
+    # `others_bboxes` = sibling boxes seen on the same image, kept separate so
+    # they can be displayed read-only in the UI without leaking into the
+    # auto-generated annotation.
+    primary_bboxes = _parse_bbox_string(detection.get("bbox"))
+    others_bboxes = _parse_bbox_string(detection.get("others_bboxes"))
 
     return {
         # Organization metadata
@@ -113,6 +116,7 @@ def to_record(
         "detection_created_at": detection["created_at"],
         "detection_azimuth": None,
         "detection_url": detection.get("url"),
-        "detection_bboxes": bboxes,
+        "detection_bboxes": primary_bboxes,
+        "detection_others_bboxes": others_bboxes,
         "detection_bucket_key": detection["bucket_key"],
     }

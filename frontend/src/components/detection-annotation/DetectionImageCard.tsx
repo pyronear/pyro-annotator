@@ -7,13 +7,18 @@ import { useState, useRef } from 'react';
 import { CheckCircle, AlertCircle, Clock } from 'lucide-react';
 import { Detection, DetectionAnnotation } from '@/types/api';
 import { useDetectionImage } from '@/hooks/useDetectionImage';
-import { BoundingBoxOverlay, UserAnnotationOverlay } from '@/components/annotation/ImageOverlays';
+import {
+  BoundingBoxOverlay,
+  SiblingBoundingBoxOverlay,
+  UserAnnotationOverlay,
+} from '@/components/annotation/ImageOverlays';
 
 interface DetectionImageCardProps {
   detection: Detection;
   onClick: () => void;
   isAnnotated?: boolean;
   showPredictions?: boolean;
+  showSiblingBboxes?: boolean;
   userAnnotation?: DetectionAnnotation | null;
 }
 
@@ -29,6 +34,7 @@ export function DetectionImageCard({
   onClick,
   isAnnotated = false,
   showPredictions = false,
+  showSiblingBboxes = true,
   userAnnotation = null,
 }: DetectionImageCardProps) {
   const { data: imageData, isLoading } = useDetectionImage(detection.id);
@@ -117,6 +123,13 @@ export function DetectionImageCard({
         {/* AI Predictions Overlay */}
         {showPredictions && detection.algo_predictions?.predictions && imageInfo && (
           <BoundingBoxOverlay detection={detection} imageInfo={imageInfo} />
+        )}
+
+        {/* Sibling bboxes overlay (read-only hint for missed smoke) —
+            gated on showPredictions so toggling predictions off hides
+            everything algorithmic at once. */}
+        {showPredictions && showSiblingBboxes && imageInfo && (
+          <SiblingBoundingBoxOverlay detection={detection} imageInfo={imageInfo} />
         )}
 
         {/* User Annotations Overlay */}

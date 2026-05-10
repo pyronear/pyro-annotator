@@ -1,6 +1,5 @@
 # Copyright (C) 2024, Pyronear.
 
-import json
 import logging
 from datetime import datetime, UTC
 from enum import Enum
@@ -106,27 +105,40 @@ async def create_detection(
     sequence_id: int = Form(...),
     recorded_at: datetime = Form(),
     file: UploadFile = File(..., alias="file"),
+    others_bboxes: Optional[str] = Form(default=None),
     detections: DetectionCRUD = Depends(get_detection_crud),
     current_user: User = Depends(get_current_user),
 ) -> DetectionRead:
-    # Parse string JSON -> dict
-    parsed_predictions = json.loads(algo_predictions)
-
-    # Validate the parsed predictions using Pydantic model
+    # Validate the algo_predictions JSON. Catch JSON decode errors and
+    # non-object payloads (`null`, lists, etc.) the same way as schema
+    # violations so callers get a clean 422 instead of a 500.
     try:
-        validated_predictions = AlgoPredictions(**parsed_predictions)
-    except ValidationError as e:
+        validated_predictions = AlgoPredictions.model_validate_json(algo_predictions)
+    except (ValidationError, ValueError) as e:
         logger.error(
-            f"Detection algo_predictions validation failed for sequence_id={sequence_id}\n"
-            f"Alert API ID: {alert_api_id}\n"
-            f"Recorded at: {recorded_at}\n"
-            f"Algo predictions data: {parsed_predictions}\n"
-            f"Validation errors: {e.errors()}"
+            "Detection algo_predictions validation failed "
+            "for sequence_id=%s alert_api_id=%s recorded_at=%s "
+            "(payload bytes=%d): %s",
+            sequence_id,
+            alert_api_id,
+            recorded_at,
+            len(algo_predictions or ""),
+            e,
         )
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Invalid algo_predictions format: {e.errors()}",
+            detail=f"Invalid algo_predictions format: {e}",
         )
+
+    validated_others = None
+    if others_bboxes:
+        try:
+            validated_others = AlgoPredictions.model_validate_json(others_bboxes)
+        except (ValidationError, ValueError) as e:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid others_bboxes format: {e}",
+            )
 
     detection = Detection(
         sequence_id=sequence_id,
@@ -134,6 +146,7 @@ async def create_detection(
         recorded_at=recorded_at,
         bucket_key="",
         algo_predictions=validated_predictions.model_dump(),
+        others_bboxes=validated_others.model_dump() if validated_others else None,
         created_at=datetime.now(UTC),
     )
 
@@ -170,6 +183,9 @@ async def create_detection_from_url(
         recorded_at=payload.recorded_at,
         bucket_key="",
         algo_predictions=payload.algo_predictions.model_dump(),
+        others_bboxes=payload.others_bboxes.model_dump()
+        if payload.others_bboxes
+        else None,
         created_at=datetime.now(UTC),
     )
 
@@ -218,6 +234,9 @@ async def create_detection_from_bucket_key(
         recorded_at=payload.recorded_at,
         bucket_key="",
         algo_predictions=payload.algo_predictions.model_dump(),
+        others_bboxes=payload.others_bboxes.model_dump()
+        if payload.others_bboxes
+        else None,
         created_at=datetime.now(UTC),
     )
 
