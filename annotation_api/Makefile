@@ -126,7 +126,9 @@ migrate-up:
 
 # --- 1A. Sequence annotation workflow ---
 
-# Duplicate N sequences from the remote annotation API into the local one.
+# Duplicate N sequences from the remote annotation API into the local one,
+# then run assign-groups so newly-pulled sequences get clustered and inherit
+# any existing group's label automatically.
 # Usage: make pull-sequences [MAX_SEQUENCES=10] [CLONE_STAGE=ready_to_annotate]
 pull-sequences:
 	uv run python -m scripts.data_transfer.ingestion.platform.import \
@@ -134,6 +136,15 @@ pull-sequences:
 		--url-api-annotation $(LOCAL_API) \
 		--max-sequences $(MAX_SEQUENCES) \
 		--clone-processing-stage $(CLONE_STAGE) \
+		--loglevel $(LOGLEVEL)
+	$(MAKE) assign-groups
+
+# Compute group memberships and inherit labels for unassigned sequences.
+# Single-threaded by contract — only safe to run sequentially after an import.
+# Usage: make assign-groups [LOCAL_API=http://localhost:5050]
+assign-groups:
+	uv run python -m scripts.data_transfer.ingestion.platform.assign_groups \
+		--url-api-annotation $(LOCAL_API) \
 		--loglevel $(LOGLEVEL)
 
 # Push locally-annotated sequences back to the remote API.
@@ -328,4 +339,4 @@ import-platform:
 	pull-fp visual-check-fp apply-review-fp \
 	export-dataset import-yolo-sequence import-local-yolo \
 	update-stage-remote update-stage-local \
-	import-platform
+	import-platform assign-groups
