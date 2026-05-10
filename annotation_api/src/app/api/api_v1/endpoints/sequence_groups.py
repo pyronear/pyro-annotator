@@ -401,7 +401,11 @@ async def assign_groups(
         if best_group.smoke_type is None and best_group.false_positive_type is None:
             continue
 
-        # Inherit the group's label only if the sequence isn't already annotated.
+        # Inherit the group's label. import.py creates an empty
+        # READY_TO_ANNOTATE annotation for every imported sequence, so we
+        # need to UPDATE that placeholder rather than skip on existence.
+        # Skip only if the existing annotation is past the placeholder
+        # stage (the human / review pipeline has touched it).
         existing_anno = (
             await session.execute(
                 select(SequenceAnnotation).where(
@@ -409,7 +413,9 @@ async def assign_groups(
                 )
             )
         ).scalar_one_or_none()
-        if existing_anno is not None:
+        if existing_anno is not None and existing_anno.processing_stage != (
+            SequenceAnnotationProcessingStage.READY_TO_ANNOTATE
+        ):
             continue
 
         generated = await gen_service.generate_annotation_for_sequence(seq.id)
@@ -426,14 +432,29 @@ async def assign_groups(
             generated, smoke_type=smoke_enum, false_positive_type=fp_enum
         )
 
-        create_data = SequenceAnnotationCreate(
-            sequence_id=seq.id,
-            has_missed_smoke=False,
-            is_unsure=best_group.is_unsure,
-            annotation=generated,
-            processing_stage=SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
-        )
-        await sa_crud.create(create_data, current_user.id)
+        if existing_anno is None:
+            await sa_crud.create(
+                SequenceAnnotationCreate(
+                    sequence_id=seq.id,
+                    has_missed_smoke=False,
+                    is_unsure=best_group.is_unsure,
+                    annotation=generated,
+                    processing_stage=SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
+                ),
+                current_user.id,
+            )
+        else:
+            from app.schemas.sequence_annotations import SequenceAnnotationUpdate
+
+            await sa_crud.update(
+                existing_anno.id,
+                SequenceAnnotationUpdate(
+                    is_unsure=best_group.is_unsure,
+                    annotation=generated,
+                    processing_stage=SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
+                ),
+                current_user.id,
+            )
         inherited += 1
 
     await session.commit()
