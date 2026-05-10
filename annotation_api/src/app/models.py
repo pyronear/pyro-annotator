@@ -269,6 +269,10 @@ class SequenceGroup(SQLModel, table=True):
     smoke_type: Optional[str] = Field(default=None)
     false_positive_type: Optional[str] = Field(default=None)
     is_unsure: bool = Field(default=False)
+    # Set to True once an annotator has reviewed the group and confirmed
+    # membership is correct. Annotation propagation to other members only
+    # kicks in for validated groups.
+    is_validated: bool = Field(default=False)
     labeled_at: Optional[datetime] = Field(
         default=None, sa_column=Column(DateTime(timezone=True))
     )

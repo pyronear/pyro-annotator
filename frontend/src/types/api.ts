@@ -127,6 +127,7 @@ export interface SequenceGroupListItem {
   smoke_type: SmokeType | null;
   false_positive_type: FalsePositiveType | null;
   is_unsure: boolean;
+  is_validated: boolean;
   labeled_at: string | null;
   created_at: string;
   member_count: number;
@@ -140,6 +141,7 @@ export interface SequenceGroup {
   smoke_type: SmokeType | null;
   false_positive_type: FalsePositiveType | null;
   is_unsure: boolean;
+  is_validated: boolean;
   labeled_at: string | null;
   labeled_by_user_id: number | null;
   created_at: string;

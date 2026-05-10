@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Loader2, AlertCircle, Tag } from 'lucide-react';
+import { Loader2, AlertCircle, Tag, ShieldCheck } from 'lucide-react';
 import { apiClient } from '@/services/api';
 
 type Filter = 'all' | 'labeled' | 'unlabeled';
@@ -79,13 +79,14 @@ export default function SequenceGroupsListPage() {
               <th className="px-3 py-2 text-left">Azimuth</th>
               <th className="px-3 py-2 text-left">Members</th>
               <th className="px-3 py-2 text-left">Label</th>
+              <th className="px-3 py-2 text-left">Validated</th>
               <th className="px-3 py-2 text-left">Created</th>
             </tr>
           </thead>
           <tbody>
             {items.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-3 py-8 text-center text-gray-500">
+                <td colSpan={7} className="px-3 py-8 text-center text-gray-500">
                   No groups match this filter.
                 </td>
               </tr>
@@ -114,6 +115,15 @@ export default function SequenceGroupsListPage() {
                       </span>
                     ) : (
                       <span className="text-gray-400">unlabeled</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2">
+                    {g.is_validated ? (
+                      <span className="inline-flex items-center gap-1 text-green-700">
+                        <ShieldCheck className="w-3 h-3" /> validated
+                      </span>
+                    ) : (
+                      <span className="text-gray-400">no</span>
                     )}
                   </td>
                   <td className="px-3 py-2 text-gray-500">

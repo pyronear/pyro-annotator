@@ -17,6 +17,7 @@ __all__ = [
     "SequenceGroupListItem",
     "SequenceGroupMember",
     "SequenceGroupReadWithMembers",
+    "SequenceGroupUpdate",
 ]
 
 
@@ -79,9 +80,18 @@ class SequenceGroupListItem(BaseModel):
     smoke_type: Optional[SmokeType]
     false_positive_type: Optional[FalsePositiveType]
     is_unsure: bool
+    is_validated: bool
     labeled_at: Optional[datetime]
     created_at: datetime
     member_count: int
+
+
+class SequenceGroupUpdate(BaseModel):
+    """Patch the group's review state. For now, only `is_validated` is
+    user-mutable here — labels are written by the per-sequence annotation
+    flow (and propagated to the group when validated)."""
+
+    is_validated: Optional[bool] = None
 
 
 class SequenceGroupRead(BaseModel):
@@ -92,6 +102,7 @@ class SequenceGroupRead(BaseModel):
     smoke_type: Optional[SmokeType]
     false_positive_type: Optional[FalsePositiveType]
     is_unsure: bool
+    is_validated: bool
     labeled_at: Optional[datetime]
     labeled_by_user_id: Optional[int]
     created_at: datetime

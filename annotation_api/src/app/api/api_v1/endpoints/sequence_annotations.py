@@ -47,6 +47,7 @@ from app.schemas.sequence_annotations import (
 from app.services.annotation_generation import (
     AnnotationGenerationService,
     apply_label_to_sequences_bbox,
+    derive_group_label_from_annotation,
 )
 
 router = APIRouter()
@@ -418,6 +419,12 @@ async def create_sequence_annotation(
         # Commit the detection annotations
         await annotations.session.commit()
 
+    # If the seq is part of a validated group, fan the label out to other
+    # members. Skips locked annotations and re-uses auto-generation per seq.
+    await _propagate_to_group_if_validated(
+        sequence_annotation, annotations, annotations.session, current_user.id
+    )
+
     # Get contributors for this annotation
     contributors = await annotations.get_annotation_contributors(sequence_annotation.id)
 
@@ -708,6 +715,13 @@ async def update_sequence_annotation(
         # Commit the detection annotations
         await annotations.session.commit()
 
+    # Same propagation hook as create_sequence_annotation: when the
+    # annotation has just reached SEQ_ANNOTATION_DONE and the seq is in a
+    # validated group, fan the label out to the rest of the group.
+    await _propagate_to_group_if_validated(
+        updated_annotation, annotations, annotations.session, current_user.id
+    )
+
     # Get contributors for this annotation
     contributors = await annotations.get_annotation_contributors(annotation_id)
 
@@ -729,15 +743,115 @@ async def delete_sequence_annotation(
     await annotations.delete(annotation_id)
 
 
-# Stages past which we don't overwrite an annotation in bulk-annotate.
-# UNDER_ANNOTATION is included to avoid clobbering work an annotator is
-# actively editing; SEQ_ANNOTATION_DONE+ is reviewed labelled work.
+# Stages past which we don't overwrite an annotation in bulk-annotate
+# (or via group propagation). UNDER_ANNOTATION is included to avoid
+# clobbering work an annotator is actively editing; SEQ_ANNOTATION_DONE+
+# is reviewed labelled work.
 _BULK_LOCKED_STAGES = {
     SequenceAnnotationProcessingStage.UNDER_ANNOTATION,
+    SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
     SequenceAnnotationProcessingStage.IN_REVIEW,
     SequenceAnnotationProcessingStage.NEEDS_MANUAL,
     SequenceAnnotationProcessingStage.ANNOTATED,
 }
+
+
+async def _propagate_to_group_if_validated(
+    sequence_annotation: SequenceAnnotation,
+    annotations: SequenceAnnotationCRUD,
+    session: AsyncSession,
+    current_user_id: int,
+) -> None:
+    """If the source annotation has just reached SEQ_ANNOTATION_DONE and
+    the underlying sequence belongs to a validated group, derive a single
+    label from the annotation and fan it out to other group members that
+    aren't locked. Group's own label is updated accordingly. No-op when
+    any precondition isn't met."""
+    if (
+        sequence_annotation.processing_stage
+        != SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE
+    ):
+        return
+
+    seq = await session.get(Sequence, sequence_annotation.sequence_id)
+    if seq is None or seq.sequence_group_id is None:
+        return
+
+    group = await session.get(SequenceGroup, seq.sequence_group_id)
+    if group is None or not group.is_validated:
+        return
+
+    annotation_data = SequenceAnnotationData(**sequence_annotation.annotation)
+    derived = derive_group_label_from_annotation(annotation_data)
+    if derived is None:
+        return
+    smoke_type, fp_type = derived
+
+    group.smoke_type = smoke_type.value if smoke_type else None
+    group.false_positive_type = fp_type.value if fp_type else None
+    group.is_unsure = sequence_annotation.is_unsure
+    group.labeled_at = datetime.now(UTC)
+    group.labeled_by_user_id = current_user_id
+    group.updated_at = datetime.now(UTC)
+    session.add(group)
+
+    other_member_ids = (
+        await session.execute(
+            select(Sequence.id).where(
+                Sequence.sequence_group_id == group.id,
+                Sequence.id != seq.id,
+            )
+        )
+    ).scalars().all()
+
+    gen_service = AnnotationGenerationService(
+        session=session,
+        confidence_threshold=0.0,
+        iou_threshold=0.0,
+        min_cluster_size=1,
+    )
+
+    for member_id in other_member_ids:
+        existing = (
+            await session.execute(
+                select(SequenceAnnotation).where(
+                    SequenceAnnotation.sequence_id == member_id
+                )
+            )
+        ).scalar_one_or_none()
+        if existing is not None and existing.processing_stage in _BULK_LOCKED_STAGES:
+            continue
+
+        generated = await gen_service.generate_annotation_for_sequence(member_id)
+        if generated is None:
+            continue
+        apply_label_to_sequences_bbox(
+            generated, smoke_type=smoke_type, false_positive_type=fp_type
+        )
+
+        if existing is None:
+            await annotations.create(
+                SequenceAnnotationCreate(
+                    sequence_id=member_id,
+                    has_missed_smoke=False,
+                    is_unsure=group.is_unsure,
+                    annotation=generated,
+                    processing_stage=SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
+                ),
+                current_user_id,
+            )
+        else:
+            await annotations.update(
+                existing.id,
+                SequenceAnnotationUpdate(
+                    is_unsure=group.is_unsure,
+                    annotation=generated,
+                    processing_stage=SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
+                ),
+                current_user_id,
+            )
+
+    await session.commit()
 
 
 @router.post(

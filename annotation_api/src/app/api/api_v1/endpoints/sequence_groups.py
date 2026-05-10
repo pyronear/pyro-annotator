@@ -3,10 +3,11 @@
 # This program is licensed under the Apache License 2.0.
 # See LICENSE or go to <https://www.apache.org/licenses/LICENSE-2.0> for full license details.
 
+from datetime import UTC, datetime
 from statistics import median
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, status
 from fastapi_pagination import Page, Params
 from fastapi_pagination.ext.sqlalchemy import apaginate
 from pydantic import BaseModel
@@ -32,6 +33,7 @@ from app.schemas.sequence_group import (
     SequenceGroupMember,
     SequenceGroupRead,
     SequenceGroupReadWithMembers,
+    SequenceGroupUpdate,
 )
 from app.services.annotation_generation import (
     AnnotationGenerationService,
@@ -81,6 +83,7 @@ async def list_sequence_groups(
             SequenceGroup.smoke_type,
             SequenceGroup.false_positive_type,
             SequenceGroup.is_unsure,
+            SequenceGroup.is_validated,
             SequenceGroup.labeled_at,
             SequenceGroup.created_at,
             func.coalesce(member_count_subq.c.member_count, 0).label("member_count"),
@@ -183,6 +186,63 @@ async def get_sequence_group(
 
     base = SequenceGroupRead.model_validate(group, from_attributes=True)
     return SequenceGroupReadWithMembers(**base.model_dump(), members=members)
+
+
+@router.patch(
+    "/{group_id}",
+    response_model=SequenceGroupRead,
+    summary="Update group review state (currently: is_validated only)",
+)
+async def update_sequence_group(
+    group_id: int = Path(..., ge=1),
+    payload: SequenceGroupUpdate = Body(...),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> SequenceGroupRead:
+    group = await session.get(SequenceGroup, group_id)
+    if group is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Sequence group {group_id} not found",
+        )
+    changes = payload.model_dump(exclude_unset=True)
+    if "is_validated" in changes:
+        group.is_validated = changes["is_validated"]
+    if changes:
+        group.updated_at = datetime.now(UTC)
+    session.add(group)
+    await session.commit()
+    await session.refresh(group)
+    return SequenceGroupRead.model_validate(group, from_attributes=True)
+
+
+@router.delete(
+    "/{group_id}/members/{sequence_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remove a sequence from a group (does not delete the sequence)",
+)
+async def remove_member_from_group(
+    group_id: int = Path(..., ge=1),
+    sequence_id: int = Path(..., ge=1),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> None:
+    seq = await session.get(Sequence, sequence_id)
+    if seq is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Sequence {sequence_id} not found",
+        )
+    if seq.sequence_group_id != group_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Sequence {sequence_id} is not a member of group {group_id}"
+            ),
+        )
+    seq.sequence_group_id = None
+    session.add(seq)
+    await session.commit()
 
 
 # -------------------- assign-groups --------------------

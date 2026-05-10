@@ -249,6 +249,21 @@ class ApiClient {
     return response.data;
   }
 
+  async patchSequenceGroup(
+    id: number,
+    payload: { is_validated?: boolean }
+  ): Promise<SequenceGroup> {
+    const response: AxiosResponse<SequenceGroup> = await this.client.patch(
+      `${API_ENDPOINTS.SEQUENCE_GROUPS}${id}`,
+      payload
+    );
+    return response.data;
+  }
+
+  async removeSequenceFromGroup(groupId: number, sequenceId: number): Promise<void> {
+    await this.client.delete(`${API_ENDPOINTS.SEQUENCE_GROUPS}${groupId}/members/${sequenceId}`);
+  }
+
   // Detections
   async getDetections(
     filters: {
