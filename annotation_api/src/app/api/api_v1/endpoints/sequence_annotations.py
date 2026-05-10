@@ -175,7 +175,7 @@ async def auto_generate_annotation(
     sequence_id: int,
     session: AsyncSession,
     confidence_threshold: float = 0.0,
-    iou_threshold: float = 0.3,
+    iou_threshold: float = 0.0,
     min_cluster_size: int = 1,
 ) -> Optional[SequenceAnnotationData]:
     """
@@ -373,7 +373,7 @@ async def create_sequence_annotation(
             sequence_id=create_data.sequence_id,
             session=annotations.session,
             confidence_threshold=create_data.confidence_threshold or 0.0,
-            iou_threshold=create_data.iou_threshold or 0.3,
+            iou_threshold=create_data.iou_threshold or 0.0,
             min_cluster_size=create_data.min_cluster_size or 1,
         )
 
@@ -643,7 +643,7 @@ async def update_sequence_annotation(
             sequence_id=existing.sequence_id,
             session=annotations.session,
             confidence_threshold=payload.confidence_threshold or 0.0,
-            iou_threshold=payload.iou_threshold or 0.3,
+            iou_threshold=payload.iou_threshold or 0.0,
             min_cluster_size=payload.min_cluster_size or 1,
         )
 

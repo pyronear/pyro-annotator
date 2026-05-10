@@ -490,6 +490,25 @@ class TestUtilityFunctions:
         clusters = cluster_boxes_by_iou([], iou_threshold=0.5)
         assert clusters == []
 
+    def test_cluster_boxes_by_iou_zero_threshold_strict_overlap(self):
+        """At iou_threshold=0.0 the clustering uses `>` (strict positive
+        overlap), so disjoint boxes form separate clusters and only boxes
+        with any IoU > 0 collapse together. Without the strict operator
+        every box would land in the same cluster."""
+        boxes_with_ids = [
+            ([0.1, 0.1, 0.3, 0.3], "a"),
+            ([0.2, 0.2, 0.4, 0.4], "b"),  # overlaps a → same cluster
+            ([0.7, 0.7, 0.9, 0.9], "c"),  # disjoint → its own cluster
+            ([0.75, 0.75, 0.95, 0.95], "d"),  # overlaps c → same cluster
+        ]
+
+        clusters = cluster_boxes_by_iou(boxes_with_ids, iou_threshold=0.0)
+        assert len(clusters) == 2
+
+        cluster_ids = [{item[1] for item in cluster} for cluster in clusters]
+        assert {"a", "b"} in cluster_ids
+        assert {"c", "d"} in cluster_ids
+
 
 class TestAnnotationGenerationServiceConfiguration:
     """Test AnnotationGenerationService configuration and initialization."""

@@ -214,9 +214,12 @@ def make_cli_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--iou-threshold",
-        help="Minimum IoU for clustering overlapping boxes (0.0-1.0)",
+        help=(
+            "IoU threshold for clustering overlapping boxes (0.0-1.0). "
+            "0.0 = any positive overlap merges (default)."
+        ),
         type=float,
-        default=0.3,
+        default=0.0,
     )
     parser.add_argument(
         "--min-cluster-size",
