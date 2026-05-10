@@ -44,7 +44,10 @@ from app.schemas.sequence_annotations import (
     SequenceAnnotationRead,
     SequenceAnnotationUpdate,
 )
-from app.services.annotation_generation import AnnotationGenerationService
+from app.services.annotation_generation import (
+    AnnotationGenerationService,
+    apply_label_to_sequences_bbox,
+)
 
 router = APIRouter()
 logger = logging.getLogger("uvicorn.error")
@@ -726,37 +729,15 @@ async def delete_sequence_annotation(
     await annotations.delete(annotation_id)
 
 
-# Stages past which we don't overwrite an annotation in bulk-annotate. The
-# review pipeline marks annotations as SEQ_ANNOTATION_DONE when the labels
-# are filled but the geometry still needs visual check; anything past that
-# is reviewed work the bulk action must not clobber.
+# Stages past which we don't overwrite an annotation in bulk-annotate.
+# UNDER_ANNOTATION is included to avoid clobbering work an annotator is
+# actively editing; SEQ_ANNOTATION_DONE+ is reviewed labelled work.
 _BULK_LOCKED_STAGES = {
+    SequenceAnnotationProcessingStage.UNDER_ANNOTATION,
     SequenceAnnotationProcessingStage.IN_REVIEW,
     SequenceAnnotationProcessingStage.NEEDS_MANUAL,
     SequenceAnnotationProcessingStage.ANNOTATED,
 }
-
-
-def _apply_label_to_sequences_bbox(
-    annotation: SequenceAnnotationData,
-    *,
-    smoke_type: Optional[SmokeType],
-    false_positive_type: Optional[FalsePositiveType],
-) -> None:
-    """In-place rewrite of every bbox cluster's labels. Either marks the
-    cluster as smoke of the given type (and clears FP flags), or marks it as
-    a single false-positive type (and clears smoke fields)."""
-    for bbox in annotation.sequences_bbox:
-        if smoke_type is not None:
-            bbox.is_smoke = True
-            bbox.smoke_type = smoke_type
-            bbox.false_positive_types = []
-        else:
-            bbox.is_smoke = False
-            bbox.smoke_type = None
-            bbox.false_positive_types = (
-                [false_positive_type] if false_positive_type else []
-            )
 
 
 @router.post(
@@ -866,7 +847,7 @@ async def bulk_annotate_sequences(
             )
             continue
 
-        _apply_label_to_sequences_bbox(
+        apply_label_to_sequences_bbox(
             generated,
             smoke_type=payload.smoke_type,
             false_positive_type=payload.false_positive_type,
@@ -905,9 +886,11 @@ async def bulk_annotate_sequences(
                 )
             )
 
-    # Write the label onto the group so future joiners inherit it.
+    # Write the label onto the group so future joiners inherit it. Only do
+    # so if at least one sequence was actually applied — otherwise the group
+    # would carry a label that never made it onto any of its current members.
     group_label_updated = False
-    if group is not None:
+    if group is not None and applied:
         group.smoke_type = payload.smoke_type.value if payload.smoke_type else None
         group.false_positive_type = (
             payload.false_positive_type.value if payload.false_positive_type else None

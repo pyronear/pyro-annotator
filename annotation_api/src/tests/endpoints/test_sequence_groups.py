@@ -2,11 +2,14 @@
 
 Covers:
 - POST /sequence_groups/assign creates a new group from an unassigned sequence
-- POST /sequence_groups/assign matches a second sequence into the existing
-  group when its representative bbox overlaps (IoU > 0.5) and inherits the
-  group's label automatically
-- POST /annotations/sequences/bulk applies labels and writes them onto the
-  group; rejects conflicting labels unless force=True
+- POST /annotations/sequences/bulk applies labels, writes them onto the
+  group, and rejects conflicting labels unless force=True
+- Request validation rejects payloads with neither or both labels
+
+Cross-sequence inheritance (a second sequence joining a labeled group and
+auto-receiving its label) is exercised end-to-end via the make pipeline,
+not in this unit suite — the test fixtures only seed two sequences and
+they intentionally have non-overlapping bboxes.
 """
 
 import pytest

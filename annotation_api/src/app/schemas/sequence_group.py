@@ -6,7 +6,7 @@
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator
 
 from app.models import FalsePositiveType, SmokeType
 
@@ -16,7 +16,6 @@ __all__ = [
     "SequenceGroupRead",
     "SequenceGroupMember",
     "SequenceGroupReadWithMembers",
-    "SequenceGroupLabelUpdate",
 ]
 
 
@@ -48,25 +47,6 @@ class SequenceGroupCreate(BaseModel):
     camera_id: int
     azimuth: int
     representative_bbox: RepresentativeBbox
-
-
-class SequenceGroupLabelUpdate(BaseModel):
-    """Labels written when an annotator bulk-confirms a group. Exactly one of
-    smoke_type / false_positive_type must be set."""
-
-    smoke_type: Optional[SmokeType] = None
-    false_positive_type: Optional[FalsePositiveType] = None
-    is_unsure: bool = False
-
-    @model_validator(mode="after")
-    def _exactly_one_label(self) -> "SequenceGroupLabelUpdate":
-        smoke = self.smoke_type is not None
-        fp = self.false_positive_type is not None
-        if smoke == fp:  # both set or both unset
-            raise ValueError(
-                "exactly one of smoke_type or false_positive_type must be set"
-            )
-        return self
 
 
 class SequenceGroupMember(BaseModel):

@@ -337,7 +337,10 @@ export default function SequenceGroupAnnotatePage() {
 
         {bulkMutation.isError && (
           <div className="mt-3 text-sm text-red-600">
-            Bulk annotation failed: {(bulkMutation.error as Error).message}
+            Bulk annotation failed:{' '}
+            {(bulkMutation.error as { detail?: string; message?: string })?.detail ??
+              (bulkMutation.error as Error)?.message ??
+              'Unknown error'}
           </div>
         )}
       </section>

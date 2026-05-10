@@ -244,9 +244,7 @@ class SequenceGroup(SQLModel, table=True):
         Index("ix_sequence_groups_camera_azimuth", "camera_id", "azimuth"),
         # Mutually-exclusive label: at most one of smoke_type / fp_type set.
         CheckConstraint(
-            "(smoke_type IS NULL AND false_positive_type IS NULL) "
-            "OR (smoke_type IS NOT NULL AND false_positive_type IS NULL) "
-            "OR (smoke_type IS NULL AND false_positive_type IS NOT NULL)",
+            "smoke_type IS NULL OR false_positive_type IS NULL",
             name="ck_sequence_group_label_xor",
         ),
         # labeled_at must be set iff a label is present.

@@ -3,7 +3,6 @@
 # This program is licensed under the Apache License 2.0.
 # See LICENSE or go to <https://www.apache.org/licenses/LICENSE-2.0> for full license details.
 
-import logging
 from statistics import median
 from typing import List, Optional
 
@@ -31,10 +30,12 @@ from app.schemas.sequence_group import (
     SequenceGroupRead,
     SequenceGroupReadWithMembers,
 )
-from app.services.annotation_generation import AnnotationGenerationService
+from app.services.annotation_generation import (
+    AnnotationGenerationService,
+    apply_label_to_sequences_bbox,
+)
 
 router = APIRouter()
-logger = logging.getLogger("uvicorn.error")
 
 # Cross-sequence grouping threshold. Stricter than within-sequence clustering
 # (IoU=0) because the precision cost of mis-grouping is much higher: a wrong
@@ -148,22 +149,6 @@ def _compute_representative_bbox(detections: List[Detection]) -> Optional[dict]:
         ],
         "confidence": median(confs),
     }
-
-
-def _label_sequences_bbox(annotation, *, smoke_type, false_positive_type) -> None:
-    """In-place rewrite of every bbox cluster's labels for inherited
-    annotations. Mirrors the helper in sequence_annotations.bulk."""
-    for bbox in annotation.sequences_bbox:
-        if smoke_type is not None:
-            bbox.is_smoke = True
-            bbox.smoke_type = smoke_type
-            bbox.false_positive_types = []
-        else:
-            bbox.is_smoke = False
-            bbox.smoke_type = None
-            bbox.false_positive_types = (
-                [false_positive_type] if false_positive_type else []
-            )
 
 
 @router.post(
@@ -284,7 +269,7 @@ async def assign_groups(
             if best_group.false_positive_type
             else None
         )
-        _label_sequences_bbox(
+        apply_label_to_sequences_bbox(
             generated, smoke_type=smoke_enum, false_positive_type=fp_enum
         )
 

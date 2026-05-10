@@ -1,7 +1,7 @@
 """add sequence_groups + sequences.sequence_group_id
 
 Revision ID: b2c3d4e5f6a7
-Revises: 063dc76c9846
+Revises: a1b2c3d4e5f6
 Create Date: 2026-05-10 07:00:00.000000
 
 """
@@ -52,9 +52,7 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("id"),
         sa.CheckConstraint(
-            "(smoke_type IS NULL AND false_positive_type IS NULL) "
-            "OR (smoke_type IS NOT NULL AND false_positive_type IS NULL) "
-            "OR (smoke_type IS NULL AND false_positive_type IS NOT NULL)",
+            "smoke_type IS NULL OR false_positive_type IS NULL",
             name="ck_sequence_group_label_xor",
         ),
         sa.CheckConstraint(
