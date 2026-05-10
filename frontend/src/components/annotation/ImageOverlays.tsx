@@ -59,6 +59,60 @@ export function BoundingBoxOverlay({ detection, imageInfo }: BoundingBoxOverlayP
 }
 
 /**
+ * Read-only overlay for sibling bboxes (Detection.others_bboxes): boxes the
+ * detector saw on the same image but that are not part of the tracked
+ * sequence. Rendered as dashed gray to clearly distinguish from primary
+ * predictions and user annotations — annotators use them only as a hint to
+ * spot missed smoke.
+ */
+interface SiblingBoundingBoxOverlayProps {
+  detection: Detection;
+  imageInfo: ImageInfo;
+}
+
+export function SiblingBoundingBoxOverlay({
+  detection,
+  imageInfo,
+}: SiblingBoundingBoxOverlayProps) {
+  const others = detection?.others_bboxes?.predictions;
+  if (!others || others.length === 0) return null;
+
+  return (
+    <>
+      {others
+        .map((prediction: AlgoPrediction, index: number) => {
+          if (!validateBoundingBox(prediction.xyxyn)) {
+            return null;
+          }
+
+          const { left, top, width, height } = normalizedToPixelBox(
+            prediction.xyxyn,
+            imageInfo
+          );
+
+          return (
+            <div
+              key={`sibling-bbox-${detection.id}-${index}`}
+              className="absolute border-2 border-dashed border-gray-400 pointer-events-none opacity-80"
+              style={{
+                left: `${left}px`,
+                top: `${top}px`,
+                width: `${width}px`,
+                height: `${height}px`,
+              }}
+            >
+              <div className="absolute -top-5 left-0 bg-gray-500/90 text-white text-[10px] px-1 rounded whitespace-nowrap">
+                sibling {(prediction.confidence * 100).toFixed(0)}%
+              </div>
+            </div>
+          );
+        })
+        .filter(Boolean)}
+    </>
+  );
+}
+
+/**
  * Component for rendering user annotation bounding boxes on detection images.
  * Shows smoke type classifications with appropriate colors and labels.
  */

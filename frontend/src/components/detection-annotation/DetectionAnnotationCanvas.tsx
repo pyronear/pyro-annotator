@@ -7,7 +7,11 @@
 import { Detection } from '@/types/api';
 import { useDetectionImage } from '@/hooks/useDetectionImage';
 import { DrawnRectangle, CurrentDrawing, Point } from '@/utils/annotation';
-import { BoundingBoxOverlay, DrawingOverlay } from '@/components/annotation/ImageOverlays';
+import {
+  BoundingBoxOverlay,
+  DrawingOverlay,
+  SiblingBoundingBoxOverlay,
+} from '@/components/annotation/ImageOverlays';
 
 interface ImageInfo {
   width: number;
@@ -21,6 +25,7 @@ interface DetectionAnnotationCanvasProps {
   drawnRectangles: DrawnRectangle[];
   selectedRectangleId: string | null;
   showPredictions: boolean;
+  showSiblingBboxes?: boolean;
   currentDrawing: CurrentDrawing | null;
   // Image and container refs passed from parent
   containerRef: React.RefObject<HTMLDivElement>;
@@ -47,6 +52,7 @@ export function DetectionAnnotationCanvas({
   drawnRectangles,
   selectedRectangleId,
   showPredictions,
+  showSiblingBboxes = true,
   currentDrawing,
   containerRef,
   imgRef,
@@ -103,6 +109,9 @@ export function DetectionAnnotationCanvas({
       >
         {showPredictions && imageInfo && (
           <BoundingBoxOverlay detection={detection} imageInfo={imageInfo} />
+        )}
+        {showSiblingBboxes && imageInfo && (
+          <SiblingBoundingBoxOverlay detection={detection} imageInfo={imageInfo} />
         )}
       </div>
 

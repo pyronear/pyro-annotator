@@ -58,6 +58,9 @@ export default function SequencePlayer({
     offsetY: number;
   } | null>(null);
   const [showInstructionsModal, setShowInstructionsModal] = useState(false);
+  // Sibling boxes (Detection.others_bboxes) help spot missed smoke; ON by
+  // default but can be hidden if they clutter the frame.
+  const [showSiblingBboxes, setShowSiblingBboxes] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
 
@@ -260,6 +263,43 @@ export default function SequencePlayer({
       .filter(Boolean); // Remove null entries from invalid boxes
   };
 
+  // Render sibling bbox overlay (Detection.others_bboxes — read-only hint
+  // for missed smoke). Dashed gray to clearly distinguish from primary
+  // predictions.
+  const renderSiblingBoxes = () => {
+    const siblings = currentDetection?.others_bboxes?.predictions;
+    if (!imageInfo || !siblings || siblings.length === 0) return null;
+
+    return siblings
+      .map((prediction: AlgoPrediction, index: number) => {
+        const [x1, y1, x2, y2] = prediction.xyxyn;
+        if (x2 <= x1 || y2 <= y1) return null;
+
+        const left = imageInfo.offsetX + x1 * imageInfo.width;
+        const top = imageInfo.offsetY + y1 * imageInfo.height;
+        const width = (x2 - x1) * imageInfo.width;
+        const height = (y2 - y1) * imageInfo.height;
+
+        return (
+          <div
+            key={`sibling-${currentDetection.id}-${index}`}
+            className="absolute border-2 border-dashed border-gray-300 pointer-events-none opacity-80"
+            style={{
+              left: `${left}px`,
+              top: `${top}px`,
+              width: `${width}px`,
+              height: `${height}px`,
+            }}
+          >
+            <div className="absolute -top-5 left-0 bg-gray-500/90 text-white text-[10px] px-1 rounded whitespace-nowrap">
+              sibling {(prediction.confidence * 100).toFixed(0)}%
+            </div>
+          </div>
+        );
+      })
+      .filter(Boolean);
+  };
+
   // Only show loading spinner when image isn't loaded
   const showLoadingState = !currentImage?.loaded;
   const hasError = currentImage?.error;
@@ -357,6 +397,7 @@ export default function SequencePlayer({
             {imageInfo && !showLoadingState && (
               <div className="absolute inset-0 pointer-events-none z-20">
                 {renderBoundingBoxes()}
+                {showSiblingBboxes && renderSiblingBoxes()}
               </div>
             )}
           </>
@@ -417,13 +458,29 @@ export default function SequencePlayer({
                 </button>
               </div>
 
-              {/* Right - Predictions */}
-              <div className="flex-1 flex items-center justify-end space-x-2">
-                <Eye className="w-4 h-4" />
-                <span className="text-xs">
-                  {currentDetection.algo_predictions?.predictions?.length || 0} prediction
-                  {currentDetection.algo_predictions?.predictions?.length !== 1 ? 's' : ''}
-                </span>
+              {/* Right - Predictions + sibling toggle */}
+              <div className="flex-1 flex items-center justify-end space-x-3">
+                <div className="flex items-center space-x-2">
+                  <Eye className="w-4 h-4" />
+                  <span className="text-xs">
+                    {currentDetection.algo_predictions?.predictions?.length || 0} prediction
+                    {currentDetection.algo_predictions?.predictions?.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+                {(currentDetection.others_bboxes?.predictions?.length || 0) > 0 && (
+                  <label className="flex items-center cursor-pointer hover:bg-white/10 px-2 py-1 rounded transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={showSiblingBboxes}
+                      onChange={e => setShowSiblingBboxes(e.target.checked)}
+                      className="w-3.5 h-3.5 mr-2 accent-gray-300"
+                    />
+                    <span className="text-xs">
+                      {currentDetection.others_bboxes?.predictions?.length} sibling
+                      {(currentDetection.others_bboxes?.predictions?.length || 0) > 1 ? 's' : ''}
+                    </span>
+                  </label>
+                )}
               </div>
             </div>
 

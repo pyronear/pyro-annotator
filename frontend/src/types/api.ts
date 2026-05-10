@@ -30,6 +30,10 @@ export interface Detection {
   created_at: string;
   recorded_at: string;
   algo_predictions: AlgoPredictions;
+  // Sibling boxes detected on the same image but not part of the tracked
+  // sequence. Read-only — annotators see them as a hint for missed smoke,
+  // and they are NOT fed into auto-annotation. Null on legacy detections.
+  others_bboxes?: AlgoPredictions | null;
   last_modified_at: string | null;
   confidence?: number;
 }
