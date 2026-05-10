@@ -116,11 +116,14 @@ async def create_detection(
         validated_predictions = AlgoPredictions.model_validate_json(algo_predictions)
     except (ValidationError, ValueError) as e:
         logger.error(
-            f"Detection algo_predictions validation failed for sequence_id={sequence_id}\n"
-            f"Alert API ID: {alert_api_id}\n"
-            f"Recorded at: {recorded_at}\n"
-            f"Algo predictions data: {algo_predictions}\n"
-            f"Error: {e}"
+            "Detection algo_predictions validation failed "
+            "for sequence_id=%s alert_api_id=%s recorded_at=%s "
+            "(payload bytes=%d): %s",
+            sequence_id,
+            alert_api_id,
+            recorded_at,
+            len(algo_predictions or ""),
+            e,
         )
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

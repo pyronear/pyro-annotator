@@ -110,7 +110,7 @@ export function DetectionAnnotationCanvas({
         {showPredictions && imageInfo && (
           <BoundingBoxOverlay detection={detection} imageInfo={imageInfo} />
         )}
-        {showSiblingBboxes && imageInfo && (
+        {showPredictions && showSiblingBboxes && imageInfo && (
           <SiblingBoundingBoxOverlay detection={detection} imageInfo={imageInfo} />
         )}
       </div>

@@ -181,7 +181,7 @@ def create_annotation_from_data(
                 update_dict.update(
                     {
                         "confidence_threshold": config.get("confidence_threshold", 0.0),
-                        "iou_threshold": config.get("iou_threshold", 0.3),
+                        "iou_threshold": config.get("iou_threshold", 0.0),
                         "min_cluster_size": config.get("min_cluster_size", 1),
                     }
                 )
@@ -226,7 +226,7 @@ def create_annotation_from_data(
                 create_dict.update(
                     {
                         "confidence_threshold": config.get("confidence_threshold", 0.0),
-                        "iou_threshold": config.get("iou_threshold", 0.3),
+                        "iou_threshold": config.get("iou_threshold", 0.0),
                         "min_cluster_size": config.get("min_cluster_size", 1),
                     }
                 )

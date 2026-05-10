@@ -5,6 +5,7 @@ This module contains common functions used by both fetch_platform_sequence_id.py
 and fetch_platform_sequences.py to avoid code duplication.
 """
 
+import ast
 import concurrent.futures
 import logging
 import os
@@ -192,15 +193,11 @@ def parse_platform_bboxes(bboxes_str: str) -> dict:
     """
     Parse platform bboxes string into AlgoPredictions format.
 
-    Args:
-        bboxes_str: String representation or object of bounding boxes
-
-    Returns:
-        Dictionary in AlgoPredictions format with predictions list
-
-    Note:
-        This function needs to be refined based on actual platform bbox format.
-        Currently assumes a simple format that can be eval'd.
+    Accepts:
+        - dict already in AlgoPredictions shape
+        - list of `[x1, y1, x2, y2, conf, ...]` boxes
+        - string representation of such a list (parsed safely with
+          `ast.literal_eval`, never `eval`)
     """
     try:
         if isinstance(bboxes_str, dict) and "predictions" in bboxes_str:
@@ -210,8 +207,7 @@ def parse_platform_bboxes(bboxes_str: str) -> dict:
         if isinstance(bboxes_str, list):
             bboxes_data = bboxes_str
         else:
-            # Parse the bboxes string - format needs to be determined from actual data
-            bboxes_data = eval(bboxes_str) if bboxes_str else []
+            bboxes_data = ast.literal_eval(bboxes_str) if bboxes_str else []
 
         predictions = []
         for bbox in bboxes_data:
