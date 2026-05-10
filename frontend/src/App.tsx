@@ -9,6 +9,7 @@ import AnnotationInterface from '@/pages/AnnotationInterface';
 import DetectionAnnotatePage from '@/pages/DetectionAnnotatePage';
 import DetectionReviewPage from '@/pages/DetectionReviewPage';
 import DetectionSequenceAnnotatePage from '@/pages/DetectionSequenceAnnotatePage';
+import SequenceGroupAnnotatePage from '@/pages/SequenceGroupAnnotatePage';
 import UserManagementPage from '@/pages/UserManagementPage';
 import LoginPage from '@/pages/LoginPage';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -84,6 +85,10 @@ function App() {
                   <Route
                     path="/detections/:sequenceId/annotate/:detectionId?"
                     element={<DetectionSequenceAnnotatePage />}
+                  />
+                  <Route
+                    path="/sequence-groups/:id/annotate"
+                    element={<SequenceGroupAnnotatePage />}
                   />
                   <Route path="/users" element={<UserManagementPage />} />
                 </Routes>

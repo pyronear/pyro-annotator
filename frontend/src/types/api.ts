@@ -103,6 +103,57 @@ export interface DetectionAnnotationData {
   bbox_xyxyn?: [number, number, number, number];
 }
 
+export interface SequenceGroupRepresentativeBbox {
+  xyxyn: [number, number, number, number];
+  confidence: number;
+}
+
+export interface SequenceGroupMember {
+  sequence_id: number;
+  alert_api_id: number;
+  camera_name: string;
+  recorded_at: string;
+  last_seen_at: string;
+  has_annotation: boolean;
+}
+
+export interface SequenceGroup {
+  id: number;
+  camera_id: number;
+  azimuth: number;
+  representative_bbox: SequenceGroupRepresentativeBbox;
+  smoke_type: SmokeType | null;
+  false_positive_type: FalsePositiveType | null;
+  is_unsure: boolean;
+  labeled_at: string | null;
+  labeled_by_user_id: number | null;
+  created_at: string;
+  updated_at: string | null;
+  members: SequenceGroupMember[];
+}
+
+export interface BulkAnnotateRequest {
+  sequence_ids: number[];
+  group_id?: number;
+  smoke_type?: SmokeType;
+  false_positive_type?: FalsePositiveType;
+  is_unsure: boolean;
+  force?: boolean;
+}
+
+export interface BulkAnnotateResult {
+  sequence_id: number;
+  status: 'applied' | 'skipped';
+  reason: string | null;
+  annotation_id: number | null;
+}
+
+export interface BulkAnnotateResponse {
+  applied: BulkAnnotateResult[];
+  skipped: BulkAnnotateResult[];
+  group_label_updated: boolean;
+}
+
 // Enums
 export type SmokeType = 'wildfire' | 'industrial' | 'other';
 

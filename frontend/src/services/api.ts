@@ -22,6 +22,9 @@ import {
   SequenceAnnotationFilters,
   DetectionAnnotationFilters,
   ApiError,
+  SequenceGroup,
+  BulkAnnotateRequest,
+  BulkAnnotateResponse,
 } from '@/types/api';
 import { API_ENDPOINTS } from '@/utils/constants';
 
@@ -217,6 +220,22 @@ class ApiClient {
 
   async deleteSequenceAnnotation(id: number): Promise<void> {
     await this.client.delete(`/annotations/sequences/${id}`);
+  }
+
+  // Sequence Groups
+  async getSequenceGroup(id: number): Promise<SequenceGroup> {
+    const response: AxiosResponse<SequenceGroup> = await this.client.get(
+      `${API_ENDPOINTS.SEQUENCE_GROUPS}${id}`
+    );
+    return response.data;
+  }
+
+  async bulkAnnotateSequences(payload: BulkAnnotateRequest): Promise<BulkAnnotateResponse> {
+    const response: AxiosResponse<BulkAnnotateResponse> = await this.client.post(
+      API_ENDPOINTS.SEQUENCE_ANNOTATIONS_BULK,
+      payload
+    );
+    return response.data;
   }
 
   // Detections

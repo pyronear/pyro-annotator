@@ -26,6 +26,8 @@
 export const API_ENDPOINTS = {
   SEQUENCES: '/sequences/',
   SEQUENCE_ANNOTATIONS: '/annotations/sequences/',
+  SEQUENCE_ANNOTATIONS_BULK: '/annotations/sequences/bulk',
+  SEQUENCE_GROUPS: '/sequence_groups/',
   DETECTION_ANNOTATIONS: '/annotations/detections/',
   DETECTIONS: '/detections/',
   CAMERAS: '/cameras/',
