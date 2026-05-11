@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertCircle, X } from 'lucide-react';
 import { apiClient } from '@/services/api';
@@ -76,6 +76,12 @@ export default function AnnotationInterface() {
     message: string;
     groupId: number | null;
   } | null>(null);
+
+  // Reset the banner whenever we navigate to a different sequence so a
+  // stale conflict from sequence A doesn't shadow sequence B's state.
+  useEffect(() => {
+    setGroupConflictWarning(null);
+  }, [sequenceId]);
   const detectionRefs = useRef<(HTMLDivElement | null)[]>([]);
   const sequenceReviewerRef = useRef<HTMLDivElement | null>(null);
 
@@ -237,14 +243,14 @@ export default function AnnotationInterface() {
         showToastNotification('Annotation saved — group propagation skipped', 'info');
         setGroupConflictWarning({
           message: saved.group_propagation_warning,
-          groupId:
-            sequence && 'sequence_group_id' in sequence
-              ? ((sequence as { sequence_group_id?: number | null }).sequence_group_id ?? null)
-              : null,
+          groupId: sequence?.sequence_group_id ?? null,
         });
         return;
       }
 
+      // Successful save with no propagation issue — clear any stale
+      // banner that might still be visible from an earlier conflict.
+      setGroupConflictWarning(null);
       showToastNotification('Annotation saved successfully', 'success');
 
       // Check for next sequence in workflow
@@ -343,33 +349,6 @@ export default function AnnotationInterface() {
 
   return (
     <>
-      {groupConflictWarning && (
-        <div className="fixed top-0 left-0 right-0 z-50 bg-amber-50 border-b-2 border-amber-400 px-4 py-3 shadow-md">
-          <div className="max-w-7xl mx-auto flex items-start gap-3">
-            <div className="flex-1 text-sm text-amber-900">
-              <div className="font-medium">Group propagation skipped</div>
-              <div className="mt-0.5">{groupConflictWarning.message}</div>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              {groupConflictWarning.groupId != null && (
-                <a
-                  href={`/sequence-groups/${groupConflictWarning.groupId}/annotate`}
-                  className="text-sm font-medium text-amber-900 underline hover:text-amber-700"
-                >
-                  Open group
-                </a>
-              )}
-              <button
-                type="button"
-                onClick={() => setGroupConflictWarning(null)}
-                className="text-sm font-medium px-3 py-1 rounded bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300"
-              >
-                Dismiss
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       <AnnotationHeader
         onBack={() => {
           clearAnnotationWorkflow();
@@ -396,6 +375,35 @@ export default function AnnotationInterface() {
 
       {/* Content with top padding to account for fixed header */}
       <div className="space-y-6 pt-20">
+        {groupConflictWarning && (
+          // Sticky so the warning stays visible while the annotator
+          // scrolls the page; sits just below the fixed AnnotationHeader.
+          <div className="sticky top-20 z-30 bg-amber-50 border-b-2 border-amber-400 px-4 py-3 shadow">
+            <div className="max-w-7xl mx-auto flex items-start gap-3">
+              <div className="flex-1 text-sm text-amber-900">
+                <div className="font-medium">Group propagation skipped</div>
+                <div className="mt-0.5">{groupConflictWarning.message}</div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {groupConflictWarning.groupId != null && (
+                  <Link
+                    to={`/sequence-groups/${groupConflictWarning.groupId}/annotate`}
+                    className="text-sm font-medium text-amber-900 underline hover:text-amber-700"
+                  >
+                    Open group
+                  </Link>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setGroupConflictWarning(null)}
+                  className="text-sm font-medium px-3 py-1 rounded bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         <ProcessingStageMessages annotation={annotation} />
 
         <MissedSmokePanel
