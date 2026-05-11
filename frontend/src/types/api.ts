@@ -20,6 +20,9 @@ export interface Sequence {
   is_wildfire_alertapi: AnnotationType | null;
   organisation_name: string;
   organisation_id: number;
+  // Membership in a SequenceGroup; null until assign-groups runs or
+  // when the sequence has been excluded from grouping manually.
+  sequence_group_id?: number | null;
   detection_annotation_stats?: DetectionAnnotationStats;
 }
 
@@ -52,6 +55,11 @@ export interface SequenceAnnotation {
   created_at: string;
   updated_at: string | null;
   contributors?: Contributor[];
+  // Set when the annotation belongs to a validated SequenceGroup but
+  // fan-out to the rest of the group was skipped (e.g. the group already
+  // carries a different label). The annotation itself was saved; the
+  // operator must reconcile the conflict manually.
+  group_propagation_warning?: string | null;
 }
 
 export interface SequenceAnnotationData {
@@ -101,6 +109,55 @@ export interface DetectionAnnotationData {
   smoke_type?: SmokeType;
   false_positive_type?: FalsePositiveType;
   bbox_xyxyn?: [number, number, number, number];
+}
+
+export interface SequenceGroupRepresentativeBbox {
+  xyxyn: [number, number, number, number];
+  confidence: number;
+}
+
+export interface SequenceGroupMember {
+  sequence_id: number;
+  alert_api_id: number;
+  camera_name: string;
+  recorded_at: string;
+  last_seen_at: string;
+  // null when no SequenceAnnotation row exists. READY_TO_ANNOTATE is the
+  // placeholder import.py creates; only SEQ_ANNOTATION_DONE+ counts as
+  // human-submitted work in the UI.
+  annotation_processing_stage: string | null;
+  first_detection_id: number | null;
+  first_detection_algo_predictions: AlgoPredictions | null;
+}
+
+export interface SequenceGroupListItem {
+  id: number;
+  camera_id: number;
+  azimuth: number;
+  representative_bbox: SequenceGroupRepresentativeBbox;
+  smoke_type: SmokeType | null;
+  false_positive_type: FalsePositiveType | null;
+  is_unsure: boolean;
+  is_validated: boolean;
+  labeled_at: string | null;
+  created_at: string;
+  member_count: number;
+}
+
+export interface SequenceGroup {
+  id: number;
+  camera_id: number;
+  azimuth: number;
+  representative_bbox: SequenceGroupRepresentativeBbox;
+  smoke_type: SmokeType | null;
+  false_positive_type: FalsePositiveType | null;
+  is_unsure: boolean;
+  is_validated: boolean;
+  labeled_at: string | null;
+  labeled_by_user_id: number | null;
+  created_at: string;
+  updated_at: string | null;
+  members: SequenceGroupMember[];
 }
 
 // Enums

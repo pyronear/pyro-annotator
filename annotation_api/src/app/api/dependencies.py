@@ -14,6 +14,7 @@ from app.crud import (
     DetectionCRUD,
     SequenceAnnotationCRUD,
     SequenceCRUD,
+    SequenceGroupCRUD,
 )
 from app.db import get_session
 
@@ -25,6 +26,7 @@ __all__ = [
     "get_detection_crud",
     "get_sequence_annotation_crud",
     "get_sequence_crud",
+    "get_sequence_group_crud",
 ]
 
 # Re-export for backward compatibility
@@ -49,3 +51,9 @@ def get_sequence_annotation_crud(
     session: AsyncSession = Depends(get_session),
 ) -> SequenceAnnotationCRUD:
     return SequenceAnnotationCRUD(session=session)
+
+
+def get_sequence_group_crud(
+    session: AsyncSession = Depends(get_session),
+) -> SequenceGroupCRUD:
+    return SequenceGroupCRUD(session=session)

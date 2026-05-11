@@ -3,6 +3,7 @@ from enum import Enum
 from typing import List, Optional
 
 from sqlalchemy import (
+    CheckConstraint,
     Column,
     DateTime,
     ForeignKey,
@@ -18,6 +19,7 @@ __all__ = [
     "DetectionAnnotation",
     "Sequence",
     "SequenceAnnotation",
+    "SequenceGroup",
     "User",
     "AnnotationType",
 ]
@@ -215,6 +217,80 @@ class Sequence(SQLModel, table=True):
     )
     organisation_name: str
     organisation_id: int
+    # Membership in a SequenceGroup. NULL until `assign_groups` runs (which
+    # discovers groups by `(camera_id, azimuth, IoU > 0.3)`). Set NULL on
+    # group deletion so the sequence survives.
+    sequence_group_id: Optional[int] = Field(
+        default=None,
+        sa_column=Column(
+            ForeignKey("sequence_groups.id", ondelete="SET NULL"),
+            index=True,
+        ),
+    )
+    # Sticky flag set when an annotator manually removed this sequence
+    # from a group. assign_groups must skip these so the next import
+    # doesn't silently re-attach a known outlier.
+    is_group_excluded: bool = Field(default=False)
+
+
+class SequenceGroup(SQLModel, table=True):
+    """Recurring real-world entity at one camera angle (a persistent fire,
+    a recurring antenna FP, …). Sequences join a group when their
+    representative bbox overlaps the group's reference bbox enough.
+
+    A group carries at most one label (smoke OR false positive, never both).
+    Once labeled, future sequences joining the group inherit the label
+    automatically (skip manual annotation).
+    """
+
+    __tablename__ = "sequence_groups"
+    __table_args__ = (
+        Index("ix_sequence_groups_camera_azimuth", "camera_id", "azimuth"),
+        # Mutually-exclusive label: at most one of smoke_type / fp_type set.
+        CheckConstraint(
+            "smoke_type IS NULL OR false_positive_type IS NULL",
+            name="ck_sequence_group_label_xor",
+        ),
+        # labeled_at must be set iff a label is present.
+        CheckConstraint(
+            "(labeled_at IS NULL) = "
+            "(smoke_type IS NULL AND false_positive_type IS NULL)",
+            name="ck_sequence_group_labeled_at_consistency",
+        ),
+    )
+
+    id: int = Field(
+        default=None, primary_key=True, sa_column_kwargs={"autoincrement": True}
+    )
+    camera_id: int
+    azimuth: int
+    # Defines the group's region in the image. Set from the first member's
+    # representative bbox at group creation, never mutated, so the group
+    # stays self-defining even if all original members are pruned.
+    representative_bbox: dict = Field(sa_column=Column(JSONB))
+    # Carried label. Stored as the enum value (string) for now; validated by
+    # the API schemas against SmokeType / FalsePositiveType.
+    smoke_type: Optional[str] = Field(default=None)
+    false_positive_type: Optional[str] = Field(default=None)
+    is_unsure: bool = Field(default=False)
+    # Set to True once an annotator has reviewed the group and confirmed
+    # membership is correct. Annotation propagation to other members only
+    # kicks in for validated groups.
+    is_validated: bool = Field(default=False)
+    labeled_at: Optional[datetime] = Field(
+        default=None, sa_column=Column(DateTime(timezone=True))
+    )
+    labeled_by_user_id: Optional[int] = Field(
+        default=None,
+        sa_column=Column(ForeignKey("users.id", ondelete="SET NULL")),
+    )
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        sa_column=Column(DateTime(timezone=True)),
+    )
+    updated_at: Optional[datetime] = Field(
+        default=None, sa_column=Column(DateTime(timezone=True))
+    )
 
 
 class SequenceAnnotation(SQLModel, table=True):

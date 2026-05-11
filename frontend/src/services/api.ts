@@ -22,6 +22,8 @@ import {
   SequenceAnnotationFilters,
   DetectionAnnotationFilters,
   ApiError,
+  SequenceGroup,
+  SequenceGroupListItem,
 } from '@/types/api';
 import { API_ENDPOINTS } from '@/utils/constants';
 
@@ -217,6 +219,39 @@ class ApiClient {
 
   async deleteSequenceAnnotation(id: number): Promise<void> {
     await this.client.delete(`/annotations/sequences/${id}`);
+  }
+
+  // Sequence Groups
+  async getSequenceGroup(id: number): Promise<SequenceGroup> {
+    const response: AxiosResponse<SequenceGroup> = await this.client.get(
+      `${API_ENDPOINTS.SEQUENCE_GROUPS}${id}`
+    );
+    return response.data;
+  }
+
+  async getSequenceGroups(
+    filters: { labeled?: boolean; page?: number; size?: number } = {}
+  ): Promise<PaginatedResponse<SequenceGroupListItem>> {
+    const response: AxiosResponse<PaginatedResponse<SequenceGroupListItem>> = await this.client.get(
+      API_ENDPOINTS.SEQUENCE_GROUPS,
+      { params: filters }
+    );
+    return response.data;
+  }
+
+  async patchSequenceGroup(
+    id: number,
+    payload: { is_validated?: boolean }
+  ): Promise<SequenceGroup> {
+    const response: AxiosResponse<SequenceGroup> = await this.client.patch(
+      `${API_ENDPOINTS.SEQUENCE_GROUPS}${id}`,
+      payload
+    );
+    return response.data;
+  }
+
+  async removeSequenceFromGroup(groupId: number, sequenceId: number): Promise<void> {
+    await this.client.delete(`${API_ENDPOINTS.SEQUENCE_GROUPS}${groupId}/members/${sequenceId}`);
   }
 
   // Detections

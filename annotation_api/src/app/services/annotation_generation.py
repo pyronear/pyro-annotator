@@ -26,12 +26,13 @@ Example:
 """
 
 import logging
+from collections import Counter
 from typing import List, Dict, Any, Optional, Tuple
 
 from sqlalchemy import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.models import Detection, Sequence
+from app.models import Detection, FalsePositiveType, Sequence, SmokeType
 from app.schemas.annotation_validation import (
     BoundingBox,
     SequenceBBox,
@@ -115,6 +116,60 @@ def filter_predictions_by_confidence(
         for pred in predictions
         if pred.get("confidence", 0) >= confidence_threshold
     ]
+
+
+def derive_group_label_from_annotation(
+    annotation_data: SequenceAnnotationData,
+) -> Optional[Tuple[Optional[SmokeType], Optional[FalsePositiveType]]]:
+    """Pick a single (smoke_type, false_positive_type) pair representing the
+    annotation, used to update the group's label and to propagate to other
+    members. Returns None when the annotation carries no label signal.
+
+    - If any cluster is marked smoke, returns the most common smoke type.
+    - Else if any cluster has false-positive types, returns the most common.
+    - Else returns None.
+    """
+    smoke_types: List[str] = []
+    fp_types: List[str] = []
+    for bbox in annotation_data.sequences_bbox:
+        if bbox.is_smoke and bbox.smoke_type is not None:
+            smoke_types.append(
+                bbox.smoke_type.value
+                if hasattr(bbox.smoke_type, "value")
+                else bbox.smoke_type
+            )
+        for fp in bbox.false_positive_types or []:
+            fp_types.append(fp.value if hasattr(fp, "value") else fp)
+    if smoke_types:
+        most = Counter(smoke_types).most_common(1)[0][0]
+        return SmokeType(most), None
+    if fp_types:
+        most = Counter(fp_types).most_common(1)[0][0]
+        return None, FalsePositiveType(most)
+    return None
+
+
+def apply_label_to_sequences_bbox(
+    annotation: SequenceAnnotationData,
+    *,
+    smoke_type: Optional[SmokeType] = None,
+    false_positive_type: Optional[FalsePositiveType] = None,
+) -> None:
+    """In-place rewrite of every cluster's labels for a generated annotation.
+    Called by bulk-annotate (after `auto_generate_annotation`) to stamp the
+    chosen smoke/FP type onto every cluster the auto-generator produced.
+    Exactly one of `smoke_type` / `false_positive_type` should be set."""
+    for bbox in annotation.sequences_bbox:
+        if smoke_type is not None:
+            bbox.is_smoke = True
+            bbox.smoke_type = smoke_type
+            bbox.false_positive_types = []
+        else:
+            bbox.is_smoke = False
+            bbox.smoke_type = None
+            bbox.false_positive_types = (
+                [false_positive_type] if false_positive_type else []
+            )
 
 
 def cluster_boxes_by_iou(

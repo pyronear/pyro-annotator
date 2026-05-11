@@ -5,11 +5,15 @@
 
 
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Literal, Optional
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 
-from app.models import SequenceAnnotationProcessingStage
+from app.models import (
+    FalsePositiveType,
+    SequenceAnnotationProcessingStage,
+    SmokeType,
+)
 from app.schemas.annotation_validation import SequenceAnnotationData
 from app.schemas.user import ContributorRead
 
@@ -17,7 +21,47 @@ __all__ = [
     "SequenceAnnotationCreate",
     "SequenceAnnotationRead",
     "SequenceAnnotationUpdate",
+    "SequenceAnnotationBulkRequest",
+    "SequenceAnnotationBulkResult",
+    "SequenceAnnotationBulkResponse",
 ]
+
+
+class SequenceAnnotationBulkRequest(BaseModel):
+    """Apply one label (smoke OR false-positive, never both) to many
+    sequences at once. Optionally writes the label onto the group itself
+    so future sequences joining the group inherit it."""
+
+    sequence_ids: List[int] = Field(..., min_length=1)
+    group_id: Optional[int] = None
+    smoke_type: Optional[SmokeType] = None
+    false_positive_type: Optional[FalsePositiveType] = None
+    is_unsure: bool = False
+    # Override the group's existing label if it conflicts with this one.
+    force: bool = False
+
+    @model_validator(mode="after")
+    def _exactly_one_label(self) -> "SequenceAnnotationBulkRequest":
+        smoke = self.smoke_type is not None
+        fp = self.false_positive_type is not None
+        if smoke == fp:
+            raise ValueError(
+                "exactly one of smoke_type or false_positive_type must be set"
+            )
+        return self
+
+
+class SequenceAnnotationBulkResult(BaseModel):
+    sequence_id: int
+    status: Literal["applied", "skipped"]
+    reason: Optional[str] = None
+    annotation_id: Optional[int] = None
+
+
+class SequenceAnnotationBulkResponse(BaseModel):
+    applied: List[SequenceAnnotationBulkResult]
+    skipped: List[SequenceAnnotationBulkResult]
+    group_label_updated: bool
 
 
 class SequenceAnnotationCreate(BaseModel):
@@ -110,6 +154,15 @@ class SequenceAnnotationRead(BaseModel):
     contributors: Optional[List[ContributorRead]] = Field(
         default=None,
         description="List of users who have contributed to this sequence annotation",
+    )
+    group_propagation_warning: Optional[str] = Field(
+        default=None,
+        description=(
+            "Set when the annotation belongs to a validated group but the "
+            "fan-out to other members was skipped (most often because the "
+            "group already carries a different label). The annotation "
+            "itself was saved; the group state was left untouched."
+        ),
     )
 
 

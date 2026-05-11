@@ -11,6 +11,7 @@ import {
   LogOut,
   User,
   Users,
+  Boxes,
   LucideIcon,
 } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -110,6 +111,7 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
   // Create dynamic navigation with badge counts
   const navigationWithBadges: NavigationItem[] = [
     { name: 'Dashboard', href: '/', icon: BarChart3 },
+    { name: 'Sequence groups', href: '/sequence-groups', icon: Boxes },
     {
       name: 'Sequences',
       icon: Layers,

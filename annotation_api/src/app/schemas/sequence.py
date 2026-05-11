@@ -83,7 +83,7 @@ class SequenceCreate(Azimuth):
     is_wildfire_alertapi: Optional[AnnotationType] = Field(
         default=None,
         description="Classification from external API: 'wildfire_smoke' (confirmed wildfire), 'other_smoke' (non-wildfire smoke), 'other' (false positive or other detection)",
-        examples=["wildfire_smoke", "other_smoke", "other", None]
+        examples=["wildfire_smoke", "other_smoke", "other", None],
     )
     organisation_name: str
     organisation_id: int
@@ -108,6 +108,7 @@ class SequenceRead(Azimuth):
     is_wildfire_alertapi: Optional[AnnotationType]
     organisation_name: str
     organisation_id: int
+    sequence_group_id: Optional[int] = None
 
 
 class SequenceUpdateBboxAuto(BaseModel):

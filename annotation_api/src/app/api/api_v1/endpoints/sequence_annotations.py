@@ -32,15 +32,23 @@ from app.models import (
     SequenceAnnotation,
     SequenceAnnotationContribution,
     SequenceAnnotationProcessingStage,
+    SequenceGroup,
     SmokeType,
 )
 from app.schemas.annotation_validation import SequenceAnnotationData
 from app.schemas.sequence_annotations import (
+    SequenceAnnotationBulkRequest,
+    SequenceAnnotationBulkResponse,
+    SequenceAnnotationBulkResult,
     SequenceAnnotationCreate,
     SequenceAnnotationRead,
     SequenceAnnotationUpdate,
 )
-from app.services.annotation_generation import AnnotationGenerationService
+from app.services.annotation_generation import (
+    AnnotationGenerationService,
+    apply_label_to_sequences_bbox,
+    derive_group_label_from_annotation,
+)
 
 router = APIRouter()
 logger = logging.getLogger("uvicorn.error")
@@ -411,6 +419,12 @@ async def create_sequence_annotation(
         # Commit the detection annotations
         await annotations.session.commit()
 
+    # If the seq is part of a validated group, fan the label out to other
+    # members. Skips locked annotations and re-uses auto-generation per seq.
+    propagation_warning = await _propagate_to_group_if_validated(
+        sequence_annotation, annotations, annotations.session, current_user.id
+    )
+
     # Get contributors for this annotation
     contributors = await annotations.get_annotation_contributors(sequence_annotation.id)
 
@@ -419,6 +433,7 @@ async def create_sequence_annotation(
     annotation_dict["contributors"] = [
         {"id": user.id, "username": user.username} for user in contributors
     ]
+    annotation_dict["group_propagation_warning"] = propagation_warning
 
     return SequenceAnnotationRead(**annotation_dict)
 
@@ -701,6 +716,13 @@ async def update_sequence_annotation(
         # Commit the detection annotations
         await annotations.session.commit()
 
+    # Same propagation hook as create_sequence_annotation: when the
+    # annotation has just reached SEQ_ANNOTATION_DONE and the seq is in a
+    # validated group, fan the label out to the rest of the group.
+    propagation_warning = await _propagate_to_group_if_validated(
+        updated_annotation, annotations, annotations.session, current_user.id
+    )
+
     # Get contributors for this annotation
     contributors = await annotations.get_annotation_contributors(annotation_id)
 
@@ -709,6 +731,7 @@ async def update_sequence_annotation(
     annotation_dict["contributors"] = [
         {"id": user.id, "username": user.username} for user in contributors
     ]
+    annotation_dict["group_propagation_warning"] = propagation_warning
 
     return SequenceAnnotationRead(**annotation_dict)
 
@@ -720,3 +743,322 @@ async def delete_sequence_annotation(
     current_user: User = Depends(get_current_user),
 ) -> None:
     await annotations.delete(annotation_id)
+
+
+# Stages past which we don't overwrite an annotation in bulk-annotate
+# (or via group propagation). UNDER_ANNOTATION is included to avoid
+# clobbering work an annotator is actively editing; SEQ_ANNOTATION_DONE+
+# is reviewed labelled work. Mirrored on the frontend by the
+# ANNOTATED_STAGES set in
+# frontend/src/pages/SequenceGroupAnnotatePage.tsx — keep both in sync
+# when a new processing stage is added.
+_BULK_LOCKED_STAGES = {
+    SequenceAnnotationProcessingStage.UNDER_ANNOTATION,
+    SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
+    SequenceAnnotationProcessingStage.IN_REVIEW,
+    SequenceAnnotationProcessingStage.NEEDS_MANUAL,
+    SequenceAnnotationProcessingStage.ANNOTATED,
+}
+
+
+async def _propagate_to_group_if_validated(
+    sequence_annotation: SequenceAnnotation,
+    annotations: SequenceAnnotationCRUD,
+    session: AsyncSession,
+    current_user_id: int,
+) -> Optional[str]:
+    """If the source annotation has just reached SEQ_ANNOTATION_DONE and
+    the underlying sequence belongs to a validated group, derive a single
+    label from the annotation and fan it out to other group members that
+    aren't locked. Group's own label is updated accordingly.
+
+    Returns a warning string when propagation was *attempted but skipped*
+    so the caller can surface it back to the annotator. Returns None when
+    propagation either succeeded or was simply not applicable (no group,
+    group not validated, no label to derive)."""
+    if (
+        sequence_annotation.processing_stage
+        != SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE
+    ):
+        return None
+
+    seq = await session.get(Sequence, sequence_annotation.sequence_id)
+    if seq is None or seq.sequence_group_id is None:
+        return None
+
+    group = await session.get(SequenceGroup, seq.sequence_group_id)
+    if group is None or not group.is_validated:
+        return None
+
+    annotation_data = SequenceAnnotationData(**sequence_annotation.annotation)
+    derived = derive_group_label_from_annotation(annotation_data)
+    if derived is None:
+        # No label signal we can carry over (e.g. is_smoke=True clusters
+        # with no smoke_type set). Group state stays as it is; the per-seq
+        # annotation still saves. If this turns out to mask real conflicts
+        # we'll surface it as a separate validation step at save time.
+        return None
+    smoke_type, fp_type = derived
+    new_smoke = smoke_type.value if smoke_type else None
+    new_fp = fp_type.value if fp_type else None
+
+    # Refuse to silently flip the group's label if a previous member's
+    # annotation already set a different one. The new annotation is kept
+    # (it still belongs to its own sequence) but propagation stops here
+    # so the conflicting state is visible to the operator.
+    if group.smoke_type is not None and group.smoke_type != new_smoke:
+        message = (
+            f"Group {group.id} already labeled smoke/{group.smoke_type}; "
+            f"this annotation implies {new_smoke or 'no smoke'}. "
+            "Saved on this sequence but not propagated."
+        )
+        logger.warning(message)
+        return message
+    if group.false_positive_type is not None and group.false_positive_type != new_fp:
+        message = (
+            f"Group {group.id} already labeled FP/{group.false_positive_type}; "
+            f"this annotation implies {new_fp or 'no FP'}. "
+            "Saved on this sequence but not propagated."
+        )
+        logger.warning(message)
+        return message
+
+    group.smoke_type = new_smoke
+    group.false_positive_type = new_fp
+    group.is_unsure = sequence_annotation.is_unsure
+    group.labeled_at = datetime.now(UTC)
+    group.labeled_by_user_id = current_user_id
+    group.updated_at = datetime.now(UTC)
+    session.add(group)
+
+    other_member_ids = (
+        await session.execute(
+            select(Sequence.id).where(
+                Sequence.sequence_group_id == group.id,
+                Sequence.id != seq.id,
+            )
+        )
+    ).scalars().all()
+
+    gen_service = AnnotationGenerationService(
+        session=session,
+        confidence_threshold=0.0,
+        iou_threshold=0.0,
+        min_cluster_size=1,
+    )
+
+    for member_id in other_member_ids:
+        existing = (
+            await session.execute(
+                select(SequenceAnnotation).where(
+                    SequenceAnnotation.sequence_id == member_id
+                )
+            )
+        ).scalar_one_or_none()
+        if existing is not None and existing.processing_stage in _BULK_LOCKED_STAGES:
+            continue
+
+        generated = await gen_service.generate_annotation_for_sequence(member_id)
+        if generated is None:
+            continue
+        apply_label_to_sequences_bbox(
+            generated, smoke_type=smoke_type, false_positive_type=fp_type
+        )
+
+        if existing is None:
+            await annotations.create(
+                SequenceAnnotationCreate(
+                    sequence_id=member_id,
+                    has_missed_smoke=False,
+                    is_unsure=group.is_unsure,
+                    annotation=generated,
+                    processing_stage=SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
+                ),
+                current_user_id,
+            )
+        else:
+            await annotations.update(
+                existing.id,
+                SequenceAnnotationUpdate(
+                    is_unsure=group.is_unsure,
+                    annotation=generated,
+                    processing_stage=SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
+                ),
+                current_user_id,
+            )
+
+    await session.commit()
+
+
+@router.post(
+    "/bulk",
+    status_code=status.HTTP_200_OK,
+    response_model=SequenceAnnotationBulkResponse,
+    summary="Apply one label to many sequences (per-sequence commits)",
+)
+async def bulk_annotate_sequences(
+    payload: SequenceAnnotationBulkRequest = Body(...),
+    annotations: SequenceAnnotationCRUD = Depends(get_sequence_annotation_crud),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> SequenceAnnotationBulkResponse:
+    # Resolve target group (if provided) and validate membership / conflict.
+    group: Optional[SequenceGroup] = None
+    if payload.group_id is not None:
+        group = await session.get(SequenceGroup, payload.group_id)
+        if group is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Sequence group {payload.group_id} not found",
+            )
+
+        member_ids_query = select(Sequence.id).where(
+            Sequence.sequence_group_id == payload.group_id,
+            Sequence.id.in_(payload.sequence_ids),
+        )
+        member_ids = {row[0] for row in (await session.execute(member_ids_query)).all()}
+        outsiders = [sid for sid in payload.sequence_ids if sid not in member_ids]
+        if outsiders:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Sequences {outsiders} do not belong to group {payload.group_id}"
+                ),
+            )
+
+        # Reject if the group already carries a different label, unless force.
+        existing_smoke = group.smoke_type
+        existing_fp = group.false_positive_type
+        new_smoke = payload.smoke_type.value if payload.smoke_type else None
+        new_fp = (
+            payload.false_positive_type.value if payload.false_positive_type else None
+        )
+        has_conflict = (
+            (existing_smoke is not None and existing_smoke != new_smoke)
+            or (existing_fp is not None and existing_fp != new_fp)
+            or (existing_smoke is not None and new_fp is not None)
+            or (existing_fp is not None and new_smoke is not None)
+        )
+        if has_conflict and not payload.force:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Group already carries a different label. Pass force=true "
+                    "to overwrite the group's label and re-propagate to "
+                    "members that aren't already past SEQ_ANNOTATION_DONE. "
+                    "Members locked at SEQ_ANNOTATION_DONE+ are not touched "
+                    "even with force=true."
+                ),
+            )
+
+    # Auto-generation service uses IoU=0 strict-overlap clustering inside
+    # each sequence (matches the production default since #130).
+    gen_service = AnnotationGenerationService(
+        session=session,
+        confidence_threshold=0.0,
+        iou_threshold=0.0,
+        min_cluster_size=1,
+    )
+
+    applied: List[SequenceAnnotationBulkResult] = []
+    skipped: List[SequenceAnnotationBulkResult] = []
+
+    for sid in payload.sequence_ids:
+        seq = await session.get(Sequence, sid)
+        if seq is None:
+            skipped.append(
+                SequenceAnnotationBulkResult(
+                    sequence_id=sid, status="skipped", reason="sequence not found"
+                )
+            )
+            continue
+
+        existing_query = select(SequenceAnnotation).where(
+            SequenceAnnotation.sequence_id == sid
+        )
+        existing = (await session.execute(existing_query)).scalar_one_or_none()
+        if existing is not None and existing.processing_stage in _BULK_LOCKED_STAGES:
+            skipped.append(
+                SequenceAnnotationBulkResult(
+                    sequence_id=sid,
+                    status="skipped",
+                    reason=f"already {existing.processing_stage.value}",
+                    annotation_id=existing.id,
+                )
+            )
+            continue
+
+        generated = await gen_service.generate_annotation_for_sequence(sid)
+        if generated is None:
+            # No usable predictions — skip rather than create an empty annotation.
+            skipped.append(
+                SequenceAnnotationBulkResult(
+                    sequence_id=sid,
+                    status="skipped",
+                    reason="no AI predictions to seed annotation",
+                )
+            )
+            continue
+
+        apply_label_to_sequences_bbox(
+            generated,
+            smoke_type=payload.smoke_type,
+            false_positive_type=payload.false_positive_type,
+        )
+
+        if existing is None:
+            create_data = SequenceAnnotationCreate(
+                sequence_id=sid,
+                has_missed_smoke=False,
+                is_unsure=payload.is_unsure,
+                annotation=generated,
+                processing_stage=SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
+            )
+            sequence_annotation = await annotations.create(create_data, current_user.id)
+            applied.append(
+                SequenceAnnotationBulkResult(
+                    sequence_id=sid,
+                    status="applied",
+                    annotation_id=sequence_annotation.id,
+                )
+            )
+        else:
+            update_data = SequenceAnnotationUpdate(
+                is_unsure=payload.is_unsure,
+                annotation=generated,
+                processing_stage=SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
+            )
+            sequence_annotation = await annotations.update(
+                existing.id, update_data, current_user.id
+            )
+            applied.append(
+                SequenceAnnotationBulkResult(
+                    sequence_id=sid,
+                    status="applied",
+                    annotation_id=sequence_annotation.id,
+                )
+            )
+
+    # Write the label onto the group so future joiners inherit it. Only do
+    # so if at least one sequence was actually applied — otherwise the group
+    # would carry a label that never made it onto any of its current members.
+    group_label_updated = False
+    if group is not None and applied:
+        group.smoke_type = payload.smoke_type.value if payload.smoke_type else None
+        group.false_positive_type = (
+            payload.false_positive_type.value if payload.false_positive_type else None
+        )
+        group.is_unsure = payload.is_unsure
+        group.labeled_at = datetime.now(UTC)
+        group.labeled_by_user_id = current_user.id
+        group.updated_at = datetime.now(UTC)
+        session.add(group)
+        group_label_updated = True
+
+    await session.commit()
+
+    return SequenceAnnotationBulkResponse(
+        applied=applied,
+        skipped=skipped,
+        group_label_updated=group_label_updated,
+    )

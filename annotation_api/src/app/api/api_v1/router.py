@@ -11,10 +11,11 @@ from app.api.api_v1.endpoints import (
     detections,
     organizations,
     sequence_annotations,
+    sequence_groups,
     sequences,
     source_apis,
     users,
-    export
+    export,
 )
 from app.auth import endpoints as auth
 
@@ -38,6 +39,9 @@ api_router.include_router(
     prefix="/annotations/sequences",
     tags=["sequence annotations"],
 )
+api_router.include_router(
+    sequence_groups.router, prefix="/sequence_groups", tags=["sequence groups"]
+)
 api_router.include_router(cameras.router, prefix="/cameras", tags=["cameras"])
 api_router.include_router(
     organizations.router, prefix="/organizations", tags=["organizations"]
@@ -46,8 +50,4 @@ api_router.include_router(
     source_apis.router, prefix="/source-apis", tags=["source apis"]
 )
 
-api_router.include_router(
-    export.router,
-    prefix="/export",
-    tags=["export"]
-)
+api_router.include_router(export.router, prefix="/export", tags=["export"])
