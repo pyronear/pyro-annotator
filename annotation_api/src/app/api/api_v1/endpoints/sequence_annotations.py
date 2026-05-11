@@ -748,7 +748,10 @@ async def delete_sequence_annotation(
 # Stages past which we don't overwrite an annotation in bulk-annotate
 # (or via group propagation). UNDER_ANNOTATION is included to avoid
 # clobbering work an annotator is actively editing; SEQ_ANNOTATION_DONE+
-# is reviewed labelled work.
+# is reviewed labelled work. Mirrored on the frontend by the
+# ANNOTATED_STAGES set in
+# frontend/src/pages/SequenceGroupAnnotatePage.tsx — keep both in sync
+# when a new processing stage is added.
 _BULK_LOCKED_STAGES = {
     SequenceAnnotationProcessingStage.UNDER_ANNOTATION,
     SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
@@ -790,7 +793,11 @@ async def _propagate_to_group_if_validated(
     annotation_data = SequenceAnnotationData(**sequence_annotation.annotation)
     derived = derive_group_label_from_annotation(annotation_data)
     if derived is None:
-        return
+        # No label signal we can carry over (e.g. is_smoke=True clusters
+        # with no smoke_type set). Group state stays as it is; the per-seq
+        # annotation still saves. If this turns out to mask real conflicts
+        # we'll surface it as a separate validation step at save time.
+        return None
     smoke_type, fp_type = derived
     new_smoke = smoke_type.value if smoke_type else None
     new_fp = fp_type.value if fp_type else None

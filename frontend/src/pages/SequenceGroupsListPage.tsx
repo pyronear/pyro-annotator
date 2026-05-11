@@ -89,7 +89,11 @@ export default function SequenceGroupsListPage() {
             {items.length === 0 ? (
               <tr>
                 <td colSpan={7} className="px-3 py-8 text-center text-gray-500">
-                  No groups match this filter.
+                  {filter === 'unlabeled'
+                    ? 'No unlabeled multi-sequence groups yet. Run ' +
+                      'make assign-groups after an import; single-sequence ' +
+                      'groups are intentionally hidden here.'
+                    : 'No groups match this filter.'}
                 </td>
               </tr>
             ) : (

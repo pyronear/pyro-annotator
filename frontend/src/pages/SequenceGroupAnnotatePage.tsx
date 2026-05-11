@@ -16,8 +16,10 @@ import { useState } from 'react';
 import { AlgoPrediction, SequenceGroup, SequenceGroupMember } from '@/types/api';
 
 // Stages past the auto-import placeholder. Mirrors the backend's
-// "locked" set so the UI matches what propagation considers
-// truly annotated.
+// _BULK_LOCKED_STAGES set in
+// annotation_api/src/app/api/api_v1/endpoints/sequence_annotations.py
+// so the UI matches what propagation considers truly annotated — keep
+// both lists in sync when a new processing stage is added.
 const ANNOTATED_STAGES = new Set([
   'under_annotation',
   'seq_annotation_done',
@@ -65,7 +67,13 @@ function MemberCard({
         title="Remove from group"
         onClick={e => {
           e.preventDefault();
-          if (window.confirm(`Remove sequence #${member.sequence_id} from this group?`)) {
+          if (
+            window.confirm(
+              `Remove sequence #${member.sequence_id} from this group?\n\n` +
+                'This marks it as a manual outlier — future imports will not ' +
+                'auto-rejoin it. Recovery requires an API call (or DB write).'
+            )
+          ) {
             removeMutation.mutate();
           }
         }}

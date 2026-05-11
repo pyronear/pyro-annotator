@@ -260,6 +260,31 @@ async def remove_member_from_group(
     await session.commit()
 
 
+@router.post(
+    "/members/{sequence_id}/re-include",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary=(
+        "Clear the manual is_group_excluded flag on a sequence so the next "
+        "assign-groups run can put it back into a group. Recovery path "
+        "after an accidental DELETE /members."
+    ),
+)
+async def reinclude_sequence_in_grouping(
+    sequence_id: int = Path(..., ge=1),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> None:
+    seq = await session.get(Sequence, sequence_id)
+    if seq is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Sequence {sequence_id} not found",
+        )
+    seq.is_group_excluded = False
+    session.add(seq)
+    await session.commit()
+
+
 # -------------------- assign-groups --------------------
 
 
@@ -292,6 +317,12 @@ def _compute_representative_bbox(detections: List[Detection]) -> Optional[dict]:
             confs.append(float(pred.get("confidence", 0.0)))
     if not boxes:
         return None
+    # Clamp confidence to [0, 1]: upstream xyxyn validation guarantees
+    # 0 ≤ coords ≤ 1, but `confidence` is unconstrained on detections, and
+    # downstream RepresentativeBbox validates `0.0 <= confidence <= 1.0`.
+    # A stray >1 (or <0) would make this group fail validation on read.
+    median_conf = median(confs) if confs else 0.0
+    median_conf = max(0.0, min(1.0, median_conf))
     return {
         "xyxyn": [
             median(b[0] for b in boxes),
@@ -299,7 +330,7 @@ def _compute_representative_bbox(detections: List[Detection]) -> Optional[dict]:
             median(b[2] for b in boxes),
             median(b[3] for b in boxes),
         ],
-        "confidence": median(confs),
+        "confidence": median_conf,
     }
 
 
