@@ -52,6 +52,11 @@ export interface SequenceAnnotation {
   created_at: string;
   updated_at: string | null;
   contributors?: Contributor[];
+  // Set when the annotation belongs to a validated SequenceGroup but
+  // fan-out to the rest of the group was skipped (e.g. the group already
+  // carries a different label). The annotation itself was saved; the
+  // operator must reconcile the conflict manually.
+  group_propagation_warning?: string | null;
 }
 
 export interface SequenceAnnotationData {

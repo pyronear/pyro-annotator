@@ -213,9 +213,16 @@ export default function AnnotationInterface() {
 
       return apiClient.updateSequenceAnnotation(annotation!.id, updatedAnnotation);
     },
-    onSuccess: () => {
-      // Show success toast notification
-      showToastNotification('Annotation saved successfully', 'success');
+    onSuccess: saved => {
+      // Show success toast notification — surface a separate warning when
+      // the annotation belongs to a validated group but propagation to
+      // other members was skipped (e.g. conflicting existing group label).
+      if (saved?.group_propagation_warning) {
+        showToastNotification('Annotation saved', 'success');
+        showToastNotification(saved.group_propagation_warning, 'info');
+      } else {
+        showToastNotification('Annotation saved successfully', 'success');
+      }
 
       // Refresh annotations and sequences
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.SEQUENCE_ANNOTATIONS });
