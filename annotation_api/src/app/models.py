@@ -227,6 +227,10 @@ class Sequence(SQLModel, table=True):
             index=True,
         ),
     )
+    # Sticky flag set when an annotator manually removed this sequence
+    # from a group. assign_groups must skip these so the next import
+    # doesn't silently re-attach a known outlier.
+    is_group_excluded: bool = Field(default=False)
 
 
 class SequenceGroup(SQLModel, table=True):

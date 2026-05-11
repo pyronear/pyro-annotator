@@ -155,6 +155,15 @@ class SequenceAnnotationRead(BaseModel):
         default=None,
         description="List of users who have contributed to this sequence annotation",
     )
+    group_propagation_warning: Optional[str] = Field(
+        default=None,
+        description=(
+            "Set when the annotation belongs to a validated group but the "
+            "fan-out to other members was skipped (most often because the "
+            "group already carries a different label). The annotation "
+            "itself was saved; the group state was left untouched."
+        ),
+    )
 
 
 class SequenceAnnotationUpdate(BaseModel):

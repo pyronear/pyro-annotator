@@ -421,7 +421,7 @@ async def create_sequence_annotation(
 
     # If the seq is part of a validated group, fan the label out to other
     # members. Skips locked annotations and re-uses auto-generation per seq.
-    await _propagate_to_group_if_validated(
+    propagation_warning = await _propagate_to_group_if_validated(
         sequence_annotation, annotations, annotations.session, current_user.id
     )
 
@@ -433,6 +433,7 @@ async def create_sequence_annotation(
     annotation_dict["contributors"] = [
         {"id": user.id, "username": user.username} for user in contributors
     ]
+    annotation_dict["group_propagation_warning"] = propagation_warning
 
     return SequenceAnnotationRead(**annotation_dict)
 
@@ -718,7 +719,7 @@ async def update_sequence_annotation(
     # Same propagation hook as create_sequence_annotation: when the
     # annotation has just reached SEQ_ANNOTATION_DONE and the seq is in a
     # validated group, fan the label out to the rest of the group.
-    await _propagate_to_group_if_validated(
+    propagation_warning = await _propagate_to_group_if_validated(
         updated_annotation, annotations, annotations.session, current_user.id
     )
 
@@ -730,6 +731,7 @@ async def update_sequence_annotation(
     annotation_dict["contributors"] = [
         {"id": user.id, "username": user.username} for user in contributors
     ]
+    annotation_dict["group_propagation_warning"] = propagation_warning
 
     return SequenceAnnotationRead(**annotation_dict)
 
@@ -761,25 +763,29 @@ async def _propagate_to_group_if_validated(
     annotations: SequenceAnnotationCRUD,
     session: AsyncSession,
     current_user_id: int,
-) -> None:
+) -> Optional[str]:
     """If the source annotation has just reached SEQ_ANNOTATION_DONE and
     the underlying sequence belongs to a validated group, derive a single
     label from the annotation and fan it out to other group members that
-    aren't locked. Group's own label is updated accordingly. No-op when
-    any precondition isn't met."""
+    aren't locked. Group's own label is updated accordingly.
+
+    Returns a warning string when propagation was *attempted but skipped*
+    so the caller can surface it back to the annotator. Returns None when
+    propagation either succeeded or was simply not applicable (no group,
+    group not validated, no label to derive)."""
     if (
         sequence_annotation.processing_stage
         != SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE
     ):
-        return
+        return None
 
     seq = await session.get(Sequence, sequence_annotation.sequence_id)
     if seq is None or seq.sequence_group_id is None:
-        return
+        return None
 
     group = await session.get(SequenceGroup, seq.sequence_group_id)
     if group is None or not group.is_validated:
-        return
+        return None
 
     annotation_data = SequenceAnnotationData(**sequence_annotation.annotation)
     derived = derive_group_label_from_annotation(annotation_data)
@@ -794,25 +800,21 @@ async def _propagate_to_group_if_validated(
     # (it still belongs to its own sequence) but propagation stops here
     # so the conflicting state is visible to the operator.
     if group.smoke_type is not None and group.smoke_type != new_smoke:
-        logger.warning(
-            "Group %s has smoke_type=%s; annotation on seq %s implies %s — "
-            "skipping propagation",
-            group.id,
-            group.smoke_type,
-            seq.id,
-            new_smoke,
+        message = (
+            f"Group {group.id} already labeled smoke/{group.smoke_type}; "
+            f"this annotation implies {new_smoke or 'no smoke'}. "
+            "Saved on this sequence but not propagated."
         )
-        return
+        logger.warning(message)
+        return message
     if group.false_positive_type is not None and group.false_positive_type != new_fp:
-        logger.warning(
-            "Group %s has false_positive_type=%s; annotation on seq %s implies %s — "
-            "skipping propagation",
-            group.id,
-            group.false_positive_type,
-            seq.id,
-            new_fp,
+        message = (
+            f"Group {group.id} already labeled FP/{group.false_positive_type}; "
+            f"this annotation implies {new_fp or 'no FP'}. "
+            "Saved on this sequence but not propagated."
         )
-        return
+        logger.warning(message)
+        return message
 
     group.smoke_type = new_smoke
     group.false_positive_type = new_fp
@@ -885,7 +887,7 @@ async def _propagate_to_group_if_validated(
     "/bulk",
     status_code=status.HTTP_200_OK,
     response_model=SequenceAnnotationBulkResponse,
-    summary="Apply one label to many sequences in a single transaction",
+    summary="Apply one label to many sequences (per-sequence commits)",
 )
 async def bulk_annotate_sequences(
     payload: SequenceAnnotationBulkRequest = Body(...),

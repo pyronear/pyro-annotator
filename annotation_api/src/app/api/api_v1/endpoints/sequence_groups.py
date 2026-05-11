@@ -252,6 +252,10 @@ async def remove_member_from_group(
             ),
         )
     seq.sequence_group_id = None
+    # Sticky exclusion: prevents assign_groups from silently re-attaching
+    # this sequence on the next import. The annotator has decided it's an
+    # outlier for this camera/azimuth/region.
+    seq.is_group_excluded = True
     session.add(seq)
     await session.commit()
 
@@ -323,7 +327,11 @@ async def assign_groups(
 
     unassigned_query = (
         select(Sequence)
-        .where(Sequence.sequence_group_id.is_(None))
+        .where(
+            Sequence.sequence_group_id.is_(None),
+            # Don't re-attach sequences an annotator removed by hand.
+            Sequence.is_group_excluded.is_(False),
+        )
         .order_by(Sequence.recorded_at)
     )
     unassigned = (await session.execute(unassigned_query)).scalars().all()
