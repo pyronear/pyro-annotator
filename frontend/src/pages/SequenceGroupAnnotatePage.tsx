@@ -69,7 +69,7 @@ function MemberCard({
               <img
                 src={image.url}
                 alt={`seq ${member.sequence_id}`}
-                className="w-full h-full object-cover"
+                className="w-full h-full object-contain"
                 onLoad={() => setImgLoaded(true)}
               />
               {imgLoaded && (

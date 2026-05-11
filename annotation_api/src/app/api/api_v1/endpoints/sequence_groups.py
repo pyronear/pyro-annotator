@@ -319,9 +319,14 @@ async def assign_groups(
 ) -> AssignGroupsResponse:
     """Single-threaded by design — meant to run after each platform import,
     not concurrently. Greedy best-IoU match on the (camera_id, azimuth) key,
-    threshold > 0.5. New sequences inherit the matched group's label
-    automatically (creates a SequenceAnnotation in SEQ_ANNOTATION_DONE).
-    Sequences already assigned or already annotated are left untouched."""
+    threshold > 0.3. Operates on every sequence whose `sequence_group_id`
+    is NULL: each gets assigned to a matching group (or seeds a new one).
+
+    Label inheritance is conditional — when the matched group already has
+    a label, the joining sequence gets a SequenceAnnotation in
+    SEQ_ANNOTATION_DONE with that label. If a placeholder annotation is
+    already there in stage READY_TO_ANNOTATE (the import script's default),
+    it is upgraded in place; any later stage is left untouched."""
 
     sa_crud = SequenceAnnotationCRUD(session=session)
 

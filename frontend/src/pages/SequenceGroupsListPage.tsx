@@ -47,7 +47,9 @@ export default function SequenceGroupsListPage() {
       <header className="mb-4">
         <h1 className="text-2xl font-semibold">Sequence groups</h1>
         <p className="text-sm text-gray-600 mt-1">
-          {total} group{total === 1 ? '' : 's'}. Click a row to review members and bulk-annotate.
+          {total} group{total === 1 ? '' : 's'} with 2 or more members. Click a row to review
+          membership; annotate one member from the per-sequence page and the labels propagate to the
+          rest if the group has been validated.
         </p>
       </header>
 

@@ -24,8 +24,6 @@ import {
   ApiError,
   SequenceGroup,
   SequenceGroupListItem,
-  BulkAnnotateRequest,
-  BulkAnnotateResponse,
 } from '@/types/api';
 import { API_ENDPOINTS } from '@/utils/constants';
 
@@ -237,14 +235,6 @@ class ApiClient {
     const response: AxiosResponse<PaginatedResponse<SequenceGroupListItem>> = await this.client.get(
       API_ENDPOINTS.SEQUENCE_GROUPS,
       { params: filters }
-    );
-    return response.data;
-  }
-
-  async bulkAnnotateSequences(payload: BulkAnnotateRequest): Promise<BulkAnnotateResponse> {
-    const response: AxiosResponse<BulkAnnotateResponse> = await this.client.post(
-      API_ENDPOINTS.SEQUENCE_ANNOTATIONS_BULK,
-      payload
     );
     return response.data;
   }

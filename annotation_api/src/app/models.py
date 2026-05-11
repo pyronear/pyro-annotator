@@ -218,7 +218,7 @@ class Sequence(SQLModel, table=True):
     organisation_name: str
     organisation_id: int
     # Membership in a SequenceGroup. NULL until `assign_groups` runs (which
-    # discovers groups by `(camera_id, azimuth, IoU > 0.5)`). Set NULL on
+    # discovers groups by `(camera_id, azimuth, IoU > 0.3)`). Set NULL on
     # group deletion so the sequence survives.
     sequence_group_id: Optional[int] = Field(
         default=None,

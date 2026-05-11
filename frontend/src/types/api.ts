@@ -149,28 +149,6 @@ export interface SequenceGroup {
   members: SequenceGroupMember[];
 }
 
-export interface BulkAnnotateRequest {
-  sequence_ids: number[];
-  group_id?: number;
-  smoke_type?: SmokeType;
-  false_positive_type?: FalsePositiveType;
-  is_unsure: boolean;
-  force?: boolean;
-}
-
-export interface BulkAnnotateResult {
-  sequence_id: number;
-  status: 'applied' | 'skipped';
-  reason: string | null;
-  annotation_id: number | null;
-}
-
-export interface BulkAnnotateResponse {
-  applied: BulkAnnotateResult[];
-  skipped: BulkAnnotateResult[];
-  group_label_updated: boolean;
-}
-
 // Enums
 export type SmokeType = 'wildfire' | 'industrial' | 'other';
 
