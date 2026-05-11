@@ -7,7 +7,7 @@ import { apiClient } from '@/services/api';
 type Filter = 'all' | 'labeled' | 'unlabeled';
 
 export default function SequenceGroupsListPage() {
-  const [filter, setFilter] = useState<Filter>('all');
+  const [filter, setFilter] = useState<Filter>('unlabeled');
   const [page, setPage] = useState(1);
   const size = 50;
 

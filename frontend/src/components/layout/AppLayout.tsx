@@ -111,6 +111,7 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
   // Create dynamic navigation with badge counts
   const navigationWithBadges: NavigationItem[] = [
     { name: 'Dashboard', href: '/', icon: BarChart3 },
+    { name: 'Sequence groups', href: '/sequence-groups', icon: Boxes },
     {
       name: 'Sequences',
       icon: Layers,
@@ -127,7 +128,6 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
         { name: 'Review', href: '/detections/review' },
       ],
     },
-    { name: 'Sequence groups', href: '/sequence-groups', icon: Boxes },
     ...(isSuperuser() ? [{ name: 'User Management', href: '/users', icon: Users }] : []),
   ];
 

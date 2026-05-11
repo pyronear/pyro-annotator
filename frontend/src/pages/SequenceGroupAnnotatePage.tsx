@@ -244,7 +244,7 @@ export default function SequenceGroupAnnotatePage() {
           This group has no members.
         </div>
       ) : (
-        <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {group.members.map(m => (
             <MemberCard
               key={m.sequence_id}
