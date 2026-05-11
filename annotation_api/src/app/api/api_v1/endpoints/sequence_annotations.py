@@ -786,9 +786,36 @@ async def _propagate_to_group_if_validated(
     if derived is None:
         return
     smoke_type, fp_type = derived
+    new_smoke = smoke_type.value if smoke_type else None
+    new_fp = fp_type.value if fp_type else None
 
-    group.smoke_type = smoke_type.value if smoke_type else None
-    group.false_positive_type = fp_type.value if fp_type else None
+    # Refuse to silently flip the group's label if a previous member's
+    # annotation already set a different one. The new annotation is kept
+    # (it still belongs to its own sequence) but propagation stops here
+    # so the conflicting state is visible to the operator.
+    if group.smoke_type is not None and group.smoke_type != new_smoke:
+        logger.warning(
+            "Group %s has smoke_type=%s; annotation on seq %s implies %s — "
+            "skipping propagation",
+            group.id,
+            group.smoke_type,
+            seq.id,
+            new_smoke,
+        )
+        return
+    if group.false_positive_type is not None and group.false_positive_type != new_fp:
+        logger.warning(
+            "Group %s has false_positive_type=%s; annotation on seq %s implies %s — "
+            "skipping propagation",
+            group.id,
+            group.false_positive_type,
+            seq.id,
+            new_fp,
+        )
+        return
+
+    group.smoke_type = new_smoke
+    group.false_positive_type = new_fp
     group.is_unsure = sequence_annotation.is_unsure
     group.labeled_at = datetime.now(UTC)
     group.labeled_by_user_id = current_user_id
@@ -907,8 +934,11 @@ async def bulk_annotate_sequences(
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=(
-                    "Group already has a different label; pass force=true to "
-                    "overwrite"
+                    "Group already carries a different label. Pass force=true "
+                    "to overwrite the group's label and re-propagate to "
+                    "members that aren't already past SEQ_ANNOTATION_DONE. "
+                    "Members locked at SEQ_ANNOTATION_DONE+ are not touched "
+                    "even with force=true."
                 ),
             )
 

@@ -62,8 +62,14 @@ class SequenceGroupMember(BaseModel):
     camera_name: str
     recorded_at: datetime
     last_seen_at: datetime
-    has_annotation: bool = Field(
-        description="True if a SequenceAnnotation already exists for this sequence"
+    annotation_processing_stage: Optional[str] = Field(
+        default=None,
+        description=(
+            "Stage of the SequenceAnnotation for this sequence, or null if "
+            "no annotation row exists. READY_TO_ANNOTATE is the placeholder "
+            "import.py creates; SEQ_ANNOTATION_DONE+ means a human has "
+            "submitted labels."
+        ),
     )
     first_detection_id: Optional[int] = None
     first_detection_algo_predictions: Optional[dict] = None

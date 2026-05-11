@@ -15,6 +15,23 @@ import { useDetectionImage } from '@/hooks/useDetectionImage';
 import { useState } from 'react';
 import { AlgoPrediction, SequenceGroup, SequenceGroupMember } from '@/types/api';
 
+// Stages past the auto-import placeholder. Mirrors the backend's
+// "locked" set so the UI matches what propagation considers
+// truly annotated.
+const ANNOTATED_STAGES = new Set([
+  'under_annotation',
+  'seq_annotation_done',
+  'in_review',
+  'needs_manual',
+  'annotated',
+]);
+
+function memberIsAnnotated(m: SequenceGroupMember): boolean {
+  return (
+    m.annotation_processing_stage != null && ANNOTATED_STAGES.has(m.annotation_processing_stage)
+  );
+}
+
 function MemberCard({
   member,
   groupId,
@@ -40,7 +57,7 @@ function MemberCard({
   return (
     <div
       className={`relative rounded-lg border-2 border-gray-300 bg-white overflow-hidden ${
-        member.has_annotation ? 'opacity-60' : ''
+        memberIsAnnotated(member) ? 'opacity-60' : ''
       }`}
     >
       <button
@@ -69,7 +86,7 @@ function MemberCard({
               <img
                 src={image.url}
                 alt={`seq ${member.sequence_id}`}
-                className="w-full h-full object-contain"
+                className="w-full h-full object-cover"
                 onLoad={() => setImgLoaded(true)}
               />
               {imgLoaded && (
@@ -116,7 +133,7 @@ function MemberCard({
           <div className="font-medium">seq #{member.sequence_id}</div>
           <div className="flex items-center justify-between">
             <span>{new Date(member.recorded_at).toLocaleString()}</span>
-            {member.has_annotation ? (
+            {memberIsAnnotated(member) ? (
               <CheckCircle className="w-3 h-3 text-green-500" aria-label="annotated" />
             ) : (
               <Clock className="w-3 h-3 text-orange-400" />

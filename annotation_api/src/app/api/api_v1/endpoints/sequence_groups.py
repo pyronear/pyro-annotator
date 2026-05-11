@@ -27,7 +27,10 @@ from app.models import (
     SmokeType,
     User,
 )
-from app.schemas.sequence_annotations import SequenceAnnotationCreate
+from app.schemas.sequence_annotations import (
+    SequenceAnnotationCreate,
+    SequenceAnnotationUpdate,
+)
 from app.schemas.sequence_group import (
     SequenceGroupListItem,
     SequenceGroupMember,
@@ -38,6 +41,7 @@ from app.schemas.sequence_group import (
 from app.services.annotation_generation import (
     AnnotationGenerationService,
     apply_label_to_sequences_bbox,
+    box_iou,
 )
 
 router = APIRouter()
@@ -131,29 +135,32 @@ async def get_sequence_group(
             detail=f"Sequence group {group_id} not found",
         )
 
-    # First detection per sequence in the group (lowest recorded_at). Used
-    # for the UI thumbnail + bbox overlay.
-    first_det_subq = (
+    # First detection per sequence in the group (lowest recorded_at, then
+    # lowest id as a deterministic tie-breaker so ties don't duplicate the
+    # member row). Used for the UI thumbnail + bbox overlay.
+    detection_rownum = (
         select(
+            Detection.id.label("det_id"),
             Detection.sequence_id.label("seq_id"),
-            func.min(Detection.recorded_at).label("first_recorded_at"),
+            Detection.algo_predictions.label("det_algo"),
+            func.row_number()
+            .over(
+                partition_by=Detection.sequence_id,
+                order_by=(Detection.recorded_at.asc(), Detection.id.asc()),
+            )
+            .label("rn"),
         )
         .join(Sequence, Sequence.id == Detection.sequence_id)
         .where(Sequence.sequence_group_id == group_id)
-        .group_by(Detection.sequence_id)
         .subquery()
     )
     first_det_join = (
         select(
-            Detection.sequence_id.label("seq_id"),
-            Detection.id.label("det_id"),
-            Detection.algo_predictions.label("det_algo"),
+            detection_rownum.c.seq_id,
+            detection_rownum.c.det_id,
+            detection_rownum.c.det_algo,
         )
-        .join(
-            first_det_subq,
-            (first_det_subq.c.seq_id == Detection.sequence_id)
-            & (first_det_subq.c.first_recorded_at == Detection.recorded_at),
-        )
+        .where(detection_rownum.c.rn == 1)
         .subquery()
     )
 
@@ -164,7 +171,7 @@ async def get_sequence_group(
             Sequence.camera_name,
             Sequence.recorded_at,
             Sequence.last_seen_at,
-            SequenceAnnotation.id,
+            SequenceAnnotation.processing_stage,
             first_det_join.c.det_id,
             first_det_join.c.det_algo,
         )
@@ -181,7 +188,7 @@ async def get_sequence_group(
             camera_name=row[2],
             recorded_at=row[3],
             last_seen_at=row[4],
-            has_annotation=row[5] is not None,
+            annotation_processing_stage=(row[5].value if row[5] is not None else None),
             first_detection_id=row[6],
             first_detection_algo_predictions=row[7],
         )
@@ -260,22 +267,6 @@ class AssignGroupsResponse(BaseModel):
     joined_existing: int
     inherited_annotations: int
     skipped_no_bbox: int
-
-
-def _bbox_iou(a: List[float], b: List[float]) -> float:
-    ix1 = max(a[0], b[0])
-    iy1 = max(a[1], b[1])
-    ix2 = min(a[2], b[2])
-    iy2 = min(a[3], b[3])
-    iw = max(0.0, ix2 - ix1)
-    ih = max(0.0, iy2 - iy1)
-    inter = iw * ih
-    if inter <= 0:
-        return 0.0
-    area_a = max(0.0, a[2] - a[0]) * max(0.0, a[3] - a[1])
-    area_b = max(0.0, b[2] - b[0]) * max(0.0, b[3] - b[1])
-    union = area_a + area_b - inter
-    return inter / union if union > 0 else 0.0
 
 
 def _compute_representative_bbox(detections: List[Detection]) -> Optional[dict]:
@@ -387,7 +378,7 @@ async def assign_groups(
             g_xy = g.representative_bbox.get("xyxyn") if g.representative_bbox else None
             if not g_xy:
                 continue
-            score = _bbox_iou(repr_bbox["xyxyn"], g_xy)
+            score = box_iou(repr_bbox["xyxyn"], g_xy)
             if score > best_iou:
                 best_iou = score
                 best_group = g
@@ -453,8 +444,6 @@ async def assign_groups(
                 current_user.id,
             )
         else:
-            from app.schemas.sequence_annotations import SequenceAnnotationUpdate
-
             await sa_crud.update(
                 existing_anno.id,
                 SequenceAnnotationUpdate(

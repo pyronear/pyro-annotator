@@ -114,7 +114,10 @@ export interface SequenceGroupMember {
   camera_name: string;
   recorded_at: string;
   last_seen_at: string;
-  has_annotation: boolean;
+  // null when no SequenceAnnotation row exists. READY_TO_ANNOTATE is the
+  // placeholder import.py creates; only SEQ_ANNOTATION_DONE+ counts as
+  // human-submitted work in the UI.
+  annotation_processing_stage: string | null;
   first_detection_id: number | null;
   first_detection_algo_predictions: AlgoPredictions | null;
 }
