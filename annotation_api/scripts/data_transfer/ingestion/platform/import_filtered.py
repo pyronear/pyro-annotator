@@ -40,7 +40,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional
 
@@ -188,12 +188,14 @@ def _validate_paths(args: argparse.Namespace) -> None:
     pyro_dataset_python = args.pyro_dataset_dir / ".venv/bin/python"
     pyro_engine_python = args.pyro_engine_dir / ".venv/bin/python"
     pyro_predictor_src = args.pyro_engine_dir / "pyro-predictor"
+    pyro_predictor_data = pyro_predictor_src / "data"
     for path in (
         fetch_script,
         predict_script,
         pyro_dataset_python,
         pyro_engine_python,
         pyro_predictor_src,
+        pyro_predictor_data,
     ):
         if not path.exists():
             raise SystemExit(f"Expected path does not exist: {path}")
@@ -202,9 +204,14 @@ def _validate_paths(args: argparse.Namespace) -> None:
 def _run(cmd: list, label: str, cwd: Optional[Path] = None,
          env: Optional[dict] = None) -> None:
     logging.info(f"[{label}] {' '.join(str(c) for c in cmd)}")
-    result = subprocess.run(cmd, cwd=cwd, env=env)
-    if result.returncode != 0:
-        raise RuntimeError(f"[{label}] exited with code {result.returncode}")
+    try:
+        subprocess.run(cmd, cwd=cwd, env=env, check=True)
+    except OSError as exc:
+        raise RuntimeError(f"[{label}] failed to start (cwd={cwd}): {cmd}") from exc
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(
+            f"[{label}] exited with code {exc.returncode} (cwd={cwd}): {cmd}"
+        ) from exc
 
 
 def step_fetch_light(args: argparse.Namespace, temp_dir: Path) -> None:
@@ -245,8 +252,8 @@ def step_predict(args: argparse.Namespace, temp_dir: Path) -> None:
         / "scripts/platform_train_loop/predict_and_filter_sequences.py"
     )
     python = args.pyro_engine_dir / ".venv/bin/python"
-    pythonpath = str(args.pyro_engine_dir / "pyro-predictor")
-    env = {**os.environ, "PYTHONPATH": pythonpath}
+    pyro_predictor_src = args.pyro_engine_dir / "pyro-predictor"
+    env = {**os.environ, "PYTHONPATH": str(pyro_predictor_src)}
     cmd: list = [
         str(python),
         str(script),
@@ -256,6 +263,8 @@ def step_predict(args: argparse.Namespace, temp_dir: Path) -> None:
         str(args.predictor_n_consecutive),
         "--conf-threshold",
         str(args.predictor_conf_threshold),
+        "--model-folder",
+        str(pyro_predictor_src / "data"),
         "--loglevel",
         args.loglevel,
     ]
@@ -269,15 +278,25 @@ def collect_kept_alert_ids(temp_dir: Path) -> List[int]:
         logging.info(f"No {csv_path} found — predictor produced no output")
         return []
     kept: List[int] = []
-    with open(csv_path) as f:
-        for row in csv.DictReader(f):
+    with open(csv_path, newline="") as f:
+        reader = csv.DictReader(f)
+        required = {"status", "sequence_id"}
+        missing = required - set(reader.fieldnames or [])
+        if missing:
+            raise RuntimeError(
+                f"{csv_path} missing required column(s): {sorted(missing)}"
+            )
+        # `enumerate` from 2 so the row number matches the file (header is line 1).
+        for line_no, row in enumerate(reader, start=2):
             if row.get("status") != "kept":
                 continue
-            raw = row.get("sequence_id", "")
+            raw = row.get("sequence_id")
             try:
-                kept.append(int(raw))
-            except ValueError:
-                logging.warning(f"Skipping non-integer sequence_id={raw!r} in {csv_path}")
+                kept.append(int(raw))  # type: ignore[arg-type]
+            except (TypeError, ValueError) as exc:
+                raise RuntimeError(
+                    f"{csv_path}:{line_no} invalid sequence_id for kept row: {raw!r}"
+                ) from exc
     return kept
 
 
@@ -289,7 +308,10 @@ def step_push_to_annotation_api(
         logging.info("No kept sequences after predictor — skipping annotation API push")
         return
     # Pass kept ids via a temp file so we never bump into shell-arg length limits.
-    list_file = Path(tempfile.mkstemp(prefix="kept_ids_", suffix=".txt")[1])
+    # Close mkstemp's fd immediately to avoid leaking it if a later step raises.
+    fd, list_path = tempfile.mkstemp(prefix="kept_ids_", suffix=".txt")
+    os.close(fd)
+    list_file = Path(list_path)
     try:
         list_file.write_text("\n".join(str(i) for i in kept_ids) + "\n")
         logging.info(
@@ -330,6 +352,33 @@ def step_push_to_annotation_api(
         list_file.unlink(missing_ok=True)
 
 
+def _normalize_date_range(args: argparse.Namespace) -> None:
+    """
+    Reconcile --date-from / --date-end with the fetch script's *exclusive*
+    `--date-end` semantics. The Makefile defaults `DATE_END ?= DATE_FROM`,
+    so `make import-platform-filtered DATE_FROM=X` arrives here with
+    date_end == date_from, which would otherwise yield a zero-day window.
+    Treat date_end == date_from as a "single day" request by bumping
+    date_end by one day. Reject end-before-start as a user error.
+    """
+    if args.date_end is None:
+        args.date_end = datetime.now().date().strftime("%Y-%m-%d")
+        return
+    start = datetime.strptime(args.date_from, "%Y-%m-%d").date()
+    end = datetime.strptime(args.date_end, "%Y-%m-%d").date()
+    if end < start:
+        raise SystemExit(
+            f"--date-end ({end}) is before --date-from ({start})"
+        )
+    if end == start:
+        bumped = start + timedelta(days=1)
+        logging.info(
+            f"--date-end == --date-from ({start}); treating as a single-day "
+            f"fetch by bumping --date-end to {bumped} (exclusive)"
+        )
+        args.date_end = bumped.strftime("%Y-%m-%d")
+
+
 def main() -> int:
     args = make_cli_parser().parse_args()
     logging.basicConfig(
@@ -337,9 +386,7 @@ def main() -> int:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
 
-    if args.date_end is None:
-        args.date_end = datetime.now().date().strftime("%Y-%m-%d")
-
+    _normalize_date_range(args)
     _validate_paths(args)
 
     temp_dir = Path(tempfile.mkdtemp(prefix="import_filtered_"))
@@ -355,8 +402,12 @@ def main() -> int:
         return 0
     finally:
         if success and not args.keep_temp:
-            shutil.rmtree(temp_dir, ignore_errors=True)
-            logging.info(f"Cleaned up temp dir {temp_dir}")
+            try:
+                shutil.rmtree(temp_dir)
+            except OSError as exc:
+                logging.warning(f"Failed to clean up temp dir {temp_dir}: {exc}")
+            else:
+                logging.info(f"Cleaned up temp dir {temp_dir}")
         else:
             logging.info(f"Temp dir kept at {temp_dir}")
 
