@@ -171,6 +171,16 @@ def make_cli_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--skip-group-assignment",
+        action="store_true",
+        help=(
+            "Skip the final assign_groups step. By default the orchestrator "
+            "calls POST /sequence_groups/assign after a successful import so "
+            "the freshly-imported sequences are placed in groups (the import "
+            "step itself does not touch groups)."
+        ),
+    )
+    parser.add_argument(
         "--loglevel",
         default="info",
         help="Logging level (default: info).",
@@ -310,6 +320,33 @@ def collect_kept_alert_ids(temp_dir: Path) -> List[int]:
     return kept
 
 
+def step_assign_groups(args: argparse.Namespace) -> None:
+    """Step 5: trigger POST /sequence_groups/assign on the annotation API.
+
+    `import.py` writes sequences + detections + annotations but does NOT
+    populate sequence groups; without this call the freshly-imported
+    sequences land in the API with no group set, which downstream UIs
+    surface as "no group". `assign_groups.py` is the documented post-import
+    step that fills that gap.
+    """
+    if args.skip_group_assignment:
+        logging.info("--skip-group-assignment: not invoking assign_groups")
+        return
+    annotation_api_dir = Path(__file__).resolve().parents[4]
+    cmd: list = [
+        "uv",
+        "run",
+        "python",
+        "-m",
+        "scripts.data_transfer.ingestion.platform.assign_groups",
+        "--url-api-annotation",
+        args.url_api_annotation,
+        "--loglevel",
+        args.loglevel,
+    ]
+    _run(cmd, label="assign-groups", cwd=annotation_api_dir)
+
+
 def step_push_to_annotation_api(
     args: argparse.Namespace, kept_ids: List[int]
 ) -> None:
@@ -413,6 +450,8 @@ def main() -> int:
         kept_ids = collect_kept_alert_ids(temp_dir)
         logging.info(f"Predictor kept {len(kept_ids)} sequence(s)")
         step_push_to_annotation_api(args, kept_ids)
+        if kept_ids and not args.dry_run:
+            step_assign_groups(args)
         success = True
         return 0
     finally:
