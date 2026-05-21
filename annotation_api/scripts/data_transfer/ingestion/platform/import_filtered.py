@@ -161,6 +161,16 @@ def make_cli_parser() -> argparse.ArgumentParser:
         help="Forward --dry-run to the import step (no actual POSTs).",
     )
     parser.add_argument(
+        "--force-url",
+        action="store_true",
+        help=(
+            "Forward --force-url to import.py: post detection images via the "
+            "/from-url endpoint instead of the server-side bucket-key copy. "
+            "Required for local dev where the annotation API cannot see the "
+            "platform's S3 bucket (e.g. against LocalStack)."
+        ),
+    )
+    parser.add_argument(
         "--loglevel",
         default="info",
         help="Logging level (default: info).",
@@ -340,13 +350,18 @@ def step_push_to_annotation_api(
             str(args.detections_limit),
             "--max-workers",
             str(args.max_workers),
+            # Always pass --max-sequences so the orchestrator's default (0 =
+            # "all kept", per its own help text) wins over import.py's own
+            # default of 10, which would silently truncate the kept list.
+            "--max-sequences",
+            str(args.max_sequences),
             "--loglevel",
             args.loglevel,
         ]
-        if args.max_sequences > 0:
-            cmd += ["--max-sequences", str(args.max_sequences)]
         if args.dry_run:
             cmd.append("--dry-run")
+        if args.force_url:
+            cmd.append("--force-url")
         _run(cmd, label="import-api", cwd=annotation_api_dir)
     finally:
         list_file.unlink(missing_ok=True)
