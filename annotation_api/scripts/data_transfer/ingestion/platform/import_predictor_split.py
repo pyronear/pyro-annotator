@@ -21,7 +21,9 @@ Pipeline (per day):
      `alert_api_id = alert_id_base + platform_id*1000 + object_index`, per-object
      cone azimuth), POST one Detection per (frame, box) carrying the predictor box as
      `algo_predictions` (image bytes uploaded from the locally-fetched file), then
-     trigger server-side annotation auto-generation.
+     write the sequence annotation as a SINGLE bbox track (= this object). We do
+     NOT use the server's IoU auto-generation, which would re-fragment one
+     drifting/tiny-box object into several tracks.
   5. Assign groups, then clean up the temp dir.
 
 Unlike `import_filtered.py`, detections carry OUR predictor's boxes (not the
@@ -58,11 +60,11 @@ from tqdm import tqdm
 from . import client as platform_client
 from . import shared
 from .object_clustering import cluster_objects, object_cone_azimuth
-from .annotation_management import create_simple_sequence_annotation
 from app.clients.annotation_api import (
     AnnotationAPIError,
     create_detection,
     create_sequence,
+    create_sequence_annotation,
     delete_sequence,
     get_auth_token,
     list_sequences,
@@ -163,26 +165,6 @@ def make_cli_parser() -> argparse.ArgumentParser:
             "Base offset for synthetic sequence alert_api_ids "
             "(default: 1e9), kept disjoint from real platform ids."
         ),
-    )
-
-    # Annotation API auto-generation
-    parser.add_argument(
-        "--confidence-threshold",
-        type=float,
-        default=0.0,
-        help="Auto-gen confidence threshold forwarded to the API (default: 0.0).",
-    )
-    parser.add_argument(
-        "--iou-threshold",
-        type=float,
-        default=0.3,
-        help="Auto-gen IoU threshold forwarded to the API (default: 0.3).",
-    )
-    parser.add_argument(
-        "--min-cluster-size",
-        type=int,
-        default=1,
-        help="Auto-gen min cluster size forwarded to the API (default: 1).",
     )
 
     # URLs
@@ -684,6 +666,7 @@ def post_object(
 
     posted = 0
     hard_failure = False
+    track_bboxes: List[dict] = []
     for member in members:
         row = meta.images.get(member.image_filename)
         if row is None:
@@ -691,10 +674,11 @@ def post_object(
                 f"No CSV row for image {member.image_filename}; skipping detection"
             )
             continue
+        xyxyn = [float(c) for c in member.box[:4]]
         predictions = shared._sanitize_predictions(
             [
                 {
-                    "xyxyn": [float(c) for c in member.box[:4]],
+                    "xyxyn": xyxyn,
                     "confidence": float(member.box[4]),
                     "class_name": "smoke",
                 }
@@ -714,7 +698,7 @@ def post_object(
             logging.warning(f"Cannot read {row['filepath_image']}: {exc}")
             continue
         try:
-            create_detection(
+            created = create_detection(
                 args.url_api_annotation,
                 token,
                 detection_data,
@@ -722,6 +706,9 @@ def post_object(
                 member.image_filename,
             )
             posted += 1
+            # Remember the annotation-API detection id + its box so we can build
+            # ONE annotation track for this object (see below).
+            track_bboxes.append({"detection_id": created["id"], "xyxyn": xyxyn})
         except AnnotationAPIError as exc:
             logging.warning(
                 f"Detection {row['detection_id']} (seq {new_seq_id}) failed: {exc}"
@@ -739,26 +726,44 @@ def post_object(
         _safe_delete_sequence(args, token, new_seq_id)
         return False
 
-    # Trigger server-side annotation auto-generation for this object's detections.
-    ann_result = create_simple_sequence_annotation(
-        sequence_id=new_seq_id,
-        annotation_api_url=args.url_api_annotation,
-        config={
-            "confidence_threshold": args.confidence_threshold,
-            "iou_threshold": args.iou_threshold,
-            "min_cluster_size": args.min_cluster_size,
+    # Write the annotation ourselves as a SINGLE bbox track = this object.
+    # We deliberately do NOT use the server's empty-bbox auto-generation: that
+    # re-clusters the detections by IoU and fragments one drifting/tiny-box
+    # object into several tracks. Since the object split already happened
+    # upstream (object_clustering), every detection here belongs to the same
+    # object, so it is exactly one track (is_smoke, conservative, for review).
+    annotation_payload = {
+        "sequence_id": new_seq_id,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": True,
+                    "false_positive_types": [],
+                    "bboxes": track_bboxes,
+                }
+            ]
         },
-        dry_run=args.dry_run,
-    )
-    if not ann_result.get("annotation_created"):
+        "processing_stage": "ready_to_annotate",
+        "has_missed_smoke": False,
+        "has_smoke": True,
+        "has_false_positives": False,
+        "false_positive_types": [],
+        "smoke_types": [],
+        "is_unsure": False,
+    }
+    try:
+        create_sequence_annotation(args.url_api_annotation, token, annotation_payload)
+    except AnnotationAPIError as exc:
         logging.warning(
-            f"seq {sid} object {object_index}: annotation auto-gen failed "
+            f"seq {sid} object {object_index}: annotation POST failed ({exc}) "
             f"— deleting sequence {new_seq_id} for retry"
         )
         _safe_delete_sequence(args, token, new_seq_id)
         return False
 
-    logging.info(f"seq {sid} object {object_index}: posted {posted} detection(s)")
+    logging.info(
+        f"seq {sid} object {object_index}: posted {posted} detection(s), 1 track"
+    )
     return True
 
 
