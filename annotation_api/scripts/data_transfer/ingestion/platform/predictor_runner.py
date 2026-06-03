@@ -41,6 +41,7 @@ from typing import List
 
 from PIL import Image
 from pyro_predictor import Predictor  # type: ignore[import-not-found]  # runs in pyro-engine venv
+from tqdm import tqdm
 
 SEQUENCE_DIR_RE = re.compile(r"_sequence-(\d+)$")
 
@@ -196,7 +197,7 @@ def main() -> int:
     total_failed = 0
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with open(args.out, "w") as out_file:
-        for sequence_dir in sequence_dirs:
+        for sequence_dir in tqdm(sequence_dirs, desc="Predicting", unit="seq"):
             match = SEQUENCE_DIR_RE.search(sequence_dir.name)
             sequence_id = match.group(1) if match else sequence_dir.name
             frames, max_conf, n_failed = predict_sequence(

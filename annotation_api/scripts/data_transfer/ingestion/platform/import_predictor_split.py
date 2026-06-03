@@ -53,6 +53,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
 from dotenv import load_dotenv
+from tqdm import tqdm
 
 from . import client as platform_client
 from . import shared
@@ -809,7 +810,9 @@ def process_day(
         )
         logging.info(f"Day {day_from}: {len(kept_sids)} kept sequence(s)")
 
-        for sid in kept_sids:
+        for sid in tqdm(
+            kept_sids, desc=f"{day_from} sequences", unit="seq", leave=False
+        ):
             # Budget: stop taking NEW platform sequences once the cap is hit.
             if (
                 max_new_sids is not None
@@ -911,7 +914,7 @@ def main() -> int:
     )
 
     created_any = False
-    for day in days:
+    for day in tqdm(days, desc="Days", unit="day"):
         if max_new_sids is not None and len(imported_run_sids) >= max_new_sids:
             logging.info("Reached --max-sequences cap; stopping.")
             break
