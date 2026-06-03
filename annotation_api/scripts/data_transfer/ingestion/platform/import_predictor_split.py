@@ -739,7 +739,9 @@ def post_object(
 
     # Roll back an incomplete object so it is not left half-imported (which the
     # object-level dedup would otherwise treat as "done" and never retry).
-    if posted == 0 or hard_failure:
+    # Any shortfall vs the member count (POST error, unreadable image, dropped
+    # prediction) is treated as incomplete, so a retry re-creates it cleanly.
+    if posted < len(members) or hard_failure:
         logging.warning(
             f"seq {sid} object {object_index}: incomplete "
             f"({posted}/{len(members)} detections, hard_failure={hard_failure}) "
@@ -930,7 +932,8 @@ def main() -> int:
     _validate_paths(args)
     logging.info(f"Processing {len(days)} day(s): {days[0]} .. {days[-1]}")
 
-    # Annotation API auth (sequences + detections).
+    # Annotation API auth (sequences + detections). Re-fetched per day inside the
+    # loop too, so a multi-day run never outlives the token's TTL.
     login, password = shared.get_annotation_credentials(args.url_api_annotation)
     token = get_auth_token(args.url_api_annotation, login, password)
 
@@ -940,33 +943,49 @@ def main() -> int:
     # Pre-load (sid, object_index) keys already in the dataset (object-level dedup).
     imported_objs = load_imported_object_keys(args, token)
 
-    platform_token = _platform_token(args)
     refetch_cache: Dict[int, Tuple[Optional[float], Optional[str]]] = {}
     imported_run_sids: Set[int] = set()
     max_new_sids = (
         args.max_sequences if args.max_sequences and args.max_sequences > 0 else None
     )
 
-    created_any = False
+    failed_days: List[str] = []
     for day in tqdm(days, desc="Days", unit="day"):
         if max_new_sids is not None and len(imported_run_sids) >= max_new_sids:
             logging.info("Reached --max-sequences cap; stopping.")
             break
-        if process_day(
-            args,
-            day,
-            token,
-            platform_token,
-            refetch_cache,
-            imported_objs,
-            imported_run_sids,
-            max_new_sids,
-        ):
-            created_any = True
+        # Refresh both tokens each day so a long run never hits an expired token.
+        try:
+            token = get_auth_token(args.url_api_annotation, login, password)
+            platform_token = _platform_token(args)
+            created = process_day(
+                args,
+                day,
+                token,
+                platform_token,
+                refetch_cache,
+                imported_objs,
+                imported_run_sids,
+                max_new_sids,
+            )
+        except Exception as exc:
+            # One bad day (fetch/predict/network) must not abort a 335-day run.
+            logging.error(f"Day {day} failed: {exc} — skipping", exc_info=True)
+            failed_days.append(day.strftime("%Y-%m-%d"))
+            continue
+        # Assign groups after each productive day so an interruption never leaves
+        # already-imported sequences ungrouped.
+        if created and not args.dry_run:
+            try:
+                step_assign_groups(args)
+            except Exception as exc:
+                logging.error(f"assign_groups after {day} failed: {exc}")
 
-    if created_any and not args.dry_run:
-        step_assign_groups(args)
-    return 0
+    if failed_days:
+        logging.warning(
+            f"{len(failed_days)} day(s) failed and were skipped: {failed_days}"
+        )
+    return 1 if failed_days else 0
 
 
 if __name__ == "__main__":
