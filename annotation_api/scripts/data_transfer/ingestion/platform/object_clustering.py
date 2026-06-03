@@ -119,7 +119,10 @@ def _flatten(frames: Sequence[dict]) -> List[Detection]:
     items: List[Detection] = []
     for frame in frames:
         for box in frame.get("boxes", []):
-            if not box:
+            # Each box must be [x1, y1, x2, y2, conf]; guard the shape so a
+            # malformed predictor row is skipped rather than crashing later on
+            # box[4] access.
+            if not box or len(box) < 5:
                 continue
             items.append(
                 Detection(

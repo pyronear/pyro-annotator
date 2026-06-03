@@ -20,9 +20,10 @@ Pipeline (per day):
   4. Post: for each object, create ONE annotation-API Sequence (synthetic
      `alert_api_id = alert_id_base + platform_id*1000 + object_index`, per-object
      cone azimuth), POST one Detection per (frame, box) carrying the predictor box as
-     `algo_predictions` (image bytes uploaded from the locally-fetched file), then
-     write the sequence annotation as a SINGLE bbox track (= this object). We do
-     NOT use the server's IoU auto-generation, which would re-fragment one
+     `algo_predictions` and the OTHER objects' boxes on the same frame as
+     `others_bboxes` (read-only context for judging missed smoke), then write the
+     sequence annotation as a SINGLE bbox track (= this object). We do NOT use
+     the server's IoU auto-generation, which would re-fragment one
      drifting/tiny-box object into several tracks.
   5. Assign groups, then clean up the temp dir.
 
@@ -50,6 +51,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
@@ -614,10 +616,15 @@ def post_object(
     obj,
     camera_azimuth: Optional[float],
     is_wildfire: Optional[str],
+    boxes_by_image: Dict[str, List[Tuple[int, List[float]]]],
 ) -> bool:
-    """Create one annotation sequence + its detections + trigger auto-gen.
+    """Create one annotation sequence + its detections + the single-object track.
 
-    Returns True on success (sequence created & at least attempted detections).
+    `boxes_by_image` maps each image filename to the list of
+    `(object_index, box)` for every object detected on that frame, so each
+    detection can carry the OTHER objects' boxes on the same image in
+    `others_bboxes` (read-only context the annotator needs to judge missed
+    smoke). Returns True on success.
     """
     members = obj.members
     sequence_data = _build_sequence_payload(meta, sid, camera_azimuth, is_wildfire)
@@ -692,6 +699,21 @@ def post_object(
             "recorded_at": row["recorded_at"],
             "algo_predictions": {"predictions": predictions},
         }
+        # Other objects' boxes on this same frame -> others_bboxes (read-only
+        # context so the annotator can judge missed smoke across objects).
+        other_preds = shared._sanitize_predictions(
+            [
+                {
+                    "xyxyn": [float(c) for c in box[:4]],
+                    "confidence": float(box[4]),
+                    "class_name": "smoke",
+                }
+                for oi, box in boxes_by_image.get(member.image_filename, [])
+                if oi != object_index
+            ]
+        )
+        if other_preds:
+            detection_data["others_bboxes"] = {"predictions": other_preds}
         try:
             image_bytes = Path(row["filepath_image"]).read_bytes()
         except OSError as exc:
@@ -852,6 +874,12 @@ def process_day(
             if not objects:
                 logging.info(f"seq {sid}: no objects after clustering — dropped")
                 continue
+            # Index every object's boxes by frame so each detection can carry the
+            # OTHER objects' boxes on that frame as others_bboxes.
+            boxes_by_image: Dict[str, List[Tuple[int, List[float]]]] = defaultdict(list)
+            for oi, o in enumerate(objects):
+                for m in o.members:
+                    boxes_by_image[m.image_filename].append((oi, m.box))
             camera_azimuth, is_wildfire = _refetch_sequence_fields(
                 args, platform_token, sid, refetch_cache
             )
@@ -870,6 +898,7 @@ def process_day(
                     obj,
                     camera_azimuth,
                     is_wildfire,
+                    boxes_by_image,
                 ):
                     imported_objs.add((sid, object_index))
                     imported_run_sids.add(sid)
