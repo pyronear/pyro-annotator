@@ -51,6 +51,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -607,6 +608,30 @@ def _build_sequence_payload(
     return shared.transform_sequence_data(record, SOURCE_API)
 
 
+def _with_retry(fn, *, what: str, attempts: int = 3, base_delay: float = 3.0):
+    """Call `fn`, retrying transient annotation-API errors (5xx and network/
+    timeout, which surface as AnnotationAPIError with status_code None).
+
+    Non-transient errors (e.g. 409 already-exists, 422 validation) are raised
+    immediately so callers can handle them.
+    """
+    for attempt in range(attempts):
+        try:
+            return fn()
+        except AnnotationAPIError as exc:
+            transient = exc.status_code in (502, 503, 504) or exc.status_code is None
+            if transient and attempt < attempts - 1:
+                delay = base_delay * (2**attempt)
+                logging.warning(
+                    f"{what}: transient error ({exc}) — retrying in {delay:.0f}s "
+                    f"({attempt + 1}/{attempts - 1})"
+                )
+                time.sleep(delay)
+                continue
+            raise
+    raise AssertionError("unreachable")  # loop always returns or raises
+
+
 def post_object(
     args: argparse.Namespace,
     token: str,
@@ -658,8 +683,9 @@ def post_object(
         return True
 
     try:
-        annotation_sequence = create_sequence(
-            args.url_api_annotation, token, sequence_data
+        annotation_sequence = _with_retry(
+            lambda: create_sequence(args.url_api_annotation, token, sequence_data),
+            what=f"create_sequence(alert_id={alert_id})",
         )
     except AnnotationAPIError as exc:
         if exc.status_code == 409:
@@ -720,12 +746,15 @@ def post_object(
             logging.warning(f"Cannot read {row['filepath_image']}: {exc}")
             continue
         try:
-            created = create_detection(
-                args.url_api_annotation,
-                token,
-                detection_data,
-                image_bytes,
-                member.image_filename,
+            created = _with_retry(
+                lambda: create_detection(
+                    args.url_api_annotation,
+                    token,
+                    detection_data,
+                    image_bytes,
+                    member.image_filename,
+                ),
+                what=f"create_detection(det={row['detection_id']})",
             )
             posted += 1
             # Remember the annotation-API detection id + its box so we can build

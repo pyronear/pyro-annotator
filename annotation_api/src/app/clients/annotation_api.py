@@ -170,6 +170,11 @@ def _make_request(
         headers.update(_get_auth_headers(auth_token))
         kwargs["headers"] = headers
 
+        # Default (connect, read) timeout so a hung/half-open connection raises a
+        # RequestException (handled below) instead of blocking the caller
+        # forever. Callers may override by passing their own `timeout`.
+        kwargs.setdefault("timeout", (10, 120))
+
         response = requests.request(method, url, **kwargs)
 
         # Don't raise for status here - we'll handle it in _handle_response
