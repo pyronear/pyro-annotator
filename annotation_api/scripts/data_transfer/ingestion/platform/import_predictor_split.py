@@ -53,6 +53,7 @@ import sys
 import tempfile
 import time
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
@@ -123,6 +124,13 @@ def make_cli_parser() -> argparse.ArgumentParser:
         type=int,
         default=30,
         help="Images per sequence fetched & predicted (default: 30).",
+    )
+    parser.add_argument(
+        "--max-workers",
+        type=int,
+        default=8,
+        help="Concurrent detection uploads per object to the annotation API "
+        "(default: 8; 1 = serial).",
     )
 
     # Predictor
@@ -697,16 +705,15 @@ def post_object(
         raise
     new_seq_id = annotation_sequence["id"]
 
-    posted = 0
-    hard_failure = False
-    track_bboxes: List[dict] = []
-    for member in members:
+    def _post_member(member) -> Optional[dict]:
+        """POST one detection; return its {detection_id, xyxyn} bbox, or None on
+        skip/failure (so the caller treats a shortfall as incomplete)."""
         row = meta.images.get(member.image_filename)
         if row is None:
             logging.warning(
                 f"No CSV row for image {member.image_filename}; skipping detection"
             )
-            continue
+            return None
         xyxyn = [float(c) for c in member.box[:4]]
         predictions = shared._sanitize_predictions(
             [
@@ -718,7 +725,7 @@ def post_object(
             ]
         )
         if not predictions:
-            continue
+            return None
         detection_data = {
             "sequence_id": new_seq_id,
             "alert_api_id": row["detection_id"],
@@ -744,7 +751,7 @@ def post_object(
             image_bytes = Path(row["filepath_image"]).read_bytes()
         except OSError as exc:
             logging.warning(f"Cannot read {row['filepath_image']}: {exc}")
-            continue
+            return None
         try:
             created = _with_retry(
                 lambda: create_detection(
@@ -756,24 +763,38 @@ def post_object(
                 ),
                 what=f"create_detection(det={row['detection_id']})",
             )
-            posted += 1
-            # Remember the annotation-API detection id + its box so we can build
-            # ONE annotation track for this object (see below).
-            track_bboxes.append({"detection_id": created["id"], "xyxyn": xyxyn})
         except AnnotationAPIError as exc:
             logging.warning(
                 f"Detection {row['detection_id']} (seq {new_seq_id}) failed: {exc}"
             )
-            hard_failure = True
+            return None
+        return {"detection_id": created["id"], "xyxyn": xyxyn}
+
+    # Post this object's detections concurrently (image upload is the dominant
+    # cost; serial posting is the throughput bottleneck for the run). An
+    # UNEXPECTED worker exception must not strand the already-created sequence
+    # (the object-level dedup would then skip it forever), so delete it first.
+    workers = min(max(1, args.max_workers), len(members))
+    try:
+        if workers <= 1:
+            results = [_post_member(m) for m in members]
+        else:
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                results = list(executor.map(_post_member, members))
+    except Exception:
+        _safe_delete_sequence(args, token, new_seq_id)
+        raise
+    track_bboxes: List[dict] = [r for r in results if r is not None]
+    posted = len(track_bboxes)
 
     # Roll back an incomplete object so it is not left half-imported (which the
     # object-level dedup would otherwise treat as "done" and never retry).
     # Any shortfall vs the member count (POST error, unreadable image, dropped
     # prediction) is treated as incomplete, so a retry re-creates it cleanly.
-    if posted < len(members) or hard_failure:
+    if posted < len(members):
         logging.warning(
             f"seq {sid} object {object_index}: incomplete "
-            f"({posted}/{len(members)} detections, hard_failure={hard_failure}) "
+            f"({posted}/{len(members)} detections) "
             f"— deleting sequence {new_seq_id} for retry"
         )
         _safe_delete_sequence(args, token, new_seq_id)
@@ -806,7 +827,9 @@ def post_object(
     }
     try:
         create_sequence_annotation(args.url_api_annotation, token, annotation_payload)
-    except AnnotationAPIError as exc:
+    except Exception as exc:
+        # Any failure here (API error or unexpected) must delete the sequence so
+        # it is not stranded annotation-less and skipped forever by the dedup.
         logging.warning(
             f"seq {sid} object {object_index}: annotation POST failed ({exc}) "
             f"— deleting sequence {new_seq_id} for retry"
