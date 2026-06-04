@@ -47,7 +47,7 @@ export default function SequenceGroupsListPage() {
       <header className="mb-4">
         <h1 className="text-2xl font-semibold">Sequence groups</h1>
         <p className="text-sm text-gray-600 mt-1">
-          {total} group{total === 1 ? '' : 's'} with 2 or more members. Click a row to review
+          {total} group{total === 1 ? '' : 's'} with 3 or more members. Click a row to review
           membership; annotate one member from the per-sequence page and the labels propagate to the
           rest if the group has been validated.
         </p>
@@ -91,8 +91,8 @@ export default function SequenceGroupsListPage() {
                 <td colSpan={7} className="px-3 py-8 text-center text-gray-500">
                   {filter === 'unlabeled'
                     ? 'No unlabeled multi-sequence groups yet. Run ' +
-                      'make assign-groups after an import; single-sequence ' +
-                      'groups are intentionally hidden here.'
+                      'make assign-groups after an import; groups with ' +
+                      'fewer than 3 sequences are intentionally hidden here.'
                     : 'No groups match this filter.'}
                 </td>
               </tr>
