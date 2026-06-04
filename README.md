@@ -193,6 +193,43 @@ make import-platform DATE_FROM=2025-03-04 DATE_END=2025-03-04 MAX_SEQUENCES=10
 - To use an alert-id filter, call the underlying script directly with `--sequence-list alerts_id_list.txt`.
 - Use `LOGLEVEL=debug` if you need more detail during imports.
 
+### Predictor-split import (one annotation sequence per detected object)
+
+`import_predictor_split` runs the pyro-engine predictor over each sequence and
+splits it into **one annotation sequence per detected smoke plume** (porting
+pyro-api's bbox-overlap association). Detections carry the predictor's boxes as
+`algo_predictions`, plus the other objects' boxes on the same frame as
+`others_bboxes` (read-only context for judging missed smoke). The date range is
+walked **one day at a time** (inclusive of both ends) and is **resumable**:
+already-imported objects are skipped, so re-running the same command continues
+where it left off.
+
+Requires the sister repos (set in `annotation_api/.env` or pass as flags):
+
+```
+PYRO_DATASET_DIR=/path/to/pyro-dataset
+PYRO_ENGINE_DIR=/path/to/pyro-engine
+```
+
+```bash
+cd annotation_api
+# Long unattended run (detached) — full date range, day by day:
+nohup uv run python -m scripts.data_transfer.ingestion.platform.import_predictor_split \
+  --date-from 2025-07-01 --date-end 2026-06-01 \
+  --url-api-annotation https://annotationapi.pyronear.org \
+  --pyro-dataset-dir "$PYRO_DATASET_DIR" --pyro-engine-dir "$PYRO_ENGINE_DIR" \
+  --loglevel info > /tmp/predsplit.log 2>&1 &
+
+# Or via Make (reads PYRO_DATASET_DIR / PYRO_ENGINE_DIR from the environment):
+make import-platform-predictor-split DATE_FROM=2025-07-01 DATE_END=2026-06-01
+```
+
+- `--max-workers N` — concurrent detection uploads per object (default 8; the upload is the throughput bottleneck).
+- `--max-sequences N` — cap on new platform sequences imported across the run (0 = all).
+- `--reset` — delete previously-imported synthetic sequences before importing (clean re-run).
+- `--dry-run` — fetch + predict + cluster without POSTing.
+- The target org is selected by the `PLATFORM_LOGIN` account in `.env` (there is no org flag). The run is robust to transient API/network errors (per-request timeout + retry) and skips+logs a failing day rather than aborting (non-zero exit lists skipped days).
+
 ### Prerequisites
 
 **Services must be running first:**

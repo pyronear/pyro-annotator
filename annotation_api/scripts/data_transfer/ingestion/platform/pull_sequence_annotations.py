@@ -78,6 +78,11 @@ def parse_args() -> argparse.Namespace:
         help="Only pull sequences whose annotation smoke_types includes this value (use 'any' to include all smoke types, 'empty' to only include sequences with no smoke_types)",
     )
     parser.add_argument(
+        "--no-stage-update",
+        action="store_true",
+        help="Skip the remote PATCH that transitions seq_annotation_done -> in_review (read-only export)",
+    )
+    parser.add_argument(
         "--loglevel",
         default="info",
         choices=["debug", "info", "warning", "error"],
@@ -269,18 +274,19 @@ def main() -> None:
             else:
                 label_path.write_text("")
 
-        # update remote stage to in_review
-        try:
-            remote_ann = ann
-            annotation_api.update_sequence_annotation(
-                args.remote_api,
-                token,
-                remote_ann["id"],
-                {"processing_stage": "in_review"},
-            )
-        except Exception as exc:
-            logging.warning("Failed to set sequence %s to in_review: %s", seq_id, exc)
-            return ("stage_update_failed", seq_id)
+        # update remote stage to in_review (skipped in read-only export mode)
+        if not args.no_stage_update:
+            try:
+                remote_ann = ann
+                annotation_api.update_sequence_annotation(
+                    args.remote_api,
+                    token,
+                    remote_ann["id"],
+                    {"processing_stage": "in_review"},
+                )
+            except Exception as exc:
+                logging.warning("Failed to set sequence %s to in_review: %s", seq_id, exc)
+                return ("stage_update_failed", seq_id)
 
         return ("ok", seq_id)
 

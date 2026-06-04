@@ -365,13 +365,16 @@ def fetch_all_sequences_within(
                     sequences.extend(future.result())
                     progress_bar.advance(task)
 
-    # Optionally filter sequences by alert_api_id
+    # Optionally filter sequences by alert_api_id.
+    # The raw platform sequences expose this value as the `id` field; the
+    # `alert_api_id` rename happens later in shared.py when records are
+    # formatted for the annotation API, so we cannot read it back here.
     if selected_sequence_list:
         pre_filter_count = len(sequences)
         sequences = [
             sequence
             for sequence in sequences
-            if sequence.get("alert_api_id") in selected_sequence_list
+            if sequence.get("id") in selected_sequence_list
         ]
         filtered_out = pre_filter_count - len(sequences)
         console.print(

@@ -332,6 +332,36 @@ import-platform:
 		--max-workers $(MAX_WORKERS) \
 		--loglevel $(LOGLEVEL)
 
+# Filtered import: registry dedup + pyro-engine Predictor filter, then import 30
+# detections per kept sequence into the annotation API.
+# Requires env vars PYRO_DATASET_DIR and PYRO_ENGINE_DIR (point to the local
+# checkouts of pyro-dataset and pyro-engine respectively).
+import-platform-filtered:
+	@if [ -z "$(DATE_FROM)" ]; then \
+		echo "ERROR: set DATE_FROM=YYYY-MM-DD (and optionally DATE_END)"; exit 1; \
+	fi
+	uv run python -m scripts.data_transfer.ingestion.platform.import_filtered \
+		--date-from $(DATE_FROM) --date-end $(DATE_END) \
+		--url-api-annotation $(REMOTE_API) \
+		--max-sequences $(MAX_SEQUENCES) \
+		--max-workers $(MAX_WORKERS) \
+		--loglevel $(LOGLEVEL)
+
+# Predictor-split import: fetch 30 images/sequence, run the pyro-engine predictor,
+# split each platform sequence into one annotation sequence per detected object
+# (pyro-api logic) and POST predictor-derived detections.
+# Requires env vars PYRO_DATASET_DIR and PYRO_ENGINE_DIR.
+import-platform-predictor-split:
+	@if [ -z "$(DATE_FROM)" ]; then \
+		echo "ERROR: set DATE_FROM=YYYY-MM-DD (and optionally DATE_END)"; exit 1; \
+	fi
+	uv run python -m scripts.data_transfer.ingestion.platform.import_predictor_split \
+		--date-from $(DATE_FROM) --date-end $(DATE_END) \
+		--url-api-annotation $(REMOTE_API) \
+		--max-sequences $(MAX_SEQUENCES) \
+		--max-workers $(MAX_WORKERS) \
+		--loglevel $(LOGLEVEL)
+
 .PHONY: help lint fix docker-build start stop clean test test-specific \
 	migrate migrate-up \
 	pull-sequences push-annotations \
@@ -339,4 +369,4 @@ import-platform:
 	pull-fp visual-check-fp apply-review-fp \
 	export-dataset import-yolo-sequence import-local-yolo \
 	update-stage-remote update-stage-local \
-	import-platform assign-groups
+	import-platform import-platform-filtered import-platform-predictor-split assign-groups
