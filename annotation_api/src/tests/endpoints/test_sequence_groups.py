@@ -24,6 +24,8 @@ from httpx import AsyncClient
 from sqlalchemy import text
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.models import Sequence
+
 
 async def _set_seq_metadata(
     session: AsyncSession,
@@ -81,6 +83,92 @@ async def _seed_two_member_group(
         )
     await session.commit()
     return group_id
+
+
+async def _seed_group_with_members(
+    session: AsyncSession,
+    *,
+    n_members: int,
+    created_at: datetime,
+    alert_api_id_start: int,
+) -> int:
+    """Insert a SequenceGroup with `n_members` member sequences (each with a
+    distinct alert_api_id) and return its id."""
+    group_id = (
+        await session.exec(
+            text(
+                """
+                INSERT INTO sequence_groups
+                    (camera_id, azimuth, representative_bbox, is_validated,
+                     created_at)
+                VALUES
+                    (1, 0, CAST(:bbox AS jsonb), false, :created_at)
+                RETURNING id
+                """
+            ).bindparams(
+                bbox='{"xyxyn":[0.1,0.1,0.4,0.4],"confidence":0.9}',
+                created_at=created_at,
+            )
+        )
+    ).scalar_one()
+    for i in range(n_members):
+        session.add(
+            Sequence(
+                source_api="pyronear_french",
+                alert_api_id=alert_api_id_start + i,
+                created_at=created_at,
+                recorded_at=created_at,
+                last_seen_at=created_at,
+                camera_name="cam",
+                camera_id=1,
+                is_wildfire_alertapi="wildfire_smoke",
+                organisation_name="org",
+                lat=0.0,
+                lon=0.0,
+                organisation_id=1,
+                sequence_group_id=group_id,
+            )
+        )
+    await session.commit()
+    return group_id
+
+
+@pytest.mark.asyncio
+async def test_list_groups_hides_small_groups_and_sorts_by_size(
+    authenticated_client: AsyncClient,
+    async_session: AsyncSession,
+):
+    """The list endpoint returns only groups with 3+ members, ordered by
+    member count descending."""
+    big = await _seed_group_with_members(
+        async_session,
+        n_members=4,
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        alert_api_id_start=100,
+    )
+    medium = await _seed_group_with_members(
+        async_session,
+        n_members=3,
+        created_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
+        alert_api_id_start=200,
+    )
+    small = await _seed_group_with_members(
+        async_session,
+        n_members=2,
+        created_at=datetime(2026, 1, 3, tzinfo=timezone.utc),
+        alert_api_id_start=300,
+    )
+
+    resp = await authenticated_client.get("/sequence_groups/")
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+
+    ids = [item["id"] for item in items]
+    assert small not in ids  # 2-member group is hidden
+    assert ids == [big, medium]  # 4 members sort before 3 members
+    counts = {item["id"]: item["member_count"] for item in items}
+    assert counts[big] == 4
+    assert counts[medium] == 3
 
 
 def _annotation_payload(*, stage: str, smoke_type: str) -> dict:
