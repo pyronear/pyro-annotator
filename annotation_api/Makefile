@@ -359,6 +359,7 @@ import-platform-predictor-split:
 		--date-from $(DATE_FROM) --date-end $(DATE_END) \
 		--url-api-annotation $(REMOTE_API) \
 		--max-sequences $(MAX_SEQUENCES) \
+		--max-workers $(MAX_WORKERS) \
 		--loglevel $(LOGLEVEL)
 
 .PHONY: help lint fix docker-build start stop clean test test-specific \

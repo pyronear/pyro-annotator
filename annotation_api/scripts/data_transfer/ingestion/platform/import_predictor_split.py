@@ -937,6 +937,12 @@ def process_day(
             camera_azimuth, is_wildfire = _refetch_sequence_fields(
                 args, platform_token, sid, refetch_cache
             )
+            # NOTE: object_index is the positional enumeration of clustered
+            # objects. The (sid, object_index) dedup key is therefore only
+            # stable across runs while the predictor/clustering output is stable.
+            # If the model or clustering params change, the same physical plume
+            # may get a different index → on resume it can be re-imported as a
+            # duplicate or skipped. Use --reset for a clean rebuild in that case.
             for object_index, obj in enumerate(objects):
                 if (sid, object_index) in imported_objs:
                     logging.debug(
