@@ -99,9 +99,12 @@ async def list_sequence_groups(
         )
         # Inner-join so small groups (no row in the subquery) drop out.
         .join(member_count_subq, member_count_subq.c.group_id == SequenceGroup.id)
-        # Biggest groups first, then newest within each size.
+        # Biggest groups first, then newest within each size. `id` is a final
+        # deterministic tie-breaker so paginated offsets stay stable.
         .order_by(
-            desc(member_count_subq.c.member_count), desc(SequenceGroup.created_at)
+            desc(member_count_subq.c.member_count),
+            desc(SequenceGroup.created_at),
+            desc(SequenceGroup.id),
         )
     )
     if labeled is True:
