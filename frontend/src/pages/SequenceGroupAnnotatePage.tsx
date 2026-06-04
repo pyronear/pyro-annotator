@@ -183,15 +183,21 @@ function MemberCard({
               <Loader2 className="animate-spin w-5 h-5 text-gray-400" />
             )}
           </div>
-          {/* Zoomed crop so small objects stay legible. */}
+          {/* Zoomed crop so small objects stay legible. Falls back to the
+              plain frame when neither a prediction nor the group region
+              yields a valid box to zoom into. */}
           <div className="relative aspect-video bg-gray-100 overflow-hidden flex items-center justify-center">
             {image?.url ? (
-              <>
-                <BboxCrop url={image.url} box={cropBox} />
-                <span className="absolute bottom-1 right-1 z-10 px-1 rounded bg-black/50 text-white text-[10px] leading-tight pointer-events-none">
-                  zoom
-                </span>
-              </>
+              isValidBox(cropBox) ? (
+                <>
+                  <BboxCrop url={image.url} box={cropBox} />
+                  <span className="absolute bottom-1 right-1 z-10 px-1 rounded bg-black/50 text-white text-[10px] leading-tight pointer-events-none">
+                    zoom
+                  </span>
+                </>
+              ) : (
+                <img src={image.url} alt="" className="w-full h-full object-cover" />
+              )
             ) : (
               <Loader2 className="animate-spin w-5 h-5 text-gray-400" />
             )}
