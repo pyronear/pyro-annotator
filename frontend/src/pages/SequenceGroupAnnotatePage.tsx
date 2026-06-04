@@ -34,6 +34,38 @@ function memberIsAnnotated(m: SequenceGroupMember): boolean {
   );
 }
 
+type Bbox = [number, number, number, number];
+
+function isValidBox([x1, y1, x2, y2]: Bbox): boolean {
+  return x2 > x1 && y2 > y1;
+}
+
+// Zoomed view of a single image centered on `box`. The same (already cached)
+// detection image is reused and magnified with a CSS transform — no second
+// fetch, no canvas — so small objects are legible next to the full frame.
+function BboxCrop({ url, box }: { url: string; box: Bbox }) {
+  const [x1, y1, x2, y2] = box;
+  const cx = (x1 + x2) / 2;
+  const cy = (y1 + y2) / 2;
+  // Show the box plus a margin of one box-size on each side (region ≈ 3×),
+  // then zoom so the whole region fits the cell; cap at 8× for tiny boxes.
+  const regionW = Math.min(1, Math.max(x2 - x1, 0.001) * 3);
+  const regionH = Math.min(1, Math.max(y2 - y1, 0.001) * 3);
+  const zoom = Math.min(1 / regionW, 1 / regionH, 8);
+
+  return (
+    <img
+      src={url}
+      alt=""
+      className="absolute inset-0 w-full h-full object-cover"
+      style={{
+        transformOrigin: `${cx * 100}% ${cy * 100}%`,
+        transform: `translate(${(0.5 - cx) * 100}%, ${(0.5 - cy) * 100}%) scale(${zoom})`,
+      }}
+    />
+  );
+}
+
 function MemberCard({
   member,
   groupId,
@@ -55,6 +87,18 @@ function MemberCard({
   });
 
   const predictions: AlgoPrediction[] = member.first_detection_algo_predictions?.predictions ?? [];
+
+  // Crop target: the tracked prediction(s) for this frame (the actual object),
+  // falling back to the group reference region when the frame has none.
+  const validPreds = predictions.filter(p => isValidBox(p.xyxyn));
+  const cropBox: Bbox = validPreds.length
+    ? [
+        Math.min(...validPreds.map(p => p.xyxyn[0])),
+        Math.min(...validPreds.map(p => p.xyxyn[1])),
+        Math.max(...validPreds.map(p => p.xyxyn[2])),
+        Math.max(...validPreds.map(p => p.xyxyn[3])),
+      ]
+    : groupBbox.xyxyn;
 
   return (
     <div
@@ -88,54 +132,76 @@ function MemberCard({
         className="block hover:bg-blue-50"
         title="Open the per-sequence annotation page"
       >
-        <div className="relative aspect-video bg-gray-100 overflow-hidden flex items-center justify-center">
-          {image?.url ? (
-            <>
-              <img
-                src={image.url}
-                alt={`seq ${member.sequence_id}`}
-                className="w-full h-full object-cover"
-                onLoad={() => setImgLoaded(true)}
-              />
-              {imgLoaded && (
+        <div className="grid grid-cols-2">
+          {/* Full frame with bbox overlays. */}
+          <div className="relative aspect-video bg-gray-100 overflow-hidden flex items-center justify-center border-r border-gray-200">
+            {image?.url ? (
+              <>
+                <img
+                  src={image.url}
+                  alt={`seq ${member.sequence_id}`}
+                  className="w-full h-full object-cover"
+                  onLoad={() => setImgLoaded(true)}
+                />
+                {imgLoaded && (
+                  <>
+                    {predictions.map((p, i) => {
+                      const [x1, y1, x2, y2] = p.xyxyn;
+                      if (x2 <= x1 || y2 <= y1) return null;
+                      return (
+                        <div
+                          key={`pred-${i}`}
+                          className="absolute border-2 border-red-500 pointer-events-none"
+                          style={{
+                            left: `${x1 * 100}%`,
+                            top: `${y1 * 100}%`,
+                            width: `${(x2 - x1) * 100}%`,
+                            height: `${(y2 - y1) * 100}%`,
+                          }}
+                        />
+                      );
+                    })}
+                    {(() => {
+                      const [gx1, gy1, gx2, gy2] = groupBbox.xyxyn;
+                      if (gx2 <= gx1 || gy2 <= gy1) return null;
+                      return (
+                        <div
+                          className="absolute border-2 border-dashed border-fuchsia-500 pointer-events-none"
+                          style={{
+                            left: `${gx1 * 100}%`,
+                            top: `${gy1 * 100}%`,
+                            width: `${(gx2 - gx1) * 100}%`,
+                            height: `${(gy2 - gy1) * 100}%`,
+                          }}
+                        />
+                      );
+                    })()}
+                  </>
+                )}
+              </>
+            ) : (
+              <Loader2 className="animate-spin w-5 h-5 text-gray-400" />
+            )}
+          </div>
+          {/* Zoomed crop so small objects stay legible. Falls back to the
+              plain frame when neither a prediction nor the group region
+              yields a valid box to zoom into. */}
+          <div className="relative aspect-video bg-gray-100 overflow-hidden flex items-center justify-center">
+            {image?.url ? (
+              isValidBox(cropBox) ? (
                 <>
-                  {predictions.map((p, i) => {
-                    const [x1, y1, x2, y2] = p.xyxyn;
-                    if (x2 <= x1 || y2 <= y1) return null;
-                    return (
-                      <div
-                        key={`pred-${i}`}
-                        className="absolute border-2 border-red-500 pointer-events-none"
-                        style={{
-                          left: `${x1 * 100}%`,
-                          top: `${y1 * 100}%`,
-                          width: `${(x2 - x1) * 100}%`,
-                          height: `${(y2 - y1) * 100}%`,
-                        }}
-                      />
-                    );
-                  })}
-                  {(() => {
-                    const [gx1, gy1, gx2, gy2] = groupBbox.xyxyn;
-                    if (gx2 <= gx1 || gy2 <= gy1) return null;
-                    return (
-                      <div
-                        className="absolute border-2 border-dashed border-yellow-400 pointer-events-none"
-                        style={{
-                          left: `${gx1 * 100}%`,
-                          top: `${gy1 * 100}%`,
-                          width: `${(gx2 - gx1) * 100}%`,
-                          height: `${(gy2 - gy1) * 100}%`,
-                        }}
-                      />
-                    );
-                  })()}
+                  <BboxCrop url={image.url} box={cropBox} />
+                  <span className="absolute bottom-1 right-1 z-10 px-1 rounded bg-black/50 text-white text-[10px] leading-tight pointer-events-none">
+                    zoom
+                  </span>
                 </>
-              )}
-            </>
-          ) : (
-            <Loader2 className="animate-spin w-5 h-5 text-gray-400" />
-          )}
+              ) : (
+                <img src={image.url} alt="" className="w-full h-full object-cover" />
+              )
+            ) : (
+              <Loader2 className="animate-spin w-5 h-5 text-gray-400" />
+            )}
+          </div>
         </div>
         <div className="px-2 py-1 text-xs text-gray-700">
           <div className="font-medium">seq #{member.sequence_id}</div>
@@ -250,9 +316,10 @@ export default function SequenceGroupAnnotatePage() {
             tracked prediction (per-sequence)
           </span>
           <span className="inline-flex items-center gap-2">
-            <span className="inline-block w-4 h-3 border-2 border-dashed border-yellow-400" />
+            <span className="inline-block w-4 h-3 border-2 border-dashed border-fuchsia-500" />
             group reference region
           </span>
+          <span>Each row shows the full frame and a zoomed crop of the detected object.</span>
           <span>Click a thumbnail to annotate the sequence.</span>
           <span>The X removes a sequence from this group.</span>
           {group.is_validated && (
@@ -269,7 +336,7 @@ export default function SequenceGroupAnnotatePage() {
           This group has no members.
         </div>
       ) : (
-        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {group.members.map(m => (
             <MemberCard
               key={m.sequence_id}
