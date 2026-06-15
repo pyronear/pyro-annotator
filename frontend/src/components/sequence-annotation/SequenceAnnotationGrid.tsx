@@ -68,6 +68,7 @@ export const SequenceAnnotationGrid: React.FC<SequenceAnnotationGridProps> = ({
       tree: 'E',
       water_body: 'W',
       other: 'X',
+      unlabeled: 'M',
     };
     return keyMap[type];
   };

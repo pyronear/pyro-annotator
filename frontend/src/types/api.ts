@@ -182,7 +182,8 @@ export type FalsePositiveType =
   | 'sky'
   | 'tree'
   | 'water_body'
-  | 'other';
+  | 'other'
+  | 'unlabeled';
 
 export type ProcessingStage =
   | 'imported'

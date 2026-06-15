@@ -132,6 +132,7 @@ class FalsePositiveType(str, Enum):
     OTHER = (
         "other"  # Any other source of false positive not covered by specific categories
     )
+    UNLABELED = "unlabeled"  # False positive discarded by auto-annotation without a specific category assigned
 
 
 class AnnotationType(str, Enum):

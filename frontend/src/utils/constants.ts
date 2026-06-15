@@ -180,6 +180,7 @@ export const PROCESSING_STAGE_LABELS = {
  * @property {string} tree - Trees or vegetation
  * @property {string} water_body - Lakes, rivers, or other water bodies
  * @property {string} other - Other unspecified false positive types
+ * @property {string} unlabeled - False positive discarded by auto-annotation without a specific category
  *
  * @example
  * ```typescript
@@ -204,6 +205,7 @@ export const FALSE_POSITIVE_TYPES = [
   'tree',
   'water_body',
   'other',
+  'unlabeled',
 ] as const;
 
 /**
