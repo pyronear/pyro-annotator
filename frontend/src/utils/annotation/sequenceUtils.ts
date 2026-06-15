@@ -212,7 +212,7 @@ export const getKeyForFalsePositiveType = (type: string): string => {
     tree: 'E',
     water_body: 'W',
     other: 'X',
-    unlabeled: 'N',
+    unlabeled: 'M',
   };
   return keyMap[type] || '';
 };
