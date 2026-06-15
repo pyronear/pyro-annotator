@@ -218,6 +218,7 @@ FALSE_POSITIVE_TYPES: List[str] = [
     "tree",
     "water_body",
     "other",
+    "unlabeled",
 ]
 
 ALL_CLASSES: List[str] = SMOKE_TYPES + FALSE_POSITIVE_TYPES

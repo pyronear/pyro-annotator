@@ -51,6 +51,7 @@ FALSE_POSITIVE_TYPES = [
     "tree",
     "water_body",
     "other",
+    "unlabeled",
 ]
 ALL_CLASSES = SMOKE_TYPES + FALSE_POSITIVE_TYPES
 
