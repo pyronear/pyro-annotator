@@ -239,6 +239,7 @@ export const getFalsePositiveEmoji = (type: string): string => {
     tree: '🌳',
     water_body: '🌊',
     other: '❓',
+    unlabeled: '🏷️',
   };
   return emojiMap[type] || '❓';
 };

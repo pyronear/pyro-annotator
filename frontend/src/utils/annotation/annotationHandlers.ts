@@ -214,6 +214,7 @@ export const getTypeIndexForKey = (key: string): number => {
     e: FALSE_POSITIVE_TYPES.indexOf('tree'), // 't' taken by trail
     w: FALSE_POSITIVE_TYPES.indexOf('water_body'),
     x: FALSE_POSITIVE_TYPES.indexOf('other'), // 'o' taken by road
+    n: FALSE_POSITIVE_TYPES.indexOf('unlabeled'), // auto-annotation, no specific category
   };
 
   return keyMap[key] ?? -1;
