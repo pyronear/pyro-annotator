@@ -793,14 +793,33 @@ async def _propagate_to_group_if_validated(
     annotation_data = SequenceAnnotationData(**sequence_annotation.annotation)
     derived = derive_group_label_from_annotation(annotation_data)
     if derived is None:
-        # No label signal we can carry over (e.g. is_smoke=True clusters
-        # with no smoke_type set). Group state stays as it is; the per-seq
-        # annotation still saves. If this turns out to mask real conflicts
-        # we'll surface it as a separate validation step at save time.
-        return None
-    smoke_type, fp_type = derived
-    new_smoke = smoke_type.value if smoke_type else None
-    new_fp = fp_type.value if fp_type else None
+        if not sequence_annotation.is_unsure:
+            # No label signal we can carry over (e.g. is_smoke=True clusters
+            # with no smoke_type set). Group state stays as it is; the per-seq
+            # annotation still saves. If this turns out to mask real conflicts
+            # we'll surface it as a separate validation step at save time.
+            return None
+        # Unsure submission with no label: spread the uncertainty across the
+        # group instead of dropping it. Refuse if the group is already labeled
+        # so we don't silently wipe a real smoke/FP label.
+        if group.smoke_type is not None or group.false_positive_type is not None:
+            existing = (
+                f"smoke/{group.smoke_type}"
+                if group.smoke_type is not None
+                else f"FP/{group.false_positive_type}"
+            )
+            message = (
+                f"Group {group.id} already labeled {existing}; this unsure "
+                "annotation was saved on this sequence but not propagated."
+            )
+            logger.warning(message)
+            return message
+        smoke_type, fp_type = None, None
+        new_smoke, new_fp = None, None
+    else:
+        smoke_type, fp_type = derived
+        new_smoke = smoke_type.value if smoke_type else None
+        new_fp = fp_type.value if fp_type else None
 
     # Refuse to silently flip the group's label if a previous member's
     # annotation already set a different one. The new annotation is kept
@@ -826,8 +845,11 @@ async def _propagate_to_group_if_validated(
     group.smoke_type = new_smoke
     group.false_positive_type = new_fp
     group.is_unsure = sequence_annotation.is_unsure
-    group.labeled_at = datetime.now(UTC)
-    group.labeled_by_user_id = current_user_id
+    # labeled_at must stay null when there is no label (ck constraint), which
+    # is the case for an unsure-only propagation.
+    if new_smoke is not None or new_fp is not None:
+        group.labeled_at = datetime.now(UTC)
+        group.labeled_by_user_id = current_user_id
     group.updated_at = datetime.now(UTC)
     session.add(group)
 

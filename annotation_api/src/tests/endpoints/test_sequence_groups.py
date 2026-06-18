@@ -190,6 +190,17 @@ def _annotation_payload(*, stage: str, smoke_type: str) -> dict:
     }
 
 
+def _unsure_payload(*, stage: str) -> dict:
+    """An unsure submission carries no label (empty sequences_bbox)."""
+    return {
+        "sequence_id": 1,  # overwritten per call
+        "has_missed_smoke": False,
+        "is_unsure": True,
+        "annotation": {"sequences_bbox": []},
+        "processing_stage": stage,
+    }
+
+
 @pytest.mark.asyncio
 async def test_assign_groups_creates_group_for_unmatched_sequence(
     authenticated_client: AsyncClient,
@@ -426,6 +437,73 @@ async def test_propagation_skips_locked_members(
     assert len(items) == 1
     assert items[0]["processing_stage"] == "annotated"
     assert items[0]["smoke_types"] == ["industrial"]
+
+
+@pytest.mark.asyncio
+async def test_propagation_fans_out_unsure_flag(
+    authenticated_client: AsyncClient,
+    sequence_session: AsyncSession,
+    detection_session: AsyncSession,
+):
+    """Validated group, no existing label → saving seq 1 as unsure marks the
+    group unsure and fans the unsure flag out to the other unlocked member in
+    SEQ_ANNOTATION_DONE."""
+    group_id = await _seed_two_member_group(
+        sequence_session, [1, 2], is_validated=True
+    )
+
+    payload = _unsure_payload(stage="seq_annotation_done")
+    payload["sequence_id"] = 1
+    resp = await authenticated_client.post("/annotations/sequences/", json=payload)
+    assert resp.status_code == 201
+    assert resp.json().get("group_propagation_warning") is None
+
+    group_payload = (
+        await authenticated_client.get(f"/sequence_groups/{group_id}")
+    ).json()
+    assert group_payload["is_unsure"] is True
+    assert group_payload["smoke_type"] is None
+    assert group_payload["false_positive_type"] is None
+
+    other = await authenticated_client.get("/annotations/sequences/?sequence_id=2")
+    items = other.json()["items"]
+    assert len(items) == 1
+    assert items[0]["is_unsure"] is True
+    assert items[0]["processing_stage"] == "seq_annotation_done"
+
+
+@pytest.mark.asyncio
+async def test_propagation_warns_when_unsure_hits_labeled_group(
+    authenticated_client: AsyncClient,
+    sequence_session: AsyncSession,
+    detection_session: AsyncSession,
+):
+    """A group already labeled `industrial` → marking seq 1 unsure returns a
+    warning, leaves the group label untouched, and does not propagate."""
+    group_id = await _seed_two_member_group(
+        sequence_session,
+        [1, 2],
+        is_validated=True,
+        smoke_type="industrial",
+    )
+
+    payload = _unsure_payload(stage="seq_annotation_done")
+    payload["sequence_id"] = 1
+    resp = await authenticated_client.post("/annotations/sequences/", json=payload)
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["group_propagation_warning"] is not None
+    assert "industrial" in body["group_propagation_warning"]
+
+    group_payload = (
+        await authenticated_client.get(f"/sequence_groups/{group_id}")
+    ).json()
+    assert group_payload["smoke_type"] == "industrial"
+    assert group_payload["is_unsure"] is False
+
+    # No fan-out to seq 2.
+    other = await authenticated_client.get("/annotations/sequences/?sequence_id=2")
+    assert other.json()["total"] == 0
 
 
 @pytest.mark.asyncio
