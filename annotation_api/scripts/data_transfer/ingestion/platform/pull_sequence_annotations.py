@@ -139,6 +139,9 @@ def fetch_sequences(
     the smoke-type filter, until we have ``max_sequences`` accepted (or we
     exhaust all pages). This matters for FP pulls (smoke_type=empty) where the
     first page can be entirely smoke sequences.
+
+    Sequences whose annotation is marked as unsure (``is_unsure=True``) are
+    excluded server-side and never pulled.
     """
     page = 1
     size = 100
@@ -148,6 +151,7 @@ def fetch_sequences(
             remote_api,
             token,
             processing_stage="seq_annotation_done",
+            is_unsure=False,
             page=page,
             size=size,
             include_annotation=True,
