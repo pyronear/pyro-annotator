@@ -83,6 +83,7 @@ Once sequence annotations are in `seq_annotation_done` on the remote API, refine
 make pull-seq-annotations MAX_SEQUENCES=20 SMOKE_TYPE=wildfire
 ```
 - Set `MAX_SEQUENCES=0` to pull all; override `SMOKE_TYPE` (or call the script directly without `--smoke-type`) to pull every smoke type.
+- Object-split sequences (predictor-split import) are merged back into one folder per camera view: siblings of the same platform alert share a folder, and alerts from the same camera/azimuth less than 2h apart are chained (camera azimuth is fetched from the platform API using `PLATFORM_LOGIN`/`PLATFORM_PASSWORD`; without credentials only siblings merge). Each frame is downloaded once with the union of all objects' boxes, and a `manifest.json` maps results back to every member sequence. `MAX_SEQUENCES` counts merged folders. Alerts with a sibling still under annotation are deferred to a later pull.
 - TLS is verified by default; pass `--skip-ssl-verify` to the underlying script if you trust the host and need to silence self-signed cert issues.
 
 **Step 2 — `auto-annotate`**: auto-fill missing boxes with the pyronear YOLO11s sensitive-detector model (downloads on first run):

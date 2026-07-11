@@ -10,9 +10,16 @@ Rules:
   and set only those detections' annotations to bbox_annotation.
 
 Assumes exported data layout: outputs/seq_annotation_done/seq_<alert_api_id>/images/detection_<id>.jpg
+
+Folders holding a ``manifest.json`` (written by ``pull_sequence_annotations.py``) contain several
+remote sequences merged for review (object-split siblings and/or chained alerts). The manifest maps
+each image to the member sequences' own detection ids; the rules above then apply per member:
+an "issue" frame only sends the members having a detection on that frame to needs_manual, the black
+separator sends every member, and a clean folder marks every member annotated.
 """
 
 import argparse
+import json
 import logging
 import os
 import re
@@ -47,13 +54,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--username",
         type=str,
-        default=os.getenv("MAIN_ANNOTATION_LOGIN", os.getenv("ANNOTATOR_LOGIN", "admin")),
+        default=os.getenv(
+            "MAIN_ANNOTATION_LOGIN", os.getenv("ANNOTATOR_LOGIN", "admin")
+        ),
         help="Remote API username",
     )
     parser.add_argument(
         "--password",
         type=str,
-        default=os.getenv("MAIN_ANNOTATION_PASSWORD", os.getenv("ANNOTATOR_PASSWORD", "admin12345")),
+        default=os.getenv(
+            "MAIN_ANNOTATION_PASSWORD", os.getenv("ANNOTATOR_PASSWORD", "admin12345")
+        ),
         help="Remote API password",
     )
     parser.add_argument(
@@ -112,7 +123,9 @@ def group_reviews(dataset: fo.Dataset) -> Dict[int, Dict[str, Set[int]]]:
       "all_frames": set(all detection_ids)
     }
     """
-    per_seq: Dict[int, Dict[str, Set[int] | bool]] = defaultdict(lambda: {"issue_frames": set(), "whole_issue": False, "all_frames": set()})
+    per_seq: Dict[int, Dict[str, Set[int] | bool]] = defaultdict(
+        lambda: {"issue_frames": set(), "whole_issue": False, "all_frames": set()}
+    )
 
     for sample in dataset:
         alert_id = parse_alert_id(sample.filepath)
@@ -165,18 +178,31 @@ def fetch_all_sequences(remote_api: str, token: str) -> Dict[int, Dict]:
     return lookup
 
 
-def update_sequence_stage(remote_api: str, token: str, seq_id: int, stage: str, dry_run: bool) -> bool:
-    ann_resp = annotation_api.list_sequence_annotations(remote_api, token, sequence_id=seq_id, page=1, size=1)
+def update_sequence_stage(
+    remote_api: str, token: str, seq_id: int, stage: str, dry_run: bool
+) -> bool:
+    ann_resp = annotation_api.list_sequence_annotations(
+        remote_api, token, sequence_id=seq_id, page=1, size=1
+    )
     items = ann_resp.get("items", []) if isinstance(ann_resp, dict) else ann_resp
     if not items:
         logging.warning("Sequence %s has no annotation row to update", seq_id)
         return False
     ann_id = items[0]["id"]
     if dry_run:
-        logging.info("[DRY-RUN] Would set sequence_id=%s annotation_id=%s stage=%s", seq_id, ann_id, stage)
+        logging.info(
+            "[DRY-RUN] Would set sequence_id=%s annotation_id=%s stage=%s",
+            seq_id,
+            ann_id,
+            stage,
+        )
         return True
-    annotation_api.update_sequence_annotation(remote_api, token, ann_id, {"processing_stage": stage})
-    logging.info("Updated sequence_id=%s annotation_id=%s stage=%s", seq_id, ann_id, stage)
+    annotation_api.update_sequence_annotation(
+        remote_api, token, ann_id, {"processing_stage": stage}
+    )
+    logging.info(
+        "Updated sequence_id=%s annotation_id=%s stage=%s", seq_id, ann_id, stage
+    )
     return True
 
 
@@ -188,7 +214,9 @@ def update_detection_stage(
     dry_run: bool,
     annotation_data: Optional[List[Dict]] = None,
 ) -> bool:
-    ann_resp = annotation_api.list_detection_annotations(remote_api, token, detection_id=det_id, page=1, size=1)
+    ann_resp = annotation_api.list_detection_annotations(
+        remote_api, token, detection_id=det_id, page=1, size=1
+    )
     items = ann_resp.get("items", []) if isinstance(ann_resp, dict) else ann_resp
     if not items:
         logging.warning("Detection %s has no annotation row to update", det_id)
@@ -207,7 +235,9 @@ def update_detection_stage(
     if annotation_data is not None:
         payload["annotation"] = {"annotation": annotation_data}
     annotation_api.update_detection_annotation(remote_api, token, ann_id, payload)
-    logging.debug("Updated detection_id=%s annotation_id=%s stage=%s", det_id, ann_id, stage)
+    logging.debug(
+        "Updated detection_id=%s annotation_id=%s stage=%s", det_id, ann_id, stage
+    )
     return True
 
 
@@ -243,15 +273,27 @@ def ensure_detection_annotations(
     missing = [det_id for det_id in detection_ids if det_id not in annotated_dets]
     if not missing or dry_run:
         if dry_run and missing:
-            logging.info("[DRY-RUN] Would create %d detection annotations", len(missing))
+            logging.info(
+                "[DRY-RUN] Would create %d detection annotations", len(missing)
+            )
         return missing
 
     def _create_one(det_id: int) -> None:
         try:
-            ann_payload = {"annotation": annotation_map[det_id]} if annotation_map and det_id in annotation_map else {"annotation": []}
-            annotation_api.create_detection_annotation(remote_api, token, det_id, ann_payload, default_stage)
+            ann_payload = (
+                {"annotation": annotation_map[det_id]}
+                if annotation_map and det_id in annotation_map
+                else {"annotation": []}
+            )
+            annotation_api.create_detection_annotation(
+                remote_api, token, det_id, ann_payload, default_stage
+            )
         except Exception as exc:  # noqa: BLE001
-            logging.error("Failed to create detection annotation for detection_id=%s: %s", det_id, exc)
+            logging.error(
+                "Failed to create detection annotation for detection_id=%s: %s",
+                det_id,
+                exc,
+            )
 
     with ThreadPoolExecutor(max_workers=8) as pool:
         pool.map(_create_one, missing)
@@ -318,11 +360,21 @@ def delete_detection_annotations_for_sequence(
 SMOKE_CLASSES = ["wildfire", "industrial", "other"]
 
 
-def load_yolo_annotation(labels_root: Path, alert_id: int, det_id: int) -> Optional[List[Dict]]:
+def load_yolo_annotation(
+    labels_root: Path, alert_id: int, det_id: int
+) -> Optional[List[Dict]]:
     """
     Load YOLO label file for a detection and convert to DetectionAnnotationData items.
     """
-    lbl_path = labels_root / f"seq_{alert_id}" / "labels" / f"detection_{det_id}.txt"
+    return load_yolo_label_file(
+        labels_root / f"seq_{alert_id}" / "labels" / f"detection_{det_id}.txt"
+    )
+
+
+def load_yolo_label_file(lbl_path: Path) -> Optional[List[Dict]]:
+    """
+    Load a YOLO label file and convert to DetectionAnnotationData items.
+    """
     if not lbl_path.exists() or lbl_path.stat().st_size == 0:
         return None
 
@@ -344,7 +396,11 @@ def load_yolo_annotation(labels_root: Path, alert_id: int, det_id: int) -> Optio
                 y2 = cy + h / 2.0
                 # clip to [0,1]
                 xyxyn = [max(0.0, min(1.0, v)) for v in (x1, y1, x2, y2)]
-                smoke_type = SMOKE_CLASSES[cls_id] if 0 <= cls_id < len(SMOKE_CLASSES) else "other"
+                smoke_type = (
+                    SMOKE_CLASSES[cls_id]
+                    if 0 <= cls_id < len(SMOKE_CLASSES)
+                    else "other"
+                )
                 items.append(
                     {
                         "xyxyn": xyxyn,
@@ -357,6 +413,114 @@ def load_yolo_annotation(labels_root: Path, alert_id: int, det_id: int) -> Optio
         return None
 
     return items if items else None
+
+
+def load_manifest(labels_root: Path, alert_id: int) -> Optional[Dict]:
+    """Return the merged-folder manifest written by pull_sequence_annotations.py, if any."""
+    manifest_path = labels_root / f"seq_{alert_id}" / "manifest.json"
+    if not manifest_path.exists():
+        return None
+    try:
+        return json.loads(manifest_path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        logging.error("Failed to read manifest %s: %s", manifest_path, exc)
+        return None
+
+
+def process_one_group(
+    alert_id: int,
+    info: Dict,
+    manifest: Dict,
+    remote_api: str,
+    token: str,
+    labels_root: Path,
+    dry_run: bool,
+    fp_mode: bool = False,
+) -> str:
+    """Process a merged folder: apply the review to every member sequence listed
+    in the manifest. An issue frame only affects the members that have a
+    detection on it. Returns the folder-level status string."""
+    frames: Dict[str, Dict] = manifest.get("frames", {})
+    issue_files = {f"detection_{det_id}.jpg" for det_id in info["issue_frames"]}
+    whole_issue = info["whole_issue"]
+
+    for member in manifest.get("members", []):
+        seq_id = member["sequence_id"]
+
+        # Map this member's own detection ids to the canonical (deduplicated) frame files.
+        det_to_file: Dict[int, str] = {}
+        for filename, frame in frames.items():
+            det_id = frame.get("detections", {}).get(str(seq_id))
+            if det_id is not None:
+                det_to_file[det_id] = filename
+
+        # Remove any existing detection annotations so we can recreate from labels cleanly
+        delete_detection_annotations_for_sequence(remote_api, token, seq_id, dry_run)
+
+        detections = list_all_detections(remote_api, token, seq_id)
+        detection_ids = [d["id"] for d in detections]
+        annotation_map: Dict[int, List[Dict]] = {}
+        for det_id in detection_ids:
+            frame_file = det_to_file.get(det_id)
+            if frame_file is None:
+                continue
+            lbl_path = (
+                labels_root
+                / f"seq_{alert_id}"
+                / "labels"
+                / frame_file.replace(".jpg", ".txt")
+            )
+            data = load_yolo_label_file(lbl_path)
+            if data is not None:
+                annotation_map[det_id] = data
+        ensure_detection_annotations(
+            remote_api,
+            token,
+            seq_id,
+            detection_ids,
+            default_stage="bbox_annotation",
+            dry_run=dry_run,
+            annotation_map=annotation_map,
+        )
+
+        member_issue_dets = [
+            det_id
+            for det_id, filename in det_to_file.items()
+            if filename in issue_files
+        ]
+
+        if whole_issue or member_issue_dets:
+            update_sequence_stage(remote_api, token, seq_id, "needs_manual", dry_run)
+            target_dets = list(det_to_file) if whole_issue else member_issue_dets
+            updates: List[tuple] = [
+                (det_id, "bbox_annotation", annotation_map.get(det_id))
+                for det_id in target_dets
+            ]
+            updated_set = set(target_dets)
+            updates.extend(
+                (det_id, "annotated", annotation_map.get(det_id))
+                for det_id in det_to_file
+                if det_id not in updated_set
+            )
+        else:
+            update_sequence_stage(remote_api, token, seq_id, "annotated", dry_run)
+            # In FP mode, push empty annotations (no bboxes); otherwise push the YOLO labels
+            updates = [
+                (det_id, "annotated", [] if fp_mode else annotation_map.get(det_id))
+                for det_id in det_to_file
+            ]
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            pool.map(
+                lambda update: update_detection_stage(
+                    remote_api, token, update[0], update[1], dry_run, update[2]
+                ),
+                updates,
+            )
+
+    if whole_issue:
+        return "whole_issue"
+    return "partial_issue" if issue_files else "ok"
 
 
 def process_one_sequence(
@@ -377,9 +541,15 @@ def process_one_sequence(
     seq_id = seq["id"]
 
     # Remove any existing detection annotations so we can recreate from labels cleanly
-    deleted_count = delete_detection_annotations_for_sequence(remote_api, token, seq_id, dry_run)
+    deleted_count = delete_detection_annotations_for_sequence(
+        remote_api, token, seq_id, dry_run
+    )
     if dry_run and deleted_count:
-        logging.info("[DRY-RUN] Would delete %s detection annotations for sequence_id=%s", deleted_count, seq_id)
+        logging.info(
+            "[DRY-RUN] Would delete %s detection annotations for sequence_id=%s",
+            deleted_count,
+            seq_id,
+        )
 
     # Load detections and ensure annotations exist for them
     detections = list_all_detections(remote_api, token, seq_id)
@@ -390,8 +560,13 @@ def process_one_sequence(
         if data is not None:
             annotation_map[det["id"]] = data
     ensure_detection_annotations(
-        remote_api, token, seq_id, detection_ids,
-        default_stage="bbox_annotation", dry_run=dry_run, annotation_map=annotation_map,
+        remote_api,
+        token,
+        seq_id,
+        detection_ids,
+        default_stage="bbox_annotation",
+        dry_run=dry_run,
+        annotation_map=annotation_map,
     )
 
     issue_frames = info["issue_frames"]
@@ -404,7 +579,11 @@ def process_one_sequence(
             # In FP mode, push empty annotations (no bboxes); otherwise push the YOLO labels
             pool.map(
                 lambda det_id: update_detection_stage(
-                    remote_api, token, det_id, "annotated", dry_run,
+                    remote_api,
+                    token,
+                    det_id,
+                    "annotated",
+                    dry_run,
                     [] if fp_mode else annotation_map.get(det_id),
                 ),
                 all_frames,
@@ -416,7 +595,10 @@ def process_one_sequence(
     target_dets: List[int] = list(all_frames) if whole_issue else list(issue_frames)
 
     # Build list of (det_id, stage, annotation_data) for all detections
-    updates: List[tuple] = [(det_id, "bbox_annotation", annotation_map.get(det_id)) for det_id in target_dets]
+    updates: List[tuple] = [
+        (det_id, "bbox_annotation", annotation_map.get(det_id))
+        for det_id in target_dets
+    ]
     updated_set = set(target_dets)
     for det_id, ann_payload in annotation_map.items():
         if det_id not in updated_set:
@@ -424,7 +606,9 @@ def process_one_sequence(
 
     with ThreadPoolExecutor(max_workers=8) as pool:
         pool.map(
-            lambda args: update_detection_stage(remote_api, token, args[0], args[1], dry_run, args[2]),
+            lambda args: update_detection_stage(
+                remote_api, token, args[0], args[1], dry_run, args[2]
+            ),
             updates,
         )
 
@@ -433,7 +617,9 @@ def process_one_sequence(
 
 def main() -> None:
     args = parse_args()
-    logging.basicConfig(level=args.loglevel.upper(), format="%(levelname)s - %(message)s")
+    logging.basicConfig(
+        level=args.loglevel.upper(), format="%(levelname)s - %(message)s"
+    )
 
     dataset = fo.load_dataset(args.dataset_name)
     reviews = group_reviews(dataset)
@@ -449,15 +635,41 @@ def main() -> None:
     if args.max_sequences:
         items = items[: args.max_sequences]
 
-    results: Dict[str, int] = {"ok": 0, "whole_issue": 0, "partial_issue": 0, "not_found": 0, "errors": 0}
+    results: Dict[str, int] = {
+        "ok": 0,
+        "whole_issue": 0,
+        "partial_issue": 0,
+        "not_found": 0,
+        "errors": 0,
+    }
+
+    def process_one(alert_id: int, info: Dict) -> str:
+        manifest = load_manifest(args.labels_root, alert_id)
+        if manifest is not None:
+            return process_one_group(
+                alert_id,
+                info,
+                manifest,
+                args.remote_api,
+                token,
+                args.labels_root,
+                args.dry_run,
+                args.fp_mode,
+            )
+        return process_one_sequence(
+            alert_id,
+            info,
+            seq_lookup,
+            args.remote_api,
+            token,
+            args.labels_root,
+            args.dry_run,
+            args.fp_mode,
+        )
 
     with ThreadPoolExecutor(max_workers=args.max_workers) as executor:
         future_map = {
-            executor.submit(
-                process_one_sequence,
-                alert_id, info, seq_lookup,
-                args.remote_api, token, args.labels_root, args.dry_run, args.fp_mode,
-            ): alert_id
+            executor.submit(process_one, alert_id, info): alert_id
             for alert_id, info in items
         }
         for future in as_completed(future_map):
