@@ -147,7 +147,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "aiosqlite", specifier = ">=0.16.0,<1.0.0" },
-    { name = "fiftyone", specifier = ">=1.13.4" },
+    { name = "fiftyone", specifier = ">=1.14.2,<1.15" },
     { name = "httpx", specifier = ">=0.23.0" },
     { name = "mypy", specifier = ">=1.10.0" },
     { name = "pillow", specifier = ">=10.0.0" },
@@ -1012,7 +1012,7 @@ wheels = [
 
 [[package]]
 name = "fiftyone"
-version = "1.14.1"
+version = "1.14.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
@@ -1064,9 +1064,9 @@ dependencies = [
     { name = "voxel51-eta" },
     { name = "xmltodict" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/45/11/a11e9e0d9ba9a35d7233b435738528a8f1bfa56a82311442e58681b6c0a6/fiftyone-1.14.1.tar.gz", hash = "sha256:6de394efb073ffce091c1a40705d9aa486e0462412a2dbb863c65102428e6509", size = 17505903, upload_time = "2026-04-07T01:14:02.111Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d5/a4/7f19375533419c3972a5e87cf602baad27b1e47e4e3f9d92c0b204b7f90a/fiftyone-1.14.2.tar.gz", hash = "sha256:7188ab321b15ab0974d29bf71286cb2a906955120f895dfebfbc9560bcbc5b2a", size = 17506274, upload_time = "2026-04-23T20:35:46.346Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/26/5b/42eff1f8c935b77f99d76091cac8e87ba5aeab6e6fab82f29aaaa96ff316/fiftyone-1.14.1-py3-none-any.whl", hash = "sha256:953b330dd59051de139af5ef022872be89a58eb63058a70566bea706184a9d22", size = 17721989, upload_time = "2026-04-07T01:13:59.175Z" },
+    { url = "https://files.pythonhosted.org/packages/d6/e2/963a8bb78329c60569738eee961e235b79e67306889c7b9d926e26e02123/fiftyone-1.14.2-py3-none-any.whl", hash = "sha256:58ece89c827abbd95c426175a123f245a37cfff2cabd5aed54b41f975487c183", size = 17721990, upload_time = "2026-04-23T20:35:42.822Z" },
 ]
 
 [[package]]
