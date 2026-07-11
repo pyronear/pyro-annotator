@@ -14,7 +14,15 @@ For each detection, this script:
                 labels/
                     {prefix}-{org}_{camera}_{azimuth}_{recorded_at}.txt  # empty if no bbox
 
-Categories (from sequence_smoke_types):
+Sequences imported by the predictor-split pipeline (one sequence per detected object)
+duplicate the same frames across sibling sequences. To export each frame once, sequences
+from the same camera are chained into one view group while the gap between their frame
+spans stays under ``--merge-gap-hours`` (siblings overlap, so they always merge). Frames
+are deduplicated by platform detection id + timestamp and each label file carries the
+union of every member's boxes on that frame.
+
+Categories (from sequence_smoke_types, per view group with priority
+wildfire > other_smoke > fp across member sequences):
     wildfire     - "wildfire" in sequence_smoke_types
     other_smoke  - any other smoke type in sequence_smoke_types
     fp           - no smoke types (false positive sequence)
@@ -41,7 +49,8 @@ import logging
 import os
 import re
 import unicodedata
-from datetime import datetime
+from collections import defaultdict
+from datetime import datetime, timedelta, timezone
 from multiprocessing import Pool, cpu_count
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -152,6 +161,15 @@ def parse_args() -> argparse.Namespace:
         choices=["wildfire", "other_smoke", "fp"],
         default=None,
         help="Only export sequences of this category (wildfire, other_smoke, fp). Default: all.",
+    )
+    parser.add_argument(
+        "--merge-gap-hours",
+        type=float,
+        default=2.0,
+        help=(
+            "Max gap between frame spans of two sequences from the same camera "
+            "to merge them into one view group folder"
+        ),
     )
     return parser.parse_args()
 
@@ -312,18 +330,18 @@ def build_file_basename(row: Dict[str, Any]) -> str:
     return f"{prefix}-{org}_{cam}_{az_str}_{recorded_at_str}"
 
 
-def recorded_at_sort_key(row: Dict[str, Any]) -> Tuple[int, str]:
-    """
-    Sort key: (sequence_id, recorded_at_string)
-    Uses format_recorded_at so ordering is chronological.
-    """
-    seq_id = row.get("sequence_id") or 0
-    raw = row.get("recorded_at") or "1970-01-01T00:00:00"
-    try:
-        rec_str = format_recorded_at(raw)
-    except Exception:
-        rec_str = "1970-01-01T00-00-00"
-    return int(seq_id), rec_str
+def parse_dt_utc(raw: Any) -> datetime:
+    """Parse a recorded_at value into an aware UTC datetime (grouping/dedup key)."""
+    if isinstance(raw, datetime):
+        dt = raw
+    else:
+        text = str(raw)
+        if text.endswith("Z"):
+            text = text.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(text)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 def sequence_category_from_row(row: Dict[str, Any]) -> str:
@@ -364,6 +382,55 @@ def compute_sequence_categories(rows: List[Dict[str, Any]]) -> Dict[int, str]:
         if seq_id_int not in seq_cats:
             seq_cats[seq_id_int] = sequence_category_from_row(row)
     return seq_cats
+
+
+CATEGORY_PRIORITY: List[str] = [CATEGORY_WILDFIRE, CATEGORY_OTHER_SMOKE, CATEGORY_FP]
+
+
+def build_view_groups(
+    rows_by_seq: Dict[int, List[Dict[str, Any]]],
+    merge_gap: timedelta,
+) -> List[List[int]]:
+    """Chain sequences of the same (source_api, camera_id) into view groups while
+    the gap between their frame time spans stays within ``merge_gap``.
+
+    Object-split sibling sequences overlap in time, so they always land in the
+    same group; consecutive alerts of the same camera view get chained too.
+    """
+    spans = []
+    for seq_id, seq_rows in rows_by_seq.items():
+        times = [parse_dt_utc(r["recorded_at"]) for r in seq_rows]
+        first = seq_rows[0]
+        spans.append(
+            {
+                "seq_id": seq_id,
+                "start": min(times),
+                "end": max(times),
+                "camera": (first.get("source_api"), first.get("camera_id")),
+            }
+        )
+
+    by_camera: Dict[Any, List[Dict[str, Any]]] = defaultdict(list)
+    for span in spans:
+        by_camera[span["camera"]].append(span)
+
+    groups: List[List[int]] = []
+    for cam_spans in by_camera.values():
+        cam_spans.sort(key=lambda s: s["start"])
+        current = [cam_spans[0]]
+        current_end = cam_spans[0]["end"]
+        for nxt in cam_spans[1:]:
+            if nxt["start"] - current_end <= merge_gap:
+                current.append(nxt)
+                current_end = max(current_end, nxt["end"])
+            else:
+                groups.append([s["seq_id"] for s in current])
+                current = [nxt]
+                current_end = nxt["end"]
+        groups.append([s["seq_id"] for s in current])
+
+    groups.sort(key=min)
+    return groups
 
 
 def extract_labels_for_detection(row: Dict[str, Any]) -> List[str]:
@@ -514,7 +581,6 @@ def fetch_detections(
 # Multiprocessing worker setup
 # ---------------------------------------------------------------------------
 
-FOLDER_NAME_MAP: Dict[Tuple[str, int], str] = {}
 BASE_DIR: Optional[Path] = None
 TIMEOUT_G: int = 30
 VERIFY_SSL_G: bool = False
@@ -523,14 +589,12 @@ SESSION: Optional[requests.Session] = None
 
 
 def _init_worker(
-    folder_name_map: Dict[Tuple[str, int], str],
     base_dir_str: str,
     timeout: int,
     verify_ssl: bool,
     headers: Dict[str, str],
 ) -> None:
-    global FOLDER_NAME_MAP, BASE_DIR, TIMEOUT_G, VERIFY_SSL_G, HEADERS_G, SESSION
-    FOLDER_NAME_MAP = folder_name_map
+    global BASE_DIR, TIMEOUT_G, VERIFY_SSL_G, HEADERS_G, SESSION
     BASE_DIR = Path(base_dir_str)
     TIMEOUT_G = timeout
     VERIFY_SSL_G = verify_ssl
@@ -553,11 +617,11 @@ def _process_task(task: Dict[str, Any]) -> Tuple[int, int]:
 
     Returns a tuple (images_written, labels_nonempty).
     """
-    seq_id_int: int = task["seq_id_int"]
     file_base: str = task["file_base"]
     image_url: str = task["image_url"]
     category: str = task["category"]
     labels: List[str] = task["labels"]
+    seq_folder_name: str = task["seq_folder_name"]
 
     try:
         session = _get_session()
@@ -567,8 +631,6 @@ def _process_task(task: Dict[str, Any]) -> Tuple[int, int]:
     except Exception as exc:
         logging.warning("Failed to download %s: %s", image_url, exc)
         return 0, 0
-
-    seq_folder_name = FOLDER_NAME_MAP.get((category, seq_id_int), file_base)
 
     base = BASE_DIR / category / seq_folder_name  # type: ignore[operator]
     img_dir = base / "images"
@@ -604,82 +666,102 @@ def build_dataset(
     headers: Dict[str, str],
     num_workers: int,
     category_filter: Optional[str] = None,
+    merge_gap_hours: float = 2.0,
 ) -> None:
     """
     Build the dataset folder structure from the exported rows.
 
-    All detections are included:
-      images are always saved,
-      labels are written from bboxes,
-      if no bbox is present for a given type an empty txt file is created.
-
-    For each sequence and seq_type, all images of the sequence are copied
-    in that seq_type folder. Label content depends on the annotation
-    for that detection and type.
+    Sequences from the same camera whose frame spans are less than
+    ``merge_gap_hours`` apart share one view group folder. Within a group,
+    frames are deduplicated by platform detection id + timestamp:
+      the image is saved once,
+      the label file carries the union of every member sequence's boxes,
+      an empty txt file is created when no box exists on the frame.
 
     Processing is parallelized across worker processes and progress
     is tracked with a tqdm progress bar.
     """
-    # sort rows by (sequence_id, recorded_at)
-    rows_sorted = sorted(rows, key=recorded_at_sort_key)
+    rows_by_seq: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        if not row.get("image_url"):
+            continue
+        if row.get("sequence_id") is None or row.get("detection_id") is None:
+            continue
+        rows_by_seq[int(row["sequence_id"])].append(row)
+
+    if not rows_by_seq:
+        logging.warning("No usable export rows, nothing to write")
+        return
 
     # compute sequence -> single category
-    seq_cat_map = compute_sequence_categories(rows_sorted)
+    seq_cat_map = compute_sequence_categories(rows)
+
+    groups = build_view_groups(rows_by_seq, timedelta(hours=merge_gap_hours))
+    logging.info(
+        "Grouped %s sequence(s) into %s view group folder(s)",
+        len(rows_by_seq),
+        len(groups),
+    )
+
+    tasks: List[Dict[str, Any]] = []
+    kept_groups = 0
+
+    for group_seq_ids in groups:
+        # one category per group: wildfire > other_smoke > fp across members
+        cats = {seq_cat_map[s] for s in group_seq_ids if s in seq_cat_map}
+        if not cats:
+            continue
+        category = min(cats, key=CATEGORY_PRIORITY.index)
+        if category_filter and category != category_filter:
+            continue
+        kept_groups += 1
+
+        # Deduplicate frames across member sequences: sibling detections of the
+        # same frame share the platform detection id (alert_api_id) + timestamp.
+        frames: Dict[Tuple[Any, datetime], Dict[str, Any]] = {}
+        group_rows = sorted(
+            (row for seq_id in group_seq_ids for row in rows_by_seq[seq_id]),
+            key=lambda r: (parse_dt_utc(r["recorded_at"]), int(r["detection_id"])),
+        )
+        for row in group_rows:
+            key = (
+                row.get("alert_api_id") or f"det_{row['detection_id']}",
+                parse_dt_utc(row["recorded_at"]),
+            )
+            frame = frames.setdefault(key, {"row": row, "labels": []})
+            frame["labels"].extend(extract_labels_for_detection(row))
+
+        folder_name: Optional[str] = None
+        for frame in frames.values():
+            row = frame["row"]
+            try:
+                file_base = build_file_basename(row)
+            except Exception as exc:
+                logging.warning(
+                    "Could not build filename for detection %s: %s",
+                    row.get("detection_id"),
+                    exc,
+                )
+                continue
+            if folder_name is None:
+                folder_name = file_base
+
+            tasks.append(
+                {
+                    "file_base": file_base,
+                    "image_url": row["image_url"],
+                    "category": category,
+                    "seq_folder_name": folder_name,
+                    "labels": sorted(set(frame["labels"])),
+                }
+            )
 
     if category_filter:
-        before = len(seq_cat_map)
-        seq_cat_map = {k: v for k, v in seq_cat_map.items() if v == category_filter}
         logging.info(
-            "Category filter '%s': kept %s/%s sequences",
+            "Category filter '%s': kept %s/%s view groups",
             category_filter,
-            len(seq_cat_map),
-            before,
-        )
-
-    # Prepare folder name map and tasks
-    folder_name_map: Dict[Tuple[str, int], str] = {}
-    tasks: List[Dict[str, Any]] = []
-
-    for row in rows_sorted:
-        image_url = row.get("image_url")
-        if not image_url:
-            continue
-
-        seq_id = row.get("sequence_id")
-        detection_id = row.get("detection_id")
-        if seq_id is None or detection_id is None:
-            continue
-        seq_id_int = int(seq_id)
-
-        category = seq_cat_map.get(seq_id_int)
-        if category is None:
-            continue
-
-        try:
-            file_base = build_file_basename(row)
-        except Exception as exc:
-            logging.warning(
-                "Could not build filename for detection %s: %s",
-                detection_id,
-                exc,
-            )
-            continue
-
-        labels = extract_labels_for_detection(row)
-
-        # record first file_base per (category, seq_id) for folder naming
-        key = (category, seq_id_int)
-        if key not in folder_name_map:
-            folder_name_map[key] = file_base
-
-        tasks.append(
-            {
-                "seq_id_int": seq_id_int,
-                "file_base": file_base,
-                "image_url": image_url,
-                "category": category,
-                "labels": labels,
-            }
+            kept_groups,
+            len(groups),
         )
 
     if not tasks:
@@ -698,7 +780,7 @@ def build_dataset(
     with Pool(
         processes=num_workers,
         initializer=_init_worker,
-        initargs=(folder_name_map, str(root_dir), timeout, verify_ssl, headers),
+        initargs=(str(root_dir), timeout, verify_ssl, headers),
     ) as pool:
         for img_count, label_count in tqdm(
             pool.imap_unordered(_process_task, tasks),
@@ -755,6 +837,12 @@ def main() -> None:
         logging.warning("No detections returned by export endpoint, nothing to do")
         return
 
+    if args.max_rows > 0:
+        logging.warning(
+            "--max-rows is set: truncated fetches can split sequences/view groups "
+            "across runs and produce incomplete folders"
+        )
+
     build_dataset(
         rows=rows,
         root_dir=root_dir,
@@ -763,6 +851,7 @@ def main() -> None:
         headers=headers,
         num_workers=args.num_workers,
         category_filter=args.category,
+        merge_gap_hours=args.merge_gap_hours,
     )
 
 
