@@ -159,6 +159,8 @@ push-annotations:
 # --- 1B. Detection annotation workflow ---
 
 # Pull seq_annotation_done sequences locally (moves remote stage to in_review).
+# Object-split sequences are merged into one folder per camera view (see manifest.json);
+# MAX_SEQUENCES caps merged folders, not raw sequences.
 # Usage: make pull-seq-annotations [MAX_SEQUENCES=20] [SMOKE_TYPE=wildfire] [DATA_ROOT=outputs/seq_annotation_done]
 pull-seq-annotations:
 	uv run python -m scripts.data_transfer.ingestion.platform.pull_sequence_annotations \
