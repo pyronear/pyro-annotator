@@ -150,6 +150,7 @@ make update-stage-local FROM_STAGE=seq_annotation_done TO_STAGE=needs_manual MAX
 make export-dataset OUTPUT_DIR=outputs/datasets LIMIT=1000 TIMEOUT=120
 ```
 - Filter by category: `make export-dataset CATEGORY=fp` (also `wildfire`, `other_smoke`). Omit to export all.
+- Object-split sequences are merged on export: sequences from the same camera less than 2h apart (`--merge-gap-hours`) share one view-group folder, frames are exported once with the union of all objects' boxes, and mixed groups land in the highest-priority category (`wildfire` > `other_smoke` > `fp`).
 
 **Import a single sequence from an exported YOLO folder** (images + labels) into an API:
 
