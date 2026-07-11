@@ -430,14 +430,14 @@ def main() -> None:
         "Grouped %s sequence(s) into %s folder(s)", len(sequences), len(groups)
     )
 
-    if args.max_sequences:
-        groups = groups[: args.max_sequences]
-
     # Defer alerts whose siblings are still being annotated, so their frames are
-    # pulled once, complete, in a later run.
+    # pulled once, complete, in a later run. Deferred groups do not count against
+    # --max-sequences, so blocked groups never starve eligible ones.
     deferred = 0
     final_groups: List[List[Dict]] = []
     for group in groups:
+        if args.max_sequences and len(final_groups) >= args.max_sequences:
+            break
         kept: List[Dict] = []
         for cluster in group:
             if cluster["sid"] is not None:

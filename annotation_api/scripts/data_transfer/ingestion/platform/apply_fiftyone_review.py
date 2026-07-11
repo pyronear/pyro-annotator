@@ -498,8 +498,8 @@ def process_one_group(
             ]
             updated_set = set(target_dets)
             updates.extend(
-                (det_id, "annotated", ann_payload)
-                for det_id, ann_payload in annotation_map.items()
+                (det_id, "annotated", annotation_map.get(det_id))
+                for det_id in det_to_file
                 if det_id not in updated_set
             )
         else:
