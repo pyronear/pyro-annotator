@@ -1038,8 +1038,14 @@ async def test_smoke_type_propagation_from_sequence_to_detection_annotations(
         len(sequence_detection_annotations) >= 2
     ), "Should have detection annotations for both detections"
 
-    # Step 4: Verify smoke type propagation - should use first smoke type from sequence annotation
-    for detection_annotation in sequence_detection_annotations[:2]:  # Check first 2
+    # Step 4: Verify per-object smoke type propagation - each detection's
+    # pre-populated box takes the type of the object annotated on that
+    # detection instead of the sequence-wide first smoke type
+    expected_smoke_types = {
+        detection_ids[0]: "industrial",
+        detection_ids[1]: "other",
+    }
+    for detection_annotation in sequence_detection_annotations:
         annotation_data = detection_annotation["annotation"]
         assert (
             "annotation" in annotation_data
@@ -1053,10 +1059,10 @@ async def test_smoke_type_propagation_from_sequence_to_detection_annotations(
                 len(annotations) > 0
             ), "True positive sequence should have predictions pre-populated"
 
-            # Verify that smoke_type is "industrial" (first smoke type) instead of defaulting to "wildfire"
+            expected = expected_smoke_types[detection_annotation["detection_id"]]
             assert (
-                annotations[0]["smoke_type"] == "industrial"
-            ), f"Should use sequence annotation smoke type 'industrial', got '{annotations[0]['smoke_type']}'"
+                annotations[0]["smoke_type"] == expected
+            ), f"Should use the object's own smoke type '{expected}', got '{annotations[0]['smoke_type']}'"
             assert (
                 annotations[0]["class_name"] == "smoke"
             ), "Should have smoke prediction"
