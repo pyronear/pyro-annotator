@@ -103,6 +103,7 @@ async def create_detection_annotation(
 
 @router.get("/")
 async def list_annotations(
+    detection_id: Optional[int] = Query(None, description="Filter by detection ID"),
     sequence_id: Optional[int] = Query(None, description="Filter by sequence ID"),
     camera_id: Optional[int] = Query(None, description="Filter by camera ID"),
     organisation_id: Optional[int] = Query(
@@ -137,6 +138,7 @@ async def list_annotations(
     """
     List detection annotations with filtering, pagination and ordering.
 
+    - **detection_id**: Filter annotations by detection ID
     - **sequence_id**: Filter annotations by sequence ID (through detection relationship)
     - **camera_id**: Filter annotations by camera ID (through detection -> sequence relationship)
     - **organisation_id**: Filter annotations by organisation ID (through detection -> sequence relationship)
@@ -171,6 +173,9 @@ async def list_annotations(
         query = query.join(Detection)
 
     # Apply filtering conditions
+    if detection_id is not None:
+        query = query.where(DetectionAnnotation.detection_id == detection_id)
+
     if sequence_id is not None:
         query = query.where(Detection.sequence_id == sequence_id)
 

@@ -680,6 +680,7 @@ def list_detection_annotations(base_url: str, auth_token: str, **params) -> Dict
         base_url: Base URL of the annotation API
         auth_token: JWT authentication token
         **params: Query parameters for filtering and pagination:
+            - detection_id: Filter by detection ID
             - sequence_id: Filter by sequence ID (through detection relationship)
             - camera_id: Filter by camera ID (through detection -> sequence relationship)
             - organisation_id: Filter by organisation ID (through detection -> sequence relationship)
