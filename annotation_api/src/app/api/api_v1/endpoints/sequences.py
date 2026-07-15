@@ -219,6 +219,7 @@ async def list_sequences(
         or has_false_positives is not None
         or false_positive_types is not None
         or smoke_types is not None
+        or is_unsure is not None
     )
     needs_detection_annotation_join = (
         detection_annotation_completion != "all" or include_detection_stats
