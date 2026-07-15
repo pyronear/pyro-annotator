@@ -178,15 +178,17 @@ def collect_annotation_bboxes(annotation: Dict) -> Dict[int, List[Dict]]:
     bboxes: Dict[int, List[Dict]] = defaultdict(list)
     for sb in annotation.get("sequences_bbox", []):
         if sb.get("is_smoke"):
-            class_name = smoke_class_name(sb.get("smoke_type"))
+            class_names = [smoke_class_name(sb.get("smoke_type"))]
         else:
-            fp_types = sb.get("false_positive_types") or []
-            class_name = fp_class_name(fp_types[0] if fp_types else None)
+            # one label per assigned FP type so no classification is lost
+            fp_types = sb.get("false_positive_types") or [None]
+            class_names = list(dict.fromkeys(fp_class_name(t) for t in fp_types))
         for bbox in sb.get("bboxes", []):
             det_key = bbox.get("detection_id")
             if det_key is not None and bbox.get("xyxyn"):
-                bboxes[det_key].append(
+                bboxes[det_key].extend(
                     {"xyxyn": bbox["xyxyn"], "class_name": class_name}
+                    for class_name in class_names
                 )
     return bboxes
 

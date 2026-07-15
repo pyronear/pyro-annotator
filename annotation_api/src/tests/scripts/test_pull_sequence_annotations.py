@@ -46,6 +46,19 @@ class TestCollectAnnotationBboxes:
         boxes = collect_annotation_bboxes(annotation)
         assert boxes[5][0]["class_name"] == "fp_antenna"
 
+    def test_false_positive_with_multiple_types_exports_one_box_per_type(self):
+        annotation = {
+            "sequences_bbox": [
+                _fp_object(
+                    ["antenna", "road"],
+                    [{"detection_id": 5, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                )
+            ]
+        }
+        boxes = collect_annotation_bboxes(annotation)
+        assert [b["class_name"] for b in boxes[5]] == ["fp_antenna", "fp_road"]
+        assert boxes[5][0]["xyxyn"] == boxes[5][1]["xyxyn"]
+
     def test_false_positive_without_type_falls_back_to_unlabeled(self):
         annotation = {
             "sequences_bbox": [
