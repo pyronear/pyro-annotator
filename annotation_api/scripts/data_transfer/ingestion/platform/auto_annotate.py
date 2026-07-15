@@ -3,7 +3,9 @@ Auto-annotate exported sequences by running the YOLO11s (pyronear) classifier an
 
 - Works on YOLO-style labels in each sequence directory.
 - Groups existing boxes to focus predictions on known objects.
-- Overwrites each label file with the new class=1 boxes that intersect grouped objects (empty if none).
+- Overwrites each label file with the new boxes that intersect grouped objects
+  (empty if none); each box inherits the class id of the seed group it overlaps,
+  preserving the smoke_type encoded by pull_sequence_annotations.py.
 - Uses the pyronear YOLO11s model (onnx by default) downloaded from Hugging Face.
 """
 
@@ -130,26 +132,29 @@ class DownloadProgressBar(tqdm):
         self.update(b * bsize - self.n)
 
 
-def read_file(label_path: Path, default_conf: float = 1.0) -> np.ndarray:
+def read_file(
+    label_path: Path, default_conf: float = 1.0
+) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Read YOLO txt into [x1,y1,x2,y2,conf] array.
+    Read YOLO txt into a [x1,y1,x2,y2,conf] array and a parallel class-id array.
     Supports 'cls cx cy w h' and 'cls cx cy w h conf' (matching write_bboxes_to_label_file).
     """
     if not label_path.exists() or label_path.stat().st_size == 0:
-        return np.zeros((0, 5), dtype=np.float64)
+        return np.zeros((0, 5), dtype=np.float64), np.zeros((0,), dtype=np.int64)
 
     boxes = []
+    classes = []
     for raw in label_path.read_text().splitlines():
         raw = raw.strip()
         if not raw:
             continue
         parts = raw.split()
         if len(parts) == 5:
-            _, cx, cy, w, h = parts
+            cls, cx, cy, w, h = parts
             conf = default_conf
         elif len(parts) == 6:
             # Must match write_bboxes_to_label_file: "cls cx cy w h conf"
-            _, cx, cy, w, h, conf = parts
+            cls, cx, cy, w, h, conf = parts
         else:
             continue
         bbox_xyxy = xywh2xyxy(
@@ -157,26 +162,29 @@ def read_file(label_path: Path, default_conf: float = 1.0) -> np.ndarray:
         )
         x1, y1, x2, y2 = bbox_xyxy.tolist()
         boxes.append([x1, y1, x2, y2, float(conf)])
+        classes.append(int(float(cls)))
 
-    return (
-        np.array(boxes, dtype=np.float64)
-        if boxes
-        else np.zeros((0, 5), dtype=np.float64)
-    )
+    if not boxes:
+        return np.zeros((0, 5), dtype=np.float64), np.zeros((0,), dtype=np.int64)
+    return np.array(boxes, dtype=np.float64), np.array(classes, dtype=np.int64)
 
 
 def group_and_merge_boxes(
-    boxes: np.ndarray, iou_nms: float, threshold: float
-) -> Tuple[np.ndarray, Dict[int, np.ndarray]]:
+    boxes: np.ndarray, classes: np.ndarray, iou_nms: float, threshold: float
+) -> Tuple[np.ndarray, Dict[int, np.ndarray], Dict[int, int]]:
     """
     Cluster boxes into persistent object groups.
+
+    `classes` is the per-box class id aligned with `boxes` rows. Returns the
+    representative boxes, the member boxes per group, and each group's majority
+    class id (ties break toward the lowest id).
     """
     if boxes.size == 0:
-        return np.empty((0, 5), dtype=boxes.dtype), {}
+        return np.empty((0, 5), dtype=boxes.dtype), {}, {}
 
     main_bboxes = nms(boxes.copy(), overlapThresh=iou_nms)
     if len(main_bboxes) == 0:
-        return np.empty((0, 5), dtype=boxes.dtype), {}
+        return np.empty((0, 5), dtype=boxes.dtype), {}, {}
 
     ious = box_iou(boxes[:, :4], main_bboxes[:, :4])
     X, Y = np.where(ious > threshold)
@@ -207,27 +215,38 @@ def group_and_merge_boxes(
 
     final_main = np.stack([main_bboxes[m] for m, _ in merged], axis=0)
     groups = {i: boxes[idxs, :] for i, (_, idxs) in enumerate(merged)}
-    return final_main, groups
+    group_classes = {
+        i: int(np.bincount(classes[idxs]).argmax())
+        for i, (_, idxs) in enumerate(merged)
+    }
+    return final_main, groups, group_classes
 
 
 def write_bboxes_to_label_file(
-    label_file: Path, bbox_list: List[np.ndarray], class_id: int = 1
+    label_file: Path,
+    bbox_list: List[np.ndarray],
+    class_id: int = 1,
+    class_ids_list: List[np.ndarray] | None = None,
 ) -> None:
     """
     Overwrite label file with normalized YOLO lines (cls cx cy w h conf).
     bbox_list entries are arrays (N,5) in xyxy+conf. If empty, file is truncated.
+    class_ids_list optionally gives a per-box class array aligned with each
+    bbox_list entry; boxes without one fall back to class_id.
     """
     lines: List[str] = []
-    for arr in bbox_list:
+    for arr_idx, arr in enumerate(bbox_list):
         if arr.size == 0:
             continue
-        for b in arr:
+        cls_arr = class_ids_list[arr_idx] if class_ids_list is not None else None
+        for box_idx, b in enumerate(arr):
             x1, y1, x2, y2, score = b
             x_c = (x1 + x2) / 2.0
             y_c = (y1 + y2) / 2.0
             w = x2 - x1
             h = y2 - y1
-            lines.append(f"{class_id} {x_c:.6f} {y_c:.6f} {w:.6f} {h:.6f} {score:.6f}")
+            cid = int(cls_arr[box_idx]) if cls_arr is not None else class_id
+            lines.append(f"{cid} {x_c:.6f} {y_c:.6f} {w:.6f} {h:.6f} {score:.6f}")
 
     label_file.parent.mkdir(parents=True, exist_ok=True)
     with label_file.open("w") as f:
@@ -421,13 +440,15 @@ def process_sequence(
 
     # ----- Step 2: aggregate existing labels -----
     all_boxes = np.zeros((0, 5), dtype=np.float64)
+    all_classes = np.zeros((0,), dtype=np.int64)
     per_frame_counts: List[Tuple[str, int]] = []
     for img_path in imgs:
         label_path = lbl_dir / (img_path.stem + ".txt")
-        box = read_file(label_path)
+        box, cls = read_file(label_path)
         per_frame_counts.append((img_path.stem, box.shape[0]))
         if box.shape[0] > 0:
             all_boxes = np.concatenate([all_boxes, box])
+            all_classes = np.concatenate([all_classes, cls])
 
     logging.info(
         "[%s] step 2: aggregated %d existing boxes across %d/%d frames with labels",
@@ -453,8 +474,8 @@ def process_sequence(
         return 0
 
     # ----- Step 3: cluster boxes into persistent groups -----
-    main_bboxes, grouped = group_and_merge_boxes(
-        all_boxes, iou_nms=iou_nms, threshold=iou_assign
+    main_bboxes, grouped, group_classes = group_and_merge_boxes(
+        all_boxes, all_classes, iou_nms=iou_nms, threshold=iou_assign
     )
     logging.info(
         "[%s] step 3: clustered into %d persistent group(s) (iou_nms=%.2f, iou_assign=%.2f)",
@@ -517,11 +538,16 @@ def process_sequence(
         # Step 5: keep only predictions overlapping any persistent group.
         # box_iou(preds, group_boxes) returns shape (M_group, N_preds);
         # max over axis 0 gives the best-IoU per prediction against this group.
+        # Each prediction inherits the class of its best-IoU group so the
+        # seed smoke_type survives the rewrite.
         keep_any = np.zeros(preds.shape[0], dtype=bool)
+        best_iou = np.zeros(preds.shape[0], dtype=np.float64)
+        pred_classes = np.zeros(preds.shape[0], dtype=np.int64)
         if preds.shape[0]:
             for gid, group_boxes in grouped.items():
                 ious = box_iou(preds[:, :4], group_boxes[:, :4])
-                hits = ious.max(0) > 0
+                best = ious.max(0)
+                hits = best > 0
                 if logging.getLogger().isEnabledFor(logging.DEBUG):
                     logging.debug(
                         "[%s] frame %s step 5: group %d → %d/%d preds overlap",
@@ -532,7 +558,13 @@ def process_sequence(
                         preds.shape[0],
                     )
                 keep_any |= hits
+                better = best > best_iou
+                pred_classes[better] = group_classes[gid]
+                best_iou[better] = best[better]
         new_bbox = preds[keep_any, :] if preds.shape[0] else np.zeros((0, 5))
+        new_classes = (
+            pred_classes[keep_any] if preds.shape[0] else np.zeros((0,), dtype=np.int64)
+        )
         total_kept += new_bbox.shape[0]
         logging.debug(
             "[%s] frame %s step 5: %d pred(s) kept after group-overlap filter:\n%s",
@@ -543,7 +575,7 @@ def process_sequence(
         )
 
         # Step 6: overwrite label file with model preds only
-        write_bboxes_to_label_file(label_path, [new_bbox], class_id=1)
+        write_bboxes_to_label_file(label_path, [new_bbox], class_ids_list=[new_classes])
         if new_bbox.shape[0]:
             changed += 1
 
