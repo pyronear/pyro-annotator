@@ -21,12 +21,15 @@ from PIL import Image
 from tqdm import tqdm
 
 
-MODEL_URL_FOLDER = "https://huggingface.co/pyronear/yolo11s_sensitive-detector_v1.0.0/resolve/main/"
+MODEL_REPO = "pyronear/yolo11s_sensitive-detector"
+MODEL_URL_FOLDER = f"https://huggingface.co/{MODEL_REPO}/resolve/main/"
 MODEL_NAME = "ncnn_cpu.tar.gz"
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Auto-annotate sequences with the pyronear YOLO11s classifier.")
+    parser = argparse.ArgumentParser(
+        description="Auto-annotate sequences with the pyronear YOLO11s classifier."
+    )
     parser.add_argument(
         "--data-root",
         type=Path,
@@ -75,7 +78,9 @@ def xywh2xyxy(x: np.ndarray) -> np.ndarray:
     return y
 
 
-def letterbox(im: np.ndarray, new_shape: tuple = (1024, 1024), color: tuple = (114, 114, 114)) -> Tuple[np.ndarray, Tuple[int, int]]:
+def letterbox(
+    im: np.ndarray, new_shape: tuple = (1024, 1024), color: tuple = (114, 114, 114)
+) -> Tuple[np.ndarray, Tuple[int, int]]:
     im = np.array(im)
     shape = im.shape[:2]
     if isinstance(new_shape, int):
@@ -97,7 +102,11 @@ def letterbox(im: np.ndarray, new_shape: tuple = (1024, 1024), color: tuple = (1
 
 def box_iou(box1: np.ndarray, box2: np.ndarray, eps: float = 1e-7) -> np.ndarray:
     (a1, a2), (b1, b2) = np.split(box1, 2, 1), np.split(box2, 2, 1)
-    inter = (np.minimum(a2, b2[:, None, :]) - np.maximum(a1, b1[:, None, :])).clip(0).prod(2)
+    inter = (
+        (np.minimum(a2, b2[:, None, :]) - np.maximum(a1, b1[:, None, :]))
+        .clip(0)
+        .prod(2)
+    )
     return inter / ((a2 - a1).prod(1) + (b2 - b1).prod(1)[:, None] - inter + eps)
 
 
@@ -143,14 +152,22 @@ def read_file(label_path: Path, default_conf: float = 1.0) -> np.ndarray:
             _, cx, cy, w, h, conf = parts
         else:
             continue
-        bbox_xyxy = xywh2xyxy(np.array([float(cx), float(cy), float(w), float(h)], dtype=np.float64))
+        bbox_xyxy = xywh2xyxy(
+            np.array([float(cx), float(cy), float(w), float(h)], dtype=np.float64)
+        )
         x1, y1, x2, y2 = bbox_xyxy.tolist()
         boxes.append([x1, y1, x2, y2, float(conf)])
 
-    return np.array(boxes, dtype=np.float64) if boxes else np.zeros((0, 5), dtype=np.float64)
+    return (
+        np.array(boxes, dtype=np.float64)
+        if boxes
+        else np.zeros((0, 5), dtype=np.float64)
+    )
 
 
-def group_and_merge_boxes(boxes: np.ndarray, iou_nms: float, threshold: float) -> Tuple[np.ndarray, Dict[int, np.ndarray]]:
+def group_and_merge_boxes(
+    boxes: np.ndarray, iou_nms: float, threshold: float
+) -> Tuple[np.ndarray, Dict[int, np.ndarray]]:
     """
     Cluster boxes into persistent object groups.
     """
@@ -193,7 +210,9 @@ def group_and_merge_boxes(boxes: np.ndarray, iou_nms: float, threshold: float) -
     return final_main, groups
 
 
-def write_bboxes_to_label_file(label_file: Path, bbox_list: List[np.ndarray], class_id: int = 1) -> None:
+def write_bboxes_to_label_file(
+    label_file: Path, bbox_list: List[np.ndarray], class_id: int = 1
+) -> None:
     """
     Overwrite label file with normalized YOLO lines (cls cx cy w h conf).
     bbox_list entries are arrays (N,5) in xyxy+conf. If empty, file is truncated.
@@ -244,22 +263,28 @@ class Classifier:
             if format not in {"onnx", "ncnn"}:
                 raise ValueError("Unsupported format: should be 'ncnn' or 'onnx'")
             self.format = format
-            model = MODEL_NAME if format == "ncnn" else MODEL_NAME.replace("ncnn", "onnx")
+            model = (
+                MODEL_NAME if format == "ncnn" else MODEL_NAME.replace("ncnn", "onnx")
+            )
             onnx_file = None
 
-            model_path = os.path.join(model_folder, model)
+            # Cache per model repo so switching MODEL_REPO never reuses stale weights.
+            model_dir = os.path.join(model_folder, MODEL_REPO.rsplit("/", 1)[-1])
+            model_path = os.path.join(model_dir, model)
             model_url = MODEL_URL_FOLDER + model
 
             if not os.path.isfile(model_path):
                 logging.info("Downloading model from %s ...", model_url)
-                os.makedirs(model_folder, exist_ok=True)
-                with DownloadProgressBar(unit="B", unit_scale=True, miniters=1, desc=model_path) as t:
+                os.makedirs(model_dir, exist_ok=True)
+                with DownloadProgressBar(
+                    unit="B", unit_scale=True, miniters=1, desc=model_path
+                ) as t:
                     urlretrieve(model_url, model_path, reporthook=t.update_to)
                 logging.info("Model downloaded!")
 
             if model_path.endswith(".tar.gz"):
                 base_name = os.path.basename(model_path).replace(".tar.gz", "")
-                extract_path = os.path.join(model_folder, base_name)
+                extract_path = os.path.join(model_dir, base_name)
                 if not os.path.isdir(extract_path):
                     os.makedirs(extract_path, exist_ok=True)
                     with tarfile.open(model_path, "r:gz") as tar:
@@ -279,11 +304,15 @@ class Classifier:
             try:
                 import ncnn  # type: ignore
             except ImportError as exc:  # noqa: BLE001
-                raise RuntimeError("ncnn package is required for format='ncnn'") from exc
+                raise RuntimeError(
+                    "ncnn package is required for format='ncnn'"
+                ) from exc
             param_candidates = sorted(Path(model_path).rglob("*.ncnn.param"))
             bin_candidates = sorted(Path(model_path).rglob("*.ncnn.bin"))
             if not param_candidates or not bin_candidates:
-                raise RuntimeError(f"No ncnn .param/.bin files found under {model_path}")
+                raise RuntimeError(
+                    f"No ncnn .param/.bin files found under {model_path}"
+                )
             self.model = ncnn.Net()
             self.model.load_param(str(param_candidates[0]))
             self.model.load_model(str(bin_candidates[0]))
@@ -295,7 +324,9 @@ class Classifier:
             try:
                 self.ort_session = onnxruntime.InferenceSession(onnx_file)
             except Exception as e:  # noqa: BLE001
-                raise RuntimeError(f"Failed to load the ONNX model from {onnx_file}: {e!s}") from e
+                raise RuntimeError(
+                    f"Failed to load the ONNX model from {onnx_file}: {e!s}"
+                ) from e
             logging.info("ONNX model loaded successfully from %s", onnx_file)
 
     def prep_process(self, pil_img: Image.Image) -> Tuple[np.ndarray, Tuple[int, int]]:
@@ -304,7 +335,9 @@ class Classifier:
         if self.format == "ncnn":
             import ncnn  # type: ignore
 
-            np_img = ncnn.Mat.from_pixels(np_img, ncnn.Mat.PixelType.PIXEL_BGR, np_img.shape[1], np_img.shape[0])
+            np_img = ncnn.Mat.from_pixels(
+                np_img, ncnn.Mat.PixelType.PIXEL_BGR, np_img.shape[1], np_img.shape[0]
+            )
             mean = [0, 0, 0]
             std = [1 / 255, 1 / 255, 1 / 255]
             np_img.substract_mean_normalize(mean=mean, norm=std)
@@ -354,6 +387,7 @@ class Classifier:
 
         return self.post_process(pred, pad)
 
+
 def _format_boxes(boxes: np.ndarray, max_rows: int = 20) -> str:
     """Compact pretty-printer for an (N, 5) xyxy+conf array used in debug logs."""
     if boxes.size == 0:
@@ -361,13 +395,17 @@ def _format_boxes(boxes: np.ndarray, max_rows: int = 20) -> str:
     lines = []
     for i, b in enumerate(boxes[:max_rows]):
         x1, y1, x2, y2, c = b.tolist()
-        lines.append(f"  [{i:02d}] x1={x1:.4f} y1={y1:.4f} x2={x2:.4f} y2={y2:.4f} conf={c:.4f}")
+        lines.append(
+            f"  [{i:02d}] x1={x1:.4f} y1={y1:.4f} x2={x2:.4f} y2={y2:.4f} conf={c:.4f}"
+        )
     if boxes.shape[0] > max_rows:
         lines.append(f"  ... ({boxes.shape[0] - max_rows} more)")
     return "\n".join(lines)
 
 
-def process_sequence(seq_dir: Path, model: Classifier, conf_th: float, iou_nms: float, iou_assign: float) -> int:
+def process_sequence(
+    seq_dir: Path, model: Classifier, conf_th: float, iou_nms: float, iou_assign: float
+) -> int:
     img_dir = seq_dir / "images"
     lbl_dir = seq_dir / "labels"
     if not img_dir.exists():
@@ -401,25 +439,44 @@ def process_sequence(seq_dir: Path, model: Classifier, conf_th: float, iou_nms: 
     if logging.getLogger().isEnabledFor(logging.DEBUG):
         for stem, n in per_frame_counts:
             logging.debug("[%s]   frame %s: %d existing box(es)", seq_dir.name, stem, n)
-        logging.debug("[%s] step 2: all_boxes (xyxy+conf, normalized):\n%s",
-                      seq_dir.name, _format_boxes(all_boxes))
+        logging.debug(
+            "[%s] step 2: all_boxes (xyxy+conf, normalized):\n%s",
+            seq_dir.name,
+            _format_boxes(all_boxes),
+        )
 
     if all_boxes.shape[0] == 0:
-        logging.info("[%s] no seed labels — skipping (auto-annotate only enriches existing labels)", seq_dir.name)
+        logging.info(
+            "[%s] no seed labels — skipping (auto-annotate only enriches existing labels)",
+            seq_dir.name,
+        )
         return 0
 
     # ----- Step 3: cluster boxes into persistent groups -----
-    main_bboxes, grouped = group_and_merge_boxes(all_boxes, iou_nms=iou_nms, threshold=iou_assign)
+    main_bboxes, grouped = group_and_merge_boxes(
+        all_boxes, iou_nms=iou_nms, threshold=iou_assign
+    )
     logging.info(
         "[%s] step 3: clustered into %d persistent group(s) (iou_nms=%.2f, iou_assign=%.2f)",
-        seq_dir.name, len(grouped), iou_nms, iou_assign,
+        seq_dir.name,
+        len(grouped),
+        iou_nms,
+        iou_assign,
     )
     if logging.getLogger().isEnabledFor(logging.DEBUG):
-        logging.debug("[%s] step 3: main representative boxes:\n%s",
-                      seq_dir.name, _format_boxes(main_bboxes))
+        logging.debug(
+            "[%s] step 3: main representative boxes:\n%s",
+            seq_dir.name,
+            _format_boxes(main_bboxes),
+        )
         for gid, gboxes in grouped.items():
-            logging.debug("[%s] step 3: group %d (%d boxes):\n%s",
-                          seq_dir.name, gid, gboxes.shape[0], _format_boxes(gboxes))
+            logging.debug(
+                "[%s] step 3: group %d (%d boxes):\n%s",
+                seq_dir.name,
+                gid,
+                gboxes.shape[0],
+                _format_boxes(gboxes),
+            )
 
     # ----- Steps 4-6: per-frame inference, filter by group overlap, write -----
     # Strategy: drop the seed labels and write only the model's predictions that
@@ -439,13 +496,22 @@ def process_sequence(seq_dir: Path, model: Classifier, conf_th: float, iou_nms: 
         total_raw += preds_raw.shape[0]
         logging.debug(
             "[%s] frame %s step 4: model returned %d prediction(s) (after internal NMS / max-size filter):\n%s",
-            seq_dir.name, img_path.stem, preds_raw.shape[0], _format_boxes(preds_raw),
+            seq_dir.name,
+            img_path.stem,
+            preds_raw.shape[0],
+            _format_boxes(preds_raw),
         )
-        preds = preds_raw[preds_raw[:, 4] >= conf_th] if preds_raw.shape[0] else preds_raw
+        preds = (
+            preds_raw[preds_raw[:, 4] >= conf_th] if preds_raw.shape[0] else preds_raw
+        )
         total_after_conf += preds.shape[0]
         logging.debug(
             "[%s] frame %s step 4b: %d pred(s) survive conf>=%.3f:\n%s",
-            seq_dir.name, img_path.stem, preds.shape[0], conf_th, _format_boxes(preds),
+            seq_dir.name,
+            img_path.stem,
+            preds.shape[0],
+            conf_th,
+            _format_boxes(preds),
         )
 
         # Step 5: keep only predictions overlapping any persistent group.
@@ -459,14 +525,21 @@ def process_sequence(seq_dir: Path, model: Classifier, conf_th: float, iou_nms: 
                 if logging.getLogger().isEnabledFor(logging.DEBUG):
                     logging.debug(
                         "[%s] frame %s step 5: group %d → %d/%d preds overlap",
-                        seq_dir.name, img_path.stem, gid, int(hits.sum()), preds.shape[0],
+                        seq_dir.name,
+                        img_path.stem,
+                        gid,
+                        int(hits.sum()),
+                        preds.shape[0],
                     )
                 keep_any |= hits
         new_bbox = preds[keep_any, :] if preds.shape[0] else np.zeros((0, 5))
         total_kept += new_bbox.shape[0]
         logging.debug(
             "[%s] frame %s step 5: %d pred(s) kept after group-overlap filter:\n%s",
-            seq_dir.name, img_path.stem, new_bbox.shape[0], _format_boxes(new_bbox),
+            seq_dir.name,
+            img_path.stem,
+            new_bbox.shape[0],
+            _format_boxes(new_bbox),
         )
 
         # Step 6: overwrite label file with model preds only
@@ -476,23 +549,35 @@ def process_sequence(seq_dir: Path, model: Classifier, conf_th: float, iou_nms: 
 
     logging.info(
         "[%s] === DONE === %d frame(s) updated | raw_preds=%d  after_conf>=%.3f=%d  kept_after_groups=%d",
-        seq_dir.name, changed, total_raw, conf_th, total_after_conf, total_kept,
+        seq_dir.name,
+        changed,
+        total_raw,
+        conf_th,
+        total_after_conf,
+        total_kept,
     )
     return changed
 
 
 def main() -> None:
     args = parse_args()
-    logging.basicConfig(level=args.loglevel.upper(), format="%(levelname)s - %(message)s")
+    logging.basicConfig(
+        level=args.loglevel.upper(), format="%(levelname)s - %(message)s"
+    )
 
-    seq_dirs = sorted([p for p in args.data_root.glob("seq_*") if (p / "images").exists()], key=lambda p: p.name)
+    seq_dirs = sorted(
+        [p for p in args.data_root.glob("seq_*") if (p / "images").exists()],
+        key=lambda p: p.name,
+    )
     logging.info("Found %s sequences under %s", len(seq_dirs), args.data_root)
 
     model = Classifier(conf=args.conf_th, format=args.model_format)
     total_changed = 0
 
     for seq_dir in tqdm(seq_dirs, desc="Auto-annotating"):
-        total_changed += process_sequence(seq_dir, model, args.conf_th, args.iou_nms, args.iou_assign)
+        total_changed += process_sequence(
+            seq_dir, model, args.conf_th, args.iou_nms, args.iou_assign
+        )
 
     logging.info("Done. Frames updated: %s", total_changed)
 
