@@ -185,7 +185,8 @@ export const validateDetectionAnnotation = (annotation: DetectionAnnotation): Va
       }
 
       const validSmokeTypes = ['wildfire', 'industrial', 'other'];
-      if (!validSmokeTypes.includes(item.smoke_type)) {
+      // false-positive items carry false_positive_type instead of smoke_type
+      if (!item.false_positive_type && !validSmokeTypes.includes(item.smoke_type ?? '')) {
         errors.push(`Annotation item ${index} has invalid smoke type: ${item.smoke_type}`);
       }
     });
