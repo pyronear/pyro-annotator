@@ -70,3 +70,5 @@ allow-direct-references = true
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+# make the scripts/ namespace package importable from tests
+pythonpath = ["."]
