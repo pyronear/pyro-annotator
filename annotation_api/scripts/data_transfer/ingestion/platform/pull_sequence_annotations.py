@@ -37,11 +37,9 @@ from dotenv import load_dotenv
 from app.clients import annotation_api
 
 from . import client as platform_client
+from .label_classes import CLASS_ID, fp_class_name, smoke_class_name
 
 load_dotenv()
-
-SMOKE_CLASSES = ["wildfire", "industrial", "other"]
-CLASS_ID = {name: idx for idx, name in enumerate(SMOKE_CLASSES)}
 
 # Stages that mean a sibling sequence still awaits sequence-level annotation.
 UNLABELED_STAGES = {"imported", "ready_to_annotate", "under_annotation"}
@@ -167,6 +165,32 @@ def write_labels(label_path: Path, boxes: List[Tuple[str, List[float]]]) -> None
         yolo = to_yolo(bbox)
         lines.append(f"{cid} " + " ".join(f"{v:.6f}" for v in yolo))
     label_path.write_text("\n".join(lines) + ("\n" if lines else ""))
+
+
+def collect_annotation_bboxes(annotation: Dict) -> Dict[int, List[Dict]]:
+    """Collect every annotated object's boxes, keyed by detection_id.
+
+    Each frame gets a list so that distinct objects sharing a frame are all
+    exported (#140). Smoke objects keep their annotated smoke type;
+    false-positive objects (is_smoke=False) are exported under their
+    ``fp_<type>`` class instead of being coerced into a smoke label (#141).
+    """
+    bboxes: Dict[int, List[Dict]] = defaultdict(list)
+    for sb in annotation.get("sequences_bbox", []):
+        if sb.get("is_smoke"):
+            class_names = [smoke_class_name(sb.get("smoke_type"))]
+        else:
+            # one label per assigned FP type so no classification is lost
+            fp_types = sb.get("false_positive_types") or [None]
+            class_names = list(dict.fromkeys(fp_class_name(t) for t in fp_types))
+        for bbox in sb.get("bboxes", []):
+            det_key = bbox.get("detection_id")
+            if det_key is not None and bbox.get("xyxyn"):
+                bboxes[det_key].extend(
+                    {"xyxyn": bbox["xyxyn"], "class_name": class_name}
+                    for class_name in class_names
+                )
+    return bboxes
 
 
 def decode_platform_id(alert_api_id: Optional[int], base: int) -> Optional[int]:
@@ -518,16 +542,7 @@ def main() -> None:
         frames: Dict[datetime, Dict] = {}
         boxes: Dict[str, List[Tuple[str, List[float]]]] = defaultdict(list)
         for seq, ann, detections in members:
-            ann_bboxes = {}
-            for sb in ann.get("annotation", {}).get("sequences_bbox", []):
-                class_name = sb.get("smoke_type", "wildfire")
-                for bbox in sb.get("bboxes", []):
-                    det_key = bbox.get("detection_id")
-                    if det_key is not None:
-                        ann_bboxes[det_key] = {
-                            "xyxyn": bbox.get("xyxyn", []),
-                            "class_name": class_name,
-                        }
+            ann_bboxes = collect_annotation_bboxes(ann.get("annotation", {}))
             for det in detections:
                 det_id = det["id"]
                 frame = frames.setdefault(
@@ -541,11 +556,11 @@ def main() -> None:
                 )
                 frame["detections"][seq["id"]] = det_id
                 # Match by annotation detection_id (primary) then fall back to alert_api_id if present.
-                bbox = ann_bboxes.get(det_id) or ann_bboxes.get(det.get("alert_api_id"))
-                if bbox and bbox.get("xyxyn"):
-                    boxes[frame["filename"]].append(
-                        (bbox.get("class_name", "wildfire"), bbox["xyxyn"])
-                    )
+                frame_bboxes = ann_bboxes.get(det_id, [])
+                if not frame_bboxes and det.get("alert_api_id") is not None:
+                    frame_bboxes = ann_bboxes.get(det["alert_api_id"], [])
+                for bbox in frame_bboxes:
+                    boxes[frame["filename"]].append((bbox["class_name"], bbox["xyxyn"]))
 
         manifest_frames: Dict[str, Dict] = {}
         for key in sorted(frames):

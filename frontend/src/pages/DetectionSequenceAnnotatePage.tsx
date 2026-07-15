@@ -381,10 +381,16 @@ export default function DetectionSequenceAnnotatePage() {
           smoke_type: rect.smokeType,
         }));
 
+        // Preserve false-positive items: they are not editable rectangles
+        // (filtered out of the modal) and must survive a smoke-box edit
+        const falsePositiveItems = (existingAnnotation.annotation?.annotation ?? []).filter(
+          item => item.false_positive_type != null
+        );
+
         // Update existing annotation with proper annotation data and 'annotated' stage
         const payload = {
           annotation: {
-            annotation: annotationItems,
+            annotation: [...annotationItems, ...falsePositiveItems],
           },
           processing_stage: 'annotated' as const,
         };

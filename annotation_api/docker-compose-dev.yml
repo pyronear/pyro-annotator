@@ -72,6 +72,7 @@ services:
       - ./src/alembic.ini:/app/alembic.ini
       - ./src/migrations:/app/migrations
       - ./src/tests:/app/tests
+      - ./scripts:/app/scripts
     command: "sh -c 'alembic upgrade head && uvicorn app.main:app --reload --host 0.0.0.0 --port 5050 --proxy-headers'"
     restart: always
     healthcheck:

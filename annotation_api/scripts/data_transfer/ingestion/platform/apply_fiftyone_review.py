@@ -33,6 +33,8 @@ from dotenv import load_dotenv
 
 from app.clients import annotation_api
 
+from .label_classes import class_id_to_name, fp_type_from_class_name, is_fp_class_id
+
 load_dotenv()
 
 
@@ -357,9 +359,6 @@ def delete_detection_annotations_for_sequence(
     return len(ann_ids)
 
 
-SMOKE_CLASSES = ["wildfire", "industrial", "other"]
-
-
 def load_yolo_annotation(
     labels_root: Path, alert_id: int, det_id: int
 ) -> Optional[List[Dict]]:
@@ -396,18 +395,30 @@ def load_yolo_label_file(lbl_path: Path) -> Optional[List[Dict]]:
                 y2 = cy + h / 2.0
                 # clip to [0,1]
                 xyxyn = [max(0.0, min(1.0, v)) for v in (x1, y1, x2, y2)]
-                smoke_type = (
-                    SMOKE_CLASSES[cls_id]
-                    if 0 <= cls_id < len(SMOKE_CLASSES)
-                    else "other"
-                )
-                items.append(
-                    {
-                        "xyxyn": xyxyn,
-                        "class_name": smoke_type,
-                        "smoke_type": smoke_type,
-                    }
-                )
+                class_name = class_id_to_name(cls_id)
+                if class_name is None:
+                    # unknown ids keep the legacy fallback to the "other" smoke type
+                    items.append(
+                        {"xyxyn": xyxyn, "class_name": "other", "smoke_type": "other"}
+                    )
+                elif is_fp_class_id(cls_id):
+                    # FP boxes are kept on the detection for traceability,
+                    # flagged with their false_positive_type (never as smoke)
+                    items.append(
+                        {
+                            "xyxyn": xyxyn,
+                            "class_name": class_name,
+                            "false_positive_type": fp_type_from_class_name(class_name),
+                        }
+                    )
+                else:
+                    items.append(
+                        {
+                            "xyxyn": xyxyn,
+                            "class_name": class_name,
+                            "smoke_type": class_name,
+                        }
+                    )
     except Exception as exc:  # noqa: BLE001
         logging.error("Failed to read label file %s: %s", lbl_path, exc)
         return None

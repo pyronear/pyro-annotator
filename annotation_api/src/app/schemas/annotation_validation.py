@@ -5,7 +5,7 @@
 
 from typing import List, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.models import FalsePositiveType, SmokeType
 
@@ -109,9 +109,21 @@ class AlgoPredictions(BaseModel):
 
 
 class DetectionAnnotationItem(BaseModel):
+    """One reviewed box on a detection: either a smoke box (smoke_type set)
+    or a false-positive box kept for traceability (false_positive_type set)."""
+
     xyxyn: List[float] = Field(..., min_length=4, max_length=4)
     class_name: str
-    smoke_type: SmokeType
+    smoke_type: Optional[SmokeType] = Field(default=None)
+    false_positive_type: Optional[FalsePositiveType] = Field(default=None)
+
+    @model_validator(mode="after")
+    def validate_exactly_one_type(self) -> "DetectionAnnotationItem":
+        if (self.smoke_type is None) == (self.false_positive_type is None):
+            raise ValueError(
+                "Exactly one of smoke_type or false_positive_type must be set"
+            )
+        return self
 
     @field_validator("xyxyn")
     @classmethod

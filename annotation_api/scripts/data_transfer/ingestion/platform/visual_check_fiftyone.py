@@ -1,6 +1,9 @@
 """
 Load exported sequences (images + YOLO labels) into FiftyOne for visual review.
 
+Smoke boxes and false-positive boxes (fp_* classes) are shown in two separate
+label fields ("smoke" and "false_positive") so reviewers can tell them apart.
+
 Defaults to reading from outputs/seq_annotation_done/seq_*/{images,labels}.
 Only deletes an existing dataset with the same name (safe by default).
 """
@@ -12,12 +15,13 @@ from typing import List, Tuple
 import fiftyone as fo
 from PIL import Image
 
-
-SMOKE_CLASSES = ["wildfire", "industrial", "other"]
+from .label_classes import class_id_to_name, is_fp_class_id
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Open exported sequences in FiftyOne for visual check.")
+    parser = argparse.ArgumentParser(
+        description="Open exported sequences in FiftyOne for visual check."
+    )
     parser.add_argument(
         "--data-root",
         type=Path,
@@ -46,7 +50,9 @@ def ensure_black_image(path: Path) -> Path:
     return path
 
 
-def yolo_line_to_bbox(parts: List[str]) -> Tuple[int, float, float, float, float, float]:
+def yolo_line_to_bbox(
+    parts: List[str],
+) -> Tuple[int, float, float, float, float, float]:
     """
     Parse YOLO line: cls cx cy w h [conf]
     Returns (cls_id, x, y, w, h, conf)
@@ -61,7 +67,8 @@ def yolo_line_to_bbox(parts: List[str]) -> Tuple[int, float, float, float, float
 
 def build_sample(img_path: Path, label_path: Path, conf_th: float) -> fo.Sample:
     sample = fo.Sample(filepath=str(img_path))
-    detections = []
+    smoke_detections = []
+    fp_detections = []
 
     if label_path.exists() and label_path.stat().st_size > 0:
         with label_path.open() as f:
@@ -75,17 +82,21 @@ def build_sample(img_path: Path, label_path: Path, conf_th: float) -> fo.Sample:
                 cls_id, x, y, w, h, conf = yolo_line_to_bbox(parts)
                 if conf < conf_th:
                     continue
-                label = SMOKE_CLASSES[cls_id] if cls_id < len(SMOKE_CLASSES) else str(cls_id)
-                detections.append(
-                    fo.Detection(
-                        label=label,
-                        bounding_box=[x, y, w, h],
-                        confidence=conf,
-                    )
+                label = class_id_to_name(cls_id) or str(cls_id)
+                detection = fo.Detection(
+                    label=label,
+                    bounding_box=[x, y, w, h],
+                    confidence=conf,
                 )
+                if is_fp_class_id(cls_id):
+                    fp_detections.append(detection)
+                else:
+                    smoke_detections.append(detection)
 
-    if detections:
-        sample["detections"] = fo.Detections(detections=detections)
+    if smoke_detections:
+        sample["smoke"] = fo.Detections(detections=smoke_detections)
+    if fp_detections:
+        sample["false_positive"] = fo.Detections(detections=fp_detections)
     return sample
 
 
@@ -96,7 +107,10 @@ def main() -> None:
     if args.dataset_name in fo.list_datasets():
         fo.delete_dataset(args.dataset_name)
 
-    seq_image_dirs = sorted((p for p in args.data_root.glob("seq_*") if (p / "images").exists()), key=lambda p: p.name)
+    seq_image_dirs = sorted(
+        (p for p in args.data_root.glob("seq_*") if (p / "images").exists()),
+        key=lambda p: p.name,
+    )
     samples: List[fo.Sample] = []
 
     for seq_dir in seq_image_dirs:

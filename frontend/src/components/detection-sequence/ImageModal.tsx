@@ -201,13 +201,14 @@ export function ImageModal({
 
     // Always update rectangles based on annotation (even if detection didn't change)
     if (existingAnnotation?.annotation?.annotation) {
-      const existingRects: DrawnRectangle[] = existingAnnotation.annotation.annotation.map(
-        (item, index) => ({
+      // false-positive items (no smoke_type) are not editable smoke rectangles
+      const existingRects: DrawnRectangle[] = existingAnnotation.annotation.annotation
+        .filter(item => item.smoke_type != null)
+        .map((item, index) => ({
           id: `existing-${index}`,
           xyxyn: item.xyxyn,
-          smokeType: item.smoke_type,
-        })
-      );
+          smokeType: item.smoke_type as SmokeType,
+        }));
       setDrawnRectangles(existingRects);
     } else {
       setDrawnRectangles([]);

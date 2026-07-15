@@ -133,8 +133,9 @@ export function UserAnnotationOverlay({
     <>
       {detectionAnnotation.annotation.annotation
         .map((annotationBbox, index) => {
-          // Validate bounding box before rendering
-          if (!validateBoundingBox(annotationBbox.xyxyn)) {
+          // Validate bounding box before rendering; false-positive items
+          // (no smoke_type) are not part of the smoke overlay
+          if (!validateBoundingBox(annotationBbox.xyxyn) || !annotationBbox.smoke_type) {
             return null;
           }
 

@@ -1,9 +1,12 @@
 """
-Auto-annotate exported sequences by running the YOLO11s (pyronear) classifier and replacing label files with predictions.
+Auto-annotate exported sequences by running the YOLO11s (pyronear) classifier and replacing smoke label boxes with predictions.
 
-- Works on YOLO-style labels in each sequence directory.
-- Groups existing boxes to focus predictions on known objects.
-- Overwrites each label file with the new class=1 boxes that intersect grouped objects (empty if none).
+- Works on YOLO-style labels in each sequence directory (class ids from label_classes.py).
+- Groups existing smoke boxes to focus predictions on known objects; each kept
+  prediction inherits the smoke class of the group it overlaps.
+- False-positive boxes (fp_* classes) are never replaced: they are written back
+  unchanged and never validate a model prediction.
+- Overwrites each label file with kept predictions + untouched FP boxes (empty if none).
 - Uses the pyronear YOLO11s model (onnx by default) downloaded from Hugging Face.
 """
 
@@ -19,6 +22,8 @@ import cv2
 import numpy as np
 from PIL import Image
 from tqdm import tqdm
+
+from .label_classes import FP_CLASS_ID_START
 
 
 MODEL_REPO = "pyronear/yolo11s_sensitive-detector"
@@ -132,11 +137,12 @@ class DownloadProgressBar(tqdm):
 
 def read_file(label_path: Path, default_conf: float = 1.0) -> np.ndarray:
     """
-    Read YOLO txt into [x1,y1,x2,y2,conf] array.
+    Read YOLO txt into [x1,y1,x2,y2,cls,conf] array.
     Supports 'cls cx cy w h' and 'cls cx cy w h conf' (matching write_bboxes_to_label_file).
+    The confidence stays in the last column so nms() keeps sorting by it.
     """
     if not label_path.exists() or label_path.stat().st_size == 0:
-        return np.zeros((0, 5), dtype=np.float64)
+        return np.zeros((0, 6), dtype=np.float64)
 
     boxes = []
     for raw in label_path.read_text().splitlines():
@@ -145,23 +151,23 @@ def read_file(label_path: Path, default_conf: float = 1.0) -> np.ndarray:
             continue
         parts = raw.split()
         if len(parts) == 5:
-            _, cx, cy, w, h = parts
             conf = default_conf
         elif len(parts) == 6:
             # Must match write_bboxes_to_label_file: "cls cx cy w h conf"
-            _, cx, cy, w, h, conf = parts
+            conf = float(parts[5])
         else:
             continue
+        cls, cx, cy, w, h = parts[:5]
         bbox_xyxy = xywh2xyxy(
             np.array([float(cx), float(cy), float(w), float(h)], dtype=np.float64)
         )
         x1, y1, x2, y2 = bbox_xyxy.tolist()
-        boxes.append([x1, y1, x2, y2, float(conf)])
+        boxes.append([x1, y1, x2, y2, float(int(cls)), conf])
 
     return (
         np.array(boxes, dtype=np.float64)
         if boxes
-        else np.zeros((0, 5), dtype=np.float64)
+        else np.zeros((0, 6), dtype=np.float64)
     )
 
 
@@ -172,11 +178,11 @@ def group_and_merge_boxes(
     Cluster boxes into persistent object groups.
     """
     if boxes.size == 0:
-        return np.empty((0, 5), dtype=boxes.dtype), {}
+        return np.empty((0, boxes.shape[1]), dtype=boxes.dtype), {}
 
     main_bboxes = nms(boxes.copy(), overlapThresh=iou_nms)
     if len(main_bboxes) == 0:
-        return np.empty((0, 5), dtype=boxes.dtype), {}
+        return np.empty((0, boxes.shape[1]), dtype=boxes.dtype), {}
 
     ious = box_iou(boxes[:, :4], main_bboxes[:, :4])
     X, Y = np.where(ious > threshold)
@@ -210,24 +216,24 @@ def group_and_merge_boxes(
     return final_main, groups
 
 
-def write_bboxes_to_label_file(
-    label_file: Path, bbox_list: List[np.ndarray], class_id: int = 1
-) -> None:
+def write_bboxes_to_label_file(label_file: Path, bbox_list: List[np.ndarray]) -> None:
     """
     Overwrite label file with normalized YOLO lines (cls cx cy w h conf).
-    bbox_list entries are arrays (N,5) in xyxy+conf. If empty, file is truncated.
+    bbox_list entries are arrays (N,6) in xyxy+cls+conf. If empty, file is truncated.
     """
     lines: List[str] = []
     for arr in bbox_list:
         if arr.size == 0:
             continue
         for b in arr:
-            x1, y1, x2, y2, score = b
+            x1, y1, x2, y2, class_id, score = b
             x_c = (x1 + x2) / 2.0
             y_c = (y1 + y2) / 2.0
             w = x2 - x1
             h = y2 - y1
-            lines.append(f"{class_id} {x_c:.6f} {y_c:.6f} {w:.6f} {h:.6f} {score:.6f}")
+            lines.append(
+                f"{int(class_id)} {x_c:.6f} {y_c:.6f} {w:.6f} {h:.6f} {score:.6f}"
+            )
 
     label_file.parent.mkdir(parents=True, exist_ok=True)
     with label_file.open("w") as f:
@@ -389,18 +395,26 @@ class Classifier:
 
 
 def _format_boxes(boxes: np.ndarray, max_rows: int = 20) -> str:
-    """Compact pretty-printer for an (N, 5) xyxy+conf array used in debug logs."""
+    """Compact pretty-printer for (N, 5) xyxy+conf / (N, 6) xyxy+cls+conf debug logs."""
     if boxes.size == 0:
         return "  <none>"
     lines = []
     for i, b in enumerate(boxes[:max_rows]):
-        x1, y1, x2, y2, c = b.tolist()
+        vals = b.tolist()
+        x1, y1, x2, y2 = vals[:4]
+        cls_part = f" cls={int(vals[4])}" if len(vals) >= 6 else ""
         lines.append(
-            f"  [{i:02d}] x1={x1:.4f} y1={y1:.4f} x2={x2:.4f} y2={y2:.4f} conf={c:.4f}"
+            f"  [{i:02d}] x1={x1:.4f} y1={y1:.4f} x2={x2:.4f} y2={y2:.4f}{cls_part} conf={vals[-1]:.4f}"
         )
     if boxes.shape[0] > max_rows:
         lines.append(f"  ... ({boxes.shape[0] - max_rows} more)")
     return "\n".join(lines)
+
+
+def majority_class(class_values: np.ndarray) -> int:
+    """Most frequent class id in a group's seed boxes (smallest id on ties)."""
+    ids, counts = np.unique(class_values.astype(int), return_counts=True)
+    return int(ids[counts == counts.max()].min())
 
 
 def process_sequence(
@@ -420,19 +434,26 @@ def process_sequence(
     logging.info("[%s] === START === %d frames", seq_dir.name, len(imgs))
 
     # ----- Step 2: aggregate existing labels -----
-    all_boxes = np.zeros((0, 5), dtype=np.float64)
+    # Smoke boxes seed the persistent groups; FP boxes (fp_* classes) are kept
+    # aside per frame and passed through unchanged.
+    smoke_boxes = np.zeros((0, 6), dtype=np.float64)
+    fp_per_frame: Dict[str, np.ndarray] = {}
     per_frame_counts: List[Tuple[str, int]] = []
     for img_path in imgs:
         label_path = lbl_dir / (img_path.stem + ".txt")
         box = read_file(label_path)
         per_frame_counts.append((img_path.stem, box.shape[0]))
         if box.shape[0] > 0:
-            all_boxes = np.concatenate([all_boxes, box])
+            is_fp = box[:, 4] >= FP_CLASS_ID_START
+            fp_per_frame[img_path.stem] = box[is_fp]
+            smoke_boxes = np.concatenate([smoke_boxes, box[~is_fp]])
 
+    total_fp = sum(arr.shape[0] for arr in fp_per_frame.values())
     logging.info(
-        "[%s] step 2: aggregated %d existing boxes across %d/%d frames with labels",
+        "[%s] step 2: aggregated %d smoke boxes (+%d FP boxes kept as-is) across %d/%d frames with labels",
         seq_dir.name,
-        all_boxes.shape[0],
+        smoke_boxes.shape[0],
+        total_fp,
         sum(1 for _, n in per_frame_counts if n > 0),
         len(imgs),
     )
@@ -440,22 +461,23 @@ def process_sequence(
         for stem, n in per_frame_counts:
             logging.debug("[%s]   frame %s: %d existing box(es)", seq_dir.name, stem, n)
         logging.debug(
-            "[%s] step 2: all_boxes (xyxy+conf, normalized):\n%s",
+            "[%s] step 2: smoke_boxes (xyxy+cls+conf, normalized):\n%s",
             seq_dir.name,
-            _format_boxes(all_boxes),
+            _format_boxes(smoke_boxes),
         )
 
-    if all_boxes.shape[0] == 0:
+    if smoke_boxes.shape[0] == 0:
         logging.info(
-            "[%s] no seed labels — skipping (auto-annotate only enriches existing labels)",
+            "[%s] no smoke seed labels — skipping (auto-annotate only enriches smoke labels)",
             seq_dir.name,
         )
         return 0
 
-    # ----- Step 3: cluster boxes into persistent groups -----
+    # ----- Step 3: cluster smoke boxes into persistent groups -----
     main_bboxes, grouped = group_and_merge_boxes(
-        all_boxes, iou_nms=iou_nms, threshold=iou_assign
+        smoke_boxes, iou_nms=iou_nms, threshold=iou_assign
     )
+    group_class = {gid: majority_class(gboxes[:, 4]) for gid, gboxes in grouped.items()}
     logging.info(
         "[%s] step 3: clustered into %d persistent group(s) (iou_nms=%.2f, iou_assign=%.2f)",
         seq_dir.name,
@@ -479,9 +501,12 @@ def process_sequence(
             )
 
     # ----- Steps 4-6: per-frame inference, filter by group overlap, write -----
-    # Strategy: drop the seed labels and write only the model's predictions that
-    # overlap at least one persistent group. The seed labels are used solely to
-    # localize the smoke region (via the clusters built in step 3).
+    # Strategy: drop the smoke seed labels and write only the model's predictions
+    # that overlap at least one persistent group; each kept prediction inherits
+    # the class of its best-overlapping group. The smoke seeds are used solely to
+    # localize the objects (via the clusters built in step 3). FP boxes never
+    # form groups (a prediction overlapping only an FP zone is dropped) and are
+    # re-written untouched.
     changed = 0
     total_raw = 0
     total_after_conf = 0
@@ -514,25 +539,34 @@ def process_sequence(
             _format_boxes(preds),
         )
 
-        # Step 5: keep only predictions overlapping any persistent group.
+        # Step 5: keep only predictions overlapping any persistent smoke group,
+        # assigning each one the class of its best-overlapping group.
         # box_iou(preds, group_boxes) returns shape (M_group, N_preds);
         # max over axis 0 gives the best-IoU per prediction against this group.
-        keep_any = np.zeros(preds.shape[0], dtype=bool)
+        best_iou = np.zeros(preds.shape[0], dtype=np.float64)
+        pred_class = np.zeros(preds.shape[0], dtype=np.float64)
         if preds.shape[0]:
             for gid, group_boxes in grouped.items():
-                ious = box_iou(preds[:, :4], group_boxes[:, :4])
-                hits = ious.max(0) > 0
+                ious = box_iou(preds[:, :4], group_boxes[:, :4]).max(0)
                 if logging.getLogger().isEnabledFor(logging.DEBUG):
                     logging.debug(
                         "[%s] frame %s step 5: group %d → %d/%d preds overlap",
                         seq_dir.name,
                         img_path.stem,
                         gid,
-                        int(hits.sum()),
+                        int((ious > 0).sum()),
                         preds.shape[0],
                     )
-                keep_any |= hits
-        new_bbox = preds[keep_any, :] if preds.shape[0] else np.zeros((0, 5))
+                better = ious > best_iou
+                pred_class[better] = group_class[gid]
+                best_iou = np.maximum(best_iou, ious)
+        keep_any = best_iou > 0
+        if preds.shape[0]:
+            new_bbox = np.column_stack(
+                [preds[keep_any, :4], pred_class[keep_any], preds[keep_any, 4]]
+            )
+        else:
+            new_bbox = np.zeros((0, 6))
         total_kept += new_bbox.shape[0]
         logging.debug(
             "[%s] frame %s step 5: %d pred(s) kept after group-overlap filter:\n%s",
@@ -542,8 +576,9 @@ def process_sequence(
             _format_boxes(new_bbox),
         )
 
-        # Step 6: overwrite label file with model preds only
-        write_bboxes_to_label_file(label_path, [new_bbox], class_id=1)
+        # Step 6: overwrite label file with kept model preds + untouched FP boxes
+        fp_rows = fp_per_frame.get(img_path.stem, np.zeros((0, 6)))
+        write_bboxes_to_label_file(label_path, [new_bbox, fp_rows])
         if new_bbox.shape[0]:
             changed += 1
 
