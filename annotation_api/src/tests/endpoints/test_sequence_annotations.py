@@ -1733,6 +1733,96 @@ async def test_true_positive_sequence_pre_populated_detection_annotations(
 
 
 @pytest.mark.asyncio
+async def test_true_positive_sequence_keeps_per_object_smoke_types(
+    authenticated_client: AsyncClient, sequence_session
+):
+    """Regression test: a sequence with objects of different smoke types must
+    propagate each object's own type to the pre-populated detection boxes
+    instead of stamping smoke_types[0] on every box."""
+
+    algo_predictions = {
+        "predictions": [
+            {"xyxyn": [0.1, 0.2, 0.4, 0.6], "confidence": 0.92, "class_name": "smoke"},
+            {"xyxyn": [0.5, 0.3, 0.8, 0.7], "confidence": 0.85, "class_name": "smoke"},
+        ]
+    }
+
+    detection_payload = {
+        "sequence_id": "1",
+        "alert_api_id": "3002",
+        "recorded_at": "2024-01-15T10:25:00",
+        "algo_predictions": json.dumps(algo_predictions),
+    }
+
+    import io
+
+    img = Image.new("RGB", (100, 100), color="orange")
+    img_bytes = io.BytesIO()
+    img.save(img_bytes, format="JPEG")
+    img_bytes.seek(0)
+
+    files = {"file": ("test.jpg", img_bytes, "image/jpeg")}
+    response = await authenticated_client.post(
+        "/detections", data=detection_payload, files=files
+    )
+    assert response.status_code == 201
+    detection_id = response.json()["id"]
+
+    # Two smoke objects with different types, each referencing one prediction box
+    mixed_types_payload = {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": True,
+                    "smoke_type": "wildfire",
+                    "false_positive_types": [],
+                    "bboxes": [
+                        {"detection_id": detection_id, "xyxyn": [0.1, 0.2, 0.4, 0.6]}
+                    ],
+                },
+                {
+                    "is_smoke": True,
+                    "smoke_type": "industrial",
+                    "false_positive_types": [],
+                    "bboxes": [
+                        {"detection_id": detection_id, "xyxyn": [0.5, 0.3, 0.8, 0.7]}
+                    ],
+                },
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+
+    response = await authenticated_client.post(
+        "/annotations/sequences/", json=mixed_types_payload
+    )
+    assert response.status_code == 201
+    assert response.json()["smoke_types"] == ["wildfire", "industrial"]
+
+    response = await authenticated_client.get("/annotations/detections/?sequence_id=1")
+    assert response.status_code == 200
+    detection_annotation = next(
+        (
+            ann
+            for ann in response.json()["items"]
+            if ann["detection_id"] == detection_id
+        ),
+        None,
+    )
+    assert detection_annotation is not None
+
+    boxes = {
+        tuple(item["xyxyn"]): item["smoke_type"]
+        for item in detection_annotation["annotation"]["annotation"]
+    }
+    assert boxes[(0.1, 0.2, 0.4, 0.6)] == "wildfire"
+    assert boxes[(0.5, 0.3, 0.8, 0.7)] == "industrial"
+
+
+@pytest.mark.asyncio
 async def test_true_positive_sequence_empty_predictions_fallback(
     authenticated_client: AsyncClient, sequence_session
 ):
@@ -1987,6 +2077,54 @@ async def test_convert_algo_predictions_to_annotation_helper():
     assert len(result["annotation"]) == 1
     assert result["annotation"][0]["class_name"] == "smoke"  # Default value
     assert result["annotation"][0]["smoke_type"] == "wildfire"
+
+
+@pytest.mark.asyncio
+async def test_convert_algo_predictions_uses_per_object_smoke_types():
+    """Object boxes from the sequence annotation drive per-box smoke types:
+    exact coordinate match first, best IoU as fallback, sequence-wide first
+    type when a prediction overlaps no object box."""
+    from app.api.api_v1.endpoints.sequence_annotations import (
+        convert_algo_predictions_to_annotation,
+    )
+
+    algo_predictions = {
+        "predictions": [
+            {"xyxyn": [0.1, 0.2, 0.4, 0.6], "confidence": 0.92, "class_name": "smoke"},
+            {"xyxyn": [0.5, 0.3, 0.8, 0.7], "confidence": 0.85, "class_name": "smoke"},
+            {
+                "xyxyn": [0.51, 0.31, 0.79, 0.69],
+                "confidence": 0.7,
+                "class_name": "smoke",
+            },
+            {
+                "xyxyn": [0.05, 0.85, 0.1, 0.95],
+                "confidence": 0.6,
+                "class_name": "smoke",
+            },
+        ]
+    }
+    object_boxes = [
+        ([0.1, 0.2, 0.4, 0.6], "wildfire"),
+        ([0.5, 0.3, 0.8, 0.7], "industrial"),
+    ]
+
+    result = convert_algo_predictions_to_annotation(
+        algo_predictions, ["wildfire", "industrial"], object_boxes
+    )
+    items = result["annotation"]
+    assert [item["smoke_type"] for item in items] == [
+        "wildfire",  # exact match on the wildfire object box
+        "industrial",  # exact match on the industrial object box
+        "industrial",  # near-duplicate box resolved by best IoU
+        "wildfire",  # no overlap with any object box -> smoke_types[0]
+    ]
+
+    # Without object boxes, the legacy sequence-wide fallback applies
+    result = convert_algo_predictions_to_annotation(
+        algo_predictions, ["industrial", "wildfire"]
+    )
+    assert {item["smoke_type"] for item in result["annotation"]} == {"industrial"}
 
 
 # Contributor Tests
