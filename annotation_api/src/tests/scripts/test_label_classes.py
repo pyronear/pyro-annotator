@@ -30,6 +30,31 @@ class TestClassRegistrySync:
         # existed; they must never change.
         assert lc.CLASS_NAMES[:3] == ["wildfire", "industrial", "other"]
 
+    def test_fp_class_order_is_stable(self):
+        # Ids 3+ are persisted in label folders on disk; the order is the
+        # contract and must stay append-only (a mid-list insert would shift
+        # every id after it and silently corrupt old folders).
+        assert lc.FP_CLASSES == [
+            "fp_antenna",
+            "fp_building",
+            "fp_cliff",
+            "fp_dark",
+            "fp_dust",
+            "fp_high_cloud",
+            "fp_low_cloud",
+            "fp_lens_flare",
+            "fp_lens_droplet",
+            "fp_light",
+            "fp_rain",
+            "fp_trail",
+            "fp_road",
+            "fp_sky",
+            "fp_tree",
+            "fp_water_body",
+            "fp_other",
+            "fp_unlabeled",
+        ]
+
 
 class TestHelpers:
     def test_smoke_class_name(self):
