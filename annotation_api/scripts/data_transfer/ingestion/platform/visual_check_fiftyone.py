@@ -19,7 +19,9 @@ from .label_classes import class_id_to_name, is_fp_class_id
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Open exported sequences in FiftyOne for visual check.")
+    parser = argparse.ArgumentParser(
+        description="Open exported sequences in FiftyOne for visual check."
+    )
     parser.add_argument(
         "--data-root",
         type=Path,
@@ -48,7 +50,9 @@ def ensure_black_image(path: Path) -> Path:
     return path
 
 
-def yolo_line_to_bbox(parts: List[str]) -> Tuple[int, float, float, float, float, float]:
+def yolo_line_to_bbox(
+    parts: List[str],
+) -> Tuple[int, float, float, float, float, float]:
     """
     Parse YOLO line: cls cx cy w h [conf]
     Returns (cls_id, x, y, w, h, conf)
@@ -103,7 +107,10 @@ def main() -> None:
     if args.dataset_name in fo.list_datasets():
         fo.delete_dataset(args.dataset_name)
 
-    seq_image_dirs = sorted((p for p in args.data_root.glob("seq_*") if (p / "images").exists()), key=lambda p: p.name)
+    seq_image_dirs = sorted(
+        (p for p in args.data_root.glob("seq_*") if (p / "images").exists()),
+        key=lambda p: p.name,
+    )
     samples: List[fo.Sample] = []
 
     for seq_dir in seq_image_dirs:

@@ -151,18 +151,18 @@ def read_file(label_path: Path, default_conf: float = 1.0) -> np.ndarray:
             continue
         parts = raw.split()
         if len(parts) == 5:
-            cls, cx, cy, w, h = parts
             conf = default_conf
         elif len(parts) == 6:
             # Must match write_bboxes_to_label_file: "cls cx cy w h conf"
-            cls, cx, cy, w, h, conf = parts
+            conf = float(parts[5])
         else:
             continue
+        cls, cx, cy, w, h = parts[:5]
         bbox_xyxy = xywh2xyxy(
             np.array([float(cx), float(cy), float(w), float(h)], dtype=np.float64)
         )
         x1, y1, x2, y2 = bbox_xyxy.tolist()
-        boxes.append([x1, y1, x2, y2, float(int(cls)), float(conf)])
+        boxes.append([x1, y1, x2, y2, float(int(cls)), conf])
 
     return (
         np.array(boxes, dtype=np.float64)
@@ -477,9 +477,7 @@ def process_sequence(
     main_bboxes, grouped = group_and_merge_boxes(
         smoke_boxes, iou_nms=iou_nms, threshold=iou_assign
     )
-    group_class = {
-        gid: majority_class(gboxes[:, 4]) for gid, gboxes in grouped.items()
-    }
+    group_class = {gid: majority_class(gboxes[:, 4]) for gid, gboxes in grouped.items()}
     logging.info(
         "[%s] step 3: clustered into %d persistent group(s) (iou_nms=%.2f, iou_assign=%.2f)",
         seq_dir.name,

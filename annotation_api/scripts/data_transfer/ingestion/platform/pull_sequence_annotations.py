@@ -558,9 +558,7 @@ def main() -> None:
                 if not frame_bboxes and det.get("alert_api_id") is not None:
                     frame_bboxes = ann_bboxes.get(det["alert_api_id"], [])
                 for bbox in frame_bboxes:
-                    boxes[frame["filename"]].append(
-                        (bbox["class_name"], bbox["xyxyn"])
-                    )
+                    boxes[frame["filename"]].append((bbox["class_name"], bbox["xyxyn"]))
 
         manifest_frames: Dict[str, Dict] = {}
         for key in sorted(frames):

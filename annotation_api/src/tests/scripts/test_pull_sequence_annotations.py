@@ -58,7 +58,9 @@ class TestCollectAnnotationBboxes:
     def test_smoke_object_without_type_falls_back_to_wildfire(self):
         annotation = {
             "sequences_bbox": [
-                _smoke_object(None, [{"detection_id": 2, "xyxyn": [0.1, 0.1, 0.2, 0.2]}])
+                _smoke_object(
+                    None, [{"detection_id": 2, "xyxyn": [0.1, 0.1, 0.2, 0.2]}]
+                )
             ]
         }
         boxes = collect_annotation_bboxes(annotation)
