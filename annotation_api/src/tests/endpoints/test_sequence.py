@@ -1810,3 +1810,78 @@ async def test_list_sequences_filter_by_null_is_wildfire_alertapi(
     # Should include the wildfire sequence but not the null sequence
     assert wildfire_sequence_id in wildfire_sequence_ids
     assert null_sequence_id not in wildfire_sequence_ids
+
+
+@pytest.mark.asyncio
+async def test_list_sequences_filter_by_is_unsure_alone(
+    authenticated_client: AsyncClient,
+):
+    """Regression test: is_unsure as the only annotation-level filter must
+    trigger the SequenceAnnotation join; it previously produced an implicit
+    cross join returning wrong/duplicated sequences."""
+
+    def sequence_payload(alert_api_id: str, camera_id: str) -> dict:
+        return {
+            "source_api": "pyronear_french",
+            "alert_api_id": alert_api_id,
+            "camera_name": f"unsure_test_cam_{camera_id}",
+            "camera_id": camera_id,
+            "organisation_name": "test_org",
+            "organisation_id": "1",
+            "lat": "0.0",
+            "lon": "0.0",
+            "recorded_at": (now - timedelta(days=1)).isoformat(),
+            "last_seen_at": now.isoformat(),
+        }
+
+    sure_response = await authenticated_client.post(
+        "/sequences/", data=sequence_payload("9301", "9301")
+    )
+    unsure_response = await authenticated_client.post(
+        "/sequences/", data=sequence_payload("9302", "9302")
+    )
+    unannotated_response = await authenticated_client.post(
+        "/sequences/", data=sequence_payload("9303", "9303")
+    )
+    assert sure_response.status_code == 201
+    assert unsure_response.status_code == 201
+    assert unannotated_response.status_code == 201
+    sure_id = sure_response.json()["id"]
+    unsure_id = unsure_response.json()["id"]
+    unannotated_id = unannotated_response.json()["id"]
+
+    for sequence_id, is_unsure in ((sure_id, False), (unsure_id, True)):
+        annotation_response = await authenticated_client.post(
+            "/annotations/sequences/",
+            json={
+                "sequence_id": sequence_id,
+                "has_missed_smoke": False,
+                "is_unsure": is_unsure,
+                "annotation": {
+                    "sequences_bbox": [
+                        {"is_smoke": True, "false_positive_types": [], "bboxes": []}
+                    ]
+                },
+                "processing_stage": "annotated",
+                "created_at": datetime.now(UTC).isoformat(),
+            },
+        )
+        assert annotation_response.status_code == 201
+
+    # is_unsure=false must return only sequences whose annotation is not unsure
+    response = await authenticated_client.get("/sequences/?is_unsure=false")
+    assert response.status_code == 200
+    sequence_ids = [seq["id"] for seq in response.json()["items"]]
+    assert sure_id in sequence_ids
+    assert unsure_id not in sequence_ids
+    assert unannotated_id not in sequence_ids
+    # a cross join would duplicate rows
+    assert len(sequence_ids) == len(set(sequence_ids))
+
+    # is_unsure=true must return only the unsure sequence
+    response = await authenticated_client.get("/sequences/?is_unsure=true")
+    assert response.status_code == 200
+    sequence_ids = [seq["id"] for seq in response.json()["items"]]
+    assert unsure_id in sequence_ids
+    assert sure_id not in sequence_ids
+    assert unannotated_id not in sequence_ids
