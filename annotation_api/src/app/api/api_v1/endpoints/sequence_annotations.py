@@ -1,9 +1,10 @@
 # Copyright (C) 2025, Pyronear.
 
 import logging
+from collections import defaultdict
 from datetime import datetime, UTC
 from enum import Enum
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 from fastapi import (
     APIRouter,
@@ -99,15 +100,48 @@ def derive_smoke_types(annotation_data: SequenceAnnotationData) -> List[str]:
     return unique_types
 
 
+def _bbox_iou(box1: List[float], box2: List[float]) -> float:
+    """Intersection over union of two xyxyn boxes."""
+    x1 = max(box1[0], box2[0])
+    y1 = max(box1[1], box2[1])
+    x2 = min(box1[2], box2[2])
+    y2 = min(box1[3], box2[3])
+    inter = max(0.0, x2 - x1) * max(0.0, y2 - y1)
+    area1 = max(0.0, box1[2] - box1[0]) * max(0.0, box1[3] - box1[1])
+    area2 = max(0.0, box2[2] - box2[0]) * max(0.0, box2[3] - box2[1])
+    union = area1 + area2 - inter
+    return inter / union if union > 0 else 0.0
+
+
+def collect_object_boxes_by_detection(
+    annotation: Optional[dict],
+) -> Dict[int, List[Tuple[List[float], str]]]:
+    """Map detection_id -> [(xyxyn, smoke_type), ...] from a sequence
+    annotation's sequences_bbox, keeping each smoke object's own type."""
+    object_boxes: Dict[int, List[Tuple[List[float], str]]] = defaultdict(list)
+    for seq_bbox in (annotation or {}).get("sequences_bbox", []):
+        if not seq_bbox.get("is_smoke") or not seq_bbox.get("smoke_type"):
+            continue
+        for bbox in seq_bbox.get("bboxes", []):
+            detection_id = bbox.get("detection_id")
+            xyxyn = bbox.get("xyxyn")
+            if detection_id is not None and isinstance(xyxyn, list) and len(xyxyn) == 4:
+                object_boxes[detection_id].append((xyxyn, seq_bbox["smoke_type"]))
+    return object_boxes
+
+
 def convert_algo_predictions_to_annotation(
-    algo_predictions: Optional[dict], smoke_types: Optional[List[str]] = None
+    algo_predictions: Optional[dict],
+    smoke_types: Optional[List[str]] = None,
+    object_boxes: Optional[List[Tuple[List[float], str]]] = None,
 ) -> dict:
     """
     Convert detection algo_predictions to detection annotation format.
 
     Args:
         algo_predictions: Model predictions in format {"predictions": [{"xyxyn": [...], "confidence": float, "class_name": str}]}
-        smoke_types: Optional list of smoke types from sequence annotation. Uses first smoke type if available, defaults to "wildfire"
+        smoke_types: Optional list of smoke types from sequence annotation. Fallback when a prediction matches no object box; uses the first type, defaults to "wildfire"
+        object_boxes: Optional per-detection [(xyxyn, smoke_type), ...] from the sequence annotation's sequences_bbox. Each prediction takes the type of the exactly-matching object box (best IoU as fallback) so multi-type sequences keep per-object types
 
     Returns:
         Annotation dict in format {"annotation": [{"xyxyn": [...], "class_name": str, "smoke_type": str}]}
@@ -132,11 +166,24 @@ def convert_algo_predictions_to_annotation(
         if not isinstance(xyxyn, list) or len(xyxyn) != 4:
             continue
 
-        # Convert to annotation format with user-selected smoke type or default wildfire
-        # Use first smoke type from sequence annotation if available, otherwise default to wildfire
-        selected_smoke_type = "wildfire"  # Default fallback
+        # Sequence-wide fallback: first smoke type if available, else wildfire
+        selected_smoke_type = "wildfire"
         if smoke_types and len(smoke_types) > 0:
             selected_smoke_type = smoke_types[0]
+
+        # Per-object type: object boxes come from algo_predictions untouched,
+        # so an exact coordinate match identifies the annotated object; best
+        # IoU covers boxes whose geometry drifted (e.g. external tooling)
+        if object_boxes:
+            best_iou = 0.0
+            for object_xyxyn, object_smoke_type in object_boxes:
+                if object_xyxyn == xyxyn:
+                    selected_smoke_type = object_smoke_type
+                    break
+                iou = _bbox_iou(object_xyxyn, xyxyn)
+                if iou > best_iou:
+                    best_iou = iou
+                    selected_smoke_type = object_smoke_type
 
         annotation_item = {
             "xyxyn": xyxyn,
@@ -236,6 +283,7 @@ async def auto_create_detection_annotations(
     has_false_positives: bool,
     session: AsyncSession,
     smoke_types: Optional[List[str]] = None,
+    annotation: Optional[dict] = None,
 ) -> None:
     """
     Automatically create detection annotations for all detections in a sequence.
@@ -253,6 +301,7 @@ async def auto_create_detection_annotations(
         has_false_positives: Whether sequence annotation indicates false positives
         session: Database session
         smoke_types: Optional list of smoke types from sequence annotation for true positive sequences
+        annotation: Optional sequence annotation data (sequences_bbox) used to keep each object's own smoke_type on the pre-populated boxes
     """
     # Determine the appropriate processing stage based on sequence annotation
     if not has_missed_smoke and has_false_positives and not has_smoke:
@@ -287,6 +336,7 @@ async def auto_create_detection_annotations(
     # Prepare batch data for bulk insert
     new_annotations = []
     current_time = datetime.now(UTC)
+    object_boxes_by_detection = collect_object_boxes_by_detection(annotation)
 
     for detection in detections:
         # Skip if annotation already exists
@@ -295,9 +345,12 @@ async def auto_create_detection_annotations(
 
         # Determine annotation data based on sequence type
         if has_smoke and not has_missed_smoke and not has_false_positives:
-            # True positive sequence: pre-populate with model predictions using user-selected smoke types
+            # True positive sequence: pre-populate with model predictions,
+            # keeping each annotated object's own smoke type
             annotation_data = convert_algo_predictions_to_annotation(
-                detection.algo_predictions, smoke_types
+                detection.algo_predictions,
+                smoke_types,
+                object_boxes_by_detection.get(detection.id),
             )
         else:
             # All other cases: start with empty annotation
@@ -415,6 +468,7 @@ async def create_sequence_annotation(
             has_false_positives=sequence_annotation.has_false_positives,
             session=annotations.session,
             smoke_types=sequence_annotation.smoke_types,
+            annotation=sequence_annotation.annotation,
         )
         # Commit the detection annotations
         await annotations.session.commit()
@@ -712,6 +766,7 @@ async def update_sequence_annotation(
             has_false_positives=updated_annotation.has_false_positives,
             session=annotations.session,
             smoke_types=updated_annotation.smoke_types,
+            annotation=updated_annotation.annotation,
         )
         # Commit the detection annotations
         await annotations.session.commit()
