@@ -21,9 +21,8 @@ from PIL import Image
 from tqdm import tqdm
 
 
-MODEL_URL_FOLDER = (
-    "https://huggingface.co/pyronear/yolo11s_sensitive-detector_v1.0.0/resolve/main/"
-)
+MODEL_REPO = "pyronear/yolo11s_sensitive-detector"
+MODEL_URL_FOLDER = f"https://huggingface.co/{MODEL_REPO}/resolve/main/"
 MODEL_NAME = "ncnn_cpu.tar.gz"
 
 
@@ -269,12 +268,14 @@ class Classifier:
             )
             onnx_file = None
 
-            model_path = os.path.join(model_folder, model)
+            # Cache per model repo so switching MODEL_REPO never reuses stale weights.
+            model_dir = os.path.join(model_folder, MODEL_REPO.rsplit("/", 1)[-1])
+            model_path = os.path.join(model_dir, model)
             model_url = MODEL_URL_FOLDER + model
 
             if not os.path.isfile(model_path):
                 logging.info("Downloading model from %s ...", model_url)
-                os.makedirs(model_folder, exist_ok=True)
+                os.makedirs(model_dir, exist_ok=True)
                 with DownloadProgressBar(
                     unit="B", unit_scale=True, miniters=1, desc=model_path
                 ) as t:
@@ -283,7 +284,7 @@ class Classifier:
 
             if model_path.endswith(".tar.gz"):
                 base_name = os.path.basename(model_path).replace(".tar.gz", "")
-                extract_path = os.path.join(model_folder, base_name)
+                extract_path = os.path.join(model_dir, base_name)
                 if not os.path.isdir(extract_path):
                     os.makedirs(extract_path, exist_ok=True)
                     with tarfile.open(model_path, "r:gz") as tar:
