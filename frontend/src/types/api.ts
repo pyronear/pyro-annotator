@@ -101,7 +101,9 @@ export interface DetectionAnnotation {
 export interface DetectionAnnotationBbox {
   xyxyn: [number, number, number, number];
   class_name: string;
-  smoke_type: SmokeType;
+  // exactly one of smoke_type / false_positive_type is set
+  smoke_type?: SmokeType | null;
+  false_positive_type?: FalsePositiveType | null;
 }
 
 export interface DetectionAnnotationData {

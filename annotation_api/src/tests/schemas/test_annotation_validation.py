@@ -246,6 +246,39 @@ class TestDetectionAnnotationItem:
         error_details = str(exc_info.value)
         assert "y1 must be <= y2" in error_details
 
+    def test_valid_false_positive_item(self):
+        item = DetectionAnnotationItem(
+            xyxyn=[0.1, 0.2, 0.8, 0.9],
+            class_name="fp_antenna",
+            false_positive_type=FalsePositiveType.ANTENNA,
+        )
+        assert item.smoke_type is None
+        assert item.false_positive_type == FalsePositiveType.ANTENNA
+
+    def test_all_false_positive_types(self):
+        for fp_type in FalsePositiveType:
+            item = DetectionAnnotationItem(
+                xyxyn=[0.1, 0.2, 0.8, 0.9],
+                class_name=f"fp_{fp_type.value}",
+                false_positive_type=fp_type,
+            )
+            assert item.false_positive_type == fp_type
+
+    def test_rejects_neither_type_set(self):
+        with pytest.raises(ValidationError) as exc_info:
+            DetectionAnnotationItem(xyxyn=[0.1, 0.2, 0.8, 0.9], class_name="smoke")
+        assert "Exactly one of smoke_type or false_positive_type" in str(exc_info.value)
+
+    def test_rejects_both_types_set(self):
+        with pytest.raises(ValidationError) as exc_info:
+            DetectionAnnotationItem(
+                xyxyn=[0.1, 0.2, 0.8, 0.9],
+                class_name="smoke",
+                smoke_type=SmokeType.WILDFIRE,
+                false_positive_type=FalsePositiveType.ANTENNA,
+            )
+        assert "Exactly one of smoke_type or false_positive_type" in str(exc_info.value)
+
 
 class TestDetectionAnnotationData:
     def test_valid_detection_annotation_data(self):
