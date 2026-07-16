@@ -2702,3 +2702,165 @@ async def test_sequence_annotation_update_edge_cases(
     assert "lens_flare" in fp_types
     assert "other" in fp_types
     assert len(fp_types) == 3  # No duplicates
+
+
+# ---------------------------------------------------------------------------
+# Completeness validation for seq_annotation_done (#151)
+# Every sequences_bbox must be classified (smoke with a smoke_type, or at
+# least one false_positive_type) before an annotation may carry the
+# seq_annotation_done stage, unless it is marked unsure.
+# ---------------------------------------------------------------------------
+
+
+def _completeness_payload(sequences_bbox: list, stage: str, is_unsure: bool = False):
+    return {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "is_unsure": is_unsure,
+        "annotation": {"sequences_bbox": sequences_bbox},
+        "processing_stage": stage,
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+
+
+_UNCLASSIFIED_BBOX = {
+    "is_smoke": False,
+    "false_positive_types": [],
+    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+}
+
+_SMOKE_WITHOUT_TYPE_BBOX = {
+    "is_smoke": True,
+    "false_positive_types": [],
+    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+}
+
+_COMPLETE_SMOKE_BBOX = {
+    "is_smoke": True,
+    "smoke_type": "wildfire",
+    "false_positive_types": [],
+    "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+}
+
+_COMPLETE_FP_BBOX = {
+    "is_smoke": False,
+    "false_positive_types": ["antenna"],
+    "bboxes": [{"detection_id": 2, "xyxyn": [0.5, 0.5, 0.6, 0.6]}],
+}
+
+
+@pytest.mark.asyncio
+async def test_create_seq_annotation_done_rejects_unclassified_object(
+    authenticated_client: AsyncClient, sequence_session, detection_session
+):
+    payload = _completeness_payload(
+        [_COMPLETE_SMOKE_BBOX, _UNCLASSIFIED_BBOX], stage="seq_annotation_done"
+    )
+    response = await authenticated_client.post("/annotations/sequences/", json=payload)
+    assert response.status_code == 422, response.text
+    assert "incomplete" in response.json()["detail"]
+    assert "[1]" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_create_seq_annotation_done_rejects_smoke_without_type(
+    authenticated_client: AsyncClient, sequence_session, detection_session
+):
+    payload = _completeness_payload(
+        [_SMOKE_WITHOUT_TYPE_BBOX], stage="seq_annotation_done"
+    )
+    response = await authenticated_client.post("/annotations/sequences/", json=payload)
+    assert response.status_code == 422, response.text
+    assert "incomplete" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_create_seq_annotation_done_accepts_complete_annotation(
+    authenticated_client: AsyncClient, sequence_session, detection_session
+):
+    payload = _completeness_payload(
+        [_COMPLETE_SMOKE_BBOX, _COMPLETE_FP_BBOX], stage="seq_annotation_done"
+    )
+    response = await authenticated_client.post("/annotations/sequences/", json=payload)
+    assert response.status_code == 201, response.text
+
+
+@pytest.mark.asyncio
+async def test_create_seq_annotation_done_allows_incomplete_when_unsure(
+    authenticated_client: AsyncClient, sequence_session, detection_session
+):
+    payload = _completeness_payload(
+        [_UNCLASSIFIED_BBOX], stage="seq_annotation_done", is_unsure=True
+    )
+    response = await authenticated_client.post("/annotations/sequences/", json=payload)
+    assert response.status_code == 201, response.text
+
+
+@pytest.mark.asyncio
+async def test_create_incomplete_annotation_allowed_in_earlier_stages(
+    authenticated_client: AsyncClient, sequence_session, detection_session
+):
+    payload = _completeness_payload(
+        [_UNCLASSIFIED_BBOX, _SMOKE_WITHOUT_TYPE_BBOX], stage="under_annotation"
+    )
+    response = await authenticated_client.post("/annotations/sequences/", json=payload)
+    assert response.status_code == 201, response.text
+
+
+@pytest.mark.asyncio
+async def test_patch_stage_only_to_seq_annotation_done_validates_stored_annotation(
+    authenticated_client: AsyncClient, sequence_session, detection_session
+):
+    # Incomplete annotation parked at under_annotation is fine
+    payload = _completeness_payload([_UNCLASSIFIED_BBOX], stage="under_annotation")
+    response = await authenticated_client.post("/annotations/sequences/", json=payload)
+    assert response.status_code == 201, response.text
+    annotation_id = response.json()["id"]
+
+    # Stage-only PATCH must validate the stored payload and refuse
+    response = await authenticated_client.patch(
+        f"/annotations/sequences/{annotation_id}",
+        json={"processing_stage": "seq_annotation_done"},
+    )
+    assert response.status_code == 422, response.text
+    assert "incomplete" in response.json()["detail"]
+
+    # Completing the annotation in the same PATCH goes through
+    response = await authenticated_client.patch(
+        f"/annotations/sequences/{annotation_id}",
+        json={
+            "processing_stage": "seq_annotation_done",
+            "annotation": {"sequences_bbox": [_COMPLETE_FP_BBOX]},
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["processing_stage"] == "seq_annotation_done"
+
+
+@pytest.mark.asyncio
+async def test_patch_annotation_on_seq_annotation_done_rejects_incomplete(
+    authenticated_client: AsyncClient, sequence_session, detection_session
+):
+    payload = _completeness_payload([_COMPLETE_SMOKE_BBOX], stage="seq_annotation_done")
+    response = await authenticated_client.post("/annotations/sequences/", json=payload)
+    assert response.status_code == 201, response.text
+    annotation_id = response.json()["id"]
+
+    # Replacing the payload with an unclassified object must be refused while
+    # the row stays at seq_annotation_done
+    response = await authenticated_client.patch(
+        f"/annotations/sequences/{annotation_id}",
+        json={"annotation": {"sequences_bbox": [_UNCLASSIFIED_BBOX]}},
+    )
+    assert response.status_code == 422, response.text
+    assert "incomplete" in response.json()["detail"]
+
+    # Marking it unsure in the same PATCH lifts the gate
+    response = await authenticated_client.patch(
+        f"/annotations/sequences/{annotation_id}",
+        json={
+            "annotation": {"sequences_bbox": [_UNCLASSIFIED_BBOX]},
+            "is_unsure": True,
+        },
+    )
+    assert response.status_code == 200, response.text

@@ -417,6 +417,44 @@ async def validate_detection_ids(
         )
 
 
+def validate_annotation_completeness(
+    annotation_data: SequenceAnnotationData,
+    processing_stage: SequenceAnnotationProcessingStage,
+    is_unsure: bool,
+) -> None:
+    """Reject seq_annotation_done annotations with unclassified objects.
+
+    Mirrors the frontend gate (hasUserAnnotations): every sequences_bbox must
+    either be smoke with a smoke_type set or carry at least one
+    false_positive_type. Unsure annotations are exempt, matching the frontend
+    which lets unsure submissions bypass the completeness check.
+
+    Raises:
+        HTTPException: 422 listing the indices of unclassified sequences_bbox
+    """
+    if (
+        processing_stage != SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE
+        or is_unsure
+    ):
+        return
+
+    incomplete = [
+        i
+        for i, bbox in enumerate(annotation_data.sequences_bbox)
+        if (bbox.smoke_type is None if bbox.is_smoke else not bbox.false_positive_types)
+    ]
+    if incomplete:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"Annotation is incomplete for processing_stage=seq_annotation_done: "
+                f"sequences_bbox at indices {incomplete} must have smoke_type set "
+                "(is_smoke=true) or at least one false_positive_type (is_smoke=false). "
+                "Mark the annotation as unsure to bypass this check."
+            ),
+        )
+
+
 @router.post("/", status_code=status.HTTP_201_CREATED)
 async def create_sequence_annotation(
     create_data: SequenceAnnotationCreate = Body(...),
@@ -451,6 +489,11 @@ async def create_sequence_annotation(
 
     # Validate that all detection_ids exist in the database
     await validate_detection_ids(create_data.annotation, annotations.session)
+
+    # Reject unclassified objects when the annotation claims seq_annotation_done
+    validate_annotation_completeness(
+        create_data.annotation, create_data.processing_stage, create_data.is_unsure
+    )
 
     # Use CRUD method which handles contribution tracking with proper conditional logic
     sequence_annotation = await annotations.create(create_data, current_user.id)
@@ -730,6 +773,21 @@ async def update_sequence_annotation(
     # Validate detection_ids if annotation is being updated
     if payload.annotation is not None:
         await validate_detection_ids(payload.annotation, annotations.session)
+
+    # Reject unclassified objects when the resulting row would sit at
+    # seq_annotation_done (covers stage-only PATCHes by validating the stored
+    # payload, and annotation-only PATCHes on rows already at that stage)
+    target_is_unsure = (
+        payload.is_unsure if payload.is_unsure is not None else existing.is_unsure
+    )
+    target_annotation_data = (
+        payload.annotation
+        if payload.annotation is not None
+        else SequenceAnnotationData(**existing.annotation)
+    )
+    validate_annotation_completeness(
+        target_annotation_data, target_processing_stage, target_is_unsure
+    )
 
     # Check if processing_stage is being updated to "annotated" for auto-creation logic
     was_annotated_before = (
