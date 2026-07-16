@@ -342,12 +342,15 @@ def main() -> None:
             stats["skipped_remote_downstream"] += 1
             continue
 
-        # Build payload from local annotation
+        # Build payload from local annotation. is_unsure must travel with the
+        # annotation: the remote completeness validation exempts unsure rows,
+        # and the detection review pull excludes them (is_unsure=False filter).
         payload = {
             "sequence_id": remote_seq_id,
             "annotation": remapped_annotation,
             "processing_stage": SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE.value,
             "has_missed_smoke": local_ann.get("has_missed_smoke", False),
+            "is_unsure": local_ann.get("is_unsure", False),
         }
 
         try:

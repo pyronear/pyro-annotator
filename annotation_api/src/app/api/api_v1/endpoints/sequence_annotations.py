@@ -17,6 +17,7 @@ from fastapi import (
 )
 from fastapi_pagination import Page, Params, create_page
 from fastapi_pagination.ext.sqlalchemy import apaginate
+from pydantic import ValidationError
 from sqlalchemy import asc, desc, select, text, or_
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -780,14 +781,34 @@ async def update_sequence_annotation(
     target_is_unsure = (
         payload.is_unsure if payload.is_unsure is not None else existing.is_unsure
     )
-    target_annotation_data = (
-        payload.annotation
-        if payload.annotation is not None
-        else SequenceAnnotationData(**existing.annotation)
-    )
-    validate_annotation_completeness(
-        target_annotation_data, target_processing_stage, target_is_unsure
-    )
+    if (
+        target_processing_stage
+        == SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE
+        and not target_is_unsure
+    ):
+        if payload.annotation is not None:
+            target_annotation_data = payload.annotation
+        else:
+            # Stored payloads may predate stricter bbox validation; surface an
+            # actionable 422 instead of a 500 when they no longer parse.
+            try:
+                target_annotation_data = SequenceAnnotationData(**existing.annotation)
+            except ValidationError as exc:
+                logger.error(
+                    f"Stored annotation for sequence annotation {annotation_id} "
+                    f"failed validation during stage update: {exc}"
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=(
+                        "Stored annotation payload is invalid and cannot be "
+                        "promoted to seq_annotation_done; resubmit the "
+                        "annotation in the same request"
+                    ),
+                ) from exc
+        validate_annotation_completeness(
+            target_annotation_data, target_processing_stage, target_is_unsure
+        )
 
     # Check if processing_stage is being updated to "annotated" for auto-creation logic
     was_annotated_before = (

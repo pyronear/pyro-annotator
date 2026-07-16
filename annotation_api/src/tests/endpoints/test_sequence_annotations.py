@@ -2864,3 +2864,42 @@ async def test_patch_annotation_on_seq_annotation_done_rejects_incomplete(
         },
     )
     assert response.status_code == 200, response.text
+
+
+@pytest.mark.asyncio
+async def test_patch_stage_to_seq_annotation_done_with_unparseable_stored_annotation(
+    authenticated_client: AsyncClient, sequence_session, detection_session
+):
+    # Legacy rows can hold payloads that predate the stricter bbox validation
+    # (e.g. null [0,0,0,0] boxes). Promoting such a row with a stage-only
+    # PATCH must yield an actionable 422, not a 500 from the stored-payload
+    # parse.
+    legacy = models.SequenceAnnotation(
+        sequence_id=1,
+        has_smoke=True,
+        has_false_positives=False,
+        has_missed_smoke=False,
+        is_unsure=False,
+        annotation={
+            "sequences_bbox": [
+                {
+                    "is_smoke": True,
+                    "smoke_type": "wildfire",
+                    "false_positive_types": [],
+                    "bboxes": [{"detection_id": 1, "xyxyn": [0, 0, 0, 0]}],
+                }
+            ]
+        },
+        processing_stage=models.SequenceAnnotationProcessingStage.UNDER_ANNOTATION,
+        created_at=datetime.now(UTC),
+    )
+    sequence_session.add(legacy)
+    await sequence_session.commit()
+    await sequence_session.refresh(legacy)
+
+    response = await authenticated_client.patch(
+        f"/annotations/sequences/{legacy.id}",
+        json={"processing_stage": "seq_annotation_done"},
+    )
+    assert response.status_code == 422, response.text
+    assert "Stored annotation" in response.json()["detail"]
