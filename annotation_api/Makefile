@@ -138,7 +138,7 @@ pull-sequences:
 		--url-api-annotation $(LOCAL_API) \
 		--max-sequences $(MAX_SEQUENCES) \
 		--clone-processing-stage $(CLONE_STAGE) \
-		$(if $(READ_ONLY_SOURCE),--skip-source-stage-update) \
+		$(if $(filter-out 0,$(READ_ONLY_SOURCE)),--skip-source-stage-update) \
 		--loglevel $(LOGLEVEL)
 	$(MAKE) assign-groups
 
