@@ -129,13 +129,16 @@ migrate-up:
 # Duplicate N sequences from the remote annotation API into the local one,
 # then run assign-groups so newly-pulled sequences get clustered and inherit
 # any existing group's label automatically.
-# Usage: make pull-sequences [MAX_SEQUENCES=10] [CLONE_STAGE=ready_to_annotate]
+# Set READ_ONLY_SOURCE=1 to leave the remote untouched (skips the PATCH that
+# parks the cloned sequences at under_annotation) — for test/debug hydration.
+# Usage: make pull-sequences [MAX_SEQUENCES=10] [CLONE_STAGE=ready_to_annotate] [READ_ONLY_SOURCE=1]
 pull-sequences:
 	uv run python -m scripts.data_transfer.ingestion.platform.import \
 		--source-annotation-url $(REMOTE_API) \
 		--url-api-annotation $(LOCAL_API) \
 		--max-sequences $(MAX_SEQUENCES) \
 		--clone-processing-stage $(CLONE_STAGE) \
+		$(if $(READ_ONLY_SOURCE),--skip-source-stage-update) \
 		--loglevel $(LOGLEVEL)
 	$(MAKE) assign-groups
 

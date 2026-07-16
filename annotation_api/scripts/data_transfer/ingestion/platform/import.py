@@ -235,6 +235,16 @@ def make_cli_parser() -> argparse.ArgumentParser:
         help="Preview actions without executing them",
     )
     parser.add_argument(
+        "--skip-source-stage-update",
+        action="store_true",
+        help=(
+            "In clone mode, skip the PATCH that marks the cloned sequences as "
+            "under_annotation on the source API. Makes the clone read-only "
+            "against the source (useful to hydrate a local API for testing "
+            "without mutating remote state)."
+        ),
+    )
+    parser.add_argument(
         "--force-url",
         action="store_true",
         help=(
@@ -800,7 +810,11 @@ def main() -> None:
                 step_manager.complete_step(False, f"Annotation clone failed: {e}")
                 error_collector.print_summary(console, "Annotation Clone Errors")
                 sys.exit(1)
-            if not args.dry_run:
+            if args.skip_source_stage_update:
+                console.print(
+                    "[blue]ℹ️  --skip-source-stage-update: source annotations left untouched[/]"
+                )
+            elif not args.dry_run:
                 update_source_annotations_stage(
                     args.source_annotation_url,
                     source_sequence_ids,

@@ -60,6 +60,7 @@ make pull-sequences MAX_SEQUENCES=10 CLONE_STAGE=ready_to_annotate
 - `MAX_SEQUENCES` caps how many sequences you pull; use `0` for all.
 - `CLONE_STAGE` defaults to `ready_to_annotate`; set to `under_annotation`, `seq_annotation_done`, `needs_manual`, or `no_annotation` to grab those stages.
 - To restrict by `alert_api_id`, call the underlying script directly with `--sequence-list <file_or_csv>`.
+- The pull normally marks the cloned sequences `under_annotation` on the remote to claim them. To hydrate a local API for testing **without mutating the remote**, add `READ_ONLY_SOURCE=1` (passes `--skip-source-stage-update` to the underlying script).
 
 **Step 2 — Annotate sequences locally**
 
