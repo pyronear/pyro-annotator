@@ -161,13 +161,16 @@ push-annotations:
 # Pull seq_annotation_done sequences locally (moves remote stage to in_review).
 # Object-split sequences are merged into one folder per camera view (see manifest.json);
 # MAX_SEQUENCES caps merged folders, not raw sequences.
-# Usage: make pull-seq-annotations [MAX_SEQUENCES=20] [SMOKE_TYPE=wildfire] [DATA_ROOT=outputs/seq_annotation_done]
+# Set READ_ONLY_SOURCE=1 to leave the remote untouched (skips the PATCH that
+# transitions the pulled sequences to in_review) — for test/debug export.
+# Usage: make pull-seq-annotations [MAX_SEQUENCES=20] [SMOKE_TYPE=wildfire] [DATA_ROOT=outputs/seq_annotation_done] [READ_ONLY_SOURCE=1]
 pull-seq-annotations:
 	uv run python -m scripts.data_transfer.ingestion.platform.pull_sequence_annotations \
 		--remote-api $(REMOTE_API) \
 		--max-sequences $(MAX_SEQUENCES) \
 		--output-dir $(DATA_ROOT) \
 		--smoke-type $(SMOKE_TYPE) \
+		$(if $(filter-out 0,$(READ_ONLY_SOURCE)),--no-stage-update) \
 		--loglevel $(LOGLEVEL)
 
 # Auto-fill missing boxes using the pyronear YOLO11s model.
