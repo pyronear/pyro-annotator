@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { X, ChevronLeft, ChevronRight, Keyboard } from 'lucide-react';
-import { Detection, DetectionAnnotation, SmokeType } from '@/types/api';
+import { Detection, DetectionAnnotation, SmokeType, AnnotationOrigin } from '@/types/api';
 import {
   DrawnRectangle,
   CurrentDrawing,
@@ -93,6 +93,23 @@ export function ImageModal({
   const [drawnRectangles, setDrawnRectangles] = useState<DrawnRectangle[]>([]);
   const [currentDrawing, setCurrentDrawing] = useState<CurrentDrawing | null>(null);
   const [selectedRectangleId, setSelectedRectangleId] = useState<string | null>(null);
+
+  // Per-origin visibility: origins present in the set are hidden from the canvas
+  // (rendering only — the annotation itself is never mutated).
+  const [hiddenOrigins, setHiddenOrigins] = useState<Set<AnnotationOrigin>>(new Set());
+  const toggleOrigin = (origin: AnnotationOrigin) =>
+    setHiddenOrigins(prev => {
+      const next = new Set(prev);
+      if (next.has(origin)) {
+        next.delete(origin);
+      } else {
+        next.add(origin);
+      }
+      return next;
+    });
+  const visibleRectangles = drawnRectangles.filter(
+    rect => !hiddenOrigins.has(rect.source?.origin ?? 'human')
+  );
   const [undoStack, setUndoStack] = useState<DrawnRectangle[][]>([]);
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
 
@@ -714,7 +731,7 @@ export function ImageModal({
         <div className="relative max-w-7xl flex flex-col items-center">
           <DetectionAnnotationCanvas
             detection={detection}
-            drawnRectangles={drawnRectangles}
+            drawnRectangles={visibleRectangles}
             selectedRectangleId={selectedRectangleId}
             showPredictions={showPredictions}
             currentDrawing={currentDrawing}
@@ -753,6 +770,8 @@ export function ImageModal({
             onSmokeTypeChange={onSmokeTypeChange}
             drawnRectangles={drawnRectangles}
             selectedRectangleId={selectedRectangleId}
+            hiddenOrigins={hiddenOrigins}
+            onToggleOrigin={toggleOrigin}
             onDeleteRectangles={() => {
               // Save current state to undo stack before deleting
               pushUndoState();

@@ -5,7 +5,7 @@
  */
 
 import { Square, Trash2, RotateCcw, Brain } from 'lucide-react';
-import { SmokeType } from '@/types/api';
+import { SmokeType, AnnotationOrigin } from '@/types/api';
 import { SmokeTypeSelector } from '@/components/annotation/SmokeTypeSelector';
 import { DrawnRectangle } from '@/utils/annotation';
 
@@ -24,6 +24,8 @@ interface AnnotationToolbarProps {
   newPredictionsCount?: number;
   zoomLevel: number;
   onSelectedRectangleSmokeTypeChange?: (smokeType: SmokeType) => void;
+  hiddenOrigins: Set<AnnotationOrigin>;
+  onToggleOrigin: (origin: AnnotationOrigin) => void;
 }
 
 export function AnnotationToolbar({
@@ -41,6 +43,8 @@ export function AnnotationToolbar({
   newPredictionsCount = 0,
   zoomLevel,
   onSelectedRectangleSmokeTypeChange,
+  hiddenOrigins,
+  onToggleOrigin,
 }: AnnotationToolbarProps) {
   const hasRectangles = drawnRectangles.length > 0;
 
@@ -112,6 +116,22 @@ export function AnnotationToolbar({
             <Trash2 className="w-5 h-5 text-white" />
           </button>
         )}
+
+        {/* Per-origin visibility toggles */}
+        {(['engine', 'auto_annotation', 'human'] as const).map(origin => (
+          <button
+            key={origin}
+            onClick={() => onToggleOrigin(origin)}
+            className={`px-2 py-1 rounded-full text-xs backdrop-blur-sm transition-colors ${
+              hiddenOrigins.has(origin)
+                ? 'bg-white bg-opacity-5 text-gray-500 line-through'
+                : 'bg-white bg-opacity-10 hover:bg-opacity-20 text-white'
+            }`}
+            title={`Toggle ${origin} boxes`}
+          >
+            {origin === 'engine' ? 'engine' : origin === 'auto_annotation' ? 'auto' : 'human'}
+          </button>
+        ))}
 
         {/* Reset Zoom Button - Only visible when zoomed */}
         {zoomLevel > 1.0 && (
