@@ -26,6 +26,7 @@ export type {
 // Drawing utilities
 export {
   getSmokeTypeColors,
+  getOriginBorderStyle,
   createDrawnRectangle,
   validateDrawingSize,
   isPointInRectangle,

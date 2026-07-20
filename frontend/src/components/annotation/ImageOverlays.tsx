@@ -4,7 +4,12 @@
  */
 
 import { Detection, DetectionAnnotation, AlgoPrediction } from '@/types/api';
-import { DrawnRectangle, CurrentDrawing, getSmokeTypeColors } from '@/utils/annotation';
+import {
+  DrawnRectangle,
+  CurrentDrawing,
+  getSmokeTypeColors,
+  getOriginBorderStyle,
+} from '@/utils/annotation';
 import {
   normalizedToPixelBox,
   validateBoundingBox,
@@ -252,11 +257,12 @@ export function DrawingOverlay({
         const { left, top, width, height } = renderRectangle(rect, 'completed');
         const isSelected = selectedRectangleId === rect.id;
         const colors = getSmokeTypeColors(rect.smokeType);
+        const originStyle = getOriginBorderStyle(rect.source?.origin ?? 'human');
 
         return (
           <div
             key={rect.id}
-            className={`absolute border-2 ${isSelected ? 'border-yellow-400' : colors.border} pointer-events-auto cursor-pointer`}
+            className={`absolute border-2 ${originStyle} ${isSelected ? 'border-yellow-400' : colors.border} pointer-events-auto cursor-pointer`}
             style={{
               left: `${left}px`,
               top: `${top}px`,
