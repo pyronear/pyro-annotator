@@ -5,9 +5,12 @@ from app.models import FalsePositiveType, SmokeType
 from app.schemas.annotation_validation import (
     AlgoPrediction,
     AlgoPredictions,
+    AnnotationOrigin,
+    AnnotationSource,
     BoundingBox,
     DetectionAnnotationData,
     DetectionAnnotationItem,
+    Predictor,
     SequenceAnnotationData,
     SequenceBBox,
 )
@@ -333,3 +336,76 @@ class TestEnumValidation:
                 xyxyn=[0.1, 0.2, 0.8, 0.9], class_name="smoke", smoke_type=smoke_type
             )
             assert item.smoke_type == smoke_type
+
+
+class TestAnnotationSource:
+    def test_engine_origin_without_predictor(self):
+        s = AnnotationSource(origin=AnnotationOrigin.ENGINE)
+        assert s.origin == AnnotationOrigin.ENGINE
+        assert s.predictor is None
+
+    def test_human_origin_without_predictor(self):
+        s = AnnotationSource(origin=AnnotationOrigin.HUMAN)
+        assert s.predictor is None
+
+    def test_auto_annotation_with_predictor(self):
+        s = AnnotationSource(
+            origin=AnnotationOrigin.AUTO_ANNOTATION,
+            predictor=Predictor(name="pyronear-yolov11s", version="1.4.0"),
+        )
+        assert s.predictor.name == "pyronear-yolov11s"
+        assert s.predictor.version == "1.4.0"
+
+    def test_auto_annotation_without_predictor_is_invalid(self):
+        with pytest.raises(ValidationError) as exc_info:
+            AnnotationSource(origin=AnnotationOrigin.AUTO_ANNOTATION)
+        assert "predictor" in str(exc_info.value)
+
+    def test_engine_with_predictor_is_invalid(self):
+        with pytest.raises(ValidationError) as exc_info:
+            AnnotationSource(
+                origin=AnnotationOrigin.ENGINE,
+                predictor=Predictor(name="pyro-engine", version="1.0"),
+            )
+        assert "predictor" in str(exc_info.value)
+
+    def test_human_with_predictor_is_invalid(self):
+        with pytest.raises(ValidationError) as exc_info:
+            AnnotationSource(
+                origin=AnnotationOrigin.HUMAN,
+                predictor=Predictor(name="x", version="1"),
+            )
+        assert "predictor" in str(exc_info.value)
+
+
+class TestDetectionAnnotationItemSource:
+    def test_source_defaults_to_human_when_omitted(self):
+        item = DetectionAnnotationItem(
+            xyxyn=[0.1, 0.2, 0.8, 0.9],
+            class_name="smoke",
+            smoke_type=SmokeType.WILDFIRE,
+        )
+        assert item.source.origin == AnnotationOrigin.HUMAN
+        assert item.source.predictor is None
+
+    def test_source_engine_accepted_from_dict(self):
+        item = DetectionAnnotationItem(
+            xyxyn=[0.1, 0.2, 0.8, 0.9],
+            class_name="smoke",
+            smoke_type=SmokeType.WILDFIRE,
+            source={"origin": "engine"},
+        )
+        assert item.source.origin == AnnotationOrigin.ENGINE
+
+    def test_source_auto_annotation_accepted_from_dict(self):
+        item = DetectionAnnotationItem(
+            xyxyn=[0.1, 0.2, 0.8, 0.9],
+            class_name="smoke",
+            smoke_type=SmokeType.WILDFIRE,
+            source={
+                "origin": "auto_annotation",
+                "predictor": {"name": "pyronear-yolov11s", "version": "1.4.0"},
+            },
+        )
+        assert item.source.origin == AnnotationOrigin.AUTO_ANNOTATION
+        assert item.source.predictor.version == "1.4.0"

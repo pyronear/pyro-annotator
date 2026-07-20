@@ -3,6 +3,7 @@
 # This program is licensed under the Apache License 2.0.
 # See LICENSE or go to <https://www.apache.org/licenses/LICENSE-2.0> for full license details.
 
+from enum import Enum
 from typing import List, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -15,6 +16,9 @@ __all__ = [
     "SequenceAnnotationData",
     "AlgoPrediction",
     "AlgoPredictions",
+    "AnnotationOrigin",
+    "Predictor",
+    "AnnotationSource",
     "DetectionAnnotationItem",
     "DetectionAnnotationData",
 ]
@@ -108,6 +112,43 @@ class AlgoPredictions(BaseModel):
     predictions: List[AlgoPrediction]
 
 
+class AnnotationOrigin(str, Enum):
+    """Who/what produced a detection-annotation box."""
+
+    ENGINE = "engine"
+    AUTO_ANNOTATION = "auto_annotation"
+    HUMAN = "human"
+
+
+class Predictor(BaseModel):
+    """Identifies the model that produced an auto_annotation box."""
+
+    name: str
+    version: str
+
+
+class AnnotationSource(BaseModel):
+    """Provenance of a detection-annotation box.
+
+    `predictor` is present iff `origin` is `auto_annotation`.
+    """
+
+    origin: AnnotationOrigin
+    predictor: Optional[Predictor] = None
+
+    @model_validator(mode="after")
+    def validate_predictor_matches_origin(self) -> "AnnotationSource":
+        has_predictor = self.predictor is not None
+        is_auto = self.origin == AnnotationOrigin.AUTO_ANNOTATION
+        if is_auto and not has_predictor:
+            raise ValueError("predictor is required when origin is 'auto_annotation'")
+        if not is_auto and has_predictor:
+            raise ValueError(
+                "predictor is only allowed when origin is 'auto_annotation'"
+            )
+        return self
+
+
 class DetectionAnnotationItem(BaseModel):
     """One reviewed box on a detection: either a smoke box (smoke_type set)
     or a false-positive box kept for traceability (false_positive_type set)."""
@@ -116,6 +157,9 @@ class DetectionAnnotationItem(BaseModel):
     class_name: str
     smoke_type: Optional[SmokeType] = Field(default=None)
     false_positive_type: Optional[FalsePositiveType] = Field(default=None)
+    source: AnnotationSource = Field(
+        default_factory=lambda: AnnotationSource(origin=AnnotationOrigin.HUMAN)
+    )
 
     @model_validator(mode="after")
     def validate_exactly_one_type(self) -> "DetectionAnnotationItem":
