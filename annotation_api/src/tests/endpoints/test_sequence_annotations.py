@@ -2127,6 +2127,27 @@ async def test_convert_algo_predictions_uses_per_object_smoke_types():
     assert {item["smoke_type"] for item in result["annotation"]} == {"industrial"}
 
 
+@pytest.mark.asyncio
+async def test_convert_algo_predictions_tags_source_engine():
+    """Pre-filled boxes from the engine's algo_predictions are tagged origin=engine."""
+    from app.api.api_v1.endpoints.sequence_annotations import (
+        convert_algo_predictions_to_annotation,
+    )
+
+    algo_predictions = {
+        "predictions": [
+            {"xyxyn": [0.1, 0.2, 0.4, 0.6], "confidence": 0.9, "class_name": "smoke"},
+            {"xyxyn": [0.5, 0.3, 0.8, 0.7], "confidence": 0.8, "class_name": "smoke"},
+        ]
+    }
+
+    result = convert_algo_predictions_to_annotation(algo_predictions, ["wildfire"])
+
+    assert len(result["annotation"]) == 2
+    for item in result["annotation"]:
+        assert item["source"] == {"origin": "engine"}
+
+
 # Contributor Tests
 
 

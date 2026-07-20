@@ -189,6 +189,7 @@ def convert_algo_predictions_to_annotation(
             "xyxyn": xyxyn,
             "class_name": class_name,
             "smoke_type": selected_smoke_type,
+            "source": {"origin": "engine"},
         }
         annotation_items.append(annotation_item)
 
