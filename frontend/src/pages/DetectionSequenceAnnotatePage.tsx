@@ -379,6 +379,7 @@ export default function DetectionSequenceAnnotatePage() {
           xyxyn: rect.xyxyn,
           class_name: 'smoke',
           smoke_type: rect.smokeType,
+          source: rect.source ?? { origin: 'human' as const },
         }));
 
         // Preserve false-positive items: they are not editable rectangles
@@ -402,6 +403,7 @@ export default function DetectionSequenceAnnotatePage() {
           xyxyn: rect.xyxyn,
           class_name: 'smoke',
           smoke_type: rect.smokeType,
+          source: rect.source ?? { origin: 'human' as const },
         }));
         const payload = {
           detection_id: detection.id,

@@ -208,6 +208,7 @@ export function ImageModal({
           id: `existing-${index}`,
           xyxyn: item.xyxyn,
           smokeType: item.smoke_type as SmokeType,
+          source: item.source ?? { origin: 'human' as const },
         }));
       setDrawnRectangles(existingRects);
     } else {
