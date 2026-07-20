@@ -98,12 +98,25 @@ export interface DetectionAnnotation {
   contributors?: Contributor[];
 }
 
+export type AnnotationOrigin = 'engine' | 'auto_annotation' | 'human';
+
+export interface Predictor {
+  name: string;
+  version: string;
+}
+
+export interface AnnotationSource {
+  origin: AnnotationOrigin;
+  predictor?: Predictor | null;
+}
+
 export interface DetectionAnnotationBbox {
   xyxyn: [number, number, number, number];
   class_name: string;
   // exactly one of smoke_type / false_positive_type is set
   smoke_type?: SmokeType | null;
   false_positive_type?: FalsePositiveType | null;
+  source?: AnnotationSource | null;
 }
 
 export interface DetectionAnnotationData {

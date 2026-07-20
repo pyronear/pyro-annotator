@@ -3,7 +3,7 @@
  * These functions handle drawing rectangle creation, validation, and transformations.
  */
 
-import { SmokeType } from '@/types/api';
+import { SmokeType, AnnotationSource } from '@/types/api';
 import { Point, ImageBounds } from './coordinateUtils';
 
 /**
@@ -13,6 +13,7 @@ export interface DrawnRectangle {
   id: string;
   xyxyn: [number, number, number, number]; // normalized coordinates
   smokeType: SmokeType;
+  source?: AnnotationSource;
 }
 
 /**
@@ -96,6 +97,7 @@ export const createDrawnRectangle = (
     id: Date.now().toString(),
     xyxyn: [x1, y1, x2, y2],
     smokeType,
+    source: { origin: 'human' },
   };
 };
 
@@ -208,7 +210,9 @@ export const updateRectangleSmokeType = (
   newSmokeType: SmokeType
 ): DrawnRectangle[] => {
   return rectangles.map(rect =>
-    rect.id === rectangleId ? { ...rect, smokeType: newSmokeType } : rect
+    rect.id === rectangleId
+      ? { ...rect, smokeType: newSmokeType, source: { origin: 'human' } }
+      : rect
   );
 };
 
@@ -268,6 +272,7 @@ export const importPredictionsAsRectangles = (
         id: `imported-${Date.now()}-${index}`,
         xyxyn: pred.xyxyn,
         smokeType,
+        source: { origin: 'engine' },
       });
     }
   });

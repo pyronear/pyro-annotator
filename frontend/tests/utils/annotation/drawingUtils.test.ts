@@ -464,4 +464,39 @@ describe('drawingUtils', () => {
       expect(stats.other).toBe(0);
     });
   });
+
+  describe('source provenance', () => {
+    const imageBounds: ImageBounds = { width: 800, height: 600, x: 0, y: 0 };
+
+    it('createDrawnRectangle tags new boxes as human', () => {
+      const rect = createDrawnRectangle(
+        { startX: 100, startY: 150, currentX: 300, currentY: 350 },
+        imageBounds,
+        'wildfire'
+      );
+      expect(rect.source).toEqual({ origin: 'human' });
+    });
+
+    it('importPredictionsAsRectangles tags imported boxes as engine', () => {
+      const imported = importPredictionsAsRectangles(
+        [{ xyxyn: [0.1, 0.2, 0.4, 0.6] }],
+        'wildfire'
+      );
+      expect(imported[0].source).toEqual({ origin: 'engine' });
+    });
+
+    it('updateRectangleSmokeType flips source to human', () => {
+      const rects: DrawnRectangle[] = [
+        {
+          id: 'r1',
+          xyxyn: [0.1, 0.2, 0.4, 0.6],
+          smokeType: 'wildfire',
+          source: { origin: 'auto_annotation', predictor: { name: 'm', version: '1' } },
+        },
+      ];
+      const updated = updateRectangleSmokeType(rects, 'r1', 'industrial');
+      expect(updated[0].smokeType).toBe('industrial');
+      expect(updated[0].source).toEqual({ origin: 'human' });
+    });
+  });
 });
