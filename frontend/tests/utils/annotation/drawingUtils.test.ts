@@ -15,6 +15,7 @@ import {
   importPredictionsAsRectangles,
   areBoundingBoxesSimilar,
   calculateDrawingStats,
+  getOriginBorderStyle,
   DrawnRectangle,
   CurrentDrawing
 } from '@/utils/annotation/drawingUtils';
@@ -497,6 +498,14 @@ describe('drawingUtils', () => {
       const updated = updateRectangleSmokeType(rects, 'r1', 'industrial');
       expect(updated[0].smokeType).toBe('industrial');
       expect(updated[0].source).toEqual({ origin: 'human' });
+    });
+  });
+
+  describe('getOriginBorderStyle', () => {
+    it('maps origins to border styles', () => {
+      expect(getOriginBorderStyle('human')).toBe('border-solid');
+      expect(getOriginBorderStyle('auto_annotation')).toBe('border-dashed');
+      expect(getOriginBorderStyle('engine')).toBe('border-dotted');
     });
   });
 });

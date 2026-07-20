@@ -3,7 +3,7 @@
  * These functions handle drawing rectangle creation, validation, and transformations.
  */
 
-import { SmokeType, AnnotationSource } from '@/types/api';
+import { SmokeType, AnnotationSource, AnnotationOrigin } from '@/types/api';
 import { Point, ImageBounds } from './coordinateUtils';
 
 /**
@@ -59,6 +59,19 @@ const SMOKE_TYPE_BORDER: Record<SmokeType, string> = {
 export const getSmokeTypeColors = (smokeType: SmokeType): SmokeTypeColors => ({
   border: SMOKE_TYPE_BORDER[smokeType],
 });
+
+const ORIGIN_BORDER_STYLE: Record<AnnotationOrigin, string> = {
+  human: 'border-solid',
+  auto_annotation: 'border-dashed',
+  engine: 'border-dotted',
+};
+
+/**
+ * Border-style accent for a box's provenance origin. Color stays keyed to
+ * smoke_type; origin is distinguished by solid/dashed/dotted.
+ */
+export const getOriginBorderStyle = (origin: AnnotationOrigin): string =>
+  ORIGIN_BORDER_STYLE[origin];
 
 /**
  * Creates a new DrawnRectangle from current drawing state.
