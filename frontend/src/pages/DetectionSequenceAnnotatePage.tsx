@@ -56,7 +56,10 @@ export default function DetectionSequenceAnnotatePage() {
   >(new Map());
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
-  const [showPredictions, setShowPredictions] = useState(false);
+  // Default ON: the detection review is *about* the model predictions, so the
+  // winning layer (auto if present, else engine) should be visible on open
+  // rather than hidden behind a toggle.
+  const [showPredictions, setShowPredictions] = useState(true);
 
   // Persistent smoke type selection across detections
   const [persistentSmokeType, setPersistentSmokeType] = useState<SmokeType>('wildfire');
