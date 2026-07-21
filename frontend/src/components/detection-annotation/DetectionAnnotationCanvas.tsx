@@ -6,7 +6,13 @@
 
 import { Detection, SmokeType } from '@/types/api';
 import { useDetectionImage } from '@/hooks/useDetectionImage';
-import { DrawnRectangle, CurrentDrawing, Point, ModelLayer } from '@/utils/annotation';
+import {
+  DrawnRectangle,
+  CurrentDrawing,
+  Point,
+  ModelLayer,
+  ResizeHandle,
+} from '@/utils/annotation';
 import {
   ReferenceBoxOverlay,
   ReviewBoxOverlay,
@@ -26,8 +32,8 @@ interface DetectionAnnotationCanvasProps {
   drawnRectangles: DrawnRectangle[];
   selectedRectangleId: string | null;
   showPredictions: boolean;
-  showEngine: boolean;
-  showAuto: boolean;
+  // Exactly one model layer is displayed at a time.
+  activeLayer: ModelLayer;
   selectedSmokeType: SmokeType;
   showSiblingBboxes?: boolean;
   // Seed-at-submit review of the winning model layer
@@ -38,6 +44,8 @@ interface DetectionAnnotationCanvasProps {
   onSelectModelBox: (index: number) => void;
   onRejectModelBox: (index: number) => void;
   onAdjustModelBox: (index: number) => void;
+  onBoxPointerDown: (id: string, e: React.MouseEvent) => void;
+  onHandlePointerDown: (id: string, handle: ResizeHandle, e: React.MouseEvent) => void;
   currentDrawing: CurrentDrawing | null;
   // Image and container refs passed from parent
   containerRef: React.RefObject<HTMLDivElement>;
@@ -64,8 +72,7 @@ export function DetectionAnnotationCanvas({
   drawnRectangles,
   selectedRectangleId,
   showPredictions,
-  showEngine,
-  showAuto,
+  activeLayer,
   selectedSmokeType,
   showSiblingBboxes = true,
   winningLayer,
@@ -75,6 +82,8 @@ export function DetectionAnnotationCanvas({
   onSelectModelBox,
   onRejectModelBox,
   onAdjustModelBox,
+  onBoxPointerDown,
+  onHandlePointerDown,
   currentDrawing,
   containerRef,
   imgRef,
@@ -94,8 +103,9 @@ export function DetectionAnnotationCanvas({
 }: DetectionAnnotationCanvasProps) {
   const { data: imageData } = useDetectionImage(detection.id);
 
-  // The winning model layer is reviewed (interactive); the other is read-only.
-  const showWinning = winningLayer === 'auto' ? showAuto : showEngine;
+  // The winning model layer is reviewed (interactive) when it is the active
+  // layer; otherwise the active (non-winning) layer is shown read-only.
+  const showWinning = activeLayer === winningLayer;
   const winningPreds =
     winningLayer === 'auto'
       ? detection.auto_predictions?.predictions
@@ -136,8 +146,9 @@ export function DetectionAnnotationCanvas({
           pointerEvents: showPredictions && imageInfo && overlaysVisible ? 'none' : 'none',
         }}
       >
-        {/* Read-only NON-winning model layer (toggled on to investigate) */}
-        {showPredictions && winningLayer === 'auto' && showEngine && imageInfo && (
+        {/* Read-only NON-winning model layer (shown when toggled on to
+            investigate; only one model layer displays at a time) */}
+        {showPredictions && !showWinning && activeLayer === 'engine' && imageInfo && (
           <ReferenceBoxOverlay
             predictions={detection.algo_predictions?.predictions}
             variant="engine"
@@ -146,7 +157,7 @@ export function DetectionAnnotationCanvas({
             detectionId={detection.id}
           />
         )}
-        {showPredictions && winningLayer === 'engine' && showAuto && imageInfo && (
+        {showPredictions && !showWinning && activeLayer === 'auto' && imageInfo && (
           <ReferenceBoxOverlay
             predictions={detection.auto_predictions?.predictions}
             variant="auto"
@@ -178,6 +189,8 @@ export function DetectionAnnotationCanvas({
             transformOrigin={transformOrigin}
             isDragging={isDragging}
             normalizedToImage={normalizedToImage}
+            onBoxPointerDown={onBoxPointerDown}
+            onHandlePointerDown={onHandlePointerDown}
           />
         )}
       </div>

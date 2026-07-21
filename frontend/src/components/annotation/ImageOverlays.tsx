@@ -4,7 +4,26 @@
  */
 
 import { Detection, DetectionAnnotation, AlgoPrediction, SmokeType } from '@/types/api';
-import { DrawnRectangle, CurrentDrawing, getSmokeTypeColors, ModelLayer } from '@/utils/annotation';
+import {
+  DrawnRectangle,
+  CurrentDrawing,
+  getSmokeTypeColors,
+  ModelLayer,
+  ResizeHandle,
+  HANDLE_CURSOR,
+} from '@/utils/annotation';
+
+// Position of each resize handle relative to the selected box (8px squares).
+const HANDLE_STYLES: Record<ResizeHandle, React.CSSProperties> = {
+  nw: { left: -4, top: -4 },
+  n: { left: 'calc(50% - 4px)', top: -4 },
+  ne: { right: -4, top: -4 },
+  w: { left: -4, top: 'calc(50% - 4px)' },
+  e: { right: -4, top: 'calc(50% - 4px)' },
+  sw: { left: -4, bottom: -4 },
+  s: { left: 'calc(50% - 4px)', bottom: -4 },
+  se: { right: -4, bottom: -4 },
+};
 import {
   normalizedToPixelBox,
   validateBoundingBox,
@@ -371,6 +390,9 @@ interface DrawingOverlayProps {
   transformOrigin: { x: number; y: number };
   isDragging: boolean;
   normalizedToImage: (normX: number, normY: number) => { x: number; y: number };
+  // Drag-to-move (box body) and drag-to-resize (handles) on the selected box.
+  onBoxPointerDown?: (id: string, e: React.MouseEvent) => void;
+  onHandlePointerDown?: (id: string, handle: ResizeHandle, e: React.MouseEvent) => void;
 }
 
 export function DrawingOverlay({
@@ -383,6 +405,8 @@ export function DrawingOverlay({
   transformOrigin,
   isDragging,
   normalizedToImage,
+  onBoxPointerDown,
+  onHandlePointerDown,
 }: DrawingOverlayProps) {
   const renderRectangle = (
     rect: { xyxyn: [number, number, number, number]; id?: string } | CurrentDrawing,
@@ -431,7 +455,14 @@ export function DrawingOverlay({
         return (
           <div
             key={rect.id}
-            className={`absolute border-2 ${isSelected ? 'border-yellow-400' : colors.border} pointer-events-auto cursor-pointer`}
+            onMouseDown={
+              isSelected && onBoxPointerDown
+                ? e => onBoxPointerDown(rect.id, e)
+                : undefined
+            }
+            className={`absolute border-2 ${isSelected ? 'border-yellow-400' : colors.border} pointer-events-auto ${
+              isSelected ? 'cursor-move' : 'cursor-pointer'
+            }`}
             style={{
               left: `${left}px`,
               top: `${top}px`,
@@ -445,12 +476,24 @@ export function DrawingOverlay({
                 isSelected
                   ? 'bg-yellow-400 text-black'
                   : `${colors.border.replace('border-', 'bg-')} text-white`
-              } text-xs px-1 py-0.5 rounded whitespace-nowrap`}
+              } text-xs px-1 py-0.5 rounded whitespace-nowrap pointer-events-none`}
             >
               {rect.smokeType === 'wildfire' ? '🔥' : rect.smokeType === 'industrial' ? '🏭' : '💨'}{' '}
               {rect.smokeType.charAt(0).toUpperCase() + rect.smokeType.slice(1)}
               {isSelected && ' (selected)'}
             </div>
+
+            {/* Resize handles on the selected box */}
+            {isSelected &&
+              onHandlePointerDown &&
+              (Object.keys(HANDLE_STYLES) as ResizeHandle[]).map(handle => (
+                <div
+                  key={handle}
+                  onMouseDown={e => onHandlePointerDown(rect.id, handle, e)}
+                  className="absolute w-2 h-2 bg-white border border-gray-800 pointer-events-auto"
+                  style={{ ...HANDLE_STYLES[handle], cursor: HANDLE_CURSOR[handle] }}
+                />
+              ))}
           </div>
         );
       })}

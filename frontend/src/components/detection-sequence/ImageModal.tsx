@@ -20,7 +20,11 @@ import {
   updateRectangleSmokeType,
   removeRectangle,
   getWinningModelLayer,
+  ModelLayer,
   materializeReviewAnnotation,
+  moveBox,
+  resizeBox,
+  ResizeHandle,
 } from '@/utils/annotation';
 import {
   KeyboardShortcutsModal,
@@ -113,12 +117,22 @@ export function ImageModal({
   const winningLayer = getWinningModelLayer(detection);
   const hasEngine = (detection.algo_predictions?.predictions?.length ?? 0) > 0;
   const hasAuto = (detection.auto_predictions?.predictions?.length ?? 0) > 0;
-  const [showEngine, setShowEngine] = useState(winningLayer === 'engine');
-  const [showAuto, setShowAuto] = useState(winningLayer === 'auto');
+  // Exactly one model layer is shown at a time (default: the winning layer);
+  // toggling to the other is for investigation.
+  const [activeLayer, setActiveLayer] = useState<ModelLayer>(winningLayer);
   // Seed-at-submit review: per-box status on the winning layer. Indices refer
   // to the winning layer's prediction list.
   const [rejectedBoxes, setRejectedBoxes] = useState<Set<number>>(new Set());
   const [selectedModelBox, setSelectedModelBox] = useState<number | null>(null);
+  // Drag-to-move / drag-to-resize of the selected drawn box.
+  const [boxEdit, setBoxEdit] = useState<{
+    id: string;
+    mode: 'move' | 'resize';
+    handle?: ResizeHandle;
+    startNorm: Point;
+    orig: [number, number, number, number];
+  } | null>(null);
+  const didDragBoxRef = useRef(false);
   // Reset to the winning layer only when the *detection* changes (navigation),
   // not when a background refetch repopulates the same detection's
   // auto_predictions — which would otherwise clobber a manual toggle mid-review.
@@ -127,8 +141,7 @@ export function ImageModal({
     if (layerInitFor.current === detection.id) return;
     layerInitFor.current = detection.id;
     const winning = getWinningModelLayer(detection);
-    setShowEngine(winning === 'engine');
-    setShowAuto(winning === 'auto');
+    setActiveLayer(winning);
     setRejectedBoxes(new Set());
     setSelectedModelBox(null);
   }, [detection]);
@@ -366,6 +379,41 @@ export function ImageModal({
     });
   };
 
+  // --- Drag-to-move / drag-to-resize of the selected drawn box ---
+  const clientToNorm = (clientX: number, clientY: number): Point => {
+    const img = screenToImageCoords(clientX, clientY);
+    return imageToNormalized(img.x, img.y);
+  };
+
+  const handleBoxPointerDown = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const rect = drawnRectangles.find(r => r.id === id);
+    if (!rect) return;
+    setSelectedRectangleId(id);
+    didDragBoxRef.current = false;
+    setBoxEdit({
+      id,
+      mode: 'move',
+      startNorm: clientToNorm(e.clientX, e.clientY),
+      orig: rect.xyxyn,
+    });
+  };
+
+  const handleHandlePointerDown = (id: string, handle: ResizeHandle, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const rect = drawnRectangles.find(r => r.id === id);
+    if (!rect) return;
+    setSelectedRectangleId(id);
+    didDragBoxRef.current = false;
+    setBoxEdit({
+      id,
+      mode: 'resize',
+      handle,
+      startNorm: clientToNorm(e.clientX, e.clientY),
+      orig: rect.xyxyn,
+    });
+  };
+
   // Change smoke type of selected rectangle using pure utility
   const changeSelectedRectangleSmokeType = (newSmokeType: SmokeType) => {
     if (!selectedRectangleId) return;
@@ -506,6 +554,13 @@ export function ImageModal({
     e.preventDefault();
     e.stopPropagation();
 
+    // A move/resize drag just finished — don't treat the trailing click as a
+    // select/draw/deselect.
+    if (didDragBoxRef.current) {
+      didDragBoxRef.current = false;
+      return;
+    }
+
     const coords = screenToImageCoords(e.clientX, e.clientY);
 
     // First, check if we clicked on an existing rectangle for selection
@@ -571,6 +626,23 @@ export function ImageModal({
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
+    if (boxEdit) {
+      const cur = clientToNorm(e.clientX, e.clientY);
+      const dx = cur.x - boxEdit.startNorm.x;
+      const dy = cur.y - boxEdit.startNorm.y;
+      const next =
+        boxEdit.mode === 'move'
+          ? moveBox(boxEdit.orig, dx, dy)
+          : resizeBox(boxEdit.orig, boxEdit.handle as ResizeHandle, dx, dy);
+      if (!didDragBoxRef.current) {
+        pushUndoState();
+        didDragBoxRef.current = true;
+      }
+      setDrawnRectangles(prev =>
+        prev.map(r => (r.id === boxEdit.id ? { ...r, xyxyn: next } : r))
+      );
+      return;
+    }
     if (isActivelyDrawing && currentDrawing) {
       // Update live preview rectangle
       const coords = screenToImageCoords(e.clientX, e.clientY);
@@ -593,6 +665,9 @@ export function ImageModal({
   };
 
   const handleMouseUp = () => {
+    if (boxEdit) {
+      setBoxEdit(null);
+    }
     if (isDragging) {
       setIsDragging(false);
     }
@@ -784,14 +859,14 @@ export function ImageModal({
             <span>Show predictions</span>
           </label>
           {showPredictions && (
-            <div className="flex items-center space-x-1">
+            <div className="flex items-center rounded overflow-hidden text-[11px] font-medium backdrop-blur-sm">
               <button
                 type="button"
                 disabled={!hasEngine}
-                onClick={() => setShowEngine(v => !v)}
-                title={hasEngine ? 'Engine predictions (dotted)' : 'No engine predictions'}
-                className={`px-2 py-1 rounded text-[11px] font-medium backdrop-blur-sm border-b-2 border-dotted ${
-                  showEngine ? 'bg-white/20 text-white' : 'bg-white/5 text-gray-400'
+                onClick={() => setActiveLayer('engine')}
+                title={hasEngine ? 'Show engine predictions (dotted)' : 'No engine predictions'}
+                className={`px-2 py-1 border-b-2 border-dotted ${
+                  activeLayer === 'engine' ? 'bg-white/25 text-white' : 'bg-white/5 text-gray-400'
                 } ${!hasEngine ? 'opacity-40 cursor-not-allowed' : ''}`}
               >
                 engine
@@ -799,10 +874,10 @@ export function ImageModal({
               <button
                 type="button"
                 disabled={!hasAuto}
-                onClick={() => setShowAuto(v => !v)}
-                title={hasAuto ? 'Auto predictions (dashed)' : 'No auto predictions'}
-                className={`px-2 py-1 rounded text-[11px] font-medium backdrop-blur-sm border-b-2 border-dashed ${
-                  showAuto ? 'bg-white/20 text-white' : 'bg-white/5 text-gray-400'
+                onClick={() => setActiveLayer('auto')}
+                title={hasAuto ? 'Show auto predictions (dashed)' : 'No auto predictions'}
+                className={`px-2 py-1 border-b-2 border-dashed ${
+                  activeLayer === 'auto' ? 'bg-white/25 text-white' : 'bg-white/5 text-gray-400'
                 } ${!hasAuto ? 'opacity-40 cursor-not-allowed' : ''}`}
               >
                 auto
@@ -818,8 +893,7 @@ export function ImageModal({
             drawnRectangles={drawnRectangles}
             selectedRectangleId={selectedRectangleId}
             showPredictions={showPredictions}
-            showEngine={showEngine}
-            showAuto={showAuto}
+            activeLayer={activeLayer}
             selectedSmokeType={selectedSmokeType}
             winningLayer={winningLayer}
             isDrawMode={isDrawMode}
@@ -828,6 +902,8 @@ export function ImageModal({
             onSelectModelBox={handleSelectModelBox}
             onRejectModelBox={handleRejectModelBox}
             onAdjustModelBox={handleAdjustModelBox}
+            onBoxPointerDown={handleBoxPointerDown}
+            onHandlePointerDown={handleHandlePointerDown}
             currentDrawing={currentDrawing}
             containerRef={containerRef}
             imgRef={imgRef}
