@@ -81,6 +81,15 @@ class Settings(BaseSettings):
     AUTOANNOTATE_CONF: float = float(os.environ.get("AUTOANNOTATE_CONF", "0.01"))
     AUTOANNOTATE_IOU: float = float(os.environ.get("AUTOANNOTATE_IOU", "0.0"))
     AUTOANNOTATE_IMGSZ: int = int(os.environ.get("AUTOANNOTATE_IMGSZ", "1024"))
+    # Clustering thresholds for the gap-fill anchor (mirror `make auto-annotate`):
+    # aggregated engine boxes are clustered into persistent objects, then only
+    # sensitive-model predictions overlapping an object are kept.
+    AUTOANNOTATE_GROUP_IOU_NMS: float = float(
+        os.environ.get("AUTOANNOTATE_GROUP_IOU_NMS", "0.0")
+    )
+    AUTOANNOTATE_GROUP_IOU_ASSIGN: float = float(
+        os.environ.get("AUTOANNOTATE_GROUP_IOU_ASSIGN", "0.0")
+    )
 
     @property
     def procrastinate_dsn(self) -> str:
