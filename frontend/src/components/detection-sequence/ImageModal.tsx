@@ -131,7 +131,7 @@ export function ImageModal({
     id: string;
     mode: 'move' | 'resize';
     handle?: ResizeHandle;
-    startNorm: Point;
+    startClient: { x: number; y: number };
     orig: [number, number, number, number];
   } | null>(null);
   const didDragBoxRef = useRef(false);
@@ -384,11 +384,8 @@ export function ImageModal({
   };
 
   // --- Drag-to-move / drag-to-resize of the selected drawn box ---
-  const clientToNorm = (clientX: number, clientY: number): Point => {
-    const img = screenToImageCoords(clientX, clientY);
-    return imageToNormalized(img.x, img.y);
-  };
-
+  // Deltas are computed directly as (client px) / (image on-screen size), which
+  // is pan- and origin-invariant and matches the rendered image at any zoom.
   const handleBoxPointerDown = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     const rect = drawnRectangles.find(r => r.id === id);
@@ -398,7 +395,7 @@ export function ImageModal({
     setBoxEdit({
       id,
       mode: 'move',
-      startNorm: clientToNorm(e.clientX, e.clientY),
+      startClient: { x: e.clientX, y: e.clientY },
       orig: rect.xyxyn,
     });
   };
@@ -413,7 +410,7 @@ export function ImageModal({
       id,
       mode: 'resize',
       handle,
-      startNorm: clientToNorm(e.clientX, e.clientY),
+      startClient: { x: e.clientX, y: e.clientY },
       orig: rect.xyxyn,
     });
   };
@@ -586,10 +583,14 @@ export function ImageModal({
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (boxEdit) {
-      const cur = clientToNorm(e.clientX, e.clientY);
-      const dx = cur.x - boxEdit.startNorm.x;
-      const dy = cur.y - boxEdit.startNorm.y;
+    if (boxEdit && imgRef.current) {
+      // Screen-px delta / image on-screen size (offset size * zoom) -> normalized
+      // delta. Independent of pan and transform-origin, so it tracks the cursor
+      // 1:1 at any zoom/pan.
+      const displayW = imgRef.current.offsetWidth * zoomLevel;
+      const displayH = imgRef.current.offsetHeight * zoomLevel;
+      const dx = (e.clientX - boxEdit.startClient.x) / displayW;
+      const dy = (e.clientY - boxEdit.startClient.y) / displayH;
       const next =
         boxEdit.mode === 'move'
           ? moveBox(boxEdit.orig, dx, dy)

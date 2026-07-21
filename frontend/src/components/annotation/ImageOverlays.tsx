@@ -444,7 +444,7 @@ export function DrawingOverlay({
     <div
       className="absolute inset-0 pointer-events-none"
       style={{
-        transform: `scale(${zoomLevel}) translate(${panOffset.x / zoomLevel}px, ${panOffset.y / zoomLevel}px)`,
+        transform: `scale(${zoomLevel}) translate(${panOffset.x}px, ${panOffset.y}px)`,
         transformOrigin: `${transformOrigin.x}% ${transformOrigin.y}%`,
         cursor: isDragging ? 'grabbing' : 'default',
       }}
