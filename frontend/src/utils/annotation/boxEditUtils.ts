@@ -9,8 +9,7 @@ export type Box = [number, number, number, number];
 
 const MIN_SIZE = 0.005;
 
-const clamp = (v: number, lo: number, hi: number): number =>
-  Math.max(lo, Math.min(hi, v));
+const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
 
 /** Translate a box by (dx, dy), keeping it fully inside [0,1]. */
 export function moveBox(box: Box, dx: number, dy: number): Box {

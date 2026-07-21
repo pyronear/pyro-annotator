@@ -1,11 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { X, ChevronLeft, ChevronRight, Keyboard } from 'lucide-react';
-import {
-  Detection,
-  DetectionAnnotation,
-  DetectionAnnotationBbox,
-  SmokeType,
-} from '@/types/api';
+import { Detection, DetectionAnnotation, DetectionAnnotationBbox, SmokeType } from '@/types/api';
 import {
   DrawnRectangle,
   CurrentDrawing,

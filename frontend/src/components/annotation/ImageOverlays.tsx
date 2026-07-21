@@ -12,6 +12,11 @@ import {
   ResizeHandle,
   HANDLE_CURSOR,
 } from '@/utils/annotation';
+import {
+  normalizedToPixelBox,
+  validateBoundingBox,
+  ImageInfo,
+} from '@/utils/annotation/coordinateUtils';
 
 // Position of each resize handle relative to the selected box (8px squares).
 const HANDLE_STYLES: Record<ResizeHandle, React.CSSProperties> = {
@@ -24,11 +29,6 @@ const HANDLE_STYLES: Record<ResizeHandle, React.CSSProperties> = {
   s: { left: 'calc(50% - 4px)', bottom: -4 },
   se: { right: -4, bottom: -4 },
 };
-import {
-  normalizedToPixelBox,
-  validateBoundingBox,
-  ImageInfo,
-} from '@/utils/annotation/coordinateUtils';
 
 /**
  * Component for rendering AI prediction bounding boxes over detection images.
@@ -459,9 +459,7 @@ export function DrawingOverlay({
           <div
             key={rect.id}
             onMouseDown={
-              isSelected && onBoxPointerDown
-                ? e => onBoxPointerDown(rect.id, e)
-                : undefined
+              isSelected && onBoxPointerDown ? e => onBoxPointerDown(rect.id, e) : undefined
             }
             className={`absolute border-2 ${isSelected ? 'border-yellow-400' : colors.border} pointer-events-auto ${
               isSelected ? 'cursor-move' : 'cursor-pointer'
