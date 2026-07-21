@@ -493,19 +493,12 @@ export function ImageModal({
     (e: React.WheelEvent) => {
       e.preventDefault();
 
-      if (!containerRef.current || !imgRef.current) return;
+      if (!imgRef.current) return;
 
-      const imgRect = imgRef.current.getBoundingClientRect();
-
-      // Calculate mouse position relative to the image
-      const mouseX = e.clientX - imgRect.left;
-      const mouseY = e.clientY - imgRect.top;
-
-      // Convert to percentage for transform-origin
-      const originX = (mouseX / imgRect.width) * 100;
-      const originY = (mouseY / imgRect.height) * 100;
-
-      setTransformOrigin({ x: originX, y: originY });
+      // Zoom around the image centre so the pan bounds stay symmetric.
+      // (Cursor-anchored zoom made the constraint asymmetric and let the image
+      // slide out of view.)
+      setTransformOrigin({ x: 50, y: 50 });
 
       // Calculate new zoom level
       const zoomDelta = e.deltaY < 0 ? 0.2 : -0.2;
@@ -526,19 +519,27 @@ export function ImageModal({
   const constrainPan = (offset: { x: number; y: number }) => {
     if (!imgRef.current || zoomLevel <= 1) return offset;
 
-    const imgRect = imgRef.current.getBoundingClientRect();
-    const scaledWidth = imgRect.width * zoomLevel;
-    const scaledHeight = imgRect.height * zoomLevel;
-
-    // Calculate max pan distance to keep image centered in viewport
-    const maxPanX = (scaledWidth - imgRect.width) / 2;
-    const maxPanY = (scaledHeight - imgRect.height) / 2;
+    // Use the LAYOUT size (offsetWidth), not getBoundingClientRect() which is
+    // already scaled by the transform. The pan is applied INSIDE the scale
+    // (`scale(z) translate(t)` -> screen shift = z*t), so the max pan offset
+    // that keeps the image covering its box is baseSize*(z-1)/(2*z).
+    const baseW = imgRef.current.offsetWidth;
+    const baseH = imgRef.current.offsetHeight;
+    const maxPanX = (baseW * (zoomLevel - 1)) / (2 * zoomLevel);
+    const maxPanY = (baseH * (zoomLevel - 1)) / (2 * zoomLevel);
 
     return {
       x: Math.max(-maxPanX, Math.min(maxPanX, offset.x)),
       y: Math.max(-maxPanY, Math.min(maxPanY, offset.y)),
     };
   };
+
+  // Re-clamp the pan whenever zoom changes so zooming out never leaves the
+  // image partly out of view.
+  useEffect(() => {
+    setPanOffset(prev => constrainPan(prev));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zoomLevel]);
 
   // Click-based drawing and panning handlers
   const handleMouseDown = (e: React.MouseEvent) => {
