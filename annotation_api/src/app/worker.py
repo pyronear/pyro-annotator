@@ -52,6 +52,7 @@ async def auto_annotate_sequence(sequence_id: int) -> None:
             .scalars()
             .all()
         )
+        annotated = 0
         for det in detections:
             try:
                 image_bytes = bucket.download_file(det.bucket_key)
@@ -72,7 +73,11 @@ async def auto_annotate_sequence(sequence_id: int) -> None:
                 ]
             }
             session.add(det)
+            annotated += 1
         await session.commit()
     logger.info(
-        "auto-annotated sequence %s (%d detections)", sequence_id, len(detections)
+        "auto-annotated sequence %s (%d/%d detections)",
+        sequence_id,
+        annotated,
+        len(detections),
     )
