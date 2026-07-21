@@ -5,6 +5,7 @@ from app.models import FalsePositiveType, SmokeType
 from app.schemas.annotation_validation import (
     AlgoPrediction,
     AlgoPredictions,
+    AnnotationOrigin,
     BoundingBox,
     DetectionAnnotationData,
     DetectionAnnotationItem,
@@ -333,3 +334,33 @@ class TestEnumValidation:
                 xyxyn=[0.1, 0.2, 0.8, 0.9], class_name="smoke", smoke_type=smoke_type
             )
             assert item.smoke_type == smoke_type
+
+
+class TestDetectionAnnotationItemOrigin:
+    def test_origin_defaults_to_human(self):
+        item = DetectionAnnotationItem(
+            xyxyn=[0.1, 0.2, 0.8, 0.9], class_name="smoke", smoke_type=SmokeType.WILDFIRE
+        )
+        assert item.origin == AnnotationOrigin.HUMAN
+
+    def test_origin_accepts_engine_and_auto(self):
+        for value, expected in [
+            ("engine", AnnotationOrigin.ENGINE),
+            ("auto", AnnotationOrigin.AUTO),
+        ]:
+            item = DetectionAnnotationItem(
+                xyxyn=[0.1, 0.2, 0.8, 0.9],
+                class_name="smoke",
+                smoke_type=SmokeType.WILDFIRE,
+                origin=value,
+            )
+            assert item.origin == expected
+
+    def test_origin_rejects_unknown(self):
+        with pytest.raises(ValidationError):
+            DetectionAnnotationItem(
+                xyxyn=[0.1, 0.2, 0.8, 0.9],
+                class_name="smoke",
+                smoke_type=SmokeType.WILDFIRE,
+                origin="robot",
+            )

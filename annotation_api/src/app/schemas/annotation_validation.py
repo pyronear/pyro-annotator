@@ -3,6 +3,7 @@
 # This program is licensed under the Apache License 2.0.
 # See LICENSE or go to <https://www.apache.org/licenses/LICENSE-2.0> for full license details.
 
+from enum import Enum
 from typing import List, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -15,6 +16,7 @@ __all__ = [
     "SequenceAnnotationData",
     "AlgoPrediction",
     "AlgoPredictions",
+    "AnnotationOrigin",
     "DetectionAnnotationItem",
     "DetectionAnnotationData",
 ]
@@ -108,6 +110,19 @@ class AlgoPredictions(BaseModel):
     predictions: List[AlgoPrediction]
 
 
+class AnnotationOrigin(str, Enum):
+    """Provenance of a committed detection-annotation box.
+
+    Model predictions live immutably on the detection (``algo_predictions`` /
+    ``auto_predictions``); a committed box is tagged with which layer it was
+    accepted from (``engine``/``auto``) or ``human`` when hand-drawn or edited.
+    """
+
+    ENGINE = "engine"
+    AUTO = "auto"
+    HUMAN = "human"
+
+
 class DetectionAnnotationItem(BaseModel):
     """One reviewed box on a detection: either a smoke box (smoke_type set)
     or a false-positive box kept for traceability (false_positive_type set)."""
@@ -116,6 +131,7 @@ class DetectionAnnotationItem(BaseModel):
     class_name: str
     smoke_type: Optional[SmokeType] = Field(default=None)
     false_positive_type: Optional[FalsePositiveType] = Field(default=None)
+    origin: AnnotationOrigin = Field(default=AnnotationOrigin.HUMAN)
 
     @model_validator(mode="after")
     def validate_exactly_one_type(self) -> "DetectionAnnotationItem":
