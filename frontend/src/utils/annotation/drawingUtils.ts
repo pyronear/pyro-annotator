@@ -3,7 +3,7 @@
  * These functions handle drawing rectangle creation, validation, and transformations.
  */
 
-import { SmokeType } from '@/types/api';
+import { SmokeType, AnnotationOrigin } from '@/types/api';
 import { Point, ImageBounds } from './coordinateUtils';
 
 /**
@@ -13,6 +13,11 @@ export interface DrawnRectangle {
   id: string;
   xyxyn: [number, number, number, number]; // normalized coordinates
   smokeType: SmokeType;
+  // Provenance carried through a re-opened committed annotation: a box loaded
+  // from a prior submit keeps its origin (auto/engine/human) unless edited,
+  // at which point it becomes human. Undefined for fresh first-review boxes
+  // (which are always human at submit).
+  origin?: AnnotationOrigin;
 }
 
 /**

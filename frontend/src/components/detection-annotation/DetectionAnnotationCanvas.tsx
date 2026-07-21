@@ -39,6 +39,9 @@ interface DetectionAnnotationCanvasProps {
   // Seed-at-submit review of the winning model layer
   winningLayer: ModelLayer;
   isDrawMode: boolean;
+  // When re-opening a committed annotation, the winning layer is read-only
+  // reference (already reviewed); you edit the committed boxes directly.
+  reviewInteractive: boolean;
   rejectedBoxes: Set<number>;
   hiddenBoxes: Set<number>;
   selectedModelBox: number | null;
@@ -78,6 +81,7 @@ export function DetectionAnnotationCanvas({
   showSiblingBboxes = true,
   winningLayer,
   isDrawMode,
+  reviewInteractive,
   rejectedBoxes,
   hiddenBoxes,
   selectedModelBox,
@@ -219,7 +223,7 @@ export function DetectionAnnotationCanvas({
             rejected={rejectedBoxes}
             hidden={hiddenBoxes}
             selectedIndex={selectedModelBox}
-            interactive={!isDrawMode}
+            interactive={!isDrawMode && reviewInteractive}
             onSelect={onSelectModelBox}
             onReject={onRejectModelBox}
             onAdjust={onAdjustModelBox}

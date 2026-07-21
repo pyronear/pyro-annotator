@@ -47,7 +47,7 @@ export type { ModelLayer } from './referenceLayerUtils';
 export { materializeReviewAnnotation, sequenceSmokeType } from './reviewUtils';
 
 // Bounding box move/resize geometry
-export { moveBox, resizeBox, handleAnchors, HANDLE_CURSOR } from './boxEditUtils';
+export { moveBox, resizeBox, HANDLE_CURSOR } from './boxEditUtils';
 export type { ResizeHandle, Box } from './boxEditUtils';
 
 // Validation utilities

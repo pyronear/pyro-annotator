@@ -45,23 +45,6 @@ export function resizeBox(box: Box, handle: ResizeHandle, dx: number, dy: number
   ];
 }
 
-/** The eight resize handles with their normalized anchor point on `box`. */
-export function handleAnchors(box: Box): Array<{ handle: ResizeHandle; x: number; y: number }> {
-  const [x1, y1, x2, y2] = box;
-  const cx = (x1 + x2) / 2;
-  const cy = (y1 + y2) / 2;
-  return [
-    { handle: 'nw', x: x1, y: y1 },
-    { handle: 'n', x: cx, y: y1 },
-    { handle: 'ne', x: x2, y: y1 },
-    { handle: 'w', x: x1, y: cy },
-    { handle: 'e', x: x2, y: cy },
-    { handle: 'sw', x: x1, y: y2 },
-    { handle: 's', x: cx, y: y2 },
-    { handle: 'se', x: x2, y: y2 },
-  ];
-}
-
 /** CSS cursor for each handle (diagonal / straight resize affordance). */
 export const HANDLE_CURSOR: Record<ResizeHandle, string> = {
   nw: 'nwse-resize',

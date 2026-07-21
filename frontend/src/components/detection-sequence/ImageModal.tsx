@@ -135,6 +135,9 @@ export function ImageModal({
     orig: [number, number, number, number];
   } | null>(null);
   const didDragBoxRef = useRef(false);
+  // Which detection's committed annotation has been loaded into drawnRectangles,
+  // so a background refetch of the same detection doesn't clobber in-progress edits.
+  const rectsLoadedFor = useRef<number | null>(null);
   // Reset to the winning layer only when the *detection* changes (navigation),
   // not when a background refetch repopulates the same detection's
   // auto_predictions — which would otherwise clobber a manual toggle mid-review.
@@ -155,6 +158,13 @@ export function ImageModal({
       ? detection.auto_predictions?.predictions
       : detection.algo_predictions?.predictions;
 
+  // A detection with a committed smoke annotation is being RE-opened: edit that
+  // annotation directly (preserving each box's origin) instead of re-running
+  // the accept-all-model-boxes seed, which would duplicate boxes on resubmit.
+  const alreadyReviewed = (existingAnnotation?.annotation?.annotation ?? []).some(
+    item => item.smoke_type != null
+  );
+
   const handleSelectModelBox = (index: number) =>
     setSelectedModelBox(prev => (prev === index ? null : index));
 
@@ -166,6 +176,7 @@ export function ImageModal({
   const handleAdjustModelBox = (index: number) => {
     const box = winningPredictions?.[index];
     if (!box) return;
+    pushUndoState();
     // Hide the original in place and seed an editable human copy at the same
     // spot (solid, selected, with resize handles) — the box "becomes editable".
     setAdjustedBoxes(prev => new Set(prev).add(index));
@@ -173,22 +184,34 @@ export function ImageModal({
       id: `adjust-${detection.id}-${index}`,
       xyxyn: box.xyxyn,
       smokeType: selectedSmokeType,
+      origin: 'human',
     };
     setDrawnRectangles(prev => [...prev, seeded]);
     setSelectedRectangleId(seeded.id);
     setSelectedModelBox(null);
   };
 
-  // Materialize the committed annotation for submit: accepted winning boxes
-  // (origin auto/engine) + human boxes (origin human), minus rejected/adjusted.
-  const buildReviewItems = (): DetectionAnnotationBbox[] =>
-    materializeReviewAnnotation({
+  // Committed annotation for submit. First review: accepted winning boxes
+  // (origin auto/engine) + human boxes − rejected/adjusted. Re-open: the drawn
+  // boxes ARE the ground truth, each keeping its origin (edits mark it human);
+  // model boxes are NOT re-accepted (they are already in the committed set).
+  const buildReviewItems = (): DetectionAnnotationBbox[] => {
+    if (alreadyReviewed) {
+      return drawnRectangles.map(r => ({
+        xyxyn: r.xyxyn,
+        class_name: 'smoke',
+        smoke_type: r.smokeType,
+        origin: r.origin ?? 'human',
+      }));
+    }
+    return materializeReviewAnnotation({
       winningBoxes: winningPredictions ?? [],
       winningLayer,
       rejected: new Set([...rejectedBoxes, ...adjustedBoxes]),
       humanRects: drawnRectangles,
       smokeType: selectedSmokeType,
     });
+  };
 
   // Handle image load to get dimensions and position using DOM positioning
   const handleImageLoad = () => {
@@ -289,19 +312,28 @@ export function ImageModal({
       setUndoStack([]);
     }
 
-    // Always update rectangles based on annotation (even if detection didn't change)
-    if (existingAnnotation?.annotation?.annotation) {
-      // false-positive items (no smoke_type) are not editable smoke rectangles
-      const existingRects: DrawnRectangle[] = existingAnnotation.annotation.annotation
-        .filter(item => item.smoke_type != null)
-        .map((item, index) => ({
-          id: `existing-${index}`,
-          xyxyn: item.xyxyn,
-          smokeType: item.smoke_type as SmokeType,
-        }));
-      setDrawnRectangles(existingRects);
-    } else {
-      setDrawnRectangles([]);
+    // Load the committed annotation into editable rectangles ONCE per detection
+    // (the annotation may arrive async). A later identity change of
+    // existingAnnotation (e.g. a background refetch) must NOT re-run this and
+    // clobber in-progress edits — hence the rectsLoadedFor guard.
+    if (rectsLoadedFor.current !== detection.id) {
+      const items = existingAnnotation?.annotation?.annotation;
+      const smokeItems = (items ?? []).filter(item => item.smoke_type != null);
+      if (smokeItems.length > 0) {
+        // false-positive items (no smoke_type) are not editable smoke rectangles.
+        // Preserve each box's origin so re-submitting doesn't flip auto/engine -> human.
+        setDrawnRectangles(
+          smokeItems.map((item, index) => ({
+            id: `existing-${index}`,
+            xyxyn: item.xyxyn,
+            smokeType: item.smoke_type as SmokeType,
+            origin: item.origin ?? 'human',
+          }))
+        );
+        rectsLoadedFor.current = detection.id;
+      } else {
+        setDrawnRectangles([]);
+      }
     }
   }, [detection.id, existingAnnotation, isAutoAdvance, persistentDrawMode]);
 
@@ -420,7 +452,12 @@ export function ImageModal({
     if (!selectedRectangleId) return;
 
     pushUndoState();
-    setDrawnRectangles(prev => updateRectangleSmokeType(prev, selectedRectangleId, newSmokeType));
+    setDrawnRectangles(prev =>
+      updateRectangleSmokeType(prev, selectedRectangleId, newSmokeType).map(r =>
+        // re-typing a box is a human classification decision
+        r.id === selectedRectangleId ? { ...r, origin: 'human' } : r
+      )
+    );
   };
 
   // Note: coordinatesMatch function replaced with direct call to areBoundingBoxesSimilar
@@ -499,6 +536,10 @@ export function ImageModal({
 
   // Click-based drawing and panning handlers
   const handleMouseDown = (e: React.MouseEvent) => {
+    // Clear a stale drag flag left over from a drag that ended off-canvas
+    // (onMouseLeave -> mouseUp fires with no trailing click), so this fresh
+    // interaction's click isn't swallowed.
+    didDragBoxRef.current = false;
     if (!isDrawMode && zoomLevel > 1.0) {
       // Start panning when not in draw mode
       setIsDragging(true);
@@ -600,7 +641,9 @@ export function ImageModal({
         didDragBoxRef.current = true;
       }
       setDrawnRectangles(prev =>
-        prev.map(r => (r.id === boxEdit.id ? { ...r, xyxyn: next } : r))
+        // A moved/resized box is now human-owned (matters when editing a
+        // re-opened committed annotation; a no-op for fresh first-review boxes).
+        prev.map(r => (r.id === boxEdit.id ? { ...r, xyxyn: next, origin: 'human' } : r))
       );
       return;
     }
@@ -875,6 +918,7 @@ export function ImageModal({
             selectedSmokeType={selectedSmokeType}
             winningLayer={winningLayer}
             isDrawMode={isDrawMode}
+            reviewInteractive={!alreadyReviewed}
             rejectedBoxes={rejectedBoxes}
             hiddenBoxes={adjustedBoxes}
             selectedModelBox={selectedModelBox}
