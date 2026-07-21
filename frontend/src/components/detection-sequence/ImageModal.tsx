@@ -103,15 +103,23 @@ export function ImageModal({
 
   // Per-layer visibility for the read-only model reference layers. Default to
   // the winning layer only (auto if present, else engine); the other layer is
-  // hidden and can be toggled on to investigate. Re-initialized per detection.
+  // hidden and can be toggled on to investigate.
   const winningLayer = getWinningModelLayer(detection);
+  const hasEngine = (detection.algo_predictions?.predictions?.length ?? 0) > 0;
   const hasAuto = (detection.auto_predictions?.predictions?.length ?? 0) > 0;
   const [showEngine, setShowEngine] = useState(winningLayer === 'engine');
   const [showAuto, setShowAuto] = useState(winningLayer === 'auto');
+  // Reset to the winning layer only when the *detection* changes (navigation),
+  // not when a background refetch repopulates the same detection's
+  // auto_predictions — which would otherwise clobber a manual toggle mid-review.
+  const layerInitFor = useRef<number | null>(null);
   useEffect(() => {
-    setShowEngine(winningLayer === 'engine');
-    setShowAuto(winningLayer === 'auto');
-  }, [detection.id, winningLayer]);
+    if (layerInitFor.current === detection.id) return;
+    layerInitFor.current = detection.id;
+    const winning = getWinningModelLayer(detection);
+    setShowEngine(winning === 'engine');
+    setShowAuto(winning === 'auto');
+  }, [detection]);
 
   // Handle image load to get dimensions and position using DOM positioning
   const handleImageLoad = () => {
@@ -727,11 +735,12 @@ export function ImageModal({
             <div className="flex items-center space-x-1">
               <button
                 type="button"
+                disabled={!hasEngine}
                 onClick={() => setShowEngine(v => !v)}
-                title="Engine predictions (dotted)"
+                title={hasEngine ? 'Engine predictions (dotted)' : 'No engine predictions'}
                 className={`px-2 py-1 rounded text-[11px] font-medium backdrop-blur-sm border-b-2 border-dotted ${
                   showEngine ? 'bg-white/20 text-white' : 'bg-white/5 text-gray-400'
-                }`}
+                } ${!hasEngine ? 'opacity-40 cursor-not-allowed' : ''}`}
               >
                 engine
               </button>
