@@ -16,9 +16,7 @@ export type ModelLayer = 'engine' | 'auto';
  * The winning model layer for a detection: `auto` if auto_predictions has any
  * boxes, otherwise `engine`.
  */
-export function getWinningModelLayer(
-  detection: Pick<Detection, 'auto_predictions'>
-): ModelLayer {
+export function getWinningModelLayer(detection: Pick<Detection, 'auto_predictions'>): ModelLayer {
   const autoCount = detection.auto_predictions?.predictions?.length ?? 0;
   return autoCount > 0 ? 'auto' : 'engine';
 }
