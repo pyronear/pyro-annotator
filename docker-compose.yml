@@ -72,6 +72,33 @@ services:
       timeout: 20s
       retries: 10
 
+  # Auto-annotate queue worker (procrastinate)
+  worker:
+    build:
+      context: ./annotation_api
+      dockerfile: ./Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+      annotation_api:
+        condition: service_healthy
+    environment:
+      # DB
+      - POSTGRES_URL=postgresql+asyncpg://dummy_pg_user:dummy_pg_pwd@postgres/dummy_pg_db
+      # S3
+      - S3_ENDPOINT_URL=http://localstack:4566
+      - S3_ACCESS_KEY=fake
+      - S3_SECRET_KEY=fake
+      - S3_REGION=us-east-1
+      # Auto-annotate model (baked into the image)
+      - AUTOANNOTATE_MODEL_PATH=/app/models
+    restart: unless-stopped
+    command: "procrastinate --app=app.worker.app worker"
+    healthcheck:
+      disable: true
+
   # Frontend React application
   frontend:
     build:

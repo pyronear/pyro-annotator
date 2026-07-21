@@ -40,6 +40,13 @@ COPY src/app /app/app
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
+# Bake the auto-annotate ONNX model into the image (see AUTOANNOTATE_MODEL_PATH)
+RUN mkdir -p /app/models \
+    && curl -fsSL "https://huggingface.co/pyronear/yolo11s_sensitive-detector/resolve/main/onnx_cpu.tar.gz" \
+        -o /tmp/model.tar.gz \
+    && tar -xzf /tmp/model.tar.gz -C /app/models \
+    && rm /tmp/model.tar.gz
+
 # Test stage (includes dev dependencies)
 FROM base AS test
 

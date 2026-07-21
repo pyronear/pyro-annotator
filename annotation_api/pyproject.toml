@@ -38,6 +38,9 @@ dependencies = [
     "tqdm>=4.67.1",
     "rich>=13.0.0",
     "fastapi-pagination>=0.13.3",
+    "pillow>=10.0.0",
+    "procrastinate>=2.0.0,<4.0.0",
+    "psycopg[binary]>=3.1.0",
 ]
 
 [dependency-groups]
@@ -57,7 +60,6 @@ dev = [
     "httpx>=0.23.0",
     "aiosqlite>=0.16.0,<1.0.0",
     "pyyaml>=6.0",
-    "pillow>=10.0.0",
     "fiftyone>=1.14.2,<1.15",
 ]
 

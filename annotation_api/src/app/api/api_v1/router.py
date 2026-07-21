@@ -6,6 +6,7 @@
 from fastapi import APIRouter
 
 from app.api.api_v1.endpoints import (
+    auto_annotate,
     cameras,
     detection_annotations,
     detections,
@@ -51,3 +52,6 @@ api_router.include_router(
 )
 
 api_router.include_router(export.router, prefix="/export", tags=["export"])
+api_router.include_router(
+    auto_annotate.router, prefix="/auto-annotate", tags=["auto annotate"]
+)

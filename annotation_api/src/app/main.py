@@ -25,6 +25,7 @@ from app.crud import UserCRUD
 from app.db import get_session
 from app.schemas.base import Status
 from app.schemas.user import UserCreate
+from app.worker import app as procrastinate_app
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -61,8 +62,12 @@ async def lifespan(app: FastAPI):
 
         break  # Exit after first session
 
-    yield
-    # Shutdown (if needed)
+    # Open the procrastinate connector so endpoints can defer auto-annotate jobs.
+    await procrastinate_app.open_async()
+    try:
+        yield
+    finally:
+        await procrastinate_app.close_async()
 
 
 app = FastAPI(
