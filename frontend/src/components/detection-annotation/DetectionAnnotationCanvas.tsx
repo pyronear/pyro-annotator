@@ -4,11 +4,11 @@
  * This is a simplified component that renders the exact same UI as the original ImageModal canvas.
  */
 
-import { Detection } from '@/types/api';
+import { Detection, SmokeType } from '@/types/api';
 import { useDetectionImage } from '@/hooks/useDetectionImage';
 import { DrawnRectangle, CurrentDrawing, Point } from '@/utils/annotation';
 import {
-  BoundingBoxOverlay,
+  ReferenceBoxOverlay,
   DrawingOverlay,
   SiblingBoundingBoxOverlay,
 } from '@/components/annotation/ImageOverlays';
@@ -25,6 +25,9 @@ interface DetectionAnnotationCanvasProps {
   drawnRectangles: DrawnRectangle[];
   selectedRectangleId: string | null;
   showPredictions: boolean;
+  showEngine: boolean;
+  showAuto: boolean;
+  selectedSmokeType: SmokeType;
   showSiblingBboxes?: boolean;
   currentDrawing: CurrentDrawing | null;
   // Image and container refs passed from parent
@@ -52,6 +55,9 @@ export function DetectionAnnotationCanvas({
   drawnRectangles,
   selectedRectangleId,
   showPredictions,
+  showEngine,
+  showAuto,
+  selectedSmokeType,
   showSiblingBboxes = true,
   currentDrawing,
   containerRef,
@@ -107,8 +113,23 @@ export function DetectionAnnotationCanvas({
           pointerEvents: showPredictions && imageInfo && overlaysVisible ? 'none' : 'none',
         }}
       >
-        {showPredictions && imageInfo && (
-          <BoundingBoxOverlay detection={detection} imageInfo={imageInfo} />
+        {showPredictions && showEngine && imageInfo && (
+          <ReferenceBoxOverlay
+            predictions={detection.algo_predictions?.predictions}
+            variant="engine"
+            smokeType={selectedSmokeType}
+            imageInfo={imageInfo}
+            detectionId={detection.id}
+          />
+        )}
+        {showPredictions && showAuto && imageInfo && (
+          <ReferenceBoxOverlay
+            predictions={detection.auto_predictions?.predictions}
+            variant="auto"
+            smokeType={selectedSmokeType}
+            imageInfo={imageInfo}
+            detectionId={detection.id}
+          />
         )}
         {showPredictions && showSiblingBboxes && imageInfo && (
           <SiblingBoundingBoxOverlay detection={detection} imageInfo={imageInfo} />

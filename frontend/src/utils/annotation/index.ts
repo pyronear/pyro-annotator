@@ -39,6 +39,10 @@ export {
 
 export type { DrawnRectangle, CurrentDrawing, SmokeTypeColors, DrawingMode } from './drawingUtils';
 
+// Model reference layer utilities
+export { getWinningModelLayer } from './referenceLayerUtils';
+export type { ModelLayer } from './referenceLayerUtils';
+
 // Validation utilities
 export {
   validateDetectionPredictions,

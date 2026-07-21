@@ -14,6 +14,7 @@ import {
   importPredictionsAsRectangles,
   updateRectangleSmokeType,
   removeRectangle,
+  getWinningModelLayer,
 } from '@/utils/annotation';
 import {
   KeyboardShortcutsModal,
@@ -99,6 +100,18 @@ export function ImageModal({
   // Transition state management for smooth overlay animations
   const [overlaysVisible, setOverlaysVisible] = useState(true);
   const [isTransitioning, setIsTransitioning] = useState(false);
+
+  // Per-layer visibility for the read-only model reference layers. Default to
+  // the winning layer only (auto if present, else engine); the other layer is
+  // hidden and can be toggled on to investigate. Re-initialized per detection.
+  const winningLayer = getWinningModelLayer(detection);
+  const hasAuto = (detection.auto_predictions?.predictions?.length ?? 0) > 0;
+  const [showEngine, setShowEngine] = useState(winningLayer === 'engine');
+  const [showAuto, setShowAuto] = useState(winningLayer === 'auto');
+  useEffect(() => {
+    setShowEngine(winningLayer === 'engine');
+    setShowAuto(winningLayer === 'auto');
+  }, [detection.id, winningLayer]);
 
   // Handle image load to get dimensions and position using DOM positioning
   const handleImageLoad = () => {
@@ -698,16 +711,44 @@ export function ImageModal({
           <Keyboard className="w-4 h-4 text-white" />
         </button>
 
-        {/* Predictions Toggle */}
-        <label className="absolute top-4 right-20 flex items-center space-x-2 px-3 py-2 bg-white bg-opacity-10 hover:bg-opacity-20 rounded-md text-xs font-medium text-white cursor-pointer backdrop-blur-sm">
-          <input
-            type="checkbox"
-            checked={showPredictions}
-            onChange={e => onTogglePredictions(e.target.checked)}
-            className="w-3 h-3 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-          />
-          <span>Show predictions</span>
-        </label>
+        {/* Model reference layers: master toggle + per-layer (engine dotted /
+            auto dashed) toggles. Line style = layer, color = active smoke_type. */}
+        <div className="absolute top-4 right-20 flex flex-col items-end space-y-1 z-50">
+          <label className="flex items-center space-x-2 px-3 py-2 bg-white bg-opacity-10 hover:bg-opacity-20 rounded-md text-xs font-medium text-white cursor-pointer backdrop-blur-sm">
+            <input
+              type="checkbox"
+              checked={showPredictions}
+              onChange={e => onTogglePredictions(e.target.checked)}
+              className="w-3 h-3 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+            />
+            <span>Show predictions</span>
+          </label>
+          {showPredictions && (
+            <div className="flex items-center space-x-1">
+              <button
+                type="button"
+                onClick={() => setShowEngine(v => !v)}
+                title="Engine predictions (dotted)"
+                className={`px-2 py-1 rounded text-[11px] font-medium backdrop-blur-sm border-b-2 border-dotted ${
+                  showEngine ? 'bg-white/20 text-white' : 'bg-white/5 text-gray-400'
+                }`}
+              >
+                engine
+              </button>
+              <button
+                type="button"
+                disabled={!hasAuto}
+                onClick={() => setShowAuto(v => !v)}
+                title={hasAuto ? 'Auto predictions (dashed)' : 'No auto predictions'}
+                className={`px-2 py-1 rounded text-[11px] font-medium backdrop-blur-sm border-b-2 border-dashed ${
+                  showAuto ? 'bg-white/20 text-white' : 'bg-white/5 text-gray-400'
+                } ${!hasAuto ? 'opacity-40 cursor-not-allowed' : ''}`}
+              >
+                auto
+              </button>
+            </div>
+          )}
+        </div>
 
         {/* Image container */}
         <div className="relative max-w-7xl flex flex-col items-center">
@@ -716,6 +757,9 @@ export function ImageModal({
             drawnRectangles={drawnRectangles}
             selectedRectangleId={selectedRectangleId}
             showPredictions={showPredictions}
+            showEngine={showEngine}
+            showAuto={showAuto}
+            selectedSmokeType={selectedSmokeType}
             currentDrawing={currentDrawing}
             containerRef={containerRef}
             imgRef={imgRef}
