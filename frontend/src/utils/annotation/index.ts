@@ -43,6 +43,9 @@ export type { DrawnRectangle, CurrentDrawing, SmokeTypeColors, DrawingMode } fro
 export { getWinningModelLayer } from './referenceLayerUtils';
 export type { ModelLayer } from './referenceLayerUtils';
 
+// Seed-at-submit review utilities
+export { materializeReviewAnnotation, sequenceSmokeType } from './reviewUtils';
+
 // Validation utilities
 export {
   validateDetectionPredictions,
