@@ -28,6 +28,7 @@ class DetectionCreate(BaseModel):
     bucket_key: str
     algo_predictions: AlgoPredictions
     others_bboxes: Optional[AlgoPredictions] = None
+    auto_predictions: Optional[AlgoPredictions] = None
 
 
 class DetectionCreateFromUrl(BaseModel):
@@ -37,6 +38,7 @@ class DetectionCreateFromUrl(BaseModel):
     alert_api_id: int
     algo_predictions: AlgoPredictions
     others_bboxes: Optional[AlgoPredictions] = None
+    auto_predictions: Optional[AlgoPredictions] = None
 
 
 class DetectionCreateFromBucketKey(BaseModel):
@@ -48,6 +50,7 @@ class DetectionCreateFromBucketKey(BaseModel):
     alert_api_id: int
     algo_predictions: AlgoPredictions
     others_bboxes: Optional[AlgoPredictions] = None
+    auto_predictions: Optional[AlgoPredictions] = None
 
 
 class DetectionRead(BaseModel):
@@ -58,6 +61,7 @@ class DetectionRead(BaseModel):
     bucket_key: str
     algo_predictions: AlgoPredictions
     others_bboxes: Optional[AlgoPredictions] = None
+    auto_predictions: Optional[AlgoPredictions] = None
     created_at: datetime
 
 

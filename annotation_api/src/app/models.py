@@ -366,6 +366,9 @@ class Detection(SQLModel, table=True):
     )
     bucket_key: str
     algo_predictions: Optional[dict] = Field(default=None, sa_column=Column(JSONB))
+    # Immutable local auto-annotation model output (read-only reference; the human
+    # ground-truth annotation is seeded from it at submit, never edited in place).
+    auto_predictions: Optional[dict] = Field(default=None, sa_column=Column(JSONB))
     # Sibling boxes seen on the same image but not part of the tracked sequence.
     # Stored read-only for the UI so annotators can spot missed smoke; never fed
     # into auto-annotation.
