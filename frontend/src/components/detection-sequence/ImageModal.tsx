@@ -1,6 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { X, ChevronLeft, ChevronRight, Keyboard } from 'lucide-react';
-import { Detection, DetectionAnnotation, SmokeType } from '@/types/api';
+import {
+  Detection,
+  DetectionAnnotation,
+  DetectionAnnotationBbox,
+  SmokeType,
+} from '@/types/api';
 import {
   DrawnRectangle,
   CurrentDrawing,
@@ -15,6 +20,7 @@ import {
   updateRectangleSmokeType,
   removeRectangle,
   getWinningModelLayer,
+  materializeReviewAnnotation,
 } from '@/utils/annotation';
 import {
   KeyboardShortcutsModal,
@@ -30,7 +36,7 @@ interface ImageModalProps {
   onNavigate: (direction: 'prev' | 'next') => void;
   onSubmit: (
     detection: Detection,
-    drawnRectangles: DrawnRectangle[],
+    items: DetectionAnnotationBbox[],
     currentDrawMode: boolean
   ) => void;
   onTogglePredictions: (show: boolean) => void;
@@ -109,6 +115,10 @@ export function ImageModal({
   const hasAuto = (detection.auto_predictions?.predictions?.length ?? 0) > 0;
   const [showEngine, setShowEngine] = useState(winningLayer === 'engine');
   const [showAuto, setShowAuto] = useState(winningLayer === 'auto');
+  // Seed-at-submit review: per-box status on the winning layer. Indices refer
+  // to the winning layer's prediction list.
+  const [rejectedBoxes, setRejectedBoxes] = useState<Set<number>>(new Set());
+  const [selectedModelBox, setSelectedModelBox] = useState<number | null>(null);
   // Reset to the winning layer only when the *detection* changes (navigation),
   // not when a background refetch repopulates the same detection's
   // auto_predictions — which would otherwise clobber a manual toggle mid-review.
@@ -119,7 +129,49 @@ export function ImageModal({
     const winning = getWinningModelLayer(detection);
     setShowEngine(winning === 'engine');
     setShowAuto(winning === 'auto');
+    setRejectedBoxes(new Set());
+    setSelectedModelBox(null);
   }, [detection]);
+
+  // Winning model layer being reviewed (auto if present, else engine).
+  const winningPredictions =
+    winningLayer === 'auto'
+      ? detection.auto_predictions?.predictions
+      : detection.algo_predictions?.predictions;
+
+  const handleSelectModelBox = (index: number) =>
+    setSelectedModelBox(prev => (prev === index ? null : index));
+
+  const handleRejectModelBox = (index: number) => {
+    setRejectedBoxes(prev => new Set(prev).add(index));
+    setSelectedModelBox(null);
+  };
+
+  const handleAdjustModelBox = (index: number) => {
+    const box = winningPredictions?.[index];
+    if (!box) return;
+    // Reject the original and seed an editable human copy to drag/correct.
+    setRejectedBoxes(prev => new Set(prev).add(index));
+    const seeded: DrawnRectangle = {
+      id: `adjust-${detection.id}-${index}`,
+      xyxyn: box.xyxyn,
+      smokeType: selectedSmokeType,
+    };
+    setDrawnRectangles(prev => [...prev, seeded]);
+    setSelectedRectangleId(seeded.id);
+    setSelectedModelBox(null);
+  };
+
+  // Materialize the committed annotation for submit: accepted winning boxes
+  // (origin auto/engine) + human boxes (origin human), minus rejected.
+  const buildReviewItems = (): DetectionAnnotationBbox[] =>
+    materializeReviewAnnotation({
+      winningBoxes: winningPredictions ?? [],
+      winningLayer,
+      rejected: rejectedBoxes,
+      humanRects: drawnRectangles,
+      smokeType: selectedSmokeType,
+    });
 
   // Handle image load to get dimensions and position using DOM positioning
   const handleImageLoad = () => {
@@ -583,7 +635,7 @@ export function ImageModal({
         }
       },
       onUndo: handleUndo,
-      onSubmit: () => onSubmit(detection, drawnRectangles, isDrawMode),
+      onSubmit: () => onSubmit(detection, buildReviewItems(), isDrawMode),
       onImportPredictions: importAIPredictions,
       onShowHelp: () => setShowKeyboardShortcuts(!showKeyboardShortcuts),
       onSelectWildfire: () => {
@@ -769,6 +821,13 @@ export function ImageModal({
             showEngine={showEngine}
             showAuto={showAuto}
             selectedSmokeType={selectedSmokeType}
+            winningLayer={winningLayer}
+            isDrawMode={isDrawMode}
+            rejectedBoxes={rejectedBoxes}
+            selectedModelBox={selectedModelBox}
+            onSelectModelBox={handleSelectModelBox}
+            onRejectModelBox={handleRejectModelBox}
+            onAdjustModelBox={handleAdjustModelBox}
             currentDrawing={currentDrawing}
             containerRef={containerRef}
             imgRef={imgRef}
@@ -847,7 +906,7 @@ export function ImageModal({
           <SubmissionControls
             isSubmitting={isSubmitting}
             isAnnotated={isAnnotated}
-            onSubmit={() => onSubmit(detection, drawnRectangles, isDrawMode)}
+            onSubmit={() => onSubmit(detection, buildReviewItems(), isDrawMode)}
           />
         </div>
 

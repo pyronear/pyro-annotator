@@ -6,9 +6,10 @@
 
 import { Detection, SmokeType } from '@/types/api';
 import { useDetectionImage } from '@/hooks/useDetectionImage';
-import { DrawnRectangle, CurrentDrawing, Point } from '@/utils/annotation';
+import { DrawnRectangle, CurrentDrawing, Point, ModelLayer } from '@/utils/annotation';
 import {
   ReferenceBoxOverlay,
+  ReviewBoxOverlay,
   DrawingOverlay,
   SiblingBoundingBoxOverlay,
 } from '@/components/annotation/ImageOverlays';
@@ -29,6 +30,14 @@ interface DetectionAnnotationCanvasProps {
   showAuto: boolean;
   selectedSmokeType: SmokeType;
   showSiblingBboxes?: boolean;
+  // Seed-at-submit review of the winning model layer
+  winningLayer: ModelLayer;
+  isDrawMode: boolean;
+  rejectedBoxes: Set<number>;
+  selectedModelBox: number | null;
+  onSelectModelBox: (index: number) => void;
+  onRejectModelBox: (index: number) => void;
+  onAdjustModelBox: (index: number) => void;
   currentDrawing: CurrentDrawing | null;
   // Image and container refs passed from parent
   containerRef: React.RefObject<HTMLDivElement>;
@@ -59,6 +68,13 @@ export function DetectionAnnotationCanvas({
   showAuto,
   selectedSmokeType,
   showSiblingBboxes = true,
+  winningLayer,
+  isDrawMode,
+  rejectedBoxes,
+  selectedModelBox,
+  onSelectModelBox,
+  onRejectModelBox,
+  onAdjustModelBox,
   currentDrawing,
   containerRef,
   imgRef,
@@ -77,6 +93,13 @@ export function DetectionAnnotationCanvas({
   overlaysVisible,
 }: DetectionAnnotationCanvasProps) {
   const { data: imageData } = useDetectionImage(detection.id);
+
+  // The winning model layer is reviewed (interactive); the other is read-only.
+  const showWinning = winningLayer === 'auto' ? showAuto : showEngine;
+  const winningPreds =
+    winningLayer === 'auto'
+      ? detection.auto_predictions?.predictions
+      : detection.algo_predictions?.predictions;
 
   return imageData?.url ? (
     <div
@@ -113,7 +136,8 @@ export function DetectionAnnotationCanvas({
           pointerEvents: showPredictions && imageInfo && overlaysVisible ? 'none' : 'none',
         }}
       >
-        {showPredictions && showEngine && imageInfo && (
+        {/* Read-only NON-winning model layer (toggled on to investigate) */}
+        {showPredictions && winningLayer === 'auto' && showEngine && imageInfo && (
           <ReferenceBoxOverlay
             predictions={detection.algo_predictions?.predictions}
             variant="engine"
@@ -122,7 +146,7 @@ export function DetectionAnnotationCanvas({
             detectionId={detection.id}
           />
         )}
-        {showPredictions && showAuto && imageInfo && (
+        {showPredictions && winningLayer === 'engine' && showAuto && imageInfo && (
           <ReferenceBoxOverlay
             predictions={detection.auto_predictions?.predictions}
             variant="auto"
@@ -157,6 +181,35 @@ export function DetectionAnnotationCanvas({
           />
         )}
       </div>
+
+      {/* Interactive review layer: the winning model layer, above the drawing
+          layer. The container passes clicks through (pointer-events-none);
+          individual boxes/controls opt back in when interactive (not drawing). */}
+      {showPredictions && showWinning && imageInfo && (
+        <div
+          className="absolute inset-0 z-30 pointer-events-none"
+          style={{
+            transform: `scale(${zoomLevel}) translate(${panOffset.x}px, ${panOffset.y}px)`,
+            transformOrigin: `${transformOrigin.x}% ${transformOrigin.y}%`,
+            transition: isDragging ? 'none' : 'transform 0.1s ease-out',
+            opacity: overlaysVisible ? 1 : 0,
+          }}
+        >
+          <ReviewBoxOverlay
+            predictions={winningPreds}
+            variant={winningLayer}
+            smokeType={selectedSmokeType}
+            imageInfo={imageInfo}
+            detectionId={detection.id}
+            rejected={rejectedBoxes}
+            selectedIndex={selectedModelBox}
+            interactive={!isDrawMode}
+            onSelect={onSelectModelBox}
+            onReject={onRejectModelBox}
+            onAdjust={onAdjustModelBox}
+          />
+        </div>
+      )}
     </div>
   ) : (
     <div className="w-96 h-96 bg-gray-800 flex items-center justify-center rounded-lg">
