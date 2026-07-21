@@ -201,6 +201,7 @@ interface ReviewBoxOverlayProps {
   imageInfo: ImageInfo;
   detectionId: number;
   rejected: Set<number>;
+  hidden: Set<number>;
   selectedIndex: number | null;
   interactive: boolean;
   onSelect: (index: number) => void;
@@ -215,6 +216,7 @@ export function ReviewBoxOverlay({
   imageInfo,
   detectionId,
   rejected,
+  hidden,
   selectedIndex,
   interactive,
   onSelect,
@@ -230,7 +232,8 @@ export function ReviewBoxOverlay({
     <>
       {predictions
         .map((prediction: AlgoPrediction, index: number) => {
-          if (!validateBoundingBox(prediction.xyxyn)) {
+          // Adjusted boxes are replaced in place by an editable human copy.
+          if (hidden.has(index) || !validateBoundingBox(prediction.xyxyn)) {
             return null;
           }
 

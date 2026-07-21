@@ -20,8 +20,6 @@ export interface KeyboardShortcutHandlers {
   onUndo: () => void;
   /** Submit annotation (Enter/Space) */
   onSubmit: () => void;
-  /** Import AI predictions (A key) */
-  onImportPredictions: () => void;
   /** Show keyboard shortcuts help (? key) */
   onShowHelp: () => void;
   /** Select smoke type - wildfire (1 key) */
@@ -173,12 +171,6 @@ export const useKeyboardShortcuts = (
         }
       }
 
-      // Import predictions
-      else if (key === 'a' || key === 'A') {
-        handlers.onImportPredictions();
-        handled = true;
-      }
-
       // Help modal
       else if (key === '?' || (shiftKey && key === '/')) {
         handlers.onShowHelp();
@@ -301,7 +293,6 @@ export const KEYBOARD_SHORTCUTS = {
     { key: 'D', description: 'Toggle drawing mode' },
     { key: 'Delete', description: 'Delete selected/all rectangles' },
     { key: 'P', description: 'Toggle predictions visibility' },
-    { key: 'A', description: 'Import AI predictions' },
   ],
   smokeTypes: [
     { key: '1', description: '🔥 Wildfire' },

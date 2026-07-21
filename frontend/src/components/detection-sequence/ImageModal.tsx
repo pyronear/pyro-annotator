@@ -16,7 +16,6 @@ import {
   imageToNormalizedCoordinates,
   normalizedToImageCoordinates,
   getRectangleAtPoint,
-  importPredictionsAsRectangles,
   updateRectangleSmokeType,
   removeRectangle,
   getWinningModelLayer,
@@ -122,7 +121,10 @@ export function ImageModal({
   const [activeLayer, setActiveLayer] = useState<ModelLayer>(winningLayer);
   // Seed-at-submit review: per-box status on the winning layer. Indices refer
   // to the winning layer's prediction list.
+  // rejected (✗): excluded from submit, shown dimmed. adjusted (✎): excluded
+  // from submit AND hidden, because an editable human copy replaces it in place.
   const [rejectedBoxes, setRejectedBoxes] = useState<Set<number>>(new Set());
+  const [adjustedBoxes, setAdjustedBoxes] = useState<Set<number>>(new Set());
   const [selectedModelBox, setSelectedModelBox] = useState<number | null>(null);
   // Drag-to-move / drag-to-resize of the selected drawn box.
   const [boxEdit, setBoxEdit] = useState<{
@@ -143,6 +145,7 @@ export function ImageModal({
     const winning = getWinningModelLayer(detection);
     setActiveLayer(winning);
     setRejectedBoxes(new Set());
+    setAdjustedBoxes(new Set());
     setSelectedModelBox(null);
   }, [detection]);
 
@@ -163,8 +166,9 @@ export function ImageModal({
   const handleAdjustModelBox = (index: number) => {
     const box = winningPredictions?.[index];
     if (!box) return;
-    // Reject the original and seed an editable human copy to drag/correct.
-    setRejectedBoxes(prev => new Set(prev).add(index));
+    // Hide the original in place and seed an editable human copy at the same
+    // spot (solid, selected, with resize handles) — the box "becomes editable".
+    setAdjustedBoxes(prev => new Set(prev).add(index));
     const seeded: DrawnRectangle = {
       id: `adjust-${detection.id}-${index}`,
       xyxyn: box.xyxyn,
@@ -176,12 +180,12 @@ export function ImageModal({
   };
 
   // Materialize the committed annotation for submit: accepted winning boxes
-  // (origin auto/engine) + human boxes (origin human), minus rejected.
+  // (origin auto/engine) + human boxes (origin human), minus rejected/adjusted.
   const buildReviewItems = (): DetectionAnnotationBbox[] =>
     materializeReviewAnnotation({
       winningBoxes: winningPredictions ?? [],
       winningLayer,
-      rejected: rejectedBoxes,
+      rejected: new Set([...rejectedBoxes, ...adjustedBoxes]),
       humanRects: drawnRectangles,
       smokeType: selectedSmokeType,
     });
@@ -425,51 +429,6 @@ export function ImageModal({
   // Note: coordinatesMatch function replaced with direct call to areBoundingBoxesSimilar
 
   // Get count of new predictions using pure utility
-  const getNewPredictionsCount = (): number => {
-    if (!detection?.algo_predictions?.predictions) return 0;
-
-    const newRectangles = importPredictionsAsRectangles(
-      detection.algo_predictions.predictions,
-      selectedSmokeType,
-      drawnRectangles
-    );
-
-    return newRectangles.length;
-  };
-
-  // Import AI predictions using pure utility
-  const importAIPredictions = () => {
-    if (!detection?.algo_predictions?.predictions) return;
-
-    const newRectangles = importPredictionsAsRectangles(
-      detection.algo_predictions.predictions,
-      selectedSmokeType,
-      drawnRectangles
-    );
-
-    if (newRectangles.length === 0) {
-      // Visual feedback: brief button animation to indicate no action taken
-      const button = document.querySelector(
-        'button[title*="All AI predictions already imported"]'
-      ) as HTMLElement;
-      if (button) {
-        button.style.transform = 'scale(0.95)';
-        setTimeout(() => {
-          button.style.transform = '';
-        }, 150);
-      }
-      return;
-    }
-
-    // Save current state to undo stack before importing
-    pushUndoState();
-
-    // Add imported rectangles to existing ones
-    setDrawnRectangles(prev => [...prev, ...newRectangles]);
-
-    // Show success feedback
-  };
-
   const handleUndo = () => {
     if (undoStack.length === 0) return;
 
@@ -728,7 +687,6 @@ export function ImageModal({
       },
       onUndo: handleUndo,
       onSubmit: () => onSubmit(detection, buildReviewItems(), isDrawMode),
-      onImportPredictions: importAIPredictions,
       onShowHelp: () => setShowKeyboardShortcuts(!showKeyboardShortcuts),
       onSelectWildfire: () => {
         if (selectedRectangleId !== null) {
@@ -917,6 +875,7 @@ export function ImageModal({
             winningLayer={winningLayer}
             isDrawMode={isDrawMode}
             rejectedBoxes={rejectedBoxes}
+            hiddenBoxes={adjustedBoxes}
             selectedModelBox={selectedModelBox}
             onSelectModelBox={handleSelectModelBox}
             onRejectModelBox={handleRejectModelBox}
@@ -972,10 +931,7 @@ export function ImageModal({
                 setDrawnRectangles([]);
               }
             }}
-            onImportPredictions={importAIPredictions}
             onResetZoom={handleZoomReset}
-            canImportPredictions={getNewPredictionsCount() > 0}
-            newPredictionsCount={getNewPredictionsCount()}
             zoomLevel={zoomLevel}
             onSelectedRectangleSmokeTypeChange={changeSelectedRectangleSmokeType}
           />
@@ -983,7 +939,7 @@ export function ImageModal({
           <div className="mt-4 bg-white bg-opacity-10 backdrop-blur-sm rounded-lg p-4 text-white">
             <div className="flex items-center justify-center space-x-4 mb-4">
               <span className="font-medium">
-                Detection {currentIndex + 1} of {totalCount}
+                Frame {currentIndex + 1} of {totalCount}
               </span>
               <span className="text-gray-300">•</span>
               <span className="text-gray-300">

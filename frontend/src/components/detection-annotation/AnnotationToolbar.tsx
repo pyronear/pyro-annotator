@@ -4,7 +4,7 @@
  * Designed to match the ImageModal's backdrop blur circular button style.
  */
 
-import { Square, Trash2, RotateCcw, Brain } from 'lucide-react';
+import { Square, Trash2, RotateCcw } from 'lucide-react';
 import { SmokeType } from '@/types/api';
 import { SmokeTypeSelector } from '@/components/annotation/SmokeTypeSelector';
 import { DrawnRectangle } from '@/utils/annotation';
@@ -18,10 +18,7 @@ interface AnnotationToolbarProps {
   drawnRectangles: DrawnRectangle[];
   selectedRectangleId: string | null;
   onDeleteRectangles: () => void;
-  onImportPredictions: () => void;
   onResetZoom: () => void;
-  canImportPredictions: boolean;
-  newPredictionsCount?: number;
   zoomLevel: number;
   onSelectedRectangleSmokeTypeChange?: (smokeType: SmokeType) => void;
 }
@@ -35,10 +32,7 @@ export function AnnotationToolbar({
   drawnRectangles,
   selectedRectangleId,
   onDeleteRectangles,
-  onImportPredictions,
   onResetZoom,
-  canImportPredictions,
-  newPredictionsCount = 0,
   zoomLevel,
   onSelectedRectangleSmokeTypeChange,
 }: AnnotationToolbarProps) {
@@ -60,22 +54,6 @@ export function AnnotationToolbar({
           onSelectedRectangleSmokeTypeChange={onSelectedRectangleSmokeTypeChange}
           size="md"
         />
-
-        {/* AI Import Button */}
-        <button
-          onClick={onImportPredictions}
-          disabled={!canImportPredictions}
-          className="p-2 bg-white bg-opacity-10 hover:bg-opacity-20 disabled:bg-opacity-5 disabled:cursor-not-allowed rounded-full transition-colors backdrop-blur-sm"
-          title={
-            newPredictionsCount === 0
-              ? 'No AI predictions available'
-              : canImportPredictions
-                ? `Import ${newPredictionsCount} new AI predictions as ${selectedSmokeType} smoke (A)`
-                : 'All AI predictions already imported'
-          }
-        >
-          <Brain className={`w-5 h-5 ${canImportPredictions ? 'text-white' : 'text-gray-500'}`} />
-        </button>
 
         {/* Drawing Mode Toggle */}
         <button

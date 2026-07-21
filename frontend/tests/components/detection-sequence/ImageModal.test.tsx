@@ -278,7 +278,7 @@ describe('ImageModal', () => {
     it('should display detection information', () => {
       renderWithProviders(<ImageModal {...defaultProps} currentIndex={2} totalCount={10} />);
       
-      expect(screen.getByText(/Detection 3 of 10/)).toBeInTheDocument();
+      expect(screen.getByText(/Frame 3 of 10/)).toBeInTheDocument();
     });
   });
 

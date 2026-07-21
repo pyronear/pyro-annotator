@@ -40,6 +40,7 @@ interface DetectionAnnotationCanvasProps {
   winningLayer: ModelLayer;
   isDrawMode: boolean;
   rejectedBoxes: Set<number>;
+  hiddenBoxes: Set<number>;
   selectedModelBox: number | null;
   onSelectModelBox: (index: number) => void;
   onRejectModelBox: (index: number) => void;
@@ -78,6 +79,7 @@ export function DetectionAnnotationCanvas({
   winningLayer,
   isDrawMode,
   rejectedBoxes,
+  hiddenBoxes,
   selectedModelBox,
   onSelectModelBox,
   onRejectModelBox,
@@ -215,6 +217,7 @@ export function DetectionAnnotationCanvas({
             imageInfo={imageInfo}
             detectionId={detection.id}
             rejected={rejectedBoxes}
+            hidden={hiddenBoxes}
             selectedIndex={selectedModelBox}
             interactive={!isDrawMode}
             onSelect={onSelectModelBox}

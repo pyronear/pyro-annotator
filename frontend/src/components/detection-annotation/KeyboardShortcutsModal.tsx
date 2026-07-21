@@ -11,7 +11,6 @@ import {
   Square,
   Trash2,
   Undo,
-  Upload,
   CheckCircle,
   Eye,
 } from 'lucide-react';
@@ -166,11 +165,6 @@ export function KeyboardShortcutsModal({
               <KeyShortcut keys={['+']} description="Zoom in" />
               <KeyShortcut keys={['-']} description="Zoom out" />
               <KeyShortcut keys={['0']} description="Reset zoom" />
-              <KeyShortcut
-                keys={['U']}
-                description="Import AI predictions"
-                icon={<Upload className="w-4 h-4" />}
-              />
             </div>
           </div>
 
