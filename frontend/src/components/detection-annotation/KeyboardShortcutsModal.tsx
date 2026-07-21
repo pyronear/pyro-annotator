@@ -163,7 +163,9 @@ export function KeyboardShortcutsModal({
                 icon={<Undo className="w-4 h-4" />}
                 disabled={!hasUndoHistory}
               />
-              <KeyShortcut keys={['R']} description="Reset zoom" />
+              <KeyShortcut keys={['+']} description="Zoom in" />
+              <KeyShortcut keys={['-']} description="Zoom out" />
+              <KeyShortcut keys={['0']} description="Reset zoom" />
               <KeyShortcut
                 keys={['U']}
                 description="Import AI predictions"

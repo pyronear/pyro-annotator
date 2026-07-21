@@ -681,6 +681,22 @@ export function ImageModal({
     setTransformOrigin({ x: 50, y: 50 });
   }, []);
 
+  // Keyboard zoom (+/-), same 0.2 step / 1x-4x clamp as the wheel handler.
+  const handleZoomIn = useCallback(() => {
+    setZoomLevel(z => Math.min(4.0, Math.round((z + 0.2) * 10) / 10));
+  }, []);
+
+  const handleZoomOut = useCallback(() => {
+    setZoomLevel(z => {
+      const next = Math.max(1.0, Math.round((z - 0.2) * 10) / 10);
+      if (next === 1.0) {
+        setPanOffset({ x: 0, y: 0 });
+        setTransformOrigin({ x: 50, y: 50 });
+      }
+      return next;
+    });
+  }, []);
+
   // Keyboard shortcuts using reusable hook - no memoization, simple and direct
   useKeyboardShortcuts(
     {
@@ -735,6 +751,8 @@ export function ImageModal({
         }
       },
       onResetZoom: handleZoomReset,
+      onZoomIn: handleZoomIn,
+      onZoomOut: handleZoomOut,
     },
     {
       isDrawMode,
