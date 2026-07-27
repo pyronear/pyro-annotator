@@ -29,6 +29,7 @@ from app.models import (
     SequenceGroup,
     SmokeType,
 )
+from app.schemas.annotation_validation import SequenceAnnotationData
 from app.schemas.sequence_annotations import (
     SequenceAnnotationCreate,
     SequenceAnnotationUpdate,
@@ -144,9 +145,9 @@ async def _run_assignment(session: AsyncSession, user_id: int) -> AssignGroupsRe
     (camera_id, azimuth) key, threshold > 0.3. Label inheritance is
     conditional — when the matched group already has a label, the joining
     sequence gets a SequenceAnnotation in SEQ_ANNOTATION_DONE with that
-    label, attributed to ``user_id``. If a placeholder annotation is already
-    there in stage READY_TO_ANNOTATE (the import script's default), it is
-    upgraded in place; any later stage is left untouched.
+    label, attributed to ``user_id``. The importers' curated
+    READY_TO_ANNOTATE annotation is upgraded in place (its tracks reused
+    verbatim); any later stage is left untouched.
     """
     sa_crud = SequenceAnnotationCRUD(session=session)
 
@@ -236,11 +237,14 @@ async def _run_assignment(session: AsyncSession, user_id: int) -> AssignGroupsRe
         if best_group.smoke_type is None and best_group.false_positive_type is None:
             continue
 
-        # Inherit the group's label. import.py creates an empty
-        # READY_TO_ANNOTATE annotation for every imported sequence, so we
-        # need to UPDATE that placeholder rather than skip on existence.
-        # Skip only if the existing annotation is past the placeholder
-        # stage (the human / review pipeline has touched it).
+        # Inherit the group's label. The importers write a curated
+        # READY_TO_ANNOTATE annotation (one track per split object) for
+        # every imported sequence — stamp the label onto those tracks as-is.
+        # Regenerating from algo_predictions would restructure them (e.g.
+        # re-cluster a below-spawn-threshold fallback sequence into several
+        # tracks), so regeneration is reserved for annotations with no
+        # tracks at all. Skip any stage past READY_TO_ANNOTATE (the human /
+        # review pipeline has touched it).
         existing_anno = (
             await session.execute(
                 select(SequenceAnnotation).where(
@@ -253,9 +257,14 @@ async def _run_assignment(session: AsyncSession, user_id: int) -> AssignGroupsRe
         ):
             continue
 
-        generated = await gen_service.generate_annotation_for_sequence(seq.id)
-        if generated is None:
-            continue
+        if existing_anno is not None and (existing_anno.annotation or {}).get(
+            "sequences_bbox"
+        ):
+            generated = SequenceAnnotationData.model_validate(existing_anno.annotation)
+        else:
+            generated = await gen_service.generate_annotation_for_sequence(seq.id)
+            if generated is None:
+                continue
 
         smoke_enum = SmokeType(best_group.smoke_type) if best_group.smoke_type else None
         fp_enum = (
