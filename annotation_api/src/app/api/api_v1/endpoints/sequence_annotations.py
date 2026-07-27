@@ -21,7 +21,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.dependencies import get_current_user, get_sequence_annotation_crud
 from app.models import User
-from app.crud import SequenceAnnotationCRUD
+from app.crud import DetectionAnnotationCRUD, SequenceAnnotationCRUD
 from app.db import get_session
 from app.models import (
     Detection,
@@ -186,6 +186,7 @@ async def auto_create_detection_annotations(
     has_missed_smoke: bool,
     has_false_positives: bool,
     session: AsyncSession,
+    user_id: int,
 ) -> None:
     """
     Automatically create detection annotations for all detections in a sequence.
@@ -202,6 +203,7 @@ async def auto_create_detection_annotations(
         has_missed_smoke: Whether sequence annotation indicates missed smoke
         has_false_positives: Whether sequence annotation indicates false positives
         session: Database session
+        user_id: ID of the user whose save triggered the auto-creation
     """
     # Determine the appropriate processing stage based on sequence annotation
     if not has_missed_smoke and has_false_positives and not has_smoke:
@@ -260,6 +262,18 @@ async def auto_create_detection_annotations(
     # Bulk insert all new detection annotations at once
     if new_annotations:
         session.add_all(new_annotations)
+
+        # Rows written directly at ANNOTATED (FP-only sequences) are final
+        # content derived from the saving human's sequence-level judgment, so
+        # attribute them to that user. Placeholder rows (visual_check /
+        # bbox_annotation) carry no judgment yet; their annotator is credited
+        # when they submit via the detection-annotation update path.
+        if processing_stage == DetectionAnnotationProcessingStage.ANNOTATED:
+            await session.flush()
+            new_annotation_ids = [a.id for a in new_annotations]
+            da_crud = DetectionAnnotationCRUD(session)
+            for annotation_id in new_annotation_ids:
+                await da_crud.record_contribution(annotation_id, user_id)
 
 
 async def validate_detection_ids(
@@ -358,6 +372,7 @@ async def create_sequence_annotation(
             has_missed_smoke=create_data.has_missed_smoke,
             has_false_positives=sequence_annotation.has_false_positives,
             session=annotations.session,
+            user_id=current_user.id,
         )
         # Commit the detection annotations
         await annotations.session.commit()
@@ -654,6 +669,7 @@ async def update_sequence_annotation(
             has_missed_smoke=updated_annotation.has_missed_smoke,
             has_false_positives=updated_annotation.has_false_positives,
             session=annotations.session,
+            user_id=current_user.id,
         )
         # Commit the detection annotations
         await annotations.session.commit()

@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, UTC
+import io
 import json
 
 import pytest
@@ -1626,6 +1627,172 @@ async def test_false_positive_sequence_auto_annotated_detection_annotations(
     assert detection_annotation["processing_stage"] == "annotated"
     # Should have empty annotation (no bounding boxes needed for false positives)
     assert detection_annotation["annotation"] == {"annotation": []}
+
+
+async def _create_detection(
+    authenticated_client: AsyncClient, alert_api_id: str
+) -> int:
+    """Create a detection on sequence 1 and return its id."""
+    detection_payload = {
+        "sequence_id": "1",
+        "alert_api_id": alert_api_id,
+        "recorded_at": "2024-01-15T10:25:00",
+        "algo_predictions": json.dumps(
+            {
+                "predictions": [
+                    {
+                        "xyxyn": [0.1, 0.1, 0.3, 0.3],
+                        "confidence": 0.87,
+                        "class_name": "smoke",
+                    }
+                ]
+            }
+        ),
+    }
+    img = Image.new("RGB", (100, 100), color="blue")
+    img_bytes = io.BytesIO()
+    img.save(img_bytes, format="JPEG")
+    img_bytes.seek(0)
+    files = {"file": ("test.jpg", img_bytes, "image/jpeg")}
+    response = await authenticated_client.post(
+        "/detections", data=detection_payload, files=files
+    )
+    assert response.status_code == 201
+    return response.json()["id"]
+
+
+async def _get_detection_annotation(
+    authenticated_client: AsyncClient, detection_id: int
+) -> dict:
+    """Fetch the auto-created detection annotation for a detection."""
+    response = await authenticated_client.get("/annotations/detections/?sequence_id=1")
+    assert response.status_code == 200
+    for ann in response.json()["items"]:
+        if ann["detection_id"] == detection_id:
+            return ann
+    raise AssertionError("Detection annotation should be auto-created")
+
+
+@pytest.mark.asyncio
+async def test_fp_auto_annotated_detection_annotation_attributed_to_saving_user(
+    authenticated_client: AsyncClient, sequence_session, test_user
+):
+    """Auto-created ANNOTATED detection annotations (FP-only sequence) carry a
+    contribution attributed to the human whose save produced them."""
+    detection_id = await _create_detection(authenticated_client, "2101")
+
+    false_positive_payload = {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": False,
+                    "false_positive_types": ["antenna"],
+                    "bboxes": [
+                        {"detection_id": detection_id, "xyxyn": [0.1, 0.1, 0.2, 0.2]}
+                    ],
+                }
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+    response = await authenticated_client.post(
+        "/annotations/sequences/", json=false_positive_payload
+    )
+    assert response.status_code == 201
+
+    detection_annotation = await _get_detection_annotation(
+        authenticated_client, detection_id
+    )
+    assert detection_annotation["processing_stage"] == "annotated"
+    contributor_ids = [c["id"] for c in detection_annotation["contributors"]]
+    assert contributor_ids == [test_user.id]
+
+
+@pytest.mark.asyncio
+async def test_fp_update_auto_annotated_detection_annotation_attributed_to_saving_user(
+    authenticated_client: AsyncClient, sequence_session, test_user
+):
+    """The PATCH path's auto-created ANNOTATED detection annotations are also
+    attributed to the saving human."""
+    detection_id = await _create_detection(authenticated_client, "2102")
+
+    create_payload = {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": False,
+                    "false_positive_types": ["antenna"],
+                    "bboxes": [
+                        {"detection_id": detection_id, "xyxyn": [0.1, 0.1, 0.2, 0.2]}
+                    ],
+                }
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.READY_TO_ANNOTATE.value,
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+    response = await authenticated_client.post(
+        "/annotations/sequences/", json=create_payload
+    )
+    assert response.status_code == 201
+    annotation_id = response.json()["id"]
+
+    response = await authenticated_client.patch(
+        f"/annotations/sequences/{annotation_id}",
+        json={
+            "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value
+        },
+    )
+    assert response.status_code == 200
+
+    detection_annotation = await _get_detection_annotation(
+        authenticated_client, detection_id
+    )
+    assert detection_annotation["processing_stage"] == "annotated"
+    contributor_ids = [c["id"] for c in detection_annotation["contributors"]]
+    assert contributor_ids == [test_user.id]
+
+
+@pytest.mark.asyncio
+async def test_placeholder_detection_annotations_have_no_contributors(
+    authenticated_client: AsyncClient, sequence_session
+):
+    """Auto-created placeholder detection annotations (VISUAL_CHECK / BBOX_ANNOTATION)
+    carry no one's judgment yet, so they get no contribution row."""
+    detection_id = await _create_detection(authenticated_client, "2103")
+
+    true_positive_payload = {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": True,
+                    "false_positive_types": [],
+                    "bboxes": [
+                        {"detection_id": detection_id, "xyxyn": [0.1, 0.1, 0.2, 0.2]}
+                    ],
+                }
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+    response = await authenticated_client.post(
+        "/annotations/sequences/", json=true_positive_payload
+    )
+    assert response.status_code == 201
+
+    detection_annotation = await _get_detection_annotation(
+        authenticated_client, detection_id
+    )
+    assert detection_annotation["processing_stage"] == "visual_check"
+    assert detection_annotation["contributors"] == []
 
 
 @pytest.mark.asyncio

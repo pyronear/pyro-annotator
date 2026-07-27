@@ -88,8 +88,13 @@ class DetectionAnnotationCRUD(
 
         return annotation
 
-    async def _record_contribution(self, annotation_id: int, user_id: int) -> None:
-        """Record a user contribution to the detection annotation."""
+    async def record_contribution(self, annotation_id: int, user_id: int) -> None:
+        """Record a user contribution to the detection annotation.
+
+        The create/update paths only auto-record contributions at the
+        ANNOTATED stage (completed human work). Machine-written annotations
+        (auto-created ANNOTATED rows for FP-only sequences) call this
+        explicitly so the write is attributed."""
         contribution = DetectionAnnotationContribution(
             detection_annotation_id=annotation_id, user_id=user_id
         )

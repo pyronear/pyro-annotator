@@ -108,6 +108,28 @@ annotations; human contribution counts include group-accelerated
 throughput (fan-out, bulk). Historical annotations written before this
 change are not backfilled.
 
+The same identity-less pattern existed on the detection side (#195):
+`auto_create_detection_annotations` bulk-inserts `DetectionAnnotation`
+rows when a human saves a sequence annotation at ANNOTATED, with no
+attribution. It now records contributions via
+`DetectionAnnotationCRUD.record_contribution`, with these semantics:
+
+- **Rows written directly at ANNOTATED** (FP-only sequences, where the
+  empty annotation *is* the final content) → attributed to the **saving
+  human**: the detection labels are derived from their sequence-level
+  judgment; the machine only materializes it. Same rationale as the
+  fan-out case above.
+- **Placeholder rows** (VISUAL_CHECK / BBOX_ANNOTATION) → **no
+  contribution**: they are empty scaffolding carrying nobody's judgment
+  yet. The annotator who later completes them is credited by the
+  existing detection-annotation update path.
+- The group-assignment sweep writes no detection annotations, so no
+  worker-user attribution is needed on the detection side. If a
+  detection-annotation path is ever added to the sweep, it must record
+  contributions for the worker user explicitly.
+
+As on the sequence side, historical rows are not backfilled.
+
 ### 5. Testing
 
 - Lifespan seeding: after app startup, the worker user exists with
