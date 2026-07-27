@@ -4,6 +4,7 @@
 # See LICENSE or go to <https://opensource.org/licenses/Apache-2.0> for full license details.
 
 import logging
+import secrets
 import time
 import traceback
 from contextlib import asynccontextmanager
@@ -18,6 +19,7 @@ from fastapi.responses import JSONResponse
 from fastapi_pagination import add_pagination
 from pydantic import ValidationError
 from sqlalchemy import exc
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.api_v1.router import api_router
 from app.core.config import settings
@@ -30,6 +32,63 @@ from app.worker import app as procrastinate_app
 logger = logging.getLogger("uvicorn.error")
 
 
+async def seed_default_users(session: AsyncSession) -> None:
+    """Idempotent startup seeding: the human admin (AUTH_USERNAME) and the
+    login-disabled worker user (WORKER_USERNAME) that the group-assignment
+    sweep attributes inherited annotations to."""
+    user_crud = UserCRUD(session)
+
+    admin_user = await user_crud.get_by_username(settings.AUTH_USERNAME)
+    if not admin_user:
+        logger.info(f"Creating admin user: {settings.AUTH_USERNAME}")
+        try:
+            admin_create = UserCreate(
+                username=settings.AUTH_USERNAME,
+                password=settings.AUTH_PASSWORD,
+                is_active=True,
+                is_superuser=True,
+            )
+            await user_crud.create_user(admin_create)
+            logger.info("Admin user created successfully")
+        except Exception as e:
+            logger.error(f"Failed to create admin user: {e}")
+            # A failed commit (e.g. losing a concurrent-boot race on the
+            # username unique constraint) leaves the session unusable until
+            # rolled back; the worker-user seeding below reuses it.
+            await session.rollback()
+    else:
+        logger.info("Admin user already exists")
+
+    worker_user = await user_crud.get_by_username(settings.WORKER_USERNAME)
+    if not worker_user:
+        logger.info(f"Creating worker user: {settings.WORKER_USERNAME}")
+        try:
+            worker_create = UserCreate(
+                username=settings.WORKER_USERNAME,
+                # Random and immediately discarded: this user exists purely
+                # for attribution and must never be able to log in (also
+                # seeded inactive, which login rejects independently).
+                password=secrets.token_urlsafe(32),
+                is_active=False,
+                is_superuser=False,
+            )
+            await user_crud.create_user(worker_create)
+            logger.info("Worker user created successfully")
+        except Exception as e:
+            logger.error(f"Failed to create worker user: {e}")
+            await session.rollback()
+    elif worker_user.is_active:
+        # get-or-create adopted a pre-existing account: attribution will go
+        # to what looks like a human user. Almost certainly a naming
+        # collision — pick a different WORKER_USERNAME.
+        logger.warning(
+            f"User {settings.WORKER_USERNAME!r} already exists and is active; "
+            "the group-assignment sweep will attribute annotations to it."
+        )
+    else:
+        logger.info("Worker user already exists")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager for startup and shutdown events.
@@ -37,29 +96,8 @@ async def lifespan(app: FastAPI):
     Database schema is managed by Alembic (see ``src/migrations``); migrations
     are applied by the container entrypoint before uvicorn starts.
     """
-    # Create admin user from environment variables if not exists
     async for session in get_session():
-        user_crud = UserCRUD(session)
-
-        # Check if admin user exists
-        admin_user = await user_crud.get_by_username(settings.AUTH_USERNAME)
-
-        if not admin_user:
-            logger.info(f"Creating admin user: {settings.AUTH_USERNAME}")
-            try:
-                admin_create = UserCreate(
-                    username=settings.AUTH_USERNAME,
-                    password=settings.AUTH_PASSWORD,
-                    is_active=True,
-                    is_superuser=True,
-                )
-                await user_crud.create_user(admin_create)
-                logger.info("Admin user created successfully")
-            except Exception as e:
-                logger.error(f"Failed to create admin user: {e}")
-        else:
-            logger.info("Admin user already exists")
-
+        await seed_default_users(session)
         break  # Exit after first session
 
     # Open the procrastinate connector so endpoints can defer auto-annotate jobs.

@@ -94,9 +94,6 @@ services:
       - S3_REGION=us-east-1
       # Auto-annotate model (baked into the image)
       - AUTOANNOTATE_MODEL_PATH=/app/models
-      # Must match the API's AUTH_USERNAME: the group-assignment sweep
-      # attributes inherited annotations to this (API-seeded) user.
-      - AUTH_USERNAME=admin
     restart: unless-stopped
     command: "procrastinate --app=app.worker.app worker"
     healthcheck:
