@@ -51,6 +51,8 @@ async def list_sequence_groups(
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> Page[SequenceGroupListItem]:
+    # Small groups (fewer than 3 members) are excluded from the list because
+    # the whole point of this page is to find groups worth bulk-annotating.
     member_count_subq = (
         select(
             Sequence.sequence_group_id.label("group_id"),
@@ -58,6 +60,7 @@ async def list_sequence_groups(
         )
         .where(Sequence.sequence_group_id.is_not(None))
         .group_by(Sequence.sequence_group_id)
+        .having(func.count(Sequence.id) >= 3)
         .subquery()
     )
     query = (
@@ -74,7 +77,7 @@ async def list_sequence_groups(
             SequenceGroup.created_at,
             member_count_subq.c.member_count,
         )
-        # Inner-join so memberless groups (no row in the subquery) drop out.
+        # Inner-join so small groups (no row in the subquery) drop out.
         .join(member_count_subq, member_count_subq.c.group_id == SequenceGroup.id)
         # Biggest groups first, then newest within each size. `id` is a final
         # deterministic tie-breaker so paginated offsets stay stable.

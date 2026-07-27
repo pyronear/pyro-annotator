@@ -151,12 +151,12 @@ async def _create_placeholder_annotation(client: AsyncClient, sequence_id: int) 
 
 
 @pytest.mark.asyncio
-async def test_list_groups_sorts_by_size(
+async def test_list_groups_hides_small_groups_and_sorts_by_size(
     authenticated_client: AsyncClient,
     async_session: AsyncSession,
 ):
-    """The list endpoint returns all groups ordered by member count
-    descending (small groups included)."""
+    """The list endpoint returns only groups with 3+ members, ordered by
+    member count descending."""
     big = await _seed_group_with_members(
         async_session,
         n_members=4,
@@ -181,11 +181,11 @@ async def test_list_groups_sorts_by_size(
     items = resp.json()["items"]
 
     ids = [item["id"] for item in items]
-    assert ids == [big, medium, small]  # sorted by member count desc
+    assert small not in ids  # 2-member group is hidden
+    assert ids == [big, medium]  # 4 members sort before 3 members
     counts = {item["id"]: item["member_count"] for item in items}
     assert counts[big] == 4
     assert counts[medium] == 3
-    assert counts[small] == 2
 
 
 def _annotation_payload(*, stage: str, smoke_type: str) -> dict:
