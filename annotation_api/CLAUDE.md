@@ -129,6 +129,7 @@ Key environment variables (see `src/app/core/config.py`):
 ### Authentication
 - `AUTH_USERNAME` - Login username (default: `admin`)
 - `AUTH_PASSWORD` - Login password (default: `admin`)
+- `WORKER_USERNAME` - Identity (not a secret) of the login-disabled user the group-assignment sweep attributes annotations to (default: `worker`); if overridden, must match on API and worker
 - `JWT_SECRET` - JWT token signing secret (default: `your-secret-key-change-in-production`)
 - `ACCESS_TOKEN_EXPIRE_HOURS` - Token expiration in hours (default: `24`)
 

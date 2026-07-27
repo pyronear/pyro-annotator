@@ -69,6 +69,13 @@ In `main.py`, immediately after the admin-user seeding block:
   - `is_active=False`
   - `is_superuser=False`
 - Failures are logged and non-fatal, matching the admin seeding's behavior.
+  After a failed create the session is rolled back so a lost
+  concurrent-boot race on the username unique constraint cannot poison the
+  session for the seeding steps that follow.
+- If the configured username already belongs to a pre-existing *active*
+  account, seeding adopts it but logs a warning — that is almost certainly
+  a naming collision with a human user, and sweep attribution would land on
+  it.
 
 ### 3. Worker task
 

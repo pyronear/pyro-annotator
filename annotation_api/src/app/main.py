@@ -19,6 +19,7 @@ from fastapi.responses import JSONResponse
 from fastapi_pagination import add_pagination
 from pydantic import ValidationError
 from sqlalchemy import exc
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.api_v1.router import api_router
 from app.core.config import settings
@@ -31,7 +32,7 @@ from app.worker import app as procrastinate_app
 logger = logging.getLogger("uvicorn.error")
 
 
-async def seed_default_users(session) -> None:
+async def seed_default_users(session: AsyncSession) -> None:
     """Idempotent startup seeding: the human admin (AUTH_USERNAME) and the
     login-disabled worker user (WORKER_USERNAME) that the group-assignment
     sweep attributes inherited annotations to."""
