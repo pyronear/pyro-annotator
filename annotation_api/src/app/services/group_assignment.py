@@ -112,6 +112,11 @@ async def assign_ungrouped_sequences(
     """
     lock_conn = await engine.connect()
     try:
+        # AUTOCOMMIT so the connection never sits "idle in transaction" for
+        # the whole sweep (which idle_in_transaction_session_timeout would
+        # kill, silently releasing the lock mid-run). Session-level advisory
+        # locks are connection-scoped and unaffected by transaction state.
+        await lock_conn.execution_options(isolation_level="AUTOCOMMIT")
         locked = (
             await lock_conn.execute(
                 text("SELECT pg_try_advisory_lock(:key)"),
@@ -262,6 +267,8 @@ async def _run_assignment(session: AsyncSession, user_id: int) -> AssignGroupsRe
             generated, smoke_type=smoke_enum, false_positive_type=fp_enum
         )
 
+        # The annotation-exists gate means existing_anno is normally set;
+        # the create branch only guards a concurrent-delete race.
         if existing_anno is None:
             await sa_crud.create(
                 SequenceAnnotationCreate(
