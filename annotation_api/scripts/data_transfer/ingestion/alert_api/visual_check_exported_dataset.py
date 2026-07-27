@@ -11,7 +11,7 @@ Unlike visual_check_fiftyone.py which expects seq_* folders, this script
 accepts any subdirectory layout produced by export_dataset.py.
 
 Usage (from annotation_api/):
-    uv run python -m scripts.data_transfer.ingestion.platform.visual_check_exported_dataset \\
+    uv run python -m scripts.data_transfer.ingestion.alert_api.visual_check_exported_dataset \\
         --data-root outputs/datasets/dataset_exported_20260320_105252/wildfire \\
         --dataset-name wildfire_export_20260320
 """
@@ -22,7 +22,7 @@ from typing import List
 
 import fiftyone as fo
 
-from scripts.data_transfer.ingestion.platform.visual_check_fiftyone import build_sample
+from scripts.data_transfer.ingestion.alert_api.visual_check_fiftyone import build_sample
 
 
 SMOKE_CLASSES = ["wildfire", "industrial", "other"]

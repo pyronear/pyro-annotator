@@ -187,7 +187,7 @@ def _run_pull(output_dir, monkeypatch) -> None:
     """Run the real pull script in-process; presigned S3 URLs point at the
     host-oriented proxy (localhost:4566), so rewrite them to the in-network
     localstack host before downloading."""
-    from scripts.data_transfer.ingestion.platform import (
+    from scripts.data_transfer.ingestion.alert_api import (
         pull_sequence_annotations as pull,
     )
 
@@ -262,14 +262,14 @@ def _read_labels(seq_dir, detection_id: int) -> list:
 
 
 async def test_pipeline_end_to_end(tmp_path, monkeypatch, test_user):
-    from scripts.data_transfer.ingestion.platform.apply_fiftyone_review import (
+    from scripts.data_transfer.ingestion.alert_api.apply_fiftyone_review import (
         load_manifest,
         process_one_group,
     )
-    from scripts.data_transfer.ingestion.platform.auto_annotate import (
+    from scripts.data_transfer.ingestion.alert_api.auto_annotate import (
         process_sequence,
     )
-    from scripts.data_transfer.ingestion.platform.label_classes import CLASS_ID
+    from scripts.data_transfer.ingestion.alert_api.label_classes import CLASS_ID
 
     token = _token()
 

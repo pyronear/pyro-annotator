@@ -18,7 +18,7 @@ the ``sequence_id`` column of ``sequences.csv`` and pull organisation / camera /
 lat / lon / azimuth metadata from there.
 
 For every folder this script invokes
-``scripts.data_transfer.ingestion.platform.import_yolo_sequence`` as a
+``scripts.data_transfer.ingestion.alert_api.import_yolo_sequence`` as a
 subprocess, so each import is isolated.
 """
 
@@ -142,7 +142,7 @@ def build_command(
     cmd = [
         sys.executable,
         "-m",
-        "scripts.data_transfer.ingestion.platform.import_yolo_sequence",
+        "scripts.data_transfer.ingestion.alert_api.import_yolo_sequence",
         "--sequence-dir",
         str(folder),
         "--api-base",

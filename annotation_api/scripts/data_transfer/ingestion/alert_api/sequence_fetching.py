@@ -1,7 +1,7 @@
 """
-Platform data fetching utilities for sequence and detection retrieval.
+Alert API data fetching utilities for sequence and detection retrieval.
 
-This module handles fetching sequences and detections from the Pyronear platform API,
+This module handles fetching sequences and detections from the Pyronear alert API,
 including parallel processing, metadata loading, and error handling with progress tracking.
 
 Functions:
@@ -49,8 +49,8 @@ from rich.progress import (
     TaskProgressColumn,
 )
 
-from . import client as platform_client
-from . import utils as platform_utils
+from . import client as alert_api_client
+from . import utils as alert_api_utils
 from .progress_management import ErrorCollector, LogSuppressor
 from .worker_config import WorkerConfig
 
@@ -89,13 +89,13 @@ def fetch_sequences_for_date(
     risk_score: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
-    Fetch sequences for a specific date from the platform API.
+    Fetch sequences for a specific date from the alert API.
 
     Args:
-        api_endpoint: Platform API endpoint URL
+        api_endpoint: Alert API endpoint URL
         target_date: Date to fetch sequences for
         access_token: API access token for authentication
-        risk_score: Optional FWI class override forwarded to the platform.
+        risk_score: Optional FWI class override forwarded to the alert API.
             None applies the default per-camera risk filter (drops low-FWI sequences).
 
     Returns:
@@ -106,7 +106,7 @@ def fetch_sequences_for_date(
     sequences: List[Dict[str, Any]] = []
     try:
         while True:
-            page = platform_client.list_sequences_for_date(
+            page = alert_api_client.list_sequences_for_date(
                 api_endpoint=api_endpoint,
                 date=target_date,
                 limit=page_size,
@@ -143,7 +143,7 @@ def process_single_sequence_detections(
         sequence: Sequence data dictionary
         indexed_cameras: Camera lookup dictionary (camera_id -> camera_data)
         indexed_organizations: Organization lookup dictionary (org_id -> org_data)
-        api_endpoint: Platform API endpoint URL
+        api_endpoint: Alert API endpoint URL
         access_token: API access token for authentication
         detections_limit: Maximum number of detections to fetch per sequence
         detections_order_by: Order direction for detections ("asc" or "desc")
@@ -167,13 +167,13 @@ def process_single_sequence_detections(
     org_id = camera.get("organization_id")
     organization = indexed_organizations.get(org_id, {})
 
-    # The platform stores one Detection row per bbox even when several boxes
+    # The alert API stores one Detection row per bbox even when several boxes
     # share the same image (each row carries `bbox` + the siblings in
     # `others_bboxes`). We dedupe by `bucket_key` below to import one record
     # per image, and `to_record` then re-assembles all boxes for that image
     # from the retained row's bbox + others_bboxes.
     #
-    # The platform's /sequences/{id}/detections endpoint doesn't support
+    # The alert API's /sequences/{id}/detections endpoint doesn't support
     # offset pagination and caps `limit` at 100. When `detections_limit > 0`
     # we fetch a small buffer above the requested count so the unique-image
     # count stays close to what the caller asked for even when a few images
@@ -186,7 +186,7 @@ def process_single_sequence_detections(
         fetch_limit = 100
         unique_cap = None
 
-    detections = platform_client.list_sequence_detections(
+    detections = alert_api_client.list_sequence_detections(
         api_endpoint=api_endpoint,
         sequence_id=sequence["id"],
         access_token=access_token,
@@ -206,7 +206,7 @@ def process_single_sequence_detections(
         unique_detections.append(detection)
 
     return [
-        platform_utils.to_record(
+        alert_api_utils.to_record(
             detection=detection,
             camera=camera,
             organization=organization,
@@ -236,7 +236,7 @@ def fetch_all_sequences_within(
     """
     Fetch all sequences and detections between date_from and date_end.
 
-    This is the main function for fetching platform data. It:
+    This is the main function for fetching alert API data. It:
     1. Loads metadata (cameras and organizations) with progress display
     2. Fetches sequences for each date in the range using parallel processing
     3. Processes detections for each sequence using parallel processing
@@ -247,7 +247,7 @@ def fetch_all_sequences_within(
         date_end: End date for sequence fetching
         detections_limit: Maximum detections per sequence
         detections_order_by: Order direction for detections ("asc" or "desc")
-        api_endpoint: Platform API endpoint URL
+        api_endpoint: Alert API endpoint URL
         access_token: Regular user access token
         access_token_admin: Admin access token (for organization access)
         worker_config: WorkerConfig instance for intelligent scaling
@@ -293,21 +293,21 @@ def fetch_all_sequences_within(
     # Load metadata with progress display
     metadata_start_time = time.time()
     with console.status(
-        "[bold blue]📡 Loading platform metadata...", spinner="dots"
+        "[bold blue]📡 Loading alert API metadata...", spinner="dots"
     ) as status:
         try:
             status.update("[bold blue]📡 Loading cameras...")
-            cameras = platform_client.list_cameras(
+            cameras = alert_api_client.list_cameras(
                 api_endpoint=api_endpoint, access_token=access_token
             )
-            indexed_cameras = platform_utils.index_by(cameras, key="id")
+            indexed_cameras = alert_api_utils.index_by(cameras, key="id")
 
             status.update("[bold blue]📡 Loading organizations...")
-            organizations = platform_client.list_organizations(
+            organizations = alert_api_client.list_organizations(
                 api_endpoint=api_endpoint,
                 access_token=access_token_admin,
             )
-            indexed_organizations = platform_utils.index_by(organizations, key="id")
+            indexed_organizations = alert_api_utils.index_by(organizations, key="id")
 
             metadata_duration = time.time() - metadata_start_time
             console.print(
@@ -318,7 +318,7 @@ def fetch_all_sequences_within(
             )
 
         except Exception as e:
-            error_msg = f"Failed to load platform metadata: {e}"
+            error_msg = f"Failed to load alert API metadata: {e}"
             error_collector.add_error(error_msg)
             raise Exception(error_msg)
 
@@ -366,7 +366,7 @@ def fetch_all_sequences_within(
                     progress_bar.advance(task)
 
     # Optionally filter sequences by alert_api_id.
-    # The raw platform sequences expose this value as the `id` field; the
+    # The raw alert sequences expose this value as the `id` field; the
     # `alert_api_id` rename happens later in shared.py when records are
     # formatted for the annotation API, so we cannot read it back here.
     if selected_sequence_list:

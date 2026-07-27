@@ -40,10 +40,10 @@ def index_by(xs: list[dict], key: str) -> dict[str, dict]:
 
 
 def _parse_bbox_string(s: Optional[str]) -> list:
-    """Parse a platform bbox string into a list of [x1,y1,x2,y2,conf] lists.
+    """Parse an alert-api bbox string into a list of [x1,y1,x2,y2,conf] lists.
 
     Accepts the canonical wrapped form `"[(x1,y1,x2,y2,conf), ...]"` (what the
-    platform validates against), and is defensive about edge variants such as
+    alert API validates against), and is defensive about edge variants such as
     a flat singular tuple `"(x1,y1,x2,y2,conf)"` that might leak through.
     """
     if not s:
@@ -106,7 +106,7 @@ def to_record(
         "sequence_is_wildfire": sequence.get("is_wildfire"),
         "sequence_started_at": sequence["started_at"],
         "sequence_last_seen_at": sequence["last_seen_at"],
-        # Camera/pose pointing direction. The platform also exposes
+        # Camera/pose pointing direction. The alert API also exposes
         # `sequence_azimuth` (the inferred smoke cone direction); we
         # deliberately ignore that one — annotators care about where the
         # camera was looking, not where the smoke is.

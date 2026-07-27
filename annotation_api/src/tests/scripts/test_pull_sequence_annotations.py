@@ -1,4 +1,4 @@
-from scripts.data_transfer.ingestion.platform.pull_sequence_annotations import (
+from scripts.data_transfer.ingestion.alert_api.pull_sequence_annotations import (
     collect_annotation_bboxes,
     write_labels,
 )

@@ -92,6 +92,15 @@ class SequenceGroupListItem(BaseModel):
     member_count: int
 
 
+class SequenceGroupStats(BaseModel):
+    """Aggregate counts over groups with 3 or more members — the same
+    population the list endpoint returns, so UI counts match the list."""
+
+    total: int
+    validated: int
+    unvalidated: int
+
+
 class SequenceGroupUpdate(BaseModel):
     """Patch the group's review state. For now, only `is_validated` is
     user-mutable here — labels are written by the per-sequence annotation

@@ -1,5 +1,5 @@
 """
-Progress management utilities for platform data import scripts.
+Progress management utilities for alert API data import scripts.
 
 This module provides Rich-based progress tracking, error collection, and log management
 components that can be reused across different data import and processing scripts.
@@ -286,10 +286,10 @@ class LogSuppressor:
                 "",  # root logger - most important
                 "__main__",
                 "root",
-                "scripts.data_transfer.ingestion.platform.import",
-                "scripts.data_transfer.ingestion.platform.shared",
-                "scripts.data_transfer.ingestion.platform.client",
-                "scripts.data_transfer.ingestion.platform.utils",
+                "scripts.data_transfer.ingestion.alert_api.import",
+                "scripts.data_transfer.ingestion.alert_api.shared",
+                "scripts.data_transfer.ingestion.alert_api.client",
+                "scripts.data_transfer.ingestion.alert_api.utils",
                 "app.clients.annotation_api",
                 "requests",
                 "urllib3",

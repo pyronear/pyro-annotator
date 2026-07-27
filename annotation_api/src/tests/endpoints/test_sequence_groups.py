@@ -1,7 +1,7 @@
 """Tests for the sequence-groups + bulk-annotate + propagation flow.
 
 Covers:
-- POST /sequence_groups/assign creates a new group from an unassigned sequence
+- assign_ungrouped_sequences creates a new group from an unassigned sequence
 - POST /annotations/sequences/bulk applies labels, writes them onto the
   group, and rejects conflicting labels unless force=True
 - Request validation rejects payloads with neither or both labels
@@ -25,6 +25,7 @@ from sqlalchemy import text
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.models import Sequence, User
+from app.services.group_assignment import assign_ungrouped_sequences
 
 
 async def _set_seq_metadata(
@@ -36,7 +37,7 @@ async def _set_seq_metadata(
 ) -> None:
     await session.exec(
         text(
-            "UPDATE sequences SET camera_id = :cam, azimuth = :az " "WHERE id = :sid"
+            "UPDATE sequences SET camera_id = :cam, azimuth = :az WHERE id = :sid"
         ).bindparams(cam=camera_id, az=azimuth, sid=sequence_id)
     )
     await session.commit()
@@ -236,16 +237,15 @@ async def test_assign_groups_creates_group_for_unmatched_sequence(
     authenticated_client: AsyncClient,
     sequence_session: AsyncSession,
     detection_session: AsyncSession,
+    test_user: User,
 ):
     """Sequence 1 has detections with bbox in the [0.12-0.5, 0.13-0.55] region;
     no group exists yet → assign should create one and link it."""
     await _set_seq_metadata(sequence_session, 1, camera_id=42, azimuth=90)
     await _create_placeholder_annotation(authenticated_client, 1)
 
-    response = await authenticated_client.post("/sequence_groups/assign")
-    assert response.status_code == 200
-    summary = response.json()
-    assert summary["new_groups"] >= 1
+    result = await assign_ungrouped_sequences(sequence_session, user_id=test_user.id)
+    assert result.new_groups >= 1
 
     # The created group should now own sequence 1.
     seq_response = await authenticated_client.get("/sequences/1")
@@ -259,22 +259,21 @@ async def test_assign_skips_sequences_still_importing(
     authenticated_client: AsyncClient,
     sequence_session: AsyncSession,
     detection_session: AsyncSession,
+    test_user: User,
 ):
     """A sequence with no SequenceAnnotation row is mid-import (imports
     create the annotation only after all detections are posted) — assign
     must leave it alone until the annotation appears."""
     await _set_seq_metadata(sequence_session, 1, camera_id=42, azimuth=90)
 
-    resp = await authenticated_client.post("/sequence_groups/assign")
-    assert resp.status_code == 200
-    assert resp.json()["processed"] == 0
+    result = await assign_ungrouped_sequences(sequence_session, user_id=test_user.id)
+    assert result.processed == 0
     seq_payload = (await authenticated_client.get("/sequences/1")).json()
     assert seq_payload["sequence_group_id"] is None
 
     await _create_placeholder_annotation(authenticated_client, 1)
-    resp = await authenticated_client.post("/sequence_groups/assign")
-    assert resp.status_code == 200
-    assert resp.json()["new_groups"] >= 1
+    result = await assign_ungrouped_sequences(sequence_session, user_id=test_user.id)
+    assert result.new_groups >= 1
     seq_payload = (await authenticated_client.get("/sequences/1")).json()
     assert seq_payload["sequence_group_id"] is not None
 
@@ -289,12 +288,10 @@ async def test_assign_inheritance_records_contribution(
     """A sequence that joins an already-labeled group inherits the label AND
     gets a contribution row attributing the machine-written annotation to
     the user the assignment ran as (the worker user in the periodic sweep;
-    here, the endpoint caller)."""
+    here, the test user)."""
     await _set_seq_metadata(sequence_session, 1, camera_id=42, azimuth=90)
     await _create_placeholder_annotation(authenticated_client, 1)
-    assert (
-        await authenticated_client.post("/sequence_groups/assign")
-    ).status_code == 200
+    await assign_ungrouped_sequences(sequence_session, user_id=test_user.id)
 
     seq_payload = (await authenticated_client.get("/sequences/1")).json()
     group_id = seq_payload["sequence_group_id"]
@@ -322,9 +319,8 @@ async def test_assign_inheritance_records_contribution(
     )
     await sequence_session.commit()
 
-    resp = await authenticated_client.post("/sequence_groups/assign")
-    assert resp.status_code == 200
-    assert resp.json()["inherited_annotations"] == 1
+    result = await assign_ungrouped_sequences(sequence_session, user_id=test_user.id)
+    assert result.inherited_annotations == 1
 
     # contribution #2 comes from the inheritance write.
     contributors = await _annotation_contributor_ids(sequence_session, 1)
@@ -343,8 +339,7 @@ async def test_bulk_annotate_writes_label_on_group_and_seqs(
     write the label onto the group itself."""
     await _set_seq_metadata(sequence_session, 1, camera_id=42, azimuth=90)
     await _create_placeholder_annotation(authenticated_client, 1)
-    assign_resp = await authenticated_client.post("/sequence_groups/assign")
-    assert assign_resp.status_code == 200
+    await assign_ungrouped_sequences(sequence_session, user_id=test_user.id)
 
     # Discover the group_id from the sequence.
     seq_payload = (await authenticated_client.get("/sequences/1")).json()
@@ -381,12 +376,13 @@ async def test_bulk_annotate_rejects_conflicting_label_without_force(
     authenticated_client: AsyncClient,
     sequence_session: AsyncSession,
     detection_session: AsyncSession,
+    test_user: User,
 ):
     """A group already labeled `wildfire` must reject a request to relabel
     it as `antenna` unless the caller passes force=True."""
     await _set_seq_metadata(sequence_session, 1, camera_id=42, azimuth=90)
     await _create_placeholder_annotation(authenticated_client, 1)
-    await authenticated_client.post("/sequence_groups/assign")
+    await assign_ungrouped_sequences(sequence_session, user_id=test_user.id)
 
     seq_payload = (await authenticated_client.get("/sequences/1")).json()
     group_id = seq_payload["sequence_group_id"]
@@ -452,9 +448,7 @@ async def test_propagation_skipped_when_group_not_validated(
     assert group_resp.json()["smoke_type"] is None
 
     # No fan-out: seq 2 should still have no annotation row.
-    other_anno = await authenticated_client.get(
-        "/annotations/sequences/?sequence_id=2"
-    )
+    other_anno = await authenticated_client.get("/annotations/sequences/?sequence_id=2")
     assert other_anno.json()["total"] == 0
 
 
@@ -468,9 +462,7 @@ async def test_propagation_writes_label_and_fans_out(
     """Validated group, no existing label, no conflict → group gets the
     derived label and the other unlocked member gets an inherited
     annotation in SEQ_ANNOTATION_DONE."""
-    group_id = await _seed_two_member_group(
-        sequence_session, [1, 2], is_validated=True
-    )
+    group_id = await _seed_two_member_group(sequence_session, [1, 2], is_validated=True)
 
     payload = _annotation_payload(stage="seq_annotation_done", smoke_type="wildfire")
     payload["sequence_id"] = 1
@@ -566,9 +558,7 @@ async def test_propagation_fans_out_unsure_flag(
     """Validated group, no existing label → saving seq 1 as unsure marks the
     group unsure and fans the unsure flag out to the other unlocked member in
     SEQ_ANNOTATION_DONE."""
-    group_id = await _seed_two_member_group(
-        sequence_session, [1, 2], is_validated=True
-    )
+    group_id = await _seed_two_member_group(sequence_session, [1, 2], is_validated=True)
 
     payload = _unsure_payload(stage="seq_annotation_done")
     payload["sequence_id"] = 1
@@ -645,3 +635,46 @@ async def test_bulk_annotate_requires_exactly_one_label(
         },
     )
     assert both.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_stats_empty(authenticated_client: AsyncClient):
+    resp = await authenticated_client.get("/sequence_groups/stats")
+    assert resp.status_code == 200
+    assert resp.json() == {"total": 0, "validated": 0, "unvalidated": 0}
+
+
+@pytest.mark.asyncio
+async def test_stats_counts_only_groups_with_three_plus_members(
+    authenticated_client: AsyncClient,
+    async_session: AsyncSession,
+):
+    """total/validated/unvalidated cover the same 3+ member population as
+    the list endpoint; the 2-member group is invisible to all counts."""
+    to_validate = await _seed_group_with_members(
+        async_session,
+        n_members=3,
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        alert_api_id_start=100,
+    )
+    await _seed_group_with_members(
+        async_session,
+        n_members=4,
+        created_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
+        alert_api_id_start=200,
+    )
+    await _seed_group_with_members(
+        async_session,
+        n_members=2,
+        created_at=datetime(2026, 1, 3, tzinfo=timezone.utc),
+        alert_api_id_start=300,
+    )
+
+    resp = await authenticated_client.patch(
+        f"/sequence_groups/{to_validate}", json={"is_validated": True}
+    )
+    assert resp.status_code == 200, resp.text
+
+    resp = await authenticated_client.get("/sequence_groups/stats")
+    assert resp.status_code == 200
+    assert resp.json() == {"total": 2, "validated": 1, "unvalidated": 1}

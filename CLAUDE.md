@@ -76,7 +76,7 @@ npm run test         # Vitest
 
 ## Data Transfer Scripts
 
-Scripts live in `annotation_api/scripts/data_transfer/ingestion/platform/`. Run from `annotation_api/` with `make` targets.
+Scripts live in `annotation_api/scripts/data_transfer/ingestion/alert_api/`. Run from `annotation_api/` with `make` targets.
 
 ### TP Pipeline (true positives — fire sequences)
 
@@ -115,19 +115,21 @@ make visual-check-fp
 make apply-review-fp
 ```
 
-### Platform Import
+### Alert API Import
 
 Credentials live in `annotation_api/.env` (copy from `.env.example` once). Each data-transfer script loads it at startup via `python-dotenv`; Make does not parse `.env`.
 
 ```bash
-# Import sequences from platform API (.env must define PLATFORM_LOGIN, PLATFORM_PASSWORD,
-# PLATFORM_ADMIN_LOGIN, PLATFORM_ADMIN_PASSWORD, MAIN_ANNOTATION_LOGIN, MAIN_ANNOTATION_PASSWORD)
-make import-platform DATE_FROM=2024-01-01 DATE_END=2024-01-02
+# Import sequences from alert API (.env must define ALERT_API_LOGIN, ALERT_API_PASSWORD,
+# ALERT_API_ADMIN_LOGIN, ALERT_API_ADMIN_PASSWORD, MAIN_ANNOTATION_LOGIN, MAIN_ANNOTATION_PASSWORD)
+make import-alert-api DATE_FROM=2024-01-01 DATE_END=2024-01-02
 ```
+
+The import object-splits each alert sequence from the alert API's own boxes and writes one annotation track per object client-side (no pyro-engine/pyro-dataset involved).
 
 ## Key Architecture Concepts
 
-**Backend data flow**: Platform API → ingestion scripts → annotation_api DB → frontend UI → human annotations
+**Backend data flow**: Alert API → ingestion scripts → annotation_api DB → frontend UI → human annotations
 
 **Processing stages** (sequence): `IMPORTED` → `READY_TO_ANNOTATE` → `UNDER_ANNOTATION` → `SEQ_ANNOTATION_DONE` → `IN_REVIEW` → `ANNOTATED`
 

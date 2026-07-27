@@ -27,9 +27,9 @@ from app.schemas.sequence_group import (
     SequenceGroupMember,
     SequenceGroupRead,
     SequenceGroupReadWithMembers,
+    SequenceGroupStats,
     SequenceGroupUpdate,
 )
-from app.services.group_assignment import AssignGroupsResult, assign_ungrouped_sequences
 
 router = APIRouter()
 
@@ -101,6 +101,40 @@ async def list_sequence_groups(
     # `unique=False` is required because the row tuple includes the JSONB
     # `representative_bbox`, which is a dict and therefore not hashable.
     return await apaginate(session, query, params, unique=False)
+
+
+@router.get(
+    "/stats",
+    response_model=SequenceGroupStats,
+    summary="Aggregate counts of sequence groups (3+ members only)",
+)
+async def get_sequence_group_stats(
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> SequenceGroupStats:
+    # Same 3+ member population as the list endpoint, so the sidebar badge
+    # always matches what the groups page shows.
+    member_count_subq = (
+        select(Sequence.sequence_group_id.label("group_id"))
+        .where(Sequence.sequence_group_id.is_not(None))
+        .group_by(Sequence.sequence_group_id)
+        .having(func.count(Sequence.id) >= 3)
+        .subquery()
+    )
+    query = (
+        select(
+            func.count(SequenceGroup.id).label("total"),
+            func.count(SequenceGroup.id)
+            .filter(SequenceGroup.is_validated.is_(True))
+            .label("validated"),
+        )
+        .select_from(SequenceGroup)
+        .join(member_count_subq, member_count_subq.c.group_id == SequenceGroup.id)
+    )
+    total, validated = (await session.exec(query)).one()
+    return SequenceGroupStats(
+        total=total, validated=validated, unvalidated=total - validated
+    )
 
 
 @router.get(
@@ -267,22 +301,3 @@ async def reinclude_sequence_in_grouping(
     seq.is_group_excluded = False
     session.add(seq)
     await session.commit()
-
-
-# -------------------- assign-groups --------------------
-
-
-@router.post(
-    "/assign",
-    response_model=AssignGroupsResult,
-    summary="Compute group membership for unassigned sequences (idempotent).",
-)
-async def assign_groups(
-    session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user),
-) -> AssignGroupsResult:
-    """Manual trigger for the assignment sweep (see
-    ``app.services.group_assignment``). The same logic runs automatically
-    every few minutes in the worker; this endpoint exists for on-demand runs.
-    """
-    return await assign_ungrouped_sequences(session, user_id=current_user.id)

@@ -1,0 +1,803 @@
+"""
+CLI script for end-to-end alert API data import and processing.
+
+This script provides a streamlined workflow to fetch alert API data and generate annotations:
+1. Fetch sequences and detections from the Pyronear alert API
+2. Split each alert sequence into one object sequence per detected object
+   (sibling objects sharing the same set of frames). Sequences where no object
+   reaches the spawn threshold are imported whole as a single sequence
+   (fallback); when at least one object qualifies, boxes that never reach the
+   threshold are dropped (same rule as the platform frontend), so annotation happens
+   per object rather than per camera event
+3. Import the resulting object sequences into the annotation API
+4. Generate annotations from AI predictions for successfully imported sequences only
+5. Set sequences to READY_TO_ANNOTATE stage
+
+Usage:
+  # Basic usage - full pipeline for date range
+  uv run python -m scripts.data_transfer.ingestion.alert_api.import --date-from 2024-01-01 --date-end 2024-01-02
+
+  # Route images via the /from-url endpoint (needed when the annotation API
+  # can't reach the alert API's S3 bucket, e.g. local dev with LocalStack)
+  uv run python -m scripts.data_transfer.ingestion.alert_api.import --date-from 2024-01-01 --image-transfer url
+
+  # Dry run to preview what would be processed
+  uv run python -m scripts.data_transfer.ingestion.alert_api.import --date-from 2024-01-01 --dry-run
+
+Arguments:
+  --date-from (date): Start date for sequences (YYYY-MM-DD format)
+  --date-end (date): End date for sequences (YYYY-MM-DD format, defaults to today)
+  --alert-api-url (str): Alert API URL (default: https://alertapi.pyronear.org)
+  --annotation-api-url (str): Annotation API URL (default: http://localhost:5050)
+  --max-sequences (int): Maximum number of sequences to import (default: 0, 0 = no cap)
+  --frames-limit (int): Maximum number of images to import per sequence (default: 30)
+  --sequence-list (str): Comma-separated list of sequence alert_api_id, or path to a file
+  --image-transfer (str): How detection images reach the annotation API (bucket-copy/url; default: bucket-copy for the French alert API, url for CENIA)
+  --max-workers (int): Max workers for parallel processing, auto-scales for different operations (default: 4)
+  --dry-run: Preview actions without execution
+  --loglevel (str): Logging level (debug/info/warning/error, default: info)
+
+Environment variables required:
+  ALERT_API_LOGIN (str): Alert API login
+  ALERT_API_PASSWORD (str): Alert API password
+  ALERT_API_ADMIN_LOGIN (str): Admin login for organization access
+  ALERT_API_ADMIN_PASSWORD (str): Admin password for organization access
+  (legacy PLATFORM_* names are still accepted as a deprecated fallback)
+  MAIN_ANNOTATION_LOGIN / MAIN_ANNOTATION_PASSWORD (str): Annotation API credentials
+    used when --annotation-api-url is not localhost (remote target)
+  LOCAL_ANNOTATION_LOGIN / LOCAL_ANNOTATION_PASSWORD (str): Annotation API credentials
+    used when --annotation-api-url is localhost/127.*
+  Both fall back to ANNOTATOR_LOGIN / ANNOTATOR_PASSWORD if unset (see
+  shared.get_annotation_credentials)
+
+Examples:
+  # Basic usage
+  uv run python -m scripts.data_transfer.ingestion.alert_api.import --date-from 2024-01-01 --date-end 2024-01-02
+
+  # Restrict to a specific list of sequences
+  uv run python -m scripts.data_transfer.ingestion.alert_api.import --date-from 2024-01-01 --sequence-list 158,16851,168468
+
+  # Dry run to see what would be processed
+  uv run python -m scripts.data_transfer.ingestion.alert_api.import --date-from 2024-01-01 --dry-run --loglevel debug
+
+  # High-performance processing with more workers
+  uv run python -m scripts.data_transfer.ingestion.alert_api.import --date-from 2024-01-01 --max-workers 8
+"""
+
+import argparse
+import concurrent.futures
+import logging
+import os
+import re
+import sys
+import time
+from datetime import datetime
+from typing import List
+
+from dotenv import load_dotenv
+from rich.console import Console
+from rich.panel import Panel
+from rich.progress import (
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    BarColumn,
+    TaskProgressColumn,
+)
+
+# Import new modular components
+from .progress_management import ErrorCollector, StepManager, LogSuppressor
+from .worker_config import WorkerConfig
+from .sequence_fetching import fetch_all_sequences_within
+from . import object_split
+from .annotation_management import (
+    valid_date,
+    annotate_split_sequence,
+)
+from . import shared
+from . import client as alert_api_client
+from app.clients import annotation_api
+
+load_dotenv()
+
+
+def make_cli_parser() -> argparse.ArgumentParser:
+    """
+    Create the CLI argument parser with comprehensive options.
+
+    Returns:
+        Configured ArgumentParser instance
+    """
+    parser = argparse.ArgumentParser(
+        description="End-to-end alert API data import and processing",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__.split("Arguments:")[0].split("Usage:")[1].strip(),
+    )
+
+    # Required parameters
+    parser.add_argument(
+        "--date-from",
+        help="Start date for sequences (YYYY-MM-DD format)",
+        type=valid_date,
+        required=True,
+    )
+    parser.add_argument(
+        "--date-end",
+        help="End date for sequences (YYYY-MM-DD format, defaults to today)",
+        type=valid_date,
+        default=datetime.now().date(),
+    )
+
+    # API configuration
+    parser.add_argument(
+        "--alert-api-url",
+        help="Alert API URL (alertapi.pyronear.org for Pyronear French, apicenia.pyronear.org for CENIA)",
+        type=str,
+        choices=["https://alertapi.pyronear.org", "https://apicenia.pyronear.org"],
+        default="https://alertapi.pyronear.org",
+    )
+    parser.add_argument(
+        "--annotation-api-url",
+        help="Annotation API URL",
+        type=str,
+        default="http://localhost:5050",
+    )
+    parser.add_argument(
+        "--max-sequences",
+        help="Maximum number of sequences to import from the alert API (0 = no cap)",
+        type=int,
+        default=0,
+    )
+
+    # Alert API fetching options
+    parser.add_argument(
+        "--frames-limit",
+        help="Maximum number of images to import per sequence",
+        type=int,
+        default=30,
+    )
+    parser.add_argument(
+        "--sequence-list",
+        help=(
+            "Comma-separated list of sequence alert_api_id (e.g. 158,16851,168468) "
+            "or path to a text file containing the list"
+        ),
+        type=str,
+    )
+
+    # Processing control
+    parser.add_argument(
+        "--image-transfer",
+        help=(
+            "How detection images reach the annotation API: 'bucket-copy' asks the "
+            "server to copy the object straight from the alert API's S3 bucket; "
+            "'url' posts via the /from-url endpoint instead. Default: bucket-copy "
+            "for the French alert API, url for CENIA (the server can only "
+            "bucket-copy from the French alert API's buckets). 'url' is also "
+            "required for local dev where the annotation API can't reach the "
+            "alert API bucket (e.g. LocalStack)."
+        ),
+        type=str,
+        choices=["bucket-copy", "url"],
+        default=None,
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview actions without executing them",
+    )
+
+    # Concurrency control
+    parser.add_argument(
+        "--max-workers",
+        help="Maximum number of workers for parallel processing (auto-scales for different operations)",
+        type=int,
+        default=4,
+    )
+
+    # Logging
+    parser.add_argument(
+        "--loglevel",
+        default="info",
+        help="Logging level (debug/info/warning/error). Use 'debug' for verbose output during progress.",
+        choices=["debug", "info", "warning", "error"],
+    )
+
+    return parser
+
+
+def get_source_api_from_url(url: str) -> str:
+    """
+    Map alert API URL to source_api enum value.
+
+    Args:
+        url: Alert API URL
+
+    Returns:
+        source_api enum value for the database
+    """
+    url_to_source_api = {
+        "https://alertapi.pyronear.org": "pyronear_french",
+        "https://apicenia.pyronear.org": "api_cenia",
+    }
+    return url_to_source_api.get(url, "pyronear_french")
+
+
+def validate_args(args: argparse.Namespace) -> bool:
+    """
+    Validate parsed command line arguments.
+
+    Args:
+        args: Parsed arguments namespace
+
+    Returns:
+        True if arguments are valid, False otherwise
+    """
+    if args.date_from > args.date_end:
+        logging.error("--date-from must be earlier than or equal to --date-end")
+        return False
+
+    if args.max_sequences is not None and args.max_sequences < 0:
+        logging.error("--max-sequences must be 0 or greater when provided")
+        return False
+
+    # Validate worker count
+    if args.max_workers < 1:
+        logging.error("--max-workers must be at least 1")
+        return False
+
+    return True
+
+
+def test_annotation_credentials(
+    base_url: str, login: str, password: str, label: str, console: Console
+) -> bool:
+    """
+    Attempt to authenticate against an annotation API endpoint.
+    """
+    try:
+        annotation_api.get_auth_token(base_url, username=login, password=password)
+        console.print(f"[green]✅ {label} auth OK[/] [dim]({login}@{base_url})[/]")
+        return True
+    except Exception as exc:
+        console.print(f"[red]❌ {label} auth failed[/]: {exc}")
+        return False
+
+
+def parse_sequence_selection(sequence_arg: str) -> List[int]:
+    """
+    Parse a comma/whitespace-separated sequence list from CLI or a file.
+
+    Args:
+        sequence_arg: Raw CLI input or file path
+
+    Returns:
+        List of sequence IDs (alert_api_id)
+
+    Raises:
+        ValueError: If any entry cannot be parsed as int
+    """
+    if not sequence_arg:
+        return []
+
+    content = sequence_arg
+    if os.path.isfile(sequence_arg):
+        with open(sequence_arg, "r", encoding="utf-8") as handle:
+            content = handle.read()
+
+    tokens = [token.strip() for token in re.split(r"[,\s]+", content) if token.strip()]
+    sequence_ids: List[int] = []
+    for token in tokens:
+        try:
+            sequence_ids.append(int(token))
+        except ValueError as exc:
+            raise ValueError(f"Invalid sequence id '{token}' in sequence list") from exc
+
+    return sequence_ids
+
+
+def main() -> None:
+    """Main execution function with comprehensive error handling and progress tracking."""
+    parser = make_cli_parser()
+    args = parser.parse_args()
+
+    max_sequences = args.max_sequences
+
+    # Setup logging
+    logging.basicConfig(
+        level=args.loglevel.upper(),
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
+    logger = logging.getLogger(__name__)
+
+    # bucket-copy derives its source bucket from the French deployment's
+    # config (PLATFORM_SERVER_NAME), so it cannot work against CENIA.
+    is_cenia = "apicenia" in args.alert_api_url
+    if args.image_transfer is None:
+        args.image_transfer = "url" if is_cenia else "bucket-copy"
+        if is_cenia:
+            logging.info(
+                "Auto-selected --image-transfer url for the CENIA alert API "
+                "(bucket-copy only works against the French alert API's buckets)"
+            )
+    elif args.image_transfer == "bucket-copy" and is_cenia:
+        logging.warning(
+            "--image-transfer bucket-copy against the CENIA alert API will fail: "
+            "the annotation API copies from the French alert API's buckets. "
+            "Every detection will error and its sequence will be rolled back."
+        )
+
+    # Validate arguments
+    if not validate_args(args):
+        sys.exit(1)
+
+    # Get source_api from alert API URL
+    source_api = get_source_api_from_url(args.alert_api_url)
+
+    # Initialize components
+    worker_config = WorkerConfig(args.max_workers)
+    console = Console()
+    suppress_logs = args.loglevel != "debug"  # Suppress logs unless in debug mode
+    step_manager = StepManager(console, show_timing=True)
+    error_collector = ErrorCollector()
+
+    # Initialize comprehensive statistics
+    stats = {
+        # Import statistics (Step 1)
+        "records_fetched": 0,
+        "sequences_attempted_import": 0,
+        "sequences_import_successful": 0,
+        "sequences_import_failed": 0,
+        "detections_attempted_import": 0,
+        "detections_import_successful": 0,
+        "detections_import_failed": 0,
+        # Annotation statistics (Step 4)
+        "total_sequences_for_annotation": 0,
+        "annotations_successful": 0,
+        "annotations_failed": 0,
+        "annotations_created": 0,
+        "sequences_rolled_back": 0,
+    }
+
+    # Initialize organization early to avoid reference errors in exception handlers
+    organization = shared.getenv_with_fallback("ALERT_API_LOGIN") or "unknown"
+    selected_sequence_list: List[int] = []
+    sequence_list_source = "CLI input"
+
+    # Parse optional sequence restriction
+    if args.sequence_list:
+        try:
+            if os.path.isfile(args.sequence_list):
+                sequence_list_source = f"file {args.sequence_list}"
+            selected_sequence_list = parse_sequence_selection(args.sequence_list)
+        except ValueError as exc:
+            logging.error(exc)
+            sys.exit(1)
+
+    if selected_sequence_list:
+        if max_sequences and len(selected_sequence_list) > max_sequences:
+            console.print(
+                f"[blue]ℹ️  Restricting to first {max_sequences} of "
+                f"{len(selected_sequence_list)} provided sequence alert_api_id(s)[/]"
+            )
+            selected_sequence_list = selected_sequence_list[:max_sequences]
+        console.print(
+            f"[blue]ℹ️  Restricting to {len(selected_sequence_list)} sequence alert_api_id(s) ({sequence_list_source})[/]"
+        )
+
+    # Early credential check for target annotation API
+    target_login, target_password = shared.get_annotation_credentials(
+        args.annotation_api_url
+    )
+    target_ok = test_annotation_credentials(
+        args.annotation_api_url,
+        target_login,
+        target_password,
+        "Target annotation",
+        console,
+    )
+
+    if not target_ok:
+        console.print("[red]❌ Aborting due to authentication failure[/]")
+        sys.exit(1)
+
+    # Print header
+    console.print()
+    console.print(
+        Panel(
+            "[bold blue]Alert API Data Import & Processing[/]",
+            title="🔥 Pyronear Data Import",
+            border_style="blue",
+            padding=(0, 2),
+        )
+    )
+
+    if args.loglevel == "debug":
+        console.print(
+            f"[blue]ℹ️  Date range: {args.date_from} to {args.date_end}[/]"
+        )
+        console.print(
+            f"[blue]ℹ️  Alert API: {args.alert_api_url} (source_api: {source_api})[/]"
+        )
+        console.print(f"[blue]ℹ️  Worker config: {worker_config}[/]")
+
+    try:
+        # Step 1: Fetch alert API data
+        successfully_imported_sequence_ids = []
+        step_manager.start_step(
+            1,
+            "Alert API Data Import",
+            f"Fetching {organization} data from {args.date_from} to {args.date_end} using {worker_config.base_workers} workers",
+        )
+
+        if not shared.validate_available_env_variables():
+            console.print(
+                "[red]❌ Missing required environment variables for alert API[/]"
+            )
+            step_manager.complete_step(False, "Missing environment variables")
+            sys.exit(1)
+
+        # Get alert API credentials
+        alert_api_login = shared.getenv_with_fallback("ALERT_API_LOGIN")
+        alert_api_password = shared.getenv_with_fallback("ALERT_API_PASSWORD")
+        alert_api_admin_login = shared.getenv_with_fallback("ALERT_API_ADMIN_LOGIN")
+        alert_api_admin_password = shared.getenv_with_fallback(
+            "ALERT_API_ADMIN_PASSWORD"
+        )
+
+        if not all(
+            [
+                alert_api_login,
+                alert_api_password,
+                alert_api_admin_login,
+                alert_api_admin_password,
+            ]
+        ):
+            error_collector.add_error("Missing alert API credentials")
+            step_manager.complete_step(False, "Missing alert API credentials")
+            sys.exit(1)
+
+        # Get access tokens with progress display
+        auth_start_time = time.time()
+        with console.status(
+            f"[bold blue]🔐 Authenticating with alert API ({organization})...",
+            spinner="dots",
+        ) as status:
+            try:
+                status.update(f"[bold blue]🔐 Getting {organization} access token...")
+                access_token = alert_api_client.get_api_access_token(
+                    api_endpoint=args.alert_api_url,
+                    username=alert_api_login,
+                    password=alert_api_password,
+                )
+
+                status.update("[bold blue]🔐 Getting admin access token...")
+                access_token_admin = alert_api_client.get_api_access_token(
+                    api_endpoint=args.alert_api_url,
+                    username=alert_api_admin_login,
+                    password=alert_api_admin_password,
+                )
+
+                auth_duration = time.time() - auth_start_time
+                console.print(
+                    f"[green]✅ Authentication successful[/] [dim]({auth_duration:.1f}s)[/]"
+                )
+
+            except Exception as e:
+                error_collector.add_error(f"Authentication failed: {e}")
+                step_manager.complete_step(False, f"Authentication failed: {e}")
+                sys.exit(1)
+
+        # Fetch alert API records
+        try:
+            records = fetch_all_sequences_within(
+                date_from=args.date_from,
+                date_end=args.date_end,
+                detections_limit=args.frames_limit,
+                detections_order_by="asc",
+                api_endpoint=args.alert_api_url,
+                access_token=access_token,
+                access_token_admin=access_token_admin,
+                worker_config=worker_config,
+                selected_sequence_list=selected_sequence_list or None,
+                max_sequences=max_sequences,
+                suppress_logs=suppress_logs,
+                console=console,
+                error_collector=error_collector,
+                organization=organization,
+                risk_score="extreme",
+            )
+        except Exception as e:
+            error_collector.add_error(f"Alert API data fetching failed: {e}")
+            step_manager.complete_step(False, f"Alert API data fetching failed: {e}")
+            error_collector.print_summary(console, "Alert API Data Fetching Errors")
+            sys.exit(1)
+
+        records, split_stats = object_split.split_all_records(records)
+        console.print(
+            f"[blue]🔀 Object split: {split_stats['alert_api_sequences']} alert sequence(s) → "
+            f"{split_stats['objects']} object sequence(s) "
+            f"({split_stats['sibling_objects']} sibling(s), "
+            f"{split_stats['fallback_sequences']} fallback, "
+            f"{split_stats['cross_deduped_siblings']} cross-deduped)[/]"
+        )
+
+        if not records and not args.dry_run:
+            step_manager.complete_step(False, "No records fetched from alert API")
+            sys.exit(0)
+
+        # Post to annotation API (if not dry run)
+        if not args.dry_run:
+            console.print(
+                f"[blue]🚀 Posting {len(records)} records to annotation API...[/]"
+            )
+
+            try:
+                result = shared.post_records_to_annotation_api(
+                    args.annotation_api_url,
+                    records,
+                    max_workers=worker_config.api_posting,
+                    max_detection_workers=worker_config.detection_per_sequence,
+                    suppress_logs=suppress_logs,
+                    source_api=source_api,
+                    force_url=(args.image_transfer == "url"),
+                )
+
+                # Capture import statistics in main stats and get successfully imported sequence IDs
+                stats["records_fetched"] = len(records)
+                stats["sequences_attempted_import"] = result["total_sequences"]
+                stats["sequences_import_successful"] = result["successful_sequences"]
+                stats["sequences_import_failed"] = result["failed_sequences"]
+                stats["detections_attempted_import"] = result["total_detections"]
+                stats["detections_import_successful"] = result["successful_detections"]
+                stats["detections_import_failed"] = result["failed_detections"]
+                successfully_imported_sequence_ids = result["successful_sequence_ids"]
+
+                # Prepare step completion stats for display
+                step_stats = {
+                    "Records fetched": len(records),
+                    "Sequences posted": f"{result['successful_sequences']}/{result['total_sequences']}",
+                    "Sequences skipped": result.get("skipped_sequences", 0),
+                    "Detections posted": f"{result['successful_detections']}/{result['total_detections']}",
+                }
+
+                step_success = (
+                    result["failed_sequences"] == 0 and result["failed_detections"] == 0
+                )
+                step_message = (
+                    "Alert API data successfully imported"
+                    if step_success
+                    else "Alert API data imported with some failures"
+                )
+
+                step_manager.complete_step(step_success, step_message, step_stats)
+
+                if result["failed_sequences"] > 0 or result["failed_detections"] > 0:
+                    error_collector.add_warning(
+                        f"{result['failed_sequences']} sequences and {result['failed_detections']} detections failed to import (likely duplicates). "
+                        "Enable --loglevel debug to see per-sequence errors."
+                    )
+
+            except Exception as e:
+                error_collector.add_error(f"Failed to post data to annotation API: {e}")
+                step_manager.complete_step(
+                    False, f"Failed to post data to annotation API: {e}"
+                )
+                error_collector.print_summary(console, "Alert API Data Import Errors")
+                sys.exit(1)
+        else:
+            # For dry run, capture what would have been imported but don't set sequence IDs
+            stats["records_fetched"] = len(records)
+            step_stats = {"Records that would be posted": len(records)}
+            step_manager.complete_step(
+                True, "DRY RUN: Alert API data fetch completed", step_stats
+            )
+
+        # Step 2: Prepare sequences for annotation generation
+        step_manager.start_step(
+            2,
+            "Sequence Preparation",
+            f"Preparing successfully imported {organization} sequences for annotation generation",
+        )
+
+        # Use only successfully imported sequences for annotation processing
+        sequence_ids = successfully_imported_sequence_ids
+
+        if not sequence_ids:
+            step_message = "No sequences successfully imported - nothing to process for annotation generation"
+            step_manager.complete_step(True, step_message)
+
+            # Show final summary with zero processing and exit gracefully
+            console.print()
+            panel = Panel(
+                f"[yellow]No sequences were successfully imported from {organization} alert API data.\n"
+                f"Check import statistics above for details (likely all were duplicates).[/]",
+                title=f"⚠️ Processing Complete - {organization} - No Annotations Generated",
+                border_style="yellow",
+                padding=(1, 2),
+            )
+            console.print(panel)
+            sys.exit(0)
+
+        stats["total_sequences_for_annotation"] = len(sequence_ids)
+        step_stats = {"Successfully imported sequences": len(sequence_ids)}
+        step_manager.complete_step(
+            True,
+            f"Prepared {len(sequence_ids)} sequences for annotation generation",
+            step_stats,
+        )
+
+        # Step 3: Create sequence annotations with auto-generation
+        step_manager.start_step(
+            3,
+            "Sequence Annotation Creation",
+            f"Creating sequence annotations for {len(sequence_ids)} sequences (auto-generation enabled)",
+        )
+
+        alert_api_seq_results = []
+        if not args.dry_run:
+            alert_api_seq_results = [
+                r for r in result.get("sequence_results", []) if not r.get("skipped")
+            ]
+
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=worker_config.annotation_processing
+        ) as executor:
+            # Submit all sequence annotation tasks
+            future_to_sequence_id = {
+                executor.submit(
+                    annotate_split_sequence,
+                    seq_result=seq_result,
+                    annotation_api_url=args.annotation_api_url,
+                    dry_run=args.dry_run,
+                ): seq_result["sequence_id"]
+                for seq_result in alert_api_seq_results
+            }
+
+            # Collect results with progress tracking
+            with LogSuppressor(suppress=suppress_logs):
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[bold blue]Creating sequence annotations"),
+                    BarColumn(bar_width=40),
+                    TaskProgressColumn(),
+                    console=Console(),
+                    transient=True,
+                ) as progress_bar:
+                    task = progress_bar.add_task(
+                        "Processing sequences", total=len(future_to_sequence_id)
+                    )
+                    for future in concurrent.futures.as_completed(
+                        future_to_sequence_id
+                    ):
+                        sequence_id = future_to_sequence_id[future]
+                        try:
+                            result = future.result()
+
+                            # Update annotation statistics
+                            if result["errors"]:
+                                stats["annotations_failed"] += 1
+                                for error in result["errors"]:
+                                    error_collector.add_error(
+                                        f"Sequence {sequence_id}: {error}"
+                                    )
+                                    if "rolled back" in error:
+                                        stats["sequences_rolled_back"] += 1
+                            else:
+                                stats["annotations_successful"] += 1
+
+                            if result["annotation_created"]:
+                                stats["annotations_created"] += 1
+
+                            # Log progress (suppressed unless debug)
+                            logger.debug(
+                                f"Sequence {sequence_id}: "
+                                f"annotation={'✓' if result['annotation_created'] else '✗'}, "
+                                f"stage={result['final_stage'] or 'failed'}"
+                            )
+                            progress_bar.advance(task)
+
+                        except Exception as e:
+                            error_msg = f"Unexpected error processing sequence {sequence_id}: {e}"
+                            error_collector.add_error(error_msg)
+                            stats["annotations_failed"] += 1
+                            progress_bar.advance(task)
+
+        # Complete Step 3 with annotation statistics
+        step_3_success = stats["annotations_failed"] == 0
+        final_stats = {
+            "Sequences processed": stats["total_sequences_for_annotation"],
+            "Annotations successful": stats["annotations_successful"],
+            "Annotations failed": stats["annotations_failed"],
+            "Annotations created": stats["annotations_created"],
+        }
+
+        step_3_message = (
+            "All sequence annotations created successfully"
+            if step_3_success
+            else f"{stats['annotations_failed']} annotation(s) failed"
+        )
+        if args.dry_run:
+            step_3_message = "DRY RUN: " + step_3_message
+
+        step_manager.complete_step(step_3_success, step_3_message, final_stats)
+
+        # Show any accumulated errors/warnings
+        if error_collector.has_issues():
+            error_collector.print_summary(console, "Processing Summary")
+
+        # Enhanced final summary panel with import and annotation breakdown
+        console.print()
+
+        # Determine overall success (critical failures, not including expected duplicates)
+        has_critical_failures = (
+            stats["annotations_failed"] > 0 or error_collector.get_error_count() > 0
+        )
+
+        success = not has_critical_failures
+        style = "green" if success else "red"
+        icon = "✅" if success else "❌"
+
+        # Build comprehensive summary
+        summary_parts = []
+
+        # Alert API Import Section
+        if not args.dry_run:
+            import_section = f"""[bold cyan]ALERT API IMPORT:[/]
+• Records fetched: {stats['records_fetched']}
+• Sequences attempted: {stats['sequences_attempted_import']}
+• Successfully imported: {stats['sequences_import_successful']}
+• Failed/duplicates: {stats['sequences_import_failed']}"""
+            if stats["sequences_rolled_back"] > 0:
+                import_section += f"\n• Rolled back: {stats['sequences_rolled_back']}"
+            summary_parts.append(import_section)
+
+        # Annotation Generation Section
+        annotation_section = f"""[bold blue]ANNOTATION GENERATION:[/]
+• Sequences processed: {stats['total_sequences_for_annotation']}
+• Annotations successful: {stats['annotations_successful']}
+• Annotations failed: {stats['annotations_failed']}
+• Annotations created: {stats['annotations_created']}"""
+        summary_parts.append(annotation_section)
+
+        # Join sections
+        summary_text = "\n\n".join(summary_parts)
+
+        # Add dry run notice
+        if args.dry_run:
+            summary_text += "\n\n[yellow]DRY RUN: No actual changes were made[/]"
+
+        # Add context note about duplicates if applicable
+        if (
+            stats.get("sequences_import_failed", 0) > 0
+            and stats["annotations_failed"] == 0
+        ):
+            summary_text += f"\n\n[dim]Note: {stats['sequences_import_failed']} sequences failed import (likely duplicates from re-running same dates)[/]"
+
+        panel = Panel(
+            summary_text,
+            title=f"{icon} Processing Complete - {organization}",
+            border_style=style,
+            padding=(1, 2),
+        )
+        console.print(panel)
+
+        # Exit with appropriate code (only exit with error for critical failures)
+        if has_critical_failures:
+            sys.exit(1)
+        else:
+            sys.exit(0)
+
+    except KeyboardInterrupt:
+        console.print("\n[yellow]⚠️  Processing interrupted by user[/]")
+        error_collector.print_summary(console, "Errors Before Interruption")
+        sys.exit(1)
+    except Exception as e:
+        error_collector.add_error(f"Unexpected error during processing: {e}")
+        console.print(f"\n[red]❌ Unexpected error during processing: {e}[/]")
+        error_collector.print_summary(console, "Critical Processing Errors")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

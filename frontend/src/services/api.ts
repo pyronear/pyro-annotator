@@ -24,6 +24,7 @@ import {
   ApiError,
   SequenceGroup,
   SequenceGroupListItem,
+  SequenceGroupStats,
 } from '@/types/api';
 import { API_ENDPOINTS } from '@/utils/constants';
 
@@ -235,6 +236,13 @@ class ApiClient {
     const response: AxiosResponse<PaginatedResponse<SequenceGroupListItem>> = await this.client.get(
       API_ENDPOINTS.SEQUENCE_GROUPS,
       { params: filters }
+    );
+    return response.data;
+  }
+
+  async getSequenceGroupStats(): Promise<SequenceGroupStats> {
+    const response: AxiosResponse<SequenceGroupStats> = await this.client.get(
+      `${API_ENDPOINTS.SEQUENCE_GROUPS}stats`
     );
     return response.data;
   }

@@ -1,5 +1,5 @@
 """
-API client functions to interact with the Pyronear platform.
+API client functions to interact with the Pyronear alert API.
 
 This module provides functions to authenticate with the Pyronear API,
 retrieve access tokens, and perform various operations related to
@@ -92,13 +92,13 @@ def list_cameras(
     include_non_trustable: bool = True,
 ) -> list[dict]:
     """
-    List all cameras using the platform API.
+    List all cameras using the alert API.
 
     Args:
         api_endpoint (str): The base URL for the API endpoint.
         access_token (str): The access token for API authentication.
         include_non_trustable (bool): If True, include cameras flagged as
-            non-trustable (default). The platform's `/cameras/` endpoint
+            non-trustable (default). The alert API's `/cameras/` endpoint
             otherwise hides them, which would leave detections from those
             cameras without metadata when sequences are imported.
 
@@ -128,7 +128,7 @@ def get_camera(api_endpoint: str, camera_id: int, access_token: str) -> dict:
 
 def list_organizations(api_endpoint: str, access_token: str) -> list[dict]:
     """
-    List all organizations using the platform API.
+    List all organizations using the alert API.
 
     Args:
         api_endpoint (str): The base URL for the API endpoint.
@@ -170,7 +170,7 @@ def list_sequences_for_date(
     risk_score: Optional[str] = None,
 ) -> list[dict]:
     """
-    List all sequences for a given date using the platform API.
+    List all sequences for a given date using the alert API.
 
     Args:
         api_endpoint (str): The base URL for the API endpoint.
@@ -179,9 +179,9 @@ def list_sequences_for_date(
         offset (int): The number of sequences to skip before starting to collect the result set.
         access_token (str): The access token for API authentication.
         risk_score (str | None): Optional FWI class override. When set (e.g. "extreme"),
-            the platform applies that single class to every camera and the FWI confidence
+            the alert API applies that single class to every camera and the FWI confidence
             filter becomes a no-op for classes whose threshold is 0.0. Pass None to use
-            the platform's default per-camera risk-api lookup (which filters out low-FWI
+            the alert API's default per-camera risk-api lookup (which filters out low-FWI
             sequences).
 
     Returns:
@@ -238,7 +238,7 @@ def list_sequence_detections(
     desc: bool = True,
 ) -> list[dict]:
     """
-    List all detections for a given sequence ID using the platform API.
+    List all detections for a given sequence ID using the alert API.
 
     Args:
         api_endpoint (str): The base URL for the API endpoint.

@@ -157,6 +157,12 @@ export interface SequenceGroupListItem {
   member_count: number;
 }
 
+export interface SequenceGroupStats {
+  total: number;
+  validated: number;
+  unvalidated: number;
+}
+
 export interface SequenceGroup {
   id: number;
   camera_id: number;
