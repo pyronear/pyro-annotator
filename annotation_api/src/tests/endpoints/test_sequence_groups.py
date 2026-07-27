@@ -133,6 +133,23 @@ async def _seed_group_with_members(
     return group_id
 
 
+async def _create_placeholder_annotation(client: AsyncClient, sequence_id: int) -> None:
+    """Mimic the import pipeline's final step: an empty READY_TO_ANNOTATE
+    annotation, created only once all the sequence's detections are posted.
+    The gate in assign_ungrouped_sequences keys on this row's existence."""
+    resp = await client.post(
+        "/annotations/sequences/",
+        json={
+            "sequence_id": sequence_id,
+            "has_missed_smoke": False,
+            "is_unsure": False,
+            "annotation": {"sequences_bbox": []},
+            "processing_stage": "ready_to_annotate",
+        },
+    )
+    assert resp.status_code == 201, resp.text
+
+
 @pytest.mark.asyncio
 async def test_list_groups_hides_small_groups_and_sorts_by_size(
     authenticated_client: AsyncClient,
@@ -210,6 +227,7 @@ async def test_assign_groups_creates_group_for_unmatched_sequence(
     """Sequence 1 has detections with bbox in the [0.12-0.5, 0.13-0.55] region;
     no group exists yet → assign should create one and link it."""
     await _set_seq_metadata(sequence_session, 1, camera_id=42, azimuth=90)
+    await _create_placeholder_annotation(authenticated_client, 1)
 
     response = await authenticated_client.post("/sequence_groups/assign")
     assert response.status_code == 200
@@ -224,6 +242,31 @@ async def test_assign_groups_creates_group_for_unmatched_sequence(
 
 
 @pytest.mark.asyncio
+async def test_assign_skips_sequences_still_importing(
+    authenticated_client: AsyncClient,
+    sequence_session: AsyncSession,
+    detection_session: AsyncSession,
+):
+    """A sequence with no SequenceAnnotation row is mid-import (imports
+    create the annotation only after all detections are posted) — assign
+    must leave it alone until the annotation appears."""
+    await _set_seq_metadata(sequence_session, 1, camera_id=42, azimuth=90)
+
+    resp = await authenticated_client.post("/sequence_groups/assign")
+    assert resp.status_code == 200
+    assert resp.json()["processed"] == 0
+    seq_payload = (await authenticated_client.get("/sequences/1")).json()
+    assert seq_payload["sequence_group_id"] is None
+
+    await _create_placeholder_annotation(authenticated_client, 1)
+    resp = await authenticated_client.post("/sequence_groups/assign")
+    assert resp.status_code == 200
+    assert resp.json()["new_groups"] >= 1
+    seq_payload = (await authenticated_client.get("/sequences/1")).json()
+    assert seq_payload["sequence_group_id"] is not None
+
+
+@pytest.mark.asyncio
 async def test_bulk_annotate_writes_label_on_group_and_seqs(
     authenticated_client: AsyncClient,
     sequence_session: AsyncSession,
@@ -233,6 +276,7 @@ async def test_bulk_annotate_writes_label_on_group_and_seqs(
     apply the label, mark the SequenceAnnotation as SEQ_ANNOTATION_DONE, and
     write the label onto the group itself."""
     await _set_seq_metadata(sequence_session, 1, camera_id=42, azimuth=90)
+    await _create_placeholder_annotation(authenticated_client, 1)
     assign_resp = await authenticated_client.post("/sequence_groups/assign")
     assert assign_resp.status_code == 200
 
@@ -272,6 +316,7 @@ async def test_bulk_annotate_rejects_conflicting_label_without_force(
     """A group already labeled `wildfire` must reject a request to relabel
     it as `antenna` unless the caller passes force=True."""
     await _set_seq_metadata(sequence_session, 1, camera_id=42, azimuth=90)
+    await _create_placeholder_annotation(authenticated_client, 1)
     await authenticated_client.post("/sequence_groups/assign")
 
     seq_payload = (await authenticated_client.get("/sequences/1")).json()

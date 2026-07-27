@@ -120,6 +120,14 @@ async def assign_ungrouped_sequences(
             Sequence.sequence_group_id.is_(None),
             # Don't re-attach sequences an annotator removed by hand.
             Sequence.is_group_excluded.is_(False),
+            # Only fully-imported sequences: every import path creates the
+            # SequenceAnnotation row strictly after all detections are
+            # posted, so its absence means "still importing" (or a failed
+            # import) — grouping such a sequence would freeze a bbox from
+            # partial data and could inherit a label onto it.
+            select(SequenceAnnotation.id)
+            .where(SequenceAnnotation.sequence_id == Sequence.id)
+            .exists(),
         )
         .order_by(Sequence.recorded_at)
     )
