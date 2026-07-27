@@ -29,6 +29,8 @@ interface NavigationItem {
   href?: string;
   icon: LucideIcon;
   children?: NavigationSubItem[];
+  badgeCount?: number;
+  badgeTitle?: string;
 }
 
 interface NavigationSubItem {
@@ -105,13 +107,19 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
   });
 
   // Get annotation counts for badges and current user
-  const { sequenceCount, detectionCount } = useAnnotationCounts();
+  const { sequenceCount, detectionCount, groupCount } = useAnnotationCounts();
   const { isSuperuser } = useAuthStore();
 
   // Create dynamic navigation with badge counts
   const navigationWithBadges: NavigationItem[] = [
     { name: 'Dashboard', href: '/', icon: BarChart3 },
-    { name: 'Sequence groups', href: '/sequence-groups', icon: Boxes },
+    {
+      name: 'Sequence groups',
+      href: '/sequence-groups',
+      icon: Boxes,
+      badgeCount: groupCount,
+      badgeTitle: `${groupCount} groups need validation`,
+    },
     {
       name: 'Sequences',
       icon: Layers,
@@ -220,7 +228,10 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
                     )}
                     aria-hidden="true"
                   />
-                  {item.name}
+                  <span className="flex-1">{item.name}</span>
+                  {item.badgeCount !== undefined && (
+                    <NotificationBadge count={item.badgeCount} title={item.badgeTitle} />
+                  )}
                 </Link>
               );
             }
