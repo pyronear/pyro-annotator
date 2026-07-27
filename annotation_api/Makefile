@@ -21,7 +21,6 @@ help:
 	@echo "  migrate-up           - Apply pending alembic revisions"
 	@echo ""
 	@echo "Sequence annotation workflow (A):"
-	@echo "  pull-sequences       - Duplicate N sequences from remote API to local API"
 	@echo "  push-annotations     - Push local sequence annotations back to remote API"
 	@echo ""
 	@echo "Detection annotation workflow (B):"
@@ -44,13 +43,12 @@ help:
 	@echo "  import-alert-api     - (Admin) Import from alert API into annotation API"
 	@echo ""
 	@echo "Override variables inline, e.g.:"
-	@echo "  make pull-sequences MAX_SEQUENCES=50 CLONE_STAGE=under_annotation"
+	@echo "  make pull-seq-annotations MAX_SEQUENCES=50"
 
 # ---------- Data workflow defaults (override via env or 'make VAR=value target') ----------
 REMOTE_API       ?= https://annotationapi.pyronear.org
 LOCAL_API        ?= http://localhost:5050
 MAX_SEQUENCES    ?= 10
-CLONE_STAGE      ?= ready_to_annotate
 DATA_ROOT        ?= outputs/seq_annotation_done
 SMOKE_TYPE       ?= wildfire
 DATASET_NAME     ?= visual_check
@@ -125,17 +123,6 @@ migrate-up:
 # =========================================================================
 
 # --- 1A. Sequence annotation workflow ---
-
-# Duplicate N sequences from the remote annotation API into the local one.
-# Group assignment happens automatically (periodic worker sweep).
-# Usage: make pull-sequences [MAX_SEQUENCES=10] [CLONE_STAGE=ready_to_annotate]
-pull-sequences:
-	uv run python -m scripts.data_transfer.ingestion.platform.import \
-		--source-annotation-url $(REMOTE_API) \
-		--url-api-annotation $(LOCAL_API) \
-		--max-sequences $(MAX_SEQUENCES) \
-		--clone-processing-stage $(CLONE_STAGE) \
-		--loglevel $(LOGLEVEL)
 
 # Push locally-annotated sequences back to the remote API.
 # Usage: make push-annotations [MAX_SEQUENCES=10]
@@ -329,7 +316,7 @@ import-alert-api:
 
 .PHONY: help lint fix docker-build start stop clean test test-specific \
 	migrate migrate-up \
-	pull-sequences push-annotations \
+	push-annotations \
 	pull-seq-annotations auto-annotate visual-check apply-review \
 	pull-fp visual-check-fp apply-review-fp \
 	export-dataset import-yolo-sequence import-local-yolo \

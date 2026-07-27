@@ -42,7 +42,7 @@ cp .env.example .env
 # then edit .env and set MAIN_ANNOTATION_LOGIN / MAIN_ANNOTATION_PASSWORD
 ```
 
-All make targets accept variable overrides inline, e.g. `make pull-sequences MAX_SEQUENCES=50 CLONE_STAGE=under_annotation`. Common variables: `REMOTE_API`, `LOCAL_API`, `MAX_SEQUENCES`, `CLONE_STAGE`, `DATA_ROOT`, `SMOKE_TYPE`, `DATASET_NAME`, `LOGLEVEL`. See `make help` for the full list.
+All make targets accept variable overrides inline, e.g. `make pull-seq-annotations MAX_SEQUENCES=50`. Common variables: `REMOTE_API`, `LOCAL_API`, `MAX_SEQUENCES`, `DATA_ROOT`, `SMOKE_TYPE`, `DATASET_NAME`, `LOGLEVEL`. See `make help` for the full list.
 
 ### 1. Annotations
 
@@ -50,16 +50,9 @@ All make targets accept variable overrides inline, e.g. `make pull-sequences MAX
 
 This is the main scenario: you do **not** need platform credentials — only access to the remote annotation API. Ask an admin for `MAIN_ANNOTATION_LOGIN` / `MAIN_ANNOTATION_PASSWORD`.
 
-**Step 1 — Duplicate N sequences from the remote API into your local API**
+**Step 1 — Seed your local API with sequences from the remote API**
 
-```bash
-cd annotation_api
-make pull-sequences MAX_SEQUENCES=10 CLONE_STAGE=ready_to_annotate
-```
-
-- `MAX_SEQUENCES` caps how many sequences you pull; use `0` for all.
-- `CLONE_STAGE` defaults to `ready_to_annotate`; set to `under_annotation`, `seq_annotation_done`, `needs_manual`, or `no_annotation` to grab those stages.
-- To restrict by `alert_api_id`, call the underlying script directly with `--sequence-list <file_or_csv>`.
+Seeding a local instance from the remote annotation API is currently unavailable — the old clone-based make target was removed as dead code (it relied on import flags the consolidated import script no longer supports). A standalone sync script is planned to replace it (see issue #174).
 
 **Step 2 — Annotate sequences locally**
 
