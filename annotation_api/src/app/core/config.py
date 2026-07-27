@@ -68,6 +68,34 @@ class Settings(BaseSettings):
         "PLATFORM_SERVER_NAME", "ovh-alert-api-prod-v2"
     )
 
+    # Auto-annotate model (baked into the image; see Dockerfile)
+    AUTOANNOTATE_MODEL_PATH: str = os.environ.get(
+        "AUTOANNOTATE_MODEL_PATH", "/app/models/yolo11s_sensitive-detector"
+    )
+    AUTOANNOTATE_MODEL_NAME: str = os.environ.get(
+        "AUTOANNOTATE_MODEL_NAME", "yolo11s_sensitive-detector"
+    )
+    AUTOANNOTATE_MODEL_VERSION: str = os.environ.get(
+        "AUTOANNOTATE_MODEL_VERSION", "onnx-main"
+    )
+    AUTOANNOTATE_CONF: float = float(os.environ.get("AUTOANNOTATE_CONF", "0.01"))
+    AUTOANNOTATE_IOU: float = float(os.environ.get("AUTOANNOTATE_IOU", "0.0"))
+    AUTOANNOTATE_IMGSZ: int = int(os.environ.get("AUTOANNOTATE_IMGSZ", "1024"))
+    # Clustering thresholds for the gap-fill anchor (mirror `make auto-annotate`):
+    # aggregated engine boxes are clustered into persistent objects, then only
+    # sensitive-model predictions overlapping an object are kept.
+    AUTOANNOTATE_GROUP_IOU_NMS: float = float(
+        os.environ.get("AUTOANNOTATE_GROUP_IOU_NMS", "0.0")
+    )
+    AUTOANNOTATE_GROUP_IOU_ASSIGN: float = float(
+        os.environ.get("AUTOANNOTATE_GROUP_IOU_ASSIGN", "0.0")
+    )
+
+    @property
+    def procrastinate_dsn(self) -> str:
+        """Plain libpq DSN for procrastinate/psycopg (no SQLAlchemy driver suffix)."""
+        return self.POSTGRES_URL.replace("+asyncpg", "").replace("+psycopg", "")
+
     DEBUG: bool = os.environ.get("DEBUG", "").lower() != "false"
     LOGO_URL: str = ""
 
