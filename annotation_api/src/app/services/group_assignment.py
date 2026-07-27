@@ -5,9 +5,9 @@
 
 """Sequence-group assignment sweep.
 
-Shared by the manual endpoint (POST /sequence_groups/assign) and the periodic
-worker task (``assign_sequence_groups`` in ``app.worker``): both call
-``assign_ungrouped_sequences``.
+Called by the periodic worker task (``assign_sequence_groups`` in
+``app.worker``), the sole trigger since the manual endpoint was removed
+(#181): it calls ``assign_ungrouped_sequences``.
 """
 
 import logging
@@ -48,8 +48,8 @@ logger = logging.getLogger(__name__)
 # accidental tiny overlaps; 0.5 was too strict in practice.
 GROUP_IOU_THRESHOLD = 0.3
 
-# Fixed key for the Postgres advisory lock that serializes assignment runs
-# (manual endpoint vs periodic worker sweep). Arbitrary but must never change.
+# Fixed key for the Postgres advisory lock that serializes overlapping
+# assignment sweeps. Arbitrary but must never change.
 ASSIGN_ADVISORY_LOCK_KEY = 743210517
 
 

@@ -1,7 +1,7 @@
 """Tests for the sequence-groups + bulk-annotate + propagation flow.
 
 Covers:
-- POST /sequence_groups/assign creates a new group from an unassigned sequence
+- assign_ungrouped_sequences creates a new group from an unassigned sequence
 - POST /annotations/sequences/bulk applies labels, writes them onto the
   group, and rejects conflicting labels unless force=True
 - Request validation rejects payloads with neither or both labels
@@ -24,7 +24,8 @@ from httpx import AsyncClient
 from sqlalchemy import text
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.models import Sequence
+from app.models import Sequence, User
+from app.services.group_assignment import assign_ungrouped_sequences
 
 
 async def _set_seq_metadata(
@@ -223,16 +224,15 @@ async def test_assign_groups_creates_group_for_unmatched_sequence(
     authenticated_client: AsyncClient,
     sequence_session: AsyncSession,
     detection_session: AsyncSession,
+    test_user: User,
 ):
     """Sequence 1 has detections with bbox in the [0.12-0.5, 0.13-0.55] region;
     no group exists yet → assign should create one and link it."""
     await _set_seq_metadata(sequence_session, 1, camera_id=42, azimuth=90)
     await _create_placeholder_annotation(authenticated_client, 1)
 
-    response = await authenticated_client.post("/sequence_groups/assign")
-    assert response.status_code == 200
-    summary = response.json()
-    assert summary["new_groups"] >= 1
+    result = await assign_ungrouped_sequences(sequence_session, user_id=test_user.id)
+    assert result.new_groups >= 1
 
     # The created group should now own sequence 1.
     seq_response = await authenticated_client.get("/sequences/1")
@@ -246,22 +246,21 @@ async def test_assign_skips_sequences_still_importing(
     authenticated_client: AsyncClient,
     sequence_session: AsyncSession,
     detection_session: AsyncSession,
+    test_user: User,
 ):
     """A sequence with no SequenceAnnotation row is mid-import (imports
     create the annotation only after all detections are posted) — assign
     must leave it alone until the annotation appears."""
     await _set_seq_metadata(sequence_session, 1, camera_id=42, azimuth=90)
 
-    resp = await authenticated_client.post("/sequence_groups/assign")
-    assert resp.status_code == 200
-    assert resp.json()["processed"] == 0
+    result = await assign_ungrouped_sequences(sequence_session, user_id=test_user.id)
+    assert result.processed == 0
     seq_payload = (await authenticated_client.get("/sequences/1")).json()
     assert seq_payload["sequence_group_id"] is None
 
     await _create_placeholder_annotation(authenticated_client, 1)
-    resp = await authenticated_client.post("/sequence_groups/assign")
-    assert resp.status_code == 200
-    assert resp.json()["new_groups"] >= 1
+    result = await assign_ungrouped_sequences(sequence_session, user_id=test_user.id)
+    assert result.new_groups >= 1
     seq_payload = (await authenticated_client.get("/sequences/1")).json()
     assert seq_payload["sequence_group_id"] is not None
 
@@ -271,14 +270,14 @@ async def test_bulk_annotate_writes_label_on_group_and_seqs(
     authenticated_client: AsyncClient,
     sequence_session: AsyncSession,
     detection_session: AsyncSession,
+    test_user: User,
 ):
     """After assigning a group from seq 1, bulk-annotating that seq should
     apply the label, mark the SequenceAnnotation as SEQ_ANNOTATION_DONE, and
     write the label onto the group itself."""
     await _set_seq_metadata(sequence_session, 1, camera_id=42, azimuth=90)
     await _create_placeholder_annotation(authenticated_client, 1)
-    assign_resp = await authenticated_client.post("/sequence_groups/assign")
-    assert assign_resp.status_code == 200
+    await assign_ungrouped_sequences(sequence_session, user_id=test_user.id)
 
     # Discover the group_id from the sequence.
     seq_payload = (await authenticated_client.get("/sequences/1")).json()
@@ -312,12 +311,13 @@ async def test_bulk_annotate_rejects_conflicting_label_without_force(
     authenticated_client: AsyncClient,
     sequence_session: AsyncSession,
     detection_session: AsyncSession,
+    test_user: User,
 ):
     """A group already labeled `wildfire` must reject a request to relabel
     it as `antenna` unless the caller passes force=True."""
     await _set_seq_metadata(sequence_session, 1, camera_id=42, azimuth=90)
     await _create_placeholder_annotation(authenticated_client, 1)
-    await authenticated_client.post("/sequence_groups/assign")
+    await assign_ungrouped_sequences(sequence_session, user_id=test_user.id)
 
     seq_payload = (await authenticated_client.get("/sequences/1")).json()
     group_id = seq_payload["sequence_group_id"]

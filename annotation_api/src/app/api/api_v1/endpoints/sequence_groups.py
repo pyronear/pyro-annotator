@@ -30,7 +30,6 @@ from app.schemas.sequence_group import (
     SequenceGroupStats,
     SequenceGroupUpdate,
 )
-from app.services.group_assignment import AssignGroupsResult, assign_ungrouped_sequences
 
 router = APIRouter()
 
@@ -302,22 +301,3 @@ async def reinclude_sequence_in_grouping(
     seq.is_group_excluded = False
     session.add(seq)
     await session.commit()
-
-
-# -------------------- assign-groups --------------------
-
-
-@router.post(
-    "/assign",
-    response_model=AssignGroupsResult,
-    summary="Compute group membership for unassigned sequences (idempotent).",
-)
-async def assign_groups(
-    session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user),
-) -> AssignGroupsResult:
-    """Manual trigger for the assignment sweep (see
-    ``app.services.group_assignment``). The same logic runs automatically
-    every few minutes in the worker; this endpoint exists for on-demand runs.
-    """
-    return await assign_ungrouped_sequences(session, user_id=current_user.id)
