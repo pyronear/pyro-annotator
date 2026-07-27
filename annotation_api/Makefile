@@ -20,20 +20,6 @@ help:
 	@echo "  migrate              - Autogenerate alembic revision (m=\"description\")"
 	@echo "  migrate-up           - Apply pending alembic revisions"
 	@echo ""
-	@echo "Sequence annotation workflow (A):"
-	@echo "  push-annotations     - Push local sequence annotations back to remote API"
-	@echo ""
-	@echo "Detection annotation workflow (B):"
-	@echo "  pull-seq-annotations - Pull seq_annotation_done sequences from remote (-> in_review)"
-	@echo "  auto-annotate        - Auto-fill missing boxes with YOLO11s model"
-	@echo "  visual-check         - Review exported sequences in FiftyOne"
-	@echo "  apply-review         - Apply FiftyOne review tags back to remote API"
-	@echo ""
-	@echo "False-positive workflow:"
-	@echo "  pull-fp              - Pull seq_annotation_done sequences for FP review"
-	@echo "  visual-check-fp      - Review FP sequences in FiftyOne (check no fire missed)"
-	@echo "  apply-review-fp      - Push clean FP sequences as 'annotated' (no labels)"
-	@echo ""
 	@echo "Other data commands:"
 	@echo "  export-dataset       - Export images + YOLO labels from remote API"
 	@echo "  import-yolo-sequence - Import one YOLO folder into an API (needs SEQUENCE_DIR=...)"
@@ -43,18 +29,14 @@ help:
 	@echo "  import-alert-api     - (Admin) Import from alert API into annotation API"
 	@echo ""
 	@echo "Override variables inline, e.g.:"
-	@echo "  make pull-seq-annotations MAX_SEQUENCES=50"
+	@echo "  make export-dataset LIMIT=500"
 
 # ---------- Data workflow defaults (override via env or 'make VAR=value target') ----------
 REMOTE_API       ?= https://annotationapi.pyronear.org
 LOCAL_API        ?= http://localhost:5050
 MAX_SEQUENCES    ?= 10
-DATA_ROOT        ?= outputs/seq_annotation_done
-SMOKE_TYPE       ?= wildfire
-DATASET_NAME     ?= visual_check
 LOGLEVEL         ?= info
 MAX_WORKERS      ?= 4
-CONF_TH          ?= 0.01
 FROM_STAGE       ?= in_review
 TO_STAGE         ?= seq_annotation_done
 OUTPUT_DIR       ?= outputs/datasets
@@ -121,95 +103,6 @@ migrate-up:
 # MAIN_ANNOTATION_PASSWORD in annotation_api/.env. Each script loads .env
 # itself via python-dotenv (Make does not parse .env, see note at top).
 # =========================================================================
-
-# --- 1A. Sequence annotation workflow ---
-
-# Push locally-annotated sequences back to the remote API.
-# Usage: make push-annotations [MAX_SEQUENCES=10]
-push-annotations:
-	uv run python -m scripts.data_transfer.ingestion.alert_api.push_sequence_annotations \
-		--local-api $(LOCAL_API) \
-		--remote-api $(REMOTE_API) \
-		--max-sequences $(MAX_SEQUENCES) \
-		--loglevel $(LOGLEVEL)
-
-# --- 1B. Detection annotation workflow ---
-
-# Pull seq_annotation_done sequences locally (moves remote stage to in_review).
-# Object-split sequences are merged into one folder per camera view (see manifest.json);
-# MAX_SEQUENCES caps merged folders, not raw sequences.
-# Usage: make pull-seq-annotations [MAX_SEQUENCES=20] [SMOKE_TYPE=wildfire] [DATA_ROOT=outputs/seq_annotation_done]
-pull-seq-annotations:
-	uv run python -m scripts.data_transfer.ingestion.alert_api.pull_sequence_annotations \
-		--remote-api $(REMOTE_API) \
-		--max-sequences $(MAX_SEQUENCES) \
-		--output-dir $(DATA_ROOT) \
-		--smoke-type $(SMOKE_TYPE) \
-		--loglevel $(LOGLEVEL)
-
-# Auto-fill missing boxes using the pyronear YOLO11s model.
-# Usage: make auto-annotate [DATA_ROOT=...] [CONF_TH=0.01]
-auto-annotate:
-	uv run --active python -m scripts.data_transfer.ingestion.alert_api.auto_annotate \
-		--data-root $(DATA_ROOT) \
-		--conf-th $(CONF_TH) \
-		--iou-nms 0.0 \
-		--iou-assign 0.0 \
-		--model-format onnx \
-		--loglevel $(LOGLEVEL)
-
-# Launch FiftyOne for visual review of exported sequences.
-# Usage: make visual-check [DATA_ROOT=...] [DATASET_NAME=visual_check]
-visual-check:
-	uv run --active python -m scripts.data_transfer.ingestion.alert_api.visual_check_fiftyone \
-		--data-root $(DATA_ROOT) \
-		--dataset-name $(DATASET_NAME) \
-		--conf-th 0.0
-
-# Apply FiftyOne review tags back to the remote annotation API.
-# Usage: make apply-review [DATASET_NAME=visual_check] [DATA_ROOT=...]
-apply-review:
-	uv run --active python -m scripts.data_transfer.ingestion.alert_api.apply_fiftyone_review \
-		--dataset-name $(DATASET_NAME) \
-		--labels-root $(DATA_ROOT) \
-		--remote-api $(REMOTE_API) \
-		--loglevel $(LOGLEVEL)
-
-# --- 1C. False-positive workflow ---
-# Same pull as detection workflow but uses a separate output dir and FiftyOne dataset
-# to avoid collisions with the TP pipeline.
-
-FP_DATA_ROOT   ?= outputs/fp_review
-FP_DATASET     ?= fp_check
-
-# Pull seq_annotation_done sequences for FP review (empty smoke_types = false positives).
-# Usage: make pull-fp [MAX_SEQUENCES=20]
-# Note: smoke-type is hardcoded to "empty" for FP pulls.
-pull-fp:
-	uv run python -m scripts.data_transfer.ingestion.alert_api.pull_sequence_annotations \
-		--remote-api $(REMOTE_API) \
-		--max-sequences $(MAX_SEQUENCES) \
-		--output-dir $(FP_DATA_ROOT) \
-		--smoke-type empty \
-		--loglevel $(LOGLEVEL)
-
-# Visual check FP sequences in FiftyOne (confirm no fire was missed).
-# Usage: make visual-check-fp [FP_DATA_ROOT=outputs/fp_review]
-visual-check-fp:
-	uv run --active python -m scripts.data_transfer.ingestion.alert_api.visual_check_fiftyone \
-		--data-root $(FP_DATA_ROOT) \
-		--dataset-name $(FP_DATASET) \
-		--conf-th 0.0
-
-# Apply FP review: clean sequences → managed (no labels), issue sequences → needs_manual.
-# Usage: make apply-review-fp [FP_DATASET=fp_check] [FP_DATA_ROOT=outputs/fp_review]
-apply-review-fp:
-	uv run --active python -m scripts.data_transfer.ingestion.alert_api.apply_fiftyone_review \
-		--dataset-name $(FP_DATASET) \
-		--labels-root $(FP_DATA_ROOT) \
-		--remote-api $(REMOTE_API) \
-		--fp-mode \
-		--loglevel $(LOGLEVEL)
 
 # --- Other data commands ---
 
@@ -316,9 +209,6 @@ import-alert-api:
 
 .PHONY: help lint fix docker-build start stop clean test test-specific \
 	migrate migrate-up \
-	push-annotations \
-	pull-seq-annotations auto-annotate visual-check apply-review \
-	pull-fp visual-check-fp apply-review-fp \
 	export-dataset import-yolo-sequence import-local-yolo \
 	update-stage-remote update-stage-local \
 	import-alert-api
