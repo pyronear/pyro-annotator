@@ -12,7 +12,6 @@ Pyro-Annotator is a suite for annotating wildfire detection sequences. It combin
 pyro-annotator/
 ├── annotation_api/      # FastAPI backend + data transfer scripts
 ├── frontend/            # React/TypeScript annotation UI
-├── sam_based_bbox_propagation/  # SAM-based semi-automatic bbox tool (Dash, port 8050)
 ├── docker-compose.yml   # Full stack orchestration
 └── Makefile             # Docker build/push targets
 ```
