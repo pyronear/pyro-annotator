@@ -294,8 +294,6 @@ def split_all_records(
                 )
             ]
         stats["platform_sequences"] += 1
-        stats["objects"] += len(groups)
-        stats["sibling_objects"] += sum(1 for g in groups if not g.is_primary)
         stats["fallback_sequences"] += sum(1 for g in groups if g.is_fallback)
         for group in groups:
             if not group.is_primary:
@@ -313,6 +311,11 @@ def split_all_records(
                     )
                     stats["cross_deduped_siblings"] += 1
                     continue
+            # Count only groups that are actually emitted, so the reported
+            # object/sibling totals match what gets posted.
+            stats["objects"] += 1
+            if not group.is_primary:
+                stats["sibling_objects"] += 1
             out.extend(group.records)
     return out, stats
 

@@ -278,6 +278,9 @@ class TestSplitAllRecordsCrossSequenceDedup:
         out, stats = split_all_records(seq_a + seq_b)
         assert {r["sequence_id"] for r in out} == {100, 200}
         assert stats["cross_deduped_siblings"] == 2
+        # Dropped groups must not inflate the emitted-object accounting.
+        assert stats["objects"] == 2
+        assert stats["sibling_objects"] == 0
 
     def test_sibling_with_no_cross_sequence_match_is_kept(self):
         out, stats = split_all_records(two_object_records())
