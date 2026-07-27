@@ -15,10 +15,11 @@ from statistics import median
 from typing import List, Optional
 
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.crud import SequenceAnnotationCRUD
+from app.db import engine
 from app.models import (
     Detection,
     FalsePositiveType,
@@ -102,9 +103,39 @@ def compute_representative_bbox(detections: List[Detection]) -> Optional[dict]:
 async def assign_ungrouped_sequences(
     session: AsyncSession, user_id: int
 ) -> AssignGroupsResult:
-    """Assign every unassigned sequence to a sequence group (idempotent).
+    """Assign every ungrouped, fully-imported sequence to a group (idempotent).
 
-    Single-runner by design. Greedy best-IoU match on the
+    Serialized via a Postgres session-level advisory lock held on a dedicated
+    connection for the whole run (the CRUD helpers commit mid-run, so a
+    transaction-scoped lock would release too early). A run that finds the
+    lock taken returns immediately with ``already_running=True``.
+    """
+    lock_conn = await engine.connect()
+    try:
+        locked = (
+            await lock_conn.execute(
+                text("SELECT pg_try_advisory_lock(:key)"),
+                {"key": ASSIGN_ADVISORY_LOCK_KEY},
+            )
+        ).scalar_one()
+        if not locked:
+            logger.info("group assignment already running; skipping this run")
+            return AssignGroupsResult(already_running=True)
+        try:
+            return await _run_assignment(session, user_id)
+        finally:
+            await lock_conn.execute(
+                text("SELECT pg_advisory_unlock(:key)"),
+                {"key": ASSIGN_ADVISORY_LOCK_KEY},
+            )
+    finally:
+        await lock_conn.close()
+
+
+async def _run_assignment(session: AsyncSession, user_id: int) -> AssignGroupsResult:
+    """Single assignment pass — callers must hold the advisory lock.
+
+    Greedy best-IoU match on the
     (camera_id, azimuth) key, threshold > 0.3. Label inheritance is
     conditional — when the matched group already has a label, the joining
     sequence gets a SequenceAnnotation in SEQ_ANNOTATION_DONE with that
