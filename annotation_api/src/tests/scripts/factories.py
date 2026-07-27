@@ -1,8 +1,8 @@
-"""Record factories for platform-ingestion script tests."""
+"""Record factories for alert-api-ingestion script tests."""
 
 
 def make_record(det_id, created_at, bboxes, others=None, sid=47105, **overrides):
-    """A platform record as produced by utils.to_record (boxes already parsed)."""
+    """An alert-api record as produced by utils.to_record (boxes already parsed)."""
     record = {
         "organization_id": 1,
         "organization_name": "org",

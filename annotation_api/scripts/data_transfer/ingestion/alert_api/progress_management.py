@@ -1,5 +1,5 @@
 """
-Progress management utilities for platform data import scripts.
+Progress management utilities for alert API data import scripts.
 
 This module provides Rich-based progress tracking, error collection, and log management
 components that can be reused across different data import and processing scripts.

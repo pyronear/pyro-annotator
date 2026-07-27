@@ -1,13 +1,13 @@
 """
-CLI script for end-to-end platform data import and processing.
+CLI script for end-to-end alert API data import and processing.
 
-This script provides a streamlined workflow to fetch platform data and generate annotations:
+This script provides a streamlined workflow to fetch alert API data and generate annotations:
 1. Fetch sequences and detections from the Pyronear alert API
-2. Split each platform sequence into one object sequence per detected object
+2. Split each alert sequence into one object sequence per detected object
    (sibling objects sharing the same set of frames). Sequences where no object
    reaches the spawn threshold are imported whole as a single sequence
    (fallback); when at least one object qualifies, boxes that never reach the
-   threshold are dropped (same rule as the platform), so annotation happens
+   threshold are dropped (same rule as the platform frontend), so annotation happens
    per object rather than per camera event
 3. Import the resulting object sequences into the annotation API
 4. Generate annotations from AI predictions for successfully imported sequences only
@@ -95,7 +95,7 @@ from .annotation_management import (
     annotate_split_sequence,
 )
 from . import shared
-from . import client as platform_client
+from . import client as alert_api_client
 from app.clients import annotation_api
 
 load_dotenv()
@@ -109,7 +109,7 @@ def make_cli_parser() -> argparse.ArgumentParser:
         Configured ArgumentParser instance
     """
     parser = argparse.ArgumentParser(
-        description="End-to-end platform data import and processing",
+        description="End-to-end alert API data import and processing",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__.split("Arguments:")[0].split("Usage:")[1].strip(),
     )
@@ -149,7 +149,7 @@ def make_cli_parser() -> argparse.ArgumentParser:
         default=0,
     )
 
-    # Platform fetching options
+    # Alert API fetching options
     parser.add_argument(
         "--frames-limit",
         help="Maximum number of images to import per sequence",
@@ -173,9 +173,9 @@ def make_cli_parser() -> argparse.ArgumentParser:
             "server to copy the object straight from the alert API's S3 bucket; "
             "'url' posts via the /from-url endpoint instead. Default: bucket-copy "
             "for the French alert API, url for CENIA (the server can only "
-            "bucket-copy from the French platform's buckets). 'url' is also "
+            "bucket-copy from the French alert API's buckets). 'url' is also "
             "required for local dev where the annotation API can't reach the "
-            "platform bucket (e.g. LocalStack)."
+            "alert API bucket (e.g. LocalStack)."
         ),
         type=str,
         choices=["bucket-copy", "url"],
@@ -208,10 +208,10 @@ def make_cli_parser() -> argparse.ArgumentParser:
 
 def get_source_api_from_url(url: str) -> str:
     """
-    Map platform URL to source_api enum value.
+    Map alert API URL to source_api enum value.
 
     Args:
-        url: Platform API URL
+        url: Alert API URL
 
     Returns:
         source_api enum value for the database
@@ -310,20 +310,20 @@ def main() -> None:
     )
     logger = logging.getLogger(__name__)
 
-    # bucket-copy derives its source bucket from the French platform config
-    # (PLATFORM_SERVER_NAME), so it cannot work against CENIA.
+    # bucket-copy derives its source bucket from the French deployment's
+    # config (PLATFORM_SERVER_NAME), so it cannot work against CENIA.
     is_cenia = "apicenia" in args.alert_api_url
     if args.image_transfer is None:
         args.image_transfer = "url" if is_cenia else "bucket-copy"
         if is_cenia:
             logging.info(
                 "Auto-selected --image-transfer url for the CENIA alert API "
-                "(bucket-copy only works against the French platform's buckets)"
+                "(bucket-copy only works against the French alert API's buckets)"
             )
     elif args.image_transfer == "bucket-copy" and is_cenia:
         logging.warning(
             "--image-transfer bucket-copy against the CENIA alert API will fail: "
-            "the annotation API copies from the French platform's buckets. "
+            "the annotation API copies from the French alert API's buckets. "
             "Every detection will error and its sequence will be rolled back."
         )
 
@@ -331,7 +331,7 @@ def main() -> None:
     if not validate_args(args):
         sys.exit(1)
 
-    # Get source_api from platform URL
+    # Get source_api from alert API URL
     source_api = get_source_api_from_url(args.alert_api_url)
 
     # Initialize components
@@ -405,7 +405,7 @@ def main() -> None:
     console.print()
     console.print(
         Panel(
-            "[bold blue]Platform Data Import & Processing[/]",
+            "[bold blue]Alert API Data Import & Processing[/]",
             title="🔥 Pyronear Data Import",
             border_style="blue",
             padding=(0, 2),
@@ -417,27 +417,27 @@ def main() -> None:
             f"[blue]ℹ️  Date range: {args.date_from} to {args.date_end}[/]"
         )
         console.print(
-            f"[blue]ℹ️  Platform: {args.alert_api_url} (source_api: {source_api})[/]"
+            f"[blue]ℹ️  Alert API: {args.alert_api_url} (source_api: {source_api})[/]"
         )
         console.print(f"[blue]ℹ️  Worker config: {worker_config}[/]")
 
     try:
-        # Step 1: Fetch platform data
+        # Step 1: Fetch alert API data
         successfully_imported_sequence_ids = []
         step_manager.start_step(
             1,
-            "Platform Data Import",
+            "Alert API Data Import",
             f"Fetching {organization} data from {args.date_from} to {args.date_end} using {worker_config.base_workers} workers",
         )
 
         if not shared.validate_available_env_variables():
             console.print(
-                "[red]❌ Missing required environment variables for platform API[/]"
+                "[red]❌ Missing required environment variables for alert API[/]"
             )
             step_manager.complete_step(False, "Missing environment variables")
             sys.exit(1)
 
-        # Get platform credentials
+        # Get alert API credentials
         alert_api_login = shared.getenv_with_fallback("ALERT_API_LOGIN")
         alert_api_password = shared.getenv_with_fallback("ALERT_API_PASSWORD")
         alert_api_admin_login = shared.getenv_with_fallback("ALERT_API_ADMIN_LOGIN")
@@ -460,19 +460,19 @@ def main() -> None:
         # Get access tokens with progress display
         auth_start_time = time.time()
         with console.status(
-            f"[bold blue]🔐 Authenticating with platform API ({organization})...",
+            f"[bold blue]🔐 Authenticating with alert API ({organization})...",
             spinner="dots",
         ) as status:
             try:
                 status.update(f"[bold blue]🔐 Getting {organization} access token...")
-                access_token = platform_client.get_api_access_token(
+                access_token = alert_api_client.get_api_access_token(
                     api_endpoint=args.alert_api_url,
                     username=alert_api_login,
                     password=alert_api_password,
                 )
 
                 status.update("[bold blue]🔐 Getting admin access token...")
-                access_token_admin = platform_client.get_api_access_token(
+                access_token_admin = alert_api_client.get_api_access_token(
                     api_endpoint=args.alert_api_url,
                     username=alert_api_admin_login,
                     password=alert_api_admin_password,
@@ -488,7 +488,7 @@ def main() -> None:
                 step_manager.complete_step(False, f"Authentication failed: {e}")
                 sys.exit(1)
 
-        # Fetch platform records
+        # Fetch alert API records
         try:
             records = fetch_all_sequences_within(
                 date_from=args.date_from,
@@ -508,14 +508,14 @@ def main() -> None:
                 risk_score="extreme",
             )
         except Exception as e:
-            error_collector.add_error(f"Platform data fetching failed: {e}")
-            step_manager.complete_step(False, f"Platform data fetching failed: {e}")
-            error_collector.print_summary(console, "Platform Data Fetching Errors")
+            error_collector.add_error(f"Alert API data fetching failed: {e}")
+            step_manager.complete_step(False, f"Alert API data fetching failed: {e}")
+            error_collector.print_summary(console, "Alert API Data Fetching Errors")
             sys.exit(1)
 
         records, split_stats = object_split.split_all_records(records)
         console.print(
-            f"[blue]🔀 Object split: {split_stats['platform_sequences']} platform sequence(s) → "
+            f"[blue]🔀 Object split: {split_stats['alert_api_sequences']} alert sequence(s) → "
             f"{split_stats['objects']} object sequence(s) "
             f"({split_stats['sibling_objects']} sibling(s), "
             f"{split_stats['fallback_sequences']} fallback, "
@@ -523,7 +523,7 @@ def main() -> None:
         )
 
         if not records and not args.dry_run:
-            step_manager.complete_step(False, "No records fetched from platform API")
+            step_manager.complete_step(False, "No records fetched from alert API")
             sys.exit(0)
 
         # Post to annotation API (if not dry run)
@@ -565,9 +565,9 @@ def main() -> None:
                     result["failed_sequences"] == 0 and result["failed_detections"] == 0
                 )
                 step_message = (
-                    "Platform data successfully imported"
+                    "Alert API data successfully imported"
                     if step_success
-                    else "Platform data imported with some failures"
+                    else "Alert API data imported with some failures"
                 )
 
                 step_manager.complete_step(step_success, step_message, step_stats)
@@ -583,14 +583,14 @@ def main() -> None:
                 step_manager.complete_step(
                     False, f"Failed to post data to annotation API: {e}"
                 )
-                error_collector.print_summary(console, "Platform Data Import Errors")
+                error_collector.print_summary(console, "Alert API Data Import Errors")
                 sys.exit(1)
         else:
             # For dry run, capture what would have been imported but don't set sequence IDs
             stats["records_fetched"] = len(records)
             step_stats = {"Records that would be posted": len(records)}
             step_manager.complete_step(
-                True, "DRY RUN: Platform data fetch completed", step_stats
+                True, "DRY RUN: Alert API data fetch completed", step_stats
             )
 
         # Step 2: Prepare sequences for annotation generation
@@ -610,7 +610,7 @@ def main() -> None:
             # Show final summary with zero processing and exit gracefully
             console.print()
             panel = Panel(
-                f"[yellow]No sequences were successfully imported from {organization} platform data.\n"
+                f"[yellow]No sequences were successfully imported from {organization} alert API data.\n"
                 f"Check import statistics above for details (likely all were duplicates).[/]",
                 title=f"⚠️ Processing Complete - {organization} - No Annotations Generated",
                 border_style="yellow",
@@ -634,9 +634,9 @@ def main() -> None:
             f"Creating sequence annotations for {len(sequence_ids)} sequences (auto-generation enabled)",
         )
 
-        platform_seq_results = []
+        alert_api_seq_results = []
         if not args.dry_run:
-            platform_seq_results = [
+            alert_api_seq_results = [
                 r for r in result.get("sequence_results", []) if not r.get("skipped")
             ]
 
@@ -651,7 +651,7 @@ def main() -> None:
                     annotation_api_url=args.annotation_api_url,
                     dry_run=args.dry_run,
                 ): seq_result["sequence_id"]
-                for seq_result in platform_seq_results
+                for seq_result in alert_api_seq_results
             }
 
             # Collect results with progress tracking
@@ -741,9 +741,9 @@ def main() -> None:
         # Build comprehensive summary
         summary_parts = []
 
-        # Platform Import Section
+        # Alert API Import Section
         if not args.dry_run:
-            import_section = f"""[bold cyan]PLATFORM IMPORT:[/]
+            import_section = f"""[bold cyan]ALERT API IMPORT:[/]
 • Records fetched: {stats['records_fetched']}
 • Sequences attempted: {stats['sequences_attempted_import']}
 • Successfully imported: {stats['sequences_import_successful']}

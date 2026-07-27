@@ -1,8 +1,8 @@
 """
-Shared functionality for platform data transfer scripts.
+Shared functionality for the alert-api data transfer scripts.
 
-This module contains common functions used by both fetch_platform_sequence_id.py
-and fetch_platform_sequences.py to avoid code duplication.
+This module contains common functions used across the ingestion scripts
+to avoid code duplication.
 """
 
 import ast
@@ -170,31 +170,31 @@ def validate_available_env_variables() -> bool:
 
 def transform_sequence_data(record: dict, source_api: str = "pyronear_french") -> dict:
     """
-    Transform platform sequence data to annotation API format.
+    Transform alert sequence data to annotation API format.
 
     Args:
-        record: Platform record containing sequence metadata
+        record: Alert API record containing sequence metadata
         source_api: Source API enum value (pyronear_french, api_cenia, etc.)
 
     Returns:
         Dictionary formatted for annotation API sequence creation
     """
     raw_azimuth = record.get("camera_azimuth")
-    # Platform stores azimuth as a float in [0, 360); rounding can land on 360
+    # The alert API stores azimuth as a float in [0, 360); rounding can land on 360
     # (e.g. 359.6 → 360), which is out of range. Wrap with modulo to keep
     # the canonical 0–359 convention.
     azimuth = int(round(float(raw_azimuth))) % 360 if raw_azimuth is not None else None
 
     return {
         "source_api": source_api,
-        "alert_api_id": record["sequence_id"],  # Platform sequence ID
+        "alert_api_id": record["sequence_id"],  # Alert sequence ID
         "camera_name": record["camera_name"],
         "camera_id": record["camera_id"],
         "organisation_name": record["organization_name"],
         "organisation_id": record["organization_id"],
         "is_wildfire_alertapi": record[
             "sequence_is_wildfire"
-        ],  # Platform enum: 'wildfire_smoke', 'other_smoke', 'other'
+        ],  # Alert API enum: 'wildfire_smoke', 'other_smoke', 'other'
         "lat": record["camera_lat"],
         "lon": record["camera_lon"],
         "azimuth": azimuth,
@@ -203,9 +203,9 @@ def transform_sequence_data(record: dict, source_api: str = "pyronear_french") -
     }
 
 
-def parse_platform_bboxes(bboxes_str: str) -> dict:
+def parse_alert_api_bboxes(bboxes_str: str) -> dict:
     """
-    Parse platform bboxes string into AlgoPredictions format.
+    Parse alert-api bboxes string into AlgoPredictions format.
 
     Accepts:
         - dict already in AlgoPredictions shape
@@ -226,7 +226,7 @@ def parse_platform_bboxes(bboxes_str: str) -> dict:
         predictions = []
         for bbox in bboxes_data:
             # Assuming bbox format: [x1, y1, x2, y2, confidence, ...]
-            # This will need to be adjusted based on actual platform format
+            # This will need to be adjusted based on actual alert API format
             if len(bbox) >= 5:
                 prediction = {
                     "xyxyn": bbox[:4],  # First 4 values as coordinates
@@ -260,7 +260,7 @@ def _sanitize_predictions(predictions: list) -> list:
 
 def transform_detection_data(record: dict, annotation_sequence_id: int) -> dict:
     """
-    Transform platform detection data to annotation API format.
+    Transform alert-api detection data to annotation API format.
 
     `detection_bboxes` (the tracked `bbox`) becomes `algo_predictions` and
     drives auto-annotation. `detection_others_bboxes` (sibling boxes on the
@@ -268,27 +268,27 @@ def transform_detection_data(record: dict, annotation_sequence_id: int) -> dict:
     without injecting them into the auto-generated annotation.
 
     Args:
-        record: Platform record containing detection metadata
-        annotation_sequence_id: The sequence ID from annotation API (not platform ID)
+        record: Alert API record containing detection metadata
+        annotation_sequence_id: The sequence ID from annotation API (not the alert-api id)
 
     Returns:
         Dictionary formatted for annotation API detection creation
     """
-    parsed = parse_platform_bboxes(record["detection_bboxes"])
+    parsed = parse_alert_api_bboxes(record["detection_bboxes"])
     predictions = _sanitize_predictions(parsed.get("predictions", []))
     algo_predictions = {"predictions": predictions}
 
     others_payload: dict | None = None
     raw_others = record.get("detection_others_bboxes")
     if raw_others:
-        others_parsed = parse_platform_bboxes(raw_others)
+        others_parsed = parse_alert_api_bboxes(raw_others)
         others_clean = _sanitize_predictions(others_parsed.get("predictions", []))
         if others_clean:
             others_payload = {"predictions": others_clean}
 
     payload = {
         "sequence_id": annotation_sequence_id,  # NEW sequence ID from annotation API
-        "alert_api_id": record["detection_id"],  # Platform detection ID
+        "alert_api_id": record["detection_id"],  # Alert API detection ID
         "recorded_at": record["detection_created_at"],
         "algo_predictions": algo_predictions,
     }
@@ -299,10 +299,10 @@ def transform_detection_data(record: dict, annotation_sequence_id: int) -> dict:
 
 def download_image(url: str, timeout: int = 30) -> bytes:
     """
-    Download image from platform detection URL.
+    Download image from alert-api detection URL.
 
     Args:
-        url: Image URL from platform API
+        url: Image URL from alert API
         timeout: Request timeout in seconds
 
     Returns:
@@ -322,7 +322,7 @@ def group_records_by_sequence(records: List[dict]) -> Dict[int, List[dict]]:
     Group records by sequence_id to avoid duplicate sequence creation.
 
     Args:
-        records: List of detection records from platform API
+        records: List of detection records from alert API
 
     Returns:
         Dictionary mapping sequence_id to list of detection records
@@ -350,7 +350,7 @@ def _process_single_detection(
     with exponential backoff.
 
     Args:
-        record: Detection record from platform
+        record: Detection record from the alert API
         annotation_api_url: Annotation API base URL
         auth_token: JWT authentication token
         annotation_sequence_id: Sequence ID in annotation API
@@ -371,11 +371,11 @@ def _process_single_detection(
 
     # Transform detection data
     detection_data = transform_detection_data(record, annotation_sequence_id)
-    # Only platform-fetch records carry a platform bucket_key. Clone-from-
+    # Only alert-api-fetch records carry an alert-api bucket_key. Clone-from-
     # annotation records intentionally omit detection_bucket_key because their
-    # key lives in the source annotation bucket, not the platform bucket.
+    # key lives in the source annotation bucket, not the alert API bucket.
     # `force_url` forces the URL fallback even when bucket_key is set — useful
-    # for local dev where the API can't reach the platform's S3 bucket.
+    # for local dev where the API can't reach the alert API's S3 bucket.
     source_key = None if force_url else record.get("detection_bucket_key")
     source_url = record.get("detection_url")
 
@@ -492,7 +492,7 @@ def post_sequence_to_annotation_api(
                 "skipped": True,
                 "skip_reason": "already exists",
                 "sequence_id": None,
-                "platform_sequence_id": first_record["sequence_id"],
+                "alert_api_sequence_id": first_record["sequence_id"],
                 "successful_detections": 0,
                 "failed_detections": len(sequence_records),
                 "total_detections": len(sequence_records),
@@ -556,7 +556,7 @@ def post_sequence_to_annotation_api(
     return {
         "success": True,
         "sequence_id": annotation_sequence_id,
-        "platform_sequence_id": first_record["sequence_id"],
+        "alert_api_sequence_id": first_record["sequence_id"],
         "successful_detections": successful_detections,
         "failed_detections": failed_detections,
         "total_detections": len(sequence_records),
@@ -578,7 +578,7 @@ def post_records_to_annotation_api(
 
     Args:
         annotation_api_url: Base URL of annotation API
-        records: List of all detection records from platform API
+        records: List of all detection records from alert API
         max_workers: Maximum number of workers for parallel sequence posting
         max_detection_workers: Maximum number of workers for detection creation within each sequence
         suppress_logs: Whether to suppress log output during progress display
@@ -630,8 +630,8 @@ def post_records_to_annotation_api(
                 max_detection_workers=max_detection_workers,
                 source_api=source_api,
                 force_url=force_url,
-            ): (platform_sequence_id, sequence_records)
-            for platform_sequence_id, sequence_records in grouped_records.items()
+            ): (alert_api_sequence_id, sequence_records)
+            for alert_api_sequence_id, sequence_records in grouped_records.items()
         }
 
         # Collect results with progress tracking
@@ -648,7 +648,7 @@ def post_records_to_annotation_api(
                     "Processing sequences", total=len(future_to_sequence)
                 )
                 for future in concurrent.futures.as_completed(future_to_sequence):
-                    platform_sequence_id, sequence_records = future_to_sequence[future]
+                    alert_api_sequence_id, sequence_records = future_to_sequence[future]
                     try:
                         result = future.result()
                         sequence_results.append(result)
@@ -658,7 +658,7 @@ def post_records_to_annotation_api(
                             total_failed_detections += result["failed_detections"]
                             reason = result.get("skip_reason", "already exists")
                             logging.warning(
-                                f"⚠️ Sequence {platform_sequence_id} skipped ({reason})"
+                                f"⚠️ Sequence {alert_api_sequence_id} skipped ({reason})"
                             )
                         else:
                             successful_sequences += 1
@@ -669,7 +669,7 @@ def post_records_to_annotation_api(
                             successful_sequence_ids.append(result["sequence_id"])
 
                             logging.info(
-                                f"✅ Sequence {platform_sequence_id} -> {result['sequence_id']}: "
+                                f"✅ Sequence {alert_api_sequence_id} -> {result['sequence_id']}: "
                                 f"{result['successful_detections']}/{result['total_detections']} detections"
                             )
                         progress_bar.advance(task)
@@ -677,7 +677,7 @@ def post_records_to_annotation_api(
                     except ValidationError as e:
                         # Errors will still show since we set log level to ERROR
                         logging.error(
-                            f"❌ Sequence {platform_sequence_id} validation failed: {e.message}"
+                            f"❌ Sequence {alert_api_sequence_id} validation failed: {e.message}"
                         )
                         if e.field_errors:
                             for field_error in e.field_errors:
@@ -689,7 +689,7 @@ def post_records_to_annotation_api(
                         progress_bar.advance(task)
                     except AnnotationAPIError as e:
                         logging.error(
-                            f"❌ Sequence {platform_sequence_id} API error: {e.message}"
+                            f"❌ Sequence {alert_api_sequence_id} API error: {e.message}"
                         )
                         if e.status_code:
                             logging.error(f"HTTP Status: {e.status_code}")
@@ -698,7 +698,7 @@ def post_records_to_annotation_api(
                         progress_bar.advance(task)
                     except Exception as e:
                         logging.error(
-                            f"❌ Sequence {platform_sequence_id} unexpected error: {e}"
+                            f"❌ Sequence {alert_api_sequence_id} unexpected error: {e}"
                         )
                         failed_sequences += 1
                         total_failed_detections += len(sequence_records)

@@ -3,15 +3,15 @@ Pull sequences annotated on remote API (processing_stage=seq_annotation_done), d
 save locally, and transition remote annotations to in_review.
 
 Sequences imported by the predictor-split pipeline (one annotation sequence per detected object,
-synthetic ``alert_api_id = base + platform_id * 1000 + object_index``) are merged back into a single
+synthetic ``alert_api_id = base + alert_api_sid * 1000 + object_index``) are merged back into a single
 review folder so each frame is reviewed only once:
 
-- Siblings (objects of the same platform alert) always share one folder; frames are deduplicated by
+- Siblings (objects of the same alert) always share one folder; frames are deduplicated by
   ``recorded_at`` and each label file carries the union of every object's boxes on that frame.
-- Alerts from the same camera with the same camera azimuth (re-fetched from the platform API) are
+- Alerts from the same camera with the same camera azimuth (re-fetched from the alert API) are
   chained into the same folder while the gap between two consecutive alerts is below
-  ``--merge-gap-hours``. Without platform credentials, merging degrades to siblings-only.
-- If any sibling of a platform alert is not annotated yet (imported/ready_to_annotate/
+  ``--merge-gap-hours``. Without alert API credentials, merging degrades to siblings-only.
+- If any sibling of an alert is not annotated yet (imported/ready_to_annotate/
   under_annotation), the whole alert is deferred to a later pull so its frames are never pulled
   twice. Unsure or smoke-type-filtered siblings do not block their alert.
 
@@ -36,7 +36,7 @@ from dotenv import load_dotenv
 
 from app.clients import annotation_api
 
-from . import client as platform_client
+from . import client as alert_api_client
 from .label_classes import CLASS_ID, fp_class_name, smoke_class_name
 from .shared import getenv_with_fallback
 
@@ -45,7 +45,7 @@ load_dotenv()
 # Stages that mean a sibling sequence still awaits sequence-level annotation.
 UNLABELED_STAGES = {"imported", "ready_to_annotate", "under_annotation"}
 
-# A cluster groups the object-split sequences of one platform alert:
+# A cluster groups the object-split sequences of one alert:
 # {"sid": Optional[int], "members": List[sequence dict]}
 Cluster = Dict
 
@@ -77,10 +77,10 @@ def parse_args() -> argparse.Namespace:
         help="Remote API password",
     )
     parser.add_argument(
-        "--platform-api",
+        "--alert-api-url",
         type=str,
         default="https://alertapi.pyronear.org",
-        help="Platform API base URL (used to re-fetch camera_azimuth for cross-alert merging)",
+        help="Alert API base URL (used to re-fetch camera_azimuth for cross-alert merging)",
     )
     parser.add_argument(
         "--alert-id-base",
@@ -194,8 +194,8 @@ def collect_annotation_bboxes(annotation: Dict) -> Dict[int, List[Dict]]:
     return bboxes
 
 
-def decode_platform_id(alert_api_id: Optional[int], base: int) -> Optional[int]:
-    """Reverse the synthetic id scheme (alert_api_id = base + platform_id*1000 + object_index)."""
+def decode_alert_api_sid(alert_api_id: Optional[int], base: int) -> Optional[int]:
+    """Reverse the synthetic id scheme (alert_api_id = base + alert_api_sid*1000 + object_index)."""
     if alert_api_id is None or alert_api_id < base:
         return None
     return (alert_api_id - base) // 1000
@@ -282,11 +282,11 @@ def list_all_detections(remote_api: str, token: str, seq_id: int) -> List[Dict]:
 # Grouping
 # --------------------------------------------------------------------------- #
 def build_clusters(sequences: List[Dict], base: int) -> List[Cluster]:
-    """Bucket sequences by decoded platform alert id; legacy ids become singletons."""
+    """Bucket sequences by decoded alert id; legacy ids become singletons."""
     by_sid: Dict[int, List[Dict]] = defaultdict(list)
     clusters: List[Cluster] = []
     for seq in sequences:
-        sid = decode_platform_id(seq.get("alert_api_id"), base)
+        sid = decode_alert_api_sid(seq.get("alert_api_id"), base)
         if sid is None:
             clusters.append({"sid": None, "members": [seq]})
         else:
@@ -306,9 +306,9 @@ def cluster_end(cluster: Cluster) -> datetime:
 
 
 def fetch_camera_azimuths(
-    platform_api: str, sids: List[int]
+    alert_api_url: str, sids: List[int]
 ) -> Dict[int, Optional[float]]:
-    """Fetch camera_azimuth per platform alert id (the annotation API only stores
+    """Fetch camera_azimuth per alert id (the annotation API only stores
     the per-object cone azimuth, which differs between objects of one pose)."""
     login = getenv_with_fallback("ALERT_API_LOGIN")
     password = getenv_with_fallback("ALERT_API_PASSWORD")
@@ -321,23 +321,23 @@ def fetch_camera_azimuths(
         )
         return {}
     try:
-        token = platform_client.get_api_access_token(
-            api_endpoint=platform_api, username=login, password=password
+        token = alert_api_client.get_api_access_token(
+            api_endpoint=alert_api_url, username=login, password=password
         )
     except Exception as exc:  # noqa: BLE001
         logging.warning(
-            "Platform authentication failed (%s); merging siblings only", exc
+            "Alert API authentication failed (%s); merging siblings only", exc
         )
         return {}
 
     azimuths: Dict[int, Optional[float]] = {}
     for sid in sids:
         try:
-            seq = platform_client.get_sequence(platform_api, sid, token)
+            seq = alert_api_client.get_sequence(alert_api_url, sid, token)
             raw = seq.get("camera_azimuth")
             azimuths[sid] = float(raw) if raw is not None else None
         except Exception as exc:  # noqa: BLE001
-            logging.warning("Failed to fetch platform sequence %s: %s", sid, exc)
+            logging.warning("Failed to fetch alert sequence %s: %s", sid, exc)
             azimuths[sid] = None
     return azimuths
 
@@ -382,7 +382,7 @@ def chain_clusters(
 def find_blocking_siblings(
     remote_api: str, token: str, cluster: Cluster, base: int
 ) -> List[str]:
-    """Return descriptions of sibling sequences (same platform alert) that are
+    """Return descriptions of sibling sequences (same alert) that are
     still awaiting sequence annotation. Unsure or already-reviewed siblings do
     not block; neither do seq_annotation_done siblings excluded by the smoke
     filter (they belong to another review pipeline)."""
@@ -409,7 +409,7 @@ def find_blocking_siblings(
         for item in resp.get("items", []):
             if item["id"] in known_ids:
                 continue
-            if decode_platform_id(item.get("alert_api_id"), base) != sid:
+            if decode_alert_api_sid(item.get("alert_api_id"), base) != sid:
                 continue
             ann = item.get("annotation")
             if ann is None:
@@ -449,7 +449,7 @@ def main() -> None:
 
     clusters = build_clusters(sequences, args.alert_id_base)
     sids = sorted({c["sid"] for c in clusters if c["sid"] is not None})
-    azimuths = fetch_camera_azimuths(args.platform_api, sids)
+    azimuths = fetch_camera_azimuths(args.alert_api_url, sids)
     groups = chain_clusters(clusters, azimuths, timedelta(hours=args.merge_gap_hours))
     logging.info(
         "Grouped %s sequence(s) into %s folder(s)", len(sequences), len(groups)
@@ -597,7 +597,7 @@ def main() -> None:
                     "sequence_id": seq["id"],
                     "alert_api_id": seq.get("alert_api_id"),
                     "annotation_id": ann["id"],
-                    "platform_sequence_id": decode_platform_id(
+                    "alert_api_sequence_id": decode_alert_api_sid(
                         seq.get("alert_api_id"), args.alert_id_base
                     ),
                 }

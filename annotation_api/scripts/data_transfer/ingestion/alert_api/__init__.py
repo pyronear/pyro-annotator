@@ -1,1 +1,1 @@
-# Platform data ingestion utilities
+# Alert API data ingestion utilities

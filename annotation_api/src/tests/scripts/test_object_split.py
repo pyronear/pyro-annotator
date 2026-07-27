@@ -17,12 +17,12 @@ from scripts.data_transfer.ingestion.alert_api.object_split import (
 # sys.path, so sibling helpers are imported as top-level modules.
 from factories import make_record
 
-BOX_A = [0.10, 0.10, 0.20, 0.20, 0.9]  # in the platform's own `bbox` field
+BOX_A = [0.10, 0.10, 0.20, 0.20, 0.9]  # in the alert API's own `bbox` field
 BOX_B = [0.60, 0.60, 0.70, 0.70, 0.8]  # sibling, in `others_bboxes`
 
 
 def two_object_records():
-    """Mirrors platform seq 47105 from #166: A tracked, B in others_bboxes."""
+    """Mirrors alert seq 47105 from #166: A tracked, B in others_bboxes."""
     return [
         make_record(1, "2026-07-01T10:00:00", [BOX_A], others=[BOX_B]),
         make_record(2, "2026-07-01T10:01:00", [BOX_A], others=[BOX_B]),
@@ -87,7 +87,7 @@ class TestSplitSequenceRecords:
         assert len(groups) == 2
         primary, sibling = groups
         assert primary.is_primary and primary.object_index == 0
-        assert primary.alert_api_id == 47105  # keeps the platform id
+        assert primary.alert_api_id == 47105  # keeps the raw alert id
         assert not sibling.is_primary and sibling.object_index == 1
         assert sibling.alert_api_id == DEFAULT_ALERT_ID_BASE + 47105 * 1000 + 1
         assert not primary.is_fallback and not sibling.is_fallback
@@ -156,7 +156,7 @@ class TestSplitAllRecords:
         ]
         out, stats = split_all_records(records)
         assert stats == {
-            "platform_sequences": 2,
+            "alert_api_sequences": 2,
             "objects": 3,
             "sibling_objects": 1,
             "fallback_sequences": 0,
@@ -178,7 +178,7 @@ class TestSplitAllRecords:
         ]
         good = two_object_records()
         out, stats = split_all_records(broken + good)
-        assert stats["platform_sequences"] == 2
+        assert stats["alert_api_sequences"] == 2
         assert stats["fallback_sequences"] == 1
         # the good sequence still split into primary + sibling
         assert stats["objects"] == 3

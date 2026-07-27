@@ -1,13 +1,13 @@
 """
 Offline port of pyro-api's detection -> sequence association logic.
 
-The alert platform (`pyro-api`) turns a stream of per-frame bounding boxes into
+The alert API (`pyro-api`) turns a stream of per-frame bounding boxes into
 one *sequence per detected object*: an incoming box joins an existing open
 sequence when it spatially overlaps that sequence's most-recent box, otherwise a
 brand-new sequence is spawned once enough overlapping un-assigned boxes have
 accumulated within a short time window. We replay that exact rule offline over
-the (already complete) set of predictor boxes for a single platform sequence so
-that one platform sequence is split into one annotation-API sequence per object.
+the (already complete) set of predictor boxes for a single alert sequence so
+that one alert sequence is split into one annotation-API sequence per object.
 
 Reference implementation:
   - `pyro-api/src/app/api/api_v1/endpoints/detections.py`
@@ -19,7 +19,7 @@ Reference implementation:
       SEQUENCE_MIN_INTERVAL_SECONDS = 300 (spawn pool window)
       SEQUENCE_MIN_INTERVAL_DETS = 3      (min overlapping dets to spawn)
 
-Offline note: all frames of one platform sequence already share a camera/pose,
+Offline note: all frames of one alert sequence already share a camera/pose,
 so the per-camera filtering collapses; the 2h relaxation window is effectively
 always satisfied, while the 5min/3-detection spawn rule still shapes how many
 distinct objects are carved out. The thresholds remain parameters so the
@@ -207,7 +207,7 @@ def object_cone_azimuth(
     obj: TrackedObject, camera_azimuth: float, angle_of_view: Optional[float]
 ) -> Optional[float]:
     """Per-object azimuth, derived from the *camera* azimuth (never the
-    platform's `sequence_azimuth`), using the object's first detection box —
+    alert API's `sequence_azimuth`), using the object's first detection box —
     mirroring pyro-api which keys the cone on `first_det.bbox` (detections.py:474).
 
     Returns None when angle-of-view is unavailable so the caller can fall back to
