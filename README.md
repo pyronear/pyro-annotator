@@ -48,7 +48,7 @@ All make targets accept variable overrides inline, e.g. `make pull-seq-annotatio
 
 #### A. Annotate Sequences (standard annotator workflow)
 
-This is the main scenario: you do **not** need platform credentials — only access to the remote annotation API. Ask an admin for `MAIN_ANNOTATION_LOGIN` / `MAIN_ANNOTATION_PASSWORD`.
+This is the main scenario: you do **not** need alert API credentials — only access to the remote annotation API. Ask an admin for `MAIN_ANNOTATION_LOGIN` / `MAIN_ANNOTATION_PASSWORD`.
 
 **Step 1 — Seed your local API with sequences from the remote API**
 
@@ -76,7 +76,7 @@ Once sequence annotations are in `seq_annotation_done` on the remote API, refine
 make pull-seq-annotations MAX_SEQUENCES=20 SMOKE_TYPE=wildfire
 ```
 - Set `MAX_SEQUENCES=0` to pull all; override `SMOKE_TYPE` (or call the script directly without `--smoke-type`) to pull every smoke type.
-- Object-split sequences (from the object-splitting import) are merged back into one folder per camera view: siblings of the same platform alert share a folder, and alerts from the same camera/azimuth less than 2h apart are chained (camera azimuth is fetched from the platform API using `PLATFORM_LOGIN`/`PLATFORM_PASSWORD`; without credentials only siblings merge). Each frame is downloaded once with the union of all objects' boxes, and a `manifest.json` maps results back to every member sequence. `MAX_SEQUENCES` counts merged folders. Alerts with a sibling still under annotation are deferred to a later pull.
+- Object-split sequences (from the object-splitting import) are merged back into one folder per camera view: siblings of the same platform alert share a folder, and alerts from the same camera/azimuth less than 2h apart are chained (camera azimuth is fetched from the alert API using `ALERT_API_LOGIN`/`ALERT_API_PASSWORD`; without credentials only siblings merge). Each frame is downloaded once with the union of all objects' boxes, and a `manifest.json` maps results back to every member sequence. `MAX_SEQUENCES` counts merged folders. Alerts with a sibling still under annotation are deferred to a later pull.
 - TLS is verified by default; pass `--skip-ssl-verify` to the underlying script if you trust the host and need to silence self-signed cert issues.
 
 **Step 2 — `auto-annotate`**: auto-fill missing boxes with the pyronear YOLO11s sensitive-detector model (downloads on first run):
@@ -161,17 +161,17 @@ make import-yolo-sequence \
 - Default stage is `ready_to_annotate`. Use `SEQUENCE_STAGE=annotated` if you want detection annotations created immediately.
 - Smoke classes create detection annotations (only when stage is `annotated`); false positive classes are stored at sequence level.
 
-## Admin Workflow — Populate the main API from the platform
+## Admin Workflow — Populate the main API from the alert API
 
-If you manage the main dataset and have platform credentials, import directly from the platform into the target annotation API. This is the only entry point that brings new data into the system.
+If you manage the main dataset and have alert API credentials, import directly from the alert API into the target annotation API. This is the only entry point that brings new data into the system.
 
-Set the platform + target credentials in `annotation_api/.env` (see `.env.example`):
+Set the alert API + target credentials in `annotation_api/.env` (see `.env.example`):
 
 ```
-PLATFORM_LOGIN=...
-PLATFORM_PASSWORD=...
-PLATFORM_ADMIN_LOGIN=...
-PLATFORM_ADMIN_PASSWORD=...
+ALERT_API_LOGIN=...
+ALERT_API_PASSWORD=...
+ALERT_API_ADMIN_LOGIN=...
+ALERT_API_ADMIN_PASSWORD=...
 MAIN_ANNOTATION_LOGIN=...
 MAIN_ANNOTATION_PASSWORD=...
 ```
@@ -210,11 +210,11 @@ Copy `annotation_api/.env.example` to `annotation_api/.env` and fill in the valu
 MAIN_ANNOTATION_LOGIN=remote_user
 MAIN_ANNOTATION_PASSWORD=remote_pass
 
-# Platform API credentials (admin ingestion only)
-PLATFORM_LOGIN=your_platform_username
-PLATFORM_PASSWORD=your_platform_password
-PLATFORM_ADMIN_LOGIN=your_admin_username
-PLATFORM_ADMIN_PASSWORD=your_admin_password
+# Alert API credentials (admin ingestion only)
+ALERT_API_LOGIN=your_alert_api_username
+ALERT_API_PASSWORD=your_alert_api_password
+ALERT_API_ADMIN_LOGIN=your_admin_username
+ALERT_API_ADMIN_PASSWORD=your_admin_password
 ```
 
 Each data-transfer script loads `annotation_api/.env` via `python-dotenv` at startup — no shell `export` or manual `source` needed. (Make does **not** parse `.env`, because Make's variable expansion would mangle values containing `$`, spaces, or quotes.) Shell-level env vars still take priority, so you can override per-invocation with `MAIN_ANNOTATION_LOGIN=foo make ...`.
@@ -223,17 +223,17 @@ Each data-transfer script loads `annotation_api/.env` via `python-dotenv` at sta
 
 **Local Development (default):**
 - **Annotation API**: `http://localhost:5050` (requires `docker compose up -d`)
-- **Platform API**: `https://alertapi.pyronear.org` (Pyronear French) or `https://apicenia.pyronear.org` (CENIA)
+- **Alert API**: `https://alertapi.pyronear.org` (Pyronear French) or `https://apicenia.pyronear.org` (CENIA)
 - **Authentication**: Uses local admin credentials (`admin`/`admin12345`)
 
 **Deployed/Staging Annotation API:**
 - **Annotation API**: `https://annotationapi.pyronear.org`
-- **Platform API**: Any platform API endpoint
+- **Alert API**: Any alert API endpoint
 - **Authentication**: Requires proper credentials for the deployed annotation API
 - **Network**: Ensure firewall/network access to deployed services
 
 **Authentication Notes:**
-- Platform API credentials are always required via environment variables
+- Alert API credentials are always required via environment variables
 - Deployed annotation APIs may have different authentication requirements
 - Test connectivity: `curl https://annotationapi.pyronear.org/docs`
 - Check API health: `curl https://annotationapi.pyronear.org/status`

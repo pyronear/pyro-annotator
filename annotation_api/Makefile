@@ -299,7 +299,7 @@ update-stage-local:
 # Import sequences + detections from the alert API (a.k.a. "platform") into the
 # target annotation API, object-splitting each alert sequence into one
 # annotation sequence per smoke object (admin-only).
-# Requires PLATFORM_LOGIN/PASSWORD, PLATFORM_ADMIN_LOGIN/PASSWORD, MAIN_ANNOTATION_LOGIN/PASSWORD.
+# Requires ALERT_API_LOGIN/PASSWORD, ALERT_API_ADMIN_LOGIN/PASSWORD, MAIN_ANNOTATION_LOGIN/PASSWORD.
 # Usage: make import-alert-api DATE_FROM=2025-03-04 [DATE_END=2025-03-04] [MAX_SEQUENCES=20]
 DATE_END ?= $(DATE_FROM)
 import-alert-api: MAX_SEQUENCES = 0
