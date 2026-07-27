@@ -1745,7 +1745,7 @@ async def test_list_sequences_filter_by_null_is_wildfire_alertapi(
     """Test filtering sequences by null is_wildfire_alertapi using the special 'null' filter."""
     # Create a sequence with null is_wildfire_alertapi (no value provided)
     payload_null = {
-        "source_api": "pyronear_french", 
+        "source_api": "pyronear_french",
         "alert_api_id": "999",
         "camera_name": "null_test_cam",
         "camera_id": "999",
@@ -1762,7 +1762,7 @@ async def test_list_sequences_filter_by_null_is_wildfire_alertapi(
     # Create a sequence with is_wildfire_alertapi set to wildfire_smoke
     payload_wildfire = {
         "source_api": "pyronear_french",
-        "alert_api_id": "998", 
+        "alert_api_id": "998",
         "camera_name": "wildfire_test_cam",
         "camera_id": "998",
         "organisation_name": "test_org",
@@ -1770,7 +1770,7 @@ async def test_list_sequences_filter_by_null_is_wildfire_alertapi(
         "is_wildfire_alertapi": "wildfire_smoke",
         "azimuth": "90",
         "lat": "0.0",
-        "lon": "0.0", 
+        "lon": "0.0",
         "recorded_at": now.isoformat(),
         "last_seen_at": now.isoformat(),
     }
@@ -1780,33 +1780,39 @@ async def test_list_sequences_filter_by_null_is_wildfire_alertapi(
     assert response_null.status_code == 201
     null_sequence_id = response_null.json()["id"]
 
-    response_wildfire = await authenticated_client.post("/sequences/", data=payload_wildfire)
+    response_wildfire = await authenticated_client.post(
+        "/sequences/", data=payload_wildfire
+    )
     assert response_wildfire.status_code == 201
     wildfire_sequence_id = response_wildfire.json()["id"]
 
     # Test filtering for null values using the special "null" filter
     response = await authenticated_client.get("/sequences/?is_wildfire_alertapi=null")
     assert response.status_code == 200
-    
+
     data = response.json()
     sequence_ids = [seq["id"] for seq in data["items"]]
-    
+
     # Should include the null sequence but not the wildfire sequence
     assert null_sequence_id in sequence_ids
     assert wildfire_sequence_id not in sequence_ids
 
     # Verify that the null sequence actually has null is_wildfire_alertapi
-    null_sequence = next((seq for seq in data["items"] if seq["id"] == null_sequence_id), None)
+    null_sequence = next(
+        (seq for seq in data["items"] if seq["id"] == null_sequence_id), None
+    )
     assert null_sequence is not None
     assert null_sequence["is_wildfire_alertapi"] is None
 
     # Test filtering for wildfire_smoke to make sure it excludes null values
-    response_wildfire_filter = await authenticated_client.get("/sequences/?is_wildfire_alertapi=wildfire_smoke")
+    response_wildfire_filter = await authenticated_client.get(
+        "/sequences/?is_wildfire_alertapi=wildfire_smoke"
+    )
     assert response_wildfire_filter.status_code == 200
-    
+
     wildfire_data = response_wildfire_filter.json()
     wildfire_sequence_ids = [seq["id"] for seq in wildfire_data["items"]]
-    
+
     # Should include the wildfire sequence but not the null sequence
     assert wildfire_sequence_id in wildfire_sequence_ids
     assert null_sequence_id not in wildfire_sequence_ids
@@ -1885,3 +1891,30 @@ async def test_list_sequences_filter_by_is_unsure_alone(
     assert unsure_id in sequence_ids
     assert sure_id not in sequence_ids
     assert unannotated_id not in sequence_ids
+
+
+@pytest.mark.asyncio
+async def test_create_sequence_with_alert_api_id_above_int32(
+    authenticated_client: AsyncClient,
+):
+    """Synthetic sibling ids (1_000_000_000 + platform_sid * 1000 + object_index)
+    overflow int32 once platform sids pass ~1.15M — the column must be BigInteger."""
+    payload = {
+        "source_api": "pyronear_french",
+        # 2_147_484_000 > 2**31 - 1
+        "alert_api_id": str(1_000_000_000 + 1_147_484 * 1000),
+        "camera_name": "test_cam_bigint",
+        "camera_id": "1",
+        "organisation_name": "test_org",
+        "organisation_id": "1",
+        "azimuth": "90",
+        "lat": "0.0",
+        "lon": "0.0",
+        "created_at": (now - timedelta(days=1)).isoformat(),
+        "recorded_at": (now - timedelta(days=1)).isoformat(),
+        "last_seen_at": now.isoformat(),
+    }
+
+    response = await authenticated_client.post("/sequences/", data=payload)
+    assert response.status_code == 201
+    assert response.json()["alert_api_id"] == 2_147_484_000
