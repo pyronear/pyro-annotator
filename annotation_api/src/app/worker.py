@@ -131,8 +131,13 @@ async def assign_sequence_groups(timestamp: int) -> None:
     """Periodic sweep: assign every ungrouped, fully-imported sequence to a
     sequence group (see ``app.services.group_assignment``). Inherited
     annotations are attributed to the admin user, which the API seeds at
-    startup from AUTH_USERNAME."""
-    async with AsyncSession(engine) as session:
+    startup from AUTH_USERNAME.
+
+    expire_on_commit=False matches the API's get_session config: label
+    inheritance commits mid-sweep, and expired Sequence instances would
+    trigger a sync lazy refresh on the next attribute access, which async
+    SQLAlchemy forbids (MissingGreenlet)."""
+    async with AsyncSession(engine, expire_on_commit=False) as session:
         admin = await UserCRUD(session).get_by_username(settings.AUTH_USERNAME)
         if admin is None:
             logger.warning(
