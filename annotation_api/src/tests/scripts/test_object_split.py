@@ -1,20 +1,21 @@
 from datetime import datetime
 
+import pytest
+
 from scripts.data_transfer.ingestion.platform.object_clustering import cluster_objects
 from scripts.data_transfer.ingestion.platform.object_split import (
     DEFAULT_ALERT_ID_BASE,
     build_frames,
+    build_single_track_annotation,
     select_primary_index,
+    split_all_records,
+    split_sequence_records,
     synthetic_alert_api_id,
 )
 
 # No __init__.py convention in src/tests/ — pytest inserts the test dir on
 # sys.path, so sibling helpers are imported as top-level modules.
 from factories import make_record
-from scripts.data_transfer.ingestion.platform.object_split import (
-    split_all_records,
-    split_sequence_records,
-)
 
 BOX_A = [0.10, 0.10, 0.20, 0.20, 0.9]  # in the platform's own `bbox` field
 BOX_B = [0.60, 0.60, 0.70, 0.70, 0.8]  # sibling, in `others_bboxes`
@@ -116,8 +117,6 @@ class TestSplitSequenceRecords:
         assert len(sibling.records) == 3
 
     def test_per_object_cone_azimuth_rewrites_camera_azimuth(self):
-        import pytest
-
         primary, sibling = split_sequence_records(two_object_records())
         # resolve_cone(100.0, [BOX_A], 87.0): center 0.15 -> 100 + 87*(0.15-0.5) = 69.55
         # (resolve_cone rounds to 1 decimal; tolerate float-rounding at the last digit)
@@ -167,3 +166,36 @@ class TestSplitAllRecords:
             DEFAULT_ALERT_ID_BASE + 47105 * 1000 + 1,
             200,
         }
+
+
+class TestBuildSingleTrackAnnotation:
+    def test_one_track_with_time_ordered_bboxes(self):
+        results = [
+            {"annotation_detection_id": 12, "xyxyns": [[0.1, 0.1, 0.2, 0.2]], "recorded_at": "2026-07-01T10:01:00"},
+            {"annotation_detection_id": 11, "xyxyns": [[0.1, 0.1, 0.2, 0.2]], "recorded_at": "2026-07-01T10:00:00"},
+        ]
+        data = build_single_track_annotation(results)
+        assert len(data.sequences_bbox) == 1
+        track = data.sequences_bbox[0]
+        assert track.is_smoke is True
+        assert track.false_positive_types == []
+        assert [b.detection_id for b in track.bboxes] == [11, 12]
+
+    def test_multiple_boxes_on_one_detection_become_multiple_track_entries(self):
+        results = [
+            {
+                "annotation_detection_id": 11,
+                "xyxyns": [[0.1, 0.1, 0.2, 0.2], [0.3, 0.3, 0.4, 0.4]],
+                "recorded_at": "2026-07-01T10:00:00",
+            }
+        ]
+        data = build_single_track_annotation(results)
+        assert len(data.sequences_bbox[0].bboxes) == 2
+
+    def test_zero_area_and_empty_results_yield_empty_sequences_bbox(self):
+        # zero-area boxes would fail BoundingBox validation -> must be filtered
+        results = [
+            {"annotation_detection_id": 11, "xyxyns": [[0.5, 0.5, 0.5, 0.9]], "recorded_at": "2026-07-01T10:00:00"}
+        ]
+        assert build_single_track_annotation(results).sequences_bbox == []
+        assert build_single_track_annotation([]).sequences_bbox == []

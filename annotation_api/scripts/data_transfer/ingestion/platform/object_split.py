@@ -21,6 +21,11 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Set, Tuple
 
+from app.schemas.annotation_validation import (
+    BoundingBox,
+    SequenceAnnotationData,
+    SequenceBBox,
+)
 from .object_clustering import TrackedObject, cluster_objects, object_cone_azimuth
 from .shared import group_records_by_sequence
 
@@ -213,3 +218,28 @@ def split_all_records(
         for group in groups:
             out.extend(group.records)
     return out, stats
+
+
+def build_single_track_annotation(detection_results: List[dict]) -> SequenceAnnotationData:
+    """One `sequences_bbox` track from a posted object's detection results.
+
+    Every detection here belongs to the same object (the split happened
+    upstream), so the annotation is exactly one conservative is_smoke track —
+    the server's empty-bbox auto-generation would re-cluster by IoU and can
+    fragment a drifting object into several tracks, so we bypass it.
+
+    Returns sequences_bbox=[] when nothing valid was posted (the server
+    auto-generation then runs as a harmless no-op on empty predictions).
+    """
+    ordered = sorted(detection_results, key=lambda r: _parse_dt(r["recorded_at"]))
+    bboxes = [
+        BoundingBox(detection_id=r["annotation_detection_id"], xyxyn=[float(c) for c in xy[:4]])
+        for r in ordered
+        for xy in r.get("xyxyns", [])
+        if xy[0] < xy[2] and xy[1] < xy[3]  # BoundingBox rejects zero-area boxes
+    ]
+    if not bboxes:
+        return SequenceAnnotationData(sequences_bbox=[])
+    return SequenceAnnotationData(
+        sequences_bbox=[SequenceBBox(is_smoke=True, false_positive_types=[], bboxes=bboxes)]
+    )
