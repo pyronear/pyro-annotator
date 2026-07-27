@@ -209,4 +209,3 @@ make up     # Fresh start
 
 - [API](./annotation_api/README.md)
 - [Frontend](./frontend/README.md)
-- [SAM bbox propagation](./sam_based_bbox_propagation/README.md)
