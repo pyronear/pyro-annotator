@@ -167,6 +167,29 @@ class TestSplitAllRecords:
             200,
         }
 
+    def test_broken_sequence_falls_back_others_still_split(self):
+        # detection_created_at=None can't be parsed, so split_sequence_records
+        # raises for this sequence -> it must fall back, not take down the batch.
+        broken = [
+            make_record(1, None, [BOX_A], others=[BOX_B], sid=999),
+            make_record(2, None, [BOX_A], others=[BOX_B], sid=999),
+            make_record(3, None, [BOX_A], others=[BOX_B], sid=999),
+        ]
+        good = two_object_records()
+        out, stats = split_all_records(broken + good)
+        assert stats["platform_sequences"] == 2
+        assert stats["fallback_sequences"] == 1
+        # the good sequence still split into primary + sibling
+        assert stats["objects"] == 3
+        assert stats["sibling_objects"] == 1
+        broken_records = [r for r in out if r["sequence_id"] == 999]
+        assert len(broken_records) == 3
+        assert {r["sequence_id"] for r in out} >= {
+            999,
+            47105,
+            DEFAULT_ALERT_ID_BASE + 47105 * 1000 + 1,
+        }
+
 
 class TestBuildSingleTrackAnnotation:
     def test_one_track_with_time_ordered_bboxes(self):

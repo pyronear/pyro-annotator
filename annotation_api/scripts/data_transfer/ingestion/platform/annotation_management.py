@@ -247,8 +247,9 @@ def annotate_split_sequence(
 ) -> Dict[str, Any]:
     """Write the single-track annotation for one imported object sequence.
 
-    If the object's detections were only partially imported, delete the
-    sequence instead (a half-imported object would 409 on the next run and
+    If the object's detections were only partially imported, or if writing
+    the annotation fails outright, delete the sequence instead (a
+    half-imported or annotation-less object would 409 on the next run and
     never be completed), and report the rollback as an error.
     """
     sequence_id = seq_result["sequence_id"]
@@ -296,7 +297,18 @@ def annotate_split_sequence(
             SequenceAnnotationProcessingStage.READY_TO_ANNOTATE.value
         )
     else:
+        if not dry_run:
+            login, password = shared.get_annotation_credentials(annotation_api_url)
+            try:
+                token = get_auth_token(
+                    annotation_api_url, username=login, password=password
+                )
+                delete_sequence(annotation_api_url, token, sequence_id)
+            except Exception as exc:
+                logging.warning(
+                    f"Rollback delete of sequence {sequence_id} failed: {exc}"
+                )
         result["errors"].append(
-            f"Failed to create annotation for sequence {sequence_id}"
+            f"sequence {sequence_id} rolled back: failed to create annotation"
         )
     return result

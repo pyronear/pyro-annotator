@@ -4,8 +4,11 @@ CLI script for end-to-end platform data import and processing.
 This script provides a streamlined workflow to fetch platform data and generate annotations:
 1. Fetch sequences and detections from the Pyronear alert API
 2. Split each platform sequence into one object sequence per detected object
-   (sibling objects sharing the same set of frames, plus any objects that don't
-   cluster, as a fallback), so annotation happens per object rather than per camera event
+   (sibling objects sharing the same set of frames). Sequences where no object
+   reaches the spawn threshold are imported whole as a single sequence
+   (fallback); when at least one object qualifies, boxes that never reach the
+   threshold are dropped (same rule as the platform), so annotation happens
+   per object rather than per camera event
 3. Import the resulting object sequences into the annotation API
 4. Generate annotations from AI predictions for successfully imported sequences only
 5. Set sequences to READY_TO_ANNOTATE stage
@@ -39,6 +42,12 @@ Environment variables required:
   PLATFORM_PASSWORD (str): Alert API password
   PLATFORM_ADMIN_LOGIN (str): Admin login for organization access
   PLATFORM_ADMIN_PASSWORD (str): Admin password for organization access
+  MAIN_ANNOTATION_LOGIN / MAIN_ANNOTATION_PASSWORD (str): Annotation API credentials
+    used when --annotation-api-url is not localhost (remote target)
+  LOCAL_ANNOTATION_LOGIN / LOCAL_ANNOTATION_PASSWORD (str): Annotation API credentials
+    used when --annotation-api-url is localhost/127.*
+  Both fall back to ANNOTATOR_LOGIN / ANNOTATOR_PASSWORD if unset (see
+  shared.get_annotation_credentials)
 
 Examples:
   # Basic usage

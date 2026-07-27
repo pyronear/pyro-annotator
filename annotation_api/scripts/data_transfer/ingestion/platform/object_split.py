@@ -17,6 +17,7 @@ the 409-skip. Siblings get
 `alert_id_base + platform_sequence_id * 1000 + object_index`.
 """
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Set, Tuple
@@ -210,7 +211,23 @@ def split_all_records(
     stats = {"platform_sequences": 0, "objects": 0, "sibling_objects": 0, "fallback_sequences": 0}
     out: List[dict] = []
     for _sid, seq_records in group_records_by_sequence(records).items():
-        groups = split_sequence_records(seq_records, alert_id_base=alert_id_base)
+        platform_sid = seq_records[0]["sequence_id"]
+        try:
+            groups = split_sequence_records(seq_records, alert_id_base=alert_id_base)
+        except Exception as exc:
+            logging.warning(
+                f"Splitting platform sequence {platform_sid} failed, "
+                f"importing it whole instead: {exc}"
+            )
+            groups = [
+                ObjectGroup(
+                    object_index=0,
+                    alert_api_id=platform_sid,
+                    is_primary=True,
+                    is_fallback=True,
+                    records=[dict(r) for r in seq_records],
+                )
+            ]
         stats["platform_sequences"] += 1
         stats["objects"] += len(groups)
         stats["sibling_objects"] += sum(1 for g in groups if not g.is_primary)

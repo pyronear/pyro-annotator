@@ -88,3 +88,23 @@ class TestAnnotateSplitSequence:
         )
         assert result["annotation_created"] is False
         assert result["errors"]
+
+    def test_annotation_failure_rolls_back_sequence(self, monkeypatch):
+        deleted = []
+        monkeypatch.setattr(am, "check_existing_annotation", lambda url, sid: None)
+        monkeypatch.setattr(
+            am, "create_annotation_from_data", lambda *args, **kwargs: False
+        )
+        monkeypatch.setattr(
+            am.shared, "get_annotation_credentials", lambda url: ("u", "p")
+        )
+        monkeypatch.setattr(am, "get_auth_token", lambda url, username, password: "tok")
+        monkeypatch.setattr(
+            am, "delete_sequence", lambda url, token, sid: deleted.append(sid)
+        )
+        result = am.annotate_split_sequence(
+            seq_result(), "http://annotation.test", dry_run=False
+        )
+        assert deleted == [42]
+        assert result["annotation_created"] is False
+        assert result["errors"] and "rolled back" in result["errors"][0]
