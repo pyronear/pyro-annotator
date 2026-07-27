@@ -20,8 +20,8 @@ export interface Sequence {
   is_wildfire_alertapi: AnnotationType | null;
   organisation_name: string;
   organisation_id: number;
-  // Membership in a SequenceGroup; null until assign-groups runs or
-  // when the sequence has been excluded from grouping manually.
+  // Membership in a SequenceGroup; null until the periodic assignment
+  // sweep runs or when the sequence has been excluded from grouping manually.
   sequence_group_id?: number | null;
   detection_annotation_stats?: DetectionAnnotationStats;
 }

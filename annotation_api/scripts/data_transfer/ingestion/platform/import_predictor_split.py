@@ -226,11 +226,6 @@ def make_cli_parser() -> argparse.ArgumentParser:
         help="Do everything except POST/DELETE to the annotation API.",
     )
     parser.add_argument(
-        "--skip-group-assignment",
-        action="store_true",
-        help="Skip the final POST /sequence_groups/assign step.",
-    )
-    parser.add_argument(
         "--loglevel", default="info", help="Logging level (default: info)."
     )
     return parser
@@ -372,26 +367,6 @@ def step_predict(args: argparse.Namespace, temp_dir: Path) -> Path:
     ]
     _run(cmd, label="predict", env=env)
     return out_path
-
-
-def step_assign_groups(args: argparse.Namespace) -> None:
-    """Step 5: trigger POST /sequence_groups/assign on the annotation API."""
-    if args.skip_group_assignment:
-        logging.info("--skip-group-assignment: not invoking assign_groups")
-        return
-    annotation_api_dir = Path(__file__).resolve().parents[4]
-    cmd = [
-        "uv",
-        "run",
-        "python",
-        "-m",
-        "scripts.data_transfer.ingestion.platform.assign_groups",
-        "--url-api-annotation",
-        args.url_api_annotation,
-        "--loglevel",
-        args.loglevel,
-    ]
-    _run(cmd, label="assign-groups", cwd=annotation_api_dir)
 
 
 # --------------------------------------------------------------------------- #
@@ -1016,7 +991,7 @@ def main() -> int:
         try:
             token = get_auth_token(args.url_api_annotation, login, password)
             platform_token = _platform_token(args)
-            created = process_day(
+            process_day(
                 args,
                 day,
                 token,
@@ -1031,14 +1006,6 @@ def main() -> int:
             logging.error(f"Day {day} failed: {exc} — skipping", exc_info=True)
             failed_days.append(day.strftime("%Y-%m-%d"))
             continue
-        # Assign groups after each productive day so an interruption never leaves
-        # already-imported sequences ungrouped.
-        if created and not args.dry_run:
-            try:
-                step_assign_groups(args)
-            except Exception as exc:
-                logging.error(f"assign_groups after {day} failed: {exc}")
-
     if failed_days:
         logging.warning(
             f"{len(failed_days)} day(s) failed and were skipped: {failed_days}"
