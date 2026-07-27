@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { X, ChevronLeft, ChevronRight, Keyboard } from 'lucide-react';
-import { Detection, DetectionAnnotation, SmokeType } from '@/types/api';
+import { Detection, DetectionAnnotation, DetectionAnnotationBbox, SmokeType } from '@/types/api';
 import {
   DrawnRectangle,
   CurrentDrawing,
@@ -11,10 +11,14 @@ import {
   imageToNormalizedCoordinates,
   normalizedToImageCoordinates,
   getRectangleAtPoint,
-  importPredictionsAsRectangles,
   updateRectangleSmokeType,
   removeRectangle,
   getWinningModelLayer,
+  ModelLayer,
+  materializeReviewAnnotation,
+  moveBox,
+  resizeBox,
+  ResizeHandle,
 } from '@/utils/annotation';
 import {
   KeyboardShortcutsModal,
@@ -30,7 +34,7 @@ interface ImageModalProps {
   onNavigate: (direction: 'prev' | 'next') => void;
   onSubmit: (
     detection: Detection,
-    drawnRectangles: DrawnRectangle[],
+    items: DetectionAnnotationBbox[],
     currentDrawMode: boolean
   ) => void;
   onTogglePredictions: (show: boolean) => void;
@@ -107,8 +111,28 @@ export function ImageModal({
   const winningLayer = getWinningModelLayer(detection);
   const hasEngine = (detection.algo_predictions?.predictions?.length ?? 0) > 0;
   const hasAuto = (detection.auto_predictions?.predictions?.length ?? 0) > 0;
-  const [showEngine, setShowEngine] = useState(winningLayer === 'engine');
-  const [showAuto, setShowAuto] = useState(winningLayer === 'auto');
+  // Exactly one model layer is shown at a time (default: the winning layer);
+  // toggling to the other is for investigation.
+  const [activeLayer, setActiveLayer] = useState<ModelLayer>(winningLayer);
+  // Seed-at-submit review: per-box status on the winning layer. Indices refer
+  // to the winning layer's prediction list.
+  // rejected (✗): excluded from submit, shown dimmed. adjusted (✎): excluded
+  // from submit AND hidden, because an editable human copy replaces it in place.
+  const [rejectedBoxes, setRejectedBoxes] = useState<Set<number>>(new Set());
+  const [adjustedBoxes, setAdjustedBoxes] = useState<Set<number>>(new Set());
+  const [selectedModelBox, setSelectedModelBox] = useState<number | null>(null);
+  // Drag-to-move / drag-to-resize of the selected drawn box.
+  const [boxEdit, setBoxEdit] = useState<{
+    id: string;
+    mode: 'move' | 'resize';
+    handle?: ResizeHandle;
+    startClient: { x: number; y: number };
+    orig: [number, number, number, number];
+  } | null>(null);
+  const didDragBoxRef = useRef(false);
+  // Which detection's committed annotation has been loaded into drawnRectangles,
+  // so a background refetch of the same detection doesn't clobber in-progress edits.
+  const rectsLoadedFor = useRef<number | null>(null);
   // Reset to the winning layer only when the *detection* changes (navigation),
   // not when a background refetch repopulates the same detection's
   // auto_predictions — which would otherwise clobber a manual toggle mid-review.
@@ -117,9 +141,72 @@ export function ImageModal({
     if (layerInitFor.current === detection.id) return;
     layerInitFor.current = detection.id;
     const winning = getWinningModelLayer(detection);
-    setShowEngine(winning === 'engine');
-    setShowAuto(winning === 'auto');
+    setActiveLayer(winning);
+    setRejectedBoxes(new Set());
+    setAdjustedBoxes(new Set());
+    setSelectedModelBox(null);
   }, [detection]);
+
+  // Winning model layer being reviewed (auto if present, else engine).
+  const winningPredictions =
+    winningLayer === 'auto'
+      ? detection.auto_predictions?.predictions
+      : detection.algo_predictions?.predictions;
+
+  // A detection with a committed smoke annotation is being RE-opened: edit that
+  // annotation directly (preserving each box's origin) instead of re-running
+  // the accept-all-model-boxes seed, which would duplicate boxes on resubmit.
+  const alreadyReviewed = (existingAnnotation?.annotation?.annotation ?? []).some(
+    item => item.smoke_type != null
+  );
+
+  const handleSelectModelBox = (index: number) =>
+    setSelectedModelBox(prev => (prev === index ? null : index));
+
+  const handleRejectModelBox = (index: number) => {
+    setRejectedBoxes(prev => new Set(prev).add(index));
+    setSelectedModelBox(null);
+  };
+
+  const handleAdjustModelBox = (index: number) => {
+    const box = winningPredictions?.[index];
+    if (!box) return;
+    pushUndoState();
+    // Hide the original in place and seed an editable human copy at the same
+    // spot (solid, selected, with resize handles) — the box "becomes editable".
+    setAdjustedBoxes(prev => new Set(prev).add(index));
+    const seeded: DrawnRectangle = {
+      id: `adjust-${detection.id}-${index}`,
+      xyxyn: box.xyxyn,
+      smokeType: selectedSmokeType,
+      origin: 'human',
+    };
+    setDrawnRectangles(prev => [...prev, seeded]);
+    setSelectedRectangleId(seeded.id);
+    setSelectedModelBox(null);
+  };
+
+  // Committed annotation for submit. First review: accepted winning boxes
+  // (origin auto/engine) + human boxes − rejected/adjusted. Re-open: the drawn
+  // boxes ARE the ground truth, each keeping its origin (edits mark it human);
+  // model boxes are NOT re-accepted (they are already in the committed set).
+  const buildReviewItems = (): DetectionAnnotationBbox[] => {
+    if (alreadyReviewed) {
+      return drawnRectangles.map(r => ({
+        xyxyn: r.xyxyn,
+        class_name: 'smoke',
+        smoke_type: r.smokeType,
+        origin: r.origin ?? 'human',
+      }));
+    }
+    return materializeReviewAnnotation({
+      winningBoxes: winningPredictions ?? [],
+      winningLayer,
+      rejected: new Set([...rejectedBoxes, ...adjustedBoxes]),
+      humanRects: drawnRectangles,
+      smokeType: selectedSmokeType,
+    });
+  };
 
   // Handle image load to get dimensions and position using DOM positioning
   const handleImageLoad = () => {
@@ -220,19 +307,28 @@ export function ImageModal({
       setUndoStack([]);
     }
 
-    // Always update rectangles based on annotation (even if detection didn't change)
-    if (existingAnnotation?.annotation?.annotation) {
-      // false-positive items (no smoke_type) are not editable smoke rectangles
-      const existingRects: DrawnRectangle[] = existingAnnotation.annotation.annotation
-        .filter(item => item.smoke_type != null)
-        .map((item, index) => ({
-          id: `existing-${index}`,
-          xyxyn: item.xyxyn,
-          smokeType: item.smoke_type as SmokeType,
-        }));
-      setDrawnRectangles(existingRects);
-    } else {
-      setDrawnRectangles([]);
+    // Load the committed annotation into editable rectangles ONCE per detection
+    // (the annotation may arrive async). A later identity change of
+    // existingAnnotation (e.g. a background refetch) must NOT re-run this and
+    // clobber in-progress edits — hence the rectsLoadedFor guard.
+    if (rectsLoadedFor.current !== detection.id) {
+      const items = existingAnnotation?.annotation?.annotation;
+      const smokeItems = (items ?? []).filter(item => item.smoke_type != null);
+      if (smokeItems.length > 0) {
+        // false-positive items (no smoke_type) are not editable smoke rectangles.
+        // Preserve each box's origin so re-submitting doesn't flip auto/engine -> human.
+        setDrawnRectangles(
+          smokeItems.map((item, index) => ({
+            id: `existing-${index}`,
+            xyxyn: item.xyxyn,
+            smokeType: item.smoke_type as SmokeType,
+            origin: item.origin ?? 'human',
+          }))
+        );
+        rectsLoadedFor.current = detection.id;
+      } else {
+        setDrawnRectangles([]);
+      }
     }
   }, [detection.id, existingAnnotation, isAutoAdvance, persistentDrawMode]);
 
@@ -314,62 +410,54 @@ export function ImageModal({
     });
   };
 
+  // --- Drag-to-move / drag-to-resize of the selected drawn box ---
+  // Deltas are computed directly as (client px) / (image on-screen size), which
+  // is pan- and origin-invariant and matches the rendered image at any zoom.
+  const handleBoxPointerDown = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const rect = drawnRectangles.find(r => r.id === id);
+    if (!rect) return;
+    setSelectedRectangleId(id);
+    didDragBoxRef.current = false;
+    setBoxEdit({
+      id,
+      mode: 'move',
+      startClient: { x: e.clientX, y: e.clientY },
+      orig: rect.xyxyn,
+    });
+  };
+
+  const handleHandlePointerDown = (id: string, handle: ResizeHandle, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const rect = drawnRectangles.find(r => r.id === id);
+    if (!rect) return;
+    setSelectedRectangleId(id);
+    didDragBoxRef.current = false;
+    setBoxEdit({
+      id,
+      mode: 'resize',
+      handle,
+      startClient: { x: e.clientX, y: e.clientY },
+      orig: rect.xyxyn,
+    });
+  };
+
   // Change smoke type of selected rectangle using pure utility
   const changeSelectedRectangleSmokeType = (newSmokeType: SmokeType) => {
     if (!selectedRectangleId) return;
 
     pushUndoState();
-    setDrawnRectangles(prev => updateRectangleSmokeType(prev, selectedRectangleId, newSmokeType));
+    setDrawnRectangles(prev =>
+      updateRectangleSmokeType(prev, selectedRectangleId, newSmokeType).map(r =>
+        // re-typing a box is a human classification decision
+        r.id === selectedRectangleId ? { ...r, origin: 'human' } : r
+      )
+    );
   };
 
   // Note: coordinatesMatch function replaced with direct call to areBoundingBoxesSimilar
 
   // Get count of new predictions using pure utility
-  const getNewPredictionsCount = (): number => {
-    if (!detection?.algo_predictions?.predictions) return 0;
-
-    const newRectangles = importPredictionsAsRectangles(
-      detection.algo_predictions.predictions,
-      selectedSmokeType,
-      drawnRectangles
-    );
-
-    return newRectangles.length;
-  };
-
-  // Import AI predictions using pure utility
-  const importAIPredictions = () => {
-    if (!detection?.algo_predictions?.predictions) return;
-
-    const newRectangles = importPredictionsAsRectangles(
-      detection.algo_predictions.predictions,
-      selectedSmokeType,
-      drawnRectangles
-    );
-
-    if (newRectangles.length === 0) {
-      // Visual feedback: brief button animation to indicate no action taken
-      const button = document.querySelector(
-        'button[title*="All AI predictions already imported"]'
-      ) as HTMLElement;
-      if (button) {
-        button.style.transform = 'scale(0.95)';
-        setTimeout(() => {
-          button.style.transform = '';
-        }, 150);
-      }
-      return;
-    }
-
-    // Save current state to undo stack before importing
-    pushUndoState();
-
-    // Add imported rectangles to existing ones
-    setDrawnRectangles(prev => [...prev, ...newRectangles]);
-
-    // Show success feedback
-  };
-
   const handleUndo = () => {
     if (undoStack.length === 0) return;
 
@@ -393,19 +481,12 @@ export function ImageModal({
     (e: React.WheelEvent) => {
       e.preventDefault();
 
-      if (!containerRef.current || !imgRef.current) return;
+      if (!imgRef.current) return;
 
-      const imgRect = imgRef.current.getBoundingClientRect();
-
-      // Calculate mouse position relative to the image
-      const mouseX = e.clientX - imgRect.left;
-      const mouseY = e.clientY - imgRect.top;
-
-      // Convert to percentage for transform-origin
-      const originX = (mouseX / imgRect.width) * 100;
-      const originY = (mouseY / imgRect.height) * 100;
-
-      setTransformOrigin({ x: originX, y: originY });
+      // Zoom around the image centre so the pan bounds stay symmetric.
+      // (Cursor-anchored zoom made the constraint asymmetric and let the image
+      // slide out of view.)
+      setTransformOrigin({ x: 50, y: 50 });
 
       // Calculate new zoom level
       const zoomDelta = e.deltaY < 0 ? 0.2 : -0.2;
@@ -426,13 +507,14 @@ export function ImageModal({
   const constrainPan = (offset: { x: number; y: number }) => {
     if (!imgRef.current || zoomLevel <= 1) return offset;
 
-    const imgRect = imgRef.current.getBoundingClientRect();
-    const scaledWidth = imgRect.width * zoomLevel;
-    const scaledHeight = imgRect.height * zoomLevel;
-
-    // Calculate max pan distance to keep image centered in viewport
-    const maxPanX = (scaledWidth - imgRect.width) / 2;
-    const maxPanY = (scaledHeight - imgRect.height) / 2;
+    // Use the LAYOUT size (offsetWidth), not getBoundingClientRect() which is
+    // already scaled by the transform. The pan is applied INSIDE the scale
+    // (`scale(z) translate(t)` -> screen shift = z*t), so the max pan offset
+    // that keeps the image covering its box is baseSize*(z-1)/(2*z).
+    const baseW = imgRef.current.offsetWidth;
+    const baseH = imgRef.current.offsetHeight;
+    const maxPanX = (baseW * (zoomLevel - 1)) / (2 * zoomLevel);
+    const maxPanY = (baseH * (zoomLevel - 1)) / (2 * zoomLevel);
 
     return {
       x: Math.max(-maxPanX, Math.min(maxPanX, offset.x)),
@@ -440,8 +522,19 @@ export function ImageModal({
     };
   };
 
+  // Re-clamp the pan whenever zoom changes so zooming out never leaves the
+  // image partly out of view.
+  useEffect(() => {
+    setPanOffset(prev => constrainPan(prev));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zoomLevel]);
+
   // Click-based drawing and panning handlers
   const handleMouseDown = (e: React.MouseEvent) => {
+    // Clear a stale drag flag left over from a drag that ended off-canvas
+    // (onMouseLeave -> mouseUp fires with no trailing click), so this fresh
+    // interaction's click isn't swallowed.
+    didDragBoxRef.current = false;
     if (!isDrawMode && zoomLevel > 1.0) {
       // Start panning when not in draw mode
       setIsDragging(true);
@@ -453,6 +546,13 @@ export function ImageModal({
   const handleClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+
+    // A move/resize drag just finished — don't treat the trailing click as a
+    // select/draw/deselect.
+    if (didDragBoxRef.current) {
+      didDragBoxRef.current = false;
+      return;
+    }
 
     const coords = screenToImageCoords(e.clientX, e.clientY);
 
@@ -519,6 +619,29 @@ export function ImageModal({
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
+    if (boxEdit && imgRef.current) {
+      // Screen-px delta / image on-screen size (offset size * zoom) -> normalized
+      // delta. Independent of pan and transform-origin, so it tracks the cursor
+      // 1:1 at any zoom/pan.
+      const displayW = imgRef.current.offsetWidth * zoomLevel;
+      const displayH = imgRef.current.offsetHeight * zoomLevel;
+      const dx = (e.clientX - boxEdit.startClient.x) / displayW;
+      const dy = (e.clientY - boxEdit.startClient.y) / displayH;
+      const next =
+        boxEdit.mode === 'move'
+          ? moveBox(boxEdit.orig, dx, dy)
+          : resizeBox(boxEdit.orig, boxEdit.handle as ResizeHandle, dx, dy);
+      if (!didDragBoxRef.current) {
+        pushUndoState();
+        didDragBoxRef.current = true;
+      }
+      setDrawnRectangles(prev =>
+        // A moved/resized box is now human-owned (matters when editing a
+        // re-opened committed annotation; a no-op for fresh first-review boxes).
+        prev.map(r => (r.id === boxEdit.id ? { ...r, xyxyn: next, origin: 'human' } : r))
+      );
+      return;
+    }
     if (isActivelyDrawing && currentDrawing) {
       // Update live preview rectangle
       const coords = screenToImageCoords(e.clientX, e.clientY);
@@ -541,6 +664,9 @@ export function ImageModal({
   };
 
   const handleMouseUp = () => {
+    if (boxEdit) {
+      setBoxEdit(null);
+    }
     if (isDragging) {
       setIsDragging(false);
     }
@@ -552,6 +678,22 @@ export function ImageModal({
     setZoomLevel(1.0);
     setPanOffset({ x: 0, y: 0 });
     setTransformOrigin({ x: 50, y: 50 });
+  }, []);
+
+  // Keyboard zoom (+/-), same 0.2 step / 1x-4x clamp as the wheel handler.
+  const handleZoomIn = useCallback(() => {
+    setZoomLevel(z => Math.min(4.0, Math.round((z + 0.2) * 10) / 10));
+  }, []);
+
+  const handleZoomOut = useCallback(() => {
+    setZoomLevel(z => {
+      const next = Math.max(1.0, Math.round((z - 0.2) * 10) / 10);
+      if (next === 1.0) {
+        setPanOffset({ x: 0, y: 0 });
+        setTransformOrigin({ x: 50, y: 50 });
+      }
+      return next;
+    });
   }, []);
 
   // Keyboard shortcuts using reusable hook - no memoization, simple and direct
@@ -583,8 +725,7 @@ export function ImageModal({
         }
       },
       onUndo: handleUndo,
-      onSubmit: () => onSubmit(detection, drawnRectangles, isDrawMode),
-      onImportPredictions: importAIPredictions,
+      onSubmit: () => onSubmit(detection, buildReviewItems(), isDrawMode),
       onShowHelp: () => setShowKeyboardShortcuts(!showKeyboardShortcuts),
       onSelectWildfire: () => {
         if (selectedRectangleId !== null) {
@@ -608,6 +749,8 @@ export function ImageModal({
         }
       },
       onResetZoom: handleZoomReset,
+      onZoomIn: handleZoomIn,
+      onZoomOut: handleZoomOut,
     },
     {
       isDrawMode,
@@ -732,14 +875,14 @@ export function ImageModal({
             <span>Show predictions</span>
           </label>
           {showPredictions && (
-            <div className="flex items-center space-x-1">
+            <div className="flex items-center rounded overflow-hidden text-[11px] font-medium backdrop-blur-sm">
               <button
                 type="button"
                 disabled={!hasEngine}
-                onClick={() => setShowEngine(v => !v)}
-                title={hasEngine ? 'Engine predictions (dotted)' : 'No engine predictions'}
-                className={`px-2 py-1 rounded text-[11px] font-medium backdrop-blur-sm border-b-2 border-dotted ${
-                  showEngine ? 'bg-white/20 text-white' : 'bg-white/5 text-gray-400'
+                onClick={() => setActiveLayer('engine')}
+                title={hasEngine ? 'Show engine predictions (dotted)' : 'No engine predictions'}
+                className={`px-2 py-1 border-b-2 border-dotted ${
+                  activeLayer === 'engine' ? 'bg-white/25 text-white' : 'bg-white/5 text-gray-400'
                 } ${!hasEngine ? 'opacity-40 cursor-not-allowed' : ''}`}
               >
                 engine
@@ -747,10 +890,10 @@ export function ImageModal({
               <button
                 type="button"
                 disabled={!hasAuto}
-                onClick={() => setShowAuto(v => !v)}
-                title={hasAuto ? 'Auto predictions (dashed)' : 'No auto predictions'}
-                className={`px-2 py-1 rounded text-[11px] font-medium backdrop-blur-sm border-b-2 border-dashed ${
-                  showAuto ? 'bg-white/20 text-white' : 'bg-white/5 text-gray-400'
+                onClick={() => setActiveLayer('auto')}
+                title={hasAuto ? 'Show auto predictions (dashed)' : 'No auto predictions'}
+                className={`px-2 py-1 border-b-2 border-dashed ${
+                  activeLayer === 'auto' ? 'bg-white/25 text-white' : 'bg-white/5 text-gray-400'
                 } ${!hasAuto ? 'opacity-40 cursor-not-allowed' : ''}`}
               >
                 auto
@@ -766,9 +909,19 @@ export function ImageModal({
             drawnRectangles={drawnRectangles}
             selectedRectangleId={selectedRectangleId}
             showPredictions={showPredictions}
-            showEngine={showEngine}
-            showAuto={showAuto}
+            activeLayer={activeLayer}
             selectedSmokeType={selectedSmokeType}
+            winningLayer={winningLayer}
+            isDrawMode={isDrawMode}
+            reviewInteractive={!alreadyReviewed}
+            rejectedBoxes={rejectedBoxes}
+            hiddenBoxes={adjustedBoxes}
+            selectedModelBox={selectedModelBox}
+            onSelectModelBox={handleSelectModelBox}
+            onRejectModelBox={handleRejectModelBox}
+            onAdjustModelBox={handleAdjustModelBox}
+            onBoxPointerDown={handleBoxPointerDown}
+            onHandlePointerDown={handleHandlePointerDown}
             currentDrawing={currentDrawing}
             containerRef={containerRef}
             imgRef={imgRef}
@@ -818,10 +971,7 @@ export function ImageModal({
                 setDrawnRectangles([]);
               }
             }}
-            onImportPredictions={importAIPredictions}
             onResetZoom={handleZoomReset}
-            canImportPredictions={getNewPredictionsCount() > 0}
-            newPredictionsCount={getNewPredictionsCount()}
             zoomLevel={zoomLevel}
             onSelectedRectangleSmokeTypeChange={changeSelectedRectangleSmokeType}
           />
@@ -829,7 +979,7 @@ export function ImageModal({
           <div className="mt-4 bg-white bg-opacity-10 backdrop-blur-sm rounded-lg p-4 text-white">
             <div className="flex items-center justify-center space-x-4 mb-4">
               <span className="font-medium">
-                Detection {currentIndex + 1} of {totalCount}
+                Frame {currentIndex + 1} of {totalCount}
               </span>
               <span className="text-gray-300">•</span>
               <span className="text-gray-300">
@@ -847,7 +997,7 @@ export function ImageModal({
           <SubmissionControls
             isSubmitting={isSubmitting}
             isAnnotated={isAnnotated}
-            onSubmit={() => onSubmit(detection, drawnRectangles, isDrawMode)}
+            onSubmit={() => onSubmit(detection, buildReviewItems(), isDrawMode)}
           />
         </div>
 

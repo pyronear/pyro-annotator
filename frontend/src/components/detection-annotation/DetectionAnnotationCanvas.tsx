@@ -6,9 +6,16 @@
 
 import { Detection, SmokeType } from '@/types/api';
 import { useDetectionImage } from '@/hooks/useDetectionImage';
-import { DrawnRectangle, CurrentDrawing, Point } from '@/utils/annotation';
+import {
+  DrawnRectangle,
+  CurrentDrawing,
+  Point,
+  ModelLayer,
+  ResizeHandle,
+} from '@/utils/annotation';
 import {
   ReferenceBoxOverlay,
+  ReviewBoxOverlay,
   DrawingOverlay,
   SiblingBoundingBoxOverlay,
 } from '@/components/annotation/ImageOverlays';
@@ -25,10 +32,24 @@ interface DetectionAnnotationCanvasProps {
   drawnRectangles: DrawnRectangle[];
   selectedRectangleId: string | null;
   showPredictions: boolean;
-  showEngine: boolean;
-  showAuto: boolean;
+  // Exactly one model layer is displayed at a time.
+  activeLayer: ModelLayer;
   selectedSmokeType: SmokeType;
   showSiblingBboxes?: boolean;
+  // Seed-at-submit review of the winning model layer
+  winningLayer: ModelLayer;
+  isDrawMode: boolean;
+  // When re-opening a committed annotation, the winning layer is read-only
+  // reference (already reviewed); you edit the committed boxes directly.
+  reviewInteractive: boolean;
+  rejectedBoxes: Set<number>;
+  hiddenBoxes: Set<number>;
+  selectedModelBox: number | null;
+  onSelectModelBox: (index: number) => void;
+  onRejectModelBox: (index: number) => void;
+  onAdjustModelBox: (index: number) => void;
+  onBoxPointerDown: (id: string, e: React.MouseEvent) => void;
+  onHandlePointerDown: (id: string, handle: ResizeHandle, e: React.MouseEvent) => void;
   currentDrawing: CurrentDrawing | null;
   // Image and container refs passed from parent
   containerRef: React.RefObject<HTMLDivElement>;
@@ -55,10 +76,20 @@ export function DetectionAnnotationCanvas({
   drawnRectangles,
   selectedRectangleId,
   showPredictions,
-  showEngine,
-  showAuto,
+  activeLayer,
   selectedSmokeType,
   showSiblingBboxes = true,
+  winningLayer,
+  isDrawMode,
+  reviewInteractive,
+  rejectedBoxes,
+  hiddenBoxes,
+  selectedModelBox,
+  onSelectModelBox,
+  onRejectModelBox,
+  onAdjustModelBox,
+  onBoxPointerDown,
+  onHandlePointerDown,
   currentDrawing,
   containerRef,
   imgRef,
@@ -77,6 +108,14 @@ export function DetectionAnnotationCanvas({
   overlaysVisible,
 }: DetectionAnnotationCanvasProps) {
   const { data: imageData } = useDetectionImage(detection.id);
+
+  // The winning model layer is reviewed (interactive) when it is the active
+  // layer; otherwise the active (non-winning) layer is shown read-only.
+  const showWinning = activeLayer === winningLayer;
+  const winningPreds =
+    winningLayer === 'auto'
+      ? detection.auto_predictions?.predictions
+      : detection.algo_predictions?.predictions;
 
   return imageData?.url ? (
     <div
@@ -113,7 +152,9 @@ export function DetectionAnnotationCanvas({
           pointerEvents: showPredictions && imageInfo && overlaysVisible ? 'none' : 'none',
         }}
       >
-        {showPredictions && showEngine && imageInfo && (
+        {/* Read-only NON-winning model layer (shown when toggled on to
+            investigate; only one model layer displays at a time) */}
+        {showPredictions && !showWinning && activeLayer === 'engine' && imageInfo && (
           <ReferenceBoxOverlay
             predictions={detection.algo_predictions?.predictions}
             variant="engine"
@@ -122,7 +163,7 @@ export function DetectionAnnotationCanvas({
             detectionId={detection.id}
           />
         )}
-        {showPredictions && showAuto && imageInfo && (
+        {showPredictions && !showWinning && activeLayer === 'auto' && imageInfo && (
           <ReferenceBoxOverlay
             predictions={detection.auto_predictions?.predictions}
             variant="auto"
@@ -154,9 +195,41 @@ export function DetectionAnnotationCanvas({
             transformOrigin={transformOrigin}
             isDragging={isDragging}
             normalizedToImage={normalizedToImage}
+            onBoxPointerDown={onBoxPointerDown}
+            onHandlePointerDown={onHandlePointerDown}
           />
         )}
       </div>
+
+      {/* Interactive review layer: the winning model layer, above the drawing
+          layer. The container passes clicks through (pointer-events-none);
+          individual boxes/controls opt back in when interactive (not drawing). */}
+      {showPredictions && showWinning && imageInfo && (
+        <div
+          className="absolute inset-0 z-30 pointer-events-none"
+          style={{
+            transform: `scale(${zoomLevel}) translate(${panOffset.x}px, ${panOffset.y}px)`,
+            transformOrigin: `${transformOrigin.x}% ${transformOrigin.y}%`,
+            transition: isDragging ? 'none' : 'transform 0.1s ease-out',
+            opacity: overlaysVisible ? 1 : 0,
+          }}
+        >
+          <ReviewBoxOverlay
+            predictions={winningPreds}
+            variant={winningLayer}
+            smokeType={selectedSmokeType}
+            imageInfo={imageInfo}
+            detectionId={detection.id}
+            rejected={rejectedBoxes}
+            hidden={hiddenBoxes}
+            selectedIndex={selectedModelBox}
+            interactive={!isDrawMode && reviewInteractive}
+            onSelect={onSelectModelBox}
+            onReject={onRejectModelBox}
+            onAdjust={onAdjustModelBox}
+          />
+        </div>
+      )}
     </div>
   ) : (
     <div className="w-96 h-96 bg-gray-800 flex items-center justify-center rounded-lg">

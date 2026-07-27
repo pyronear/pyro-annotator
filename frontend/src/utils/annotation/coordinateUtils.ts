@@ -127,9 +127,10 @@ export const screenToImageCoordinates = (
   const originContainerY = imageBounds.y + originY;
 
   // Reverse the CSS transform: scale(zoomLevel) translate(panOffset.x, panOffset.y)
-  // Step 1: Reverse translation (panOffset is applied in scaled coordinate space)
-  const afterTranslateX = relativeX - panOffset.x;
-  const afterTranslateY = relativeY - panOffset.y;
+  // Step 1: Reverse translation. The translate is applied INSIDE the scale, so
+  // its on-screen contribution is panOffset * zoomLevel.
+  const afterTranslateX = relativeX - panOffset.x * zoomLevel;
+  const afterTranslateY = relativeY - panOffset.y * zoomLevel;
 
   // Step 2: Reverse scaling around transform origin
   const imageX =

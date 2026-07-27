@@ -103,12 +103,18 @@ export interface DetectionAnnotation {
   contributors?: Contributor[];
 }
 
+// Provenance of a committed detection box: accepted-from-model (unedited) vs
+// hand-drawn/adjusted. Lets us measure model quality (accepted vs corrected vs
+// missed) against the immutable algo_predictions / auto_predictions.
+export type AnnotationOrigin = 'auto' | 'engine' | 'human';
+
 export interface DetectionAnnotationBbox {
   xyxyn: [number, number, number, number];
   class_name: string;
   // exactly one of smoke_type / false_positive_type is set
   smoke_type?: SmokeType | null;
   false_positive_type?: FalsePositiveType | null;
+  origin?: AnnotationOrigin;
 }
 
 export interface DetectionAnnotationData {

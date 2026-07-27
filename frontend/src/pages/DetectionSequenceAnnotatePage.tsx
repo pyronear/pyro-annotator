@@ -12,11 +12,17 @@ import {
   formatFalsePositiveType,
   parseFalsePositiveTypes,
 } from '@/utils/modelAccuracy';
-import { Detection, DetectionAnnotation, SmokeType, SequenceAnnotation } from '@/types/api';
+import {
+  Detection,
+  DetectionAnnotation,
+  DetectionAnnotationBbox,
+  SmokeType,
+  SequenceAnnotation,
+} from '@/types/api';
 import { createDefaultFilterState } from '@/hooks/usePersistedFilters';
 
 // New imports for refactored utilities
-import { DrawnRectangle, calculateAnnotationCompleteness } from '@/utils/annotation';
+import { calculateAnnotationCompleteness, sequenceSmokeType } from '@/utils/annotation';
 import { ImageModal, DetectionGrid, DetectionHeader } from '@/components/detection-sequence';
 
 // Helper function for context-aware annotation status
@@ -50,7 +56,10 @@ export default function DetectionSequenceAnnotatePage() {
   >(new Map());
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
-  const [showPredictions, setShowPredictions] = useState(false);
+  // Default ON: the detection review is *about* the model predictions, so the
+  // winning layer (auto if present, else engine) should be visible on open
+  // rather than hidden behind a toggle.
+  const [showPredictions, setShowPredictions] = useState(true);
 
   // Persistent smoke type selection across detections
   const [persistentSmokeType, setPersistentSmokeType] = useState<SmokeType>('wildfire');
@@ -143,6 +152,17 @@ export default function DetectionSequenceAnnotatePage() {
   });
 
   const sequenceAnnotation = sequenceAnnotationResponse;
+
+  // Default the review smoke type to the sequence's classified type (not a
+  // hardcoded 'wildfire') — accepted model boxes inherit it. Set once per
+  // sequence so it doesn't clobber a manual change mid-review.
+  const smokeTypeInitFor = useRef<number | null>(null);
+  useEffect(() => {
+    if (!sequenceAnnotation) return;
+    if (smokeTypeInitFor.current === sequenceAnnotation.sequence_id) return;
+    smokeTypeInitFor.current = sequenceAnnotation.sequence_id;
+    setPersistentSmokeType(sequenceSmokeType(sequenceAnnotation));
+  }, [sequenceAnnotation]);
 
   // Fetch all sequences for navigation using filters from the source page
   const {
@@ -366,21 +386,14 @@ export default function DetectionSequenceAnnotatePage() {
   const annotateIndividualDetection = useMutation({
     mutationFn: async ({
       detection,
-      drawnRectangles,
+      items,
     }: {
       detection: Detection;
-      drawnRectangles: DrawnRectangle[];
+      items: DetectionAnnotationBbox[];
     }) => {
       const existingAnnotation = detectionAnnotations.get(detection.id);
 
       if (existingAnnotation) {
-        // Convert drawn rectangles to annotation format
-        const annotationItems = drawnRectangles.map(rect => ({
-          xyxyn: rect.xyxyn,
-          class_name: 'smoke',
-          smoke_type: rect.smokeType,
-        }));
-
         // Preserve false-positive items: they are not editable rectangles
         // (filtered out of the modal) and must survive a smoke-box edit
         const falsePositiveItems = (existingAnnotation.annotation?.annotation ?? []).filter(
@@ -390,7 +403,7 @@ export default function DetectionSequenceAnnotatePage() {
         // Update existing annotation with proper annotation data and 'annotated' stage
         const payload = {
           annotation: {
-            annotation: [...annotationItems, ...falsePositiveItems],
+            annotation: [...items, ...falsePositiveItems],
           },
           processing_stage: 'annotated' as const,
         };
@@ -398,15 +411,10 @@ export default function DetectionSequenceAnnotatePage() {
         return apiClient.updateDetectionAnnotation(existingAnnotation.id, payload);
       } else {
         // Create detection annotation on the fly if missing
-        const annotationItems = drawnRectangles.map(rect => ({
-          xyxyn: rect.xyxyn,
-          class_name: 'smoke',
-          smoke_type: rect.smokeType,
-        }));
         const payload = {
           detection_id: detection.id,
           annotation: {
-            annotation: annotationItems,
+            annotation: items,
           },
           processing_stage: 'annotated' as const,
         };
@@ -852,10 +860,10 @@ export default function DetectionSequenceAnnotatePage() {
           detection={detections[selectedDetectionIndex]}
           onClose={closeModal}
           onNavigate={navigateModal}
-          onSubmit={(detection, drawnRectangles, currentDrawMode) => {
+          onSubmit={(detection, items, currentDrawMode) => {
             // Store current drawing mode state before auto-advancing
             setPersistentDrawMode(currentDrawMode);
-            annotateIndividualDetection.mutate({ detection, drawnRectangles });
+            annotateIndividualDetection.mutate({ detection, items });
           }}
           onTogglePredictions={setShowPredictions}
           canNavigatePrev={selectedDetectionIndex > 0}

@@ -4,12 +4,31 @@
  */
 
 import { Detection, DetectionAnnotation, AlgoPrediction, SmokeType } from '@/types/api';
-import { DrawnRectangle, CurrentDrawing, getSmokeTypeColors, ModelLayer } from '@/utils/annotation';
+import {
+  DrawnRectangle,
+  CurrentDrawing,
+  getSmokeTypeColors,
+  ModelLayer,
+  ResizeHandle,
+  HANDLE_CURSOR,
+} from '@/utils/annotation';
 import {
   normalizedToPixelBox,
   validateBoundingBox,
   ImageInfo,
 } from '@/utils/annotation/coordinateUtils';
+
+// Position of each resize handle relative to the selected box (8px squares).
+const HANDLE_STYLES: Record<ResizeHandle, React.CSSProperties> = {
+  nw: { left: -4, top: -4 },
+  n: { left: 'calc(50% - 4px)', top: -4 },
+  ne: { right: -4, top: -4 },
+  w: { left: -4, top: 'calc(50% - 4px)' },
+  e: { right: -4, top: 'calc(50% - 4px)' },
+  sw: { left: -4, bottom: -4 },
+  s: { left: 'calc(50% - 4px)', bottom: -4 },
+  se: { right: -4, bottom: -4 },
+};
 
 /**
  * Component for rendering AI prediction bounding boxes over detection images.
@@ -169,6 +188,125 @@ export function ReferenceBoxOverlay({
 }
 
 /**
+ * Interactive overlay for the winning model layer during seed-at-submit review.
+ * Each box is pending-accept by default; clicking it (when interactive) selects
+ * it and reveals ✗ (reject) / ✎ (adjust). Rejected boxes render dimmed + struck.
+ * Color = the sequence smoke_type; line style = the layer (auto dashed / engine
+ * dotted). Accepted boxes are materialized at submit; rejected ones are dropped.
+ */
+interface ReviewBoxOverlayProps {
+  predictions: AlgoPrediction[] | null | undefined;
+  variant: ModelLayer;
+  smokeType: SmokeType;
+  imageInfo: ImageInfo;
+  detectionId: number;
+  rejected: Set<number>;
+  hidden: Set<number>;
+  selectedIndex: number | null;
+  interactive: boolean;
+  onSelect: (index: number) => void;
+  onReject: (index: number) => void;
+  onAdjust: (index: number) => void;
+}
+
+export function ReviewBoxOverlay({
+  predictions,
+  variant,
+  smokeType,
+  imageInfo,
+  detectionId,
+  rejected,
+  hidden,
+  selectedIndex,
+  interactive,
+  onSelect,
+  onReject,
+  onAdjust,
+}: ReviewBoxOverlayProps) {
+  if (!predictions || predictions.length === 0) return null;
+
+  const borderColor = getSmokeTypeColors(smokeType).border;
+  const lineStyle = variant === 'engine' ? 'border-dotted' : 'border-dashed';
+
+  return (
+    <>
+      {predictions
+        .map((prediction: AlgoPrediction, index: number) => {
+          // Adjusted boxes are replaced in place by an editable human copy.
+          if (hidden.has(index) || !validateBoundingBox(prediction.xyxyn)) {
+            return null;
+          }
+
+          const { left, top, width, height } = normalizedToPixelBox(prediction.xyxyn, imageInfo);
+          const isRejected = rejected.has(index);
+          const isSelected = selectedIndex === index;
+
+          return (
+            <div
+              key={`review-${variant}-${detectionId}-${index}`}
+              className={`absolute border-2 ${lineStyle} ${
+                isRejected ? 'border-gray-500 opacity-40' : borderColor
+              } ${isSelected ? 'ring-2 ring-white' : ''}`}
+              style={{
+                left: `${left}px`,
+                top: `${top}px`,
+                width: `${width}px`,
+                height: `${height}px`,
+                pointerEvents: interactive && !isRejected ? 'auto' : 'none',
+                cursor: interactive && !isRejected ? 'pointer' : 'default',
+              }}
+              onClick={e => {
+                e.stopPropagation();
+                if (interactive && !isRejected) onSelect(index);
+              }}
+            >
+              {isRejected && (
+                <div className="absolute inset-0 flex items-center justify-center text-gray-200 text-lg pointer-events-none">
+                  ✕
+                </div>
+              )}
+              <div className="absolute -top-5 left-0 bg-black/60 text-white text-[10px] px-1 rounded whitespace-nowrap pointer-events-none">
+                {variant}
+                {isRejected ? ' · rejected' : ''}
+              </div>
+              {isSelected && !isRejected && (
+                <div
+                  className="absolute -top-5 right-0 flex gap-1"
+                  style={{ pointerEvents: 'auto' }}
+                >
+                  <button
+                    type="button"
+                    title="Reject this box"
+                    onClick={e => {
+                      e.stopPropagation();
+                      onReject(index);
+                    }}
+                    className="bg-red-600 hover:bg-red-700 text-white text-[10px] leading-none px-1.5 py-0.5 rounded"
+                  >
+                    ✗
+                  </button>
+                  <button
+                    type="button"
+                    title="Adjust (edit a human copy)"
+                    onClick={e => {
+                      e.stopPropagation();
+                      onAdjust(index);
+                    }}
+                    className="bg-yellow-500 hover:bg-yellow-600 text-white text-[10px] leading-none px-1.5 py-0.5 rounded"
+                  >
+                    ✎
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })
+        .filter(Boolean)}
+    </>
+  );
+}
+
+/**
  * Component for rendering user annotation bounding boxes on detection images.
  * Shows smoke type classifications with appropriate colors and labels.
  */
@@ -255,6 +393,9 @@ interface DrawingOverlayProps {
   transformOrigin: { x: number; y: number };
   isDragging: boolean;
   normalizedToImage: (normX: number, normY: number) => { x: number; y: number };
+  // Drag-to-move (box body) and drag-to-resize (handles) on the selected box.
+  onBoxPointerDown?: (id: string, e: React.MouseEvent) => void;
+  onHandlePointerDown?: (id: string, handle: ResizeHandle, e: React.MouseEvent) => void;
 }
 
 export function DrawingOverlay({
@@ -267,6 +408,8 @@ export function DrawingOverlay({
   transformOrigin,
   isDragging,
   normalizedToImage,
+  onBoxPointerDown,
+  onHandlePointerDown,
 }: DrawingOverlayProps) {
   const renderRectangle = (
     rect: { xyxyn: [number, number, number, number]; id?: string } | CurrentDrawing,
@@ -301,7 +444,7 @@ export function DrawingOverlay({
     <div
       className="absolute inset-0 pointer-events-none"
       style={{
-        transform: `scale(${zoomLevel}) translate(${panOffset.x / zoomLevel}px, ${panOffset.y / zoomLevel}px)`,
+        transform: `scale(${zoomLevel}) translate(${panOffset.x}px, ${panOffset.y}px)`,
         transformOrigin: `${transformOrigin.x}% ${transformOrigin.y}%`,
         cursor: isDragging ? 'grabbing' : 'default',
       }}
@@ -315,7 +458,12 @@ export function DrawingOverlay({
         return (
           <div
             key={rect.id}
-            className={`absolute border-2 ${isSelected ? 'border-yellow-400' : colors.border} pointer-events-auto cursor-pointer`}
+            onMouseDown={
+              isSelected && onBoxPointerDown ? e => onBoxPointerDown(rect.id, e) : undefined
+            }
+            className={`absolute border-2 ${isSelected ? 'border-yellow-400' : colors.border} pointer-events-auto ${
+              isSelected ? 'cursor-move' : 'cursor-pointer'
+            }`}
             style={{
               left: `${left}px`,
               top: `${top}px`,
@@ -329,12 +477,24 @@ export function DrawingOverlay({
                 isSelected
                   ? 'bg-yellow-400 text-black'
                   : `${colors.border.replace('border-', 'bg-')} text-white`
-              } text-xs px-1 py-0.5 rounded whitespace-nowrap`}
+              } text-xs px-1 py-0.5 rounded whitespace-nowrap pointer-events-none`}
             >
               {rect.smokeType === 'wildfire' ? '🔥' : rect.smokeType === 'industrial' ? '🏭' : '💨'}{' '}
               {rect.smokeType.charAt(0).toUpperCase() + rect.smokeType.slice(1)}
               {isSelected && ' (selected)'}
             </div>
+
+            {/* Resize handles on the selected box */}
+            {isSelected &&
+              onHandlePointerDown &&
+              (Object.keys(HANDLE_STYLES) as ResizeHandle[]).map(handle => (
+                <div
+                  key={handle}
+                  onMouseDown={e => onHandlePointerDown(rect.id, handle, e)}
+                  className="absolute w-2 h-2 bg-white border border-gray-800 pointer-events-auto"
+                  style={{ ...HANDLE_STYLES[handle], cursor: HANDLE_CURSOR[handle] }}
+                />
+              ))}
           </div>
         );
       })}
