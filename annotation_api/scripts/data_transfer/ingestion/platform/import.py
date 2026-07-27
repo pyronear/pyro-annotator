@@ -76,10 +76,12 @@ from rich.progress import (
 from .progress_management import ErrorCollector, StepManager, LogSuppressor
 from .worker_config import WorkerConfig
 from .sequence_fetching import fetch_all_sequences_within
+from . import object_split
 from .annotation_management import (
     valid_date,
-    create_simple_sequence_annotation,
+    create_simple_sequence_annotation,  # noqa: F401 - kept for now, dies with clone mode in PR2
     create_placeholder_sequence_annotation,
+    annotate_split_sequence,
 )
 from . import shared
 from . import client as platform_client
@@ -887,6 +889,14 @@ def main() -> None:
                 error_collector.print_summary(console, "Platform Data Fetching Errors")
                 sys.exit(1)
 
+            records, split_stats = object_split.split_all_records(records)
+            console.print(
+                f"[blue]🔀 Object split: {split_stats['platform_sequences']} platform sequence(s) → "
+                f"{split_stats['objects']} object sequence(s) "
+                f"({split_stats['sibling_objects']} sibling(s), "
+                f"{split_stats['fallback_sequences']} fallback)[/]"
+            )
+
         if not records and not args.dry_run:
             msg = (
                 "No records fetched from source annotation API"
@@ -1008,38 +1018,46 @@ def main() -> None:
             ),
         )
 
-        # Prepare annotation configuration
-        annotation_config = {
+        # Annotation configuration - unused now that the platform path uses
+        # annotate_split_sequence (no auto-generation config); the CLI flags
+        # are removed in PR2 along with clone mode.
+        annotation_config = {  # noqa: F841
             "confidence_threshold": args.confidence_threshold,
             "iou_threshold": args.iou_threshold,
             "min_cluster_size": args.min_cluster_size,
         }
 
+        platform_seq_results = []
+        if not clone_from_annotation and not args.dry_run:
+            platform_seq_results = [
+                r for r in result.get("sequence_results", []) if not r.get("skipped")
+            ]
+
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=worker_config.annotation_processing
         ) as executor:
             # Submit all sequence annotation tasks
-            future_to_sequence_id = {
-                (
+            if not clone_from_annotation:
+                future_to_sequence_id = {
                     executor.submit(
-                        create_simple_sequence_annotation,
-                        sequence_id=sequence_id,
+                        annotate_split_sequence,
+                        seq_result=seq_result,
                         annotation_api_url=args.url_api_annotation,
-                        config=annotation_config,
                         dry_run=args.dry_run,
-                        processing_stage=SequenceAnnotationProcessingStage.READY_TO_ANNOTATE,
-                    )
-                    if not clone_from_annotation
-                    else executor.submit(
+                    ): seq_result["sequence_id"]
+                    for seq_result in platform_seq_results
+                }
+            else:
+                future_to_sequence_id = {
+                    executor.submit(
                         create_placeholder_sequence_annotation,
                         sequence_id=sequence_id,
                         annotation_api_url=args.url_api_annotation,
                         processing_stage=SequenceAnnotationProcessingStage.READY_TO_ANNOTATE,
                         dry_run=args.dry_run,
-                    )
-                ): sequence_id
-                for sequence_id in sequence_ids
-            }
+                    ): sequence_id
+                    for sequence_id in sequence_ids
+                }
 
             # Collect results with progress tracking
             with LogSuppressor(suppress=suppress_logs):
