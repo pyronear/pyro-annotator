@@ -40,7 +40,9 @@ from app.clients.annotation_api import (
     list_sequence_annotations,
     create_sequence_annotation,
     update_sequence_annotation,
+    delete_sequence,
 )
+from .object_split import build_single_track_annotation
 from app.models import SequenceAnnotationProcessingStage
 from app.schemas.annotation_validation import SequenceAnnotationData
 
@@ -375,7 +377,9 @@ def create_placeholder_sequence_annotation(
     }
 
     try:
-        existing_annotation_id = check_existing_annotation(annotation_api_url, sequence_id)
+        existing_annotation_id = check_existing_annotation(
+            annotation_api_url, sequence_id
+        )
         empty_annotation_data = SequenceAnnotationData(sequences_bbox=[])
 
         if create_annotation_from_data(
@@ -397,7 +401,9 @@ def create_placeholder_sequence_annotation(
                 f"with stage {processing_stage.value}"
             )
         else:
-            error_msg = f"Failed to create placeholder annotation for sequence {sequence_id}"
+            error_msg = (
+                f"Failed to create placeholder annotation for sequence {sequence_id}"
+            )
             logging.error(error_msg)
             result["errors"].append(error_msg)
         return result
@@ -406,3 +412,65 @@ def create_placeholder_sequence_annotation(
         logging.error(error_msg)
         result["errors"].append(error_msg)
         return result
+
+
+def annotate_split_sequence(
+    seq_result: Dict[str, Any],
+    annotation_api_url: str,
+    dry_run: bool = False,
+) -> Dict[str, Any]:
+    """Write the single-track annotation for one imported object sequence.
+
+    If the object's detections were only partially imported, delete the
+    sequence instead (a half-imported object would 409 on the next run and
+    never be completed), and report the rollback as an error.
+    """
+    sequence_id = seq_result["sequence_id"]
+    result: Dict[str, Any] = {
+        "sequence_id": sequence_id,
+        "annotation_created": False,
+        "annotation_id": None,
+        "errors": [],
+        "final_stage": None,
+    }
+
+    if seq_result["failed_detections"] > 0:
+        login, password = shared.get_annotation_credentials(annotation_api_url)
+        try:
+            token = get_auth_token(
+                annotation_api_url, username=login, password=password
+            )
+            delete_sequence(annotation_api_url, token, sequence_id)
+        except Exception as exc:
+            logging.warning(f"Rollback delete of sequence {sequence_id} failed: {exc}")
+        result["errors"].append(
+            f"sequence {sequence_id} rolled back: "
+            f"{seq_result['failed_detections']}/{seq_result['total_detections']} detections failed"
+        )
+        return result
+
+    annotation_data = build_single_track_annotation(
+        seq_result.get("detection_results", [])
+    )
+    existing_annotation_id = check_existing_annotation(annotation_api_url, sequence_id)
+    if create_annotation_from_data(
+        annotation_api_url,
+        sequence_id,
+        annotation_data,
+        dry_run,
+        existing_annotation_id,
+        SequenceAnnotationProcessingStage.READY_TO_ANNOTATE,
+        config=None,
+    ):
+        result["annotation_created"] = True
+        result["annotation_id"] = (
+            existing_annotation_id if existing_annotation_id else "new"
+        )
+        result["final_stage"] = (
+            SequenceAnnotationProcessingStage.READY_TO_ANNOTATE.value
+        )
+    else:
+        result["errors"].append(
+            f"Failed to create annotation for sequence {sequence_id}"
+        )
+    return result
