@@ -14,10 +14,17 @@ ID scheme: the PRIMARY object (the cluster with the most boxes sourced from
 the platform's own `bbox` field; ties broken by earliest first detection)
 keeps the raw platform sequence id so past plain imports dedup naturally via
 the 409-skip. Siblings get
-`alert_id_base + platform_sequence_id * 1000 + object_index`.
+`alert_id_base + platform_sequence_id * 1000 + object_index`. The alert API
+sometimes materializes the same physical object as its own platform sequence
+too (that sequence's own `bbox` boxes are this one's `others_bboxes`, and vice
+versa); `split_all_records` cross-references sibling groups against every
+other platform sequence's own boxes and drops a sibling that duplicates one,
+but this only catches duplicates within a single run — sequences split across
+a date-range boundary into different runs are not deduplicated.
 """
 
 import logging
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Set, Tuple
@@ -51,6 +58,8 @@ def build_frames(sequence_records: List[dict]) -> Tuple[List[dict], Set[BoxKey]]
     Each frame merges the record's own `detection_bboxes` and its
     `detection_others_bboxes` — clustering ignores the source, but primary
     selection needs to know which boxes came from the platform's `bbox` field.
+    A box present in both lists (same coordinates) is deduped to appear once,
+    with the `own` copy taking precedence so it is still tagged primary.
     """
     frames: List[dict] = []
     primary_keys: Set[BoxKey] = set()
@@ -65,12 +74,20 @@ def build_frames(sequence_records: List[dict]) -> Tuple[List[dict], Set[BoxKey]]
         ]
         for box in own:
             primary_keys.add((key, tuple(box[:4])))
+        seen_coords = {tuple(box[:4]) for box in own}
+        boxes = list(own)
+        for box in others:
+            coords = tuple(box[:4])
+            if coords in seen_coords:
+                continue
+            seen_coords.add(coords)
+            boxes.append(box)
         frames.append(
             {
                 "frame_idx": idx,
                 "recorded_at": _parse_dt(record["detection_created_at"]),
                 "image_filename": key,
-                "boxes": own + others,
+                "boxes": boxes,
             }
         )
     return frames, primary_keys
@@ -198,6 +215,30 @@ def split_sequence_records(
     return groups
 
 
+# (bucket_key, (x1, y1, x2, y2) rounded to 4 decimals) identifying one box,
+# shared across whichever platform sequences happen to carry it.
+BucketBoxKey = Tuple[str, Tuple[float, float, float, float]]
+
+
+def _own_box_keys(records: List[dict]) -> Set[BucketBoxKey]:
+    """Box keys for a record group's own `detection_bboxes`, keyed by bucket key.
+
+    Unlike `BoxKey` (keyed by `detection_id`, unique per platform sequence),
+    this is keyed by `detection_bucket_key` so it stays comparable ACROSS
+    sequences — the alert API reuses the same image bucket key for the same
+    physical frame regardless of which sequence materializes it.
+    """
+    keys: Set[BucketBoxKey] = set()
+    for record in records:
+        bucket_key = record.get("detection_bucket_key")
+        if not bucket_key:
+            continue
+        for box in record.get("detection_bboxes") or []:
+            if len(box) >= 4:
+                keys.add((bucket_key, tuple(round(c, 4) for c in box[:4])))
+    return keys
+
+
 def split_all_records(
     records: List[dict],
     *,
@@ -207,10 +248,34 @@ def split_all_records(
 
     Returns the flat rewritten record list (feed it to the existing posting
     pipeline — each object group has its own sequence_id) plus summary stats.
+
+    A sibling group is dropped (not included in the output) when its boxes
+    match another platform sequence's own boxes — the alert API sometimes
+    materializes the same object as its own sequence too, and without this
+    check `split_sequence_records` would import it twice.
     """
-    stats = {"platform_sequences": 0, "objects": 0, "sibling_objects": 0, "fallback_sequences": 0}
+    stats = {
+        "platform_sequences": 0,
+        "objects": 0,
+        "sibling_objects": 0,
+        "fallback_sequences": 0,
+        "cross_deduped_siblings": 0,
+    }
+
+    grouped = group_records_by_sequence(records)
+
+    # First pass: index every platform sequence's own bbox-sourced boxes so
+    # siblings split out below can be checked against OTHER sequences' boxes.
+    primary_keys_by_sid: Dict[int, Set[BucketBoxKey]] = {
+        sid: _own_box_keys(seq_records) for sid, seq_records in grouped.items()
+    }
+    key_to_sids: Dict[BucketBoxKey, Set[int]] = defaultdict(set)
+    for sid, keys in primary_keys_by_sid.items():
+        for key in keys:
+            key_to_sids[key].add(sid)
+
     out: List[dict] = []
-    for _sid, seq_records in group_records_by_sequence(records).items():
+    for _sid, seq_records in grouped.items():
         platform_sid = seq_records[0]["sequence_id"]
         try:
             groups = split_sequence_records(seq_records, alert_id_base=alert_id_base)
@@ -233,6 +298,21 @@ def split_all_records(
         stats["sibling_objects"] += sum(1 for g in groups if not g.is_primary)
         stats["fallback_sequences"] += sum(1 for g in groups if g.is_fallback)
         for group in groups:
+            if not group.is_primary:
+                matched_sid = None
+                for key in _own_box_keys(group.records):
+                    other_sids = key_to_sids.get(key, set()) - {platform_sid}
+                    if other_sids:
+                        matched_sid = next(iter(other_sids))
+                        break
+                if matched_sid is not None:
+                    logging.info(
+                        f"sibling object of seq {platform_sid} matches seq "
+                        f"{matched_sid}'s own boxes — skipping (platform "
+                        "already materialized it)"
+                    )
+                    stats["cross_deduped_siblings"] += 1
+                    continue
             out.extend(group.records)
     return out, stats
 

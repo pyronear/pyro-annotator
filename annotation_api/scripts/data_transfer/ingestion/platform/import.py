@@ -336,6 +336,7 @@ def main() -> None:
         "annotations_successful": 0,
         "annotations_failed": 0,
         "annotations_created": 0,
+        "sequences_rolled_back": 0,
     }
 
     # Initialize organization early to avoid reference errors in exception handlers
@@ -495,7 +496,8 @@ def main() -> None:
             f"[blue]🔀 Object split: {split_stats['platform_sequences']} platform sequence(s) → "
             f"{split_stats['objects']} object sequence(s) "
             f"({split_stats['sibling_objects']} sibling(s), "
-            f"{split_stats['fallback_sequences']} fallback)[/]"
+            f"{split_stats['fallback_sequences']} fallback, "
+            f"{split_stats['cross_deduped_siblings']} cross-deduped)[/]"
         )
 
         if not records and not args.dry_run:
@@ -657,6 +659,8 @@ def main() -> None:
                                     error_collector.add_error(
                                         f"Sequence {sequence_id}: {error}"
                                     )
+                                    if "rolled back" in error:
+                                        stats["sequences_rolled_back"] += 1
                             else:
                                 stats["annotations_successful"] += 1
 
@@ -722,6 +726,8 @@ def main() -> None:
 • Sequences attempted: {stats['sequences_attempted_import']}
 • Successfully imported: {stats['sequences_import_successful']}
 • Failed/duplicates: {stats['sequences_import_failed']}"""
+            if stats["sequences_rolled_back"] > 0:
+                import_section += f"\n• Rolled back: {stats['sequences_rolled_back']}"
             summary_parts.append(import_section)
 
         # Annotation Generation Section

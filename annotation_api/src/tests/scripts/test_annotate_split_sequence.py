@@ -79,15 +79,24 @@ class TestAnnotateSplitSequence:
         assert result["errors"] and "rolled back" in result["errors"][0]
 
     def test_annotation_failure_reports_error(self, monkeypatch):
+        deleted = []
         monkeypatch.setattr(am, "check_existing_annotation", lambda url, sid: None)
         monkeypatch.setattr(
             am, "create_annotation_from_data", lambda *args, **kwargs: False
+        )
+        monkeypatch.setattr(
+            am.shared, "get_annotation_credentials", lambda url: ("u", "p")
+        )
+        monkeypatch.setattr(am, "get_auth_token", lambda url, username, password: "tok")
+        monkeypatch.setattr(
+            am, "delete_sequence", lambda url, token, sid: deleted.append(sid)
         )
         result = am.annotate_split_sequence(
             seq_result(), "http://annotation.test", dry_run=False
         )
         assert result["annotation_created"] is False
         assert result["errors"]
+        assert deleted == [42]
 
     def test_annotation_failure_rolls_back_sequence(self, monkeypatch):
         deleted = []
@@ -95,6 +104,29 @@ class TestAnnotateSplitSequence:
         monkeypatch.setattr(
             am, "create_annotation_from_data", lambda *args, **kwargs: False
         )
+        monkeypatch.setattr(
+            am.shared, "get_annotation_credentials", lambda url: ("u", "p")
+        )
+        monkeypatch.setattr(am, "get_auth_token", lambda url, username, password: "tok")
+        monkeypatch.setattr(
+            am, "delete_sequence", lambda url, token, sid: deleted.append(sid)
+        )
+        result = am.annotate_split_sequence(
+            seq_result(), "http://annotation.test", dry_run=False
+        )
+        assert deleted == [42]
+        assert result["annotation_created"] is False
+        assert result["errors"] and "rolled back" in result["errors"][0]
+
+    def test_unexpected_error_building_annotation_rolls_back_sequence(
+        self, monkeypatch
+    ):
+        deleted = []
+
+        def _raise(detection_results):
+            raise ValueError("boom")
+
+        monkeypatch.setattr(am, "build_single_track_annotation", _raise)
         monkeypatch.setattr(
             am.shared, "get_annotation_credentials", lambda url: ("u", "p")
         )

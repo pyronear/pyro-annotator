@@ -240,6 +240,16 @@ def create_annotation_from_data(
         return False
 
 
+def _rollback_sequence(sequence_id: int, annotation_api_url: str) -> None:
+    """Delete a sequence as part of the `annotate_split_sequence` rollback path."""
+    login, password = shared.get_annotation_credentials(annotation_api_url)
+    try:
+        token = get_auth_token(annotation_api_url, username=login, password=password)
+        delete_sequence(annotation_api_url, token, sequence_id)
+    except Exception as exc:
+        logging.warning(f"Rollback delete of sequence {sequence_id} failed: {exc}")
+
+
 def annotate_split_sequence(
     seq_result: Dict[str, Any],
     annotation_api_url: str,
@@ -262,53 +272,46 @@ def annotate_split_sequence(
     }
 
     if seq_result["failed_detections"] > 0:
-        login, password = shared.get_annotation_credentials(annotation_api_url)
-        try:
-            token = get_auth_token(
-                annotation_api_url, username=login, password=password
-            )
-            delete_sequence(annotation_api_url, token, sequence_id)
-        except Exception as exc:
-            logging.warning(f"Rollback delete of sequence {sequence_id} failed: {exc}")
+        _rollback_sequence(sequence_id, annotation_api_url)
         result["errors"].append(
             f"sequence {sequence_id} rolled back: "
             f"{seq_result['failed_detections']}/{seq_result['total_detections']} detections failed"
         )
         return result
 
-    annotation_data = build_single_track_annotation(
-        seq_result.get("detection_results", [])
-    )
-    existing_annotation_id = check_existing_annotation(annotation_api_url, sequence_id)
-    if create_annotation_from_data(
-        annotation_api_url,
-        sequence_id,
-        annotation_data,
-        dry_run,
-        existing_annotation_id,
-        SequenceAnnotationProcessingStage.READY_TO_ANNOTATE,
-        config=None,
-    ):
-        result["annotation_created"] = True
-        result["annotation_id"] = (
-            existing_annotation_id if existing_annotation_id else "new"
+    try:
+        annotation_data = build_single_track_annotation(
+            seq_result.get("detection_results", [])
         )
-        result["final_stage"] = (
-            SequenceAnnotationProcessingStage.READY_TO_ANNOTATE.value
+        existing_annotation_id = check_existing_annotation(
+            annotation_api_url, sequence_id
         )
-    else:
+        if create_annotation_from_data(
+            annotation_api_url,
+            sequence_id,
+            annotation_data,
+            dry_run,
+            existing_annotation_id,
+            SequenceAnnotationProcessingStage.READY_TO_ANNOTATE,
+            config=None,
+        ):
+            result["annotation_created"] = True
+            result["annotation_id"] = (
+                existing_annotation_id if existing_annotation_id else "new"
+            )
+            result["final_stage"] = (
+                SequenceAnnotationProcessingStage.READY_TO_ANNOTATE.value
+            )
+        else:
+            if not dry_run:
+                _rollback_sequence(sequence_id, annotation_api_url)
+            result["errors"].append(
+                f"sequence {sequence_id} rolled back: failed to create annotation"
+            )
+    except Exception as exc:
         if not dry_run:
-            login, password = shared.get_annotation_credentials(annotation_api_url)
-            try:
-                token = get_auth_token(
-                    annotation_api_url, username=login, password=password
-                )
-                delete_sequence(annotation_api_url, token, sequence_id)
-            except Exception as exc:
-                logging.warning(
-                    f"Rollback delete of sequence {sequence_id} failed: {exc}"
-                )
+            _rollback_sequence(sequence_id, annotation_api_url)
         result["errors"].append(
-            f"sequence {sequence_id} rolled back: failed to create annotation"
+            f"sequence {sequence_id} rolled back: unexpected error building annotation: {exc}"
         )
     return result

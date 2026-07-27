@@ -160,6 +160,7 @@ class TestSplitAllRecords:
             "objects": 3,
             "sibling_objects": 1,
             "fallback_sequences": 0,
+            "cross_deduped_siblings": 0,
         }
         assert {r["sequence_id"] for r in out} == {
             47105,
@@ -222,3 +223,65 @@ class TestBuildSingleTrackAnnotation:
         ]
         assert build_single_track_annotation(results).sequences_bbox == []
         assert build_single_track_annotation([]).sequences_bbox == []
+
+
+class TestBuildFramesDedupesOwnAndOthers:
+    def test_duplicate_box_in_own_and_others_appears_once(self):
+        records = [
+            make_record(i, f"2026-07-01T10:0{i}:00", [BOX_A], others=[BOX_A])
+            for i in range(1, 4)
+        ]
+        frames, primary_keys = build_frames(records)
+        assert all(len(f["boxes"]) == 1 for f in frames)
+        assert primary_keys == {(str(i), tuple(BOX_A[:4])) for i in (1, 2, 3)}
+
+    def test_duplicate_box_survives_split_exactly_once(self):
+        records = [
+            make_record(i, f"2026-07-01T10:0{i}:00", [BOX_A], others=[BOX_A])
+            for i in range(1, 4)
+        ]
+        (group,) = split_sequence_records(records)
+        for record in group.records:
+            assert record["detection_bboxes"] == [BOX_A]
+
+
+class TestSplitAllRecordsCrossSequenceDedup:
+    def _reciprocal_sequences(self):
+        """Mirrors live seqs 55283/55284: each sequence's `bbox` is the
+        other's `others_bboxes`, on the same bucket keys."""
+        seq_a = [
+            make_record(
+                1 + i,
+                f"2026-07-01T10:0{i}:00",
+                [BOX_A],
+                others=[BOX_B],
+                sid=100,
+                detection_bucket_key=f"key/frame{i}.jpg",
+            )
+            for i in range(3)
+        ]
+        seq_b = [
+            make_record(
+                4 + i,
+                f"2026-07-01T10:0{i}:00",
+                [BOX_B],
+                others=[BOX_A],
+                sid=200,
+                detection_bucket_key=f"key/frame{i}.jpg",
+            )
+            for i in range(3)
+        ]
+        return seq_a, seq_b
+
+    def test_reciprocal_siblings_are_dropped(self):
+        seq_a, seq_b = self._reciprocal_sequences()
+        out, stats = split_all_records(seq_a + seq_b)
+        assert {r["sequence_id"] for r in out} == {100, 200}
+        assert stats["cross_deduped_siblings"] == 2
+
+    def test_sibling_with_no_cross_sequence_match_is_kept(self):
+        out, stats = split_all_records(two_object_records())
+        assert stats["cross_deduped_siblings"] == 0
+        assert DEFAULT_ALERT_ID_BASE + 47105 * 1000 + 1 in {
+            r["sequence_id"] for r in out
+        }
