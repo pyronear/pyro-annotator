@@ -78,43 +78,6 @@ npm run test         # Vitest
 
 Scripts live in `annotation_api/scripts/data_transfer/ingestion/alert_api/`. Run from `annotation_api/` with `make` targets.
 
-### TP Pipeline (true positives — fire sequences)
-
-Pull annotated sequences, enrich bboxes with YOLO, visual check, push back.
-
-```bash
-cd annotation_api
-
-# 1. Pull seq_annotation_done sequences (remote → local files, marks remote in_review)
-make pull-seq-annotations MAX_SEQUENCES=20
-
-# 2. Auto-fill missing bboxes with YOLO model
-make auto-annotate
-
-# 3. Visual review in FiftyOne — tag "issue" on bad frames
-make visual-check
-
-# 4. Push results: clean → annotated, issue → needs_manual
-make apply-review
-```
-
-### FP Pipeline (false positives — no fire sequences)
-
-Pull sequences, visually confirm no fire was missed, push back with empty labels.
-
-```bash
-cd annotation_api
-
-# 1. Pull seq_annotation_done sequences (separate output dir)
-make pull-fp MAX_SEQUENCES=20
-
-# 2. Visual check in FiftyOne — tag "issue" if fire was missed
-make visual-check-fp
-
-# 3. Push results: clean → annotated (no labels), issue → needs_manual
-make apply-review-fp
-```
-
 ### Alert API Import
 
 Credentials live in `annotation_api/.env` (copy from `.env.example` once). Each data-transfer script loads it at startup via `python-dotenv`; Make does not parse `.env`.

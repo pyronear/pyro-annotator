@@ -42,7 +42,7 @@ cp .env.example .env
 # then edit .env and set MAIN_ANNOTATION_LOGIN / MAIN_ANNOTATION_PASSWORD
 ```
 
-All make targets accept variable overrides inline, e.g. `make pull-seq-annotations MAX_SEQUENCES=50`. Common variables: `REMOTE_API`, `LOCAL_API`, `MAX_SEQUENCES`, `DATA_ROOT`, `SMOKE_TYPE`, `DATASET_NAME`, `LOGLEVEL`. See `make help` for the full list.
+All make targets accept variable overrides inline, e.g. `make export-dataset LIMIT=500`. Common variables: `REMOTE_API`, `LOCAL_API`, `MAX_SEQUENCES`, `LOGLEVEL`. See `make help` for the full list.
 
 ### 1. Annotations
 
@@ -58,72 +58,7 @@ Seeding a local instance from the remote annotation API is currently unavailable
 
 Open the frontend at http://localhost:3000 and annotate. Sequences transition `READY_TO_ANNOTATE → UNDER_ANNOTATION → SEQ_ANNOTATION_DONE`.
 
-**Step 3 — Push results back to the remote API**
-
-```bash
-make push-annotations MAX_SEQUENCES=10
-```
-
-After a successful push the local annotation is parked at `in_review` to mirror the remote progression and keep the row out of the next push selection. Re-runs are guarded: rows whose remote is already in `in_review`, `needs_manual`, or `annotated` are skipped instead of overwritten.
-
-#### B. Detection Annotation
-
-Once sequence annotations are in `seq_annotation_done` on the remote API, refine them at the detection level using the YOLO model + FiftyOne review loop.
-
-**Step 1 — `pull-seq-annotations`**: pull completed sequences locally (moves remote stage to `in_review`):
-
-```bash
-make pull-seq-annotations MAX_SEQUENCES=20 SMOKE_TYPE=wildfire
-```
-- Set `MAX_SEQUENCES=0` to pull all; override `SMOKE_TYPE` (or call the script directly without `--smoke-type`) to pull every smoke type.
-- Object-split sequences (from the object-splitting import) are merged back into one folder per camera view: siblings of the same platform alert share a folder, and alerts from the same camera/azimuth less than 2h apart are chained (camera azimuth is fetched from the alert API using `ALERT_API_LOGIN`/`ALERT_API_PASSWORD`; without credentials only siblings merge). Each frame is downloaded once with the union of all objects' boxes, and a `manifest.json` maps results back to every member sequence. `MAX_SEQUENCES` counts merged folders. Alerts with a sibling still under annotation are deferred to a later pull.
-- TLS is verified by default; pass `--skip-ssl-verify` to the underlying script if you trust the host and need to silence self-signed cert issues.
-
-**Step 2 — `auto-annotate`**: auto-fill missing boxes with the pyronear YOLO11s sensitive-detector model (downloads on first run):
-
-```bash
-make auto-annotate CONF_TH=0.01
-```
-
-**Step 3 — `visual-check`**: review the exported sequences (images + YOLO labels) in FiftyOne:
-
-```bash
-make visual-check
-```
-
-**Step 4 — `apply-review`**: apply the FiftyOne review tags back to the remote API:
-
-```bash
-make apply-review
-```
-- To preview changes without writing to the API, call the underlying script with `--dry-run`.
-- Override `DATASET_NAME` / `DATA_ROOT` if you used non-default values.
-
-#### C. False-Positive (FP) Review
-
-For sequences with no fire (`smoke_types` is empty), confirm they are true false positives and push them as annotated with empty labels.
-
-**Step 1 — `pull-fp`**: pull `seq_annotation_done` FP sequences locally (moves remote stage to `in_review`):
-
-```bash
-make pull-fp MAX_SEQUENCES=20
-```
-
-**Step 2 — `visual-check-fp`**: review in FiftyOne — tag frames with `"issue"` if fire was actually missed:
-
-```bash
-make visual-check-fp
-```
-
-**Step 3 — `apply-review-fp`**: push results back to the remote API:
-
-```bash
-make apply-review-fp
-```
-- Clean sequences (no `"issue"` tags) → moved to `annotated` with empty labels (confirmed FP).
-- Issue sequences → moved to `needs_manual` for reannotation.
-
-##### Other commands
+#### B. Other commands
 
 **Reset stages on the remote API** (e.g., move `in_review` back to `seq_annotation_done` to retry a workflow):
 
