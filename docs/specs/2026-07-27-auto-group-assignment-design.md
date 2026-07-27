@@ -79,8 +79,13 @@ annotation last, only after all detections are posted.
 
 ### 4. Concurrency guard
 
-- The service takes a Postgres advisory lock
-  (`pg_try_advisory_xact_lock`) with a fixed key at the start of the run.
+- The service takes a Postgres session-level advisory lock
+  (`pg_try_advisory_lock`) with a fixed key at the start of the run, held on
+  a dedicated connection for the whole run. (Transaction-scoped
+  `pg_try_advisory_xact_lock` doesn't work here: the annotation CRUD helpers
+  commit mid-run, which would release the lock early; and holding a
+  session-level lock on the pooled work session risks unlocking on a
+  different connection after a commit.)
 - If the lock is already held (sweep and manual call overlapping), the
   service returns immediately with a "skipped: already running" result
   instead of interleaving. This preserves the assignment logic's
