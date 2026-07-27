@@ -59,7 +59,7 @@ import re
 import sys
 import time
 from datetime import datetime
-from typing import List, Optional
+from typing import List
 
 from dotenv import load_dotenv
 from rich.console import Console
@@ -79,14 +79,11 @@ from .sequence_fetching import fetch_all_sequences_within
 from . import object_split
 from .annotation_management import (
     valid_date,
-    create_simple_sequence_annotation,  # noqa: F401 - kept for now, dies with clone mode in PR2
-    create_placeholder_sequence_annotation,
     annotate_split_sequence,
 )
 from . import shared
 from . import client as platform_client
 from app.clients import annotation_api
-from app.models import SequenceAnnotationProcessingStage
 
 load_dotenv()
 
@@ -109,8 +106,7 @@ def make_cli_parser() -> argparse.ArgumentParser:
         "--date-from",
         help="Start date for sequences (YYYY-MM-DD format)",
         type=valid_date,
-        required=False,
-        default=None,
+        required=True,
     )
     parser.add_argument(
         "--date-end",
@@ -132,38 +128,6 @@ def make_cli_parser() -> argparse.ArgumentParser:
         help="Annotation API URL",
         type=str,
         default="http://localhost:5050",
-    )
-    parser.add_argument(
-        "--source-annotation-url",
-        help=(
-            "Optional source annotation API URL to clone sequences/detections from, "
-            "bypassing the platform API"
-        ),
-        type=str,
-    )
-    parser.add_argument(
-        "--clone-processing-stage",
-        help=(
-            "When cloning from annotation API, filter sequences by processing stage. "
-            "Default: no_annotation (only sequences without annotation record). Use 'all' to disable filter."
-        ),
-        type=str,
-        choices=[
-            "no_annotation",
-            "imported",
-            "ready_to_annotate",
-            "under_annotation",
-            "seq_annotation_done",
-            "needs_manual",
-            "annotated",
-            "all",
-        ],
-        default="no_annotation",
-    )
-    parser.add_argument(
-        "--clone-count-only",
-        action="store_true",
-        help="In clone mode, only fetch and display the number of sequences matching the filter, then exit",
     )
     parser.add_argument(
         "--max-sequences",
@@ -282,25 +246,19 @@ def get_source_api_from_url(url: str) -> str:
     return url_to_source_api.get(url, "pyronear_french")
 
 
-def validate_args(args: argparse.Namespace, clone_from_annotation: bool) -> bool:
+def validate_args(args: argparse.Namespace) -> bool:
     """
     Validate parsed command line arguments.
 
     Args:
         args: Parsed arguments namespace
-        clone_from_annotation: Whether we are cloning from annotation API
 
     Returns:
         True if arguments are valid, False otherwise
     """
-    # Validate date range only when using platform mode
-    if not clone_from_annotation:
-        if args.date_from is None:
-            logging.error("--date-from is required when using platform API")
-            return False
-        if args.date_from > args.date_end:
-            logging.error("--date-from must be earlier than or equal to --date-end")
-            return False
+    if args.date_from > args.date_end:
+        logging.error("--date-from must be earlier than or equal to --date-end")
+        return False
 
     # Validate numeric thresholds
     if not (0.0 <= args.confidence_threshold <= 1.0):
@@ -374,262 +332,12 @@ def parse_sequence_selection(sequence_arg: str) -> List[int]:
     return sequence_ids
 
 
-def get_source_annotation_credentials() -> tuple[str, str]:
-    """
-    Resolve credentials for the source annotation API (clone mode).
-    """
-    login = os.getenv("MAIN_ANNOTATION_LOGIN") or os.getenv("ANNOTATOR_LOGIN", "admin")
-    password = os.getenv("MAIN_ANNOTATION_PASSWORD") or os.getenv(
-        "ANNOTATOR_PASSWORD", "admin12345"
-    )
-    return login, password
-
-
-def count_sequences_from_annotation_api(
-    source_annotation_url: str,
-    clone_processing_stage: str,
-    console: Console,
-) -> int:
-    """
-    Count sequences from annotation API with a processing_stage filter.
-    """
-    login, password = get_source_annotation_credentials()
-    auth_token = annotation_api.get_auth_token(
-        source_annotation_url, username=login, password=password
-    )
-    params = {
-        "page": 1,
-        "size": 1,
-    }
-    if clone_processing_stage != "all":
-        params["processing_stage"] = clone_processing_stage
-
-    seq_page = annotation_api.list_sequences(
-        source_annotation_url,
-        auth_token,
-        **params,
-    )
-    total = seq_page.get("total", len(seq_page.get("items", [])))
-    console.print(
-        f"[blue]ℹ️  Source annotation sequences matching processing_stage={clone_processing_stage}: [bold]{total}[/]"
-    )
-    return total
-
-
-def update_source_annotations_stage(
-    source_annotation_url: str,
-    source_sequence_ids: List[int],
-    target_stage: str,
-    console: Console,
-) -> None:
-    """
-    Update processing_stage for annotations on the source annotation API.
-    """
-    if not source_sequence_ids:
-        return
-
-    login, password = get_source_annotation_credentials()
-    token = annotation_api.get_auth_token(
-        source_annotation_url, username=login, password=password
-    )
-
-    updated = 0
-    missing = 0
-    errors = 0
-    for seq_id in source_sequence_ids:
-        resp = annotation_api.list_sequence_annotations(
-            source_annotation_url, token, sequence_id=seq_id, page=1, size=1
-        )
-        items = resp.get("items", []) if isinstance(resp, dict) else resp
-        if not items:
-            missing += 1
-            continue
-        ann_id = items[0]["id"]
-        try:
-            annotation_api.update_sequence_annotation(
-                source_annotation_url, token, ann_id, {"processing_stage": target_stage}
-            )
-            updated += 1
-        except Exception as exc:
-            errors += 1
-            console.print(
-                f"[yellow]⚠️ Failed to update annotation {ann_id} on source (sequence_id={seq_id}): {exc}[/]"
-            )
-
-    console.print(
-        f"[blue]ℹ️  Updated source annotations stage to {target_stage}: "
-        f"{updated} updated, {missing} missing, {errors} errors[/]"
-    )
-
-
-def fetch_records_from_annotation_api(
-    source_annotation_url: str,
-    selected_sequence_list: List[int],
-    console: Console,
-    suppress_logs: bool,
-    max_sequences: Optional[int] = None,
-    clone_processing_stage: str = "no_annotation",
-) -> tuple[List[dict], str, List[int]]:
-    """
-    Fetch sequences and detections directly from an annotation API instance.
-
-    Args:
-        source_annotation_url: Base URL of the source annotation API
-        selected_sequence_list: List of alert_api_id to copy (empty means all)
-        console: Rich console for output
-        suppress_logs: Whether to suppress logs during progress
-        max_sequences: Optional limit of sequences to clone
-
-    Returns:
-        Tuple of (records in platform-format, source_api value)
-    """
-    login, password = get_source_annotation_credentials()
-
-    if not login or not password:
-        raise ValueError("Missing source annotation credentials")
-
-    console.print(
-        f"[blue]🔄 Cloning from source annotation API at {source_annotation_url}[/]"
-    )
-    auth_token = annotation_api.get_auth_token(
-        source_annotation_url, username=login, password=password
-    )
-
-    records: List[dict] = []
-    source_sequence_ids: List[int] = []
-    source_api = None
-    size = 100
-    page = 1
-    found_ids = set()
-    targets = (
-        set(selected_sequence_list[:max_sequences])
-        if selected_sequence_list and max_sequences
-        else set(selected_sequence_list)
-        if selected_sequence_list
-        else None
-    )
-    max_sequences = max_sequences if max_sequences and max_sequences > 0 else None
-    cloned_sequences = 0
-    total_detections = 0
-
-    with LogSuppressor(suppress=suppress_logs):
-        while True:
-            seq_page = annotation_api.list_sequences(
-                source_annotation_url,
-                auth_token,
-                page=page,
-                size=size,
-                processing_stage=None
-                if clone_processing_stage == "all"
-                else clone_processing_stage,
-            )
-            items = seq_page.get("items", [])
-            console.print(
-                f"[blue]📥 Page {page}/{seq_page.get('pages', 1)}: found {len(items)} sequences (cloned so far: {cloned_sequences})[/]"
-            )
-
-            for seq in items:
-                alert_id = seq.get("alert_api_id")
-                if targets and alert_id not in targets:
-                    continue
-
-                source_api = source_api or seq.get("source_api", "pyronear_french")
-                found_ids.add(alert_id)
-                cloned_sequences += 1
-                source_sequence_ids.append(seq["id"])
-
-                # Fetch detections for this sequence
-                det_page_num = 1
-                while True:
-                    det_page = annotation_api.list_detections(
-                        source_annotation_url,
-                        auth_token,
-                        sequence_id=seq["id"],
-                        page=det_page_num,
-                        size=size,
-                    )
-                    detections = det_page.get("items", [])
-
-                    for det in detections:
-                        total_detections += 1
-                        det_url = annotation_api.get_detection_url(
-                            source_annotation_url, auth_token, det["id"]
-                        )
-                        records.append(
-                            {
-                                "organization_id": seq["organisation_id"],
-                                "organization_name": seq["organisation_name"],
-                                "camera_id": seq["camera_id"],
-                                "camera_name": seq["camera_name"],
-                                "camera_lat": seq.get("lat"),
-                                "camera_lon": seq.get("lon"),
-                                "camera_is_trustable": seq.get("camera_is_trustable"),
-                                "camera_angle_of_view": seq.get("camera_angle_of_view"),
-                                "sequence_id": seq.get("alert_api_id"),
-                                "sequence_is_wildfire": seq.get("is_wildfire_alertapi"),
-                                "sequence_started_at": seq.get("recorded_at"),
-                                "sequence_last_seen_at": seq.get("last_seen_at")
-                                or seq.get("recorded_at"),
-                                "camera_azimuth": seq.get("azimuth"),
-                                "detection_id": det.get("alert_api_id") or det["id"],
-                                "detection_created_at": det.get("created_at")
-                                or det.get("recorded_at"),
-                                "detection_azimuth": det.get("azimuth"),
-                                "detection_url": det_url,
-                                "detection_bboxes": det.get("algo_predictions", {}),
-                                "detection_others_bboxes": det.get("others_bboxes"),
-                                # Intentionally omit detection_bucket_key here:
-                                # the source key lives in the source annotation
-                                # bucket, not a platform bucket, so the
-                                # /from-bucket-key path would look in the wrong
-                                # place. Force the URL fallback instead.
-                            }
-                        )
-
-                    if det_page_num >= det_page.get("pages", 1):
-                        break
-                    det_page_num += 1
-
-                if max_sequences and cloned_sequences >= max_sequences:
-                    console.print(
-                        f"[yellow]⏹️ Reached max_sequences limit ({max_sequences}), stopping clone[/]"
-                    )
-                    break
-
-            if max_sequences and cloned_sequences >= max_sequences:
-                break
-
-            if targets and found_ids >= targets:
-                break
-            if page >= seq_page.get("pages", 1):
-                break
-            page += 1
-
-    console.print(
-        f"[green]✅ Cloned {len(records)} detection records from source annotation API[/]"
-    )
-    console.print(
-        f"   • [bold]{cloned_sequences}[/] sequences, [bold]{total_detections}[/] detections"
-    )
-
-    missing = targets - found_ids if targets else set()
-    if missing:
-        console.print(
-            f"[yellow]⚠️ Missing {len(missing)} requested sequence(s) in source annotation API: {sorted(missing)}[/]"
-        )
-
-    return records, source_api or "pyronear_french", source_sequence_ids
-
-
 def main() -> None:
     """Main execution function with comprehensive error handling and progress tracking."""
     parser = make_cli_parser()
     args = parser.parse_args()
 
-    clone_from_annotation = bool(args.source_annotation_url)
     max_sequences = args.max_sequences
-    clone_processing_stage = args.clone_processing_stage
-    clone_count_only = args.clone_count_only
 
     # Setup logging
     logging.basicConfig(
@@ -639,10 +347,10 @@ def main() -> None:
     logger = logging.getLogger(__name__)
 
     # Validate arguments
-    if not validate_args(args, clone_from_annotation):
+    if not validate_args(args):
         sys.exit(1)
 
-    # Get source_api from platform URL (can be overridden in clone mode)
+    # Get source_api from platform URL
     source_api = get_source_api_from_url(args.url_api_platform)
 
     # Initialize components
@@ -670,9 +378,7 @@ def main() -> None:
     }
 
     # Initialize organization early to avoid reference errors in exception handlers
-    organization = (
-        os.getenv("PLATFORM_LOGIN") if not clone_from_annotation else "annotation-clone"
-    ) or "unknown"
+    organization = os.getenv("PLATFORM_LOGIN") or "unknown"
     selected_sequence_list: List[int] = []
     sequence_list_source = "CLI input"
 
@@ -697,7 +403,7 @@ def main() -> None:
             f"[blue]ℹ️  Restricting to {len(selected_sequence_list)} sequence alert_api_id(s) ({sequence_list_source})[/]"
         )
 
-    # Early credential checks for target (and source if cloning)
+    # Early credential check for target annotation API
     target_login, target_password = shared.get_annotation_credentials(
         args.url_api_annotation
     )
@@ -709,27 +415,9 @@ def main() -> None:
         console,
     )
 
-    source_ok = True
-    if clone_from_annotation:
-        source_login, source_password = get_source_annotation_credentials()
-        source_ok = test_annotation_credentials(
-            args.source_annotation_url,
-            source_login,
-            source_password,
-            "Source annotation",
-            console,
-        )
-
-    if not target_ok or (clone_from_annotation and not source_ok):
+    if not target_ok:
         console.print("[red]❌ Aborting due to authentication failure[/]")
         sys.exit(1)
-
-    # In clone count-only mode, just display the count and exit
-    if clone_from_annotation and clone_count_only:
-        count_sequences_from_annotation_api(
-            args.source_annotation_url, clone_processing_stage, console
-        )
-        sys.exit(0)
 
     # Print header
     console.print()
@@ -743,22 +431,12 @@ def main() -> None:
     )
 
     if args.loglevel == "debug":
-        if clone_from_annotation:
-            console.print(
-                f"[blue]ℹ️  Clone source annotation API: {args.source_annotation_url}[/]"
-            )
-            if max_sequences:
-                console.print(f"[blue]ℹ️  Max sequences to clone: {max_sequences}[/]")
-            console.print(
-                f"[blue]ℹ️  Clone processing_stage filter: {clone_processing_stage}[/]"
-            )
-        else:
-            console.print(
-                f"[blue]ℹ️  Date range: {args.date_from} to {args.date_end}[/]"
-            )
-            console.print(
-                f"[blue]ℹ️  Platform: {args.url_api_platform} (source_api: {source_api})[/]"
-            )
+        console.print(
+            f"[blue]ℹ️  Date range: {args.date_from} to {args.date_end}[/]"
+        )
+        console.print(
+            f"[blue]ℹ️  Platform: {args.url_api_platform} (source_api: {source_api})[/]"
+        )
         console.print(f"[blue]ℹ️  Worker config: {worker_config}[/]")
         console.print(
             f"[blue]ℹ️  Analysis config: confidence={args.confidence_threshold}, iou={args.iou_threshold}, min_cluster={args.min_cluster_size}[/]"
@@ -769,141 +447,104 @@ def main() -> None:
         successfully_imported_sequence_ids = []
         step_manager.start_step(
             1,
-            "Platform Data Import" if not clone_from_annotation else "Annotation Clone",
-            (
-                f"Cloning sequences from {args.source_annotation_url}"
-                if clone_from_annotation
-                else f"Fetching {organization} data from {args.date_from} to {args.date_end} using {worker_config.base_workers} workers"
-            ),
+            "Platform Data Import",
+            f"Fetching {organization} data from {args.date_from} to {args.date_end} using {worker_config.base_workers} workers",
         )
 
-        if not clone_from_annotation and not shared.validate_available_env_variables():
+        if not shared.validate_available_env_variables():
             console.print(
                 "[red]❌ Missing required environment variables for platform API[/]"
             )
             step_manager.complete_step(False, "Missing environment variables")
             sys.exit(1)
 
-        if clone_from_annotation:
-            # Fetch records directly from another annotation API instance
+        # Get platform credentials
+        platform_login = os.getenv("PLATFORM_LOGIN")
+        platform_password = os.getenv("PLATFORM_PASSWORD")
+        platform_admin_login = os.getenv("PLATFORM_ADMIN_LOGIN")
+        platform_admin_password = os.getenv("PLATFORM_ADMIN_PASSWORD")
+
+        if not all(
+            [
+                platform_login,
+                platform_password,
+                platform_admin_login,
+                platform_admin_password,
+            ]
+        ):
+            error_collector.add_error("Missing platform credentials")
+            step_manager.complete_step(False, "Missing platform credentials")
+            sys.exit(1)
+
+        # Get access tokens with progress display
+        auth_start_time = time.time()
+        with console.status(
+            f"[bold blue]🔐 Authenticating with platform API ({organization})...",
+            spinner="dots",
+        ) as status:
             try:
-                records, source_api, source_sequence_ids = (
-                    fetch_records_from_annotation_api(
-                        source_annotation_url=args.source_annotation_url,
-                        selected_sequence_list=selected_sequence_list,
-                        console=console,
-                        suppress_logs=suppress_logs,
-                        max_sequences=max_sequences,
-                        clone_processing_stage=clone_processing_stage,
-                    )
-                )
-            except Exception as e:
-                error_collector.add_error(f"Annotation clone failed: {e}")
-                step_manager.complete_step(False, f"Annotation clone failed: {e}")
-                error_collector.print_summary(console, "Annotation Clone Errors")
-                sys.exit(1)
-            if not args.dry_run:
-                update_source_annotations_stage(
-                    args.source_annotation_url,
-                    source_sequence_ids,
-                    SequenceAnnotationProcessingStage.UNDER_ANNOTATION.value,
-                    console,
-                )
-        else:
-            # Get platform credentials
-            platform_login = os.getenv("PLATFORM_LOGIN")
-            platform_password = os.getenv("PLATFORM_PASSWORD")
-            platform_admin_login = os.getenv("PLATFORM_ADMIN_LOGIN")
-            platform_admin_password = os.getenv("PLATFORM_ADMIN_PASSWORD")
-
-            if not all(
-                [
-                    platform_login,
-                    platform_password,
-                    platform_admin_login,
-                    platform_admin_password,
-                ]
-            ):
-                error_collector.add_error("Missing platform credentials")
-                step_manager.complete_step(False, "Missing platform credentials")
-                sys.exit(1)
-
-            # Get access tokens with progress display
-            auth_start_time = time.time()
-            with console.status(
-                f"[bold blue]🔐 Authenticating with platform API ({organization})...",
-                spinner="dots",
-            ) as status:
-                try:
-                    status.update(
-                        f"[bold blue]🔐 Getting {organization} access token..."
-                    )
-                    access_token = platform_client.get_api_access_token(
-                        api_endpoint=args.url_api_platform,
-                        username=platform_login,
-                        password=platform_password,
-                    )
-
-                    status.update("[bold blue]🔐 Getting admin access token...")
-                    access_token_admin = platform_client.get_api_access_token(
-                        api_endpoint=args.url_api_platform,
-                        username=platform_admin_login,
-                        password=platform_admin_password,
-                    )
-
-                    auth_duration = time.time() - auth_start_time
-                    console.print(
-                        f"[green]✅ Authentication successful[/] [dim]({auth_duration:.1f}s)[/]"
-                    )
-
-                except Exception as e:
-                    error_collector.add_error(f"Authentication failed: {e}")
-                    step_manager.complete_step(False, f"Authentication failed: {e}")
-                    sys.exit(1)
-
-            # Fetch platform records
-            try:
-                # "none" means: do not pass risk_score → platform applies its
-                # per-camera risk filter (default behaviour).
-                risk_score = args.risk_score if args.risk_score != "none" else None
-                records = fetch_all_sequences_within(
-                    date_from=args.date_from,
-                    date_end=args.date_end,
-                    detections_limit=args.detections_limit,
-                    detections_order_by=args.detections_order_by,
+                status.update(f"[bold blue]🔐 Getting {organization} access token...")
+                access_token = platform_client.get_api_access_token(
                     api_endpoint=args.url_api_platform,
-                    access_token=access_token,
-                    access_token_admin=access_token_admin,
-                    worker_config=worker_config,
-                    selected_sequence_list=selected_sequence_list or None,
-                    max_sequences=max_sequences,
-                    suppress_logs=suppress_logs,
-                    console=console,
-                    error_collector=error_collector,
-                    organization=organization,
-                    risk_score=risk_score,
+                    username=platform_login,
+                    password=platform_password,
                 )
+
+                status.update("[bold blue]🔐 Getting admin access token...")
+                access_token_admin = platform_client.get_api_access_token(
+                    api_endpoint=args.url_api_platform,
+                    username=platform_admin_login,
+                    password=platform_admin_password,
+                )
+
+                auth_duration = time.time() - auth_start_time
+                console.print(
+                    f"[green]✅ Authentication successful[/] [dim]({auth_duration:.1f}s)[/]"
+                )
+
             except Exception as e:
-                error_collector.add_error(f"Platform data fetching failed: {e}")
-                step_manager.complete_step(False, f"Platform data fetching failed: {e}")
-                error_collector.print_summary(console, "Platform Data Fetching Errors")
+                error_collector.add_error(f"Authentication failed: {e}")
+                step_manager.complete_step(False, f"Authentication failed: {e}")
                 sys.exit(1)
 
-            records, split_stats = object_split.split_all_records(records)
-            console.print(
-                f"[blue]🔀 Object split: {split_stats['platform_sequences']} platform sequence(s) → "
-                f"{split_stats['objects']} object sequence(s) "
-                f"({split_stats['sibling_objects']} sibling(s), "
-                f"{split_stats['fallback_sequences']} fallback)[/]"
+        # Fetch platform records
+        try:
+            # "none" means: do not pass risk_score → platform applies its
+            # per-camera risk filter (default behaviour).
+            risk_score = args.risk_score if args.risk_score != "none" else None
+            records = fetch_all_sequences_within(
+                date_from=args.date_from,
+                date_end=args.date_end,
+                detections_limit=args.detections_limit,
+                detections_order_by=args.detections_order_by,
+                api_endpoint=args.url_api_platform,
+                access_token=access_token,
+                access_token_admin=access_token_admin,
+                worker_config=worker_config,
+                selected_sequence_list=selected_sequence_list or None,
+                max_sequences=max_sequences,
+                suppress_logs=suppress_logs,
+                console=console,
+                error_collector=error_collector,
+                organization=organization,
+                risk_score=risk_score,
             )
+        except Exception as e:
+            error_collector.add_error(f"Platform data fetching failed: {e}")
+            step_manager.complete_step(False, f"Platform data fetching failed: {e}")
+            error_collector.print_summary(console, "Platform Data Fetching Errors")
+            sys.exit(1)
+
+        records, split_stats = object_split.split_all_records(records)
+        console.print(
+            f"[blue]🔀 Object split: {split_stats['platform_sequences']} platform sequence(s) → "
+            f"{split_stats['objects']} object sequence(s) "
+            f"({split_stats['sibling_objects']} sibling(s), "
+            f"{split_stats['fallback_sequences']} fallback)[/]"
+        )
 
         if not records and not args.dry_run:
-            msg = (
-                "No records fetched from source annotation API"
-                if clone_from_annotation
-                else "No records fetched from platform API"
-            )
-            step_manager.complete_step(False, msg)
+            step_manager.complete_step(False, "No records fetched from platform API")
             sys.exit(0)
 
         # Post to annotation API (if not dry run)
@@ -1011,24 +652,11 @@ def main() -> None:
         step_manager.start_step(
             3,
             "Sequence Annotation Creation",
-            (
-                f"Creating sequence annotations for {len(sequence_ids)} sequences (auto-generation enabled)"
-                if not clone_from_annotation
-                else f"Creating placeholder sequence annotations for {len(sequence_ids)} sequences (under annotation)"
-            ),
+            f"Creating sequence annotations for {len(sequence_ids)} sequences (auto-generation enabled)",
         )
 
-        # Annotation configuration - unused now that the platform path uses
-        # annotate_split_sequence (no auto-generation config); the CLI flags
-        # are removed in PR2 along with clone mode.
-        annotation_config = {  # noqa: F841
-            "confidence_threshold": args.confidence_threshold,
-            "iou_threshold": args.iou_threshold,
-            "min_cluster_size": args.min_cluster_size,
-        }
-
         platform_seq_results = []
-        if not clone_from_annotation and not args.dry_run:
+        if not args.dry_run:
             platform_seq_results = [
                 r for r in result.get("sequence_results", []) if not r.get("skipped")
             ]
@@ -1037,27 +665,15 @@ def main() -> None:
             max_workers=worker_config.annotation_processing
         ) as executor:
             # Submit all sequence annotation tasks
-            if not clone_from_annotation:
-                future_to_sequence_id = {
-                    executor.submit(
-                        annotate_split_sequence,
-                        seq_result=seq_result,
-                        annotation_api_url=args.url_api_annotation,
-                        dry_run=args.dry_run,
-                    ): seq_result["sequence_id"]
-                    for seq_result in platform_seq_results
-                }
-            else:
-                future_to_sequence_id = {
-                    executor.submit(
-                        create_placeholder_sequence_annotation,
-                        sequence_id=sequence_id,
-                        annotation_api_url=args.url_api_annotation,
-                        processing_stage=SequenceAnnotationProcessingStage.READY_TO_ANNOTATE,
-                        dry_run=args.dry_run,
-                    ): sequence_id
-                    for sequence_id in sequence_ids
-                }
+            future_to_sequence_id = {
+                executor.submit(
+                    annotate_split_sequence,
+                    seq_result=seq_result,
+                    annotation_api_url=args.url_api_annotation,
+                    dry_run=args.dry_run,
+                ): seq_result["sequence_id"]
+                for seq_result in platform_seq_results
+            }
 
             # Collect results with progress tracking
             with LogSuppressor(suppress=suppress_logs):
