@@ -90,9 +90,10 @@ export default function SequenceGroupsListPage() {
               <tr>
                 <td colSpan={7} className="px-3 py-8 text-center text-gray-500">
                   {filter === 'unlabeled'
-                    ? 'No unlabeled multi-sequence groups yet. Run ' +
-                      'make assign-groups after an import; groups with ' +
-                      'fewer than 3 sequences are intentionally hidden here.'
+                    ? 'No unlabeled multi-sequence groups yet. Groups are ' +
+                      'assigned automatically a few minutes after an import; ' +
+                      'groups with fewer than 3 sequences are intentionally ' +
+                      'hidden here.'
                     : 'No groups match this filter.'}
                 </td>
               </tr>
