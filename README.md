@@ -58,6 +58,8 @@ Seeding a local instance from the remote annotation API is currently unavailable
 
 Open the frontend at http://localhost:3000 and annotate. Sequences transition `READY_TO_ANNOTATE → UNDER_ANNOTATION → SEQ_ANNOTATION_DONE`.
 
+Annotations stay on the API you annotated against; the file-based local→remote sync (`push-annotations`) was retired along with the FiftyOne review pipelines.
+
 #### B. Other commands
 
 **Reset stages on the remote API** (e.g., move `in_review` back to `seq_annotation_done` to retry a workflow):
