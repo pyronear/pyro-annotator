@@ -1,4 +1,4 @@
-import scripts.data_transfer.ingestion.platform.annotation_management as am
+import scripts.data_transfer.ingestion.alert_api.annotation_management as am
 
 
 def seq_result(failed=0, detection_results=None):

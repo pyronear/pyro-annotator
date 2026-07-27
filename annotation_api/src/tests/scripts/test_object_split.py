@@ -2,8 +2,8 @@ from datetime import datetime
 
 import pytest
 
-from scripts.data_transfer.ingestion.platform.object_clustering import cluster_objects
-from scripts.data_transfer.ingestion.platform.object_split import (
+from scripts.data_transfer.ingestion.alert_api.object_clustering import cluster_objects
+from scripts.data_transfer.ingestion.alert_api.object_split import (
     DEFAULT_ALERT_ID_BASE,
     build_frames,
     build_single_track_annotation,

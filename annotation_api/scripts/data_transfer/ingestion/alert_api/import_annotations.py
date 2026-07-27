@@ -2,7 +2,7 @@
 Import annotations from a backup JSON into the local annotation API.
 
 Example:
-uv run python -m scripts.data_transfer.ingestion.platform.import_annotations \
+uv run python -m scripts.data_transfer.ingestion.alert_api.import_annotations \
   --backup outputs/sequences_and_annotations_20250101.json \
   --api-base http://localhost:5050/api/v1 \
   --username admin --password admin12345 \

@@ -1,6 +1,6 @@
 from app.models import FalsePositiveType, SmokeType
 
-from scripts.data_transfer.ingestion.platform import label_classes as lc
+from scripts.data_transfer.ingestion.alert_api import label_classes as lc
 
 
 class TestClassRegistrySync:

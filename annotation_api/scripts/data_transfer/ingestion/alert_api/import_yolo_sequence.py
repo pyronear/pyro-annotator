@@ -28,7 +28,7 @@ import requests
 from dotenv import load_dotenv
 
 from app.clients import annotation_api
-from scripts.data_transfer.ingestion.platform.shared import get_annotation_credentials
+from scripts.data_transfer.ingestion.alert_api.shared import get_annotation_credentials
 
 load_dotenv()
 

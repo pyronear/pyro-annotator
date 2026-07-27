@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from scripts.data_transfer.ingestion.platform.object_clustering import (
+from scripts.data_transfer.ingestion.alert_api.object_clustering import (
     cluster_objects,
 )
 

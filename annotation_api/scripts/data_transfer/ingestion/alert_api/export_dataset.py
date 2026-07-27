@@ -31,7 +31,7 @@ YOLO format per line:
     class_id x_center y_center width height
 
 Example:
-uv run python -m scripts.data_transfer.ingestion.platform.export_dataset \
+uv run python -m scripts.data_transfer.ingestion.alert_api.export_dataset \
   --api-base https://annotationapi.pyronear.org/api/v1 \
   --limit 500 \
   --max-rows 2000 \

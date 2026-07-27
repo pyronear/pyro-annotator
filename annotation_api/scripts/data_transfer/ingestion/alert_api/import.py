@@ -15,14 +15,14 @@ This script provides a streamlined workflow to fetch platform data and generate 
 
 Usage:
   # Basic usage - full pipeline for date range
-  uv run python -m scripts.data_transfer.ingestion.platform.import --date-from 2024-01-01 --date-end 2024-01-02
+  uv run python -m scripts.data_transfer.ingestion.alert_api.import --date-from 2024-01-01 --date-end 2024-01-02
 
   # Route images via the /from-url endpoint (needed when the annotation API
   # can't reach the alert API's S3 bucket, e.g. local dev with LocalStack)
-  uv run python -m scripts.data_transfer.ingestion.platform.import --date-from 2024-01-01 --image-transfer url
+  uv run python -m scripts.data_transfer.ingestion.alert_api.import --date-from 2024-01-01 --image-transfer url
 
   # Dry run to preview what would be processed
-  uv run python -m scripts.data_transfer.ingestion.platform.import --date-from 2024-01-01 --dry-run
+  uv run python -m scripts.data_transfer.ingestion.alert_api.import --date-from 2024-01-01 --dry-run
 
 Arguments:
   --date-from (date): Start date for sequences (YYYY-MM-DD format)
@@ -51,16 +51,16 @@ Environment variables required:
 
 Examples:
   # Basic usage
-  uv run python -m scripts.data_transfer.ingestion.platform.import --date-from 2024-01-01 --date-end 2024-01-02
+  uv run python -m scripts.data_transfer.ingestion.alert_api.import --date-from 2024-01-01 --date-end 2024-01-02
 
   # Restrict to a specific list of sequences
-  uv run python -m scripts.data_transfer.ingestion.platform.import --date-from 2024-01-01 --sequence-list 158,16851,168468
+  uv run python -m scripts.data_transfer.ingestion.alert_api.import --date-from 2024-01-01 --sequence-list 158,16851,168468
 
   # Dry run to see what would be processed
-  uv run python -m scripts.data_transfer.ingestion.platform.import --date-from 2024-01-01 --dry-run --loglevel debug
+  uv run python -m scripts.data_transfer.ingestion.alert_api.import --date-from 2024-01-01 --dry-run --loglevel debug
 
   # High-performance processing with more workers
-  uv run python -m scripts.data_transfer.ingestion.platform.import --date-from 2024-01-01 --max-workers 8
+  uv run python -m scripts.data_transfer.ingestion.alert_api.import --date-from 2024-01-01 --max-workers 8
 """
 
 import argparse

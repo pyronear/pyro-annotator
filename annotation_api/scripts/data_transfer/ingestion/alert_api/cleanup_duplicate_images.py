@@ -5,15 +5,15 @@ This catches sequences with duplicate/frozen frames that are not useful for anno
 
 Usage:
     # Dry run (list duplicates without deleting)
-    uv run python -m scripts.data_transfer.ingestion.platform.cleanup_duplicate_images \
+    uv run python -m scripts.data_transfer.ingestion.alert_api.cleanup_duplicate_images \
         --url-api-annotation https://your-api-url --dry-run
 
     # Save images locally to double check before deleting
-    uv run python -m scripts.data_transfer.ingestion.platform.cleanup_duplicate_images \
+    uv run python -m scripts.data_transfer.ingestion.alert_api.cleanup_duplicate_images \
         --url-api-annotation https://your-api-url --dry-run --save-images outputs/duplicate_check
 
     # Actually delete
-    uv run python -m scripts.data_transfer.ingestion.platform.cleanup_duplicate_images \
+    uv run python -m scripts.data_transfer.ingestion.alert_api.cleanup_duplicate_images \
         --url-api-annotation https://your-api-url
 """
 

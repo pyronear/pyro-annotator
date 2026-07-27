@@ -1,12 +1,12 @@
 import numpy as np
 
-from scripts.data_transfer.ingestion.platform.auto_annotate import (
+from scripts.data_transfer.ingestion.alert_api.auto_annotate import (
     group_and_merge_boxes,
     majority_class,
     read_file,
     write_bboxes_to_label_file,
 )
-from scripts.data_transfer.ingestion.platform.label_classes import FP_CLASS_ID_START
+from scripts.data_transfer.ingestion.alert_api.label_classes import FP_CLASS_ID_START
 
 
 class TestReadWriteRoundTrip:
