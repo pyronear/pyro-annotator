@@ -1,7 +1,7 @@
 """procrastinate worker: runs the ONNX smoke detector over a sequence's
 detections and writes the immutable ``detection.auto_predictions`` field.
 
-Gap-fill model (mirrors ``make auto-annotate``): the engine predictions
+Gap-fill model (mirrors the retired file-based auto-annotate script): the engine predictions
 (``algo_predictions``) sometimes miss the object on some frames. We aggregate
 every detection's engine boxes, cluster them into persistent objects, then run
 the high-recall sensitive detector per frame and keep only predictions that

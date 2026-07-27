@@ -85,7 +85,7 @@ class Settings(BaseSettings):
     AUTOANNOTATE_CONF: float = float(os.environ.get("AUTOANNOTATE_CONF", "0.01"))
     AUTOANNOTATE_IOU: float = float(os.environ.get("AUTOANNOTATE_IOU", "0.0"))
     AUTOANNOTATE_IMGSZ: int = int(os.environ.get("AUTOANNOTATE_IMGSZ", "1024"))
-    # Clustering thresholds for the gap-fill anchor (mirror `make auto-annotate`):
+    # Clustering thresholds for the gap-fill anchor (mirror the retired file-based auto-annotate script):
     # aggregated engine boxes are clustered into persistent objects, then only
     # sensitive-model predictions overlapping an object are kept.
     AUTOANNOTATE_GROUP_IOU_NMS: float = float(
