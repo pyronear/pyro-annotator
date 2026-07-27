@@ -83,6 +83,8 @@ function MemberCard({
     mutationFn: () => apiClient.removeSequenceFromGroup(groupId, member.sequence_id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sequenceGroup', groupId] });
+      queryClient.invalidateQueries({ queryKey: ['sequenceGroupsList'] });
+      queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
     },
   });
 
@@ -240,6 +242,8 @@ export default function SequenceGroupAnnotatePage() {
       apiClient.patchSequenceGroup(groupId, { is_validated: validated }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sequenceGroup', groupId] });
+      queryClient.invalidateQueries({ queryKey: ['sequenceGroupsList'] });
+      queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
     },
   });
 

@@ -4,6 +4,7 @@ import { apiClient } from '@/services/api';
 export interface AnnotationCounts {
   sequenceCount: number;
   detectionCount: number;
+  groupCount: number;
   isLoading: boolean;
   error: Error | null;
 }
@@ -49,10 +50,27 @@ export function useAnnotationCounts(): AnnotationCounts {
     refetchOnWindowFocus: true,
   });
 
+  // Query for sequence groups awaiting validation
+  const {
+    data: groupData,
+    isLoading: groupLoading,
+    error: groupError,
+  } = useQuery({
+    queryKey: ['annotation-counts', 'sequence-groups'],
+    queryFn: async () => {
+      const stats = await apiClient.getSequenceGroupStats();
+      return stats.unvalidated;
+    },
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
+    refetchOnWindowFocus: true,
+  });
+
   return {
     sequenceCount: sequenceData || 0,
     detectionCount: detectionData || 0,
-    isLoading: sequenceLoading || detectionLoading,
-    error: sequenceError || detectionError,
+    groupCount: groupData || 0,
+    isLoading: sequenceLoading || detectionLoading || groupLoading,
+    error: sequenceError || detectionError || groupError,
   };
 }

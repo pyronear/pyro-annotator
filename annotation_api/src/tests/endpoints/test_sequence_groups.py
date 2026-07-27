@@ -36,7 +36,7 @@ async def _set_seq_metadata(
 ) -> None:
     await session.exec(
         text(
-            "UPDATE sequences SET camera_id = :cam, azimuth = :az " "WHERE id = :sid"
+            "UPDATE sequences SET camera_id = :cam, azimuth = :az WHERE id = :sid"
         ).bindparams(cam=camera_id, az=azimuth, sid=sequence_id)
     )
     await session.commit()
@@ -383,9 +383,7 @@ async def test_propagation_skipped_when_group_not_validated(
     assert group_resp.json()["smoke_type"] is None
 
     # No fan-out: seq 2 should still have no annotation row.
-    other_anno = await authenticated_client.get(
-        "/annotations/sequences/?sequence_id=2"
-    )
+    other_anno = await authenticated_client.get("/annotations/sequences/?sequence_id=2")
     assert other_anno.json()["total"] == 0
 
 
@@ -398,9 +396,7 @@ async def test_propagation_writes_label_and_fans_out(
     """Validated group, no existing label, no conflict → group gets the
     derived label and the other unlocked member gets an inherited
     annotation in SEQ_ANNOTATION_DONE."""
-    group_id = await _seed_two_member_group(
-        sequence_session, [1, 2], is_validated=True
-    )
+    group_id = await _seed_two_member_group(sequence_session, [1, 2], is_validated=True)
 
     payload = _annotation_payload(stage="seq_annotation_done", smoke_type="wildfire")
     payload["sequence_id"] = 1
@@ -493,9 +489,7 @@ async def test_propagation_fans_out_unsure_flag(
     """Validated group, no existing label → saving seq 1 as unsure marks the
     group unsure and fans the unsure flag out to the other unlocked member in
     SEQ_ANNOTATION_DONE."""
-    group_id = await _seed_two_member_group(
-        sequence_session, [1, 2], is_validated=True
-    )
+    group_id = await _seed_two_member_group(sequence_session, [1, 2], is_validated=True)
 
     payload = _unsure_payload(stage="seq_annotation_done")
     payload["sequence_id"] = 1
@@ -572,3 +566,46 @@ async def test_bulk_annotate_requires_exactly_one_label(
         },
     )
     assert both.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_stats_empty(authenticated_client: AsyncClient):
+    resp = await authenticated_client.get("/sequence_groups/stats")
+    assert resp.status_code == 200
+    assert resp.json() == {"total": 0, "validated": 0, "unvalidated": 0}
+
+
+@pytest.mark.asyncio
+async def test_stats_counts_only_groups_with_three_plus_members(
+    authenticated_client: AsyncClient,
+    async_session: AsyncSession,
+):
+    """total/validated/unvalidated cover the same 3+ member population as
+    the list endpoint; the 2-member group is invisible to all counts."""
+    to_validate = await _seed_group_with_members(
+        async_session,
+        n_members=3,
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        alert_api_id_start=100,
+    )
+    await _seed_group_with_members(
+        async_session,
+        n_members=4,
+        created_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
+        alert_api_id_start=200,
+    )
+    await _seed_group_with_members(
+        async_session,
+        n_members=2,
+        created_at=datetime(2026, 1, 3, tzinfo=timezone.utc),
+        alert_api_id_start=300,
+    )
+
+    resp = await authenticated_client.patch(
+        f"/sequence_groups/{to_validate}", json={"is_validated": True}
+    )
+    assert resp.status_code == 200, resp.text
+
+    resp = await authenticated_client.get("/sequence_groups/stats")
+    assert resp.status_code == 200
+    assert resp.json() == {"total": 2, "validated": 1, "unvalidated": 1}
