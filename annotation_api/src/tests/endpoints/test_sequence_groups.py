@@ -12,9 +12,10 @@ Covers:
     * validated, conflicting label → warning returned, group untouched
     * validated, member locked at SEQ_ANNOTATION_DONE+ → skipped
 
-Cross-sequence inheritance via assign-groups inheritance is exercised
-end-to-end through the make pipeline — the test fixtures only seed two
-sequences with non-overlapping bboxes, so they can't share a group.
+Assign-time inheritance is exercised in-suite by detaching a grouped
+sequence and re-running the sweep against its own (labeled) group; the
+two seeded sequences have non-overlapping bboxes, so they never share a
+group organically.
 """
 
 from datetime import datetime, timezone
@@ -158,7 +159,7 @@ async def _annotation_contributor_ids(
         text(
             "SELECT c.user_id FROM sequence_annotation_contributions c "
             "JOIN sequences_annotations sa ON sa.id = c.sequence_annotation_id "
-            "WHERE sa.sequence_id = :sid"
+            "WHERE sa.sequence_id = :sid ORDER BY c.id"
         ).bindparams(sid=sequence_id)
     )
     return [row[0] for row in result.all()]
@@ -481,8 +482,10 @@ async def test_propagation_writes_label_and_fans_out(
     assert items[0]["processing_stage"] == "seq_annotation_done"
     assert items[0]["smoke_types"] == ["wildfire"]
 
-    # The fanned-out sibling annotation is attributed to the saving user.
+    # The fanned-out sibling annotation is attributed to the saving user —
+    # and so is the source annotation (one gesture writes the whole group).
     assert await _annotation_contributor_ids(sequence_session, 2) == [test_user.id]
+    assert await _annotation_contributor_ids(sequence_session, 1) == [test_user.id]
 
 
 @pytest.mark.asyncio

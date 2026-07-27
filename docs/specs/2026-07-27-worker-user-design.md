@@ -43,8 +43,8 @@ Decisions made during design:
   shared service (`assign_ungrouped_sequences`) directly with a DB session
   and only needs the worker user's row id for the `labeled_by_user_id` /
   contribution foreign keys. (The manual `POST /sequence_groups/assign`
-  endpoint keeps attributing to the calling user's JWT identity; its
-  deprecation is tracked separately in #181.)
+  endpoint, which attributed to the calling user's JWT identity, was
+  removed in #188.)
 
 ## Design
 
@@ -94,11 +94,16 @@ check of this change). The three machine-writing paths now record a
 contribution explicitly via `SequenceAnnotationCRUD.record_contribution`:
 
 - **Sweep inheritance** (a new sequence joins an already-labeled group,
-  no human in the loop) → attributed to the **worker user** (or, until
-  #181 removes it, to the caller of the manual assign endpoint).
+  no human in the loop) → attributed to the **worker user**. (The manual
+  assign endpoint, whose caller would have been attributed instead, was
+  removed in #188.)
 - **Validated-group fan-out** (a human's save propagates their label to
   sibling members) → attributed to the **saving human**: the label is
-  their judgment; the machine only copies it.
+  their judgment; the machine only copies it. The **source annotation is
+  credited too** — one human gesture writes the whole group, and without
+  this the annotated sequence would be the only member not listing its
+  annotator (direct human saves outside a fan-out still only record at
+  ANNOTATED, the pre-existing rule).
 - **Bulk annotate** → attributed to the **calling human**.
 
 Consequence: contribution rows no longer exclusively mean "completed work

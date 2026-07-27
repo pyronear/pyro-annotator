@@ -861,6 +861,11 @@ async def _propagate_to_group_if_validated(
         # ANNOTATED, so attribute the write to them explicitly.
         await annotations.record_contribution(fanned_anno_id, current_user_id)
 
+    # The fan-out is the human's one gesture writing the whole group — credit
+    # the source annotation too, so the sequence they actually annotated isn't
+    # the only member without their name on it.
+    await annotations.record_contribution(sequence_annotation.id, current_user_id)
+
     await session.commit()
 
 
