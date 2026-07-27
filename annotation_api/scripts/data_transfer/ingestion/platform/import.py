@@ -2,17 +2,21 @@
 CLI script for end-to-end platform data import and processing.
 
 This script provides a streamlined workflow to fetch platform data and generate annotations:
-1. Fetch sequences and detections from the Pyronear platform API
-2. Import successfully fetched data into the annotation API
-3. Generate annotations from AI predictions for successfully imported sequences only
-4. Set sequences to READY_TO_ANNOTATE stage
+1. Fetch sequences and detections from the Pyronear alert API
+2. Split each platform sequence into one object sequence per detected object
+   (sibling objects sharing the same set of frames, plus any objects that don't
+   cluster, as a fallback), so annotation happens per object rather than per camera event
+3. Import the resulting object sequences into the annotation API
+4. Generate annotations from AI predictions for successfully imported sequences only
+5. Set sequences to READY_TO_ANNOTATE stage
 
 Usage:
   # Basic usage - full pipeline for date range
   uv run python -m scripts.data_transfer.ingestion.platform.import --date-from 2024-01-01 --date-end 2024-01-02
 
-  # Process ALL predictions (confidence 0.0)
-  uv run python -m scripts.data_transfer.ingestion.platform.import --date-from 2024-01-01 --confidence-threshold 0.0
+  # Route images via the /from-url endpoint (needed when the annotation API
+  # can't reach the alert API's S3 bucket, e.g. local dev with LocalStack)
+  uv run python -m scripts.data_transfer.ingestion.platform.import --date-from 2024-01-01 --image-transfer url
 
   # Dry run to preview what would be processed
   uv run python -m scripts.data_transfer.ingestion.platform.import --date-from 2024-01-01 --dry-run
@@ -20,20 +24,19 @@ Usage:
 Arguments:
   --date-from (date): Start date for sequences (YYYY-MM-DD format)
   --date-end (date): End date for sequences (YYYY-MM-DD format, defaults to today)
-  --url-api-platform (str): Platform API URL (default: https://alertapi.pyronear.org)
-  --url-api-annotation (str): Annotation API URL (default: http://localhost:5050)
-  --detections-limit (int): Max detections per sequence (default: 30)
-  --detections-order-by (str): Order detections by created_at (asc/desc, default: asc)
-  --confidence-threshold (float): Min AI confidence for bboxes (default: 0.0)
-  --iou-threshold (float): Min IoU for clustering overlapping boxes (default: 0.3)
-  --min-cluster-size (int): Min boxes per cluster (default: 1)
+  --alert-api-url (str): Alert API URL (default: https://alertapi.pyronear.org)
+  --annotation-api-url (str): Annotation API URL (default: http://localhost:5050)
+  --max-sequences (int): Maximum number of sequences to import (default: 0, 0 = no cap)
+  --frames-limit (int): Maximum number of images to import per sequence (default: 30)
+  --sequence-list (str): Comma-separated list of sequence alert_api_id, or path to a file
+  --image-transfer (str): How detection images reach the annotation API (bucket-copy/url, default: bucket-copy)
   --max-workers (int): Max workers for parallel processing, auto-scales for different operations (default: 4)
   --dry-run: Preview actions without execution
   --loglevel (str): Logging level (debug/info/warning/error, default: info)
 
 Environment variables required:
-  PLATFORM_LOGIN (str): Platform API login
-  PLATFORM_PASSWORD (str): Platform API password
+  PLATFORM_LOGIN (str): Alert API login
+  PLATFORM_PASSWORD (str): Alert API password
   PLATFORM_ADMIN_LOGIN (str): Admin login for organization access
   PLATFORM_ADMIN_PASSWORD (str): Admin password for organization access
 
@@ -41,8 +44,8 @@ Examples:
   # Basic usage
   uv run python -m scripts.data_transfer.ingestion.platform.import --date-from 2024-01-01 --date-end 2024-01-02
 
-  # Process all predictions (no confidence filtering)
-  uv run python -m scripts.data_transfer.ingestion.platform.import --date-from 2024-01-01 --confidence-threshold 0.0
+  # Restrict to a specific list of sequences
+  uv run python -m scripts.data_transfer.ingestion.platform.import --date-from 2024-01-01 --sequence-list 158,16851,168468
 
   # Dry run to see what would be processed
   uv run python -m scripts.data_transfer.ingestion.platform.import --date-from 2024-01-01 --dry-run --loglevel debug
@@ -117,38 +120,31 @@ def make_cli_parser() -> argparse.ArgumentParser:
 
     # API configuration
     parser.add_argument(
-        "--url-api-platform",
-        help="Platform API URL (alertapi.pyronear.org for Pyronear French, apicenia.pyronear.org for CENIA)",
+        "--alert-api-url",
+        help="Alert API URL (alertapi.pyronear.org for Pyronear French, apicenia.pyronear.org for CENIA)",
         type=str,
         choices=["https://alertapi.pyronear.org", "https://apicenia.pyronear.org"],
         default="https://alertapi.pyronear.org",
     )
     parser.add_argument(
-        "--url-api-annotation",
+        "--annotation-api-url",
         help="Annotation API URL",
         type=str,
         default="http://localhost:5050",
     )
     parser.add_argument(
         "--max-sequences",
-        help="Maximum number of sequences to clone from source annotation API (0 = all)",
+        help="Maximum number of sequences to import from the alert API (0 = no cap)",
         type=int,
-        default=10,
+        default=0,
     )
 
     # Platform fetching options
     parser.add_argument(
-        "--detections-limit",
-        help="Maximum number of detections to fetch per sequence",
+        "--frames-limit",
+        help="Maximum number of images to import per sequence",
         type=int,
         default=30,
-    )
-    parser.add_argument(
-        "--detections-order-by",
-        help="Order detections by created_at in descending or ascending order",
-        choices=["desc", "asc"],
-        type=str,
-        default="asc",
     )
     parser.add_argument(
         "--sequence-list",
@@ -158,56 +154,25 @@ def make_cli_parser() -> argparse.ArgumentParser:
         ),
         type=str,
     )
-    parser.add_argument(
-        "--risk-score",
-        help=(
-            "FWI class override sent to the platform's /sequences/all/fromdate. "
-            "Defaults to 'extreme' so the platform's per-camera risk filter is "
-            "bypassed and every sequence for the date is returned. Pass 'none' "
-            "to keep the platform default (filters low-FWI sequences)."
-        ),
-        type=str,
-        choices=["very_low", "low", "moderate", "high", "very_high", "extreme", "none"],
-        default="extreme",
-    )
-
-    # Annotation analysis options
-    parser.add_argument(
-        "--confidence-threshold",
-        help="Minimum AI prediction confidence (0.0-1.0). Use 0.0 to process all predictions.",
-        type=float,
-        default=0.0,
-    )
-    parser.add_argument(
-        "--iou-threshold",
-        help=(
-            "IoU threshold for clustering overlapping boxes (0.0-1.0). "
-            "0.0 = any positive overlap merges (default)."
-        ),
-        type=float,
-        default=0.0,
-    )
-    parser.add_argument(
-        "--min-cluster-size",
-        help="Minimum number of boxes required in a cluster",
-        type=int,
-        default=1,
-    )
 
     # Processing control
+    parser.add_argument(
+        "--image-transfer",
+        help=(
+            "How detection images reach the annotation API: 'bucket-copy' asks the "
+            "server to copy the object straight from the alert API's S3 bucket "
+            "(production default); 'url' posts via the /from-url endpoint instead — "
+            "required for local dev where the annotation API can't reach that bucket "
+            "(e.g. LocalStack)."
+        ),
+        type=str,
+        choices=["bucket-copy", "url"],
+        default="bucket-copy",
+    )
     parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Preview actions without executing them",
-    )
-    parser.add_argument(
-        "--force-url",
-        action="store_true",
-        help=(
-            "Skip the server-side bucket-key copy and post detections via "
-            "the /from-url endpoint instead. Useful for local dev where the "
-            "annotation API can't see the platform's S3 bucket (e.g. LocalStack)."
-        ),
     )
 
     # Concurrency control
@@ -258,19 +223,6 @@ def validate_args(args: argparse.Namespace) -> bool:
     """
     if args.date_from > args.date_end:
         logging.error("--date-from must be earlier than or equal to --date-end")
-        return False
-
-    # Validate numeric thresholds
-    if not (0.0 <= args.confidence_threshold <= 1.0):
-        logging.error("--confidence-threshold must be between 0.0 and 1.0")
-        return False
-
-    if not (0.0 <= args.iou_threshold <= 1.0):
-        logging.error("--iou-threshold must be between 0.0 and 1.0")
-        return False
-
-    if args.min_cluster_size < 1:
-        logging.error("--min-cluster-size must be at least 1")
         return False
 
     if args.max_sequences is not None and args.max_sequences < 0:
@@ -351,7 +303,7 @@ def main() -> None:
         sys.exit(1)
 
     # Get source_api from platform URL
-    source_api = get_source_api_from_url(args.url_api_platform)
+    source_api = get_source_api_from_url(args.alert_api_url)
 
     # Initialize components
     worker_config = WorkerConfig(args.max_workers)
@@ -405,10 +357,10 @@ def main() -> None:
 
     # Early credential check for target annotation API
     target_login, target_password = shared.get_annotation_credentials(
-        args.url_api_annotation
+        args.annotation_api_url
     )
     target_ok = test_annotation_credentials(
-        args.url_api_annotation,
+        args.annotation_api_url,
         target_login,
         target_password,
         "Target annotation",
@@ -435,12 +387,9 @@ def main() -> None:
             f"[blue]ℹ️  Date range: {args.date_from} to {args.date_end}[/]"
         )
         console.print(
-            f"[blue]ℹ️  Platform: {args.url_api_platform} (source_api: {source_api})[/]"
+            f"[blue]ℹ️  Platform: {args.alert_api_url} (source_api: {source_api})[/]"
         )
         console.print(f"[blue]ℹ️  Worker config: {worker_config}[/]")
-        console.print(
-            f"[blue]ℹ️  Analysis config: confidence={args.confidence_threshold}, iou={args.iou_threshold}, min_cluster={args.min_cluster_size}[/]"
-        )
 
     try:
         # Step 1: Fetch platform data
@@ -485,14 +434,14 @@ def main() -> None:
             try:
                 status.update(f"[bold blue]🔐 Getting {organization} access token...")
                 access_token = platform_client.get_api_access_token(
-                    api_endpoint=args.url_api_platform,
+                    api_endpoint=args.alert_api_url,
                     username=platform_login,
                     password=platform_password,
                 )
 
                 status.update("[bold blue]🔐 Getting admin access token...")
                 access_token_admin = platform_client.get_api_access_token(
-                    api_endpoint=args.url_api_platform,
+                    api_endpoint=args.alert_api_url,
                     username=platform_admin_login,
                     password=platform_admin_password,
                 )
@@ -509,15 +458,12 @@ def main() -> None:
 
         # Fetch platform records
         try:
-            # "none" means: do not pass risk_score → platform applies its
-            # per-camera risk filter (default behaviour).
-            risk_score = args.risk_score if args.risk_score != "none" else None
             records = fetch_all_sequences_within(
                 date_from=args.date_from,
                 date_end=args.date_end,
-                detections_limit=args.detections_limit,
-                detections_order_by=args.detections_order_by,
-                api_endpoint=args.url_api_platform,
+                detections_limit=args.frames_limit,
+                detections_order_by="asc",
+                api_endpoint=args.alert_api_url,
                 access_token=access_token,
                 access_token_admin=access_token_admin,
                 worker_config=worker_config,
@@ -527,7 +473,7 @@ def main() -> None:
                 console=console,
                 error_collector=error_collector,
                 organization=organization,
-                risk_score=risk_score,
+                risk_score="extreme",
             )
         except Exception as e:
             error_collector.add_error(f"Platform data fetching failed: {e}")
@@ -555,13 +501,13 @@ def main() -> None:
 
             try:
                 result = shared.post_records_to_annotation_api(
-                    args.url_api_annotation,
+                    args.annotation_api_url,
                     records,
                     max_workers=worker_config.api_posting,
                     max_detection_workers=worker_config.detection_per_sequence,
                     suppress_logs=suppress_logs,
                     source_api=source_api,
-                    force_url=args.force_url,
+                    force_url=(args.image_transfer == "url"),
                 )
 
                 # Capture import statistics in main stats and get successfully imported sequence IDs
@@ -669,7 +615,7 @@ def main() -> None:
                 executor.submit(
                     annotate_split_sequence,
                     seq_result=seq_result,
-                    annotation_api_url=args.url_api_annotation,
+                    annotation_api_url=args.annotation_api_url,
                     dry_run=args.dry_run,
                 ): seq_result["sequence_id"]
                 for seq_result in platform_seq_results
