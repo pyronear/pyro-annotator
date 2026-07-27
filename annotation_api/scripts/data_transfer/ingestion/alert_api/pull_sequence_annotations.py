@@ -38,6 +38,7 @@ from app.clients import annotation_api
 
 from . import client as platform_client
 from .label_classes import CLASS_ID, fp_class_name, smoke_class_name
+from .shared import getenv_with_fallback
 
 load_dotenv()
 
@@ -309,13 +310,13 @@ def fetch_camera_azimuths(
 ) -> Dict[int, Optional[float]]:
     """Fetch camera_azimuth per platform alert id (the annotation API only stores
     the per-object cone azimuth, which differs between objects of one pose)."""
-    login = os.getenv("PLATFORM_LOGIN")
-    password = os.getenv("PLATFORM_PASSWORD")
+    login = getenv_with_fallback("ALERT_API_LOGIN")
+    password = getenv_with_fallback("ALERT_API_PASSWORD")
     if not sids:
         return {}
     if not login or not password:
         logging.warning(
-            "PLATFORM_LOGIN/PLATFORM_PASSWORD unset - cannot fetch camera_azimuth; "
+            "ALERT_API_LOGIN/ALERT_API_PASSWORD unset - cannot fetch camera_azimuth; "
             "merging siblings of the same alert only"
         )
         return {}

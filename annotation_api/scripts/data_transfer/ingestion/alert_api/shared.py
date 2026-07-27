@@ -11,7 +11,7 @@ import logging
 import os
 import time
 from collections import defaultdict
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 from urllib.parse import urlparse
 
 import requests
@@ -40,6 +40,31 @@ from app.clients.annotation_api import (
 # annotation_api/.env, even if the script forgets to call load_dotenv()
 # itself.
 load_dotenv()
+
+# Legacy env names kept as fallback so existing deployed .env files keep
+# working; remove once they have all migrated to ALERT_API_*.
+_LEGACY_ENV_NAMES = {
+    "ALERT_API_LOGIN": "PLATFORM_LOGIN",
+    "ALERT_API_PASSWORD": "PLATFORM_PASSWORD",
+    "ALERT_API_ADMIN_LOGIN": "PLATFORM_ADMIN_LOGIN",
+    "ALERT_API_ADMIN_PASSWORD": "PLATFORM_ADMIN_PASSWORD",
+}
+
+
+def getenv_with_fallback(name: str) -> Optional[str]:
+    """Read env var `name`, falling back to its deprecated PLATFORM_* twin."""
+    value = os.getenv(name)
+    if value is not None:
+        return value
+    legacy = _LEGACY_ENV_NAMES.get(name)
+    if legacy is not None:
+        value = os.getenv(legacy)
+        if value is not None:
+            logging.warning(
+                "%s is deprecated; rename it to %s in your .env", legacy, name
+            )
+    return value
+
 
 # Import LogSuppressor from import module
 
@@ -127,31 +152,20 @@ def get_annotation_credentials(annotation_api_url: str) -> tuple[str, str]:
 def validate_available_env_variables() -> bool:
     """
     Check whether the environment variables required for
-    hitting the API are properly set.
+    hitting the alert API are properly set.
 
-    PLATFORM_LOGIN (str): login
-    PLATFORM_PASSWORD (str): password
-    PLATFORM_ADMIN_LOGIN (str): admin login
-    PLATFORM_ADMIN_PASSWORD (str): admin password
+    ALERT_API_LOGIN (str): login
+    ALERT_API_PASSWORD (str): password
+    ALERT_API_ADMIN_LOGIN (str): admin login
+    ALERT_API_ADMIN_PASSWORD (str): admin password
+
+    Legacy PLATFORM_* names are accepted as a deprecated fallback.
     """
-    platform_login = os.getenv("PLATFORM_LOGIN")
-    platform_password = os.getenv("PLATFORM_PASSWORD")
-    platform_admin_login = os.getenv("PLATFORM_ADMIN_LOGIN")
-    platform_admin_password = os.getenv("PLATFORM_ADMIN_PASSWORD")
-    if not platform_login:
-        logging.error("PLATFORM_LOGIN is not set")
-        return False
-    elif not platform_password:
-        logging.error("PLATFORM_PASSWORD is not set")
-        return False
-    elif not platform_admin_login:
-        logging.error("PLATFORM_ADMIN_LOGIN is not set")
-        return False
-    elif not platform_admin_password:
-        logging.error("PLATFORM_ADMIN_PASSWORD is not set")
-        return False
-    else:
-        return True
+    for name in _LEGACY_ENV_NAMES:
+        if not getenv_with_fallback(name):
+            logging.error("%s is not set", name)
+            return False
+    return True
 
 
 def transform_sequence_data(record: dict, source_api: str = "pyronear_french") -> dict:

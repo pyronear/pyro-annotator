@@ -38,10 +38,11 @@ Arguments:
   --loglevel (str): Logging level (debug/info/warning/error, default: info)
 
 Environment variables required:
-  PLATFORM_LOGIN (str): Alert API login
-  PLATFORM_PASSWORD (str): Alert API password
-  PLATFORM_ADMIN_LOGIN (str): Admin login for organization access
-  PLATFORM_ADMIN_PASSWORD (str): Admin password for organization access
+  ALERT_API_LOGIN (str): Alert API login
+  ALERT_API_PASSWORD (str): Alert API password
+  ALERT_API_ADMIN_LOGIN (str): Admin login for organization access
+  ALERT_API_ADMIN_PASSWORD (str): Admin password for organization access
+  (legacy PLATFORM_* names are still accepted as a deprecated fallback)
   MAIN_ANNOTATION_LOGIN / MAIN_ANNOTATION_PASSWORD (str): Annotation API credentials
     used when --annotation-api-url is not localhost (remote target)
   LOCAL_ANNOTATION_LOGIN / LOCAL_ANNOTATION_PASSWORD (str): Annotation API credentials
@@ -359,7 +360,7 @@ def main() -> None:
     }
 
     # Initialize organization early to avoid reference errors in exception handlers
-    organization = os.getenv("PLATFORM_LOGIN") or "unknown"
+    organization = shared.getenv_with_fallback("ALERT_API_LOGIN") or "unknown"
     selected_sequence_list: List[int] = []
     sequence_list_source = "CLI input"
 
@@ -437,21 +438,23 @@ def main() -> None:
             sys.exit(1)
 
         # Get platform credentials
-        platform_login = os.getenv("PLATFORM_LOGIN")
-        platform_password = os.getenv("PLATFORM_PASSWORD")
-        platform_admin_login = os.getenv("PLATFORM_ADMIN_LOGIN")
-        platform_admin_password = os.getenv("PLATFORM_ADMIN_PASSWORD")
+        alert_api_login = shared.getenv_with_fallback("ALERT_API_LOGIN")
+        alert_api_password = shared.getenv_with_fallback("ALERT_API_PASSWORD")
+        alert_api_admin_login = shared.getenv_with_fallback("ALERT_API_ADMIN_LOGIN")
+        alert_api_admin_password = shared.getenv_with_fallback(
+            "ALERT_API_ADMIN_PASSWORD"
+        )
 
         if not all(
             [
-                platform_login,
-                platform_password,
-                platform_admin_login,
-                platform_admin_password,
+                alert_api_login,
+                alert_api_password,
+                alert_api_admin_login,
+                alert_api_admin_password,
             ]
         ):
-            error_collector.add_error("Missing platform credentials")
-            step_manager.complete_step(False, "Missing platform credentials")
+            error_collector.add_error("Missing alert API credentials")
+            step_manager.complete_step(False, "Missing alert API credentials")
             sys.exit(1)
 
         # Get access tokens with progress display
@@ -464,15 +467,15 @@ def main() -> None:
                 status.update(f"[bold blue]🔐 Getting {organization} access token...")
                 access_token = platform_client.get_api_access_token(
                     api_endpoint=args.alert_api_url,
-                    username=platform_login,
-                    password=platform_password,
+                    username=alert_api_login,
+                    password=alert_api_password,
                 )
 
                 status.update("[bold blue]🔐 Getting admin access token...")
                 access_token_admin = platform_client.get_api_access_token(
                     api_endpoint=args.alert_api_url,
-                    username=platform_admin_login,
-                    password=platform_admin_password,
+                    username=alert_api_admin_login,
+                    password=alert_api_admin_password,
                 )
 
                 auth_duration = time.time() - auth_start_time
