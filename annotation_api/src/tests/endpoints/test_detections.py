@@ -492,3 +492,25 @@ async def test_create_detection_different_alert_api_id_allows_duplicate_processi
     assert detection1["alert_api_id"] != detection2["alert_api_id"]
     # Even if they might have same id, the unique constraint (alert_api_id, id) allows this
     # since alert_api_id is different
+
+
+@pytest.mark.asyncio
+async def test_create_detection_with_alert_api_id_above_int32(
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+):
+    """detections.alert_api_id must be BigInteger, consistent with sequences
+    (platform ids can exceed int32)."""
+    payload = {
+        "sequence_id": "1",
+        "alert_api_id": str(2**31),
+        "recorded_at": (now - timedelta(days=2)).isoformat(),
+        "algo_predictions": json.dumps({"predictions": []}),
+    }
+
+    response = await authenticated_client.post(
+        "/detections/",
+        data=payload,
+        files={"file": ("image.jpg", mock_img, "image/jpeg")},
+    )
+    assert response.status_code == 201
+    assert response.json()["alert_api_id"] == 2**31

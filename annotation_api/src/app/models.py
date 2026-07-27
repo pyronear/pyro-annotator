@@ -3,6 +3,7 @@ from enum import Enum
 from typing import List, Optional
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     Column,
     DateTime,
@@ -201,7 +202,9 @@ class Sequence(SQLModel, table=True):
         default=None, primary_key=True, sa_column_kwargs={"autoincrement": True}
     )
     source_api: SourceApi
-    alert_api_id: int
+    # BigInteger: synthetic sibling ids (1_000_000_000 + platform_sid * 1000 +
+    # object_index) overflow int32 once platform sids pass ~1.15M.
+    alert_api_id: int = Field(sa_type=BigInteger)
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),
         sa_column=Column(DateTime(timezone=True)),
@@ -360,7 +363,7 @@ class Detection(SQLModel, table=True):
         sa_column=Column(DateTime(timezone=True)),
     )
     recorded_at: datetime = Field(sa_column=Column(DateTime(timezone=True)))
-    alert_api_id: int
+    alert_api_id: int = Field(sa_type=BigInteger)
     sequence_id: Optional[int] = Field(
         default=None, sa_column=Column(ForeignKey("sequences.id", ondelete="CASCADE"))
     )

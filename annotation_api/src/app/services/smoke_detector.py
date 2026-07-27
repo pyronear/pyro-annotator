@@ -1,8 +1,8 @@
 """In-app YOLO11s smoke detector (ONNX).
 
-Extracted from the file-based ``auto_annotate.py`` Classifier — pure inference,
-no file/label IO and no model download (the model is baked into the image and
-loaded from an explicit path).
+Pure inference (originally extracted from the retired file-based
+auto-annotate script) — no file/label IO and no model download (the model is
+baked into the image and loaded from an explicit path).
 """
 
 from pathlib import Path
@@ -73,9 +73,10 @@ def group_and_merge_boxes(
 ) -> Tuple[np.ndarray, Dict[int, np.ndarray]]:
     """Cluster boxes into persistent object groups.
 
-    Verbatim from the file-based ``auto_annotate.py`` so the DB worker matches
-    ``make auto-annotate``. ``boxes`` is ``(N, >=5)`` with confidence in the last
-    column. Returns the representative boxes plus, per group, the member boxes.
+    Preserved verbatim from the retired file-based auto-annotate script so
+    historical results stay reproducible. ``boxes`` is ``(N, >=5)`` with
+    confidence in the last column. Returns the representative boxes plus, per
+    group, the member boxes.
     """
     if boxes.size == 0:
         return np.empty((0, boxes.shape[1]), dtype=boxes.dtype), {}
