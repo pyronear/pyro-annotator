@@ -49,7 +49,7 @@ The import script provides a streamlined workflow that combines platform data fe
 The script executes the following pipeline:
 
 1. **Fetch Platform Data**: Retrieves sequences and detections from the alert API for the given date range (chronological order, `risk_score=extreme`)
-2. **Object-Split**: Splits each alert sequence into one object sequence per detected smoke object (sibling objects sharing the same frames). Sequences where no object reaches the spawn threshold are imported whole as a single sequence (fallback); when at least one object qualifies, boxes that never reach the threshold are dropped (same rule as the platform). The primary object keeps the platform `alert_api_id`; siblings get synthetic ids (`1_000_000_000 + sequence_id * 1000 + index`)
+2. **Object-Split**: Splits each alert sequence into one object sequence per detected smoke object (sibling objects sharing the same frames). Sequences where no object reaches the spawn threshold are imported whole as a single sequence (fallback); when at least one object qualifies, boxes that never reach the threshold are dropped (same rule as the platform). The primary object keeps the platform `alert_api_id`; siblings get synthetic ids (`1_000_000_000 + sequence_id * 1000 + index`). Note that splits happen on *spatial* discontinuity, so a single drifting plume with a detection gap can also split into temporally disjoint sibling sequences (no shared frames, hence no cross-object overlay in the UI) — this is intended behavior, mirroring the platform's association rule
 3. **Import**: Posts the resulting object sequences and their detections to the annotation API
 4. **Annotate**: Writes one `sequences_bbox` track per object directly and sets the sequence annotation to `READY_TO_ANNOTATE`
 
