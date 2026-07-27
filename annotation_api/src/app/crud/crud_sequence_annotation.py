@@ -154,8 +154,13 @@ class SequenceAnnotationCRUD(
 
         return annotation
 
-    async def _record_contribution(self, annotation_id: int, user_id: int) -> None:
-        """Record a user contribution to the sequence annotation."""
+    async def record_contribution(self, annotation_id: int, user_id: int) -> None:
+        """Record a user contribution to the sequence annotation.
+
+        The create/update paths only auto-record contributions at the
+        ANNOTATED stage (completed human work). Machine-written annotations
+        (group-assignment inheritance, validated-group fan-out, bulk
+        annotate) call this explicitly so the write is attributed."""
         contribution = SequenceAnnotationContribution(
             sequence_annotation_id=annotation_id, user_id=user_id
         )

@@ -151,6 +151,19 @@ async def _create_placeholder_annotation(client: AsyncClient, sequence_id: int) 
     assert resp.status_code == 201, resp.text
 
 
+async def _annotation_contributor_ids(
+    session: AsyncSession, sequence_id: int
+) -> list[int]:
+    result = await session.exec(
+        text(
+            "SELECT c.user_id FROM sequence_annotation_contributions c "
+            "JOIN sequences_annotations sa ON sa.id = c.sequence_annotation_id "
+            "WHERE sa.sequence_id = :sid"
+        ).bindparams(sid=sequence_id)
+    )
+    return [row[0] for row in result.all()]
+
+
 @pytest.mark.asyncio
 async def test_list_groups_hides_small_groups_and_sorts_by_size(
     authenticated_client: AsyncClient,
@@ -266,6 +279,55 @@ async def test_assign_skips_sequences_still_importing(
 
 
 @pytest.mark.asyncio
+async def test_assign_inheritance_records_contribution(
+    authenticated_client: AsyncClient,
+    sequence_session: AsyncSession,
+    detection_session: AsyncSession,
+    test_user: User,
+):
+    """A sequence that joins an already-labeled group inherits the label AND
+    gets a contribution row attributing the machine-written annotation to
+    the user the assignment ran as (the worker user in the periodic sweep;
+    here, the test user)."""
+    await _set_seq_metadata(sequence_session, 1, camera_id=42, azimuth=90)
+    await _create_placeholder_annotation(authenticated_client, 1)
+    await assign_ungrouped_sequences(sequence_session, user_id=test_user.id)
+
+    seq_payload = (await authenticated_client.get("/sequences/1")).json()
+    group_id = seq_payload["sequence_group_id"]
+    bulk = await authenticated_client.post(
+        "/annotations/sequences/bulk",
+        json={
+            "sequence_ids": [1],
+            "group_id": group_id,
+            "smoke_type": "wildfire",
+            "is_unsure": False,
+        },
+    )
+    assert bulk.status_code == 200  # records contribution #1 (bulk path)
+
+    # Detach the sequence and reset its annotation to the placeholder stage
+    # so re-assignment triggers inheritance from the now-labeled group.
+    await sequence_session.exec(
+        text("UPDATE sequences SET sequence_group_id = NULL WHERE id = 1")
+    )
+    await sequence_session.exec(
+        text(
+            "UPDATE sequences_annotations SET processing_stage = 'READY_TO_ANNOTATE' "
+            "WHERE sequence_id = 1"
+        )
+    )
+    await sequence_session.commit()
+
+    result = await assign_ungrouped_sequences(sequence_session, user_id=test_user.id)
+    assert result.inherited_annotations == 1
+
+    # contribution #2 comes from the inheritance write.
+    contributors = await _annotation_contributor_ids(sequence_session, 1)
+    assert contributors == [test_user.id, test_user.id]
+
+
+@pytest.mark.asyncio
 async def test_bulk_annotate_writes_label_on_group_and_seqs(
     authenticated_client: AsyncClient,
     sequence_session: AsyncSession,
@@ -304,6 +366,9 @@ async def test_bulk_annotate_writes_label_on_group_and_seqs(
     assert group_payload["smoke_type"] == "wildfire"
     assert group_payload["false_positive_type"] is None
     assert group_payload["labeled_at"] is not None
+
+    # Bulk-applied annotations are attributed to the calling user.
+    assert await _annotation_contributor_ids(sequence_session, 1) == [test_user.id]
 
 
 @pytest.mark.asyncio
@@ -392,6 +457,7 @@ async def test_propagation_writes_label_and_fans_out(
     authenticated_client: AsyncClient,
     sequence_session: AsyncSession,
     detection_session: AsyncSession,
+    test_user: User,
 ):
     """Validated group, no existing label, no conflict → group gets the
     derived label and the other unlocked member gets an inherited
@@ -414,6 +480,9 @@ async def test_propagation_writes_label_and_fans_out(
     assert len(items) == 1
     assert items[0]["processing_stage"] == "seq_annotation_done"
     assert items[0]["smoke_types"] == ["wildfire"]
+
+    # The fanned-out sibling annotation is attributed to the saving user.
+    assert await _annotation_contributor_ids(sequence_session, 2) == [test_user.id]
 
 
 @pytest.mark.asyncio
