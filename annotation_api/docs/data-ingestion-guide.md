@@ -49,9 +49,11 @@ The import script provides a streamlined workflow that combines platform data fe
 The script executes the following pipeline:
 
 1. **Fetch Platform Data**: Retrieves sequences and detections from the alert API for the given date range (chronological order, `risk_score=extreme`)
-2. **Object-Split**: Splits each alert sequence into one object sequence per detected smoke object (sibling objects sharing the same frames, plus any objects that don't cluster, as a fallback). The primary object keeps the platform `alert_api_id`; siblings get synthetic ids (`1_000_000_000 + sequence_id * 1000 + index`)
+2. **Object-Split**: Splits each alert sequence into one object sequence per detected smoke object (sibling objects sharing the same frames). Sequences where no object reaches the spawn threshold are imported whole as a single sequence (fallback); when at least one object qualifies, boxes that never reach the threshold are dropped (same rule as the platform). The primary object keeps the platform `alert_api_id`; siblings get synthetic ids (`1_000_000_000 + sequence_id * 1000 + index`)
 3. **Import**: Posts the resulting object sequences and their detections to the annotation API
 4. **Annotate**: Writes one `sequences_bbox` track per object directly and sets the sequence annotation to `READY_TO_ANNOTATE`
+
+**Re-running the import**: sequences imported before object-splitting was introduced are never retro-split on a later run — the primary sequence still carries the platform `alert_api_id`, so it 409-skips as already imported. Only its missing sibling sequences (the synthetic ids) get created when you re-run the import over the same date range.
 
 ### Key Features
 
