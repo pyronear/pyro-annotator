@@ -428,13 +428,10 @@ Use the Python module execution syntax with `uv run`:
 uv run python -m scripts.data_transfer.ingestion.platform.import \
   --date-from 2024-01-01 --date-end 2024-01-02 --loglevel info
 
-# Skip platform fetch (process existing sequences only)
+# Cap the number of sequences imported and use the URL image-transfer mode
+# (needed for local dev, where the annotation API can't reach the alert API's S3 bucket)
 uv run python -m scripts.data_transfer.ingestion.platform.import \
-  --date-from 2024-01-01 --date-end 2024-01-02 --skip-platform-fetch --loglevel info
-
-# Process with custom annotation parameters
-uv run python -m scripts.data_transfer.ingestion.platform.import \
-  --date-from 2024-01-01 --confidence-threshold 0.7 --iou-threshold 0.4 --loglevel info
+  --date-from 2024-01-01 --date-end 2024-01-02 --max-sequences 20 --image-transfer url --loglevel info
 ```
 
 #### Environment Variables Required
@@ -447,13 +444,13 @@ uv run python -m scripts.data_transfer.ingestion.platform.import \
 
 #### Script Features
 - **End-to-end workflow** - Complete pipeline from platform data to annotation-ready sequences
+- **Object-splitting** - Each alert sequence is split client-side into one annotation sequence per detected smoke object, using the alert API's own boxes (the primary keeps the platform `alert_api_id`; siblings get synthetic ids)
+- **Client-side annotation creation** - Writes one `sequences_bbox` track per object directly; the server's automatic annotation generation (see below) is no longer used by this path, though it still exists for other API clients
 - **Concurrent processing** - Multi-threading for faster data fetching
 - **Progress tracking** - tqdm progress bars for long-running operations
 - **Flexible date ranges** - Configurable date filtering
 - **Logging support** - Configurable log levels for debugging
-- **Annotation generation** - Automatic clustering of AI predictions into sequence annotations
 - **Stage management** - Automatic transitions from platform data to READY_TO_ANNOTATE stage
-- **Parameter tuning** - Configurable confidence thresholds, IoU thresholds, and cluster sizes
 
 ## Troubleshooting
 
