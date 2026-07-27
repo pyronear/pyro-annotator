@@ -36,7 +36,9 @@ TOKEN: Optional[str] = None
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Import annotations into the annotation API")
+    parser = argparse.ArgumentParser(
+        description="Import annotations into the annotation API"
+    )
     parser.add_argument(
         "--backup",
         required=True,
