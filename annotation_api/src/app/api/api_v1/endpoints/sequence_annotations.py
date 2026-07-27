@@ -272,8 +272,11 @@ async def auto_create_detection_annotations(
             await session.flush()
             new_annotation_ids = [a.id for a in new_annotations]
             da_crud = DetectionAnnotationCRUD(session)
+            # commit=False: the caller's commit lands the annotations and
+            # their contributions atomically — a partial commit would leave
+            # ANNOTATED rows unattributed, with nothing to backfill them.
             for annotation_id in new_annotation_ids:
-                await da_crud.record_contribution(annotation_id, user_id)
+                await da_crud.record_contribution(annotation_id, user_id, commit=False)
 
 
 async def validate_detection_ids(

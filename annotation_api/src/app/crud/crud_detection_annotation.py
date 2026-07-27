@@ -88,18 +88,28 @@ class DetectionAnnotationCRUD(
 
         return annotation
 
-    async def record_contribution(self, annotation_id: int, user_id: int) -> None:
+    async def record_contribution(
+        self, annotation_id: int, user_id: int, commit: bool = True
+    ) -> None:
         """Record a user contribution to the detection annotation.
 
         The create/update paths only auto-record contributions at the
         ANNOTATED stage (completed human work). Machine-written annotations
         (auto-created ANNOTATED rows for FP-only sequences) call this
-        explicitly so the write is attributed."""
+        explicitly so the write is attributed.
+
+        By default this commits the session's whole pending transaction.
+        Pass commit=False to only stage the row, so a caller inserting many
+        annotations can land them and their contributions in one atomic
+        commit — a partial commit would leave ANNOTATED rows unattributed,
+        with no path that ever backfills them.
+        """
         contribution = DetectionAnnotationContribution(
             detection_annotation_id=annotation_id, user_id=user_id
         )
         self.session.add(contribution)
-        await self.session.commit()
+        if commit:
+            await self.session.commit()
 
     async def get_annotation_contributors(self, annotation_id: int) -> List[User]:
         """Get all users who contributed to this detection annotation."""

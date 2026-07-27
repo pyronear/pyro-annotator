@@ -1759,6 +1759,51 @@ async def test_fp_update_auto_annotated_detection_annotation_attributed_to_savin
 
 
 @pytest.mark.asyncio
+async def test_fp_auto_annotated_attribution_covers_every_detection(
+    authenticated_client: AsyncClient, sequence_session, test_user
+):
+    """With several detections in the sequence, every auto-created ANNOTATED
+    detection annotation gets its own contribution for the saving user."""
+    detection_ids = [
+        await _create_detection(authenticated_client, alert_api_id)
+        for alert_api_id in ("2104", "2105")
+    ]
+
+    false_positive_payload = {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": False,
+                    "false_positive_types": ["antenna"],
+                    "bboxes": [
+                        {
+                            "detection_id": detection_ids[0],
+                            "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                        }
+                    ],
+                }
+            ]
+        },
+        "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+    response = await authenticated_client.post(
+        "/annotations/sequences/", json=false_positive_payload
+    )
+    assert response.status_code == 201
+
+    for detection_id in detection_ids:
+        detection_annotation = await _get_detection_annotation(
+            authenticated_client, detection_id
+        )
+        assert detection_annotation["processing_stage"] == "annotated"
+        contributor_ids = [c["id"] for c in detection_annotation["contributors"]]
+        assert contributor_ids == [test_user.id]
+
+
+@pytest.mark.asyncio
 async def test_placeholder_detection_annotations_have_no_contributors(
     authenticated_client: AsyncClient, sequence_session
 ):
