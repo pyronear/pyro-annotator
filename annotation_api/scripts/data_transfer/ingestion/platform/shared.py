@@ -350,6 +350,9 @@ def _process_single_detection(
         "detection_id": record["detection_id"],
         "success": False,
         "error": None,
+        "annotation_detection_id": None,
+        "xyxyns": [],
+        "recorded_at": record["detection_created_at"],
     }
 
     # Transform detection data
@@ -382,6 +385,11 @@ def _process_single_detection(
 
             logging.debug(f"Created detection with ID: {annotation_detection['id']}")
             result["success"] = True
+            result["annotation_detection_id"] = annotation_detection["id"]
+            result["xyxyns"] = [
+                pred["xyxyn"]
+                for pred in detection_data["algo_predictions"]["predictions"]
+            ]
             return result
 
         except ValidationError as e:
@@ -474,12 +482,14 @@ def post_sequence_to_annotation_api(
                 "successful_detections": 0,
                 "failed_detections": len(sequence_records),
                 "total_detections": len(sequence_records),
+                "detection_results": [],
             }
         raise
 
     # Create detections for this sequence using parallel processing
     successful_detections = 0
     failed_detections = 0
+    detection_results: List[dict] = []
 
     if len(sequence_records) == 1:
         # Single detection - process directly to avoid thread overhead
@@ -492,6 +502,7 @@ def post_sequence_to_annotation_api(
         )
         if result["success"]:
             successful_detections = 1
+            detection_results.append(result)
         else:
             failed_detections = 1
     else:
@@ -519,6 +530,7 @@ def post_sequence_to_annotation_api(
                     result = future.result()
                     if result["success"]:
                         successful_detections += 1
+                        detection_results.append(result)
                     else:
                         failed_detections += 1
                 except Exception as e:
@@ -534,6 +546,7 @@ def post_sequence_to_annotation_api(
         "successful_detections": successful_detections,
         "failed_detections": failed_detections,
         "total_detections": len(sequence_records),
+        "detection_results": detection_results,
     }
 
 
@@ -570,6 +583,7 @@ def post_records_to_annotation_api(
             "failed_detections": 0,
             "total_detections": 0,
             "successful_sequence_ids": [],
+            "sequence_results": [],
         }
 
     # Resolve credentials and get a single auth token up-front to avoid repeated logins
@@ -589,6 +603,7 @@ def post_records_to_annotation_api(
     total_successful_detections = 0
     total_failed_detections = 0
     successful_sequence_ids = []
+    sequence_results = []
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         # Submit all sequence posting tasks
@@ -622,6 +637,7 @@ def post_records_to_annotation_api(
                     platform_sequence_id, sequence_records = future_to_sequence[future]
                     try:
                         result = future.result()
+                        sequence_results.append(result)
 
                         if result.get("skipped"):
                             skipped_sequences += 1
@@ -683,4 +699,5 @@ def post_records_to_annotation_api(
         "failed_detections": total_failed_detections,
         "total_detections": len(records),
         "successful_sequence_ids": successful_sequence_ids,
+        "sequence_results": sequence_results,
     }
