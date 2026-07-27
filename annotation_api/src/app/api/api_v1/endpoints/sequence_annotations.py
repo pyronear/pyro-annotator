@@ -834,7 +834,7 @@ async def _propagate_to_group_if_validated(
         )
 
         if existing is None:
-            await annotations.create(
+            created = await annotations.create(
                 SequenceAnnotationCreate(
                     sequence_id=member_id,
                     has_missed_smoke=False,
@@ -844,6 +844,7 @@ async def _propagate_to_group_if_validated(
                 ),
                 current_user_id,
             )
+            fanned_anno_id = created.id
         else:
             await annotations.update(
                 existing.id,
@@ -854,6 +855,11 @@ async def _propagate_to_group_if_validated(
                 ),
                 current_user_id,
             )
+            fanned_anno_id = existing.id
+        # Fan-out carries the saving user's judgment onto the sibling
+        # members; create/update only auto-record contributions at
+        # ANNOTATED, so attribute the write to them explicitly.
+        await annotations.record_contribution(fanned_anno_id, current_user_id)
 
     await session.commit()
 
@@ -983,6 +989,9 @@ async def bulk_annotate_sequences(
                 processing_stage=SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
             )
             sequence_annotation = await annotations.create(create_data, current_user.id)
+            await annotations.record_contribution(
+                sequence_annotation.id, current_user.id
+            )
             applied.append(
                 SequenceAnnotationBulkResult(
                     sequence_id=sid,
@@ -998,6 +1007,9 @@ async def bulk_annotate_sequences(
             )
             sequence_annotation = await annotations.update(
                 existing.id, update_data, current_user.id
+            )
+            await annotations.record_contribution(
+                sequence_annotation.id, current_user.id
             )
             applied.append(
                 SequenceAnnotationBulkResult(

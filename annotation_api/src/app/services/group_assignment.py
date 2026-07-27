@@ -270,7 +270,7 @@ async def _run_assignment(session: AsyncSession, user_id: int) -> AssignGroupsRe
         # The annotation-exists gate means existing_anno is normally set;
         # the create branch only guards a concurrent-delete race.
         if existing_anno is None:
-            await sa_crud.create(
+            created_anno = await sa_crud.create(
                 SequenceAnnotationCreate(
                     sequence_id=seq.id,
                     has_missed_smoke=False,
@@ -280,6 +280,7 @@ async def _run_assignment(session: AsyncSession, user_id: int) -> AssignGroupsRe
                 ),
                 user_id,
             )
+            inherited_anno_id = created_anno.id
         else:
             await sa_crud.update(
                 existing_anno.id,
@@ -290,6 +291,10 @@ async def _run_assignment(session: AsyncSession, user_id: int) -> AssignGroupsRe
                 ),
                 user_id,
             )
+            inherited_anno_id = existing_anno.id
+        # create/update only auto-record contributions at ANNOTATED; this is
+        # a machine-written annotation, so attribute the write explicitly.
+        await sa_crud.record_contribution(inherited_anno_id, user_id)
         inherited += 1
 
     await session.commit()

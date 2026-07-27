@@ -86,10 +86,27 @@ retry next tick) stays unchanged.
 
 ### 4. Effect on attribution
 
-Inherited annotations (and their contribution records) are attributed to
-"worker", cleanly separated from human work in contribution counts and any
-contributor UI. Historical annotations already attributed to the admin are
-not migrated.
+The CRUD's create/update paths only auto-record contribution rows at the
+ANNOTATED stage (completed human work), so machine-written annotations at
+SEQ_ANNOTATION_DONE historically had no attribution at all — the `user_id`
+passed in was silently discarded (discovered during the live end-to-end
+check of this change). The three machine-writing paths now record a
+contribution explicitly via `SequenceAnnotationCRUD.record_contribution`:
+
+- **Sweep inheritance** (a new sequence joins an already-labeled group,
+  no human in the loop) → attributed to the **worker user** (or, until
+  #181 removes it, to the caller of the manual assign endpoint).
+- **Validated-group fan-out** (a human's save propagates their label to
+  sibling members) → attributed to the **saving human**: the label is
+  their judgment; the machine only copies it.
+- **Bulk annotate** → attributed to the **calling human**.
+
+Consequence: contribution rows no longer exclusively mean "completed work
+at ANNOTATED" — they also attribute machine-written SEQ_ANNOTATION_DONE
+annotations. Contributor lists show "worker" on sweep-inherited
+annotations; human contribution counts include group-accelerated
+throughput (fan-out, bulk). Historical annotations written before this
+change are not backfilled.
 
 ### 5. Testing
 
