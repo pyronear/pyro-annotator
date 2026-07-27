@@ -106,6 +106,7 @@ async def create_detection(
     recorded_at: datetime = Form(),
     file: UploadFile = File(..., alias="file"),
     others_bboxes: Optional[str] = Form(default=None),
+    auto_predictions: Optional[str] = Form(default=None),
     detections: DetectionCRUD = Depends(get_detection_crud),
     current_user: User = Depends(get_current_user),
 ) -> DetectionRead:
@@ -140,6 +141,16 @@ async def create_detection(
                 detail=f"Invalid others_bboxes format: {e}",
             )
 
+    validated_auto = None
+    if auto_predictions:
+        try:
+            validated_auto = AlgoPredictions.model_validate_json(auto_predictions)
+        except (ValidationError, ValueError) as e:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid auto_predictions format: {e}",
+            )
+
     detection = Detection(
         sequence_id=sequence_id,
         alert_api_id=alert_api_id,
@@ -147,6 +158,7 @@ async def create_detection(
         bucket_key="",
         algo_predictions=validated_predictions.model_dump(),
         others_bboxes=validated_others.model_dump() if validated_others else None,
+        auto_predictions=validated_auto.model_dump() if validated_auto else None,
         created_at=datetime.now(UTC),
     )
 
@@ -185,6 +197,9 @@ async def create_detection_from_url(
         algo_predictions=payload.algo_predictions.model_dump(),
         others_bboxes=payload.others_bboxes.model_dump()
         if payload.others_bboxes
+        else None,
+        auto_predictions=payload.auto_predictions.model_dump()
+        if payload.auto_predictions
         else None,
         created_at=datetime.now(UTC),
     )
@@ -236,6 +251,9 @@ async def create_detection_from_bucket_key(
         algo_predictions=payload.algo_predictions.model_dump(),
         others_bboxes=payload.others_bboxes.model_dump()
         if payload.others_bboxes
+        else None,
+        auto_predictions=payload.auto_predictions.model_dump()
+        if payload.auto_predictions
         else None,
         created_at=datetime.now(UTC),
     )

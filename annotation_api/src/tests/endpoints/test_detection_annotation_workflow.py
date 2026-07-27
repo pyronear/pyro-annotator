@@ -99,17 +99,9 @@ async def test_auto_create_detection_annotations_correct_structure(
     assert isinstance(
         detection_1_annotation["annotation"]["annotation"], list
     ), "Annotation.annotation should be a list"
-    # For true positive sequences, should be pre-populated with model predictions
-    annotations = detection_1_annotation["annotation"]["annotation"]
-    assert len(annotations) == 1, "Should have one prediction pre-populated"
-    assert annotations[0]["class_name"] == "smoke", "Should have smoke prediction"
-    assert annotations[0]["smoke_type"] == "wildfire", "Should default to wildfire"
-    assert annotations[0]["xyxyn"] == [
-        0.12,
-        0.13,
-        0.45,
-        0.48,
-    ], "Should match model prediction coordinates"
+    # Reworked model: annotations are created empty; the human ground truth is
+    # seeded at submit, not pre-filled from algo_predictions.
+    assert detection_1_annotation["annotation"]["annotation"] == []
 
     # Same verification for second detection
     assert (
@@ -124,17 +116,8 @@ async def test_auto_create_detection_annotations_correct_structure(
     assert isinstance(
         detection_2_annotation["annotation"]["annotation"], list
     ), "Annotation.annotation should be a list"
-    # For true positive sequences, should be pre-populated with model predictions
-    annotations_2 = detection_2_annotation["annotation"]["annotation"]
-    assert len(annotations_2) == 1, "Should have one prediction pre-populated"
-    assert annotations_2[0]["class_name"] == "fire", "Should have fire prediction"
-    assert annotations_2[0]["smoke_type"] == "wildfire", "Should default to wildfire"
-    assert annotations_2[0]["xyxyn"] == [
-        0.2,
-        0.25,
-        0.5,
-        0.55,
-    ], "Should match model prediction coordinates"
+    # Reworked model: annotations are created empty (seeded at submit).
+    assert detection_2_annotation["annotation"]["annotation"] == []
 
     # Step 5: Verify processing_stage is set correctly (should be 'visual_check' for true positive only sequences)
     assert (
@@ -215,21 +198,8 @@ async def test_auto_create_detection_annotations_update_scenario(
         detection_1_annotation is not None
     ), "Detection annotation should be auto-created after update to 'annotated'"
 
-    # Step 5: Verify the correct annotation structure - should be pre-populated for true positive sequences
-    annotations = detection_1_annotation["annotation"]["annotation"]
-    assert (
-        len(annotations) == 1
-    ), "Should have one prediction pre-populated for true positive sequence"
-    assert (
-        annotations[0]["class_name"] == "smoke"
-    ), "Should have smoke prediction from model"
-    assert annotations[0]["smoke_type"] == "wildfire", "Should default to wildfire"
-    assert annotations[0]["xyxyn"] == [
-        0.12,
-        0.13,
-        0.45,
-        0.48,
-    ], "Should match model prediction coordinates"
+    # Reworked model: annotations are created empty (seeded at submit).
+    assert detection_1_annotation["annotation"]["annotation"] == []
     assert (
         detection_1_annotation["processing_stage"] == "visual_check"
     ), "Processing stage should be 'visual_check' for true positive only sequences (smoke, no false positives, no missed smoke)"
@@ -377,21 +347,8 @@ async def test_auto_create_detection_annotations_processing_stages(
         detection_2_annotation["processing_stage"] == "visual_check"
     ), "Should be visual_check for true positive only sequences (has smoke, no false positives, no missed smoke)"
 
-    # Verify annotations are pre-populated with model predictions for true positive sequences
-    annotations = detection_2_annotation["annotation"]["annotation"]
-    assert (
-        len(annotations) == 1
-    ), "Should have one prediction pre-populated for true positive sequence"
-    assert (
-        annotations[0]["class_name"] == "smoke"
-    ), "Should have smoke prediction from model"
-    assert annotations[0]["smoke_type"] == "wildfire", "Should default to wildfire"
-    assert annotations[0]["xyxyn"] == [
-        0.15,
-        0.15,
-        0.3,
-        0.3,
-    ], "Should match model prediction coordinates"
+    # Reworked model: annotations are created empty (seeded at submit).
+    assert detection_2_annotation["annotation"]["annotation"] == []
 
     # Test Case 3: has_missed_smoke=true → bbox_annotation (create another sequence/detection for this test)
     sequence_payload_3 = {
@@ -808,21 +765,8 @@ async def test_auto_create_avoids_duplicate_detection_annotations(
     ), "Should create exactly one annotation for detection_id=2"
 
     detection_2_annotation = detection_2_annotations[0]
-    # For true positive sequences, annotations should be pre-populated with model predictions
-    annotations = detection_2_annotation["annotation"]["annotation"]
-    assert (
-        len(annotations) == 1
-    ), "Should have one prediction pre-populated for true positive sequence"
-    assert (
-        annotations[0]["class_name"] == "fire"
-    ), "Should have fire prediction from model"
-    assert annotations[0]["smoke_type"] == "wildfire", "Should default to wildfire"
-    assert annotations[0]["xyxyn"] == [
-        0.2,
-        0.25,
-        0.5,
-        0.55,
-    ], "Should match model prediction coordinates"
+    # Reworked model: annotations are created empty (seeded at submit).
+    assert detection_2_annotation["annotation"]["annotation"] == []
     assert detection_2_annotation["processing_stage"] == "visual_check"
 
 

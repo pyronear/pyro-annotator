@@ -91,6 +91,53 @@ async def test_create_detection_with_others_bboxes(
 
 
 @pytest.mark.asyncio
+async def test_create_detection_with_auto_predictions(
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+):
+    """`auto_predictions` is the immutable local auto-annotation model output:
+    it must persist on the detection and round-trip on GET."""
+    auto = {
+        "predictions": [
+            {
+                "xyxyn": [0.3, 0.3, 0.4, 0.4],
+                "confidence": 0.77,
+                "class_name": "smoke",
+            }
+        ]
+    }
+    payload = {
+        "sequence_id": "1",
+        "alert_api_id": "9002",
+        "recorded_at": (now - timedelta(days=2)).isoformat(),
+        "algo_predictions": json.dumps(
+            {
+                "predictions": [
+                    {
+                        "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                        "confidence": 0.95,
+                        "class_name": "smoke",
+                    }
+                ]
+            }
+        ),
+        "auto_predictions": json.dumps(auto),
+    }
+
+    response = await authenticated_client.post(
+        "/detections/",
+        data=payload,
+        files={"file": ("image.jpg", mock_img, "image/jpeg")},
+    )
+    assert response.status_code == 201
+    created = response.json()
+    assert created["auto_predictions"] == auto
+
+    fetched = await authenticated_client.get(f"/detections/{created['id']}")
+    assert fetched.status_code == 200
+    assert fetched.json()["auto_predictions"] == auto
+
+
+@pytest.mark.asyncio
 async def test_get_detection(authenticated_client: AsyncClient):
     detection_id = 1
     response = await authenticated_client.get(f"/detections/{detection_id}")
