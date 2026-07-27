@@ -1,14 +1,14 @@
 # Data Ingestion Guide
 
-This guide covers the data import script for ingesting data from the Pyronear platform API into the annotation API. This script provides an end-to-end workflow that fetches sequences and detections from the production platform and transfers them to your annotation API, automatically generating annotations and preparing them for human review.
+This guide covers the data import script for ingesting data from the Pyronear platform (alert) API into the annotation API. This script provides an end-to-end workflow that fetches sequences and detections from the production platform, object-splits each alert sequence into one annotation sequence per detected smoke object, and transfers them to your annotation API, ready for human review.
 
 ## Overview
 
 The data ingestion system uses a single comprehensive script:
 
-**`import`** - **End-to-end processing**: Fetches platform data and generates annotations in one streamlined workflow
+**`import`** - **End-to-end processing**: Fetches platform data, object-splits each alert sequence into one annotation sequence per detected object, and imports it into the annotation API in one streamlined workflow
 
-This script provides a complete pipeline from raw platform data to annotation-ready sequences with proper processing stage management, combining data fetching and annotation generation into a single, efficient workflow.
+This script provides a complete pipeline from raw platform data to annotation-ready sequences with proper processing stage management, combining data fetching, object-splitting, and annotation creation into a single, efficient workflow.
 
 ## Prerequisites
 
@@ -42,20 +42,21 @@ Each script in `scripts/data_transfer/ingestion/platform/` loads `.env` at start
 
 ### End-to-End Platform Import
 
-The import script provides a streamlined workflow that combines platform data fetching with automated annotation generation. This is the recommended approach for all use cases as it takes sequences from the platform API all the way to annotation-ready status in a single command.
+The import script provides a streamlined workflow that combines platform data fetching, object-splitting, and annotation creation. This is the only entry point that brings new data into the system.
 
 ### Workflow Overview
 
 The script executes the following pipeline:
 
-1. **Fetch Platform Data**: Retrieves sequences and detections from platform API → posts to annotation API
-2. **For Each Sequence**:
-   - **Generate Annotation**: Analyzes AI predictions and creates sequence annotations → sets stage to `READY_TO_ANNOTATE`
+1. **Fetch Platform Data**: Retrieves sequences and detections from the alert API for the given date range (chronological order, `risk_score=extreme`)
+2. **Object-Split**: Splits each alert sequence into one object sequence per detected smoke object (sibling objects sharing the same frames, plus any objects that don't cluster, as a fallback). The primary object keeps the platform `alert_api_id`; siblings get synthetic ids (`1_000_000_000 + sequence_id * 1000 + index`)
+3. **Import**: Posts the resulting object sequences and their detections to the annotation API
+4. **Annotate**: Writes one `sequences_bbox` track per object directly and sets the sequence annotation to `READY_TO_ANNOTATE`
 
 ### Key Features
 
+- **Object-splitting**: One annotation sequence per detected smoke object, using the alert API's own boxes — no AI clustering or confidence tuning involved
 - **Sequential Processing**: Processes sequences one by one for better error control
-- **Automatic Overwriting**: Always updates existing annotations (no force flag needed)
 - **Error Resilient**: Continues processing other sequences if one fails, logs errors clearly
 - **Stage Management**: Proper transitions from no annotation → `READY_TO_ANNOTATE`
 - **Comprehensive Statistics**: Tracks success/failure rates for sequences and annotations
@@ -67,10 +68,6 @@ The script executes the following pipeline:
 uv run python -m scripts.data_transfer.ingestion.platform.import \
   --date-from 2024-01-01 --date-end 2024-01-02 --loglevel info
 
-# Process all AI predictions (no confidence filtering)  
-uv run python -m scripts.data_transfer.ingestion.platform.import \
-  --date-from 2024-01-01 --confidence-threshold 0.0 --loglevel info
-
 # Dry run to preview what would be processed
 uv run python -m scripts.data_transfer.ingestion.platform.import \
   --date-from 2024-01-01 --dry-run --loglevel debug
@@ -79,25 +76,26 @@ uv run python -m scripts.data_transfer.ingestion.platform.import \
 ### Advanced Usage
 
 ```bash
-# Skip platform fetch (use existing sequences in annotation API)
+# Restrict to a specific list of sequences
 uv run python -m scripts.data_transfer.ingestion.platform.import \
-  --date-from 2024-01-01 --skip-platform-fetch --loglevel info
+  --date-from 2024-01-01 --sequence-list 158,16851,168468
 
-# Custom API endpoints and detection limits
+# Custom API endpoints and per-sequence frame limit
 uv run python -m scripts.data_transfer.ingestion.platform.import \
-  --url-api-platform "https://alertapi.pyronear.org" \
-  --url-api-annotation "http://localhost:5050" \
+  --alert-api-url "https://alertapi.pyronear.org" \
+  --annotation-api-url "http://localhost:5050" \
   --date-from 2024-01-01 --date-end 2024-01-07 \
-  --detections-limit 50 --detections-order-by desc \
+  --frames-limit 50 \
   --loglevel info
 
-# Fine-tune annotation generation parameters
+# Route images via the /from-url endpoint (needed when the annotation API
+# can't reach the alert API's S3 bucket, e.g. local dev with LocalStack)
 uv run python -m scripts.data_transfer.ingestion.platform.import \
-  --date-from 2024-01-01 \
-  --confidence-threshold 0.5 \
-  --iou-threshold 0.4 \
-  --min-cluster-size 2 \
-  --loglevel debug
+  --date-from 2024-01-01 --image-transfer url
+
+# High-performance processing with more workers
+uv run python -m scripts.data_transfer.ingestion.platform.import \
+  --date-from 2024-01-01 --max-workers 8
 ```
 
 ### Parameters Reference
@@ -111,27 +109,22 @@ uv run python -m scripts.data_transfer.ingestion.platform.import \
 #### API Configuration
 | Parameter | Description | Default | Required |
 |-----------|-------------|---------|----------|
-| `--url-api-platform` | Platform API base URL | `https://alertapi.pyronear.org` | No |
-| `--url-api-annotation` | Annotation API base URL | `http://localhost:5050` | No |
+| `--alert-api-url` | Alert API base URL | `https://alertapi.pyronear.org` | No |
+| `--annotation-api-url` | Annotation API base URL | `http://localhost:5050` | No |
+| `--max-sequences` | Max sequences to import (`0` = no cap) | `0` | No |
 
 #### Platform Fetching Options
 | Parameter | Description | Default | Required |
 |-----------|-------------|---------|----------|
-| `--detections-limit` | Max detections per sequence | `30` | No |
-| `--detections-order-by` | Order detections by created_at | `asc` | No |
-
-#### Annotation Analysis Options
-| Parameter | Description | Default | Required |
-|-----------|-------------|---------|----------|
-| `--confidence-threshold` | Min AI prediction confidence (0.0-1.0) | `0.0` | No |
-| `--iou-threshold` | Min IoU for clustering overlapping boxes | `0.3` | No |
-| `--min-cluster-size` | Min boxes required in a cluster | `1` | No |
+| `--frames-limit` | Max images to import per sequence | `30` | No |
+| `--sequence-list` | Comma-separated `alert_api_id` list, or path to a file | - | No |
 
 #### Processing Control
 | Parameter | Description | Default | Required |
 |-----------|-------------|---------|----------|
+| `--image-transfer` | How detection images reach the annotation API (`bucket-copy`/`url`) | `bucket-copy` | No |
 | `--dry-run` | Preview actions without execution | `false` | No |
-| `--skip-platform-fetch` | Skip platform data fetching | `false` | No |
+| `--max-workers` | Max workers for parallel processing | `4` | No |
 | `--loglevel` | Logging level (debug/info/warning/error) | `info` | No |
 
 ## Real-World Examples
@@ -150,10 +143,10 @@ uv run python -m scripts.data_transfer.ingestion.platform.import \
 
 ### Batch Processing
 ```bash
-# Process a week's worth of data with higher confidence filtering
+# Process a week's worth of data
 uv run python -m scripts.data_transfer.ingestion.platform.import \
   --date-from 2024-01-01 --date-end 2024-01-08 \
-  --confidence-threshold 0.7 --detections-limit 100 \
+  --frames-limit 100 \
   --loglevel info
 ```
 
@@ -161,37 +154,29 @@ uv run python -m scripts.data_transfer.ingestion.platform.import \
 ```bash
 # Use custom annotation API endpoint (e.g., staging environment)
 uv run python -m scripts.data_transfer.ingestion.platform.import \
-  --url-api-annotation "http://staging.annotation-api.com" \
+  --annotation-api-url "http://staging.annotation-api.com" \
   --date-from 2024-01-01 --date-end 2024-01-02 \
   --loglevel info
-```
-
-### Processing Existing Data
-```bash
-# Skip platform fetch and just generate annotations for existing sequences
-uv run python -m scripts.data_transfer.ingestion.platform.import \
-  --date-from 2024-01-01 --date-end 2024-01-02 \
-  --skip-platform-fetch --loglevel info
 ```
 
 ## Script Behavior and Features
 
 ### Concurrent Processing
-- Uses **ProcessPoolExecutor** for concurrent data fetching
-- **Progress bars** (via tqdm) show real-time progress for long operations
+- Uses parallel workers for concurrent data fetching and uploads
+- **Progress bars** (via `rich`) show real-time progress for long operations
 - Efficient handling of large date ranges and multiple sequences
 
 ### Data Transformation
 - Fetches platform sequences, detections, cameras, and organizations
+- Object-splits each alert sequence into one sequence per detected smoke object
 - Transforms data to match the annotation API schema format
 - Downloads detection images and uploads them to the annotation API
 - Handles coordinate normalization and prediction data formatting
 
-### Annotation Generation
-- Analyzes AI predictions to create sequence annotations automatically
-- Clusters overlapping bounding boxes across temporal frames
-- Applies configurable confidence and IoU thresholds
+### Annotation Creation
+- Writes one `sequences_bbox` track per object directly from the alert API's own boxes (no AI clustering)
 - Sets processing stage to `READY_TO_ANNOTATE` for human review
+- The annotation API's server-side automatic generation service still exists and is used by other API clients, but is not invoked by this import path
 
 ### Error Handling and Validation
 - Validates all required environment variables before execution
@@ -205,10 +190,10 @@ uv run python -m scripts.data_transfer.ingestion.platform.import \
 The script manages annotation processing stages automatically:
 
 1. **No Annotation**: Sequence exists but has no annotation
-2. **READY_TO_ANNOTATE**: Annotation created from AI predictions and ready for human review
+2. **READY_TO_ANNOTATE**: Annotation created from the object-split boxes and ready for human review
 
 ```
-Platform Data → Annotation API → Generate Annotations (READY_TO_ANNOTATE)
+Platform Data → Object-Split → Annotation API (READY_TO_ANNOTATE)
 ```
 
 ### Output and Reporting
@@ -261,14 +246,14 @@ PLATFORM_ADMIN_PASSWORD=your_admin_password
 **Error**: Connection errors to annotation API
 **Solutions**:
 - Verify annotation API is running: `curl http://localhost:5050/docs`
-- Check the `--url-api-annotation` parameter
+- Check the `--annotation-api-url` parameter
 - Ensure network connectivity between script and annotation API
 
 #### 5. Large Dataset Timeouts
 **Issue**: Script timeout with large date ranges
 **Solutions**:
 - Use smaller date ranges and run multiple times
-- Increase `--detections-limit` if you need more detections per sequence
+- Increase `--frames-limit` if you need more frames per sequence
 - Use `--dry-run` first to test data fetching performance
 
 #### 6. Partial Processing Results
@@ -278,7 +263,6 @@ PLATFORM_ADMIN_PASSWORD=your_admin_password
 - Invalid data from platform API
 - Network timeouts for image downloads
 - Data validation failures in annotation API
-- Insufficient AI predictions for annotation generation
 
 ### Debug Mode
 
@@ -291,9 +275,8 @@ uv run python -m scripts.data_transfer.ingestion.platform.import \
 
 This will show:
 - Detailed API request/response information
-- Data transformation steps
+- Data transformation and object-splitting steps
 - Individual sequence and detection processing results
-- Annotation generation details and statistics
 - Timing information for performance analysis
 
 ### Dry Run Mode
@@ -307,16 +290,15 @@ uv run python -m scripts.data_transfer.ingestion.platform.import \
 
 This is useful for:
 - Validating credentials and API connectivity
-- Testing data transformation logic
-- Previewing annotation generation results
+- Testing data transformation and object-splitting logic
 - Estimating processing time for large datasets
 - Debugging without side effects
 
 ## Integration with Annotation Workflow
 
 ### Typical Workflow
-1. **Data Import**: Use this script to import platform data and generate initial annotations
-2. **Human Review**: Review and validate the auto-generated annotations
+1. **Data Import**: Use this script to import platform data, object-split it, and create initial annotations
+2. **Human Review**: Review and validate the object-split annotations
 3. **Quality Control**: Refine annotations, mark false positives, add missing smoke
 4. **Export**: Use the API client to export annotated data for ML training
 
@@ -354,15 +336,9 @@ uv run python -m scripts.data_transfer.ingestion.platform.import \
   --date-end $(date '+%Y-%m-%d') \
   --loglevel info
 
-# Weekly batch processing with high confidence filtering
+# Weekly batch processing
 uv run python -m scripts.data_transfer.ingestion.platform.import \
   --date-from 2024-01-01 --date-end 2024-01-08 \
-  --confidence-threshold 0.7 \
-  --detections-limit 100 \
+  --frames-limit 100 \
   --loglevel info
-
-# Development/testing with existing data (skip platform fetch)
-uv run python -m scripts.data_transfer.ingestion.platform.import \
-  --date-from 2024-01-01 --date-end 2024-01-02 \
-  --skip-platform-fetch --dry-run --loglevel debug
 ```

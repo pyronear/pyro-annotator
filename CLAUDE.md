@@ -122,8 +122,10 @@ Credentials live in `annotation_api/.env` (copy from `.env.example` once). Each 
 ```bash
 # Import sequences from platform API (.env must define PLATFORM_LOGIN, PLATFORM_PASSWORD,
 # PLATFORM_ADMIN_LOGIN, PLATFORM_ADMIN_PASSWORD, MAIN_ANNOTATION_LOGIN, MAIN_ANNOTATION_PASSWORD)
-make import-platform DATE_FROM=2024-01-01 DATE_END=2024-01-02
+make import-alert-api DATE_FROM=2024-01-01 DATE_END=2024-01-02
 ```
+
+The import object-splits each alert sequence from the alert API's own boxes and writes one annotation track per object client-side (no pyro-engine/pyro-dataset involved).
 
 ## Key Architecture Concepts
 
