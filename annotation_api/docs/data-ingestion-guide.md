@@ -124,7 +124,7 @@ uv run python -m scripts.data_transfer.ingestion.platform.import \
 #### Processing Control
 | Parameter | Description | Default | Required |
 |-----------|-------------|---------|----------|
-| `--image-transfer` | How detection images reach the annotation API (`bucket-copy`/`url`) | `bucket-copy` | No |
+| `--image-transfer` | How detection images reach the annotation API (`bucket-copy`/`url`) | `bucket-copy` for the French alert API, `url` for CENIA (bucket-copy only works against the French platform's buckets) | No |
 | `--dry-run` | Preview actions without execution | `false` | No |
 | `--max-workers` | Max workers for parallel processing | `4` | No |
 | `--loglevel` | Logging level (debug/info/warning/error) | `info` | No |

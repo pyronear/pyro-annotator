@@ -32,7 +32,7 @@ Arguments:
   --max-sequences (int): Maximum number of sequences to import (default: 0, 0 = no cap)
   --frames-limit (int): Maximum number of images to import per sequence (default: 30)
   --sequence-list (str): Comma-separated list of sequence alert_api_id, or path to a file
-  --image-transfer (str): How detection images reach the annotation API (bucket-copy/url, default: bucket-copy)
+  --image-transfer (str): How detection images reach the annotation API (bucket-copy/url; default: bucket-copy for the French alert API, url for CENIA)
   --max-workers (int): Max workers for parallel processing, auto-scales for different operations (default: 4)
   --dry-run: Preview actions without execution
   --loglevel (str): Logging level (debug/info/warning/error, default: info)
@@ -169,14 +169,16 @@ def make_cli_parser() -> argparse.ArgumentParser:
         "--image-transfer",
         help=(
             "How detection images reach the annotation API: 'bucket-copy' asks the "
-            "server to copy the object straight from the alert API's S3 bucket "
-            "(production default); 'url' posts via the /from-url endpoint instead — "
-            "required for local dev where the annotation API can't reach that bucket "
-            "(e.g. LocalStack)."
+            "server to copy the object straight from the alert API's S3 bucket; "
+            "'url' posts via the /from-url endpoint instead. Default: bucket-copy "
+            "for the French alert API, url for CENIA (the server can only "
+            "bucket-copy from the French platform's buckets). 'url' is also "
+            "required for local dev where the annotation API can't reach the "
+            "platform bucket (e.g. LocalStack)."
         ),
         type=str,
         choices=["bucket-copy", "url"],
-        default="bucket-copy",
+        default=None,
     )
     parser.add_argument(
         "--dry-run",
@@ -306,6 +308,23 @@ def main() -> None:
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
     logger = logging.getLogger(__name__)
+
+    # bucket-copy derives its source bucket from the French platform config
+    # (PLATFORM_SERVER_NAME), so it cannot work against CENIA.
+    is_cenia = "apicenia" in args.alert_api_url
+    if args.image_transfer is None:
+        args.image_transfer = "url" if is_cenia else "bucket-copy"
+        if is_cenia:
+            logging.info(
+                "Auto-selected --image-transfer url for the CENIA alert API "
+                "(bucket-copy only works against the French platform's buckets)"
+            )
+    elif args.image_transfer == "bucket-copy" and is_cenia:
+        logging.warning(
+            "--image-transfer bucket-copy against the CENIA alert API will fail: "
+            "the annotation API copies from the French platform's buckets. "
+            "Every detection will error and its sequence will be rolled back."
+        )
 
     # Validate arguments
     if not validate_args(args):
