@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     # Authentication
     AUTH_USERNAME: str = os.environ.get("AUTH_USERNAME", "admin")
     AUTH_PASSWORD: str = os.environ.get("AUTH_PASSWORD", "admin")
+    # Identity (not a secret) of the login-disabled user that the worker
+    # attributes automatic group-assignment annotations to. Must match on
+    # API and worker if overridden.
+    WORKER_USERNAME: str = os.environ.get("WORKER_USERNAME", "worker")
     JWT_SECRET: str = os.environ.get(
         "JWT_SECRET", "your-secret-key-change-in-production"
     )
