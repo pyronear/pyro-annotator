@@ -1,5 +1,7 @@
 """Tests for startup user seeding (admin + login-disabled worker user)."""
 
+import logging
+
 import pytest
 from httpx import AsyncClient
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -21,11 +23,20 @@ async def test_seed_creates_login_disabled_worker_user(
 
 
 @pytest.mark.asyncio
-async def test_seed_is_idempotent(async_session: AsyncSession):
+async def test_seed_is_idempotent(
+    async_session: AsyncSession,
+    caplog: pytest.LogCaptureFixture,
+):
     await seed_default_users(async_session)
     crud = UserCRUD(async_session)
     first = await crud.get_by_username(settings.WORKER_USERNAME)
-    await seed_default_users(async_session)
+
+    # The second run must short-circuit on the existing rows — not attempt a
+    # duplicate create that merely gets swallowed by the unique constraint.
+    with caplog.at_level(logging.ERROR, logger="uvicorn.error"):
+        await seed_default_users(async_session)
+    assert "Failed to create" not in caplog.text
+
     second = await crud.get_by_username(settings.WORKER_USERNAME)
     assert first is not None and second is not None
     assert first.id == second.id

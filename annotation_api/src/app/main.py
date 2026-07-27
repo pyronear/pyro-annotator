@@ -51,6 +51,10 @@ async def seed_default_users(session) -> None:
             logger.info("Admin user created successfully")
         except Exception as e:
             logger.error(f"Failed to create admin user: {e}")
+            # A failed commit (e.g. losing a concurrent-boot race on the
+            # username unique constraint) leaves the session unusable until
+            # rolled back; the worker-user seeding below reuses it.
+            await session.rollback()
     else:
         logger.info("Admin user already exists")
 
@@ -71,6 +75,15 @@ async def seed_default_users(session) -> None:
             logger.info("Worker user created successfully")
         except Exception as e:
             logger.error(f"Failed to create worker user: {e}")
+            await session.rollback()
+    elif worker_user.is_active:
+        # get-or-create adopted a pre-existing account: attribution will go
+        # to what looks like a human user. Almost certainly a naming
+        # collision — pick a different WORKER_USERNAME.
+        logger.warning(
+            f"User {settings.WORKER_USERNAME!r} already exists and is active; "
+            "the group-assignment sweep will attribute annotations to it."
+        )
     else:
         logger.info("Worker user already exists")
 
