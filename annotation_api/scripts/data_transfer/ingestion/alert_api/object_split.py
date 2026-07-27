@@ -1,24 +1,24 @@
 """
-Split one platform sequence's records into one record group per smoke object.
+Split one alert sequence's records into one record group per smoke object.
 
-The platform's detections already carry every object's boxes (`bbox` for the
+The alert API's detections already carry every object's boxes (`bbox` for the
 tracked object, `others_bboxes` for its siblings — see issue #166). We cluster
 all boxes across frames with `object_clustering.cluster_objects` (the offline
 port of pyro-api's association rule) and emit, per object, rewritten copies of
-the platform records. Because each copy carries the object's own
+the alert API records. Because each copy carries the object's own
 `sequence_id`, the existing posting pipeline
 (`shared.post_records_to_annotation_api`) imports each object as its own
 annotation sequence with no changes.
 
 ID scheme: the PRIMARY object (the cluster with the most boxes sourced from
-the platform's own `bbox` field; ties broken by earliest first detection)
-keeps the raw platform sequence id so past plain imports dedup naturally via
+the alert API's own `bbox` field; ties broken by earliest first detection)
+keeps the raw alert sequence id so past plain imports dedup naturally via
 the 409-skip. Siblings get
-`alert_id_base + platform_sequence_id * 1000 + object_index`. The alert API
-sometimes materializes the same physical object as its own platform sequence
+`alert_id_base + alert_api_sequence_id * 1000 + object_index`. The alert API
+sometimes materializes the same physical object as its own alert sequence
 too (that sequence's own `bbox` boxes are this one's `others_bboxes`, and vice
 versa); `split_all_records` cross-references sibling groups against every
-other platform sequence's own boxes and drops a sibling that duplicates one,
+other alert sequence's own boxes and drops a sibling that duplicates one,
 but this only catches duplicates within a single run — sequences split across
 a date-range boundary into different runs are not deduplicated.
 """
@@ -44,7 +44,7 @@ BoxKey = Tuple[str, Tuple[float, float, float, float]]
 
 
 def _parse_dt(value: str) -> datetime:
-    """Parse a platform ISO timestamp (tolerating a trailing Z)."""
+    """Parse an alert-api ISO timestamp (tolerating a trailing Z)."""
     return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
 
 
@@ -57,7 +57,7 @@ def build_frames(sequence_records: List[dict]) -> Tuple[List[dict], Set[BoxKey]]
 
     Each frame merges the record's own `detection_bboxes` and its
     `detection_others_bboxes` — clustering ignores the source, but primary
-    selection needs to know which boxes came from the platform's `bbox` field.
+    selection needs to know which boxes came from the alert API's `bbox` field.
     A box present in both lists (same coordinates) is deduped to appear once,
     with the `own` copy taking precedence so it is still tagged primary.
     """
@@ -112,16 +112,16 @@ def select_primary_index(
 
 
 def synthetic_alert_api_id(
-    platform_sequence_id: int,
+    alert_api_sequence_id: int,
     object_index: int,
     alert_id_base: int = DEFAULT_ALERT_ID_BASE,
 ) -> int:
-    return alert_id_base + platform_sequence_id * 1000 + object_index
+    return alert_id_base + alert_api_sequence_id * 1000 + object_index
 
 
 @dataclass
 class ObjectGroup:
-    """One detected object, as rewritten platform records ready for posting."""
+    """One detected object, as rewritten alert-api records ready for posting."""
 
     object_index: int  # 0 = primary
     alert_api_id: int
@@ -135,13 +135,13 @@ def split_sequence_records(
     *,
     alert_id_base: int = DEFAULT_ALERT_ID_BASE,
 ) -> List[ObjectGroup]:
-    """Split one platform sequence's records into per-object groups.
+    """Split one alert sequence's records into per-object groups.
 
     Falls back to a single unmodified group when clustering yields no
     qualifying object (sequence shorter than the spawn threshold, or boxless)
     so nothing is silently dropped.
     """
-    platform_sid = sequence_records[0]["sequence_id"]
+    alert_api_sid = sequence_records[0]["sequence_id"]
     frames, primary_keys = build_frames(sequence_records)
     objects = cluster_objects(frames)
     records_by_key = {_frame_key(r): r for r in sequence_records}
@@ -150,7 +150,7 @@ def split_sequence_records(
         return [
             ObjectGroup(
                 object_index=0,
-                alert_api_id=platform_sid,
+                alert_api_id=alert_api_sid,
                 is_primary=True,
                 is_fallback=True,
                 records=[dict(r) for r in sequence_records],
@@ -176,7 +176,7 @@ def split_sequence_records(
             own_by_frame.setdefault(member.image_filename, []).append(member.box)
 
         alert_id = (
-            platform_sid if pos == 0 else synthetic_alert_api_id(platform_sid, pos, alert_id_base)
+            alert_api_sid if pos == 0 else synthetic_alert_api_id(alert_api_sid, pos, alert_id_base)
         )
         member_keys = sorted(own_by_frame, key=lambda k: _parse_dt(records_by_key[k]["detection_created_at"]))
         recorded = [records_by_key[k]["detection_created_at"] for k in member_keys]
@@ -216,14 +216,14 @@ def split_sequence_records(
 
 
 # (bucket_key, (x1, y1, x2, y2) rounded to 4 decimals) identifying one box,
-# shared across whichever platform sequences happen to carry it.
+# shared across whichever alert sequences happen to carry it.
 BucketBoxKey = Tuple[str, Tuple[float, float, float, float]]
 
 
 def _own_box_keys(records: List[dict]) -> Set[BucketBoxKey]:
     """Box keys for a record group's own `detection_bboxes`, keyed by bucket key.
 
-    Unlike `BoxKey` (keyed by `detection_id`, unique per platform sequence),
+    Unlike `BoxKey` (keyed by `detection_id`, unique per alert sequence),
     this is keyed by `detection_bucket_key` so it stays comparable ACROSS
     sequences — the alert API reuses the same image bucket key for the same
     physical frame regardless of which sequence materializes it.
@@ -244,18 +244,18 @@ def split_all_records(
     *,
     alert_id_base: int = DEFAULT_ALERT_ID_BASE,
 ) -> Tuple[List[dict], dict]:
-    """Split every platform sequence's records into per-object records.
+    """Split every alert sequence's records into per-object records.
 
     Returns the flat rewritten record list (feed it to the existing posting
     pipeline — each object group has its own sequence_id) plus summary stats.
 
     A sibling group is dropped (not included in the output) when its boxes
-    match another platform sequence's own boxes — the alert API sometimes
+    match another alert sequence's own boxes — the alert API sometimes
     materializes the same object as its own sequence too, and without this
     check `split_sequence_records` would import it twice.
     """
     stats = {
-        "platform_sequences": 0,
+        "alert_api_sequences": 0,
         "objects": 0,
         "sibling_objects": 0,
         "fallback_sequences": 0,
@@ -264,7 +264,7 @@ def split_all_records(
 
     grouped = group_records_by_sequence(records)
 
-    # First pass: index every platform sequence's own bbox-sourced boxes so
+    # First pass: index every alert sequence's own bbox-sourced boxes so
     # siblings split out below can be checked against OTHER sequences' boxes.
     primary_keys_by_sid: Dict[int, Set[BucketBoxKey]] = {
         sid: _own_box_keys(seq_records) for sid, seq_records in grouped.items()
@@ -276,37 +276,37 @@ def split_all_records(
 
     out: List[dict] = []
     for _sid, seq_records in grouped.items():
-        platform_sid = seq_records[0]["sequence_id"]
+        alert_api_sid = seq_records[0]["sequence_id"]
         try:
             groups = split_sequence_records(seq_records, alert_id_base=alert_id_base)
         except Exception as exc:
             logging.warning(
-                f"Splitting platform sequence {platform_sid} failed, "
+                f"Splitting alert sequence {alert_api_sid} failed, "
                 f"importing it whole instead: {exc}"
             )
             groups = [
                 ObjectGroup(
                     object_index=0,
-                    alert_api_id=platform_sid,
+                    alert_api_id=alert_api_sid,
                     is_primary=True,
                     is_fallback=True,
                     records=[dict(r) for r in seq_records],
                 )
             ]
-        stats["platform_sequences"] += 1
+        stats["alert_api_sequences"] += 1
         stats["fallback_sequences"] += sum(1 for g in groups if g.is_fallback)
         for group in groups:
             if not group.is_primary:
                 matched_sid = None
                 for key in _own_box_keys(group.records):
-                    other_sids = key_to_sids.get(key, set()) - {platform_sid}
+                    other_sids = key_to_sids.get(key, set()) - {alert_api_sid}
                     if other_sids:
                         matched_sid = next(iter(other_sids))
                         break
                 if matched_sid is not None:
                     logging.info(
-                        f"sibling object of seq {platform_sid} matches seq "
-                        f"{matched_sid}'s own boxes — skipping (platform "
+                        f"sibling object of seq {alert_api_sid} matches seq "
+                        f"{matched_sid}'s own boxes — skipping (the alert API "
                         "already materialized it)"
                     )
                     stats["cross_deduped_siblings"] += 1

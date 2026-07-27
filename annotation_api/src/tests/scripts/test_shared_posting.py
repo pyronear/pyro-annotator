@@ -1,4 +1,4 @@
-import scripts.data_transfer.ingestion.platform.shared as shared
+import scripts.data_transfer.ingestion.alert_api.shared as shared
 
 from factories import make_record
 

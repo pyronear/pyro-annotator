@@ -1,9 +1,9 @@
 from app.schemas.annotation_validation import DetectionAnnotationItem
 
-from scripts.data_transfer.ingestion.platform.apply_fiftyone_review import (
+from scripts.data_transfer.ingestion.alert_api.apply_fiftyone_review import (
     load_yolo_label_file,
 )
-from scripts.data_transfer.ingestion.platform.label_classes import CLASS_ID
+from scripts.data_transfer.ingestion.alert_api.label_classes import CLASS_ID
 
 
 class TestLoadYoloLabelFile:

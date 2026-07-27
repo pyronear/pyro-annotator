@@ -127,7 +127,7 @@ migrate-up:
 # Push locally-annotated sequences back to the remote API.
 # Usage: make push-annotations [MAX_SEQUENCES=10]
 push-annotations:
-	uv run python -m scripts.data_transfer.ingestion.platform.push_sequence_annotations \
+	uv run python -m scripts.data_transfer.ingestion.alert_api.push_sequence_annotations \
 		--local-api $(LOCAL_API) \
 		--remote-api $(REMOTE_API) \
 		--max-sequences $(MAX_SEQUENCES) \
@@ -140,7 +140,7 @@ push-annotations:
 # MAX_SEQUENCES caps merged folders, not raw sequences.
 # Usage: make pull-seq-annotations [MAX_SEQUENCES=20] [SMOKE_TYPE=wildfire] [DATA_ROOT=outputs/seq_annotation_done]
 pull-seq-annotations:
-	uv run python -m scripts.data_transfer.ingestion.platform.pull_sequence_annotations \
+	uv run python -m scripts.data_transfer.ingestion.alert_api.pull_sequence_annotations \
 		--remote-api $(REMOTE_API) \
 		--max-sequences $(MAX_SEQUENCES) \
 		--output-dir $(DATA_ROOT) \
@@ -150,7 +150,7 @@ pull-seq-annotations:
 # Auto-fill missing boxes using the pyronear YOLO11s model.
 # Usage: make auto-annotate [DATA_ROOT=...] [CONF_TH=0.01]
 auto-annotate:
-	uv run --active python -m scripts.data_transfer.ingestion.platform.auto_annotate \
+	uv run --active python -m scripts.data_transfer.ingestion.alert_api.auto_annotate \
 		--data-root $(DATA_ROOT) \
 		--conf-th $(CONF_TH) \
 		--iou-nms 0.0 \
@@ -161,7 +161,7 @@ auto-annotate:
 # Launch FiftyOne for visual review of exported sequences.
 # Usage: make visual-check [DATA_ROOT=...] [DATASET_NAME=visual_check]
 visual-check:
-	uv run --active python -m scripts.data_transfer.ingestion.platform.visual_check_fiftyone \
+	uv run --active python -m scripts.data_transfer.ingestion.alert_api.visual_check_fiftyone \
 		--data-root $(DATA_ROOT) \
 		--dataset-name $(DATASET_NAME) \
 		--conf-th 0.0
@@ -169,7 +169,7 @@ visual-check:
 # Apply FiftyOne review tags back to the remote annotation API.
 # Usage: make apply-review [DATASET_NAME=visual_check] [DATA_ROOT=...]
 apply-review:
-	uv run --active python -m scripts.data_transfer.ingestion.platform.apply_fiftyone_review \
+	uv run --active python -m scripts.data_transfer.ingestion.alert_api.apply_fiftyone_review \
 		--dataset-name $(DATASET_NAME) \
 		--labels-root $(DATA_ROOT) \
 		--remote-api $(REMOTE_API) \
@@ -186,7 +186,7 @@ FP_DATASET     ?= fp_check
 # Usage: make pull-fp [MAX_SEQUENCES=20]
 # Note: smoke-type is hardcoded to "empty" for FP pulls.
 pull-fp:
-	uv run python -m scripts.data_transfer.ingestion.platform.pull_sequence_annotations \
+	uv run python -m scripts.data_transfer.ingestion.alert_api.pull_sequence_annotations \
 		--remote-api $(REMOTE_API) \
 		--max-sequences $(MAX_SEQUENCES) \
 		--output-dir $(FP_DATA_ROOT) \
@@ -196,7 +196,7 @@ pull-fp:
 # Visual check FP sequences in FiftyOne (confirm no fire was missed).
 # Usage: make visual-check-fp [FP_DATA_ROOT=outputs/fp_review]
 visual-check-fp:
-	uv run --active python -m scripts.data_transfer.ingestion.platform.visual_check_fiftyone \
+	uv run --active python -m scripts.data_transfer.ingestion.alert_api.visual_check_fiftyone \
 		--data-root $(FP_DATA_ROOT) \
 		--dataset-name $(FP_DATASET) \
 		--conf-th 0.0
@@ -204,7 +204,7 @@ visual-check-fp:
 # Apply FP review: clean sequences → managed (no labels), issue sequences → needs_manual.
 # Usage: make apply-review-fp [FP_DATASET=fp_check] [FP_DATA_ROOT=outputs/fp_review]
 apply-review-fp:
-	uv run --active python -m scripts.data_transfer.ingestion.platform.apply_fiftyone_review \
+	uv run --active python -m scripts.data_transfer.ingestion.alert_api.apply_fiftyone_review \
 		--dataset-name $(FP_DATASET) \
 		--labels-root $(FP_DATA_ROOT) \
 		--remote-api $(REMOTE_API) \
@@ -219,7 +219,7 @@ apply-review-fp:
 # annotation_api/.env (loaded by the script) or in your shell environment.
 # Authentication will fail with a clear HTTP 401 if creds are missing/wrong.
 export-dataset:
-	uv run python -m scripts.data_transfer.ingestion.platform.export_dataset \
+	uv run python -m scripts.data_transfer.ingestion.alert_api.export_dataset \
 		--api-base $(REMOTE_API)/api/v1 \
 		--verify-ssl \
 		--output-dir $(OUTPUT_DIR) \
@@ -238,7 +238,7 @@ import-yolo-sequence:
 	@if [ -z "$(SEQUENCE_DIR)" ]; then \
 		echo "ERROR: set SEQUENCE_DIR=path/to/sequence"; exit 1; \
 	fi
-	uv run python -m scripts.data_transfer.ingestion.platform.import_yolo_sequence \
+	uv run python -m scripts.data_transfer.ingestion.alert_api.import_yolo_sequence \
 		--sequence-dir $(SEQUENCE_DIR) \
 		--api-base $(API_BASE) \
 		$(if $(ALERT_API_ID),--alert-api-id $(ALERT_API_ID),) \
@@ -258,7 +258,7 @@ import-local-yolo:
 	@if [ -z "$(ROOT_DIR)" ]; then \
 		echo "ERROR: set ROOT_DIR=path/to/dataset/root"; exit 1; \
 	fi
-	uv run python -m scripts.data_transfer.ingestion.platform.batch_import_local_yolo \
+	uv run python -m scripts.data_transfer.ingestion.alert_api.batch_import_local_yolo \
 		--root-dir $(ROOT_DIR) \
 		--sequences-subdir $(SEQUENCES_SUBDIR) \
 		--labels-dir-name $(LABELS_DIR) \
@@ -273,7 +273,7 @@ import-local-yolo:
 # Move annotations between stages on the remote API.
 # Usage: make update-stage-remote [FROM_STAGE=in_review] [TO_STAGE=seq_annotation_done] [MAX_SEQUENCES=0]
 update-stage-remote:
-	uv run python -m scripts.data_transfer.ingestion.platform.update_annotation_stage \
+	uv run python -m scripts.data_transfer.ingestion.alert_api.update_annotation_stage \
 		--api-url $(REMOTE_API) \
 		--from-stage $(FROM_STAGE) \
 		--to-stage $(TO_STAGE) \
@@ -285,7 +285,7 @@ update-stage-remote:
 LOCAL_USERNAME ?= admin
 LOCAL_PASSWORD ?= admin12345
 update-stage-local:
-	uv run python -m scripts.data_transfer.ingestion.platform.update_annotation_stage \
+	uv run python -m scripts.data_transfer.ingestion.alert_api.update_annotation_stage \
 		--api-url $(LOCAL_API) \
 		--username $(LOCAL_USERNAME) \
 		--password $(LOCAL_PASSWORD) \
@@ -299,7 +299,7 @@ update-stage-local:
 # Import sequences + detections from the alert API (a.k.a. "platform") into the
 # target annotation API, object-splitting each alert sequence into one
 # annotation sequence per smoke object (admin-only).
-# Requires PLATFORM_LOGIN/PASSWORD, PLATFORM_ADMIN_LOGIN/PASSWORD, MAIN_ANNOTATION_LOGIN/PASSWORD.
+# Requires ALERT_API_LOGIN/PASSWORD, ALERT_API_ADMIN_LOGIN/PASSWORD, MAIN_ANNOTATION_LOGIN/PASSWORD.
 # Usage: make import-alert-api DATE_FROM=2025-03-04 [DATE_END=2025-03-04] [MAX_SEQUENCES=20]
 DATE_END ?= $(DATE_FROM)
 import-alert-api: MAX_SEQUENCES = 0
@@ -307,7 +307,7 @@ import-alert-api:
 	@if [ -z "$(DATE_FROM)" ]; then \
 		echo "ERROR: set DATE_FROM=YYYY-MM-DD (and optionally DATE_END)"; exit 1; \
 	fi
-	uv run python -m scripts.data_transfer.ingestion.platform.import \
+	uv run python -m scripts.data_transfer.ingestion.alert_api.import \
 		--date-from $(DATE_FROM) --date-end $(DATE_END) \
 		--annotation-api-url $(REMOTE_API) \
 		--max-sequences $(MAX_SEQUENCES) \

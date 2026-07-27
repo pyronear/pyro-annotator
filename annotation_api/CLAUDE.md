@@ -47,7 +47,7 @@ annotation_api/
 ├── scripts/                 # Utility and data transfer scripts
 │   └── data_transfer/       # Data ingestion scripts
 │       └── ingestion/
-│           └── platform/    # Platform API data fetching
+│           └── alert_api/   # Alert API data fetching
 ├── pyproject.toml          # uv dependencies and tool config
 ├── uv.lock                 # Locked dependencies for reproducible builds
 ├── docker-compose-dev.yml  # Development environment
@@ -418,40 +418,40 @@ with open("detection.jpg", "rb") as f:
 
 ## Data Transfer Scripts
 
-### Platform Data Import
-Single comprehensive script for fetching data from the Pyronear platform API and generating annotations in one streamlined workflow.
+### Alert API Data Import
+Single comprehensive script for fetching data from the Pyronear alert API and generating annotations in one streamlined workflow.
 
 #### Script Execution
 Use the Python module execution syntax with `uv run`:
 
 ```bash
-# End-to-end processing: fetch platform data → generate annotations
-uv run python -m scripts.data_transfer.ingestion.platform.import \
+# End-to-end processing: fetch alert API data → generate annotations
+uv run python -m scripts.data_transfer.ingestion.alert_api.import \
   --date-from 2024-01-01 --date-end 2024-01-02 --loglevel info
 
 # Cap the number of sequences imported and use the URL image-transfer mode
 # (needed for local dev, where the annotation API can't reach the alert API's S3 bucket)
-uv run python -m scripts.data_transfer.ingestion.platform.import \
+uv run python -m scripts.data_transfer.ingestion.alert_api.import \
   --date-from 2024-01-01 --date-end 2024-01-02 --max-sequences 20 --image-transfer url --loglevel info
 ```
 
 #### Environment Variables Required
-- `PLATFORM_LOGIN` - Platform API login
-- `PLATFORM_PASSWORD` - Platform API password  
-- `PLATFORM_ADMIN_LOGIN` - Admin login for organization access
-- `PLATFORM_ADMIN_PASSWORD` - Admin password for organization access
+- `ALERT_API_LOGIN` - Alert API login
+- `ALERT_API_PASSWORD` - Alert API password  
+- `ALERT_API_ADMIN_LOGIN` - Admin login for organization access
+- `ALERT_API_ADMIN_PASSWORD` - Admin password for organization access
 - `ANNOTATOR_LOGIN` - Annotation API login for script authentication (default: `admin`)
 - `ANNOTATOR_PASSWORD` - Annotation API password for script authentication (default: `admin`)
 
 #### Script Features
-- **End-to-end workflow** - Complete pipeline from platform data to annotation-ready sequences
-- **Object-splitting** - Each alert sequence is split client-side into one annotation sequence per detected smoke object, using the alert API's own boxes (the primary keeps the platform `alert_api_id`; siblings get synthetic ids)
+- **End-to-end workflow** - Complete pipeline from alert API data to annotation-ready sequences
+- **Object-splitting** - Each alert sequence is split client-side into one annotation sequence per detected smoke object, using the alert API's own boxes (the primary keeps the alert API `alert_api_id`; siblings get synthetic ids)
 - **Client-side annotation creation** - Writes one `sequences_bbox` track per object directly; the server's automatic annotation generation (see below) is no longer used by this path, though it still exists for other API clients
 - **Concurrent processing** - Multi-threading for faster data fetching
 - **Progress tracking** - tqdm progress bars for long-running operations
 - **Flexible date ranges** - Configurable date filtering
 - **Logging support** - Configurable log levels for debugging
-- **Stage management** - Automatic transitions from platform data to READY_TO_ANNOTATE stage
+- **Stage management** - Automatic transitions from alert API data to READY_TO_ANNOTATE stage
 
 ## Troubleshooting
 

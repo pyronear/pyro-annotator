@@ -29,7 +29,7 @@ class WorkerConfig:
         base_workers: The base number of workers provided by the user
 
     Properties:
-        detection_fetching: Workers for platform API detection fetching (I/O bound)
+        detection_fetching: Workers for alert API detection fetching (I/O bound)
         api_posting: Workers for sequence creation API calls (rate-limited)
         annotation_processing: Workers for CPU-bound annotation processing
         detection_per_sequence: Workers for detection creation within each sequence
@@ -39,7 +39,7 @@ class WorkerConfig:
         >>> config = WorkerConfig(max_workers=8)
         >>> # Use for different operations
         >>> with ThreadPoolExecutor(max_workers=config.detection_fetching) as executor:
-        ...     # Fetch data from platform API
+        ...     # Fetch data from alert API
         ...     pass
         >>> with ThreadPoolExecutor(max_workers=config.api_posting) as executor:
         ...     # Post to annotation API (more conservative due to rate limits)
@@ -64,7 +64,7 @@ class WorkerConfig:
     @property
     def detection_fetching(self) -> int:
         """
-        Workers for platform API detection fetching.
+        Workers for alert API detection fetching.
 
         This operation is I/O bound (HTTP requests) so we can use the full
         base worker count as network requests can run concurrently.

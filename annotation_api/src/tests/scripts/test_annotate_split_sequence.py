@@ -1,11 +1,11 @@
-import scripts.data_transfer.ingestion.platform.annotation_management as am
+import scripts.data_transfer.ingestion.alert_api.annotation_management as am
 
 
 def seq_result(failed=0, detection_results=None):
     return {
         "success": True,
         "sequence_id": 42,
-        "platform_sequence_id": 47105,
+        "alert_api_sequence_id": 47105,
         "successful_detections": 3 - failed,
         "failed_detections": failed,
         "total_detections": 3,

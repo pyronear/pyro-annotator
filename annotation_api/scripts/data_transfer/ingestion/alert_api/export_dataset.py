@@ -18,7 +18,7 @@ Sequences imported by the predictor-split pipeline (one sequence per detected ob
 duplicate the same frames across sibling sequences. To export each frame once, sequences
 from the same camera are chained into one view group while the gap between their frame
 spans stays under ``--merge-gap-hours`` (siblings overlap, so they always merge). Frames
-are deduplicated by platform detection id + timestamp and each label file carries the
+are deduplicated by alert-api detection id + timestamp and each label file carries the
 union of every member's boxes on that frame.
 
 Categories (from sequence_smoke_types, per view group with priority
@@ -31,7 +31,7 @@ YOLO format per line:
     class_id x_center y_center width height
 
 Example:
-uv run python -m scripts.data_transfer.ingestion.platform.export_dataset \
+uv run python -m scripts.data_transfer.ingestion.alert_api.export_dataset \
   --api-base https://annotationapi.pyronear.org/api/v1 \
   --limit 500 \
   --max-rows 2000 \
@@ -673,7 +673,7 @@ def build_dataset(
 
     Sequences from the same camera whose frame spans are less than
     ``merge_gap_hours`` apart share one view group folder. Within a group,
-    frames are deduplicated by platform detection id + timestamp:
+    frames are deduplicated by alert-api detection id + timestamp:
       the image is saved once,
       the label file carries the union of every member sequence's boxes,
       an empty txt file is created when no box exists on the frame.
@@ -717,7 +717,7 @@ def build_dataset(
         kept_groups += 1
 
         # Deduplicate frames across member sequences: sibling detections of the
-        # same frame share the platform detection id (alert_api_id) + timestamp.
+        # same frame share the alert-api detection id (alert_api_id) + timestamp.
         frames: Dict[Tuple[Any, datetime], Dict[str, Any]] = {}
         group_rows = sorted(
             (row for seq_id in group_seq_ids for row in rows_by_seq[seq_id]),
