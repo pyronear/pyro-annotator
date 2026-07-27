@@ -41,7 +41,7 @@ help:
 	@echo "  import-local-yolo    - Batch-import local YOLO sequences + sequences.csv (needs ROOT_DIR=...)"
 	@echo "  update-stage-remote  - Move annotations between stages on the remote API"
 	@echo "  update-stage-local   - Move annotations between stages on the local API"
-	@echo "  import-platform      - (Admin) Import from platform API into annotation API"
+	@echo "  import-alert-api     - (Admin) Import from alert API into annotation API"
 	@echo ""
 	@echo "Override variables inline, e.g.:"
 	@echo "  make pull-sequences MAX_SEQUENCES=50 CLONE_STAGE=under_annotation"
@@ -307,49 +307,22 @@ update-stage-local:
 		--max-sequences $(MAX_SEQUENCES) \
 		--loglevel $(LOGLEVEL)
 
-# --- Admin: platform ingestion ---
+# --- Admin: alert-api ingestion ---
 
-# Import from the platform API into the target annotation API (admin-only).
+# Import sequences + detections from the alert API (a.k.a. "platform") into the
+# target annotation API, object-splitting each alert sequence into one
+# annotation sequence per smoke object (admin-only).
 # Requires PLATFORM_LOGIN/PASSWORD, PLATFORM_ADMIN_LOGIN/PASSWORD, MAIN_ANNOTATION_LOGIN/PASSWORD.
-# Usage: make import-platform DATE_FROM=2025-03-04 [DATE_END=2025-03-04] [MAX_SEQUENCES=10]
+# Usage: make import-alert-api DATE_FROM=2025-03-04 [DATE_END=2025-03-04] [MAX_SEQUENCES=20]
 DATE_END ?= $(DATE_FROM)
-import-platform:
+import-alert-api: MAX_SEQUENCES = 0
+import-alert-api:
 	@if [ -z "$(DATE_FROM)" ]; then \
 		echo "ERROR: set DATE_FROM=YYYY-MM-DD (and optionally DATE_END)"; exit 1; \
 	fi
 	uv run python -m scripts.data_transfer.ingestion.platform.import \
 		--date-from $(DATE_FROM) --date-end $(DATE_END) \
-		--url-api-annotation $(REMOTE_API) \
-		--max-sequences $(MAX_SEQUENCES) \
-		--max-workers $(MAX_WORKERS) \
-		--loglevel $(LOGLEVEL)
-
-# Filtered import: registry dedup + pyro-engine Predictor filter, then import 30
-# detections per kept sequence into the annotation API.
-# Requires env vars PYRO_DATASET_DIR and PYRO_ENGINE_DIR (point to the local
-# checkouts of pyro-dataset and pyro-engine respectively).
-import-platform-filtered:
-	@if [ -z "$(DATE_FROM)" ]; then \
-		echo "ERROR: set DATE_FROM=YYYY-MM-DD (and optionally DATE_END)"; exit 1; \
-	fi
-	uv run python -m scripts.data_transfer.ingestion.platform.import_filtered \
-		--date-from $(DATE_FROM) --date-end $(DATE_END) \
-		--url-api-annotation $(REMOTE_API) \
-		--max-sequences $(MAX_SEQUENCES) \
-		--max-workers $(MAX_WORKERS) \
-		--loglevel $(LOGLEVEL)
-
-# Predictor-split import: fetch 30 images/sequence, run the pyro-engine predictor,
-# split each platform sequence into one annotation sequence per detected object
-# (pyro-api logic) and POST predictor-derived detections.
-# Requires env vars PYRO_DATASET_DIR and PYRO_ENGINE_DIR.
-import-platform-predictor-split:
-	@if [ -z "$(DATE_FROM)" ]; then \
-		echo "ERROR: set DATE_FROM=YYYY-MM-DD (and optionally DATE_END)"; exit 1; \
-	fi
-	uv run python -m scripts.data_transfer.ingestion.platform.import_predictor_split \
-		--date-from $(DATE_FROM) --date-end $(DATE_END) \
-		--url-api-annotation $(REMOTE_API) \
+		--annotation-api-url $(REMOTE_API) \
 		--max-sequences $(MAX_SEQUENCES) \
 		--max-workers $(MAX_WORKERS) \
 		--loglevel $(LOGLEVEL)
@@ -361,4 +334,4 @@ import-platform-predictor-split:
 	pull-fp visual-check-fp apply-review-fp \
 	export-dataset import-yolo-sequence import-local-yolo \
 	update-stage-remote update-stage-local \
-	import-platform import-platform-filtered import-platform-predictor-split
+	import-alert-api
