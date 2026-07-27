@@ -3,8 +3,8 @@
  * These components handle the visual representation of AI predictions, user annotations, and drawn rectangles.
  */
 
-import { Detection, DetectionAnnotation, AlgoPrediction } from '@/types/api';
-import { DrawnRectangle, CurrentDrawing, getSmokeTypeColors } from '@/utils/annotation';
+import { Detection, DetectionAnnotation, AlgoPrediction, SmokeType } from '@/types/api';
+import { DrawnRectangle, CurrentDrawing, getSmokeTypeColors, ModelLayer } from '@/utils/annotation';
 import {
   normalizedToPixelBox,
   validateBoundingBox,
@@ -100,6 +100,65 @@ export function SiblingBoundingBoxOverlay({
             >
               <div className="absolute -top-5 left-0 bg-gray-500/90 text-white text-[10px] px-1 rounded whitespace-nowrap">
                 sibling {(prediction.confidence * 100).toFixed(0)}%
+              </div>
+            </div>
+          );
+        })
+        .filter(Boolean)}
+    </>
+  );
+}
+
+/**
+ * Read-only overlay for an immutable model reference layer (engine =
+ * algo_predictions, dotted; auto = auto_predictions, dashed). Line style
+ * encodes the layer; border color always encodes the active smoke_type — the
+ * color these boxes would take if accepted as that type. Never interactive:
+ * these are reference only until the human accepts/adjusts them at review.
+ */
+interface ReferenceBoxOverlayProps {
+  predictions: AlgoPrediction[] | null | undefined;
+  variant: ModelLayer;
+  smokeType: SmokeType;
+  imageInfo: ImageInfo;
+  detectionId: number;
+}
+
+export function ReferenceBoxOverlay({
+  predictions,
+  variant,
+  smokeType,
+  imageInfo,
+  detectionId,
+}: ReferenceBoxOverlayProps) {
+  if (!predictions || predictions.length === 0) return null;
+
+  const borderColor = getSmokeTypeColors(smokeType).border;
+  const lineStyle = variant === 'engine' ? 'border-dotted' : 'border-dashed';
+
+  return (
+    <>
+      {predictions
+        .map((prediction: AlgoPrediction, index: number) => {
+          if (!validateBoundingBox(prediction.xyxyn)) {
+            return null;
+          }
+
+          const { left, top, width, height } = normalizedToPixelBox(prediction.xyxyn, imageInfo);
+
+          return (
+            <div
+              key={`ref-${variant}-${detectionId}-${index}`}
+              className={`absolute border-2 ${lineStyle} ${borderColor} pointer-events-none opacity-90`}
+              style={{
+                left: `${left}px`,
+                top: `${top}px`,
+                width: `${width}px`,
+                height: `${height}px`,
+              }}
+            >
+              <div className="absolute -top-5 left-0 bg-black/60 text-white text-[10px] px-1 rounded whitespace-nowrap">
+                {variant} {(prediction.confidence * 100).toFixed(0)}%
               </div>
             </div>
           );

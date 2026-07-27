@@ -33,6 +33,11 @@ export interface Detection {
   created_at: string;
   recorded_at: string;
   algo_predictions: AlgoPredictions;
+  // Immutable local high-precision model output, written by the auto-annotate
+  // worker. Read-only reference layer in the review canvas; the winning model
+  // layer (auto if present, else engine) seeds the human annotation at submit.
+  // Null until the worker has run.
+  auto_predictions?: AlgoPredictions | null;
   // Sibling boxes detected on the same image but not part of the tracked
   // sequence. Read-only — annotators see them as a hint for missed smoke,
   // and they are NOT fed into auto-annotation. Null on legacy detections.
