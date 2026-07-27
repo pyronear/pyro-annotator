@@ -130,22 +130,22 @@ async def auto_annotate_sequence(sequence_id: int) -> None:
 async def assign_sequence_groups(timestamp: int) -> None:
     """Periodic sweep: assign every ungrouped, fully-imported sequence to a
     sequence group (see ``app.services.group_assignment``). Inherited
-    annotations are attributed to the admin user, which the API seeds at
-    startup from AUTH_USERNAME.
+    annotations are attributed to the login-disabled worker user, which the
+    API seeds at startup from WORKER_USERNAME.
 
     expire_on_commit=False matches the API's get_session config: label
     inheritance commits mid-sweep, and expired Sequence instances would
     trigger a sync lazy refresh on the next attribute access, which async
     SQLAlchemy forbids (MissingGreenlet)."""
     async with AsyncSession(engine, expire_on_commit=False) as session:
-        admin = await UserCRUD(session).get_by_username(settings.AUTH_USERNAME)
-        if admin is None:
+        worker_user = await UserCRUD(session).get_by_username(settings.WORKER_USERNAME)
+        if worker_user is None:
             logger.warning(
-                "assign_sequence_groups: admin user %r not found; skipping run",
-                settings.AUTH_USERNAME,
+                "assign_sequence_groups: worker user %r not found; skipping run",
+                settings.WORKER_USERNAME,
             )
             return
-        result = await assign_ungrouped_sequences(session, user_id=admin.id)
+        result = await assign_ungrouped_sequences(session, user_id=worker_user.id)
     if result.already_running:
         logger.info("assign_sequence_groups: another run in progress; skipped")
         return
