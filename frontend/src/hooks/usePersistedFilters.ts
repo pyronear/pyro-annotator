@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ExtendedSequenceFilters, ProcessingStageStatus } from '@/types/api';
+import { ExtendedSequenceFilters, ProcessingStageFilter } from '@/types/api';
 import { ModelAccuracyType } from '@/utils/modelAccuracy';
 import { PAGINATION_DEFAULTS } from '@/utils/constants';
 
@@ -19,14 +19,16 @@ export interface PersistedFilterState {
 /**
  * Default filter state factory
  */
-export function createDefaultFilterState(defaultProcessingStage?: string): PersistedFilterState {
+export function createDefaultFilterState(
+  defaultProcessingStage?: ProcessingStageFilter
+): PersistedFilterState {
   return {
     filters: {
       page: PAGINATION_DEFAULTS.PAGE,
       size: PAGINATION_DEFAULTS.SIZE,
       // Note: processing_stage is a system filter, not a user-visible filter
       // It's used to determine which sequences to show based on the page context
-      processing_stage: defaultProcessingStage as ProcessingStageStatus | undefined,
+      processing_stage: defaultProcessingStage,
     },
     dateFrom: '',
     dateTo: '',
