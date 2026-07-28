@@ -207,18 +207,19 @@ function MemberCard({
             )}
           </div>
         </div>
-        <div className="px-2 py-1 text-xs text-gray-700">
-          <div className="font-medium">seq #{member.sequence_id}</div>
-          <div className="flex items-center justify-between">
-            <span title={new Date(member.recorded_at).toLocaleString()}>
+        <div className="px-2 py-1 text-xs text-gray-700 flex items-center justify-between">
+          <span>
+            <span className="font-medium">seq #{member.sequence_id}</span>
+            <span className="text-gray-500" title={new Date(member.recorded_at).toLocaleString()}>
+              {' · '}
               {formatRelativeTime(member.recorded_at)}
             </span>
-            {memberIsAnnotated(member) ? (
-              <CheckCircle className="w-3 h-3 text-green-500" aria-label="annotated" />
-            ) : (
-              <Clock className="w-3 h-3 text-orange-400" />
-            )}
-          </div>
+          </span>
+          {memberIsAnnotated(member) ? (
+            <CheckCircle className="w-3 h-3 text-green-500" aria-label="annotated" />
+          ) : (
+            <Clock className="w-3 h-3 text-orange-400" />
+          )}
         </div>
       </Link>
     </div>
