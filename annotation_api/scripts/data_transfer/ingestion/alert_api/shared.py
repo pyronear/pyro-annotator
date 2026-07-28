@@ -200,6 +200,13 @@ def transform_sequence_data(record: dict, source_api: str = "pyronear_french") -
         "azimuth": azimuth,
         "recorded_at": record["sequence_started_at"],
         "last_seen_at": record["sequence_last_seen_at"],
+        # Object-split records carry the raw platform sid so siblings group
+        # server-side without decoding synthetic ids.
+        **(
+            {"platform_alert_id": record["platform_alert_id"]}
+            if "platform_alert_id" in record
+            else {}
+        ),
     }
 
 

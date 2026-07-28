@@ -1918,3 +1918,109 @@ async def test_create_sequence_with_alert_api_id_above_int32(
     response = await authenticated_client.post("/sequences/", data=payload)
     assert response.status_code == 201
     assert response.json()["alert_api_id"] == 2_147_484_000
+
+
+def _platform_form(source_api: str, alert_api_id: int, **extra) -> dict:
+    payload = {
+        "source_api": source_api,
+        "alert_api_id": str(alert_api_id),
+        "camera_name": "test_cam",
+        "camera_id": "1",
+        "organisation_name": "test_org",
+        "organisation_id": "1",
+        "azimuth": "90",
+        "lat": "0.0",
+        "lon": "0.0",
+        "recorded_at": (now - timedelta(days=1)).isoformat(),
+        "last_seen_at": now.isoformat(),
+    }
+    payload.update({k: str(v) for k, v in extra.items()})
+    return payload
+
+
+@pytest.mark.asyncio
+async def test_create_sequence_defaults_platform_alert_id_identity(
+    authenticated_client: AsyncClient,
+):
+    resp = await authenticated_client.post(
+        "/sequences/", data=_platform_form("alert_wildfire", 1_500_000_000)
+    )
+    assert resp.status_code == 201
+    assert resp.json()["platform_alert_id"] == 1_500_000_000
+
+
+@pytest.mark.asyncio
+async def test_create_sequence_decodes_synthetic_when_primary_exists(
+    authenticated_client: AsyncClient,
+):
+    resp = await authenticated_client.post(
+        "/sequences/", data=_platform_form("pyronear_french", 170_000)
+    )
+    assert resp.status_code == 201
+    assert resp.json()["platform_alert_id"] == 170_000
+
+    sibling_id = 1_000_000_000 + 170_000 * 1000 + 1
+    resp = await authenticated_client.post(
+        "/sequences/", data=_platform_form("pyronear_french", sibling_id)
+    )
+    assert resp.status_code == 201
+    assert resp.json()["platform_alert_id"] == 170_000
+
+
+@pytest.mark.asyncio
+async def test_create_sequence_crc32_style_id_stays_identity(
+    authenticated_client: AsyncClient,
+):
+    # >= 1e9 under a platform source but no matching primary -> singleton
+    resp = await authenticated_client.post(
+        "/sequences/", data=_platform_form("pyronear_french", 1_500_000_777)
+    )
+    assert resp.status_code == 201
+    assert resp.json()["platform_alert_id"] == 1_500_000_777
+
+
+@pytest.mark.asyncio
+async def test_create_sequence_explicit_platform_alert_id_wins(
+    authenticated_client: AsyncClient,
+):
+    resp = await authenticated_client.post(
+        "/sequences/",
+        data=_platform_form(
+            "pyronear_french",
+            1_000_000_000 + 170_000 * 1000 + 2,
+            platform_alert_id=170_000,
+        ),
+    )
+    assert resp.status_code == 201
+    assert resp.json()["platform_alert_id"] == 170_000
+
+
+@pytest.mark.asyncio
+async def test_list_sequences_filter_by_platform_alert_id(
+    authenticated_client: AsyncClient,
+):
+    assert (
+        await authenticated_client.post(
+            "/sequences/", data=_platform_form("pyronear_french", 170_000)
+        )
+    ).status_code == 201
+    assert (
+        await authenticated_client.post(
+            "/sequences/",
+            data=_platform_form("pyronear_french", 1_000_000_000 + 170_000 * 1000 + 1),
+        )
+    ).status_code == 201
+    assert (
+        await authenticated_client.post(
+            "/sequences/", data=_platform_form("pyronear_french", 99)
+        )
+    ).status_code == 201
+
+    resp = await authenticated_client.get(
+        "/sequences/",
+        params={"source_api": "pyronear_french", "platform_alert_id": 170_000},
+    )
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert len(items) == 2
+    assert {item["platform_alert_id"] for item in items} == {170_000}

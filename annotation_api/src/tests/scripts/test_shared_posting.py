@@ -47,3 +47,17 @@ class TestDetectionResultsPlumbing:
         )
         assert result["failed_detections"] == 1
         assert result["detection_results"] == []
+
+
+class TestTransformSequenceData:
+    def test_platform_alert_id_passed_through(self):
+        record = make_record(1, "2026-07-01T10:00:00", [BOX])
+        record["platform_alert_id"] = 47105
+        data = shared.transform_sequence_data(record)
+        assert data["platform_alert_id"] == 47105
+
+    def test_platform_alert_id_omitted_when_absent(self):
+        record = make_record(1, "2026-07-01T10:00:00", [BOX])
+        record.pop("platform_alert_id", None)
+        data = shared.transform_sequence_data(record)
+        assert "platform_alert_id" not in data

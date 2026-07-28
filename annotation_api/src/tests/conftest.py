@@ -42,6 +42,7 @@ async def _run_alembic_upgrade() -> None:
     cfg = _alembic_config()
     await asyncio.to_thread(command.upgrade, cfg, "head")
 
+
 dt_format = "%Y-%m-%dT%H:%M:%S.%f"
 now = datetime.now(UTC)
 
@@ -109,6 +110,7 @@ SEQ_TABLE = [
         "id": 1,
         "source_api": "pyronear_french",
         "alert_api_id": 1,
+        "platform_alert_id": 1,
         "created_at": now - timedelta(days=1),
         "recorded_at": now - timedelta(days=1),
         "last_seen_at": now,
@@ -124,6 +126,7 @@ SEQ_TABLE = [
         "id": 2,
         "source_api": "pyronear_french",
         "alert_api_id": 2,
+        "platform_alert_id": 2,
         "created_at": now - timedelta(hours=12),
         "recorded_at": now - timedelta(hours=12),
         "last_seen_at": now - timedelta(hours=6),

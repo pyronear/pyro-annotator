@@ -161,3 +161,23 @@ describe('AppLayout sidebar navigation', () => {
     expect(screen.getByRole('button', { name: /sign out/i })).toBeInTheDocument();
   });
 });
+
+describe('AppLayout detections nav', () => {
+  const renderLayout = () =>
+    render(
+      <MemoryRouter>
+        <AppLayout>
+          <div>page content</div>
+        </AppLayout>
+      </MemoryRouter>
+    );
+
+  it('points the Localize section queue entry (Smoke) at /detections/annotate', () => {
+    renderLayout();
+
+    const smokeLink = screen.getByRole('link', { name: /smoke/i });
+    expect(smokeLink).toHaveAttribute('href', '/detections/annotate');
+    // The old entity-named "Annotate" entry is gone from the detections nav.
+    expect(screen.queryByRole('link', { name: /^annotate$/i })).not.toBeInTheDocument();
+  });
+});

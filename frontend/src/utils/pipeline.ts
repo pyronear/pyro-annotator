@@ -16,6 +16,9 @@ export interface RawPipelineCounts {
   annotatedStage: number;
   detectionComplete: number;
   needsManual: number;
+  // Total of the gated localization queue (alerts ready for smoke
+  // localization) — matches exactly what /detections/annotate shows.
+  localizeQueueTotal: number;
 }
 
 export interface PipelineStats {
@@ -34,9 +37,7 @@ export function derivePipelineStats(raw: RawPipelineCounts): PipelineStats {
     total: raw.total,
     classifyTodo: raw.readyToAnnotate,
     classifyDone,
-    // Proxy: classify submit parks sequences at seq_annotation_done; finishing
-    // localization moves them to annotated.
-    localizeTodo: raw.seqAnnotationDone,
+    localizeTodo: raw.localizeQueueTotal,
     complete: raw.detectionComplete,
     completePct: raw.total > 0 ? Math.round((raw.detectionComplete / raw.total) * 100) : 0,
     attention: raw.needsManual,

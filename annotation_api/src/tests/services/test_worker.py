@@ -3,7 +3,7 @@ import pytest
 from sqlalchemy import select
 
 import app.worker as worker
-from app.models import Detection
+from app.models import Detection, Sequence
 from app.worker import auto_annotate_sequence
 
 
@@ -64,6 +64,12 @@ async def test_auto_annotate_keeps_anchored_boxes_drops_fps(
     )
     assert other.auto_predictions is None
 
+    # completion marker: the processed sequence is stamped, others are not
+    seq1_row = await detection_session.get(Sequence, 1)
+    assert seq1_row.auto_annotated_at is not None
+    seq2_row = await detection_session.get(Sequence, 2)
+    assert seq2_row.auto_annotated_at is None
+
 
 @pytest.mark.asyncio
 async def test_auto_annotate_no_engine_anchor_keeps_nothing(
@@ -107,3 +113,25 @@ async def test_auto_annotate_no_engine_anchor_keeps_nothing(
     )
     for det in refreshed:
         assert det.auto_predictions == {"predictions": []}
+
+
+@pytest.mark.asyncio
+async def test_auto_annotate_total_failure_raises_and_does_not_stamp(
+    detection_session, monkeypatch
+):
+    """If every detection fails (e.g. S3 outage), the job must fail visibly
+    instead of stamping auto_annotated_at — a stamped lane with no reference
+    layer would surface in the queue and never be revisited."""
+
+    class ExplodingDetector:
+        def predict(self, _img):
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr(worker, "get_detector", lambda: ExplodingDetector())
+
+    with pytest.raises(RuntimeError, match="not stamping"):
+        await auto_annotate_sequence(sequence_id=1)
+
+    detection_session.expire_all()
+    seq1 = await detection_session.get(Sequence, 1)
+    assert seq1.auto_annotated_at is None

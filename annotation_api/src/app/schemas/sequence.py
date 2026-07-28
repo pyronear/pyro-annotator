@@ -5,7 +5,7 @@
 
 
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -14,6 +14,8 @@ from app.schemas.annotation_validation import SequenceAnnotationData
 
 __all__ = [
     "Azimuth",
+    "LocalizationQueueItem",
+    "LocalizationQueueLane",
     "SequenceCreate",
     "SequenceRead",
     "SequenceUpdateBboxAuto",
@@ -87,6 +89,10 @@ class SequenceCreate(Azimuth):
     )
     organisation_name: str
     organisation_id: int
+    platform_alert_id: Optional[int] = Field(
+        default=None,
+        description="Platform alert grouping id. Defaults server-side: decoded from a synthetic alert_api_id when the primary exists (platform sources), else alert_api_id.",
+    )
 
 
 class SequenceRead(Azimuth):
@@ -108,6 +114,7 @@ class SequenceRead(Azimuth):
     is_wildfire_alertapi: Optional[AnnotationType]
     organisation_name: str
     organisation_id: int
+    platform_alert_id: int
     sequence_group_id: Optional[int] = None
 
 
@@ -117,3 +124,26 @@ class SequenceUpdateBboxAuto(BaseModel):
 
 class SequenceUpdateBboxVerified(BaseModel):
     algo_prediction: Optional[SequenceAnnotationData] = Field(default=None)
+
+
+class LocalizationQueueLane(BaseModel):
+    """One object-sequence of an alert, as shown in the Localize queue."""
+
+    sequence_id: int
+    alert_api_id: int
+    has_smoke: bool
+    processing_stage: str
+    total_detections: int
+    annotated_detections: int
+    auto_annotated_at: Optional[datetime]
+
+
+class LocalizationQueueItem(BaseModel):
+    """One alert ready for smoke localization (queue row)."""
+
+    source_api: SourceApi
+    platform_alert_id: int
+    camera_name: str
+    organisation_name: str
+    recorded_at: datetime
+    lanes: List[LocalizationQueueLane]

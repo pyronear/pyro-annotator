@@ -7,6 +7,7 @@ import { QUERY_KEYS } from '@/utils/constants';
 import { SequenceAnnotation, SequenceBbox } from '@/types/api';
 import { useSequenceStore } from '@/store/useSequenceStore';
 import { getAnnotationProgress, isAnnotationComplete } from '@/utils/annotation/progressUtils';
+import { determineClassifySubmitStage } from '@/utils/annotation/localizeUtils';
 import {
   createBboxChangeHandler,
   createMissedSmokeHandler,
@@ -203,16 +204,22 @@ export default function AnnotationInterface() {
   // Save annotation mutation
   const saveAnnotation = useMutation({
     mutationFn: async (updatedBboxes: SequenceBbox[]) => {
-      // Don't demote a post-review 'annotated' sequence back into the review pipeline
-      // when a reviewer edits it from the review page.
-      const isAlreadyFinalised = annotation?.processing_stage === 'annotated';
+      const hasSmokeNow = isUnsure ? false : updatedBboxes.some(bbox => bbox.is_smoke);
+      const hasMissedSmokeNow = isUnsure ? false : hasMissedSmoke;
       const updatedAnnotation: Partial<SequenceAnnotation> = {
         annotation: {
           sequences_bbox: updatedBboxes, // Always preserve the actual bbox data
         },
-        processing_stage: isAlreadyFinalised ? 'annotated' : 'seq_annotation_done',
+        // FP-only lanes exit the pipeline at classify submit; smoke lanes park
+        // at seq_annotation_done for localization. Never demotes 'annotated'.
+        processing_stage: determineClassifySubmitStage({
+          currentStage: annotation?.processing_stage,
+          isUnsure,
+          hasSmoke: hasSmokeNow,
+          hasMissedSmoke: hasMissedSmokeNow,
+        }),
         // Update derived fields - all false for unsure sequences
-        has_smoke: isUnsure ? false : updatedBboxes.some(bbox => bbox.is_smoke),
+        has_smoke: hasSmokeNow,
         has_false_positives: isUnsure
           ? false
           : updatedBboxes.some(bbox => bbox.false_positive_types.length > 0),
@@ -220,7 +227,7 @@ export default function AnnotationInterface() {
           ? '[]'
           : JSON.stringify([...new Set(updatedBboxes.flatMap(bbox => bbox.false_positive_types))]),
         // Include missed smoke flag - false for unsure sequences
-        has_missed_smoke: isUnsure ? false : hasMissedSmoke,
+        has_missed_smoke: hasMissedSmokeNow,
         // Include unsure flag
         is_unsure: isUnsure,
       };

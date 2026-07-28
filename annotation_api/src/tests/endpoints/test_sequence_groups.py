@@ -127,6 +127,7 @@ async def _seed_group_with_members(
             Sequence(
                 source_api="pyronear_french",
                 alert_api_id=alert_api_id_start + i,
+                platform_alert_id=alert_api_id_start + i,
                 created_at=created_at,
                 recorded_at=created_at,
                 last_seen_at=created_at,

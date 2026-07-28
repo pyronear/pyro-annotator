@@ -8,6 +8,7 @@ vi.mock('@/services/api', () => ({
     getSequences: vi.fn(),
     getSequenceAnnotations: vi.fn(),
     getSequenceGroupStats: vi.fn(),
+    getLocalizationQueue: vi.fn(),
   },
 }));
 
@@ -33,18 +34,16 @@ function page(total: number) {
 
 describe('usePipelineStats', () => {
   beforeEach(() => {
-    vi.mocked(apiClient.getSequences).mockImplementation(
-      ((params?: Record<string, unknown>) =>
-        Promise.resolve(
-          page(params?.detection_annotation_completion === 'complete' ? 418 : 522)
-        )) as unknown as typeof apiClient.getSequences
-    );
-    vi.mocked(apiClient.getSequenceAnnotations).mockImplementation(
-      ((params?: Record<string, unknown>) =>
-        Promise.resolve(
-          page(stageTotals[String(params?.processing_stage)] ?? 0)
-        )) as unknown as typeof apiClient.getSequenceAnnotations
-    );
+    vi.mocked(apiClient.getSequences).mockImplementation(((params?: Record<string, unknown>) =>
+      Promise.resolve(
+        page(params?.detection_annotation_completion === 'complete' ? 418 : 522)
+      )) as unknown as typeof apiClient.getSequences);
+    vi.mocked(apiClient.getSequenceAnnotations).mockImplementation(((
+      params?: Record<string, unknown>
+    ) =>
+      Promise.resolve(
+        page(stageTotals[String(params?.processing_stage)] ?? 0)
+      )) as unknown as typeof apiClient.getSequenceAnnotations);
     vi.mocked(apiClient.getSequenceGroupStats).mockResolvedValue({
       total: 40,
       validated: 20,
@@ -52,13 +51,16 @@ describe('usePipelineStats', () => {
       labeled: 28,
       unlabeled: 12,
     });
+    vi.mocked(apiClient.getLocalizationQueue).mockResolvedValue(page(9));
   });
 
-  it('derives pipeline stats from the seven count queries', async () => {
+  it('derives pipeline stats from the eight count queries', async () => {
     const { result } = renderHook(() => usePipelineStats(), { wrapper });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.classifyTodo).toBe(57);
-    expect(result.current.localizeTodo).toBe(22);
+    // Localize · to do is the gated queue total (alerts ready), not the
+    // seq_annotation_done proxy.
+    expect(result.current.localizeTodo).toBe(9);
     expect(result.current.complete).toBe(418);
     expect(result.current.completePct).toBe(80);
     expect(result.current.attention).toBe(4);

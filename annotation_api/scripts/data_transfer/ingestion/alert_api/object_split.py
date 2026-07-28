@@ -153,7 +153,9 @@ def split_sequence_records(
                 alert_api_id=alert_api_sid,
                 is_primary=True,
                 is_fallback=True,
-                records=[dict(r) for r in sequence_records],
+                records=[
+                    {**r, "platform_alert_id": alert_api_sid} for r in sequence_records
+                ],
             )
         ]
 
@@ -167,7 +169,9 @@ def split_sequence_records(
     boxes_by_frame: Dict[str, List[Tuple[int, List[float]]]] = {}
     for pos, obj in enumerate(ordered):
         for member in obj.members:
-            boxes_by_frame.setdefault(member.image_filename, []).append((pos, member.box))
+            boxes_by_frame.setdefault(member.image_filename, []).append(
+                (pos, member.box)
+            )
 
     groups: List[ObjectGroup] = []
     for pos, obj in enumerate(ordered):
@@ -176,15 +180,22 @@ def split_sequence_records(
             own_by_frame.setdefault(member.image_filename, []).append(member.box)
 
         alert_id = (
-            alert_api_sid if pos == 0 else synthetic_alert_api_id(alert_api_sid, pos, alert_id_base)
+            alert_api_sid
+            if pos == 0
+            else synthetic_alert_api_id(alert_api_sid, pos, alert_id_base)
         )
-        member_keys = sorted(own_by_frame, key=lambda k: _parse_dt(records_by_key[k]["detection_created_at"]))
+        member_keys = sorted(
+            own_by_frame,
+            key=lambda k: _parse_dt(records_by_key[k]["detection_created_at"]),
+        )
         recorded = [records_by_key[k]["detection_created_at"] for k in member_keys]
 
         base_record = records_by_key[member_keys[0]]
         camera_azimuth = base_record.get("camera_azimuth")
         cone = (
-            object_cone_azimuth(obj, camera_azimuth, base_record.get("camera_angle_of_view"))
+            object_cone_azimuth(
+                obj, camera_azimuth, base_record.get("camera_angle_of_view")
+            )
             if camera_azimuth is not None
             else None
         )
@@ -193,9 +204,12 @@ def split_sequence_records(
         for key in member_keys:
             record = dict(records_by_key[key])
             record["sequence_id"] = alert_id
+            record["platform_alert_id"] = alert_api_sid
             record["detection_bboxes"] = own_by_frame[key]
             record["detection_others_bboxes"] = [
-                box for other_pos, box in boxes_by_frame.get(key, []) if other_pos != pos
+                box
+                for other_pos, box in boxes_by_frame.get(key, [])
+                if other_pos != pos
             ]
             record["sequence_started_at"] = recorded[0]
             record["sequence_last_seen_at"] = recorded[-1]
@@ -320,7 +334,9 @@ def split_all_records(
     return out, stats
 
 
-def build_single_track_annotation(detection_results: List[dict]) -> SequenceAnnotationData:
+def build_single_track_annotation(
+    detection_results: List[dict],
+) -> SequenceAnnotationData:
     """One `sequences_bbox` track from a posted object's detection results.
 
     Every detection here belongs to the same object (the split happened
@@ -333,7 +349,9 @@ def build_single_track_annotation(detection_results: List[dict]) -> SequenceAnno
     """
     ordered = sorted(detection_results, key=lambda r: _parse_dt(r["recorded_at"]))
     bboxes = [
-        BoundingBox(detection_id=r["annotation_detection_id"], xyxyn=[float(c) for c in xy[:4]])
+        BoundingBox(
+            detection_id=r["annotation_detection_id"], xyxyn=[float(c) for c in xy[:4]]
+        )
         for r in ordered
         for xy in r.get("xyxyns", [])
         if xy[0] < xy[2] and xy[1] < xy[3]  # BoundingBox rejects zero-area boxes
@@ -341,5 +359,7 @@ def build_single_track_annotation(detection_results: List[dict]) -> SequenceAnno
     if not bboxes:
         return SequenceAnnotationData(sequences_bbox=[])
     return SequenceAnnotationData(
-        sequences_bbox=[SequenceBBox(is_smoke=True, false_positive_types=[], bboxes=bboxes)]
+        sequences_bbox=[
+            SequenceBBox(is_smoke=True, false_positive_types=[], bboxes=bboxes)
+        ]
     )
