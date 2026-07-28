@@ -22,10 +22,18 @@ relation — it exists only as arithmetic in the import script.
 ## Naming
 
 The new stage is called **Smoke Localization**: a human confirms per-frame smoke
-boxes against the auto reference layer, for smoke objects only. Nav label
-**Detections → Localize**, route `/detections/localize`. ("Detection review" is
-avoided: it collides with the existing `/detections/review` verification page,
-and false-positive lanes are never box-reviewed.)
+boxes against the auto reference layer, for smoke objects only. ("Detection
+review" is avoided: it collides with the existing `/detections/review`
+verification page, and false-positive lanes are never box-reviewed.)
+
+This converges with the dashboard taxonomy redesign
+(`docs/specs/2026-07-28-dashboard-taxonomy-redesign-design.md`), which
+independently named Pass 02 **Localize** and made `/detections/annotate` its
+interim flat queue (default filter `seq_annotation_done`, dashboard CTA "Start
+localizing"). This branch reworks that page **in place** into the alert-grouped,
+gated queue — same `/detections/annotate` route, nav label renamed
+**Detections → Localize** — so the dashboard CTAs keep working and Pass 02 has
+exactly one queue.
 
 ## Scope
 
@@ -146,17 +154,24 @@ Exited lanes surface in the existing `/detections/review` page for verification
 
 ## Frontend
 
-New `SmokeLocalizationPage` at `/detections/localize`; nav entry
-**Detections → Localize** with a queue-count badge (queue page total).
+Rework `DetectionAnnotatePage` **in place** at `/detections/annotate` into the
+alert-grouped queue; nav label renamed **Detections → Localize**, with a
+queue-count badge.
 
 - One row per **alert**: camera, organisation, date/time, "M of N objects to
   localize", detection progress across smoke lanes.
 - Click → existing per-sequence review UI (`/detections/{sequenceId}/annotate`)
   on the alert's first unfinished smoke lane, with `?from=localize`.
 - On lane submit, advance to the alert's next unfinished smoke lane (via
-  `GET /sequences?platform_alert_id=`); none left → back to the queue.
+  `GET /sequences?source_api=&platform_alert_id=`); none left → back to the
+  queue.
 - Sibling objects' boxes already render as context overlays (`others_bboxes`),
   keeping multi-plume alerts legible in per-lane review.
+- **Count alignment**: the nav badge and the dashboard's "Localize · to do"
+  figure (`usePipelineStats`, currently a `seq_annotation_done` proxy that
+  overcounts FP-only and not-yet-auto-annotated lanes) switch to the
+  localization-queue total, so the dashboard number always matches what the
+  queue shows.
 
 ## Known seam (documented, not fixed)
 
@@ -173,7 +188,7 @@ import (object-split): 1 platform alert -> N lanes (1 per smoke object)
     sweep (5 min): all lanes of the alert done?
       -> yes: enqueue auto_annotate_sequence per smoke lane
          -> worker writes auto_predictions, stamps auto_annotated_at
-            -> alert surfaces in /detections/localize (alert row)
+            -> alert surfaces in /detections/annotate (Localize queue, alert row)
                -> annotator localizes each smoke lane, submits
                   -> lane: seq_annotation_done -> annotated (guarded)
                      -> last smoke lane submitted: alert leaves queue
