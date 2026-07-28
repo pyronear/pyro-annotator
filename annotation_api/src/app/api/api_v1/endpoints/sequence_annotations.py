@@ -16,7 +16,7 @@ from fastapi import (
 )
 from fastapi_pagination import Page, Params, create_page
 from fastapi_pagination.ext.sqlalchemy import apaginate
-from sqlalchemy import asc, desc, select, text, or_
+from sqlalchemy import and_, asc, desc, func, select, text, or_
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.dependencies import get_current_user, get_sequence_annotation_crud
@@ -609,6 +609,48 @@ async def update_sequence_annotation(
     target_annotation = (
         payload.annotation if payload.annotation is not None else existing.annotation
     )
+
+    # Smoke-localization exit guard (spec: smoke-localization entry point): a
+    # smoke lane may only be submitted seq_annotation_done -> annotated once
+    # every detection carries an annotated-stage detection annotation. The
+    # legacy path (in_review -> annotated) and FP lanes are untouched.
+    target_has_smoke = (
+        derive_has_smoke(payload.annotation)
+        if payload.annotation is not None
+        else existing.has_smoke
+    )
+    if (
+        existing.processing_stage
+        == SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE
+        and target_processing_stage == SequenceAnnotationProcessingStage.ANNOTATED
+        and target_has_smoke
+    ):
+        unlocalized = (
+            await annotations.session.execute(
+                select(func.count(Detection.id))
+                .outerjoin(
+                    DetectionAnnotation,
+                    and_(
+                        DetectionAnnotation.detection_id == Detection.id,
+                        DetectionAnnotation.processing_stage
+                        == DetectionAnnotationProcessingStage.ANNOTATED,
+                    ),
+                )
+                .where(
+                    Detection.sequence_id == existing.sequence_id,
+                    DetectionAnnotation.id.is_(None),
+                )
+            )
+        ).scalar_one()
+        if unlocalized > 0:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"Cannot submit: {unlocalized} detection(s) of sequence "
+                    f"{existing.sequence_id} lack an annotated-stage detection "
+                    "annotation (localization incomplete)"
+                ),
+            )
 
     # Check if we should auto-generate annotation content
     if should_trigger_auto_generation(target_processing_stage, target_annotation):
