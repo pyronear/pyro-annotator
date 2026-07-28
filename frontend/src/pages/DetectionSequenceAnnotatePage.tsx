@@ -27,7 +27,7 @@ import { pickNextLocalizeLane } from '@/utils/annotation/localizeUtils';
 import { ImageModal, DetectionGrid, DetectionHeader } from '@/components/detection-sequence';
 
 // Helper function for context-aware annotation status
-const getIsAnnotated = (
+export const getIsAnnotated = (
   annotation: DetectionAnnotation | undefined,
   fromContext: string | null
 ): boolean => {
@@ -38,10 +38,13 @@ const getIsAnnotated = (
       annotation.processing_stage === 'annotated' ||
       annotation.processing_stage === 'bbox_annotation'
     );
-  } else {
-    // Annotate context: always allow edits regardless of stage
-    return false;
   }
+  if (fromContext === 'localize') {
+    // Localize context: the grid needs a persistent done state per frame
+    return annotation?.processing_stage === 'annotated';
+  }
+  // Annotate context: always allow edits regardless of stage
+  return false;
 };
 
 export default function DetectionSequenceAnnotatePage() {
