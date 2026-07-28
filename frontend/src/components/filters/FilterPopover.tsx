@@ -183,7 +183,7 @@ export default function FilterPopover({
           Filters
         </Popover.Button>
 
-        <Popover.Panel className="absolute right-0 z-20 mt-2 w-[340px] max-h-[70vh] overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg">
+        <Popover.Panel className="absolute right-0 z-20 mt-2 w-96 max-h-[70vh] overflow-y-auto overflow-x-hidden bg-white border border-gray-200 rounded-lg shadow-lg">
           <div className="p-4 space-y-4">
             <div>
               <label
