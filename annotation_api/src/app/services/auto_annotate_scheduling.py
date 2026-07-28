@@ -14,7 +14,8 @@ id.
 
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy import and_, case, func, or_, select, tuple_
+from sqlalchemy.orm import aliased
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.models import (
@@ -37,14 +38,24 @@ DONE_STAGES = (
 RETRY_STALE_AFTER = timedelta(hours=1)
 
 
-def complete_alerts_subquery():
+def complete_alerts_subquery(candidates=None):
     """(source_api, platform_alert_id) pairs where every sibling has a
     done-stage annotation. The outer join makes annotation-less siblings
-    count as not-done (NULL stage falls into the CASE else)."""
+    count as not-done (NULL stage falls into the CASE else).
+
+    ``candidates`` (a select of (source_api, platform_alert_id)) restricts the
+    grouping before it aggregates, so the scan is proportional to the caller's
+    working set rather than all history (#215). Purely a cost bound — callers
+    must only pass a set that already contains every alert they can act on."""
+    query = select(Sequence.source_api, Sequence.platform_alert_id).outerjoin(
+        SequenceAnnotation, SequenceAnnotation.sequence_id == Sequence.id
+    )
+    if candidates is not None:
+        query = query.where(
+            tuple_(Sequence.source_api, Sequence.platform_alert_id).in_(candidates)
+        )
     return (
-        select(Sequence.source_api, Sequence.platform_alert_id)
-        .outerjoin(SequenceAnnotation, SequenceAnnotation.sequence_id == Sequence.id)
-        .group_by(Sequence.source_api, Sequence.platform_alert_id)
+        query.group_by(Sequence.source_api, Sequence.platform_alert_id)
         .having(
             func.count()
             == func.sum(
@@ -55,9 +66,38 @@ def complete_alerts_subquery():
     )
 
 
+def _pending_ready_lane(seq, ann, now):
+    """Smoke lane still awaiting auto-annotation: at seq_annotation_done and
+    either never enqueued or lost (see RETRY_STALE_AFTER). Parameterized over
+    (possibly aliased) Sequence/SequenceAnnotation."""
+    return and_(
+        ann.processing_stage == SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
+        ann.has_smoke.is_(True),
+        ann.is_unsure.is_(False),
+        or_(
+            seq.auto_annotate_enqueued_at.is_(None),
+            # Lost-job reconciliation (see RETRY_STALE_AFTER).
+            and_(
+                seq.auto_annotated_at.is_(None),
+                seq.auto_annotate_enqueued_at < now - RETRY_STALE_AFTER,
+            ),
+        ),
+    )
+
+
 async def schedule_pending_auto_annotate(session: AsyncSession) -> list[int]:
     now = datetime.now(UTC)
-    complete = complete_alerts_subquery()
+    # Only alerts with at least one pending lane can produce work; restricting
+    # the completeness aggregation to them keeps the sweep proportional to the
+    # active working set instead of all history (#215).
+    cand_seq = aliased(Sequence)
+    cand_ann = aliased(SequenceAnnotation)
+    candidates = (
+        select(cand_seq.source_api, cand_seq.platform_alert_id)
+        .join(cand_ann, cand_ann.sequence_id == cand_seq.id)
+        .where(_pending_ready_lane(cand_seq, cand_ann, now))
+    )
+    complete = complete_alerts_subquery(candidates)
     lanes = (
         (
             await session.execute(
@@ -73,21 +113,7 @@ async def schedule_pending_auto_annotate(session: AsyncSession) -> list[int]:
                         complete.c.platform_alert_id == Sequence.platform_alert_id,
                     ),
                 )
-                .where(
-                    SequenceAnnotation.processing_stage
-                    == SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
-                    SequenceAnnotation.has_smoke.is_(True),
-                    SequenceAnnotation.is_unsure.is_(False),
-                    or_(
-                        Sequence.auto_annotate_enqueued_at.is_(None),
-                        # Lost-job reconciliation (see RETRY_STALE_AFTER).
-                        and_(
-                            Sequence.auto_annotated_at.is_(None),
-                            Sequence.auto_annotate_enqueued_at
-                            < now - RETRY_STALE_AFTER,
-                        ),
-                    ),
-                )
+                .where(_pending_ready_lane(Sequence, SequenceAnnotation, now))
                 .order_by(Sequence.id)
             )
         )
