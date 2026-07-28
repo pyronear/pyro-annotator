@@ -49,12 +49,17 @@ function SortableHeader({
   const Arrow = orderDirection === 'asc' ? ArrowUp : ArrowDown;
   return (
     <th
-      onClick={() => onSort(column)}
-      className="px-3 py-2.5 text-left cursor-pointer select-none whitespace-nowrap hover:text-gray-900"
+      className="px-3 py-2.5 text-left whitespace-nowrap"
       aria-sort={active ? (orderDirection === 'asc' ? 'ascending' : 'descending') : undefined}
     >
-      {label}
-      {active && <Arrow className="inline w-3 h-3 ml-1 text-blue-600" />}
+      <button
+        type="button"
+        onClick={() => onSort(column)}
+        className="uppercase tracking-wide select-none hover:text-gray-900"
+      >
+        {label}
+        {active && <Arrow className="inline w-3 h-3 ml-1 text-blue-600" />}
+      </button>
     </th>
   );
 }
@@ -222,7 +227,12 @@ export default function SequenceGroupsListPage() {
               items.map(g => (
                 <tr
                   key={g.id}
-                  onClick={() => navigate(`/sequence-groups/${g.id}/annotate`)}
+                  onClick={e => {
+                    // Leave modified clicks and text selection to the browser;
+                    // the camera-name <Link> handles open-in-new-tab.
+                    if (e.ctrlKey || e.metaKey || window.getSelection()?.toString()) return;
+                    navigate(`/sequence-groups/${g.id}/annotate`);
+                  }}
                   className="border-t border-gray-100 hover:bg-blue-50 cursor-pointer"
                 >
                   <td className="px-3 py-2.5">
