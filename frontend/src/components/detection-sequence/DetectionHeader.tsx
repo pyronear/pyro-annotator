@@ -9,6 +9,14 @@ import {
 import { Sequence, SequenceAnnotation } from '@/types/api';
 import { analyzeSequenceAccuracy, getModelAccuracyBadgeClasses } from '@/utils/modelAccuracy';
 
+export type CardSize = 'sm' | 'md' | 'lg';
+
+const CARD_SIZES: { value: CardSize; label: string; title: string }[] = [
+  { value: 'sm', label: 'S', title: 'Small cards' },
+  { value: 'md', label: 'M', title: 'Medium cards' },
+  { value: 'lg', label: 'L', title: 'Large cards' },
+];
+
 interface DetectionHeaderProps {
   // Sequence data
   sequence?: Sequence;
@@ -42,6 +50,25 @@ interface DetectionHeaderProps {
   onSave: () => void;
   saveAnnotations: { isPending: boolean };
 
+  // Localize quick submit
+  isLocalize?: boolean;
+  noBoxCount?: number;
+  quickSubmitPending?: boolean;
+  quickSubmitConfirming?: boolean;
+  onQuickSubmit?: () => void;
+
+  // Localize crop mode
+  cropMode?: boolean;
+  onToggleCropMode?: (crop: boolean) => void;
+
+  // Localize cropped flipbook view
+  showCroppedView?: boolean;
+  onToggleCroppedView?: (show: boolean) => void;
+
+  // Card size (S/M/L)
+  cardSize?: CardSize;
+  onCardSizeChange?: (size: CardSize) => void;
+
   // Annotation pills
   getAnnotationPills: () => React.ReactNode[];
 }
@@ -67,6 +94,17 @@ export function DetectionHeader({
   allInVisualCheck,
   onSave,
   saveAnnotations,
+  isLocalize = false,
+  noBoxCount = 0,
+  quickSubmitPending = false,
+  quickSubmitConfirming = false,
+  onQuickSubmit,
+  cropMode = false,
+  onToggleCropMode,
+  showCroppedView = false,
+  onToggleCroppedView,
+  cardSize = 'md',
+  onCardSizeChange,
   getAnnotationPills,
 }: DetectionHeaderProps) {
   return (
@@ -213,6 +251,28 @@ export function DetectionHeader({
               </>
             )}
 
+            {/* Card size (S/M/L) */}
+            {onCardSizeChange && (
+              <div className="inline-flex rounded-md bg-gray-200 p-0.5 gap-0.5">
+                {CARD_SIZES.map(s => (
+                  <button
+                    key={s.value}
+                    type="button"
+                    title={s.title}
+                    aria-pressed={cardSize === s.value}
+                    onClick={() => onCardSizeChange(s.value)}
+                    className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                      cardSize === s.value
+                        ? 'bg-white text-gray-900 shadow-sm'
+                        : 'text-gray-500 hover:text-gray-900'
+                    }`}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {/* Predictions Toggle */}
             <label className="flex items-center space-x-2 px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 cursor-pointer">
               <input
@@ -224,20 +284,77 @@ export function DetectionHeader({
               <span>Show predictions</span>
             </label>
 
-            {allInVisualCheck && (
-              <button
-                onClick={onSave}
-                disabled={saveAnnotations.isPending}
-                className="inline-flex items-center px-3 py-1.5 border border-transparent rounded-md shadow-sm text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Submit all detection annotations (Enter) - All flagged as false positive sequences"
+            {/* Crop Toggle (localize): zoom cells around their boxes */}
+            {isLocalize && (
+              <label
+                className="flex items-center space-x-2 px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 cursor-pointer"
+                title="Zoom each frame around its boxes (C)"
               >
-                {saveAnnotations.isPending ? (
+                <input
+                  type="checkbox"
+                  checked={cropMode}
+                  onChange={e => onToggleCropMode?.(e.target.checked)}
+                  className="w-3 h-3 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                />
+                <span>Crop</span>
+              </label>
+            )}
+
+            {/* Cropped flipbook toggle (localize) */}
+            {isLocalize && (
+              <label
+                className="flex items-center space-x-2 px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 cursor-pointer"
+                title="Show the animated cropped view of the lane's boxes"
+              >
+                <input
+                  type="checkbox"
+                  checked={showCroppedView}
+                  onChange={e => onToggleCroppedView?.(e.target.checked)}
+                  className="w-3 h-3 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                />
+                <span>Cropped view</span>
+              </label>
+            )}
+
+            {isLocalize ? (
+              <button
+                onClick={e => {
+                  e.stopPropagation();
+                  onQuickSubmit?.();
+                }}
+                disabled={quickSubmitPending}
+                className={`inline-flex items-center px-3 py-1.5 border border-transparent rounded-md shadow-sm text-xs font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed ${
+                  quickSubmitConfirming
+                    ? 'bg-amber-500 hover:bg-amber-600'
+                    : 'bg-primary-600 hover:bg-primary-700'
+                }`}
+                title="Accept predicted boxes for all pending frames and submit the sequence (Enter)"
+              >
+                {quickSubmitPending ? (
                   <div className="w-3 h-3 mr-1 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                 ) : (
                   <Upload className="w-3 h-3 mr-1" />
                 )}
-                Submit All
+                {quickSubmitConfirming
+                  ? `${noBoxCount} frame${noBoxCount === 1 ? '' : 's'} with no box — submit anyway?`
+                  : 'Accept & submit'}
               </button>
+            ) : (
+              allInVisualCheck && (
+                <button
+                  onClick={onSave}
+                  disabled={saveAnnotations.isPending}
+                  className="inline-flex items-center px-3 py-1.5 border border-transparent rounded-md shadow-sm text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Submit all detection annotations (Enter) - All flagged as false positive sequences"
+                >
+                  {saveAnnotations.isPending ? (
+                    <div className="w-3 h-3 mr-1 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  ) : (
+                    <Upload className="w-3 h-3 mr-1" />
+                  )}
+                  Submit All
+                </button>
+              )
             )}
           </div>
         </div>
@@ -252,7 +369,7 @@ export function DetectionHeader({
               ) : (
                 <span className="text-orange-600">Pending</span>
               )}{' '}
-              • {annotatedCount} of {totalCount} detections • {completionPercentage}% complete
+              • {annotatedCount} of {totalCount} frames • {completionPercentage}% complete
             </span>
 
             {/* Model Accuracy Context */}

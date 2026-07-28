@@ -112,7 +112,7 @@ describe('DetectionHeader', () => {
     it('should display progress information correctly', () => {
       render(<DetectionHeader {...defaultProps} />);
       
-      expect(screen.getByText(/5 of 10 detections/)).toBeInTheDocument();
+      expect(screen.getByText(/5 of 10 frames/)).toBeInTheDocument();
       expect(screen.getByText(/50% complete/)).toBeInTheDocument();
       expect(screen.getByText('Pending')).toBeInTheDocument();
     });
@@ -398,7 +398,7 @@ describe('DetectionHeader', () => {
         />
       );
       
-      expect(screen.getByText(/0 of 10 detections/)).toBeInTheDocument();
+      expect(screen.getByText(/0 of 10 frames/)).toBeInTheDocument();
       expect(screen.getByText(/0% complete/)).toBeInTheDocument();
     });
 
@@ -414,7 +414,7 @@ describe('DetectionHeader', () => {
         />
       );
       
-      expect(screen.getByText(/999 of 1000 detections/)).toBeInTheDocument();
+      expect(screen.getByText(/999 of 1000 frames/)).toBeInTheDocument();
       expect(screen.getByText(/99\.9% complete/)).toBeInTheDocument();
       expect(screen.getByText('Sequence 9999 of 9999')).toBeInTheDocument();
     });
@@ -424,6 +424,96 @@ describe('DetectionHeader', () => {
       
       // Should not crash and should render normally
       expect(screen.getByText('Test Org')).toBeInTheDocument();
+    });
+  });
+
+  describe('Localize quick submit', () => {
+    it('shows Accept & submit and fires onQuickSubmit', () => {
+      const onQuickSubmit = vi.fn();
+      render(
+        <DetectionHeader {...defaultProps} isLocalize noBoxCount={0} onQuickSubmit={onQuickSubmit} />
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: /accept & submit/i }));
+      expect(onQuickSubmit).toHaveBeenCalledOnce();
+    });
+
+    it('confirm state warns about frames with no box', () => {
+      render(
+        <DetectionHeader
+          {...defaultProps}
+          isLocalize
+          noBoxCount={2}
+          quickSubmitConfirming
+          onQuickSubmit={() => {}}
+        />
+      );
+
+      expect(screen.getByText(/2 frames with no box — submit anyway\?/i)).toBeInTheDocument();
+    });
+
+    it('disables the button while submitting', () => {
+      render(
+        <DetectionHeader {...defaultProps} isLocalize quickSubmitPending onQuickSubmit={() => {}} />
+      );
+
+      const button = screen.getByText(/accept & submit/i).closest('button')!;
+      expect(button).toBeDisabled();
+    });
+
+    it('shows the crop toggle and fires onToggleCropMode', () => {
+      const onToggleCropMode = vi.fn();
+      render(
+        <DetectionHeader
+          {...defaultProps}
+          isLocalize
+          cropMode={false}
+          onToggleCropMode={onToggleCropMode}
+          onQuickSubmit={() => {}}
+        />
+      );
+
+      fireEvent.click(screen.getByLabelText('Crop'));
+      expect(onToggleCropMode).toHaveBeenCalledWith(true);
+    });
+
+    it('hides the crop toggle outside localize', () => {
+      render(<DetectionHeader {...defaultProps} />);
+      expect(screen.queryByLabelText('Crop')).toBeNull();
+    });
+
+    it('card size control fires onCardSizeChange', () => {
+      const onCardSizeChange = vi.fn();
+      render(
+        <DetectionHeader {...defaultProps} cardSize="md" onCardSizeChange={onCardSizeChange} />
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'L' }));
+      expect(onCardSizeChange).toHaveBeenCalledWith('lg');
+    });
+
+    it('cropped view toggle appears in localize and fires', () => {
+      const onToggleCroppedView = vi.fn();
+      render(
+        <DetectionHeader
+          {...defaultProps}
+          isLocalize
+          onQuickSubmit={() => {}}
+          showCroppedView={false}
+          onToggleCroppedView={onToggleCroppedView}
+        />
+      );
+
+      fireEvent.click(screen.getByLabelText('Cropped view'));
+      expect(onToggleCroppedView).toHaveBeenCalledWith(true);
+    });
+
+    it('hides the legacy Submit All even when allInVisualCheck', () => {
+      render(
+        <DetectionHeader {...defaultProps} isLocalize allInVisualCheck onQuickSubmit={() => {}} />
+      );
+
+      expect(screen.queryByText('Submit All')).not.toBeInTheDocument();
     });
   });
 

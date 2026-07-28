@@ -1,14 +1,17 @@
 /**
- * Detection image card with overlay visualization.
- * Shows a detection image with optional predictions and user annotations.
+ * Detection frame cell for the sequence grid. Dense, chrome-free: the bordered
+ * image itself is the whole cell. In the localize context the border encodes
+ * the cell state (green = committed, amber = no box, transparent = pending
+ * auto-accept) and the overlay shows exactly what quick submit would record.
  */
 
-import { useState, useRef } from 'react';
-import { CheckCircle, AlertCircle, Clock } from 'lucide-react';
-import { Detection, DetectionAnnotation } from '@/types/api';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { Detection, DetectionAnnotation, SmokeType } from '@/types/api';
 import { useDetectionImage } from '@/hooks/useDetectionImage';
+import { CellState, computeCellCrop, focusOnMainObject, getWinningBoxes } from '@/utils/annotation';
 import {
   BoundingBoxOverlay,
+  ReferenceBoxOverlay,
   SiblingBoundingBoxOverlay,
   UserAnnotationOverlay,
 } from '@/components/annotation/ImageOverlays';
@@ -20,6 +23,11 @@ interface DetectionImageCardProps {
   showPredictions?: boolean;
   showSiblingBboxes?: boolean;
   userAnnotation?: DetectionAnnotation | null;
+  /** Localize grid: borders-only state encoding. Null/undefined = legacy mode. */
+  cellState?: CellState | null;
+  smokeType?: SmokeType;
+  /** Localize grid: zoom the cell around its displayed boxes. */
+  cropMode?: boolean;
 }
 
 interface ImageInfo {
@@ -36,162 +44,144 @@ export function DetectionImageCard({
   showPredictions = false,
   showSiblingBboxes = true,
   userAnnotation = null,
+  cellState = null,
+  smokeType = 'wildfire',
+  cropMode = false,
 }: DetectionImageCardProps) {
   const { data: imageData, isLoading } = useDetectionImage(detection.id);
   const [imageInfo, setImageInfo] = useState<ImageInfo | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
 
-  const handleImageLoad = () => {
+  const handleImageLoad = useCallback(() => {
     if (imgRef.current && containerRef.current) {
       // Get actual rendered positions from DOM
       const containerRect = containerRef.current.getBoundingClientRect();
       const imgRect = imgRef.current.getBoundingClientRect();
-
-      // Calculate the image position relative to the container
-      const offsetX = imgRect.left - containerRect.left;
-      const offsetY = imgRect.top - containerRect.top;
-
-      // Use the actual rendered dimensions
-      const width = imgRect.width;
-      const height = imgRect.height;
-
       setImageInfo({
-        width,
-        height,
-        offsetX,
-        offsetY,
+        width: imgRect.width,
+        height: imgRect.height,
+        offsetX: imgRect.left - containerRect.left,
+        offsetY: imgRect.top - containerRect.top,
       });
     }
-  };
+  }, []);
+
+  // Re-measure the rendered rect when the crop transform changes so the box
+  // overlays track the zoomed image.
+  useEffect(() => {
+    if (imgRef.current?.complete) handleImageLoad();
+  }, [cropMode, handleImageLoad]);
+
+  // Re-measure when the cell itself resizes (S/M/L card size change, window
+  // resize) — overlays are positioned from the measured rect and would
+  // otherwise keep the stale geometry.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      if (imgRef.current?.complete) handleImageLoad();
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+    // isLoading/imageData gate which branch renders, so the container ref
+    // only exists after they settle — re-run to attach the observer then.
+  }, [handleImageLoad, isLoading, imageData?.url]);
+
+  const borderClass = cellState
+    ? cellState === 'done'
+      ? 'border-2 border-green-500'
+      : cellState === 'no-box'
+        ? 'border-2 border-amber-400'
+        : 'border-2 border-transparent'
+    : isAnnotated
+      ? 'border-2 border-green-500'
+      : 'border-2 border-orange-400';
+
+  // Placeholders only carry a status border in the localize context, where
+  // the state is known from the detection itself; legacy contexts stay
+  // neutral while loading.
+  const placeholderBorderClass = cellState ? borderClass : 'border-2 border-transparent';
 
   if (isLoading) {
-    return (
-      <div className="bg-gray-50 rounded-lg p-3 shadow-sm">
-        <div className="aspect-video bg-gray-200 animate-pulse rounded-lg">
-          <div className="w-full h-full flex items-center justify-center">
-            <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
-          </div>
-        </div>
-        <div className="mt-3 h-8 bg-gray-200 animate-pulse rounded"></div>
-      </div>
-    );
+    return <div className={`aspect-video bg-gray-200 animate-pulse ${placeholderBorderClass}`} />;
   }
 
   if (!imageData?.url) {
     return (
-      <div className="bg-gray-50 rounded-lg p-3 shadow-sm border-2 border-gray-200">
-        <div className="aspect-video bg-gray-100 rounded-lg flex items-center justify-center">
-          <span className="text-gray-400 text-sm">No Image</span>
-        </div>
-        <div className="mt-3 py-2">
-          <p className="text-xs text-gray-500">
-            {new Date(detection.recorded_at).toLocaleString()}
-          </p>
-        </div>
+      <div
+        className={`aspect-video bg-gray-100 flex items-center justify-center ${placeholderBorderClass}`}
+      >
+        <span className="text-gray-400 text-sm">No Image</span>
       </div>
     );
   }
 
+  const winning = cellState === 'auto' ? getWinningBoxes(detection) : null;
+
+  // Crop mode: zoom around the boxes the cell displays (committed smoke boxes
+  // for done cells, winning-layer boxes otherwise). No-box cells stay full.
+  const cropBoxes = !cropMode
+    ? []
+    : cellState === 'done'
+      ? (userAnnotation?.annotation?.annotation ?? []).filter(
+          item => item.false_positive_type == null
+        )
+      : (winning?.boxes ?? []);
+  const crop = computeCellCrop(focusOnMainObject<{ xyxyn: number[] }>(detection, cropBoxes));
+  const cropStyle =
+    crop.scale > 1
+      ? { transform: `scale(${crop.scale})`, transformOrigin: `${crop.originX}% ${crop.originY}%` }
+      : undefined;
+
   return (
     <div
-      className={`
-        rounded-lg p-3 cursor-pointer transition-all duration-200
-        hover:shadow-lg hover:scale-[1.02] active:scale-[0.98]
-        ${
-          isAnnotated
-            ? 'border-4 border-green-500 bg-green-50 shadow-md shadow-green-200'
-            : 'border-4 border-orange-400 bg-white hover:border-orange-500 shadow-md shadow-orange-100'
-        }
-      `}
+      ref={containerRef}
+      className={`group aspect-video relative overflow-hidden bg-gray-100 cursor-pointer ${borderClass}`}
       onClick={onClick}
     >
-      {/* Image Container with Overlays */}
-      <div
-        ref={containerRef}
-        className="aspect-video relative overflow-hidden rounded-lg bg-gray-100"
-      >
-        <img
-          ref={imgRef}
-          src={imageData.url}
-          alt={`Detection ${detection.id}`}
-          className="w-full h-full object-contain"
-          onLoad={handleImageLoad}
-          draggable={false}
+      <img
+        ref={imgRef}
+        src={imageData.url}
+        alt={`Frame ${detection.id}`}
+        className="w-full h-full object-contain"
+        style={cropStyle}
+        onLoad={handleImageLoad}
+        draggable={false}
+      />
+
+      {/* Model layer: legacy shows engine predictions; localize shows the
+          winning layer (what quick submit would commit) on pending cells. */}
+      {showPredictions && !cellState && detection.algo_predictions?.predictions && imageInfo && (
+        <BoundingBoxOverlay detection={detection} imageInfo={imageInfo} />
+      )}
+      {showPredictions && winning && imageInfo && (
+        <ReferenceBoxOverlay
+          predictions={winning.boxes}
+          variant={winning.layer}
+          smokeType={smokeType}
+          imageInfo={imageInfo}
+          detectionId={detection.id}
         />
+      )}
 
-        {/* AI Predictions Overlay */}
-        {showPredictions && detection.algo_predictions?.predictions && imageInfo && (
-          <BoundingBoxOverlay detection={detection} imageInfo={imageInfo} />
-        )}
+      {/* Sibling bboxes overlay (read-only hint for missed smoke) —
+          gated on showPredictions so toggling predictions off hides
+          everything algorithmic at once. */}
+      {showPredictions && showSiblingBboxes && imageInfo && (
+        <SiblingBoundingBoxOverlay detection={detection} imageInfo={imageInfo} />
+      )}
 
-        {/* Sibling bboxes overlay (read-only hint for missed smoke) —
-            gated on showPredictions so toggling predictions off hides
-            everything algorithmic at once. */}
-        {showPredictions && showSiblingBboxes && imageInfo && (
-          <SiblingBoundingBoxOverlay detection={detection} imageInfo={imageInfo} />
-        )}
-
-        {/* User Annotations Overlay */}
-        {userAnnotation?.annotation?.annotation && imageInfo && (
+      {/* User Annotations Overlay */}
+      {(cellState === 'done' || !cellState) &&
+        userAnnotation?.annotation?.annotation &&
+        imageInfo && (
           <UserAnnotationOverlay detectionAnnotation={userAnnotation} imageInfo={imageInfo} />
         )}
 
-        {/* Status Overlay Badge */}
-        {isAnnotated ? (
-          <div className="absolute top-2 right-2 flex items-center space-x-1 bg-green-600 text-white px-2 py-1 rounded-lg shadow-lg border border-green-700">
-            <CheckCircle className="w-4 h-4" />
-            <span className="text-xs font-bold">COMPLETED</span>
-          </div>
-        ) : (
-          <div className="absolute top-2 right-2 flex items-center space-x-1 bg-orange-500 text-white px-2 py-1 rounded-lg shadow-lg border border-orange-600 animate-pulse">
-            <Clock className="w-4 h-4" />
-            <span className="text-xs font-bold">PENDING</span>
-          </div>
-        )}
-      </div>
-
-      {/* Card Footer */}
-      <div className="mt-3 flex items-center justify-between">
-        <div className="flex flex-col">
-          <div className="flex items-center space-x-2">
-            <span className="text-sm font-medium text-gray-900">Detection #{detection.id}</span>
-            {isAnnotated && <CheckCircle className="w-4 h-4 text-green-500" />}
-          </div>
-
-          <p className="text-xs text-gray-500">
-            {new Date(detection.recorded_at).toLocaleString()}
-          </p>
-
-          {detection.confidence && (
-            <p className="text-xs text-gray-600">
-              Confidence: {(detection.confidence * 100).toFixed(1)}%
-            </p>
-          )}
-        </div>
-
-        {/* Status Indicator */}
-        <div className="flex flex-col items-end space-y-1">
-          {(detection.algo_predictions?.predictions?.length || 0) > 0 && (
-            <div className="flex items-center space-x-1">
-              <AlertCircle className="w-3 h-3 text-blue-500" />
-              <span className="text-xs text-blue-600">
-                {detection.algo_predictions.predictions.length} prediction
-                {detection.algo_predictions.predictions.length > 1 ? 's' : ''}
-              </span>
-            </div>
-          )}
-
-          {(userAnnotation?.annotation?.annotation?.length || 0) > 0 && (
-            <div className="flex items-center space-x-1">
-              <CheckCircle className="w-3 h-3 text-green-500" />
-              <span className="text-xs text-green-600">
-                {userAnnotation?.annotation?.annotation?.length} annotation
-                {(userAnnotation?.annotation?.annotation?.length || 0) > 1 ? 's' : ''}
-              </span>
-            </div>
-          )}
-        </div>
+      {/* Hover metadata (replaces the removed footer) */}
+      <div className="absolute bottom-0 left-0 bg-black/60 text-white text-[10px] px-1 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+        {new Date(detection.recorded_at).toLocaleString()}
       </div>
     </div>
   );

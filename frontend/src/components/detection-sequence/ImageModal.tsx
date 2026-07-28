@@ -35,7 +35,8 @@ interface ImageModalProps {
   onSubmit: (
     detection: Detection,
     items: DetectionAnnotationBbox[],
-    currentDrawMode: boolean
+    currentDrawMode: boolean,
+    options?: { autoSave?: boolean }
   ) => void;
   onTogglePredictions: (show: boolean) => void;
   canNavigatePrev: boolean;
@@ -206,6 +207,32 @@ export function ImageModal({
       humanRects: drawnRectangles,
       smokeType: selectedSmokeType,
     });
+  };
+
+  // Auto-save after a draw or box edit: the drawn boxes replace the model
+  // layer (first review rejects every winning box; a re-opened committed
+  // annotation already treats the drawn boxes as ground truth). The save
+  // stays on the frame — no auto-advance.
+  const autoSaveRects = (rects: DrawnRectangle[]) => {
+    const items: DetectionAnnotationBbox[] = alreadyReviewed
+      ? rects.map(r => ({
+          xyxyn: r.xyxyn,
+          class_name: 'smoke',
+          smoke_type: r.smokeType,
+          origin: r.origin ?? 'human',
+        }))
+      : materializeReviewAnnotation({
+          winningBoxes: winningPredictions ?? [],
+          winningLayer,
+          rejected: new Set((winningPredictions ?? []).map((_, i) => i)),
+          humanRects: rects,
+          smokeType: selectedSmokeType,
+        });
+    if (!alreadyReviewed) {
+      // Mirror the saved state in the review UI: model boxes are now rejected.
+      setRejectedBoxes(new Set((winningPredictions ?? []).map((_, i) => i)));
+    }
+    onSubmit(detection, items, isDrawMode, { autoSave: true });
   };
 
   // Handle image load to get dimensions and position using DOM positioning
@@ -608,7 +635,10 @@ export function ImageModal({
             smokeType: selectedSmokeType,
           };
 
-          setDrawnRectangles(prev => [...prev, newRect]);
+          const nextRects = [...drawnRectangles, newRect];
+          setDrawnRectangles(nextRects);
+          // Drawing commits immediately: the drawn boxes are the kept ones.
+          autoSaveRects(nextRects);
         }
       }
 
@@ -666,6 +696,10 @@ export function ImageModal({
   const handleMouseUp = () => {
     if (boxEdit) {
       setBoxEdit(null);
+      // A finished move/resize re-saves so the committed boxes track the edit.
+      if (didDragBoxRef.current) {
+        autoSaveRects(drawnRectangles);
+      }
     }
     if (isDragging) {
       setIsDragging(false);

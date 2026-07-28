@@ -22,25 +22,22 @@ import {
 import { createDefaultFilterState } from '@/hooks/usePersistedFilters';
 
 // New imports for refactored utilities
-import { calculateAnnotationCompleteness, sequenceSmokeType } from '@/utils/annotation';
+import {
+  buildQuickSubmitPlan,
+  calculateAnnotationCompleteness,
+  collectLaneBoxes,
+  getCellState,
+  getIsAnnotated,
+  sequenceSmokeType,
+} from '@/utils/annotation';
 import { pickNextLocalizeLane } from '@/utils/annotation/localizeUtils';
 import { ImageModal, DetectionGrid, DetectionHeader } from '@/components/detection-sequence';
+import type { CardSize } from '@/components/detection-sequence/DetectionHeader';
+import CroppedImageSequence from '@/components/annotation/CroppedImageSequence';
+import { usePersistedTabState } from '@/hooks/usePersistedTabState';
 import { ROUTES, localizeDetail } from '@/utils/routes';
 
-// Helper function for context-aware annotation status
-const getIsAnnotated = (annotation: DetectionAnnotation | undefined, mode?: 'done'): boolean => {
-  if (mode === 'done') {
-    // Done context: optimistically assume completed unless explicitly not
-    if (!annotation) return true; // Loading state: assume completed
-    return (
-      annotation.processing_stage === 'annotated' ||
-      annotation.processing_stage === 'bbox_annotation'
-    );
-  } else {
-    // Queue context: always allow edits regardless of stage
-    return false;
-  }
-};
+const CARD_MIN_WIDTH: Record<CardSize, number> = { sm: 240, md: 340, lg: 500 };
 
 interface DetectionSequenceAnnotatePageProps {
   /** 'done' when mounted under /localize/done/… — entered from the Done list. */
@@ -167,6 +164,35 @@ export default function DetectionSequenceAnnotatePage({
     smokeTypeInitFor.current = sequenceAnnotation.sequence_id;
     setPersistentSmokeType(sequenceSmokeType(sequenceAnnotation));
   }, [sequenceAnnotation]);
+
+  // Localize quick submit: the per-frame accept plan (winning model boxes for
+  // every frame without a committed annotation) and the confirm gate for
+  // frames that have no box at all. Queue mode (/localize/:id) is the
+  // localize flow; done mode (/localize/done/:id) is read-mostly review.
+  const isLocalize = mode !== 'done';
+  const [quickSubmitConfirming, setQuickSubmitConfirming] = useState(false);
+  // Crop mode: zoom each cell around its boxes for the glance-check.
+  const [cropMode, setCropMode] = useState(false);
+  // Animated cropped flipbook of the lane's boxes (localize).
+  const [showCroppedView, setShowCroppedView] = useState(false);
+  // Card size (S/M/L) driving the grid's auto-fill column width.
+  const [cardSize, setCardSize] = usePersistedTabState<CardSize>('detectionAnnotateCardSize', 'md');
+  const cardMinWidth = CARD_MIN_WIDTH[cardSize] ?? CARD_MIN_WIDTH.md;
+
+  const laneSmokeType = sequenceSmokeType(sequenceAnnotation);
+  const quickSubmitPlan = useMemo(
+    () =>
+      isLocalize && detections
+        ? buildQuickSubmitPlan(detections, detectionAnnotations, laneSmokeType)
+        : null,
+    [isLocalize, detections, detectionAnnotations, laneSmokeType]
+  );
+
+  // The lane's boxes across all frames, feeding the cropped flipbook view.
+  const laneBoxes = useMemo(
+    () => (isLocalize && detections ? collectLaneBoxes(detections, detectionAnnotations) : []),
+    [isLocalize, detections, detectionAnnotations]
+  );
 
   // Fetch all sequences for navigation using filters from the source page
   const {
@@ -377,12 +403,93 @@ export default function DetectionSequenceAnnotatePage({
       const detail = (err as { detail?: string })?.detail || (err as Error)?.message || '';
       setToastMessage(
         detail.includes('localization incomplete')
-          ? 'Submit rejected — some detections are not yet annotated'
+          ? 'Submit rejected — some frames are not yet annotated'
           : `Submit failed: ${detail || 'unknown error'}`
       );
       setShowToast(true);
     },
   });
+
+  // Quick submit is only safe once the lane's smoke type (sequenceAnnotation)
+  // and the existing per-frame annotations have loaded: an early submit would
+  // commit the 'wildfire' fallback type and misroute updates to creates.
+  const quickSubmitReady = !!sequenceAnnotation && !!existingAnnotations;
+
+  // Localize quick submit: accept the winning model boxes for every pending
+  // frame (manual/committed frames untouched), then submit the lane.
+  const quickSubmitLane = useMutation({
+    mutationFn: async () => {
+      if (!quickSubmitPlan) throw new Error('Sequence not loaded yet — try again in a moment');
+      const results = await Promise.allSettled(
+        quickSubmitPlan.payloads.map(({ detection, existingAnnotationId, body }) =>
+          existingAnnotationId !== null
+            ? apiClient.updateDetectionAnnotation(existingAnnotationId, body)
+            : apiClient.createDetectionAnnotation({ detection_id: detection.id, ...body })
+        )
+      );
+      const fulfilled = results
+        .filter((r): r is PromiseFulfilledResult<DetectionAnnotation> => r.status === 'fulfilled')
+        .map(r => r.value);
+      return { fulfilled, failedCount: results.length - fulfilled.length };
+    },
+    onSuccess: ({ fulfilled, failedCount }) => {
+      if (fulfilled.length > 0) {
+        setDetectionAnnotations(prev => {
+          const next = new Map(prev);
+          fulfilled.forEach(annotation => next.set(annotation.detection_id, annotation));
+          return next;
+        });
+        queryClient.invalidateQueries({ queryKey: [...QUERY_KEYS.DETECTION_ANNOTATIONS] });
+        queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
+        queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });
+      }
+      if (failedCount > 0) {
+        // Landed frames stay committed; the button re-enables so a retry
+        // just completes the rest.
+        setToastMessage(
+          `Failed to submit ${failedCount} frame${failedCount === 1 ? '' : 's'} — try again`
+        );
+        setShowToast(true);
+        return;
+      }
+      submitLocalizedLane.mutate();
+    },
+    onError: () => {
+      setToastMessage('Failed to submit frames — try again');
+      setShowToast(true);
+    },
+  });
+
+  const handleQuickSubmit = useCallback(() => {
+    if (
+      !quickSubmitReady ||
+      !quickSubmitPlan ||
+      quickSubmitLane.isPending ||
+      submitLocalizedLane.isPending
+    )
+      return;
+    if (quickSubmitPlan.noBoxCount > 0 && !quickSubmitConfirming) {
+      setQuickSubmitConfirming(true);
+      return;
+    }
+    setQuickSubmitConfirming(false);
+    quickSubmitLane.mutate();
+  }, [
+    quickSubmitReady,
+    quickSubmitPlan,
+    quickSubmitConfirming,
+    quickSubmitLane,
+    submitLocalizedLane,
+  ]);
+
+  // A click anywhere else cancels the pending confirm (the header button
+  // stops propagation, so its own click never lands here).
+  useEffect(() => {
+    if (!quickSubmitConfirming) return;
+    const cancel = () => setQuickSubmitConfirming(false);
+    window.addEventListener('click', cancel);
+    return () => window.removeEventListener('click', cancel);
+  }, [quickSubmitConfirming]);
 
   // Save detection annotations mutation
   const saveAnnotations = useMutation({
@@ -463,6 +570,8 @@ export default function DetectionSequenceAnnotatePage({
     }: {
       detection: Detection;
       items: DetectionAnnotationBbox[];
+      /** Draw auto-save: commit without advancing to the next frame. */
+      autoSave?: boolean;
     }) => {
       const existingAnnotation = detectionAnnotations.get(detection.id);
 
@@ -495,7 +604,7 @@ export default function DetectionSequenceAnnotatePage({
         return apiClient.createDetectionAnnotation(payload);
       }
     },
-    onSuccess: (result, { detection }) => {
+    onSuccess: (result, { detection, autoSave }) => {
       // Update local state
       setDetectionAnnotations(prev => new Map(prev).set(detection.id, result));
 
@@ -510,8 +619,11 @@ export default function DetectionSequenceAnnotatePage({
       queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
       queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });
 
-      setToastMessage(`Detection ${detection.id} annotated successfully`);
+      setToastMessage(autoSave ? 'Box saved' : `Detection ${detection.id} annotated successfully`);
       setShowToast(true);
+
+      // Draw auto-save stays on the frame — no advance.
+      if (autoSave) return;
 
       // Auto-advance to next detection if available
       if (
@@ -653,7 +765,11 @@ export default function DetectionSequenceAnnotatePage({
     const handleKeyDown = (e: KeyboardEvent) => {
       // Submit with Enter key
       if (e.key === 'Enter' && !showModal) {
-        handleSave();
+        if (isLocalize) {
+          handleQuickSubmit();
+        } else {
+          handleSave();
+        }
         e.preventDefault();
         return;
       }
@@ -661,6 +777,13 @@ export default function DetectionSequenceAnnotatePage({
       // Toggle predictions visibility with 'p' key (works globally, whether modal is open or not)
       if (e.key === 'p' || e.key === 'P') {
         setShowPredictions(!showPredictions);
+        e.preventDefault();
+        return;
+      }
+
+      // Toggle crop mode with 'c' key (localize grid only)
+      if ((e.key === 'c' || e.key === 'C') && isLocalize && !showModal) {
+        setCropMode(prev => !prev);
         e.preventDefault();
         return;
       }
@@ -699,6 +822,8 @@ export default function DetectionSequenceAnnotatePage({
     closeModal,
     handleSave,
     navigateModal,
+    isLocalize,
+    handleQuickSubmit,
   ]);
 
   // Reset auto-advance flag after navigation
@@ -821,13 +946,9 @@ export default function DetectionSequenceAnnotatePage({
         </div>
 
         {/* Grid skeleton */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-px">
           {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="space-y-2">
-              <div className="aspect-video bg-gray-200 animate-pulse rounded-lg"></div>
-              <div className="h-4 bg-gray-200 animate-pulse rounded"></div>
-              <div className="h-3 w-24 bg-gray-200 animate-pulse rounded"></div>
-            </div>
+            <div key={i} className="aspect-video bg-gray-200 animate-pulse"></div>
           ))}
         </div>
       </div>
@@ -838,7 +959,7 @@ export default function DetectionSequenceAnnotatePage({
     return (
       <div className="flex items-center justify-center min-h-96">
         <div className="text-center">
-          <p className="text-red-600 mb-2">Failed to load detections</p>
+          <p className="text-red-600 mb-2">Failed to load frames</p>
           <p className="text-gray-500 text-sm">{String(error)}</p>
           <button
             onClick={handleBack}
@@ -872,8 +993,8 @@ export default function DetectionSequenceAnnotatePage({
         <div className="flex items-center justify-center min-h-96">
           <div className="text-center">
             <div className="text-4xl mb-4">🔍</div>
-            <p className="text-lg font-medium mb-2">No detections found</p>
-            <p className="text-gray-500">This sequence doesn't have any detections to annotate.</p>
+            <p className="text-lg font-medium mb-2">No frames found</p>
+            <p className="text-gray-500">This sequence doesn't have any frames to annotate.</p>
             <button
               onClick={handleBack}
               className="mt-4 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-md text-sm transition-colors"
@@ -911,17 +1032,47 @@ export default function DetectionSequenceAnnotatePage({
         allInVisualCheck={allInVisualCheck}
         onSave={handleSave}
         saveAnnotations={saveAnnotations}
+        isLocalize={isLocalize}
+        noBoxCount={quickSubmitPlan?.noBoxCount ?? 0}
+        quickSubmitPending={
+          !quickSubmitReady || quickSubmitLane.isPending || submitLocalizedLane.isPending
+        }
+        quickSubmitConfirming={quickSubmitConfirming}
+        onQuickSubmit={handleQuickSubmit}
+        cropMode={cropMode}
+        onToggleCropMode={setCropMode}
+        showCroppedView={showCroppedView}
+        onToggleCroppedView={setShowCroppedView}
+        cardSize={cardSize}
+        onCardSizeChange={setCardSize}
         getAnnotationPills={getAnnotationPills}
       />
 
-      <DetectionGrid
-        detections={detections}
-        onDetectionClick={openModal}
-        showPredictions={showPredictions}
-        detectionAnnotations={detectionAnnotations}
-        mode={mode}
-        getIsAnnotated={getIsAnnotated}
-      />
+      <div className="pt-28 space-y-4">
+        {isLocalize && showCroppedView && laneBoxes.length > 0 && sequenceIdNum && (
+          <div className="flex justify-center">
+            <CroppedImageSequence bboxes={laneBoxes} sequenceId={sequenceIdNum} />
+          </div>
+        )}
+
+        <DetectionGrid
+          detections={detections}
+          onDetectionClick={openModal}
+          showPredictions={showPredictions}
+          detectionAnnotations={detectionAnnotations}
+          mode={mode}
+          getIsAnnotated={getIsAnnotated}
+          getCellState={
+            isLocalize
+              ? (detection: Detection) =>
+                  getCellState(detection, detectionAnnotations.get(detection.id))
+              : undefined
+          }
+          smokeType={laneSmokeType}
+          cropMode={isLocalize && cropMode}
+          cardMinWidth={cardMinWidth}
+        />
+      </div>
 
       {/* Image Modal */}
       {showModal && selectedDetectionIndex !== null && detections[selectedDetectionIndex] && (
@@ -929,10 +1080,10 @@ export default function DetectionSequenceAnnotatePage({
           detection={detections[selectedDetectionIndex]}
           onClose={closeModal}
           onNavigate={navigateModal}
-          onSubmit={(detection, items, currentDrawMode) => {
+          onSubmit={(detection, items, currentDrawMode, options) => {
             // Store current drawing mode state before auto-advancing
             setPersistentDrawMode(currentDrawMode);
-            annotateIndividualDetection.mutate({ detection, items });
+            annotateIndividualDetection.mutate({ detection, items, autoSave: options?.autoSave });
           }}
           onTogglePredictions={setShowPredictions}
           canNavigatePrev={selectedDetectionIndex > 0}

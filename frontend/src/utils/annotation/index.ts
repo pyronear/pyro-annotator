@@ -46,6 +46,18 @@ export type { ModelLayer } from './referenceLayerUtils';
 // Seed-at-submit review utilities
 export { materializeReviewAnnotation, sequenceSmokeType } from './reviewUtils';
 
+// Localize quick submit
+export {
+  getCellState,
+  getWinningBoxes,
+  buildQuickSubmitPlan,
+  getIsAnnotated,
+  collectLaneBoxes,
+} from './quickSubmitUtils';
+export type { CellState, QuickSubmitPlan, QuickSubmitPayload } from './quickSubmitUtils';
+export { computeCellCrop, focusOnMainObject } from './gridCropUtils';
+export type { CellCrop } from './gridCropUtils';
+
 // Bounding box move/resize geometry
 export { moveBox, resizeBox, HANDLE_CURSOR } from './boxEditUtils';
 export type { ResizeHandle, Box } from './boxEditUtils';
