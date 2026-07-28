@@ -10,7 +10,7 @@ import {
 import { QUERY_KEYS } from '@/utils/constants';
 import { analyzeSequenceAccuracy } from '@/utils/modelAccuracy';
 import { getStageFilterLabel, stageFilterIncludes } from '@/utils/processingStage';
-import TabbedFilters from '@/components/filters/TabbedFilters';
+import FilterPopover from '@/components/filters/FilterPopover';
 import {
   SequencesTableHeader,
   SequencesLegend,
@@ -222,7 +222,7 @@ export default function SequencesPage({
     return (
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Sequences</h1>
             <p className="text-gray-600">
@@ -231,39 +231,39 @@ export default function SequencesPage({
                 : 'Manage and annotate wildfire detection sequences'}
             </p>
           </div>
-          {stageSelector}
+          <div className="flex items-center gap-3 flex-wrap justify-end">
+            {stageSelector}
+            <FilterPopover
+              filters={filters}
+              onFiltersChange={handleFilterChange}
+              dateFrom={dateFrom}
+              dateTo={dateTo}
+              onDateFromChange={handleDateFromChange}
+              onDateToChange={handleDateToChange}
+              onDateRangeSet={setDateRange}
+              onDateRangeClear={clearDateRange}
+              selectedFalsePositiveTypes={selectedFalsePositiveTypes}
+              onFalsePositiveTypesChange={handleFalsePositiveFilterChangeV2}
+              selectedSmokeTypes={selectedSmokeTypes}
+              onSmokeTypesChange={setSelectedSmokeTypes}
+              selectedModelAccuracy={selectedModelAccuracy}
+              onModelAccuracyChange={setSelectedModelAccuracy}
+              selectedUnsure={selectedUnsure}
+              onUnsureChange={setSelectedUnsure}
+              onResetFilters={resetFilters}
+              cameras={cameras}
+              organizations={organizations}
+              sourceApis={sourceApis}
+              camerasLoading={camerasLoading}
+              organizationsLoading={organizationsLoading}
+              sourceApisLoading={sourceApisLoading}
+              showModelAccuracy={defaultProcessingStage === 'annotated'}
+              showFalsePositiveTypes={defaultProcessingStage === 'annotated'}
+              showSmokeTypes={defaultProcessingStage === 'annotated'}
+              showUnsureFilter={defaultProcessingStage === 'annotated'}
+            />
+          </div>
         </div>
-
-        {/* Filters */}
-        <TabbedFilters
-          filters={filters}
-          onFiltersChange={handleFilterChange}
-          dateFrom={dateFrom}
-          dateTo={dateTo}
-          onDateFromChange={handleDateFromChange}
-          onDateToChange={handleDateToChange}
-          onDateRangeSet={setDateRange}
-          onDateRangeClear={clearDateRange}
-          selectedFalsePositiveTypes={selectedFalsePositiveTypes}
-          onFalsePositiveTypesChange={handleFalsePositiveFilterChangeV2}
-          selectedSmokeTypes={selectedSmokeTypes}
-          onSmokeTypesChange={setSelectedSmokeTypes}
-          selectedModelAccuracy={selectedModelAccuracy}
-          onModelAccuracyChange={setSelectedModelAccuracy}
-          selectedUnsure={selectedUnsure}
-          onUnsureChange={setSelectedUnsure}
-          onResetFilters={resetFilters}
-          cameras={cameras}
-          organizations={organizations}
-          sourceApis={sourceApis}
-          camerasLoading={camerasLoading}
-          organizationsLoading={organizationsLoading}
-          sourceApisLoading={sourceApisLoading}
-          showModelAccuracy={defaultProcessingStage === 'annotated'}
-          showFalsePositiveTypes={defaultProcessingStage === 'annotated'}
-          showSmokeTypes={defaultProcessingStage === 'annotated'}
-          showUnsureFilter={defaultProcessingStage === 'annotated'}
-        />
 
         {/* Empty state message */}
         <div className="flex items-center justify-center min-h-96">
@@ -303,7 +303,7 @@ export default function SequencesPage({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Sequences</h1>
           <p className="text-gray-600">
@@ -312,39 +312,39 @@ export default function SequencesPage({
               : 'Manage and annotate wildfire detection sequences'}
           </p>
         </div>
-        {stageSelector}
+        <div className="flex items-center gap-3 flex-wrap justify-end">
+          {stageSelector}
+          <FilterPopover
+            filters={filters}
+            onFiltersChange={handleFilterChange}
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            onDateFromChange={handleDateFromChange}
+            onDateToChange={handleDateToChange}
+            onDateRangeSet={setDateRange}
+            onDateRangeClear={clearDateRange}
+            selectedFalsePositiveTypes={selectedFalsePositiveTypes}
+            onFalsePositiveTypesChange={handleFalsePositiveFilterChangeV2}
+            selectedSmokeTypes={selectedSmokeTypes}
+            onSmokeTypesChange={setSelectedSmokeTypes}
+            selectedModelAccuracy={selectedModelAccuracy}
+            onModelAccuracyChange={setSelectedModelAccuracy}
+            selectedUnsure={selectedUnsure}
+            onUnsureChange={setSelectedUnsure}
+            onResetFilters={resetFilters}
+            cameras={cameras}
+            organizations={organizations}
+            sourceApis={sourceApis}
+            camerasLoading={camerasLoading}
+            organizationsLoading={organizationsLoading}
+            sourceApisLoading={sourceApisLoading}
+            showModelAccuracy={isAnnotatedView}
+            showFalsePositiveTypes={isAnnotatedView}
+            showSmokeTypes={isAnnotatedView}
+            showUnsureFilter={isAnnotatedView}
+          />
+        </div>
       </div>
-
-      {/* Filters */}
-      <TabbedFilters
-        filters={filters}
-        onFiltersChange={handleFilterChange}
-        dateFrom={dateFrom}
-        dateTo={dateTo}
-        onDateFromChange={handleDateFromChange}
-        onDateToChange={handleDateToChange}
-        onDateRangeSet={setDateRange}
-        onDateRangeClear={clearDateRange}
-        selectedFalsePositiveTypes={selectedFalsePositiveTypes}
-        onFalsePositiveTypesChange={handleFalsePositiveFilterChangeV2}
-        selectedSmokeTypes={selectedSmokeTypes}
-        onSmokeTypesChange={setSelectedSmokeTypes}
-        selectedModelAccuracy={selectedModelAccuracy}
-        onModelAccuracyChange={setSelectedModelAccuracy}
-        selectedUnsure={selectedUnsure}
-        onUnsureChange={setSelectedUnsure}
-        onResetFilters={resetFilters}
-        cameras={cameras}
-        organizations={organizations}
-        sourceApis={sourceApis}
-        camerasLoading={camerasLoading}
-        organizationsLoading={organizationsLoading}
-        sourceApisLoading={sourceApisLoading}
-        showModelAccuracy={isAnnotatedView}
-        showFalsePositiveTypes={isAnnotatedView}
-        showSmokeTypes={isAnnotatedView}
-        showUnsureFilter={isAnnotatedView}
-      />
 
       {/* Results */}
       {filteredSequences && (

@@ -9,7 +9,7 @@ import {
 } from '@/types/api';
 import { QUERY_KEYS } from '@/utils/constants';
 import { analyzeSequenceAccuracy } from '@/utils/modelAccuracy';
-import TabbedFilters from '@/components/filters/TabbedFilters';
+import FilterPopover from '@/components/filters/FilterPopover';
 import {
   DetectionReviewTableHeader,
   SequencesLegend,
@@ -230,42 +230,40 @@ export default function DetectionReviewPage() {
     return (
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Detections</h1>
             <p className="text-gray-600">
               Browse localized smoke detections and review past annotations
             </p>
           </div>
+          <FilterPopover
+            filters={filters}
+            onFiltersChange={handleFilterChange}
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            onDateFromChange={handleDateFromChange}
+            onDateToChange={handleDateToChange}
+            onDateRangeSet={setDateRange}
+            onDateRangeClear={clearDateRange}
+            selectedFalsePositiveTypes={selectedFalsePositiveTypes}
+            onFalsePositiveTypesChange={handleFalsePositiveFilterChange}
+            selectedSmokeTypes={selectedSmokeTypes}
+            onSmokeTypesChange={setSelectedSmokeTypes}
+            selectedModelAccuracy={selectedModelAccuracy}
+            onModelAccuracyChange={setSelectedModelAccuracy}
+            onResetFilters={resetFilters}
+            cameras={cameras}
+            organizations={organizations}
+            sourceApis={sourceApis}
+            camerasLoading={camerasLoading}
+            organizationsLoading={organizationsLoading}
+            sourceApisLoading={sourceApisLoading}
+            showModelAccuracy={true}
+            showFalsePositiveTypes={true}
+            showSmokeTypes={true}
+          />
         </div>
-
-        {/* Filters */}
-        <TabbedFilters
-          filters={filters}
-          onFiltersChange={handleFilterChange}
-          dateFrom={dateFrom}
-          dateTo={dateTo}
-          onDateFromChange={handleDateFromChange}
-          onDateToChange={handleDateToChange}
-          onDateRangeSet={setDateRange}
-          onDateRangeClear={clearDateRange}
-          selectedFalsePositiveTypes={selectedFalsePositiveTypes}
-          onFalsePositiveTypesChange={handleFalsePositiveFilterChange}
-          selectedSmokeTypes={selectedSmokeTypes}
-          onSmokeTypesChange={setSelectedSmokeTypes}
-          selectedModelAccuracy={selectedModelAccuracy}
-          onModelAccuracyChange={setSelectedModelAccuracy}
-          onResetFilters={resetFilters}
-          cameras={cameras}
-          organizations={organizations}
-          sourceApis={sourceApis}
-          camerasLoading={camerasLoading}
-          organizationsLoading={organizationsLoading}
-          sourceApisLoading={sourceApisLoading}
-          showModelAccuracy={true}
-          showFalsePositiveTypes={true}
-          showSmokeTypes={true}
-        />
 
         {/* Empty state message */}
         <div className="flex items-center justify-center min-h-96">
@@ -297,42 +295,40 @@ export default function DetectionReviewPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Detections</h1>
           <p className="text-gray-600">
             Browse localized smoke detections and review past annotations
           </p>
         </div>
+        <FilterPopover
+          filters={filters}
+          onFiltersChange={handleFilterChange}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          onDateFromChange={handleDateFromChange}
+          onDateToChange={handleDateToChange}
+          onDateRangeSet={setDateRange}
+          onDateRangeClear={clearDateRange}
+          selectedFalsePositiveTypes={selectedFalsePositiveTypes}
+          onFalsePositiveTypesChange={handleFalsePositiveFilterChange}
+          selectedSmokeTypes={selectedSmokeTypes}
+          onSmokeTypesChange={setSelectedSmokeTypes}
+          selectedModelAccuracy={selectedModelAccuracy}
+          onModelAccuracyChange={setSelectedModelAccuracy}
+          onResetFilters={resetFilters}
+          cameras={cameras}
+          organizations={organizations}
+          sourceApis={sourceApis}
+          camerasLoading={camerasLoading}
+          organizationsLoading={organizationsLoading}
+          sourceApisLoading={sourceApisLoading}
+          showModelAccuracy={true}
+          showFalsePositiveTypes={true}
+          showSmokeTypes={true}
+        />
       </div>
-
-      {/* Filters */}
-      <TabbedFilters
-        filters={filters}
-        onFiltersChange={handleFilterChange}
-        dateFrom={dateFrom}
-        dateTo={dateTo}
-        onDateFromChange={handleDateFromChange}
-        onDateToChange={handleDateToChange}
-        onDateRangeSet={setDateRange}
-        onDateRangeClear={clearDateRange}
-        selectedFalsePositiveTypes={selectedFalsePositiveTypes}
-        onFalsePositiveTypesChange={handleFalsePositiveFilterChange}
-        selectedModelAccuracy={selectedModelAccuracy}
-        onModelAccuracyChange={setSelectedModelAccuracy}
-        onResetFilters={resetFilters}
-        cameras={cameras}
-        organizations={organizations}
-        sourceApis={sourceApis}
-        camerasLoading={camerasLoading}
-        organizationsLoading={organizationsLoading}
-        sourceApisLoading={sourceApisLoading}
-        showModelAccuracy={true}
-        showFalsePositiveTypes={true}
-        selectedSmokeTypes={selectedSmokeTypes}
-        onSmokeTypesChange={setSelectedSmokeTypes}
-        showSmokeTypes={true}
-      />
 
       {/* Results */}
       {filteredSequences && (
