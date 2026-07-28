@@ -14,7 +14,8 @@ import TabbedFilters from '@/components/filters/TabbedFilters';
 import {
   SequencesTableHeader,
   SequencesLegend,
-  SequenceTableRow,
+  ClassifyQueueTable,
+  ClassifyDoneTable,
   SequencesPagination,
 } from '@/components/sequences';
 import { useSequenceStore } from '@/store/useSequenceStore';
@@ -359,19 +360,19 @@ export default function SequencesPage({
           />
 
           {/* Row Background Color Legend - Only show on review page */}
-          {isAnnotatedView && <SequencesLegend />}
+          {isReviewPage && <SequencesLegend />}
 
-          {/* Sequence List */}
-          <div className="divide-y divide-gray-200">
-            {filteredSequences.items.map(sequence => (
-              <SequenceTableRow
-                key={sequence.id}
-                sequence={sequence}
-                defaultProcessingStage={defaultProcessingStage}
-                onSequenceClick={handleSequenceClick}
-              />
-            ))}
-          </div>
+          {isReviewPage ? (
+            <ClassifyDoneTable
+              sequences={filteredSequences.items}
+              onSequenceClick={handleSequenceClick}
+            />
+          ) : (
+            <ClassifyQueueTable
+              sequences={filteredSequences.items}
+              onSequenceClick={handleSequenceClick}
+            />
+          )}
 
           <SequencesPagination
             filteredSequences={filteredSequences}
