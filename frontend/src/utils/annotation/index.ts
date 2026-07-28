@@ -46,6 +46,10 @@ export type { ModelLayer } from './referenceLayerUtils';
 // Seed-at-submit review utilities
 export { materializeReviewAnnotation, sequenceSmokeType } from './reviewUtils';
 
+// Localize quick submit
+export { getCellState, getWinningBoxes, buildQuickSubmitPlan } from './quickSubmitUtils';
+export type { CellState, QuickSubmitPlan } from './quickSubmitUtils';
+
 // Bounding box move/resize geometry
 export { moveBox, resizeBox, HANDLE_CURSOR } from './boxEditUtils';
 export type { ResizeHandle, Box } from './boxEditUtils';
