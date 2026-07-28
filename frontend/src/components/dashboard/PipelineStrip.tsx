@@ -18,7 +18,7 @@ interface SegmentProps {
 function Segment({ first, toneClass, label, count, detail, isLoading }: SegmentProps) {
   return (
     <div
-      className={`${first ? 'chevron-seg-first md:pl-6' : 'chevron-seg md:pl-8'} flex-1 bg-paper px-5 py-3.5 md:pr-8`}
+      className={`${first ? 'chevron-seg-first' : 'chevron-seg'} flex-1 bg-paper px-5 py-3.5 text-center md:px-8`}
     >
       <div
         className={`font-data text-[10.5px] font-medium uppercase tracking-[0.12em] ${toneClass} mb-1`}
@@ -26,7 +26,7 @@ function Segment({ first, toneClass, label, count, detail, isLoading }: SegmentP
         {label}
       </div>
       {isLoading ? (
-        <div className="h-7 w-14 animate-pulse rounded bg-ash" />
+        <div className="mx-auto h-7 w-14 animate-pulse rounded bg-ash" />
       ) : (
         <div className={`font-data text-2xl font-semibold leading-tight ${toneClass}`}>
           {count.toLocaleString()}

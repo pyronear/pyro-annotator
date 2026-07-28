@@ -54,9 +54,9 @@ export default function PhaseCard({
       <h2 className="font-display text-[18.5px] font-semibold text-char">{title}</h2>
       <p className="mb-4 font-body text-[12.5px] text-haze">{description}</p>
       {isLoading ? (
-        <div className="h-10 w-24 animate-pulse rounded bg-ash" />
+        <div className="mx-auto h-10 w-24 animate-pulse rounded bg-ash" />
       ) : (
-        <div className={`font-data text-[38px] font-semibold leading-none ${t.text}`}>
+        <div className={`text-center font-data text-[38px] font-semibold leading-none ${t.text}`}>
           {todo.toLocaleString()}
           <span className="ml-1.5 font-body text-xs font-normal text-haze">to do</span>
         </div>
@@ -76,27 +76,25 @@ export default function PhaseCard({
       </p>
       <Link
         to={ctaTo}
-        className={`block w-full rounded-lg ${t.bg} py-2.5 text-center font-body text-[13.5px] font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2`}
+        className={`mx-auto block w-fit rounded-lg ${t.bg} px-7 py-2.5 font-body text-[13.5px] font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2`}
       >
         {ctaLabel}
       </Link>
-      {secondaryLink && secondaryLink.count > 0 && (
-        <Link
-          to={secondaryLink.to}
-          className="mt-2.5 block text-center font-body text-[12.5px] text-haze hover:text-char"
-        >
-          {secondaryLink.label} ·{' '}
-          <span className="font-semibold text-char">{secondaryLink.count.toLocaleString()}</span> →
+      <div className="mt-4 flex items-center justify-between border-t border-line pt-3">
+        {secondaryLink && secondaryLink.count > 0 ? (
+          <Link to={secondaryLink.to} className="font-body text-[12.5px] text-haze hover:text-char">
+            {secondaryLink.label} ·{' '}
+            <span className="font-semibold text-char">{secondaryLink.count.toLocaleString()}</span>
+          </Link>
+        ) : (
+          <span />
+        )}
+        {/* No count on the review link: the review page opens on its own persisted
+            stage tab, so any single number here would disagree with what it shows. */}
+        <Link to={reviewTo} className="font-body text-[12.5px] text-haze hover:text-char">
+          {reviewLabel} →
         </Link>
-      )}
-      {/* No count on the review link: the review page opens on its own persisted
-          stage tab, so any single number here would disagree with what it shows. */}
-      <Link
-        to={reviewTo}
-        className="mt-2.5 block text-center font-body text-[12.5px] text-haze hover:text-char"
-      >
-        {reviewLabel} →
-      </Link>
+      </div>
     </div>
   );
 }
