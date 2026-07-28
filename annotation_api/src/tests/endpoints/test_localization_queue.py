@@ -138,7 +138,7 @@ async def test_hidden_while_auto_annotate_pending(
 
 
 @pytest.mark.asyncio
-async def test_hidden_when_sibling_regresses(
+async def test_hidden_when_sibling_not_done(
     authenticated_client: AsyncClient, async_session
 ):
     await _lane(
@@ -153,7 +153,7 @@ async def test_hidden_when_sibling_regresses(
         async_session,
         alert_api_id=1_000_500_001,
         platform_alert_id=500,
-        stage=Stage.NEEDS_MANUAL,
+        stage=Stage.READY_TO_ANNOTATE,
     )
     resp = await authenticated_client.get("/sequences/localization-queue")
     assert resp.json()["total"] == 0

@@ -9,7 +9,7 @@ import { DetectionGrid } from '@/components/detection-sequence/DetectionGrid';
 import type { Detection, DetectionAnnotation } from '@/types/api';
 
 // Mock the icons to avoid test complications
-vi.mock('lucide-react', async (importOriginal) => {
+vi.mock('lucide-react', async importOriginal => {
   const actual = await importOriginal<typeof import('lucide-react')>();
   return {
     ...actual,
@@ -30,8 +30,14 @@ interface MockDetectionCardProps {
 }
 
 vi.mock('@/components/detection-annotation', () => ({
-  DetectionImageCard: ({ detection, onClick, isAnnotated, showPredictions, userAnnotation }: MockDetectionCardProps) => (
-    <div 
+  DetectionImageCard: ({
+    detection,
+    onClick,
+    isAnnotated,
+    showPredictions,
+    userAnnotation,
+  }: MockDetectionCardProps) => (
+    <div
       data-testid={`detection-card-${detection.id}`}
       data-annotated={isAnnotated}
       data-show-predictions={showPredictions}
@@ -75,16 +81,11 @@ describe('DetectionGrid', () => {
   });
 
   const defaultProps = {
-    detections: [
-      createDetection(1, 0.95),
-      createDetection(2, 0.75),
-      createDetection(3, 0.65),
-    ],
+    detections: [createDetection(1, 0.95), createDetection(2, 0.75), createDetection(3, 0.65)],
     onDetectionClick: vi.fn(),
     showPredictions: true,
     detectionAnnotations: new Map(),
-    fromParam: null,
-    getIsAnnotated: vi.fn((annotation) => !!annotation),
+    getIsAnnotated: vi.fn(annotation => !!annotation),
   };
 
   beforeEach(() => {
@@ -94,7 +95,6 @@ describe('DetectionGrid', () => {
   describe('Rendering Tests', () => {
     it('should render grid container with correct classes', () => {
       const { container } = render(<DetectionGrid {...defaultProps} />);
-      
       const gridLayout = container.querySelector('.grid.gap-px') as HTMLElement;
       expect(gridLayout).toBeInTheDocument();
       expect(gridLayout.style.gridTemplateColumns).toContain('340px');
@@ -102,7 +102,7 @@ describe('DetectionGrid', () => {
 
     it('should render all detections as cards', () => {
       render(<DetectionGrid {...defaultProps} />);
-      
+
       expect(screen.getByTestId('detection-card-1')).toBeInTheDocument();
       expect(screen.getByTestId('detection-card-2')).toBeInTheDocument();
       expect(screen.getByTestId('detection-card-3')).toBeInTheDocument();
@@ -110,7 +110,7 @@ describe('DetectionGrid', () => {
 
     it('should display detection confidence scores', () => {
       render(<DetectionGrid {...defaultProps} />);
-      
+
       expect(screen.getByText(/Detection 1 - 0.95/)).toBeInTheDocument();
       expect(screen.getByText(/Detection 2 - 0.75/)).toBeInTheDocument();
       expect(screen.getByText(/Detection 3 - 0.65/)).toBeInTheDocument();
@@ -127,10 +127,8 @@ describe('DetectionGrid', () => {
     });
 
     it('should render empty grid when no detections provided', () => {
-      const { container } = render(
-        <DetectionGrid {...defaultProps} detections={[]} />
-      );
-      
+      const { container } = render(<DetectionGrid {...defaultProps} detections={[]} />);
+
       const gridContainer = container.querySelector('.grid');
       expect(gridContainer).toBeInTheDocument();
       expect(gridContainer?.children).toHaveLength(0);
@@ -140,7 +138,7 @@ describe('DetectionGrid', () => {
   describe('Props Testing', () => {
     it('should pass showPredictions prop to each detection card', () => {
       render(<DetectionGrid {...defaultProps} showPredictions={false} />);
-      
+
       const cards = screen.getAllByTestId(/detection-card-/);
       cards.forEach(card => {
         expect(card).toHaveAttribute('data-show-predictions', 'false');
@@ -152,40 +150,44 @@ describe('DetectionGrid', () => {
         [1, createDetectionAnnotation(1, true)],
         [2, createDetectionAnnotation(2, false)],
       ]);
-      
+
       render(<DetectionGrid {...defaultProps} detectionAnnotations={annotations} />);
-      
+
       expect(screen.getByTestId('detection-card-1')).toHaveAttribute('data-has-annotation', 'true');
       expect(screen.getByTestId('detection-card-2')).toHaveAttribute('data-has-annotation', 'true');
-      expect(screen.getByTestId('detection-card-3')).toHaveAttribute('data-has-annotation', 'false');
+      expect(screen.getByTestId('detection-card-3')).toHaveAttribute(
+        'data-has-annotation',
+        'false'
+      );
     });
 
     it('should call getIsAnnotated with correct parameters', () => {
       const getIsAnnotated = vi.fn().mockReturnValue(true);
       const annotations = new Map([[1, createDetectionAnnotation(1)]]);
-      
+
       render(
-        <DetectionGrid 
-          {...defaultProps} 
+        <DetectionGrid
+          {...defaultProps}
           getIsAnnotated={getIsAnnotated}
           detectionAnnotations={annotations}
-          fromParam="visual-check"
+          mode="done"
         />
       );
-      
-      expect(getIsAnnotated).toHaveBeenCalledWith(annotations.get(1), "visual-check");
-      expect(getIsAnnotated).toHaveBeenCalledWith(undefined, "visual-check");
+
+      expect(getIsAnnotated).toHaveBeenCalledWith(annotations.get(1), 'done');
+      expect(getIsAnnotated).toHaveBeenCalledWith(undefined, 'done');
       expect(getIsAnnotated).toHaveBeenCalledTimes(3); // Once per detection
     });
 
     it('should pass isAnnotated result to detection cards', () => {
-      const getIsAnnotated = vi.fn()
-        .mockReturnValueOnce(true)   // Detection 1: annotated
-        .mockReturnValueOnce(false)  // Detection 2: not annotated
-        .mockReturnValueOnce(true);  // Detection 3: annotated
-      
+      const getIsAnnotated = vi
+        .fn()
+        .mockReturnValueOnce(true) // Detection 1: annotated
+        .mockReturnValueOnce(false) // Detection 2: not annotated
+        .mockReturnValueOnce(true); // Detection 3: annotated
+
       render(<DetectionGrid {...defaultProps} getIsAnnotated={getIsAnnotated} />);
-      
+
       expect(screen.getByTestId('detection-card-1')).toHaveAttribute('data-annotated', 'true');
       expect(screen.getByTestId('detection-card-2')).toHaveAttribute('data-annotated', 'false');
       expect(screen.getByTestId('detection-card-3')).toHaveAttribute('data-annotated', 'true');
@@ -196,9 +198,9 @@ describe('DetectionGrid', () => {
     it('should call onDetectionClick with correct index when card is clicked', () => {
       const onDetectionClick = vi.fn();
       render(<DetectionGrid {...defaultProps} onDetectionClick={onDetectionClick} />);
-      
+
       fireEvent.click(screen.getByTestId('detection-card-2'));
-      
+
       expect(onDetectionClick).toHaveBeenCalledWith(1); // Index 1 for second detection
       expect(onDetectionClick).toHaveBeenCalledTimes(1);
     });
@@ -206,10 +208,10 @@ describe('DetectionGrid', () => {
     it('should handle multiple card clicks correctly', () => {
       const onDetectionClick = vi.fn();
       render(<DetectionGrid {...defaultProps} onDetectionClick={onDetectionClick} />);
-      
+
       fireEvent.click(screen.getByTestId('detection-card-1'));
       fireEvent.click(screen.getByTestId('detection-card-3'));
-      
+
       expect(onDetectionClick).toHaveBeenNthCalledWith(1, 0); // First detection (index 0)
       expect(onDetectionClick).toHaveBeenNthCalledWith(2, 2); // Third detection (index 2)
       expect(onDetectionClick).toHaveBeenCalledTimes(2);
@@ -218,9 +220,9 @@ describe('DetectionGrid', () => {
     it('should support keyboard navigation on cards', () => {
       const onDetectionClick = vi.fn();
       render(<DetectionGrid {...defaultProps} onDetectionClick={onDetectionClick} />);
-      
+
       const card = screen.getByTestId('detection-card-1');
-      
+
       // Cards should have proper keyboard attributes
       expect(card).toHaveAttribute('role', 'button');
       expect(card).toHaveAttribute('tabIndex', '0');
@@ -230,41 +232,34 @@ describe('DetectionGrid', () => {
   describe('Integration Tests', () => {
     it('should handle mixed annotation states correctly', () => {
       const annotations = new Map([
-        [1, createDetectionAnnotation(1, true)],  // True positive
+        [1, createDetectionAnnotation(1, true)], // True positive
         [2, createDetectionAnnotation(2, false)], // False positive
         // Detection 3 has no annotation
       ]);
-      
-      const getIsAnnotated = vi.fn()
-        .mockImplementation((annotation) => !!annotation);
-      
+
+      const getIsAnnotated = vi.fn().mockImplementation(annotation => !!annotation);
+
       render(
-        <DetectionGrid 
-          {...defaultProps} 
+        <DetectionGrid
+          {...defaultProps}
           detectionAnnotations={annotations}
           getIsAnnotated={getIsAnnotated}
         />
       );
-      
+
       // Verify all detections are rendered with correct annotation state
       expect(screen.getByTestId('detection-card-1')).toHaveAttribute('data-annotated', 'true');
       expect(screen.getByTestId('detection-card-2')).toHaveAttribute('data-annotated', 'true');
       expect(screen.getByTestId('detection-card-3')).toHaveAttribute('data-annotated', 'false');
     });
 
-    it('should handle fromParam context correctly', () => {
+    it('should pass the done mode context to getIsAnnotated', () => {
       const getIsAnnotated = vi.fn().mockReturnValue(false);
-      
-      render(
-        <DetectionGrid 
-          {...defaultProps} 
-          fromParam="sequence-list"
-          getIsAnnotated={getIsAnnotated}
-        />
-      );
-      
-      // Verify fromParam is passed to getIsAnnotated for all detections
-      expect(getIsAnnotated).toHaveBeenCalledWith(undefined, "sequence-list");
+
+      render(<DetectionGrid {...defaultProps} mode="done" getIsAnnotated={getIsAnnotated} />);
+
+      // Verify mode is passed to getIsAnnotated for all detections
+      expect(getIsAnnotated).toHaveBeenCalledWith(undefined, 'done');
       expect(getIsAnnotated).toHaveBeenCalledTimes(3);
     });
 
@@ -274,24 +269,24 @@ describe('DetectionGrid', () => {
         createDetection(3, 0.88),
         createDetection(7, 0.77),
       ];
-      
+
       const onDetectionClick = vi.fn();
-      
+
       render(
-        <DetectionGrid 
-          {...defaultProps} 
+        <DetectionGrid
+          {...defaultProps}
           detections={detectionsInOrder}
           onDetectionClick={onDetectionClick}
         />
       );
-      
+
       // Verify detections are rendered in the provided order
       const cards = screen.getAllByTestId(/detection-card-/);
       expect(cards).toHaveLength(3);
       expect(cards[0]).toHaveAttribute('data-testid', 'detection-card-5');
       expect(cards[1]).toHaveAttribute('data-testid', 'detection-card-3');
       expect(cards[2]).toHaveAttribute('data-testid', 'detection-card-7');
-      
+
       // Verify click indices match array positions, not detection IDs
       fireEvent.click(cards[1]);
       expect(onDetectionClick).toHaveBeenCalledWith(1); // Array index, not detection ID
@@ -304,84 +299,79 @@ describe('DetectionGrid', () => {
         { ...createDetection(1), confidence: undefined },
         { ...createDetection(2), algo_predictions: { smoke_bbox_confidence: 0 } },
       ] as Detection[];
-      
+
       expect(() => {
         render(<DetectionGrid {...defaultProps} detections={detectionsWithMissingData} />);
       }).not.toThrow();
-      
+
       // Should still render the cards
       expect(screen.getByTestId('detection-card-1')).toBeInTheDocument();
       expect(screen.getByTestId('detection-card-2')).toBeInTheDocument();
     });
 
-    it('should handle null/undefined fromParam', () => {
+    it('should handle an absent mode (queue context)', () => {
       const getIsAnnotated = vi.fn().mockReturnValue(true);
-      
-      render(
-        <DetectionGrid 
-          {...defaultProps} 
-          fromParam={null}
-          getIsAnnotated={getIsAnnotated}
-        />
-      );
-      
-      expect(getIsAnnotated).toHaveBeenCalledWith(undefined, null);
+
+      render(<DetectionGrid {...defaultProps} getIsAnnotated={getIsAnnotated} />);
+
+      expect(getIsAnnotated).toHaveBeenCalledWith(undefined, undefined);
     });
 
     it('should handle empty annotation map', () => {
       const getIsAnnotated = vi.fn().mockReturnValue(false);
-      
+
       render(
-        <DetectionGrid 
-          {...defaultProps} 
+        <DetectionGrid
+          {...defaultProps}
           detectionAnnotations={new Map()}
           getIsAnnotated={getIsAnnotated}
         />
       );
-      
+
       // Should call getIsAnnotated with undefined for all detections
-      expect(getIsAnnotated).toHaveBeenCalledWith(undefined, null);
+      expect(getIsAnnotated).toHaveBeenCalledWith(undefined, undefined);
       expect(getIsAnnotated).toHaveBeenCalledTimes(3);
     });
 
     it('should handle very large detection arrays efficiently', () => {
       const manyDetections = Array.from({ length: 100 }, (_, i) => createDetection(i + 1));
-      
-      const { container } = render(
-        <DetectionGrid {...defaultProps} detections={manyDetections} />
-      );
-      
+
+      const { container } = render(<DetectionGrid {...defaultProps} detections={manyDetections} />);
+
       const gridContainer = container.querySelector('.grid');
       expect(gridContainer?.children).toHaveLength(100);
     });
 
     it('should maintain component stability with prop changes', () => {
       const { rerender } = render(<DetectionGrid {...defaultProps} />);
-      
+
       // Change showPredictions
       rerender(<DetectionGrid {...defaultProps} showPredictions={false} />);
-      
+
       // Should still render all cards
       expect(screen.getByTestId('detection-card-1')).toBeInTheDocument();
       expect(screen.getByTestId('detection-card-2')).toBeInTheDocument();
       expect(screen.getByTestId('detection-card-3')).toBeInTheDocument();
-      
+
       // Verify prop was updated
-      expect(screen.getByTestId('detection-card-1')).toHaveAttribute('data-show-predictions', 'false');
+      expect(screen.getByTestId('detection-card-1')).toHaveAttribute(
+        'data-show-predictions',
+        'false'
+      );
     });
   });
 
   describe('Accessibility', () => {
     it('should provide proper semantic structure', () => {
       const { container } = render(<DetectionGrid {...defaultProps} />);
-      
+
       const gridContainer = container.querySelector('[role="grid"], .grid');
       expect(gridContainer).toBeInTheDocument();
     });
 
     it('should ensure all cards are keyboard accessible', () => {
       render(<DetectionGrid {...defaultProps} />);
-      
+
       const cards = screen.getAllByRole('button');
       cards.forEach(card => {
         expect(card).toHaveAttribute('tabIndex', '0');
@@ -390,10 +380,10 @@ describe('DetectionGrid', () => {
 
     it('should maintain focus management', () => {
       render(<DetectionGrid {...defaultProps} />);
-      
+
       const firstCard = screen.getByTestId('detection-card-1');
       firstCard.focus();
-      
+
       expect(document.activeElement).toBe(firstCard);
     });
   });

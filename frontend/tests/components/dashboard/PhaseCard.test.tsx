@@ -13,9 +13,9 @@ const props = {
   done: 453,
   doneNoun: 'classified',
   ctaLabel: 'Start classifying',
-  ctaTo: '/sequences/annotate',
+  ctaTo: '/classify',
   reviewLabel: 'Review classified',
-  reviewTo: '/sequences/review',
+  reviewTo: '/classify/done',
   isLoading: false,
 };
 
@@ -28,11 +28,11 @@ describe('PhaseCard', () => {
     expect(screen.getByText('453 classified so far')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Start classifying' })).toHaveAttribute(
       'href',
-      '/sequences/annotate'
+      '/classify'
     );
     expect(screen.getByRole('link', { name: /Review classified/ })).toHaveAttribute(
       'href',
-      '/sequences/review'
+      '/classify/done'
     );
   });
 
@@ -40,13 +40,13 @@ describe('PhaseCard', () => {
     render(
       <PhaseCard
         {...props}
-        secondaryLink={{ label: 'Classify by group', to: '/sequence-groups', count: 12 }}
+        secondaryLink={{ label: 'Classify by group', to: '/classify/groups', count: 12 }}
       />,
       { wrapper: MemoryRouter }
     );
     expect(screen.getByRole('link', { name: /Classify by group/ })).toHaveAttribute(
       'href',
-      '/sequence-groups'
+      '/classify/groups'
     );
   });
 
@@ -54,7 +54,7 @@ describe('PhaseCard', () => {
     render(
       <PhaseCard
         {...props}
-        secondaryLink={{ label: 'Classify by group', to: '/sequence-groups', count: 0 }}
+        secondaryLink={{ label: 'Classify by group', to: '/classify/groups', count: 0 }}
       />,
       { wrapper: MemoryRouter }
     );

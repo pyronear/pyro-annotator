@@ -80,7 +80,7 @@ describe('DetectionAnnotatePage (Localize queue)', () => {
     render(<DetectionAnnotatePage />, { wrapper });
     await waitFor(() => expect(screen.getByText('CAM_01')).toBeTruthy());
     fireEvent.click(screen.getByText('CAM_01'));
-    expect(navigateMock).toHaveBeenCalledWith('/detections/11/annotate?from=localize');
+    expect(navigateMock).toHaveBeenCalledWith('/localize/11');
   });
 
   it('shows an empty state when the queue is empty', async () => {

@@ -19,27 +19,23 @@ export type CellState = 'done' | 'auto' | 'no-box';
 
 /**
  * Context-aware annotation status for the sequence grid and modal badge.
- * detections-review is optimistic (assume complete unless explicitly not);
- * localize reflects the committed stage so done frames stay marked; the
- * generic annotate context always allows edits.
+ * Done mode (/localize/done/…) is optimistic (assume complete unless
+ * explicitly not); queue mode (/localize/…) reflects the committed stage so
+ * done frames stay marked.
  */
 export function getIsAnnotated(
   annotation: DetectionAnnotation | undefined,
-  fromContext: string | null
+  mode?: 'done'
 ): boolean {
-  if (fromContext === 'detections-review') {
+  if (mode === 'done') {
     if (!annotation) return true; // Loading state: assume completed
     return (
       annotation.processing_stage === 'annotated' ||
       annotation.processing_stage === 'bbox_annotation'
     );
   }
-  if (fromContext === 'localize') {
-    // Localize context: the grid needs a persistent done state per frame
-    return annotation?.processing_stage === 'annotated';
-  }
-  // Annotate context: always allow edits regardless of stage
-  return false;
+  // Queue mode: the grid needs a persistent done state per frame
+  return annotation?.processing_stage === 'annotated';
 }
 
 /** The winning model layer's boxes for a detection (auto if ≥1 box, else engine). */

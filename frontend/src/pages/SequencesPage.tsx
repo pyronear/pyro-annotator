@@ -4,12 +4,12 @@ import { useNavigate } from 'react-router-dom';
 import { apiClient } from '@/services/api';
 import {
   ExtendedSequenceFilters,
-  ProcessingStageStatus,
+  ProcessingStageFilter,
   SequenceWithAnnotation,
 } from '@/types/api';
 import { QUERY_KEYS } from '@/utils/constants';
 import { analyzeSequenceAccuracy } from '@/utils/modelAccuracy';
-import { getProcessingStageLabel } from '@/utils/processingStage';
+import { getStageFilterLabel, stageFilterIncludes } from '@/utils/processingStage';
 import TabbedFilters from '@/components/filters/TabbedFilters';
 import {
   SequencesTableHeader,
@@ -24,9 +24,10 @@ import { useSourceApis } from '@/hooks/useSourceApis';
 import { usePersistedFilters, createDefaultFilterState } from '@/hooks/usePersistedFilters';
 import { calculatePresetDateRange } from '@/components/filters/shared/dateRangeUtils';
 import { hasActiveUserFilters } from '@/utils/filterHelpers';
+import { classifyDetail } from '@/utils/routes';
 
 interface SequencesPageProps {
-  defaultProcessingStage?: ProcessingStageStatus;
+  defaultProcessingStage?: ProcessingStageFilter;
   isReviewPage?: boolean;
   stageSelector?: ReactNode;
 }
@@ -39,8 +40,11 @@ export default function SequencesPage({
   const navigate = useNavigate();
   const { startAnnotationWorkflow } = useSequenceStore();
 
-  // Storage key separates review vs annotate filters; review filters are shared across stages.
-  const storageKey = isReviewPage ? 'filters-sequences-review' : 'filters-sequences-annotate';
+  // Annotated-view features apply when the page's stage filter covers 'annotated'
+  const isAnnotatedView = stageFilterIncludes(defaultProcessingStage, 'annotated');
+
+  // Storage key separates done vs queue filters; done filters are shared across stages.
+  const storageKey = isReviewPage ? 'filters-classify-done' : 'filters-classify';
 
   // Use persisted filters hook
   const {
@@ -63,8 +67,9 @@ export default function SequencesPage({
 
   // Keep filters.processing_stage in sync with the parent-controlled stage prop
   // (used by the review page stage selector). Reset to page 1 on stage change.
+  // Value-compare: stage OR-lists are arrays, so identity comparison would loop.
   useEffect(() => {
-    if (filters.processing_stage !== defaultProcessingStage) {
+    if (JSON.stringify(filters.processing_stage) !== JSON.stringify(defaultProcessingStage)) {
       setFilters({ ...filters, processing_stage: defaultProcessingStage, page: 1 });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -115,13 +120,13 @@ export default function SequencesPage({
   // persist in shared state. Strip them from API calls so they don't silently
   // narrow results on stages where the controls aren't visible.
   const apiFilters = useMemo<ExtendedSequenceFilters>(() => {
-    if (defaultProcessingStage === 'annotated') return filters;
+    if (isAnnotatedView) return filters;
     const stripped: ExtendedSequenceFilters = { ...filters };
     delete stripped.false_positive_types;
     delete stripped.smoke_types;
     delete stripped.is_unsure;
     return stripped;
-  }, [filters, defaultProcessingStage]);
+  }, [filters, isAnnotatedView]);
 
   // Fetch sequences with annotations in a single efficient call
   const {
@@ -135,7 +140,7 @@ export default function SequencesPage({
 
   // Filter sequences by model accuracy (only for review page)
   const filteredSequences = useMemo(() => {
-    if (!sequences || selectedModelAccuracy === 'all' || defaultProcessingStage !== 'annotated') {
+    if (!sequences || selectedModelAccuracy === 'all' || !isAnnotatedView) {
       return sequences;
     }
 
@@ -154,7 +159,7 @@ export default function SequencesPage({
       total: filtered.length,
       pages: Math.ceil(filtered.length / sequences.size),
     };
-  }, [sequences, selectedModelAccuracy, defaultProcessingStage]);
+  }, [sequences, selectedModelAccuracy, isAnnotatedView]);
 
   const handleFilterChange = (newFilters: Partial<ExtendedSequenceFilters>) => {
     setFilters({ ...filters, ...newFilters, page: 1 });
@@ -174,9 +179,8 @@ export default function SequencesPage({
       startAnnotationWorkflow(sequences.items, clickedSequence.id, apiFilters);
     }
 
-    // Navigate to annotation interface with context about source page
-    const queryParam = isReviewPage ? '?from=review' : '';
-    navigate(`/sequences/${clickedSequence.id}/annotate${queryParam}`);
+    // Navigate to the annotation interface; provenance is in the path
+    navigate(classifyDetail(clickedSequence.id, isReviewPage));
   };
 
   if (isLoading) {
@@ -209,10 +213,10 @@ export default function SequencesPage({
       selectedSmokeTypes,
       selectedModelAccuracy,
       selectedUnsure,
-      defaultProcessingStage === 'annotated',
-      defaultProcessingStage === 'annotated',
-      defaultProcessingStage === 'annotated',
-      defaultProcessingStage === 'annotated'
+      isAnnotatedView,
+      isAnnotatedView,
+      isAnnotatedView,
+      isAnnotatedView
     );
 
     return (
@@ -221,7 +225,11 @@ export default function SequencesPage({
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Sequences</h1>
-            <p className="text-gray-600">Manage and annotate wildfire detection sequences</p>
+            <p className="text-gray-600">
+              {isReviewPage
+                ? 'Browse classified sequences and review past decisions'
+                : 'Manage and annotate wildfire detection sequences'}
+            </p>
           </div>
           {stageSelector}
         </div>
@@ -273,7 +281,7 @@ export default function SequencesPage({
             ) : isReviewPage ? (
               // Review page - simple message scoped to the selected stage
               <p className="text-gray-500">
-                No sequences in &quot;{getProcessingStageLabel(defaultProcessingStage)}&quot; at the
+                No sequences in &quot;{getStageFilterLabel(defaultProcessingStage)}&quot; at the
                 moment.
               </p>
             ) : (
@@ -298,7 +306,11 @@ export default function SequencesPage({
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Sequences</h1>
-          <p className="text-gray-600">Manage and annotate wildfire detection sequences</p>
+          <p className="text-gray-600">
+            {isReviewPage
+              ? 'Browse classified sequences and review past decisions'
+              : 'Manage and annotate wildfire detection sequences'}
+          </p>
         </div>
         {stageSelector}
       </div>
@@ -328,10 +340,10 @@ export default function SequencesPage({
         camerasLoading={camerasLoading}
         organizationsLoading={organizationsLoading}
         sourceApisLoading={sourceApisLoading}
-        showModelAccuracy={defaultProcessingStage === 'annotated'}
-        showFalsePositiveTypes={defaultProcessingStage === 'annotated'}
-        showSmokeTypes={defaultProcessingStage === 'annotated'}
-        showUnsureFilter={defaultProcessingStage === 'annotated'}
+        showModelAccuracy={isAnnotatedView}
+        showFalsePositiveTypes={isAnnotatedView}
+        showSmokeTypes={isAnnotatedView}
+        showUnsureFilter={isAnnotatedView}
       />
 
       {/* Results */}
@@ -347,7 +359,7 @@ export default function SequencesPage({
           />
 
           {/* Row Background Color Legend - Only show on review page */}
-          {defaultProcessingStage === 'annotated' && <SequencesLegend />}
+          {isAnnotatedView && <SequencesLegend />}
 
           {/* Sequence List */}
           <div className="divide-y divide-gray-200">

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, CheckCircle } from 'lucide-react';
 import { useSequenceDetections } from '@/hooks/useSequenceDetections';
@@ -35,10 +35,18 @@ import { ImageModal, DetectionGrid, DetectionHeader } from '@/components/detecti
 import type { CardSize } from '@/components/detection-sequence/DetectionHeader';
 import CroppedImageSequence from '@/components/annotation/CroppedImageSequence';
 import { usePersistedTabState } from '@/hooks/usePersistedTabState';
+import { ROUTES, localizeDetail } from '@/utils/routes';
 
 const CARD_MIN_WIDTH: Record<CardSize, number> = { sm: 240, md: 340, lg: 500 };
 
-export default function DetectionSequenceAnnotatePage() {
+interface DetectionSequenceAnnotatePageProps {
+  /** 'done' when mounted under /localize/done/… — entered from the Done list. */
+  mode?: 'done';
+}
+
+export default function DetectionSequenceAnnotatePage({
+  mode,
+}: DetectionSequenceAnnotatePageProps = {}) {
   const { sequenceId, detectionId } = useParams<{ sequenceId: string; detectionId?: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -63,14 +71,12 @@ export default function DetectionSequenceAnnotatePage() {
   const [persistentDrawMode, setPersistentDrawMode] = useState(false);
   const isAutoAdvanceRef = useRef(false);
 
-  // Detect source page from URL search params
-  const [searchParams] = useSearchParams();
-  const fromParam = searchParams.get('from');
+  // Provenance comes from the mounted route: /localize/… vs /localize/done/…
+  const basePath = mode === 'done' ? ROUTES.LOCALIZE_DONE : ROUTES.LOCALIZE;
 
   // Determine source page and appropriate filter storage key
-  const sourcePage = fromParam === 'detections-review' ? 'review' : 'annotate';
-  const filterStorageKey =
-    sourcePage === 'review' ? 'filters-detections-review' : 'filters-detections-annotate';
+  const sourcePage = mode === 'done' ? 'review' : 'annotate';
+  const filterStorageKey = mode === 'done' ? 'filters-localize-done' : 'filters-localize';
 
   // Load persisted filters from the appropriate source page
   const sourcePageFilters = useMemo(() => {
@@ -161,8 +167,9 @@ export default function DetectionSequenceAnnotatePage() {
 
   // Localize quick submit: the per-frame accept plan (winning model boxes for
   // every frame without a committed annotation) and the confirm gate for
-  // frames that have no box at all.
-  const isLocalize = fromParam === 'localize';
+  // frames that have no box at all. Queue mode (/localize/:id) is the
+  // localize flow; done mode (/localize/done/:id) is read-mostly review.
+  const isLocalize = mode !== 'done';
   const [quickSubmitConfirming, setQuickSubmitConfirming] = useState(false);
   // Crop mode: zoom each cell around its boxes for the glance-check.
   const [cropMode, setCropMode] = useState(false);
@@ -340,7 +347,7 @@ export default function DetectionSequenceAnnotatePage() {
     }
   }, [existingAnnotations]);
 
-  // Localize flow (from=localize): explicit lane submit — the user-driven
+  // Localize queue flow (non-done mode): explicit lane submit — the user-driven
   // seq_annotation_done -> annotated transition (guarded server-side for
   // completeness), then advance to the alert's next unfinished smoke lane.
   const submitLocalizedLane = useMutation({
@@ -386,9 +393,9 @@ export default function DetectionSequenceAnnotatePage() {
       }
       setTimeout(() => {
         if (next !== null) {
-          navigate(`/detections/${next}/annotate?from=localize`);
+          navigate(localizeDetail(next));
         } else {
-          navigate('/detections/annotate');
+          navigate(ROUTES.LOCALIZE);
         }
       }, 1000);
     },
@@ -526,7 +533,7 @@ export default function DetectionSequenceAnnotatePage() {
 
       // Localize flow: saving completes the boxes; submit the lane and
       // advance within the alert instead of the generic filter navigation.
-      if (fromParam === 'localize') {
+      if (mode !== 'done') {
         submitLocalizedLane.mutate();
         return;
       }
@@ -542,12 +549,10 @@ export default function DetectionSequenceAnnotatePage() {
         ) {
           // Auto-advance to next filtered sequence
           const nextSequence = allSequences.items[currentIndex + 1];
-          const sourceParam = fromParam ? `?from=${fromParam}` : '';
-          navigate(`/detections/${nextSequence.id}/annotate${sourceParam}`);
+          navigate(`${basePath}/${nextSequence.id}`);
         } else {
-          // No next sequence, return to appropriate source page
-          const backPath = sourcePage === 'review' ? '/detections/review' : '/detections/annotate';
-          navigate(backPath);
+          // No next sequence, return to the source list page
+          navigate(basePath);
         }
       }, 1500);
     },
@@ -624,12 +629,11 @@ export default function DetectionSequenceAnnotatePage() {
         // Mark as auto-advance (drawing mode already stored in onSubmit above)
         isAutoAdvanceRef.current = true;
 
-        // Move to next detection. Keep the query string: losing ?from=localize
-        // here would silently disable the lane-submit flow at save time.
+        // Move to next detection on the same provenance base path so the
+        // lane-submit flow stays active at save time.
         const nextDetectionId = getDetectionIdByIndex(selectedDetectionIndex + 1);
         if (nextDetectionId && sequenceId) {
-          const sourceParam = fromParam ? `?from=${fromParam}` : '';
-          navigate(`/detections/${sequenceId}/annotate/${nextDetectionId}${sourceParam}`);
+          navigate(`${basePath}/${sequenceId}/${nextDetectionId}`);
         }
       } else if (
         selectedDetectionIndex !== null &&
@@ -639,8 +643,7 @@ export default function DetectionSequenceAnnotatePage() {
         // At last detection - close modal after a brief delay to show success message
         setTimeout(() => {
           if (sequenceId) {
-            const sourceParam = fromParam ? `?from=${fromParam}` : '';
-            navigate(`/detections/${sequenceId}/annotate${sourceParam}`);
+            navigate(`${basePath}/${sequenceId}`);
           }
         }, 1000);
       }
@@ -655,8 +658,7 @@ export default function DetectionSequenceAnnotatePage() {
   });
 
   const handleBack = () => {
-    const backPath = sourcePage === 'review' ? '/detections/review' : '/detections/annotate';
-    navigate(backPath);
+    navigate(basePath);
   };
 
   const handleSave = useCallback(() => {
@@ -687,8 +689,7 @@ export default function DetectionSequenceAnnotatePage() {
     const currentIndex = getCurrentSequenceIndex();
     if (currentIndex > 0 && allSequences?.items) {
       const prevSequence = allSequences.items[currentIndex - 1];
-      const sourceParam = fromParam ? `?from=${fromParam}` : '';
-      navigate(`/detections/${prevSequence.id}/annotate${sourceParam}`);
+      navigate(`${basePath}/${prevSequence.id}`);
     }
   };
 
@@ -696,25 +697,22 @@ export default function DetectionSequenceAnnotatePage() {
     const currentIndex = getCurrentSequenceIndex();
     if (currentIndex >= 0 && allSequences?.items && currentIndex < allSequences.items.length - 1) {
       const nextSequence = allSequences.items[currentIndex + 1];
-      const sourceParam = fromParam ? `?from=${fromParam}` : '';
-      navigate(`/detections/${nextSequence.id}/annotate${sourceParam}`);
+      navigate(`${basePath}/${nextSequence.id}`);
     }
   };
 
   const openModal = (index: number) => {
     const detectionId = getDetectionIdByIndex(index);
     if (detectionId && sequenceId) {
-      const sourceParam = fromParam ? `?from=${fromParam}` : '';
-      navigate(`/detections/${sequenceId}/annotate/${detectionId}${sourceParam}`);
+      navigate(`${basePath}/${sequenceId}/${detectionId}`);
     }
   };
 
   const closeModal = useCallback(() => {
     if (sequenceId) {
-      const sourceParam = fromParam ? `?from=${fromParam}` : '';
-      navigate(`/detections/${sequenceId}/annotate${sourceParam}`);
+      navigate(`${basePath}/${sequenceId}`);
     }
-  }, [sequenceId, fromParam, navigate]);
+  }, [sequenceId, basePath, navigate]);
 
   const navigateModal = useCallback(
     (direction: 'prev' | 'next') => {
@@ -727,11 +725,10 @@ export default function DetectionSequenceAnnotatePage() {
 
       const newDetectionId = getDetectionIdByIndex(newIndex);
       if (newDetectionId) {
-        const sourceParam = fromParam ? `?from=${fromParam}` : '';
-        navigate(`/detections/${sequenceId}/annotate/${newDetectionId}${sourceParam}`);
+        navigate(`${basePath}/${sequenceId}/${newDetectionId}`);
       }
     },
-    [detections, selectedDetectionIndex, sequenceId, getDetectionIdByIndex, fromParam, navigate]
+    [detections, selectedDetectionIndex, sequenceId, getDetectionIdByIndex, basePath, navigate]
   );
 
   // State restoration based on URL parameters
@@ -745,11 +742,10 @@ export default function DetectionSequenceAnnotatePage() {
         setSelectedDetectionIndex(index);
         setShowModal(true);
       } else {
-        // Invalid detection ID - redirect to base URL (keep the flow param)
+        // Invalid detection ID - redirect to the provenance base URL
         console.warn(`Invalid detection ID ${detectionId} for sequence ${sequenceId}`);
         if (sequenceId) {
-          const sourceParam = fromParam ? `?from=${fromParam}` : '';
-          navigate(`/detections/${sequenceId}/annotate${sourceParam}`, { replace: true });
+          navigate(`${basePath}/${sequenceId}`, { replace: true });
         }
       }
     } else if (!detectionId) {
@@ -757,7 +753,7 @@ export default function DetectionSequenceAnnotatePage() {
       setShowModal(false);
       setSelectedDetectionIndex(null);
     }
-  }, [detectionId, detections, sequenceId, navigate, getDetectionIndexById]);
+  }, [detectionId, detections, sequenceId, navigate, getDetectionIndexById, basePath]);
 
   // Keyboard event handlers
   useEffect(() => {
@@ -1059,7 +1055,7 @@ export default function DetectionSequenceAnnotatePage() {
           onDetectionClick={openModal}
           showPredictions={showPredictions}
           detectionAnnotations={detectionAnnotations}
-          fromParam={fromParam}
+          mode={mode}
           getIsAnnotated={getIsAnnotated}
           getCellState={
             isLocalize
@@ -1093,7 +1089,7 @@ export default function DetectionSequenceAnnotatePage() {
           isSubmitting={annotateIndividualDetection.isPending}
           isAnnotated={getIsAnnotated(
             detectionAnnotations.get(detections[selectedDetectionIndex].id),
-            fromParam
+            mode
           )}
           existingAnnotation={detectionAnnotations.get(detections[selectedDetectionIndex].id)}
           selectedSmokeType={persistentSmokeType}

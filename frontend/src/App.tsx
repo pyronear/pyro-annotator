@@ -14,6 +14,7 @@ import SequenceGroupsListPage from '@/pages/SequenceGroupsListPage';
 import UserManagementPage from '@/pages/UserManagementPage';
 import GuidePage from '@/pages/GuidePage';
 import LoginPage from '@/pages/LoginPage';
+import { legacyRedirectRoutes } from '@/components/routing/legacyRedirects';
 import { useAuthStore } from '@/store/useAuthStore';
 
 // Create a client
@@ -76,27 +77,26 @@ function App() {
             element={
               <AppLayout>
                 <Routes>
-                  <Route path="/sequences/annotate" element={<SequencesPage />} />
+                  <Route path="/classify" element={<SequencesPage />} />
                   <Route
-                    path="/sequences/review"
+                    path="/classify/done"
                     element={<SequencesPageWrapper defaultProcessingStage="annotated" />}
                   />
+                  <Route path="/classify/groups" element={<SequenceGroupsListPage />} />
+                  <Route path="/classify/groups/:id" element={<SequenceGroupAnnotatePage />} />
+                  <Route path="/classify/done/:id" element={<AnnotationInterface mode="done" />} />
+                  <Route path="/classify/:id" element={<AnnotationInterface />} />
+                  <Route path="/localize" element={<DetectionAnnotatePage />} />
+                  <Route path="/localize/done" element={<DetectionReviewPage />} />
                   <Route
-                    path="/sequences/attention"
-                    element={<SequencesPageWrapper defaultProcessingStage="needs_manual" />}
+                    path="/localize/done/:sequenceId/:detectionId?"
+                    element={<DetectionSequenceAnnotatePage mode="done" />}
                   />
-                  <Route path="/sequences/:id/annotate" element={<AnnotationInterface />} />
-                  <Route path="/detections/annotate" element={<DetectionAnnotatePage />} />
-                  <Route path="/detections/review" element={<DetectionReviewPage />} />
                   <Route
-                    path="/detections/:sequenceId/annotate/:detectionId?"
+                    path="/localize/:sequenceId/:detectionId?"
                     element={<DetectionSequenceAnnotatePage />}
                   />
-                  <Route path="/sequence-groups" element={<SequenceGroupsListPage />} />
-                  <Route
-                    path="/sequence-groups/:id/annotate"
-                    element={<SequenceGroupAnnotatePage />}
-                  />
+                  {legacyRedirectRoutes}
                   <Route path="/users" element={<UserManagementPage />} />
                   <Route path="/guide" element={<GuidePage />} />
                 </Routes>

@@ -38,7 +38,7 @@ export function useAnnotationCounts(): AnnotationCounts {
     queryKey: ['annotation-counts', 'detections'],
     queryFn: async () => {
       // Localize queue total: alerts ready for smoke localization (matches
-      // exactly what /detections/annotate shows).
+      // exactly what /localize shows).
       const response = await apiClient.getLocalizationQueue({ size: 1 });
       return response.total;
     },

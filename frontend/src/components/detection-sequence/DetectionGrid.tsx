@@ -7,15 +7,13 @@ interface DetectionGridProps {
   onDetectionClick: (index: number) => void;
   showPredictions: boolean;
   detectionAnnotations: Map<number, DetectionAnnotation>;
-  fromParam: string | null;
-  getIsAnnotated: (
-    annotation: DetectionAnnotation | undefined,
-    fromContext: string | null
-  ) => boolean;
-  /** Localize context: per-frame cell state for borders-only encoding. */
+  /** 'done' when the page was entered from the Localize Done list. */
+  mode?: 'done';
+  getIsAnnotated: (annotation: DetectionAnnotation | undefined, mode?: 'done') => boolean;
+  /** Localize queue: per-frame cell state for borders-only encoding. */
   getCellState?: (detection: Detection) => CellState;
   smokeType?: SmokeType;
-  /** Localize context: zoom cells around their displayed boxes. */
+  /** Localize queue: zoom cells around their displayed boxes. */
   cropMode?: boolean;
   /** Minimum card width driving the auto-fill column count. */
   cardMinWidth?: number;
@@ -26,7 +24,7 @@ export function DetectionGrid({
   onDetectionClick,
   showPredictions,
   detectionAnnotations,
-  fromParam,
+  mode,
   getIsAnnotated,
   getCellState,
   smokeType,
@@ -45,7 +43,7 @@ export function DetectionGrid({
           key={detection.id}
           detection={detection}
           onClick={() => onDetectionClick(index)}
-          isAnnotated={getIsAnnotated(detectionAnnotations.get(detection.id), fromParam)}
+          isAnnotated={getIsAnnotated(detectionAnnotations.get(detection.id), mode)}
           showPredictions={showPredictions}
           userAnnotation={detectionAnnotations.get(detection.id) || null}
           cellState={getCellState ? getCellState(detection) : null}

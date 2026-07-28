@@ -1,8 +1,8 @@
 import { usePipelineStats } from '@/hooks/usePipelineStats';
-import AttentionBanner from '@/components/dashboard/AttentionBanner';
 import PipelineStrip from '@/components/dashboard/PipelineStrip';
 import PhaseCard from '@/components/dashboard/PhaseCard';
 import HowItWorks from '@/components/dashboard/HowItWorks';
+import { ROUTES } from '@/utils/routes';
 
 export default function DashboardPage() {
   const stats = usePipelineStats();
@@ -15,10 +15,6 @@ export default function DashboardPage() {
       <p className="mt-1 font-body text-[13.5px] text-haze">
         Two passes: classify what the cameras saw, then localize the smoke.
       </p>
-
-      <div className="mt-4">
-        <AttentionBanner count={stats.attention} />
-      </div>
 
       {stats.error ? (
         <p className="my-6 font-body text-[13px] text-signal">
@@ -45,13 +41,13 @@ export default function DashboardPage() {
           done={stats.classifyDone}
           doneNoun="classified"
           ctaLabel="Start classifying"
-          ctaTo="/sequences/annotate"
+          ctaTo={ROUTES.CLASSIFY}
           reviewLabel="Review classified"
-          reviewTo="/sequences/review"
+          reviewTo={ROUTES.CLASSIFY_DONE}
           isLoading={stats.isLoading}
           secondaryLink={{
             label: 'Classify by group',
-            to: '/sequence-groups',
+            to: ROUTES.CLASSIFY_GROUPS,
             count: stats.groupsToLabel,
           }}
         />
@@ -65,9 +61,9 @@ export default function DashboardPage() {
           done={stats.complete}
           doneNoun="localized"
           ctaLabel="Start localizing"
-          ctaTo="/detections/annotate"
+          ctaTo={ROUTES.LOCALIZE}
           reviewLabel="Review localized"
-          reviewTo="/detections/review"
+          reviewTo={ROUTES.LOCALIZE_DONE}
           isLoading={stats.isLoading}
         />
       </div>

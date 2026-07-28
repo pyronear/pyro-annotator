@@ -59,10 +59,7 @@ SOURCE_API_CHOICES = ["pyronear_french", "alert_wildfire", "api_cenia"]
 SEQ_STAGE_CHOICES = [
     "imported",
     "ready_to_annotate",
-    "under_annotation",
     "seq_annotation_done",
-    "in_review",
-    "needs_manual",
     "annotated",
 ]
 ANNOTATION_TYPE_CHOICES = ["wildfire_smoke", "other_smoke", "other", "none"]

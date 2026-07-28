@@ -6,6 +6,7 @@ import { apiClient } from '@/services/api';
 import { LocalizationQueueItem } from '@/types/api';
 import { pickNextLocalizeLane } from '@/utils/annotation/localizeUtils';
 import { formatRelativeTime } from '@/utils/relativeTime';
+import { localizeDetail } from '@/utils/routes';
 
 function unfinishedSmokeLanes(item: LocalizationQueueItem): number {
   return item.lanes.filter(l => l.has_smoke && l.processing_stage === 'seq_annotation_done').length;
@@ -41,7 +42,7 @@ export default function DetectionAnnotatePage() {
     // -1 never matches a sequence id: picks the alert's first unfinished lane.
     const first = pickNextLocalizeLane(item.lanes, -1);
     if (first !== null) {
-      navigate(`/detections/${first}/annotate?from=localize`);
+      navigate(localizeDetail(first));
     }
   };
 

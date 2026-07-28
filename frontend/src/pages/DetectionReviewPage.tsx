@@ -22,6 +22,7 @@ import { useSourceApis } from '@/hooks/useSourceApis';
 import { usePersistedFilters, createDefaultFilterState } from '@/hooks/usePersistedFilters';
 import { calculatePresetDateRange } from '@/components/filters/shared/dateRangeUtils';
 import { hasActiveUserFilters } from '@/utils/filterHelpers';
+import { localizeDetail } from '@/utils/routes';
 
 export default function DetectionReviewPage() {
   const navigate = useNavigate();
@@ -56,7 +57,7 @@ export default function DetectionReviewPage() {
     setSelectedSmokeTypes,
     setSelectedModelAccuracy,
     resetFilters,
-  } = usePersistedFilters('filters-detections-review-v2', defaultState);
+  } = usePersistedFilters('filters-localize-done', defaultState);
 
   // Fetch cameras, organizations, and source APIs for dropdown options
   const { data: cameras = [], isLoading: camerasLoading } = useCameras();
@@ -187,7 +188,7 @@ export default function DetectionReviewPage() {
 
   const handleSequenceClick = (clickedSequence: SequenceWithDetectionProgress) => {
     // Navigate to detection annotation interface for review purposes
-    navigate(`/detections/${clickedSequence.id}/annotate?from=detections-review`);
+    navigate(localizeDetail(clickedSequence.id, undefined, true));
   };
 
   if (isLoading) {
@@ -232,7 +233,9 @@ export default function DetectionReviewPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Detections</h1>
-            <p className="text-gray-600">Review and verify annotated wildfire detections</p>
+            <p className="text-gray-600">
+              Browse localized smoke detections and review past annotations
+            </p>
           </div>
         </div>
 
@@ -296,8 +299,10 @@ export default function DetectionReviewPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Detection Review</h1>
-          <p className="text-gray-600">Review and verify annotated wildfire detections</p>
+          <h1 className="text-2xl font-bold text-gray-900">Detections</h1>
+          <p className="text-gray-600">
+            Browse localized smoke detections and review past annotations
+          </p>
         </div>
       </div>
 

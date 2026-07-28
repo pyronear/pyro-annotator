@@ -64,22 +64,17 @@ describe('getCellState', () => {
 });
 
 describe('getIsAnnotated', () => {
-  it('localize: reflects the committed stage', () => {
-    expect(getIsAnnotated(makeAnnotation(1, 'annotated'), 'localize')).toBe(true);
-    expect(getIsAnnotated(makeAnnotation(1, 'bbox_annotation'), 'localize')).toBe(false);
-    expect(getIsAnnotated(undefined, 'localize')).toBe(false);
+  it('queue mode: reflects the committed stage', () => {
+    expect(getIsAnnotated(makeAnnotation(1, 'annotated'))).toBe(true);
+    expect(getIsAnnotated(makeAnnotation(1, 'bbox_annotation'))).toBe(false);
+    expect(getIsAnnotated(undefined)).toBe(false);
   });
 
-  it('detections-review: unchanged optimistic behavior', () => {
-    expect(getIsAnnotated(undefined, 'detections-review')).toBe(true);
-    expect(getIsAnnotated(makeAnnotation(1, 'annotated'), 'detections-review')).toBe(true);
-    expect(getIsAnnotated(makeAnnotation(1, 'bbox_annotation'), 'detections-review')).toBe(true);
-    expect(getIsAnnotated(makeAnnotation(1, 'visual_check'), 'detections-review')).toBe(false);
-  });
-
-  it('other contexts: still always editable (false)', () => {
-    expect(getIsAnnotated(makeAnnotation(1, 'annotated'), null)).toBe(false);
-    expect(getIsAnnotated(makeAnnotation(1, 'annotated'), 'something-else')).toBe(false);
+  it('done mode: unchanged optimistic behavior', () => {
+    expect(getIsAnnotated(undefined, 'done')).toBe(true);
+    expect(getIsAnnotated(makeAnnotation(1, 'annotated'), 'done')).toBe(true);
+    expect(getIsAnnotated(makeAnnotation(1, 'bbox_annotation'), 'done')).toBe(true);
+    expect(getIsAnnotated(makeAnnotation(1, 'visual_check'), 'done')).toBe(false);
   });
 });
 

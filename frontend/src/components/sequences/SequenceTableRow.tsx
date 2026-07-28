@@ -1,4 +1,4 @@
-import { SequenceWithAnnotation, ProcessingStageStatus } from '@/types/api';
+import { SequenceWithAnnotation, ProcessingStageFilter } from '@/types/api';
 import {
   analyzeSequenceAccuracy,
   getFalsePositiveEmoji,
@@ -8,13 +8,17 @@ import {
   getSmokeTypeEmoji,
   formatSmokeType,
 } from '@/utils/modelAccuracy';
-import { getProcessingStageLabel, getProcessingStageColorClass } from '@/utils/processingStage';
+import {
+  getProcessingStageLabel,
+  getProcessingStageColorClass,
+  stageFilterIncludes,
+} from '@/utils/processingStage';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
 import ContributorList from '@/components/ui/ContributorList';
 
 interface SequenceTableRowProps {
   sequence: SequenceWithAnnotation;
-  defaultProcessingStage: ProcessingStageStatus;
+  defaultProcessingStage: ProcessingStageFilter;
   onSequenceClick: (sequence: SequenceWithAnnotation) => void;
 }
 
@@ -23,9 +27,11 @@ export function SequenceTableRow({
   defaultProcessingStage,
   onSequenceClick,
 }: SequenceTableRowProps) {
+  const isAnnotatedView = stageFilterIncludes(defaultProcessingStage, 'annotated');
+
   // Calculate row background based on model accuracy for review pages
   let rowClasses = 'p-4 cursor-pointer';
-  if (defaultProcessingStage === 'annotated' && sequence.annotation) {
+  if (isAnnotatedView && sequence.annotation) {
     // Special background for unsure sequences
     if (sequence.annotation.is_unsure) {
       rowClasses = 'p-4 cursor-pointer bg-amber-50 hover:bg-amber-100';
@@ -68,7 +74,7 @@ export function SequenceTableRow({
               </span>
             )}
             {/* Unsure indicator for review page */}
-            {defaultProcessingStage === 'annotated' && sequence.annotation?.is_unsure && (
+            {isAnnotatedView && sequence.annotation?.is_unsure && (
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
                 ⚠️ Unsure
               </span>
@@ -76,11 +82,12 @@ export function SequenceTableRow({
             {/* Processing stage pill - conditionally hidden based on page context */}
             {(() => {
               const processingStage = sequence.annotation?.processing_stage || 'no_annotation';
-              // Hide "ready_to_annotate" pills on annotate page, hide "annotated" pills on review page
+              // Hide the pill only when the page shows exactly one stage and
+              // the row matches it; union views always show the stage.
               const shouldHidePill =
-                (defaultProcessingStage === 'ready_to_annotate' &&
-                  processingStage === 'ready_to_annotate') ||
-                (defaultProcessingStage === 'annotated' && processingStage === 'annotated');
+                !Array.isArray(defaultProcessingStage) &&
+                processingStage === defaultProcessingStage &&
+                (processingStage === 'ready_to_annotate' || processingStage === 'annotated');
 
               if (shouldHidePill) return null;
 
@@ -110,7 +117,7 @@ export function SequenceTableRow({
         </div>
 
         {/* Right Column - False Positive Pills and Contributors (Review page only) */}
-        {defaultProcessingStage === 'annotated' && sequence.annotation && (
+        {isAnnotatedView && sequence.annotation && (
           <div className="flex-shrink-0 self-start">
             <div className="flex flex-col gap-2">
               {/* False Positive Pills */}
