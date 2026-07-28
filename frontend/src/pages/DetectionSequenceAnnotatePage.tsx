@@ -1010,7 +1010,10 @@ export default function DetectionSequenceAnnotatePage({
   const isAllAnnotated = annotatedCount === totalCount;
 
   return (
-    <>
+    // Pull the page over <main>'s p-6 so the sticky header's containing
+    // block reaches the scrollport top (sticky cannot escape into padding);
+    // the content re-adds the padding below.
+    <div className="-m-6">
       <DetectionHeader
         sequence={sequence}
         sequenceAnnotation={sequenceAnnotation}
@@ -1043,7 +1046,7 @@ export default function DetectionSequenceAnnotatePage({
         getAnnotationPills={getAnnotationPills}
       />
 
-      <div className="space-y-4">
+      <div className="space-y-4 px-6 pb-6 pt-4">
         {isLocalize && showCroppedView && laneBoxes.length > 0 && sequenceIdNum && (
           <div className="flex justify-center">
             <CroppedImageSequence bboxes={laneBoxes} sequenceId={sequenceIdNum} />
@@ -1113,6 +1116,6 @@ export default function DetectionSequenceAnnotatePage({
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }

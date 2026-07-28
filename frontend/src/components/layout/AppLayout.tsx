@@ -76,9 +76,12 @@ export default function AppLayout({ children }: AppLayoutProps) {
           </button>
         </div>
 
-        {/* Page content */}
-        <main className="flex-1 relative z-0 overflow-y-auto focus:outline-none p-6">
-          {children}
+        {/* Page content. Padding lives on an inner wrapper, not the scroll
+            container itself: scroll-container padding pins sticky children
+            below it (it never scrolls away), which would break sticky
+            page headers. */}
+        <main className="flex-1 relative z-0 overflow-y-auto focus:outline-none">
+          <div className="p-6">{children}</div>
         </main>
       </div>
     </div>

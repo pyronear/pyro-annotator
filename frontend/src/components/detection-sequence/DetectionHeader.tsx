@@ -103,7 +103,7 @@ export function DetectionHeader({
 
   return (
     <div
-      className={`sticky top-0 z-30 -mx-6 -mt-6 mb-4 px-6 py-2 backdrop-blur-sm shadow-sm border-b ${
+      className={`sticky top-0 z-30 px-6 py-2 backdrop-blur-sm shadow-sm border-b ${
         isAllAnnotated ? 'bg-green-50/90 border-green-200' : 'bg-white/85 border-gray-200'
       }`}
     >
