@@ -29,7 +29,6 @@ help:
 
 # ---------- Data workflow defaults (override via env or 'make VAR=value target') ----------
 REMOTE_API       ?= https://annotationapi.pyronear.org
-MAX_SEQUENCES    ?= 10
 LOGLEVEL         ?= info
 MAX_WORKERS      ?= 4
 OUTPUT_DIR       ?= outputs/datasets
