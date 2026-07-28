@@ -101,6 +101,23 @@ describe('DetectionImageCard dense restyle', () => {
     expect(img.style.transform).toBe('');
   });
 
+  it('observes cell resize to re-measure overlay geometry', () => {
+    const observe = vi.fn();
+    const disconnect = vi.fn();
+    vi.stubGlobal(
+      'ResizeObserver',
+      vi.fn(() => ({ observe, disconnect, unobserve: vi.fn() }))
+    );
+
+    const { unmount } = render(
+      <DetectionImageCard detection={detection} onClick={noop} cellState="auto" />
+    );
+    expect(observe).toHaveBeenCalledTimes(1);
+    unmount();
+    expect(disconnect).toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
   it('legacy mode keeps green/orange encoding', () => {
     const { container, rerender } = render(
       <DetectionImageCard detection={detection} onClick={noop} isAnnotated />

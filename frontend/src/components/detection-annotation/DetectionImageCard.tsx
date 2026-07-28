@@ -73,6 +73,21 @@ export function DetectionImageCard({
     if (imgRef.current?.complete) handleImageLoad();
   }, [cropMode, handleImageLoad]);
 
+  // Re-measure when the cell itself resizes (S/M/L card size change, window
+  // resize) — overlays are positioned from the measured rect and would
+  // otherwise keep the stale geometry.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      if (imgRef.current?.complete) handleImageLoad();
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+    // isLoading/imageData gate which branch renders, so the container ref
+    // only exists after they settle — re-run to attach the observer then.
+  }, [handleImageLoad, isLoading, imageData?.url]);
+
   const borderClass = cellState
     ? cellState === 'done'
       ? 'border-2 border-green-500'
