@@ -177,8 +177,10 @@ async def list_sequences(
     processing_stage: Optional[List[str]] = Query(
         None,
         description=(
-            "Filter by processing stage(s); repeat the param for OR logic: "
-            "'imported', 'ready_to_annotate', 'annotated', or 'no_annotation'"
+            "Filter by processing stage(s); repeat the param for OR logic. "
+            "Accepts any SequenceAnnotationProcessingStage value ('imported', "
+            "'ready_to_annotate', 'under_annotation', 'seq_annotation_done', "
+            "'in_review', 'needs_manual', 'annotated') or 'no_annotation'"
         ),
     ),
     has_missed_smoke: Optional[bool] = Query(
@@ -238,7 +240,7 @@ async def list_sequences(
     - **is_wildfire_alertapi**: Filter sequences by wildfire classification ('wildfire_smoke', 'other_smoke', 'other')
     - **has_annotation**: Filter by annotation presence (True: with annotations, False: without annotations)
     - **include_annotation**: Include complete annotation data in response (default: False)
-    - **processing_stage**: Filter by processing stage(s), repeatable for OR logic ('imported', 'ready_to_annotate', 'annotated', 'no_annotation')
+    - **processing_stage**: Filter by processing stage(s), repeatable for OR logic (any SequenceAnnotationProcessingStage value or 'no_annotation')
     - **has_missed_smoke**: Filter by missed smoke status
     - **has_smoke**: Filter by smoke presence
     - **has_false_positives**: Filter by false positive presence

@@ -299,14 +299,31 @@ async def test_list_sequences_filter_by_multiple_processing_stages(
     assert sequence_ids["9101"] in returned_ids
     assert sequence_ids["9102"] not in returned_ids
 
-    # no_annotation combined with a real stage: annotated sequence still
-    # returned alongside any annotation-less sequences
+    # no_annotation combined with a real stage: both the annotated sequence
+    # and annotation-less sequences are returned, staged-but-unmatched excluded
+    bare_seq_data = {
+        "source_api": "pyronear_french",
+        "alert_api_id": "9104",
+        "camera_name": "Multi Stage Camera 4",
+        "camera_id": "914",
+        "organisation_name": "Test Org",
+        "organisation_id": "1",
+        "lat": "43.5",
+        "lon": "1.5",
+        "recorded_at": (now - timedelta(days=1)).isoformat(),
+        "last_seen_at": now.isoformat(),
+    }
+    response = await authenticated_client.post("/sequences/", data=bare_seq_data)
+    assert response.status_code == 201
+    bare_sequence_id = response.json()["id"]
+
     response = await authenticated_client.get(
         "/sequences/?processing_stage=no_annotation&processing_stage=annotated"
     )
     assert response.status_code == 200
     returned_ids = {item["id"] for item in response.json()["items"]}
     assert sequence_ids["9102"] in returned_ids
+    assert bare_sequence_id in returned_ids
     assert sequence_ids["9101"] not in returned_ids
 
 
