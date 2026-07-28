@@ -159,7 +159,17 @@ the no-box frame count — unit-testable in isolation.
   `repeat(auto-fill, minmax(min(Npx, 100%), 1fr))` template — mirrors the
   group-annotate page's pattern; widths sm 240 / md 340 / lg 500.
 
-### 8. Copy rename
+### 8. Draw auto-save in the modal
+
+Completing a drawn box (and finishing a move/resize of one) commits the
+frame immediately: on a first review the drawn boxes **replace** the model
+layer (every winning box is rejected, mirrored in the review UI); on a
+re-opened committed annotation the drawn boxes are already the ground
+truth. The auto-save stays on the frame (no auto-advance) with a quiet
+"Box saved" toast, so repeated redraws just re-commit. The explicit
+Space/submit flow is unchanged for accept/reject-style reviews.
+
+### 9. Copy rename
 
 User-facing "detection(s)" on this page that counts frames (header progress
 "X of Y detections", related labels) becomes "frame(s)". Code identifiers

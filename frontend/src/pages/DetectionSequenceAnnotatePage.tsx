@@ -570,6 +570,8 @@ export default function DetectionSequenceAnnotatePage({
     }: {
       detection: Detection;
       items: DetectionAnnotationBbox[];
+      /** Draw auto-save: commit without advancing to the next frame. */
+      autoSave?: boolean;
     }) => {
       const existingAnnotation = detectionAnnotations.get(detection.id);
 
@@ -602,7 +604,7 @@ export default function DetectionSequenceAnnotatePage({
         return apiClient.createDetectionAnnotation(payload);
       }
     },
-    onSuccess: (result, { detection }) => {
+    onSuccess: (result, { detection, autoSave }) => {
       // Update local state
       setDetectionAnnotations(prev => new Map(prev).set(detection.id, result));
 
@@ -617,8 +619,11 @@ export default function DetectionSequenceAnnotatePage({
       queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
       queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });
 
-      setToastMessage(`Detection ${detection.id} annotated successfully`);
+      setToastMessage(autoSave ? 'Box saved' : `Detection ${detection.id} annotated successfully`);
       setShowToast(true);
+
+      // Draw auto-save stays on the frame — no advance.
+      if (autoSave) return;
 
       // Auto-advance to next detection if available
       if (
@@ -1075,10 +1080,10 @@ export default function DetectionSequenceAnnotatePage({
           detection={detections[selectedDetectionIndex]}
           onClose={closeModal}
           onNavigate={navigateModal}
-          onSubmit={(detection, items, currentDrawMode) => {
+          onSubmit={(detection, items, currentDrawMode, options) => {
             // Store current drawing mode state before auto-advancing
             setPersistentDrawMode(currentDrawMode);
-            annotateIndividualDetection.mutate({ detection, items });
+            annotateIndividualDetection.mutate({ detection, items, autoSave: options?.autoSave });
           }}
           onTogglePredictions={setShowPredictions}
           canNavigatePrev={selectedDetectionIndex > 0}
