@@ -676,6 +676,7 @@ async def _build_queue_item(
         platform_alert_id=platform_alert_id,
         camera_name=first_seq.camera_name,
         organisation_name=first_seq.organisation_name,
+        azimuth=first_seq.azimuth,
         recorded_at=recorded_at,
         lanes=[
             LocalizationQueueLane(
@@ -685,6 +686,7 @@ async def _build_queue_item(
                 processing_stage=annotation.processing_stage.value
                 if annotation
                 else "no_annotation",
+                smoke_types=(annotation.smoke_types or []) if annotation else [],
                 total_detections=stats_by_seq.get(seq.id, (0, 0))[0],
                 annotated_detections=stats_by_seq.get(seq.id, (0, 0))[1],
                 auto_annotated_at=seq.auto_annotated_at,
