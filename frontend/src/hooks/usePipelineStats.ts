@@ -43,6 +43,12 @@ export function usePipelineStats(): PipelineStats & {
         staleTime: STALE,
         gcTime: GC,
       },
+      {
+        queryKey: ['pipeline-stats', 'localize-queue'],
+        queryFn: () => apiClient.getLocalizationQueue({ size: 1 }),
+        staleTime: STALE,
+        gcTime: GC,
+      },
       ...STAGES.map(stage => ({
         queryKey: ['pipeline-stats', stage],
         queryFn: () =>
@@ -54,12 +60,14 @@ export function usePipelineStats(): PipelineStats & {
   });
 
   // Positional destructure: order must match the queries array above —
-  // [sequences-total, detections-complete, ...STAGES in declaration order].
-  const [seqTotal, detComplete, ready, seqDone, inReview, annotated, needsManual] = results;
+  // [sequences-total, detections-complete, localize-queue, ...STAGES in declaration order].
+  const [seqTotal, detComplete, localizeQueue, ready, seqDone, inReview, annotated, needsManual] =
+    results;
 
   const stats = derivePipelineStats({
     total: seqTotal.data?.total ?? 0,
     detectionComplete: detComplete.data?.total ?? 0,
+    localizeQueueTotal: localizeQueue.data?.total ?? 0,
     readyToAnnotate: ready.data?.total ?? 0,
     seqAnnotationDone: seqDone.data?.total ?? 0,
     inReview: inReview.data?.total ?? 0,

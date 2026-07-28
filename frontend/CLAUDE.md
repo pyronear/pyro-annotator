@@ -72,8 +72,8 @@ frontend/src/
 | `/sequences/review`                                   | `SequencesPageWrapper`            |
 | `/sequences/attention`                                | `SequencesPageWrapper` (needs_manual) |
 | `/sequences/:id/annotate`                             | `AnnotationInterface`             |
-| `/detections/annotate`                                | `DetectionAnnotatePage`           |
-| `/detections/review`                                  | `DetectionReviewPage`             |
+| `/detections/annotate`                                | `DetectionAnnotatePage` (alert-grouped Localize queue) |
+| `/detections/review`                                  | `DetectionReviewPage` (verification, smoke lanes only) |
 | `/detections/:sequenceId/annotate/:detectionId?`      | `DetectionSequenceAnnotatePage`   |
 | `/users`                                              | `UserManagementPage`              |
 | `/guide`                                              | `GuidePage`                       |
