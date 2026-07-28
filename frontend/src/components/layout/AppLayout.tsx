@@ -129,7 +129,7 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
       name: 'Detections',
       icon: Target,
       children: [
-        { name: 'Annotate', href: '/detections/annotate', badgeCount: detectionCount },
+        { name: 'Localize', href: '/detections/annotate', badgeCount: detectionCount },
         { name: 'Review', href: '/detections/review' },
       ],
     },

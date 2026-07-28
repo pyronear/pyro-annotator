@@ -71,3 +71,24 @@ describe('AppLayout sidebar navigation', () => {
     expect(screen.queryByRole('link', { name: /sequence groups/i })).not.toBeInTheDocument();
   });
 });
+
+describe('AppLayout detections nav', () => {
+  const renderLayout = () =>
+    render(
+      <MemoryRouter>
+        <AppLayout>
+          <div>page content</div>
+        </AppLayout>
+      </MemoryRouter>
+    );
+
+  it('labels the detections queue Localize and points it at /detections/annotate', () => {
+    renderLayout();
+
+    const localizeLink = screen.getByRole('link', { name: /localize/i });
+    expect(localizeLink).toHaveAttribute('href', '/detections/annotate');
+    expect(screen.queryByRole('link', { name: /^annotate$/i, hidden: true })).not.toBe(
+      localizeLink
+    );
+  });
+});

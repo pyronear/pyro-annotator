@@ -37,13 +37,9 @@ export function useAnnotationCounts(): AnnotationCounts {
   } = useQuery({
     queryKey: ['annotation-counts', 'detections'],
     queryFn: async () => {
-      // Count sequences whose classification is submitted and detection boxes
-      // still need drawing (Localize · to do)
-      const response = await apiClient.getSequencesWithAnnotations({
-        processing_stage: 'seq_annotation_done',
-        include_annotation: true,
-        size: 1, // Only need the total count
-      });
+      // Localize queue total: alerts ready for smoke localization (matches
+      // exactly what /detections/annotate shows).
+      const response = await apiClient.getLocalizationQueue({ size: 1 });
       return response.total;
     },
     staleTime: 5 * 60 * 1000, // 5 minutes

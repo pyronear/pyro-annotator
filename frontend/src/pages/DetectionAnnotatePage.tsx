@@ -1,150 +1,41 @@
-import { useMemo } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { apiClient } from '@/services/api';
-import {
-  ExtendedSequenceFilters,
-  SequenceWithDetectionProgress,
-  SequenceAnnotation,
-} from '@/types/api';
-import { QUERY_KEYS } from '@/utils/constants';
-import TabbedFilters from '@/components/filters/TabbedFilters';
-import {
-  DetectionAnnotateTableHeader,
-  SequencesLegend,
-  DetectionAnnotateTableRow,
-  DetectionReviewPagination,
-} from '@/components/sequences';
-import { useCameras } from '@/hooks/useCameras';
-import { useOrganizations } from '@/hooks/useOrganizations';
-import { useSourceApis } from '@/hooks/useSourceApis';
-import { usePersistedFilters, createDefaultFilterState } from '@/hooks/usePersistedFilters';
-import { calculatePresetDateRange } from '@/components/filters/shared/dateRangeUtils';
-import { hasActiveUserFilters } from '@/utils/filterHelpers';
+import { LocalizationQueueItem } from '@/types/api';
+import { pickNextLocalizeLane } from '@/utils/annotation/localizeUtils';
+import { formatRelativeTime } from '@/utils/relativeTime';
+
+function unfinishedSmokeLanes(item: LocalizationQueueItem): number {
+  return item.lanes.filter(l => l.has_smoke && l.processing_stage === 'seq_annotation_done').length;
+}
+
+function totalBoxes(item: LocalizationQueueItem): number {
+  return item.lanes.filter(l => l.has_smoke).reduce((sum, l) => sum + l.total_detections, 0);
+}
+
+function annotatedBoxes(item: LocalizationQueueItem): number {
+  return item.lanes.filter(l => l.has_smoke).reduce((sum, l) => sum + l.annotated_detections, 0);
+}
 
 export default function DetectionAnnotatePage() {
   const navigate = useNavigate();
+  const [page, setPage] = useState(1);
 
-  // Create default state specific to detection annotation page
-  const defaultState = {
-    ...createDefaultFilterState('seq_annotation_done'),
-    filters: {
-      ...createDefaultFilterState('seq_annotation_done').filters,
-      // Server-side filter: sequences whose classification is submitted and
-      // whose detection boxes still need drawing (Localize · to do).
-      processing_stage: 'seq_annotation_done' as const,
-      include_annotation: true,
-      size: 100,
-    },
-  };
-
-  // Use persisted filters hook
-  const {
-    filters,
-    dateFrom,
-    dateTo,
-    selectedFalsePositiveTypes,
-    selectedSmokeTypes,
-    selectedModelAccuracy,
-    setFilters,
-    setDateFrom,
-    setDateTo,
-    setSelectedFalsePositiveTypes,
-    setSelectedSmokeTypes,
-    setSelectedModelAccuracy,
-    resetFilters,
-  } = usePersistedFilters('filters-detection-annotate-v9', defaultState);
-
-  // Filter change handlers
-  const handleFilterChange = (newFilters: Partial<ExtendedSequenceFilters>) => {
-    setFilters({ ...filters, ...newFilters, page: 1 });
-  };
-
-  const handlePageChange = (page: number) => {
-    setFilters({ ...filters, page });
-  };
-
-  // Clear preset date range
-  const handleClearPresetDateRange = () => {
-    setDateFrom('');
-    setDateTo('');
-    handleFilterChange({ recorded_at_gte: undefined, recorded_at_lte: undefined });
-  };
-
-  // Update filters when date range changes
-  const handleDateFromChange = (value: string) => {
-    setDateFrom(value);
-    const dateTimeValue = value ? value + 'T00:00:00' : undefined;
-    handleFilterChange({ recorded_at_gte: dateTimeValue });
-  };
-
-  const handleDateToChange = (value: string) => {
-    setDateTo(value);
-    const dateTimeValue = value ? value + 'T23:59:59' : undefined;
-    handleFilterChange({ recorded_at_lte: dateTimeValue });
-  };
-
-  // Fetch sequences for annotation
-  const {
-    data: sequences,
-    isLoading,
-    error,
-  } = useQuery({
-    queryKey: [...QUERY_KEYS.SEQUENCES, 'detection-annotate', filters],
-    queryFn: () => apiClient.getSequencesWithAnnotations(filters),
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['localization-queue', page],
+    queryFn: () => apiClient.getLocalizationQueue({ page, size: 50 }),
   });
 
-  // Fetch sequence annotations for model accuracy analysis
-  // Optional: fetch annotations only for model accuracy; remove if not needed
-  const { data: sequenceAnnotations } = useQuery({
-    queryKey: [
-      ...QUERY_KEYS.SEQUENCE_ANNOTATIONS,
-      'detection-annotate',
-      sequences?.items?.map(s => s.id),
-    ],
-    queryFn: async () => {
-      if (!sequences?.items?.length) return [];
-
-      const annotationPromises = sequences.items.map(sequence =>
-        apiClient
-          .getSequenceAnnotations({ sequence_id: sequence.id, size: 1 })
-          .then(response => ({ sequenceId: sequence.id, annotation: response.items[0] || null }))
-          .catch(() => ({ sequenceId: sequence.id, annotation: null }))
-      );
-
-      return Promise.all(annotationPromises);
-    },
-    enabled: !!sequences?.items?.length,
-  });
-
-  const annotationMap = useMemo(
-    () =>
-      sequenceAnnotations?.reduce(
-        (acc, { sequenceId, annotation }) => {
-          acc[sequenceId] = annotation || undefined;
-          return acc;
-        },
-        {} as Record<number, SequenceAnnotation | undefined>
-      ) || {},
-    [sequenceAnnotations]
-  );
-
-  // Server already filters on processing_stage=seq_annotation_done; no client-side narrow.
-  const filteredSequences = sequences;
-
-  // Navigation handlers
-  const handleSequenceClick = (sequence: SequenceWithDetectionProgress) => {
-    // Store current state before navigation
-    localStorage.setItem('detection-annotate-return-filters', JSON.stringify(filters));
-    navigate(`/detections/${sequence.id}/annotate?from=detections-annotate`);
+  const handleAlertClick = (item: LocalizationQueueItem) => {
+    // -1 never matches a sequence id: picks the alert's first unfinished lane.
+    const first = pickNextLocalizeLane(item.lanes, -1);
+    if (first !== null) {
+      navigate(`/detections/${first}/annotate?from=localize`);
+    }
   };
 
-  // Fetch cameras, organizations, and source APIs for dropdown options
-  const { data: cameras = [], isLoading: camerasLoading } = useCameras();
-  const { data: organizations = [], isLoading: organizationsLoading } = useOrganizations();
-  const { data: sourceApis = [], isLoading: sourceApisLoading } = useSourceApis();
-
-  // Loading state
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-96">
@@ -153,188 +44,112 @@ export default function DetectionAnnotatePage() {
     );
   }
 
-  // Error state
   if (error) {
     return (
       <div className="flex items-center justify-center min-h-96">
         <div className="text-center">
-          <p className="text-gray-500">Failed to load sequences</p>
+          <p className="text-gray-500">Failed to load the localization queue</p>
         </div>
       </div>
     );
   }
 
-  // No sequences found
-  if (!filteredSequences || filteredSequences.items.length === 0) {
-    return (
-      <div className="space-y-6">
-        {/* Page Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Detection Annotation</h1>
-            <p className="mt-1 text-sm text-gray-500">
-              Annotate individual detections within sequences
-            </p>
-          </div>
-        </div>
-
-        {/* Filters */}
-        <TabbedFilters
-          filters={filters}
-          onFiltersChange={handleFilterChange}
-          dateFrom={dateFrom}
-          dateTo={dateTo}
-          onDateFromChange={handleDateFromChange}
-          onDateToChange={handleDateToChange}
-          onDateRangeSet={(preset: string) => {
-            const { dateFrom: startDateStr, dateTo: endDateStr } = calculatePresetDateRange(preset);
-            setDateFrom(startDateStr);
-            setDateTo(endDateStr);
-            const startDateTime = startDateStr ? startDateStr + 'T00:00:00' : undefined;
-            const endDateTime = endDateStr ? endDateStr + 'T23:59:59' : undefined;
-            handleFilterChange({ recorded_at_gte: startDateTime, recorded_at_lte: endDateTime });
-          }}
-          onDateRangeClear={handleClearPresetDateRange}
-          selectedFalsePositiveTypes={selectedFalsePositiveTypes}
-          onFalsePositiveTypesChange={setSelectedFalsePositiveTypes}
-          selectedSmokeTypes={selectedSmokeTypes}
-          onSmokeTypesChange={setSelectedSmokeTypes}
-          selectedModelAccuracy={selectedModelAccuracy}
-          onModelAccuracyChange={setSelectedModelAccuracy}
-          onResetFilters={resetFilters}
-          cameras={cameras}
-          organizations={organizations}
-          sourceApis={sourceApis}
-          camerasLoading={camerasLoading}
-          organizationsLoading={organizationsLoading}
-          sourceApisLoading={sourceApisLoading}
-          showModelAccuracy={true}
-          showFalsePositiveTypes={true}
-          showSmokeTypes={true}
-        />
-
-        {/* Empty State */}
-        <div className="flex items-center justify-center min-h-96">
-          <div className="text-center">
-            {hasActiveUserFilters(
-              filters,
-              dateFrom,
-              dateTo,
-              selectedFalsePositiveTypes,
-              selectedSmokeTypes,
-              selectedModelAccuracy,
-              'all', // selectedUnsure
-              true, // showModelAccuracy
-              true, // showFalsePositiveTypes
-              true, // showSmokeTypes
-              false // showUnsureFilter
-            ) ? (
-              <>
-                <div className="text-4xl mb-4">🔍</div>
-                <h3 className="text-lg font-medium text-gray-900 mb-2">
-                  No sequences match your filters
-                </h3>
-                <p className="text-gray-500 mb-4">
-                  Try adjusting your search criteria or clearing some filters.
-                </p>
-                <button
-                  onClick={resetFilters}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
-                >
-                  Clear all filters
-                </button>
-              </>
-            ) : (
-              <>
-                <div className="text-6xl mb-4">🎉</div>
-                <h3 className="text-lg font-medium text-gray-900 mb-2">All sequences annotated!</h3>
-                <p className="text-gray-500">
-                  There are no sequences requiring detection annotation at this time.
-                </p>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const items = data?.items ?? [];
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Detection Annotation</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Smoke Localization</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Annotate individual detections within sequences
+            Alerts whose objects are classified and auto-annotated — draw a tight box around the
+            smoke in every image
           </p>
         </div>
       </div>
 
-      {/* Filters */}
-      <TabbedFilters
-        filters={filters}
-        onFiltersChange={handleFilterChange}
-        dateFrom={dateFrom}
-        dateTo={dateTo}
-        onDateFromChange={handleDateFromChange}
-        onDateToChange={handleDateToChange}
-        onDateRangeSet={(preset: string) => {
-          const { dateFrom: startDateStr, dateTo: endDateStr } = calculatePresetDateRange(preset);
-          setDateFrom(startDateStr);
-          setDateTo(endDateStr);
-          const startDateTime = startDateStr ? startDateStr + 'T00:00:00' : undefined;
-          const endDateTime = endDateStr ? endDateStr + 'T23:59:59' : undefined;
-          handleFilterChange({ recorded_at_gte: startDateTime, recorded_at_lte: endDateTime });
-        }}
-        onDateRangeClear={handleClearPresetDateRange}
-        selectedFalsePositiveTypes={selectedFalsePositiveTypes}
-        onFalsePositiveTypesChange={setSelectedFalsePositiveTypes}
-        selectedSmokeTypes={selectedSmokeTypes}
-        onSmokeTypesChange={setSelectedSmokeTypes}
-        selectedModelAccuracy={selectedModelAccuracy}
-        onModelAccuracyChange={setSelectedModelAccuracy}
-        onResetFilters={resetFilters}
-        cameras={cameras}
-        organizations={organizations}
-        sourceApis={sourceApis}
-        camerasLoading={camerasLoading}
-        organizationsLoading={organizationsLoading}
-        sourceApisLoading={sourceApisLoading}
-        showModelAccuracy={true}
-        showFalsePositiveTypes={true}
-        showSmokeTypes={true}
-      />
-
-      {/* Results */}
-      {filteredSequences && (
-        <div className="bg-white rounded-lg border border-gray-200">
-          <DetectionAnnotateTableHeader
-            filteredSequences={filteredSequences}
-            sequences={sequences}
-            selectedModelAccuracy={selectedModelAccuracy}
-            filters={filters}
-            onFilterChange={handleFilterChange}
-          />
-
-          <SequencesLegend />
-
-          {/* Sequence List */}
-          <div className="divide-y divide-gray-200">
-            {filteredSequences.items.map(sequence => (
-              <DetectionAnnotateTableRow
-                key={sequence.id}
-                sequence={sequence}
-                annotation={annotationMap[sequence.id] || undefined}
-                onSequenceClick={handleSequenceClick}
-              />
-            ))}
+      {items.length === 0 ? (
+        <div className="flex items-center justify-center min-h-96">
+          <div className="text-center">
+            <p className="text-gray-900 font-medium">No alerts ready for localization</p>
+            <p className="mt-1 text-sm text-gray-500">
+              Alerts appear here once every object is classified and the auto reference layer is
+              computed
+            </p>
           </div>
+        </div>
+      ) : (
+        <div className="bg-white shadow rounded-lg overflow-hidden">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Camera
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Organisation
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Recorded
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Objects
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Progress
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {items.map(item => (
+                <tr
+                  key={`${item.source_api}-${item.platform_alert_id}`}
+                  onClick={() => handleAlertClick(item)}
+                  className="cursor-pointer hover:bg-gray-50"
+                >
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    {item.camera_name}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {item.organisation_name}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {formatRelativeTime(item.recorded_at)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {unfinishedSmokeLanes(item)} of {item.lanes.length} objects to localize
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {annotatedBoxes(item)}/{totalBoxes(item)} boxes
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
-          <DetectionReviewPagination
-            filteredSequences={filteredSequences}
-            onPageChange={handlePageChange}
-          />
+      {data && data.pages > 1 && (
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-gray-500">
+            Page {data.page} of {data.pages} · {data.total} alerts
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              className="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+            >
+              <ChevronLeft className="h-4 w-4" /> Previous
+            </button>
+            <button
+              onClick={() => setPage(p => p + 1)}
+              disabled={page >= (data.pages ?? 1)}
+              className="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+            >
+              Next <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       )}
     </div>
