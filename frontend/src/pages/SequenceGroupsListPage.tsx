@@ -120,13 +120,13 @@ export default function SequenceGroupsListPage() {
   const totalPages = data?.pages ?? 1;
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-6">
-      <header className="mb-4">
-        <h1 className="text-2xl font-semibold text-gray-900">Sequence groups</h1>
-        <p className="text-sm text-gray-600 mt-1">Label many related sequences at once.</p>
-      </header>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Sequence groups</h1>
+        <p className="text-gray-600">Label many related sequences at once.</p>
+      </div>
 
-      <div className="mb-4 flex gap-2.5 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+      <div className="flex gap-2.5 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
         <Info className="w-4 h-4 flex-none mt-0.5 text-blue-600" />
         <p>
           <span className="font-semibold">What is a sequence group?</span> After each import,
@@ -137,7 +137,7 @@ export default function SequenceGroupsListPage() {
         </p>
       </div>
 
-      <div className="mb-3">
+      <div>
         <div className="inline-flex rounded-lg bg-gray-200 p-0.5 gap-0.5 text-sm">
           {FILTERS.map(f => {
             const active = filter === f.value;
@@ -287,7 +287,7 @@ export default function SequenceGroupsListPage() {
       </div>
 
       {totalPages > 1 && (
-        <div className="mt-4 flex items-center justify-between text-sm">
+        <div className="flex items-center justify-between text-sm">
           <button
             onClick={() => setPage(p => Math.max(1, p - 1))}
             disabled={page === 1}
