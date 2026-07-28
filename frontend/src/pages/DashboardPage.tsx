@@ -2,6 +2,7 @@ import { usePipelineStats } from '@/hooks/usePipelineStats';
 import PipelineStrip from '@/components/dashboard/PipelineStrip';
 import PhaseCard from '@/components/dashboard/PhaseCard';
 import HowItWorks from '@/components/dashboard/HowItWorks';
+import { ROUTES } from '@/utils/routes';
 
 export default function DashboardPage() {
   const stats = usePipelineStats();
@@ -40,13 +41,13 @@ export default function DashboardPage() {
           done={stats.classifyDone}
           doneNoun="classified"
           ctaLabel="Start classifying"
-          ctaTo="/sequences/annotate"
+          ctaTo={ROUTES.CLASSIFY}
           reviewLabel="Review classified"
-          reviewTo="/sequences/review"
+          reviewTo={ROUTES.CLASSIFY_DONE}
           isLoading={stats.isLoading}
           secondaryLink={{
             label: 'Classify by group',
-            to: '/sequence-groups',
+            to: ROUTES.CLASSIFY_GROUPS,
             count: stats.groupsToLabel,
           }}
         />
@@ -60,9 +61,9 @@ export default function DashboardPage() {
           done={stats.complete}
           doneNoun="localized"
           ctaLabel="Start localizing"
-          ctaTo="/detections/annotate"
+          ctaTo={ROUTES.LOCALIZE}
           reviewLabel="Review localized"
-          reviewTo="/detections/review"
+          reviewTo={ROUTES.LOCALIZE_DONE}
           isLoading={stats.isLoading}
         />
       </div>

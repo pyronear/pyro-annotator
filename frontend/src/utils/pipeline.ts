@@ -15,7 +15,7 @@ export interface RawPipelineCounts {
   annotatedStage: number;
   detectionComplete: number;
   // Total of the gated localization queue (alerts ready for smoke
-  // localization) — matches exactly what /detections/annotate shows.
+  // localization) — matches exactly what /localize shows.
   localizeQueueTotal: number;
 }
 

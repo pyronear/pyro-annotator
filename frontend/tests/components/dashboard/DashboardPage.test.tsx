@@ -30,7 +30,7 @@ describe('DashboardPage', () => {
     expect(screen.getByText('How annotation works')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Classify by group/ })).toHaveAttribute(
       'href',
-      '/sequence-groups'
+      '/classify/groups'
     );
   });
 });

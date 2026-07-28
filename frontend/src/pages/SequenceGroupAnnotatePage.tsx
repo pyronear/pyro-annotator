@@ -18,6 +18,7 @@ import { usePersistedTabState } from '@/hooks/usePersistedTabState';
 import { formatRelativeTime } from '@/utils/relativeTime';
 import { useState } from 'react';
 import { AlgoPrediction, SequenceGroup, SequenceGroupMember } from '@/types/api';
+import { ROUTES, classifyDetail, classifyGroup } from '@/utils/routes';
 
 // Minimum card width per size step; the auto-fill grid derives the column
 // count from it, so bigger cards automatically flow into more rows.
@@ -140,7 +141,7 @@ function MemberCard({
       </button>
 
       <Link
-        to={`/sequences/${member.sequence_id}/annotate`}
+        to={classifyDetail(member.sequence_id)}
         className="block hover:bg-blue-50"
         title="Open the per-sequence annotation page"
       >
@@ -307,7 +308,7 @@ export default function SequenceGroupAnnotatePage() {
           primary action (validate) stays reachable while scrolling the
           member grid. The root's pt-20 reserves its space. */}
       <div className="fixed top-0 left-0 md:left-64 right-0 z-30 px-6 pt-3 pb-2.5 bg-white/85 border-b border-gray-200 backdrop-blur-sm shadow-sm">
-        <Link to="/sequence-groups" className="text-sm text-gray-500 hover:text-gray-800">
+        <Link to={ROUTES.CLASSIFY_GROUPS} className="text-sm text-gray-500 hover:text-gray-800">
           ← Sequence groups
         </Link>
         <div className="mt-1 flex items-center justify-between gap-4">
@@ -335,7 +336,7 @@ export default function SequenceGroupAnnotatePage() {
           <div className="flex flex-none items-center gap-2">
             {prevId ? (
               <Link
-                to={`/sequence-groups/${prevId}/annotate`}
+                to={classifyGroup(prevId)}
                 title="Previous group"
                 className="p-1.5 rounded-lg border border-gray-300 bg-white text-gray-600 hover:bg-gray-50"
               >
@@ -351,7 +352,7 @@ export default function SequenceGroupAnnotatePage() {
             )}
             {nextId ? (
               <Link
-                to={`/sequence-groups/${nextId}/annotate`}
+                to={classifyGroup(nextId)}
                 title="Next group"
                 className="p-1.5 rounded-lg border border-gray-300 bg-white text-gray-600 hover:bg-gray-50"
               >
