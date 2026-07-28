@@ -74,13 +74,20 @@ export function DetectionImageCard({
       ? 'border-2 border-green-500'
       : 'border-2 border-orange-400';
 
+  // Placeholders only carry a status border in the localize context, where
+  // the state is known from the detection itself; legacy contexts stay
+  // neutral while loading.
+  const placeholderBorderClass = cellState ? borderClass : 'border-2 border-transparent';
+
   if (isLoading) {
-    return <div className={`aspect-video bg-gray-200 animate-pulse ${borderClass}`} />;
+    return <div className={`aspect-video bg-gray-200 animate-pulse ${placeholderBorderClass}`} />;
   }
 
   if (!imageData?.url) {
     return (
-      <div className={`aspect-video bg-gray-100 flex items-center justify-center ${borderClass}`}>
+      <div
+        className={`aspect-video bg-gray-100 flex items-center justify-center ${placeholderBorderClass}`}
+      >
         <span className="text-gray-400 text-sm">No Image</span>
       </div>
     );

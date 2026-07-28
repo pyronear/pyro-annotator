@@ -30,7 +30,7 @@ export function DetectionGrid({
   return (
     <div className="pt-20">
       {/* Detection Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-0.5">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-px">
         {detections.map((detection, index) => (
           <DetectionImageCard
             key={detection.id}

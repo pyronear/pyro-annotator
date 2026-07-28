@@ -51,10 +51,12 @@ glance-check today:
 Priority per frame, reusing existing utilities so the grid preview and the
 quick-submit payload cannot diverge:
 
-1. **Committed annotation** — the detection annotation has smoke bboxes
-   (user already submitted this frame via the modal, or a previous quick
-   submit). Rendered via `UserAnnotationOverlay`. Quick submit leaves these
-   frames untouched.
+1. **Committed annotation** — the detection annotation has
+   `processing_stage: 'annotated'` (user already submitted this frame via
+   the modal, or a previous quick submit). Stage-based on purpose: a
+   reject-all modal submit legitimately commits zero boxes and still counts
+   as done, matching `calculateAnnotationCompleteness`. Rendered via
+   `UserAnnotationOverlay`. Quick submit leaves these frames untouched.
 2. **Winning model layer** — `getWinningModelLayer`
    (`utils/annotation/referenceLayerUtils.ts`): auto if it has ≥1 box, else
    engine. This is exactly the layer the modal seeds its review from; a
@@ -80,9 +82,8 @@ no-edit modal submit. No per-cell multi-object UI.
 
 - Remove the footer block (detection id, date/time, confidence, prediction
   and annotation counts) and the status badge overlay.
-- No inner padding, no rounded corners, grid gap of 1–2 px
-  (`gap-px`/`gap-0.5`), keep `aspect-video` + `object-contain` and current
-  responsive column counts.
+- No inner padding, no rounded corners, 1 px grid gap (`gap-px`), keep
+  `aspect-video` + `object-contain` and current responsive column counts.
 - The existing header "Show predictions" toggle keeps hiding/showing bbox
   overlays.
 

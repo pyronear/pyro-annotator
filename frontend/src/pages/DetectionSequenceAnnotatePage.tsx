@@ -384,31 +384,22 @@ export default function DetectionSequenceAnnotatePage() {
     },
   });
 
+  // Quick submit is only safe once the lane's smoke type (sequenceAnnotation)
+  // and the existing per-frame annotations have loaded: an early submit would
+  // commit the 'wildfire' fallback type and misroute updates to creates.
+  const quickSubmitReady = !!sequenceAnnotation && !!existingAnnotations;
+
   // Localize quick submit: accept the winning model boxes for every pending
   // frame (manual/committed frames untouched), then submit the lane.
   const quickSubmitLane = useMutation({
     mutationFn: async () => {
       if (!quickSubmitPlan) throw new Error('Sequence not loaded yet — try again in a moment');
       const results = await Promise.allSettled(
-        quickSubmitPlan.payloads.map(({ detection, items }) => {
-          const existing = detectionAnnotations.get(detection.id);
-          if (existing) {
-            // Preserve false-positive items: they are not editable rectangles
-            // and must survive the accept (same rule as the modal submit).
-            const falsePositiveItems = (existing.annotation?.annotation ?? []).filter(
-              item => item.false_positive_type != null
-            );
-            return apiClient.updateDetectionAnnotation(existing.id, {
-              annotation: { annotation: [...items, ...falsePositiveItems] },
-              processing_stage: 'annotated' as const,
-            });
-          }
-          return apiClient.createDetectionAnnotation({
-            detection_id: detection.id,
-            annotation: { annotation: items },
-            processing_stage: 'annotated' as const,
-          });
-        })
+        quickSubmitPlan.payloads.map(({ detection, existingAnnotationId, body }) =>
+          existingAnnotationId !== null
+            ? apiClient.updateDetectionAnnotation(existingAnnotationId, body)
+            : apiClient.createDetectionAnnotation({ detection_id: detection.id, ...body })
+        )
       );
       const fulfilled = results
         .filter((r): r is PromiseFulfilledResult<DetectionAnnotation> => r.status === 'fulfilled')
@@ -444,14 +435,26 @@ export default function DetectionSequenceAnnotatePage() {
   });
 
   const handleQuickSubmit = useCallback(() => {
-    if (!quickSubmitPlan || quickSubmitLane.isPending || submitLocalizedLane.isPending) return;
+    if (
+      !quickSubmitReady ||
+      !quickSubmitPlan ||
+      quickSubmitLane.isPending ||
+      submitLocalizedLane.isPending
+    )
+      return;
     if (quickSubmitPlan.noBoxCount > 0 && !quickSubmitConfirming) {
       setQuickSubmitConfirming(true);
       return;
     }
     setQuickSubmitConfirming(false);
     quickSubmitLane.mutate();
-  }, [quickSubmitPlan, quickSubmitConfirming, quickSubmitLane, submitLocalizedLane]);
+  }, [
+    quickSubmitReady,
+    quickSubmitPlan,
+    quickSubmitConfirming,
+    quickSubmitLane,
+    submitLocalizedLane,
+  ]);
 
   // A click anywhere else cancels the pending confirm (the header button
   // stops propagation, so its own click never lands here).
@@ -916,13 +919,9 @@ export default function DetectionSequenceAnnotatePage() {
         </div>
 
         {/* Grid skeleton */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-px">
           {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="space-y-2">
-              <div className="aspect-video bg-gray-200 animate-pulse rounded-lg"></div>
-              <div className="h-4 bg-gray-200 animate-pulse rounded"></div>
-              <div className="h-3 w-24 bg-gray-200 animate-pulse rounded"></div>
-            </div>
+            <div key={i} className="aspect-video bg-gray-200 animate-pulse"></div>
           ))}
         </div>
       </div>
@@ -1008,7 +1007,9 @@ export default function DetectionSequenceAnnotatePage() {
         saveAnnotations={saveAnnotations}
         isLocalize={isLocalize}
         noBoxCount={quickSubmitPlan?.noBoxCount ?? 0}
-        quickSubmitPending={quickSubmitLane.isPending || submitLocalizedLane.isPending}
+        quickSubmitPending={
+          !quickSubmitReady || quickSubmitLane.isPending || submitLocalizedLane.isPending
+        }
         quickSubmitConfirming={quickSubmitConfirming}
         onQuickSubmit={handleQuickSubmit}
         getAnnotationPills={getAnnotationPills}

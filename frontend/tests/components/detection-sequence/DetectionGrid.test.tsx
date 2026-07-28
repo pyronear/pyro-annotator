@@ -98,7 +98,7 @@ describe('DetectionGrid', () => {
       const gridContainer = container.querySelector('.pt-20');
       expect(gridContainer).toBeInTheDocument();
 
-      const gridLayout = container.querySelector('.grid.grid-cols-2.md\\:grid-cols-3.lg\\:grid-cols-4.gap-0\\.5');
+      const gridLayout = container.querySelector('.grid.grid-cols-2.md\\:grid-cols-3.lg\\:grid-cols-4.gap-px');
       expect(gridLayout).toBeInTheDocument();
     });
 
@@ -126,7 +126,7 @@ describe('DetectionGrid', () => {
         'grid-cols-2',    // Mobile: 2 columns
         'md:grid-cols-3', // Medium: 3 columns
         'lg:grid-cols-4', // Large: 4 columns
-        'gap-0.5'         // Dense: 2px gap
+        'gap-px'          // Dense: 1px gap
       );
     });
 

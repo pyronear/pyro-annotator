@@ -92,28 +92,72 @@ describe('buildQuickSubmitPlan', () => {
 
     expect(plan.payloads).toHaveLength(1);
     expect(plan.payloads[0].detection.id).toBe(2);
-    expect(plan.payloads[0].items).toEqual([
-      {
-        xyxyn: [0.2, 0.2, 0.4, 0.4],
-        class_name: 'smoke',
-        smoke_type: 'wildfire',
-        origin: 'auto',
+    expect(plan.payloads[0].body).toEqual({
+      annotation: {
+        annotation: [
+          {
+            xyxyn: [0.2, 0.2, 0.4, 0.4],
+            class_name: 'smoke',
+            smoke_type: 'wildfire',
+            origin: 'auto',
+          },
+        ],
       },
-    ]);
+      processing_stage: 'annotated',
+    });
     expect(plan.noBoxCount).toBe(0);
+  });
+
+  it('routes to update when an annotation exists, create when missing', () => {
+    const dExisting = makeDetection(1, { auto: [box()] });
+    const dMissing = makeDetection(2, { auto: [box()] });
+    const annotations = new Map([[1, makeAnnotation(1, 'bbox_annotation')]]);
+
+    const plan = buildQuickSubmitPlan([dExisting, dMissing], annotations, 'wildfire');
+
+    expect(plan.payloads[0].existingAnnotationId).toBe(100);
+    expect(plan.payloads[1].existingAnnotationId).toBeNull();
+  });
+
+  it('preserves false-positive items from the existing annotation', () => {
+    const fpItem = {
+      xyxyn: [0.6, 0.6, 0.7, 0.7],
+      class_name: 'smoke',
+      smoke_type: null,
+      false_positive_type: 'antenna',
+      origin: 'human',
+    } as unknown as DetectionAnnotation['annotation']['annotation'][number];
+    const smokeItem = {
+      xyxyn: [0.1, 0.1, 0.2, 0.2],
+      class_name: 'smoke',
+      smoke_type: 'wildfire',
+      origin: 'human',
+    } as unknown as DetectionAnnotation['annotation']['annotation'][number];
+    const d = makeDetection(1, { auto: [box()] });
+    const annotations = new Map([[1, makeAnnotation(1, 'bbox_annotation', [smokeItem, fpItem])]]);
+
+    const plan = buildQuickSubmitPlan([d], annotations, 'wildfire');
+
+    const items = plan.payloads[0].body.annotation.annotation;
+    // Accepted winning box first, then the preserved FP item; the existing
+    // smoke item is replaced by the accept (same rule as the modal submit).
+    expect(items).toHaveLength(2);
+    expect(items[0].origin).toBe('auto');
+    expect(items[1]).toEqual(fpItem);
   });
 
   it('tags engine origin when auto layer is empty', () => {
     const d = makeDetection(1, { auto: [], engine: [box()] });
     const plan = buildQuickSubmitPlan([d], new Map(), 'industrial');
-    expect(plan.payloads[0].items[0].origin).toBe('engine');
-    expect(plan.payloads[0].items[0].smoke_type).toBe('industrial');
+    const items = plan.payloads[0].body.annotation.annotation;
+    expect(items[0].origin).toBe('engine');
+    expect(items[0].smoke_type).toBe('industrial');
   });
 
   it('keeps multiple boxes on one frame', () => {
     const d = makeDetection(1, { auto: [box(), box(0.5, 0.5, 0.7, 0.7)] });
     const plan = buildQuickSubmitPlan([d], new Map(), 'wildfire');
-    expect(plan.payloads[0].items).toHaveLength(2);
+    expect(plan.payloads[0].body.annotation.annotation).toHaveLength(2);
   });
 
   it('includes no-box frames with empty items and counts them', () => {
@@ -121,7 +165,9 @@ describe('buildQuickSubmitPlan', () => {
     const dAuto = makeDetection(2, { auto: [box()] });
     const plan = buildQuickSubmitPlan([dEmpty, dAuto], new Map(), 'wildfire');
     expect(plan.payloads).toHaveLength(2);
-    expect(plan.payloads.find(p => p.detection.id === 1)?.items).toEqual([]);
+    expect(
+      plan.payloads.find(p => p.detection.id === 1)?.body.annotation.annotation
+    ).toEqual([]);
     expect(plan.noBoxCount).toBe(1);
   });
 

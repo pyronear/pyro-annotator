@@ -54,8 +54,18 @@ export function getCellState(
   return getWinningBoxes(detection).boxes.length > 0 ? 'auto' : 'no-box';
 }
 
+export interface QuickSubmitPayload {
+  detection: Detection;
+  /** Route: PATCH this annotation id, or POST a new one when null. */
+  existingAnnotationId: number | null;
+  body: {
+    annotation: { annotation: DetectionAnnotationBbox[] };
+    processing_stage: 'annotated';
+  };
+}
+
 export interface QuickSubmitPlan {
-  payloads: { detection: Detection; items: DetectionAnnotationBbox[] }[];
+  payloads: QuickSubmitPayload[];
   noBoxCount: number;
 }
 
@@ -64,24 +74,36 @@ export function buildQuickSubmitPlan(
   annotations: Map<number, DetectionAnnotation>,
   smokeType: SmokeType
 ): QuickSubmitPlan {
-  const payloads: QuickSubmitPlan['payloads'] = [];
+  const payloads: QuickSubmitPayload[] = [];
   let noBoxCount = 0;
 
   for (const detection of detections) {
-    const state = getCellState(detection, annotations.get(detection.id));
+    const existing = annotations.get(detection.id);
+    const state = getCellState(detection, existing);
     if (state === 'done') continue;
     if (state === 'no-box') noBoxCount += 1;
 
     const { layer, boxes } = getWinningBoxes(detection);
+    const items = materializeReviewAnnotation({
+      winningBoxes: boxes,
+      winningLayer: layer,
+      rejected: new Set(),
+      humanRects: [],
+      smokeType,
+    });
+    // Preserve false-positive items: they are not editable rectangles and
+    // must survive the accept (same rule as the modal submit).
+    const falsePositiveItems = (existing?.annotation?.annotation ?? []).filter(
+      item => item.false_positive_type != null
+    );
+
     payloads.push({
       detection,
-      items: materializeReviewAnnotation({
-        winningBoxes: boxes,
-        winningLayer: layer,
-        rejected: new Set(),
-        humanRects: [],
-        smokeType,
-      }),
+      existingAnnotationId: existing?.id ?? null,
+      body: {
+        annotation: { annotation: [...items, ...falsePositiveItems] },
+        processing_stage: 'annotated',
+      },
     });
   }
 

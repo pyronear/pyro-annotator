@@ -53,7 +53,7 @@ export {
   buildQuickSubmitPlan,
   getIsAnnotated,
 } from './quickSubmitUtils';
-export type { CellState, QuickSubmitPlan } from './quickSubmitUtils';
+export type { CellState, QuickSubmitPlan, QuickSubmitPayload } from './quickSubmitUtils';
 
 // Bounding box move/resize geometry
 export { moveBox, resizeBox, HANDLE_CURSOR } from './boxEditUtils';
