@@ -162,8 +162,10 @@ class ApiClient {
   async getLocalizationQueue(
     params: { page?: number; size?: number } = {}
   ): Promise<PaginatedResponse<LocalizationQueueItem>> {
-    const response: AxiosResponse<PaginatedResponse<LocalizationQueueItem>> =
-      await this.client.get(`${API_ENDPOINTS.SEQUENCES}localization-queue`, { params });
+    const response: AxiosResponse<PaginatedResponse<LocalizationQueueItem>> = await this.client.get(
+      `${API_ENDPOINTS.SEQUENCES}localization-queue`,
+      { params }
+    );
     return response.data;
   }
 
