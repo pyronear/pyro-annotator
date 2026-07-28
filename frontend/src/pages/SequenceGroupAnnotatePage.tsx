@@ -288,7 +288,7 @@ export default function SequenceGroupAnnotatePage() {
           page: fixed to the viewport past the sidebar (md:left-64) so the
           primary action (validate) stays reachable while scrolling the
           member grid. The root's pt-24 reserves its space. */}
-      <div className="fixed top-0 left-0 md:left-64 right-0 z-30 px-6 pt-3 pb-2.5 bg-gray-50/95 backdrop-blur-sm shadow-sm">
+      <div className="fixed top-0 left-0 md:left-64 right-0 z-30 px-6 pt-3 pb-2.5 bg-white/85 border-b border-gray-200 backdrop-blur-sm shadow-sm">
         <Link to="/sequence-groups" className="text-sm text-gray-500 hover:text-gray-800">
           ← Sequence groups
         </Link>
