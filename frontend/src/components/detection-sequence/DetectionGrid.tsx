@@ -1,4 +1,5 @@
-import { Detection, DetectionAnnotation } from '@/types/api';
+import { Detection, DetectionAnnotation, SmokeType } from '@/types/api';
+import { CellState } from '@/utils/annotation';
 import { DetectionImageCard } from '@/components/detection-annotation';
 
 interface DetectionGridProps {
@@ -11,6 +12,9 @@ interface DetectionGridProps {
     annotation: DetectionAnnotation | undefined,
     fromContext: string | null
   ) => boolean;
+  /** Localize context: per-frame cell state for borders-only encoding. */
+  getCellState?: (detection: Detection) => CellState;
+  smokeType?: SmokeType;
 }
 
 export function DetectionGrid({
@@ -20,11 +24,13 @@ export function DetectionGrid({
   detectionAnnotations,
   fromParam,
   getIsAnnotated,
+  getCellState,
+  smokeType,
 }: DetectionGridProps) {
   return (
-    <div className="space-y-6 pt-20">
+    <div className="pt-20">
       {/* Detection Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-0.5">
         {detections.map((detection, index) => (
           <DetectionImageCard
             key={detection.id}
@@ -33,6 +39,8 @@ export function DetectionGrid({
             isAnnotated={getIsAnnotated(detectionAnnotations.get(detection.id), fromParam)}
             showPredictions={showPredictions}
             userAnnotation={detectionAnnotations.get(detection.id) || null}
+            cellState={getCellState ? getCellState(detection) : null}
+            smokeType={smokeType}
           />
         ))}
       </div>

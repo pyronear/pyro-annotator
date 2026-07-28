@@ -95,10 +95,10 @@ describe('DetectionGrid', () => {
     it('should render grid container with correct classes', () => {
       const { container } = render(<DetectionGrid {...defaultProps} />);
       
-      const gridContainer = container.querySelector('.space-y-6.pt-20');
+      const gridContainer = container.querySelector('.pt-20');
       expect(gridContainer).toBeInTheDocument();
-      
-      const gridLayout = container.querySelector('.grid.grid-cols-2.md\\:grid-cols-3.lg\\:grid-cols-4.gap-6');
+
+      const gridLayout = container.querySelector('.grid.grid-cols-2.md\\:grid-cols-3.lg\\:grid-cols-4.gap-0\\.5');
       expect(gridLayout).toBeInTheDocument();
     });
 
@@ -124,9 +124,9 @@ describe('DetectionGrid', () => {
       const gridElement = container.querySelector('.grid');
       expect(gridElement).toHaveClass(
         'grid-cols-2',    // Mobile: 2 columns
-        'md:grid-cols-3', // Medium: 3 columns  
+        'md:grid-cols-3', // Medium: 3 columns
         'lg:grid-cols-4', // Large: 4 columns
-        'gap-6'           // Consistent gap
+        'gap-0.5'         // Dense: 2px gap
       );
     });
 
