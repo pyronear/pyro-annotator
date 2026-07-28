@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Menu, X, Layers, Target, LogOut, User, Users, LucideIcon } from 'lucide-react';
+import { Menu, X, LogOut, User, Users } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useAnnotationCounts } from '@/hooks/useAnnotationCounts';
 import NotificationBadge from '@/components/ui/NotificationBadge';
@@ -13,7 +13,6 @@ interface AppLayoutProps {
 
 interface NavigationItem {
   name: string;
-  icon: LucideIcon;
   children: NavigationSubItem[];
 }
 
@@ -93,7 +92,6 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
   const navigationWithBadges: NavigationItem[] = [
     {
       name: 'Classify',
-      icon: Layers,
       children: [
         {
           name: 'Groups',
@@ -107,7 +105,6 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
     },
     {
       name: 'Localize',
-      icon: Target,
       children: [
         { name: 'Smoke', href: '/detections/annotate', badgeCount: detectionCount },
         { name: 'Done', href: '/detections/review' },
@@ -154,10 +151,6 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
     return currentPath === href || currentPath.startsWith(href + '/');
   };
 
-  const isSectionActive = (item: NavigationItem) => {
-    return item.children.some(child => isPathActive(child.href));
-  };
-
   return (
     <div className="flex flex-col h-0 flex-1 border-r border-gray-200 bg-white">
       <div className="flex-1 flex flex-col pt-5 pb-4 overflow-y-auto">
@@ -167,26 +160,12 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
             <h1 className="ml-2 text-xl font-bold text-gray-900">PyroAnnotator</h1>
           </Link>
         </div>
-        <nav className="mt-8 flex-1 px-2 bg-white space-y-1">
+        <nav className="mt-8 flex-1 px-2 bg-white space-y-6">
           {navigationWithBadges.map(item => {
-            const isActive = isSectionActive(item);
-
             return (
               <div key={item.name}>
-                <div
-                  className={clsx(
-                    isActive ? 'text-primary-700' : 'text-gray-600',
-                    'flex items-center px-2 py-2 text-sm font-medium'
-                  )}
-                >
-                  <item.icon
-                    className={clsx(
-                      isActive ? 'text-primary-500' : 'text-gray-400',
-                      'mr-3 flex-shrink-0 h-5 w-5'
-                    )}
-                    aria-hidden="true"
-                  />
-                  <span className="flex-1 text-left">{item.name}</span>
+                <div className="px-2 font-data text-[10.5px] font-medium uppercase tracking-[0.14em] text-haze">
+                  {item.name}
                 </div>
                 <div className="mt-1 space-y-1">
                   {item.children.map(subItem => {
@@ -203,7 +182,7 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
                             : isDisabled
                               ? 'text-gray-400 cursor-not-allowed'
                               : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
-                          'group flex items-center justify-between pl-11 pr-2 py-2 text-sm font-medium rounded-l-md'
+                          'group flex items-center justify-between pl-4 pr-2 py-2 text-sm font-medium rounded-l-md'
                         )}
                       >
                         <span>{subItem.name}</span>
