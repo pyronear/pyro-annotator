@@ -76,7 +76,7 @@ export default function PhaseCard({
       </p>
       <Link
         to={ctaTo}
-        className={`mx-auto block w-fit rounded-lg ${t.bg} px-7 py-2.5 text-center font-body text-[13.5px] font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2`}
+        className={`mx-auto block w-fit rounded-lg ${t.bg} px-7 py-2.5 font-body text-[13.5px] font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2`}
       >
         {ctaLabel}
       </Link>

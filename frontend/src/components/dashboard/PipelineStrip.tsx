@@ -18,7 +18,7 @@ interface SegmentProps {
 function Segment({ first, toneClass, label, count, detail, isLoading }: SegmentProps) {
   return (
     <div
-      className={`${first ? 'chevron-seg-first md:pl-6' : 'chevron-seg md:pl-8'} flex-1 bg-paper px-5 py-3.5 text-center md:pr-8`}
+      className={`${first ? 'chevron-seg-first' : 'chevron-seg'} flex-1 bg-paper px-5 py-3.5 text-center md:px-8`}
     >
       <div
         className={`font-data text-[10.5px] font-medium uppercase tracking-[0.12em] ${toneClass} mb-1`}
