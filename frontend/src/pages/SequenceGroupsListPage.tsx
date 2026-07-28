@@ -243,7 +243,6 @@ export default function SequenceGroupsListPage() {
                     >
                       {g.camera_name}
                     </Link>
-                    <span className="ml-1.5 text-xs text-gray-400">#{g.id}</span>
                   </td>
                   <td className="px-3 py-2.5">{g.azimuth}°</td>
                   <td className="px-3 py-2.5">
