@@ -22,6 +22,7 @@ import { useSourceApis } from '@/hooks/useSourceApis';
 import { usePersistedFilters, createDefaultFilterState } from '@/hooks/usePersistedFilters';
 import { calculatePresetDateRange } from '@/components/filters/shared/dateRangeUtils';
 import { hasActiveUserFilters } from '@/utils/filterHelpers';
+import { localizeDetail } from '@/utils/routes';
 
 export default function DetectionReviewPage() {
   const navigate = useNavigate();
@@ -56,7 +57,7 @@ export default function DetectionReviewPage() {
     setSelectedSmokeTypes,
     setSelectedModelAccuracy,
     resetFilters,
-  } = usePersistedFilters('filters-detections-review-v2', defaultState);
+  } = usePersistedFilters('filters-localize-done', defaultState);
 
   // Fetch cameras, organizations, and source APIs for dropdown options
   const { data: cameras = [], isLoading: camerasLoading } = useCameras();
@@ -187,7 +188,7 @@ export default function DetectionReviewPage() {
 
   const handleSequenceClick = (clickedSequence: SequenceWithDetectionProgress) => {
     // Navigate to detection annotation interface for review purposes
-    navigate(`/detections/${clickedSequence.id}/annotate?from=detections-review`);
+    navigate(localizeDetail(clickedSequence.id, undefined, true));
   };
 
   if (isLoading) {
