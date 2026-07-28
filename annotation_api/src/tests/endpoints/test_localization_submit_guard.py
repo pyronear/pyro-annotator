@@ -162,3 +162,21 @@ async def test_other_transitions_unaffected(
     )
     assert resp.status_code == 200
     assert resp.json()["processing_stage"] == "seq_annotation_done"
+
+
+@pytest.mark.asyncio
+async def test_legacy_in_review_to_annotated_unaffected(
+    authenticated_client: AsyncClient, sequence_session, mock_img
+):
+    # Legacy path: in_review -> annotated must not hit the guard even for a
+    # smoke lane with zero detection annotations (auto-create fills them).
+    det1 = await _create_detection(authenticated_client, mock_img, 9001)
+    annotation = await _create_sequence_annotation(
+        authenticated_client, det1, is_smoke=True, stage="in_review"
+    )
+    resp = await authenticated_client.patch(
+        f"/annotations/sequences/{annotation['id']}",
+        json={"processing_stage": "annotated"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["processing_stage"] == "annotated"

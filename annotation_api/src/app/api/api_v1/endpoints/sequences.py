@@ -61,7 +61,8 @@ router = APIRouter()
 
 def build_detection_stats_subquery():
     """Per-sequence detection counts: total, with-annotation, and completed
-    (annotated-stage) — shared by the list filter and the localization queue."""
+    (annotated-stage) — used by the list filter. The localization queue uses
+    its own per-alert-scoped variant (see _build_queue_item)."""
     return (
         select(
             Detection.sequence_id,
@@ -573,12 +574,15 @@ async def localization_queue(
             .limit(params.size)
         )
     ).all()
-    items = [
+    maybe_items = [
         await _build_queue_item(
             session, row.source_api, row.platform_alert_id, row.recorded_at
         )
         for row in page_rows
     ]
+    # An alert can lose its sequences between the page query and item build
+    # (concurrent delete); drop such rows rather than 500.
+    items = [item for item in maybe_items if item is not None]
     return Page.create(items=items, total=total, params=params)
 
 
@@ -587,20 +591,13 @@ async def _build_queue_item(
     source_api: SourceApi,
     platform_alert_id: int,
     recorded_at: datetime,
-) -> LocalizationQueueItem:
-    stats = build_detection_stats_subquery()
+) -> Optional[LocalizationQueueItem]:
     rows = (
         await session.execute(
-            select(
-                Sequence,
-                SequenceAnnotation,
-                stats.c.total_detections,
-                stats.c.completed_annotations,
-            )
+            select(Sequence, SequenceAnnotation)
             .outerjoin(
                 SequenceAnnotation, SequenceAnnotation.sequence_id == Sequence.id
             )
-            .outerjoin(stats, stats.c.sequence_id == Sequence.id)
             .where(
                 Sequence.source_api == source_api,
                 Sequence.platform_alert_id == platform_alert_id,
@@ -608,6 +605,31 @@ async def _build_queue_item(
             .order_by(asc(Sequence.alert_api_id))
         )
     ).all()
+    if not rows:
+        return None
+    # Detection stats scoped to this alert's sequences — the shared unscoped
+    # subquery would aggregate the whole detections table per item (see #215).
+    sequence_ids = [seq.id for seq, _ in rows]
+    stats_rows = (
+        await session.execute(
+            select(
+                Detection.sequence_id,
+                func.count(Detection.id).label("total_detections"),
+                func.count(
+                    case((DetectionAnnotation.processing_stage == "annotated", 1))
+                ).label("completed_annotations"),
+            )
+            .select_from(Detection)
+            .outerjoin(
+                DetectionAnnotation, DetectionAnnotation.detection_id == Detection.id
+            )
+            .where(Detection.sequence_id.in_(sequence_ids))
+            .group_by(Detection.sequence_id)
+        )
+    ).all()
+    stats_by_seq = {
+        r.sequence_id: (r.total_detections, r.completed_annotations) for r in stats_rows
+    }
     first_seq = rows[0][0]
     return LocalizationQueueItem(
         source_api=source_api,
@@ -623,11 +645,11 @@ async def _build_queue_item(
                 processing_stage=annotation.processing_stage.value
                 if annotation
                 else "no_annotation",
-                total_detections=total or 0,
-                annotated_detections=completed or 0,
+                total_detections=stats_by_seq.get(seq.id, (0, 0))[0],
+                annotated_detections=stats_by_seq.get(seq.id, (0, 0))[1],
                 auto_annotated_at=seq.auto_annotated_at,
             )
-            for seq, annotation, total, completed in rows
+            for seq, annotation in rows
         ],
     )
 
