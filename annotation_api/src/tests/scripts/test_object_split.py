@@ -195,8 +195,16 @@ class TestSplitAllRecords:
 class TestBuildSingleTrackAnnotation:
     def test_one_track_with_time_ordered_bboxes(self):
         results = [
-            {"annotation_detection_id": 12, "xyxyns": [[0.1, 0.1, 0.2, 0.2]], "recorded_at": "2026-07-01T10:01:00"},
-            {"annotation_detection_id": 11, "xyxyns": [[0.1, 0.1, 0.2, 0.2]], "recorded_at": "2026-07-01T10:00:00"},
+            {
+                "annotation_detection_id": 12,
+                "xyxyns": [[0.1, 0.1, 0.2, 0.2]],
+                "recorded_at": "2026-07-01T10:01:00",
+            },
+            {
+                "annotation_detection_id": 11,
+                "xyxyns": [[0.1, 0.1, 0.2, 0.2]],
+                "recorded_at": "2026-07-01T10:00:00",
+            },
         ]
         data = build_single_track_annotation(results)
         assert len(data.sequences_bbox) == 1
@@ -219,7 +227,11 @@ class TestBuildSingleTrackAnnotation:
     def test_zero_area_and_empty_results_yield_empty_sequences_bbox(self):
         # zero-area boxes would fail BoundingBox validation -> must be filtered
         results = [
-            {"annotation_detection_id": 11, "xyxyns": [[0.5, 0.5, 0.5, 0.9]], "recorded_at": "2026-07-01T10:00:00"}
+            {
+                "annotation_detection_id": 11,
+                "xyxyns": [[0.5, 0.5, 0.5, 0.9]],
+                "recorded_at": "2026-07-01T10:00:00",
+            }
         ]
         assert build_single_track_annotation(results).sequences_bbox == []
         assert build_single_track_annotation([]).sequences_bbox == []

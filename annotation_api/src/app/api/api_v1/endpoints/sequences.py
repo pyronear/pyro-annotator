@@ -81,7 +81,7 @@ async def create_sequence(
     organisation_id: int = Form(...),
     is_wildfire_alertapi: Optional[AnnotationType] = Form(
         None,
-        description="Classification from external API: 'wildfire_smoke', 'other_smoke', or 'other'"
+        description="Classification from external API: 'wildfire_smoke', 'other_smoke', or 'other'",
     ),
     lat: float = Form(...),
     lon: float = Form(...),
@@ -127,7 +127,8 @@ async def list_sequences(
         None, description="Filter by organisation name (exact match)"
     ),
     is_wildfire_alertapi: Optional[str] = Query(
-        None, description="Filter by wildfire classification: 'wildfire_smoke', 'other_smoke', 'other', or 'null' for unclassified"
+        None,
+        description="Filter by wildfire classification: 'wildfire_smoke', 'other_smoke', 'other', or 'null' for unclassified",
     ),
     has_annotation: Optional[bool] = Query(
         None,

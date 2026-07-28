@@ -42,6 +42,7 @@ async def _run_alembic_upgrade() -> None:
     cfg = _alembic_config()
     await asyncio.to_thread(command.upgrade, cfg, "head")
 
+
 dt_format = "%Y-%m-%dT%H:%M:%S.%f"
 now = datetime.now(UTC)
 
