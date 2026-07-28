@@ -1048,7 +1048,7 @@ export default function DetectionSequenceAnnotatePage({
         getAnnotationPills={getAnnotationPills}
       />
 
-      <div className="pt-20 space-y-4">
+      <div className="pt-28 space-y-4">
         {isLocalize && showCroppedView && laneBoxes.length > 0 && sequenceIdNum && (
           <div className="flex justify-center">
             <CroppedImageSequence bboxes={laneBoxes} sequenceId={sequenceIdNum} />
