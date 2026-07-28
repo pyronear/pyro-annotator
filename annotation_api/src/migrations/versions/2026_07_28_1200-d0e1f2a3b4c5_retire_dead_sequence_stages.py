@@ -21,6 +21,9 @@ depends_on: Union[str, TypingSequence[str], None] = None
 # done, detection-level work pending), and a stale under_annotation claim is
 # released back to ready_to_annotate.
 LIVE_LABELS = ("IMPORTED", "READY_TO_ANNOTATE", "SEQ_ANNOTATION_DONE", "ANNOTATED")
+# Downgrade appends the retired labels at the end rather than restoring the
+# initial migration's declaration order; nothing orders by this enum, so the
+# difference is cosmetic.
 LEGACY_LABELS = LIVE_LABELS + ("UNDER_ANNOTATION", "IN_REVIEW", "NEEDS_MANUAL")
 
 

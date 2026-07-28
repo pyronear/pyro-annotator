@@ -75,9 +75,10 @@ where they are (lossy, accepted).
 - `services/auto_annotate_scheduling.py`: `DONE_STAGES` collapses to
   `(SEQ_ANNOTATION_DONE, ANNOTATED)`; drop the legacy-compatibility comment.
   This is the #212 gate simplification the issue called for.
-- Intentional side effect: `?processing_stage=in_review` (etc.) becomes an
-  invalid filter value on the sequences/export endpoints — enum coercion
-  rejects it. Nothing extra to build.
+- Intentional side effect: `in_review` (etc.) stops being a valid stage value.
+  Write paths reject it (Pydantic 422); the sequences list filter keeps its
+  pre-existing lenient behavior and silently ignores unknown values. Nothing
+  extra to build.
 - Scripts: prune the three values from `import_yolo_sequence.py`
   `SEQ_STAGE_CHOICES`; fix `update_annotation_stage.py` docstring/help examples
   that reference `in_review`.
