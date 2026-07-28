@@ -125,18 +125,18 @@ describe('AppLayout sidebar navigation', () => {
     expect(screen.queryByRole('link', { name: /sequence groups/i })).not.toBeInTheDocument();
   });
 
-  it('shows a three-dot menu indicator on the user row', () => {
+  it('uses a three-dot icon on the user menu button', () => {
     renderLayout();
 
-    const userButton = screen.getByRole('button', { name: /tester/i });
-    expect(userButton.querySelector('svg.lucide-more-vertical')).toBeInTheDocument();
+    const menuButton = screen.getByRole('button', { name: /open user menu/i });
+    expect(menuButton.querySelector('svg.lucide-more-vertical')).toBeInTheDocument();
   });
 
   it('shows User Management in the user dropdown for superusers', () => {
     isSuperuserValue = true;
     renderLayout();
 
-    fireEvent.click(screen.getByRole('button', { name: /tester/i }));
+    fireEvent.click(screen.getByRole('button', { name: /open user menu/i }));
 
     const userManagementLink = screen.getByRole('link', { name: /user management/i });
     expect(userManagementLink).toHaveAttribute('href', '/users');
@@ -145,8 +145,19 @@ describe('AppLayout sidebar navigation', () => {
   it('does not show User Management anywhere for regular users', () => {
     renderLayout();
 
-    fireEvent.click(screen.getByRole('button', { name: /tester/i }));
+    fireEvent.click(screen.getByRole('button', { name: /open user menu/i }));
 
     expect(screen.queryByRole('link', { name: /user management/i })).not.toBeInTheDocument();
+  });
+
+  it('opens the user menu only via the menu button, not the user row', () => {
+    renderLayout();
+
+    expect(screen.queryByRole('button', { name: /tester/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /sign out/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /open user menu/i }));
+
+    expect(screen.getByRole('button', { name: /sign out/i })).toBeInTheDocument();
   });
 });

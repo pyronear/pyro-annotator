@@ -221,10 +221,7 @@ function UserSection() {
 
   return (
     <div className="relative">
-      <button
-        onClick={() => setShowDropdown(!showDropdown)}
-        className="flex items-center w-full text-left hover:bg-gray-50 rounded-lg p-2 transition-colors"
-      >
+      <div className="flex items-center p-2">
         <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
           <User className="h-4 w-4 text-white" />
         </div>
@@ -232,11 +229,17 @@ function UserSection() {
           <p className="text-sm font-medium text-gray-700">{username}</p>
           <p className="text-xs font-medium text-gray-500">Annotator</p>
         </div>
-        <MoreVertical className="h-4 w-4 text-gray-400" aria-hidden="true" />
-      </button>
+        <button
+          onClick={() => setShowDropdown(!showDropdown)}
+          className="p-2 rounded-md text-gray-500 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+        >
+          <span className="sr-only">Open user menu</span>
+          <MoreVertical className="h-5 w-5" aria-hidden="true" />
+        </button>
+      </div>
 
       {showDropdown && (
-        <div className="absolute bottom-full left-0 mb-1 w-full bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5">
+        <div className="absolute bottom-full right-0 mb-1 w-full bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5">
           {isSuperuser() && (
             <Link
               to="/users"
