@@ -6,12 +6,18 @@ import { apiClient } from '@/services/api';
 import { LocalizationQueueItem } from '@/types/api';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
 import { pickNextLocalizeLane } from '@/utils/annotation/localizeUtils';
+import { formatSmokeType, getSmokeTypeEmoji } from '@/utils/modelAccuracy';
 import { localizeDetail } from '@/utils/routes';
 
 // Images the annotator will draw boxes on: each smoke object replays the
 // alert's frames, so two objects x 10 frames is 20 boxes of work.
 function smokeFrames(item: LocalizationQueueItem): number {
   return item.lanes.filter(l => l.has_smoke).reduce((sum, l) => sum + l.total_detections, 0);
+}
+
+// Classify-phase smoke types across the alert's smoke objects, deduped.
+function smokeTypes(item: LocalizationQueueItem): string[] {
+  return [...new Set(item.lanes.filter(l => l.has_smoke).flatMap(l => l.smoke_types))];
 }
 
 export default function DetectionAnnotatePage() {
@@ -100,6 +106,9 @@ export default function DetectionAnnotatePage() {
                   Source
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Smoke type
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Recorded
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -135,6 +144,18 @@ export default function DetectionAnnotatePage() {
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                       {item.source_api}
                     </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex flex-wrap gap-1">
+                      {smokeTypes(item).map(type => (
+                        <span
+                          key={type}
+                          className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800"
+                        >
+                          {getSmokeTypeEmoji(type)} {formatSmokeType(type)}
+                        </span>
+                      ))}
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {new Date(item.recorded_at).toLocaleString()}

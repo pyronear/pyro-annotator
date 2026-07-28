@@ -357,6 +357,7 @@ export default function DetectionSequenceAnnotatePage({
           alert_api_id: s.alert_api_id,
           has_smoke: true,
           processing_stage: 'seq_annotation_done',
+          smoke_types: [],
           total_detections: 0,
           annotated_detections: 0,
           auto_annotated_at: null,

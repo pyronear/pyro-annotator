@@ -35,6 +35,7 @@ export interface LocalizationQueueLane {
   alert_api_id: number;
   has_smoke: boolean;
   processing_stage: string;
+  smoke_types: string[];
   total_detections: number;
   annotated_detections: number;
   auto_annotated_at: string | null;
