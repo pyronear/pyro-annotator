@@ -42,6 +42,13 @@ interface DetectionHeaderProps {
   onSave: () => void;
   saveAnnotations: { isPending: boolean };
 
+  // Localize quick submit
+  isLocalize?: boolean;
+  noBoxCount?: number;
+  quickSubmitPending?: boolean;
+  quickSubmitConfirming?: boolean;
+  onQuickSubmit?: () => void;
+
   // Annotation pills
   getAnnotationPills: () => React.ReactNode[];
 }
@@ -67,6 +74,11 @@ export function DetectionHeader({
   allInVisualCheck,
   onSave,
   saveAnnotations,
+  isLocalize = false,
+  noBoxCount = 0,
+  quickSubmitPending = false,
+  quickSubmitConfirming = false,
+  onQuickSubmit,
   getAnnotationPills,
 }: DetectionHeaderProps) {
   return (
@@ -224,20 +236,45 @@ export function DetectionHeader({
               <span>Show predictions</span>
             </label>
 
-            {allInVisualCheck && (
+            {isLocalize ? (
               <button
-                onClick={onSave}
-                disabled={saveAnnotations.isPending}
-                className="inline-flex items-center px-3 py-1.5 border border-transparent rounded-md shadow-sm text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Submit all detection annotations (Enter) - All flagged as false positive sequences"
+                onClick={e => {
+                  e.stopPropagation();
+                  onQuickSubmit?.();
+                }}
+                disabled={quickSubmitPending}
+                className={`inline-flex items-center px-3 py-1.5 border border-transparent rounded-md shadow-sm text-xs font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed ${
+                  quickSubmitConfirming
+                    ? 'bg-amber-500 hover:bg-amber-600'
+                    : 'bg-primary-600 hover:bg-primary-700'
+                }`}
+                title="Accept predicted boxes for all pending frames and submit the sequence (Enter)"
               >
-                {saveAnnotations.isPending ? (
+                {quickSubmitPending ? (
                   <div className="w-3 h-3 mr-1 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                 ) : (
                   <Upload className="w-3 h-3 mr-1" />
                 )}
-                Submit All
+                {quickSubmitConfirming
+                  ? `${noBoxCount} frame${noBoxCount === 1 ? '' : 's'} with no box — submit anyway?`
+                  : 'Accept & submit'}
               </button>
+            ) : (
+              allInVisualCheck && (
+                <button
+                  onClick={onSave}
+                  disabled={saveAnnotations.isPending}
+                  className="inline-flex items-center px-3 py-1.5 border border-transparent rounded-md shadow-sm text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Submit all detection annotations (Enter) - All flagged as false positive sequences"
+                >
+                  {saveAnnotations.isPending ? (
+                    <div className="w-3 h-3 mr-1 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  ) : (
+                    <Upload className="w-3 h-3 mr-1" />
+                  )}
+                  Submit All
+                </button>
+              )
             )}
           </div>
         </div>
@@ -252,7 +289,7 @@ export function DetectionHeader({
               ) : (
                 <span className="text-orange-600">Pending</span>
               )}{' '}
-              • {annotatedCount} of {totalCount} detections • {completionPercentage}% complete
+              • {annotatedCount} of {totalCount} frames • {completionPercentage}% complete
             </span>
 
             {/* Model Accuracy Context */}
