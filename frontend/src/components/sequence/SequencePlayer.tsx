@@ -420,7 +420,7 @@ export default function SequencePlayer({
 
               {/* Center - Missed Smoke Review */}
               <div className="flex items-center space-x-4 bg-black/40 px-4 py-2 rounded-lg border border-white/20">
-                <span className="text-sm font-medium text-white">Missed smoke?</span>
+                <span className="text-sm font-medium text-white">Did the model miss any smoke?</span>
                 <label className="flex items-center cursor-pointer hover:bg-white/10 px-2 py-1 rounded transition-colors">
                   <input
                     type="radio"
