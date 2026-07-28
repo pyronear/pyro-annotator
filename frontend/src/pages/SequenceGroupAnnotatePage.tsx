@@ -284,7 +284,10 @@ export default function SequenceGroupAnnotatePage() {
 
   return (
     <div className="space-y-6">
-      <div>
+      {/* Sticky so the primary action (validate) stays reachable while
+          scrolling the member grid; negative margins bleed over <main>'s
+          p-6 so cards don't peek around the edges when stuck. */}
+      <div className="sticky top-0 z-30 -mx-6 -mt-6 px-6 pt-6 pb-3 bg-gray-50/95 backdrop-blur-sm shadow-sm">
         <Link to="/sequence-groups" className="text-sm text-gray-500 hover:text-gray-800">
           ← Sequence groups
         </Link>
