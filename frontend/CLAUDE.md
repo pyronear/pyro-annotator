@@ -20,6 +20,7 @@ frontend/src/
 ├── main.tsx                     # Entry point
 ├── components/
 │   ├── annotation/              # Sequence annotation pieces (CroppedImageSequence, FullImageSequence, ImageOverlays, SmokeTypeSelector)
+│   ├── dashboard/               # AttentionBanner, PipelineStrip, PhaseCard, HowItWorks
 │   ├── detection-annotation/    # Detection-level bbox annotation (canvas, toolbar, shortcuts modal, image card, progress header, submission)
 │   ├── detection-sequence/      # DetectionGrid, DetectionHeader, ImageModal
 │   ├── filters/                 # FalsePositiveFilter, ModelAccuracyFilter, SmokeTypeFilter, TabbedFilters, shared/
@@ -30,11 +31,12 @@ frontend/src/
 │   └── ui/                      # ContributorList, NotificationBadge, NotificationSystem, PasswordField, ProgressIndicator
 ├── hooks/
 │   ├── annotation/              # useDrawingCanvas, useKeyboardShortcuts
-│   └── *.ts                     # useAnnotationCounts/Stats, useCameras, useOrganizations, useSourceApis, useSequenceDetections, useDetectionImage, useImagePreloader, usePersistedFilters, usePersistedTabState
+│   └── *.ts                     # useAnnotationCounts, usePipelineStats, useCameras, useOrganizations, useSourceApis, useSequenceDetections, useDetectionImage, useImagePreloader, usePersistedFilters, usePersistedTabState
 ├── pages/
 │   ├── LoginPage.tsx
 │   ├── HomePage.tsx
-│   ├── DashboardPage.tsx
+│   ├── DashboardPage.tsx              # Pipeline dashboard (see docs/specs/2026-07-28-dashboard-taxonomy-redesign-design.md)
+│   ├── GuidePage.tsx                  # Field guide (/guide)
 │   ├── SequencesPage.tsx              # Annotate queue
 │   ├── SequencesPageWrapper.tsx       # Stage-parameterized list (annotated, etc.)
 │   ├── AnnotationInterface.tsx        # Annotate one sequence
@@ -73,6 +75,7 @@ frontend/src/
 | `/detections/review`                                  | `DetectionReviewPage`             |
 | `/detections/:sequenceId/annotate/:detectionId?`      | `DetectionSequenceAnnotatePage`   |
 | `/users`                                              | `UserManagementPage`              |
+| `/guide`                                              | `GuidePage`                       |
 
 ## Development Commands
 
