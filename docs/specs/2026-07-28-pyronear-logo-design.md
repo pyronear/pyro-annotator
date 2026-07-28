@@ -37,16 +37,18 @@ Generate a new `frontend/src/assets/logo.png` with a one-off Python/PIL
 script (script not committed; only the resulting images are):
 
 - 256×256 transparent canvas.
-- Official flame-with-eye mark downscaled to ~170 px (downscaling preserves
+- Official flame-with-eye mark downscaled to 180 px (downscaling preserves
   sharpness of the 200 px source) and centered.
-- Four dark rounded corner brackets drawn around it, matching the current
-  logo's frame style and near-black stroke color (sampled from the current
-  asset).
+- Four dark rounded corner brackets drawn around it (frame inset 16 px,
+  stroke 14 px, corner radius 44 px, 96 px transparent breaks centered on
+  the top and bottom edges), stroke color #2A2A2A — the same stroke color
+  the official mark itself uses.
 
 ### Favicon
 
 - Create `frontend/public/` (Vite default `publicDir`, no config change
-  needed) containing `favicon.png`, a 64×64 rendition of the same composite.
+  needed) containing `favicon.png`, the 256 px composite Lanczos-resized
+  to 64×64.
 - Update `frontend/index.html`: replace the `/vite.svg` icon link with
   `<link rel="icon" type="image/png" href="/favicon.png">`.
 
