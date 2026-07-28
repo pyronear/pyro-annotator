@@ -13,6 +13,7 @@ import {
 import { apiClient } from '@/services/api';
 import { formatRelativeTime } from '@/utils/relativeTime';
 import { SequenceGroupStats } from '@/types/api';
+import { classifyGroup } from '@/utils/routes';
 
 type Filter = 'all' | 'labeled' | 'unlabeled';
 type OrderBy = 'member_count' | 'camera_name' | 'azimuth' | 'created_at';
@@ -227,13 +228,13 @@ export default function SequenceGroupsListPage() {
                     // Leave modified clicks and text selection to the browser;
                     // the camera-name <Link> handles open-in-new-tab.
                     if (e.ctrlKey || e.metaKey || window.getSelection()?.toString()) return;
-                    navigate(`/sequence-groups/${g.id}/annotate`);
+                    navigate(classifyGroup(g.id));
                   }}
                   className="border-t border-gray-100 hover:bg-blue-50 cursor-pointer"
                 >
                   <td className="px-3 py-2.5">
                     <Link
-                      to={`/sequence-groups/${g.id}/annotate`}
+                      to={classifyGroup(g.id)}
                       onClick={e => e.stopPropagation()}
                       className="font-semibold text-gray-900 hover:text-blue-700"
                     >

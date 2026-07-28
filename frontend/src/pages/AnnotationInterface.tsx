@@ -32,8 +32,14 @@ import {
 } from '@/components/sequence-annotation';
 import { NotificationSystem } from '@/components/ui/NotificationSystem';
 import { useToastNotifications } from '@/utils/notification/toastUtils';
+import { ROUTES, classifyDetail, classifyGroup } from '@/utils/routes';
 
-export default function AnnotationInterface() {
+interface AnnotationInterfaceProps {
+  /** 'done' when mounted under /classify/done/:id — entered from the Done list. */
+  mode?: 'done';
+}
+
+export default function AnnotationInterface({ mode }: AnnotationInterfaceProps = {}) {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -49,10 +55,8 @@ export default function AnnotationInterface() {
 
   const sequenceId = id ? parseInt(id) : null;
 
-  // Determine back navigation URL based on source context
-  const searchParams = new URLSearchParams(window.location.search);
-  const fromParam = searchParams.get('from');
-  const backUrl = fromParam === 'review' ? '/sequences/review' : '/sequences/annotate';
+  // Back navigation target follows the route provenance (queue vs done list)
+  const backUrl = mode === 'done' ? ROUTES.CLASSIFY_DONE : ROUTES.CLASSIFY;
 
   const [bboxes, setBboxes] = useState<SequenceBbox[]>([]);
   const [, setCurrentAnnotation] = useState<SequenceAnnotation | null>(null);
@@ -273,7 +277,7 @@ export default function AnnotationInterface() {
             `Moving to sequence ${currentIndex + 2} of ${totalSequences}`,
             'info'
           );
-          navigate(`/sequences/${nextSequence.id}/annotate`);
+          navigate(classifyDetail(nextSequence.id, mode === 'done'));
         } else {
           // No more sequences - workflow complete
           const totalCompleted = annotationWorkflow?.sequences?.length || 1;
@@ -317,14 +321,14 @@ export default function AnnotationInterface() {
   const handlePreviousSequence = () => {
     const prevSequence = navigateToPreviousInWorkflow();
     if (prevSequence) {
-      navigate(`/sequences/${prevSequence.id}/annotate`);
+      navigate(classifyDetail(prevSequence.id, mode === 'done'));
     }
   };
 
   const handleNextSequence = () => {
     const nextSequence = navigateToNextInWorkflow();
     if (nextSequence) {
-      navigate(`/sequences/${nextSequence.id}/annotate`);
+      navigate(classifyDetail(nextSequence.id, mode === 'done'));
     }
   };
 
@@ -378,7 +382,7 @@ export default function AnnotationInterface() {
         isAnnotationComplete={isAnnotationComplete(bboxes, missedSmokeReview)}
         isSaving={saveAnnotation.isPending}
         onUnsureChange={setIsUnsure}
-        fromParam={fromParam}
+        mode={mode}
       />
 
       {/* Content with top padding to account for fixed header */}
@@ -395,7 +399,7 @@ export default function AnnotationInterface() {
               <div className="flex items-center gap-2 shrink-0">
                 {groupConflictWarning.groupId != null && (
                   <Link
-                    to={`/sequence-groups/${groupConflictWarning.groupId}/annotate`}
+                    to={classifyGroup(groupConflictWarning.groupId)}
                     className="text-sm font-medium text-amber-900 underline hover:text-amber-700"
                   >
                     Open group

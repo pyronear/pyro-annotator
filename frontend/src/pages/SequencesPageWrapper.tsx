@@ -18,7 +18,7 @@ export default function SequencesPageWrapper({
   const isReview = defaultProcessingStage === 'annotated';
 
   const [storedStage, setStage] = usePersistedTabState<ReviewStageSelection>(
-    'sequences-review-stage-v2',
+    'classify-done-stage',
     'all_classified'
   );
   // localStorage may hold a stage that no longer exists (e.g. one retired

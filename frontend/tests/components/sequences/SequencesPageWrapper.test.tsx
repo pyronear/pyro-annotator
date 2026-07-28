@@ -32,14 +32,14 @@ describe('SequencesPageWrapper review mode', () => {
     expect(options).toEqual(['all_classified', 'seq_annotation_done', 'annotated']);
   });
 
-  it('narrows to a single stage and persists the choice under the v2 key', () => {
+  it('narrows to a single stage and persists the choice under the classify-done-stage key', () => {
     render(<SequencesPageWrapper defaultProcessingStage="annotated" />);
     fireEvent.change(screen.getByLabelText('Stage:'), {
       target: { value: 'seq_annotation_done' },
     });
     const props = capturedProps.at(-1)!;
     expect(props.defaultProcessingStage).toBe('seq_annotation_done');
-    expect(localStorage.getItem('sequences-review-stage-v2')).toBe('seq_annotation_done');
+    expect(localStorage.getItem('classify-done-stage')).toBe('seq_annotation_done');
   });
 
   it('passes non-review stages straight through', () => {

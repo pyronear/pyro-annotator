@@ -1,0 +1,30 @@
+/**
+ * Frontend route paths for the task taxonomy (Classify / Localize).
+ * Detail pages encode provenance in the path: /classify/:id was entered from
+ * the queue, /classify/done/:id from the Done list (same component, done mode).
+ */
+export const ROUTES = {
+  CLASSIFY: '/classify',
+  CLASSIFY_DONE: '/classify/done',
+  CLASSIFY_GROUPS: '/classify/groups',
+  LOCALIZE: '/localize',
+  LOCALIZE_DONE: '/localize/done',
+} as const;
+
+export function classifyDetail(id: number | string, done = false): string {
+  return done ? `${ROUTES.CLASSIFY_DONE}/${id}` : `${ROUTES.CLASSIFY}/${id}`;
+}
+
+export function classifyGroup(id: number | string): string {
+  return `${ROUTES.CLASSIFY_GROUPS}/${id}`;
+}
+
+export function localizeDetail(
+  sequenceId: number | string,
+  detectionId?: number | string,
+  done = false
+): string {
+  const base = done ? ROUTES.LOCALIZE_DONE : ROUTES.LOCALIZE;
+  const detSegment = detectionId !== undefined ? `/${detectionId}` : '';
+  return `${base}/${sequenceId}${detSegment}`;
+}

@@ -65,17 +65,29 @@ frontend/src/
 
 ## Routes (declared in `App.tsx`)
 
-| Path                                                  | Component                         |
-| ----------------------------------------------------- | --------------------------------- |
-| `/login`                                              | `LoginPage`                       |
-| `/sequences/annotate`                                 | `SequencesPage`                   |
-| `/sequences/review`                                   | `SequencesPageWrapper`            |
-| `/sequences/:id/annotate`                             | `AnnotationInterface`             |
-| `/detections/annotate`                                | `DetectionAnnotatePage` (alert-grouped Localize queue) |
-| `/detections/review`                                  | `DetectionReviewPage` (verification, smoke lanes only) |
-| `/detections/:sequenceId/annotate/:detectionId?`      | `DetectionSequenceAnnotatePage`   |
-| `/users`                                              | `UserManagementPage`              |
-| `/guide`                                              | `GuidePage`                       |
+Path constants and builders live in `src/utils/routes.ts`. Detail pages encode
+provenance in the path: `/classify/:id` was entered from the queue,
+`/classify/done/:id` from the Done list (same component, `mode="done"`).
+
+| Path                                       | Component                         |
+| ------------------------------------------ | --------------------------------- |
+| `/login`                                   | `LoginPage`                       |
+| `/`                                        | `DashboardPage`                   |
+| `/classify`                                | `SequencesPage` (classify queue)  |
+| `/classify/done`                           | `SequencesPageWrapper`            |
+| `/classify/:id`                            | `AnnotationInterface`             |
+| `/classify/done/:id`                       | `AnnotationInterface` (done mode) |
+| `/classify/groups`                         | `SequenceGroupsListPage`          |
+| `/classify/groups/:id`                     | `SequenceGroupAnnotatePage`       |
+| `/localize`                                | `DetectionAnnotatePage` (alert-grouped Localize queue) |
+| `/localize/done`                           | `DetectionReviewPage` (verification, smoke lanes only) |
+| `/localize/:sequenceId/:detectionId?`      | `DetectionSequenceAnnotatePage`   |
+| `/localize/done/:sequenceId/:detectionId?` | `DetectionSequenceAnnotatePage` (done mode) |
+| `/users`                                   | `UserManagementPage`              |
+| `/guide`                                   | `GuidePage`                       |
+
+Old entity-named routes (`/sequences/*`, `/detections/*`, `/sequence-groups*`)
+redirect permanently — see `src/components/routing/legacyRedirects.tsx`.
 
 ## Development Commands
 
