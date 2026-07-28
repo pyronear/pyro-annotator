@@ -95,11 +95,9 @@ describe('DetectionGrid', () => {
     it('should render grid container with correct classes', () => {
       const { container } = render(<DetectionGrid {...defaultProps} />);
       
-      const gridContainer = container.querySelector('.pt-20');
-      expect(gridContainer).toBeInTheDocument();
-
-      const gridLayout = container.querySelector('.grid.grid-cols-2.md\\:grid-cols-3.lg\\:grid-cols-4.gap-px');
+      const gridLayout = container.querySelector('.grid.gap-px') as HTMLElement;
       expect(gridLayout).toBeInTheDocument();
+      expect(gridLayout.style.gridTemplateColumns).toContain('340px');
     });
 
     it('should render all detections as cards', () => {
@@ -118,15 +116,13 @@ describe('DetectionGrid', () => {
       expect(screen.getByText(/Detection 3 - 0.65/)).toBeInTheDocument();
     });
 
-    it('should apply responsive grid classes', () => {
-      const { container } = render(<DetectionGrid {...defaultProps} />);
-      
-      const gridElement = container.querySelector('.grid');
-      expect(gridElement).toHaveClass(
-        'grid-cols-2',    // Mobile: 2 columns
-        'md:grid-cols-3', // Medium: 3 columns
-        'lg:grid-cols-4', // Large: 4 columns
-        'gap-px'          // Dense: 1px gap
+    it('should size columns from the cardMinWidth prop', () => {
+      const { container } = render(<DetectionGrid {...defaultProps} cardMinWidth={500} />);
+
+      const gridElement = container.querySelector('.grid') as HTMLElement;
+      expect(gridElement).toHaveClass('gap-px');
+      expect(gridElement.style.gridTemplateColumns).toBe(
+        'repeat(auto-fill, minmax(min(500px, 100%), 1fr))'
       );
     });
 

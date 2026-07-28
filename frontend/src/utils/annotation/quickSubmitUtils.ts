@@ -5,7 +5,13 @@
  * every box accepted) so what the grid shows is what submit records.
  */
 
-import { Detection, DetectionAnnotation, DetectionAnnotationBbox, SmokeType } from '@/types/api';
+import {
+  BoundingBox,
+  Detection,
+  DetectionAnnotation,
+  DetectionAnnotationBbox,
+  SmokeType,
+} from '@/types/api';
 import { getWinningModelLayer } from './referenceLayerUtils';
 import { materializeReviewAnnotation } from './reviewUtils';
 
@@ -52,6 +58,32 @@ export function getCellState(
 ): CellState {
   if (annotation?.processing_stage === 'annotated') return 'done';
   return getWinningBoxes(detection).boxes.length > 0 ? 'auto' : 'no-box';
+}
+
+/**
+ * The lane's committal boxes across all frames, in CroppedImageSequence's
+ * input shape: committed smoke boxes for done frames, winning-layer boxes
+ * for pending frames, nothing for no-box frames.
+ */
+export function collectLaneBoxes(
+  detections: Detection[],
+  annotations: Map<number, DetectionAnnotation>
+): BoundingBox[] {
+  const out: BoundingBox[] = [];
+  for (const detection of detections) {
+    const existing = annotations.get(detection.id);
+    const state = getCellState(detection, existing);
+    const boxes =
+      state === 'done'
+        ? (existing?.annotation?.annotation ?? []).filter(item => item.false_positive_type == null)
+        : state === 'auto'
+          ? getWinningBoxes(detection).boxes
+          : [];
+    for (const box of boxes) {
+      out.push({ detection_id: detection.id, xyxyn: box.xyxyn as BoundingBox['xyxyn'] });
+    }
+  }
+  return out;
 }
 
 export interface QuickSubmitPayload {

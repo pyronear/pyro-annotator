@@ -52,6 +52,7 @@ export {
   getWinningBoxes,
   buildQuickSubmitPlan,
   getIsAnnotated,
+  collectLaneBoxes,
 } from './quickSubmitUtils';
 export type { CellState, QuickSubmitPlan, QuickSubmitPayload } from './quickSubmitUtils';
 export { computeCellCrop } from './gridCropUtils';

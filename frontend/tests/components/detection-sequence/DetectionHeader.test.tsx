@@ -482,6 +482,32 @@ describe('DetectionHeader', () => {
       expect(screen.queryByLabelText('Crop')).toBeNull();
     });
 
+    it('card size control fires onCardSizeChange', () => {
+      const onCardSizeChange = vi.fn();
+      render(
+        <DetectionHeader {...defaultProps} cardSize="md" onCardSizeChange={onCardSizeChange} />
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'L' }));
+      expect(onCardSizeChange).toHaveBeenCalledWith('lg');
+    });
+
+    it('cropped view toggle appears in localize and fires', () => {
+      const onToggleCroppedView = vi.fn();
+      render(
+        <DetectionHeader
+          {...defaultProps}
+          isLocalize
+          onQuickSubmit={() => {}}
+          showCroppedView={false}
+          onToggleCroppedView={onToggleCroppedView}
+        />
+      );
+
+      fireEvent.click(screen.getByLabelText('Cropped view'));
+      expect(onToggleCroppedView).toHaveBeenCalledWith(true);
+    });
+
     it('hides the legacy Submit All even when allInVisualCheck', () => {
       render(
         <DetectionHeader {...defaultProps} isLocalize allInVisualCheck onQuickSubmit={() => {}} />

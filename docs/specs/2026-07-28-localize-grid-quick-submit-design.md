@@ -149,6 +149,15 @@ the no-box frame count — unit-testable in isolation.
 - **Hover timestamp** (all contexts of this page): the cell shows
   `recorded_at` in a small bottom-left label on hover, replacing the
   removed footer metadata.
+- **Cropped view flipbook** (localize; header toggle, default off): the
+  animated `CroppedImageSequence` from the sequence-annotation page,
+  rendered centered above the grid and fed by `collectLaneBoxes`
+  (committed smoke boxes for done frames, winning-layer boxes for pending
+  frames).
+- **Card size S/M/L** (all contexts; segmented control in the header,
+  persisted as `detectionAnnotateCardSize`): drives the grid's
+  `repeat(auto-fill, minmax(min(Npx, 100%), 1fr))` template — mirrors the
+  group-annotate page's pattern; widths sm 240 / md 340 / lg 500.
 
 ### 8. Copy rename
 

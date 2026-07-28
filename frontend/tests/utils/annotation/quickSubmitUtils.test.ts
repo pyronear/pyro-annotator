@@ -3,6 +3,7 @@ import {
   getCellState,
   getIsAnnotated,
   buildQuickSubmitPlan,
+  collectLaneBoxes,
 } from '@/utils/annotation/quickSubmitUtils';
 import type { Detection, DetectionAnnotation } from '@/types/api';
 
@@ -79,6 +80,35 @@ describe('getIsAnnotated', () => {
   it('other contexts: still always editable (false)', () => {
     expect(getIsAnnotated(makeAnnotation(1, 'annotated'), null)).toBe(false);
     expect(getIsAnnotated(makeAnnotation(1, 'annotated'), 'something-else')).toBe(false);
+  });
+});
+
+describe('collectLaneBoxes', () => {
+  it('uses committed boxes for done frames, winning boxes for pending, skips no-box and FP items', () => {
+    const fpItem = {
+      xyxyn: [0.6, 0.6, 0.7, 0.7],
+      class_name: 'smoke',
+      false_positive_type: 'antenna',
+      origin: 'human',
+    } as unknown as DetectionAnnotation['annotation']['annotation'][number];
+    const committedItem = {
+      xyxyn: [0.3, 0.3, 0.4, 0.4],
+      class_name: 'smoke',
+      smoke_type: 'wildfire',
+      origin: 'human',
+    } as unknown as DetectionAnnotation['annotation']['annotation'][number];
+
+    const dDone = makeDetection(1, { auto: [box()] });
+    const dPending = makeDetection(2, { auto: [box(0.2, 0.2, 0.4, 0.4)] });
+    const dEmpty = makeDetection(3, { auto: [], engine: [] });
+    const annotations = new Map([[1, makeAnnotation(1, 'annotated', [committedItem, fpItem])]]);
+
+    const result = collectLaneBoxes([dDone, dPending, dEmpty], annotations);
+
+    expect(result).toEqual([
+      { detection_id: 1, xyxyn: [0.3, 0.3, 0.4, 0.4] },
+      { detection_id: 2, xyxyn: [0.2, 0.2, 0.4, 0.4] },
+    ]);
   });
 });
 

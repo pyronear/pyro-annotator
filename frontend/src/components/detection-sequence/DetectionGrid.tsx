@@ -17,6 +17,8 @@ interface DetectionGridProps {
   smokeType?: SmokeType;
   /** Localize context: zoom cells around their displayed boxes. */
   cropMode?: boolean;
+  /** Minimum card width driving the auto-fill column count. */
+  cardMinWidth?: number;
 }
 
 export function DetectionGrid({
@@ -29,25 +31,28 @@ export function DetectionGrid({
   getCellState,
   smokeType,
   cropMode = false,
+  cardMinWidth = 340,
 }: DetectionGridProps) {
   return (
-    <div className="pt-20">
-      {/* Detection Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-px">
-        {detections.map((detection, index) => (
-          <DetectionImageCard
-            key={detection.id}
-            detection={detection}
-            onClick={() => onDetectionClick(index)}
-            isAnnotated={getIsAnnotated(detectionAnnotations.get(detection.id), fromParam)}
-            showPredictions={showPredictions}
-            userAnnotation={detectionAnnotations.get(detection.id) || null}
-            cellState={getCellState ? getCellState(detection) : null}
-            smokeType={smokeType}
-            cropMode={cropMode}
-          />
-        ))}
-      </div>
+    <div
+      className="grid gap-px"
+      style={{
+        gridTemplateColumns: `repeat(auto-fill, minmax(min(${cardMinWidth}px, 100%), 1fr))`,
+      }}
+    >
+      {detections.map((detection, index) => (
+        <DetectionImageCard
+          key={detection.id}
+          detection={detection}
+          onClick={() => onDetectionClick(index)}
+          isAnnotated={getIsAnnotated(detectionAnnotations.get(detection.id), fromParam)}
+          showPredictions={showPredictions}
+          userAnnotation={detectionAnnotations.get(detection.id) || null}
+          cellState={getCellState ? getCellState(detection) : null}
+          smokeType={smokeType}
+          cropMode={cropMode}
+        />
+      ))}
     </div>
   );
 }

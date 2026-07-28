@@ -25,12 +25,18 @@ import { createDefaultFilterState } from '@/hooks/usePersistedFilters';
 import {
   buildQuickSubmitPlan,
   calculateAnnotationCompleteness,
+  collectLaneBoxes,
   getCellState,
   getIsAnnotated,
   sequenceSmokeType,
 } from '@/utils/annotation';
 import { pickNextLocalizeLane } from '@/utils/annotation/localizeUtils';
 import { ImageModal, DetectionGrid, DetectionHeader } from '@/components/detection-sequence';
+import type { CardSize } from '@/components/detection-sequence/DetectionHeader';
+import CroppedImageSequence from '@/components/annotation/CroppedImageSequence';
+import { usePersistedTabState } from '@/hooks/usePersistedTabState';
+
+const CARD_MIN_WIDTH: Record<CardSize, number> = { sm: 240, md: 340, lg: 500 };
 
 export default function DetectionSequenceAnnotatePage() {
   const { sequenceId, detectionId } = useParams<{ sequenceId: string; detectionId?: string }>();
@@ -160,6 +166,11 @@ export default function DetectionSequenceAnnotatePage() {
   const [quickSubmitConfirming, setQuickSubmitConfirming] = useState(false);
   // Crop mode: zoom each cell around its boxes for the glance-check.
   const [cropMode, setCropMode] = useState(false);
+  // Animated cropped flipbook of the lane's boxes (localize).
+  const [showCroppedView, setShowCroppedView] = useState(false);
+  // Card size (S/M/L) driving the grid's auto-fill column width.
+  const [cardSize, setCardSize] = usePersistedTabState<CardSize>('detectionAnnotateCardSize', 'md');
+  const cardMinWidth = CARD_MIN_WIDTH[cardSize] ?? CARD_MIN_WIDTH.md;
 
   const laneSmokeType = sequenceSmokeType(sequenceAnnotation);
   const quickSubmitPlan = useMemo(
@@ -168,6 +179,12 @@ export default function DetectionSequenceAnnotatePage() {
         ? buildQuickSubmitPlan(detections, detectionAnnotations, laneSmokeType)
         : null,
     [isLocalize, detections, detectionAnnotations, laneSmokeType]
+  );
+
+  // The lane's boxes across all frames, feeding the cropped flipbook view.
+  const laneBoxes = useMemo(
+    () => (isLocalize && detections ? collectLaneBoxes(detections, detectionAnnotations) : []),
+    [isLocalize, detections, detectionAnnotations]
   );
 
   // Fetch all sequences for navigation using filters from the source page
@@ -1023,25 +1040,38 @@ export default function DetectionSequenceAnnotatePage() {
         onQuickSubmit={handleQuickSubmit}
         cropMode={cropMode}
         onToggleCropMode={setCropMode}
+        showCroppedView={showCroppedView}
+        onToggleCroppedView={setShowCroppedView}
+        cardSize={cardSize}
+        onCardSizeChange={setCardSize}
         getAnnotationPills={getAnnotationPills}
       />
 
-      <DetectionGrid
-        detections={detections}
-        onDetectionClick={openModal}
-        showPredictions={showPredictions}
-        detectionAnnotations={detectionAnnotations}
-        fromParam={fromParam}
-        getIsAnnotated={getIsAnnotated}
-        getCellState={
-          isLocalize
-            ? (detection: Detection) =>
-                getCellState(detection, detectionAnnotations.get(detection.id))
-            : undefined
-        }
-        smokeType={laneSmokeType}
-        cropMode={isLocalize && cropMode}
-      />
+      <div className="pt-20 space-y-4">
+        {isLocalize && showCroppedView && laneBoxes.length > 0 && sequenceIdNum && (
+          <div className="flex justify-center">
+            <CroppedImageSequence bboxes={laneBoxes} sequenceId={sequenceIdNum} />
+          </div>
+        )}
+
+        <DetectionGrid
+          detections={detections}
+          onDetectionClick={openModal}
+          showPredictions={showPredictions}
+          detectionAnnotations={detectionAnnotations}
+          fromParam={fromParam}
+          getIsAnnotated={getIsAnnotated}
+          getCellState={
+            isLocalize
+              ? (detection: Detection) =>
+                  getCellState(detection, detectionAnnotations.get(detection.id))
+              : undefined
+          }
+          smokeType={laneSmokeType}
+          cropMode={isLocalize && cropMode}
+          cardMinWidth={cardMinWidth}
+        />
+      </div>
 
       {/* Image Modal */}
       {showModal && selectedDetectionIndex !== null && detections[selectedDetectionIndex] && (

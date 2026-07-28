@@ -9,6 +9,14 @@ import {
 import { Sequence, SequenceAnnotation } from '@/types/api';
 import { analyzeSequenceAccuracy, getModelAccuracyBadgeClasses } from '@/utils/modelAccuracy';
 
+export type CardSize = 'sm' | 'md' | 'lg';
+
+const CARD_SIZES: { value: CardSize; label: string; title: string }[] = [
+  { value: 'sm', label: 'S', title: 'Small cards' },
+  { value: 'md', label: 'M', title: 'Medium cards' },
+  { value: 'lg', label: 'L', title: 'Large cards' },
+];
+
 interface DetectionHeaderProps {
   // Sequence data
   sequence?: Sequence;
@@ -53,6 +61,14 @@ interface DetectionHeaderProps {
   cropMode?: boolean;
   onToggleCropMode?: (crop: boolean) => void;
 
+  // Localize cropped flipbook view
+  showCroppedView?: boolean;
+  onToggleCroppedView?: (show: boolean) => void;
+
+  // Card size (S/M/L)
+  cardSize?: CardSize;
+  onCardSizeChange?: (size: CardSize) => void;
+
   // Annotation pills
   getAnnotationPills: () => React.ReactNode[];
 }
@@ -85,6 +101,10 @@ export function DetectionHeader({
   onQuickSubmit,
   cropMode = false,
   onToggleCropMode,
+  showCroppedView = false,
+  onToggleCroppedView,
+  cardSize = 'md',
+  onCardSizeChange,
   getAnnotationPills,
 }: DetectionHeaderProps) {
   return (
@@ -231,6 +251,28 @@ export function DetectionHeader({
               </>
             )}
 
+            {/* Card size (S/M/L) */}
+            {onCardSizeChange && (
+              <div className="inline-flex rounded-md bg-gray-200 p-0.5 gap-0.5">
+                {CARD_SIZES.map(s => (
+                  <button
+                    key={s.value}
+                    type="button"
+                    title={s.title}
+                    aria-pressed={cardSize === s.value}
+                    onClick={() => onCardSizeChange(s.value)}
+                    className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                      cardSize === s.value
+                        ? 'bg-white text-gray-900 shadow-sm'
+                        : 'text-gray-500 hover:text-gray-900'
+                    }`}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {/* Predictions Toggle */}
             <label className="flex items-center space-x-2 px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 cursor-pointer">
               <input
@@ -255,6 +297,22 @@ export function DetectionHeader({
                   className="w-3 h-3 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
                 />
                 <span>Crop</span>
+              </label>
+            )}
+
+            {/* Cropped flipbook toggle (localize) */}
+            {isLocalize && (
+              <label
+                className="flex items-center space-x-2 px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 cursor-pointer"
+                title="Show the animated cropped view of the lane's boxes"
+              >
+                <input
+                  type="checkbox"
+                  checked={showCroppedView}
+                  onChange={e => onToggleCroppedView?.(e.target.checked)}
+                  className="w-3 h-3 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                />
+                <span>Cropped view</span>
               </label>
             )}
 
