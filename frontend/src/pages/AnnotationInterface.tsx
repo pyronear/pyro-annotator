@@ -32,7 +32,7 @@ import {
 } from '@/components/sequence-annotation';
 import { NotificationSystem } from '@/components/ui/NotificationSystem';
 import { useToastNotifications } from '@/utils/notification/toastUtils';
-import { ROUTES } from '@/utils/routes';
+import { ROUTES, classifyDetail, classifyGroup } from '@/utils/routes';
 
 interface AnnotationInterfaceProps {
   /** 'done' when mounted under /classify/done/:id — entered from the Done list. */
@@ -277,7 +277,7 @@ export default function AnnotationInterface({ mode }: AnnotationInterfaceProps =
             `Moving to sequence ${currentIndex + 2} of ${totalSequences}`,
             'info'
           );
-          navigate(`/sequences/${nextSequence.id}/annotate`);
+          navigate(classifyDetail(nextSequence.id, mode === 'done'));
         } else {
           // No more sequences - workflow complete
           const totalCompleted = annotationWorkflow?.sequences?.length || 1;
@@ -321,14 +321,14 @@ export default function AnnotationInterface({ mode }: AnnotationInterfaceProps =
   const handlePreviousSequence = () => {
     const prevSequence = navigateToPreviousInWorkflow();
     if (prevSequence) {
-      navigate(`/sequences/${prevSequence.id}/annotate`);
+      navigate(classifyDetail(prevSequence.id, mode === 'done'));
     }
   };
 
   const handleNextSequence = () => {
     const nextSequence = navigateToNextInWorkflow();
     if (nextSequence) {
-      navigate(`/sequences/${nextSequence.id}/annotate`);
+      navigate(classifyDetail(nextSequence.id, mode === 'done'));
     }
   };
 
@@ -399,7 +399,7 @@ export default function AnnotationInterface({ mode }: AnnotationInterfaceProps =
               <div className="flex items-center gap-2 shrink-0">
                 {groupConflictWarning.groupId != null && (
                   <Link
-                    to={`/sequence-groups/${groupConflictWarning.groupId}/annotate`}
+                    to={classifyGroup(groupConflictWarning.groupId)}
                     className="text-sm font-medium text-amber-900 underline hover:text-amber-700"
                   >
                     Open group

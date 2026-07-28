@@ -24,6 +24,7 @@ import { useSourceApis } from '@/hooks/useSourceApis';
 import { usePersistedFilters, createDefaultFilterState } from '@/hooks/usePersistedFilters';
 import { calculatePresetDateRange } from '@/components/filters/shared/dateRangeUtils';
 import { hasActiveUserFilters } from '@/utils/filterHelpers';
+import { classifyDetail } from '@/utils/routes';
 
 interface SequencesPageProps {
   defaultProcessingStage?: ProcessingStageStatus;
@@ -39,8 +40,8 @@ export default function SequencesPage({
   const navigate = useNavigate();
   const { startAnnotationWorkflow } = useSequenceStore();
 
-  // Storage key separates review vs annotate filters; review filters are shared across stages.
-  const storageKey = isReviewPage ? 'filters-sequences-review' : 'filters-sequences-annotate';
+  // Storage key separates done vs queue filters; done filters are shared across stages.
+  const storageKey = isReviewPage ? 'filters-classify-done' : 'filters-classify';
 
   // Use persisted filters hook
   const {
@@ -174,9 +175,8 @@ export default function SequencesPage({
       startAnnotationWorkflow(sequences.items, clickedSequence.id, apiFilters);
     }
 
-    // Navigate to annotation interface with context about source page
-    const queryParam = isReviewPage ? '?from=review' : '';
-    navigate(`/sequences/${clickedSequence.id}/annotate${queryParam}`);
+    // Navigate to the annotation interface; provenance is in the path
+    navigate(classifyDetail(clickedSequence.id, isReviewPage));
   };
 
   if (isLoading) {
