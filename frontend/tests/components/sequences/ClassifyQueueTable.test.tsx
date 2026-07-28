@@ -1,6 +1,6 @@
 /**
- * Tests for ClassifyQueueTable: column rendering, prediction pill,
- * relative time, and row click handling.
+ * Tests for ClassifyQueueTable: column rendering, platform annotation pill,
+ * absolute timestamps, and row click handling.
  */
 
 import React from 'react';
@@ -91,6 +91,17 @@ describe('ClassifyQueueTable', () => {
     expect(screen.getByText('🔥 Wildfire')).toBeInTheDocument();
     expect(screen.getByText('💨 Other Smoke')).toBeInTheDocument();
     expect(screen.getByText('○ Other')).toBeInTheDocument();
+  });
+
+  it('renders 0° when azimuth is zero', () => {
+    render(
+      <ClassifyQueueTable
+        sequences={[createSequence({ azimuth: 0 })]}
+        onSequenceClick={onSequenceClick}
+      />
+    );
+
+    expect(screen.getByText('0°')).toBeInTheDocument();
   });
 
   it('leaves the azimuth cell empty when azimuth is null', () => {

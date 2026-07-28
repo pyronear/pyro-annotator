@@ -14,20 +14,6 @@ vi.mock('@/components/DetectionImageThumbnail', () => ({
   ),
 }));
 
-vi.mock('@/utils/modelAccuracy', () => ({
-  analyzeSequenceAccuracy: vi.fn(() => ({
-    label: 'High Accuracy',
-    type: 'high_accuracy',
-    accuracy: 0.95,
-  })),
-  getRowBackgroundClasses: vi.fn(() => 'bg-green-50 hover:bg-green-100'),
-  parseFalsePositiveTypes: vi.fn((types: string) => (types ? types.split(',') : [])),
-  getFalsePositiveEmoji: vi.fn(() => '📡'),
-  formatFalsePositiveType: vi.fn((type: string) => (type === 'antenna' ? 'Antenna' : type)),
-  getSmokeTypeEmoji: vi.fn(() => '🔥'),
-  formatSmokeType: vi.fn((type: string) => (type === 'wildfire' ? 'Wildfire' : type)),
-}));
-
 const createAnnotation = (overrides: Partial<SequenceAnnotation> = {}): SequenceAnnotation => ({
   id: 1,
   sequence_id: 1,
@@ -117,7 +103,7 @@ describe('ClassifyDoneTable', () => {
             annotation: createAnnotation({
               has_smoke: false,
               smoke_types: [],
-              false_positive_types: 'antenna',
+              false_positive_types: '["antenna"]',
             }),
           }),
         ]}
@@ -140,10 +126,25 @@ describe('ClassifyDoneTable', () => {
     expect(screen.getByText('Camera-01').closest('tr')).toHaveClass('bg-amber-50');
   });
 
-  it('applies accuracy row background classes when not unsure', () => {
+  it('applies true-positive row background when the human confirmed smoke', () => {
     render(<ClassifyDoneTable sequences={[createSequence()]} onSequenceClick={onSequenceClick} />);
 
     expect(screen.getByText('Camera-01').closest('tr')).toHaveClass('bg-green-50');
+  });
+
+  it('applies false-positive row background when the human found no smoke', () => {
+    render(
+      <ClassifyDoneTable
+        sequences={[
+          createSequence({
+            annotation: createAnnotation({ has_smoke: false, smoke_types: [] }),
+          }),
+        ]}
+        onSequenceClick={onSequenceClick}
+      />
+    );
+
+    expect(screen.getByText('Camera-01').closest('tr')).toHaveClass('bg-red-50');
   });
 
   it('renders a plain row and empty Result cell when annotation is missing', () => {

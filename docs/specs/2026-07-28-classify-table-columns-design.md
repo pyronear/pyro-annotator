@@ -35,7 +35,7 @@ Real `<table>`, one row per sequence, ~48px rows. Columns:
 | Organisation | `organisation_name` |
 | Recorded | Absolute date+time (`toLocaleString()`) |
 | Platform annotation | Alert-platform annotation pill from `is_wildfire_alertapi` (🔥 Wildfire / 💨 Other Smoke / ○ Other) |
-| Source API | Blue source pill |
+| Source | Blue `source_api` pill |
 | Azimuth | `{azimuth}°`, empty when null |
 
 No stage pill (queue is single-stage). Plain `hover:bg-gray-50` rows.
@@ -78,7 +78,7 @@ and the `/localize` pages (including their near-duplicate
 ## Testing
 
 - Component tests for both tables: correct columns per view, Result pills and
-  unsure badge on Done, relative vs absolute Recorded formatting, row-click
-  navigation callback.
+  unsure badge on Done, absolute Recorded formatting, row-click navigation
+  callback.
 - Update any existing tests that assert on the card-list markup.
 - Baseline: 742 tests passing before the change; full suite must pass after.
