@@ -33,6 +33,6 @@ describe('getStageFilterLabel', () => {
   });
 
   it('falls back to the single-stage label', () => {
-    expect(getStageFilterLabel('seq_annotation_done')).toBe('Seq annotation done');
+    expect(getStageFilterLabel('seq_annotation_done')).toBe('Awaiting localization');
   });
 });

@@ -225,7 +225,11 @@ export default function SequencesPage({
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Sequences</h1>
-            <p className="text-gray-600">Manage and annotate wildfire detection sequences</p>
+            <p className="text-gray-600">
+              {isReviewPage
+                ? 'Browse classified sequences and review past decisions'
+                : 'Manage and annotate wildfire detection sequences'}
+            </p>
           </div>
           {stageSelector}
         </div>
@@ -302,7 +306,11 @@ export default function SequencesPage({
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Sequences</h1>
-          <p className="text-gray-600">Manage and annotate wildfire detection sequences</p>
+          <p className="text-gray-600">
+            {isReviewPage
+              ? 'Browse classified sequences and review past decisions'
+              : 'Manage and annotate wildfire detection sequences'}
+          </p>
         </div>
         {stageSelector}
       </div>

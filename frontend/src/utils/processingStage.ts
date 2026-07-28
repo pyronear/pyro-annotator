@@ -161,7 +161,7 @@ export function filterSequencesByProcessingStage(
  * // Returns: 'No annotation'
  *
  * const label3 = getProcessingStageLabel('annotated');
- * // Returns: 'Annotated'
+ * // Returns: 'Fully annotated'
  * ```
  */
 export function getProcessingStageLabel(status: ProcessingStageStatus | ProcessingStage): string {
@@ -169,8 +169,8 @@ export function getProcessingStageLabel(status: ProcessingStageStatus | Processi
     no_annotation: 'No annotation',
     imported: 'Imported',
     ready_to_annotate: 'Ready to annotate',
-    seq_annotation_done: 'Seq annotation done',
-    annotated: 'Annotated',
+    seq_annotation_done: 'Awaiting localization',
+    annotated: 'Fully annotated',
   };
 
   return labels[status as ProcessingStageStatus] || labels['no_annotation'];
