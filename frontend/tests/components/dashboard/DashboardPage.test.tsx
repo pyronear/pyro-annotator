@@ -11,6 +11,7 @@ vi.mock('@/hooks/usePipelineStats', () => ({
     complete: 418,
     completePct: 80,
     attention: 4,
+    groupsToLabel: 12,
     isLoading: false,
     error: null,
   }),
@@ -29,5 +30,9 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Classify sequences')).toBeInTheDocument();
     expect(screen.getByText('Localize smoke')).toBeInTheDocument();
     expect(screen.getByText('How annotation works')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Classify by group/ })).toHaveAttribute(
+      'href',
+      '/sequence-groups'
+    );
   });
 });

@@ -7,6 +7,7 @@ vi.mock('@/services/api', () => ({
   apiClient: {
     getSequences: vi.fn(),
     getSequenceAnnotations: vi.fn(),
+    getSequenceGroupStats: vi.fn(),
   },
 }));
 
@@ -44,6 +45,13 @@ describe('usePipelineStats', () => {
           page(stageTotals[String(params?.processing_stage)] ?? 0)
         )) as unknown as typeof apiClient.getSequenceAnnotations
     );
+    vi.mocked(apiClient.getSequenceGroupStats).mockResolvedValue({
+      total: 40,
+      validated: 20,
+      unvalidated: 20,
+      labeled: 28,
+      unlabeled: 12,
+    });
   });
 
   it('derives pipeline stats from the seven count queries', async () => {
@@ -55,6 +63,7 @@ describe('usePipelineStats', () => {
     expect(result.current.completePct).toBe(80);
     expect(result.current.attention).toBe(4);
     expect(result.current.total).toBe(522);
+    expect(result.current.groupsToLabel).toBe(12);
     expect(result.current.error).toBeNull();
   });
 });

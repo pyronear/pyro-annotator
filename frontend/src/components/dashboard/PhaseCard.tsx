@@ -14,6 +14,8 @@ export interface PhaseCardProps {
   reviewLabel: string;
   reviewTo: string;
   isLoading: boolean;
+  /** Optional alternate entry point (e.g. group labeling); hidden when count is 0. */
+  secondaryLink?: { label: string; to: string; count: number };
 }
 
 const TONE = {
@@ -35,6 +37,7 @@ export default function PhaseCard({
   reviewLabel,
   reviewTo,
   isLoading,
+  secondaryLink,
 }: PhaseCardProps) {
   const t = TONE[tone];
   const total = todo + done;
@@ -70,6 +73,15 @@ export default function PhaseCard({
       >
         {ctaLabel}
       </Link>
+      {secondaryLink && secondaryLink.count > 0 && (
+        <Link
+          to={secondaryLink.to}
+          className="mt-2.5 block text-center font-body text-[12.5px] text-haze hover:text-char"
+        >
+          {secondaryLink.label} ·{' '}
+          <span className="font-semibold text-char">{secondaryLink.count.toLocaleString()}</span> →
+        </Link>
+      )}
       <Link
         to={reviewTo}
         className="mt-2.5 block text-center font-body text-[12.5px] text-haze hover:text-char"

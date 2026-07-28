@@ -49,6 +49,11 @@ export default function DashboardPage() {
           reviewLabel="Review classified"
           reviewTo="/sequences/review"
           isLoading={stats.isLoading}
+          secondaryLink={{
+            label: 'Classify by group',
+            to: '/sequence-groups',
+            count: stats.groupsToLabel,
+          }}
         />
         <PhaseCard
           pass="02"

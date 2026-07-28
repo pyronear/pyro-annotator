@@ -1,4 +1,4 @@
-import { useQueries } from '@tanstack/react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/services/api';
 import { derivePipelineStats, PipelineStats } from '@/utils/pipeline';
 import { ProcessingStage } from '@/types/api';
@@ -14,7 +14,20 @@ const STAGES: ProcessingStage[] = [
   'needs_manual',
 ];
 
-export function usePipelineStats(): PipelineStats & { isLoading: boolean; error: string | null } {
+export function usePipelineStats(): PipelineStats & {
+  groupsToLabel: number;
+  isLoading: boolean;
+  error: string | null;
+} {
+  // Group labeling is a bulk accelerator for the Classify pass (labels fan out
+  // to member sequences), surfaced as a secondary entry on the Classify card.
+  const groupsQuery = useQuery({
+    queryKey: ['pipeline-stats', 'groups-to-label'],
+    queryFn: () => apiClient.getSequenceGroupStats(),
+    staleTime: STALE,
+    gcTime: GC,
+  });
+
   const results = useQueries({
     queries: [
       {
@@ -52,10 +65,11 @@ export function usePipelineStats(): PipelineStats & { isLoading: boolean; error:
     needsManual: needsManual.data?.total ?? 0,
   });
 
-  const firstError = results.find(r => r.error)?.error;
+  const firstError = results.find(r => r.error)?.error ?? groupsQuery.error;
   return {
     ...stats,
-    isLoading: results.some(r => r.isLoading),
+    groupsToLabel: groupsQuery.data?.unlabeled ?? 0,
+    isLoading: results.some(r => r.isLoading) || groupsQuery.isLoading,
     error: firstError ? String(firstError) : null,
   };
 }

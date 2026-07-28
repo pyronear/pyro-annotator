@@ -35,4 +35,29 @@ describe('PhaseCard', () => {
       '/sequences/review'
     );
   });
+
+  it('renders a secondary link when provided and its count is nonzero', () => {
+    render(
+      <PhaseCard
+        {...props}
+        secondaryLink={{ label: 'Classify by group', to: '/sequence-groups', count: 12 }}
+      />,
+      { wrapper: MemoryRouter }
+    );
+    expect(screen.getByRole('link', { name: /Classify by group/ })).toHaveAttribute(
+      'href',
+      '/sequence-groups'
+    );
+  });
+
+  it('hides the secondary link when its count is zero', () => {
+    render(
+      <PhaseCard
+        {...props}
+        secondaryLink={{ label: 'Classify by group', to: '/sequence-groups', count: 0 }}
+      />,
+      { wrapper: MemoryRouter }
+    );
+    expect(screen.queryByRole('link', { name: /Classify by group/ })).not.toBeInTheDocument();
+  });
 });

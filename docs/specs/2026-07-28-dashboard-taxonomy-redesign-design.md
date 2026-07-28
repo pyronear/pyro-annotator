@@ -92,6 +92,10 @@ Page composition, top to bottom — exactly four elements:
      "Start localizing" → `/detections/annotate`
    - Secondary link: "Review classified · N →" → `/sequences/review`;
      "Review localized · N →" → `/detections/review`
+   - Classify card only: "Classify by group · N →" → `/sequence-groups`,
+     shown when unlabeled groups exist. Group labeling fans out to member
+     sequences (`_propagate_to_group_if_validated`), so it is presented as a
+     bulk accelerator for Pass 01, not a pipeline stage.
 5. **"How annotation works" panel**: lede + three color-keyed steps
    (border-left in phase color) + why-line + field guide link:
    - Lede: "Wildfire cameras send detection sequences to the platform. Every
@@ -156,8 +160,9 @@ Counts needed (all `total`-only queries, `size=1`):
 | Complete / Localize done | sequences, `detection_annotation_completion=complete`   |
 | Attention           | sequence annotations, `processing_stage=needs_manual`        |
 | Total sequences     | sequences, no filter                                         |
+| Groups to label     | `getSequenceGroupStats()` → `unlabeled`                      |
 
-This trims `useAnnotationStats` from 11 queries to ~7; `imported` and
+This trims `useAnnotationStats` from 11 queries to ~8; `imported` and
 `under_annotation` queries are dropped. Loading states: skeleton blocks per
 component, as today. Error state: single inline error line in place of the
 strip (reuse existing pattern).
