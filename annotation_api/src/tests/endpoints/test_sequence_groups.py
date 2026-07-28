@@ -95,6 +95,7 @@ async def _seed_group_with_members(
     alert_api_id_start: int,
     camera_name: str = "cam",
     azimuth: int = 0,
+    smoke_type: str | None = None,
 ) -> int:
     """Insert a SequenceGroup with `n_members` member sequences (each with a
     distinct alert_api_id) and return its id."""
@@ -104,15 +105,20 @@ async def _seed_group_with_members(
                 """
                 INSERT INTO sequence_groups
                     (camera_id, azimuth, representative_bbox, is_validated,
-                     created_at)
+                     created_at, smoke_type, labeled_at)
                 VALUES
-                    (1, :azimuth, CAST(:bbox AS jsonb), false, :created_at)
+                    (1, :azimuth, CAST(:bbox AS jsonb), false, :created_at,
+                     :smoke_type, :labeled_at)
                 RETURNING id
                 """
             ).bindparams(
                 bbox='{"xyxyn":[0.1,0.1,0.4,0.4],"confidence":0.9}',
                 created_at=created_at,
                 azimuth=azimuth,
+                smoke_type=smoke_type,
+                # ck_sequence_group_labeled_at_consistency: a labeled group
+                # must carry a labeled_at timestamp.
+                labeled_at=created_at if smoke_type else None,
             )
         )
     ).scalar_one()
@@ -265,6 +271,41 @@ async def test_list_groups_orderable_by_camera_azimuth_created(
     # Invalid field is rejected.
     resp = await authenticated_client.get("/sequence_groups/?order_by=bogus")
     assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_stats_include_labeled_and_unlabeled_counts(
+    authenticated_client: AsyncClient,
+    async_session: AsyncSession,
+):
+    """Stats expose labeled/unlabeled totals over the 3+-member population."""
+    await _seed_group_with_members(
+        async_session,
+        n_members=3,
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        alert_api_id_start=700,
+        smoke_type="wildfire",
+    )
+    await _seed_group_with_members(
+        async_session,
+        n_members=3,
+        created_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
+        alert_api_id_start=800,
+    )
+    # 2-member group: excluded from every stat.
+    await _seed_group_with_members(
+        async_session,
+        n_members=2,
+        created_at=datetime(2026, 1, 3, tzinfo=timezone.utc),
+        alert_api_id_start=900,
+    )
+
+    resp = await authenticated_client.get("/sequence_groups/stats")
+    assert resp.status_code == 200
+    stats = resp.json()
+    assert stats["total"] == 2
+    assert stats["labeled"] == 1
+    assert stats["unlabeled"] == 1
 
 
 def _annotation_payload(*, stage: str, smoke_type: str) -> dict:
@@ -708,7 +749,13 @@ async def test_bulk_annotate_requires_exactly_one_label(
 async def test_stats_empty(authenticated_client: AsyncClient):
     resp = await authenticated_client.get("/sequence_groups/stats")
     assert resp.status_code == 200
-    assert resp.json() == {"total": 0, "validated": 0, "unvalidated": 0}
+    assert resp.json() == {
+        "total": 0,
+        "validated": 0,
+        "unvalidated": 0,
+        "labeled": 0,
+        "unlabeled": 0,
+    }
 
 
 @pytest.mark.asyncio
@@ -744,4 +791,10 @@ async def test_stats_counts_only_groups_with_three_plus_members(
 
     resp = await authenticated_client.get("/sequence_groups/stats")
     assert resp.status_code == 200
-    assert resp.json() == {"total": 2, "validated": 1, "unvalidated": 1}
+    assert resp.json() == {
+        "total": 2,
+        "validated": 1,
+        "unvalidated": 1,
+        "labeled": 0,
+        "unlabeled": 2,
+    }

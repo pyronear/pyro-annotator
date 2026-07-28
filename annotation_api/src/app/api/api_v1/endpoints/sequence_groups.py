@@ -161,13 +161,23 @@ async def get_sequence_group_stats(
             func.count(SequenceGroup.id)
             .filter(SequenceGroup.is_validated.is_(True))
             .label("validated"),
+            func.count(SequenceGroup.id)
+            .filter(
+                (SequenceGroup.smoke_type.is_not(None))
+                | (SequenceGroup.false_positive_type.is_not(None))
+            )
+            .label("labeled"),
         )
         .select_from(SequenceGroup)
         .join(member_count_subq, member_count_subq.c.group_id == SequenceGroup.id)
     )
-    total, validated = (await session.exec(query)).one()
+    total, validated, labeled = (await session.exec(query)).one()
     return SequenceGroupStats(
-        total=total, validated=validated, unvalidated=total - validated
+        total=total,
+        validated=validated,
+        unvalidated=total - validated,
+        labeled=labeled,
+        unlabeled=total - labeled,
     )
 
 
