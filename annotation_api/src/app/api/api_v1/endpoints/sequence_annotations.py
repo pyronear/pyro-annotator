@@ -612,8 +612,8 @@ async def update_sequence_annotation(
 
     # Smoke-localization exit guard (spec: smoke-localization entry point): a
     # smoke lane may only be submitted seq_annotation_done -> annotated once
-    # every detection carries an annotated-stage detection annotation. The
-    # legacy path (in_review -> annotated) and FP lanes are untouched.
+    # every detection carries an annotated-stage detection annotation. FP
+    # lanes are untouched.
     target_has_smoke = (
         derive_has_smoke(payload.annotation)
         if payload.annotation is not None
@@ -749,17 +749,12 @@ async def delete_sequence_annotation(
 
 
 # Stages past which we don't overwrite an annotation in bulk-annotate
-# (or via group propagation). UNDER_ANNOTATION is included to avoid
-# clobbering work an annotator is actively editing; SEQ_ANNOTATION_DONE+
-# is reviewed labelled work. Mirrored on the frontend by the
-# ANNOTATED_STAGES set in
+# (or via group propagation): SEQ_ANNOTATION_DONE+ is labelled work.
+# Mirrored on the frontend by the ANNOTATED_STAGES set in
 # frontend/src/pages/SequenceGroupAnnotatePage.tsx — keep both in sync
 # when a new processing stage is added.
 _BULK_LOCKED_STAGES = {
-    SequenceAnnotationProcessingStage.UNDER_ANNOTATION,
     SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
-    SequenceAnnotationProcessingStage.IN_REVIEW,
-    SequenceAnnotationProcessingStage.NEEDS_MANUAL,
     SequenceAnnotationProcessingStage.ANNOTATED,
 }
 
