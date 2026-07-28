@@ -34,13 +34,7 @@ const CARD_SIZES: { value: CardSize; label: string; title: string }[] = [
 // annotation_api/src/app/api/api_v1/endpoints/sequence_annotations.py
 // so the UI matches what propagation considers truly annotated — keep
 // both lists in sync when a new processing stage is added.
-const ANNOTATED_STAGES = new Set([
-  'under_annotation',
-  'seq_annotation_done',
-  'in_review',
-  'needs_manual',
-  'annotated',
-]);
+const ANNOTATED_STAGES = new Set(['seq_annotation_done', 'annotated']);
 
 function memberIsAnnotated(m: SequenceGroupMember): boolean {
   return (

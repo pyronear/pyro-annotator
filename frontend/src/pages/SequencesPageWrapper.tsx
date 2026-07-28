@@ -7,12 +7,7 @@ interface SequencesPageWrapperProps {
   defaultProcessingStage?: ProcessingStageStatus;
 }
 
-const REVIEW_STAGES: ProcessingStage[] = [
-  'seq_annotation_done',
-  'in_review',
-  'annotated',
-  'needs_manual',
-];
+const REVIEW_STAGES: ProcessingStage[] = ['seq_annotation_done', 'annotated'];
 
 export default function SequencesPageWrapper({
   defaultProcessingStage,
