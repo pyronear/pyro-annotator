@@ -1,6 +1,6 @@
 """
 Bulk-update sequence annotations (and optionally sequences) from one processing stage to another.
-Useful to retry a workflow, e.g., set all `in_review` back to `seq_annotation_done`.
+Useful to retry a workflow, e.g., set all `seq_annotation_done` back to `ready_to_annotate`.
 """
 
 import argparse
@@ -42,12 +42,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--from-stage",
         required=True,
-        help="Current processing_stage to filter on (e.g., in_review)",
+        help="Current processing_stage to filter on (e.g., seq_annotation_done)",
     )
     parser.add_argument(
         "--to-stage",
         required=True,
-        help="New processing_stage to set (e.g., seq_annotation_done)",
+        help="New processing_stage to set (e.g., ready_to_annotate)",
     )
     parser.add_argument(
         "--max-sequences",

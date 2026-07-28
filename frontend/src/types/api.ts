@@ -234,10 +234,7 @@ export type FalsePositiveType =
 export type ProcessingStage =
   | 'imported'
   | 'ready_to_annotate'
-  | 'under_annotation'
   | 'seq_annotation_done'
-  | 'in_review'
-  | 'needs_manual'
   | 'annotated';
 
 // Detection-specific processing stages

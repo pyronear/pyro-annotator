@@ -24,10 +24,8 @@ from app.models import (
     SequenceAnnotationProcessingStage,
 )
 
-# in_review is legacy compatibility (no live writers); see issue #207.
 DONE_STAGES = (
     SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
-    SequenceAnnotationProcessingStage.IN_REVIEW,
     SequenceAnnotationProcessingStage.ANNOTATED,
 )
 

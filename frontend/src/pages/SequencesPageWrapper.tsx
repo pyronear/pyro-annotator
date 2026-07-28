@@ -7,22 +7,20 @@ interface SequencesPageWrapperProps {
   defaultProcessingStage?: ProcessingStageStatus;
 }
 
-const REVIEW_STAGES: ProcessingStage[] = [
-  'seq_annotation_done',
-  'in_review',
-  'annotated',
-  'needs_manual',
-];
+const REVIEW_STAGES: ProcessingStage[] = ['seq_annotation_done', 'annotated'];
 
 export default function SequencesPageWrapper({
   defaultProcessingStage,
 }: SequencesPageWrapperProps) {
   const isReview = defaultProcessingStage === 'annotated';
 
-  const [stage, setStage] = usePersistedTabState<ProcessingStage>(
+  const [storedStage, setStage] = usePersistedTabState<ProcessingStage>(
     'sequences-review-stage',
     'seq_annotation_done'
   );
+  // localStorage may hold a stage that no longer exists (e.g. the retired
+  // in_review/needs_manual); an unknown value would silently unfilter the list.
+  const stage = REVIEW_STAGES.includes(storedStage) ? storedStage : 'seq_annotation_done';
 
   if (!isReview) {
     return <SequencesPage defaultProcessingStage={defaultProcessingStage} />;
