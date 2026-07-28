@@ -3,7 +3,6 @@ import { Link, useLocation } from 'react-router-dom';
 import {
   Menu,
   X,
-  BarChart3,
   ChevronRight,
   ChevronDown,
   Layers,
@@ -25,9 +24,8 @@ interface AppLayoutProps {
 
 interface NavigationItem {
   name: string;
-  href?: string;
   icon: LucideIcon;
-  children?: NavigationSubItem[];
+  children: NavigationSubItem[];
 }
 
 interface NavigationSubItem {
@@ -104,13 +102,11 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
     Detections: true,
   });
 
-  // Get annotation counts for badges and current user
+  // Get annotation counts for badges
   const { sequenceCount, detectionCount, groupCount } = useAnnotationCounts();
-  const { isSuperuser } = useAuthStore();
 
   // Create dynamic navigation with badge counts
   const navigationWithBadges: NavigationItem[] = [
-    { name: 'Dashboard', href: '/', icon: BarChart3 },
     {
       name: 'Sequences',
       icon: Layers,
@@ -133,7 +129,6 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
         { name: 'Review', href: '/detections/review' },
       ],
     },
-    ...(isSuperuser() ? [{ name: 'User Management', href: '/users', icon: Users }] : []),
   ];
 
   const toggleSection = (sectionName: string) => {
@@ -183,52 +178,22 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
   };
 
   const isSectionActive = (item: NavigationItem) => {
-    if (item.href) {
-      return isPathActive(item.href);
-    }
-    if (item.children) {
-      return item.children.some(child => isPathActive(child.href));
-    }
-    return false;
+    return item.children.some(child => isPathActive(child.href));
   };
 
   return (
     <div className="flex flex-col h-0 flex-1 border-r border-gray-200 bg-white">
       <div className="flex-1 flex flex-col pt-5 pb-4 overflow-y-auto">
         <div className="flex items-center flex-shrink-0 px-4">
-          <div className="flex items-center">
+          <Link to="/" className="flex items-center rounded-md hover:opacity-80 transition-opacity">
             <img src={logoImg} alt="PyroAnnotator Logo" className="w-8 h-8" />
             <h1 className="ml-2 text-xl font-bold text-gray-900">PyroAnnotator</h1>
-          </div>
+          </Link>
         </div>
         <nav className="mt-8 flex-1 px-2 bg-white space-y-1">
           {navigationWithBadges.map(item => {
             const isActive = isSectionActive(item);
             const isExpanded = expandedSections[item.name];
-
-            if (item.href) {
-              return (
-                <Link
-                  key={item.name}
-                  to={item.href}
-                  className={clsx(
-                    isActive
-                      ? 'bg-primary-50 border-r-4 border-primary-600 text-primary-700'
-                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
-                    'group flex items-center px-2 py-2 text-sm font-medium rounded-l-md'
-                  )}
-                >
-                  <item.icon
-                    className={clsx(
-                      isActive ? 'text-primary-500' : 'text-gray-400 group-hover:text-gray-500',
-                      'mr-3 flex-shrink-0 h-5 w-5'
-                    )}
-                    aria-hidden="true"
-                  />
-                  <span className="flex-1">{item.name}</span>
-                </Link>
-              );
-            }
 
             return (
               <div key={item.name}>
@@ -299,7 +264,7 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
 }
 
 function UserSection() {
-  const { user, logout } = useAuthStore();
+  const { user, logout, isSuperuser } = useAuthStore();
   const [showDropdown, setShowDropdown] = useState(false);
 
   const handleLogout = () => {
@@ -326,6 +291,16 @@ function UserSection() {
 
       {showDropdown && (
         <div className="absolute bottom-full left-0 mb-1 w-full bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5">
+          {isSuperuser() && (
+            <Link
+              to="/users"
+              onClick={() => setShowDropdown(false)}
+              className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md"
+            >
+              <Users className="h-4 w-4 mr-2" />
+              User Management
+            </Link>
+          )}
           <button
             onClick={handleLogout}
             className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md"
