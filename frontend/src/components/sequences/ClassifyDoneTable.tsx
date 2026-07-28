@@ -9,7 +9,7 @@ import {
   formatSmokeType,
 } from '@/utils/modelAccuracy';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
-import { WildfirePredictionPill } from './WildfirePredictionPill';
+import { PlatformAnnotationPill } from './PlatformAnnotationPill';
 
 interface ClassifyDoneTableProps {
   sequences: SequenceWithAnnotation[];
@@ -41,7 +41,7 @@ export function ClassifyDoneTable({ sequences, onSequenceClick }: ClassifyDoneTa
             <th className={HEADER_CLASSES}>Camera</th>
             <th className={HEADER_CLASSES}>Organisation</th>
             <th className={HEADER_CLASSES}>Recorded</th>
-            <th className={HEADER_CLASSES}>Prediction</th>
+            <th className={HEADER_CLASSES}>Platform annotation</th>
             <th className={HEADER_CLASSES}>Source</th>
             <th className={HEADER_CLASSES}>Azimuth</th>
             <th className={HEADER_CLASSES}>Result</th>
@@ -65,7 +65,7 @@ export function ClassifyDoneTable({ sequences, onSequenceClick }: ClassifyDoneTa
                 {new Date(sequence.recorded_at).toLocaleString()}
               </td>
               <td className={CELL_CLASSES}>
-                <WildfirePredictionPill prediction={sequence.is_wildfire_alertapi} />
+                <PlatformAnnotationPill value={sequence.is_wildfire_alertapi} />
               </td>
               <td className={CELL_CLASSES}>
                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">

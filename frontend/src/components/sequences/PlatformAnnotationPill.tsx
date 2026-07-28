@@ -6,10 +6,10 @@ const PILLS: Record<AnnotationType, { classes: string; label: string }> = {
   other: { classes: 'bg-gray-100 text-gray-800', label: '○ Other' },
 };
 
-/** Alert-API model prediction pill (🔥 / 💨 / ○); renders nothing when no prediction. */
-export function WildfirePredictionPill({ prediction }: { prediction: AnnotationType | null }) {
-  if (!prediction) return null;
-  const pill = PILLS[prediction];
+/** Alert-platform annotation pill (🔥 / 💨 / ○); renders nothing when unset. */
+export function PlatformAnnotationPill({ value }: { value: AnnotationType | null }) {
+  if (!value) return null;
+  const pill = PILLS[value];
   return (
     <span
       className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${pill.classes}`}

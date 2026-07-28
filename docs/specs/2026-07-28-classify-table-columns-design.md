@@ -34,7 +34,7 @@ Real `<table>`, one row per sequence, ~48px rows. Columns:
 | Camera | `camera_name`, bold |
 | Organisation | `organisation_name` |
 | Recorded | Absolute date+time (`toLocaleString()`) |
-| Model prediction | Wildfire-classification pill from `is_wildfire_alertapi` (🔥 Wildfire / 💨 Other Smoke / ○ Other) |
+| Platform annotation | Alert-platform annotation pill from `is_wildfire_alertapi` (🔥 Wildfire / 💨 Other Smoke / ○ Other) |
 | Source API | Blue source pill |
 | Azimuth | `{azimuth}°`, empty when null |
 

@@ -46,7 +46,7 @@ describe('ClassifyQueueTable', () => {
   it('renders the column headers', () => {
     render(<ClassifyQueueTable sequences={[createSequence()]} onSequenceClick={onSequenceClick} />);
 
-    for (const header of ['Camera', 'Organisation', 'Recorded', 'Prediction', 'Source', 'Azimuth']) {
+    for (const header of ['Camera', 'Organisation', 'Recorded', 'Platform annotation', 'Source', 'Azimuth']) {
       expect(screen.getByText(header)).toBeInTheDocument();
     }
   });
@@ -75,7 +75,7 @@ describe('ClassifyQueueTable', () => {
     ).toBeInTheDocument();
   });
 
-  it('renders the model prediction pill per prediction value', () => {
+  it('renders the platform annotation pill per value', () => {
     render(
       <ClassifyQueueTable
         sequences={[

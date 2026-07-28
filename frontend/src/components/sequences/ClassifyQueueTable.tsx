@@ -1,6 +1,6 @@
 import { SequenceWithAnnotation } from '@/types/api';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
-import { WildfirePredictionPill } from './WildfirePredictionPill';
+import { PlatformAnnotationPill } from './PlatformAnnotationPill';
 
 interface ClassifyQueueTableProps {
   sequences: SequenceWithAnnotation[];
@@ -23,7 +23,7 @@ export function ClassifyQueueTable({ sequences, onSequenceClick }: ClassifyQueue
             <th className={HEADER_CLASSES}>Camera</th>
             <th className={HEADER_CLASSES}>Organisation</th>
             <th className={HEADER_CLASSES}>Recorded</th>
-            <th className={HEADER_CLASSES}>Prediction</th>
+            <th className={HEADER_CLASSES}>Platform annotation</th>
             <th className={HEADER_CLASSES}>Source</th>
             <th className={HEADER_CLASSES}>Azimuth</th>
           </tr>
@@ -46,7 +46,7 @@ export function ClassifyQueueTable({ sequences, onSequenceClick }: ClassifyQueue
                 {new Date(sequence.recorded_at).toLocaleString()}
               </td>
               <td className={CELL_CLASSES}>
-                <WildfirePredictionPill prediction={sequence.is_wildfire_alertapi} />
+                <PlatformAnnotationPill value={sequence.is_wildfire_alertapi} />
               </td>
               <td className={CELL_CLASSES}>
                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
