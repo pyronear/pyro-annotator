@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import AppLayout from '@/components/layout/AppLayout';
 
@@ -18,13 +18,19 @@ vi.mock('@/hooks/useAnnotationCounts', () => ({
   }),
 }));
 
+let isSuperuserValue = false;
+
 vi.mock('@/store/useAuthStore', () => ({
   useAuthStore: () => ({
     user: { username: 'tester' },
     logout: vi.fn(),
-    isSuperuser: () => false,
+    isSuperuser: () => isSuperuserValue,
   }),
 }));
+
+beforeEach(() => {
+  isSuperuserValue = false;
+});
 
 describe('AppLayout sidebar navigation', () => {
   const renderLayout = () =>
@@ -69,5 +75,23 @@ describe('AppLayout sidebar navigation', () => {
     renderLayout();
 
     expect(screen.queryByRole('link', { name: /sequence groups/i })).not.toBeInTheDocument();
+  });
+
+  it('shows User Management in the user dropdown for superusers', () => {
+    isSuperuserValue = true;
+    renderLayout();
+
+    fireEvent.click(screen.getByRole('button', { name: /tester/i }));
+
+    const userManagementLink = screen.getByRole('link', { name: /user management/i });
+    expect(userManagementLink).toHaveAttribute('href', '/users');
+  });
+
+  it('does not show User Management anywhere for regular users', () => {
+    renderLayout();
+
+    fireEvent.click(screen.getByRole('button', { name: /tester/i }));
+
+    expect(screen.queryByRole('link', { name: /user management/i })).not.toBeInTheDocument();
   });
 });
