@@ -69,8 +69,11 @@ describe('AppLayout sidebar navigation', () => {
       'hover:text-char',
       'border-transparent',
       'border-l-[3px]',
-      'transition-colors'
+      'transition-colors',
+      'font-body',
+      'text-[13px]'
     );
+    expect(smokeLink).not.toHaveClass('text-sm');
   });
 
   it('stacks nav links without vertical gaps between them', () => {

@@ -182,7 +182,7 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
                             : isDisabled
                               ? 'border-transparent text-gray-400 cursor-not-allowed'
                               : 'border-transparent text-haze hover:bg-ash hover:text-char',
-                          'group flex items-center justify-between border-l-[3px] pl-4 pr-2 py-2 text-sm font-medium transition-colors'
+                          'group flex items-center justify-between border-l-[3px] pl-4 pr-2 py-2 font-body text-[13px] font-medium transition-colors'
                         )}
                       >
                         <span>{subItem.name}</span>
