@@ -1,18 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import {
-  Menu,
-  X,
-  BarChart3,
-  ChevronRight,
-  ChevronDown,
-  Layers,
-  Target,
-  LogOut,
-  User,
-  Users,
-  LucideIcon,
-} from 'lucide-react';
+import { Menu, MoreVertical, X, LogOut, User, Users } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useAnnotationCounts } from '@/hooks/useAnnotationCounts';
 import NotificationBadge from '@/components/ui/NotificationBadge';
@@ -25,9 +13,7 @@ interface AppLayoutProps {
 
 interface NavigationItem {
   name: string;
-  href?: string;
-  icon: LucideIcon;
-  children?: NavigationSubItem[];
+  children: NavigationSubItem[];
 }
 
 interface NavigationSubItem {
@@ -99,21 +85,13 @@ export default function AppLayout({ children }: AppLayoutProps) {
 }
 
 function SidebarContent({ currentPath }: { currentPath: string }) {
-  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
-    Sequences: true,
-    Detections: true,
-  });
-
-  // Get annotation counts for badges and current user
+  // Get annotation counts for badges
   const { sequenceCount, detectionCount, groupCount } = useAnnotationCounts();
-  const { isSuperuser } = useAuthStore();
 
   // Create dynamic navigation with badge counts
   const navigationWithBadges: NavigationItem[] = [
-    { name: 'Dashboard', href: '/', icon: BarChart3 },
     {
-      name: 'Sequences',
-      icon: Layers,
+      name: 'Classify',
       children: [
         {
           name: 'Groups',
@@ -121,27 +99,18 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
           badgeCount: groupCount,
           badgeTitle: `${groupCount} groups need validation`,
         },
-        { name: 'Annotate', href: '/sequences/annotate', badgeCount: sequenceCount },
-        { name: 'Review', href: '/sequences/review' },
+        { name: 'Sequences', href: '/sequences/annotate', badgeCount: sequenceCount },
+        { name: 'Done', href: '/sequences/review' },
       ],
     },
     {
-      name: 'Detections',
-      icon: Target,
+      name: 'Localize',
       children: [
-        { name: 'Localize', href: '/detections/annotate', badgeCount: detectionCount },
-        { name: 'Review', href: '/detections/review' },
+        { name: 'Smoke', href: '/detections/annotate', badgeCount: detectionCount },
+        { name: 'Done', href: '/detections/review' },
       ],
     },
-    ...(isSuperuser() ? [{ name: 'User Management', href: '/users', icon: Users }] : []),
   ];
-
-  const toggleSection = (sectionName: string) => {
-    setExpandedSections(prev => ({
-      ...prev,
-      [sectionName]: !prev[sectionName],
-    }));
-  };
 
   const isPathActive = (href?: string) => {
     if (!href || href === '#') return false;
@@ -182,110 +151,51 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
     return currentPath === href || currentPath.startsWith(href + '/');
   };
 
-  const isSectionActive = (item: NavigationItem) => {
-    if (item.href) {
-      return isPathActive(item.href);
-    }
-    if (item.children) {
-      return item.children.some(child => isPathActive(child.href));
-    }
-    return false;
-  };
-
   return (
     <div className="flex flex-col h-0 flex-1 border-r border-gray-200 bg-white">
       <div className="flex-1 flex flex-col pt-5 pb-4 overflow-y-auto">
         <div className="flex items-center flex-shrink-0 px-4">
-          <div className="flex items-center">
+          <Link to="/" className="flex items-center rounded-md hover:opacity-80 transition-opacity">
             <img src={logoImg} alt="PyroAnnotator Logo" className="w-8 h-8" />
             <h1 className="ml-2 text-xl font-bold text-gray-900">PyroAnnotator</h1>
-          </div>
+          </Link>
         </div>
-        <nav className="mt-8 flex-1 px-2 bg-white space-y-1">
+        <nav className="mt-8 flex-1 bg-white space-y-6">
           {navigationWithBadges.map(item => {
-            const isActive = isSectionActive(item);
-            const isExpanded = expandedSections[item.name];
-
-            if (item.href) {
-              return (
-                <Link
-                  key={item.name}
-                  to={item.href}
-                  className={clsx(
-                    isActive
-                      ? 'bg-primary-50 border-r-4 border-primary-600 text-primary-700'
-                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
-                    'group flex items-center px-2 py-2 text-sm font-medium rounded-l-md'
-                  )}
-                >
-                  <item.icon
-                    className={clsx(
-                      isActive ? 'text-primary-500' : 'text-gray-400 group-hover:text-gray-500',
-                      'mr-3 flex-shrink-0 h-5 w-5'
-                    )}
-                    aria-hidden="true"
-                  />
-                  <span className="flex-1">{item.name}</span>
-                </Link>
-              );
-            }
-
             return (
               <div key={item.name}>
-                <button
-                  onClick={() => toggleSection(item.name)}
-                  className={clsx(
-                    isActive
-                      ? 'bg-primary-50 text-primary-700'
-                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
-                    'group flex items-center px-2 py-2 text-sm font-medium rounded-l-md w-full'
-                  )}
-                >
-                  <item.icon
-                    className={clsx(
-                      isActive ? 'text-primary-500' : 'text-gray-400 group-hover:text-gray-500',
-                      'mr-3 flex-shrink-0 h-5 w-5'
-                    )}
-                    aria-hidden="true"
-                  />
-                  <span className="flex-1 text-left">{item.name}</span>
-                  {isExpanded ? (
-                    <ChevronDown className="h-4 w-4 text-gray-400" />
-                  ) : (
-                    <ChevronRight className="h-4 w-4 text-gray-400" />
-                  )}
-                </button>
-                {isExpanded && item.children && (
-                  <div className="mt-1 space-y-1">
-                    {item.children.map(subItem => {
-                      const isSubActive = isPathActive(subItem.href);
-                      const isDisabled = subItem.href === '#';
-                      return (
-                        <Link
-                          key={subItem.name}
-                          to={isDisabled ? '#' : subItem.href}
-                          onClick={e => isDisabled && e.preventDefault()}
-                          className={clsx(
-                            isSubActive
-                              ? 'bg-primary-50 border-r-4 border-primary-600 text-primary-700'
-                              : isDisabled
-                                ? 'text-gray-400 cursor-not-allowed'
-                                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
-                            'group flex items-center justify-between pl-11 pr-2 py-2 text-sm font-medium rounded-l-md'
-                          )}
-                        >
-                          <span>{subItem.name}</span>
-                          {subItem.badgeCount !== undefined && (
-                            <NotificationBadge
-                              count={subItem.badgeCount}
-                              title={subItem.badgeTitle}
-                            />
-                          )}
-                        </Link>
-                      );
-                    })}
-                  </div>
-                )}
+                <div className="px-4 font-data text-[10.5px] font-medium uppercase tracking-[0.14em] text-haze">
+                  {item.name}
+                </div>
+                <div className="mt-1">
+                  {item.children.map(subItem => {
+                    const isSubActive = isPathActive(subItem.href);
+                    const isDisabled = subItem.href === '#';
+                    return (
+                      <Link
+                        key={subItem.name}
+                        to={isDisabled ? '#' : subItem.href}
+                        onClick={e => isDisabled && e.preventDefault()}
+                        className={clsx(
+                          isSubActive
+                            ? 'border-pine bg-pine-soft text-pine'
+                            : isDisabled
+                              ? 'border-transparent text-gray-400 cursor-not-allowed'
+                              : 'border-transparent text-haze hover:bg-ash hover:text-char',
+                          'group flex items-center justify-between border-l-[3px] pl-4 pr-2 py-2 font-body text-[13px] font-medium transition-colors'
+                        )}
+                      >
+                        <span>{subItem.name}</span>
+                        {subItem.badgeCount !== undefined && (
+                          <NotificationBadge
+                            count={subItem.badgeCount}
+                            title={subItem.badgeTitle}
+                          />
+                        )}
+                      </Link>
+                    );
+                  })}
+                </div>
               </div>
             );
           })}
@@ -299,7 +209,7 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
 }
 
 function UserSection() {
-  const { user, logout } = useAuthStore();
+  const { user, logout, isSuperuser } = useAuthStore();
   const [showDropdown, setShowDropdown] = useState(false);
 
   const handleLogout = () => {
@@ -311,10 +221,7 @@ function UserSection() {
 
   return (
     <div className="relative">
-      <button
-        onClick={() => setShowDropdown(!showDropdown)}
-        className="flex items-center w-full text-left hover:bg-gray-50 rounded-lg p-2 transition-colors"
-      >
+      <div className="flex items-center p-2">
         <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
           <User className="h-4 w-4 text-white" />
         </div>
@@ -322,10 +229,27 @@ function UserSection() {
           <p className="text-sm font-medium text-gray-700">{username}</p>
           <p className="text-xs font-medium text-gray-500">Annotator</p>
         </div>
-      </button>
+        <button
+          onClick={() => setShowDropdown(!showDropdown)}
+          className="p-2 rounded-md text-gray-500 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+        >
+          <span className="sr-only">Open user menu</span>
+          <MoreVertical className="h-5 w-5" aria-hidden="true" />
+        </button>
+      </div>
 
       {showDropdown && (
-        <div className="absolute bottom-full left-0 mb-1 w-full bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5">
+        <div className="absolute bottom-full right-0 mb-1 w-full bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5">
+          {isSuperuser() && (
+            <Link
+              to="/users"
+              onClick={() => setShowDropdown(false)}
+              className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md"
+            >
+              <Users className="h-4 w-4 mr-2" />
+              User Management
+            </Link>
+          )}
           <button
             onClick={handleLogout}
             className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md"

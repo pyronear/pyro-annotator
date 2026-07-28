@@ -19,7 +19,7 @@ export default function NotificationBadge({
 
   return (
     <span
-      className={`inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 bg-red-500 text-white text-xs font-medium rounded-full transition-all duration-200 ${className}`}
+      className={`inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 bg-pine text-white text-xs font-medium rounded-full transition-all duration-200 ${className}`}
       title={title ?? `${count} items need annotation`}
     >
       {displayCount}
