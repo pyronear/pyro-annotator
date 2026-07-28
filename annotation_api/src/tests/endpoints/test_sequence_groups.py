@@ -94,6 +94,7 @@ async def _seed_group_with_members(
     created_at: datetime,
     alert_api_id_start: int,
     camera_name: str = "cam",
+    azimuth: int = 0,
 ) -> int:
     """Insert a SequenceGroup with `n_members` member sequences (each with a
     distinct alert_api_id) and return its id."""
@@ -105,12 +106,13 @@ async def _seed_group_with_members(
                     (camera_id, azimuth, representative_bbox, is_validated,
                      created_at)
                 VALUES
-                    (1, 0, CAST(:bbox AS jsonb), false, :created_at)
+                    (1, :azimuth, CAST(:bbox AS jsonb), false, :created_at)
                 RETURNING id
                 """
             ).bindparams(
                 bbox='{"xyxyn":[0.1,0.1,0.4,0.4],"confidence":0.9}',
                 created_at=created_at,
+                azimuth=azimuth,
             )
         )
     ).scalar_one()
@@ -222,6 +224,47 @@ async def test_list_groups_includes_camera_name(
     assert resp.status_code == 200
     row = next(i for i in resp.json()["items"] if i["id"] == gid)
     assert row["camera_name"] == "Serre de Barre"
+
+
+@pytest.mark.asyncio
+async def test_list_groups_orderable_by_camera_azimuth_created(
+    authenticated_client: AsyncClient,
+    async_session: AsyncSession,
+):
+    """order_by/order_direction reorder the list; default stays member_count desc."""
+    alpha = await _seed_group_with_members(
+        async_session,
+        n_members=3,
+        created_at=datetime(2026, 1, 3, tzinfo=timezone.utc),
+        alert_api_id_start=500,
+        camera_name="Alpha",
+        azimuth=270,
+    )
+    zulu = await _seed_group_with_members(
+        async_session,
+        n_members=4,
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        alert_api_id_start=600,
+        camera_name="Zulu",
+        azimuth=90,
+    )
+
+    async def ids(params: str) -> list[int]:
+        resp = await authenticated_client.get(f"/sequence_groups/{params}")
+        assert resp.status_code == 200
+        return [i["id"] for i in resp.json()["items"]]
+
+    # Default: biggest group first.
+    assert await ids("") == [zulu, alpha]
+    # Camera name ascending: Alpha before Zulu.
+    assert await ids("?order_by=camera_name&order_direction=asc") == [alpha, zulu]
+    # Azimuth ascending: 90 before 270.
+    assert await ids("?order_by=azimuth&order_direction=asc") == [zulu, alpha]
+    # Created ascending: Jan 1 before Jan 3.
+    assert await ids("?order_by=created_at&order_direction=asc") == [zulu, alpha]
+    # Invalid field is rejected.
+    resp = await authenticated_client.get("/sequence_groups/?order_by=bogus")
+    assert resp.status_code == 422
 
 
 def _annotation_payload(*, stage: str, smoke_type: str) -> dict:
