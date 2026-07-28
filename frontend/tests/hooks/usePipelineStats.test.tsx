@@ -1,0 +1,60 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { renderHook, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import React from 'react';
+
+vi.mock('@/services/api', () => ({
+  apiClient: {
+    getSequences: vi.fn(),
+    getSequenceAnnotations: vi.fn(),
+  },
+}));
+
+import { apiClient } from '@/services/api';
+import { usePipelineStats } from '@/hooks/usePipelineStats';
+
+const stageTotals: Record<string, number> = {
+  ready_to_annotate: 57,
+  seq_annotation_done: 22,
+  in_review: 4,
+  annotated: 427,
+  needs_manual: 4,
+};
+
+function wrapper({ children }: { children: React.ReactNode }) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+}
+
+function page(total: number) {
+  return { items: [], page: 1, pages: 1, size: 1, total };
+}
+
+describe('usePipelineStats', () => {
+  beforeEach(() => {
+    vi.mocked(apiClient.getSequences).mockImplementation(
+      ((params?: Record<string, unknown>) =>
+        Promise.resolve(
+          page(params?.detection_annotation_completion === 'complete' ? 418 : 522)
+        )) as unknown as typeof apiClient.getSequences
+    );
+    vi.mocked(apiClient.getSequenceAnnotations).mockImplementation(
+      ((params?: Record<string, unknown>) =>
+        Promise.resolve(
+          page(stageTotals[String(params?.processing_stage)] ?? 0)
+        )) as unknown as typeof apiClient.getSequenceAnnotations
+    );
+  });
+
+  it('derives pipeline stats from the seven count queries', async () => {
+    const { result } = renderHook(() => usePipelineStats(), { wrapper });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.classifyTodo).toBe(57);
+    expect(result.current.localizeTodo).toBe(22);
+    expect(result.current.complete).toBe(418);
+    expect(result.current.completePct).toBe(80);
+    expect(result.current.attention).toBe(4);
+    expect(result.current.total).toBe(522);
+    expect(result.current.error).toBeNull();
+  });
+});
