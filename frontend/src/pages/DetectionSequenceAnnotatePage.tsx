@@ -322,35 +322,46 @@ export default function DetectionSequenceAnnotatePage() {
   // seq_annotation_done -> annotated transition (guarded server-side for
   // completeness), then advance to the alert's next unfinished smoke lane.
   const submitLocalizedLane = useMutation({
-    mutationFn: () =>
-      apiClient.updateSequenceAnnotation(sequenceAnnotation!.id, {
+    mutationFn: () => {
+      if (!sequenceAnnotation || !sequence) {
+        throw new Error('Sequence not loaded yet — try again in a moment');
+      }
+      return apiClient.updateSequenceAnnotation(sequenceAnnotation.id, {
         processing_stage: 'annotated',
-      }),
+      });
+    },
     onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ['localization-queue'] });
       queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
       queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.SEQUENCE_ANNOTATIONS });
-      const siblings = await apiClient.getSequencesWithAnnotations({
-        source_api: sequence!.source_api,
-        platform_alert_id: sequence!.platform_alert_id,
-        processing_stage: 'seq_annotation_done',
-        has_smoke: true,
-        is_unsure: false,
-        size: 100,
-      });
-      const lanes = siblings.items.map(s => ({
-        sequence_id: s.id,
-        alert_api_id: s.alert_api_id,
-        has_smoke: true,
-        processing_stage: 'seq_annotation_done',
-        total_detections: 0,
-        annotated_detections: 0,
-        auto_annotated_at: null,
-      }));
-      const next = pickNextLocalizeLane(lanes, sequenceIdNum!);
       setToastMessage('Sequence submitted');
       setShowToast(true);
+      // Advance to the alert's next unfinished smoke lane; any failure here
+      // must still land the user somewhere sensible (the queue).
+      let next: number | null = null;
+      try {
+        const siblings = await apiClient.getSequencesWithAnnotations({
+          source_api: sequence!.source_api,
+          platform_alert_id: sequence!.platform_alert_id,
+          processing_stage: 'seq_annotation_done',
+          has_smoke: true,
+          is_unsure: false,
+          size: 100,
+        });
+        const lanes = siblings.items.map(s => ({
+          sequence_id: s.id,
+          alert_api_id: s.alert_api_id,
+          has_smoke: true,
+          processing_stage: 'seq_annotation_done',
+          total_detections: 0,
+          annotated_detections: 0,
+          auto_annotated_at: null,
+        }));
+        next = pickNextLocalizeLane(lanes, sequenceIdNum!);
+      } catch {
+        next = null;
+      }
       setTimeout(() => {
         if (next !== null) {
           navigate(`/detections/${next}/annotate?from=localize`);
@@ -359,8 +370,13 @@ export default function DetectionSequenceAnnotatePage() {
         }
       }, 1000);
     },
-    onError: () => {
-      setToastMessage('Submit failed — some detections are not yet annotated');
+    onError: err => {
+      const detail = (err as { detail?: string })?.detail || (err as Error)?.message || '';
+      setToastMessage(
+        detail.includes('localization incomplete')
+          ? 'Submit rejected — some detections are not yet annotated'
+          : `Submit failed: ${detail || 'unknown error'}`
+      );
       setShowToast(true);
     },
   });
@@ -505,10 +521,12 @@ export default function DetectionSequenceAnnotatePage() {
         // Mark as auto-advance (drawing mode already stored in onSubmit above)
         isAutoAdvanceRef.current = true;
 
-        // Move to next detection
+        // Move to next detection. Keep the query string: losing ?from=localize
+        // here would silently disable the lane-submit flow at save time.
         const nextDetectionId = getDetectionIdByIndex(selectedDetectionIndex + 1);
         if (nextDetectionId && sequenceId) {
-          navigate(`/detections/${sequenceId}/annotate/${nextDetectionId}`);
+          const sourceParam = fromParam ? `?from=${fromParam}` : '';
+          navigate(`/detections/${sequenceId}/annotate/${nextDetectionId}${sourceParam}`);
         }
       } else if (
         selectedDetectionIndex !== null &&
@@ -518,7 +536,8 @@ export default function DetectionSequenceAnnotatePage() {
         // At last detection - close modal after a brief delay to show success message
         setTimeout(() => {
           if (sequenceId) {
-            navigate(`/detections/${sequenceId}/annotate`);
+            const sourceParam = fromParam ? `?from=${fromParam}` : '';
+            navigate(`/detections/${sequenceId}/annotate${sourceParam}`);
           }
         }, 1000);
       }
@@ -623,10 +642,11 @@ export default function DetectionSequenceAnnotatePage() {
         setSelectedDetectionIndex(index);
         setShowModal(true);
       } else {
-        // Invalid detection ID - redirect to base URL
+        // Invalid detection ID - redirect to base URL (keep the flow param)
         console.warn(`Invalid detection ID ${detectionId} for sequence ${sequenceId}`);
         if (sequenceId) {
-          navigate(`/detections/${sequenceId}/annotate`, { replace: true });
+          const sourceParam = fromParam ? `?from=${fromParam}` : '';
+          navigate(`/detections/${sequenceId}/annotate${sourceParam}`, { replace: true });
         }
       }
     } else if (!detectionId) {

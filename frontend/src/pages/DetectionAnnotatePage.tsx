@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
@@ -27,6 +27,15 @@ export default function DetectionAnnotatePage() {
     queryKey: ['localization-queue', page],
     queryFn: () => apiClient.getLocalizationQueue({ page, size: 50 }),
   });
+
+  // Clamp when alerts drain below the current page (e.g. last alert of the
+  // last page was submitted) — otherwise the user is stranded on an empty
+  // page with the pager hidden.
+  useEffect(() => {
+    if (data && data.pages >= 1 && page > data.pages) {
+      setPage(data.pages);
+    }
+  }, [data, page]);
 
   const handleAlertClick = (item: LocalizationQueueItem) => {
     // -1 never matches a sequence id: picks the alert's first unfinished lane.
