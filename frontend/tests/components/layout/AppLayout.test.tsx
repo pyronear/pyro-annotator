@@ -1,10 +1,10 @@
 /**
  * Sidebar navigation structure tests for AppLayout.
- * Focuses on the Sequences section containing the Groups link with its badge.
+ * Focuses on the Classify section containing the Groups link with its badge.
  */
 
 import React from 'react';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import AppLayout from '@/components/layout/AppLayout';
 
@@ -18,13 +18,19 @@ vi.mock('@/hooks/useAnnotationCounts', () => ({
   }),
 }));
 
+let isSuperuserValue = false;
+
 vi.mock('@/store/useAuthStore', () => ({
   useAuthStore: () => ({
     user: { username: 'tester' },
     logout: vi.fn(),
-    isSuperuser: () => false,
+    isSuperuser: () => isSuperuserValue,
   }),
 }));
+
+beforeEach(() => {
+  isSuperuserValue = false;
+});
 
 describe('AppLayout sidebar navigation', () => {
   const renderLayout = () =>
@@ -36,7 +42,7 @@ describe('AppLayout sidebar navigation', () => {
       </MemoryRouter>
     );
 
-  it('renders Groups as a sub-item of the Sequences section with its badge count', () => {
+  it('renders Groups as a sub-item of the Classify section with its badge count', () => {
     renderLayout();
 
     const groupsLink = screen.getByRole('link', { name: /groups/i });
@@ -46,22 +52,22 @@ describe('AppLayout sidebar navigation', () => {
     expect(badge).toHaveAttribute('title', '8 groups need validation');
   });
 
-  it('places Groups first among the Sequences sub-items, after the section header', () => {
+  it('places Groups first among the Classify sub-items, after the section header', () => {
     renderLayout();
 
-    const sequencesHeader = screen.getByRole('button', { name: /sequences/i });
+    const classifyHeader = screen.getByText('Classify');
     const groupsLink = screen.getByRole('link', { name: /groups/i });
-    const annotateLinks = screen.getAllByRole('link', { name: /annotate/i });
-    const sequencesAnnotateLink = annotateLinks.find(
+    const sequencesLinks = screen.getAllByRole('link', { name: /sequences/i });
+    const classifySequencesLink = sequencesLinks.find(
       link => link.getAttribute('href') === '/sequences/annotate'
     );
 
-    expect(sequencesAnnotateLink).toBeDefined();
+    expect(classifySequencesLink).toBeDefined();
     expect(
-      sequencesHeader.compareDocumentPosition(groupsLink) & Node.DOCUMENT_POSITION_FOLLOWING
+      classifyHeader.compareDocumentPosition(groupsLink) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
     expect(
-      groupsLink.compareDocumentPosition(sequencesAnnotateLink!) & Node.DOCUMENT_POSITION_FOLLOWING
+      groupsLink.compareDocumentPosition(classifySequencesLink!) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
   });
 
@@ -69,5 +75,23 @@ describe('AppLayout sidebar navigation', () => {
     renderLayout();
 
     expect(screen.queryByRole('link', { name: /sequence groups/i })).not.toBeInTheDocument();
+  });
+
+  it('shows User Management in the user dropdown for superusers', () => {
+    isSuperuserValue = true;
+    renderLayout();
+
+    fireEvent.click(screen.getByRole('button', { name: /tester/i }));
+
+    const userManagementLink = screen.getByRole('link', { name: /user management/i });
+    expect(userManagementLink).toHaveAttribute('href', '/users');
+  });
+
+  it('does not show User Management anywhere for regular users', () => {
+    renderLayout();
+
+    fireEvent.click(screen.getByRole('button', { name: /tester/i }));
+
+    expect(screen.queryByRole('link', { name: /user management/i })).not.toBeInTheDocument();
   });
 });
