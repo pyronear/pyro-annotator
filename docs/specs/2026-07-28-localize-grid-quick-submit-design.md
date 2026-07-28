@@ -141,7 +141,11 @@ the no-box frame count — unit-testable in isolation.
 - **Crop toggle** (localize context; header checkbox + `C` shortcut): each
   cell zooms around the union of its displayed boxes (committed smoke boxes
   for done cells, winning-layer boxes otherwise; no-box cells stay full
-  frame) via a CSS `scale()` about the union's center
+  frame), first narrowed to the lane's main object via `focusOnMainObject`
+  (boxes intersecting the frame's engine anchor; all boxes when there is no
+  anchor or no overlap) so sibling strays don't drag the window — the same
+  focus feeds the flipbook's crop. Zoom is a CSS `scale()` about the
+  union's center
   (`computeCellCrop` in `utils/annotation/gridCropUtils.ts`; target fill
   0.8, max scale 8). Scaling about the union center keeps the container
   covered for any scale ≥ 1, so no translation is needed. The cell

@@ -105,6 +105,17 @@ describe('collectLaneBoxes', () => {
       { detection_id: 2, xyxyn: [0.2, 0.2, 0.4, 0.4] },
     ]);
   });
+
+  it('drops boxes away from the frame engine anchor (sibling strays)', () => {
+    const d = makeDetection(1, {
+      engine: [box(0.2, 0.2, 0.4, 0.4)],
+      auto: [box(0.25, 0.25, 0.35, 0.35), box(0.8, 0.8, 0.9, 0.9)],
+    });
+
+    const result = collectLaneBoxes([d], new Map());
+
+    expect(result).toEqual([{ detection_id: 1, xyxyn: [0.25, 0.25, 0.35, 0.35] }]);
+  });
 });
 
 describe('buildQuickSubmitPlan', () => {

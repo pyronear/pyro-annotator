@@ -5,6 +5,8 @@
  * covered for any scale >= 1 (no blank edges), so no translation is needed.
  */
 
+import { Detection } from '@/types/api';
+
 /** Fraction of the cell the boxes' union should occupy after zoom. */
 const TARGET_FILL = 0.8;
 const MAX_SCALE = 8;
@@ -17,6 +19,26 @@ export interface CellCrop {
   /** transform-origin, in % of the element. */
   originX: number;
   originY: number;
+}
+
+const intersects = (a: number[], b: number[]): boolean =>
+  a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
+
+/**
+ * Boxes belonging to the lane's main object: those intersecting one of the
+ * frame's engine boxes (`algo_predictions` — the platform track this lane
+ * was object-split on). Keeps stray boxes near sibling objects from
+ * dragging the crop window. Falls back to all boxes when the frame has no
+ * engine anchor or nothing overlaps it.
+ */
+export function focusOnMainObject<T extends { xyxyn: number[] }>(
+  detection: Detection,
+  boxes: T[]
+): T[] {
+  const anchors = detection.algo_predictions?.predictions ?? [];
+  if (anchors.length === 0 || boxes.length === 0) return boxes;
+  const focused = boxes.filter(b => anchors.some(a => intersects(b.xyxyn, a.xyxyn)));
+  return focused.length > 0 ? focused : boxes;
 }
 
 export function computeCellCrop(boxes: { xyxyn: number[] }[]): CellCrop {

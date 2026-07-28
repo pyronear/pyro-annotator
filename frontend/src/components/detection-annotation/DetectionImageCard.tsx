@@ -8,7 +8,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Detection, DetectionAnnotation, SmokeType } from '@/types/api';
 import { useDetectionImage } from '@/hooks/useDetectionImage';
-import { CellState, computeCellCrop, getWinningBoxes } from '@/utils/annotation';
+import { CellState, computeCellCrop, focusOnMainObject, getWinningBoxes } from '@/utils/annotation';
 import {
   BoundingBoxOverlay,
   ReferenceBoxOverlay,
@@ -128,7 +128,7 @@ export function DetectionImageCard({
           item => item.false_positive_type == null
         )
       : (winning?.boxes ?? []);
-  const crop = computeCellCrop(cropBoxes);
+  const crop = computeCellCrop(focusOnMainObject<{ xyxyn: number[] }>(detection, cropBoxes));
   const cropStyle =
     crop.scale > 1
       ? { transform: `scale(${crop.scale})`, transformOrigin: `${crop.originX}% ${crop.originY}%` }

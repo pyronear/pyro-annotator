@@ -12,6 +12,7 @@ import {
   DetectionAnnotationBbox,
   SmokeType,
 } from '@/types/api';
+import { focusOnMainObject } from './gridCropUtils';
 import { getWinningModelLayer } from './referenceLayerUtils';
 import { materializeReviewAnnotation } from './reviewUtils';
 
@@ -75,7 +76,9 @@ export function collectLaneBoxes(
         : state === 'auto'
           ? getWinningBoxes(detection).boxes
           : [];
-    for (const box of boxes) {
+    // The flipbook frames the lane's main object; stray boxes near sibling
+    // objects would skew its averaged crop window.
+    for (const box of focusOnMainObject<{ xyxyn: number[] }>(detection, boxes)) {
       out.push({ detection_id: detection.id, xyxyn: box.xyxyn as BoundingBox['xyxyn'] });
     }
   }
