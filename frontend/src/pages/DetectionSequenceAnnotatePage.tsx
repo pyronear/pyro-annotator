@@ -44,7 +44,14 @@ const getIsAnnotated = (
   }
 };
 
-export default function DetectionSequenceAnnotatePage() {
+interface DetectionSequenceAnnotatePageProps {
+  /** 'done' when mounted under /localize/done/… — entered from the Done list. */
+  mode?: 'done';
+}
+
+export default function DetectionSequenceAnnotatePage({
+  mode,
+}: DetectionSequenceAnnotatePageProps = {}) {
   const { sequenceId, detectionId } = useParams<{ sequenceId: string; detectionId?: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -74,7 +81,7 @@ export default function DetectionSequenceAnnotatePage() {
   const fromParam = searchParams.get('from');
 
   // Determine source page and appropriate filter storage key
-  const sourcePage = fromParam === 'detections-review' ? 'review' : 'annotate';
+  const sourcePage = mode === 'done' ? 'review' : 'annotate';
   const filterStorageKey =
     sourcePage === 'review' ? 'filters-detections-review' : 'filters-detections-annotate';
 

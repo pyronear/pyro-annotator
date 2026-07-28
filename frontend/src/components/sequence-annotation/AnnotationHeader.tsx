@@ -52,7 +52,8 @@ interface AnnotationHeaderProps {
   onUnsureChange: (checked: boolean) => void;
 
   // Display options
-  fromParam?: string | null;
+  /** 'done' when the page was entered from the Classify Done list. */
+  mode?: 'done';
 }
 
 export const AnnotationHeader: React.FC<AnnotationHeaderProps> = ({
@@ -73,7 +74,7 @@ export const AnnotationHeader: React.FC<AnnotationHeaderProps> = ({
   isAnnotationComplete,
   isSaving,
   onUnsureChange,
-  fromParam,
+  mode,
 }) => {
   const isSubmitted = isSequenceAnnotationSubmitted(annotation?.processing_stage);
   const headerBgClass = isUnsure
@@ -144,7 +145,7 @@ export const AnnotationHeader: React.FC<AnnotationHeaderProps> = ({
               )}
 
               {/* Completion Badge for Annotated Sequences */}
-              {isSubmitted && fromParam !== 'review' && (
+              {isSubmitted && mode !== 'done' && (
                 <>
                   <span className="text-gray-400">•</span>
                   <span className="inline-flex items-center text-xs text-green-600 font-medium">

@@ -32,8 +32,14 @@ import {
 } from '@/components/sequence-annotation';
 import { NotificationSystem } from '@/components/ui/NotificationSystem';
 import { useToastNotifications } from '@/utils/notification/toastUtils';
+import { ROUTES } from '@/utils/routes';
 
-export default function AnnotationInterface() {
+interface AnnotationInterfaceProps {
+  /** 'done' when mounted under /classify/done/:id — entered from the Done list. */
+  mode?: 'done';
+}
+
+export default function AnnotationInterface({ mode }: AnnotationInterfaceProps = {}) {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -49,10 +55,8 @@ export default function AnnotationInterface() {
 
   const sequenceId = id ? parseInt(id) : null;
 
-  // Determine back navigation URL based on source context
-  const searchParams = new URLSearchParams(window.location.search);
-  const fromParam = searchParams.get('from');
-  const backUrl = fromParam === 'review' ? '/sequences/review' : '/sequences/annotate';
+  // Back navigation target follows the route provenance (queue vs done list)
+  const backUrl = mode === 'done' ? ROUTES.CLASSIFY_DONE : ROUTES.CLASSIFY;
 
   const [bboxes, setBboxes] = useState<SequenceBbox[]>([]);
   const [, setCurrentAnnotation] = useState<SequenceAnnotation | null>(null);
@@ -378,7 +382,7 @@ export default function AnnotationInterface() {
         isAnnotationComplete={isAnnotationComplete(bboxes, missedSmokeReview)}
         isSaving={saveAnnotation.isPending}
         onUnsureChange={setIsUnsure}
-        fromParam={fromParam}
+        mode={mode}
       />
 
       {/* Content with top padding to account for fixed header */}
