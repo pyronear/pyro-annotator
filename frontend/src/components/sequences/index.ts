@@ -1,6 +1,8 @@
 export { SequencesTableHeader } from './SequencesTableHeader';
 export { SequencesLegend } from './SequencesLegend';
-export { SequenceTableRow } from './SequenceTableRow';
+export { ClassifyQueueTable } from './ClassifyQueueTable';
+export { ClassifyDoneTable } from './ClassifyDoneTable';
+export { PlatformAnnotationPill } from './PlatformAnnotationPill';
 export { SequencesPagination } from './SequencesPagination';
 
 // Detection Review specific components
