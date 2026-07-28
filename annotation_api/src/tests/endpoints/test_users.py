@@ -1,6 +1,7 @@
 import pytest
 from httpx import AsyncClient
 
+from app.core.config import settings
 from app.models import User
 
 
@@ -393,3 +394,121 @@ class TestDeleteUser:
         response = await authenticated_client.delete("/users/99999")
 
         assert response.status_code == 404
+
+
+class TestWorkerUserProtection:
+    """Tests protecting the seeded system worker user."""
+
+    @pytest.mark.asyncio
+    async def test_delete_worker_user_forbidden(
+        self, authenticated_client: AsyncClient, worker_user: User
+    ):
+        """Test the system worker user cannot be deleted."""
+        response = await authenticated_client.delete(f"/users/{worker_user.id}")
+
+        assert response.status_code == 403
+        data = response.json()
+        assert "Cannot delete the system worker user" in data["detail"]
+
+        # Worker still exists
+        response = await authenticated_client.get(f"/users/{worker_user.id}")
+        assert response.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_delete_inactive_non_worker_user_allowed(
+        self, authenticated_client: AsyncClient, inactive_user: User
+    ):
+        """Test a merely-inactive user is still deletable (guard is by username)."""
+        response = await authenticated_client.delete(f"/users/{inactive_user.id}")
+        assert response.status_code == 204
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {"username": "renamedworker"},
+            {"is_active": True},
+            {"is_superuser": True},
+            {"is_active": False},  # same value as seeded — still rejected
+        ],
+    )
+    async def test_update_worker_user_forbidden(
+        self, authenticated_client: AsyncClient, worker_user: User, payload: dict
+    ):
+        """Test the system worker user cannot be renamed, activated or promoted."""
+        response = await authenticated_client.patch(
+            f"/users/{worker_user.id}", json=payload
+        )
+
+        assert response.status_code == 403
+        data = response.json()
+        assert "Cannot modify the system worker user" in data["detail"]
+
+    @pytest.mark.asyncio
+    async def test_update_worker_password_allowed(
+        self, authenticated_client: AsyncClient, worker_user: User
+    ):
+        """Test the password endpoint is unaffected (worker cannot log in anyway)."""
+        response = await authenticated_client.patch(
+            f"/users/{worker_user.id}/password", json={"password": "newpassword123"}
+        )
+        assert response.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_update_worker_user_empty_payload_allowed(
+        self, authenticated_client: AsyncClient, worker_user: User
+    ):
+        """Test a PATCH touching none of the guarded fields is not rejected."""
+        response = await authenticated_client.patch(f"/users/{worker_user.id}", json={})
+        assert response.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_create_user_with_worker_username_forbidden(
+        self, authenticated_client: AsyncClient
+    ):
+        """Test the worker username is reserved even when the worker row is absent."""
+        user_data = {
+            "username": settings.WORKER_USERNAME,
+            "password": "password12345",
+            "is_active": True,
+            "is_superuser": True,
+        }
+
+        response = await authenticated_client.post("/users/", json=user_data)
+
+        assert response.status_code == 403
+        data = response.json()
+        assert "Username reserved for the system worker user" in data["detail"]
+
+    @pytest.mark.asyncio
+    async def test_rename_user_to_worker_username_forbidden(
+        self, authenticated_client: AsyncClient, regular_user: User
+    ):
+        """Test no user can be renamed to the reserved worker username."""
+        response = await authenticated_client.patch(
+            f"/users/{regular_user.id}", json={"username": settings.WORKER_USERNAME}
+        )
+
+        assert response.status_code == 403
+        data = response.json()
+        assert "Username reserved for the system worker user" in data["detail"]
+
+    @pytest.mark.asyncio
+    async def test_worker_user_is_system_flag(
+        self, authenticated_client: AsyncClient, worker_user: User
+    ):
+        """Test the worker user is flagged as a system account in responses."""
+        response = await authenticated_client.get(f"/users/{worker_user.id}")
+
+        assert response.status_code == 200
+        assert response.json()["is_system"] is True
+
+    @pytest.mark.asyncio
+    async def test_regular_user_is_not_system_flag(
+        self, authenticated_client: AsyncClient, regular_user: User
+    ):
+        """Test ordinary users are not flagged as system accounts."""
+        response = await authenticated_client.get(f"/users/{regular_user.id}")
+
+        assert response.status_code == 200
+        assert response.json()["is_system"] is False

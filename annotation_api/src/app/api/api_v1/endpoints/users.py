@@ -7,6 +7,7 @@ from sqlalchemy import desc
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.auth.dependencies import get_current_active_user, get_current_superuser
+from app.core.config import settings
 from app.crud import UserCRUD
 from app.db import get_session
 from app.models import User
@@ -66,6 +67,12 @@ async def create_user(
     current_user: User = Depends(get_current_superuser),
 ) -> User:
     """Create a new user (admin only)."""
+    if user_create.username == settings.WORKER_USERNAME:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Username reserved for the system worker user",
+        )
+
     user_crud = UserCRUD(session)
 
     # Check if username already exists
@@ -105,6 +112,24 @@ async def update_user(
 ) -> User:
     """Update a user (admin only)."""
     user_crud = UserCRUD(session)
+
+    target_user = await user_crud.get_by_id(user_id)
+    if not target_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+    if target_user.username == settings.WORKER_USERNAME and (
+        user_update.model_fields_set & {"username", "is_active", "is_superuser"}
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot modify the system worker user",
+        )
+    if user_update.username == settings.WORKER_USERNAME:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Username reserved for the system worker user",
+        )
 
     # Check if username is being updated and already exists
     if user_update.username:
@@ -156,6 +181,17 @@ async def delete_user(
         )
 
     user_crud = UserCRUD(session)
+    user = await user_crud.get_by_id(user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+    if user.username == settings.WORKER_USERNAME:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot delete the system worker user",
+        )
+
     success = await user_crud.delete_user(user_id)
     if not success:
         raise HTTPException(
