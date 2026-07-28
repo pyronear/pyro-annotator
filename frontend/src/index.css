@@ -70,7 +70,14 @@
      stacked on mobile; arrow geometry only from md up. */
   @media (min-width: 768px) {
     .chevron-seg {
-      clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 50%, calc(100% - 18px) 100%, 0 100%, 18px 50%);
+      clip-path: polygon(
+        0 0,
+        calc(100% - 18px) 0,
+        100% 50%,
+        calc(100% - 18px) 100%,
+        0 100%,
+        18px 50%
+      );
     }
     .chevron-seg-first {
       clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 50%, calc(100% - 18px) 100%, 0 100%);
