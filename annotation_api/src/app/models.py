@@ -235,6 +235,18 @@ class Sequence(SQLModel, table=True):
     # from a group. assign_groups must skip these so the next import
     # doesn't silently re-attach a known outlier.
     is_group_excluded: bool = Field(default=False)
+    # Groups object-split siblings of one platform alert. Identity of the
+    # alert is ALWAYS the composite (source_api, platform_alert_id).
+    # Equals alert_api_id for non-split sequences (singleton alerts).
+    platform_alert_id: int = Field(sa_type=BigInteger, index=True)
+    # Sweep bookkeeping: set when the auto-annotate job was deferred.
+    auto_annotate_enqueued_at: Optional[datetime] = Field(
+        default=None, sa_column=Column(DateTime(timezone=True))
+    )
+    # Set by the worker when auto_predictions are written (queue gate 2).
+    auto_annotated_at: Optional[datetime] = Field(
+        default=None, sa_column=Column(DateTime(timezone=True))
+    )
 
 
 class SequenceGroup(SQLModel, table=True):
