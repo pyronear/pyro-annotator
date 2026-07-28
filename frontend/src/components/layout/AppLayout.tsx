@@ -1,17 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import {
-  Menu,
-  X,
-  ChevronRight,
-  ChevronDown,
-  Layers,
-  Target,
-  LogOut,
-  User,
-  Users,
-  LucideIcon,
-} from 'lucide-react';
+import { Menu, X, Layers, Target, LogOut, User, Users, LucideIcon } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useAnnotationCounts } from '@/hooks/useAnnotationCounts';
 import NotificationBadge from '@/components/ui/NotificationBadge';
@@ -97,18 +86,13 @@ export default function AppLayout({ children }: AppLayoutProps) {
 }
 
 function SidebarContent({ currentPath }: { currentPath: string }) {
-  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
-    Sequences: true,
-    Detections: true,
-  });
-
   // Get annotation counts for badges
   const { sequenceCount, detectionCount, groupCount } = useAnnotationCounts();
 
   // Create dynamic navigation with badge counts
   const navigationWithBadges: NavigationItem[] = [
     {
-      name: 'Sequences',
+      name: 'Classify',
       icon: Layers,
       children: [
         {
@@ -117,26 +101,19 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
           badgeCount: groupCount,
           badgeTitle: `${groupCount} groups need validation`,
         },
-        { name: 'Annotate', href: '/sequences/annotate', badgeCount: sequenceCount },
-        { name: 'Review', href: '/sequences/review' },
+        { name: 'Sequences', href: '/sequences/annotate', badgeCount: sequenceCount },
+        { name: 'Done', href: '/sequences/review' },
       ],
     },
     {
-      name: 'Detections',
+      name: 'Localize',
       icon: Target,
       children: [
-        { name: 'Annotate', href: '/detections/annotate', badgeCount: detectionCount },
-        { name: 'Review', href: '/detections/review' },
+        { name: 'Smoke', href: '/detections/annotate', badgeCount: detectionCount },
+        { name: 'Done', href: '/detections/review' },
       ],
     },
   ];
-
-  const toggleSection = (sectionName: string) => {
-    setExpandedSections(prev => ({
-      ...prev,
-      [sectionName]: !prev[sectionName],
-    }));
-  };
 
   const isPathActive = (href?: string) => {
     if (!href || href === '#') return false;
@@ -193,64 +170,53 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
         <nav className="mt-8 flex-1 px-2 bg-white space-y-1">
           {navigationWithBadges.map(item => {
             const isActive = isSectionActive(item);
-            const isExpanded = expandedSections[item.name];
 
             return (
               <div key={item.name}>
-                <button
-                  onClick={() => toggleSection(item.name)}
+                <div
                   className={clsx(
-                    isActive
-                      ? 'bg-primary-50 text-primary-700'
-                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
-                    'group flex items-center px-2 py-2 text-sm font-medium rounded-l-md w-full'
+                    isActive ? 'text-primary-700' : 'text-gray-600',
+                    'flex items-center px-2 py-2 text-sm font-medium'
                   )}
                 >
                   <item.icon
                     className={clsx(
-                      isActive ? 'text-primary-500' : 'text-gray-400 group-hover:text-gray-500',
+                      isActive ? 'text-primary-500' : 'text-gray-400',
                       'mr-3 flex-shrink-0 h-5 w-5'
                     )}
                     aria-hidden="true"
                   />
                   <span className="flex-1 text-left">{item.name}</span>
-                  {isExpanded ? (
-                    <ChevronDown className="h-4 w-4 text-gray-400" />
-                  ) : (
-                    <ChevronRight className="h-4 w-4 text-gray-400" />
-                  )}
-                </button>
-                {isExpanded && item.children && (
-                  <div className="mt-1 space-y-1">
-                    {item.children.map(subItem => {
-                      const isSubActive = isPathActive(subItem.href);
-                      const isDisabled = subItem.href === '#';
-                      return (
-                        <Link
-                          key={subItem.name}
-                          to={isDisabled ? '#' : subItem.href}
-                          onClick={e => isDisabled && e.preventDefault()}
-                          className={clsx(
-                            isSubActive
-                              ? 'bg-primary-50 border-r-4 border-primary-600 text-primary-700'
-                              : isDisabled
-                                ? 'text-gray-400 cursor-not-allowed'
-                                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
-                            'group flex items-center justify-between pl-11 pr-2 py-2 text-sm font-medium rounded-l-md'
-                          )}
-                        >
-                          <span>{subItem.name}</span>
-                          {subItem.badgeCount !== undefined && (
-                            <NotificationBadge
-                              count={subItem.badgeCount}
-                              title={subItem.badgeTitle}
-                            />
-                          )}
-                        </Link>
-                      );
-                    })}
-                  </div>
-                )}
+                </div>
+                <div className="mt-1 space-y-1">
+                  {item.children.map(subItem => {
+                    const isSubActive = isPathActive(subItem.href);
+                    const isDisabled = subItem.href === '#';
+                    return (
+                      <Link
+                        key={subItem.name}
+                        to={isDisabled ? '#' : subItem.href}
+                        onClick={e => isDisabled && e.preventDefault()}
+                        className={clsx(
+                          isSubActive
+                            ? 'bg-primary-50 border-r-4 border-primary-600 text-primary-700'
+                            : isDisabled
+                              ? 'text-gray-400 cursor-not-allowed'
+                              : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
+                          'group flex items-center justify-between pl-11 pr-2 py-2 text-sm font-medium rounded-l-md'
+                        )}
+                      >
+                        <span>{subItem.name}</span>
+                        {subItem.badgeCount !== undefined && (
+                          <NotificationBadge
+                            count={subItem.badgeCount}
+                            title={subItem.badgeTitle}
+                          />
+                        )}
+                      </Link>
+                    );
+                  })}
+                </div>
               </div>
             );
           })}
