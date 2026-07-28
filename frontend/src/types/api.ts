@@ -337,6 +337,7 @@ export interface User {
   username: string;
   is_active: boolean;
   is_superuser: boolean;
+  is_system: boolean;
   created_at: string;
   updated_at?: string;
 }

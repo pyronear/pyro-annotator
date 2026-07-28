@@ -270,8 +270,16 @@ export default function UserManagementPage() {
               {usersData?.items?.map(user => (
                 <tr key={user.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div>
+                    <div className="flex items-center">
                       <div className="text-sm font-medium text-gray-900">{user.username}</div>
+                      {user.is_system && (
+                        <span
+                          className="ml-2 inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800 cursor-help"
+                          title="Automated account used to attribute annotations inherited during group reassignment. It cannot log in, and cannot be edited or deleted."
+                        >
+                          System
+                        </span>
+                      )}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -300,28 +308,32 @@ export default function UserManagementPage() {
                     {new Date(user.created_at).toLocaleDateString()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
-                    <button
-                      onClick={() => handleEditUser(user)}
-                      className="text-blue-600 hover:text-blue-900 p-1 rounded"
-                      title="Edit user"
-                    >
-                      <Edit className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleChangePassword(user)}
-                      className="text-yellow-600 hover:text-yellow-900 p-1 rounded"
-                      title="Change password"
-                    >
-                      <Key className="w-4 h-4" />
-                    </button>
-                    {user.id !== currentUser?.id && (
-                      <button
-                        onClick={() => handleDeleteUser(user)}
-                        className="text-red-600 hover:text-red-900 p-1 rounded"
-                        title="Delete user"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                    {!user.is_system && (
+                      <>
+                        <button
+                          onClick={() => handleEditUser(user)}
+                          className="text-blue-600 hover:text-blue-900 p-1 rounded"
+                          title="Edit user"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleChangePassword(user)}
+                          className="text-yellow-600 hover:text-yellow-900 p-1 rounded"
+                          title="Change password"
+                        >
+                          <Key className="w-4 h-4" />
+                        </button>
+                        {user.id !== currentUser?.id && (
+                          <button
+                            onClick={() => handleDeleteUser(user)}
+                            className="text-red-600 hover:text-red-900 p-1 rounded"
+                            title="Delete user"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </>
                     )}
                   </td>
                 </tr>
