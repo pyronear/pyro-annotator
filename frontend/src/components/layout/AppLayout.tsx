@@ -44,7 +44,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const location = useLocation();
 
   return (
-    <div className="h-screen flex overflow-hidden bg-gray-50">
+    <div className="h-screen flex overflow-hidden bg-ash">
       {/* Mobile menu overlay */}
       {sidebarOpen && (
         <div className="fixed inset-0 flex z-40 md:hidden" role="dialog" aria-modal="true">

@@ -353,6 +353,7 @@ export default function DetectionSequenceAnnotatePage() {
       queryClient.invalidateQueries({ queryKey: [...QUERY_KEYS.SEQUENCES, 'navigation-context'] });
       // Invalidate annotation counts to update sidebar badges
       queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });
       setToastMessage('Detection annotations saved successfully');
       setShowToast(true);
 
@@ -435,6 +436,7 @@ export default function DetectionSequenceAnnotatePage() {
       queryClient.invalidateQueries({ queryKey: [...QUERY_KEYS.SEQUENCES, 'navigation-context'] });
       // Invalidate annotation counts to update sidebar badges
       queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });
 
       setToastMessage(`Detection ${detection.id} annotated successfully`);
       setShowToast(true);

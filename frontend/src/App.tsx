@@ -12,6 +12,7 @@ import DetectionSequenceAnnotatePage from '@/pages/DetectionSequenceAnnotatePage
 import SequenceGroupAnnotatePage from '@/pages/SequenceGroupAnnotatePage';
 import SequenceGroupsListPage from '@/pages/SequenceGroupsListPage';
 import UserManagementPage from '@/pages/UserManagementPage';
+import GuidePage from '@/pages/GuidePage';
 import LoginPage from '@/pages/LoginPage';
 import { useAuthStore } from '@/store/useAuthStore';
 
@@ -80,6 +81,10 @@ function App() {
                     path="/sequences/review"
                     element={<SequencesPageWrapper defaultProcessingStage="annotated" />}
                   />
+                  <Route
+                    path="/sequences/attention"
+                    element={<SequencesPageWrapper defaultProcessingStage="needs_manual" />}
+                  />
                   <Route path="/sequences/:id/annotate" element={<AnnotationInterface />} />
                   <Route path="/detections/annotate" element={<DetectionAnnotatePage />} />
                   <Route path="/detections/review" element={<DetectionReviewPage />} />
@@ -93,6 +98,7 @@ function App() {
                     element={<SequenceGroupAnnotatePage />}
                   />
                   <Route path="/users" element={<UserManagementPage />} />
+                  <Route path="/guide" element={<GuidePage />} />
                 </Routes>
               </AppLayout>
             }
