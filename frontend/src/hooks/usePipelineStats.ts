@@ -53,6 +53,8 @@ export function usePipelineStats(): PipelineStats & {
     ],
   });
 
+  // Positional destructure: order must match the queries array above —
+  // [sequences-total, detections-complete, ...STAGES in declaration order].
   const [seqTotal, detComplete, ready, seqDone, inReview, annotated, needsManual] = results;
 
   const stats = derivePipelineStats({

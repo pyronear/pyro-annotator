@@ -66,4 +66,11 @@ describe('usePipelineStats', () => {
     expect(result.current.groupsToLabel).toBe(12);
     expect(result.current.error).toBeNull();
   });
+
+  it('surfaces an error string when a count query fails', async () => {
+    vi.mocked(apiClient.getSequences).mockRejectedValue(new Error('boom'));
+    const { result } = renderHook(() => usePipelineStats(), { wrapper });
+    await waitFor(() => expect(result.current.error).not.toBeNull());
+    expect(result.current.error).toContain('boom');
+  });
 });

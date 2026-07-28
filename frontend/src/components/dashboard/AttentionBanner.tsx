@@ -13,7 +13,7 @@ export default function AttentionBanner({ count }: AttentionBannerProps) {
       <span>
         {count} sequence{count === 1 ? '' : 's'} need{count === 1 ? 's' : ''} manual attention
       </span>
-      <Link to="/detections/annotate" className="ml-auto font-semibold hover:underline">
+      <Link to="/sequences/attention" className="ml-auto font-semibold hover:underline">
         Resolve →
       </Link>
     </div>

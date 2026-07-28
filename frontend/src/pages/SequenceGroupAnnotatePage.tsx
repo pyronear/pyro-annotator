@@ -86,6 +86,7 @@ function MemberCard({
       queryClient.invalidateQueries({ queryKey: ['sequenceGroupsList'] });
       queryClient.invalidateQueries({ queryKey: ['sequenceGroupStats'] });
       queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });
     },
   });
 
@@ -246,6 +247,7 @@ export default function SequenceGroupAnnotatePage() {
       queryClient.invalidateQueries({ queryKey: ['sequenceGroupsList'] });
       queryClient.invalidateQueries({ queryKey: ['sequenceGroupStats'] });
       queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });
     },
   });
 

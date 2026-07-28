@@ -16,23 +16,23 @@ export default function DashboardPage() {
         Two passes: classify what the cameras saw, then localize the smoke.
       </p>
 
-      {stats.error && (
-        <p className="mt-4 font-body text-[13px] text-signal">
-          Statistics failed to load — counts may be missing. Refresh to retry.
-        </p>
-      )}
-
       <div className="mt-4">
         <AttentionBanner count={stats.attention} />
       </div>
 
-      <PipelineStrip
-        classifyTodo={stats.classifyTodo}
-        localizeTodo={stats.localizeTodo}
-        complete={stats.complete}
-        completePct={stats.completePct}
-        isLoading={stats.isLoading}
-      />
+      {stats.error ? (
+        <p className="my-6 font-body text-[13px] text-signal">
+          Statistics failed to load — counts may be missing. Refresh to retry.
+        </p>
+      ) : (
+        <PipelineStrip
+          classifyTodo={stats.classifyTodo}
+          localizeTodo={stats.localizeTodo}
+          complete={stats.complete}
+          completePct={stats.completePct}
+          isLoading={stats.isLoading}
+        />
+      )}
 
       <div className="mb-4 flex flex-col gap-4 md:flex-row">
         <PhaseCard

@@ -232,6 +232,7 @@ export default function AnnotationInterface() {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.SEQUENCE_ANNOTATIONS });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.SEQUENCES });
       queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });
 
       // Conflict path: the annotation saved, but the validated group's
       // existing label disagreed and propagation was skipped. The toast

@@ -72,7 +72,8 @@ Page composition, top to bottom — exactly four elements:
    "Two passes: classify what the cameras saw, then localize the smoke."
 2. **Attention banner** (conditional, only when `needs_manual > 0`): red-tinted
    strip — "⚠ N sequences need manual attention — Resolve →" linking to the
-   needs-manual queue.
+   needs-manual queue at `/sequences/attention` (a `SequencesPageWrapper`
+   route pinned to `needs_manual`).
 3. **Chevron pipeline strip**: three solid plates cut into chevrons
    (`clip-path`), each segment's right edge is an arrow point with the page
    background showing through the notches; the final point doubles as the arrow
@@ -90,8 +91,10 @@ Page composition, top to bottom — exactly four elements:
      "N classified|localized so far"
    - Primary CTA: "Start classifying" → `/sequences/annotate`;
      "Start localizing" → `/detections/annotate`
-   - Secondary link: "Review classified · N →" → `/sequences/review`;
-     "Review localized · N →" → `/detections/review`
+   - Secondary link: "Review classified →" → `/sequences/review`;
+     "Review localized →" → `/detections/review`. Review links carry no
+     counts: the review page opens on its own persisted stage tab, so any
+     single number would disagree with what it shows.
    - Classify card only: "Classify by group · N →" → `/sequence-groups`,
      shown when unlabeled groups exist. Group labeling fans out to member
      sequences (`_propagate_to_group_if_validated`), so it is presented as a

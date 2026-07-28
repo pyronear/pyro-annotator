@@ -24,9 +24,9 @@ const STEPS = [
 export default function HowItWorks() {
   return (
     <div className="rounded-[10px] border border-line bg-paper px-[22px] py-5">
-      <div className="mb-3 font-data text-[10.5px] font-medium uppercase tracking-[0.14em] text-haze">
+      <h2 className="mb-3 font-data text-[10.5px] font-medium uppercase tracking-[0.14em] text-haze">
         How annotation works
-      </div>
+      </h2>
       <p className="mb-3.5 font-body text-[13px] leading-relaxed text-char">
         Wildfire cameras send detection sequences to the platform. Every sequence travels the same
         path, and your work happens in two passes:

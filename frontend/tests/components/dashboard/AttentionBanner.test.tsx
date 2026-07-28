@@ -14,7 +14,7 @@ describe('AttentionBanner', () => {
     expect(screen.getByText(/4 sequences need manual attention/)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /resolve/i })).toHaveAttribute(
       'href',
-      '/detections/annotate'
+      '/sequences/attention'
     );
   });
 });

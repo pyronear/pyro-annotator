@@ -70,6 +70,7 @@ frontend/src/
 | `/login`                                              | `LoginPage`                       |
 | `/sequences/annotate`                                 | `SequencesPage`                   |
 | `/sequences/review`                                   | `SequencesPageWrapper`            |
+| `/sequences/attention`                                | `SequencesPageWrapper` (needs_manual) |
 | `/sequences/:id/annotate`                             | `AnnotationInterface`             |
 | `/detections/annotate`                                | `DetectionAnnotatePage`           |
 | `/detections/review`                                  | `DetectionReviewPage`             |

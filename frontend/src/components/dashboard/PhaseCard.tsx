@@ -51,7 +51,7 @@ export default function PhaseCard({
         <span className={`h-2 w-2 rounded-full ${t.dot}`} aria-hidden />
         Pass {pass} — {passLabel}
       </div>
-      <h3 className="font-display text-[18.5px] font-semibold text-char">{title}</h3>
+      <h2 className="font-display text-[18.5px] font-semibold text-char">{title}</h2>
       <p className="mb-4 font-body text-[12.5px] text-haze">{description}</p>
       {isLoading ? (
         <div className="h-10 w-24 animate-pulse rounded bg-ash" />
@@ -61,7 +61,14 @@ export default function PhaseCard({
           <span className="ml-1.5 font-body text-xs font-normal text-haze">to do</span>
         </div>
       )}
-      <div className="mb-1.5 mt-3.5 h-1 overflow-hidden rounded-sm bg-ash">
+      <div
+        className="mb-1.5 mt-3.5 h-1 overflow-hidden rounded-sm bg-ash"
+        role="progressbar"
+        aria-valuenow={pct}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={`${passLabel} progress`}
+      >
         <div className={`h-full ${t.bg}`} style={{ width: `${pct}%` }} />
       </div>
       <p className="mb-3.5 font-body text-[11.5px] text-haze">
@@ -82,11 +89,13 @@ export default function PhaseCard({
           <span className="font-semibold text-char">{secondaryLink.count.toLocaleString()}</span> →
         </Link>
       )}
+      {/* No count on the review link: the review page opens on its own persisted
+          stage tab, so any single number here would disagree with what it shows. */}
       <Link
         to={reviewTo}
         className="mt-2.5 block text-center font-body text-[12.5px] text-haze hover:text-char"
       >
-        {reviewLabel} · <span className="font-semibold text-char">{done.toLocaleString()}</span> →
+        {reviewLabel} →
       </Link>
     </div>
   );
