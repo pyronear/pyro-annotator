@@ -141,10 +141,13 @@ progress and pick the next lane without extra calls. Default order:
 
 ## Exit transition (user-driven)
 
-The localization UI gets an explicit **Submit** action: when the annotator
-finishes a lane, the frontend PATCHes the sequence annotation
+The localization UI's Save action, in the `from=localize` flow, completes the
+boxes and then submits the lane: the frontend PATCHes the sequence annotation
 `processing_stage: seq_annotation_done → annotated`, attributed to the
-submitting user. There is no implicit transition on detection-annotation saves.
+submitting user. Per-image detection saves never transition the lane; only the
+explicit Save does, and the server-side guard below rejects it while any
+detection is still un-annotated — so a lane cannot leave the queue by
+incidental box edits.
 
 **Server-side guard** on that specific transition: a PATCH moving a smoke lane
 (`has_smoke = true`) from `seq_annotation_done` directly to `annotated` is
@@ -193,12 +196,19 @@ queue-count badge.
   localization-queue total, so the dashboard number always matches what the
   queue shows.
 
-## Known seam (documented, not fixed)
+## Known seams (documented, not fixed)
 
-The legacy `/sequences/review` flow can still push a smoke lane
-`seq_annotation_done → annotated` *before* localization; such a lane leaves this
-queue and lands in the legacy detection flow instead. Making that path
-localization-aware is out of scope.
+1. The legacy `/sequences/review` flow can still push a smoke lane
+   `seq_annotation_done → annotated` *before* localization; such a lane leaves
+   this queue and lands in the legacy detection flow instead. Making that path
+   localization-aware is out of scope.
+2. **Missed-smoke-only lanes** (`has_smoke = false, has_missed_smoke = true`:
+   the annotator rejected the proposed track but flagged smoke elsewhere in the
+   frame) park at `seq_annotation_done` and are surfaced by no queue: the sweep
+   and the Localize queue key on `has_smoke = true`, and the verification page
+   now filters `has_smoke = true` too. They do not block their siblings (their
+   stage counts as done) but need their own resolution path — tracked in
+   [#217](https://github.com/pyronear/pyro-annotator/issues/217).
 
 ## End-to-end flow
 
