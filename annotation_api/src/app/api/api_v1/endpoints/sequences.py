@@ -46,14 +46,38 @@ from app.models import (
     AnnotationType,
 )
 from app.schemas.sequence import (
+    LocalizationQueueItem,
+    LocalizationQueueLane,
     SequenceCreate,
     SequenceRead,
 )
 from app.services.alert_identity import resolve_platform_alert_id
+from app.services.auto_annotate_scheduling import DONE_STAGES
 from app.schemas.sequence_annotations import SequenceAnnotationRead
 from app.schemas.combined import SequenceWithAnnotationRead
 
 router = APIRouter()
+
+
+def build_detection_stats_subquery():
+    """Per-sequence detection counts: total, with-annotation, and completed
+    (annotated-stage) — shared by the list filter and the localization queue."""
+    return (
+        select(
+            Detection.sequence_id,
+            func.count(Detection.id).label("total_detections"),
+            func.count(DetectionAnnotation.id).label("total_detection_annotations"),
+            func.count(
+                case((DetectionAnnotation.processing_stage == "annotated", 1))
+            ).label("completed_annotations"),
+        )
+        .select_from(Detection)
+        .outerjoin(
+            DetectionAnnotation, DetectionAnnotation.detection_id == Detection.id
+        )
+        .group_by(Detection.sequence_id)
+        .subquery()
+    )
 
 
 class SequenceOrderByField(str, Enum):
@@ -345,23 +369,8 @@ async def list_sequences(
 
     # Apply detection annotation filtering
     if needs_detection_annotation_join:
-        # Create subquery to count detections and their annotation status per sequence
-        detection_stats_subquery = (
-            select(
-                Detection.sequence_id,
-                func.count(Detection.id).label("total_detections"),
-                func.count(DetectionAnnotation.id).label("total_detection_annotations"),
-                func.count(
-                    case((DetectionAnnotation.processing_stage == "annotated", 1))
-                ).label("completed_annotations"),
-            )
-            .select_from(Detection)
-            .outerjoin(
-                DetectionAnnotation, DetectionAnnotation.detection_id == Detection.id
-            )
-            .group_by(Detection.sequence_id)
-            .subquery()
-        )
+        # Subquery counting detections and their annotation status per sequence
+        detection_stats_subquery = build_detection_stats_subquery()
 
         # Ensure we have SequenceAnnotation join for checking sequence processing stage
         if not needs_annotation_join:
@@ -509,6 +518,118 @@ async def list_sequences(
     else:
         # Standard pagination for sequence-only results
         return paginated_result
+
+
+# NOTE: declared before GET /{sequence_id} — the int path converter would
+# otherwise turn /localization-queue into a 422.
+@router.get("/localization-queue")
+async def localization_queue(
+    session: AsyncSession = Depends(get_session),
+    params: Params = Depends(),
+    current_user: User = Depends(get_current_user),
+) -> Page[LocalizationQueueItem]:
+    """Alerts ready for smoke localization (spec: smoke-localization entry
+    point): every sibling sequence at a done stage AND at least one smoke lane
+    (has_smoke, not unsure) at seq_annotation_done whose auto reference layer
+    exists (auto_annotated_at set). Lanes leave on submit (stage change), so a
+    fully-boxed but unsubmitted lane still counts as ready."""
+    ready_smoke_lane = and_(
+        SequenceAnnotation.processing_stage
+        == SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
+        SequenceAnnotation.has_smoke.is_(True),
+        SequenceAnnotation.is_unsure.is_(False),
+        Sequence.auto_annotated_at.is_not(None),
+    )
+    alerts = (
+        select(
+            Sequence.source_api,
+            Sequence.platform_alert_id,
+            func.min(Sequence.recorded_at).label("recorded_at"),
+        )
+        .outerjoin(SequenceAnnotation, SequenceAnnotation.sequence_id == Sequence.id)
+        .group_by(Sequence.source_api, Sequence.platform_alert_id)
+        .having(
+            and_(
+                func.count()
+                == func.sum(
+                    case(
+                        (SequenceAnnotation.processing_stage.in_(DONE_STAGES), 1),
+                        else_=0,
+                    )
+                ),
+                func.sum(case((ready_smoke_lane, 1), else_=0)) > 0,
+            )
+        )
+        .subquery()
+    )
+    total = (
+        await session.execute(select(func.count()).select_from(alerts))
+    ).scalar_one()
+    page_rows = (
+        await session.execute(
+            select(alerts)
+            .order_by(desc(alerts.c.recorded_at))
+            .offset((params.page - 1) * params.size)
+            .limit(params.size)
+        )
+    ).all()
+    items = [
+        await _build_queue_item(
+            session, row.source_api, row.platform_alert_id, row.recorded_at
+        )
+        for row in page_rows
+    ]
+    return Page.create(items=items, total=total, params=params)
+
+
+async def _build_queue_item(
+    session: AsyncSession,
+    source_api: SourceApi,
+    platform_alert_id: int,
+    recorded_at: datetime,
+) -> LocalizationQueueItem:
+    stats = build_detection_stats_subquery()
+    rows = (
+        await session.execute(
+            select(
+                Sequence,
+                SequenceAnnotation,
+                stats.c.total_detections,
+                stats.c.completed_annotations,
+            )
+            .outerjoin(
+                SequenceAnnotation, SequenceAnnotation.sequence_id == Sequence.id
+            )
+            .outerjoin(stats, stats.c.sequence_id == Sequence.id)
+            .where(
+                Sequence.source_api == source_api,
+                Sequence.platform_alert_id == platform_alert_id,
+            )
+            .order_by(asc(Sequence.alert_api_id))
+        )
+    ).all()
+    first_seq = rows[0][0]
+    return LocalizationQueueItem(
+        source_api=source_api,
+        platform_alert_id=platform_alert_id,
+        camera_name=first_seq.camera_name,
+        organisation_name=first_seq.organisation_name,
+        recorded_at=recorded_at,
+        lanes=[
+            LocalizationQueueLane(
+                sequence_id=seq.id,
+                alert_api_id=seq.alert_api_id,
+                has_smoke=bool(annotation.has_smoke) if annotation else False,
+                processing_stage=annotation.processing_stage.value
+                if annotation
+                else "no_annotation",
+                total_detections=total or 0,
+                annotated_detections=completed or 0,
+                auto_annotated_at=seq.auto_annotated_at,
+            )
+            for seq, annotation, total, completed in rows
+        ],
+    )
 
 
 @router.get("/{sequence_id}")
