@@ -117,12 +117,19 @@ Then run:
 
 ```bash
 cd annotation_api
+
+# Import into the remote (production) annotation API
 make import-alert-api DATE_FROM=2025-03-04 DATE_END=2025-03-04
+
+# Import into a local dev stack (see IMAGE_TRANSFER note below)
+make import-alert-api DATE_FROM=2025-03-04 DATE_END=2025-03-04 \
+  REMOTE_API=http://localhost:5050 IMAGE_TRANSFER=url
 ```
 
 - `DATE_END` defaults to `DATE_FROM` if omitted.
 - `MAX_SEQUENCES` is an optional cap on the number of sequences imported; default is no cap.
 - `REMOTE_API` defaults to `https://annotationapi.pyronear.org`; override to target staging/local.
+- `IMAGE_TRANSFER=url` routes detection images through the `/from-url` endpoint instead of a server-side S3 bucket copy. This is required when the target annotation API can't reach the alert API's S3 bucket — notably local dev with LocalStack, where the default bucket-copy mode fails every detection with `Source object not found`. Leave it unset for the production API (the script picks the right mode per source).
 - To use an alert-id filter, call the underlying script directly with `--sequence-list alerts_id_list.txt`.
 - Use `LOGLEVEL=debug` if you need more detail during imports.
 - Each alert sequence is object-split: one annotation sequence per detected smoke object (siblings get synthetic `alert_api_id`s).
