@@ -81,6 +81,7 @@ class SequenceGroupListItem(BaseModel):
 
     id: int
     camera_id: int
+    camera_name: str
     azimuth: int
     representative_bbox: RepresentativeBbox
     smoke_type: Optional[SmokeType]

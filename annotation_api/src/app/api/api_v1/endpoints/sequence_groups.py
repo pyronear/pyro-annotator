@@ -57,6 +57,8 @@ async def list_sequence_groups(
         select(
             Sequence.sequence_group_id.label("group_id"),
             func.count(Sequence.id).label("member_count"),
+            # All members share one camera; min() just picks that value.
+            func.min(Sequence.camera_name).label("camera_name"),
         )
         .where(Sequence.sequence_group_id.is_not(None))
         .group_by(Sequence.sequence_group_id)
@@ -76,6 +78,7 @@ async def list_sequence_groups(
             SequenceGroup.labeled_at,
             SequenceGroup.created_at,
             member_count_subq.c.member_count,
+            member_count_subq.c.camera_name,
         )
         # Inner-join so small groups (no row in the subquery) drop out.
         .join(member_count_subq, member_count_subq.c.group_id == SequenceGroup.id)

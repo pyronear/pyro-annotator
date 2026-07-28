@@ -93,6 +93,7 @@ async def _seed_group_with_members(
     n_members: int,
     created_at: datetime,
     alert_api_id_start: int,
+    camera_name: str = "cam",
 ) -> int:
     """Insert a SequenceGroup with `n_members` member sequences (each with a
     distinct alert_api_id) and return its id."""
@@ -121,7 +122,7 @@ async def _seed_group_with_members(
                 created_at=created_at,
                 recorded_at=created_at,
                 last_seen_at=created_at,
-                camera_name="cam",
+                camera_name=camera_name,
                 camera_id=1,
                 is_wildfire_alertapi="wildfire_smoke",
                 organisation_name="org",
@@ -201,6 +202,26 @@ async def test_list_groups_hides_small_groups_and_sorts_by_size(
     counts = {item["id"]: item["member_count"] for item in items}
     assert counts[big] == 4
     assert counts[medium] == 3
+
+
+@pytest.mark.asyncio
+async def test_list_groups_includes_camera_name(
+    authenticated_client: AsyncClient,
+    async_session: AsyncSession,
+):
+    """List items carry the camera name of their member sequences."""
+    gid = await _seed_group_with_members(
+        async_session,
+        n_members=3,
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        alert_api_id_start=400,
+        camera_name="Serre de Barre",
+    )
+
+    resp = await authenticated_client.get("/sequence_groups/")
+    assert resp.status_code == 200
+    row = next(i for i in resp.json()["items"] if i["id"] == gid)
+    assert row["camera_name"] == "Serre de Barre"
 
 
 def _annotation_payload(*, stage: str, smoke_type: str) -> dict:
