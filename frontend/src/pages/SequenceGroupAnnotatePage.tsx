@@ -1,19 +1,33 @@
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Loader2,
   AlertCircle,
   CheckCircle,
+  ChevronLeft,
+  ChevronRight,
   Clock,
-  Tag,
+  Info,
   ShieldCheck,
   ShieldOff,
   X,
 } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { useDetectionImage } from '@/hooks/useDetectionImage';
+import { usePersistedTabState } from '@/hooks/usePersistedTabState';
+import { formatRelativeTime } from '@/utils/relativeTime';
 import { useState } from 'react';
 import { AlgoPrediction, SequenceGroup, SequenceGroupMember } from '@/types/api';
+
+// Minimum card width per size step; the auto-fill grid derives the column
+// count from it, so bigger cards automatically flow into more rows.
+type CardSize = 'sm' | 'md' | 'lg';
+const CARD_MIN_WIDTH: Record<CardSize, number> = { sm: 340, md: 460, lg: 640 };
+const CARD_SIZES: { value: CardSize; label: string; title: string }[] = [
+  { value: 'sm', label: 'S', title: 'Small cards' },
+  { value: 'md', label: 'M', title: 'Medium cards' },
+  { value: 'lg', label: 'L', title: 'Large cards' },
+];
 
 // Stages past the auto-import placeholder. Mirrors the backend's
 // _BULK_LOCKED_STAGES set in
@@ -207,16 +221,19 @@ function MemberCard({
             )}
           </div>
         </div>
-        <div className="px-2 py-1 text-xs text-gray-700">
-          <div className="font-medium">seq #{member.sequence_id}</div>
-          <div className="flex items-center justify-between">
-            <span>{new Date(member.recorded_at).toLocaleString()}</span>
-            {memberIsAnnotated(member) ? (
-              <CheckCircle className="w-3 h-3 text-green-500" aria-label="annotated" />
-            ) : (
-              <Clock className="w-3 h-3 text-orange-400" />
-            )}
-          </div>
+        <div className="px-2 py-1 text-xs text-gray-700 flex items-center justify-between">
+          <span>
+            <span className="font-medium">seq #{member.sequence_id}</span>
+            <span className="text-gray-500" title={new Date(member.recorded_at).toLocaleString()}>
+              {' · '}
+              {formatRelativeTime(member.recorded_at)}
+            </span>
+          </span>
+          {memberIsAnnotated(member) ? (
+            <CheckCircle className="w-3 h-3 text-green-500" aria-label="annotated" />
+          ) : (
+            <Clock className="w-3 h-3 text-orange-400" />
+          )}
         </div>
       </Link>
     </div>
@@ -226,8 +243,11 @@ function MemberCard({
 export default function SequenceGroupAnnotatePage() {
   const { id } = useParams<{ id: string }>();
   const groupId = Number(id);
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [cardSize, setCardSize] = usePersistedTabState<CardSize>('groupAnnotateCardSize', 'md');
+  // localStorage may hold a stale value from a renamed size key; an
+  // undefined width would invalidate the whole gridTemplateColumns rule.
+  const cardMinWidth = CARD_MIN_WIDTH[cardSize] ?? CARD_MIN_WIDTH.md;
 
   const {
     data: group,
@@ -237,7 +257,24 @@ export default function SequenceGroupAnnotatePage() {
     queryKey: ['sequenceGroup', groupId],
     queryFn: () => apiClient.getSequenceGroup(groupId),
     enabled: !Number.isNaN(groupId),
+    // Keep the previous group rendered while the next loads so chevron
+    // navigation doesn't unmount the header mid-click.
+    placeholderData: prev => prev,
   });
+
+  // Neighbor ids for the prev/next chevrons, from the list endpoint's
+  // default order (biggest group first) — the same queue the list page
+  // shows unfiltered. Key shares the 'sequenceGroupsList' prefix so the
+  // existing mutation invalidations refresh it too.
+  const { data: neighborList } = useQuery({
+    queryKey: ['sequenceGroupsList', 'neighbors'],
+    queryFn: () => apiClient.getSequenceGroups({ page: 1, size: 100 }),
+  });
+  const neighborIds = neighborList?.items.map(g => g.id) ?? [];
+  const neighborIdx = neighborIds.indexOf(groupId);
+  const prevId = neighborIdx > 0 ? neighborIds[neighborIdx - 1] : null;
+  const nextId =
+    neighborIdx >= 0 && neighborIdx < neighborIds.length - 1 ? neighborIds[neighborIdx + 1] : null;
 
   const validateMutation = useMutation({
     mutationFn: (validated: boolean) =>
@@ -267,30 +304,73 @@ export default function SequenceGroupAnnotatePage() {
     );
   }
 
+  const cameraName = group.members[0]?.camera_name ?? `camera #${group.camera_id}`;
+
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6">
-      <header className="mb-4">
-        <button onClick={() => navigate(-1)} className="text-sm text-gray-500 hover:text-gray-800">
-          ← Back
-        </button>
-        <div className="mt-1 flex items-center justify-between gap-4 flex-wrap">
-          <div>
-            <h1 className="text-2xl font-semibold">Sequence group #{group.id}</h1>
-            <div className="text-sm text-gray-600 mt-1">
-              camera {group.camera_id} · azimuth {group.azimuth}° · {group.members.length} members
-              {group.smoke_type && (
-                <span className="ml-2 inline-flex items-center gap-1 text-orange-700">
-                  <Tag className="w-3 h-3" /> smoke / {group.smoke_type}
-                </span>
-              )}
-              {group.false_positive_type && (
-                <span className="ml-2 inline-flex items-center gap-1 text-gray-700">
-                  <Tag className="w-3 h-3" /> FP / {group.false_positive_type}
-                </span>
-              )}
-            </div>
+    <div className="space-y-6 pt-20">
+      {/* Pinned header, same idiom as AnnotationHeader on the per-sequence
+          page: fixed to the viewport past the sidebar (md:left-64) so the
+          primary action (validate) stays reachable while scrolling the
+          member grid. The root's pt-20 reserves its space. */}
+      <div className="fixed top-0 left-0 md:left-64 right-0 z-30 px-6 pt-3 pb-2.5 bg-white/85 border-b border-gray-200 backdrop-blur-sm shadow-sm">
+        <Link to="/sequence-groups" className="text-sm text-gray-500 hover:text-gray-800">
+          ← Sequence groups
+        </Link>
+        <div className="mt-1 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <h1 className="text-2xl font-bold text-gray-900 truncate">
+              {cameraName} · {group.azimuth}°
+            </h1>
+            <span className="flex-none rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-700">
+              {group.members.length} seq
+            </span>
+            {group.smoke_type ? (
+              <span className="flex-none rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-semibold text-orange-700">
+                smoke · {group.smoke_type}
+              </span>
+            ) : group.false_positive_type ? (
+              <span className="flex-none rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-semibold text-gray-700">
+                false positive · {group.false_positive_type.replace(/_/g, ' ')}
+              </span>
+            ) : (
+              <span className="flex-none rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-semibold text-yellow-800">
+                to label
+              </span>
+            )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-none items-center gap-2">
+            {prevId ? (
+              <Link
+                to={`/sequence-groups/${prevId}/annotate`}
+                title="Previous group"
+                className="p-1.5 rounded-lg border border-gray-300 bg-white text-gray-600 hover:bg-gray-50"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </Link>
+            ) : (
+              <span
+                aria-disabled="true"
+                className="p-1.5 rounded-lg border border-gray-200 bg-white text-gray-300"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </span>
+            )}
+            {nextId ? (
+              <Link
+                to={`/sequence-groups/${nextId}/annotate`}
+                title="Next group"
+                className="p-1.5 rounded-lg border border-gray-300 bg-white text-gray-600 hover:bg-gray-50"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </Link>
+            ) : (
+              <span
+                aria-disabled="true"
+                className="p-1.5 rounded-lg border border-gray-200 bg-white text-gray-300"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </span>
+            )}
             {group.is_validated ? (
               <>
                 <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-green-100 text-green-700 text-sm">
@@ -299,7 +379,8 @@ export default function SequenceGroupAnnotatePage() {
                 <button
                   onClick={() => validateMutation.mutate(false)}
                   disabled={validateMutation.isPending}
-                  className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
+                  title="Re-open the group — labels stop propagating to members"
+                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-50 disabled:opacity-50"
                 >
                   <ShieldOff className="w-3 h-3 inline mr-1" /> Unvalidate
                 </button>
@@ -308,53 +389,95 @@ export default function SequenceGroupAnnotatePage() {
               <button
                 onClick={() => validateMutation.mutate(true)}
                 disabled={validateMutation.isPending}
-                className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-300"
+                title="Confirms every sequence shows the same object and enables label propagation"
+                className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300"
               >
                 <ShieldCheck className="w-4 h-4 inline mr-1" /> Validate group
               </button>
             )}
           </div>
         </div>
-      </header>
+      </div>
 
-      <div className="mb-3 px-3 py-2 rounded bg-gray-50 border border-gray-200 text-xs text-gray-600">
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-1">
-          <span className="inline-flex items-center gap-2">
-            <span className="inline-block w-4 h-3 border-2 border-red-500" />
-            tracked prediction (per-sequence)
-          </span>
-          <span className="inline-flex items-center gap-2">
-            <span className="inline-block w-4 h-3 border-2 border-dashed border-fuchsia-500" />
-            group reference region
-          </span>
-          <span>Each row shows the full frame and a zoomed crop of the detected object.</span>
-          <span>Click a thumbnail to annotate the sequence.</span>
-          <span>The X removes a sequence from this group.</span>
-          {group.is_validated && (
-            <span className="text-green-700">
-              Group is validated — annotating any sequence will propagate the labels to all other
+      <div className="flex gap-2.5 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+        <Info className="w-4 h-4 flex-none mt-0.5 text-blue-600" />
+        <div>
+          <p className="font-semibold">How to label this group</p>
+          <ul className="mt-1 space-y-0.5 list-disc list-inside">
+            <li>
+              <span className="font-medium">Label</span> — open any sequence below and label it.
+            </li>
+            <li>
+              <span className="font-medium">Validate</span> — "Validate group" confirms every
+              sequence shows the same object; once validated, one label propagates to all
               unannotated members.
-            </span>
-          )}
+            </li>
+            <li>
+              <span className="font-medium">Eject</span> — use ✕ on a card to remove a sequence that
+              doesn't belong. Do this before validating.
+            </li>
+          </ul>
         </div>
       </div>
 
-      {group.members.length === 0 ? (
-        <div className="px-4 py-12 text-center text-gray-500 border border-dashed border-gray-300 rounded">
-          This group has no members.
+      <div>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-x-5 gap-y-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs text-gray-600">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="inline-block w-4 h-3 border-2 border-red-500" />
+              detected object
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="inline-block w-4 h-3 border-2 border-dashed border-fuchsia-500" />
+              group reference region
+            </span>
+            <span>left: full frame · right: zoom</span>
+          </div>
+          <div className="inline-flex items-center gap-1.5">
+            <span>Card size</span>
+            <div className="inline-flex rounded-md bg-gray-200 p-0.5 gap-0.5">
+              {CARD_SIZES.map(s => (
+                <button
+                  key={s.value}
+                  type="button"
+                  title={s.title}
+                  aria-pressed={cardSize === s.value}
+                  onClick={() => setCardSize(s.value)}
+                  className={`px-2 py-0.5 rounded font-semibold ${
+                    cardSize === s.value
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-900'
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
-      ) : (
-        <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {group.members.map(m => (
-            <MemberCard
-              key={m.sequence_id}
-              member={m}
-              groupId={group.id}
-              groupBbox={group.representative_bbox}
-            />
-          ))}
-        </section>
-      )}
+
+        {group.members.length === 0 ? (
+          <div className="px-4 py-12 text-center text-gray-500 border border-dashed border-gray-300 rounded">
+            This group has no members.
+          </div>
+        ) : (
+          <section
+            className="grid gap-4"
+            style={{
+              gridTemplateColumns: `repeat(auto-fill, minmax(min(${cardMinWidth}px, 100%), 1fr))`,
+            }}
+          >
+            {group.members.map(m => (
+              <MemberCard
+                key={m.sequence_id}
+                member={m}
+                groupId={group.id}
+                groupBbox={group.representative_bbox}
+              />
+            ))}
+          </section>
+        )}
+      </div>
     </div>
   );
 }
