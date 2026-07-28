@@ -38,6 +38,13 @@ changes, no new labeling capability.
   `to label` when unlabeled.
 - Validate/Unvalidate controls keep their position and behavior, restyled
   to the list page's idiom (rounded-lg buttons, same greens).
+- The whole header block (breadcrumb, title, pills, validate controls) is
+  sticky (`sticky top-0` inside the app's scrolling `<main>`, gray-50
+  backdrop-blur, negative margins bleeding over `<main>`'s `p-6`) so the
+  primary action stays reachable while scrolling the member grid — the
+  pinned-header idiom of the per-sequence annotation page, without its
+  fixed-position offset bookkeeping. The explainer and legend scroll away
+  normally.
 
 ### Explainer
 
