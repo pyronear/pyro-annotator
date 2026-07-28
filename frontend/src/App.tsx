@@ -12,6 +12,7 @@ import DetectionSequenceAnnotatePage from '@/pages/DetectionSequenceAnnotatePage
 import SequenceGroupAnnotatePage from '@/pages/SequenceGroupAnnotatePage';
 import SequenceGroupsListPage from '@/pages/SequenceGroupsListPage';
 import UserManagementPage from '@/pages/UserManagementPage';
+import GuidePage from '@/pages/GuidePage';
 import LoginPage from '@/pages/LoginPage';
 import { useAuthStore } from '@/store/useAuthStore';
 
@@ -93,6 +94,7 @@ function App() {
                     element={<SequenceGroupAnnotatePage />}
                   />
                   <Route path="/users" element={<UserManagementPage />} />
+                  <Route path="/guide" element={<GuidePage />} />
                 </Routes>
               </AppLayout>
             }
