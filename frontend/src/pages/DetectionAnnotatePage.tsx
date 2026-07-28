@@ -27,11 +27,12 @@ export default function DetectionAnnotatePage() {
 
   // Create default state specific to detection annotation page
   const defaultState = {
-    ...createDefaultFilterState('needs_manual'),
+    ...createDefaultFilterState('seq_annotation_done'),
     filters: {
-      ...createDefaultFilterState('needs_manual').filters,
-      // Server-side filter: only sequences flagged for manual detection-level rework.
-      processing_stage: 'needs_manual' as const,
+      ...createDefaultFilterState('seq_annotation_done').filters,
+      // Server-side filter: sequences whose classification is submitted and
+      // whose detection boxes still need drawing (Localize · to do).
+      processing_stage: 'seq_annotation_done' as const,
       include_annotation: true,
       size: 100,
     },
@@ -52,7 +53,7 @@ export default function DetectionAnnotatePage() {
     setSelectedSmokeTypes,
     setSelectedModelAccuracy,
     resetFilters,
-  } = usePersistedFilters('filters-detection-annotate-v8', defaultState);
+  } = usePersistedFilters('filters-detection-annotate-v9', defaultState);
 
   // Filter change handlers
   const handleFilterChange = (newFilters: Partial<ExtendedSequenceFilters>) => {
@@ -128,7 +129,7 @@ export default function DetectionAnnotatePage() {
     [sequenceAnnotations]
   );
 
-  // Server already filters on processing_stage=needs_manual; no client-side narrow.
+  // Server already filters on processing_stage=seq_annotation_done; no client-side narrow.
   const filteredSequences = sequences;
 
   // Navigation handlers
