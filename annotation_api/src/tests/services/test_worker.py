@@ -113,3 +113,25 @@ async def test_auto_annotate_no_engine_anchor_keeps_nothing(
     )
     for det in refreshed:
         assert det.auto_predictions == {"predictions": []}
+
+
+@pytest.mark.asyncio
+async def test_auto_annotate_total_failure_raises_and_does_not_stamp(
+    detection_session, monkeypatch
+):
+    """If every detection fails (e.g. S3 outage), the job must fail visibly
+    instead of stamping auto_annotated_at — a stamped lane with no reference
+    layer would surface in the queue and never be revisited."""
+
+    class ExplodingDetector:
+        def predict(self, _img):
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr(worker, "get_detector", lambda: ExplodingDetector())
+
+    with pytest.raises(RuntimeError, match="not stamping"):
+        await auto_annotate_sequence(sequence_id=1)
+
+    detection_session.expire_all()
+    seq1 = await detection_session.get(Sequence, 1)
+    assert seq1.auto_annotated_at is None

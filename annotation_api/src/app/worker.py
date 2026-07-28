@@ -118,6 +118,15 @@ async def auto_annotate_sequence(sequence_id: int) -> None:
             }
             session.add(det)
             annotated += 1
+        # Total failure (e.g. S3 outage): fail the job instead of stamping —
+        # a stamped lane with no reference layer would surface in the queue
+        # and never be revisited. The sweep re-enqueues stale stamped lanes
+        # (RETRY_STALE_AFTER), so a failed job retries later.
+        if detections and annotated == 0:
+            raise RuntimeError(
+                f"auto-annotate sequence {sequence_id}: all "
+                f"{len(detections)} detections failed; not stamping"
+            )
         # Completion marker: the localization queue only surfaces lanes whose
         # reference layer exists (spec: smoke-localization entry point).
         sequence = await session.get(SequenceModel, sequence_id)

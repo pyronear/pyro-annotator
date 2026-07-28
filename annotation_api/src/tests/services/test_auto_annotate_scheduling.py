@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import select
@@ -216,3 +216,53 @@ async def test_annotated_and_in_review_siblings_count_as_done(async_session):
         stage=Stage.IN_REVIEW,
     )
     assert await schedule_pending_auto_annotate(async_session) == [smoke.id]
+
+
+@pytest.mark.asyncio
+async def test_stale_enqueued_lane_without_result_is_reenqueued(async_session):
+    lane = await _lane(
+        async_session,
+        alert_api_id=500,
+        platform_alert_id=500,
+        stage=Stage.SEQ_ANNOTATION_DONE,
+        has_smoke=True,
+    )
+    # Stamped 2h ago, job lost: auto_annotated_at never landed.
+    lane.auto_annotate_enqueued_at = datetime.now(UTC) - timedelta(hours=2)
+    async_session.add(lane)
+    await async_session.commit()
+
+    assert await schedule_pending_auto_annotate(async_session) == [lane.id]
+
+
+@pytest.mark.asyncio
+async def test_recently_enqueued_lane_is_not_reenqueued(async_session):
+    lane = await _lane(
+        async_session,
+        alert_api_id=500,
+        platform_alert_id=500,
+        stage=Stage.SEQ_ANNOTATION_DONE,
+        has_smoke=True,
+    )
+    lane.auto_annotate_enqueued_at = datetime.now(UTC) - timedelta(minutes=10)
+    async_session.add(lane)
+    await async_session.commit()
+
+    assert await schedule_pending_auto_annotate(async_session) == []
+
+
+@pytest.mark.asyncio
+async def test_stale_but_completed_lane_is_not_reenqueued(async_session):
+    lane = await _lane(
+        async_session,
+        alert_api_id=500,
+        platform_alert_id=500,
+        stage=Stage.SEQ_ANNOTATION_DONE,
+        has_smoke=True,
+    )
+    lane.auto_annotate_enqueued_at = datetime.now(UTC) - timedelta(hours=2)
+    lane.auto_annotated_at = datetime.now(UTC) - timedelta(hours=1)
+    async_session.add(lane)
+    await async_session.commit()
+
+    assert await schedule_pending_auto_annotate(async_session) == []

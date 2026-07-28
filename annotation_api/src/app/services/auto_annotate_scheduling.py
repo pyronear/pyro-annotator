@@ -12,9 +12,9 @@ unsure) still at seq_annotation_done and not yet enqueued gets
 id.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import and_, case, func, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.models import (
@@ -29,6 +29,12 @@ DONE_STAGES = (
     SequenceAnnotationProcessingStage.IN_REVIEW,
     SequenceAnnotationProcessingStage.ANNOTATED,
 )
+
+# Reconciliation: a lane stamped this long ago whose auto_annotated_at never
+# landed is considered lost (defer failed after commit, job crashed, worker
+# died) and is re-enqueued. auto_annotate_sequence is idempotent
+# (whole-replace), so re-running is safe.
+RETRY_STALE_AFTER = timedelta(hours=1)
 
 
 def complete_alerts_subquery():
@@ -50,6 +56,7 @@ def complete_alerts_subquery():
 
 
 async def schedule_pending_auto_annotate(session: AsyncSession) -> list[int]:
+    now = datetime.now(UTC)
     complete = complete_alerts_subquery()
     lanes = (
         (
@@ -71,7 +78,15 @@ async def schedule_pending_auto_annotate(session: AsyncSession) -> list[int]:
                     == SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
                     SequenceAnnotation.has_smoke.is_(True),
                     SequenceAnnotation.is_unsure.is_(False),
-                    Sequence.auto_annotate_enqueued_at.is_(None),
+                    or_(
+                        Sequence.auto_annotate_enqueued_at.is_(None),
+                        # Lost-job reconciliation (see RETRY_STALE_AFTER).
+                        and_(
+                            Sequence.auto_annotated_at.is_(None),
+                            Sequence.auto_annotate_enqueued_at
+                            < now - RETRY_STALE_AFTER,
+                        ),
+                    ),
                 )
                 .order_by(Sequence.id)
             )
@@ -79,9 +94,9 @@ async def schedule_pending_auto_annotate(session: AsyncSession) -> list[int]:
         .scalars()
         .all()
     )
-    now = datetime.now(UTC)
+    lane_ids = [lane.id for lane in lanes]
     for lane in lanes:
         lane.auto_annotate_enqueued_at = now
         session.add(lane)
     await session.commit()
-    return [lane.id for lane in lanes]
+    return lane_ids
