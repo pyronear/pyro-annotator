@@ -259,7 +259,7 @@ export default function CroppedImageSequence({
       >
         {/* Loading State */}
         {showLoadingState && (
-          <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-30">
+          <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-10">
             <div className="flex flex-col items-center space-y-3">
               <Loader2 className="animate-spin w-6 h-6 text-primary-600" />
               <span className="text-sm text-gray-600">Loading image...</span>
@@ -269,7 +269,7 @@ export default function CroppedImageSequence({
 
         {/* Error State */}
         {currentImage?.error && (
-          <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-30">
+          <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-10">
             <div className="flex flex-col items-center space-y-2">
               <AlertCircle className="w-6 h-6 text-red-400" />
               <span className="text-sm text-gray-600">Failed to load image</span>
@@ -298,6 +298,7 @@ export default function CroppedImageSequence({
               onClick={() => setZoomLevel(prev => Math.max(1, prev - 0.5))}
               disabled={zoomLevel <= 1}
               title="Zoom out"
+              aria-label="Zoom out"
               className="px-1.5 py-0.5 rounded text-xs font-semibold text-gray-600 hover:text-gray-900 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Minus className="w-3.5 h-3.5" />
@@ -315,6 +316,7 @@ export default function CroppedImageSequence({
               onClick={() => setZoomLevel(prev => Math.min(8, prev + 0.5))}
               disabled={zoomLevel >= 8}
               title="Zoom in"
+              aria-label="Zoom in"
               className="px-1.5 py-0.5 rounded text-xs font-semibold text-gray-600 hover:text-gray-900 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Plus className="w-3.5 h-3.5" />
@@ -325,6 +327,7 @@ export default function CroppedImageSequence({
             <button
               onClick={() => setZoomLevel(4)}
               title="Reset zoom"
+              aria-label="Reset zoom"
               className="px-1.5 py-0.5 rounded text-xs text-gray-600 hover:text-gray-900 hover:bg-white"
             >
               <RotateCcw className="w-3.5 h-3.5" />

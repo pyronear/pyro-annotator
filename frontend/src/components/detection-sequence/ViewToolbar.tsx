@@ -41,6 +41,7 @@ function IconToggle({
     <button
       type="button"
       title={title}
+      aria-label={title}
       aria-pressed={pressed}
       onClick={onClick}
       className={`p-1.5 rounded ${

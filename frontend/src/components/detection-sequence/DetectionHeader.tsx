@@ -34,8 +34,8 @@ interface DetectionHeaderProps {
   // View controls
   showPredictions: boolean;
   onTogglePredictions: (show: boolean) => void;
-  cardSize?: CardSize;
-  onCardSizeChange?: (size: CardSize) => void;
+  cardSize: CardSize;
+  onCardSizeChange: (size: CardSize) => void;
 
   // Submit functionality
   allInVisualCheck: boolean;
@@ -74,7 +74,7 @@ export function DetectionHeader({
   rawSequencesError,
   showPredictions,
   onTogglePredictions,
-  cardSize = 'md',
+  cardSize,
   onCardSizeChange,
   allInVisualCheck,
   onSave,
@@ -130,14 +130,20 @@ export function DetectionHeader({
           </span>
         </div>
 
-        {isAllAnnotated && <CheckCircle className="w-4 h-4 text-green-500 shrink-0" />}
+        {isAllAnnotated && (
+          <CheckCircle
+            className="w-4 h-4 text-green-500 shrink-0"
+            role="img"
+            aria-label="All frames annotated"
+          />
+        )}
 
+        <div className="flex items-center gap-1">{getAnnotationPills()}</div>
         {accuracy && (
           <span className={getModelAccuracyBadgeClasses(accuracy, 'sm')}>
             {accuracy.icon} {accuracy.label}
           </span>
         )}
-        <div className="flex items-center gap-1">{getAnnotationPills()}</div>
 
         <div className="flex-1" />
 
@@ -166,7 +172,7 @@ export function DetectionHeader({
 
         <ViewToolbar
           cardSize={cardSize}
-          onCardSizeChange={onCardSizeChange ?? (() => {})}
+          onCardSizeChange={onCardSizeChange}
           showPredictions={showPredictions}
           onTogglePredictions={onTogglePredictions}
           isLocalize={isLocalize}
