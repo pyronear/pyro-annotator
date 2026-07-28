@@ -107,6 +107,19 @@ async def update_user(
     """Update a user (admin only)."""
     user_crud = UserCRUD(session)
 
+    target_user = await user_crud.get_by_id(user_id)
+    if not target_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+    if target_user.username == settings.WORKER_USERNAME and (
+        user_update.model_fields_set & {"username", "is_active", "is_superuser"}
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot modify the system worker user",
+        )
+
     # Check if username is being updated and already exists
     if user_update.username:
         existing_user = await user_crud.get_by_username(user_update.username)

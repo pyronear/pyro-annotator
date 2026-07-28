@@ -420,3 +420,35 @@ class TestWorkerUserProtection:
         """Test a merely-inactive user is still deletable (guard is by username)."""
         response = await authenticated_client.delete(f"/users/{inactive_user.id}")
         assert response.status_code == 204
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {"username": "renamedworker"},
+            {"is_active": True},
+            {"is_superuser": True},
+            {"is_active": False},  # same value as seeded — still rejected
+        ],
+    )
+    async def test_update_worker_user_forbidden(
+        self, authenticated_client: AsyncClient, worker_user: User, payload: dict
+    ):
+        """Test the system worker user cannot be renamed, activated or promoted."""
+        response = await authenticated_client.patch(
+            f"/users/{worker_user.id}", json=payload
+        )
+
+        assert response.status_code == 403
+        data = response.json()
+        assert "Cannot modify the system worker user" in data["detail"]
+
+    @pytest.mark.asyncio
+    async def test_update_worker_password_allowed(
+        self, authenticated_client: AsyncClient, worker_user: User
+    ):
+        """Test the password endpoint is unaffected (worker cannot log in anyway)."""
+        response = await authenticated_client.patch(
+            f"/users/{worker_user.id}/password", json={"password": "newpassword123"}
+        )
+        assert response.status_code == 200
