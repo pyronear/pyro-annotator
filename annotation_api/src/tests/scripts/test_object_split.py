@@ -300,3 +300,16 @@ class TestSplitAllRecordsCrossSequenceDedup:
         assert DEFAULT_ALERT_ID_BASE + 47105 * 1000 + 1 in {
             r["sequence_id"] for r in out
         }
+
+
+class TestPlatformAlertId:
+    def test_all_records_carry_the_raw_platform_sid(self):
+        primary, sibling = split_sequence_records(two_object_records())
+        for record in primary.records + sibling.records:
+            assert record["platform_alert_id"] == 47105
+
+    def test_fallback_group_carries_the_raw_platform_sid(self):
+        records = two_object_records()[:2]  # below min_dets=3 -> fallback
+        (group,) = split_sequence_records(records)
+        for record in group.records:
+            assert record["platform_alert_id"] == 47105

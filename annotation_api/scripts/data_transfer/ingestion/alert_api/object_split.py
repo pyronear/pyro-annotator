@@ -153,7 +153,9 @@ def split_sequence_records(
                 alert_api_id=alert_api_sid,
                 is_primary=True,
                 is_fallback=True,
-                records=[dict(r) for r in sequence_records],
+                records=[
+                    {**r, "platform_alert_id": alert_api_sid} for r in sequence_records
+                ],
             )
         ]
 
@@ -202,6 +204,7 @@ def split_sequence_records(
         for key in member_keys:
             record = dict(records_by_key[key])
             record["sequence_id"] = alert_id
+            record["platform_alert_id"] = alert_api_sid
             record["detection_bboxes"] = own_by_frame[key]
             record["detection_others_bboxes"] = [
                 box
