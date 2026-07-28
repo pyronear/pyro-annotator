@@ -193,8 +193,12 @@ update-stage-local:
 # target annotation API, object-splitting each alert sequence into one
 # annotation sequence per smoke object (admin-only).
 # Requires ALERT_API_LOGIN/PASSWORD, ALERT_API_ADMIN_LOGIN/PASSWORD, MAIN_ANNOTATION_LOGIN/PASSWORD.
-# Usage: make import-alert-api DATE_FROM=2025-03-04 [DATE_END=2025-03-04] [MAX_SEQUENCES=20]
+# Usage: make import-alert-api DATE_FROM=2025-03-04 [DATE_END=2025-03-04] [MAX_SEQUENCES=20] [IMAGE_TRANSFER=url]
+# Set IMAGE_TRANSFER=url when the target annotation API can't reach the alert
+# API's S3 bucket (e.g. local dev with LocalStack); unset keeps the script's
+# per-source default (bucket-copy for the French alert API, url for CENIA).
 DATE_END ?= $(DATE_FROM)
+IMAGE_TRANSFER ?=
 import-alert-api: MAX_SEQUENCES = 0
 import-alert-api:
 	@if [ -z "$(DATE_FROM)" ]; then \
@@ -205,6 +209,7 @@ import-alert-api:
 		--annotation-api-url $(REMOTE_API) \
 		--max-sequences $(MAX_SEQUENCES) \
 		--max-workers $(MAX_WORKERS) \
+		$(if $(IMAGE_TRANSFER),--image-transfer $(IMAGE_TRANSFER)) \
 		--loglevel $(LOGLEVEL)
 
 .PHONY: help lint fix docker-build start stop clean test test-specific \
