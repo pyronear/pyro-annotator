@@ -54,7 +54,7 @@ One migration, three columns on `sequences`:
 
 | Column | Type | Semantics |
 | --- | --- | --- |
-| `platform_alert_id` | BigInteger, indexed, NOT NULL | Groups object-split siblings of one platform alert (scoped by `source_api`). Backfilled by a set-based UPDATE in the migration: for `pyronear_french` rows with `alert_api_id >= 1e9`, decode `(x − 1e9) // 1000`; every other row gets `alert_api_id` (singleton identity). The decode MUST be scoped to `pyronear_french`: the YOLO import generates `alert_api_id = crc32 & 0x7FFFFFFF`, so ~half of YOLO ids exceed 1e9 without being synthetic, and an unscoped decode would corrupt them. Written explicitly by the object-split import going forward; the create endpoint applies the same scoped decode as default for `pyronear_french` creates missing the field (older-script compatibility), else defaults to `alert_api_id`. The decode arithmetic thus lives server-side in exactly two places (migration + create default), both mirrors of `object_split.py`'s constants. |
+| `platform_alert_id` | BigInteger, indexed, NOT NULL | Groups object-split siblings of one platform alert. **Alert identity is always the composite (`source_api`, `platform_alert_id`)** — French alert 12345 ≠ CENIA alert 12345. Backfilled by a set-based UPDATE in the migration using an *existence-checked* decode: a row is decoded (`(x − 1e9) // 1000`) only when (a) `source_api` ∈ {`pyronear_french`, `api_cenia`} (both platforms are ingested via the object-split import), (b) `alert_api_id >= 1e9`, and (c) the decoded primary exists (`EXISTS` a sequence with the decoded value as `alert_api_id`, same `source_api`) — a structural invariant of the scheme, since object 0 always keeps the raw platform sid. Every other row gets `alert_api_id` (singleton identity). The existence check is required because the YOLO import generates `alert_api_id = crc32 & 0x7FFFFFFF` under *any* source, so within the platform sources an id ≥ 1e9 is ambiguous by value alone; a crc32 row only mis-groups on a negligible-probability collision with a real sid, and an orphaned sibling (primary deleted) falls back to singleton. Written explicitly by the object-split import going forward; the create endpoint applies the same existence-checked decode as a default for platform-source creates missing the field (older-script safety net; the import posts the primary first), else defaults to `alert_api_id`. The decode arithmetic thus lives server-side in exactly two places (migration + create default), both mirrors of `object_split.py`'s constants. |
 | `auto_annotate_enqueued_at` | timestamptz, nullable | Stamped by the sweep when it defers the job; prevents re-enqueueing on every sweep run. |
 | `auto_annotated_at` | timestamptz, nullable | Stamped by `auto_annotate_sequence` after it finishes writing `auto_predictions`. Queue gate: "the reference layer exists". |
 
@@ -63,6 +63,8 @@ surface a lane before its auto predictions are written.
 
 `platform_alert_id` is exposed in `SequenceRead` and as a filter on
 `GET /sequences` (used for lane advancing now, by the collocated UI later).
+Sibling lookups always pair it with `source_api`
+(`GET /sequences?source_api=&platform_alert_id=`).
 
 ## Trigger: periodic sweep
 
@@ -191,8 +193,10 @@ import (object-split): 1 platform alert -> N lanes (1 per smoke object)
 - Exit guard: submit with incomplete detections → 422; complete → transition,
   attributed to submitting user; guard does not fire for FP lanes or from other
   stages.
-- Migration: backfill decode (primary id, synthetic id, non-platform sources —
-  including a YOLO-style `alert_api_id >= 1e9` row that must NOT be decoded).
+- Migration: backfill decode (primary id, synthetic id under both platform
+  sources, non-platform sources; a YOLO-style `alert_api_id >= 1e9` row with no
+  matching primary must NOT be decoded; an orphaned synthetic sibling falls
+  back to singleton; same numeric id under two sources stays two alerts).
 
 **Frontend (Vitest):** queue page rendering; lane-advance navigation logic.
 
