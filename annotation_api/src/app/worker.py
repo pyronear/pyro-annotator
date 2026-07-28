@@ -26,6 +26,7 @@ from app.crud import UserCRUD
 from app.db import engine
 from app.models import Detection
 from app.models import Sequence as SequenceModel
+from app.services.auto_annotate_scheduling import schedule_pending_auto_annotate
 from app.services.group_assignment import assign_ungrouped_sequences
 from app.services.smoke_detector import (
     SmokeDetector,
@@ -166,3 +167,22 @@ async def assign_sequence_groups(timestamp: int) -> None:
         result.inherited_annotations,
         result.skipped_no_bbox,
     )
+
+
+@app.periodic(cron="*/5 * * * *")
+@app.task(name="schedule_auto_annotate", queueing_lock="schedule_auto_annotate")
+async def schedule_auto_annotate(timestamp: int) -> None:
+    """Periodic sweep: once every sibling sequence of an alert has a
+    done-stage annotation, enqueue auto-annotate for its smoke lanes (see
+    ``app.services.auto_annotate_scheduling``). Stamping
+    ``auto_annotate_enqueued_at`` makes re-runs no-ops."""
+    async with AsyncSession(engine, expire_on_commit=False) as session:
+        sequence_ids = await schedule_pending_auto_annotate(session)
+    for sequence_id in sequence_ids:
+        await auto_annotate_sequence.defer_async(sequence_id=sequence_id)
+    if sequence_ids:
+        logger.info(
+            "schedule_auto_annotate: enqueued %d lane(s): %s",
+            len(sequence_ids),
+            sequence_ids,
+        )
