@@ -301,9 +301,12 @@ export interface DetectionAnnotationFilters {
 // Processing stage status including "no annotation" case
 export type ProcessingStageStatus = ProcessingStage | 'no_annotation';
 
+// Stage filter for the sequences list: one stage, or an OR-list of stages
+export type ProcessingStageFilter = ProcessingStageStatus | ProcessingStageStatus[];
+
 // Extended filters for sequences with full annotation support
 export interface ExtendedSequenceFilters extends SequenceFilters {
-  processing_stage?: ProcessingStageStatus;
+  processing_stage?: ProcessingStageFilter;
   has_missed_smoke?: boolean;
   has_smoke?: boolean;
   has_false_positives?: boolean;

@@ -23,6 +23,7 @@ from sqlalchemy import (
     case,
     select,
     and_,
+    or_,
     cast,
     tuple_,
     ARRAY,
@@ -175,9 +176,14 @@ async def list_sequences(
     include_annotation: bool = Query(
         False, description="Include complete sequence annotation data in response"
     ),
-    processing_stage: Optional[str] = Query(
+    processing_stage: Optional[List[str]] = Query(
         None,
-        description="Filter by processing stage: 'imported', 'ready_to_annotate', 'annotated', or 'no_annotation'",
+        description=(
+            "Filter by processing stage(s); repeat the param for OR logic. "
+            "Accepts any SequenceAnnotationProcessingStage value ('imported', "
+            "'ready_to_annotate', 'seq_annotation_done', 'annotated') "
+            "or 'no_annotation'"
+        ),
     ),
     has_missed_smoke: Optional[bool] = Query(
         None, description="Filter by missed smoke status"
@@ -236,7 +242,7 @@ async def list_sequences(
     - **is_wildfire_alertapi**: Filter sequences by wildfire classification ('wildfire_smoke', 'other_smoke', 'other')
     - **has_annotation**: Filter by annotation presence (True: with annotations, False: without annotations)
     - **include_annotation**: Include complete annotation data in response (default: False)
-    - **processing_stage**: Filter by processing stage ('imported', 'ready_to_annotate', 'annotated', 'no_annotation')
+    - **processing_stage**: Filter by processing stage(s), repeatable for OR logic (any SequenceAnnotationProcessingStage value or 'no_annotation')
     - **has_missed_smoke**: Filter by missed smoke status
     - **has_smoke**: Filter by smoke presence
     - **has_false_positives**: Filter by false positive presence
@@ -311,18 +317,26 @@ async def list_sequences(
             # Filter for sequences that do NOT have annotations
             query = query.where(SequenceAnnotation.sequence_id.is_(None))
 
-    # Apply annotation-based filtering
-    if processing_stage is not None:
-        if processing_stage == "no_annotation":
+    # Apply annotation-based filtering (OR across all requested stages)
+    if processing_stage:
+        stage_conditions = []
+        if "no_annotation" in processing_stage:
             # Special case for sequences without annotations
-            query = query.where(SequenceAnnotation.sequence_id.is_(None))
-        else:
-            # Filter by specific processing stage
+            stage_conditions.append(SequenceAnnotation.sequence_id.is_(None))
+        stage_enums = []
+        for stage in processing_stage:
+            if stage == "no_annotation":
+                continue
             try:
-                stage_enum = SequenceAnnotationProcessingStage(processing_stage)
-                query = query.where(SequenceAnnotation.processing_stage == stage_enum)
+                stage_enums.append(SequenceAnnotationProcessingStage(stage))
             except ValueError:
-                pass  # Invalid stage, ignore filter
+                pass  # Invalid stage, ignore value
+        if stage_enums:
+            stage_conditions.append(
+                SequenceAnnotation.processing_stage.in_(stage_enums)
+            )
+        if stage_conditions:
+            query = query.where(or_(*stage_conditions))
 
     if has_missed_smoke is not None:
         query = query.where(SequenceAnnotation.has_missed_smoke == has_missed_smoke)

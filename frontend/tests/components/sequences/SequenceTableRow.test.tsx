@@ -23,7 +23,8 @@ vi.mock('@/utils/modelAccuracy', () => ({
   formatSmokeType: vi.fn((type: string) => type === 'wildfire' ? 'Wildfire' : type),
 }));
 
-vi.mock('@/utils/processingStage', () => ({
+vi.mock('@/utils/processingStage', async importOriginal => ({
+  ...(await importOriginal<typeof import('@/utils/processingStage')>()),
   getProcessingStageLabel: vi.fn((stage: string) => {
     const labels = {
       'ready_to_annotate': 'Ready to Annotate',
@@ -490,8 +491,64 @@ describe('SequenceTableRow', () => {
         ...defaultProps,
         sequence: createSequence({ recorded_at: 'invalid-date' }),
       };
-      
+
       expect(() => render(<SequenceTableRow {...props} />)).not.toThrow();
+    });
+  });
+
+  describe('Union Stage Filter (All classified view)', () => {
+    const unionStages = ['seq_annotation_done', 'annotated'] as const;
+
+    it('shows the stage pill for annotated rows when the filter is an array', () => {
+      const annotation = createAnnotation({ processing_stage: 'annotated' });
+      const props = {
+        ...defaultProps,
+        sequence: createSequence({ annotation }),
+        defaultProcessingStage: [...unionStages],
+      };
+
+      render(<SequenceTableRow {...props} />);
+
+      expect(screen.getByText('Annotated')).toBeInTheDocument();
+    });
+
+    it('shows the stage pill for seq_annotation_done rows when the filter is an array', () => {
+      const annotation = createAnnotation({ processing_stage: 'seq_annotation_done' });
+      const props = {
+        ...defaultProps,
+        sequence: createSequence({ annotation }),
+        defaultProcessingStage: [...unionStages],
+      };
+
+      render(<SequenceTableRow {...props} />);
+
+      expect(screen.getByText('seq_annotation_done')).toBeInTheDocument();
+    });
+
+    it('still hides the annotated pill on the single-stage annotated view', () => {
+      const annotation = createAnnotation({ processing_stage: 'annotated' });
+      const props = {
+        ...defaultProps,
+        sequence: createSequence({ annotation }),
+        defaultProcessingStage: 'annotated' as const,
+      };
+
+      render(<SequenceTableRow {...props} />);
+
+      expect(screen.queryByText('Annotated')).not.toBeInTheDocument();
+    });
+
+    it('renders review-only annotation details (FP pills) in the union view', () => {
+      const annotation = createAnnotation({ false_positive_types: 'antenna' });
+      const props = {
+        ...defaultProps,
+        sequence: createSequence({ annotation }),
+        defaultProcessingStage: [...unionStages],
+      };
+
+      render(<SequenceTableRow {...props} />);
+
+      expect(screen.getByText(/📡 Antenna/)).toBeInTheDocument();
     });
   });
 

@@ -177,6 +177,157 @@ async def test_list_sequences_filter_by_processing_stage(
 
 
 @pytest.mark.asyncio
+async def test_list_sequences_filter_by_multiple_processing_stages(
+    authenticated_client: AsyncClient,
+):
+    """Repeated processing_stage params OR the stages together."""
+    now = datetime.now(UTC)
+
+    # Three sequences whose annotations will sit at three different stages
+    stage_by_alert_id = {
+        "9101": "seq_annotation_done",
+        "9102": "annotated",
+        "9103": "ready_to_annotate",
+    }
+    sequence_ids = {}
+    for i, alert_api_id in enumerate(stage_by_alert_id, 1):
+        seq_data = {
+            "source_api": "pyronear_french",
+            "alert_api_id": alert_api_id,
+            "camera_name": f"Multi Stage Camera {i}",
+            "camera_id": str(910 + i),
+            "organisation_name": "Test Org",
+            "organisation_id": "1",
+            "lat": "43.5",
+            "lon": "1.5",
+            "recorded_at": (now - timedelta(days=1)).isoformat(),
+            "last_seen_at": now.isoformat(),
+        }
+        response = await authenticated_client.post("/sequences/", data=seq_data)
+        assert response.status_code == 201
+        sequence_ids[alert_api_id] = response.json()["id"]
+
+    # One detection per sequence (required for bbox validation)
+    import io
+
+    from PIL import Image
+
+    detection_ids = {}
+    for i, (alert_api_id, seq_id) in enumerate(sequence_ids.items(), 1):
+        detection_payload = {
+            "sequence_id": str(seq_id),
+            "alert_api_id": str(9200 + i),
+            "recorded_at": (now - timedelta(days=1)).isoformat(),
+            "algo_predictions": json.dumps(
+                {
+                    "predictions": [
+                        {
+                            "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                            "confidence": 0.85,
+                            "class_name": "smoke",
+                        }
+                    ]
+                }
+            ),
+        }
+        img = Image.new("RGB", (100, 100), color="red")
+        img_bytes = io.BytesIO()
+        img.save(img_bytes, format="JPEG")
+        img_bytes.seek(0)
+        files = {"file": ("test.jpg", img_bytes, "image/jpeg")}
+        response = await authenticated_client.post(
+            "/detections/", data=detection_payload, files=files
+        )
+        assert response.status_code == 201
+        detection_ids[alert_api_id] = response.json()["id"]
+
+    # Annotations: smoke lane parked at seq_annotation_done, FP-only lane at
+    # annotated, and one still ready_to_annotate (must be excluded from union)
+    for alert_api_id, stage in stage_by_alert_id.items():
+        is_smoke = stage == "seq_annotation_done"
+        annotation_data = {
+            "sequence_id": sequence_ids[alert_api_id],
+            "has_smoke": is_smoke,
+            "has_false_positives": not is_smoke,
+            "false_positive_types": [] if is_smoke else ["antenna"],
+            "has_missed_smoke": False,
+            "annotation": {
+                "sequences_bbox": [
+                    {
+                        "is_smoke": is_smoke,
+                        "false_positive_types": [] if is_smoke else ["antenna"],
+                        "bboxes": [
+                            {
+                                "detection_id": detection_ids[alert_api_id],
+                                "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                            }
+                        ],
+                    }
+                ]
+            },
+            "processing_stage": stage,
+        }
+        response = await authenticated_client.post(
+            "/annotations/sequences/", json=annotation_data
+        )
+        assert response.status_code == 201
+
+    # Union query returns the seq_annotation_done and annotated sequences,
+    # but not the ready_to_annotate one
+    response = await authenticated_client.get(
+        "/sequences/?processing_stage=seq_annotation_done"
+        "&processing_stage=annotated&include_annotation=true"
+    )
+    assert response.status_code == 200
+    items = response.json()["items"]
+    returned_ids = {item["id"] for item in items}
+    assert sequence_ids["9101"] in returned_ids
+    assert sequence_ids["9102"] in returned_ids
+    assert sequence_ids["9103"] not in returned_ids
+    for item in items:
+        assert item["annotation"]["processing_stage"] in (
+            "seq_annotation_done",
+            "annotated",
+        )
+
+    # Single-value back-compat: only the matching stage comes back
+    response = await authenticated_client.get(
+        "/sequences/?processing_stage=seq_annotation_done"
+    )
+    assert response.status_code == 200
+    returned_ids = {item["id"] for item in response.json()["items"]}
+    assert sequence_ids["9101"] in returned_ids
+    assert sequence_ids["9102"] not in returned_ids
+
+    # no_annotation combined with a real stage: both the annotated sequence
+    # and annotation-less sequences are returned, staged-but-unmatched excluded
+    bare_seq_data = {
+        "source_api": "pyronear_french",
+        "alert_api_id": "9104",
+        "camera_name": "Multi Stage Camera 4",
+        "camera_id": "914",
+        "organisation_name": "Test Org",
+        "organisation_id": "1",
+        "lat": "43.5",
+        "lon": "1.5",
+        "recorded_at": (now - timedelta(days=1)).isoformat(),
+        "last_seen_at": now.isoformat(),
+    }
+    response = await authenticated_client.post("/sequences/", data=bare_seq_data)
+    assert response.status_code == 201
+    bare_sequence_id = response.json()["id"]
+
+    response = await authenticated_client.get(
+        "/sequences/?processing_stage=no_annotation&processing_stage=annotated"
+    )
+    assert response.status_code == 200
+    returned_ids = {item["id"] for item in response.json()["items"]}
+    assert sequence_ids["9102"] in returned_ids
+    assert bare_sequence_id in returned_ids
+    assert sequence_ids["9101"] not in returned_ids
+
+
+@pytest.mark.asyncio
 async def test_list_sequences_filter_by_annotation_fields(
     authenticated_client: AsyncClient,
 ):

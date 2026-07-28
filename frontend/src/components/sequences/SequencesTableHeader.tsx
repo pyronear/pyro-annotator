@@ -1,15 +1,16 @@
 import {
-  ProcessingStageStatus,
+  ProcessingStageFilter,
   PaginatedResponse,
   SequenceWithAnnotation,
   ExtendedSequenceFilters,
 } from '@/types/api';
 import { PAGINATION_OPTIONS } from '@/utils/constants';
+import { stageFilterIncludes } from '@/utils/processingStage';
 
 interface SequencesTableHeaderProps {
   filteredSequences: PaginatedResponse<SequenceWithAnnotation>;
   sequences?: PaginatedResponse<SequenceWithAnnotation>;
-  defaultProcessingStage: ProcessingStageStatus;
+  defaultProcessingStage: ProcessingStageFilter;
   selectedModelAccuracy: string;
   filters: ExtendedSequenceFilters;
   onFilterChange: (update: { size: number }) => void;
@@ -31,7 +32,7 @@ export function SequencesTableHeader({
           {Math.min(filteredSequences.page * filteredSequences.size, filteredSequences.total)} of{' '}
           {filteredSequences.total} results
           {selectedModelAccuracy !== 'all' &&
-            defaultProcessingStage === 'annotated' &&
+            stageFilterIncludes(defaultProcessingStage, 'annotated') &&
             sequences && (
               <span className="text-gray-500"> (filtered from {sequences.total} total)</span>
             )}
