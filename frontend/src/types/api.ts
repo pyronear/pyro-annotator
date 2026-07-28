@@ -46,6 +46,7 @@ export interface LocalizationQueueItem {
   platform_alert_id: number;
   camera_name: string;
   organisation_name: string;
+  azimuth: number | null;
   recorded_at: string;
   lanes: LocalizationQueueLane[];
 }

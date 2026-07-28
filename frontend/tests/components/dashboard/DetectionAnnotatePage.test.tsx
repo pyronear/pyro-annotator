@@ -7,6 +7,8 @@ import React from 'react';
 vi.mock('@/services/api', () => ({
   apiClient: {
     getLocalizationQueue: vi.fn(),
+    getSequenceDetections: vi.fn(),
+    getDetectionImageUrl: vi.fn(),
   },
 }));
 
@@ -33,6 +35,7 @@ const queueItem = {
   platform_alert_id: 170000,
   camera_name: 'CAM_01',
   organisation_name: 'Pyronear',
+  azimuth: 143,
   recorded_at: '2026-07-27T10:00:00Z',
   lanes: [
     {
@@ -66,14 +69,37 @@ describe('DetectionAnnotatePage (Localize queue)', () => {
       size: 50,
       total: 1,
     });
+    vi.mocked(apiClient.getSequenceDetections).mockResolvedValue([]);
   });
 
-  it('renders one row per alert with lane summary and progress', async () => {
+  it('renders one row per alert with source, absolute time, azimuth and frames', async () => {
     render(<DetectionAnnotatePage />, { wrapper });
     await waitFor(() => expect(screen.getByText('CAM_01')).toBeTruthy());
     expect(screen.getByText('Pyronear')).toBeTruthy();
-    expect(screen.getByText(/1 of 2 objects to localize/)).toBeTruthy();
-    expect(screen.getByText(/1\/4 boxes/)).toBeTruthy();
+    // Source pill
+    expect(screen.getByText('pyronear_french')).toBeTruthy();
+    // Absolute date-time, app-wide convention
+    expect(screen.getByText(new Date('2026-07-27T10:00:00Z').toLocaleString())).toBeTruthy();
+    // Camera azimuth
+    expect(screen.getByText(/Azimuth: 143°/)).toBeTruthy();
+    // Frames = detections across smoke lanes only (4 from lane 11; lane 12 is FP)
+    expect(screen.getByText(/4 frames/)).toBeTruthy();
+    // Old columns are gone
+    expect(screen.queryByText(/objects to localize/)).toBeNull();
+    expect(screen.queryByText(/boxes/)).toBeNull();
+  });
+
+  it('omits the azimuth text when the alert has none', async () => {
+    vi.mocked(apiClient.getLocalizationQueue).mockResolvedValue({
+      items: [{ ...queueItem, azimuth: null }],
+      page: 1,
+      pages: 1,
+      size: 50,
+      total: 1,
+    });
+    render(<DetectionAnnotatePage />, { wrapper });
+    await waitFor(() => expect(screen.getByText('CAM_01')).toBeTruthy());
+    expect(screen.queryByText(/Azimuth:/)).toBeNull();
   });
 
   it('clicking a row opens the first unfinished smoke lane in localize flow', async () => {

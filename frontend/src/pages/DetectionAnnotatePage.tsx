@@ -4,20 +4,14 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { LocalizationQueueItem } from '@/types/api';
+import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
 import { pickNextLocalizeLane } from '@/utils/annotation/localizeUtils';
-import { formatRelativeTime } from '@/utils/relativeTime';
 import { localizeDetail } from '@/utils/routes';
 
-function unfinishedSmokeLanes(item: LocalizationQueueItem): number {
-  return item.lanes.filter(l => l.has_smoke && l.processing_stage === 'seq_annotation_done').length;
-}
-
-function totalBoxes(item: LocalizationQueueItem): number {
+// Images the annotator will draw boxes on: each smoke object replays the
+// alert's frames, so two objects x 10 frames is 20 boxes of work.
+function smokeFrames(item: LocalizationQueueItem): number {
   return item.lanes.filter(l => l.has_smoke).reduce((sum, l) => sum + l.total_detections, 0);
-}
-
-function annotatedBoxes(item: LocalizationQueueItem): number {
-  return item.lanes.filter(l => l.has_smoke).reduce((sum, l) => sum + l.annotated_detections, 0);
 }
 
 export default function DetectionAnnotatePage() {
@@ -94,19 +88,22 @@ export default function DetectionAnnotatePage() {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Preview
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Camera
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Organisation
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Source
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Recorded
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Objects
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Progress
+                  Frames
                 </th>
               </tr>
             </thead>
@@ -117,20 +114,33 @@ export default function DetectionAnnotatePage() {
                   onClick={() => handleAlertClick(item)}
                   className="cursor-pointer hover:bg-gray-50"
                 >
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <DetectionImageThumbnail
+                      sequenceId={item.lanes[0].sequence_id}
+                      className="h-16 w-24"
+                    />
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                     {item.camera_name}
+                    {item.azimuth !== null && item.azimuth !== undefined && (
+                      <span className="ml-2 text-xs font-normal text-gray-400">
+                        Azimuth: {item.azimuth}°
+                      </span>
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {item.organisation_name}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {formatRelativeTime(item.recorded_at)}
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                      {item.source_api}
+                    </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {unfinishedSmokeLanes(item)} of {item.lanes.length} objects to localize
+                    {new Date(item.recorded_at).toLocaleString()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {annotatedBoxes(item)}/{totalBoxes(item)} boxes
+                    {smokeFrames(item)} frames
                   </td>
                 </tr>
               ))}
