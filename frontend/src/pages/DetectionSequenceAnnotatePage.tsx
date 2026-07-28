@@ -22,7 +22,12 @@ import {
 import { createDefaultFilterState } from '@/hooks/usePersistedFilters';
 
 // New imports for refactored utilities
-import { calculateAnnotationCompleteness, sequenceSmokeType } from '@/utils/annotation';
+import {
+  buildQuickSubmitPlan,
+  calculateAnnotationCompleteness,
+  getCellState,
+  sequenceSmokeType,
+} from '@/utils/annotation';
 import { pickNextLocalizeLane } from '@/utils/annotation/localizeUtils';
 import { ImageModal, DetectionGrid, DetectionHeader } from '@/components/detection-sequence';
 
@@ -167,6 +172,21 @@ export default function DetectionSequenceAnnotatePage() {
     smokeTypeInitFor.current = sequenceAnnotation.sequence_id;
     setPersistentSmokeType(sequenceSmokeType(sequenceAnnotation));
   }, [sequenceAnnotation]);
+
+  // Localize quick submit: the per-frame accept plan (winning model boxes for
+  // every frame without a committed annotation) and the confirm gate for
+  // frames that have no box at all.
+  const isLocalize = fromParam === 'localize';
+  const [quickSubmitConfirming, setQuickSubmitConfirming] = useState(false);
+
+  const laneSmokeType = sequenceSmokeType(sequenceAnnotation);
+  const quickSubmitPlan = useMemo(
+    () =>
+      isLocalize && detections
+        ? buildQuickSubmitPlan(detections, detectionAnnotations, laneSmokeType)
+        : null,
+    [isLocalize, detections, detectionAnnotations, laneSmokeType]
+  );
 
   // Fetch all sequences for navigation using filters from the source page
   const {
@@ -383,6 +403,84 @@ export default function DetectionSequenceAnnotatePage() {
       setShowToast(true);
     },
   });
+
+  // Localize quick submit: accept the winning model boxes for every pending
+  // frame (manual/committed frames untouched), then submit the lane.
+  const quickSubmitLane = useMutation({
+    mutationFn: async () => {
+      if (!quickSubmitPlan) throw new Error('Sequence not loaded yet — try again in a moment');
+      const results = await Promise.allSettled(
+        quickSubmitPlan.payloads.map(({ detection, items }) => {
+          const existing = detectionAnnotations.get(detection.id);
+          if (existing) {
+            // Preserve false-positive items: they are not editable rectangles
+            // and must survive the accept (same rule as the modal submit).
+            const falsePositiveItems = (existing.annotation?.annotation ?? []).filter(
+              item => item.false_positive_type != null
+            );
+            return apiClient.updateDetectionAnnotation(existing.id, {
+              annotation: { annotation: [...items, ...falsePositiveItems] },
+              processing_stage: 'annotated' as const,
+            });
+          }
+          return apiClient.createDetectionAnnotation({
+            detection_id: detection.id,
+            annotation: { annotation: items },
+            processing_stage: 'annotated' as const,
+          });
+        })
+      );
+      const fulfilled = results
+        .filter((r): r is PromiseFulfilledResult<DetectionAnnotation> => r.status === 'fulfilled')
+        .map(r => r.value);
+      return { fulfilled, failedCount: results.length - fulfilled.length };
+    },
+    onSuccess: ({ fulfilled, failedCount }) => {
+      if (fulfilled.length > 0) {
+        setDetectionAnnotations(prev => {
+          const next = new Map(prev);
+          fulfilled.forEach(annotation => next.set(annotation.detection_id, annotation));
+          return next;
+        });
+        queryClient.invalidateQueries({ queryKey: [...QUERY_KEYS.DETECTION_ANNOTATIONS] });
+        queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
+        queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });
+      }
+      if (failedCount > 0) {
+        // Landed frames stay committed; the button re-enables so a retry
+        // just completes the rest.
+        setToastMessage(
+          `Failed to submit ${failedCount} frame${failedCount === 1 ? '' : 's'} — try again`
+        );
+        setShowToast(true);
+        return;
+      }
+      submitLocalizedLane.mutate();
+    },
+    onError: () => {
+      setToastMessage('Failed to submit frames — try again');
+      setShowToast(true);
+    },
+  });
+
+  const handleQuickSubmit = useCallback(() => {
+    if (!quickSubmitPlan || quickSubmitLane.isPending || submitLocalizedLane.isPending) return;
+    if (quickSubmitPlan.noBoxCount > 0 && !quickSubmitConfirming) {
+      setQuickSubmitConfirming(true);
+      return;
+    }
+    setQuickSubmitConfirming(false);
+    quickSubmitLane.mutate();
+  }, [quickSubmitPlan, quickSubmitConfirming, quickSubmitLane, submitLocalizedLane]);
+
+  // A click anywhere else cancels the pending confirm (the header button
+  // stops propagation, so its own click never lands here).
+  useEffect(() => {
+    if (!quickSubmitConfirming) return;
+    const cancel = () => setQuickSubmitConfirming(false);
+    window.addEventListener('click', cancel);
+    return () => window.removeEventListener('click', cancel);
+  }, [quickSubmitConfirming]);
 
   // Save detection annotations mutation
   const saveAnnotations = useMutation({
@@ -664,7 +762,11 @@ export default function DetectionSequenceAnnotatePage() {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Submit with Enter key
       if (e.key === 'Enter' && !showModal) {
-        handleSave();
+        if (isLocalize) {
+          handleQuickSubmit();
+        } else {
+          handleSave();
+        }
         e.preventDefault();
         return;
       }
@@ -710,6 +812,8 @@ export default function DetectionSequenceAnnotatePage() {
     closeModal,
     handleSave,
     navigateModal,
+    isLocalize,
+    handleQuickSubmit,
   ]);
 
   // Reset auto-advance flag after navigation
@@ -922,6 +1026,11 @@ export default function DetectionSequenceAnnotatePage() {
         allInVisualCheck={allInVisualCheck}
         onSave={handleSave}
         saveAnnotations={saveAnnotations}
+        isLocalize={isLocalize}
+        noBoxCount={quickSubmitPlan?.noBoxCount ?? 0}
+        quickSubmitPending={quickSubmitLane.isPending || submitLocalizedLane.isPending}
+        quickSubmitConfirming={quickSubmitConfirming}
+        onQuickSubmit={handleQuickSubmit}
         getAnnotationPills={getAnnotationPills}
       />
 
@@ -932,6 +1041,13 @@ export default function DetectionSequenceAnnotatePage() {
         detectionAnnotations={detectionAnnotations}
         fromParam={fromParam}
         getIsAnnotated={getIsAnnotated}
+        getCellState={
+          isLocalize
+            ? (detection: Detection) =>
+                getCellState(detection, detectionAnnotations.get(detection.id))
+            : undefined
+        }
+        smokeType={laneSmokeType}
       />
 
       {/* Image Modal */}
