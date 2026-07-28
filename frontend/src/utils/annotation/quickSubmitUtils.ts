@@ -5,16 +5,36 @@
  * every box accepted) so what the grid shows is what submit records.
  */
 
-import {
-  Detection,
-  DetectionAnnotation,
-  DetectionAnnotationBbox,
-  SmokeType,
-} from '@/types/api';
+import { Detection, DetectionAnnotation, DetectionAnnotationBbox, SmokeType } from '@/types/api';
 import { getWinningModelLayer } from './referenceLayerUtils';
 import { materializeReviewAnnotation } from './reviewUtils';
 
 export type CellState = 'done' | 'auto' | 'no-box';
+
+/**
+ * Context-aware annotation status for the sequence grid and modal badge.
+ * detections-review is optimistic (assume complete unless explicitly not);
+ * localize reflects the committed stage so done frames stay marked; the
+ * generic annotate context always allows edits.
+ */
+export function getIsAnnotated(
+  annotation: DetectionAnnotation | undefined,
+  fromContext: string | null
+): boolean {
+  if (fromContext === 'detections-review') {
+    if (!annotation) return true; // Loading state: assume completed
+    return (
+      annotation.processing_stage === 'annotated' ||
+      annotation.processing_stage === 'bbox_annotation'
+    );
+  }
+  if (fromContext === 'localize') {
+    // Localize context: the grid needs a persistent done state per frame
+    return annotation?.processing_stage === 'annotated';
+  }
+  // Annotate context: always allow edits regardless of stage
+  return false;
+}
 
 /** The winning model layer's boxes for a detection (auto if ≥1 box, else engine). */
 export function getWinningBoxes(detection: Detection) {

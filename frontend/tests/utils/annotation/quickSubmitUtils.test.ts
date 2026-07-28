@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { getCellState, buildQuickSubmitPlan } from '@/utils/annotation/quickSubmitUtils';
+import {
+  getCellState,
+  getIsAnnotated,
+  buildQuickSubmitPlan,
+} from '@/utils/annotation/quickSubmitUtils';
 import type { Detection, DetectionAnnotation } from '@/types/api';
 
 const box = (x1 = 0.1, y1 = 0.1, x2 = 0.3, y2 = 0.3, confidence = 0.9) => ({
@@ -55,6 +59,26 @@ describe('getCellState', () => {
   it('a non-annotated stage does not count as done', () => {
     const d = makeDetection(1, { auto: [], engine: [] });
     expect(getCellState(d, makeAnnotation(1, 'visual_check'))).toBe('no-box');
+  });
+});
+
+describe('getIsAnnotated', () => {
+  it('localize: reflects the committed stage', () => {
+    expect(getIsAnnotated(makeAnnotation(1, 'annotated'), 'localize')).toBe(true);
+    expect(getIsAnnotated(makeAnnotation(1, 'bbox_annotation'), 'localize')).toBe(false);
+    expect(getIsAnnotated(undefined, 'localize')).toBe(false);
+  });
+
+  it('detections-review: unchanged optimistic behavior', () => {
+    expect(getIsAnnotated(undefined, 'detections-review')).toBe(true);
+    expect(getIsAnnotated(makeAnnotation(1, 'annotated'), 'detections-review')).toBe(true);
+    expect(getIsAnnotated(makeAnnotation(1, 'bbox_annotation'), 'detections-review')).toBe(true);
+    expect(getIsAnnotated(makeAnnotation(1, 'visual_check'), 'detections-review')).toBe(false);
+  });
+
+  it('other contexts: still always editable (false)', () => {
+    expect(getIsAnnotated(makeAnnotation(1, 'annotated'), null)).toBe(false);
+    expect(getIsAnnotated(makeAnnotation(1, 'annotated'), 'something-else')).toBe(false);
   });
 });
 

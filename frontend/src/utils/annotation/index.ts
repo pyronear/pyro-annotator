@@ -47,7 +47,12 @@ export type { ModelLayer } from './referenceLayerUtils';
 export { materializeReviewAnnotation, sequenceSmokeType } from './reviewUtils';
 
 // Localize quick submit
-export { getCellState, getWinningBoxes, buildQuickSubmitPlan } from './quickSubmitUtils';
+export {
+  getCellState,
+  getWinningBoxes,
+  buildQuickSubmitPlan,
+  getIsAnnotated,
+} from './quickSubmitUtils';
 export type { CellState, QuickSubmitPlan } from './quickSubmitUtils';
 
 // Bounding box move/resize geometry
