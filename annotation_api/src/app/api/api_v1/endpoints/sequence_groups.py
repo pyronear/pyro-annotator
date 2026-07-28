@@ -4,12 +4,13 @@
 # See LICENSE or go to <https://www.apache.org/licenses/LICENSE-2.0> for full license details.
 
 from datetime import UTC, datetime
+from enum import Enum
 from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, status
 from fastapi_pagination import Page, Params
 from fastapi_pagination.ext.sqlalchemy import apaginate
-from sqlalchemy import desc, func, select
+from sqlalchemy import asc, desc, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.dependencies import get_current_user, get_sequence_group_crud
@@ -34,6 +35,22 @@ from app.schemas.sequence_group import (
 router = APIRouter()
 
 
+class SequenceGroupOrderByField(str, Enum):
+    """Valid fields for ordering sequence groups."""
+
+    member_count = "member_count"
+    camera_name = "camera_name"
+    azimuth = "azimuth"
+    created_at = "created_at"
+
+
+class OrderDirection(str, Enum):
+    """Valid directions for ordering."""
+
+    asc = "asc"
+    desc = "desc"
+
+
 @router.get(
     "/",
     response_model=Page[SequenceGroupListItem],
@@ -47,6 +64,12 @@ async def list_sequence_groups(
             "false = only unlabeled, omit for both."
         ),
     ),
+    order_by: SequenceGroupOrderByField = Query(
+        SequenceGroupOrderByField.member_count, description="Order by field"
+    ),
+    order_direction: OrderDirection = Query(
+        OrderDirection.desc, description="Order direction"
+    ),
     params: Params = Depends(),
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
@@ -57,12 +80,22 @@ async def list_sequence_groups(
         select(
             Sequence.sequence_group_id.label("group_id"),
             func.count(Sequence.id).label("member_count"),
+            # All members share one camera; min() just picks that value.
+            func.min(Sequence.camera_name).label("camera_name"),
         )
         .where(Sequence.sequence_group_id.is_not(None))
         .group_by(Sequence.sequence_group_id)
         .having(func.count(Sequence.id) >= 3)
         .subquery()
     )
+    order_columns = {
+        SequenceGroupOrderByField.member_count: member_count_subq.c.member_count,
+        SequenceGroupOrderByField.camera_name: member_count_subq.c.camera_name,
+        SequenceGroupOrderByField.azimuth: SequenceGroup.azimuth,
+        SequenceGroupOrderByField.created_at: SequenceGroup.created_at,
+    }
+    primary = order_columns[order_by]
+    primary = desc(primary) if order_direction == OrderDirection.desc else asc(primary)
     query = (
         select(
             SequenceGroup.id,
@@ -76,13 +109,14 @@ async def list_sequence_groups(
             SequenceGroup.labeled_at,
             SequenceGroup.created_at,
             member_count_subq.c.member_count,
+            member_count_subq.c.camera_name,
         )
         # Inner-join so small groups (no row in the subquery) drop out.
         .join(member_count_subq, member_count_subq.c.group_id == SequenceGroup.id)
-        # Biggest groups first, then newest within each size. `id` is a final
-        # deterministic tie-breaker so paginated offsets stay stable.
+        # Caller-chosen primary sort; created_at/id remain as deterministic
+        # tie-breakers so paginated offsets stay stable.
         .order_by(
-            desc(member_count_subq.c.member_count),
+            primary,
             desc(SequenceGroup.created_at),
             desc(SequenceGroup.id),
         )
@@ -127,13 +161,23 @@ async def get_sequence_group_stats(
             func.count(SequenceGroup.id)
             .filter(SequenceGroup.is_validated.is_(True))
             .label("validated"),
+            func.count(SequenceGroup.id)
+            .filter(
+                (SequenceGroup.smoke_type.is_not(None))
+                | (SequenceGroup.false_positive_type.is_not(None))
+            )
+            .label("labeled"),
         )
         .select_from(SequenceGroup)
         .join(member_count_subq, member_count_subq.c.group_id == SequenceGroup.id)
     )
-    total, validated = (await session.exec(query)).one()
+    total, validated, labeled = (await session.exec(query)).one()
     return SequenceGroupStats(
-        total=total, validated=validated, unvalidated=total - validated
+        total=total,
+        validated=validated,
+        unvalidated=total - validated,
+        labeled=labeled,
+        unlabeled=total - labeled,
     )
 
 
