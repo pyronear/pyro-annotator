@@ -294,7 +294,6 @@ export const FILE_LIMITS = {
  * @property {string[]} CAMERAS - Base key for cameras list queries
  * @property {string[]} ORGANIZATIONS - Base key for organizations list queries
  * @property {string[]} SOURCE_APIS - Base key for source APIs list queries
- * @property {string[]} ANNOTATION_STATS - Base key for annotation statistics queries
  * @property {string[]} USERS - Base key for users list queries
  * @property {Function} USER - Key factory for individual user queries
  *
@@ -333,7 +332,6 @@ export const QUERY_KEYS = {
   ORGANIZATIONS: ['organizations'],
   SOURCE_APIS: ['source-apis'],
   DETECTION_ANNOTATION: (id: number) => ['detection-annotations', id],
-  ANNOTATION_STATS: ['annotation-stats'],
   USERS: ['users'],
   USER: (id: number) => ['users', id],
 } as const;
