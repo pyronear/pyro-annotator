@@ -23,6 +23,7 @@ import {
   SequenceWithProcessingStage,
   ProcessingStageStatus,
   ProcessingStage,
+  ProcessingStageFilter,
 } from '@/types/api';
 
 /**
@@ -176,6 +177,31 @@ export function getProcessingStageLabel(status: ProcessingStageStatus | Processi
   };
 
   return labels[status as ProcessingStageStatus] || labels['no_annotation'];
+}
+
+/**
+ * Stages whose classification pass is complete: smoke lanes parked for
+ * localization, sequences in review, and fully annotated sequences
+ * (including FP-only lanes that exit straight to 'annotated').
+ * Excludes 'needs_manual', which has its own attention page.
+ */
+export const ALL_CLASSIFIED_STAGES: ProcessingStage[] = [
+  'seq_annotation_done',
+  'in_review',
+  'annotated',
+];
+
+/** True when the stage filter (single value or OR-list) includes the stage. */
+export function stageFilterIncludes(
+  filter: ProcessingStageFilter | undefined,
+  stage: ProcessingStageStatus
+): boolean {
+  return Array.isArray(filter) ? filter.includes(stage) : filter === stage;
+}
+
+/** Display label for a stage filter; OR-lists render as "All classified". */
+export function getStageFilterLabel(filter: ProcessingStageFilter): string {
+  return Array.isArray(filter) ? 'All classified' : getProcessingStageLabel(filter);
 }
 
 /**
