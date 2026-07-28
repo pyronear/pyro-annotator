@@ -41,6 +41,7 @@ from app.models import (
     SequenceAnnotation,
     SequenceAnnotationContribution,
     SequenceAnnotationProcessingStage,
+    SourceApi,
     User,
     AnnotationType,
 )
@@ -48,6 +49,7 @@ from app.schemas.sequence import (
     SequenceCreate,
     SequenceRead,
 )
+from app.services.alert_identity import resolve_platform_alert_id
 from app.schemas.sequence_annotations import SequenceAnnotationRead
 from app.schemas.combined import SequenceWithAnnotationRead
 
@@ -89,9 +91,17 @@ async def create_sequence(
     created_at: Optional[datetime] = Form(None),
     recorded_at: datetime = Form(...),
     last_seen_at: Optional[datetime] = Form(None),
+    platform_alert_id: Optional[int] = Form(
+        None,
+        description="Platform alert grouping id (object-split siblings share it). Defaults server-side: synthetic ids are decoded when their primary exists (platform sources), else alert_api_id.",
+    ),
     sequences: SequenceCRUD = Depends(get_sequence_crud),
     current_user: User = Depends(get_current_user),
 ) -> SequenceRead:
+    if platform_alert_id is None:
+        platform_alert_id = await resolve_platform_alert_id(
+            sequences.session, SourceApi(source_api), alert_api_id
+        )
     payload = SequenceCreate(
         source_api=source_api,
         alert_api_id=alert_api_id,
@@ -106,6 +116,7 @@ async def create_sequence(
         azimuth=azimuth,
         created_at=created_at or datetime.now(UTC),
         last_seen_at=last_seen_at or datetime.now(UTC),
+        platform_alert_id=platform_alert_id,
     )
     return await sequences.create(payload)
 
@@ -164,6 +175,10 @@ async def list_sequences(
     ),
     recorded_at_lte: Optional[datetime] = Query(
         None, description="Filter by recorded_at <= this date"
+    ),
+    platform_alert_id: Optional[int] = Query(
+        None,
+        description="Filter by platform alert id (object-split siblings; pair with source_api)",
     ),
     detection_annotation_completion: Optional[
         Literal["complete", "incomplete", "all"]
@@ -324,6 +339,9 @@ async def list_sequences(
 
     if recorded_at_lte is not None:
         query = query.where(Sequence.recorded_at <= recorded_at_lte)
+
+    if platform_alert_id is not None:
+        query = query.where(Sequence.platform_alert_id == platform_alert_id)
 
     # Apply detection annotation filtering
     if needs_detection_annotation_join:

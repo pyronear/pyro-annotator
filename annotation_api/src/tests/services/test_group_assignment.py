@@ -49,6 +49,7 @@ async def _seed_labeled_group_and_sequence(
     seq = Sequence(
         source_api="pyronear_french",
         alert_api_id=9001,
+        platform_alert_id=9001,
         created_at=ts,
         recorded_at=ts,
         last_seen_at=ts,

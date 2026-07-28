@@ -87,6 +87,10 @@ class SequenceCreate(Azimuth):
     )
     organisation_name: str
     organisation_id: int
+    platform_alert_id: Optional[int] = Field(
+        default=None,
+        description="Platform alert grouping id. Defaults server-side: decoded from a synthetic alert_api_id when the primary exists (platform sources), else alert_api_id.",
+    )
 
 
 class SequenceRead(Azimuth):
@@ -108,6 +112,7 @@ class SequenceRead(Azimuth):
     is_wildfire_alertapi: Optional[AnnotationType]
     organisation_name: str
     organisation_id: int
+    platform_alert_id: int
     sequence_group_id: Optional[int] = None
 
 
