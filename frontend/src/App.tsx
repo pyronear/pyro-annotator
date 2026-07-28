@@ -81,10 +81,6 @@ function App() {
                     path="/sequences/review"
                     element={<SequencesPageWrapper defaultProcessingStage="annotated" />}
                   />
-                  <Route
-                    path="/sequences/attention"
-                    element={<SequencesPageWrapper defaultProcessingStage="needs_manual" />}
-                  />
                   <Route path="/sequences/:id/annotate" element={<AnnotationInterface />} />
                   <Route path="/detections/annotate" element={<DetectionAnnotatePage />} />
                   <Route path="/detections/review" element={<DetectionReviewPage />} />
