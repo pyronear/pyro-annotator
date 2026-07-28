@@ -20,10 +20,34 @@ export interface Sequence {
   is_wildfire_alertapi: AnnotationType | null;
   organisation_name: string;
   organisation_id: number;
+  // Alert identity is the composite (source_api, platform_alert_id):
+  // object-split siblings of one platform alert share it.
+  platform_alert_id: number;
   // Membership in a SequenceGroup; null until the periodic assignment
   // sweep runs or when the sequence has been excluded from grouping manually.
   sequence_group_id?: number | null;
   detection_annotation_stats?: DetectionAnnotationStats;
+}
+
+// One object-sequence of an alert, as returned by the localization queue.
+export interface LocalizationQueueLane {
+  sequence_id: number;
+  alert_api_id: number;
+  has_smoke: boolean;
+  processing_stage: string;
+  total_detections: number;
+  annotated_detections: number;
+  auto_annotated_at: string | null;
+}
+
+// One alert ready for smoke localization (queue row).
+export interface LocalizationQueueItem {
+  source_api: string;
+  platform_alert_id: number;
+  camera_name: string;
+  organisation_name: string;
+  recorded_at: string;
+  lanes: LocalizationQueueLane[];
 }
 
 export interface Detection {
@@ -241,6 +265,7 @@ export interface SequenceFilters {
   is_wildfire_alertapi?: AnnotationType | null;
   recorded_at_gte?: string;
   recorded_at_lte?: string;
+  platform_alert_id?: number;
   detection_annotation_completion?: 'complete' | 'incomplete' | 'all';
   include_detection_stats?: boolean;
   is_unsure?: boolean;

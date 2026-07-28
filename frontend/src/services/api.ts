@@ -22,6 +22,7 @@ import {
   SequenceAnnotationFilters,
   DetectionAnnotationFilters,
   ApiError,
+  LocalizationQueueItem,
   SequenceGroup,
   SequenceGroupListItem,
   SequenceGroupStats,
@@ -154,6 +155,15 @@ class ApiClient {
       await this.client.get(API_ENDPOINTS.SEQUENCES, {
         params: enhancedFilters,
       });
+    return response.data;
+  }
+
+  // Alerts ready for smoke localization (alert-grouped Localize queue)
+  async getLocalizationQueue(
+    params: { page?: number; size?: number } = {}
+  ): Promise<PaginatedResponse<LocalizationQueueItem>> {
+    const response: AxiosResponse<PaginatedResponse<LocalizationQueueItem>> =
+      await this.client.get(`${API_ENDPOINTS.SEQUENCES}localization-queue`, { params });
     return response.data;
   }
 
