@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Loader2, AlertCircle } from 'lucide-react';
+import { Loader2, AlertCircle, Minus, Plus, RotateCcw } from 'lucide-react';
 import { BoundingBox } from '@/types/api';
 import { apiClient } from '@/services/api';
 
@@ -245,52 +245,6 @@ export default function CroppedImageSequence({
 
   return (
     <div className={className}>
-      {/* Zoom Controls */}
-      {currentImage?.loaded && currentImage.imageElement && (
-        <div className="mb-4 flex items-center justify-center space-x-4">
-          <button
-            onClick={() => setZoomLevel(prev => Math.max(1, prev - 0.5))}
-            disabled={zoomLevel <= 1}
-            className="px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            −
-          </button>
-
-          <div className="flex items-center space-x-2">
-            <span className="text-sm text-gray-600 w-8">1x</span>
-            <input
-              type="range"
-              min="1"
-              max="8"
-              step="0.5"
-              value={zoomLevel}
-              onChange={e => setZoomLevel(parseFloat(e.target.value))}
-              className="w-24 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-            />
-            <span className="text-sm text-gray-600 w-8">8x</span>
-          </div>
-
-          <button
-            onClick={() => setZoomLevel(prev => Math.min(8, prev + 0.5))}
-            disabled={zoomLevel >= 8}
-            className="px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            +
-          </button>
-
-          <span className="text-sm font-medium text-gray-700 min-w-12">
-            {zoomLevel.toFixed(1)}x
-          </span>
-
-          <button
-            onClick={() => setZoomLevel(4)}
-            className="px-3 py-1 bg-primary-100 text-primary-700 rounded hover:bg-primary-200 text-xs"
-          >
-            Reset
-          </button>
-        </div>
-      )}
-
       {/* Cropped Image Container */}
       <div
         ref={containerRef}
@@ -305,7 +259,7 @@ export default function CroppedImageSequence({
       >
         {/* Loading State */}
         {showLoadingState && (
-          <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-30">
+          <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-10">
             <div className="flex flex-col items-center space-y-3">
               <Loader2 className="animate-spin w-6 h-6 text-primary-600" />
               <span className="text-sm text-gray-600">Loading image...</span>
@@ -315,7 +269,7 @@ export default function CroppedImageSequence({
 
         {/* Error State */}
         {currentImage?.error && (
-          <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-30">
+          <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-10">
             <div className="flex flex-col items-center space-y-2">
               <AlertCircle className="w-6 h-6 text-red-400" />
               <span className="text-sm text-gray-600">Failed to load image</span>
@@ -335,6 +289,52 @@ export default function CroppedImageSequence({
           />
         )}
       </div>
+
+      {/* Zoom controls — compact strip matching the grid's ViewToolbar */}
+      {currentImage?.loaded && currentImage.imageElement && (
+        <div className="mt-2 flex items-center justify-center">
+          <div className="inline-flex items-center rounded-md bg-gray-200 p-0.5 gap-1">
+            <button
+              onClick={() => setZoomLevel(prev => Math.max(1, prev - 0.5))}
+              disabled={zoomLevel <= 1}
+              title="Zoom out"
+              aria-label="Zoom out"
+              className="px-1.5 py-0.5 rounded text-xs font-semibold text-gray-600 hover:text-gray-900 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Minus className="w-3.5 h-3.5" />
+            </button>
+            <input
+              type="range"
+              min="1"
+              max="8"
+              step="0.5"
+              value={zoomLevel}
+              onChange={e => setZoomLevel(parseFloat(e.target.value))}
+              className="w-24 h-1.5 bg-gray-300 rounded-lg appearance-none cursor-pointer"
+            />
+            <button
+              onClick={() => setZoomLevel(prev => Math.min(8, prev + 0.5))}
+              disabled={zoomLevel >= 8}
+              title="Zoom in"
+              aria-label="Zoom in"
+              className="px-1.5 py-0.5 rounded text-xs font-semibold text-gray-600 hover:text-gray-900 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Plus className="w-3.5 h-3.5" />
+            </button>
+            <span className="text-xs font-medium text-gray-700 w-8 text-center">
+              {zoomLevel.toFixed(1)}x
+            </span>
+            <button
+              onClick={() => setZoomLevel(4)}
+              title="Reset zoom"
+              aria-label="Reset zoom"
+              className="px-1.5 py-0.5 rounded text-xs text-gray-600 hover:text-gray-900 hover:bg-white"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

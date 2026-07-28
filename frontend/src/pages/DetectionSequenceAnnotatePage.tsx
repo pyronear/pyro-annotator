@@ -869,7 +869,7 @@ export default function DetectionSequenceAnnotatePage({
         hasAnnotations: false,
       };
 
-  const { annotatedDetections, totalDetections, completionPercentage } = progressStats;
+  const { annotatedDetections, totalDetections } = progressStats;
   const annotatedCount = annotatedDetections;
   const totalCount = totalDetections;
   const allInVisualCheck = areAllInVisualCheckStage();
@@ -1010,23 +1010,21 @@ export default function DetectionSequenceAnnotatePage({
   const isAllAnnotated = annotatedCount === totalCount;
 
   return (
-    <>
+    // Pull the page over <main>'s p-6 so the sticky header's containing
+    // block reaches the scrollport top (sticky cannot escape into padding);
+    // the content re-adds the padding below.
+    <div className="-m-6">
       <DetectionHeader
         sequence={sequence}
         sequenceAnnotation={sequenceAnnotation}
-        annotatedCount={annotatedCount}
-        totalCount={totalCount}
-        completionPercentage={completionPercentage}
         isAllAnnotated={isAllAnnotated}
         onBack={handleBack}
         canNavigatePrevious={canNavigatePrevious}
         canNavigateNext={canNavigateNext}
         onPreviousSequence={handlePreviousSequence}
         onNextSequence={handleNextSequence}
-        getCurrentSequenceIndex={getCurrentSequenceIndex}
         rawSequencesLoading={rawSequencesLoading}
         rawSequencesError={!!rawSequencesError}
-        allSequences={allSequences || undefined}
         showPredictions={showPredictions}
         onTogglePredictions={setShowPredictions}
         allInVisualCheck={allInVisualCheck}
@@ -1048,7 +1046,7 @@ export default function DetectionSequenceAnnotatePage({
         getAnnotationPills={getAnnotationPills}
       />
 
-      <div className="pt-28 space-y-4">
+      <div className="space-y-4 px-6 pb-6 pt-4">
         {isLocalize && showCroppedView && laneBoxes.length > 0 && sequenceIdNum && (
           <div className="flex justify-center">
             <CroppedImageSequence bboxes={laneBoxes} sequenceId={sequenceIdNum} />
@@ -1118,6 +1116,6 @@ export default function DetectionSequenceAnnotatePage({
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }
