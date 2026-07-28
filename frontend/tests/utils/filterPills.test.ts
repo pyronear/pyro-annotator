@@ -97,6 +97,13 @@ describe('buildFilterPills', () => {
     expect(
       buildFilterPills({
         ...baseInput,
+        showSmokeTypes: true,
+        selectedSmokeTypes: ['wildfire'],
+      })
+    ).toEqual([{ id: 'smokeTypes', label: 'Smoke type: Wildfire' }]);
+    expect(
+      buildFilterPills({
+        ...baseInput,
         showFalsePositiveTypes: true,
         showSmokeTypes: true,
         selectedFalsePositiveTypes: ['antenna', 'building', 'cliff'],

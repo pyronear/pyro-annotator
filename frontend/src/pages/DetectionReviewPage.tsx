@@ -278,7 +278,7 @@ export default function DetectionReviewPage() {
                 <p className="text-gray-500 mb-4">
                   No sequences with completed detection annotations match your current filters.
                 </p>
-                <p className="text-gray-400 text-sm">Try adjusting your search criteria above.</p>
+                <p className="text-gray-400 text-sm">Try adjusting them via the Filters button.</p>
               </>
             ) : (
               // No filters - no sequences available

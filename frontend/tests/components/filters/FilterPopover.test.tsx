@@ -115,6 +115,38 @@ describe('FilterPopover', () => {
     expect(screen.queryByLabelText('Camera')).not.toBeInTheDocument();
   });
 
+  it('closes on outside click', async () => {
+    render(
+      <div>
+        <FilterPopover {...makeProps()} />
+        <button>outside</button>
+      </div>
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Filters' }));
+    expect(screen.getByLabelText('Camera')).toBeInTheDocument();
+    // Headless UI arms its outside-click listener one animation frame after
+    // the popover opens — wait for that frame before clicking outside.
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    const outside = screen.getByRole('button', { name: 'outside' });
+    fireEvent.mouseDown(outside);
+    fireEvent.click(outside);
+    expect(screen.queryByLabelText('Camera')).not.toBeInTheDocument();
+  });
+
+  it('clears wildfire and unsure pills through their own handlers', () => {
+    const props = makeProps({
+      filters: { is_wildfire_alertapi: null },
+      selectedUnsure: 'unsure',
+      onUnsureChange: vi.fn(),
+      showUnsureFilter: true,
+    });
+    render(<FilterPopover {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: /clear wildfire: unclassified/i }));
+    expect(props.onFiltersChange).toHaveBeenCalledWith({ is_wildfire_alertapi: undefined });
+    fireEvent.click(screen.getByRole('button', { name: /clear only unsure/i }));
+    expect(props.onUnsureChange).toHaveBeenCalledWith('all');
+  });
+
   it('persists the More expander state under filter-popover-more-expanded', () => {
     render(<FilterPopover {...makeProps()} />);
     fireEvent.click(screen.getByRole('button', { name: /filters/i }));

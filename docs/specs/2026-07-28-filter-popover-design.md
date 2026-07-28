@@ -26,7 +26,7 @@ Hide the filter controls behind a "Filters" button that opens a floating popover
 
 - Each active filter renders as a removable pill beside the button, red-tinted (`bg-primary-50 border-primary-100 text-primary-700` family), with an `✕` that clears **only that filter**.
 - Pill labels:
-  - Single-value selects show the value: `Camera: marguerite-29`, `Org: Pyronear FR`, `Source: alert_api`, `Wildfire: Smoke`, `Accuracy: High`, `Unsure only`.
+  - Single-value selects show the value: `Camera: marguerite-29`, `Org: Pyronear FR`, `Source: Alert API`, `Wildfire: Wildfire Smoke`, `Accuracy: False Positive`, `Only Unsure` / `Not Unsure` (matching the Certainty select's option labels).
   - Date range shows the preset name when one is active (`Last 7 days`), otherwise `From 2026-07-01` / `2026-07-01 – 2026-07-15` as applicable.
   - Multi-selects show the value when one is selected, a count when more: `FP type: Antenna`, `FP types (3)`, `Smoke types (2)`.
 - Pills wrap onto additional lines if needed; when no filters are active, only the button shows.
@@ -35,7 +35,7 @@ Hide the filter controls behind a "Filters" button that opens a floating popover
 ### Popover
 
 - Headless UI `Popover` + `Transition` (`@headlessui/react` is already a dependency, currently unused).
-- Anchored under the button, right-aligned, ~340px wide (`w-[340px]` or `w-80`/`w-96` equivalent), `max-h` capped with internal scroll.
+- Anchored under the button, right-aligned, `w-96` (384px — the two native date inputs' intrinsic width does not fit narrower once padding and a scrollbar are accounted for), capped by viewport width on small screens, `max-h` capped with internal scroll (`overflow-x` hidden).
 - Closes on outside click, Esc, or re-clicking the button. No "Done"/"Apply" button — filters apply immediately on change, exactly as today.
 - Footer: a single "Reset all" action, rendered only when at least one filter is active (reuses the existing `hasActiveFilters()` logic).
 

@@ -257,10 +257,10 @@ export default function SequencesPage({
               camerasLoading={camerasLoading}
               organizationsLoading={organizationsLoading}
               sourceApisLoading={sourceApisLoading}
-              showModelAccuracy={defaultProcessingStage === 'annotated'}
-              showFalsePositiveTypes={defaultProcessingStage === 'annotated'}
-              showSmokeTypes={defaultProcessingStage === 'annotated'}
-              showUnsureFilter={defaultProcessingStage === 'annotated'}
+              showModelAccuracy={isAnnotatedView}
+              showFalsePositiveTypes={isAnnotatedView}
+              showSmokeTypes={isAnnotatedView}
+              showUnsureFilter={isAnnotatedView}
             />
           </div>
         </div>
@@ -276,7 +276,7 @@ export default function SequencesPage({
                   No matching sequences found
                 </h3>
                 <p className="text-gray-500 mb-4">No sequences match your current filters.</p>
-                <p className="text-gray-400 text-sm">Try adjusting your search criteria above.</p>
+                <p className="text-gray-400 text-sm">Try adjusting them via the Filters button.</p>
               </>
             ) : isReviewPage ? (
               // Review page - simple message scoped to the selected stage
