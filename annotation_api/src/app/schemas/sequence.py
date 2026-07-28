@@ -145,5 +145,6 @@ class LocalizationQueueItem(BaseModel):
     platform_alert_id: int
     camera_name: str
     organisation_name: str
+    azimuth: Optional[int]
     recorded_at: datetime
     lanes: List[LocalizationQueueLane]

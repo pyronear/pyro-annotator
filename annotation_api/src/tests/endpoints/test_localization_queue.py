@@ -29,6 +29,7 @@ async def _lane(
     n_annotated=0,
     recorded_at=NOW,
     camera_name="cam",
+    azimuth=None,
 ):
     seq = Sequence(
         source_api=SourceApi.PYRONEAR_FRENCH_API,
@@ -44,6 +45,7 @@ async def _lane(
         organisation_name="org",
         organisation_id=1,
         auto_annotated_at=NOW if auto_annotated else None,
+        azimuth=azimuth,
     )
     session.add(seq)
     await session.flush()
@@ -113,6 +115,7 @@ async def test_alert_appears_with_lane_stats(
     assert item["platform_alert_id"] == 500
     assert item["source_api"] == "pyronear_french"
     assert item["camera_name"] == "CAM_A"
+    assert item["azimuth"] is None
     assert len(item["lanes"]) == 2
     smoke_lane = next(lane for lane in item["lanes"] if lane["has_smoke"])
     assert smoke_lane["processing_stage"] == "seq_annotation_done"
@@ -210,6 +213,38 @@ async def test_pagination_orders_by_recorded_at_desc(
     data = resp.json()
     assert data["total"] == 3
     assert [item["platform_alert_id"] for item in data["items"]] == [502, 501]
+
+
+@pytest.mark.asyncio
+async def test_azimuth_comes_from_primary_lane(
+    authenticated_client: AsyncClient, async_session
+):
+    # Primary lane (lowest alert_api_id) has azimuth 143; the object-split
+    # sibling carries a different per-object cone azimuth that must NOT win.
+    await _lane(
+        async_session,
+        alert_api_id=600,
+        platform_alert_id=600,
+        stage=Stage.SEQ_ANNOTATION_DONE,
+        has_smoke=True,
+        auto_annotated=True,
+        n_detections=1,
+        azimuth=143,
+    )
+    await _lane(
+        async_session,
+        alert_api_id=1_000_600_001,
+        platform_alert_id=600,
+        stage=Stage.SEQ_ANNOTATION_DONE,
+        has_smoke=True,
+        auto_annotated=True,
+        n_detections=1,
+        azimuth=157,
+    )
+    resp = await authenticated_client.get("/sequences/localization-queue")
+    assert resp.status_code == 200
+    (item,) = resp.json()["items"]
+    assert item["azimuth"] == 143
 
 
 @pytest.mark.asyncio
