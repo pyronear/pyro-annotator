@@ -21,6 +21,14 @@ describe('NotificationBadge', () => {
     expect(screen.getByText('999+')).toBeInTheDocument();
   });
 
+  it('renders in pine, not the legacy red', () => {
+    render(<NotificationBadge count={7} />);
+
+    const badge = screen.getByText('7');
+    expect(badge).toHaveClass('bg-pine');
+    expect(badge).not.toHaveClass('bg-red-500');
+  });
+
   it('uses the default title when none is given', () => {
     render(<NotificationBadge count={3} />);
     expect(screen.getByTitle('3 items need annotation')).toBeInTheDocument();
