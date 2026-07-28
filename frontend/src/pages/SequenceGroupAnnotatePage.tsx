@@ -12,9 +12,20 @@ import {
 } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { useDetectionImage } from '@/hooks/useDetectionImage';
+import { usePersistedTabState } from '@/hooks/usePersistedTabState';
 import { formatRelativeTime } from '@/utils/relativeTime';
 import { useState } from 'react';
 import { AlgoPrediction, SequenceGroup, SequenceGroupMember } from '@/types/api';
+
+// Minimum card width per size step; the auto-fill grid derives the column
+// count from it, so bigger cards automatically flow into more rows.
+type CardSize = 'sm' | 'md' | 'lg';
+const CARD_MIN_WIDTH: Record<CardSize, number> = { sm: 340, md: 460, lg: 640 };
+const CARD_SIZES: { value: CardSize; label: string; title: string }[] = [
+  { value: 'sm', label: 'S', title: 'Small cards' },
+  { value: 'md', label: 'M', title: 'Medium cards' },
+  { value: 'lg', label: 'L', title: 'Large cards' },
+];
 
 // Stages past the auto-import placeholder. Mirrors the backend's
 // _BULK_LOCKED_STAGES set in
@@ -230,6 +241,7 @@ export default function SequenceGroupAnnotatePage() {
   const { id } = useParams<{ id: string }>();
   const groupId = Number(id);
   const queryClient = useQueryClient();
+  const [cardSize, setCardSize] = usePersistedTabState<CardSize>('groupAnnotateCardSize', 'md');
 
   const {
     data: group,
@@ -309,6 +321,7 @@ export default function SequenceGroupAnnotatePage() {
                 <button
                   onClick={() => validateMutation.mutate(false)}
                   disabled={validateMutation.isPending}
+                  title="Re-open the group — labels stop propagating to members"
                   className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-50 disabled:opacity-50"
                 >
                   <ShieldOff className="w-3 h-3 inline mr-1" /> Unvalidate
@@ -318,6 +331,7 @@ export default function SequenceGroupAnnotatePage() {
               <button
                 onClick={() => validateMutation.mutate(true)}
                 disabled={validateMutation.isPending}
+                title="Confirms every sequence shows the same object and enables label propagation"
                 className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300"
               >
                 <ShieldCheck className="w-4 h-4 inline mr-1" /> Validate group
@@ -329,24 +343,58 @@ export default function SequenceGroupAnnotatePage() {
 
       <div className="flex gap-2.5 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
         <Info className="w-4 h-4 flex-none mt-0.5 text-blue-600" />
-        <p>
-          <span className="font-semibold">How to label this group:</span> open any sequence below
-          and label it. If the group is validated, that label propagates to every unannotated
-          member. Use ✕ on a card to eject a sequence that doesn't belong.
-        </p>
+        <div>
+          <p className="font-semibold">How to label this group</p>
+          <ul className="mt-1 space-y-0.5 list-disc list-inside">
+            <li>
+              <span className="font-medium">Label</span> — open any sequence below and label it.
+            </li>
+            <li>
+              <span className="font-medium">Validate</span> — "Validate group" confirms every
+              sequence shows the same object; once validated, one label propagates to all
+              unannotated members.
+            </li>
+            <li>
+              <span className="font-medium">Eject</span> — use ✕ on a card to remove a sequence that
+              doesn't belong. Do this before validating.
+            </li>
+          </ul>
+        </div>
       </div>
 
       <div>
-        <div className="mb-2 flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs text-gray-600">
-          <span className="inline-flex items-center gap-1.5">
-            <span className="inline-block w-4 h-3 border-2 border-red-500" />
-            detected object
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="inline-block w-4 h-3 border-2 border-dashed border-fuchsia-500" />
-            group reference region
-          </span>
-          <span>left: full frame · right: zoom</span>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-x-5 gap-y-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs text-gray-600">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="inline-block w-4 h-3 border-2 border-red-500" />
+              detected object
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="inline-block w-4 h-3 border-2 border-dashed border-fuchsia-500" />
+              group reference region
+            </span>
+            <span>left: full frame · right: zoom</span>
+          </div>
+          <div className="inline-flex items-center gap-1.5">
+            <span>Card size</span>
+            <div className="inline-flex rounded-md bg-gray-200 p-0.5 gap-0.5">
+              {CARD_SIZES.map(s => (
+                <button
+                  key={s.value}
+                  type="button"
+                  title={s.title}
+                  onClick={() => setCardSize(s.value)}
+                  className={`px-2 py-0.5 rounded font-semibold ${
+                    cardSize === s.value
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-900'
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         {group.members.length === 0 ? (
@@ -354,7 +402,12 @@ export default function SequenceGroupAnnotatePage() {
             This group has no members.
           </div>
         ) : (
-          <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 min-[1920px]:grid-cols-4 gap-4">
+          <section
+            className="grid gap-4"
+            style={{
+              gridTemplateColumns: `repeat(auto-fill, minmax(min(${CARD_MIN_WIDTH[cardSize]}px, 100%), 1fr))`,
+            }}
+          >
             {group.members.map(m => (
               <MemberCard
                 key={m.sequence_id}

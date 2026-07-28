@@ -44,12 +44,16 @@ changes, no new labeling capability.
 The gray legend box is replaced by the list page's blue info box
 (`Info` icon), with this copy:
 
-> **How to label this group:** open any sequence below and label it. If the
-> group is validated, that label propagates to every unannotated member.
-> Use ✕ on a card to eject a sequence that doesn't belong.
+> **How to label this group**
+> - **Label** — open any sequence below and label it.
+> - **Validate** — "Validate group" confirms every sequence shows the same
+>   object; once validated, one label propagates to all unannotated members.
+> - **Eject** — use ✕ on a card to remove a sequence that doesn't belong.
+>   Do this before validating.
 
 Always visible. The old conditional "group is validated…" sentence is
-covered by this copy and is dropped.
+covered by this copy and is dropped. The Validate/Unvalidate buttons also
+carry `title` tooltips restating the propagation semantics.
 
 ### Legend strip
 
@@ -57,11 +61,15 @@ One slim line between the explainer and the grid (`text-xs`, gray
 background bar): red swatch "detected object", dashed fuchsia swatch
 "group reference region", then "left: full frame · right: zoom".
 
-### Grid density
+### Grid density & card-size control
 
-`grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 min-[1920px]:grid-cols-4
-gap-4` — 1 card per row on small screens, 2 on laptops, 3 on wide
-monitors, 4 on very large (≥1920 px) screens.
+The grid uses `repeat(auto-fill, minmax(min(<minWidth>px, 100%), 1fr))`
+so the column count derives from a minimum card width and reflows
+automatically at any viewport size. A "Card size" S/M/L segmented control
+on the right of the legend strip switches the minimum width
+(S = 340 px, M = 460 px default, L = 640 px); the choice persists in
+localStorage via the existing `usePersistedTabState` hook
+(key `groupAnnotateCardSize`).
 
 ### Card meta
 
