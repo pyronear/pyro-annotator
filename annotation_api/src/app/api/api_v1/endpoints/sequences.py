@@ -25,9 +25,11 @@ from sqlalchemy import (
     and_,
     or_,
     cast,
+    tuple_,
     ARRAY,
     String,
 )
+from sqlalchemy.orm import aliased
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.dependencies import get_current_user, get_sequence_crud
@@ -179,8 +181,8 @@ async def list_sequences(
         description=(
             "Filter by processing stage(s); repeat the param for OR logic. "
             "Accepts any SequenceAnnotationProcessingStage value ('imported', "
-            "'ready_to_annotate', 'under_annotation', 'seq_annotation_done', "
-            "'in_review', 'needs_manual', 'annotated') or 'no_annotation'"
+            "'ready_to_annotate', 'seq_annotation_done', 'annotated') "
+            "or 'no_annotation'"
         ),
     ),
     has_missed_smoke: Optional[bool] = Query(
@@ -535,6 +537,19 @@ async def list_sequences(
         return paginated_result
 
 
+def _ready_smoke_lane(seq, ann):
+    """Smoke lane (has_smoke, not unsure) still at seq_annotation_done whose
+    auto reference layer exists. Parameterized over (possibly aliased)
+    Sequence/SequenceAnnotation so the queue can use it both in its HAVING
+    aggregate and in the candidate-alert pre-filter."""
+    return and_(
+        ann.processing_stage == SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
+        ann.has_smoke.is_(True),
+        ann.is_unsure.is_(False),
+        seq.auto_annotated_at.is_not(None),
+    )
+
+
 # NOTE: declared before GET /{sequence_id} — the int path converter would
 # otherwise turn /localization-queue into a 422.
 @router.get("/localization-queue")
@@ -548,12 +563,18 @@ async def localization_queue(
     (has_smoke, not unsure) at seq_annotation_done whose auto reference layer
     exists (auto_annotated_at set). Lanes leave on submit (stage change), so a
     fully-boxed but unsubmitted lane still counts as ready."""
-    ready_smoke_lane = and_(
-        SequenceAnnotation.processing_stage
-        == SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
-        SequenceAnnotation.has_smoke.is_(True),
-        SequenceAnnotation.is_unsure.is_(False),
-        Sequence.auto_annotated_at.is_not(None),
+    ready_smoke_lane = _ready_smoke_lane(Sequence, SequenceAnnotation)
+    # Pre-filter to alerts having at least one ready smoke lane BEFORE the
+    # completeness aggregation, so the grouping scans the active working set
+    # (lanes still at seq_annotation_done) instead of all history. The HAVING
+    # ready-lane check already implies this membership, so results are
+    # identical — this only bounds the cost (#215).
+    cand_seq = aliased(Sequence)
+    cand_ann = aliased(SequenceAnnotation)
+    candidate_alerts = (
+        select(cand_seq.source_api, cand_seq.platform_alert_id)
+        .join(cand_ann, cand_ann.sequence_id == cand_seq.id)
+        .where(_ready_smoke_lane(cand_seq, cand_ann))
     )
     alerts = (
         select(
@@ -562,6 +583,11 @@ async def localization_queue(
             func.min(Sequence.recorded_at).label("recorded_at"),
         )
         .outerjoin(SequenceAnnotation, SequenceAnnotation.sequence_id == Sequence.id)
+        .where(
+            tuple_(Sequence.source_api, Sequence.platform_alert_id).in_(
+                candidate_alerts
+            )
+        )
         .group_by(Sequence.source_api, Sequence.platform_alert_id)
         .having(
             and_(

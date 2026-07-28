@@ -497,7 +497,7 @@ describe('SequenceTableRow', () => {
   });
 
   describe('Union Stage Filter (All classified view)', () => {
-    const unionStages = ['seq_annotation_done', 'in_review', 'annotated'] as const;
+    const unionStages = ['seq_annotation_done', 'annotated'] as const;
 
     it('shows the stage pill for annotated rows when the filter is an array', () => {
       const annotation = createAnnotation({ processing_stage: 'annotated' });

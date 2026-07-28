@@ -29,13 +29,7 @@ describe('SequencesPageWrapper review mode', () => {
     const options = screen
       .getAllByRole('option')
       .map(option => (option as HTMLOptionElement).value);
-    expect(options).toEqual([
-      'all_classified',
-      'seq_annotation_done',
-      'in_review',
-      'annotated',
-      'needs_manual',
-    ]);
+    expect(options).toEqual(['all_classified', 'seq_annotation_done', 'annotated']);
   });
 
   it('narrows to a single stage and persists the choice under the v2 key', () => {
@@ -49,8 +43,8 @@ describe('SequencesPageWrapper review mode', () => {
   });
 
   it('passes non-review stages straight through', () => {
-    render(<SequencesPageWrapper defaultProcessingStage="needs_manual" />);
+    render(<SequencesPageWrapper defaultProcessingStage="ready_to_annotate" />);
     const props = capturedProps.at(-1)!;
-    expect(props.defaultProcessingStage).toBe('needs_manual');
+    expect(props.defaultProcessingStage).toBe('ready_to_annotate');
   });
 });

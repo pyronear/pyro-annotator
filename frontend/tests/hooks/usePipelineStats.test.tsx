@@ -18,9 +18,7 @@ import { usePipelineStats } from '@/hooks/usePipelineStats';
 const stageTotals: Record<string, number> = {
   ready_to_annotate: 57,
   seq_annotation_done: 22,
-  in_review: 4,
   annotated: 427,
-  needs_manual: 4,
 };
 
 function wrapper({ children }: { children: React.ReactNode }) {
@@ -54,7 +52,7 @@ describe('usePipelineStats', () => {
     vi.mocked(apiClient.getLocalizationQueue).mockResolvedValue(page(9));
   });
 
-  it('derives pipeline stats from the eight count queries', async () => {
+  it('derives pipeline stats from the six count queries', async () => {
     const { result } = renderHook(() => usePipelineStats(), { wrapper });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.classifyTodo).toBe(57);
@@ -63,7 +61,6 @@ describe('usePipelineStats', () => {
     expect(result.current.localizeTodo).toBe(9);
     expect(result.current.complete).toBe(418);
     expect(result.current.completePct).toBe(80);
-    expect(result.current.attention).toBe(4);
     expect(result.current.total).toBe(522);
     expect(result.current.groupsToLabel).toBe(12);
     expect(result.current.error).toBeNull();

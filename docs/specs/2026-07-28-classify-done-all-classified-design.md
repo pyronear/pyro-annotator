@@ -37,9 +37,11 @@ the existing `false_positive_types` list-param pattern.
 
 - `SequencesPageWrapper`: prepend an **"All classified"** option to the Stage
   dropdown and make it the default. It maps to
-  `['seq_annotation_done', 'in_review', 'annotated']`. The single-stage options
-  remain for narrowing (including `needs_manual` until its planned retirement;
-  `needs_manual` is NOT part of the union).
+  `['seq_annotation_done', 'annotated']` — the two classify exits. (The design
+  originally included `in_review` and excluded-but-kept `needs_manual`; both
+  stages were retired by #207/#220 before this landed, so the union and the
+  dropdown shrank accordingly.) The single-stage options remain for narrowing,
+  and a persisted stage that no longer exists falls back to "All classified".
 - Bump the persisted-tab storage key (`sequences-review-stage` →
   `sequences-review-stage-v2`) so existing users land on the new default
   instead of their old sticky single-stage selection.
@@ -61,4 +63,3 @@ the existing `false_positive_types` list-param pattern.
 ## Out of scope
 
 - Localize > Done (`/detections/review`) keeps its current behavior.
-- `needs_manual` retirement is a separate follow-up.

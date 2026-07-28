@@ -6,8 +6,8 @@ import {
 } from '@/utils/processingStage';
 
 describe('ALL_CLASSIFIED_STAGES', () => {
-  it('covers both classify exits and the review stage, excluding needs_manual', () => {
-    expect(ALL_CLASSIFIED_STAGES).toEqual(['seq_annotation_done', 'in_review', 'annotated']);
+  it('covers both classify exits', () => {
+    expect(ALL_CLASSIFIED_STAGES).toEqual(['seq_annotation_done', 'annotated']);
   });
 });
 
@@ -19,7 +19,7 @@ describe('stageFilterIncludes', () => {
 
   it('matches an array filter by membership', () => {
     expect(stageFilterIncludes(ALL_CLASSIFIED_STAGES, 'annotated')).toBe(true);
-    expect(stageFilterIncludes(ALL_CLASSIFIED_STAGES, 'needs_manual')).toBe(false);
+    expect(stageFilterIncludes(ALL_CLASSIFIED_STAGES, 'ready_to_annotate')).toBe(false);
   });
 
   it('returns false for undefined', () => {

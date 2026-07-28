@@ -6,13 +6,7 @@ import { ProcessingStage } from '@/types/api';
 const STALE = 5 * 60 * 1000;
 const GC = 10 * 60 * 1000;
 
-const STAGES: ProcessingStage[] = [
-  'ready_to_annotate',
-  'seq_annotation_done',
-  'in_review',
-  'annotated',
-  'needs_manual',
-];
+const STAGES: ProcessingStage[] = ['ready_to_annotate', 'seq_annotation_done', 'annotated'];
 
 export function usePipelineStats(): PipelineStats & {
   groupsToLabel: number;
@@ -61,8 +55,7 @@ export function usePipelineStats(): PipelineStats & {
 
   // Positional destructure: order must match the queries array above —
   // [sequences-total, detections-complete, localize-queue, ...STAGES in declaration order].
-  const [seqTotal, detComplete, localizeQueue, ready, seqDone, inReview, annotated, needsManual] =
-    results;
+  const [seqTotal, detComplete, localizeQueue, ready, seqDone, annotated] = results;
 
   const stats = derivePipelineStats({
     total: seqTotal.data?.total ?? 0,
@@ -70,9 +63,7 @@ export function usePipelineStats(): PipelineStats & {
     localizeQueueTotal: localizeQueue.data?.total ?? 0,
     readyToAnnotate: ready.data?.total ?? 0,
     seqAnnotationDone: seqDone.data?.total ?? 0,
-    inReview: inReview.data?.total ?? 0,
     annotatedStage: annotated.data?.total ?? 0,
-    needsManual: needsManual.data?.total ?? 0,
   });
 
   const firstError = results.find(r => r.error)?.error ?? groupsQuery.error;

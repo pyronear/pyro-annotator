@@ -169,10 +169,7 @@ export function getProcessingStageLabel(status: ProcessingStageStatus | Processi
     no_annotation: 'No annotation',
     imported: 'Imported',
     ready_to_annotate: 'Ready to annotate',
-    under_annotation: 'Under annotation',
     seq_annotation_done: 'Seq annotation done',
-    in_review: 'In review',
-    needs_manual: 'Needs manual',
     annotated: 'Annotated',
   };
 
@@ -181,15 +178,10 @@ export function getProcessingStageLabel(status: ProcessingStageStatus | Processi
 
 /**
  * Stages whose classification pass is complete: smoke lanes parked for
- * localization, sequences in review, and fully annotated sequences
- * (including FP-only lanes that exit straight to 'annotated').
- * Excludes 'needs_manual', which has its own attention page.
+ * localization, and fully annotated sequences (including FP-only lanes
+ * that exit straight to 'annotated').
  */
-export const ALL_CLASSIFIED_STAGES: ProcessingStage[] = [
-  'seq_annotation_done',
-  'in_review',
-  'annotated',
-];
+export const ALL_CLASSIFIED_STAGES: ProcessingStage[] = ['seq_annotation_done', 'annotated'];
 
 /** True when the stage filter (single value or OR-list) includes the stage. */
 export function stageFilterIncludes(
@@ -227,14 +219,12 @@ export function getStageFilterLabel(filter: ProcessingStageFilter): string {
  * ```
  */
 /**
- * Returns true when the annotator has handed the sequence off — i.e. it has
- * moved past `under_annotation`. Covers the freshly-submitted state
- * (`seq_annotation_done`), the review handoff (`in_review`, historically
- * set by the retired push-annotations sync), and the post-review final
- * state (`annotated`).
+ * Returns true when the annotator has handed the sequence off — the
+ * freshly-submitted state (`seq_annotation_done`) or the final state
+ * (`annotated`).
  */
 export function isSequenceAnnotationSubmitted(status: string | undefined | null): boolean {
-  return status === 'seq_annotation_done' || status === 'in_review' || status === 'annotated';
+  return status === 'seq_annotation_done' || status === 'annotated';
 }
 
 export function getProcessingStageColorClass(
@@ -244,10 +234,7 @@ export function getProcessingStageColorClass(
     no_annotation: 'bg-gray-100 text-gray-800',
     imported: 'bg-blue-100 text-blue-800',
     ready_to_annotate: 'bg-yellow-100 text-yellow-800',
-    under_annotation: 'bg-yellow-200 text-yellow-900',
     seq_annotation_done: 'bg-blue-100 text-blue-800',
-    in_review: 'bg-gray-100 text-gray-800',
-    needs_manual: 'bg-red-100 text-red-800',
     annotated: 'bg-green-100 text-green-800',
   };
 

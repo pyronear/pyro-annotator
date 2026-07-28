@@ -1,5 +1,4 @@
 import { usePipelineStats } from '@/hooks/usePipelineStats';
-import AttentionBanner from '@/components/dashboard/AttentionBanner';
 import PipelineStrip from '@/components/dashboard/PipelineStrip';
 import PhaseCard from '@/components/dashboard/PhaseCard';
 import HowItWorks from '@/components/dashboard/HowItWorks';
@@ -15,10 +14,6 @@ export default function DashboardPage() {
       <p className="mt-1 font-body text-[13.5px] text-haze">
         Two passes: classify what the cameras saw, then localize the smoke.
       </p>
-
-      <div className="mt-4">
-        <AttentionBanner count={stats.attention} />
-      </div>
 
       {stats.error ? (
         <p className="my-6 font-body text-[13px] text-signal">

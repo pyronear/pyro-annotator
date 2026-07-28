@@ -20,7 +20,7 @@ frontend/src/
 ├── main.tsx                     # Entry point
 ├── components/
 │   ├── annotation/              # Sequence annotation pieces (CroppedImageSequence, FullImageSequence, ImageOverlays, SmokeTypeSelector)
-│   ├── dashboard/               # AttentionBanner, PipelineStrip, PhaseCard, HowItWorks
+│   ├── dashboard/               # PipelineStrip, PhaseCard, HowItWorks
 │   ├── detection-annotation/    # Detection-level bbox annotation (canvas, toolbar, shortcuts modal, image card, progress header, submission)
 │   ├── detection-sequence/      # DetectionGrid, DetectionHeader, ImageModal
 │   ├── filters/                 # FalsePositiveFilter, ModelAccuracyFilter, SmokeTypeFilter, TabbedFilters, shared/
@@ -70,7 +70,6 @@ frontend/src/
 | `/login`                                              | `LoginPage`                       |
 | `/sequences/annotate`                                 | `SequencesPage`                   |
 | `/sequences/review`                                   | `SequencesPageWrapper`            |
-| `/sequences/attention`                                | `SequencesPageWrapper` (needs_manual) |
 | `/sequences/:id/annotate`                             | `AnnotationInterface`             |
 | `/detections/annotate`                                | `DetectionAnnotatePage` (alert-grouped Localize queue) |
 | `/detections/review`                                  | `DetectionReviewPage` (verification, smoke lanes only) |

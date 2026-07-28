@@ -113,24 +113,6 @@ async def test_incomplete_sibling_blocks(async_session):
 
 
 @pytest.mark.asyncio
-async def test_needs_manual_sibling_blocks(async_session):
-    await _lane(
-        async_session,
-        alert_api_id=500,
-        platform_alert_id=500,
-        stage=Stage.SEQ_ANNOTATION_DONE,
-        has_smoke=True,
-    )
-    await _lane(
-        async_session,
-        alert_api_id=1_000_500_001,
-        platform_alert_id=500,
-        stage=Stage.NEEDS_MANUAL,
-    )
-    assert await schedule_pending_auto_annotate(async_session) == []
-
-
-@pytest.mark.asyncio
 async def test_missing_annotation_blocks(async_session):
     await _lane(
         async_session,
@@ -195,7 +177,7 @@ async def test_singleton_smoke_alert_passes(async_session):
 
 
 @pytest.mark.asyncio
-async def test_annotated_and_in_review_siblings_count_as_done(async_session):
+async def test_annotated_sibling_counts_as_done(async_session):
     smoke = await _lane(
         async_session,
         alert_api_id=500,
@@ -208,12 +190,6 @@ async def test_annotated_and_in_review_siblings_count_as_done(async_session):
         alert_api_id=1_000_500_001,
         platform_alert_id=500,
         stage=Stage.ANNOTATED,
-    )
-    await _lane(
-        async_session,
-        alert_api_id=1_000_500_002,
-        platform_alert_id=500,
-        stage=Stage.IN_REVIEW,
     )
     assert await schedule_pending_auto_annotate(async_session) == [smoke.id]
 
