@@ -289,12 +289,12 @@ export default function SequenceGroupAnnotatePage() {
           primary action (validate) stays reachable while scrolling the
           member grid. The root's pt-24 reserves its space. */}
       <div className="fixed top-0 left-0 md:left-64 right-0 z-30 px-6 pt-3 pb-2.5 bg-gray-50/95 backdrop-blur-sm shadow-sm">
-        <Link to="/sequence-groups" className="text-sm text-gray-500 hover:text-gray-800">
-          ← Sequence groups
-        </Link>
-        <div className="mt-1 flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">
+            <Link to="/sequence-groups" className="text-sm text-gray-500 hover:text-gray-800">
+              ← Sequence groups
+            </Link>
+            <h1 className="mt-1 text-2xl font-bold text-gray-900">
               {cameraName} · {group.azimuth}°
             </h1>
             <div className="mt-1.5 flex items-center gap-2">
