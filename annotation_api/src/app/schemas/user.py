@@ -1,7 +1,9 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
+
+from app.core.config import settings
 
 __all__ = [
     "UserCreate",
@@ -39,6 +41,12 @@ class UserRead(UserBase):
     id: int
     created_at: datetime
     updated_at: Optional[datetime] = None
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def is_system(self) -> bool:
+        """True for the seeded worker user the group-assignment sweep attributes annotations to."""
+        return self.username == settings.WORKER_USERNAME
 
 
 class UserInDB(UserBase):

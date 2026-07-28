@@ -452,3 +452,23 @@ class TestWorkerUserProtection:
             f"/users/{worker_user.id}/password", json={"password": "newpassword123"}
         )
         assert response.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_worker_user_is_system_flag(
+        self, authenticated_client: AsyncClient, worker_user: User
+    ):
+        """Test the worker user is flagged as a system account in responses."""
+        response = await authenticated_client.get(f"/users/{worker_user.id}")
+
+        assert response.status_code == 200
+        assert response.json()["is_system"] is True
+
+    @pytest.mark.asyncio
+    async def test_regular_user_is_not_system_flag(
+        self, authenticated_client: AsyncClient, regular_user: User
+    ):
+        """Test ordinary users are not flagged as system accounts."""
+        response = await authenticated_client.get(f"/users/{regular_user.id}")
+
+        assert response.status_code == 200
+        assert response.json()["is_system"] is False
