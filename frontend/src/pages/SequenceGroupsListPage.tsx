@@ -118,7 +118,6 @@ export default function SequenceGroupsListPage() {
 
   const items = data?.items ?? [];
   const totalPages = data?.pages ?? 1;
-  const total = data?.total ?? 0;
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-6">
@@ -138,7 +137,7 @@ export default function SequenceGroupsListPage() {
         </p>
       </div>
 
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3">
         <div className="inline-flex rounded-lg bg-gray-200 p-0.5 gap-0.5 text-sm">
           {FILTERS.map(f => {
             const active = filter === f.value;
@@ -170,9 +169,6 @@ export default function SequenceGroupsListPage() {
             );
           })}
         </div>
-        <span className="text-sm text-gray-500">
-          {total} group{total === 1 ? '' : 's'}
-        </span>
       </div>
 
       <div className="overflow-x-auto border border-gray-200 rounded-lg bg-white shadow-sm">
