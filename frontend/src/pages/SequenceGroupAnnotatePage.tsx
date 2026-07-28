@@ -283,40 +283,38 @@ export default function SequenceGroupAnnotatePage() {
   const cameraName = group.members[0]?.camera_name ?? `camera #${group.camera_id}`;
 
   return (
-    <div className="space-y-6 pt-24">
+    <div className="space-y-6 pt-20">
       {/* Pinned header, same idiom as AnnotationHeader on the per-sequence
           page: fixed to the viewport past the sidebar (md:left-64) so the
           primary action (validate) stays reachable while scrolling the
           member grid. The root's pt-24 reserves its space. */}
       <div className="fixed top-0 left-0 md:left-64 right-0 z-30 px-6 pt-3 pb-2.5 bg-gray-50/95 backdrop-blur-sm shadow-sm">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <Link to="/sequence-groups" className="text-sm text-gray-500 hover:text-gray-800">
-              ← Sequence groups
-            </Link>
-            <h1 className="mt-1 text-2xl font-bold text-gray-900">
+        <Link to="/sequence-groups" className="text-sm text-gray-500 hover:text-gray-800">
+          ← Sequence groups
+        </Link>
+        <div className="mt-1 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <h1 className="text-2xl font-bold text-gray-900 truncate">
               {cameraName} · {group.azimuth}°
             </h1>
-            <div className="mt-1.5 flex items-center gap-2">
-              <span className="inline-block rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-700">
-                {group.members.length} sequence{group.members.length === 1 ? '' : 's'}
+            <span className="flex-none rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-700">
+              {group.members.length} seq
+            </span>
+            {group.smoke_type ? (
+              <span className="flex-none rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-semibold text-orange-700">
+                smoke · {group.smoke_type}
               </span>
-              {group.smoke_type ? (
-                <span className="inline-block rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-semibold text-orange-700">
-                  smoke · {group.smoke_type}
-                </span>
-              ) : group.false_positive_type ? (
-                <span className="inline-block rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-semibold text-gray-700">
-                  false positive · {group.false_positive_type.replace(/_/g, ' ')}
-                </span>
-              ) : (
-                <span className="inline-block rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-semibold text-yellow-800">
-                  to label
-                </span>
-              )}
-            </div>
+            ) : group.false_positive_type ? (
+              <span className="flex-none rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-semibold text-gray-700">
+                false positive · {group.false_positive_type.replace(/_/g, ' ')}
+              </span>
+            ) : (
+              <span className="flex-none rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-semibold text-yellow-800">
+                to label
+              </span>
+            )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-none items-center gap-2">
             {group.is_validated ? (
               <>
                 <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-green-100 text-green-700 text-sm">
