@@ -393,3 +393,30 @@ class TestDeleteUser:
         response = await authenticated_client.delete("/users/99999")
 
         assert response.status_code == 404
+
+
+class TestWorkerUserProtection:
+    """Tests protecting the seeded system worker user."""
+
+    @pytest.mark.asyncio
+    async def test_delete_worker_user_forbidden(
+        self, authenticated_client: AsyncClient, worker_user: User
+    ):
+        """Test the system worker user cannot be deleted."""
+        response = await authenticated_client.delete(f"/users/{worker_user.id}")
+
+        assert response.status_code == 403
+        data = response.json()
+        assert "Cannot delete the system worker user" in data["detail"]
+
+        # Worker still exists
+        response = await authenticated_client.get(f"/users/{worker_user.id}")
+        assert response.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_delete_inactive_non_worker_user_allowed(
+        self, authenticated_client: AsyncClient, inactive_user: User
+    ):
+        """Test a merely-inactive user is still deletable (guard is by username)."""
+        response = await authenticated_client.delete(f"/users/{inactive_user.id}")
+        assert response.status_code == 204

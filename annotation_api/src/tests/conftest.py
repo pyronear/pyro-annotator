@@ -251,6 +251,20 @@ async def inactive_user(async_session: AsyncSession) -> User:
 
 
 @pytest_asyncio.fixture(scope="function")
+async def worker_user(async_session: AsyncSession) -> User:
+    """Create the seeded system worker user (login-disabled attribution account)."""
+    user_crud = UserCRUD(async_session)
+    user_create = UserCreate(
+        username=settings.WORKER_USERNAME,
+        password="workerpassword123",
+        is_active=False,
+        is_superuser=False,
+    )
+    user = await user_crud.create_user(user_create)
+    return user
+
+
+@pytest_asyncio.fixture(scope="function")
 async def auth_token(test_user: User) -> str:
     """Generate an authentication token for testing."""
     return create_access_token(

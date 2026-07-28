@@ -7,6 +7,7 @@ from sqlalchemy import desc
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.auth.dependencies import get_current_active_user, get_current_superuser
+from app.core.config import settings
 from app.crud import UserCRUD
 from app.db import get_session
 from app.models import User
@@ -156,8 +157,15 @@ async def delete_user(
         )
 
     user_crud = UserCRUD(session)
-    success = await user_crud.delete_user(user_id)
-    if not success:
+    user = await user_crud.get_by_id(user_id)
+    if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
+    if user.username == settings.WORKER_USERNAME:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot delete the system worker user",
+        )
+
+    await user_crud.delete_user(user_id)
