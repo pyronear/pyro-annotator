@@ -52,7 +52,7 @@ describe('AppLayout sidebar navigation', () => {
     );
 
   it('styles the active link with the pine accent and a left bar', () => {
-    renderLayoutAt('/sequence-groups');
+    renderLayoutAt('/classify/groups');
 
     const groupsLink = screen.getByRole('link', { name: /groups/i });
     expect(groupsLink).toHaveClass('bg-pine-soft', 'text-pine', 'border-pine', 'border-l-[3px]');
@@ -60,7 +60,7 @@ describe('AppLayout sidebar navigation', () => {
   });
 
   it('styles inactive links with haze text, ash hover, and a transparent left bar', () => {
-    renderLayoutAt('/sequence-groups');
+    renderLayoutAt('/classify/groups');
 
     const smokeLink = screen.getByRole('link', { name: /smoke/i });
     expect(smokeLink).toHaveClass(
@@ -77,14 +77,14 @@ describe('AppLayout sidebar navigation', () => {
   });
 
   it('stacks nav links without vertical gaps between them', () => {
-    renderLayoutAt('/sequence-groups');
+    renderLayoutAt('/classify/groups');
 
     const groupsLink = screen.getByRole('link', { name: /groups/i });
     expect(groupsLink.parentElement).not.toHaveClass('space-y-1');
   });
 
   it('lets nav links span the full sidebar width', () => {
-    const { container } = renderLayoutAt('/sequence-groups');
+    const { container } = renderLayoutAt('/classify/groups');
 
     const nav = container.querySelector('nav');
     expect(nav).not.toHaveClass('px-2');
@@ -94,7 +94,7 @@ describe('AppLayout sidebar navigation', () => {
     renderLayout();
 
     const groupsLink = screen.getByRole('link', { name: /groups/i });
-    expect(groupsLink).toHaveAttribute('href', '/sequence-groups');
+    expect(groupsLink).toHaveAttribute('href', '/classify/groups');
 
     const badge = within(groupsLink).getByText('8');
     expect(badge).toHaveAttribute('title', '8 groups need validation');
@@ -107,7 +107,7 @@ describe('AppLayout sidebar navigation', () => {
     const groupsLink = screen.getByRole('link', { name: /groups/i });
     const sequencesLinks = screen.getAllByRole('link', { name: /sequences/i });
     const classifySequencesLink = sequencesLinks.find(
-      link => link.getAttribute('href') === '/sequences/annotate'
+      link => link.getAttribute('href') === '/classify'
     );
 
     expect(classifySequencesLink).toBeDefined();
@@ -172,12 +172,45 @@ describe('AppLayout detections nav', () => {
       </MemoryRouter>
     );
 
-  it('points the Localize section queue entry (Smoke) at /detections/annotate', () => {
+  it('points the Localize section queue entry (Smoke) at /localize', () => {
     renderLayout();
 
     const smokeLink = screen.getByRole('link', { name: /smoke/i });
-    expect(smokeLink).toHaveAttribute('href', '/detections/annotate');
+    expect(smokeLink).toHaveAttribute('href', '/localize');
     // The old entity-named "Annotate" entry is gone from the detections nav.
     expect(screen.queryByRole('link', { name: /^annotate$/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('AppLayout path-based nav highlighting', () => {
+  const renderLayoutAt = (path: string) =>
+    render(
+      <MemoryRouter initialEntries={[path]}>
+        <AppLayout>
+          <div>page content</div>
+        </AppLayout>
+      </MemoryRouter>
+    );
+
+  it.each([
+    ['/classify', '/classify'],
+    ['/classify/42', '/classify'],
+    ['/classify/done', '/classify/done'],
+    ['/classify/done/42', '/classify/done'],
+    ['/classify/groups', '/classify/groups'],
+    ['/classify/groups/7', '/classify/groups'],
+    ['/localize', '/localize'],
+    ['/localize/5', '/localize'],
+    ['/localize/5/9', '/localize'],
+    ['/localize/done', '/localize/done'],
+    ['/localize/done/5', '/localize/done'],
+  ])('at %s the single active link is %s', (path, activeHref) => {
+    const { container } = renderLayoutAt(path);
+
+    const activeLinks = Array.from(container.querySelectorAll('a')).filter(a =>
+      a.className.includes('text-pine')
+    );
+    expect(activeLinks).toHaveLength(1);
+    expect(activeLinks[0]).toHaveAttribute('href', activeHref);
   });
 });

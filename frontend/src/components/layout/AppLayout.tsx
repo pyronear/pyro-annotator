@@ -5,6 +5,7 @@ import { clsx } from 'clsx';
 import { useAnnotationCounts } from '@/hooks/useAnnotationCounts';
 import NotificationBadge from '@/components/ui/NotificationBadge';
 import { useAuthStore } from '@/store/useAuthStore';
+import { ROUTES } from '@/utils/routes';
 import logoImg from '@/assets/logo.png';
 
 interface AppLayoutProps {
@@ -95,60 +96,37 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
       children: [
         {
           name: 'Groups',
-          href: '/sequence-groups',
+          href: ROUTES.CLASSIFY_GROUPS,
           badgeCount: groupCount,
           badgeTitle: `${groupCount} groups need validation`,
         },
-        { name: 'Sequences', href: '/sequences/annotate', badgeCount: sequenceCount },
-        { name: 'Done', href: '/sequences/review' },
+        { name: 'Sequences', href: ROUTES.CLASSIFY, badgeCount: sequenceCount },
+        { name: 'Done', href: ROUTES.CLASSIFY_DONE },
       ],
     },
     {
       name: 'Localize',
       children: [
-        { name: 'Smoke', href: '/detections/annotate', badgeCount: detectionCount },
-        { name: 'Done', href: '/detections/review' },
+        { name: 'Smoke', href: ROUTES.LOCALIZE, badgeCount: detectionCount },
+        { name: 'Done', href: ROUTES.LOCALIZE_DONE },
       ],
     },
   ];
 
-  const isPathActive = (href?: string) => {
-    if (!href || href === '#') return false;
-
-    // Handle detection pages directly
-    if (currentPath.startsWith('/detections/')) {
-      // Handle nested detection routes like /detections/{id}/annotate
-      if (href === '/detections/annotate' && currentPath.match(/^\/detections\/\d+\/annotate$/)) {
-        const searchParams = new URLSearchParams(location.search);
-        const fromParam = searchParams.get('from');
-        // Only highlight Detections > Annotate if not coming from detections-review
-        return fromParam !== 'detections-review';
-      }
-      if (href === '/detections/review' && currentPath.match(/^\/detections\/\d+\/annotate$/)) {
-        const searchParams = new URLSearchParams(location.search);
-        const fromParam = searchParams.get('from');
-        // Highlight Detections > Review when coming from detections-review
-        return fromParam === 'detections-review';
-      }
-      if (href === '/detections/review' && currentPath.match(/^\/detections\/\d+\/review$/)) {
-        return true;
-      }
-      return currentPath === href;
+  const isPathActive = (href: string) => {
+    if (currentPath === href) return true;
+    // Bare pass roots own their detail pages, except the done/groups subtrees.
+    if (href === ROUTES.CLASSIFY) {
+      return (
+        currentPath.startsWith('/classify/') &&
+        !currentPath.startsWith(ROUTES.CLASSIFY_DONE) &&
+        !currentPath.startsWith(ROUTES.CLASSIFY_GROUPS)
+      );
     }
-
-    // Special handling for sequence annotation pages to respect source context
-    if (currentPath.includes('/sequences/') && currentPath.includes('/annotate')) {
-      const searchParams = new URLSearchParams(window.location.search);
-      const fromParam = searchParams.get('from');
-
-      if (fromParam === 'review' && href === '/sequences/review') return true;
-      if (fromParam === 'detections' && href === '/detections/annotate') return true;
-      if (fromParam === 'detections-review' && href === '/detections/review') return true;
-      if (!fromParam && href === '/sequences/annotate') return true;
-      return false;
+    if (href === ROUTES.LOCALIZE) {
+      return currentPath.startsWith('/localize/') && !currentPath.startsWith(ROUTES.LOCALIZE_DONE);
     }
-
-    return currentPath === href || currentPath.startsWith(href + '/');
+    return currentPath.startsWith(href + '/');
   };
 
   return (
@@ -170,18 +148,14 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
                 <div className="mt-1">
                   {item.children.map(subItem => {
                     const isSubActive = isPathActive(subItem.href);
-                    const isDisabled = subItem.href === '#';
                     return (
                       <Link
                         key={subItem.name}
-                        to={isDisabled ? '#' : subItem.href}
-                        onClick={e => isDisabled && e.preventDefault()}
+                        to={subItem.href}
                         className={clsx(
                           isSubActive
                             ? 'border-pine bg-pine-soft text-pine'
-                            : isDisabled
-                              ? 'border-transparent text-gray-400 cursor-not-allowed'
-                              : 'border-transparent text-haze hover:bg-ash hover:text-char',
+                            : 'border-transparent text-haze hover:bg-ash hover:text-char',
                           'group flex items-center justify-between border-l-[3px] pl-4 pr-2 py-2 font-body text-[13px] font-medium transition-colors'
                         )}
                       >
