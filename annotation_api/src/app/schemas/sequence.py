@@ -133,6 +133,7 @@ class LocalizationQueueLane(BaseModel):
     alert_api_id: int
     has_smoke: bool
     processing_stage: str
+    smoke_types: List[str]
     total_detections: int
     annotated_detections: int
     auto_annotated_at: Optional[datetime]

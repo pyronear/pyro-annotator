@@ -30,6 +30,7 @@ async def _lane(
     recorded_at=NOW,
     camera_name="cam",
     azimuth=None,
+    smoke_types=None,
 ):
     seq = Sequence(
         source_api=SourceApi.PYRONEAR_FRENCH_API,
@@ -60,6 +61,7 @@ async def _lane(
                 annotation={"sequences_bbox": []},
                 processing_stage=stage,
                 created_at=recorded_at,
+                smoke_types=smoke_types or [],
             )
         )
     for i in range(n_detections):
@@ -99,6 +101,7 @@ async def test_alert_appears_with_lane_stats(
         n_detections=4,
         n_annotated=1,
         camera_name="CAM_A",
+        smoke_types=["wildfire"],
     )
     await _lane(
         async_session,
@@ -122,6 +125,9 @@ async def test_alert_appears_with_lane_stats(
     assert smoke_lane["total_detections"] == 4
     assert smoke_lane["annotated_detections"] == 1
     assert smoke_lane["auto_annotated_at"] is not None
+    assert smoke_lane["smoke_types"] == ["wildfire"]
+    fp_lane = next(lane for lane in item["lanes"] if not lane["has_smoke"])
+    assert fp_lane["smoke_types"] == []
 
 
 @pytest.mark.asyncio
