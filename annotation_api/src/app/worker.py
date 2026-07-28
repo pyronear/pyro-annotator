@@ -11,6 +11,7 @@ read-only reference; the human ground truth is seeded from it at submit.
 """
 
 import logging
+from datetime import UTC, datetime
 from io import BytesIO
 from typing import Sequence
 
@@ -24,6 +25,7 @@ from app.core.config import settings
 from app.crud import UserCRUD
 from app.db import engine
 from app.models import Detection
+from app.models import Sequence as SequenceModel
 from app.services.group_assignment import assign_ungrouped_sequences
 from app.services.smoke_detector import (
     SmokeDetector,
@@ -115,6 +117,12 @@ async def auto_annotate_sequence(sequence_id: int) -> None:
             }
             session.add(det)
             annotated += 1
+        # Completion marker: the localization queue only surfaces lanes whose
+        # reference layer exists (spec: smoke-localization entry point).
+        sequence = await session.get(SequenceModel, sequence_id)
+        if sequence is not None:
+            sequence.auto_annotated_at = datetime.now(UTC)
+            session.add(sequence)
         await session.commit()
     logger.info(
         "auto-annotated sequence %s (%d/%d detections, %d anchor boxes)",

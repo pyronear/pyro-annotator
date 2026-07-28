@@ -3,7 +3,7 @@ import pytest
 from sqlalchemy import select
 
 import app.worker as worker
-from app.models import Detection
+from app.models import Detection, Sequence
 from app.worker import auto_annotate_sequence
 
 
@@ -63,6 +63,12 @@ async def test_auto_annotate_keeps_anchored_boxes_drops_fps(
         .first()
     )
     assert other.auto_predictions is None
+
+    # completion marker: the processed sequence is stamped, others are not
+    seq1_row = await detection_session.get(Sequence, 1)
+    assert seq1_row.auto_annotated_at is not None
+    seq2_row = await detection_session.get(Sequence, 2)
+    assert seq2_row.auto_annotated_at is None
 
 
 @pytest.mark.asyncio
