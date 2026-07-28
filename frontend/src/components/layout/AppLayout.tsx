@@ -167,7 +167,7 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
                 <div className="px-4 font-data text-[10.5px] font-medium uppercase tracking-[0.14em] text-haze">
                   {item.name}
                 </div>
-                <div className="mt-1 space-y-1">
+                <div className="mt-1">
                   {item.children.map(subItem => {
                     const isSubActive = isPathActive(subItem.href);
                     const isDisabled = subItem.href === '#';

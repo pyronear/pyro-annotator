@@ -73,6 +73,13 @@ describe('AppLayout sidebar navigation', () => {
     );
   });
 
+  it('stacks nav links without vertical gaps between them', () => {
+    renderLayoutAt('/sequence-groups');
+
+    const groupsLink = screen.getByRole('link', { name: /groups/i });
+    expect(groupsLink.parentElement).not.toHaveClass('space-y-1');
+  });
+
   it('lets nav links span the full sidebar width', () => {
     const { container } = renderLayoutAt('/sequence-groups');
 
