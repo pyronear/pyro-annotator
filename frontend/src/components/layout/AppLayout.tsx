@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Menu, X, LogOut, User, Users } from 'lucide-react';
+import { Menu, MoreVertical, X, LogOut, User, Users } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useAnnotationCounts } from '@/hooks/useAnnotationCounts';
 import NotificationBadge from '@/components/ui/NotificationBadge';
@@ -160,14 +160,14 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
             <h1 className="ml-2 text-xl font-bold text-gray-900">PyroAnnotator</h1>
           </Link>
         </div>
-        <nav className="mt-8 flex-1 px-2 bg-white space-y-6">
+        <nav className="mt-8 flex-1 bg-white space-y-6">
           {navigationWithBadges.map(item => {
             return (
               <div key={item.name}>
-                <div className="px-2 font-data text-[10.5px] font-medium uppercase tracking-[0.14em] text-haze">
+                <div className="px-4 font-data text-[10.5px] font-medium uppercase tracking-[0.14em] text-haze">
                   {item.name}
                 </div>
-                <div className="mt-1 space-y-1">
+                <div className="mt-1">
                   {item.children.map(subItem => {
                     const isSubActive = isPathActive(subItem.href);
                     const isDisabled = subItem.href === '#';
@@ -178,11 +178,11 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
                         onClick={e => isDisabled && e.preventDefault()}
                         className={clsx(
                           isSubActive
-                            ? 'bg-primary-50 border-r-4 border-primary-600 text-primary-700'
+                            ? 'border-pine bg-pine-soft text-pine'
                             : isDisabled
-                              ? 'text-gray-400 cursor-not-allowed'
-                              : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
-                          'group flex items-center justify-between pl-4 pr-2 py-2 text-sm font-medium rounded-l-md'
+                              ? 'border-transparent text-gray-400 cursor-not-allowed'
+                              : 'border-transparent text-haze hover:bg-ash hover:text-char',
+                          'group flex items-center justify-between border-l-[3px] pl-4 pr-2 py-2 font-body text-[13px] font-medium transition-colors'
                         )}
                       >
                         <span>{subItem.name}</span>
@@ -234,7 +234,7 @@ function UserSection() {
           className="p-2 rounded-md text-gray-500 hover:bg-gray-50 hover:text-gray-900 transition-colors"
         >
           <span className="sr-only">Open user menu</span>
-          <Menu className="h-5 w-5" aria-hidden="true" />
+          <MoreVertical className="h-5 w-5" aria-hidden="true" />
         </button>
       </div>
 

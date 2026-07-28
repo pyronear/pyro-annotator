@@ -42,6 +42,54 @@ describe('AppLayout sidebar navigation', () => {
       </MemoryRouter>
     );
 
+  const renderLayoutAt = (path: string) =>
+    render(
+      <MemoryRouter initialEntries={[path]}>
+        <AppLayout>
+          <div>page content</div>
+        </AppLayout>
+      </MemoryRouter>
+    );
+
+  it('styles the active link with the pine accent and a left bar', () => {
+    renderLayoutAt('/sequence-groups');
+
+    const groupsLink = screen.getByRole('link', { name: /groups/i });
+    expect(groupsLink).toHaveClass('bg-pine-soft', 'text-pine', 'border-pine', 'border-l-[3px]');
+    expect(groupsLink).not.toHaveClass('bg-primary-50', 'border-r-4', 'rounded-l-md');
+  });
+
+  it('styles inactive links with haze text, ash hover, and a transparent left bar', () => {
+    renderLayoutAt('/sequence-groups');
+
+    const smokeLink = screen.getByRole('link', { name: /smoke/i });
+    expect(smokeLink).toHaveClass(
+      'text-haze',
+      'hover:bg-ash',
+      'hover:text-char',
+      'border-transparent',
+      'border-l-[3px]',
+      'transition-colors',
+      'font-body',
+      'text-[13px]'
+    );
+    expect(smokeLink).not.toHaveClass('text-sm');
+  });
+
+  it('stacks nav links without vertical gaps between them', () => {
+    renderLayoutAt('/sequence-groups');
+
+    const groupsLink = screen.getByRole('link', { name: /groups/i });
+    expect(groupsLink.parentElement).not.toHaveClass('space-y-1');
+  });
+
+  it('lets nav links span the full sidebar width', () => {
+    const { container } = renderLayoutAt('/sequence-groups');
+
+    const nav = container.querySelector('nav');
+    expect(nav).not.toHaveClass('px-2');
+  });
+
   it('renders Groups as a sub-item of the Classify section with its badge count', () => {
     renderLayout();
 
@@ -77,6 +125,13 @@ describe('AppLayout sidebar navigation', () => {
     expect(screen.queryByRole('link', { name: /sequence groups/i })).not.toBeInTheDocument();
   });
 
+  it('uses a three-dot icon on the user menu button', () => {
+    renderLayout();
+
+    const menuButton = screen.getByRole('button', { name: /open user menu/i });
+    expect(menuButton.querySelector('svg.lucide-more-vertical')).toBeInTheDocument();
+  });
+
   it('shows User Management in the user dropdown for superusers', () => {
     isSuperuserValue = true;
     renderLayout();
@@ -95,7 +150,7 @@ describe('AppLayout sidebar navigation', () => {
     expect(screen.queryByRole('link', { name: /user management/i })).not.toBeInTheDocument();
   });
 
-  it('opens the user menu only via the hamburger button, not the user row', () => {
+  it('opens the user menu only via the menu button, not the user row', () => {
     renderLayout();
 
     expect(screen.queryByRole('button', { name: /tester/i })).not.toBeInTheDocument();
