@@ -244,6 +244,9 @@ export default function SequenceGroupAnnotatePage() {
   const groupId = Number(id);
   const queryClient = useQueryClient();
   const [cardSize, setCardSize] = usePersistedTabState<CardSize>('groupAnnotateCardSize', 'md');
+  // localStorage may hold a stale value from a renamed size key; an
+  // undefined width would invalidate the whole gridTemplateColumns rule.
+  const cardMinWidth = CARD_MIN_WIDTH[cardSize] ?? CARD_MIN_WIDTH.md;
 
   const {
     data: group,
@@ -253,6 +256,9 @@ export default function SequenceGroupAnnotatePage() {
     queryKey: ['sequenceGroup', groupId],
     queryFn: () => apiClient.getSequenceGroup(groupId),
     enabled: !Number.isNaN(groupId),
+    // Keep the previous group rendered while the next loads so chevron
+    // navigation doesn't unmount the header mid-click.
+    placeholderData: prev => prev,
   });
 
   // Neighbor ids for the prev/next chevrons, from the list endpoint's
@@ -303,7 +309,7 @@ export default function SequenceGroupAnnotatePage() {
       {/* Pinned header, same idiom as AnnotationHeader on the per-sequence
           page: fixed to the viewport past the sidebar (md:left-64) so the
           primary action (validate) stays reachable while scrolling the
-          member grid. The root's pt-24 reserves its space. */}
+          member grid. The root's pt-20 reserves its space. */}
       <div className="fixed top-0 left-0 md:left-64 right-0 z-30 px-6 pt-3 pb-2.5 bg-white/85 border-b border-gray-200 backdrop-blur-sm shadow-sm">
         <Link to="/sequence-groups" className="text-sm text-gray-500 hover:text-gray-800">
           ← Sequence groups
@@ -340,7 +346,10 @@ export default function SequenceGroupAnnotatePage() {
                 <ChevronLeft className="w-4 h-4" />
               </Link>
             ) : (
-              <span className="p-1.5 rounded-lg border border-gray-200 bg-white text-gray-300">
+              <span
+                aria-disabled="true"
+                className="p-1.5 rounded-lg border border-gray-200 bg-white text-gray-300"
+              >
                 <ChevronLeft className="w-4 h-4" />
               </span>
             )}
@@ -353,7 +362,10 @@ export default function SequenceGroupAnnotatePage() {
                 <ChevronRight className="w-4 h-4" />
               </Link>
             ) : (
-              <span className="p-1.5 rounded-lg border border-gray-200 bg-white text-gray-300">
+              <span
+                aria-disabled="true"
+                className="p-1.5 rounded-lg border border-gray-200 bg-white text-gray-300"
+              >
                 <ChevronRight className="w-4 h-4" />
               </span>
             )}
@@ -427,6 +439,7 @@ export default function SequenceGroupAnnotatePage() {
                   key={s.value}
                   type="button"
                   title={s.title}
+                  aria-pressed={cardSize === s.value}
                   onClick={() => setCardSize(s.value)}
                   className={`px-2 py-0.5 rounded font-semibold ${
                     cardSize === s.value
@@ -449,7 +462,7 @@ export default function SequenceGroupAnnotatePage() {
           <section
             className="grid gap-4"
             style={{
-              gridTemplateColumns: `repeat(auto-fill, minmax(min(${CARD_MIN_WIDTH[cardSize]}px, 100%), 1fr))`,
+              gridTemplateColumns: `repeat(auto-fill, minmax(min(${cardMinWidth}px, 100%), 1fr))`,
             }}
           >
             {group.members.map(m => (

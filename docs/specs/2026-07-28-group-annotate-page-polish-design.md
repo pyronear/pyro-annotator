@@ -32,17 +32,19 @@ changes, no new labeling capability.
   where `cameraName = group.members[0]?.camera_name`, falling back to
   `camera #{group.camera_id}` for a memberless group. The group id appears
   nowhere on the page (it lives in the URL).
-- Subtitle row of pills matching the list page: blue count pill
-  "N sequence(s)", and a label pill — orange `smoke · {type}`, gray
+- Pills inline with the title (one condensed row): blue count pill
+  "N seq", and a label pill — orange `smoke · {type}`, gray
   `false positive · {type}` (underscores replaced by spaces), or yellow
-  `to label` when unlabeled.
+  `to label` when unlabeled. Long camera names truncate rather than wrap
+  so the header height stays fixed.
 - Validate/Unvalidate controls keep their position and behavior, restyled
   to the list page's idiom (rounded-lg buttons, same greens).
 - The whole header block (breadcrumb, title, pills, validate controls) is
   pinned to the viewport top with the same idiom as the per-sequence
   annotation page's `AnnotationHeader`: `fixed top-0 left-0 md:left-64
-  right-0 z-30` with a gray-50 backdrop-blur and shadow; the page root
-  reserves its height with `pt-24`. (A `sticky top-0` variant inside the
+  right-0 z-30` with AnnotationHeader's exact neutral styling
+  (`bg-white/85 border-b border-gray-200 backdrop-blur-sm shadow-sm`); the
+  page root reserves its height with `pt-20`. (A `sticky top-0` variant inside the
   scrolling `<main>` was tried first and let content peek above the header
   through `<main>`'s padding — fixed positioning avoids that.) The
   explainer and legend scroll away normally.
