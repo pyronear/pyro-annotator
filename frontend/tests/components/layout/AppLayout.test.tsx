@@ -213,4 +213,13 @@ describe('AppLayout path-based nav highlighting', () => {
     expect(activeLinks).toHaveLength(1);
     expect(activeLinks[0]).toHaveAttribute('href', activeHref);
   });
+
+  it.each([['/'], ['/users'], ['/guide']])('at %s no nav link is active', path => {
+    const { container } = renderLayoutAt(path);
+
+    const activeLinks = Array.from(container.querySelectorAll('a')).filter(a =>
+      a.className.includes('text-pine')
+    );
+    expect(activeLinks).toHaveLength(0);
+  });
 });
