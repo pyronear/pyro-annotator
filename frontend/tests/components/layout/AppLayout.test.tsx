@@ -51,11 +51,11 @@ describe('AppLayout sidebar navigation', () => {
       </MemoryRouter>
     );
 
-  it('styles the active link with the ember accent and a left bar', () => {
+  it('styles the active link with the pine accent and a left bar', () => {
     renderLayoutAt('/sequence-groups');
 
     const groupsLink = screen.getByRole('link', { name: /groups/i });
-    expect(groupsLink).toHaveClass('bg-ember-soft', 'text-ember', 'border-ember', 'border-l-[3px]');
+    expect(groupsLink).toHaveClass('bg-pine-soft', 'text-pine', 'border-pine', 'border-l-[3px]');
     expect(groupsLink).not.toHaveClass('bg-primary-50', 'border-r-4', 'rounded-l-md');
   });
 

@@ -178,7 +178,7 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
                         onClick={e => isDisabled && e.preventDefault()}
                         className={clsx(
                           isSubActive
-                            ? 'border-ember bg-ember-soft text-ember'
+                            ? 'border-pine bg-pine-soft text-pine'
                             : isDisabled
                               ? 'border-transparent text-gray-400 cursor-not-allowed'
                               : 'border-transparent text-haze hover:bg-ash hover:text-char',
@@ -232,7 +232,7 @@ function UserSection() {
           <p className="text-sm font-medium text-gray-700">{username}</p>
           <p className="text-xs font-medium text-gray-500">Annotator</p>
         </div>
-        <MoreVertical className="h-4 w-4 text-gray-400" />
+        <MoreVertical className="h-4 w-4 text-gray-400" aria-hidden="true" />
       </button>
 
       {showDropdown && (

@@ -27,12 +27,12 @@ Single file touched: `frontend/src/components/layout/AppLayout.tsx`.
 - Section eyebrow labels get `px-4` to keep their current 16px indent after
   the container padding is removed.
 
-### 2. Single ember accent
+### 2. Single pine accent
 
 All nav items use the same colors regardless of section (per user decision —
-no per-section tones):
+no per-section tones; accent revised from ember to pine, `#166A5D`):
 
-- **Active:** `bg-ember-soft text-ember border-ember`
+- **Active:** `bg-pine-soft text-pine border-pine`
 - **Hover (inactive):** `hover:bg-ash hover:text-char`
 - **Base:** `text-haze`, with `transition-colors` added (mirrors the
   dashboard's haze→char link hover)
@@ -49,4 +49,4 @@ Section eyebrow labels (recently styled deliberately), the user-menu footer,
 - Existing frontend tests pass (`npm run test`) — baseline: 667 tests, 38 files.
 - `npm run quality` (ESLint + type-check) passes.
 - Visual check in the dev server: pills span edge-to-edge, active items
-  render in ember, hover fills full width in ash, no text shift on activation.
+  render in pine, hover fills full width in ash, no text shift on activation.
