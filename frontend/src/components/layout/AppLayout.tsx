@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Menu, X, LogOut, User, Users } from 'lucide-react';
+import { Menu, MoreVertical, X, LogOut, User, Users } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useAnnotationCounts } from '@/hooks/useAnnotationCounts';
 import NotificationBadge from '@/components/ui/NotificationBadge';
@@ -232,6 +232,7 @@ function UserSection() {
           <p className="text-sm font-medium text-gray-700">{username}</p>
           <p className="text-xs font-medium text-gray-500">Annotator</p>
         </div>
+        <MoreVertical className="h-4 w-4 text-gray-400" />
       </button>
 
       {showDropdown && (

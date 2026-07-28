@@ -115,6 +115,13 @@ describe('AppLayout sidebar navigation', () => {
     expect(screen.queryByRole('link', { name: /sequence groups/i })).not.toBeInTheDocument();
   });
 
+  it('shows a three-dot menu indicator on the user row', () => {
+    renderLayout();
+
+    const userButton = screen.getByRole('button', { name: /tester/i });
+    expect(userButton.querySelector('svg.lucide-more-vertical')).toBeInTheDocument();
+  });
+
   it('shows User Management in the user dropdown for superusers', () => {
     isSuperuserValue = true;
     renderLayout();
