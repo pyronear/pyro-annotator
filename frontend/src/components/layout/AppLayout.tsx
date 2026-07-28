@@ -11,7 +11,6 @@ import {
   LogOut,
   User,
   Users,
-  Boxes,
   LucideIcon,
 } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -29,14 +28,13 @@ interface NavigationItem {
   href?: string;
   icon: LucideIcon;
   children?: NavigationSubItem[];
-  badgeCount?: number;
-  badgeTitle?: string;
 }
 
 interface NavigationSubItem {
   name: string;
   href: string;
   badgeCount?: number;
+  badgeTitle?: string;
 }
 
 // Navigation structure is now dynamically generated in SidebarContent to include badge counts
@@ -46,7 +44,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const location = useLocation();
 
   return (
-    <div className="h-screen flex overflow-hidden bg-gray-50">
+    <div className="h-screen flex overflow-hidden bg-ash">
       {/* Mobile menu overlay */}
       {sidebarOpen && (
         <div className="fixed inset-0 flex z-40 md:hidden" role="dialog" aria-modal="true">
@@ -114,16 +112,15 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
   const navigationWithBadges: NavigationItem[] = [
     { name: 'Dashboard', href: '/', icon: BarChart3 },
     {
-      name: 'Sequence groups',
-      href: '/sequence-groups',
-      icon: Boxes,
-      badgeCount: groupCount,
-      badgeTitle: `${groupCount} groups need validation`,
-    },
-    {
       name: 'Sequences',
       icon: Layers,
       children: [
+        {
+          name: 'Groups',
+          href: '/sequence-groups',
+          badgeCount: groupCount,
+          badgeTitle: `${groupCount} groups need validation`,
+        },
         { name: 'Annotate', href: '/sequences/annotate', badgeCount: sequenceCount },
         { name: 'Review', href: '/sequences/review' },
       ],
@@ -229,9 +226,6 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
                     aria-hidden="true"
                   />
                   <span className="flex-1">{item.name}</span>
-                  {item.badgeCount !== undefined && (
-                    <NotificationBadge count={item.badgeCount} title={item.badgeTitle} />
-                  )}
                 </Link>
               );
             }
@@ -282,7 +276,10 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
                         >
                           <span>{subItem.name}</span>
                           {subItem.badgeCount !== undefined && (
-                            <NotificationBadge count={subItem.badgeCount} />
+                            <NotificationBadge
+                              count={subItem.badgeCount}
+                              title={subItem.badgeTitle}
+                            />
                           )}
                         </Link>
                       );

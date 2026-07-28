@@ -42,7 +42,7 @@ cp .env.example .env
 # then edit .env and set MAIN_ANNOTATION_LOGIN / MAIN_ANNOTATION_PASSWORD
 ```
 
-All make targets accept variable overrides inline, e.g. `make export-dataset LIMIT=500`. Common variables: `REMOTE_API`, `LOCAL_API`, `MAX_SEQUENCES`, `LOGLEVEL`. See `make help` for the full list.
+All make targets accept variable overrides inline, e.g. `make export-dataset LIMIT=500`. Common variables: `REMOTE_API`, `MAX_SEQUENCES`, `LOGLEVEL`. See `make help` for the full list.
 
 ### 1. Annotations
 
@@ -62,18 +62,6 @@ Annotations stay on the API you annotated against; the file-based local→remote
 
 #### B. Other commands
 
-**Reset stages on the remote API** (e.g., move `in_review` back to `seq_annotation_done` to retry a workflow):
-
-```bash
-make update-stage-remote FROM_STAGE=in_review TO_STAGE=seq_annotation_done MAX_SEQUENCES=0
-```
-
-**Update stages on your local API** (e.g., move `seq_annotation_done` to `needs_manual`):
-
-```bash
-make update-stage-local FROM_STAGE=seq_annotation_done TO_STAGE=needs_manual MAX_SEQUENCES=0
-```
-
 **Export images + YOLO labels from the remote API** (use smaller pages and a longer timeout for large datasets):
 
 ```bash
@@ -81,22 +69,6 @@ make export-dataset OUTPUT_DIR=outputs/datasets LIMIT=1000 TIMEOUT=120
 ```
 - Filter by category: `make export-dataset CATEGORY=fp` (also `wildfire`, `other_smoke`). Omit to export all.
 - Object-split sequences are merged on export: sequences from the same camera less than 2h apart (`--merge-gap-hours`) share one view-group folder, frames are exported once with the union of all objects' boxes, and mixed groups land in the highest-priority category (`wildfire` > `other_smoke` > `fp`).
-
-**Import a single sequence from an exported YOLO folder** (images + labels) into an API:
-
-```bash
-make import-yolo-sequence \
-  SEQUENCE_DIR=outputs/datasets/dataset_exported_20260114_211415/antenna/pyronear-sdis-77-croix-augas-01-285-2025-08-02T16-38-42 \
-  ALERT_API_ID=123456 \
-  API_BASE=http://localhost:5050 \
-  SEQUENCE_STAGE=ready_to_annotate
-```
-
-- The script reads `recorded_at` from image filenames and sets sequence `recorded_at`/`last_seen_at`.
-- It tries to infer org/camera IDs from existing sequences by slug; if it cannot, call the underlying script with `--organisation-id/--camera-id/--camera-name/--lat/--lon`.
-- If `ALERT_API_ID` is omitted, it generates one from the folder name (use a stable ID to avoid duplicates).
-- Default stage is `ready_to_annotate`. Use `SEQUENCE_STAGE=annotated` if you want detection annotations created immediately.
-- Smoke classes create detection annotations (only when stage is `annotated`); false positive classes are stored at sequence level.
 
 ## Admin Workflow — Populate the main API from the alert API
 
@@ -117,12 +89,19 @@ Then run:
 
 ```bash
 cd annotation_api
+
+# Import into the remote (production) annotation API
 make import-alert-api DATE_FROM=2025-03-04 DATE_END=2025-03-04
+
+# Import into a local dev stack (see IMAGE_TRANSFER note below)
+make import-alert-api DATE_FROM=2025-03-04 DATE_END=2025-03-04 \
+  REMOTE_API=http://localhost:5050 IMAGE_TRANSFER=url
 ```
 
 - `DATE_END` defaults to `DATE_FROM` if omitted.
 - `MAX_SEQUENCES` is an optional cap on the number of sequences imported; default is no cap.
 - `REMOTE_API` defaults to `https://annotationapi.pyronear.org`; override to target staging/local.
+- `IMAGE_TRANSFER=url` routes detection images through the `/from-url` endpoint instead of a server-side S3 bucket copy. This is required when the target annotation API can't reach the alert API's S3 bucket — notably local dev with LocalStack, where the default bucket-copy mode fails every detection with `Source object not found`. Leave it unset for the production API (the script picks the right mode per source).
 - To use an alert-id filter, call the underlying script directly with `--sequence-list alerts_id_list.txt`.
 - Use `LOGLEVEL=debug` if you need more detail during imports.
 - Each alert sequence is object-split: one annotation sequence per detected smoke object (siblings get synthetic `alert_api_id`s).

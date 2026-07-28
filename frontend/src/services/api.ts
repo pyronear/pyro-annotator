@@ -231,7 +231,13 @@ class ApiClient {
   }
 
   async getSequenceGroups(
-    filters: { labeled?: boolean; page?: number; size?: number } = {}
+    filters: {
+      labeled?: boolean;
+      page?: number;
+      size?: number;
+      order_by?: 'member_count' | 'camera_name' | 'azimuth' | 'created_at';
+      order_direction?: 'asc' | 'desc';
+    } = {}
   ): Promise<PaginatedResponse<SequenceGroupListItem>> {
     const response: AxiosResponse<PaginatedResponse<SequenceGroupListItem>> = await this.client.get(
       API_ENDPOINTS.SEQUENCE_GROUPS,

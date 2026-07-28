@@ -81,6 +81,7 @@ class SequenceGroupListItem(BaseModel):
 
     id: int
     camera_id: int
+    camera_name: str
     azimuth: int
     representative_bbox: RepresentativeBbox
     smoke_type: Optional[SmokeType]
@@ -94,11 +95,15 @@ class SequenceGroupListItem(BaseModel):
 
 class SequenceGroupStats(BaseModel):
     """Aggregate counts over groups with 3 or more members — the same
-    population the list endpoint returns, so UI counts match the list."""
+    population the list endpoint returns, so UI counts match the list.
+    A group is "labeled" when smoke_type or false_positive_type is set —
+    the same predicate as the list endpoint's `labeled` filter."""
 
     total: int
     validated: int
     unvalidated: int
+    labeled: int
+    unlabeled: int
 
 
 class SequenceGroupUpdate(BaseModel):

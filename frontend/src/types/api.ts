@@ -146,6 +146,7 @@ export interface SequenceGroupMember {
 export interface SequenceGroupListItem {
   id: number;
   camera_id: number;
+  camera_name: string;
   azimuth: number;
   representative_bbox: SequenceGroupRepresentativeBbox;
   smoke_type: SmokeType | null;
@@ -161,6 +162,8 @@ export interface SequenceGroupStats {
   total: number;
   validated: number;
   unvalidated: number;
+  labeled: number;
+  unlabeled: number;
 }
 
 export interface SequenceGroup {

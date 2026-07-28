@@ -22,10 +22,6 @@ help:
 	@echo ""
 	@echo "Other data commands:"
 	@echo "  export-dataset       - Export images + YOLO labels from remote API"
-	@echo "  import-yolo-sequence - Import one YOLO folder into an API (needs SEQUENCE_DIR=...)"
-	@echo "  import-local-yolo    - Batch-import local YOLO sequences + sequences.csv (needs ROOT_DIR=...)"
-	@echo "  update-stage-remote  - Move annotations between stages on the remote API"
-	@echo "  update-stage-local   - Move annotations between stages on the local API"
 	@echo "  import-alert-api     - (Admin) Import from alert API into annotation API"
 	@echo ""
 	@echo "Override variables inline, e.g.:"
@@ -33,12 +29,8 @@ help:
 
 # ---------- Data workflow defaults (override via env or 'make VAR=value target') ----------
 REMOTE_API       ?= https://annotationapi.pyronear.org
-LOCAL_API        ?= http://localhost:5050
-MAX_SEQUENCES    ?= 10
 LOGLEVEL         ?= info
 MAX_WORKERS      ?= 4
-FROM_STAGE       ?= in_review
-TO_STAGE         ?= seq_annotation_done
 OUTPUT_DIR       ?= outputs/datasets
 LIMIT            ?= 1000
 TIMEOUT          ?= 120
@@ -121,80 +113,18 @@ export-dataset:
 		--loglevel $(LOGLEVEL) \
 		$(if $(CATEGORY),--category $(CATEGORY),)
 
-# Import one YOLO sequence folder (images + labels) into an API.
-# Usage: make import-yolo-sequence SEQUENCE_DIR=path/to/seq ALERT_API_ID=123456 \
-#        [API_BASE=http://localhost:5050] [SEQUENCE_STAGE=ready_to_annotate]
-API_BASE       ?= $(LOCAL_API)
-SEQUENCE_STAGE ?= ready_to_annotate
-SOURCE_API     ?= pyronear_french
-import-yolo-sequence:
-	@if [ -z "$(SEQUENCE_DIR)" ]; then \
-		echo "ERROR: set SEQUENCE_DIR=path/to/sequence"; exit 1; \
-	fi
-	uv run python -m scripts.data_transfer.ingestion.alert_api.import_yolo_sequence \
-		--sequence-dir $(SEQUENCE_DIR) \
-		--api-base $(API_BASE) \
-		$(if $(ALERT_API_ID),--alert-api-id $(ALERT_API_ID),) \
-		--source-api $(SOURCE_API) \
-		--sequence-stage $(SEQUENCE_STAGE) \
-		--loglevel $(LOGLEVEL)
-
-# Batch-import a directory of local YOLO sequence folders paired with a sequences.csv.
-# Usage: make import-local-yolo ROOT_DIR=/path/to/sdis-77-new_model \
-#        [SEQUENCES_SUBDIR=sdis-77] [LABELS_DIR=labels_predictions] \
-#        [API_BASE=http://localhost:5050] [MAX_WORKERS=4] [LIMIT_FOLDERS=0] [SKIP_FOLDERS=0]
-SEQUENCES_SUBDIR ?= sdis-77
-LABELS_DIR       ?= labels_predictions
-LIMIT_FOLDERS    ?= 0
-SKIP_FOLDERS     ?= 0
-import-local-yolo:
-	@if [ -z "$(ROOT_DIR)" ]; then \
-		echo "ERROR: set ROOT_DIR=path/to/dataset/root"; exit 1; \
-	fi
-	uv run python -m scripts.data_transfer.ingestion.alert_api.batch_import_local_yolo \
-		--root-dir $(ROOT_DIR) \
-		--sequences-subdir $(SEQUENCES_SUBDIR) \
-		--labels-dir-name $(LABELS_DIR) \
-		--api-base $(API_BASE) \
-		--source-api $(SOURCE_API) \
-		--sequence-stage $(SEQUENCE_STAGE) \
-		--max-workers $(MAX_WORKERS) \
-		--limit $(LIMIT_FOLDERS) \
-		--skip $(SKIP_FOLDERS) \
-		--loglevel $(LOGLEVEL)
-
-# Move annotations between stages on the remote API.
-# Usage: make update-stage-remote [FROM_STAGE=in_review] [TO_STAGE=seq_annotation_done] [MAX_SEQUENCES=0]
-update-stage-remote:
-	uv run python -m scripts.data_transfer.ingestion.alert_api.update_annotation_stage \
-		--api-url $(REMOTE_API) \
-		--from-stage $(FROM_STAGE) \
-		--to-stage $(TO_STAGE) \
-		--max-sequences $(MAX_SEQUENCES) \
-		--loglevel $(LOGLEVEL)
-
-# Move annotations between stages on the local API (uses admin/admin12345 by default).
-# Usage: make update-stage-local [FROM_STAGE=seq_annotation_done] [TO_STAGE=needs_manual]
-LOCAL_USERNAME ?= admin
-LOCAL_PASSWORD ?= admin12345
-update-stage-local:
-	uv run python -m scripts.data_transfer.ingestion.alert_api.update_annotation_stage \
-		--api-url $(LOCAL_API) \
-		--username $(LOCAL_USERNAME) \
-		--password $(LOCAL_PASSWORD) \
-		--from-stage $(FROM_STAGE) \
-		--to-stage $(TO_STAGE) \
-		--max-sequences $(MAX_SEQUENCES) \
-		--loglevel $(LOGLEVEL)
-
 # --- Admin: alert-api ingestion ---
 
 # Import sequences + detections from the alert API (a.k.a. "platform") into the
 # target annotation API, object-splitting each alert sequence into one
 # annotation sequence per smoke object (admin-only).
 # Requires ALERT_API_LOGIN/PASSWORD, ALERT_API_ADMIN_LOGIN/PASSWORD, MAIN_ANNOTATION_LOGIN/PASSWORD.
-# Usage: make import-alert-api DATE_FROM=2025-03-04 [DATE_END=2025-03-04] [MAX_SEQUENCES=20]
+# Usage: make import-alert-api DATE_FROM=2025-03-04 [DATE_END=2025-03-04] [MAX_SEQUENCES=20] [IMAGE_TRANSFER=url]
+# Set IMAGE_TRANSFER=url when the target annotation API can't reach the alert
+# API's S3 bucket (e.g. local dev with LocalStack); unset keeps the script's
+# per-source default (bucket-copy for the French alert API, url for CENIA).
 DATE_END ?= $(DATE_FROM)
+IMAGE_TRANSFER ?=
 import-alert-api: MAX_SEQUENCES = 0
 import-alert-api:
 	@if [ -z "$(DATE_FROM)" ]; then \
@@ -205,10 +135,9 @@ import-alert-api:
 		--annotation-api-url $(REMOTE_API) \
 		--max-sequences $(MAX_SEQUENCES) \
 		--max-workers $(MAX_WORKERS) \
+		$(if $(IMAGE_TRANSFER),--image-transfer $(IMAGE_TRANSFER)) \
 		--loglevel $(LOGLEVEL)
 
 .PHONY: help lint fix docker-build start stop clean test test-specific \
 	migrate migrate-up \
-	export-dataset import-yolo-sequence import-local-yolo \
-	update-stage-remote update-stage-local \
-	import-alert-api
+	export-dataset import-alert-api
