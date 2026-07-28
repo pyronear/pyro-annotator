@@ -461,6 +461,27 @@ describe('DetectionHeader', () => {
       expect(button).toBeDisabled();
     });
 
+    it('shows the crop toggle and fires onToggleCropMode', () => {
+      const onToggleCropMode = vi.fn();
+      render(
+        <DetectionHeader
+          {...defaultProps}
+          isLocalize
+          cropMode={false}
+          onToggleCropMode={onToggleCropMode}
+          onQuickSubmit={() => {}}
+        />
+      );
+
+      fireEvent.click(screen.getByLabelText('Crop'));
+      expect(onToggleCropMode).toHaveBeenCalledWith(true);
+    });
+
+    it('hides the crop toggle outside localize', () => {
+      render(<DetectionHeader {...defaultProps} />);
+      expect(screen.queryByLabelText('Crop')).toBeNull();
+    });
+
     it('hides the legacy Submit All even when allInVisualCheck', () => {
       render(
         <DetectionHeader {...defaultProps} isLocalize allInVisualCheck onQuickSubmit={() => {}} />

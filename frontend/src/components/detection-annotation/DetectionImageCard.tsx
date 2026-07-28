@@ -5,10 +5,10 @@
  * auto-accept) and the overlay shows exactly what quick submit would record.
  */
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Detection, DetectionAnnotation, SmokeType } from '@/types/api';
 import { useDetectionImage } from '@/hooks/useDetectionImage';
-import { CellState, getWinningBoxes } from '@/utils/annotation';
+import { CellState, computeCellCrop, getWinningBoxes } from '@/utils/annotation';
 import {
   BoundingBoxOverlay,
   ReferenceBoxOverlay,
@@ -26,6 +26,8 @@ interface DetectionImageCardProps {
   /** Localize grid: borders-only state encoding. Null/undefined = legacy mode. */
   cellState?: CellState | null;
   smokeType?: SmokeType;
+  /** Localize grid: zoom the cell around its displayed boxes. */
+  cropMode?: boolean;
 }
 
 interface ImageInfo {
@@ -44,13 +46,14 @@ export function DetectionImageCard({
   userAnnotation = null,
   cellState = null,
   smokeType = 'wildfire',
+  cropMode = false,
 }: DetectionImageCardProps) {
   const { data: imageData, isLoading } = useDetectionImage(detection.id);
   const [imageInfo, setImageInfo] = useState<ImageInfo | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
 
-  const handleImageLoad = () => {
+  const handleImageLoad = useCallback(() => {
     if (imgRef.current && containerRef.current) {
       // Get actual rendered positions from DOM
       const containerRect = containerRef.current.getBoundingClientRect();
@@ -62,7 +65,13 @@ export function DetectionImageCard({
         offsetY: imgRect.top - containerRect.top,
       });
     }
-  };
+  }, []);
+
+  // Re-measure the rendered rect when the crop transform changes so the box
+  // overlays track the zoomed image.
+  useEffect(() => {
+    if (imgRef.current?.complete) handleImageLoad();
+  }, [cropMode, handleImageLoad]);
 
   const borderClass = cellState
     ? cellState === 'done'
@@ -95,10 +104,25 @@ export function DetectionImageCard({
 
   const winning = cellState === 'auto' ? getWinningBoxes(detection) : null;
 
+  // Crop mode: zoom around the boxes the cell displays (committed smoke boxes
+  // for done cells, winning-layer boxes otherwise). No-box cells stay full.
+  const cropBoxes = !cropMode
+    ? []
+    : cellState === 'done'
+      ? (userAnnotation?.annotation?.annotation ?? []).filter(
+          item => item.false_positive_type == null
+        )
+      : (winning?.boxes ?? []);
+  const crop = computeCellCrop(cropBoxes);
+  const cropStyle =
+    crop.scale > 1
+      ? { transform: `scale(${crop.scale})`, transformOrigin: `${crop.originX}% ${crop.originY}%` }
+      : undefined;
+
   return (
     <div
       ref={containerRef}
-      className={`aspect-video relative overflow-hidden bg-gray-100 cursor-pointer ${borderClass}`}
+      className={`group aspect-video relative overflow-hidden bg-gray-100 cursor-pointer ${borderClass}`}
       onClick={onClick}
     >
       <img
@@ -106,6 +130,7 @@ export function DetectionImageCard({
         src={imageData.url}
         alt={`Frame ${detection.id}`}
         className="w-full h-full object-contain"
+        style={cropStyle}
         onLoad={handleImageLoad}
         draggable={false}
       />
@@ -138,6 +163,11 @@ export function DetectionImageCard({
         imageInfo && (
           <UserAnnotationOverlay detectionAnnotation={userAnnotation} imageInfo={imageInfo} />
         )}
+
+      {/* Hover metadata (replaces the removed footer) */}
+      <div className="absolute bottom-0 left-0 bg-black/60 text-white text-[10px] px-1 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+        {new Date(detection.recorded_at).toLocaleString()}
+      </div>
     </div>
   );
 }

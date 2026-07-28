@@ -136,7 +136,21 @@ the no-box frame count — unit-testable in isolation.
 - Sequence PATCH 422 (server guard): existing "Submit rejected — some
   detections are not yet annotated" message stays.
 
-### 7. Copy rename
+### 7. Crop mode & hover metadata
+
+- **Crop toggle** (localize context; header checkbox + `C` shortcut): each
+  cell zooms around the union of its displayed boxes (committed smoke boxes
+  for done cells, winning-layer boxes otherwise; no-box cells stay full
+  frame) via a CSS `scale()` about the union's center
+  (`computeCellCrop` in `utils/annotation/gridCropUtils.ts`; target fill
+  0.8, max scale 8). Scaling about the union center keeps the container
+  covered for any scale ≥ 1, so no translation is needed. The cell
+  re-measures its rendered rect on toggle so box overlays track the zoom.
+- **Hover timestamp** (all contexts of this page): the cell shows
+  `recorded_at` in a small bottom-left label on hover, replacing the
+  removed footer metadata.
+
+### 8. Copy rename
 
 User-facing "detection(s)" on this page that counts frames (header progress
 "X of Y detections", related labels) becomes "frame(s)". Code identifiers

@@ -69,6 +69,38 @@ describe('DetectionImageCard dense restyle', () => {
     expect(screen.queryByTestId('user-overlay')).toBeNull();
   });
 
+  it('shows the recorded timestamp on hover (label present, hover-gated)', () => {
+    const { container } = render(
+      <DetectionImageCard detection={detection} onClick={noop} cellState="auto" />
+    );
+    const label = screen.getByText(new Date('2024-01-01T10:00:00Z').toLocaleString());
+    expect(label.className).toContain('group-hover:opacity-100');
+    expect(container.firstElementChild?.className).toContain('group');
+  });
+
+  it('crop mode zooms the image around the winning boxes', () => {
+    const { container } = render(
+      <DetectionImageCard detection={detection} onClick={noop} cellState="auto" cropMode />
+    );
+    const img = container.querySelector('img')!;
+    // auto box [0.1,0.1,0.2,0.2]: span 0.1 → scale clamped to 8, origin at 15%,15%
+    expect(img.style.transform).toBe('scale(8)');
+    expect(img.style.transformOrigin).toBe('15% 15%');
+  });
+
+  it('crop mode leaves no-box cells at full frame', () => {
+    const { container } = render(
+      <DetectionImageCard
+        detection={{ ...detection, algo_predictions: { predictions: [] }, auto_predictions: { predictions: [] } } as unknown as Detection}
+        onClick={noop}
+        cellState="no-box"
+        cropMode
+      />
+    );
+    const img = container.querySelector('img')!;
+    expect(img.style.transform).toBe('');
+  });
+
   it('legacy mode keeps green/orange encoding', () => {
     const { container, rerender } = render(
       <DetectionImageCard detection={detection} onClick={noop} isAnnotated />

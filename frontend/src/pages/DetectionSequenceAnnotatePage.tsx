@@ -158,6 +158,8 @@ export default function DetectionSequenceAnnotatePage() {
   // frames that have no box at all.
   const isLocalize = fromParam === 'localize';
   const [quickSubmitConfirming, setQuickSubmitConfirming] = useState(false);
+  // Crop mode: zoom each cell around its boxes for the glance-check.
+  const [cropMode, setCropMode] = useState(false);
 
   const laneSmokeType = sequenceSmokeType(sequenceAnnotation);
   const quickSubmitPlan = useMemo(
@@ -761,6 +763,13 @@ export default function DetectionSequenceAnnotatePage() {
         return;
       }
 
+      // Toggle crop mode with 'c' key (localize grid only)
+      if ((e.key === 'c' || e.key === 'C') && isLocalize && !showModal) {
+        setCropMode(prev => !prev);
+        e.preventDefault();
+        return;
+      }
+
       // Modal navigation and submission
       if (showModal && selectedDetectionIndex !== null && detections) {
         if (e.key === 'Escape') {
@@ -1012,6 +1021,8 @@ export default function DetectionSequenceAnnotatePage() {
         }
         quickSubmitConfirming={quickSubmitConfirming}
         onQuickSubmit={handleQuickSubmit}
+        cropMode={cropMode}
+        onToggleCropMode={setCropMode}
         getAnnotationPills={getAnnotationPills}
       />
 
@@ -1029,6 +1040,7 @@ export default function DetectionSequenceAnnotatePage() {
             : undefined
         }
         smokeType={laneSmokeType}
+        cropMode={isLocalize && cropMode}
       />
 
       {/* Image Modal */}

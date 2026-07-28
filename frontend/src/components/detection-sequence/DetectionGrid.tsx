@@ -15,6 +15,8 @@ interface DetectionGridProps {
   /** Localize context: per-frame cell state for borders-only encoding. */
   getCellState?: (detection: Detection) => CellState;
   smokeType?: SmokeType;
+  /** Localize context: zoom cells around their displayed boxes. */
+  cropMode?: boolean;
 }
 
 export function DetectionGrid({
@@ -26,6 +28,7 @@ export function DetectionGrid({
   getIsAnnotated,
   getCellState,
   smokeType,
+  cropMode = false,
 }: DetectionGridProps) {
   return (
     <div className="pt-20">
@@ -41,6 +44,7 @@ export function DetectionGrid({
             userAnnotation={detectionAnnotations.get(detection.id) || null}
             cellState={getCellState ? getCellState(detection) : null}
             smokeType={smokeType}
+            cropMode={cropMode}
           />
         ))}
       </div>

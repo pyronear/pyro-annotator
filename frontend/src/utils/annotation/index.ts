@@ -54,6 +54,8 @@ export {
   getIsAnnotated,
 } from './quickSubmitUtils';
 export type { CellState, QuickSubmitPlan, QuickSubmitPayload } from './quickSubmitUtils';
+export { computeCellCrop } from './gridCropUtils';
+export type { CellCrop } from './gridCropUtils';
 
 // Bounding box move/resize geometry
 export { moveBox, resizeBox, HANDLE_CURSOR } from './boxEditUtils';

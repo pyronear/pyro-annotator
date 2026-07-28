@@ -49,6 +49,10 @@ interface DetectionHeaderProps {
   quickSubmitConfirming?: boolean;
   onQuickSubmit?: () => void;
 
+  // Localize crop mode
+  cropMode?: boolean;
+  onToggleCropMode?: (crop: boolean) => void;
+
   // Annotation pills
   getAnnotationPills: () => React.ReactNode[];
 }
@@ -79,6 +83,8 @@ export function DetectionHeader({
   quickSubmitPending = false,
   quickSubmitConfirming = false,
   onQuickSubmit,
+  cropMode = false,
+  onToggleCropMode,
   getAnnotationPills,
 }: DetectionHeaderProps) {
   return (
@@ -235,6 +241,22 @@ export function DetectionHeader({
               />
               <span>Show predictions</span>
             </label>
+
+            {/* Crop Toggle (localize): zoom cells around their boxes */}
+            {isLocalize && (
+              <label
+                className="flex items-center space-x-2 px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 cursor-pointer"
+                title="Zoom each frame around its boxes (C)"
+              >
+                <input
+                  type="checkbox"
+                  checked={cropMode}
+                  onChange={e => onToggleCropMode?.(e.target.checked)}
+                  className="w-3 h-3 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                />
+                <span>Crop</span>
+              </label>
+            )}
 
             {isLocalize ? (
               <button
