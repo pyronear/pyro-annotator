@@ -16,8 +16,9 @@ function smokeFrames(item: LocalizationQueueItem): number {
 }
 
 // Classify-phase smoke types across the alert's smoke objects, deduped.
+// `?? []` guards payloads from a backend that predates the field.
 function smokeTypes(item: LocalizationQueueItem): string[] {
-  return [...new Set(item.lanes.filter(l => l.has_smoke).flatMap(l => l.smoke_types))];
+  return [...new Set(item.lanes.filter(l => l.has_smoke).flatMap(l => l.smoke_types ?? []))];
 }
 
 export default function DetectionAnnotatePage() {

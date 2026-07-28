@@ -119,6 +119,21 @@ describe('DetectionAnnotatePage (Localize queue)', () => {
     expect(screen.getByText(/Industrial/)).toBeTruthy();
   });
 
+  it('tolerates lanes without smoke_types (payloads from an older backend)', async () => {
+    const legacyLane = { ...queueItem.lanes[0] } as Record<string, unknown>;
+    delete legacyLane.smoke_types;
+    vi.mocked(apiClient.getLocalizationQueue).mockResolvedValue({
+      items: [{ ...queueItem, lanes: [legacyLane as unknown as (typeof queueItem.lanes)[0]] }],
+      page: 1,
+      pages: 1,
+      size: 50,
+      total: 1,
+    });
+    render(<DetectionAnnotatePage />, { wrapper });
+    await waitFor(() => expect(screen.getByText('CAM_01')).toBeTruthy());
+    expect(screen.queryByText(/Wildfire/)).toBeNull();
+  });
+
   it('omits the azimuth text when the alert has none', async () => {
     vi.mocked(apiClient.getLocalizationQueue).mockResolvedValue({
       items: [{ ...queueItem, azimuth: null }],
