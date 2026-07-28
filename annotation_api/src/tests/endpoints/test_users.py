@@ -1,6 +1,7 @@
 import pytest
 from httpx import AsyncClient
 
+from app.core.config import settings
 from app.models import User
 
 
@@ -452,6 +453,45 @@ class TestWorkerUserProtection:
             f"/users/{worker_user.id}/password", json={"password": "newpassword123"}
         )
         assert response.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_update_worker_user_empty_payload_allowed(
+        self, authenticated_client: AsyncClient, worker_user: User
+    ):
+        """Test a PATCH touching none of the guarded fields is not rejected."""
+        response = await authenticated_client.patch(f"/users/{worker_user.id}", json={})
+        assert response.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_create_user_with_worker_username_forbidden(
+        self, authenticated_client: AsyncClient
+    ):
+        """Test the worker username is reserved even when the worker row is absent."""
+        user_data = {
+            "username": settings.WORKER_USERNAME,
+            "password": "password12345",
+            "is_active": True,
+            "is_superuser": True,
+        }
+
+        response = await authenticated_client.post("/users/", json=user_data)
+
+        assert response.status_code == 403
+        data = response.json()
+        assert "Username reserved for the system worker user" in data["detail"]
+
+    @pytest.mark.asyncio
+    async def test_rename_user_to_worker_username_forbidden(
+        self, authenticated_client: AsyncClient, regular_user: User
+    ):
+        """Test no user can be renamed to the reserved worker username."""
+        response = await authenticated_client.patch(
+            f"/users/{regular_user.id}", json={"username": settings.WORKER_USERNAME}
+        )
+
+        assert response.status_code == 403
+        data = response.json()
+        assert "Username reserved for the system worker user" in data["detail"]
 
     @pytest.mark.asyncio
     async def test_worker_user_is_system_flag(

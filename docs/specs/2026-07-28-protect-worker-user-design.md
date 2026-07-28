@@ -33,6 +33,12 @@ In `annotation_api/src/app/api/api_v1/endpoints/users.py`, identify the worker b
   (simpler rule, no surprises).
 - `PATCH /users/{id}/password`: unchanged. The worker is inactive, so login is rejected
   regardless of password.
+- The worker username is reserved: `POST /users/` with it, or a PATCH renaming another
+  user to it, returns 403 (`"Username reserved for the system worker user"`). Without
+  this, a deployment whose worker row is absent (deleted or renamed before this change)
+  could gain an ordinary — even superuser — account holding the name, which the guards
+  above would then make unmanageable. Startup seeding uses the CRUD layer directly and
+  is unaffected.
 
 The guard lives in the endpoint layer, next to the existing self-deletion policy.
 No DB triggers or constraints.
@@ -58,7 +64,9 @@ Add a computed `is_system: bool` field to `UserRead` — true iff the username m
 Backend (pytest):
 - Deleting the worker returns 403; the user still exists.
 - Patching the worker's `username`, `is_active`, or `is_superuser` returns 403.
-- Patching a normal (including inactive non-worker) user still works.
+- Patching a normal (including inactive non-worker) user still works; a PATCH on the
+  worker touching none of the guarded fields is not rejected.
+- Creating a user with the worker username, or renaming a user to it, returns 403.
 - `UserRead.is_system` is true for the worker, false for other users.
 
 Frontend:

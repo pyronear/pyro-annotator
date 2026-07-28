@@ -67,6 +67,12 @@ async def create_user(
     current_user: User = Depends(get_current_superuser),
 ) -> User:
     """Create a new user (admin only)."""
+    if user_create.username == settings.WORKER_USERNAME:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Username reserved for the system worker user",
+        )
+
     user_crud = UserCRUD(session)
 
     # Check if username already exists
@@ -118,6 +124,11 @@ async def update_user(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot modify the system worker user",
+        )
+    if user_update.username == settings.WORKER_USERNAME:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Username reserved for the system worker user",
         )
 
     # Check if username is being updated and already exists
@@ -181,4 +192,8 @@ async def delete_user(
             detail="Cannot delete the system worker user",
         )
 
-    await user_crud.delete_user(user_id)
+    success = await user_crud.delete_user(user_id)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
