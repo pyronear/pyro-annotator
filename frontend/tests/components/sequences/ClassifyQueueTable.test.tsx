@@ -14,10 +14,6 @@ vi.mock('@/components/DetectionImageThumbnail', () => ({
   ),
 }));
 
-vi.mock('@/utils/relativeTime', () => ({
-  formatRelativeTime: vi.fn(() => '2 h ago'),
-}));
-
 const createSequence = (
   overrides: Partial<SequenceWithAnnotation> = {}
 ): SequenceWithAnnotation => ({
@@ -71,14 +67,12 @@ describe('ClassifyQueueTable', () => {
     expect(screen.getAllByTestId('detection-thumbnail')).toHaveLength(2);
   });
 
-  it('shows relative time with the absolute timestamp as tooltip', () => {
+  it('shows the absolute recorded timestamp', () => {
     render(<ClassifyQueueTable sequences={[createSequence()]} onSequenceClick={onSequenceClick} />);
 
-    const cell = screen.getByText('2 h ago');
-    expect(cell.closest('td')).toHaveAttribute(
-      'title',
-      new Date('2024-01-01T10:00:00Z').toLocaleString()
-    );
+    expect(
+      screen.getByText(new Date('2024-01-01T10:00:00Z').toLocaleString())
+    ).toBeInTheDocument();
   });
 
   it('renders the model prediction pill per prediction value', () => {

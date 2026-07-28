@@ -1,5 +1,4 @@
 import { SequenceWithAnnotation } from '@/types/api';
-import { formatRelativeTime } from '@/utils/relativeTime';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
 import { WildfirePredictionPill } from './WildfirePredictionPill';
 
@@ -43,11 +42,8 @@ export function ClassifyQueueTable({ sequences, onSequenceClick }: ClassifyQueue
                 {sequence.camera_name}
               </td>
               <td className={`${CELL_CLASSES} text-gray-500`}>{sequence.organisation_name}</td>
-              <td
-                className={`${CELL_CLASSES} text-gray-500`}
-                title={new Date(sequence.recorded_at).toLocaleString()}
-              >
-                {formatRelativeTime(sequence.recorded_at)}
+              <td className={`${CELL_CLASSES} text-gray-500`}>
+                {new Date(sequence.recorded_at).toLocaleString()}
               </td>
               <td className={CELL_CLASSES}>
                 <WildfirePredictionPill prediction={sequence.is_wildfire_alertapi} />

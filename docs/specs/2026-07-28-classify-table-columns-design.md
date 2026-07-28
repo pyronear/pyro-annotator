@@ -33,7 +33,7 @@ Real `<table>`, one row per sequence, ~48px rows. Columns:
 | Thumbnail | `DetectionImageThumbnail`, compact (~40px tall) |
 | Camera | `camera_name`, bold |
 | Organisation | `organisation_name` |
-| Recorded | **Relative time** (`formatRelativeTime`), `title` = absolute timestamp |
+| Recorded | Absolute date+time (`toLocaleString()`) |
 | Model prediction | Wildfire-classification pill from `is_wildfire_alertapi` (🔥 Wildfire / 💨 Other Smoke / ○ Other) |
 | Source API | Blue source pill |
 | Azimuth | `{azimuth}°`, empty when null |
@@ -49,8 +49,7 @@ Same columns as the queue table, **plus**:
 |---|---|
 | Result | Human annotation outcome: FP-type pills + smoke-type pills, and the ⚠️ Unsure badge when `annotation.is_unsure` |
 
-- **Recorded shows an absolute date+time** (not relative) — this is a review
-  view of historical data.
+- Recorded shows the same absolute date+time as the queue.
 - Keeps model-accuracy **row background coloring** (via
   `analyzeSequenceAccuracy` / `getRowBackgroundClasses`), amber for unsure,
   with `SequencesLegend` above the table.
