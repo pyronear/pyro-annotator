@@ -397,7 +397,7 @@ export default function DetectionSequenceAnnotatePage() {
       const detail = (err as { detail?: string })?.detail || (err as Error)?.message || '';
       setToastMessage(
         detail.includes('localization incomplete')
-          ? 'Submit rejected — some detections are not yet annotated'
+          ? 'Submit rejected — some frames are not yet annotated'
           : `Submit failed: ${detail || 'unknown error'}`
       );
       setShowToast(true);
@@ -953,7 +953,7 @@ export default function DetectionSequenceAnnotatePage() {
     return (
       <div className="flex items-center justify-center min-h-96">
         <div className="text-center">
-          <p className="text-red-600 mb-2">Failed to load detections</p>
+          <p className="text-red-600 mb-2">Failed to load frames</p>
           <p className="text-gray-500 text-sm">{String(error)}</p>
           <button
             onClick={handleBack}
@@ -987,8 +987,8 @@ export default function DetectionSequenceAnnotatePage() {
         <div className="flex items-center justify-center min-h-96">
           <div className="text-center">
             <div className="text-4xl mb-4">🔍</div>
-            <p className="text-lg font-medium mb-2">No detections found</p>
-            <p className="text-gray-500">This sequence doesn't have any detections to annotate.</p>
+            <p className="text-lg font-medium mb-2">No frames found</p>
+            <p className="text-gray-500">This sequence doesn't have any frames to annotate.</p>
             <button
               onClick={handleBack}
               className="mt-4 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-md text-sm transition-colors"
