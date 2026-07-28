@@ -44,6 +44,10 @@ exactly one queue.
 3. Alert-grouped Smoke Localization queue (API endpoint + frontend page).
 4. User-driven exit transition (submit lane → `annotated`) with a server-side
    completeness guard.
+5. FP fast-path: classify submit sends lanes with no smoke and no missed smoke
+   straight to `annotated` (the FP half of the exit story), and
+   `/detections/review` gains a `has_smoke: true` default filter so auto-final
+   FP lanes never surface for box verification.
 
 **Out of scope (follow-ups):**
 
@@ -85,8 +89,12 @@ A procrastinate periodic task (every 5 min, same pattern as
    `under_annotation`, or `needs_manual`, blocks the whole alert. (The
    `in_review` / `needs_manual` entries are compatibility with legacy rows; #207
    collapses the set to {`seq_annotation_done`, `annotated`}.)
-2. Require at least one sibling with `has_smoke = true` and
-   `auto_annotate_enqueued_at IS NULL` (work to do).
+2. Require at least one sibling with `has_smoke = true`, `is_unsure = false`,
+   and `auto_annotate_enqueued_at IS NULL` (work to do). "Smoke lane"
+   throughout this spec means `has_smoke = true AND is_unsure = false` — the
+   detection workflow already excludes unsure lanes everywhere, so the sweep
+   never spends GPU on them; they park at `seq_annotation_done` and are
+   resolved through sequence review, without blocking siblings.
 3. For each such smoke lane: stamp `auto_annotate_enqueued_at`, defer
    `auto_annotate_sequence(sequence_id)`. FP lanes never get jobs — nothing to
    localize, no wasted GPU.
@@ -152,6 +160,18 @@ annotations — to be verified during implementation.
 Exited lanes surface in the existing `/detections/review` page for verification
 (it filters on stage `annotated`).
 
+**FP fast-path.** Classify submit (`AnnotationInterface`) sends a lane with
+`has_smoke = false` and `has_missed_smoke = false` straight to `annotated`
+instead of `seq_annotation_done` — the existing auto-create hook writes its
+final detection rows on that transition, so FP-only lanes reach "Complete"
+without ever entering the localization flow. Missed-smoke lanes must NOT
+fast-path (there is smoke to localize; auto-create maps them to
+`bbox_annotation`). `/detections/review` adds `has_smoke: true` to its default
+filters so these auto-final FP lanes never appear for box verification —
+second-guessing a classification belongs to `/sequences/review`. FP lanes at
+`annotated` count as "done" for the sibling-completeness gate, so the fast-path
+also unblocks alerts sooner.
+
 ## Frontend
 
 Rework `DetectionAnnotatePage` **in place** at `/detections/annotate` into the
@@ -213,7 +233,9 @@ import (object-split): 1 platform alert -> N lanes (1 per smoke object)
   matching primary must NOT be decoded; an orphaned synthetic sibling falls
   back to singleton; same numeric id under two sources stays two alerts).
 
-**Frontend (Vitest):** queue page rendering; lane-advance navigation logic.
+**Frontend (Vitest):** queue page rendering; lane-advance navigation logic;
+classify-submit FP fast-path (FP-only → `annotated`; missed-smoke → 
+`seq_annotation_done`); `/detections/review` excludes `has_smoke = false`.
 
 ## Dependencies
 
