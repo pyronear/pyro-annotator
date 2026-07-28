@@ -4,6 +4,8 @@ import {
   Loader2,
   AlertCircle,
   CheckCircle,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Info,
   ShieldCheck,
@@ -253,6 +255,20 @@ export default function SequenceGroupAnnotatePage() {
     enabled: !Number.isNaN(groupId),
   });
 
+  // Neighbor ids for the prev/next chevrons, from the list endpoint's
+  // default order (biggest group first) — the same queue the list page
+  // shows unfiltered. Key shares the 'sequenceGroupsList' prefix so the
+  // existing mutation invalidations refresh it too.
+  const { data: neighborList } = useQuery({
+    queryKey: ['sequenceGroupsList', 'neighbors'],
+    queryFn: () => apiClient.getSequenceGroups({ page: 1, size: 100 }),
+  });
+  const neighborIds = neighborList?.items.map(g => g.id) ?? [];
+  const neighborIdx = neighborIds.indexOf(groupId);
+  const prevId = neighborIdx > 0 ? neighborIds[neighborIdx - 1] : null;
+  const nextId =
+    neighborIdx >= 0 && neighborIdx < neighborIds.length - 1 ? neighborIds[neighborIdx + 1] : null;
+
   const validateMutation = useMutation({
     mutationFn: (validated: boolean) =>
       apiClient.patchSequenceGroup(groupId, { is_validated: validated }),
@@ -315,6 +331,32 @@ export default function SequenceGroupAnnotatePage() {
             )}
           </div>
           <div className="flex flex-none items-center gap-2">
+            {prevId ? (
+              <Link
+                to={`/sequence-groups/${prevId}/annotate`}
+                title="Previous group"
+                className="p-1.5 rounded-lg border border-gray-300 bg-white text-gray-600 hover:bg-gray-50"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </Link>
+            ) : (
+              <span className="p-1.5 rounded-lg border border-gray-200 bg-white text-gray-300">
+                <ChevronLeft className="w-4 h-4" />
+              </span>
+            )}
+            {nextId ? (
+              <Link
+                to={`/sequence-groups/${nextId}/annotate`}
+                title="Next group"
+                className="p-1.5 rounded-lg border border-gray-300 bg-white text-gray-600 hover:bg-gray-50"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </Link>
+            ) : (
+              <span className="p-1.5 rounded-lg border border-gray-200 bg-white text-gray-300">
+                <ChevronRight className="w-4 h-4" />
+              </span>
+            )}
             {group.is_validated ? (
               <>
                 <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-green-100 text-green-700 text-sm">

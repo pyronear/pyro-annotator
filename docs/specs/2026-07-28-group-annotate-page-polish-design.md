@@ -87,6 +87,19 @@ the `title` tooltip — consistent with the list page. Everything else on the
 cards (bbox overlays, zoom crop, remove button with its confirm dialog,
 annotated check/clock icons, link to the per-sequence page) is unchanged.
 
+### Prev/next navigation
+
+Chevron buttons (`‹` / `›`) sit left of the validate controls in the pinned
+header and walk the **full** group list in its default order (biggest group
+first — the list page's unfiltered queue). Neighbor ids come from
+`getSequenceGroups({ page: 1, size: 100 })` cached under
+`['sequenceGroupsList', 'neighbors']` (prefix-invalidated by the existing
+mutations); a chevron renders disabled at either end or when the current
+group is absent from the fetched window. Auto-advance after validating was
+considered and rejected: validation is not the end of the flow (labeling a
+member afterwards is what propagates), so navigating away automatically
+would interrupt the annotator.
+
 ## Out of scope
 
 - Labeling directly from this page (bulk-annotate UI).
