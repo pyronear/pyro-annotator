@@ -23,6 +23,7 @@ async def _lane(
     platform_alert_id,
     stage=None,
     has_smoke=False,
+    has_missed_smoke=False,
     is_unsure=False,
     auto_annotated=False,
     n_detections=0,
@@ -56,7 +57,7 @@ async def _lane(
                 sequence_id=seq.id,
                 has_smoke=has_smoke,
                 has_false_positives=not has_smoke,
-                has_missed_smoke=False,
+                has_missed_smoke=has_missed_smoke,
                 is_unsure=is_unsure,
                 annotation={"sequences_bbox": []},
                 processing_stage=stage,
@@ -126,8 +127,12 @@ async def test_alert_appears_with_lane_stats(
     assert smoke_lane["annotated_detections"] == 1
     assert smoke_lane["auto_annotated_at"] is not None
     assert smoke_lane["smoke_types"] == ["wildfire"]
+    assert smoke_lane["has_missed_smoke"] is False
+    assert smoke_lane["is_unsure"] is False
     fp_lane = next(lane for lane in item["lanes"] if not lane["has_smoke"])
     assert fp_lane["smoke_types"] == []
+    assert fp_lane["has_missed_smoke"] is False
+    assert fp_lane["is_unsure"] is False
 
 
 @pytest.mark.asyncio
@@ -251,6 +256,29 @@ async def test_azimuth_comes_from_primary_lane(
     assert resp.status_code == 200
     (item,) = resp.json()["items"]
     assert item["azimuth"] == 143
+
+
+@pytest.mark.asyncio
+async def test_missed_smoke_only_alert_surfaces(
+    authenticated_client: AsyncClient, async_session
+):
+    await _lane(
+        async_session,
+        alert_api_id=950,
+        platform_alert_id=950,
+        stage=Stage.SEQ_ANNOTATION_DONE,
+        has_smoke=False,
+        has_missed_smoke=True,
+        auto_annotated=True,
+    )
+    resp = await authenticated_client.get("/sequences/localization-queue")
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert [item["platform_alert_id"] for item in items] == [950]
+    (lane,) = items[0]["lanes"]
+    assert lane["has_smoke"] is False
+    assert lane["has_missed_smoke"] is True
+    assert lane["is_unsure"] is False
 
 
 @pytest.mark.asyncio

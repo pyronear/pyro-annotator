@@ -34,6 +34,8 @@ export interface LocalizationQueueLane {
   sequence_id: number;
   alert_api_id: number;
   has_smoke: boolean;
+  has_missed_smoke: boolean;
+  is_unsure: boolean;
   processing_stage: string;
   smoke_types: string[];
   total_detections: number;
@@ -311,6 +313,7 @@ export interface ExtendedSequenceFilters extends SequenceFilters {
   processing_stage?: ProcessingStageFilter;
   has_missed_smoke?: boolean;
   has_smoke?: boolean;
+  needs_localization?: boolean; // (has_smoke OR has_missed_smoke) AND NOT is_unsure — server-side rule
   has_false_positives?: boolean;
   false_positive_types?: string[]; // Array of false positive types for OR filtering
   smoke_types?: string[]; // Array of smoke types for OR filtering

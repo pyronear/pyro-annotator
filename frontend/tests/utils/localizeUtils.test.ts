@@ -10,6 +10,8 @@ const lane = (id: number, over: Partial<LocalizationQueueLane> = {}): Localizati
   sequence_id: id,
   alert_api_id: id,
   has_smoke: true,
+  has_missed_smoke: false,
+  is_unsure: false,
   processing_stage: 'seq_annotation_done',
   total_detections: 3,
   annotated_detections: 0,
@@ -87,4 +89,26 @@ describe('pickNextLocalizeLane', () => {
     ).toBe(4));
 
   it('returns null when none remain', () => expect(pickNextLocalizeLane([lane(1)], 1)).toBeNull());
+
+  it('picks a missed-smoke-only lane (no has_smoke, incomplete detections)', () =>
+    expect(
+      pickNextLocalizeLane(
+        [
+          lane(1),
+          lane(2, {
+            has_smoke: false,
+            has_missed_smoke: true,
+            is_unsure: false,
+            total_detections: 3,
+            annotated_detections: 0,
+          }),
+        ],
+        1
+      )
+    ).toBe(2));
+
+  it('skips an unsure lane even when it has smoke', () =>
+    expect(
+      pickNextLocalizeLane([lane(1), lane(2, { has_smoke: true, is_unsure: true }), lane(3)], 1)
+    ).toBe(3));
 });

@@ -6,10 +6,10 @@
 """Per-alert auto-annotate gating (spec: smoke-localization entry point).
 
 An alert (source_api, platform_alert_id) is ready when EVERY sibling sequence
-has an annotation at a done stage. Then each smoke lane (has_smoke, not
-unsure) still at seq_annotation_done and not yet enqueued gets
-``auto_annotate_enqueued_at`` stamped; the worker defers one job per returned
-id.
+has an annotation at a done stage. Then each lane matching the localization
+rule (see `localization_rule`) still at seq_annotation_done and not yet
+enqueued gets ``auto_annotate_enqueued_at`` stamped; the worker defers one job
+per returned id.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -23,6 +23,7 @@ from app.models import (
     SequenceAnnotation,
     SequenceAnnotationProcessingStage,
 )
+from app.services.localization_rule import needs_localization_clause
 
 DONE_STAGES = (
     SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
@@ -65,13 +66,13 @@ def complete_alerts_subquery(candidates=None):
 
 
 def _pending_ready_lane(seq, ann, now):
-    """Smoke lane still awaiting auto-annotation: at seq_annotation_done and
-    either never enqueued or lost (see RETRY_STALE_AFTER). Parameterized over
-    (possibly aliased) Sequence/SequenceAnnotation."""
+    """Lane matching the localization rule (see `localization_rule`) still
+    awaiting auto-annotation: at seq_annotation_done and either never enqueued
+    or lost (see RETRY_STALE_AFTER). Parameterized over (possibly aliased)
+    Sequence/SequenceAnnotation."""
     return and_(
         ann.processing_stage == SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
-        ann.has_smoke.is_(True),
-        ann.is_unsure.is_(False),
+        needs_localization_clause(ann),
         or_(
             seq.auto_annotate_enqueued_at.is_(None),
             # Lost-job reconciliation (see RETRY_STALE_AFTER).

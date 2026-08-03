@@ -35,6 +35,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.api.dependencies import get_current_user, get_sequence_crud
 from app.crud import SequenceCRUD
 from app.db import get_session
+from app.services.localization_rule import needs_localization_clause
 from app.models import (
     Detection,
     DetectionAnnotation,
@@ -203,6 +204,13 @@ async def list_sequences(
     is_unsure: Optional[bool] = Query(
         None, description="Filter by sequence annotation unsure flag"
     ),
+    needs_localization: Optional[bool] = Query(
+        None,
+        description=(
+            "Filter by the localization rule: (has_smoke OR has_missed_smoke) "
+            "AND NOT is_unsure"
+        ),
+    ),
     recorded_at_gte: Optional[datetime] = Query(
         None, description="Filter by recorded_at >= this date"
     ),
@@ -249,6 +257,7 @@ async def list_sequences(
     - **false_positive_types**: Filter by specific false positive types (OR logic)
     - **smoke_types**: Filter by specific smoke types (OR logic)
     - **is_unsure**: Filter by sequence annotation unsure flag
+    - **needs_localization**: Filter by the localization rule (smoke or missed smoke, not unsure)
     - **recorded_at_gte**: Filter by recorded_at >= this date
     - **recorded_at_lte**: Filter by recorded_at <= this date
     - **detection_annotation_completion**: Filter by detection annotation completion status ('complete', 'incomplete', 'all')
@@ -269,6 +278,7 @@ async def list_sequences(
         or false_positive_types is not None
         or smoke_types is not None
         or is_unsure is not None
+        or needs_localization is not None
     )
     needs_detection_annotation_join = (
         detection_annotation_completion != "all" or include_detection_stats
@@ -343,6 +353,14 @@ async def list_sequences(
 
     if has_smoke is not None:
         query = query.where(SequenceAnnotation.has_smoke == has_smoke)
+
+    if needs_localization is not None:
+        clause = needs_localization_clause(SequenceAnnotation)
+        query = query.where(
+            clause
+            if needs_localization
+            else and_(SequenceAnnotation.id.is_not(None), ~clause)
+        )
 
     if has_false_positives is not None:
         query = query.where(
@@ -538,14 +556,14 @@ async def list_sequences(
 
 
 def _ready_smoke_lane(seq, ann):
-    """Smoke lane (has_smoke, not unsure) still at seq_annotation_done whose
-    auto reference layer exists. Parameterized over (possibly aliased)
-    Sequence/SequenceAnnotation so the queue can use it both in its HAVING
-    aggregate and in the candidate-alert pre-filter."""
+    """Lane matching the localization rule (has_smoke OR has_missed_smoke, not
+    unsure) still at seq_annotation_done whose auto reference layer exists.
+    Parameterized over (possibly aliased) Sequence/SequenceAnnotation so the
+    queue can use it both in its HAVING aggregate and in the candidate-alert
+    pre-filter."""
     return and_(
         ann.processing_stage == SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
-        ann.has_smoke.is_(True),
-        ann.is_unsure.is_(False),
+        needs_localization_clause(ann),
         seq.auto_annotated_at.is_not(None),
     )
 
@@ -559,10 +577,11 @@ async def localization_queue(
     current_user: User = Depends(get_current_user),
 ) -> Page[LocalizationQueueItem]:
     """Alerts ready for smoke localization (spec: smoke-localization entry
-    point): every sibling sequence at a done stage AND at least one smoke lane
-    (has_smoke, not unsure) at seq_annotation_done whose auto reference layer
-    exists (auto_annotated_at set). Lanes leave on submit (stage change), so a
-    fully-boxed but unsubmitted lane still counts as ready."""
+    point): every sibling sequence at a done stage AND at least one lane
+    matching the localization rule (see `localization_rule`) at seq_annotation_done
+    whose auto reference layer exists (auto_annotated_at set). Lanes leave on
+    submit (stage change), so a fully-boxed but unsubmitted lane still counts as
+    ready."""
     ready_smoke_lane = _ready_smoke_lane(Sequence, SequenceAnnotation)
     # Pre-filter to alerts having at least one ready smoke lane BEFORE the
     # completeness aggregation, so the grouping scans the active working set
@@ -683,6 +702,10 @@ async def _build_queue_item(
                 sequence_id=seq.id,
                 alert_api_id=seq.alert_api_id,
                 has_smoke=bool(annotation.has_smoke) if annotation else False,
+                has_missed_smoke=bool(annotation.has_missed_smoke)
+                if annotation
+                else False,
+                is_unsure=bool(annotation.is_unsure) if annotation else False,
                 processing_stage=annotation.processing_stage.value
                 if annotation
                 else "no_annotation",
