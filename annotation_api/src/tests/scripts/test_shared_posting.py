@@ -49,6 +49,98 @@ class TestDetectionResultsPlumbing:
         assert result["detection_results"] == []
 
 
+class TestDetection409Recovery:
+    def test_409_recovers_existing_detection(self, monkeypatch):
+        monkeypatch.setattr(
+            shared, "create_sequence", lambda url, token, data: {"id": 99}
+        )
+
+        def conflicting_create(url, token, detection_data, source_key):
+            raise shared.AnnotationAPIError("already exists", status_code=409)
+
+        monkeypatch.setattr(
+            shared, "create_detection_from_bucket_key", conflicting_create
+        )
+
+        # Two pages, match on page 2: proves the lookup is scoped to the new
+        # sequence and actually paginates instead of matching page 1 only.
+        list_calls = []
+
+        def fake_list_detections(url, token, **params):
+            list_calls.append(params)
+            if params["page"] == 1:
+                return {
+                    "items": [{"id": 778, "alert_api_id": 2, "sequence_id": 99}],
+                    "pages": 2,
+                }
+            return {
+                "items": [{"id": 777, "alert_api_id": 1, "sequence_id": 99}],
+                "pages": 2,
+            }
+
+        monkeypatch.setattr(shared, "list_detections", fake_list_detections)
+
+        records = [make_record(1, "2026-07-01T10:00:00", [BOX])]
+        result = shared.post_sequence_to_annotation_api(
+            "http://annotation.test", records, "token", max_detection_workers=1
+        )
+        assert result["successful_detections"] == 1
+        assert result["failed_detections"] == 0
+        assert result["detection_results"][0]["annotation_detection_id"] == 777
+        assert result["detection_results"][0]["xyxyns"] == [[0.1, 0.1, 0.2, 0.2]]
+        assert [call["page"] for call in list_calls] == [1, 2]
+        assert all(call["sequence_id"] == 99 for call in list_calls)
+
+    def test_409_with_unfindable_detection_stays_failed(self, monkeypatch):
+        monkeypatch.setattr(
+            shared, "create_sequence", lambda url, token, data: {"id": 99}
+        )
+
+        def conflicting_create(url, token, detection_data, source_key):
+            raise shared.AnnotationAPIError("already exists", status_code=409)
+
+        monkeypatch.setattr(
+            shared, "create_detection_from_bucket_key", conflicting_create
+        )
+        monkeypatch.setattr(
+            shared,
+            "list_detections",
+            lambda url, token, **params: {"items": [], "pages": 1},
+        )
+
+        records = [make_record(1, "2026-07-01T10:00:00", [BOX])]
+        result = shared.post_sequence_to_annotation_api(
+            "http://annotation.test", records, "token", max_detection_workers=1
+        )
+        assert result["successful_detections"] == 0
+        assert result["failed_detections"] == 1
+
+
+class TestSkippedSequenceStats:
+    def test_skipped_sequence_counts_as_skipped_not_failed(self, monkeypatch):
+        monkeypatch.setattr(
+            shared, "get_auth_token", lambda url, username, password: "token"
+        )
+
+        def conflicting_sequence(url, token, data):
+            raise shared.AnnotationAPIError("duplicate sequence", status_code=409)
+
+        monkeypatch.setattr(shared, "create_sequence", conflicting_sequence)
+
+        records = [
+            make_record(1, "2026-07-01T10:00:00", [BOX]),
+            make_record(2, "2026-07-01T10:01:00", [BOX]),
+        ]
+        result = shared.post_records_to_annotation_api(
+            "http://annotation.test", records, max_workers=1, max_detection_workers=1
+        )
+        assert result["skipped_sequences"] == 1
+        assert result["skipped_detections"] == 2
+        assert result["failed_detections"] == 0
+        assert result["failed_sequences"] == 0
+        assert result["successful_sequences"] == 0
+
+
 class TestTransformSequenceData:
     def test_platform_alert_id_passed_through(self):
         record = make_record(1, "2026-07-01T10:00:00", [BOX])

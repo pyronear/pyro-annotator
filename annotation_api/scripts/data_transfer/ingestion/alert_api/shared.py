@@ -31,6 +31,7 @@ from app.clients.annotation_api import (
     create_sequence,
     create_detection_from_bucket_key,
     create_detection_from_url,
+    list_detections,
     AnnotationAPIError,
     ValidationError,
 )
@@ -341,6 +342,35 @@ def group_records_by_sequence(records: List[dict]) -> Dict[int, List[dict]]:
     return dict(grouped)
 
 
+def _find_existing_detection(
+    annotation_api_url: str,
+    auth_token: str,
+    sequence_id: int,
+    alert_api_id: int,
+) -> Optional[dict]:
+    """Find the detection with this alert_api_id in a sequence, or None.
+
+    The detections list endpoint has no alert_api_id filter, so page through
+    the sequence's detections (a sequence holds at most ~frames-limit rows)
+    and match client-side.
+    """
+    page = 1
+    while True:
+        response = list_detections(
+            annotation_api_url,
+            auth_token,
+            sequence_id=sequence_id,
+            page=page,
+            size=100,
+        )
+        for item in response.get("items", []):
+            if item.get("alert_api_id") == alert_api_id:
+                return item
+        if page >= response.get("pages", 1):
+            return None
+        page += 1
+
+
 def _process_single_detection(
     record: dict,
     annotation_api_url: str,
@@ -427,6 +457,31 @@ def _process_single_detection(
             return result
 
         except AnnotationAPIError as e:
+            if e.status_code == 409:
+                existing = _find_existing_detection(
+                    annotation_api_url,
+                    auth_token,
+                    annotation_sequence_id,
+                    record["detection_id"],
+                )
+                if existing is not None:
+                    logging.info(
+                        f"Detection {record['detection_id']} already exists "
+                        f"as annotation detection {existing['id']} — reusing it"
+                    )
+                    result["success"] = True
+                    result["annotation_detection_id"] = existing["id"]
+                    result["xyxyns"] = [
+                        pred["xyxyn"]
+                        for pred in detection_data["algo_predictions"]["predictions"]
+                    ]
+                    return result
+                result["error"] = (
+                    f"Detection {record['detection_id']} already exists (409) "
+                    "but could not be found in the sequence"
+                )
+                logging.error(result["error"])
+                return result
             if e.status_code in (502, 503, 504) and attempt < max_retries:
                 delay = base_delay * (2**attempt)
                 logging.warning(
@@ -501,7 +556,8 @@ def post_sequence_to_annotation_api(
                 "sequence_id": None,
                 "alert_api_sequence_id": first_record["sequence_id"],
                 "successful_detections": 0,
-                "failed_detections": len(sequence_records),
+                "failed_detections": 0,
+                "skipped_detections": len(sequence_records),
                 "total_detections": len(sequence_records),
                 "detection_results": [],
             }
@@ -599,9 +655,11 @@ def post_records_to_annotation_api(
         return {
             "successful_sequences": 0,
             "failed_sequences": 0,
+            "skipped_sequences": 0,
             "total_sequences": 0,
             "successful_detections": 0,
             "failed_detections": 0,
+            "skipped_detections": 0,
             "total_detections": 0,
             "successful_sequence_ids": [],
             "sequence_results": [],
@@ -623,6 +681,7 @@ def post_records_to_annotation_api(
     skipped_sequences = 0
     total_successful_detections = 0
     total_failed_detections = 0
+    total_skipped_detections = 0
     successful_sequence_ids = []
     sequence_results = []
 
@@ -662,7 +721,7 @@ def post_records_to_annotation_api(
 
                         if result.get("skipped"):
                             skipped_sequences += 1
-                            total_failed_detections += result["failed_detections"]
+                            total_skipped_detections += result["skipped_detections"]
                             reason = result.get("skip_reason", "already exists")
                             logging.warning(
                                 f"⚠️ Sequence {alert_api_sequence_id} skipped ({reason})"
@@ -718,6 +777,7 @@ def post_records_to_annotation_api(
         "total_sequences": len(grouped_records),
         "successful_detections": total_successful_detections,
         "failed_detections": total_failed_detections,
+        "skipped_detections": total_skipped_detections,
         "total_detections": len(records),
         "successful_sequence_ids": successful_sequence_ids,
         "sequence_results": sequence_results,
