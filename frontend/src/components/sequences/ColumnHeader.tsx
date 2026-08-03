@@ -14,11 +14,11 @@ interface ColumnHeaderProps {
  */
 export function ColumnHeader({ label, tip, align = 'left' }: ColumnHeaderProps) {
   return (
-    <th className="group relative px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+    <th className="group relative px-4 py-3 text-left font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
       <span className="cursor-help">{label}</span>
       <span
         role="tooltip"
-        className={`pointer-events-none absolute top-full z-10 mt-1 hidden w-max max-w-[16rem] whitespace-normal rounded bg-gray-900 px-2 py-1 text-xs font-normal normal-case tracking-normal text-white shadow group-hover:block ${
+        className={`pointer-events-none absolute top-full z-10 mt-1 hidden w-max max-w-[16rem] whitespace-normal rounded bg-char px-2 py-1 font-body text-xs font-normal normal-case tracking-normal text-white group-hover:block ${
           align === 'right' ? 'right-0' : 'left-0'
         }`}
       >

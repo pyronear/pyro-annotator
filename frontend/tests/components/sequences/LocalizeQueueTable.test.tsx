@@ -58,9 +58,33 @@ describe('LocalizeQueueTable', () => {
       'Smoke types',
       'Objects',
       'Frames',
+      'Result',
     ]) {
       expect(screen.getByText(header)).toBeInTheDocument();
     }
+  });
+
+  it('renders the dominant outcome code for a single-object alert', () => {
+    render(<LocalizeQueueTable items={[createItem()]} onItemClick={onItemClick} />);
+
+    expect(
+      screen.getByTitle('True positive — model correctly detected smoke')
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/^\+/)).not.toBeInTheDocument();
+  });
+
+  it('rolls multi-object alerts up to the dominant outcome with a +N count', () => {
+    const item = createItem({
+      lanes: [
+        createLane(),
+        createLane({ sequence_id: 12, has_smoke: false, has_missed_smoke: true }),
+        createLane({ sequence_id: 13, has_smoke: false, smoke_types: [] }),
+      ],
+    });
+    render(<LocalizeQueueTable items={[item]} onItemClick={onItemClick} />);
+
+    expect(screen.getByTitle('False negative — smoke was missed')).toBeInTheDocument();
+    expect(screen.getByText('+2')).toBeInTheDocument();
   });
 
   it('renders column tooltips', () => {

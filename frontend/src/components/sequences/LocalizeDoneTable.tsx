@@ -1,13 +1,13 @@
 import { SequenceAnnotation, SequenceWithDetectionProgress } from '@/types/api';
 import {
-  analyzeSequenceAccuracy,
+  deriveSequenceOutcome,
   formatFalsePositiveType,
   formatSmokeType,
-  getRowBackgroundClasses,
   parseFalsePositiveTypes,
 } from '@/utils/modelAccuracy';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
 import { ColumnHeader } from './ColumnHeader';
+import { OutcomeCode } from './OutcomeCode';
 
 interface LocalizeDoneTableProps {
   sequences: SequenceWithDetectionProgress[];
@@ -16,30 +16,15 @@ interface LocalizeDoneTableProps {
 }
 
 const HEADER_CLASSES =
-  'px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider';
-const CELL_CLASSES = 'px-4 py-2 whitespace-nowrap text-sm';
+  'px-4 py-3 text-left font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze';
+const CELL_CLASSES = 'px-4 py-2 whitespace-nowrap';
 
-// Accuracy-based row coloring (amber for unsure), matching the SequencesLegend.
-function rowClasses(
-  sequence: SequenceWithDetectionProgress,
-  annotation: SequenceAnnotation | undefined
-): string {
-  if (annotation) {
-    if (annotation.is_unsure) return 'cursor-pointer bg-amber-50 hover:bg-amber-100';
-    return `cursor-pointer ${getRowBackgroundClasses(
-      analyzeSequenceAccuracy({ ...sequence, annotation })
-    )}`;
-  }
-  return 'cursor-pointer hover:bg-gray-50';
-}
-
-// Human decision as plain text: unsure marker, then FP types. Smoke types
-// have their own column.
-function resultText(annotation: SequenceAnnotation): string {
-  return [
-    ...(annotation.is_unsure ? ['⚠️ Unsure'] : []),
-    ...parseFalsePositiveTypes(annotation.false_positive_types).map(formatFalsePositiveType),
-  ].join(', ');
+// Quiet text after the outcome code: false-positive types. Smoke types have
+// their own column, and unsure is carried by the code itself.
+function resultDetail(annotation: SequenceAnnotation): string {
+  return parseFalsePositiveTypes(annotation.false_positive_types)
+    .map(formatFalsePositiveType)
+    .join(', ');
 }
 
 export function LocalizeDoneTable({
@@ -49,8 +34,8 @@ export function LocalizeDoneTable({
 }: LocalizeDoneTableProps) {
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-gray-200">
-        <thead className="bg-gray-50">
+      <table className="min-w-full divide-y divide-line">
+        <thead className="bg-ash">
           <tr>
             <th className={HEADER_CLASSES}>
               <span className="sr-only">Thumbnail</span>
@@ -64,44 +49,58 @@ export function LocalizeDoneTable({
             <ColumnHeader label="Frames" tip="Images in this sequence" align="right" />
             <ColumnHeader
               label="Result"
-              tip="Classification outcome: unsure flag and false-positive types"
+              tip="Model outcome — TP correct, FP false alarm, ⚑ FN missed smoke, ? unsure — and false-positive types"
               align="right"
             />
           </tr>
         </thead>
-        <tbody className="bg-white divide-y divide-gray-200">
+        <tbody className="bg-paper divide-y divide-line">
           {sequences.map(sequence => {
             const annotation = annotations[sequence.id];
+            const outcome = deriveSequenceOutcome(annotation);
             return (
               <tr
                 key={sequence.id}
                 onClick={() => onSequenceClick(sequence)}
-                className={rowClasses(sequence, annotation)}
+                className="cursor-pointer hover:bg-ash"
               >
                 <td className="px-4 py-2">
                   <DetectionImageThumbnail sequenceId={sequence.id} className="h-10 w-16" />
                 </td>
-                <td className={`${CELL_CLASSES} font-medium text-gray-900`}>
+                <td className={`${CELL_CLASSES} font-body text-sm font-medium text-char`}>
                   {sequence.camera_name}
                 </td>
-                <td className={`${CELL_CLASSES} text-gray-500`}>{sequence.organisation_name}</td>
-                <td className={`${CELL_CLASSES} text-gray-500`}>
+                <td className={`${CELL_CLASSES} font-body text-sm text-haze`}>
+                  {sequence.organisation_name}
+                </td>
+                <td className={`${CELL_CLASSES} font-data text-detail text-haze`}>
                   {new Date(sequence.recorded_at).toLocaleString()}
                 </td>
-                <td className={`${CELL_CLASSES} text-gray-500`}>{sequence.source_api}</td>
-                <td className={`${CELL_CLASSES} text-gray-500`}>
+                <td className={`${CELL_CLASSES} font-body text-sm text-haze`}>
+                  {sequence.source_api}
+                </td>
+                <td className={`${CELL_CLASSES} font-data text-detail text-haze`}>
                   {sequence.azimuth !== null && sequence.azimuth !== undefined
                     ? `${sequence.azimuth}°`
                     : ''}
                 </td>
-                <td className={`${CELL_CLASSES} text-gray-500`}>
+                <td className={`${CELL_CLASSES} font-body text-sm text-haze`}>
                   {(annotation?.smoke_types ?? []).map(formatSmokeType).join(', ')}
                 </td>
-                <td className={`${CELL_CLASSES} text-gray-500`}>
+                <td className={`${CELL_CLASSES} font-data text-detail text-haze`}>
                   {sequence.detection_annotation_stats?.total_detections ?? ''}
                 </td>
-                <td className="px-4 py-2 text-sm text-gray-500">
-                  {annotation ? resultText(annotation) : ''}
+                <td className={CELL_CLASSES}>
+                  {annotation && outcome && (
+                    <>
+                      <OutcomeCode outcome={outcome} />
+                      {resultDetail(annotation) && (
+                        <span className="ml-2.5 font-body text-detail text-haze">
+                          {resultDetail(annotation)}
+                        </span>
+                      )}
+                    </>
+                  )}
                 </td>
               </tr>
             );

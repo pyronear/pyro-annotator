@@ -1,8 +1,9 @@
 import { LocalizationQueueItem } from '@/types/api';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
 import { laneNeedsLocalization } from '@/utils/annotation/localizeUtils';
-import { formatSmokeType } from '@/utils/modelAccuracy';
+import { deriveSequenceOutcome, formatSmokeType, rollupOutcomes } from '@/utils/modelAccuracy';
 import { ColumnHeader } from './ColumnHeader';
+import { OutcomeCode } from './OutcomeCode';
 
 interface LocalizeQueueTableProps {
   items: LocalizationQueueItem[];
@@ -30,6 +31,17 @@ function smokeFrames(item: LocalizationQueueItem): number {
   return smokeLanes(item).reduce((sum, l) => sum + l.total_detections, 0);
 }
 
+// Alert-level rollup over every lane (not just smoke lanes): dominant
+// outcome + count of the other objects.
+function alertOutcome(item: LocalizationQueueItem) {
+  return rollupOutcomes(
+    item.lanes.flatMap(lane => {
+      const outcome = deriveSequenceOutcome(lane);
+      return outcome ? [outcome] : [];
+    })
+  );
+}
+
 export function LocalizeQueueTable({ items, onItemClick }: LocalizeQueueTableProps) {
   return (
     <div className="overflow-x-auto">
@@ -53,6 +65,11 @@ export function LocalizeQueueTable({ items, onItemClick }: LocalizeQueueTablePro
             <ColumnHeader
               label="Frames"
               tip="Images to box across all smoke objects"
+              align="right"
+            />
+            <ColumnHeader
+              label="Result"
+              tip="Model outcome — TP correct, FP false alarm, ⚑ FN missed smoke, ? unsure — dominant across the alert's objects; +N counts the others"
               align="right"
             />
           </tr>
@@ -84,6 +101,14 @@ export function LocalizeQueueTable({ items, onItemClick }: LocalizeQueueTablePro
               </td>
               <td className={`${CELL_CLASSES} text-gray-500`}>{smokeLanes(item).length}</td>
               <td className={`${CELL_CLASSES} text-gray-500`}>{smokeFrames(item)}</td>
+              <td className={CELL_CLASSES}>
+                {(() => {
+                  const rollup = alertOutcome(item);
+                  return rollup ? (
+                    <OutcomeCode outcome={rollup.outcome} extraCount={rollup.extraCount} />
+                  ) : null;
+                })()}
+              </td>
             </tr>
           ))}
         </tbody>
