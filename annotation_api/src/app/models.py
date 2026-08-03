@@ -291,6 +291,15 @@ class SequenceGroup(SQLModel, table=True):
     # membership is correct. Annotation propagation to other members only
     # kicks in for validated groups.
     is_validated: bool = Field(default=False)
+    # Who confirmed group membership (the "Reviewed" action) and when.
+    # NULL for groups validated before attribution existed.
+    validated_by_user_id: Optional[int] = Field(
+        default=None,
+        sa_column=Column(ForeignKey("users.id", ondelete="SET NULL")),
+    )
+    validated_at: Optional[datetime] = Field(
+        default=None, sa_column=Column(DateTime(timezone=True))
+    )
     labeled_at: Optional[datetime] = Field(
         default=None, sa_column=Column(DateTime(timezone=True))
     )
