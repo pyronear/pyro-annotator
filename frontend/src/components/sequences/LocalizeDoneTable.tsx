@@ -58,6 +58,7 @@ export function LocalizeDoneTable({
           {sequences.map(sequence => {
             const annotation = annotations[sequence.id];
             const outcome = deriveSequenceOutcome(annotation);
+            const detail = annotation ? resultDetail(annotation) : '';
             return (
               <tr
                 key={sequence.id}
@@ -91,13 +92,11 @@ export function LocalizeDoneTable({
                   {sequence.detection_annotation_stats?.total_detections ?? ''}
                 </td>
                 <td className={CELL_CLASSES}>
-                  {annotation && outcome && (
+                  {outcome && (
                     <>
                       <OutcomeCode outcome={outcome} />
-                      {resultDetail(annotation) && (
-                        <span className="ml-2.5 font-body text-detail text-haze">
-                          {resultDetail(annotation)}
-                        </span>
+                      {detail && (
+                        <span className="ml-2.5 font-body text-detail text-haze">{detail}</span>
                       )}
                     </>
                   )}

@@ -76,6 +76,36 @@ describe('ClassifyDoneTable', () => {
     }
   });
 
+  it('explains the outcome codes in the Result column tooltip', () => {
+    render(<ClassifyDoneTable sequences={[createSequence()]} onSequenceClick={onSequenceClick} />);
+
+    expect(
+      screen.getByText(
+        'Model outcome — TP correct, FP false alarm, ⚑ FN missed smoke, ? unsure — and the classification detail'
+      )
+    ).toBeInTheDocument();
+  });
+
+  it('renders the code alone when the annotation has no detail text', () => {
+    render(
+      <ClassifyDoneTable
+        sequences={[
+          createSequence({
+            annotation: createAnnotation({
+              has_smoke: false,
+              smoke_types: [],
+              false_positive_types: '',
+            }),
+          }),
+        ]}
+        onSequenceClick={onSequenceClick}
+      />
+    );
+
+    const cell = screen.getByTitle('False positive — model flagged non-smoke').closest('td');
+    expect(cell?.querySelector('.ml-2\\.5')).toBeNull();
+  });
+
   it('shows the absolute recorded timestamp', () => {
     render(<ClassifyDoneTable sequences={[createSequence()]} onSequenceClick={onSequenceClick} />);
 
