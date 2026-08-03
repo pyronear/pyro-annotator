@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import React from 'react';
@@ -128,6 +128,16 @@ describe('SequenceGroupsListPage', () => {
     expect(screen.queryByText('All groups labeled')).toBeNull();
   });
 
+  it('filter tabs carry explanatory tooltips', async () => {
+    renderAt('/classify/groups');
+    await waitFor(() => expect(screen.getByRole('link', { name: /To label/ })).toBeTruthy());
+    expect(screen.getByText("Groups that don't have a label yet")).toBeTruthy();
+    expect(screen.getByText('Groups that already have a label')).toBeTruthy();
+    expect(screen.getByText('Every group, labeled or not')).toBeTruthy();
+    // Tooltip text must not leak into the tab links' accessible names.
+    expect(screen.getByRole('link', { name: /To label/ }).textContent).not.toMatch(/Groups/);
+  });
+
   it('column headers carry explanatory tooltips', async () => {
     vi.mocked(apiClient.getSequenceGroups).mockResolvedValue({
       items: [group],
@@ -139,7 +149,7 @@ describe('SequenceGroupsListPage', () => {
     renderAt('/classify/groups');
     await waitFor(() => expect(screen.getByText('CAM_07')).toBeTruthy());
     // One tooltip per labeled column (Camera, Azimuth, Sequences, Label, Reviewed, Created)
-    expect(screen.getAllByRole('tooltip')).toHaveLength(6);
+    expect(within(screen.getByRole('table')).getAllByRole('tooltip')).toHaveLength(6);
     expect(screen.getByText('Number of sequences in the group')).toBeTruthy();
     expect(screen.getByText(/propagates to every member/)).toBeTruthy();
     expect(screen.getByText('Camera viewing direction, in degrees')).toBeTruthy();

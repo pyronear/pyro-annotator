@@ -28,12 +28,26 @@ const DEFAULT_DIRECTION: Record<OrderBy, OrderDirection> = {
   created_at: 'desc',
 };
 
-const FILTERS: { value: SequenceGroupsFilter; label: string; countOf: keyof SequenceGroupStats }[] =
-  [
-    { value: 'unlabeled', label: 'To label', countOf: 'unlabeled' },
-    { value: 'labeled', label: 'Labeled', countOf: 'labeled' },
-    { value: 'all', label: 'All', countOf: 'total' },
-  ];
+const FILTERS: {
+  value: SequenceGroupsFilter;
+  label: string;
+  countOf: keyof SequenceGroupStats;
+  tip: string;
+}[] = [
+  {
+    value: 'unlabeled',
+    label: 'To label',
+    countOf: 'unlabeled',
+    tip: "Groups that don't have a label yet",
+  },
+  {
+    value: 'labeled',
+    label: 'Labeled',
+    countOf: 'labeled',
+    tip: 'Groups that already have a label',
+  },
+  { value: 'all', label: 'All', countOf: 'total', tip: 'Every group, labeled or not' },
+];
 
 // Same hover-tooltip bubble as components/sequences/ColumnHeader.tsx, kept
 // local because these headers are sortable and use this table's padding.
@@ -190,25 +204,29 @@ export default function SequenceGroupsListPage({
             const active = filter === f.value;
             const count = stats?.[f.countOf];
             return (
-              <Link
-                key={f.value}
-                to={classifyGroups(f.value)}
-                aria-current={active ? 'page' : undefined}
-                className={`inline-flex items-baseline px-3.5 py-1.5 rounded-md ${
-                  active
-                    ? 'border border-line bg-paper font-semibold text-char'
-                    : 'border border-transparent font-medium text-haze hover:text-char'
-                }`}
-              >
-                {f.label}
-                {count !== undefined && (
-                  <span
-                    className={`ml-1.5 font-data text-xs ${active ? 'text-ember' : 'text-haze'}`}
-                  >
-                    {count}
-                  </span>
-                )}
-              </Link>
+              // Tooltip lives on a wrapper, not inside the Link, so its text
+              // stays out of the link's accessible name.
+              <span key={f.value} className="group relative flex">
+                <Link
+                  to={classifyGroups(f.value)}
+                  aria-current={active ? 'page' : undefined}
+                  className={`inline-flex items-baseline px-3.5 py-1.5 rounded-md ${
+                    active
+                      ? 'border border-line bg-paper font-semibold text-char'
+                      : 'border border-transparent font-medium text-haze hover:text-char'
+                  }`}
+                >
+                  {f.label}
+                  {count !== undefined && (
+                    <span
+                      className={`ml-1.5 font-data text-xs ${active ? 'text-ember' : 'text-haze'}`}
+                    >
+                      {count}
+                    </span>
+                  )}
+                </Link>
+                {headerTip(f.tip)}
+              </span>
             );
           })}
         </div>
