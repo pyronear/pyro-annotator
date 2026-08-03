@@ -196,16 +196,33 @@ export default function ClassifyAlertPage() {
       // data is never written back to.
       if (!lane.annotation) return;
 
-      const bboxes = [...lane.annotation.annotation.sequences_bbox];
+      // The alert-API import writes each object's single track as a
+      // structural placeholder (`is_smoke: true, smoke_type: null`), not a
+      // human decision. Normalize `null` to `undefined` so "has a real
+      // smoke_type" checks below (and hasUserAnnotations, called on this
+      // same seeded data for the status badge / submit enablement) treat it
+      // as unset — mirrors sequenceUtils semantics. A genuinely pre-filled
+      // track (e.g. group inheritance) always carries a real SmokeType and
+      // is unaffected.
+      const bboxes = lane.annotation.annotation.sequences_bbox.map(bbox => ({
+        ...bbox,
+        smoke_type: bbox.smoke_type ?? undefined,
+      }));
       newLaneBboxes[lane.sequence.id] = bboxes;
       newLaneUnsure[lane.sequence.id] = lane.annotation.is_unsure || false;
       bboxes.forEach((bbox, trackIndex) => {
         const cardKey = `${lane.sequence.id}:${trackIndex}`;
-        newPrimaryClassification[cardKey] = bbox.is_smoke
-          ? 'smoke'
-          : bbox.false_positive_types.length > 0
-            ? 'false_positive'
-            : 'unselected';
+        // A track only counts as classified when it has a real smoke_type or
+        // at least one false-positive type (mirrors
+        // sequenceUtils.hasUserAnnotations/getClassificationType). Bare
+        // `is_smoke: true` with no type — the import placeholder — starts
+        // unselected/Needs Review, not pre-filled as smoke.
+        newPrimaryClassification[cardKey] =
+          bbox.is_smoke && bbox.smoke_type !== undefined
+            ? 'smoke'
+            : bbox.false_positive_types.length > 0
+              ? 'false_positive'
+              : 'unselected';
       });
     });
 

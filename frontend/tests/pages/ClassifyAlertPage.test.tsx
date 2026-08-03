@@ -263,6 +263,90 @@ describe('ClassifyAlertPage', () => {
     expect(submitButton).not.toBeDisabled();
   });
 
+  it('starts a placeholder track (is_smoke true, smoke_type null) unselected — not pre-filled as smoke — and keeps submit disabled', async () => {
+    // The alert-API import writes each object's single track this way: a
+    // structural placeholder, not a human decision. TypeScript's SequenceBbox
+    // types smoke_type as `SmokeType | undefined`, but the real backend
+    // payload carries a literal JSON `null` here — cast past that to
+    // reproduce the actual wire shape.
+    const placeholderAlertDetail = {
+      ...makeAlertDetail(),
+      lanes: [
+        {
+          sequence: makeSequence({ id: 101, alert_api_id: 9001 }),
+          annotation: makeAnnotation({
+            id: 201,
+            sequence_id: 101,
+            annotation: {
+              sequences_bbox: [
+                {
+                  is_smoke: true,
+                  smoke_type: null,
+                  false_positive_types: [],
+                  bboxes: [{ detection_id: 1, xyxyn: [0, 0, 1, 1] }],
+                },
+              ],
+            },
+          }),
+        },
+      ],
+    } as unknown as AlertDetail;
+
+    vi.mocked(apiClient.getAlertDetail).mockResolvedValue(placeholderAlertDetail);
+
+    render(<ClassifyAlertPage />, { wrapper });
+    await waitFor(() => expect(screen.getByTestId('object-card-101:0')).toBeInTheDocument());
+
+    const card = within(screen.getByTestId('object-card-101:0'));
+    expect(card.getByRole('radio', { name: /This is smoke/i })).not.toBeChecked();
+    expect(card.getByRole('radio', { name: /false positive/i })).not.toBeChecked();
+    expect(card.getByText('Pending')).toBeInTheDocument();
+    expect(card.queryByText('Reviewed')).not.toBeInTheDocument();
+
+    // Even after answering missed smoke, submit stays disabled — the
+    // placeholder track alone doesn't count as classified.
+    fireEvent.click(screen.getByText('Mock: No missed smoke'));
+    expect(screen.getByRole('button', { name: /Submit alert/i })).toBeDisabled();
+  });
+
+  it('still pre-fills a genuinely labeled track (e.g. group inheritance) that carries a real smoke_type', async () => {
+    const preLabeledAlertDetail: AlertDetail = {
+      ...makeAlertDetail(),
+      lanes: [
+        {
+          sequence: makeSequence({ id: 101, alert_api_id: 9001 }),
+          annotation: makeAnnotation({
+            id: 201,
+            sequence_id: 101,
+            annotation: {
+              sequences_bbox: [
+                {
+                  is_smoke: true,
+                  smoke_type: 'wildfire',
+                  false_positive_types: [],
+                  bboxes: [{ detection_id: 1, xyxyn: [0, 0, 1, 1] }],
+                },
+              ],
+            },
+          }),
+        },
+      ],
+    };
+
+    vi.mocked(apiClient.getAlertDetail).mockResolvedValue(preLabeledAlertDetail);
+
+    render(<ClassifyAlertPage />, { wrapper });
+    await waitFor(() => expect(screen.getByTestId('object-card-101:0')).toBeInTheDocument());
+
+    const card = within(screen.getByTestId('object-card-101:0'));
+    expect(card.getByRole('radio', { name: /This is smoke/i })).toBeChecked();
+    expect(card.getAllByText(/Wildfire/).length).toBeGreaterThan(0);
+    expect(card.getByText('Reviewed')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Mock: No missed smoke'));
+    expect(screen.getByRole('button', { name: /Submit alert/i })).not.toBeDisabled();
+  });
+
   it('submits with per-lane stages: FP-only lane annotated, smoke lane seq_annotation_done, primary carries has_missed_smoke', async () => {
     render(<ClassifyAlertPage />, { wrapper });
     await waitFor(() => expect(screen.getByTestId('object-card-101:0')).toBeInTheDocument());
