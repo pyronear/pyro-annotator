@@ -1,6 +1,7 @@
 import { ReactNode, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { Check, ListChecks, Search } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import {
   ExtendedSequenceFilters,
@@ -25,7 +26,7 @@ import { useSourceApis } from '@/hooks/useSourceApis';
 import { usePersistedFilters, createDefaultFilterState } from '@/hooks/usePersistedFilters';
 import { calculatePresetDateRange } from '@/components/filters/shared/dateRangeUtils';
 import { hasActiveUserFilters } from '@/utils/filterHelpers';
-import { classifyDetail } from '@/utils/routes';
+import { classifyDetail, ROUTES } from '@/utils/routes';
 
 interface SequencesPageProps {
   defaultProcessingStage?: ProcessingStageFilter;
@@ -268,31 +269,76 @@ export default function SequencesPage({
 
         {/* Empty state message */}
         <div className="flex items-center justify-center min-h-96">
-          <div className="text-center">
+          <div className="text-center max-w-md">
             {hasFilters ? (
-              // Filtered results - no matches
+              // Filtered results - no matches (shared by queue and done)
               <>
-                <div className="text-4xl mb-4">🔍</div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                  No matching sequences found
-                </h3>
-                <p className="text-gray-500 mb-4">No sequences match your current filters.</p>
-                <p className="text-gray-400 text-sm">Try adjusting your search criteria above.</p>
+                <span
+                  aria-hidden="true"
+                  className="inline-flex h-14 w-14 items-center justify-center rounded-full border border-line bg-white"
+                >
+                  <Search className="h-6 w-6 text-haze" />
+                </span>
+                <h2 className="mt-4 font-display text-base font-semibold text-char">
+                  No matching sequences
+                </h2>
+                <p className="mt-1.5 font-body text-sm leading-relaxed text-haze">
+                  Nothing here matches your current filters. Loosen or clear them to see more.
+                </p>
+                <button
+                  onClick={resetFilters}
+                  className="mt-5 inline-block rounded-lg border border-line bg-white px-7 py-2.5 font-body text-[13.5px] font-semibold text-char hover:bg-ash focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2"
+                >
+                  Clear filters
+                </button>
               </>
             ) : isReviewPage ? (
-              // Review page - simple message scoped to the selected stage
-              <p className="text-gray-500">
-                No sequences in &quot;{getStageFilterLabel(defaultProcessingStage)}&quot; at the
-                moment.
-              </p>
-            ) : (
-              // Annotation page - celebratory message
+              // Review page - nothing classified yet (stage-aware)
               <>
-                <div className="text-6xl mb-4">🎉</div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">All caught up!</h3>
-                <p className="text-gray-500">
-                  No sequences available for annotation at the moment.
+                <span
+                  aria-hidden="true"
+                  className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-ember-soft"
+                >
+                  <ListChecks className="h-6 w-6 text-ember" />
+                </span>
+                <h2 className="mt-4 font-display text-base font-semibold text-char">
+                  {/* An array stage is the "All classified" pseudo-stage (see getStageFilterLabel) */}
+                  {Array.isArray(defaultProcessingStage)
+                    ? 'No classified sequences yet'
+                    : `No sequences in "${getStageFilterLabel(defaultProcessingStage)}"`}
+                </h2>
+                <p className="mt-1.5 font-body text-sm leading-relaxed text-haze">
+                  Sequences you classify land here for review.
                 </p>
+                <Link
+                  to={ROUTES.CLASSIFY}
+                  className="mt-5 inline-block rounded-lg bg-ember px-7 py-2.5 font-body text-[13.5px] font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2"
+                >
+                  Start classifying
+                </Link>
+              </>
+            ) : (
+              // Annotation queue - all imported sequences classified
+              <>
+                <span
+                  aria-hidden="true"
+                  className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-pine-soft"
+                >
+                  <Check className="h-7 w-7 text-pine" />
+                </span>
+                <h2 className="mt-4 font-display text-base font-semibold text-char">
+                  Classification queue is clear
+                </h2>
+                <p className="mt-1.5 font-body text-sm leading-relaxed text-haze">
+                  Nice work — every imported sequence has been classified. New ones appear here as
+                  imports come in.
+                </p>
+                <Link
+                  to={ROUTES.LOCALIZE}
+                  className="mt-5 inline-block rounded-lg bg-pine px-7 py-2.5 font-body text-[13.5px] font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2"
+                >
+                  Start localizing
+                </Link>
               </>
             )}
           </div>
