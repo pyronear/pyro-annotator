@@ -40,6 +40,9 @@ from app.schemas.sequence_annotations import (
     ClassifySubmitRequest,
     ClassifySubmitResponse,
     ClassifySubmitResult,
+    LocalizeSubmitRequest,
+    LocalizeSubmitResponse,
+    LocalizeSubmitResult,
     SequenceAnnotationBulkRequest,
     SequenceAnnotationBulkResponse,
     SequenceAnnotationBulkResult,
@@ -1116,6 +1119,115 @@ async def classify_submit(
         )
 
     return ClassifySubmitResponse(results=results)
+
+
+@router.post(
+    "/localize-submit",
+    status_code=status.HTTP_200_OK,
+    response_model=LocalizeSubmitResponse,
+    summary="Atomically submit all localized lanes of one alert",
+)
+async def localize_submit(
+    payload: LocalizeSubmitRequest = Body(...),
+    annotations: SequenceAnnotationCRUD = Depends(get_sequence_annotation_crud),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> LocalizeSubmitResponse:
+    """Atomically move every lane of one alert from seq_annotation_done to
+    annotated (spec: smoke-localization entry point). Either every lane
+    lands or none does — apply_annotation_update's localization exit guard
+    (`:637-688`), which fires per lane inside the loop, rolls back the whole
+    batch when any lane is missing an annotated-stage detection annotation.
+
+    Post-commit effects (auto-create detection annotations) run afterwards,
+    per lane in submit order, each with its own commit — exactly as the
+    PATCH path does for a single lane. Group fan-out is not invoked here: it
+    only acts on lanes newly reaching SEQ_ANNOTATION_DONE
+    (`_propagate_to_group_if_validated`), and every lane here targets
+    ANNOTATED.
+    """
+    annotation_ids = payload.annotation_ids
+    rows = (
+        await session.execute(
+            select(SequenceAnnotation, Sequence)
+            .join(Sequence, Sequence.id == SequenceAnnotation.sequence_id)
+            .where(SequenceAnnotation.id.in_(annotation_ids))
+        )
+    ).all()
+    by_id = {ann.id: (ann, seq) for ann, seq in rows}
+
+    missing_ids = [aid for aid in annotation_ids if aid not in by_id]
+    if missing_ids:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Sequence annotation(s) {missing_ids} not found",
+        )
+
+    alert_keys = {(seq.source_api, seq.platform_alert_id) for _, seq in by_id.values()}
+    if len(alert_keys) > 1:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="All annotations must belong to sequences of the same alert",
+        )
+
+    wrong_stage_ids = [
+        aid
+        for aid, (ann, _seq) in by_id.items()
+        if ann.processing_stage != SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE
+    ]
+    if wrong_stage_ids:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Annotation(s) {sorted(wrong_stage_ids)} are not at "
+                "seq_annotation_done; refresh the queue and retry"
+            ),
+        )
+
+    lane_results: List[Tuple[SequenceAnnotation, bool]] = []
+    try:
+        for annotation_id in annotation_ids:
+            update_payload = SequenceAnnotationUpdate(
+                processing_stage=SequenceAnnotationProcessingStage.ANNOTATED
+            )
+            updated_annotation, run_auto_create = await apply_annotation_update(
+                annotation_id,
+                update_payload,
+                annotations,
+                session,
+                current_user,
+                commit=False,
+            )
+            lane_results.append((updated_annotation, run_auto_create))
+    except HTTPException:
+        await session.rollback()
+        raise
+
+    # The one atomic point: every lane's write lands together.
+    await session.commit()
+
+    results: List[LocalizeSubmitResult] = []
+    for updated_annotation, run_auto_create in lane_results:
+        if run_auto_create:
+            await auto_create_detection_annotations(
+                sequence_id=updated_annotation.sequence_id,
+                has_smoke=updated_annotation.has_smoke,
+                has_missed_smoke=updated_annotation.has_missed_smoke,
+                has_false_positives=updated_annotation.has_false_positives,
+                session=session,
+                user_id=current_user.id,
+            )
+            await session.commit()
+
+        results.append(
+            LocalizeSubmitResult(
+                annotation_id=updated_annotation.id,
+                sequence_id=updated_annotation.sequence_id,
+                processing_stage=updated_annotation.processing_stage,
+            )
+        )
+
+    return LocalizeSubmitResponse(results=results)
 
 
 @router.post(
