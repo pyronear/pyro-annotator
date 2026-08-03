@@ -348,6 +348,8 @@ def main() -> None:
         "sequences_attempted_import": 0,
         "sequences_import_successful": 0,
         "sequences_import_failed": 0,
+        "sequences_skipped": 0,
+        "detections_skipped": 0,
         "detections_attempted_import": 0,
         "detections_import_successful": 0,
         "detections_import_failed": 0,
@@ -551,6 +553,8 @@ def main() -> None:
                 stats["detections_attempted_import"] = result["total_detections"]
                 stats["detections_import_successful"] = result["successful_detections"]
                 stats["detections_import_failed"] = result["failed_detections"]
+                stats["sequences_skipped"] = result.get("skipped_sequences", 0)
+                stats["detections_skipped"] = result.get("skipped_detections", 0)
                 successfully_imported_sequence_ids = result["successful_sequence_ids"]
 
                 # Prepare step completion stats for display
@@ -558,6 +562,7 @@ def main() -> None:
                     "Records fetched": len(records),
                     "Sequences posted": f"{result['successful_sequences']}/{result['total_sequences']}",
                     "Sequences skipped": result.get("skipped_sequences", 0),
+                    "Detections skipped": result.get("skipped_detections", 0),
                     "Detections posted": f"{result['successful_detections']}/{result['total_detections']}",
                 }
 
@@ -574,7 +579,7 @@ def main() -> None:
 
                 if result["failed_sequences"] > 0 or result["failed_detections"] > 0:
                     error_collector.add_warning(
-                        f"{result['failed_sequences']} sequences and {result['failed_detections']} detections failed to import (likely duplicates). "
+                        f"{result['failed_sequences']} sequences and {result['failed_detections']} detections failed to import. "
                         "Enable --loglevel debug to see per-sequence errors."
                     )
 
@@ -611,7 +616,7 @@ def main() -> None:
             console.print()
             panel = Panel(
                 f"[yellow]No sequences were successfully imported from {organization} alert API data.\n"
-                f"Check import statistics above for details (likely all were duplicates).[/]",
+                f"Check import statistics above for details (all sequences may already be imported — see Skipped).[/]",
                 title=f"⚠️ Processing Complete - {organization} - No Annotations Generated",
                 border_style="yellow",
                 padding=(1, 2),
@@ -747,7 +752,8 @@ def main() -> None:
 • Records fetched: {stats['records_fetched']}
 • Sequences attempted: {stats['sequences_attempted_import']}
 • Successfully imported: {stats['sequences_import_successful']}
-• Failed/duplicates: {stats['sequences_import_failed']}"""
+• Skipped (already imported): {stats['sequences_skipped']} sequences / {stats['detections_skipped']} detections
+• Failed: {stats['sequences_import_failed']}"""
             if stats["sequences_rolled_back"] > 0:
                 import_section += f"\n• Rolled back: {stats['sequences_rolled_back']}"
             summary_parts.append(import_section)
@@ -766,13 +772,6 @@ def main() -> None:
         # Add dry run notice
         if args.dry_run:
             summary_text += "\n\n[yellow]DRY RUN: No actual changes were made[/]"
-
-        # Add context note about duplicates if applicable
-        if (
-            stats.get("sequences_import_failed", 0) > 0
-            and stats["annotations_failed"] == 0
-        ):
-            summary_text += f"\n\n[dim]Note: {stats['sequences_import_failed']} sequences failed import (likely duplicates from re-running same dates)[/]"
 
         panel = Panel(
             summary_text,

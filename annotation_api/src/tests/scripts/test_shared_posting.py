@@ -107,6 +107,31 @@ class TestDetection409Recovery:
         assert result["failed_detections"] == 1
 
 
+class TestSkippedSequenceStats:
+    def test_skipped_sequence_counts_as_skipped_not_failed(self, monkeypatch):
+        monkeypatch.setattr(
+            shared, "get_auth_token", lambda url, username, password: "token"
+        )
+
+        def conflicting_sequence(url, token, data):
+            raise shared.AnnotationAPIError("duplicate sequence", status_code=409)
+
+        monkeypatch.setattr(shared, "create_sequence", conflicting_sequence)
+
+        records = [
+            make_record(1, "2026-07-01T10:00:00", [BOX]),
+            make_record(2, "2026-07-01T10:01:00", [BOX]),
+        ]
+        result = shared.post_records_to_annotation_api(
+            "http://annotation.test", records, max_workers=1, max_detection_workers=1
+        )
+        assert result["skipped_sequences"] == 1
+        assert result["skipped_detections"] == 2
+        assert result["failed_detections"] == 0
+        assert result["failed_sequences"] == 0
+        assert result["successful_sequences"] == 0
+
+
 class TestTransformSequenceData:
     def test_platform_alert_id_passed_through(self):
         record = make_record(1, "2026-07-01T10:00:00", [BOX])

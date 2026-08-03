@@ -556,7 +556,8 @@ def post_sequence_to_annotation_api(
                 "sequence_id": None,
                 "alert_api_sequence_id": first_record["sequence_id"],
                 "successful_detections": 0,
-                "failed_detections": len(sequence_records),
+                "failed_detections": 0,
+                "skipped_detections": len(sequence_records),
                 "total_detections": len(sequence_records),
                 "detection_results": [],
             }
@@ -654,9 +655,11 @@ def post_records_to_annotation_api(
         return {
             "successful_sequences": 0,
             "failed_sequences": 0,
+            "skipped_sequences": 0,
             "total_sequences": 0,
             "successful_detections": 0,
             "failed_detections": 0,
+            "skipped_detections": 0,
             "total_detections": 0,
             "successful_sequence_ids": [],
             "sequence_results": [],
@@ -678,6 +681,7 @@ def post_records_to_annotation_api(
     skipped_sequences = 0
     total_successful_detections = 0
     total_failed_detections = 0
+    total_skipped_detections = 0
     successful_sequence_ids = []
     sequence_results = []
 
@@ -717,7 +721,7 @@ def post_records_to_annotation_api(
 
                         if result.get("skipped"):
                             skipped_sequences += 1
-                            total_failed_detections += result["failed_detections"]
+                            total_skipped_detections += result["skipped_detections"]
                             reason = result.get("skip_reason", "already exists")
                             logging.warning(
                                 f"⚠️ Sequence {alert_api_sequence_id} skipped ({reason})"
@@ -773,6 +777,7 @@ def post_records_to_annotation_api(
         "total_sequences": len(grouped_records),
         "successful_detections": total_successful_detections,
         "failed_detections": total_failed_detections,
+        "skipped_detections": total_skipped_detections,
         "total_detections": len(records),
         "successful_sequence_ids": successful_sequence_ids,
         "sequence_results": sequence_results,
