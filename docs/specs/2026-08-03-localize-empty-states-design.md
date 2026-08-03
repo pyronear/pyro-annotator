@@ -75,4 +75,6 @@ telling the user to adjust them.
   that page; `DetectionReviewPage.defaults.test.ts` is logic-only, so a new
   test is optional — at minimum verify "Clear filters" calls `resetFilters`
   if a page-level test harness is practical.
-- `npm run quality` passes.
+- `npm run quality` passes for the touched files. (Repo-wide lint currently
+  fails on two pre-existing `console.debug` warnings in
+  `DetectionSequenceAnnotatePage.tsx`, present on `main` and out of scope.)

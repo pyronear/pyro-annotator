@@ -28,7 +28,10 @@ vi.mock('@/hooks/usePersistedFilters', async importOriginal => {
   const actual = await importOriginal<typeof import('@/hooks/usePersistedFilters')>();
   return {
     ...actual,
-    usePersistedFilters: (key: string, defaultState: { filters: object }) => ({
+    usePersistedFilters: (
+      _key: string,
+      defaultState: Parameters<typeof actual.usePersistedFilters>[1]
+    ): ReturnType<typeof actual.usePersistedFilters> => ({
       filters: { ...defaultState.filters },
       dateFrom: '',
       dateTo: '',

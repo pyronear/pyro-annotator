@@ -276,12 +276,15 @@ export default function DetectionReviewPage() {
             {hasFilters ? (
               // Filtered results - no matches
               <>
-                <span className="inline-flex h-14 w-14 items-center justify-center rounded-full border border-line bg-white">
+                <span
+                  aria-hidden="true"
+                  className="inline-flex h-14 w-14 items-center justify-center rounded-full border border-line bg-white"
+                >
                   <Search className="h-6 w-6 text-haze" />
                 </span>
-                <p className="mt-4 font-display text-base font-semibold text-char">
+                <h2 className="mt-4 font-display text-base font-semibold text-char">
                   No matching alerts
-                </p>
+                </h2>
                 <p className="mt-1.5 font-body text-sm leading-relaxed text-haze">
                   Nothing localized matches your current filters. Loosen or clear them to see more.
                 </p>
@@ -295,12 +298,15 @@ export default function DetectionReviewPage() {
             ) : (
               // No filters - nothing localized yet
               <>
-                <span className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-ember-soft">
+                <span
+                  aria-hidden="true"
+                  className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-ember-soft"
+                >
                   <BoxSelect className="h-6 w-6 text-ember" />
                 </span>
-                <p className="mt-4 font-display text-base font-semibold text-char">
+                <h2 className="mt-4 font-display text-base font-semibold text-char">
                   No localized alerts yet
-                </p>
+                </h2>
                 <p className="mt-1.5 font-body text-sm leading-relaxed text-haze">
                   Finished localizations show up here for review. Head to the queue to box your
                   first alert.

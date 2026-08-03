@@ -82,12 +82,15 @@ export default function DetectionAnnotatePage() {
       {items.length === 0 ? (
         <div className="flex items-center justify-center min-h-96">
           <div className="text-center max-w-md">
-            <span className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-pine-soft">
+            <span
+              aria-hidden="true"
+              className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-pine-soft"
+            >
               <Check className="h-7 w-7 text-pine" />
             </span>
-            <p className="mt-4 font-display text-base font-semibold text-char">
+            <h2 className="mt-4 font-display text-base font-semibold text-char">
               Localization queue is clear
-            </p>
+            </h2>
             <p className="mt-1.5 font-body text-sm leading-relaxed text-haze">
               Nice work — nothing to box right now. Classifying more alerts is what fills this
               queue.
