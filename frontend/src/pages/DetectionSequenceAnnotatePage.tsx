@@ -591,7 +591,6 @@ export default function DetectionSequenceAnnotatePage({
           },
           processing_stage: 'annotated' as const,
         };
-        console.debug('Annotating detection', detection.id, 'with payload', payload);
         return apiClient.updateDetectionAnnotation(existingAnnotation.id, payload);
       } else {
         // Create detection annotation on the fly if missing
@@ -602,7 +601,6 @@ export default function DetectionSequenceAnnotatePage({
           },
           processing_stage: 'annotated' as const,
         };
-        console.debug('Creating detection annotation for', detection.id, 'with payload', payload);
         return apiClient.createDetectionAnnotation(payload);
       }
     },
