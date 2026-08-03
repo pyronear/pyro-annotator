@@ -61,17 +61,24 @@ class TestDetection409Recovery:
         monkeypatch.setattr(
             shared, "create_detection_from_bucket_key", conflicting_create
         )
-        monkeypatch.setattr(
-            shared,
-            "list_detections",
-            lambda url, token, **params: {
-                "items": [
-                    {"id": 777, "alert_api_id": 1, "sequence_id": 99},
-                    {"id": 778, "alert_api_id": 2, "sequence_id": 99},
-                ],
-                "pages": 1,
-            },
-        )
+
+        # Two pages, match on page 2: proves the lookup is scoped to the new
+        # sequence and actually paginates instead of matching page 1 only.
+        list_calls = []
+
+        def fake_list_detections(url, token, **params):
+            list_calls.append(params)
+            if params["page"] == 1:
+                return {
+                    "items": [{"id": 778, "alert_api_id": 2, "sequence_id": 99}],
+                    "pages": 2,
+                }
+            return {
+                "items": [{"id": 777, "alert_api_id": 1, "sequence_id": 99}],
+                "pages": 2,
+            }
+
+        monkeypatch.setattr(shared, "list_detections", fake_list_detections)
 
         records = [make_record(1, "2026-07-01T10:00:00", [BOX])]
         result = shared.post_sequence_to_annotation_api(
@@ -81,6 +88,8 @@ class TestDetection409Recovery:
         assert result["failed_detections"] == 0
         assert result["detection_results"][0]["annotation_detection_id"] == 777
         assert result["detection_results"][0]["xyxyns"] == [[0.1, 0.1, 0.2, 0.2]]
+        assert [call["page"] for call in list_calls] == [1, 2]
+        assert all(call["sequence_id"] == 99 for call in list_calls)
 
     def test_409_with_unfindable_detection_stays_failed(self, monkeypatch):
         monkeypatch.setattr(

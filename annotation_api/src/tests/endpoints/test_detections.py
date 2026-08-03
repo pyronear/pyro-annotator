@@ -5,6 +5,8 @@ import pytest
 from httpx import AsyncClient
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.services.storage import s3_service
+
 now = datetime.now(UTC)
 
 
@@ -538,6 +540,11 @@ async def test_create_duplicate_detection_returns_409(
     )
     assert first.status_code == 201
 
+    bucket = s3_service.get_bucket(s3_service.resolve_bucket_name())
+    objects_after_first = bucket._s3.list_objects_v2(
+        Bucket=bucket.name, Prefix="detections/sequence_1/"
+    ).get("KeyCount", 0)
+
     second = await authenticated_client.post(
         "/detections/",
         data=payload,
@@ -549,3 +556,9 @@ async def test_create_duplicate_detection_returns_409(
     assert listing.status_code == 200
     matches = [d for d in listing.json()["items"] if d["alert_api_id"] == 4242]
     assert len(matches) == 1
+
+    # The duplicate is rejected at flush time, before any upload happens.
+    objects_after_second = bucket._s3.list_objects_v2(
+        Bucket=bucket.name, Prefix="detections/sequence_1/"
+    ).get("KeyCount", 0)
+    assert objects_after_second == objects_after_first
