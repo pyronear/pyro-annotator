@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Menu, MoreVertical, X, LogOut, User, Users } from 'lucide-react';
+import { Menu } from '@headlessui/react';
+import { Menu as MenuIcon, MoreVertical, X, LogOut, User, Users } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useAnnotationCounts } from '@/hooks/useAnnotationCounts';
 import NotificationBadge from '@/components/ui/NotificationBadge';
@@ -72,7 +73,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
             onClick={() => setSidebarOpen(true)}
           >
             <span className="sr-only">Open sidebar</span>
-            <Menu className="h-6 w-6" aria-hidden="true" />
+            <MenuIcon className="h-6 w-6" aria-hidden="true" />
           </button>
         </div>
 
@@ -187,17 +188,11 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
 
 function UserSection() {
   const { user, logout, isSuperuser } = useAuthStore();
-  const [showDropdown, setShowDropdown] = useState(false);
-
-  const handleLogout = () => {
-    logout();
-    setShowDropdown(false);
-  };
 
   const username = user?.username || 'User';
 
   return (
-    <div className="relative">
+    <Menu as="div" className="relative">
       <div className="flex items-center p-2">
         <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
           <User className="h-4 w-4 text-white" />
@@ -206,36 +201,44 @@ function UserSection() {
           <p className="text-sm font-medium text-gray-700">{username}</p>
           <p className="text-xs font-medium text-gray-500">Annotator</p>
         </div>
-        <button
-          onClick={() => setShowDropdown(!showDropdown)}
-          className="p-2 rounded-md text-gray-500 hover:bg-gray-50 hover:text-gray-900 transition-colors"
-        >
+        <Menu.Button className="p-2 rounded-md text-gray-500 hover:bg-gray-50 hover:text-gray-900 transition-colors">
           <span className="sr-only">Open user menu</span>
           <MoreVertical className="h-5 w-5" aria-hidden="true" />
-        </button>
+        </Menu.Button>
       </div>
 
-      {showDropdown && (
-        <div className="absolute bottom-full right-0 mb-1 w-full bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5">
-          {isSuperuser() && (
-            <Link
-              to="/users"
-              onClick={() => setShowDropdown(false)}
-              className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md"
+      <Menu.Items className="absolute bottom-full right-0 mb-1 w-full bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
+        {isSuperuser() && (
+          <Menu.Item>
+            {({ active }) => (
+              <Link
+                to="/users"
+                className={clsx(
+                  active && 'bg-gray-100',
+                  'flex items-center w-full px-4 py-2 text-sm text-gray-700 rounded-md'
+                )}
+              >
+                <Users className="h-4 w-4 mr-2" />
+                User Management
+              </Link>
+            )}
+          </Menu.Item>
+        )}
+        <Menu.Item>
+          {({ active }) => (
+            <button
+              onClick={logout}
+              className={clsx(
+                active && 'bg-gray-100',
+                'flex items-center w-full px-4 py-2 text-sm text-gray-700 rounded-md'
+              )}
             >
-              <Users className="h-4 w-4 mr-2" />
-              User Management
-            </Link>
+              <LogOut className="h-4 w-4 mr-2" />
+              Sign out
+            </button>
           )}
-          <button
-            onClick={handleLogout}
-            className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md"
-          >
-            <LogOut className="h-4 w-4 mr-2" />
-            Sign out
-          </button>
-        </div>
-      )}
-    </div>
+        </Menu.Item>
+      </Menu.Items>
+    </Menu>
   );
 }

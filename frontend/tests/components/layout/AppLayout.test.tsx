@@ -138,7 +138,7 @@ describe('AppLayout sidebar navigation', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /open user menu/i }));
 
-    const userManagementLink = screen.getByRole('link', { name: /user management/i });
+    const userManagementLink = screen.getByRole('menuitem', { name: /user management/i });
     expect(userManagementLink).toHaveAttribute('href', '/users');
   });
 
@@ -147,18 +147,33 @@ describe('AppLayout sidebar navigation', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /open user menu/i }));
 
-    expect(screen.queryByRole('link', { name: /user management/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: /user management/i })).not.toBeInTheDocument();
   });
 
   it('opens the user menu only via the menu button, not the user row', () => {
     renderLayout();
 
     expect(screen.queryByRole('button', { name: /tester/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /sign out/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: /sign out/i })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /open user menu/i }));
 
-    expect(screen.getByRole('button', { name: /sign out/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /sign out/i })).toBeInTheDocument();
+  });
+
+  it('closes the user menu when clicking outside of it', async () => {
+    renderLayout();
+
+    fireEvent.click(screen.getByRole('button', { name: /open user menu/i }));
+    expect(screen.getByRole('menuitem', { name: /sign out/i })).toBeInTheDocument();
+
+    // Headless UI arms its outside-click listener one animation frame after
+    // opening, and closes on the click that follows a mousedown outside.
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    fireEvent.mouseDown(document.body);
+    fireEvent.click(document.body);
+
+    expect(screen.queryByRole('menuitem', { name: /sign out/i })).not.toBeInTheDocument();
   });
 });
 
