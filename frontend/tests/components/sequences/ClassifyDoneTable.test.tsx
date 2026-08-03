@@ -60,20 +60,31 @@ describe('ClassifyDoneTable', () => {
     vi.clearAllMocks();
   });
 
-  it('renders the column headers including Result', () => {
+  it('renders the column headers in canonical order including Result', () => {
     render(<ClassifyDoneTable sequences={[createSequence()]} onSequenceClick={onSequenceClick} />);
 
-    for (const header of [
+    const labels = [
       'Camera',
       'Organisation',
       'Recorded',
-      'Alert API annotation',
       'Source',
       'Azimuth',
+      'Alert API annotation',
       'Result',
-    ]) {
-      expect(screen.getByText(header)).toBeInTheDocument();
-    }
+    ];
+    const positions = labels.map(l => {
+      const el = screen.getByText(l);
+      return Array.from(document.querySelectorAll('th')).findIndex(th => th.contains(el));
+    });
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+    expect(positions.every(p => p > 0)).toBe(true);
+  });
+
+  it('renders column tooltips and a plain-text source', () => {
+    render(<ClassifyDoneTable sequences={[createSequence()]} onSequenceClick={onSequenceClick} />);
+
+    expect(screen.getByText('Alert API the sequence was imported from')).toBeInTheDocument();
+    expect(screen.getByText('test-api')).not.toHaveClass('rounded-full');
   });
 
   it('explains the outcome codes in the Result column tooltip', () => {

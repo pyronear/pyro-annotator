@@ -11,7 +11,8 @@ import {
 import { PAGINATION_OPTIONS, QUERY_KEYS } from '@/utils/constants';
 import { analyzeSequenceAccuracy } from '@/utils/modelAccuracy';
 import FilterPopover from '@/components/filters/FilterPopover';
-import { LocalizeDoneTable, DetectionReviewPagination } from '@/components/sequences';
+import { LocalizeDoneTable, TablePagination } from '@/components/sequences';
+import { TABLE_CARD_CLASSES } from '@/components/sequences/tableStyles';
 import { useCameras } from '@/hooks/useCameras';
 import { useOrganizations } from '@/hooks/useOrganizations';
 import { useSourceApis } from '@/hooks/useSourceApis';
@@ -332,11 +333,14 @@ export default function DetectionReviewPage() {
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center space-x-2">
-            <label className="text-sm text-gray-700">Show:</label>
+            <label htmlFor="page-size" className="font-body text-sm text-haze">
+              Show:
+            </label>
             <select
+              id="page-size"
               value={filters.size || 50}
               onChange={e => handleFilterChange({ size: Number(e.target.value) })}
-              className="border border-gray-300 rounded px-2 py-1 text-sm"
+              className="border border-line rounded px-2 py-1 font-body text-sm"
             >
               {PAGINATION_OPTIONS.map(size => (
                 <option key={size} value={size}>
@@ -376,15 +380,18 @@ export default function DetectionReviewPage() {
 
       {/* Results */}
       {filteredSequences && (
-        <div className="bg-white rounded-lg border border-gray-200">
+        <div className={TABLE_CARD_CLASSES}>
           <LocalizeDoneTable
             sequences={filteredSequences.items}
             annotations={annotationMap}
             onSequenceClick={handleSequenceClick}
           />
 
-          <DetectionReviewPagination
-            filteredSequences={filteredSequences}
+          <TablePagination
+            page={filteredSequences.page}
+            pages={filteredSequences.pages}
+            total={filteredSequences.total}
+            itemsLabel="sequences"
             onPageChange={handlePageChange}
           />
         </div>
