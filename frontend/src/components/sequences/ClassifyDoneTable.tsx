@@ -9,16 +9,23 @@ import {
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
 import { OutcomeCode } from './OutcomeCode';
 import { PlatformAnnotationLabel } from './PlatformAnnotationLabel';
-import { CELL_TEXT } from './tableStyles';
+import { ColumnHeader } from './ColumnHeader';
+import {
+  CELL_CLASSES,
+  CELL_TEXT,
+  DATA_CELL_TEXT,
+  HEADER_CELL_CLASSES,
+  PRIMARY_CELL_TEXT,
+  ROW_CLASSES,
+  TABLE_CLASSES,
+  TBODY_CLASSES,
+  THEAD_CLASSES,
+} from './tableStyles';
 
 interface ClassifyDoneTableProps {
   sequences: SequenceWithAnnotation[];
   onSequenceClick: (sequence: SequenceWithAnnotation) => void;
 }
-
-const HEADER_CLASSES =
-  'px-4 py-3 text-left font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze';
-const CELL_CLASSES = 'px-4 py-2 whitespace-nowrap';
 
 // Quiet text after the outcome code: what the human concluded.
 function resultDetail(annotation: SequenceAnnotation, outcome: SequenceOutcome): string {
@@ -39,54 +46,53 @@ function resultDetail(annotation: SequenceAnnotation, outcome: SequenceOutcome):
 export function ClassifyDoneTable({ sequences, onSequenceClick }: ClassifyDoneTableProps) {
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-line">
-        <thead className="bg-ash">
+      <table className={TABLE_CLASSES}>
+        <thead className={THEAD_CLASSES}>
           <tr>
-            <th className={HEADER_CLASSES}>
+            <th className={HEADER_CELL_CLASSES}>
               <span className="sr-only">Thumbnail</span>
             </th>
-            <th className={HEADER_CLASSES}>Camera</th>
-            <th className={HEADER_CLASSES}>Organisation</th>
-            <th className={HEADER_CLASSES}>Recorded</th>
-            <th className={HEADER_CLASSES}>Alert API annotation</th>
-            <th className={HEADER_CLASSES}>Source</th>
-            <th className={HEADER_CLASSES}>Azimuth</th>
-            <th className={HEADER_CLASSES}>Result</th>
+            <ColumnHeader label="Camera" tip="Camera that recorded the sequence" />
+            <ColumnHeader label="Organisation" tip="Organisation operating the camera" />
+            <ColumnHeader label="Recorded" tip="When the sequence was recorded" />
+            <ColumnHeader label="Source" tip="Alert API the sequence was imported from" />
+            <ColumnHeader label="Azimuth" tip="Camera viewing direction, in degrees" />
+            <ColumnHeader
+              label="Alert API annotation"
+              tip="Annotation reported by the alert platform (🔥 wildfire / 💨 other smoke / ○ other)"
+            />
+            <ColumnHeader
+              label="Result"
+              tip="Human classification — TP correct, FP false alarm, ⚑ FN missed smoke, ? unsure — and the chosen types"
+              align="right"
+            />
           </tr>
         </thead>
-        <tbody className="bg-paper divide-y divide-line">
+        <tbody className={TBODY_CLASSES}>
           {sequences.map(sequence => {
             const outcome = deriveSequenceOutcome(sequence.annotation);
             return (
               <tr
                 key={sequence.id}
                 onClick={() => onSequenceClick(sequence)}
-                className="cursor-pointer hover:bg-ash"
+                className={ROW_CLASSES}
               >
                 <td className="px-4 py-2">
                   <DetectionImageThumbnail sequenceId={sequence.id} className="h-10 w-16" />
                 </td>
-                <td className={`${CELL_CLASSES} font-body text-sm font-medium text-char`}>
-                  {sequence.camera_name}
-                </td>
-                <td className={`${CELL_CLASSES} font-body text-sm text-haze`}>
-                  {sequence.organisation_name}
-                </td>
-                <td className={`${CELL_CLASSES} font-data text-detail text-haze`}>
+                <td className={`${CELL_CLASSES} ${PRIMARY_CELL_TEXT}`}>{sequence.camera_name}</td>
+                <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>{sequence.organisation_name}</td>
+                <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
                   {new Date(sequence.recorded_at).toLocaleString()}
                 </td>
-                <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>
-                  <PlatformAnnotationLabel value={sequence.is_wildfire_alertapi} />
-                </td>
-                <td className={CELL_CLASSES}>
-                  <span className="inline-flex rounded-full px-2 py-1 font-body text-xs font-semibold bg-ash text-haze">
-                    {sequence.source_api}
-                  </span>
-                </td>
-                <td className={`${CELL_CLASSES} font-data text-detail text-haze`}>
+                <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>{sequence.source_api}</td>
+                <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
                   {sequence.azimuth !== null && sequence.azimuth !== undefined
                     ? `${sequence.azimuth}°`
                     : ''}
+                </td>
+                <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>
+                  <PlatformAnnotationLabel value={sequence.is_wildfire_alertapi} />
                 </td>
                 <td className={CELL_CLASSES}>
                   {sequence.annotation && outcome && (
