@@ -1,6 +1,6 @@
 import { SequenceWithAnnotation } from '@/types/api';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
-import { PlatformAnnotationPill } from './PlatformAnnotationPill';
+import { PlatformAnnotationLabel } from './PlatformAnnotationLabel';
 
 interface ClassifyQueueTableProps {
   sequences: SequenceWithAnnotation[];
@@ -45,8 +45,8 @@ export function ClassifyQueueTable({ sequences, onSequenceClick }: ClassifyQueue
               <td className={`${CELL_CLASSES} text-gray-500`}>
                 {new Date(sequence.recorded_at).toLocaleString()}
               </td>
-              <td className={CELL_CLASSES}>
-                <PlatformAnnotationPill value={sequence.is_wildfire_alertapi} />
+              <td className={`${CELL_CLASSES} text-gray-500`}>
+                <PlatformAnnotationLabel value={sequence.is_wildfire_alertapi} />
               </td>
               <td className={CELL_CLASSES}>
                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">

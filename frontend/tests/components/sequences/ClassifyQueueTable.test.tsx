@@ -75,7 +75,7 @@ describe('ClassifyQueueTable', () => {
     ).toBeInTheDocument();
   });
 
-  it('renders the platform annotation pill per value', () => {
+  it('renders the platform annotation label per value as plain text', () => {
     render(
       <ClassifyQueueTable
         sequences={[
@@ -91,6 +91,7 @@ describe('ClassifyQueueTable', () => {
     expect(screen.getByText('🔥 Wildfire')).toBeInTheDocument();
     expect(screen.getByText('💨 Other Smoke')).toBeInTheDocument();
     expect(screen.getByText('○ Other')).toBeInTheDocument();
+    expect(screen.getByText('🔥 Wildfire')).not.toHaveClass('rounded-full');
   });
 
   it('renders 0° when azimuth is zero', () => {

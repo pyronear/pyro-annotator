@@ -8,7 +8,8 @@ import {
 } from '@/utils/modelAccuracy';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
 import { OutcomeCode } from './OutcomeCode';
-import { PlatformAnnotationPill } from './PlatformAnnotationPill';
+import { PlatformAnnotationLabel } from './PlatformAnnotationLabel';
+import { CELL_TEXT } from './tableStyles';
 
 interface ClassifyDoneTableProps {
   sequences: SequenceWithAnnotation[];
@@ -74,8 +75,8 @@ export function ClassifyDoneTable({ sequences, onSequenceClick }: ClassifyDoneTa
                 <td className={`${CELL_CLASSES} font-data text-detail text-haze`}>
                   {new Date(sequence.recorded_at).toLocaleString()}
                 </td>
-                <td className={CELL_CLASSES}>
-                  <PlatformAnnotationPill value={sequence.is_wildfire_alertapi} />
+                <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>
+                  <PlatformAnnotationLabel value={sequence.is_wildfire_alertapi} />
                 </td>
                 <td className={CELL_CLASSES}>
                   <span className="inline-flex rounded-full px-2 py-1 font-body text-xs font-semibold bg-ash text-haze">

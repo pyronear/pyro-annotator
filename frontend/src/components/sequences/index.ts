@@ -3,7 +3,7 @@ export { ClassifyQueueTable } from './ClassifyQueueTable';
 export { ClassifyDoneTable } from './ClassifyDoneTable';
 export { LocalizeQueueTable } from './LocalizeQueueTable';
 export { LocalizeDoneTable } from './LocalizeDoneTable';
-export { PlatformAnnotationPill } from './PlatformAnnotationPill';
+export { PlatformAnnotationLabel } from './PlatformAnnotationLabel';
 export { SequencesPagination } from './SequencesPagination';
 export { TablePagination } from './TablePagination';
 
