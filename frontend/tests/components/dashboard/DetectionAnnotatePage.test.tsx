@@ -78,15 +78,16 @@ describe('DetectionAnnotatePage (Localize queue)', () => {
     render(<DetectionAnnotatePage />, { wrapper });
     await waitFor(() => expect(screen.getByText('CAM_01')).toBeTruthy());
     expect(screen.getByText('Pyronear')).toBeTruthy();
-    // Source pill
+    // Source as plain text
     expect(screen.getByText('pyronear_french')).toBeTruthy();
     // Absolute date-time, app-wide convention
     expect(screen.getByText(new Date('2026-07-27T10:00:00Z').toLocaleString())).toBeTruthy();
-    // Camera azimuth
-    expect(screen.getByText(/Azimuth: 143°/)).toBeTruthy();
-    // Frames = detections across smoke lanes only (4 from lane 11; lane 12 is FP)
-    expect(screen.getByText(/4 frames/)).toBeTruthy();
-    // Smoke type pill from the classify phase (smoke lanes only)
+    // Azimuth column
+    expect(screen.getByText('143°')).toBeTruthy();
+    // Objects / Frames = smoke lanes only (lane 11; lane 12 is FP)
+    expect(screen.getByText('1')).toBeTruthy();
+    expect(screen.getByText('4')).toBeTruthy();
+    // Smoke type from the classify phase (smoke lanes only), plain text
     expect(screen.getByText(/Wildfire/)).toBeTruthy();
     // Old columns are gone
     expect(screen.queryByText(/objects to localize/)).toBeNull();
@@ -144,7 +145,7 @@ describe('DetectionAnnotatePage (Localize queue)', () => {
     });
     render(<DetectionAnnotatePage />, { wrapper });
     await waitFor(() => expect(screen.getByText('CAM_01')).toBeTruthy());
-    expect(screen.queryByText(/Azimuth:/)).toBeNull();
+    expect(screen.queryByText(/°/)).toBeNull();
   });
 
   it('clicking a row opens the first unfinished smoke lane in localize flow', async () => {

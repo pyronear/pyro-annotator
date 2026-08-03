@@ -13,7 +13,7 @@ import FilterPopover from '@/components/filters/FilterPopover';
 import {
   DetectionReviewTableHeader,
   SequencesLegend,
-  DetectionReviewTableRow,
+  LocalizeDoneTable,
   DetectionReviewPagination,
 } from '@/components/sequences';
 import { useCameras } from '@/hooks/useCameras';
@@ -347,17 +347,11 @@ export default function DetectionReviewPage() {
 
           <SequencesLegend />
 
-          {/* Sequence List */}
-          <div className="divide-y divide-gray-200">
-            {filteredSequences.items.map(sequence => (
-              <DetectionReviewTableRow
-                key={sequence.id}
-                sequence={sequence}
-                annotation={annotationMap[sequence.id] || undefined}
-                onSequenceClick={handleSequenceClick}
-              />
-            ))}
-          </div>
+          <LocalizeDoneTable
+            sequences={filteredSequences.items}
+            annotations={annotationMap}
+            onSequenceClick={handleSequenceClick}
+          />
 
           <DetectionReviewPagination
             filteredSequences={filteredSequences}
