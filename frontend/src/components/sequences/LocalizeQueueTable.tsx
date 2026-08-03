@@ -45,8 +45,16 @@ export function LocalizeQueueTable({ items, onItemClick }: LocalizeQueueTablePro
             <ColumnHeader label="Source" tip="Platform the alert was imported from" />
             <ColumnHeader label="Azimuth" tip="Camera viewing direction, in degrees" />
             <ColumnHeader label="Smoke types" tip="Smoke types assigned during classification" />
-            <ColumnHeader label="Objects" tip="Smoke objects to localize in this alert" />
-            <ColumnHeader label="Frames" tip="Images to box across all smoke objects" />
+            <ColumnHeader
+              label="Objects"
+              tip="Smoke objects to localize in this alert"
+              align="right"
+            />
+            <ColumnHeader
+              label="Frames"
+              tip="Images to box across all smoke objects"
+              align="right"
+            />
           </tr>
         </thead>
         <tbody className="bg-white divide-y divide-gray-200">
