@@ -68,7 +68,7 @@ describe('ClassifyQueueTable', () => {
     expect(screen.getByText('Alert API the sequence was imported from')).toBeInTheDocument();
     expect(
       screen.getByText(
-        'Annotation reported by the alert platform (🔥 wildfire / 💨 other smoke / ○ other)'
+        'Annotation reported by the alert platform'
       )
     ).toBeInTheDocument();
   });
@@ -118,10 +118,10 @@ describe('ClassifyQueueTable', () => {
       />
     );
 
-    expect(screen.getByText('🔥 Wildfire')).toBeInTheDocument();
-    expect(screen.getByText('💨 Other Smoke')).toBeInTheDocument();
-    expect(screen.getByText('○ Other')).toBeInTheDocument();
-    expect(screen.getByText('🔥 Wildfire')).not.toHaveClass('rounded-full');
+    expect(screen.getByText('Wildfire')).toBeInTheDocument();
+    expect(screen.getByText('Other smoke')).toBeInTheDocument();
+    expect(screen.getByText('Other')).toBeInTheDocument();
+    expect(screen.getByText('Wildfire')).not.toHaveClass('rounded-full');
   });
 
   it('renders 0° when azimuth is zero', () => {

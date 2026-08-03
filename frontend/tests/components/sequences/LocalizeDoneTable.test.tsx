@@ -110,7 +110,9 @@ describe('LocalizeDoneTable', () => {
     );
 
     expect(screen.getByText('test-api')).toBeInTheDocument();
-    expect(screen.queryByText('🔥 Wildfire')).not.toBeInTheDocument();
+    expect(
+      screen.queryByTitle('Wildfire smoke — the alert platform classified this sequence as a wildfire')
+    ).not.toBeInTheDocument();
   });
 
   it('renders smoke types as plain text in their own column', () => {

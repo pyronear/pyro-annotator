@@ -45,8 +45,8 @@ const PRESET_LABELS: Record<string, string> = {
 };
 
 const WILDFIRE_LABELS: Record<string, string> = {
-  wildfire_smoke: 'Wildfire Smoke',
-  other_smoke: 'Other Smoke',
+  wildfire_smoke: 'Wildfire smoke',
+  other_smoke: 'Other smoke',
   other: 'Other',
 };
 

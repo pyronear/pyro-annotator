@@ -35,7 +35,7 @@ export function ClassifyQueueTable({ sequences, onSequenceClick }: ClassifyQueue
             <ColumnHeader label="Azimuth" tip="Camera viewing direction, in degrees" />
             <ColumnHeader
               label="Alert API annotation"
-              tip="Annotation reported by the alert platform (🔥 wildfire / 💨 other smoke / ○ other)"
+              tip="Annotation reported by the alert platform"
               align="right"
             />
           </tr>
