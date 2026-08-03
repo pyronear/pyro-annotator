@@ -71,6 +71,35 @@ describe('SequenceGroupsListPage', () => {
     expect(screen.getByRole('link', { name: /To label/ }).getAttribute('aria-current')).toBeNull();
   });
 
+  it('To label empty shows all-groups-labeled state, CTA to classify, and no table', async () => {
+    renderAt('/classify/groups');
+    await waitFor(() => expect(screen.getByText('All groups labeled')).toBeTruthy());
+    expect(screen.getByText(/every group is labeled/)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Start classifying' }).getAttribute('href')).toBe(
+      '/classify'
+    );
+    expect(screen.queryByRole('table')).toBeNull();
+  });
+
+  it('Labeled empty shows no-labeled-groups state with CTA to the To label tab', async () => {
+    renderAt('/classify/groups/labeled');
+    await waitFor(() => expect(screen.getByText('No labeled groups yet')).toBeTruthy());
+    expect(screen.getByText(/Groups you label land here/)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Label groups' }).getAttribute('href')).toBe(
+      '/classify/groups'
+    );
+    expect(screen.queryByRole('table')).toBeNull();
+  });
+
+  it('All empty shows no-groups state with no action', async () => {
+    renderAt('/classify/groups/all');
+    await waitFor(() => expect(screen.getByText('No groups yet')).toBeTruthy());
+    expect(screen.getByText(/only groups of 3 or more sequences/)).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Start classifying' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Label groups' })).toBeNull();
+    expect(screen.queryByRole('table')).toBeNull();
+  });
+
   it('renders the groups table when data is present', async () => {
     vi.mocked(apiClient.getSequenceGroups).mockResolvedValue({
       items: [group],
