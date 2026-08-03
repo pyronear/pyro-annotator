@@ -80,6 +80,18 @@ describe('SequenceGroupAnnotatePage', () => {
     const tip = screen.getByRole('tooltip');
     expect(within(tip).getByText(/propagates/)).toBeTruthy();
     expect(within(tip).getByText(/Eject/)).toBeTruthy();
+    // The callout it replaces was always-visible text, so the trigger must
+    // stay keyboard-reachable (focus opens the bubble via focus-within).
+    expect(tip.parentElement?.getAttribute('tabindex')).toBe('0');
+    expect(tip.className).toContain('group-focus-within:block');
+  });
+
+  it('smoke and false-positive labels render as neutral paper pills', async () => {
+    await renderGroup({ smoke_type: 'wildfire' });
+    const pill = screen.getByText('smoke · wildfire');
+    expect(pill.className).toContain('border-line');
+    expect(pill.className).toContain('bg-paper');
+    expect(pill.className).not.toContain('bg-orange-100');
   });
 
   it('renders the "to label" badge with ember tones', async () => {

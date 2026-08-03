@@ -337,11 +337,13 @@ export default function SequenceGroupAnnotatePage() {
             )}
             {/* Hover help replaces the old always-visible callout — same
                 bubble idiom as SequenceGroupsListPage.headerTip. */}
-            <span className="group relative flex-none">
+            {/* tabIndex + focus-within keep the workflow help reachable by
+                keyboard now that the always-visible callout is gone. */}
+            <span tabIndex={0} className="group relative flex-none">
               <Info className="w-4 h-4 text-haze hover:text-char cursor-help" />
               <span
                 role="tooltip"
-                className="pointer-events-none absolute left-0 top-full z-40 mt-1 hidden w-max max-w-[20rem] whitespace-normal rounded bg-char px-2.5 py-2 font-body text-xs font-normal text-white group-hover:block"
+                className="pointer-events-none absolute left-0 top-full z-40 mt-1 hidden w-max max-w-[20rem] whitespace-normal rounded bg-char px-2.5 py-2 font-body text-xs font-normal text-white group-hover:block group-focus-within:block"
               >
                 <span className="block">
                   <span className="font-semibold">Label</span> — open any sequence below and label

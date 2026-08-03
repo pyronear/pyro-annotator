@@ -85,6 +85,8 @@ Keeps the fixed-past-sidebar idiom and the root's `pt-20` reservation.
 
 ## Verification
 
-- `npm run quality` passes; full vitest suite stays green (686 baseline).
+- Type-check, Prettier, and the full vitest suite stay green (686 baseline).
+  (`npm run lint` fails repo-wide on 2 pre-existing `no-console` warnings in
+  `DetectionSequenceAnnotatePage.tsx` — untouched by this work.)
 - Before/after screenshot of the page via the playwright recipe to eyeball the
   restyle.
