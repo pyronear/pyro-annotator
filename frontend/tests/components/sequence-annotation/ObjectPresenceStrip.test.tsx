@@ -26,6 +26,8 @@ describe('ObjectPresenceStrip', () => {
     expect(container).toBeEmptyDOMElement();
     expect(screen.queryByText('Object timeline')).not.toBeInTheDocument();
     expect(screen.queryByTestId('presence-axis')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('presence-axis-line')).not.toBeInTheDocument();
+    expect(screen.queryByText('Frame')).not.toBeInTheDocument();
   });
 
   it('renders nothing when there are no objects', () => {
@@ -113,7 +115,7 @@ describe('ObjectPresenceStrip', () => {
     expect(screen.getByTestId('presence-segment-2-2')).toHaveStyle({ backgroundColor: '#a855f7' });
   });
 
-  it('renders a frame-number axis labeling the first and last frame', () => {
+  it('renders a real axis: hairline, tick marks + numbers at the first/last frame, and a "Frame" axis label', () => {
     // 12 distinct frames, one per object timestamp — enough to exercise the
     // axis's adaptive intermediate-tick step, not just the always-shown ends.
     const frames = Array.from(
@@ -131,12 +133,34 @@ describe('ObjectPresenceStrip', () => {
     );
 
     expect(screen.getByTestId('presence-axis')).toBeInTheDocument();
+
+    // The axis line is a recessive hairline (the `line` token), not styled
+    // with any object color.
+    const axisLine = screen.getByTestId('presence-axis-line');
+    expect(axisLine).toHaveClass('bg-line');
+    expect(axisLine).not.toHaveAttribute('style');
+
     // First frame is always ticked, labeled "1".
-    expect(screen.getByTestId('presence-axis-tick-0')).toHaveTextContent('1');
+    const tick0 = screen.getByTestId('presence-axis-tick-0');
+    expect(tick0).toHaveTextContent('1');
     // Last frame (index 11) is always ticked, labeled "12".
-    expect(screen.getByTestId('presence-axis-tick-11')).toHaveTextContent('12');
+    const tick11 = screen.getByTestId('presence-axis-tick-11');
+    expect(tick11).toHaveTextContent('12');
+    // Tick labels wear a muted text token, never an inline (object) color —
+    // text always wears text tokens, per DESIGN.md.
+    expect(tick0).toHaveClass('text-haze');
+    expect(tick0).not.toHaveAttribute('style');
+    expect(tick11).toHaveClass('text-haze');
+    expect(tick11).not.toHaveAttribute('style');
+
     // Not every one of the 12 columns gets a label — intermediate ticks are
     // spaced out, not one per frame.
     expect(screen.queryAllByText(/^\d+$/).length).toBeLessThan(frames.length);
+
+    // The "Frame" axis label renders once, muted, no object color.
+    const axisLabel = screen.getByTestId('presence-axis-label');
+    expect(axisLabel).toHaveTextContent('Frame');
+    expect(axisLabel).toHaveClass('text-haze');
+    expect(axisLabel).not.toHaveAttribute('style');
   });
 });

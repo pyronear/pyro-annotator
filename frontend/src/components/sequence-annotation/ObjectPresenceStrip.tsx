@@ -3,10 +3,12 @@
  * (ClassifyAlertPage). Temporal context + color legend, not an editor: one
  * thin row per object — color swatch + label + a presence bar across the
  * union of the alert's frame timestamps, filled where that object's lane
- * has a detection at that timestamp, gap otherwise — plus a shared
- * frame-number axis beneath the rows, numbering the same columns 1..N in
- * chronological order. Pure presentational — the union is computed from
- * props, no data fetching or app state.
+ * has a detection at that timestamp, gap otherwise — plus a real axis
+ * beneath the rows: a hairline axis line, tick marks + frame numbers at the
+ * same adaptive columns, and a "Frame" axis label. The axis is deliberately
+ * recessive (all `line`/`haze` tokens, never an object color) so the
+ * presence bars stay the dominant layer. Pure presentational — the union is
+ * computed from props, no data fetching or app state.
  *
  * Renders nothing for fewer than 2 objects (single-object alerts have no
  * legend to disambiguate).
@@ -106,22 +108,49 @@ export const ObjectPresenceStrip: React.FC<ObjectPresenceStripProps> = ({ object
         );
       })}
 
-      {/* Frame-number axis — same column layout as the object rows above. */}
-      <div data-testid="presence-axis" className="flex items-center gap-2">
-        {LEADING_SPACER}
-        <div className="flex flex-1 gap-px">
-          {frameUnion.map((timestamp, frameIndex) => (
-            <div key={timestamp} className="flex-1 text-center">
-              {tickIndices.has(frameIndex) && (
-                <span
-                  data-testid={`presence-axis-tick-${frameIndex}`}
-                  className="font-data text-[10px] leading-none text-haze"
-                >
-                  {frameIndex + 1}
-                </span>
-              )}
-            </div>
-          ))}
+      {/* Frame axis — hairline + ticks + numbers share the object rows'
+          column layout; the "Frame" caption centers under the plot area
+          only (excludes the swatch/label spacer, standard axis-label
+          placement). Every stroke and label is a recessive line/haze
+          token — never an object color — so the presence bars above stay
+          the dominant layer. */}
+      <div data-testid="presence-axis" className="pt-1">
+        <div className="flex items-center gap-2">
+          {LEADING_SPACER}
+          <div
+            data-testid="presence-axis-line"
+            className="h-px flex-1 bg-line"
+            aria-hidden="true"
+          />
+        </div>
+        <div className="flex items-start gap-2 mt-0.5">
+          {LEADING_SPACER}
+          <div className="flex flex-1">
+            {frameUnion.map((timestamp, frameIndex) => (
+              <div key={timestamp} className="flex flex-1 flex-col items-center">
+                {tickIndices.has(frameIndex) && (
+                  <>
+                    <span className="h-[3px] w-px bg-line" aria-hidden="true" />
+                    <span
+                      data-testid={`presence-axis-tick-${frameIndex}`}
+                      className="mt-0.5 font-data text-[10px] leading-none text-haze"
+                    >
+                      {frameIndex + 1}
+                    </span>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 mt-1">
+          {LEADING_SPACER}
+          <div
+            data-testid="presence-axis-label"
+            className="flex-1 text-center font-data text-[9px] leading-none text-haze"
+          >
+            Frame
+          </div>
         </div>
       </div>
     </div>
