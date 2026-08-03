@@ -24,24 +24,27 @@ import { calculatePresetDateRange } from '@/components/filters/shared/dateRangeU
 import { hasActiveUserFilters } from '@/utils/filterHelpers';
 import { localizeDetail } from '@/utils/routes';
 
+// Default filter contract for /localize/done — imported by its defaults test.
+// eslint-disable-next-line react-refresh/only-export-components
+export const detectionReviewDefaultState = {
+  ...createDefaultFilterState('annotated'),
+  filters: {
+    ...createDefaultFilterState('annotated').filters,
+    detection_annotation_completion: 'complete' as const,
+    include_detection_stats: true,
+    processing_stage: 'annotated' as const, // Only show sequences that have completed sequence-level annotation
+    is_unsure: false, // Exclude unsure sequences from detection annotation workflow
+    // Verification is for localized boxes (smoke or missed smoke); auto-final
+    // FP lanes have nothing to verify (their classification is reviewed in
+    // Sequences > Review). Unsure lanes resolve through sequence review.
+    needs_localization: true,
+  },
+};
+
 export default function DetectionReviewPage() {
   const navigate = useNavigate();
 
-  // Create default state specific to detection review page
-  const defaultState = {
-    ...createDefaultFilterState('annotated'),
-    filters: {
-      ...createDefaultFilterState('annotated').filters,
-      detection_annotation_completion: 'complete' as const,
-      include_detection_stats: true,
-      processing_stage: 'annotated' as const, // Only show sequences that have completed sequence-level annotation
-      is_unsure: false, // Exclude unsure sequences from detection annotation workflow
-      // Verification is for localized boxes (smoke or missed smoke); auto-final
-      // FP lanes have nothing to verify (their classification is reviewed in
-      // Sequences > Review). Unsure lanes resolve through sequence review.
-      needs_localization: true,
-    },
-  };
+  const defaultState = detectionReviewDefaultState;
 
   // Use persisted filters hook
   const {
