@@ -2175,3 +2175,69 @@ async def test_list_sequences_filter_by_platform_alert_id(
     items = resp.json()["items"]
     assert len(items) == 2
     assert {item["platform_alert_id"] for item in items} == {170_000}
+
+
+@pytest.mark.asyncio
+async def test_needs_localization_filter(
+    authenticated_client: AsyncClient, async_session
+):
+    from datetime import UTC, datetime
+
+    from app.models import (
+        Sequence,
+        SequenceAnnotation,
+        SequenceAnnotationProcessingStage,
+        SourceApi,
+    )
+
+    now = datetime(2026, 8, 3, 12, 0, tzinfo=UTC)
+
+    async def make(alert_api_id, *, has_smoke, has_missed_smoke, is_unsure):
+        seq = Sequence(
+            source_api=SourceApi.PYRONEAR_FRENCH_API,
+            alert_api_id=alert_api_id,
+            platform_alert_id=alert_api_id,
+            created_at=now,
+            recorded_at=now,
+            last_seen_at=now,
+            camera_name="cam",
+            camera_id=1,
+            lat=0.0,
+            lon=0.0,
+            organisation_name="org",
+            organisation_id=1,
+        )
+        async_session.add(seq)
+        await async_session.flush()
+        async_session.add(
+            SequenceAnnotation(
+                sequence_id=seq.id,
+                has_smoke=has_smoke,
+                has_false_positives=not has_smoke,
+                has_missed_smoke=has_missed_smoke,
+                is_unsure=is_unsure,
+                annotation={"sequences_bbox": []},
+                processing_stage=SequenceAnnotationProcessingStage.ANNOTATED,
+                created_at=now,
+            )
+        )
+        await async_session.commit()
+        return seq
+
+    smoke = await make(9001, has_smoke=True, has_missed_smoke=False, is_unsure=False)
+    missed = await make(9002, has_smoke=False, has_missed_smoke=True, is_unsure=False)
+    fp = await make(9003, has_smoke=False, has_missed_smoke=False, is_unsure=False)
+    unsure = await make(9004, has_smoke=True, has_missed_smoke=False, is_unsure=True)
+
+    resp = await authenticated_client.get(
+        "/sequences", params={"needs_localization": True}
+    )
+    assert resp.status_code == 200
+    ids = {item["id"] for item in resp.json()["items"]}
+    assert ids == {smoke.id, missed.id}
+
+    resp = await authenticated_client.get(
+        "/sequences", params={"needs_localization": False}
+    )
+    ids = {item["id"] for item in resp.json()["items"]}
+    assert ids == {fp.id, unsure.id}

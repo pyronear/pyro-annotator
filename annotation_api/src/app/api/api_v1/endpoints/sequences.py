@@ -204,6 +204,13 @@ async def list_sequences(
     is_unsure: Optional[bool] = Query(
         None, description="Filter by sequence annotation unsure flag"
     ),
+    needs_localization: Optional[bool] = Query(
+        None,
+        description=(
+            "Filter by the localization rule: (has_smoke OR has_missed_smoke) "
+            "AND NOT is_unsure"
+        ),
+    ),
     recorded_at_gte: Optional[datetime] = Query(
         None, description="Filter by recorded_at >= this date"
     ),
@@ -250,6 +257,7 @@ async def list_sequences(
     - **false_positive_types**: Filter by specific false positive types (OR logic)
     - **smoke_types**: Filter by specific smoke types (OR logic)
     - **is_unsure**: Filter by sequence annotation unsure flag
+    - **needs_localization**: Filter by the localization rule (smoke or missed smoke, not unsure)
     - **recorded_at_gte**: Filter by recorded_at >= this date
     - **recorded_at_lte**: Filter by recorded_at <= this date
     - **detection_annotation_completion**: Filter by detection annotation completion status ('complete', 'incomplete', 'all')
@@ -270,6 +278,7 @@ async def list_sequences(
         or false_positive_types is not None
         or smoke_types is not None
         or is_unsure is not None
+        or needs_localization is not None
     )
     needs_detection_annotation_join = (
         detection_annotation_completion != "all" or include_detection_stats
@@ -344,6 +353,10 @@ async def list_sequences(
 
     if has_smoke is not None:
         query = query.where(SequenceAnnotation.has_smoke == has_smoke)
+
+    if needs_localization is not None:
+        clause = needs_localization_clause(SequenceAnnotation)
+        query = query.where(clause if needs_localization else ~clause)
 
     if has_false_positives is not None:
         query = query.where(
