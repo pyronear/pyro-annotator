@@ -23,7 +23,7 @@ export function ClassifyQueueTable({ sequences, onSequenceClick }: ClassifyQueue
             <th className={HEADER_CLASSES}>Camera</th>
             <th className={HEADER_CLASSES}>Organisation</th>
             <th className={HEADER_CLASSES}>Recorded</th>
-            <th className={HEADER_CLASSES}>Platform annotation</th>
+            <th className={HEADER_CLASSES}>Alert API annotation</th>
             <th className={HEADER_CLASSES}>Source</th>
             <th className={HEADER_CLASSES}>Azimuth</th>
           </tr>

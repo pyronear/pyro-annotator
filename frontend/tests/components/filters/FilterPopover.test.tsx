@@ -56,7 +56,7 @@ describe('FilterPopover', () => {
     // 2 always-in-More widgets + model accuracy
     fireEvent.click(screen.getByRole('button', { name: /more filters \(3\)/i }));
     expect(screen.getByLabelText('Source API')).toBeInTheDocument();
-    expect(screen.getByLabelText('Wildfire Classification')).toBeInTheDocument();
+    expect(screen.getByLabelText('Alert API annotation')).toBeInTheDocument();
     expect(screen.getByText('Model Accuracy')).toBeInTheDocument();
     // Not enabled for this page:
     expect(screen.queryByLabelText('Certainty')).not.toBeInTheDocument();
