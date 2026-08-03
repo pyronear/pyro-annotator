@@ -21,6 +21,7 @@ async def _lane(
     platform_alert_id,
     stage=None,
     has_smoke=False,
+    has_missed_smoke=False,
     is_unsure=False,
     source_api=SourceApi.PYRONEAR_FRENCH_API,
 ):
@@ -47,7 +48,7 @@ async def _lane(
                 sequence_id=seq.id,
                 has_smoke=has_smoke,
                 has_false_positives=not has_smoke,
-                has_missed_smoke=False,
+                has_missed_smoke=has_missed_smoke,
                 is_unsure=is_unsure,
                 annotation={"sequences_bbox": []},
                 processing_stage=stage,
@@ -242,3 +243,32 @@ async def test_stale_but_completed_lane_is_not_reenqueued(async_session):
     await async_session.commit()
 
     assert await schedule_pending_auto_annotate(async_session) == []
+
+
+@pytest.mark.asyncio
+async def test_missed_smoke_only_lane_is_enqueued(async_session):
+    lane = await _lane(
+        async_session,
+        alert_api_id=900,
+        platform_alert_id=900,
+        stage=Stage.SEQ_ANNOTATION_DONE,
+        has_smoke=False,
+        has_missed_smoke=True,
+    )
+    await schedule_pending_auto_annotate(async_session)
+    assert await _enqueued_ids(async_session) == {lane.id}
+
+
+@pytest.mark.asyncio
+async def test_unsure_missed_smoke_lane_is_not_enqueued(async_session):
+    await _lane(
+        async_session,
+        alert_api_id=901,
+        platform_alert_id=901,
+        stage=Stage.SEQ_ANNOTATION_DONE,
+        has_smoke=False,
+        has_missed_smoke=True,
+        is_unsure=True,
+    )
+    await schedule_pending_auto_annotate(async_session)
+    assert await _enqueued_ids(async_session) == set()
