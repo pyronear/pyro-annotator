@@ -216,13 +216,11 @@ function MemberCard({
             )}
           </div>
         </div>
-        <div className="px-2 py-1 font-data text-detail text-char flex items-center justify-between">
-          <span>
-            <span className="font-medium">seq #{member.sequence_id}</span>
-            <span className="text-haze" title={new Date(member.recorded_at).toLocaleString()}>
-              {' · '}
-              {formatRelativeTime(member.recorded_at)}
-            </span>
+        <div className="px-2 py-1 font-data text-detail text-haze flex items-center justify-between">
+          {/* Full timestamp like the queue tables — the sequence id means
+              nothing to annotators; relative time lives in the tooltip. */}
+          <span title={formatRelativeTime(member.recorded_at)}>
+            {new Date(member.recorded_at).toLocaleString()}
           </span>
           {memberIsAnnotated(member) ? (
             <CheckCircle className="w-3 h-3 text-pine" aria-label="annotated" />

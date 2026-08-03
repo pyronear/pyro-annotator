@@ -58,9 +58,10 @@ Keeps the fixed-past-sidebar idiom and the root's `pt-20` reservation.
   image grid reads as a contact sheet); annotated members keep `opacity-60`.
 - Image wells `bg-ash`, center divider `border-line`, spinners `text-haze`,
   card-link hover `hover:bg-ash`.
-- Footer: `seq #id` and relative time in `font-data text-detail` (counts and
-  timestamps are always mono), time in `text-haze`; annotated check
-  `text-pine`; pending clock `text-haze`.
+- Footer: the full recorded timestamp (`toLocaleString()`, the queue-table
+  convention) in `font-data text-detail text-haze` — the sequence id is
+  dropped (meaningless to annotators); relative time moves to the hover
+  title; annotated check `text-pine`; pending clock `text-haze`.
 - Eject ✕: paper/hairline at rest; hover is destructive-signal —
   `hover:bg-signal-soft hover:border-signal hover:text-signal`. The
   `window.confirm` flow is unchanged.

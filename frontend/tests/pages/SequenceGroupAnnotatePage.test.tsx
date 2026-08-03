@@ -102,16 +102,20 @@ describe('SequenceGroupAnnotatePage', () => {
     expect(screen.getByRole('button', { name: /Unvalidate/ }).className).toContain('border-line');
   });
 
-  it('member cards use the hairline card recipe with a mono footer', async () => {
+  it('member cards use the hairline card recipe with a mono timestamp footer', async () => {
     await renderGroup();
-    const card = screen.getByText('seq #101').closest('a')?.parentElement;
+    const recorded = new Date(member.recorded_at).toLocaleString();
+    const card = screen.getByText(recorded).closest('a')?.parentElement;
     // Square corners on member cards — deliberate deviation from the card
     // recipe so dense image grids read as a contact sheet.
     expect(card?.className).not.toContain('rounded');
     expect(card?.className).toContain('border-line');
     expect(card?.className).not.toContain('border-2');
-    const footer = screen.getByText('seq #101').closest('div');
+    const footer = screen.getByText(recorded).closest('div');
     expect(footer?.className).toContain('font-data');
+    // The sequence id means nothing to annotators — footer shows the
+    // full timestamp instead, like the queue tables.
+    expect(screen.queryByText(/seq #/)).toBeNull();
   });
 
   it('card-size segmented control uses ash track with paper active pill', async () => {
