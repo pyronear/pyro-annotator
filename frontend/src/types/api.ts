@@ -235,6 +235,10 @@ export interface SequenceGroupListItem {
   false_positive_type: FalsePositiveType | null;
   is_unsure: boolean;
   is_validated: boolean;
+  validated_at: string | null;
+  // Username of the validating user; null for legacy validations
+  // (pre-attribution) or deleted users.
+  validated_by_username: string | null;
   labeled_at: string | null;
   created_at: string;
   member_count: number;
@@ -257,6 +261,8 @@ export interface SequenceGroup {
   false_positive_type: FalsePositiveType | null;
   is_unsure: boolean;
   is_validated: boolean;
+  validated_at: string | null;
+  validated_by_user_id: number | null;
   labeled_at: string | null;
   labeled_by_user_id: number | null;
   created_at: string;

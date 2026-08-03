@@ -88,6 +88,10 @@ class SequenceGroupListItem(BaseModel):
     false_positive_type: Optional[FalsePositiveType]
     is_unsure: bool
     is_validated: bool
+    validated_at: Optional[datetime]
+    # Username of the validating user, LEFT-JOINed in the list query.
+    # None for legacy validations (pre-attribution) or deleted users.
+    validated_by_username: Optional[str]
     labeled_at: Optional[datetime]
     created_at: datetime
     member_count: int
@@ -123,6 +127,8 @@ class SequenceGroupRead(BaseModel):
     false_positive_type: Optional[FalsePositiveType]
     is_unsure: bool
     is_validated: bool
+    validated_at: Optional[datetime]
+    validated_by_user_id: Optional[int]
     labeled_at: Optional[datetime]
     labeled_by_user_id: Optional[int]
     created_at: datetime
