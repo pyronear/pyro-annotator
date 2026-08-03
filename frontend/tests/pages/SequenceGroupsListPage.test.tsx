@@ -151,10 +151,30 @@ describe('SequenceGroupsListPage', () => {
     });
     renderAt('/classify/groups');
     await waitFor(() => expect(screen.getByText('CAM_07')).toBeTruthy());
-    // One tooltip per labeled column (Camera, Azimuth, Sequences, Label, Reviewed, Created)
-    expect(within(screen.getByRole('table')).getAllByRole('tooltip')).toHaveLength(6);
+    // One tooltip per labeled column (Camera, Azimuth, Sequences, Label,
+    // Reviewed, Created) plus one on the row's "to label" badge.
+    expect(within(screen.getByRole('table')).getAllByRole('tooltip')).toHaveLength(7);
     expect(screen.getByText('Number of sequences in the group')).toBeTruthy();
     expect(screen.getByText(/propagates to every member/)).toBeTruthy();
     expect(screen.getByText('Camera viewing direction, in degrees')).toBeTruthy();
+    // Reviewed means the grouping was confirmed, not the label — a group can
+    // be validated while still unlabeled.
+    expect(screen.getByText(/confirmed the group's sequences show the same object/)).toBeTruthy();
+  });
+
+  it('the "to label" badge explains how to get the group labeled, per validation state', async () => {
+    // Propagation only fires for validated groups, so the unvalidated badge
+    // must lead with the missing step instead of promising propagation.
+    vi.mocked(apiClient.getSequenceGroups).mockResolvedValue({
+      items: [group, { ...group, id: 8, camera_name: 'CAM_08', is_validated: true }],
+      page: 1,
+      pages: 1,
+      size: 50,
+      total: 2,
+    });
+    renderAt('/classify/groups');
+    await waitFor(() => expect(screen.getAllByText('to label')).toHaveLength(2));
+    expect(screen.getByText(/^Classify any sequence in this group/)).toBeTruthy();
+    expect(screen.getByText(/^Validate the group, then classify any sequence/)).toBeTruthy();
   });
 });
