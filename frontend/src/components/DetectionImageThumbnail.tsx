@@ -38,11 +38,11 @@ export default function DetectionImageThumbnail({
   }
 
   return (
-    <div className={`overflow-hidden rounded border border-gray-200 ${className}`}>
+    <div className={`overflow-hidden rounded ${className}`}>
       <img
         src={imageData.url}
         alt="Detection preview"
-        className="w-full h-full object-contain"
+        className="w-full h-full object-cover"
         onError={e => {
           const target = e.target as HTMLImageElement;
           target.style.display = 'none';
