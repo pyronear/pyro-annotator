@@ -3,7 +3,7 @@
 import logging
 from datetime import datetime, UTC
 from enum import Enum
-from typing import List, Optional, Union
+from typing import List, Optional, Tuple, Union
 
 from fastapi import (
     APIRouter,
@@ -591,13 +591,33 @@ async def get_sequence_annotation(
     return SequenceAnnotationRead(**annotation_dict)
 
 
-@router.patch("/{annotation_id}")
-async def update_sequence_annotation(
-    annotation_id: int = Path(..., ge=0),
-    payload: SequenceAnnotationUpdate = Body(...),
-    annotations: SequenceAnnotationCRUD = Depends(get_sequence_annotation_crud),
-    current_user: User = Depends(get_current_user),
-) -> SequenceAnnotationRead:
+async def apply_annotation_update(
+    annotation_id: int,
+    payload: SequenceAnnotationUpdate,
+    annotations: SequenceAnnotationCRUD,
+    session: AsyncSession,
+    user: User,
+    *,
+    commit: bool = True,
+) -> Tuple[SequenceAnnotation, bool]:
+    """Apply a single-lane sequence annotation update.
+
+    Extracted from `update_sequence_annotation` (the PATCH endpoint) so a
+    multi-lane classify-submit endpoint can apply several lane updates and
+    commit once. Covers: get existing (strict) -> target computation -> exit
+    guard -> auto-generation trigger -> validate_detection_ids -> was/will-be
+    -annotated computation -> CRUD update.
+
+    Post-commit effects (`auto_create_detection_annotations`,
+    `_propagate_to_group_if_validated`) are NOT run here — the caller decides
+    whether to run them, using the returned `run_auto_create` flag.
+
+    With commit=False, the update is flushed but not committed; the caller
+    owns the transaction (commit/rollback).
+
+    Raises HTTPException: 404 if annotation_id doesn't exist, 422 for the
+    localization exit guard or for invalid detection_ids.
+    """
     # Get existing annotation first
     existing = await annotations.get(annotation_id, strict=True)
 
@@ -638,7 +658,7 @@ async def update_sequence_annotation(
         )
     ):
         unlocalized = (
-            await annotations.session.execute(
+            await session.execute(
                 select(func.count(Detection.id))
                 .outerjoin(
                     DetectionAnnotation,
@@ -671,7 +691,7 @@ async def update_sequence_annotation(
         )
         generated_annotation = await auto_generate_annotation(
             sequence_id=existing.sequence_id,
-            session=annotations.session,
+            session=session,
             confidence_threshold=payload.confidence_threshold or 0.0,
             iou_threshold=payload.iou_threshold or 0.0,
             min_cluster_size=payload.min_cluster_size or 1,
@@ -690,7 +710,7 @@ async def update_sequence_annotation(
 
     # Validate detection_ids if annotation is being updated
     if payload.annotation is not None:
-        await validate_detection_ids(payload.annotation, annotations.session)
+        await validate_detection_ids(payload.annotation, session)
 
     # Check if processing_stage is being updated to "annotated" for auto-creation logic
     was_annotated_before = (
@@ -704,7 +724,7 @@ async def update_sequence_annotation(
 
     # Use CRUD method which handles contribution tracking with proper conditional logic
     updated_annotation = await annotations.update(
-        annotation_id, payload, current_user.id
+        annotation_id, payload, user.id, commit=commit
     )
 
     if not updated_annotation:
@@ -713,13 +733,37 @@ async def update_sequence_annotation(
             detail=f"Sequence annotation with id {annotation_id} not found",
         )
 
-    # Auto-create detection annotations if processing_stage is newly set to "annotated" and not unsure
-    # Skip detection annotation creation for unsure sequences
-    if (
+    # Auto-create detection annotations if processing_stage is newly set to
+    # "annotated" and not unsure. Skip for unsure sequences. The caller
+    # decides whether/when to actually run auto-creation.
+    run_auto_create = (
         not was_annotated_before
         and will_be_annotated_after
         and not updated_annotation.is_unsure
-    ):
+    )
+
+    return updated_annotation, run_auto_create
+
+
+@router.patch("/{annotation_id}")
+async def update_sequence_annotation(
+    annotation_id: int = Path(..., ge=0),
+    payload: SequenceAnnotationUpdate = Body(...),
+    annotations: SequenceAnnotationCRUD = Depends(get_sequence_annotation_crud),
+    current_user: User = Depends(get_current_user),
+) -> SequenceAnnotationRead:
+    updated_annotation, run_auto_create = await apply_annotation_update(
+        annotation_id,
+        payload,
+        annotations,
+        annotations.session,
+        current_user,
+        commit=True,
+    )
+
+    # Auto-create detection annotations if processing_stage is newly set to "annotated" and not unsure
+    # Skip detection annotation creation for unsure sequences
+    if run_auto_create:
         await auto_create_detection_annotations(
             sequence_id=updated_annotation.sequence_id,
             has_smoke=updated_annotation.has_smoke,
