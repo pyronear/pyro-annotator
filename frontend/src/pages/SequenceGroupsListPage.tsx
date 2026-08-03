@@ -51,7 +51,7 @@ const FILTERS: {
 
 // Same hover-tooltip bubble as components/sequences/ColumnHeader.tsx, kept
 // local because these headers are sortable and use this table's padding.
-// Also reused by the filter tabs above the table.
+// Also reused by the filter tabs above the table and the rows' "to label" badge.
 function headerTip(tip: string, align: 'left' | 'right' = 'left') {
   return (
     <span
@@ -338,7 +338,10 @@ export default function SequenceGroupsListPage({
                     label="Label"
                     tip="Group label — propagates to every member once the group is validated"
                   />
-                  <PlainHeader label="Reviewed" tip="Whether a human validated the group's label" />
+                  <PlainHeader
+                    label="Reviewed"
+                    tip="Whether a human confirmed the group's sequences show the same object — the label propagates once confirmed"
+                  />
                   <SortableHeader
                     column="created_at"
                     label="Created"
@@ -388,8 +391,17 @@ export default function SequenceGroupsListPage({
                           false positive · {g.false_positive_type.replace(/_/g, ' ')}
                         </span>
                       ) : (
-                        <span className="inline-block rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-semibold text-yellow-800">
-                          to label
+                        <span className="group relative inline-block">
+                          <span className="inline-block rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-semibold text-yellow-800">
+                            to label
+                          </span>
+                          {/* Propagation only fires for validated groups, so
+                              tell unvalidated ones to validate first. */}
+                          {headerTip(
+                            g.is_validated
+                              ? 'Classify any sequence in this group — its label will propagate to all members'
+                              : 'Validate the group, then classify any sequence — its label will propagate to all members'
+                          )}
                         </span>
                       )}
                     </td>
