@@ -101,4 +101,33 @@ describe('SequenceGroupAnnotatePage', () => {
     expect(pill?.className).toContain('text-pine');
     expect(screen.getByRole('button', { name: /Unvalidate/ }).className).toContain('border-line');
   });
+
+  it('member cards use the hairline card recipe with a mono footer', async () => {
+    await renderGroup();
+    const card = screen.getByText('seq #101').closest('a')?.parentElement;
+    expect(card?.className).toContain('rounded-card');
+    expect(card?.className).toContain('border-line');
+    expect(card?.className).not.toContain('border-2');
+    const footer = screen.getByText('seq #101').closest('div');
+    expect(footer?.className).toContain('font-data');
+  });
+
+  it('card-size segmented control uses ash track with paper active pill', async () => {
+    await renderGroup();
+    const active = screen.getByRole('button', { name: 'M' });
+    expect(active.getAttribute('aria-pressed')).toBe('true');
+    expect(active.className).toContain('bg-paper');
+    expect(screen.getByRole('button', { name: 'S' }).className).toContain('text-haze');
+  });
+
+  it('empty groups get the dashed hairline empty state', async () => {
+    // With no members the title falls back to `camera #3 · 120°`, so this
+    // test can't go through renderGroup (which waits for CAM_07).
+    vi.mocked(apiClient.getSequenceGroup).mockResolvedValue({ ...baseGroup, members: [] });
+    renderAt('/classify/groups/7');
+    await waitFor(() => expect(screen.getByText('This group has no members.')).toBeTruthy());
+    const empty = screen.getByText('This group has no members.');
+    expect(empty.className).toContain('border-line');
+    expect(empty.className).toContain('text-haze');
+  });
 });

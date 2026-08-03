@@ -115,7 +115,7 @@ function MemberCard({
 
   return (
     <div
-      className={`relative rounded-lg border-2 border-gray-300 bg-white overflow-hidden ${
+      className={`relative rounded-card border border-line bg-paper overflow-hidden ${
         memberIsAnnotated(member) ? 'opacity-60' : ''
       }`}
     >
@@ -135,19 +135,19 @@ function MemberCard({
           }
         }}
         disabled={removeMutation.isPending}
-        className="absolute top-2 right-2 z-20 p-1 rounded-full bg-white/90 border border-gray-300 hover:bg-red-50 hover:border-red-400 hover:text-red-600 disabled:opacity-50"
+        className="absolute top-2 right-2 z-20 p-1 rounded-full bg-paper/90 border border-line text-haze hover:bg-signal-soft hover:border-signal hover:text-signal disabled:opacity-50"
       >
         <X className="w-4 h-4" />
       </button>
 
       <Link
         to={classifyDetail(member.sequence_id)}
-        className="block hover:bg-blue-50"
+        className="block hover:bg-ash"
         title="Open the per-sequence annotation page"
       >
         <div className="grid grid-cols-2">
           {/* Full frame with bbox overlays. */}
-          <div className="relative aspect-video bg-gray-100 overflow-hidden flex items-center justify-center border-r border-gray-200">
+          <div className="relative aspect-video bg-ash overflow-hidden flex items-center justify-center border-r border-line">
             {image?.url ? (
               <>
                 <img
@@ -193,18 +193,18 @@ function MemberCard({
                 )}
               </>
             ) : (
-              <Loader2 className="animate-spin w-5 h-5 text-gray-400" />
+              <Loader2 className="animate-spin w-5 h-5 text-haze" />
             )}
           </div>
           {/* Zoomed crop so small objects stay legible. Falls back to the
               plain frame when neither a prediction nor the group region
               yields a valid box to zoom into. */}
-          <div className="relative aspect-video bg-gray-100 overflow-hidden flex items-center justify-center">
+          <div className="relative aspect-video bg-ash overflow-hidden flex items-center justify-center">
             {image?.url ? (
               isValidBox(cropBox) ? (
                 <>
                   <BboxCrop url={image.url} box={cropBox} />
-                  <span className="absolute bottom-1 right-1 z-10 px-1 rounded bg-black/50 text-white text-[10px] leading-tight pointer-events-none">
+                  <span className="absolute bottom-1 right-1 z-10 px-1 rounded bg-char/70 text-white text-[10px] leading-tight pointer-events-none">
                     zoom
                   </span>
                 </>
@@ -212,22 +212,22 @@ function MemberCard({
                 <img src={image.url} alt="" className="w-full h-full object-cover" />
               )
             ) : (
-              <Loader2 className="animate-spin w-5 h-5 text-gray-400" />
+              <Loader2 className="animate-spin w-5 h-5 text-haze" />
             )}
           </div>
         </div>
-        <div className="px-2 py-1 text-xs text-gray-700 flex items-center justify-between">
+        <div className="px-2 py-1 font-data text-detail text-char flex items-center justify-between">
           <span>
             <span className="font-medium">seq #{member.sequence_id}</span>
-            <span className="text-gray-500" title={new Date(member.recorded_at).toLocaleString()}>
+            <span className="text-haze" title={new Date(member.recorded_at).toLocaleString()}>
               {' · '}
               {formatRelativeTime(member.recorded_at)}
             </span>
           </span>
           {memberIsAnnotated(member) ? (
-            <CheckCircle className="w-3 h-3 text-green-500" aria-label="annotated" />
+            <CheckCircle className="w-3 h-3 text-pine" aria-label="annotated" />
           ) : (
-            <Clock className="w-3 h-3 text-orange-400" />
+            <Clock className="w-3 h-3 text-haze" />
           )}
         </div>
       </Link>
@@ -285,14 +285,14 @@ export default function SequenceGroupAnnotatePage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-96 text-gray-500">
-        <Loader2 className="animate-spin w-6 h-6 mr-2" /> Loading group…
+      <div className="flex items-center justify-center h-96 font-body text-haze">
+        <Loader2 className="animate-spin w-6 h-6 mr-2 text-ember" /> Loading group…
       </div>
     );
   }
   if (error || !group) {
     return (
-      <div className="flex items-center justify-center h-96 text-red-600">
+      <div className="flex items-center justify-center h-96 font-body text-signal">
         <AlertCircle className="w-6 h-6 mr-2" />
         Failed to load group {groupId}
       </div>
@@ -420,7 +420,7 @@ export default function SequenceGroupAnnotatePage() {
       </div>
 
       <div>
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-x-5 gap-y-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs text-gray-600">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-x-5 gap-y-1 rounded-lg border border-line bg-paper px-3 py-1.5 font-body text-detail text-haze">
           <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
             <span className="inline-flex items-center gap-1.5">
               <span className="inline-block w-4 h-3 border-2 border-red-500" />
@@ -434,7 +434,7 @@ export default function SequenceGroupAnnotatePage() {
           </div>
           <div className="inline-flex items-center gap-1.5">
             <span>Card size</span>
-            <div className="inline-flex rounded-md bg-gray-200 p-0.5 gap-0.5">
+            <div className="inline-flex rounded-md border border-line bg-ash p-0.5 gap-0.5">
               {CARD_SIZES.map(s => (
                 <button
                   key={s.value}
@@ -442,10 +442,8 @@ export default function SequenceGroupAnnotatePage() {
                   title={s.title}
                   aria-pressed={cardSize === s.value}
                   onClick={() => setCardSize(s.value)}
-                  className={`px-2 py-0.5 rounded font-semibold ${
-                    cardSize === s.value
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'text-gray-500 hover:text-gray-900'
+                  className={`px-2 py-0.5 rounded font-data font-semibold ${
+                    cardSize === s.value ? 'bg-paper text-char' : 'text-haze hover:text-char'
                   }`}
                 >
                   {s.label}
@@ -456,7 +454,7 @@ export default function SequenceGroupAnnotatePage() {
         </div>
 
         {group.members.length === 0 ? (
-          <div className="px-4 py-12 text-center text-gray-500 border border-dashed border-gray-300 rounded">
+          <div className="px-4 py-12 text-center font-body text-haze border border-dashed border-line rounded-card">
             This group has no members.
           </div>
         ) : (
