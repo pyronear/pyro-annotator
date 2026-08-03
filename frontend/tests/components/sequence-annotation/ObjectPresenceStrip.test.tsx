@@ -16,7 +16,7 @@ describe('ObjectPresenceStrip', () => {
   const t2 = '2024-01-01T00:00:01.000Z';
   const t3 = '2024-01-01T00:00:02.000Z';
 
-  it('renders nothing for a single-object alert', () => {
+  it('renders nothing for a single-object alert — no title, no axis', () => {
     const { container } = render(
       <ObjectPresenceStrip
         objects={[{ label: 'Object 1', color: '#3b82f6', timestamps: [t1, t2] }]}
@@ -24,6 +24,8 @@ describe('ObjectPresenceStrip', () => {
     );
 
     expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByText('Object timeline')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('presence-axis')).not.toBeInTheDocument();
   });
 
   it('renders nothing when there are no objects', () => {
@@ -42,6 +44,7 @@ describe('ObjectPresenceStrip', () => {
       />
     );
 
+    expect(screen.getByText('Object timeline')).toBeInTheDocument();
     expect(screen.getByText('Object 1')).toBeInTheDocument();
     expect(screen.getByText('Object 2')).toBeInTheDocument();
 
@@ -108,5 +111,32 @@ describe('ObjectPresenceStrip', () => {
     expect(screen.getByTestId('presence-segment-0-0')).toHaveStyle({ backgroundColor: '#3b82f6' });
     expect(screen.getByTestId('presence-segment-1-1')).toHaveStyle({ backgroundColor: '#f97316' });
     expect(screen.getByTestId('presence-segment-2-2')).toHaveStyle({ backgroundColor: '#a855f7' });
+  });
+
+  it('renders a frame-number axis labeling the first and last frame', () => {
+    // 12 distinct frames, one per object timestamp — enough to exercise the
+    // axis's adaptive intermediate-tick step, not just the always-shown ends.
+    const frames = Array.from(
+      { length: 12 },
+      (_, i) => `2024-01-01T00:00:${String(i).padStart(2, '0')}Z`
+    );
+
+    render(
+      <ObjectPresenceStrip
+        objects={[
+          { label: 'Object 1', color: '#3b82f6', timestamps: frames },
+          { label: 'Object 2', color: '#f97316', timestamps: frames },
+        ]}
+      />
+    );
+
+    expect(screen.getByTestId('presence-axis')).toBeInTheDocument();
+    // First frame is always ticked, labeled "1".
+    expect(screen.getByTestId('presence-axis-tick-0')).toHaveTextContent('1');
+    // Last frame (index 11) is always ticked, labeled "12".
+    expect(screen.getByTestId('presence-axis-tick-11')).toHaveTextContent('12');
+    // Not every one of the 12 columns gets a label — intermediate ticks are
+    // spaced out, not one per frame.
+    expect(screen.queryAllByText(/^\d+$/).length).toBeLessThan(frames.length);
   });
 });
