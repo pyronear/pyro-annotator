@@ -62,6 +62,27 @@ interface FlatCard {
 
 const EMPTY_BBOX: SequenceBbox = { is_smoke: false, false_positive_types: [], bboxes: [] };
 
+/**
+ * Best-effort server detail extraction for a submit failure toast. The
+ * apiClient's own axios interceptor normally already reshapes errors to
+ * `{ detail }` (see services/api.ts) before they reach a caller, but this
+ * stays defensive against a raw axios error (`response.data.detail`)
+ * reaching here too.
+ */
+function extractErrorMessage(err: unknown): string {
+  if (err && typeof err === 'object') {
+    const candidate = err as {
+      detail?: unknown;
+      response?: { data?: { detail?: unknown } };
+      message?: string;
+    };
+    if (typeof candidate.detail === 'string') return candidate.detail;
+    if (typeof candidate.response?.data?.detail === 'string') return candidate.response.data.detail;
+    if (typeof candidate.message === 'string') return candidate.message;
+  }
+  return 'Please try again.';
+}
+
 export default function ClassifyAlertPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -110,12 +131,17 @@ export default function ClassifyAlertPage() {
     enabled: !!sequenceId,
   });
 
+  // Shared with the submit mutation so it can invalidate/refetch this exact
+  // query after a submit (success-with-warning or error) so the page
+  // redraws lanes with their true, post-submit server state.
+  const alertDetailQueryKey = ['alert-detail', sequence?.source_api, sequence?.platform_alert_id];
+
   const {
     data: alertDetail,
     isLoading: alertLoading,
     error: alertError,
   } = useQuery({
-    queryKey: ['alert-detail', sequence?.source_api, sequence?.platform_alert_id],
+    queryKey: alertDetailQueryKey,
     queryFn: () => apiClient.getAlertDetail(sequence!.source_api, sequence!.platform_alert_id),
     enabled: !!sequence,
   });
@@ -361,6 +387,10 @@ export default function ClassifyAlertPage() {
           'info'
         );
         setGroupConflictWarnings(warnings);
+        // No auto-advance on this path, so the submitted lanes are still on
+        // screen — refetch so they redraw locked/read-only instead of
+        // staying editable with now-stale (already-submitted) state.
+        queryClient.invalidateQueries({ queryKey: alertDetailQueryKey });
         return;
       }
 
@@ -384,6 +414,14 @@ export default function ClassifyAlertPage() {
           navigate(ROUTES.CLASSIFY);
         }
       }, 1000);
+    },
+    onError: err => {
+      showToastNotification(`Submit failed: ${extractErrorMessage(err)}`, 'error');
+      // A rejected submit is often a race (a sibling's group fan-out locked
+      // a lane between load and submit, 409) — refetch so the page reflects
+      // the lanes' true current state rather than silently retrying with
+      // stale data on the next attempt.
+      queryClient.invalidateQueries({ queryKey: alertDetailQueryKey });
     },
   });
 

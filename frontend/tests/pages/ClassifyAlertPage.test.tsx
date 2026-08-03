@@ -168,7 +168,9 @@ function makeAlertDetail(): AlertDetail {
 
 describe('ClassifyAlertPage', () => {
   beforeEach(() => {
-    navigateMock.mockClear();
+    // Clears call counts (not just implementations) so per-test assertions
+    // like `toHaveBeenCalledTimes` aren't polluted by earlier tests' calls.
+    vi.clearAllMocks();
     vi.mocked(apiClient.getSequence).mockResolvedValue(makeSequence());
     vi.mocked(apiClient.getAlertDetail).mockResolvedValue(makeAlertDetail());
     vi.mocked(apiClient.classifySubmit).mockResolvedValue({
@@ -273,5 +275,130 @@ describe('ClassifyAlertPage', () => {
     expect(itemB.processing_stage).toBe('annotated');
     expect(itemB.has_missed_smoke).toBe(false);
     expect(itemB.annotation.sequences_bbox[0].false_positive_types).toContain('antenna');
+  });
+
+  it('shows an error toast (with server detail) and does not navigate when submit fails', async () => {
+    vi.mocked(apiClient.classifySubmit).mockRejectedValueOnce({
+      response: { data: { detail: 'Lane 103 is locked' } },
+    });
+
+    render(<ClassifyAlertPage />, { wrapper });
+    await waitFor(() => expect(screen.getByTestId('object-card-101:0')).toBeInTheDocument());
+
+    const cardA = within(screen.getByTestId('object-card-101:0'));
+    fireEvent.click(cardA.getByRole('radio', { name: /This is smoke/i }));
+    fireEvent.click(cardA.getByRole('radio', { name: /Wildfire/i }));
+
+    const cardB = within(screen.getByTestId('object-card-102:0'));
+    fireEvent.click(cardB.getByRole('radio', { name: /false positive/i }));
+    fireEvent.click(cardB.getByRole('checkbox', { name: /Antenna/i }));
+
+    fireEvent.click(screen.getByText('Mock: No missed smoke'));
+    fireEvent.click(screen.getByRole('button', { name: /Submit alert/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/Submit failed: Lane 103 is locked/)).toBeInTheDocument()
+    );
+    expect(navigateMock).not.toHaveBeenCalled();
+  });
+
+  it('invalidates and refetches alert-detail after a submit that returns a group-propagation warning, so submitted lanes re-render locked', async () => {
+    const initialDetail = makeAlertDetail();
+    const refetchedDetail: AlertDetail = {
+      ...initialDetail,
+      lanes: [
+        {
+          sequence: initialDetail.lanes[0].sequence,
+          annotation: makeAnnotation({
+            id: 201,
+            sequence_id: 101,
+            processing_stage: 'seq_annotation_done',
+            has_smoke: true,
+            annotation: {
+              sequences_bbox: [
+                {
+                  is_smoke: true,
+                  smoke_type: 'wildfire',
+                  false_positive_types: [],
+                  bboxes: [{ detection_id: 1, xyxyn: [0, 0, 1, 1] }],
+                },
+              ],
+            },
+          }),
+        },
+        {
+          sequence: initialDetail.lanes[1].sequence,
+          annotation: makeAnnotation({
+            id: 202,
+            sequence_id: 102,
+            processing_stage: 'annotated',
+            annotation: {
+              sequences_bbox: [
+                {
+                  is_smoke: false,
+                  false_positive_types: ['antenna'],
+                  bboxes: [{ detection_id: 2, xyxyn: [0, 0, 1, 1] }],
+                },
+              ],
+            },
+          }),
+        },
+        initialDetail.lanes[2],
+      ],
+    };
+
+    vi.mocked(apiClient.getAlertDetail)
+      .mockResolvedValueOnce(initialDetail)
+      .mockResolvedValueOnce(refetchedDetail);
+
+    vi.mocked(apiClient.classifySubmit).mockResolvedValueOnce({
+      results: [
+        {
+          annotation_id: 201,
+          sequence_id: 101,
+          processing_stage: 'seq_annotation_done',
+          group_propagation_warning: 'Sibling sequence already carries a different label',
+        },
+        {
+          annotation_id: 202,
+          sequence_id: 102,
+          processing_stage: 'annotated',
+          group_propagation_warning: null,
+        },
+      ],
+    });
+
+    render(<ClassifyAlertPage />, { wrapper });
+    await waitFor(() => expect(screen.getByTestId('object-card-101:0')).toBeInTheDocument());
+
+    const cardA = within(screen.getByTestId('object-card-101:0'));
+    fireEvent.click(cardA.getByRole('radio', { name: /This is smoke/i }));
+    fireEvent.click(cardA.getByRole('radio', { name: /Wildfire/i }));
+
+    const cardB = within(screen.getByTestId('object-card-102:0'));
+    fireEvent.click(cardB.getByRole('radio', { name: /false positive/i }));
+    fireEvent.click(cardB.getByRole('checkbox', { name: /Antenna/i }));
+
+    fireEvent.click(screen.getByText('Mock: No missed smoke'));
+    fireEvent.click(screen.getByRole('button', { name: /Submit alert/i }));
+
+    await waitFor(() => expect(screen.getByText(/Group propagation skipped/)).toBeInTheDocument());
+
+    // The submitted lanes are still on screen (no auto-advance on the
+    // warning path) — the page must refetch alert-detail so they redraw
+    // locked/read-only instead of staying editable with stale state.
+    await waitFor(() => expect(apiClient.getAlertDetail).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(
+        within(screen.getByTestId('object-card-101:0')).getByRole('radio', {
+          name: /This is smoke/i,
+        })
+      ).toBeDisabled()
+    );
+    expect(
+      within(screen.getByTestId('object-card-102:0')).getByRole('radio', {
+        name: /false positive/i,
+      })
+    ).toBeDisabled();
   });
 });
