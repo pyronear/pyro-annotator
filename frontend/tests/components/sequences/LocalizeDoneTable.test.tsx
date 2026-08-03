@@ -1,6 +1,6 @@
 /**
- * Tests for LocalizeDoneTable: classify-done column parity, plain-text Result
- * (unsure/FP/smoke), accuracy row coloring, and row click handling.
+ * Tests for LocalizeDoneTable: classify-done column parity, Result column
+ * (outcome code + FP-type text), untinted rows, and row click handling.
  */
 
 import React from 'react';
@@ -83,7 +83,7 @@ describe('LocalizeDoneTable', () => {
     expect(screen.queryByText('Alert API annotation')).not.toBeInTheDocument();
   });
 
-  it('renders column tooltips', () => {
+  it('explains the outcome codes in the Result column tooltip', () => {
     render(
       <LocalizeDoneTable
         sequences={[createSequence()]}
@@ -94,7 +94,9 @@ describe('LocalizeDoneTable', () => {
 
     expect(screen.getByText('Images in this sequence')).toBeInTheDocument();
     expect(
-      screen.getByText('Classification outcome: unsure flag and false-positive types')
+      screen.getByText(
+        'Model outcome — TP correct, FP false alarm, ⚑ FN missed smoke, ? unsure — and false-positive types'
+      )
     ).toBeInTheDocument();
   });
 
@@ -143,7 +145,21 @@ describe('LocalizeDoneTable', () => {
     expect(screen.getByText('8')).toBeInTheDocument();
   });
 
-  it('renders unsure and false-positive types in the Result text, smoke types separately', () => {
+  it('renders the TP outcome code in the Result cell', () => {
+    render(
+      <LocalizeDoneTable
+        sequences={[createSequence()]}
+        annotations={{ 1: createAnnotation() }}
+        onSequenceClick={onSequenceClick}
+      />
+    );
+
+    expect(
+      screen.getByTitle('True positive — model correctly detected smoke')
+    ).toBeInTheDocument();
+  });
+
+  it('renders the unsure code with false-positive types as detail text', () => {
     render(
       <LocalizeDoneTable
         sequences={[createSequence()]}
@@ -158,11 +174,24 @@ describe('LocalizeDoneTable', () => {
       />
     );
 
-    expect(screen.getByText('⚠️ Unsure, Antenna')).toBeInTheDocument();
-    expect(screen.getByText('Wildfire')).toBeInTheDocument();
+    expect(screen.getByTitle('Unsure — needs review')).toBeInTheDocument();
+    expect(screen.getByText('Antenna')).toBeInTheDocument();
+    expect(screen.queryByText(/⚠️/)).not.toBeInTheDocument();
   });
 
-  it('applies the amber row background when unsure', () => {
+  it('renders the FN code when smoke was missed', () => {
+    render(
+      <LocalizeDoneTable
+        sequences={[createSequence()]}
+        annotations={{ 1: createAnnotation({ has_missed_smoke: true }) }}
+        onSequenceClick={onSequenceClick}
+      />
+    );
+
+    expect(screen.getByTitle('False negative — smoke was missed')).toBeInTheDocument();
+  });
+
+  it('leaves rows untinted regardless of outcome', () => {
     render(
       <LocalizeDoneTable
         sequences={[createSequence()]}
@@ -171,31 +200,10 @@ describe('LocalizeDoneTable', () => {
       />
     );
 
-    expect(screen.getByText('Camera-01').closest('tr')).toHaveClass('bg-amber-50');
-  });
-
-  it('applies true-positive row background when the human confirmed smoke', () => {
-    render(
-      <LocalizeDoneTable
-        sequences={[createSequence()]}
-        annotations={{ 1: createAnnotation() }}
-        onSequenceClick={onSequenceClick}
-      />
-    );
-
-    expect(screen.getByText('Camera-01').closest('tr')).toHaveClass('bg-green-50');
-  });
-
-  it('applies false-positive row background when the human found no smoke', () => {
-    render(
-      <LocalizeDoneTable
-        sequences={[createSequence()]}
-        annotations={{ 1: createAnnotation({ has_smoke: false, smoke_types: [] }) }}
-        onSequenceClick={onSequenceClick}
-      />
-    );
-
-    expect(screen.getByText('Camera-01').closest('tr')).toHaveClass('bg-red-50');
+    const row = screen.getByText('Camera-01').closest('tr');
+    expect(row).toHaveClass('hover:bg-ash');
+    expect(row).not.toHaveClass('bg-amber-50');
+    expect(row).not.toHaveClass('bg-green-50');
   });
 
   it('renders a plain row and empty Result cell when annotation is missing', () => {
@@ -208,8 +216,8 @@ describe('LocalizeDoneTable', () => {
     );
 
     const row = screen.getByText('Camera-01').closest('tr');
-    expect(row).toHaveClass('hover:bg-gray-50');
-    expect(screen.queryByText('⚠️ Unsure')).not.toBeInTheDocument();
+    expect(row).toHaveClass('hover:bg-ash');
+    expect(screen.queryByTitle(/positive|negative|Unsure/)).not.toBeInTheDocument();
   });
 
   it('calls onSequenceClick with the sequence when a row is clicked', () => {

@@ -14,7 +14,6 @@ import { getStageFilterLabel, stageFilterIncludes } from '@/utils/processingStag
 import FilterPopover from '@/components/filters/FilterPopover';
 import {
   SequencesTableHeader,
-  SequencesLegend,
   ClassifyQueueTable,
   ClassifyDoneTable,
   SequencesPagination,
@@ -404,9 +403,6 @@ export default function SequencesPage({
             filters={filters}
             onFilterChange={handleFilterChange}
           />
-
-          {/* Row Background Color Legend - Only show on review page */}
-          {isReviewPage && <SequencesLegend />}
 
           {isReviewPage ? (
             <ClassifyDoneTable

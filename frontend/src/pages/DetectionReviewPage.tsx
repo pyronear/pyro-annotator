@@ -11,11 +11,7 @@ import {
 import { PAGINATION_OPTIONS, QUERY_KEYS } from '@/utils/constants';
 import { analyzeSequenceAccuracy } from '@/utils/modelAccuracy';
 import FilterPopover from '@/components/filters/FilterPopover';
-import {
-  SequencesLegend,
-  LocalizeDoneTable,
-  DetectionReviewPagination,
-} from '@/components/sequences';
+import { LocalizeDoneTable, DetectionReviewPagination } from '@/components/sequences';
 import { useCameras } from '@/hooks/useCameras';
 import { useOrganizations } from '@/hooks/useOrganizations';
 import { useSourceApis } from '@/hooks/useSourceApis';
@@ -381,8 +377,6 @@ export default function DetectionReviewPage() {
       {/* Results */}
       {filteredSequences && (
         <div className="bg-white rounded-lg border border-gray-200">
-          <SequencesLegend showPillTypes={false} />
-
           <LocalizeDoneTable
             sequences={filteredSequences.items}
             annotations={annotationMap}

@@ -1,14 +1,13 @@
-import { SequenceWithAnnotation } from '@/types/api';
+import { SequenceAnnotation, SequenceWithAnnotation } from '@/types/api';
 import {
-  analyzeSequenceAccuracy,
-  getFalsePositiveEmoji,
+  SequenceOutcome,
+  deriveSequenceOutcome,
   formatFalsePositiveType,
-  getRowBackgroundClasses,
-  parseFalsePositiveTypes,
-  getSmokeTypeEmoji,
   formatSmokeType,
+  parseFalsePositiveTypes,
 } from '@/utils/modelAccuracy';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
+import { OutcomeCode } from './OutcomeCode';
 import { PlatformAnnotationPill } from './PlatformAnnotationPill';
 
 interface ClassifyDoneTableProps {
@@ -17,23 +16,30 @@ interface ClassifyDoneTableProps {
 }
 
 const HEADER_CLASSES =
-  'px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider';
-const CELL_CLASSES = 'px-4 py-2 whitespace-nowrap text-sm';
+  'px-4 py-3 text-left font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze';
+const CELL_CLASSES = 'px-4 py-2 whitespace-nowrap';
 
-// Accuracy-based row coloring (amber for unsure), matching the SequencesLegend.
-function rowClasses(sequence: SequenceWithAnnotation): string {
-  if (sequence.annotation) {
-    if (sequence.annotation.is_unsure) return 'cursor-pointer bg-amber-50 hover:bg-amber-100';
-    return `cursor-pointer ${getRowBackgroundClasses(analyzeSequenceAccuracy(sequence))}`;
+// Quiet text after the outcome code: what the human concluded.
+function resultDetail(annotation: SequenceAnnotation, outcome: SequenceOutcome): string {
+  switch (outcome) {
+    case 'unsure':
+      return 'Unsure';
+    case 'fn':
+      return ['Missed smoke', ...(annotation.smoke_types ?? []).map(formatSmokeType)].join(' · ');
+    case 'tp':
+      return (annotation.smoke_types ?? []).map(formatSmokeType).join(', ');
+    case 'fp':
+      return parseFalsePositiveTypes(annotation.false_positive_types)
+        .map(formatFalsePositiveType)
+        .join(', ');
   }
-  return 'cursor-pointer hover:bg-gray-50';
 }
 
 export function ClassifyDoneTable({ sequences, onSequenceClick }: ClassifyDoneTableProps) {
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-gray-200">
-        <thead className="bg-gray-50">
+      <table className="min-w-full divide-y divide-line">
+        <thead className="bg-ash">
           <tr>
             <th className={HEADER_CLASSES}>
               <span className="sr-only">Thumbnail</span>
@@ -47,67 +53,53 @@ export function ClassifyDoneTable({ sequences, onSequenceClick }: ClassifyDoneTa
             <th className={HEADER_CLASSES}>Result</th>
           </tr>
         </thead>
-        <tbody className="bg-white divide-y divide-gray-200">
-          {sequences.map(sequence => (
-            <tr
-              key={sequence.id}
-              onClick={() => onSequenceClick(sequence)}
-              className={rowClasses(sequence)}
-            >
-              <td className="px-4 py-2">
-                <DetectionImageThumbnail sequenceId={sequence.id} className="h-10 w-16" />
-              </td>
-              <td className={`${CELL_CLASSES} font-medium text-gray-900`}>
-                {sequence.camera_name}
-              </td>
-              <td className={`${CELL_CLASSES} text-gray-500`}>{sequence.organisation_name}</td>
-              <td className={`${CELL_CLASSES} text-gray-500`}>
-                {new Date(sequence.recorded_at).toLocaleString()}
-              </td>
-              <td className={CELL_CLASSES}>
-                <PlatformAnnotationPill value={sequence.is_wildfire_alertapi} />
-              </td>
-              <td className={CELL_CLASSES}>
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                  {sequence.source_api}
-                </span>
-              </td>
-              <td className={`${CELL_CLASSES} text-gray-500`}>
-                {sequence.azimuth !== null && sequence.azimuth !== undefined
-                  ? `${sequence.azimuth}°`
-                  : ''}
-              </td>
-              <td className="px-4 py-2 text-sm">
-                {sequence.annotation && (
-                  <div className="flex flex-wrap gap-1">
-                    {sequence.annotation.is_unsure && (
-                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
-                        ⚠️ Unsure
+        <tbody className="bg-paper divide-y divide-line">
+          {sequences.map(sequence => {
+            const outcome = deriveSequenceOutcome(sequence.annotation);
+            return (
+              <tr
+                key={sequence.id}
+                onClick={() => onSequenceClick(sequence)}
+                className="cursor-pointer hover:bg-ash"
+              >
+                <td className="px-4 py-2">
+                  <DetectionImageThumbnail sequenceId={sequence.id} className="h-10 w-16" />
+                </td>
+                <td className={`${CELL_CLASSES} font-body text-sm font-medium text-char`}>
+                  {sequence.camera_name}
+                </td>
+                <td className={`${CELL_CLASSES} font-body text-sm text-haze`}>
+                  {sequence.organisation_name}
+                </td>
+                <td className={`${CELL_CLASSES} font-data text-detail text-haze`}>
+                  {new Date(sequence.recorded_at).toLocaleString()}
+                </td>
+                <td className={CELL_CLASSES}>
+                  <PlatformAnnotationPill value={sequence.is_wildfire_alertapi} />
+                </td>
+                <td className={CELL_CLASSES}>
+                  <span className="inline-flex rounded-full px-2 py-1 font-body text-xs font-semibold bg-ash text-haze">
+                    {sequence.source_api}
+                  </span>
+                </td>
+                <td className={`${CELL_CLASSES} font-data text-detail text-haze`}>
+                  {sequence.azimuth !== null && sequence.azimuth !== undefined
+                    ? `${sequence.azimuth}°`
+                    : ''}
+                </td>
+                <td className={CELL_CLASSES}>
+                  {sequence.annotation && outcome && (
+                    <>
+                      <OutcomeCode outcome={outcome} />
+                      <span className="ml-2.5 font-body text-detail text-haze">
+                        {resultDetail(sequence.annotation, outcome)}
                       </span>
-                    )}
-                    {parseFalsePositiveTypes(sequence.annotation.false_positive_types).map(
-                      (type: string) => (
-                        <span
-                          key={type}
-                          className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800"
-                        >
-                          {getFalsePositiveEmoji(type)} {formatFalsePositiveType(type)}
-                        </span>
-                      )
-                    )}
-                    {sequence.annotation.smoke_types?.map((type: string) => (
-                      <span
-                        key={type}
-                        className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800"
-                      >
-                        {getSmokeTypeEmoji(type)} {formatSmokeType(type)}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </td>
-            </tr>
-          ))}
+                    </>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
