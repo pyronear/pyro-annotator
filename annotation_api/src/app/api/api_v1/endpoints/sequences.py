@@ -702,6 +702,10 @@ async def _build_queue_item(
                 sequence_id=seq.id,
                 alert_api_id=seq.alert_api_id,
                 has_smoke=bool(annotation.has_smoke) if annotation else False,
+                has_missed_smoke=bool(annotation.has_missed_smoke)
+                if annotation
+                else False,
+                is_unsure=bool(annotation.is_unsure) if annotation else False,
                 processing_stage=annotation.processing_stage.value
                 if annotation
                 else "no_annotation",

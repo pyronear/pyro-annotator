@@ -17,6 +17,16 @@ export function determineClassifySubmitStage(args: {
   return 'seq_annotation_done';
 }
 
+/**
+ * Whether a lane needs localization. Mirrors the backend rule in
+ * annotation_api/src/app/services/localization_rule.py:
+ *
+ *     (has_smoke OR has_missed_smoke) AND NOT is_unsure
+ */
+export function laneNeedsLocalization(lane: LocalizationQueueLane): boolean {
+  return (lane.has_smoke || lane.has_missed_smoke) && !lane.is_unsure;
+}
+
 /** Next unfinished smoke lane of an alert, walking in lane order. */
 export function pickNextLocalizeLane(
   lanes: LocalizationQueueLane[],
@@ -25,7 +35,7 @@ export function pickNextLocalizeLane(
   const next = lanes.find(
     l =>
       l.sequence_id !== currentSequenceId &&
-      l.has_smoke &&
+      laneNeedsLocalization(l) &&
       l.processing_stage === 'seq_annotation_done'
   );
   return next ? next.sequence_id : null;

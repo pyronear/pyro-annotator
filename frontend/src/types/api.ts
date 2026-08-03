@@ -34,6 +34,8 @@ export interface LocalizationQueueLane {
   sequence_id: number;
   alert_api_id: number;
   has_smoke: boolean;
+  has_missed_smoke: boolean;
+  is_unsure: boolean;
   processing_stage: string;
   smoke_types: string[];
   total_detections: number;

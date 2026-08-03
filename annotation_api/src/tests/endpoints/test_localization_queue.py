@@ -127,8 +127,12 @@ async def test_alert_appears_with_lane_stats(
     assert smoke_lane["annotated_detections"] == 1
     assert smoke_lane["auto_annotated_at"] is not None
     assert smoke_lane["smoke_types"] == ["wildfire"]
+    assert smoke_lane["has_missed_smoke"] is False
+    assert smoke_lane["is_unsure"] is False
     fp_lane = next(lane for lane in item["lanes"] if not lane["has_smoke"])
     assert fp_lane["smoke_types"] == []
+    assert fp_lane["has_missed_smoke"] is False
+    assert fp_lane["is_unsure"] is False
 
 
 @pytest.mark.asyncio
@@ -271,6 +275,10 @@ async def test_missed_smoke_only_alert_surfaces(
     assert resp.status_code == 200
     items = resp.json()["items"]
     assert [item["platform_alert_id"] for item in items] == [950]
+    (lane,) = items[0]["lanes"]
+    assert lane["has_smoke"] is False
+    assert lane["has_missed_smoke"] is True
+    assert lane["is_unsure"] is False
 
 
 @pytest.mark.asyncio

@@ -5,20 +5,20 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { LocalizationQueueItem } from '@/types/api';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
-import { pickNextLocalizeLane } from '@/utils/annotation/localizeUtils';
+import { laneNeedsLocalization, pickNextLocalizeLane } from '@/utils/annotation/localizeUtils';
 import { formatSmokeType, getSmokeTypeEmoji } from '@/utils/modelAccuracy';
 import { localizeDetail } from '@/utils/routes';
 
 // Images the annotator will draw boxes on: each smoke object replays the
 // alert's frames, so two objects x 10 frames is 20 boxes of work.
 function smokeFrames(item: LocalizationQueueItem): number {
-  return item.lanes.filter(l => l.has_smoke).reduce((sum, l) => sum + l.total_detections, 0);
+  return item.lanes.filter(laneNeedsLocalization).reduce((sum, l) => sum + l.total_detections, 0);
 }
 
 // Classify-phase smoke types across the alert's smoke objects, deduped.
 // `?? []` guards payloads from a backend that predates the field.
 function smokeTypes(item: LocalizationQueueItem): string[] {
-  return [...new Set(item.lanes.filter(l => l.has_smoke).flatMap(l => l.smoke_types ?? []))];
+  return [...new Set(item.lanes.filter(laneNeedsLocalization).flatMap(l => l.smoke_types ?? []))];
 }
 
 export default function DetectionAnnotatePage() {

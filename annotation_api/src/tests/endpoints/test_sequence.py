@@ -4,6 +4,13 @@ from datetime import datetime, timedelta, UTC
 import pytest
 from httpx import AsyncClient
 
+from app.models import (
+    Sequence,
+    SequenceAnnotation,
+    SequenceAnnotationProcessingStage,
+    SourceApi,
+)
+
 now = datetime.now(UTC)
 
 
@@ -2181,15 +2188,6 @@ async def test_list_sequences_filter_by_platform_alert_id(
 async def test_needs_localization_filter(
     authenticated_client: AsyncClient, async_session
 ):
-    from datetime import UTC, datetime
-
-    from app.models import (
-        Sequence,
-        SequenceAnnotation,
-        SequenceAnnotationProcessingStage,
-        SourceApi,
-    )
-
     now = datetime(2026, 8, 3, 12, 0, tzinfo=UTC)
 
     async def make(alert_api_id, *, has_smoke, has_missed_smoke, is_unsure):

@@ -132,6 +132,8 @@ class LocalizationQueueLane(BaseModel):
     sequence_id: int
     alert_api_id: int
     has_smoke: bool
+    has_missed_smoke: bool
+    is_unsure: bool
     processing_stage: str
     smoke_types: List[str]
     total_detections: int
