@@ -68,7 +68,7 @@ DET_TABLE = [
         "id": 2,
         "created_at": now - timedelta(days=1),
         "sequence_id": 1,
-        "alert_api_id": 1,
+        "alert_api_id": 2,
         "recorded_at": now - timedelta(days=3),
         "bucket_key": "seq1_img2.jpg",
         "algo_predictions": {
