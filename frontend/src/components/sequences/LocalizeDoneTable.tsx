@@ -7,7 +7,7 @@ import {
   parseFalsePositiveTypes,
 } from '@/utils/modelAccuracy';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
-import { PlatformAnnotationPill } from './PlatformAnnotationPill';
+import { ColumnHeader } from './ColumnHeader';
 
 interface LocalizeDoneTableProps {
   sequences: SequenceWithDetectionProgress[];
@@ -33,12 +33,12 @@ function rowClasses(
   return 'cursor-pointer hover:bg-gray-50';
 }
 
-// Human decision as plain text: unsure marker, then FP types, then smoke types.
+// Human decision as plain text: unsure marker, then FP types. Smoke types
+// have their own column.
 function resultText(annotation: SequenceAnnotation): string {
   return [
     ...(annotation.is_unsure ? ['⚠️ Unsure'] : []),
     ...parseFalsePositiveTypes(annotation.false_positive_types).map(formatFalsePositiveType),
-    ...(annotation.smoke_types ?? []).map(formatSmokeType),
   ].join(', ');
 }
 
@@ -55,13 +55,17 @@ export function LocalizeDoneTable({
             <th className={HEADER_CLASSES}>
               <span className="sr-only">Thumbnail</span>
             </th>
-            <th className={HEADER_CLASSES}>Camera</th>
-            <th className={HEADER_CLASSES}>Organisation</th>
-            <th className={HEADER_CLASSES}>Recorded</th>
-            <th className={HEADER_CLASSES}>Alert API annotation</th>
-            <th className={HEADER_CLASSES}>Source</th>
-            <th className={HEADER_CLASSES}>Azimuth</th>
-            <th className={HEADER_CLASSES}>Result</th>
+            <ColumnHeader label="Camera" tip="Camera that recorded the sequence" />
+            <ColumnHeader label="Organisation" tip="Organisation operating the camera" />
+            <ColumnHeader label="Recorded" tip="When the sequence was recorded" />
+            <ColumnHeader label="Source" tip="Platform the sequence was imported from" />
+            <ColumnHeader label="Azimuth" tip="Camera viewing direction, in degrees" />
+            <ColumnHeader label="Smoke types" tip="Smoke types assigned during classification" />
+            <ColumnHeader label="Frames" tip="Images in this sequence" />
+            <ColumnHeader
+              label="Result"
+              tip="Classification outcome: unsure flag and false-positive types"
+            />
           </tr>
         </thead>
         <tbody className="bg-white divide-y divide-gray-200">
@@ -83,14 +87,17 @@ export function LocalizeDoneTable({
                 <td className={`${CELL_CLASSES} text-gray-500`}>
                   {new Date(sequence.recorded_at).toLocaleString()}
                 </td>
-                <td className={CELL_CLASSES}>
-                  <PlatformAnnotationPill value={sequence.is_wildfire_alertapi} />
-                </td>
                 <td className={`${CELL_CLASSES} text-gray-500`}>{sequence.source_api}</td>
                 <td className={`${CELL_CLASSES} text-gray-500`}>
                   {sequence.azimuth !== null && sequence.azimuth !== undefined
                     ? `${sequence.azimuth}°`
                     : ''}
+                </td>
+                <td className={`${CELL_CLASSES} text-gray-500`}>
+                  {(annotation?.smoke_types ?? []).map(formatSmokeType).join(', ')}
+                </td>
+                <td className={`${CELL_CLASSES} text-gray-500`}>
+                  {sequence.detection_annotation_stats?.total_detections ?? ''}
                 </td>
                 <td className="px-4 py-2 text-sm text-gray-500">
                   {annotation ? resultText(annotation) : ''}

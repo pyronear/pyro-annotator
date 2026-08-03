@@ -72,16 +72,33 @@ describe('LocalizeDoneTable', () => {
       'Camera',
       'Organisation',
       'Recorded',
-      'Alert API annotation',
       'Source',
       'Azimuth',
+      'Smoke types',
+      'Frames',
       'Result',
     ]) {
       expect(screen.getByText(header)).toBeInTheDocument();
     }
+    expect(screen.queryByText('Alert API annotation')).not.toBeInTheDocument();
   });
 
-  it('renders source as plain text and the platform annotation pill', () => {
+  it('renders column tooltips', () => {
+    render(
+      <LocalizeDoneTable
+        sequences={[createSequence()]}
+        annotations={{ 1: createAnnotation() }}
+        onSequenceClick={onSequenceClick}
+      />
+    );
+
+    expect(screen.getByText('Images in this sequence')).toBeInTheDocument();
+    expect(
+      screen.getByText('Classification outcome: unsure flag and false-positive types')
+    ).toBeInTheDocument();
+  });
+
+  it('renders source as plain text without the platform annotation pill', () => {
     render(
       <LocalizeDoneTable
         sequences={[createSequence()]}
@@ -91,10 +108,10 @@ describe('LocalizeDoneTable', () => {
     );
 
     expect(screen.getByText('test-api')).toBeInTheDocument();
-    expect(screen.getByText('🔥 Wildfire')).toBeInTheDocument();
+    expect(screen.queryByText('🔥 Wildfire')).not.toBeInTheDocument();
   });
 
-  it('renders smoke types as plain text in the Result column', () => {
+  it('renders smoke types as plain text in their own column', () => {
     render(
       <LocalizeDoneTable
         sequences={[createSequence()]}
@@ -106,7 +123,27 @@ describe('LocalizeDoneTable', () => {
     expect(screen.getByText('Wildfire')).toBeInTheDocument();
   });
 
-  it('renders unsure and false-positive types in the Result text', () => {
+  it('renders the frame count from detection stats', () => {
+    render(
+      <LocalizeDoneTable
+        sequences={[
+          createSequence({
+            detection_annotation_stats: {
+              total_detections: 8,
+              annotated_detections: 8,
+              completion_percentage: 100,
+            },
+          }),
+        ]}
+        annotations={{ 1: createAnnotation() }}
+        onSequenceClick={onSequenceClick}
+      />
+    );
+
+    expect(screen.getByText('8')).toBeInTheDocument();
+  });
+
+  it('renders unsure and false-positive types in the Result text, smoke types separately', () => {
     render(
       <LocalizeDoneTable
         sequences={[createSequence()]}
@@ -121,7 +158,8 @@ describe('LocalizeDoneTable', () => {
       />
     );
 
-    expect(screen.getByText('⚠️ Unsure, Antenna, Wildfire')).toBeInTheDocument();
+    expect(screen.getByText('⚠️ Unsure, Antenna')).toBeInTheDocument();
+    expect(screen.getByText('Wildfire')).toBeInTheDocument();
   });
 
   it('applies the amber row background when unsure', () => {

@@ -2,6 +2,7 @@ import { LocalizationQueueItem } from '@/types/api';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
 import { laneNeedsLocalization } from '@/utils/annotation/localizeUtils';
 import { formatSmokeType } from '@/utils/modelAccuracy';
+import { ColumnHeader } from './ColumnHeader';
 
 interface LocalizeQueueTableProps {
   items: LocalizationQueueItem[];
@@ -38,14 +39,14 @@ export function LocalizeQueueTable({ items, onItemClick }: LocalizeQueueTablePro
             <th className={HEADER_CLASSES}>
               <span className="sr-only">Thumbnail</span>
             </th>
-            <th className={HEADER_CLASSES}>Camera</th>
-            <th className={HEADER_CLASSES}>Organisation</th>
-            <th className={HEADER_CLASSES}>Recorded</th>
-            <th className={HEADER_CLASSES}>Source</th>
-            <th className={HEADER_CLASSES}>Azimuth</th>
-            <th className={HEADER_CLASSES}>Smoke types</th>
-            <th className={HEADER_CLASSES}>Objects</th>
-            <th className={HEADER_CLASSES}>Frames</th>
+            <ColumnHeader label="Camera" tip="Camera that recorded the alert" />
+            <ColumnHeader label="Organisation" tip="Organisation operating the camera" />
+            <ColumnHeader label="Recorded" tip="When the alert was recorded" />
+            <ColumnHeader label="Source" tip="Platform the alert was imported from" />
+            <ColumnHeader label="Azimuth" tip="Camera viewing direction, in degrees" />
+            <ColumnHeader label="Smoke types" tip="Smoke types assigned during classification" />
+            <ColumnHeader label="Objects" tip="Smoke objects to localize in this alert" />
+            <ColumnHeader label="Frames" tip="Images to box across all smoke objects" />
           </tr>
         </thead>
         <tbody className="bg-white divide-y divide-gray-200">

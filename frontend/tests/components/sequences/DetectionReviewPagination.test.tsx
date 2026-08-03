@@ -34,7 +34,7 @@ describe('DetectionReviewPagination', () => {
       
       expect(screen.getByText('Previous')).toBeInTheDocument();
       expect(screen.getByText('Next')).toBeInTheDocument();
-      expect(screen.getByText('Page 1 of 4')).toBeInTheDocument();
+      expect(screen.getByText('Page 1 of 4 · 100 sequences')).toBeInTheDocument();
     });
 
     it('should render correct page information', () => {
@@ -45,7 +45,7 @@ describe('DetectionReviewPagination', () => {
       
       render(<DetectionReviewPagination {...props} />);
       
-      expect(screen.getByText('Page 3 of 5')).toBeInTheDocument();
+      expect(screen.getByText('Page 3 of 5 · 100 sequences')).toBeInTheDocument();
     });
 
     it('should not render when there is only one page', () => {
@@ -249,7 +249,7 @@ describe('DetectionReviewPagination', () => {
       
       render(<DetectionReviewPagination {...props} />);
       
-      expect(screen.getByText('Page 999 of 1000')).toBeInTheDocument();
+      expect(screen.getByText('Page 999 of 1000 · 100 sequences')).toBeInTheDocument();
       
       const prevButton = screen.getByText('Previous');
       const nextButton = screen.getByText('Next');
@@ -346,7 +346,7 @@ describe('DetectionReviewPagination', () => {
     it('should apply correct text styling', () => {
       render(<DetectionReviewPagination {...defaultProps} />);
       
-      const pageText = screen.getByText('Page 1 of 4');
+      const pageText = screen.getByText('Page 1 of 4 · 100 sequences');
       expect(pageText).toHaveClass('text-sm', 'text-gray-700');
       expect(pageText.tagName).toBe('SPAN');
     });
@@ -378,7 +378,7 @@ describe('DetectionReviewPagination', () => {
         
         const { unmount } = render(<DetectionReviewPagination {...props} />);
         
-        expect(screen.getByText(`Page ${page} of ${pages}`)).toBeInTheDocument();
+        expect(screen.getByText(`Page ${page} of ${pages} · 100 sequences`)).toBeInTheDocument();
         
         const prevButton = screen.getByText('Previous');
         const nextButton = screen.getByText('Next');

@@ -7,11 +7,10 @@ import {
   SequenceWithDetectionProgress,
   SequenceAnnotation,
 } from '@/types/api';
-import { QUERY_KEYS } from '@/utils/constants';
+import { PAGINATION_OPTIONS, QUERY_KEYS } from '@/utils/constants';
 import { analyzeSequenceAccuracy } from '@/utils/modelAccuracy';
 import FilterPopover from '@/components/filters/FilterPopover';
 import {
-  DetectionReviewTableHeader,
   SequencesLegend,
   LocalizeDoneTable,
   DetectionReviewPagination,
@@ -306,45 +305,53 @@ export default function DetectionReviewPage() {
             Browse localized smoke detections and review past annotations
           </p>
         </div>
-        <FilterPopover
-          filters={filters}
-          onFiltersChange={handleFilterChange}
-          dateFrom={dateFrom}
-          dateTo={dateTo}
-          onDateFromChange={handleDateFromChange}
-          onDateToChange={handleDateToChange}
-          onDateRangeSet={setDateRange}
-          onDateRangeClear={clearDateRange}
-          selectedFalsePositiveTypes={selectedFalsePositiveTypes}
-          onFalsePositiveTypesChange={handleFalsePositiveFilterChange}
-          selectedSmokeTypes={selectedSmokeTypes}
-          onSmokeTypesChange={setSelectedSmokeTypes}
-          selectedModelAccuracy={selectedModelAccuracy}
-          onModelAccuracyChange={setSelectedModelAccuracy}
-          onResetFilters={resetFilters}
-          cameras={cameras}
-          organizations={organizations}
-          sourceApis={sourceApis}
-          camerasLoading={camerasLoading}
-          organizationsLoading={organizationsLoading}
-          sourceApisLoading={sourceApisLoading}
-          showModelAccuracy={true}
-          showFalsePositiveTypes={true}
-          showSmokeTypes={true}
-        />
+        <div className="flex items-center gap-3">
+          <div className="flex items-center space-x-2">
+            <label className="text-sm text-gray-700">Show:</label>
+            <select
+              value={filters.size || 50}
+              onChange={e => handleFilterChange({ size: Number(e.target.value) })}
+              className="border border-gray-300 rounded px-2 py-1 text-sm"
+            >
+              {PAGINATION_OPTIONS.map(size => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
+              ))}
+            </select>
+          </div>
+          <FilterPopover
+            filters={filters}
+            onFiltersChange={handleFilterChange}
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            onDateFromChange={handleDateFromChange}
+            onDateToChange={handleDateToChange}
+            onDateRangeSet={setDateRange}
+            onDateRangeClear={clearDateRange}
+            selectedFalsePositiveTypes={selectedFalsePositiveTypes}
+            onFalsePositiveTypesChange={handleFalsePositiveFilterChange}
+            selectedSmokeTypes={selectedSmokeTypes}
+            onSmokeTypesChange={setSelectedSmokeTypes}
+            selectedModelAccuracy={selectedModelAccuracy}
+            onModelAccuracyChange={setSelectedModelAccuracy}
+            onResetFilters={resetFilters}
+            cameras={cameras}
+            organizations={organizations}
+            sourceApis={sourceApis}
+            camerasLoading={camerasLoading}
+            organizationsLoading={organizationsLoading}
+            sourceApisLoading={sourceApisLoading}
+            showModelAccuracy={true}
+            showFalsePositiveTypes={true}
+            showSmokeTypes={true}
+          />
+        </div>
       </div>
 
       {/* Results */}
       {filteredSequences && (
         <div className="bg-white rounded-lg border border-gray-200">
-          <DetectionReviewTableHeader
-            filteredSequences={filteredSequences}
-            sequences={sequences}
-            selectedModelAccuracy={selectedModelAccuracy}
-            filters={filters}
-            onFilterChange={handleFilterChange}
-          />
-
           <SequencesLegend />
 
           <LocalizeDoneTable

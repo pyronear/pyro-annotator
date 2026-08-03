@@ -89,8 +89,9 @@ describe('DetectionAnnotatePage (Localize queue)', () => {
     expect(screen.getByText('4')).toBeTruthy();
     // Smoke type from the classify phase (smoke lanes only), plain text
     expect(screen.getByText(/Wildfire/)).toBeTruthy();
-    // Old columns are gone
-    expect(screen.queryByText(/objects to localize/)).toBeNull();
+    // Old cell formats are gone (the header tooltip mentions "objects to
+    // localize", so match the old "N objects ..." cell text specifically)
+    expect(screen.queryByText(/\d+ objects to localize/)).toBeNull();
     expect(screen.queryByText(/boxes/)).toBeNull();
   });
 

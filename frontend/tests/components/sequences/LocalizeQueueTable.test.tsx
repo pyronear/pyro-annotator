@@ -63,6 +63,13 @@ describe('LocalizeQueueTable', () => {
     }
   });
 
+  it('renders column tooltips', () => {
+    render(<LocalizeQueueTable items={[createItem()]} onItemClick={onItemClick} />);
+
+    expect(screen.getByText('Smoke objects to localize in this alert')).toBeInTheDocument();
+    expect(screen.getByText('Images to box across all smoke objects')).toBeInTheDocument();
+  });
+
   it('renders source and azimuth as plain text and the absolute timestamp', () => {
     render(<LocalizeQueueTable items={[createItem()]} onItemClick={onItemClick} />);
 

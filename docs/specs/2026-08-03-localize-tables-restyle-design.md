@@ -49,7 +49,10 @@ Props: `sequences: SequenceWithDetectionProgress[]`,
 `annotations: Record<number, SequenceAnnotation | undefined>` (the page
 already builds this map), `onSequenceClick: (sequence) => void`.
 
-Strict classify-done column parity, minus pills:
+Columns aligned with the queue table (amended 2026-08-03: the initial
+classify-done parity was revised — the Alert API annotation pill is dropped
+and the queue's Smoke types / Frames columns are adopted; Objects is omitted
+because a done row is a single object-sequence):
 
 | Column | Content |
 | --- | --- |
@@ -57,10 +60,11 @@ Strict classify-done column parity, minus pills:
 | Camera | `camera_name` |
 | Organisation | plain text |
 | Recorded | locale string |
-| Alert API annotation | `PlatformAnnotationPill` (kept — shared component, matches classify) |
 | Source | plain text (no pill) |
 | Azimuth | `{azimuth}°`, empty when null |
-| Result | plain text: `⚠️ Unsure` when `is_unsure`, false-positive types (`formatFalsePositiveType`), smoke types (`formatSmokeType`), comma-separated; no pills |
+| Smoke types | `annotation.smoke_types` formatted plain text, comma-separated |
+| Frames | `detection_annotation_stats.total_detections`, empty when stats absent |
+| Result | plain text: `⚠️ Unsure` when `is_unsure`, then false-positive types (`formatFalsePositiveType`), comma-separated; smoke types live in their own column |
 
 Row coloring matches `ClassifyDoneTable`: amber background for unsure,
 otherwise `getRowBackgroundClasses(analyzeSequenceAccuracy(...))`, so the
@@ -69,6 +73,24 @@ existing `SequencesLegend` stays accurate.
 Dropped from the old card layout (per design decision): progress bar (always
 100% on this page — the queue filters on complete detection annotation) and
 contributors.
+
+### Column-header tooltips (amended 2026-08-03)
+
+Both localize tables explain each column on hover via a shared
+`ColumnHeader` component (`src/components/sequences/ColumnHeader.tsx`): a
+`<th>` carrying the standard header classes plus a CSS-only tooltip bubble
+(dark background, small normal-case text, shown on `group-hover`, no JS —
+same visual family as the hover overlay in `DetectionImageCard`). The
+`sr-only` thumbnail header gets no tooltip.
+
+### Count bar removal on `/localize/done` (amended 2026-08-03)
+
+The "Showing X to Y of Z fully annotated sequences" bar
+(`DetectionReviewTableHeader`) is removed; the component and its test are
+deleted. The page-size selector moves into the page header next to the
+Filters popover. `DetectionReviewPagination` (still rendered only when
+`pages > 1`) now reads `Page X of Y · N sequences`, carrying the total when
+it matters for navigation. The classify pages keep their count bar.
 
 ### Page changes
 

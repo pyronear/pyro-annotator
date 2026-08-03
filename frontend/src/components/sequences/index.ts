@@ -8,7 +8,6 @@ export { PlatformAnnotationPill } from './PlatformAnnotationPill';
 export { SequencesPagination } from './SequencesPagination';
 
 // Detection Review specific components
-export { DetectionReviewTableHeader } from './DetectionReviewTableHeader';
 export { DetectionReviewPagination } from './DetectionReviewPagination';
 
 // Detection Annotate specific components
