@@ -356,7 +356,11 @@ async def list_sequences(
 
     if needs_localization is not None:
         clause = needs_localization_clause(SequenceAnnotation)
-        query = query.where(clause if needs_localization else ~clause)
+        query = query.where(
+            clause
+            if needs_localization
+            else and_(SequenceAnnotation.id.is_not(None), ~clause)
+        )
 
     if has_false_positives is not None:
         query = query.where(

@@ -2229,6 +2229,24 @@ async def test_needs_localization_filter(
     fp = await make(9003, has_smoke=False, has_missed_smoke=False, is_unsure=False)
     unsure = await make(9004, has_smoke=True, has_missed_smoke=False, is_unsure=True)
 
+    # No-annotation sequence: should be excluded from both filters
+    no_ann = Sequence(
+        source_api=SourceApi.PYRONEAR_FRENCH_API,
+        alert_api_id=9005,
+        platform_alert_id=9005,
+        created_at=now,
+        recorded_at=now,
+        last_seen_at=now,
+        camera_name="cam",
+        camera_id=1,
+        lat=0.0,
+        lon=0.0,
+        organisation_name="org",
+        organisation_id=1,
+    )
+    async_session.add(no_ann)
+    await async_session.commit()
+
     resp = await authenticated_client.get(
         "/sequences", params={"needs_localization": True}
     )
