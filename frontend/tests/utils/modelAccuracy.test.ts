@@ -3,7 +3,7 @@
  * codes shown in the done tables (unsure > missed smoke > smoke > no smoke).
  */
 
-import { deriveSequenceOutcome } from '@/utils/modelAccuracy';
+import { deriveSequenceOutcome, rollupOutcomes } from '@/utils/modelAccuracy';
 import type { SequenceAnnotation } from '@/types/api';
 
 const createAnnotation = (overrides: Partial<SequenceAnnotation> = {}): SequenceAnnotation => ({
@@ -47,5 +47,22 @@ describe('deriveSequenceOutcome', () => {
     expect(
       deriveSequenceOutcome(createAnnotation({ is_unsure: true, has_missed_smoke: true }))
     ).toBe('unsure');
+  });
+});
+
+describe('rollupOutcomes', () => {
+  it('returns null for an empty list', () => {
+    expect(rollupOutcomes([])).toBeNull();
+  });
+
+  it('returns the single outcome with no extras', () => {
+    expect(rollupOutcomes(['tp'])).toEqual({ outcome: 'tp', extraCount: 0 });
+  });
+
+  it('picks the dominant outcome by fn > unsure > tp > fp precedence', () => {
+    expect(rollupOutcomes(['fp', 'tp', 'fn', 'unsure'])).toEqual({ outcome: 'fn', extraCount: 3 });
+    expect(rollupOutcomes(['fp', 'unsure', 'tp'])).toEqual({ outcome: 'unsure', extraCount: 2 });
+    expect(rollupOutcomes(['fp', 'tp'])).toEqual({ outcome: 'tp', extraCount: 1 });
+    expect(rollupOutcomes(['fp', 'fp'])).toEqual({ outcome: 'fp', extraCount: 1 });
   });
 });

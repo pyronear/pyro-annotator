@@ -81,20 +81,29 @@ chrome migrates to the fire-lookout table recipe while we're in them: ash
 header with mono eyebrow `th`s, `line` dividers, `char`/`haze` cell text,
 mono for dates/counts, and the legacy blue source pill becomes neutral.
 
-**Untouched:** `LocalizeQueueTable` (every row is smoke by definition — no
-outcome to show), the classify queue (unannotated rows), and the detail
-pages.
+**`LocalizeQueueTable`** (`/localize`)
 
-## Future: multi-object rollup (documented, not built)
+- Rows are already alert-grouped with per-lane annotation flags, so this
+  table gets the multi-object rollup (below) as a trailing Result column:
+  dominant outcome over **all** lanes (not just smoke lanes) with the
+  `+N` extra count.
 
-When queue rows become alerts (1..N objects) per the collocation design, a
-row shows the **dominant outcome** by precedence
+**Untouched:** the classify queue (unannotated rows) and the detail pages.
+
+## Multi-object rollup
+
+An alert row (1..N objects) shows the **dominant outcome** by precedence
 `⚑ FN > ? > TP > FP`, with `extraCount` = the number of other objects
-(e.g. `TP +2`). Alert-level missed smoke is stored on the primary lane and
-therefore dominates naturally. Single-object alerts render identically to
-today's per-sequence code. Chosen over per-object dot strips, coded counts
-(`2 TP · 1 FP`), and segmented micro-bars for its clean single-object
-degradation; the exact mix stays one click away on the detail screen.
+(e.g. `TP +2`) — `rollupOutcomes` in `modelAccuracy.ts`. Alert-level missed
+smoke is stored on the primary lane and therefore dominates naturally.
+Single-object alerts render identically to the per-sequence code. Chosen
+over per-object dot strips, coded counts (`2 TP · 1 FP`), and segmented
+micro-bars for its clean single-object degradation; the exact mix stays one
+click away on the detail screen.
+
+Implemented today in `LocalizeQueueTable` (the only alert-grouped table);
+the collocated classify queue inherits it when alert rows land there per
+the collocation design.
 
 ## Cleanup
 
@@ -108,7 +117,7 @@ degradation; the exact mix stays one click away on the detail screen.
 ## Testing
 
 - Unit: outcome precedence (unsure beats FN beats TP/FP; null annotation →
-  none).
+  none); rollup precedence and extra count (empty list → none).
 - Component: `OutcomeCode` renders the four states + `extraCount`; unknown
   renders nothing.
 - Tables: existing done-table tests updated — no tint classes, code + detail
@@ -118,4 +127,3 @@ degradation; the exact mix stays one click away on the detail screen.
 
 - No backend or API changes.
 - No change to filters (`ModelAccuracyFilter` keeps its current labels).
-- No implementation of the multi-object rollup (alert rows don't exist yet).

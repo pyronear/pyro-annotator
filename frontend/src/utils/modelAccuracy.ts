@@ -63,19 +63,39 @@ export interface ModelAccuracyResult {
 export type SequenceOutcome = 'tp' | 'fp' | 'fn' | 'unsure';
 
 /**
+ * The three annotation flags an outcome derives from. Satisfied by
+ * SequenceAnnotation and LocalizationQueueLane alike.
+ */
+type OutcomeFlags = Pick<SequenceAnnotation, 'is_unsure' | 'has_smoke' | 'has_missed_smoke'>;
+
+/**
  * Derives the outcome code for an annotated sequence.
  *
  * Precedence (first match wins): unsure, missed smoke (fn), smoke (tp),
  * no smoke (fp). Returns null when there is no annotation to judge from.
  */
 export function deriveSequenceOutcome(
-  annotation: SequenceAnnotation | null | undefined
+  annotation: OutcomeFlags | null | undefined
 ): SequenceOutcome | null {
   if (!annotation) return null;
   if (annotation.is_unsure) return 'unsure';
   const accuracy = getModelAccuracyType(annotation.has_smoke, annotation.has_missed_smoke);
   if (accuracy === 'unknown') return null;
   return accuracy === 'true_positive' ? 'tp' : accuracy === 'false_positive' ? 'fp' : 'fn';
+}
+
+/**
+ * Rolls per-object outcomes up to one alert-level code: the dominant outcome
+ * by fn > unsure > tp > fp precedence, plus how many other objects there are
+ * (rendered as a muted "+N" by OutcomeCode).
+ */
+export function rollupOutcomes(
+  outcomes: SequenceOutcome[]
+): { outcome: SequenceOutcome; extraCount: number } | null {
+  const precedence: SequenceOutcome[] = ['fn', 'unsure', 'tp', 'fp'];
+  const dominant = precedence.find(outcome => outcomes.includes(outcome));
+  if (!dominant) return null;
+  return { outcome: dominant, extraCount: outcomes.length - 1 };
 }
 
 /**
