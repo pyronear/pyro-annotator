@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { BoxSelect, Search } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import {
   ExtendedSequenceFilters,
@@ -22,7 +23,7 @@ import { useSourceApis } from '@/hooks/useSourceApis';
 import { usePersistedFilters, createDefaultFilterState } from '@/hooks/usePersistedFilters';
 import { calculatePresetDateRange } from '@/components/filters/shared/dateRangeUtils';
 import { hasActiveUserFilters } from '@/utils/filterHelpers';
-import { localizeDetail } from '@/utils/routes';
+import { localizeDetail, ROUTES } from '@/utils/routes';
 
 // Default filter contract for /localize/done — imported by its defaults test.
 // eslint-disable-next-line react-refresh/only-export-components
@@ -271,24 +272,52 @@ export default function DetectionReviewPage() {
 
         {/* Empty state message */}
         <div className="flex items-center justify-center min-h-96">
-          <div className="text-center">
+          <div className="text-center max-w-md">
             {hasFilters ? (
               // Filtered results - no matches
               <>
-                <div className="text-4xl mb-4">🔍</div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                  No matching sequences found
-                </h3>
-                <p className="text-gray-500 mb-4">
-                  No sequences with completed detection annotations match your current filters.
+                <span
+                  aria-hidden="true"
+                  className="inline-flex h-14 w-14 items-center justify-center rounded-full border border-line bg-white"
+                >
+                  <Search className="h-6 w-6 text-haze" />
+                </span>
+                <h2 className="mt-4 font-display text-base font-semibold text-char">
+                  No matching alerts
+                </h2>
+                <p className="mt-1.5 font-body text-sm leading-relaxed text-haze">
+                  Nothing localized matches your current filters. Loosen or clear them to see more.
                 </p>
-                <p className="text-gray-400 text-sm">Try adjusting your search criteria above.</p>
+                <button
+                  onClick={resetFilters}
+                  className="mt-5 inline-block rounded-lg border border-line bg-white px-7 py-2.5 font-body text-[13.5px] font-semibold text-char hover:bg-ash focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2"
+                >
+                  Clear filters
+                </button>
               </>
             ) : (
-              // No filters - no sequences available
-              <p className="text-gray-500">
-                No sequences with completed detection annotations to review at the moment.
-              </p>
+              // No filters - nothing localized yet
+              <>
+                <span
+                  aria-hidden="true"
+                  className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-ember-soft"
+                >
+                  <BoxSelect className="h-6 w-6 text-ember" />
+                </span>
+                <h2 className="mt-4 font-display text-base font-semibold text-char">
+                  No localized alerts yet
+                </h2>
+                <p className="mt-1.5 font-body text-sm leading-relaxed text-haze">
+                  Finished localizations show up here for review. Head to the queue to box your
+                  first alert.
+                </p>
+                <Link
+                  to={ROUTES.LOCALIZE}
+                  className="mt-5 inline-block rounded-lg bg-ember px-7 py-2.5 font-body text-[13.5px] font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2"
+                >
+                  Start localizing
+                </Link>
+              </>
             )}
           </div>
         </div>
