@@ -1,11 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Popover } from '@headlessui/react';
 import {
   Loader2,
   AlertCircle,
+  Check,
   Info,
+  Layers,
   ShieldCheck,
   ChevronRight,
   ArrowUp,
@@ -14,9 +16,7 @@ import {
 import { apiClient } from '@/services/api';
 import { formatRelativeTime } from '@/utils/relativeTime';
 import { SequenceGroupStats } from '@/types/api';
-import { classifyGroup } from '@/utils/routes';
-
-type Filter = 'all' | 'labeled' | 'unlabeled';
+import { classifyGroup, classifyGroups, ROUTES, SequenceGroupsFilter } from '@/utils/routes';
 type OrderBy = 'member_count' | 'camera_name' | 'azimuth' | 'created_at';
 type OrderDirection = 'asc' | 'desc';
 
@@ -28,30 +28,50 @@ const DEFAULT_DIRECTION: Record<OrderBy, OrderDirection> = {
   created_at: 'desc',
 };
 
-const FILTERS: { value: Filter; label: string; countOf: keyof SequenceGroupStats }[] = [
-  { value: 'unlabeled', label: 'To label', countOf: 'unlabeled' },
-  { value: 'labeled', label: 'Labeled', countOf: 'labeled' },
-  { value: 'all', label: 'All', countOf: 'total' },
-];
+const FILTERS: { value: SequenceGroupsFilter; label: string; countOf: keyof SequenceGroupStats }[] =
+  [
+    { value: 'unlabeled', label: 'To label', countOf: 'unlabeled' },
+    { value: 'labeled', label: 'Labeled', countOf: 'labeled' },
+    { value: 'all', label: 'All', countOf: 'total' },
+  ];
+
+// Same hover-tooltip bubble as components/sequences/ColumnHeader.tsx, kept
+// local because these headers are sortable and use this table's padding.
+function headerTip(tip: string, align: 'left' | 'right' = 'left') {
+  return (
+    <span
+      role="tooltip"
+      className={`pointer-events-none absolute top-full z-10 mt-1 hidden w-max max-w-[16rem] whitespace-normal rounded bg-gray-900 px-2 py-1 text-xs font-normal normal-case tracking-normal text-white shadow group-hover:block ${
+        align === 'right' ? 'right-0' : 'left-0'
+      }`}
+    >
+      {tip}
+    </span>
+  );
+}
 
 function SortableHeader({
   column,
   label,
+  tip,
   orderBy,
   orderDirection,
   onSort,
+  align = 'left',
 }: {
   column: OrderBy;
   label: string;
+  tip: string;
   orderBy: OrderBy;
   orderDirection: OrderDirection;
   onSort: (column: OrderBy) => void;
+  align?: 'left' | 'right';
 }) {
   const active = orderBy === column;
   const Arrow = orderDirection === 'asc' ? ArrowUp : ArrowDown;
   return (
     <th
-      className="px-3 py-2.5 text-left whitespace-nowrap"
+      className="group relative px-3 py-2.5 text-left whitespace-nowrap"
       aria-sort={active ? (orderDirection === 'asc' ? 'ascending' : 'descending') : undefined}
     >
       <button
@@ -62,17 +82,35 @@ function SortableHeader({
         {label}
         {active && <Arrow className="inline w-3 h-3 ml-1 text-blue-600" />}
       </button>
+      {headerTip(tip, align)}
     </th>
   );
 }
 
-export default function SequenceGroupsListPage() {
+function PlainHeader({ label, tip }: { label: string; tip: string }) {
+  return (
+    <th className="group relative px-3 py-2.5 text-left">
+      <span className="cursor-help">{label}</span>
+      {headerTip(tip)}
+    </th>
+  );
+}
+
+export default function SequenceGroupsListPage({
+  filter = 'unlabeled',
+}: {
+  filter?: SequenceGroupsFilter;
+} = {}) {
   const navigate = useNavigate();
-  const [filter, setFilter] = useState<Filter>('unlabeled');
   const [page, setPage] = useState(1);
   const [orderBy, setOrderBy] = useState<OrderBy>('member_count');
   const [orderDirection, setOrderDirection] = useState<OrderDirection>('desc');
   const size = 50;
+
+  // Tab switches change the dataset; restart pagination.
+  useEffect(() => {
+    setPage(1);
+  }, [filter]);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['sequenceGroupsList', filter, page, size, orderBy, orderDirection],
@@ -146,175 +184,242 @@ export default function SequenceGroupsListPage() {
         <p className="text-gray-600">Label many related sequences at once.</p>
       </div>
 
-      <div>
-        <div className="inline-flex rounded-lg bg-gray-200 p-0.5 gap-0.5 text-sm">
+      <div className="flex justify-center">
+        <div className="inline-flex rounded-lg border border-line bg-ash p-0.5 gap-0.5 text-sm">
           {FILTERS.map(f => {
             const active = filter === f.value;
             const count = stats?.[f.countOf];
             return (
-              <button
+              <Link
                 key={f.value}
-                onClick={() => {
-                  setFilter(f.value);
-                  setPage(1);
-                }}
-                className={`px-3.5 py-1.5 rounded-md font-medium ${
+                to={classifyGroups(f.value)}
+                aria-current={active ? 'page' : undefined}
+                className={`inline-flex items-baseline px-3.5 py-1.5 rounded-md ${
                   active
-                    ? 'bg-white text-gray-900 shadow-sm font-semibold'
-                    : 'text-gray-600 hover:text-gray-900'
+                    ? 'border border-line bg-paper font-semibold text-char'
+                    : 'border border-transparent font-medium text-haze hover:text-char'
                 }`}
               >
                 {f.label}
                 {count !== undefined && (
                   <span
-                    className={`ml-1.5 rounded-full px-1.5 py-0.5 text-xs ${
-                      active ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'
-                    }`}
+                    className={`ml-1.5 font-data text-xs ${active ? 'text-ember' : 'text-haze'}`}
                   >
                     {count}
                   </span>
                 )}
-              </button>
+              </Link>
             );
           })}
         </div>
       </div>
 
-      <div className="overflow-x-auto border border-gray-200 rounded-lg bg-white shadow-sm">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-gray-600 text-xs uppercase tracking-wide">
-            <tr>
-              <SortableHeader
-                column="camera_name"
-                label="Camera"
-                orderBy={orderBy}
-                orderDirection={orderDirection}
-                onSort={handleSort}
-              />
-              <SortableHeader
-                column="azimuth"
-                label="Azimuth"
-                orderBy={orderBy}
-                orderDirection={orderDirection}
-                onSort={handleSort}
-              />
-              <SortableHeader
-                column="member_count"
-                label="Sequences"
-                orderBy={orderBy}
-                orderDirection={orderDirection}
-                onSort={handleSort}
-              />
-              <th className="px-3 py-2.5 text-left">Label</th>
-              <th className="px-3 py-2.5 text-left">Reviewed</th>
-              <SortableHeader
-                column="created_at"
-                label="Created"
-                orderBy={orderBy}
-                orderDirection={orderDirection}
-                onSort={handleSort}
-              />
-              <th className="px-3 py-2.5" />
-            </tr>
-          </thead>
-          <tbody>
-            {items.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="px-3 py-8 text-center text-gray-500">
-                  {filter === 'unlabeled'
-                    ? 'Nothing to label right now. Groups are assigned ' +
-                      'automatically a few minutes after an import; groups with ' +
-                      'fewer than 3 sequences are intentionally hidden here.'
-                    : 'No groups match this filter.'}
-                </td>
-              </tr>
-            ) : (
-              items.map(g => (
-                <tr
-                  key={g.id}
-                  onClick={e => {
-                    // Leave modified clicks and text selection to the browser;
-                    // the camera-name <Link> handles open-in-new-tab.
-                    if (e.ctrlKey || e.metaKey || window.getSelection()?.toString()) return;
-                    navigate(classifyGroup(g.id));
-                  }}
-                  className="border-t border-gray-100 hover:bg-blue-50 cursor-pointer"
+      {/* Gate on total, not items: a stale page ≥ 2 can refetch empty while
+          groups still exist — that must keep the table + pagination, not
+          show a false "all labeled" success. */}
+      {(data?.total ?? 0) === 0 ? (
+        <div className="flex items-center justify-center min-h-96">
+          <div className="text-center max-w-md">
+            {filter === 'unlabeled' ? (
+              // Every group labeled - success
+              <>
+                <span
+                  aria-hidden="true"
+                  className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-pine-soft"
                 >
-                  <td className="px-3 py-2.5">
-                    <Link
-                      to={classifyGroup(g.id)}
-                      onClick={e => e.stopPropagation()}
-                      className="font-semibold text-gray-900 hover:text-blue-700"
-                    >
-                      {g.camera_name}
-                    </Link>
-                  </td>
-                  <td className="px-3 py-2.5">{g.azimuth}°</td>
-                  <td className="px-3 py-2.5">
-                    <span className="inline-block rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-700">
-                      {g.member_count}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2.5">
-                    {g.smoke_type ? (
-                      <span className="inline-block rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-semibold text-orange-700">
-                        smoke · {g.smoke_type}
-                      </span>
-                    ) : g.false_positive_type ? (
-                      <span className="inline-block rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-semibold text-gray-700">
-                        false positive · {g.false_positive_type.replace(/_/g, ' ')}
-                      </span>
-                    ) : (
-                      <span className="inline-block rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-semibold text-yellow-800">
-                        to label
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2.5">
-                    {g.is_validated ? (
-                      <span className="inline-flex items-center gap-1 text-green-700 text-xs font-semibold">
-                        <ShieldCheck className="w-3.5 h-3.5" /> validated
-                      </span>
-                    ) : (
-                      <span className="text-gray-400">—</span>
-                    )}
-                  </td>
-                  <td
-                    className="px-3 py-2.5 text-gray-500"
-                    title={new Date(g.created_at).toLocaleString()}
-                  >
-                    {formatRelativeTime(g.created_at)}
-                  </td>
-                  <td className="px-3 py-2.5 text-right">
-                    <ChevronRight className="inline w-4 h-4 text-gray-400" />
-                  </td>
-                </tr>
-              ))
+                  <Check className="h-7 w-7 text-pine" />
+                </span>
+                <h2 className="mt-4 font-display text-base font-semibold text-char">
+                  All groups labeled
+                </h2>
+                <p className="mt-1.5 font-body text-sm leading-relaxed text-haze">
+                  Nice work — every group is labeled. New groups form automatically a few minutes
+                  after each import.
+                </p>
+                <Link
+                  to={ROUTES.CLASSIFY}
+                  className="mt-5 inline-block rounded-lg bg-ember px-7 py-2.5 font-body text-[13.5px] font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2"
+                >
+                  Start classifying
+                </Link>
+              </>
+            ) : filter === 'labeled' ? (
+              // Nothing labeled yet - work to do
+              <>
+                <span
+                  aria-hidden="true"
+                  className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-ember-soft"
+                >
+                  <Layers className="h-6 w-6 text-ember" />
+                </span>
+                <h2 className="mt-4 font-display text-base font-semibold text-char">
+                  No labeled groups yet
+                </h2>
+                <p className="mt-1.5 font-body text-sm leading-relaxed text-haze">
+                  Groups you label land here.
+                </p>
+                <Link
+                  to={classifyGroups('unlabeled')}
+                  className="mt-5 inline-block rounded-lg bg-ember px-7 py-2.5 font-body text-[13.5px] font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2"
+                >
+                  Label groups
+                </Link>
+              </>
+            ) : (
+              // No groups at all - informational
+              <>
+                <span
+                  aria-hidden="true"
+                  className="inline-flex h-14 w-14 items-center justify-center rounded-full border border-line bg-paper"
+                >
+                  <Layers className="h-6 w-6 text-haze" />
+                </span>
+                <h2 className="mt-4 font-display text-base font-semibold text-char">
+                  No groups yet
+                </h2>
+                <p className="mt-1.5 font-body text-sm leading-relaxed text-haze">
+                  Groups form automatically after imports — only groups of 3 or more sequences
+                  appear here.
+                </p>
+              </>
             )}
-          </tbody>
-        </table>
-      </div>
-
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between text-sm">
-          <button
-            onClick={() => setPage(p => Math.max(1, p - 1))}
-            disabled={page === 1}
-            className="px-3 py-1.5 border border-gray-300 rounded-lg bg-white disabled:opacity-40 hover:bg-gray-50"
-          >
-            Previous
-          </button>
-          <span className="text-gray-600">
-            Page {page} / {totalPages}
-          </span>
-          <button
-            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-            disabled={page >= totalPages}
-            className="px-3 py-1.5 border border-gray-300 rounded-lg bg-white disabled:opacity-40 hover:bg-gray-50"
-          >
-            Next
-          </button>
+          </div>
         </div>
+      ) : (
+        <>
+          <div className="overflow-x-auto border border-gray-200 rounded-lg bg-white shadow-sm">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-gray-600 text-xs uppercase tracking-wide">
+                <tr>
+                  <SortableHeader
+                    column="camera_name"
+                    label="Camera"
+                    tip="Camera that recorded the group's sequences"
+                    orderBy={orderBy}
+                    orderDirection={orderDirection}
+                    onSort={handleSort}
+                  />
+                  <SortableHeader
+                    column="azimuth"
+                    label="Azimuth"
+                    tip="Camera viewing direction, in degrees"
+                    orderBy={orderBy}
+                    orderDirection={orderDirection}
+                    onSort={handleSort}
+                  />
+                  <SortableHeader
+                    column="member_count"
+                    label="Sequences"
+                    tip="Number of sequences in the group"
+                    orderBy={orderBy}
+                    orderDirection={orderDirection}
+                    onSort={handleSort}
+                  />
+                  <PlainHeader
+                    label="Label"
+                    tip="Group label — propagates to every member once the group is validated"
+                  />
+                  <PlainHeader label="Reviewed" tip="Whether a human validated the group's label" />
+                  <SortableHeader
+                    column="created_at"
+                    label="Created"
+                    tip="When the group was created"
+                    orderBy={orderBy}
+                    orderDirection={orderDirection}
+                    onSort={handleSort}
+                    align="right"
+                  />
+                  <th className="px-3 py-2.5" />
+                </tr>
+              </thead>
+              <tbody>
+                {items.map(g => (
+                  <tr
+                    key={g.id}
+                    onClick={e => {
+                      // Leave modified clicks and text selection to the browser;
+                      // the camera-name <Link> handles open-in-new-tab.
+                      if (e.ctrlKey || e.metaKey || window.getSelection()?.toString()) return;
+                      navigate(classifyGroup(g.id));
+                    }}
+                    className="border-t border-gray-100 hover:bg-blue-50 cursor-pointer"
+                  >
+                    <td className="px-3 py-2.5">
+                      <Link
+                        to={classifyGroup(g.id)}
+                        onClick={e => e.stopPropagation()}
+                        className="font-semibold text-gray-900 hover:text-blue-700"
+                      >
+                        {g.camera_name}
+                      </Link>
+                    </td>
+                    <td className="px-3 py-2.5">{g.azimuth}°</td>
+                    <td className="px-3 py-2.5">
+                      <span className="inline-block rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-700">
+                        {g.member_count}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5">
+                      {g.smoke_type ? (
+                        <span className="inline-block rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-semibold text-orange-700">
+                          smoke · {g.smoke_type}
+                        </span>
+                      ) : g.false_positive_type ? (
+                        <span className="inline-block rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-semibold text-gray-700">
+                          false positive · {g.false_positive_type.replace(/_/g, ' ')}
+                        </span>
+                      ) : (
+                        <span className="inline-block rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-semibold text-yellow-800">
+                          to label
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      {g.is_validated ? (
+                        <span className="inline-flex items-center gap-1 text-green-700 text-xs font-semibold">
+                          <ShieldCheck className="w-3.5 h-3.5" /> validated
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </td>
+                    <td
+                      className="px-3 py-2.5 text-gray-500"
+                      title={new Date(g.created_at).toLocaleString()}
+                    >
+                      {formatRelativeTime(g.created_at)}
+                    </td>
+                    <td className="px-3 py-2.5 text-right">
+                      <ChevronRight className="inline w-4 h-4 text-gray-400" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between text-sm">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="px-3 py-1.5 border border-gray-300 rounded-lg bg-white disabled:opacity-40 hover:bg-gray-50"
+              >
+                Previous
+              </button>
+              <span className="text-gray-600">
+                Page {page} / {totalPages}
+              </span>
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+                className="px-3 py-1.5 border border-gray-300 rounded-lg bg-white disabled:opacity-40 hover:bg-gray-50"
+              >
+                Next
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

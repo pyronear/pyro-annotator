@@ -83,6 +83,14 @@ function App() {
                     element={<SequencesPageWrapper defaultProcessingStage="annotated" />}
                   />
                   <Route path="/classify/groups" element={<SequenceGroupsListPage />} />
+                  <Route
+                    path="/classify/groups/labeled"
+                    element={<SequenceGroupsListPage filter="labeled" />}
+                  />
+                  <Route
+                    path="/classify/groups/all"
+                    element={<SequenceGroupsListPage filter="all" />}
+                  />
                   <Route path="/classify/groups/:id" element={<SequenceGroupAnnotatePage />} />
                   <Route path="/classify/done/:id" element={<AnnotationInterface mode="done" />} />
                   <Route path="/classify/:id" element={<AnnotationInterface />} />
