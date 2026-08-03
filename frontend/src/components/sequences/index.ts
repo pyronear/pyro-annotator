@@ -5,6 +5,7 @@ export { LocalizeQueueTable } from './LocalizeQueueTable';
 export { LocalizeDoneTable } from './LocalizeDoneTable';
 export { PlatformAnnotationPill } from './PlatformAnnotationPill';
 export { SequencesPagination } from './SequencesPagination';
+export { TablePagination } from './TablePagination';
 
 // Detection Review specific components
 export { DetectionReviewPagination } from './DetectionReviewPagination';
