@@ -39,7 +39,7 @@ describe('buildFilterPills', () => {
   it('labels alert API annotation values, including null as Unclassified', () => {
     expect(
       buildFilterPills({ ...baseInput, filters: { is_wildfire_alertapi: 'wildfire_smoke' } })
-    ).toEqual([{ id: 'wildfire', label: 'Alert API: Wildfire Smoke' }]);
+    ).toEqual([{ id: 'wildfire', label: 'Alert API: Wildfire smoke' }]);
     expect(buildFilterPills({ ...baseInput, filters: { is_wildfire_alertapi: null } })).toEqual([
       { id: 'wildfire', label: 'Alert API: Unclassified' },
     ]);

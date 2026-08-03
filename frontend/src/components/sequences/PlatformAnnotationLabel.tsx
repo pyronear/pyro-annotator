@@ -1,6 +1,6 @@
 import { AnnotationType } from '@/types/api';
 
-const PILLS: Record<AnnotationType, { dotClass: string; label: string; title: string }> = {
+const LABELS: Record<AnnotationType, { dotClass: string; label: string; title: string }> = {
   wildfire_smoke: {
     dotClass: 'bg-signal',
     label: 'Wildfire',
@@ -19,13 +19,13 @@ const PILLS: Record<AnnotationType, { dotClass: string; label: string; title: st
 };
 
 /** Alert-platform classification as a dot + label (OutcomeCode style); renders nothing when unset. */
-export function PlatformAnnotationPill({ value }: { value: AnnotationType | null }) {
+export function PlatformAnnotationLabel({ value }: { value: AnnotationType | null }) {
   if (!value) return null;
-  const pill = PILLS[value];
+  const entry = LABELS[value];
   return (
-    <span title={pill.title} className="inline-flex items-center gap-1.5 text-detail text-char">
-      <span aria-hidden className={`h-2 w-2 flex-none rounded-full ${pill.dotClass}`} />
-      {pill.label}
+    <span title={entry.title} className="inline-flex items-center gap-1.5 text-detail text-char">
+      <span aria-hidden className={`h-2 w-2 flex-none rounded-full ${entry.dotClass}`} />
+      {entry.label}
     </span>
   );
 }

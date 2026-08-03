@@ -1,15 +1,15 @@
 /**
- * Tests for PlatformAnnotationPill: the dot + text rendering of the
+ * Tests for PlatformAnnotationLabel: the dot + text rendering of the
  * alert platform's own classification in the classify tables.
  */
 
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import { PlatformAnnotationPill } from '@/components/sequences/PlatformAnnotationPill';
+import { PlatformAnnotationLabel } from '@/components/sequences/PlatformAnnotationLabel';
 
-describe('PlatformAnnotationPill', () => {
+describe('PlatformAnnotationLabel', () => {
   it('renders wildfire_smoke as Wildfire with a signal dot and provenance tooltip', () => {
-    render(<PlatformAnnotationPill value="wildfire_smoke" />);
+    render(<PlatformAnnotationLabel value="wildfire_smoke" />);
 
     const pill = screen.getByTitle(
       'Wildfire smoke — the alert platform classified this sequence as a wildfire'
@@ -19,7 +19,7 @@ describe('PlatformAnnotationPill', () => {
   });
 
   it('renders other_smoke as Other smoke with an ember dot and provenance tooltip', () => {
-    render(<PlatformAnnotationPill value="other_smoke" />);
+    render(<PlatformAnnotationLabel value="other_smoke" />);
 
     const pill = screen.getByTitle(
       'Other smoke — the alert platform classified this as smoke, but not a wildfire'
@@ -29,7 +29,7 @@ describe('PlatformAnnotationPill', () => {
   });
 
   it('renders other as Other with a hollow dot and provenance tooltip', () => {
-    render(<PlatformAnnotationPill value="other" />);
+    render(<PlatformAnnotationLabel value="other" />);
 
     const pill = screen.getByTitle(
       'Other — the alert platform classified this as neither wildfire nor smoke'
@@ -41,7 +41,7 @@ describe('PlatformAnnotationPill', () => {
   });
 
   it('renders nothing when the platform annotation is unset', () => {
-    const { container } = render(<PlatformAnnotationPill value={null} />);
+    const { container } = render(<PlatformAnnotationLabel value={null} />);
 
     expect(container).toBeEmptyDOMElement();
   });

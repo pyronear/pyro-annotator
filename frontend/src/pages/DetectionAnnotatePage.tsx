@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
-import { Check, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { LocalizationQueueItem } from '@/types/api';
-import { LocalizeQueueTable } from '@/components/sequences';
+import { LocalizeQueueTable, TablePagination } from '@/components/sequences';
+import { TABLE_CARD_CLASSES } from '@/components/sequences/tableStyles';
 import { pickNextLocalizeLane } from '@/utils/annotation/localizeUtils';
 import { localizeDetail, ROUTES } from '@/utils/routes';
 
@@ -37,7 +38,7 @@ export default function DetectionAnnotatePage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-96">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-pine"></div>
       </div>
     );
   }
@@ -91,32 +92,17 @@ export default function DetectionAnnotatePage() {
           </div>
         </div>
       ) : (
-        <div className="bg-white shadow rounded-lg">
+        <div className={TABLE_CARD_CLASSES}>
           <LocalizeQueueTable items={items} onItemClick={handleAlertClick} />
-        </div>
-      )}
-
-      {data && data.pages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-gray-500">
-            Page {data.page} of {data.pages} · {data.total} alerts
-          </p>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setPage(p => Math.max(1, p - 1))}
-              disabled={page <= 1}
-              className="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
-            >
-              <ChevronLeft className="h-4 w-4" /> Previous
-            </button>
-            <button
-              onClick={() => setPage(p => p + 1)}
-              disabled={page >= (data.pages ?? 1)}
-              className="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
-            >
-              Next <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
+          {data && (
+            <TablePagination
+              page={data.page}
+              pages={data.pages}
+              total={data.total}
+              itemsLabel="alerts"
+              onPageChange={setPage}
+            />
+          )}
         </div>
       )}
     </div>

@@ -2,21 +2,25 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Popover } from '@headlessui/react';
-import {
-  Loader2,
-  AlertCircle,
-  Check,
-  Info,
-  Layers,
-  ShieldCheck,
-  ChevronRight,
-  ArrowUp,
-  ArrowDown,
-} from 'lucide-react';
+import { Loader2, AlertCircle, Check, Info, Layers, ShieldCheck, ChevronRight } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { formatRelativeTime } from '@/utils/relativeTime';
 import { SequenceGroupStats } from '@/types/api';
 import { classifyGroup, classifyGroups, ROUTES, SequenceGroupsFilter } from '@/utils/routes';
+import { ColumnHeader } from '@/components/sequences/ColumnHeader';
+import { TablePagination } from '@/components/sequences/TablePagination';
+import {
+  CELL_CLASSES,
+  CELL_TEXT,
+  DATA_CELL_TEXT,
+  HEADER_CELL_CLASSES,
+  PRIMARY_CELL_TEXT,
+  ROW_CLASSES,
+  TABLE_CARD_CLASSES,
+  TABLE_CLASSES,
+  TBODY_CLASSES,
+  THEAD_CLASSES,
+} from '@/components/sequences/tableStyles';
 type OrderBy = 'member_count' | 'camera_name' | 'azimuth' | 'created_at';
 type OrderDirection = 'asc' | 'desc';
 
@@ -49,65 +53,19 @@ const FILTERS: {
   { value: 'all', label: 'All', countOf: 'total', tip: 'Every group, labeled or not' },
 ];
 
-// Same hover-tooltip bubble as components/sequences/ColumnHeader.tsx, kept
-// local because these headers are sortable and use this table's padding.
-// Also reused by the filter tabs above the table and the rows' "to label" badge.
+// Same hover-tooltip bubble as components/sequences/ColumnHeader.tsx, used by
+// the filter tabs above the table and the rows' "to label" badge (table
+// headers use ColumnHeader).
 function headerTip(tip: string, align: 'left' | 'right' = 'left') {
   return (
     <span
       role="tooltip"
-      className={`pointer-events-none absolute top-full z-10 mt-1 hidden w-max max-w-[16rem] whitespace-normal rounded bg-gray-900 px-2 py-1 text-xs font-normal normal-case tracking-normal text-white shadow group-hover:block ${
+      className={`pointer-events-none absolute top-full z-10 mt-1 hidden w-max max-w-[16rem] whitespace-normal rounded bg-char px-2 py-1 font-body text-xs font-normal normal-case tracking-normal text-white group-hover:block ${
         align === 'right' ? 'right-0' : 'left-0'
       }`}
     >
       {tip}
     </span>
-  );
-}
-
-function SortableHeader({
-  column,
-  label,
-  tip,
-  orderBy,
-  orderDirection,
-  onSort,
-  align = 'left',
-}: {
-  column: OrderBy;
-  label: string;
-  tip: string;
-  orderBy: OrderBy;
-  orderDirection: OrderDirection;
-  onSort: (column: OrderBy) => void;
-  align?: 'left' | 'right';
-}) {
-  const active = orderBy === column;
-  const Arrow = orderDirection === 'asc' ? ArrowUp : ArrowDown;
-  return (
-    <th
-      className="group relative px-3 py-2.5 text-left whitespace-nowrap"
-      aria-sort={active ? (orderDirection === 'asc' ? 'ascending' : 'descending') : undefined}
-    >
-      <button
-        type="button"
-        onClick={() => onSort(column)}
-        className="uppercase tracking-wide select-none hover:text-gray-900"
-      >
-        {label}
-        {active && <Arrow className="inline w-3 h-3 ml-1 text-blue-600" />}
-      </button>
-      {headerTip(tip, align)}
-    </th>
-  );
-}
-
-function PlainHeader({ label, tip }: { label: string; tip: string }) {
-  return (
-    <th className="group relative px-3 py-2.5 text-left">
-      <span className="cursor-help">{label}</span>
-      {headerTip(tip)}
-    </th>
   );
 }
 
@@ -305,56 +263,62 @@ export default function SequenceGroupsListPage({
           </div>
         </div>
       ) : (
-        <>
-          <div className="overflow-x-auto border border-gray-200 rounded-lg bg-white shadow-sm">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 text-gray-600 text-xs uppercase tracking-wide">
+        <div className={TABLE_CARD_CLASSES}>
+          <div className="overflow-x-auto">
+            <table className={TABLE_CLASSES}>
+              <thead className={THEAD_CLASSES}>
                 <tr>
-                  <SortableHeader
-                    column="camera_name"
+                  <ColumnHeader
                     label="Camera"
                     tip="Camera that recorded the group's sequences"
-                    orderBy={orderBy}
-                    orderDirection={orderDirection}
-                    onSort={handleSort}
+                    sort={{
+                      active: orderBy === 'camera_name',
+                      direction: orderDirection,
+                      onSort: () => handleSort('camera_name'),
+                    }}
                   />
-                  <SortableHeader
-                    column="azimuth"
+                  <ColumnHeader
+                    label="Created"
+                    tip="When the group was created"
+                    sort={{
+                      active: orderBy === 'created_at',
+                      direction: orderDirection,
+                      onSort: () => handleSort('created_at'),
+                    }}
+                  />
+                  <ColumnHeader
                     label="Azimuth"
                     tip="Camera viewing direction, in degrees"
-                    orderBy={orderBy}
-                    orderDirection={orderDirection}
-                    onSort={handleSort}
+                    sort={{
+                      active: orderBy === 'azimuth',
+                      direction: orderDirection,
+                      onSort: () => handleSort('azimuth'),
+                    }}
                   />
-                  <SortableHeader
-                    column="member_count"
+                  <ColumnHeader
                     label="Sequences"
                     tip="Number of sequences in the group"
-                    orderBy={orderBy}
-                    orderDirection={orderDirection}
-                    onSort={handleSort}
+                    sort={{
+                      active: orderBy === 'member_count',
+                      direction: orderDirection,
+                      onSort: () => handleSort('member_count'),
+                    }}
                   />
-                  <PlainHeader
+                  <ColumnHeader
                     label="Label"
                     tip="Group label — propagates to every member once the group is validated"
                   />
-                  <PlainHeader
+                  <ColumnHeader
                     label="Reviewed"
                     tip="Whether a human confirmed the group's sequences show the same object — the label propagates once confirmed"
-                  />
-                  <SortableHeader
-                    column="created_at"
-                    label="Created"
-                    tip="When the group was created"
-                    orderBy={orderBy}
-                    orderDirection={orderDirection}
-                    onSort={handleSort}
                     align="right"
                   />
-                  <th className="px-3 py-2.5" />
+                  <th className={HEADER_CELL_CLASSES}>
+                    <span className="sr-only">Open</span>
+                  </th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className={TBODY_CLASSES}>
                 {items.map(g => (
                   <tr
                     key={g.id}
@@ -364,35 +328,33 @@ export default function SequenceGroupsListPage({
                       if (e.ctrlKey || e.metaKey || window.getSelection()?.toString()) return;
                       navigate(classifyGroup(g.id));
                     }}
-                    className="border-t border-gray-100 hover:bg-blue-50 cursor-pointer"
+                    className={ROW_CLASSES}
                   >
-                    <td className="px-3 py-2.5">
+                    <td className={CELL_CLASSES}>
                       <Link
                         to={classifyGroup(g.id)}
                         onClick={e => e.stopPropagation()}
-                        className="font-semibold text-gray-900 hover:text-blue-700"
+                        className={`${PRIMARY_CELL_TEXT} hover:underline`}
                       >
                         {g.camera_name}
                       </Link>
                     </td>
-                    <td className="px-3 py-2.5">{g.azimuth}°</td>
-                    <td className="px-3 py-2.5">
-                      <span className="inline-block rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-700">
-                        {g.member_count}
-                      </span>
+                    <td
+                      className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}
+                      title={new Date(g.created_at).toLocaleString()}
+                    >
+                      {formatRelativeTime(g.created_at)}
                     </td>
-                    <td className="px-3 py-2.5">
+                    <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>{g.azimuth}°</td>
+                    <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>{g.member_count}</td>
+                    <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>
                       {g.smoke_type ? (
-                        <span className="inline-block rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-semibold text-orange-700">
-                          smoke · {g.smoke_type}
-                        </span>
+                        <span>smoke · {g.smoke_type}</span>
                       ) : g.false_positive_type ? (
-                        <span className="inline-block rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-semibold text-gray-700">
-                          false positive · {g.false_positive_type.replace(/_/g, ' ')}
-                        </span>
+                        <span>false positive · {g.false_positive_type.replace(/_/g, ' ')}</span>
                       ) : (
                         <span className="group relative inline-block">
-                          <span className="inline-block rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-semibold text-yellow-800">
+                          <span className="inline-flex rounded-full bg-ember-soft px-2 py-1 font-body text-xs font-semibold text-ember">
                             to label
                           </span>
                           {/* Propagation only fires for validated groups, so
@@ -405,52 +367,31 @@ export default function SequenceGroupsListPage({
                         </span>
                       )}
                     </td>
-                    <td className="px-3 py-2.5">
+                    <td className={CELL_CLASSES}>
                       {g.is_validated ? (
-                        <span className="inline-flex items-center gap-1 text-green-700 text-xs font-semibold">
+                        <span className="inline-flex items-center gap-1 font-body text-xs font-semibold text-pine">
                           <ShieldCheck className="w-3.5 h-3.5" /> validated
                         </span>
                       ) : (
-                        <span className="text-gray-400">—</span>
+                        <span className="text-haze">—</span>
                       )}
                     </td>
-                    <td
-                      className="px-3 py-2.5 text-gray-500"
-                      title={new Date(g.created_at).toLocaleString()}
-                    >
-                      {formatRelativeTime(g.created_at)}
-                    </td>
-                    <td className="px-3 py-2.5 text-right">
-                      <ChevronRight className="inline w-4 h-4 text-gray-400" />
+                    <td className={`${CELL_CLASSES} text-right`}>
+                      <ChevronRight className="inline w-4 h-4 text-haze" />
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between text-sm">
-              <button
-                onClick={() => setPage(p => Math.max(1, p - 1))}
-                disabled={page === 1}
-                className="px-3 py-1.5 border border-gray-300 rounded-lg bg-white disabled:opacity-40 hover:bg-gray-50"
-              >
-                Previous
-              </button>
-              <span className="text-gray-600">
-                Page {page} / {totalPages}
-              </span>
-              <button
-                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                disabled={page >= totalPages}
-                className="px-3 py-1.5 border border-gray-300 rounded-lg bg-white disabled:opacity-40 hover:bg-gray-50"
-              >
-                Next
-              </button>
-            </div>
-          )}
-        </>
+          <TablePagination
+            page={page}
+            pages={totalPages}
+            total={data?.total}
+            itemsLabel="groups"
+            onPageChange={setPage}
+          />
+        </div>
       )}
     </div>
   );

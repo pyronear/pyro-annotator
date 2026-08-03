@@ -8,16 +8,12 @@ import {
   ProcessingStageFilter,
   SequenceWithAnnotation,
 } from '@/types/api';
-import { QUERY_KEYS } from '@/utils/constants';
+import { PAGINATION_OPTIONS, QUERY_KEYS } from '@/utils/constants';
 import { analyzeSequenceAccuracy } from '@/utils/modelAccuracy';
 import { getStageFilterLabel, stageFilterIncludes } from '@/utils/processingStage';
 import FilterPopover from '@/components/filters/FilterPopover';
-import {
-  SequencesTableHeader,
-  ClassifyQueueTable,
-  ClassifyDoneTable,
-  SequencesPagination,
-} from '@/components/sequences';
+import { ClassifyQueueTable, ClassifyDoneTable, TablePagination } from '@/components/sequences';
+import { TABLE_CARD_CLASSES } from '@/components/sequences/tableStyles';
 import { useSequenceStore } from '@/store/useSequenceStore';
 import { useCameras } from '@/hooks/useCameras';
 import { useOrganizations } from '@/hooks/useOrganizations';
@@ -203,8 +199,9 @@ export default function SequencesPage({
     );
   }
 
-  // Empty state when no sequences are available
-  if (sequences && sequences.items.length === 0) {
+  // Empty state when nothing survives the server page + client-side filters
+  // (gate on filteredSequences: the accuracy filter can empty a non-empty page).
+  if (sequences && filteredSequences && filteredSequences.items.length === 0) {
     // Check if user has applied filters
     const hasFilters = hasActiveUserFilters(
       filters,
@@ -360,6 +357,23 @@ export default function SequencesPage({
         </div>
         <div className="flex items-center gap-3 flex-wrap justify-end">
           {stageSelector}
+          <div className="flex items-center space-x-2">
+            <label htmlFor="page-size" className="font-body text-sm text-haze">
+              Show:
+            </label>
+            <select
+              id="page-size"
+              value={filters.size || 50}
+              onChange={e => handleFilterChange({ size: Number(e.target.value) })}
+              className="border border-line rounded px-2 py-1 font-body text-sm"
+            >
+              {PAGINATION_OPTIONS.map(size => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
+              ))}
+            </select>
+          </div>
           <FilterPopover
             filters={filters}
             onFiltersChange={handleFilterChange}
@@ -394,16 +408,7 @@ export default function SequencesPage({
 
       {/* Results */}
       {filteredSequences && (
-        <div className="bg-white rounded-lg border border-gray-200">
-          <SequencesTableHeader
-            filteredSequences={filteredSequences}
-            sequences={sequences}
-            defaultProcessingStage={defaultProcessingStage}
-            selectedModelAccuracy={selectedModelAccuracy}
-            filters={filters}
-            onFilterChange={handleFilterChange}
-          />
-
+        <div className={TABLE_CARD_CLASSES}>
           {isReviewPage ? (
             <ClassifyDoneTable
               sequences={filteredSequences.items}
@@ -416,8 +421,17 @@ export default function SequencesPage({
             />
           )}
 
-          <SequencesPagination
-            filteredSequences={filteredSequences}
+          <TablePagination
+            page={filteredSequences.page}
+            pages={filteredSequences.pages}
+            total={filteredSequences.total}
+            itemsLabel={
+              selectedModelAccuracy !== 'all' &&
+              stageFilterIncludes(defaultProcessingStage, 'annotated') &&
+              sequences
+                ? `sequences (filtered from ${sequences.total} total)`
+                : 'sequences'
+            }
             onPageChange={handlePageChange}
           />
         </div>
