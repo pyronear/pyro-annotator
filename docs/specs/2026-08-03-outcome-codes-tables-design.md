@@ -87,6 +87,9 @@ mono for dates/counts, and the legacy blue source pill becomes neutral.
   table gets the multi-object rollup (below) as a trailing Result column:
   dominant outcome over **all** lanes (not just smoke lanes) with the
   `+N` extra count.
+- Its chrome migrates to the fire-lookout recipe alongside the done tables
+  (the shared `ColumnHeader` already did) — the Result column shouldn't sit
+  in a half-legacy table.
 
 **Untouched:** the classify queue (unannotated rows) and the detail pages.
 
@@ -111,8 +114,10 @@ the collocation design.
   `getModelAccuracyType`; `getRowBackgroundClasses` and anything else this
   change orphans is removed. Exports still used by the filter components
   stay.
-- Out of scope but flagged: `DetectionAnnotateTableRow.tsx` is pre-existing
-  dead code (zero usages) — cleanup ticket, not this change.
+- `DetectionAnnotateTableRow.tsx` was pre-existing dead code (zero usages)
+  and the last other consumer of `getRowBackgroundClasses`, so removing the
+  helper forced its deletion here. Its equally-dead sibling
+  `DetectionAnnotateTableHeader.tsx` is untouched — cleanup ticket.
 
 ## Testing
 

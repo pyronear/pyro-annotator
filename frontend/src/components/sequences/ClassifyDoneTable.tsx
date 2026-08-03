@@ -7,6 +7,7 @@ import {
   parseFalsePositiveTypes,
 } from '@/utils/modelAccuracy';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
+import { ColumnHeader } from './ColumnHeader';
 import { OutcomeCode } from './OutcomeCode';
 import { PlatformAnnotationPill } from './PlatformAnnotationPill';
 
@@ -50,12 +51,18 @@ export function ClassifyDoneTable({ sequences, onSequenceClick }: ClassifyDoneTa
             <th className={HEADER_CLASSES}>Alert API annotation</th>
             <th className={HEADER_CLASSES}>Source</th>
             <th className={HEADER_CLASSES}>Azimuth</th>
-            <th className={HEADER_CLASSES}>Result</th>
+            <ColumnHeader
+              label="Result"
+              tip="Model outcome — TP correct, FP false alarm, ⚑ FN missed smoke, ? unsure — and the classification detail"
+              align="right"
+            />
           </tr>
         </thead>
         <tbody className="bg-paper divide-y divide-line">
           {sequences.map(sequence => {
             const outcome = deriveSequenceOutcome(sequence.annotation);
+            const detail =
+              sequence.annotation && outcome ? resultDetail(sequence.annotation, outcome) : '';
             return (
               <tr
                 key={sequence.id}
@@ -88,12 +95,12 @@ export function ClassifyDoneTable({ sequences, onSequenceClick }: ClassifyDoneTa
                     : ''}
                 </td>
                 <td className={CELL_CLASSES}>
-                  {sequence.annotation && outcome && (
+                  {outcome && (
                     <>
                       <OutcomeCode outcome={outcome} />
-                      <span className="ml-2.5 font-body text-detail text-haze">
-                        {resultDetail(sequence.annotation, outcome)}
-                      </span>
+                      {detail && (
+                        <span className="ml-2.5 font-body text-detail text-haze">{detail}</span>
+                      )}
                     </>
                   )}
                 </td>
