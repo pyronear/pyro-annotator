@@ -4,22 +4,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Check, ChevronLeft, ChevronRight } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { LocalizationQueueItem } from '@/types/api';
-import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
-import { laneNeedsLocalization, pickNextLocalizeLane } from '@/utils/annotation/localizeUtils';
-import { formatSmokeType, getSmokeTypeEmoji } from '@/utils/modelAccuracy';
+import { LocalizeQueueTable } from '@/components/sequences';
+import { pickNextLocalizeLane } from '@/utils/annotation/localizeUtils';
 import { localizeDetail, ROUTES } from '@/utils/routes';
-
-// Images the annotator will draw boxes on: each smoke object replays the
-// alert's frames, so two objects x 10 frames is 20 boxes of work.
-function smokeFrames(item: LocalizationQueueItem): number {
-  return item.lanes.filter(laneNeedsLocalization).reduce((sum, l) => sum + l.total_detections, 0);
-}
-
-// Classify-phase smoke types across the alert's smoke objects, deduped.
-// `?? []` guards payloads from a backend that predates the field.
-function smokeTypes(item: LocalizationQueueItem): string[] {
-  return [...new Set(item.lanes.filter(laneNeedsLocalization).flatMap(l => l.smoke_types ?? []))];
-}
 
 export default function DetectionAnnotatePage() {
   const navigate = useNavigate();
@@ -104,84 +91,8 @@ export default function DetectionAnnotatePage() {
           </div>
         </div>
       ) : (
-        <div className="bg-white shadow rounded-lg overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Preview
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Camera
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Organisation
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Source
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Smoke type
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Recorded
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Frames
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {items.map(item => (
-                <tr
-                  key={`${item.source_api}-${item.platform_alert_id}`}
-                  onClick={() => handleAlertClick(item)}
-                  className="cursor-pointer hover:bg-gray-50"
-                >
-                  <td className="px-4 py-4 whitespace-nowrap">
-                    <DetectionImageThumbnail
-                      sequenceId={item.lanes[0].sequence_id}
-                      className="h-16 w-24"
-                    />
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {item.camera_name}
-                    {item.azimuth !== null && item.azimuth !== undefined && (
-                      <span className="ml-2 text-xs font-normal text-gray-400">
-                        Azimuth: {item.azimuth}°
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {item.organisation_name}
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap">
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                      {item.source_api}
-                    </span>
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap">
-                    <div className="flex flex-wrap gap-1">
-                      {smokeTypes(item).map(type => (
-                        <span
-                          key={type}
-                          className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800"
-                        >
-                          {getSmokeTypeEmoji(type)} {formatSmokeType(type)}
-                        </span>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {new Date(item.recorded_at).toLocaleString()}
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {smokeFrames(item)} frames
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="bg-white shadow rounded-lg">
+          <LocalizeQueueTable items={items} onItemClick={handleAlertClick} />
         </div>
       )}
 

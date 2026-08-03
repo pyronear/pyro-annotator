@@ -22,7 +22,8 @@ export function DetectionReviewPagination({
           Previous
         </button>
         <span className="text-sm text-gray-700">
-          Page {filteredSequences.page} of {filteredSequences.pages}
+          Page {filteredSequences.page} of {filteredSequences.pages} · {filteredSequences.total}{' '}
+          sequences
         </span>
         <button
           onClick={() => onPageChange(filteredSequences.page + 1)}

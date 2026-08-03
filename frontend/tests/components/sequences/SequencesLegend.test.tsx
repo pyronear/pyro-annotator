@@ -26,9 +26,17 @@ describe('SequencesLegend', () => {
 
     it('should render pill type indicators', () => {
       render(<SequencesLegend />);
-      
+
       expect(screen.getByText('Smoke Types')).toBeInTheDocument();
       expect(screen.getByText('False Positive Types')).toBeInTheDocument();
+    });
+
+    it('should hide pill type indicators when showPillTypes is false', () => {
+      render(<SequencesLegend showPillTypes={false} />);
+
+      expect(screen.queryByText('Smoke Types')).not.toBeInTheDocument();
+      expect(screen.queryByText('False Positive Types')).not.toBeInTheDocument();
+      expect(screen.getByText('Row Colors:')).toBeInTheDocument();
     });
 
     it('should render all legend items', () => {
