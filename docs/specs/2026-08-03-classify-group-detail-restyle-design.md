@@ -53,8 +53,9 @@ Keeps the fixed-past-sidebar idiom and the root's `pt-20` reservation.
 
 ### Member cards
 
-- Card: `rounded-card border border-line bg-paper overflow-hidden` (hairline
-  replaces `border-2 border-gray-300`); annotated members keep `opacity-60`.
+- Card: `border border-line bg-paper overflow-hidden` (hairline replaces
+  `border-2 border-gray-300`; square corners — no `rounded-card` — so the
+  image grid reads as a contact sheet); annotated members keep `opacity-60`.
 - Image wells `bg-ash`, center divider `border-line`, spinners `text-haze`,
   card-link hover `hover:bg-ash`.
 - Footer: `seq #id` and relative time in `font-data text-detail` (counts and

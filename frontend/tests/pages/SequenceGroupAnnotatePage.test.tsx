@@ -105,7 +105,9 @@ describe('SequenceGroupAnnotatePage', () => {
   it('member cards use the hairline card recipe with a mono footer', async () => {
     await renderGroup();
     const card = screen.getByText('seq #101').closest('a')?.parentElement;
-    expect(card?.className).toContain('rounded-card');
+    // Square corners on member cards — deliberate deviation from the card
+    // recipe so dense image grids read as a contact sheet.
+    expect(card?.className).not.toContain('rounded');
     expect(card?.className).toContain('border-line');
     expect(card?.className).not.toContain('border-2');
     const footer = screen.getByText('seq #101').closest('div');

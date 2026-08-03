@@ -115,7 +115,7 @@ function MemberCard({
 
   return (
     <div
-      className={`relative rounded-card border border-line bg-paper overflow-hidden ${
+      className={`relative border border-line bg-paper overflow-hidden ${
         memberIsAnnotated(member) ? 'opacity-60' : ''
       }`}
     >
