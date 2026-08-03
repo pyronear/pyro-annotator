@@ -19,6 +19,13 @@ export function classifyGroup(id: number | string): string {
   return `${ROUTES.CLASSIFY_GROUPS}/${id}`;
 }
 
+export type SequenceGroupsFilter = 'unlabeled' | 'labeled' | 'all';
+
+// Bare path is the To-label default; other filters are path segments.
+export function classifyGroups(filter: SequenceGroupsFilter): string {
+  return filter === 'unlabeled' ? ROUTES.CLASSIFY_GROUPS : `${ROUTES.CLASSIFY_GROUPS}/${filter}`;
+}
+
 export function localizeDetail(
   sequenceId: number | string,
   detectionId?: number | string,

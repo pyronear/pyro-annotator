@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Popover } from '@headlessui/react';
@@ -14,9 +14,7 @@ import {
 import { apiClient } from '@/services/api';
 import { formatRelativeTime } from '@/utils/relativeTime';
 import { SequenceGroupStats } from '@/types/api';
-import { classifyGroup } from '@/utils/routes';
-
-type Filter = 'all' | 'labeled' | 'unlabeled';
+import { classifyGroup, classifyGroups, SequenceGroupsFilter } from '@/utils/routes';
 type OrderBy = 'member_count' | 'camera_name' | 'azimuth' | 'created_at';
 type OrderDirection = 'asc' | 'desc';
 
@@ -28,11 +26,12 @@ const DEFAULT_DIRECTION: Record<OrderBy, OrderDirection> = {
   created_at: 'desc',
 };
 
-const FILTERS: { value: Filter; label: string; countOf: keyof SequenceGroupStats }[] = [
-  { value: 'unlabeled', label: 'To label', countOf: 'unlabeled' },
-  { value: 'labeled', label: 'Labeled', countOf: 'labeled' },
-  { value: 'all', label: 'All', countOf: 'total' },
-];
+const FILTERS: { value: SequenceGroupsFilter; label: string; countOf: keyof SequenceGroupStats }[] =
+  [
+    { value: 'unlabeled', label: 'To label', countOf: 'unlabeled' },
+    { value: 'labeled', label: 'Labeled', countOf: 'labeled' },
+    { value: 'all', label: 'All', countOf: 'total' },
+  ];
 
 function SortableHeader({
   column,
@@ -66,13 +65,21 @@ function SortableHeader({
   );
 }
 
-export default function SequenceGroupsListPage() {
+export default function SequenceGroupsListPage({
+  filter = 'unlabeled',
+}: {
+  filter?: SequenceGroupsFilter;
+} = {}) {
   const navigate = useNavigate();
-  const [filter, setFilter] = useState<Filter>('unlabeled');
   const [page, setPage] = useState(1);
   const [orderBy, setOrderBy] = useState<OrderBy>('member_count');
   const [orderDirection, setOrderDirection] = useState<OrderDirection>('desc');
   const size = 50;
+
+  // Tab switches change the dataset; restart pagination.
+  useEffect(() => {
+    setPage(1);
+  }, [filter]);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['sequenceGroupsList', filter, page, size, orderBy, orderDirection],
@@ -147,34 +154,30 @@ export default function SequenceGroupsListPage() {
       </div>
 
       <div>
-        <div className="inline-flex rounded-lg bg-gray-200 p-0.5 gap-0.5 text-sm">
+        <div className="inline-flex rounded-lg border border-line bg-ash p-0.5 gap-0.5 text-sm">
           {FILTERS.map(f => {
             const active = filter === f.value;
             const count = stats?.[f.countOf];
             return (
-              <button
+              <Link
                 key={f.value}
-                onClick={() => {
-                  setFilter(f.value);
-                  setPage(1);
-                }}
-                className={`px-3.5 py-1.5 rounded-md font-medium ${
+                to={classifyGroups(f.value)}
+                aria-current={active ? 'page' : undefined}
+                className={`px-3.5 py-1.5 rounded-md ${
                   active
-                    ? 'bg-white text-gray-900 shadow-sm font-semibold'
-                    : 'text-gray-600 hover:text-gray-900'
+                    ? 'border border-line bg-paper font-semibold text-char'
+                    : 'font-medium text-haze hover:text-char'
                 }`}
               >
                 {f.label}
                 {count !== undefined && (
                   <span
-                    className={`ml-1.5 rounded-full px-1.5 py-0.5 text-xs ${
-                      active ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'
-                    }`}
+                    className={`ml-1.5 font-data text-xs ${active ? 'text-ember' : 'text-haze'}`}
                   >
                     {count}
                   </span>
                 )}
-              </button>
+              </Link>
             );
           })}
         </div>
