@@ -55,7 +55,7 @@ and gains attribution logic:
 Schema changes:
 
 - `SequenceGroupRead`: add `validated_by_user_id`, `validated_at`.
-- `SequenceGroupPageItem` (list): add
+- `SequenceGroupListItem` (list): add
   `validated_by_username: Optional[str]` and `validated_at`, resolved via a
   LEFT JOIN on `users` in the list query — same no-N+1 approach as
   `camera_name`.
