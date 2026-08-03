@@ -483,4 +483,46 @@ describe('ClassifyAlertPage', () => {
     expect(lastOverlays[2].boxesByRecordedAt).toHaveProperty('2026-01-01T10:00:05Z');
     expect(lastOverlays[2].boxesByRecordedAt).not.toHaveProperty('2026-01-01T10:00:00Z');
   });
+
+  it('presence strip fills a frame where the lane has a detection but the object has no track bbox on it', async () => {
+    // Lane A (101) is captured on two frames (t1, t2), but its track's
+    // annotation bbox only references detection_id 1 (t1) — detection_id 4
+    // at t2 has no corresponding bbox. The lane still *has a detection* at
+    // t2, so the presence strip (unlike the track-box overlay) must render
+    // that frame filled, not a gap.
+    const t1 = '2026-01-01T10:00:00Z';
+    const t2 = '2026-01-01T10:00:05Z';
+
+    vi.mocked(apiClient.getSequenceDetections).mockImplementation(async (sequenceId: number) => {
+      const bySequence: Record<number, { id: number; recorded_at: string }[]> = {
+        101: [
+          { id: 1, recorded_at: t1 },
+          { id: 4, recorded_at: t2 }, // no bbox references this detection
+        ],
+        102: [{ id: 2, recorded_at: t1 }],
+        103: [{ id: 3, recorded_at: t1 }],
+      };
+      return bySequence[sequenceId].map(d => ({
+        id: d.id,
+        sequence_id: sequenceId,
+        alert_api_id: 9000 + sequenceId,
+        created_at: '2026-01-01T09:00:00Z',
+        recorded_at: d.recorded_at,
+        algo_predictions: { predictions: [] },
+        last_modified_at: null,
+      }));
+    });
+
+    render(<ClassifyAlertPage />, { wrapper });
+    await waitFor(() => expect(screen.getByTestId('object-card-101:0')).toBeInTheDocument());
+
+    // Frame union across all 3 objects sorts to [t1, t2] -> segment index 0
+    // = t1, index 1 = t2. Object 1 (index 0) has no bbox at t2, but its
+    // lane does have a detection there, so it must render filled.
+    await waitFor(() =>
+      expect(screen.getByTestId('presence-segment-0-1')).toHaveStyle({
+        backgroundColor: getObjectColor(0),
+      })
+    );
+  });
 });

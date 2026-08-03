@@ -69,6 +69,7 @@ interface FlatCard {
 /** One object's precomputed color identity + track boxes, keyed by frame `recorded_at`. */
 interface CardOverlayData {
   cardKey: string;
+  laneSequenceId: number;
   color: string;
   label: string;
   boxesByRecordedAt: Record<string, [number, number, number, number]>;
@@ -314,6 +315,7 @@ export default function ClassifyAlertPage() {
     });
     cardOverlayData.push({
       cardKey: card.cardKey,
+      laneSequenceId: card.laneSequenceId,
       color: getObjectColor(i),
       label: `Object ${i + 1}`,
       boxesByRecordedAt,
@@ -330,11 +332,15 @@ export default function ClassifyAlertPage() {
 
   // Presence strip: temporal context + color legend, keyed off the same
   // per-object color/label identity as the overlays above. Renders nothing
-  // itself for < 2 objects.
+  // itself for < 2 objects. Timestamps come from the object's *lane's*
+  // detections (every frame the lane was captured on), not from
+  // `boxesByRecordedAt` — a lane can have a detection on a frame with no
+  // track bbox there, and that frame should still show as "present", not a
+  // false gap.
   const presenceStripObjects = cardOverlayData.map(o => ({
     label: o.label,
     color: o.color,
-    timestamps: Object.keys(o.boxesByRecordedAt),
+    timestamps: (detectionsByLaneId[o.laneSequenceId] ?? []).map(d => d.recorded_at),
   }));
 
   const handleBboxChangeByCardKey = (cardKey: string, updatedBbox: SequenceBbox) => {

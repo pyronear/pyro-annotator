@@ -81,4 +81,32 @@ describe('ObjectPresenceStrip', () => {
       backgroundColor: '#f97316',
     });
   });
+
+  it('orders the frame union chronologically, not lexicographically, for mixed fractional/non-fractional same-second timestamps', () => {
+    // Backend serialization mixes forms for the same second: a plain
+    // "...:00Z" (0.0s) and a fractional "...:00.500000Z" (0.5s). Lexicographic
+    // string sort puts '.' (0x2E) before 'Z' (0x5A), so it would sort the
+    // 0.5s timestamp *before* the 0.0s one — wrong. Each timestamp here
+    // belongs to its own object so the filled segment's index reveals where
+    // the strip actually placed it in the union.
+    const zeroSeconds = '2024-01-01T00:00:00Z'; // earliest
+    const halfSecond = '2024-01-01T00:00:00.500000Z'; // middle
+    const oneSecond = '2024-01-01T00:00:01Z'; // latest
+
+    render(
+      <ObjectPresenceStrip
+        objects={[
+          { label: 'Object 1', color: '#3b82f6', timestamps: [zeroSeconds] },
+          { label: 'Object 2', color: '#f97316', timestamps: [halfSecond] },
+          { label: 'Object 3', color: '#a855f7', timestamps: [oneSecond] },
+        ]}
+      />
+    );
+
+    // Union index 0 = earliest (0.0s) -> Object 1; index 1 = 0.5s -> Object 2;
+    // index 2 = latest (1s) -> Object 3.
+    expect(screen.getByTestId('presence-segment-0-0')).toHaveStyle({ backgroundColor: '#3b82f6' });
+    expect(screen.getByTestId('presence-segment-1-1')).toHaveStyle({ backgroundColor: '#f97316' });
+    expect(screen.getByTestId('presence-segment-2-2')).toHaveStyle({ backgroundColor: '#a855f7' });
+  });
 });

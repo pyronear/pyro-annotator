@@ -28,7 +28,13 @@ interface ObjectPresenceStripProps {
 export const ObjectPresenceStrip: React.FC<ObjectPresenceStripProps> = ({ objects }) => {
   if (objects.length < 2) return null;
 
-  const frameUnion = Array.from(new Set(objects.flatMap(o => o.timestamps))).sort();
+  // Numeric (chronological) sort, not string sort: same-second timestamps
+  // can be serialized both as "...:00Z" and "...:00.500000Z" — the "." in
+  // the fractional form sorts before "Z" lexicographically, which would
+  // put later, fractional timestamps ahead of earlier, whole-second ones.
+  const frameUnion = Array.from(new Set(objects.flatMap(o => o.timestamps))).sort(
+    (a, b) => new Date(a).getTime() - new Date(b).getTime()
+  );
 
   return (
     <div className="space-y-1.5 rounded-lg border border-gray-200 bg-white p-3">
