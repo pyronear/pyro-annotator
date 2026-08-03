@@ -88,9 +88,9 @@ describe('ClassifyQueueTable', () => {
       />
     );
 
-    expect(screen.getByText('🔥 Wildfire')).toBeInTheDocument();
-    expect(screen.getByText('💨 Other Smoke')).toBeInTheDocument();
-    expect(screen.getByText('○ Other')).toBeInTheDocument();
+    expect(screen.getByText('Wildfire')).toBeInTheDocument();
+    expect(screen.getByText('Other smoke')).toBeInTheDocument();
+    expect(screen.getByText('Other')).toBeInTheDocument();
   });
 
   it('renders 0° when azimuth is zero', () => {
