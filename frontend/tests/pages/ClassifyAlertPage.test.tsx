@@ -404,6 +404,14 @@ describe('ClassifyAlertPage', () => {
     // Regression guard: queue mode (no `mode` prop) must keep using the
     // atomic classify-submit endpoint, never the per-lane PATCH done mode uses.
     expect(apiClient.updateSequenceAnnotation).not.toHaveBeenCalled();
+
+    // A successful submit with no active workflow schedules a 1s-deferred
+    // navigate(backUrl) (see AnnotationInterface-derived onSuccess). If this
+    // test ended here, that real setTimeout would still be pending after
+    // the test completes and could fire navigateMock mid-flight during a
+    // later test — draining it here keeps every test's side effects inside
+    // its own lifetime.
+    await waitFor(() => expect(navigateMock).toHaveBeenCalled(), { timeout: 2000 });
   });
 
   it('renders Submit disabled when every lane is already locked (deep-linking a fully-classified alert)', async () => {
@@ -521,6 +529,10 @@ describe('ClassifyAlertPage', () => {
     expect(payload.items).toHaveLength(1); // locked primary excluded
     expect(payload.items[0].annotation_id).toBe(202);
     expect(payload.items[0].has_missed_smoke).toBe(true);
+
+    // Drain the success path's 1s-deferred navigate so it can't leak a real
+    // timer into a later test (see the comment on the previous submit test).
+    await waitFor(() => expect(navigateMock).toHaveBeenCalled(), { timeout: 2000 });
   });
 
   it('pluralizes the workflow-completion toast correctly for a single alert', async () => {
@@ -1024,6 +1036,12 @@ describe('ClassifyAlertPage done mode', () => {
     // Lane B (202) was never touched, so it must never be PATCHed.
     expect(apiClient.updateSequenceAnnotation).not.toHaveBeenCalledWith(202, expect.anything());
     expect(apiClient.classifySubmit).not.toHaveBeenCalled();
+
+    // Drain the success path's 1s-deferred navigate so it can't leak a real
+    // timer into a later test (a dangling setTimeout from here previously
+    // caused a flaky failure in the "aborts on the first PATCH failure"
+    // test, which asserts navigateMock was NOT called).
+    await waitFor(() => expect(navigateMock).toHaveBeenCalled(), { timeout: 2000 });
   });
 
   it('an alert-level missed-smoke-only change makes the primary lane "changed" and is saved on its PATCH', async () => {
@@ -1044,6 +1062,10 @@ describe('ClassifyAlertPage done mode', () => {
       201,
       expect.objectContaining({ has_missed_smoke: true })
     );
+
+    // Drain the success path's 1s-deferred navigate — see the comment on
+    // the previous test for why this matters.
+    await waitFor(() => expect(navigateMock).toHaveBeenCalled(), { timeout: 2000 });
   });
 
   it('scroll-activates the clicked object on load', async () => {
