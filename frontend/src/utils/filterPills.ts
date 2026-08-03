@@ -81,7 +81,7 @@ export function buildFilterPills(input: FilterPillInput): FilterPill[] {
       filters.is_wildfire_alertapi === null
         ? 'Unclassified'
         : (WILDFIRE_LABELS[filters.is_wildfire_alertapi] ?? String(filters.is_wildfire_alertapi));
-    pills.push({ id: 'wildfire', label: `Wildfire: ${label}` });
+    pills.push({ id: 'wildfire', label: `Alert API: ${label}` });
   }
   if (input.showModelAccuracy && input.selectedModelAccuracy !== 'all') {
     pills.push({

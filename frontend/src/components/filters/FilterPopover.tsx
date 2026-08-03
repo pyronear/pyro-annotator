@@ -286,7 +286,7 @@ export default function FilterPopover({
                     htmlFor="filter-wildfire"
                     className="block text-sm font-medium text-gray-700 mb-1"
                   >
-                    Wildfire Classification
+                    Alert API annotation
                   </label>
                   <select
                     id="filter-wildfire"

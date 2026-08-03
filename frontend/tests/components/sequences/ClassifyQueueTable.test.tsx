@@ -46,7 +46,7 @@ describe('ClassifyQueueTable', () => {
   it('renders the column headers', () => {
     render(<ClassifyQueueTable sequences={[createSequence()]} onSequenceClick={onSequenceClick} />);
 
-    for (const header of ['Camera', 'Organisation', 'Recorded', 'Platform annotation', 'Source', 'Azimuth']) {
+    for (const header of ['Camera', 'Organisation', 'Recorded', 'Alert API annotation', 'Source', 'Azimuth']) {
       expect(screen.getByText(header)).toBeInTheDocument();
     }
   });

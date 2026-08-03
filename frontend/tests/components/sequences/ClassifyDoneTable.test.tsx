@@ -67,7 +67,7 @@ describe('ClassifyDoneTable', () => {
       'Camera',
       'Organisation',
       'Recorded',
-      'Platform annotation',
+      'Alert API annotation',
       'Source',
       'Azimuth',
       'Result',
