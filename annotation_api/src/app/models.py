@@ -359,7 +359,9 @@ class SequenceAnnotation(SQLModel, table=True):
 class Detection(SQLModel, table=True):
     __tablename__ = "detections"
     __table_args__ = (
-        UniqueConstraint("alert_api_id", "id", name="uq_detection_alert_id"),
+        UniqueConstraint(
+            "sequence_id", "alert_api_id", name="uq_detection_sequence_alert_api_id"
+        ),
         Index("ix_detection_sequence_id", "sequence_id"),
         Index("ix_detection_created_at", "created_at"),
         Index("ix_detection_recorded_at", "recorded_at"),

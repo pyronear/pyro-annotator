@@ -58,7 +58,11 @@ async def _persist_detection(
     the storage op succeeded, the orphaned S3 object is best-effort deleted.
     """
     detections.session.add(detection)
-    await detections.session.flush()
+    try:
+        await detections.session.flush()
+    except Exception:
+        await detections.session.rollback()
+        raise
 
     try:
         bucket_key = await storage_op(detection.id)
