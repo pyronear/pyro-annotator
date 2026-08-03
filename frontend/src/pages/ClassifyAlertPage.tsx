@@ -537,12 +537,22 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
     card => laneUnsure[card.laneSequenceId] || hasUserAnnotations(getBbox(card))
   );
 
+  // Alert-level missed smoke is stored on one lane's payload — normally the
+  // primary lane, but the primary can already be locked (exited the
+  // pipeline, or not annotated at all) while a sibling is still open. Lanes
+  // are ordered primary-first (alert-detail contract), so "the first lane
+  // still open for edits" is the primary whenever the primary itself is
+  // open, and falls back to the next open lane otherwise — never silently
+  // dropping the flag. The MissedSmokePanel still displays the primary
+  // lane's own frames regardless of which lane's payload carries the flag.
+  const missedSmokeCarrierLaneId = alertDetail?.lanes.find(
+    lane => !isLaneLocked(lane, mode) && !!lane.annotation
+  )?.sequence.id;
+
   // Done mode only: which lanes actually changed since load (or since the
-  // last reset), diffed against initialSnapshotRef. Alert-level missed
-  // smoke lives on the primary lane, so a missed-smoke-only edit alone
-  // marks the primary lane changed.
-  const primaryLaneId = alertDetail?.lanes[0]?.sequence.id;
-  const isLaneChanged = (laneSequenceId: number, isPrimary: boolean): boolean => {
+  // last reset), diffed against initialSnapshotRef. A missed-smoke-only
+  // edit alone marks its carrier lane changed.
+  const isLaneChanged = (laneSequenceId: number, carriesMissedSmoke: boolean): boolean => {
     const snapshot = initialSnapshotRef.current;
     if (!snapshot) return false;
     const bboxesChanged = !bboxesEqual(
@@ -551,7 +561,7 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
     );
     const unsureChanged =
       (laneUnsure[laneSequenceId] ?? false) !== (snapshot.laneUnsure[laneSequenceId] ?? false);
-    const missedSmokeChanged = isPrimary && hasMissedSmoke !== snapshot.hasMissedSmoke;
+    const missedSmokeChanged = carriesMissedSmoke && hasMissedSmoke !== snapshot.hasMissedSmoke;
     return bboxesChanged || unsureChanged || missedSmokeChanged;
   };
   const anyLaneChanged =
@@ -561,64 +571,73 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
       lane =>
         !isLaneLocked(lane, mode) &&
         !!lane.annotation &&
-        isLaneChanged(lane.sequence.id, lane.sequence.id === primaryLaneId)
+        isLaneChanged(lane.sequence.id, lane.sequence.id === missedSmokeCarrierLaneId)
     );
 
+  // Deep-linking a fully-classified alert leaves zero editable cards —
+  // `isComplete` is vacuously true over an empty list, so it alone can't
+  // gate submit; there must be at least one editable card to submit.
   const canSubmit =
-    mode === 'done' ? isComplete && anyLaneChanged : isComplete && missedSmokeReview !== null;
+    editableCards.length > 0 &&
+    (mode === 'done' ? isComplete && anyLaneChanged : isComplete && missedSmokeReview !== null);
 
   const submitMutation = useMutation({
     mutationFn: async (): Promise<{ results: ClassifySubmitResult[] }> => {
       if (mode === 'done') {
         const changedLanes = alertDetail!.lanes.filter(lane => {
           if (isLaneLocked(lane, mode) || !lane.annotation) return false;
-          return isLaneChanged(lane.sequence.id, lane.sequence.id === primaryLaneId);
+          return isLaneChanged(lane.sequence.id, lane.sequence.id === missedSmokeCarrierLaneId);
         });
-        const results: ClassifySubmitResult[] = await Promise.all(
-          changedLanes.map(async lane => {
-            const isPrimary = lane.sequence.id === primaryLaneId;
-            const bboxes = laneBboxes[lane.sequence.id] ?? [];
-            const unsure = laneUnsure[lane.sequence.id] ?? false;
-            const hasSmokeNow = unsure ? false : bboxes.some(b => b.is_smoke);
-            const hasMissedSmokeForLane = isPrimary && !unsure ? hasMissedSmoke : false;
-            const updates: Partial<SequenceAnnotation> = {
-              annotation: { sequences_bbox: bboxes },
-              processing_stage: determineClassifySubmitStage({
-                currentStage: lane.annotation!.processing_stage,
-                isUnsure: unsure,
-                hasSmoke: hasSmokeNow,
-                hasMissedSmoke: hasMissedSmokeForLane,
-              }),
-              has_smoke: hasSmokeNow,
-              has_false_positives: unsure
-                ? false
-                : bboxes.some(b => b.false_positive_types.length > 0),
-              false_positive_types: unsure
-                ? '[]'
-                : JSON.stringify([...new Set(bboxes.flatMap(b => b.false_positive_types))]),
-              has_missed_smoke: hasMissedSmokeForLane,
-              is_unsure: unsure,
-            };
-            const saved = await apiClient.updateSequenceAnnotation(lane.annotation!.id, updates);
-            return {
-              annotation_id: lane.annotation!.id,
-              sequence_id: lane.sequence.id,
-              processing_stage: saved.processing_stage,
-              group_propagation_warning: saved.group_propagation_warning ?? null,
-            };
-          })
-        );
+        // Sequential, not Promise.all: each lane is its own PATCH/commit, so
+        // a later lane's failure must not race ahead of an earlier one, and
+        // must stop immediately rather than firing the remaining lanes —
+        // the thrown rejection propagates to the mutation's onError, which
+        // already toasts and refetches alert-detail so whatever DID land
+        // redraws with server truth.
+        const results: ClassifySubmitResult[] = [];
+        for (const lane of changedLanes) {
+          const isMissedSmokeCarrier = lane.sequence.id === missedSmokeCarrierLaneId;
+          const bboxes = laneBboxes[lane.sequence.id] ?? [];
+          const unsure = laneUnsure[lane.sequence.id] ?? false;
+          const hasSmokeNow = unsure ? false : bboxes.some(b => b.is_smoke);
+          const hasMissedSmokeForLane = isMissedSmokeCarrier && !unsure ? hasMissedSmoke : false;
+          const updates: Partial<SequenceAnnotation> = {
+            annotation: { sequences_bbox: bboxes },
+            processing_stage: determineClassifySubmitStage({
+              currentStage: lane.annotation!.processing_stage,
+              isUnsure: unsure,
+              hasSmoke: hasSmokeNow,
+              hasMissedSmoke: hasMissedSmokeForLane,
+            }),
+            has_smoke: hasSmokeNow,
+            has_false_positives: unsure
+              ? false
+              : bboxes.some(b => b.false_positive_types.length > 0),
+            false_positive_types: unsure
+              ? '[]'
+              : JSON.stringify([...new Set(bboxes.flatMap(b => b.false_positive_types))]),
+            has_missed_smoke: hasMissedSmokeForLane,
+            is_unsure: unsure,
+          };
+          const saved = await apiClient.updateSequenceAnnotation(lane.annotation!.id, updates);
+          results.push({
+            annotation_id: lane.annotation!.id,
+            sequence_id: lane.sequence.id,
+            processing_stage: saved.processing_stage,
+            group_propagation_warning: saved.group_propagation_warning ?? null,
+          });
+        }
         return { results };
       }
 
       const items: ClassifySubmitItem[] = [];
-      alertDetail!.lanes.forEach((lane, laneIdx) => {
+      alertDetail!.lanes.forEach(lane => {
         if (isLaneLocked(lane, mode) || !lane.annotation) return;
-        const isPrimary = laneIdx === 0;
+        const isMissedSmokeCarrier = lane.sequence.id === missedSmokeCarrierLaneId;
         const bboxes = laneBboxes[lane.sequence.id] ?? [];
         const unsure = laneUnsure[lane.sequence.id] ?? false;
         const hasSmoke = unsure ? false : bboxes.some(b => b.is_smoke);
-        const hasMissedSmokeForLane = isPrimary ? hasMissedSmoke : false;
+        const hasMissedSmokeForLane = isMissedSmokeCarrier ? hasMissedSmoke : false;
 
         items.push({
           annotation_id: lane.annotation.id,
@@ -677,7 +696,7 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
           const totalCompleted = annotationWorkflow?.sequences?.length || 1;
           clearAnnotationWorkflow();
           showToastNotification(
-            `Workflow completed! Classified ${totalCompleted} alerts.`,
+            `Workflow completed! Classified ${totalCompleted} alert${totalCompleted === 1 ? '' : 's'}.`,
             'success'
           );
           navigate(backUrl);

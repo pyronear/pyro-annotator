@@ -406,6 +406,149 @@ describe('ClassifyAlertPage', () => {
     expect(apiClient.updateSequenceAnnotation).not.toHaveBeenCalled();
   });
 
+  it('renders Submit disabled when every lane is already locked (deep-linking a fully-classified alert)', async () => {
+    // Zero editable cards: `isComplete` (`.every()` over an empty list) is
+    // vacuously true, and the primary lane's own submitted missed-smoke
+    // answer makes `missedSmokeReview !== null` true too — without an
+    // explicit "something to submit" guard, Submit would stay enabled and
+    // an empty-items classifySubmit would always 422.
+    const fullyLockedDetail: AlertDetail = {
+      ...makeAlertDetail(),
+      lanes: [
+        {
+          sequence: makeSequence({ id: 101, alert_api_id: 9001 }),
+          annotation: makeAnnotation({
+            id: 201,
+            sequence_id: 101,
+            processing_stage: 'annotated',
+            has_smoke: true,
+            has_missed_smoke: true,
+            annotation: {
+              sequences_bbox: [
+                {
+                  is_smoke: true,
+                  smoke_type: 'wildfire',
+                  false_positive_types: [],
+                  bboxes: [{ detection_id: 1, xyxyn: [0, 0, 1, 1] }],
+                },
+              ],
+            },
+          }),
+        },
+        {
+          sequence: makeSequence({ id: 102, alert_api_id: 9002 }),
+          annotation: makeAnnotation({
+            id: 202,
+            sequence_id: 102,
+            processing_stage: 'seq_annotation_done',
+            annotation: {
+              sequences_bbox: [
+                {
+                  is_smoke: false,
+                  false_positive_types: ['antenna'],
+                  bboxes: [{ detection_id: 2, xyxyn: [0, 0, 1, 1] }],
+                },
+              ],
+            },
+          }),
+        },
+      ],
+    };
+    vi.mocked(apiClient.getAlertDetail).mockResolvedValue(fullyLockedDetail);
+
+    render(<ClassifyAlertPage />, { wrapper });
+    await waitFor(() => expect(screen.getByTestId('object-card-101:0')).toBeInTheDocument());
+
+    expect(screen.getByRole('button', { name: /Submit alert/i })).toBeDisabled();
+  });
+
+  it('routes alert-level missed smoke to the first still-open lane when the primary lane is already locked', async () => {
+    const lockedPrimaryDetail: AlertDetail = {
+      ...makeAlertDetail(),
+      lanes: [
+        {
+          sequence: makeSequence({ id: 101, alert_api_id: 9001 }),
+          annotation: makeAnnotation({
+            id: 201,
+            sequence_id: 101,
+            processing_stage: 'annotated',
+            has_smoke: true,
+            annotation: {
+              sequences_bbox: [
+                {
+                  is_smoke: true,
+                  smoke_type: 'wildfire',
+                  false_positive_types: [],
+                  bboxes: [{ detection_id: 1, xyxyn: [0, 0, 1, 1] }],
+                },
+              ],
+            },
+          }),
+        },
+        {
+          sequence: makeSequence({ id: 102, alert_api_id: 9002 }),
+          annotation: makeAnnotation({ id: 202, sequence_id: 102 }), // ready_to_annotate, unselected
+        },
+      ],
+    };
+    vi.mocked(apiClient.getAlertDetail).mockResolvedValue(lockedPrimaryDetail);
+    vi.mocked(apiClient.classifySubmit).mockResolvedValue({
+      results: [
+        {
+          annotation_id: 202,
+          sequence_id: 102,
+          processing_stage: 'annotated',
+          group_propagation_warning: null,
+        },
+      ],
+    });
+
+    render(<ClassifyAlertPage />, { wrapper });
+    await waitFor(() => expect(screen.getByTestId('object-card-102:0')).toBeInTheDocument());
+
+    const cardB = within(screen.getByTestId('object-card-102:0'));
+    fireEvent.click(cardB.getByRole('radio', { name: /false positive/i }));
+    fireEvent.click(cardB.getByRole('checkbox', { name: /Antenna/i }));
+
+    fireEvent.click(screen.getByText('Mock: Missed smoke'));
+
+    const submitButton = screen.getByRole('button', { name: /Submit alert/i });
+    expect(submitButton).not.toBeDisabled();
+    fireEvent.click(submitButton);
+
+    await waitFor(() => expect(apiClient.classifySubmit).toHaveBeenCalledTimes(1));
+    const payload = vi.mocked(apiClient.classifySubmit).mock.calls[0][0] as ClassifySubmitRequest;
+    expect(payload.items).toHaveLength(1); // locked primary excluded
+    expect(payload.items[0].annotation_id).toBe(202);
+    expect(payload.items[0].has_missed_smoke).toBe(true);
+  });
+
+  it('pluralizes the workflow-completion toast correctly for a single alert', async () => {
+    render(<ClassifyAlertPage />, { wrapper });
+    await waitFor(() => expect(screen.getByTestId('object-card-101:0')).toBeInTheDocument());
+
+    const cardA = within(screen.getByTestId('object-card-101:0'));
+    fireEvent.click(cardA.getByRole('radio', { name: /This is smoke/i }));
+    fireEvent.click(cardA.getByRole('radio', { name: /Wildfire/i }));
+
+    const cardB = within(screen.getByTestId('object-card-102:0'));
+    fireEvent.click(cardB.getByRole('radio', { name: /false positive/i }));
+    fireEvent.click(cardB.getByRole('checkbox', { name: /Antenna/i }));
+
+    fireEvent.click(screen.getByText('Mock: No missed smoke'));
+    fireEvent.click(screen.getByRole('button', { name: /Submit alert/i }));
+
+    await waitFor(() => expect(apiClient.classifySubmit).toHaveBeenCalledTimes(1));
+    // No active workflow in this test (annotationWorkflow defaults to null
+    // in the real store), so a successful submit takes the
+    // "workflow completed" branch after its 1s toast delay.
+    await waitFor(
+      () =>
+        expect(screen.getByText('Workflow completed! Classified 1 alert.')).toBeInTheDocument(),
+      { timeout: 2000 }
+    );
+  });
+
   it('shows an error toast (with server detail) and does not navigate when submit fails', async () => {
     vi.mocked(apiClient.classifySubmit).mockRejectedValueOnce({
       response: { data: { detail: 'Lane 103 is locked' } },
@@ -741,6 +884,74 @@ describe('ClassifyAlertPage done mode', () => {
     };
   }
 
+  // Three genuinely-labeled, editable lanes — used by the sequential-PATCH
+  // abort test, which needs a third lane whose PATCH must never fire.
+  function makeThreeLaneDoneAlertDetail(): AlertDetail {
+    const laneA = {
+      sequence: makeSequence({ id: 101, alert_api_id: 9001 }),
+      annotation: makeAnnotation({
+        id: 201,
+        sequence_id: 101,
+        processing_stage: 'seq_annotation_done',
+        has_smoke: true,
+        annotation: {
+          sequences_bbox: [
+            {
+              is_smoke: true,
+              smoke_type: 'wildfire',
+              false_positive_types: [],
+              bboxes: [{ detection_id: 1, xyxyn: [0, 0, 1, 1] }],
+            },
+          ],
+        },
+      }),
+    };
+    const laneB = {
+      sequence: makeSequence({ id: 102, alert_api_id: 9002 }),
+      annotation: makeAnnotation({
+        id: 202,
+        sequence_id: 102,
+        processing_stage: 'annotated',
+        annotation: {
+          sequences_bbox: [
+            {
+              is_smoke: false,
+              false_positive_types: ['antenna'],
+              bboxes: [{ detection_id: 2, xyxyn: [0, 0, 1, 1] }],
+            },
+          ],
+        },
+      }),
+    };
+    const laneD = {
+      sequence: makeSequence({ id: 104, alert_api_id: 9004 }),
+      annotation: makeAnnotation({
+        id: 204,
+        sequence_id: 104,
+        processing_stage: 'seq_annotation_done',
+        has_smoke: true,
+        annotation: {
+          sequences_bbox: [
+            {
+              is_smoke: true,
+              smoke_type: 'industrial',
+              false_positive_types: [],
+              bboxes: [{ detection_id: 4, xyxyn: [0, 0, 1, 1] }],
+            },
+          ],
+        },
+      }),
+    };
+    return {
+      source_api: 'pyronear_french',
+      platform_alert_id: 500,
+      camera_name: 'CAM-1',
+      organisation_name: 'Org',
+      recorded_at: '2026-01-01T10:00:00Z',
+      lanes: [laneA, laneB, laneD],
+    };
+  }
+
   beforeEach(() => {
     vi.clearAllMocks();
     Element.prototype.scrollIntoView = vi.fn();
@@ -847,5 +1058,58 @@ describe('ClassifyAlertPage done mode', () => {
     expect(
       within(screen.getByTestId('object-card-101:0')).queryByText('Active')
     ).not.toBeInTheDocument();
+  });
+
+  it('aborts on the first PATCH failure: the earlier lane stays patched, the later lane is never attempted, error toast, no navigation', async () => {
+    vi.mocked(apiClient.getAlertDetail).mockResolvedValue(makeThreeLaneDoneAlertDetail());
+    vi.mocked(apiClient.updateSequenceAnnotation)
+      .mockResolvedValueOnce({
+        ...makeAnnotation({ id: 201 }),
+        processing_stage: 'seq_annotation_done',
+        group_propagation_warning: null,
+      })
+      .mockRejectedValueOnce({ response: { data: { detail: 'Lane 202 rejected' } } });
+
+    render(<ClassifyAlertPage mode="done" />, { wrapper: makeDoneWrapper(101) });
+    await waitFor(() => expect(screen.getByTestId('object-card-101:0')).toBeInTheDocument());
+
+    // Change all three lanes so all three land in changedLanes — proving the
+    // loop is sequential (not Promise.all firing every lane at once) and
+    // that it stops immediately on the first rejection.
+    const cardA = within(screen.getByTestId('object-card-101:0'));
+    fireEvent.click(cardA.getByRole('radio', { name: /Industrial/i }));
+
+    const cardB = within(screen.getByTestId('object-card-102:0'));
+    fireEvent.click(cardB.getByRole('checkbox', { name: /Building/i }));
+
+    const cardD = within(screen.getByTestId('object-card-104:0'));
+    fireEvent.click(cardD.getByRole('radio', { name: /Wildfire/i }));
+
+    const submitButton = screen.getByRole('button', { name: /Submit alert/i });
+    expect(submitButton).not.toBeDisabled();
+    fireEvent.click(submitButton);
+
+    await waitFor(() => expect(apiClient.updateSequenceAnnotation).toHaveBeenCalledTimes(2));
+    expect(apiClient.updateSequenceAnnotation).toHaveBeenNthCalledWith(
+      1,
+      201,
+      expect.anything()
+    );
+    expect(apiClient.updateSequenceAnnotation).toHaveBeenNthCalledWith(
+      2,
+      202,
+      expect.anything()
+    );
+    // The third (changed) lane's PATCH must never fire once lane 202 rejected.
+    expect(apiClient.updateSequenceAnnotation).not.toHaveBeenCalledWith(204, expect.anything());
+
+    await waitFor(() =>
+      expect(screen.getByText(/Submit failed: Lane 202 rejected/)).toBeInTheDocument()
+    );
+    expect(navigateMock).not.toHaveBeenCalled();
+
+    // onError refetches alert-detail so lane 201 (already patched on the
+    // server) redraws with server truth rather than staying on stale local state.
+    await waitFor(() => expect(apiClient.getAlertDetail).toHaveBeenCalledTimes(2));
   });
 });
