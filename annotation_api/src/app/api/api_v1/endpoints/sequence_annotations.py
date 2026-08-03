@@ -49,6 +49,7 @@ from app.services.annotation_generation import (
     apply_label_to_sequences_bbox,
     derive_group_label_from_annotation,
 )
+from app.services.localization_rule import needs_localization
 
 router = APIRouter()
 logger = logging.getLogger("uvicorn.error")
@@ -611,19 +612,30 @@ async def update_sequence_annotation(
     )
 
     # Smoke-localization exit guard (spec: smoke-localization entry point): a
-    # smoke lane may only be submitted seq_annotation_done -> annotated once
-    # every detection carries an annotated-stage detection annotation. FP
-    # lanes are untouched.
+    # lane matching the localization rule (see `localization_rule`; unsure lanes
+    # are exempt — they resolve through sequence review) may only be submitted
+    # seq_annotation_done -> annotated once every detection carries an
+    # annotated-stage detection annotation.
     target_has_smoke = (
         derive_has_smoke(payload.annotation)
         if payload.annotation is not None
         else existing.has_smoke
     )
+    target_has_missed_smoke = (
+        payload.has_missed_smoke
+        if payload.has_missed_smoke is not None
+        else existing.has_missed_smoke
+    )
+    target_is_unsure = (
+        payload.is_unsure if payload.is_unsure is not None else existing.is_unsure
+    )
     if (
         existing.processing_stage
         == SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE
         and target_processing_stage == SequenceAnnotationProcessingStage.ANNOTATED
-        and target_has_smoke
+        and needs_localization(
+            target_has_smoke, target_has_missed_smoke, target_is_unsure
+        )
     ):
         unlocalized = (
             await annotations.session.execute(

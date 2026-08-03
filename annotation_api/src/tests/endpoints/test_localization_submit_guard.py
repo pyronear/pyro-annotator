@@ -38,11 +38,18 @@ async def _create_detection(client: AsyncClient, mock_img: bytes, alert_api_id: 
 
 
 async def _create_sequence_annotation(
-    client: AsyncClient, detection_id: int, *, is_smoke: bool, stage: str
+    client: AsyncClient,
+    detection_id: int,
+    *,
+    is_smoke: bool,
+    stage: str,
+    has_missed_smoke: bool = False,
+    is_unsure: bool = False,
 ):
     payload = {
         "sequence_id": 1,
-        "has_missed_smoke": False,
+        "has_missed_smoke": has_missed_smoke,
+        "is_unsure": is_unsure,
         "annotation": {
             "sequences_bbox": [
                 {
@@ -162,3 +169,47 @@ async def test_other_transitions_unaffected(
     )
     assert resp.status_code == 200
     assert resp.json()["processing_stage"] == "seq_annotation_done"
+
+
+@pytest.mark.asyncio
+async def test_missed_smoke_lane_blocked_until_localized(
+    authenticated_client: AsyncClient, sequence_session, mock_img: bytes
+):
+    """A lane with has_smoke=False, has_missed_smoke=True may not submit
+    seq_annotation_done -> annotated while a detection lacks an
+    annotated-stage detection annotation (the rule extends the guard)."""
+    detection_id = await _create_detection(authenticated_client, mock_img, 1)
+    ann = await _create_sequence_annotation(
+        authenticated_client,
+        detection_id,
+        is_smoke=False,
+        stage="seq_annotation_done",
+        has_missed_smoke=True,
+    )
+    resp = await authenticated_client.patch(
+        f"/annotations/sequences/{ann['id']}",
+        json={"processing_stage": "annotated"},
+    )
+    assert resp.status_code == 422
+    assert "localization incomplete" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_unsure_smoke_lane_not_guarded(
+    authenticated_client: AsyncClient, sequence_session, mock_img: bytes
+):
+    """An unsure lane is excluded from the rule: sequence review may push it
+    seq_annotation_done -> annotated without detection annotations."""
+    detection_id = await _create_detection(authenticated_client, mock_img, 1)
+    ann = await _create_sequence_annotation(
+        authenticated_client,
+        detection_id,
+        is_smoke=True,
+        stage="seq_annotation_done",
+        is_unsure=True,
+    )
+    resp = await authenticated_client.patch(
+        f"/annotations/sequences/{ann['id']}",
+        json={"processing_stage": "annotated"},
+    )
+    assert resp.status_code == 200
