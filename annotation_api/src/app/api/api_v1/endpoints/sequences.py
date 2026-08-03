@@ -35,6 +35,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.api.dependencies import get_current_user, get_sequence_crud
 from app.crud import SequenceCRUD
 from app.db import get_session
+from app.services.localization_rule import needs_localization_clause
 from app.models import (
     Detection,
     DetectionAnnotation,
@@ -538,14 +539,14 @@ async def list_sequences(
 
 
 def _ready_smoke_lane(seq, ann):
-    """Smoke lane (has_smoke, not unsure) still at seq_annotation_done whose
-    auto reference layer exists. Parameterized over (possibly aliased)
-    Sequence/SequenceAnnotation so the queue can use it both in its HAVING
-    aggregate and in the candidate-alert pre-filter."""
+    """Lane matching the localization rule (has_smoke OR has_missed_smoke, not
+    unsure) still at seq_annotation_done whose auto reference layer exists.
+    Parameterized over (possibly aliased) Sequence/SequenceAnnotation so the
+    queue can use it both in its HAVING aggregate and in the candidate-alert
+    pre-filter."""
     return and_(
         ann.processing_stage == SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
-        ann.has_smoke.is_(True),
-        ann.is_unsure.is_(False),
+        needs_localization_clause(ann),
         seq.auto_annotated_at.is_not(None),
     )
 
@@ -559,10 +560,11 @@ async def localization_queue(
     current_user: User = Depends(get_current_user),
 ) -> Page[LocalizationQueueItem]:
     """Alerts ready for smoke localization (spec: smoke-localization entry
-    point): every sibling sequence at a done stage AND at least one smoke lane
-    (has_smoke, not unsure) at seq_annotation_done whose auto reference layer
-    exists (auto_annotated_at set). Lanes leave on submit (stage change), so a
-    fully-boxed but unsubmitted lane still counts as ready."""
+    point): every sibling sequence at a done stage AND at least one lane
+    matching the localization rule (see `localization_rule`) at seq_annotation_done
+    whose auto reference layer exists (auto_annotated_at set). Lanes leave on
+    submit (stage change), so a fully-boxed but unsubmitted lane still counts as
+    ready."""
     ready_smoke_lane = _ready_smoke_lane(Sequence, SequenceAnnotation)
     # Pre-filter to alerts having at least one ready smoke lane BEFORE the
     # completeness aggregation, so the grouping scans the active working set
