@@ -21,7 +21,7 @@ Each submodule has its own `CLAUDE.md` with detailed context — read those when
 ## Quick Start
 
 ```bash
-# Start all services (PostgreSQL, LocalStack S3, API, Frontend)
+# Start all services (PostgreSQL, MinIO S3, API, Frontend)
 docker compose up -d
 
 # Services:
