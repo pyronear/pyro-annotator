@@ -314,7 +314,9 @@ export default function SequenceGroupAnnotatePage() {
         </Link>
         <div className="mt-1 flex items-center justify-between gap-4">
           <div className="flex items-center gap-2.5 min-w-0">
-            <h1 className="font-display text-title font-semibold tracking-tight text-char truncate">
+            {/* text-heading, not text-title — this pinned bar is a working
+                toolbar, so the camera name anchors it without page-h1 scale. */}
+            <h1 className="font-display text-heading font-semibold text-char truncate">
               {cameraName} · {group.azimuth}°
             </h1>
             <span className="flex-none rounded-full bg-ash px-2.5 py-0.5 font-data text-xs font-semibold text-char">
@@ -418,7 +420,9 @@ export default function SequenceGroupAnnotatePage() {
       </div>
 
       <div>
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-x-5 gap-y-1 rounded-lg border border-line bg-paper px-3 py-1.5 font-body text-detail text-haze">
+        {/* mb-4 matches the grid's gap-4 so the legend row and card rows
+            share one vertical rhythm. */}
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-x-5 gap-y-1 rounded-lg border border-line bg-paper px-3 py-1.5 font-body text-detail text-haze">
           <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
             <span className="inline-flex items-center gap-1.5">
               <span className="inline-block w-4 h-3 border-2 border-red-500" />

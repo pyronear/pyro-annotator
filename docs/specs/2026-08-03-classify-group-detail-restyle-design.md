@@ -25,7 +25,9 @@ Keeps the fixed-past-sidebar idiom and the root's `pt-20` reservation.
 - Bar: `bg-paper/85 backdrop-blur-sm border-b border-line`, no shadow.
 - Back link: tertiary recipe — `font-body text-detail text-haze
   hover:text-char`.
-- Title: `font-display text-title font-semibold tracking-tight text-char`.
+- Title: `font-display text-heading font-semibold text-char` — heading scale,
+  not `text-title`: the pinned bar is a working toolbar, so the camera name
+  anchors it without page-h1 size.
 - Badges:
   - `N seq` count → neutral mono pill: `bg-ash text-char font-data`.
   - `smoke · <type>` and `false positive · <type>` → neutral paper pill with
