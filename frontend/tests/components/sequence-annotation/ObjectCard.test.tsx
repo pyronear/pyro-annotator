@@ -172,6 +172,66 @@ describe('ObjectCard', () => {
     expect(screen.getByLabelText('Unsure')).toBeDisabled();
   });
 
+  it('keeps the status badge and bbox count as normal-flow flex siblings, not absolutely positioned (regression: they used to overlap)', () => {
+    // jsdom doesn't compute real layout, so this can't assert pixel
+    // geometry — it asserts the structural fix instead: the badge used to
+    // be `absolute top-3 right-3`, floating on top of this row's bbox count
+    // once the card became flow content instead of a photo overlay. It must
+    // now share the same non-absolute flex container as the count, so
+    // ordinary layout (gap + shrink-0) keeps them apart at any badge width.
+    render(
+      <ObjectCard
+        objectNumber={1}
+        cardKey="55:0"
+        bbox={makeBbox()}
+        sequenceId={55}
+        classification="unselected"
+        isActive={false}
+        isAnnotated={false}
+        onBboxChange={noop}
+        onClassificationChange={noop}
+      />
+    );
+
+    const badge = screen.getByText('Pending');
+    const count = screen.getByText('1 bbox');
+
+    expect(badge).not.toHaveClass('absolute');
+    expect(badge.parentElement).toBe(count.parentElement);
+    expect(badge.parentElement).toHaveClass('flex');
+    expect(badge.parentElement).not.toHaveClass('absolute');
+  });
+
+  it('keeps a long stage badge and the bbox count apart in locked mode too (badge width varies with stageBadge text)', () => {
+    render(
+      <ObjectCard
+        objectNumber={1}
+        cardKey="60:0"
+        bbox={makeBbox({
+          bboxes: [
+            { detection_id: 1, xyxyn: [0, 0, 1, 1] },
+            { detection_id: 2, xyxyn: [0, 0, 1, 1] },
+          ],
+        })}
+        sequenceId={60}
+        classification="unselected"
+        isActive={false}
+        isAnnotated={true}
+        locked
+        stageBadge="Fully annotated"
+        onBboxChange={noop}
+        onClassificationChange={noop}
+      />
+    );
+
+    const badge = screen.getByText('Fully annotated');
+    const count = screen.getByText('2 bboxes');
+
+    expect(badge).not.toHaveClass('absolute');
+    expect(badge.parentElement).toBe(count.parentElement);
+    expect(badge.parentElement).toHaveClass('flex');
+  });
+
   it('renders a color swatch and forwards color/siblingOverlays to FullImageSequence only, never CroppedImageSequence', () => {
     const siblingOverlays = [
       { color: '#f97316', label: 'Object 2', boxesByRecordedAt: {} },

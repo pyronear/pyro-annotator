@@ -118,24 +118,19 @@ export const ObjectCard: React.FC<ObjectCardProps> = ({
     <div
       ref={cardRef}
       data-testid={`object-card-${cardKey}`}
-      className={`relative transition-colors px-[22px] py-5 ${frameClasses}`}
+      className={`transition-colors px-[22px] py-5 ${frameClasses}`}
       onClick={() => !locked && onCardClick?.(cardKey)}
     >
-      {/* Status Badge Overlay */}
-      <div
-        className={`absolute top-3 right-3 rounded-full px-2 py-1 font-body text-xs font-semibold ${
-          locked
-            ? 'bg-ash text-haze'
-            : isAnnotated
-              ? 'bg-pine-soft text-pine'
-              : 'bg-ember-soft text-ember'
-        }`}
-      >
-        {locked ? stageBadge : isAnnotated ? 'Reviewed' : 'Pending'}
-      </div>
-
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center space-x-3">
+      {/* Header row: title cluster (left, shrinkable) + status cluster
+          (right, never shrinks). The status badge used to be absolutely
+          positioned in the card's top-right corner — a leftover from when
+          it overlaid a photo — which put it directly on top of this row's
+          bbox count once the card became flow content instead of an image.
+          Both now live in the same flex row so normal layout (gap +
+          shrink-0), not manual offsets, keeps them apart at any badge text
+          length or card width. */}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+        <div className="flex items-center gap-3 min-w-0">
           {color && (
             <span
               data-testid={`object-color-swatch-${cardKey}`}
@@ -144,19 +139,32 @@ export const ObjectCard: React.FC<ObjectCardProps> = ({
               aria-hidden="true"
             />
           )}
-          <h4 className="font-display text-heading font-semibold text-char">
+          <h4 className="font-display text-heading font-semibold text-char truncate">
             Object {objectNumber}
           </h4>
           {isActive && !locked && (
-            <span className="inline-flex items-center rounded-full px-2 py-1 font-body text-xs font-medium bg-ember-soft text-ember">
+            <span className="inline-flex items-center rounded-full px-2 py-1 font-body text-xs font-medium bg-ember-soft text-ember shrink-0">
               <Keyboard className="w-3 h-3 mr-1" />
               Active
             </span>
           )}
         </div>
-        <span className="font-data text-detail text-haze">
-          {bbox.bboxes.length} bbox{bbox.bboxes.length !== 1 ? 'es' : ''}
-        </span>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="font-data text-detail text-haze whitespace-nowrap">
+            {bbox.bboxes.length} bbox{bbox.bboxes.length !== 1 ? 'es' : ''}
+          </span>
+          <span
+            className={`rounded-full px-2 py-1 font-body text-xs font-semibold whitespace-nowrap ${
+              locked
+                ? 'bg-ash text-haze'
+                : isAnnotated
+                  ? 'bg-pine-soft text-pine'
+                  : 'bg-ember-soft text-ember'
+            }`}
+          >
+            {locked ? stageBadge : isAnnotated ? 'Reviewed' : 'Pending'}
+          </span>
+        </div>
       </div>
 
       {/* Visual Content - Image Sequences */}
