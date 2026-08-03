@@ -150,7 +150,7 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
           {navigationWithBadges.map(item => {
             return (
               <div key={item.name}>
-                <div className="px-4 font-data text-[10.5px] font-medium uppercase tracking-[0.14em] text-haze">
+                <div className="px-4 font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
                   {item.name}
                 </div>
                 <div className="mt-1">

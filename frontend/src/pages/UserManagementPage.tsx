@@ -148,12 +148,10 @@ export default function UserManagementPage() {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="font-display text-[27px] font-semibold tracking-tight text-char">
+          <h1 className="font-display text-title font-semibold tracking-tight text-char">
             User Management
           </h1>
-          <p className="mt-1 font-body text-[13.5px] text-haze">
-            Manage user accounts and permissions
-          </p>
+          <p className="mt-1 font-body text-body text-haze">Manage user accounts and permissions</p>
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -180,7 +178,7 @@ export default function UserManagementPage() {
 
       {/* Filter Options */}
       {showFilters && (
-        <div className="rounded-[10px] border border-line bg-paper p-4">
+        <div className="rounded-card border border-line bg-paper p-4">
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => toggleFilter('is_active', true)}
@@ -222,24 +220,24 @@ export default function UserManagementPage() {
       )}
 
       {/* Users List */}
-      <div className="rounded-[10px] border border-line bg-paper overflow-hidden">
+      <div className="rounded-card border border-line bg-paper overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-line">
             <thead className="bg-ash">
               <tr>
-                <th className="px-6 py-3 text-left font-data text-[10.5px] font-medium uppercase tracking-[0.14em] text-haze">
+                <th className="px-6 py-3 text-left font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
                   User
                 </th>
-                <th className="px-6 py-3 text-left font-data text-[10.5px] font-medium uppercase tracking-[0.14em] text-haze">
+                <th className="px-6 py-3 text-left font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
                   Status
                 </th>
-                <th className="px-6 py-3 text-left font-data text-[10.5px] font-medium uppercase tracking-[0.14em] text-haze">
+                <th className="px-6 py-3 text-left font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
                   Role
                 </th>
-                <th className="px-6 py-3 text-left font-data text-[10.5px] font-medium uppercase tracking-[0.14em] text-haze">
+                <th className="px-6 py-3 text-left font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
                   Created
                 </th>
-                <th className="px-6 py-3 text-right font-data text-[10.5px] font-medium uppercase tracking-[0.14em] text-haze">
+                <th className="px-6 py-3 text-right font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
                   Actions
                 </th>
               </tr>
@@ -280,7 +278,7 @@ export default function UserManagementPage() {
                       {user.is_superuser ? 'Superuser' : 'User'}
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap font-data text-[12.5px] text-haze">
+                  <td className="px-6 py-4 whitespace-nowrap font-data text-detail text-haze">
                     {new Date(user.created_at).toLocaleDateString()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
