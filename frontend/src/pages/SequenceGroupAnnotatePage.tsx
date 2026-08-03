@@ -307,45 +307,70 @@ export default function SequenceGroupAnnotatePage() {
           page: fixed to the viewport past the sidebar (md:left-64) so the
           primary action (validate) stays reachable while scrolling the
           member grid. The root's pt-20 reserves its space. */}
-      <div className="fixed top-0 left-0 md:left-64 right-0 z-30 px-6 pt-3 pb-2.5 bg-white/85 border-b border-gray-200 backdrop-blur-sm shadow-sm">
-        <Link to={ROUTES.CLASSIFY_GROUPS} className="text-sm text-gray-500 hover:text-gray-800">
+      <div className="fixed top-0 left-0 md:left-64 right-0 z-30 px-6 pt-3 pb-2.5 bg-paper/85 border-b border-line backdrop-blur-sm">
+        <Link
+          to={ROUTES.CLASSIFY_GROUPS}
+          className="font-body text-detail text-haze hover:text-char"
+        >
           ← Sequence groups
         </Link>
         <div className="mt-1 flex items-center justify-between gap-4">
           <div className="flex items-center gap-2.5 min-w-0">
-            <h1 className="text-2xl font-bold text-gray-900 truncate">
+            <h1 className="font-display text-title font-semibold tracking-tight text-char truncate">
               {cameraName} · {group.azimuth}°
             </h1>
-            <span className="flex-none rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-700">
+            <span className="flex-none rounded-full bg-ash px-2.5 py-0.5 font-data text-xs font-semibold text-char">
               {group.members.length} seq
             </span>
             {group.smoke_type ? (
-              <span className="flex-none rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-semibold text-orange-700">
+              <span className="flex-none rounded-full border border-line bg-paper px-2.5 py-0.5 font-body text-xs font-semibold text-char">
                 smoke · {group.smoke_type}
               </span>
             ) : group.false_positive_type ? (
-              <span className="flex-none rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-semibold text-gray-700">
+              <span className="flex-none rounded-full border border-line bg-paper px-2.5 py-0.5 font-body text-xs font-semibold text-char">
                 false positive · {group.false_positive_type.replace(/_/g, ' ')}
               </span>
             ) : (
-              <span className="flex-none rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-semibold text-yellow-800">
+              <span className="flex-none rounded-full bg-ember-soft px-2.5 py-0.5 font-body text-xs font-semibold text-ember">
                 to label
               </span>
             )}
+            {/* Hover help replaces the old always-visible callout — same
+                bubble idiom as SequenceGroupsListPage.headerTip. */}
+            <span className="group relative flex-none">
+              <Info className="w-4 h-4 text-haze hover:text-char cursor-help" />
+              <span
+                role="tooltip"
+                className="pointer-events-none absolute left-0 top-full z-40 mt-1 hidden w-max max-w-[20rem] whitespace-normal rounded bg-char px-2.5 py-2 font-body text-xs font-normal text-white group-hover:block"
+              >
+                <span className="block">
+                  <span className="font-semibold">Label</span> — open any sequence below and label
+                  it.
+                </span>
+                <span className="mt-1 block">
+                  <span className="font-semibold">Validate</span> — confirms every sequence shows
+                  the same object; one label then propagates to all unannotated members.
+                </span>
+                <span className="mt-1 block">
+                  <span className="font-semibold">Eject</span> — ✕ removes a sequence that doesn't
+                  belong. Do it before validating.
+                </span>
+              </span>
+            </span>
           </div>
           <div className="flex flex-none items-center gap-2">
             {prevId ? (
               <Link
                 to={classifyGroup(prevId)}
                 title="Previous group"
-                className="p-1.5 rounded-lg border border-gray-300 bg-white text-gray-600 hover:bg-gray-50"
+                className="p-1.5 rounded-lg border border-line bg-paper text-haze hover:bg-ash"
               >
                 <ChevronLeft className="w-4 h-4" />
               </Link>
             ) : (
               <span
                 aria-disabled="true"
-                className="p-1.5 rounded-lg border border-gray-200 bg-white text-gray-300"
+                className="p-1.5 rounded-lg border border-line bg-paper text-line"
               >
                 <ChevronLeft className="w-4 h-4" />
               </span>
@@ -354,28 +379,28 @@ export default function SequenceGroupAnnotatePage() {
               <Link
                 to={classifyGroup(nextId)}
                 title="Next group"
-                className="p-1.5 rounded-lg border border-gray-300 bg-white text-gray-600 hover:bg-gray-50"
+                className="p-1.5 rounded-lg border border-line bg-paper text-haze hover:bg-ash"
               >
                 <ChevronRight className="w-4 h-4" />
               </Link>
             ) : (
               <span
                 aria-disabled="true"
-                className="p-1.5 rounded-lg border border-gray-200 bg-white text-gray-300"
+                className="p-1.5 rounded-lg border border-line bg-paper text-line"
               >
                 <ChevronRight className="w-4 h-4" />
               </span>
             )}
             {group.is_validated ? (
               <>
-                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-green-100 text-green-700 text-sm">
+                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-pine-soft font-body text-sm font-semibold text-pine">
                   <ShieldCheck className="w-4 h-4" /> Validated
                 </span>
                 <button
                   onClick={() => validateMutation.mutate(false)}
                   disabled={validateMutation.isPending}
                   title="Re-open the group — labels stop propagating to members"
-                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-50 disabled:opacity-50"
+                  className="rounded-lg border border-line bg-paper px-3 py-1.5 font-body text-sm font-medium text-char hover:bg-ash disabled:opacity-50"
                 >
                   <ShieldOff className="w-3 h-3 inline mr-1" /> Unvalidate
                 </button>
@@ -385,33 +410,12 @@ export default function SequenceGroupAnnotatePage() {
                 onClick={() => validateMutation.mutate(true)}
                 disabled={validateMutation.isPending}
                 title="Confirms every sequence shows the same object and enables label propagation"
-                className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300"
+                className="rounded-lg bg-ember px-3.5 py-1.5 font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:opacity-50"
               >
                 <ShieldCheck className="w-4 h-4 inline mr-1" /> Validate group
               </button>
             )}
           </div>
-        </div>
-      </div>
-
-      <div className="flex gap-2.5 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-        <Info className="w-4 h-4 flex-none mt-0.5 text-blue-600" />
-        <div>
-          <p className="font-semibold">How to label this group</p>
-          <ul className="mt-1 space-y-0.5 list-disc list-inside">
-            <li>
-              <span className="font-medium">Label</span> — open any sequence below and label it.
-            </li>
-            <li>
-              <span className="font-medium">Validate</span> — "Validate group" confirms every
-              sequence shows the same object; once validated, one label propagates to all
-              unannotated members.
-            </li>
-            <li>
-              <span className="font-medium">Eject</span> — use ✕ on a card to remove a sequence that
-              doesn't belong. Do this before validating.
-            </li>
-          </ul>
         </div>
       </div>
 
