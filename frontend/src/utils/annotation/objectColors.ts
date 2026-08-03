@@ -7,15 +7,22 @@
  * its full-frame view.
  */
 
+// Categorical identity palette — distinct from (never reused as) the app's
+// ember/pine/signal semantic accent tokens in DESIGN.md, since those mark
+// specific meanings (CTA, positive, attention) rather than arbitrary object
+// identity. Order and hues are colorblind-validated (adjacent-pair CVD +
+// normal-vision ΔE floors, OKLab) via the dataviz skill's palette
+// methodology, one hue swapped for an earthy sienna in place of a pure red
+// so no object color reads as the reserved signal/error hue.
 const OBJECT_COLOR_PALETTE = [
-  '#3b82f6', // blue
-  '#f97316', // orange
-  '#a855f7', // purple
-  '#14b8a6', // teal
-  '#ec4899', // pink
-  '#eab308', // yellow
-  '#6366f1', // indigo
-  '#22c55e', // green
+  '#2a78d6', // blue
+  '#eb6834', // orange
+  '#1baf7a', // aqua
+  '#eda100', // amber
+  '#e87ba4', // rose
+  '#008300', // green
+  '#4a3aa7', // violet
+  '#a0522d', // sienna
 ];
 
 export function getObjectColor(index: number): string {

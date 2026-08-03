@@ -37,7 +37,7 @@ export const ObjectPresenceStrip: React.FC<ObjectPresenceStripProps> = ({ object
   );
 
   return (
-    <div className="space-y-1.5 rounded-lg border border-gray-200 bg-white p-3">
+    <div className="space-y-1.5 rounded-lg border border-line bg-paper p-3">
       {objects.map((object, objectIndex) => {
         const presentAt = new Set(object.timestamps);
         return (
@@ -47,8 +47,10 @@ export const ObjectPresenceStrip: React.FC<ObjectPresenceStripProps> = ({ object
               className="h-2.5 w-2.5 shrink-0 rounded-full"
               style={{ backgroundColor: object.color }}
             />
-            <span className="w-20 shrink-0 truncate text-xs text-gray-600">{object.label}</span>
-            <div className="flex h-1.5 flex-1 gap-px overflow-hidden rounded-full bg-gray-100">
+            <span className="w-20 shrink-0 truncate font-body text-detail text-haze">
+              {object.label}
+            </span>
+            <div className="flex h-1.5 flex-1 gap-px overflow-hidden rounded-full bg-ash">
               {frameUnion.map((timestamp, frameIndex) => (
                 <div
                   key={timestamp}

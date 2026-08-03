@@ -100,31 +100,35 @@ export const ObjectCard: React.FC<ObjectCardProps> = ({
   siblingOverlays,
   frameRecordedAt,
 }) => {
+  // Card state communicated two ways at once (never color alone): the
+  // corner badge's text, and a hairline frame whose left edge picks up the
+  // sanctioned accent for the state — ember for "you're editing this one"
+  // (ember = Classify lane identity per DESIGN.md), pine for "done"
+  // (pine = positive states), neutral line for "needs a look" (the badge
+  // carries that signal instead).
+  const frameClasses = locked
+    ? 'border border-line bg-paper opacity-60 cursor-default'
+    : isActive
+      ? 'border border-line border-l-[3px] border-l-ember bg-paper cursor-pointer'
+      : isAnnotated
+        ? 'border border-line border-l-[3px] border-l-pine bg-paper hover:bg-ash cursor-pointer'
+        : 'border border-line bg-paper hover:bg-ash cursor-pointer';
+
   return (
     <div
       ref={cardRef}
       data-testid={`object-card-${cardKey}`}
-      className={`relative rounded-lg transition-all duration-200 ${
-        locked ? 'cursor-default' : 'cursor-pointer'
-      } ${
-        locked
-          ? 'border-4 border-gray-300 bg-gray-50'
-          : isActive
-            ? 'border-4 border-blue-500 ring-2 ring-blue-200 bg-blue-50'
-            : isAnnotated
-              ? 'border-4 border-green-500 bg-green-50 hover:border-green-600 hover:bg-green-100'
-              : 'border-4 border-orange-400 bg-orange-50 hover:border-orange-500 hover:bg-orange-100 animate-pulse-subtle'
-      } p-6`}
+      className={`relative transition-colors px-[22px] py-5 ${frameClasses}`}
       onClick={() => !locked && onCardClick?.(cardKey)}
     >
       {/* Status Badge Overlay */}
       <div
-        className={`absolute top-3 right-3 px-2 py-1 rounded-full text-xs font-semibold backdrop-blur-sm ${
+        className={`absolute top-3 right-3 rounded-full px-2 py-1 font-body text-xs font-semibold ${
           locked
-            ? 'bg-gray-500/90 text-white'
+            ? 'bg-ash text-haze'
             : isAnnotated
-              ? 'bg-green-600/90 text-white'
-              : 'bg-orange-500/90 text-white'
+              ? 'bg-pine-soft text-pine'
+              : 'bg-ember-soft text-ember'
         }`}
       >
         {locked ? stageBadge : isAnnotated ? 'Reviewed' : 'Pending'}
@@ -135,20 +139,22 @@ export const ObjectCard: React.FC<ObjectCardProps> = ({
           {color && (
             <span
               data-testid={`object-color-swatch-${cardKey}`}
-              className="inline-block w-3 h-3 rounded-full ring-1 ring-black/10 shrink-0"
+              className="inline-block w-3 h-3 rounded-full ring-1 ring-char/10 shrink-0"
               style={{ backgroundColor: color }}
               aria-hidden="true"
             />
           )}
-          <h4 className="text-lg font-medium text-gray-900">Object {objectNumber}</h4>
+          <h4 className="font-display text-heading font-semibold text-char">
+            Object {objectNumber}
+          </h4>
           {isActive && !locked && (
-            <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
+            <span className="inline-flex items-center rounded-full px-2 py-1 font-body text-xs font-medium bg-ember-soft text-ember">
               <Keyboard className="w-3 h-3 mr-1" />
               Active
             </span>
           )}
         </div>
-        <span className="text-sm text-gray-500">
+        <span className="font-data text-detail text-haze">
           {bbox.bboxes.length} bbox{bbox.bboxes.length !== 1 ? 'es' : ''}
         </span>
       </div>
@@ -159,7 +165,7 @@ export const ObjectCard: React.FC<ObjectCardProps> = ({
           <>
             {/* Full Image Sequence */}
             <div className="text-center">
-              <h5 className="text-sm font-medium text-gray-700 mb-3">Full Sequence</h5>
+              <h5 className="font-body text-sm font-medium text-char mb-3">Full Sequence</h5>
               <FullImageSequence
                 bboxes={bbox.bboxes}
                 sequenceId={sequenceId}
@@ -171,16 +177,16 @@ export const ObjectCard: React.FC<ObjectCardProps> = ({
 
             {/* Cropped Image Sequence */}
             <div className="text-center mt-6">
-              <h5 className="text-sm font-medium text-gray-700 mb-3">Cropped View</h5>
+              <h5 className="font-body text-sm font-medium text-char mb-3">Cropped View</h5>
               <CroppedImageSequence bboxes={bbox.bboxes} sequenceId={sequenceId} />
             </div>
           </>
         ) : (
           /* Loading state when annotation data is being fetched */
           <div className="text-center py-8">
-            <div className="flex items-center justify-center space-x-2 text-gray-500">
-              <div className="animate-spin w-5 h-5 border-2 border-gray-300 border-t-gray-600 rounded-full"></div>
-              <span>Loading sequence images...</span>
+            <div className="flex items-center justify-center space-x-2 text-haze">
+              <div className="animate-spin w-5 h-5 border-2 border-line border-t-ember rounded-full"></div>
+              <span className="font-body text-sm">Loading sequence images...</span>
             </div>
           </div>
         )}
@@ -190,7 +196,7 @@ export const ObjectCard: React.FC<ObjectCardProps> = ({
       <div className="space-y-4">
         {/* Step 1: Primary Classification */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-3">
+          <label className="block font-body text-sm font-medium text-char mb-3">
             Sequence Classification
           </label>
           <div className="space-y-2">
@@ -209,11 +215,11 @@ export const ObjectCard: React.FC<ObjectCardProps> = ({
                   updatedBbox.false_positive_types = []; // Clear false positive types
                   onBboxChange(cardKey, updatedBbox);
                 }}
-                className="w-4 h-4 text-green-600 focus:ring-green-500 border-gray-300"
+                className="w-4 h-4 text-pine focus:ring-pine border-line"
               />
-              <span className="text-sm text-gray-900">🔥 This is smoke</span>
+              <span className="font-body text-sm text-char">🔥 This is smoke</span>
               {isActive && !locked && (
-                <kbd className="px-1 py-0.5 bg-gray-200 text-gray-700 rounded text-xs font-mono">
+                <kbd className="px-1 py-0.5 bg-ash text-haze rounded font-data text-xs font-medium">
                   S
                 </kbd>
               )}
@@ -234,11 +240,11 @@ export const ObjectCard: React.FC<ObjectCardProps> = ({
                   // Keep existing false_positive_types for user to modify
                   onBboxChange(cardKey, updatedBbox);
                 }}
-                className="w-4 h-4 text-red-600 focus:ring-red-500 border-gray-300"
+                className="w-4 h-4 text-char focus:ring-char border-line"
               />
-              <span className="text-sm text-gray-900">❌ This is a false positive</span>
+              <span className="font-body text-sm text-char">❌ This is a false positive</span>
               {isActive && !locked && (
-                <kbd className="px-1 py-0.5 bg-gray-200 text-gray-700 rounded text-xs font-mono">
+                <kbd className="px-1 py-0.5 bg-ash text-haze rounded font-data text-xs font-medium">
                   F
                 </kbd>
               )}
@@ -253,9 +259,9 @@ export const ObjectCard: React.FC<ObjectCardProps> = ({
                   checked={!!unsure}
                   disabled={locked}
                   onChange={e => onUnsureChange(cardKey, e.target.checked)}
-                  className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 border-gray-300"
+                  className="w-4 h-4 rounded text-signal focus:ring-signal border-line"
                 />
-                <span className="text-sm text-gray-900">Unsure</span>
+                <span className="font-body text-sm text-char">Unsure</span>
               </label>
             )}
           </div>
@@ -264,7 +270,7 @@ export const ObjectCard: React.FC<ObjectCardProps> = ({
         {/* Step 2: Smoke Type Selection (shown when smoke is selected) */}
         {classification === 'smoke' && (
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">Smoke Type</label>
+            <label className="block font-body text-sm font-medium text-char mb-3">Smoke Type</label>
             <div className="space-y-2">
               {SMOKE_TYPES.map(smokeType => (
                 <label key={smokeType} className="flex items-center space-x-3 cursor-pointer">
@@ -278,23 +284,23 @@ export const ObjectCard: React.FC<ObjectCardProps> = ({
                       updatedBbox.smoke_type = smokeType as SmokeType;
                       onBboxChange(cardKey, updatedBbox);
                     }}
-                    className="w-4 h-4 text-green-600 focus:ring-green-500 border-gray-300"
+                    className="w-4 h-4 text-pine focus:ring-pine border-line"
                   />
-                  <span className="text-sm text-gray-900">
+                  <span className="font-body text-sm text-char">
                     {getSmokeTypeEmoji(smokeType)} {formatSmokeType(smokeType)}
                   </span>
                   {isActive && !locked && smokeType === 'wildfire' && (
-                    <kbd className="px-1 py-0.5 bg-gray-200 text-gray-700 rounded text-xs font-mono">
+                    <kbd className="px-1 py-0.5 bg-ash text-haze rounded font-data text-xs font-medium">
                       1
                     </kbd>
                   )}
                   {isActive && !locked && smokeType === 'industrial' && (
-                    <kbd className="px-1 py-0.5 bg-gray-200 text-gray-700 rounded text-xs font-mono">
+                    <kbd className="px-1 py-0.5 bg-ash text-haze rounded font-data text-xs font-medium">
                       2
                     </kbd>
                   )}
                   {isActive && !locked && smokeType === 'other' && (
-                    <kbd className="px-1 py-0.5 bg-gray-200 text-gray-700 rounded text-xs font-mono">
+                    <kbd className="px-1 py-0.5 bg-ash text-haze rounded font-data text-xs font-medium">
                       3
                     </kbd>
                   )}
@@ -307,7 +313,7 @@ export const ObjectCard: React.FC<ObjectCardProps> = ({
         {/* Step 3: False Positive Types (shown when false positive is selected) */}
         {classification === 'false_positive' && (
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">
+            <label className="block font-body text-sm font-medium text-char mb-3">
               False Positive Types (Select all that apply)
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 mb-4">
@@ -336,11 +342,11 @@ export const ObjectCard: React.FC<ObjectCardProps> = ({
                         }
                         onBboxChange(cardKey, updatedBbox);
                       }}
-                      className="w-3 h-3 text-red-600 focus:ring-red-500 border-gray-300 rounded"
+                      className="w-3 h-3 text-char focus:ring-char border-line rounded"
                     />
-                    <span className="text-xs text-gray-600">{formatLabel(fpType)}</span>
+                    <span className="font-body text-xs text-haze">{formatLabel(fpType)}</span>
                     {isActive && !locked && getKeyForType(fpType) && (
-                      <kbd className="ml-1 px-1 py-0.5 bg-gray-200 text-gray-700 rounded text-xs font-mono">
+                      <kbd className="ml-1 px-1 py-0.5 bg-ash text-haze rounded font-data text-xs font-medium">
                         {getKeyForType(fpType)}
                       </kbd>
                     )}
@@ -352,12 +358,14 @@ export const ObjectCard: React.FC<ObjectCardProps> = ({
             {/* Selected types display */}
             {bbox.false_positive_types.length > 0 && (
               <div className="mt-3">
-                <div className="text-xs font-medium text-gray-700 mb-2">Selected:</div>
+                <div className="font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze mb-2">
+                  Selected:
+                </div>
                 <div className="flex flex-wrap gap-1">
                   {bbox.false_positive_types.map(type => (
                     <span
                       key={type}
-                      className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-red-100 text-red-800 border border-red-200"
+                      className="inline-flex items-center rounded-full px-2 py-1 font-body text-xs font-medium bg-ash text-char border border-line"
                     >
                       {type
                         .split('_')
@@ -372,7 +380,7 @@ export const ObjectCard: React.FC<ObjectCardProps> = ({
                             );
                             onBboxChange(cardKey, updatedBbox);
                           }}
-                          className="ml-1 hover:opacity-80 text-red-600"
+                          className="ml-1 text-haze hover:text-signal"
                         >
                           ×
                         </button>
@@ -388,43 +396,39 @@ export const ObjectCard: React.FC<ObjectCardProps> = ({
         {/* Enhanced Status Bar */}
         <div
           className={`flex items-center justify-between p-3 rounded-lg ${
-            isAnnotated
-              ? 'bg-green-50 border border-green-200'
-              : 'bg-orange-50 border border-orange-200'
+            isAnnotated ? 'bg-pine-soft' : 'bg-ember-soft'
           }`}
         >
           <div className="flex items-center space-x-2">
             {isAnnotated ? (
-              <CheckCircle className="w-4 h-4 text-green-600" />
+              <CheckCircle className="w-4 h-4 text-pine" />
             ) : (
-              <AlertCircle className="w-4 h-4 text-orange-600" />
+              <AlertCircle className="w-4 h-4 text-ember" />
             )}
             <span
-              className={`text-sm font-medium ${
-                isAnnotated ? 'text-green-700' : 'text-orange-700'
-              }`}
+              className={`font-body text-sm font-medium ${isAnnotated ? 'text-pine' : 'text-ember'}`}
             >
               {isAnnotated ? 'Detection Reviewed' : 'Needs Review'}
             </span>
           </div>
 
           {/* Current Selection Summary */}
-          <div className="text-xs text-gray-600">
+          <div className="font-body text-xs text-haze">
             {bbox.is_smoke && bbox.smoke_type && (
-              <span className="text-green-700 font-medium">
+              <span className="text-pine font-medium">
                 {getSmokeTypeEmoji(bbox.smoke_type)} {formatSmokeType(bbox.smoke_type)}
               </span>
             )}
             {bbox.is_smoke && !bbox.smoke_type && (
-              <span className="text-orange-600 font-medium">Smoke (type needed)</span>
+              <span className="text-ember font-medium">Smoke (type needed)</span>
             )}
             {!bbox.is_smoke && bbox.false_positive_types.length > 0 && (
-              <span className="text-red-700 font-medium">
+              <span className="text-char font-medium">
                 False Positive ({bbox.false_positive_types.length})
               </span>
             )}
             {!bbox.is_smoke && bbox.false_positive_types.length === 0 && (
-              <span className="text-gray-500">No classification</span>
+              <span className="text-haze">No classification</span>
             )}
           </div>
         </div>

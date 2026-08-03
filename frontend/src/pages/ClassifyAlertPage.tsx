@@ -589,7 +589,7 @@ export default function ClassifyAlertPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-96">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-ember"></div>
       </div>
     );
   }
@@ -598,11 +598,11 @@ export default function ClassifyAlertPage() {
     return (
       <div className="flex items-center justify-center min-h-96">
         <div className="text-center">
-          <p className="text-red-600 mb-2">Failed to load alert</p>
-          <p className="text-gray-500 text-sm">{String(error)}</p>
+          <p className="font-body text-sm text-signal mb-2">Failed to load alert</p>
+          <p className="font-body text-detail text-haze">{String(error)}</p>
           <button
             onClick={() => navigate(ROUTES.CLASSIFY)}
-            className="mt-4 text-primary-600 hover:text-primary-900"
+            className="mt-4 font-body text-detail text-haze hover:text-char"
           >
             Back to Alerts
           </button>
@@ -612,101 +612,94 @@ export default function ClassifyAlertPage() {
   }
 
   const primaryLane = alertDetail.lanes[0];
+  const classifiedCount = editableCards.filter(
+    c => laneUnsure[c.laneSequenceId] || hasUserAnnotations(getBbox(c))
+  ).length;
 
   return (
     <>
-      <div className="fixed top-0 left-0 md:left-64 right-0 backdrop-blur-sm shadow-sm z-30 bg-white/85 border-b border-gray-200">
-        <div className="px-10 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={() => {
-                  clearAnnotationWorkflow();
-                  navigate(ROUTES.CLASSIFY);
-                }}
-                className="p-1.5 rounded-md hover:bg-gray-100 hover:bg-opacity-75"
-                title="Back to alerts"
-              >
-                <ArrowLeft className="w-4 h-4" />
-              </button>
+      {/* Pinned toolbar-scale header — same idiom as SequenceGroupAnnotatePage:
+          fixed to the viewport past the sidebar so alert identity, progress,
+          and Submit stay reachable while scrolling the object cards below.
+          The root's pt-20 reserves its space. */}
+      <div className="fixed top-0 left-0 md:left-64 right-0 z-30 px-6 pt-3 pb-2.5 bg-paper/85 border-b border-line backdrop-blur-sm">
+        <button
+          onClick={() => {
+            clearAnnotationWorkflow();
+            navigate(ROUTES.CLASSIFY);
+          }}
+          className="font-body text-detail text-haze hover:text-char inline-flex items-center gap-1"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" /> Alerts
+        </button>
 
-              <div className="flex items-center space-x-2">
-                <span className="text-sm font-medium text-gray-900">
-                  {alertDetail.organisation_name}
-                </span>
-                <span className="text-gray-400">•</span>
-                <span className="text-sm text-gray-600">{alertDetail.camera_name}</span>
-                <span className="text-gray-400">•</span>
-                <span className="text-sm text-gray-600">
-                  {new Date(alertDetail.recorded_at).toLocaleString()}
-                </span>
+        <div className="mt-1 flex items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-2.5 min-w-0">
+            <h1 className="font-display text-heading font-semibold text-char truncate">
+              {alertDetail.organisation_name} · {alertDetail.camera_name}
+            </h1>
+            <span className="font-data text-detail text-haze">
+              {new Date(alertDetail.recorded_at).toLocaleString()}
+            </span>
+            {annotationWorkflow && annotationWorkflow.isActive && (
+              <span className="flex-none rounded-full bg-ash px-2.5 py-0.5 font-data text-xs font-semibold text-char">
+                Alert {annotationWorkflow.currentIndex + 1} of {annotationWorkflow.sequences.length}
+              </span>
+            )}
+            <span
+              className={`flex-none rounded-full px-2.5 py-0.5 font-data text-xs font-semibold ${
+                editableCards.length > 0 && classifiedCount === editableCards.length
+                  ? 'bg-pine-soft text-pine'
+                  : 'bg-ember-soft text-ember'
+              }`}
+            >
+              {classifiedCount} of {editableCards.length} objects classified
+            </span>
+          </div>
 
-                {annotationWorkflow && annotationWorkflow.isActive && (
-                  <>
-                    <span className="text-gray-400">•</span>
-                    <span className="text-xs text-blue-600 font-medium">
-                      Alert {annotationWorkflow.currentIndex + 1} of{' '}
-                      {annotationWorkflow.sequences.length}
-                    </span>
-                  </>
-                )}
+          <div className="flex flex-none items-center gap-2">
+            {annotationWorkflow && annotationWorkflow.isActive && (
+              <>
+                <button
+                  onClick={handlePreviousAlert}
+                  disabled={!canNavigatePrevious()}
+                  className="p-1.5 rounded-lg border border-line bg-paper text-haze hover:bg-ash disabled:opacity-40 disabled:cursor-not-allowed"
+                  title={canNavigatePrevious() ? 'Previous alert' : 'Already at first alert'}
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={handleNextAlert}
+                  disabled={!canNavigateNext()}
+                  className="p-1.5 rounded-lg border border-line bg-paper text-haze hover:bg-ash disabled:opacity-40 disabled:cursor-not-allowed"
+                  title={canNavigateNext() ? 'Next alert' : 'Already at last alert'}
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </>
+            )}
 
-                <span className="text-gray-400">•</span>
-                <span className="text-xs text-gray-500">
-                  {
-                    editableCards.filter(
-                      c => laneUnsure[c.laneSequenceId] || hasUserAnnotations(getBbox(c))
-                    ).length
-                  }{' '}
-                  of {editableCards.length} objects classified
-                </span>
-              </div>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              {annotationWorkflow && annotationWorkflow.isActive && (
-                <>
-                  <button
-                    onClick={handlePreviousAlert}
-                    disabled={!canNavigatePrevious()}
-                    className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
-                    title={canNavigatePrevious() ? 'Previous alert' : 'Already at first alert'}
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={handleNextAlert}
-                    disabled={!canNavigateNext()}
-                    className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
-                    title={canNavigateNext() ? 'Next alert' : 'Already at last alert'}
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </>
+            <button
+              onClick={handleSubmit}
+              disabled={!canSubmit || submitMutation.isPending}
+              className="inline-flex items-center rounded-lg bg-ember px-4 py-2 font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Submit alert (Enter)"
+            >
+              {submitMutation.isPending ? (
+                <div className="w-3.5 h-3.5 mr-1.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+              ) : (
+                <Upload className="w-3.5 h-3.5 mr-1.5" />
               )}
+              Submit alert ({editableCards.length} objects)
+            </button>
 
-              <button
-                onClick={handleSubmit}
-                disabled={!canSubmit || submitMutation.isPending}
-                className="inline-flex items-center px-3 py-1.5 border border-transparent rounded-md shadow-sm text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Submit alert (Enter)"
-              >
-                {submitMutation.isPending ? (
-                  <div className="w-3 h-3 mr-1 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                ) : (
-                  <Upload className="w-3 h-3 mr-1" />
-                )}
-                Submit alert ({editableCards.length} objects)
-              </button>
-
-              <button
-                onClick={() => setShowKeyboardModal(true)}
-                className="inline-flex items-center px-2 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50"
-                title="Show keyboard shortcuts (?)"
-              >
-                <Keyboard className="w-3 h-3" />
-              </button>
-            </div>
+            <button
+              onClick={() => setShowKeyboardModal(true)}
+              className="p-2 rounded-lg border border-line bg-paper text-haze hover:bg-ash"
+              title="Show keyboard shortcuts (?)"
+            >
+              <Keyboard className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </div>
@@ -715,19 +708,19 @@ export default function ClassifyAlertPage() {
         <ObjectPresenceStrip objects={presenceStripObjects} />
 
         {groupConflictWarnings.length > 0 && (
-          <div className="sticky top-20 z-30 bg-amber-50 border-b-2 border-amber-400 px-4 py-3 shadow">
+          <div className="sticky top-20 z-30 bg-signal-soft border-b-2 border-signal px-4 py-3">
             <div className="max-w-7xl mx-auto space-y-2">
               {groupConflictWarnings.map((warning, i) => (
                 <div key={i} className="flex items-start gap-3">
-                  <div className="flex-1 text-sm text-amber-900">
-                    <div className="font-medium">Group propagation skipped</div>
+                  <div className="flex-1 font-body text-sm text-signal">
+                    <div className="font-semibold">Group propagation skipped</div>
                     <div className="mt-0.5">{warning.message}</div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {warning.groupId != null && (
                       <Link
                         to={classifyGroup(warning.groupId)}
-                        className="text-sm font-medium text-amber-900 underline hover:text-amber-700"
+                        className="font-body text-sm font-medium text-signal underline hover:brightness-95"
                       >
                         Open group
                       </Link>
@@ -738,7 +731,7 @@ export default function ClassifyAlertPage() {
               <button
                 type="button"
                 onClick={() => setGroupConflictWarnings([])}
-                className="text-sm font-medium px-3 py-1 rounded bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300"
+                className="inline-flex items-center rounded-lg border border-signal bg-paper px-3 py-1.5 font-body text-sm font-medium text-signal hover:bg-signal-soft"
               >
                 Dismiss
               </button>
@@ -755,11 +748,13 @@ export default function ClassifyAlertPage() {
                 <div
                   key={`placeholder-${item.laneSequenceId}`}
                   data-testid={`object-card-placeholder-${item.laneSequenceId}`}
-                  className="rounded-lg border-4 border-gray-200 bg-gray-50 p-6 text-center"
+                  className="border border-dashed border-line bg-ash px-[22px] py-5 text-center"
                 >
-                  <h4 className="text-lg font-medium text-gray-900 mb-2">Object {objectNumber}</h4>
-                  <AlertCircle className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                  <p className="text-gray-600">Not imported yet</p>
+                  <h4 className="font-display text-heading font-semibold text-char mb-2">
+                    Object {objectNumber}
+                  </h4>
+                  <AlertCircle className="w-8 h-8 text-haze mx-auto mb-2" />
+                  <p className="font-body text-sm text-haze">Not imported yet</p>
                 </div>
               );
             }
@@ -830,41 +825,43 @@ export default function ClassifyAlertPage() {
         />
 
         {showKeyboardModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg shadow-xl max-w-2xl max-h-[90vh] overflow-y-auto m-4">
-              <div className="flex items-center justify-between p-6 border-b border-gray-200">
-                <h2 className="text-xl font-semibold text-gray-900">Keyboard Shortcuts</h2>
+          <div className="fixed inset-0 bg-char/50 flex items-center justify-center z-50">
+            <div className="bg-paper border border-line rounded-lg max-w-2xl max-h-[90vh] overflow-y-auto m-4">
+              <div className="flex items-center justify-between p-6 border-b border-line">
+                <h2 className="font-display text-heading font-semibold text-char">
+                  Keyboard Shortcuts
+                </h2>
                 <button
                   onClick={() => setShowKeyboardModal(false)}
-                  className="p-2 hover:bg-gray-100 rounded-md"
+                  className="p-2 hover:bg-ash rounded-md"
                 >
-                  <X className="w-5 h-5" />
+                  <X className="w-5 h-5 text-haze" />
                 </button>
               </div>
               <div className="p-6 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-700">Previous / next object</span>
-                  <span className="text-xs text-gray-500">↑ / ↓</span>
+                  <span className="font-body text-sm text-char">Previous / next object</span>
+                  <span className="font-data text-detail text-haze">↑ / ↓</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-700">
+                  <span className="font-body text-sm text-char">
                     Mark active object as smoke / false positive
                   </span>
-                  <span className="text-xs text-gray-500">S / F</span>
+                  <span className="font-data text-detail text-haze">S / F</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-700">
+                  <span className="font-body text-sm text-char">
                     Smoke type (wildfire / industrial / other)
                   </span>
-                  <span className="text-xs text-gray-500">1 / 2 / 3</span>
+                  <span className="font-data text-detail text-haze">1 / 2 / 3</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-700">Missed smoke yes / no</span>
-                  <span className="text-xs text-gray-500">Y / N</span>
+                  <span className="font-body text-sm text-char">Missed smoke yes / no</span>
+                  <span className="font-data text-detail text-haze">Y / N</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-700">Submit alert</span>
-                  <span className="text-xs text-gray-500">Enter</span>
+                  <span className="font-body text-sm text-char">Submit alert</span>
+                  <span className="font-data text-detail text-haze">Enter</span>
                 </div>
               </div>
             </div>
