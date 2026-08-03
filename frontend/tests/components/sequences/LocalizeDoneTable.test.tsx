@@ -148,6 +148,18 @@ describe('LocalizeDoneTable', () => {
     expect(screen.getByText('Camera-01').closest('tr')).toHaveClass('bg-green-50');
   });
 
+  it('applies false-positive row background when the human found no smoke', () => {
+    render(
+      <LocalizeDoneTable
+        sequences={[createSequence()]}
+        annotations={{ 1: createAnnotation({ has_smoke: false, smoke_types: [] }) }}
+        onSequenceClick={onSequenceClick}
+      />
+    );
+
+    expect(screen.getByText('Camera-01').closest('tr')).toHaveClass('bg-red-50');
+  });
+
   it('renders a plain row and empty Result cell when annotation is missing', () => {
     render(
       <LocalizeDoneTable

@@ -92,7 +92,7 @@ export function LocalizeDoneTable({
                     ? `${sequence.azimuth}°`
                     : ''}
                 </td>
-                <td className={`${CELL_CLASSES} text-gray-500`}>
+                <td className="px-4 py-2 text-sm text-gray-500">
                   {annotation ? resultText(annotation) : ''}
                 </td>
               </tr>

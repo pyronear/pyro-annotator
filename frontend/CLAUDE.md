@@ -28,7 +28,7 @@ frontend/src/
 │   ├── sequence/                # SequencePlayer, SequenceReviewer, MediaControls, PlayerControls, MissedSmokePanel, MissedSmokeInstructionsModal
 │   ├── sequence-annotation/     # AnnotationHeader, MissedSmokePanel, ProcessingStageMessages, SequenceAnnotationGrid
 │   ├── sequences/               # Table headers/rows + pagination for annotate / review queues, plus SequencesLegend
-│   └── ui/                      # ContributorList, NotificationBadge, NotificationSystem, PasswordField, ProgressIndicator
+│   └── ui/                      # NotificationBadge, NotificationSystem, PasswordField, ProgressIndicator
 ├── hooks/
 │   ├── annotation/              # useDrawingCanvas, useKeyboardShortcuts
 │   └── *.ts                     # useAnnotationCounts, usePipelineStats, useCameras, useOrganizations, useSourceApis, useSequenceDetections, useDetectionImage, useImagePreloader, usePersistedFilters, usePersistedTabState

@@ -68,13 +68,19 @@ describe('LocalizeQueueTable', () => {
 
     expect(screen.getByText('test-api')).toBeInTheDocument();
     expect(screen.getByText('180°')).toBeInTheDocument();
-    expect(
-      screen.getByText(new Date('2024-01-01T10:00:00Z').toLocaleString())
-    ).toBeInTheDocument();
+    expect(screen.getByText(new Date('2024-01-01T10:00:00Z').toLocaleString())).toBeInTheDocument();
+  });
+
+  it('renders 0° when azimuth is zero', () => {
+    render(<LocalizeQueueTable items={[createItem({ azimuth: 0 })]} onItemClick={onItemClick} />);
+
+    expect(screen.getByText('0°')).toBeInTheDocument();
   });
 
   it('leaves the azimuth cell empty when azimuth is null', () => {
-    render(<LocalizeQueueTable items={[createItem({ azimuth: null })]} onItemClick={onItemClick} />);
+    render(
+      <LocalizeQueueTable items={[createItem({ azimuth: null })]} onItemClick={onItemClick} />
+    );
 
     expect(screen.queryByText(/°/)).not.toBeInTheDocument();
   });
