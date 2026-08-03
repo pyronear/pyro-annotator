@@ -65,7 +65,7 @@ export default function PipelineStrip({
         toneClass="text-char"
         label="Complete"
         count={complete}
-        detail={`${completePct}% of all sequences`}
+        detail={`${completePct}% of all objects`}
         isLoading={isLoading}
       />
     </div>

@@ -19,6 +19,6 @@ describe('PipelineStrip', () => {
     expect(screen.getByText('31')).toBeInTheDocument();
     expect(screen.getByText('Complete')).toBeInTheDocument();
     expect(screen.getByText('418')).toBeInTheDocument();
-    expect(screen.getByText('80% of all sequences')).toBeInTheDocument();
+    expect(screen.getByText('80% of all objects')).toBeInTheDocument();
   });
 });
