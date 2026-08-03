@@ -2,6 +2,7 @@ export { SequencesTableHeader } from './SequencesTableHeader';
 export { SequencesLegend } from './SequencesLegend';
 export { ClassifyQueueTable } from './ClassifyQueueTable';
 export { ClassifyDoneTable } from './ClassifyDoneTable';
+export { LocalizeQueueTable } from './LocalizeQueueTable';
 export { PlatformAnnotationPill } from './PlatformAnnotationPill';
 export { SequencesPagination } from './SequencesPagination';
 
