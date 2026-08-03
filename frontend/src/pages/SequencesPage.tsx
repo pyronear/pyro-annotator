@@ -199,8 +199,9 @@ export default function SequencesPage({
     );
   }
 
-  // Empty state when no sequences are available
-  if (sequences && sequences.items.length === 0) {
+  // Empty state when nothing survives the server page + client-side filters
+  // (gate on filteredSequences: the accuracy filter can empty a non-empty page).
+  if (sequences && filteredSequences && filteredSequences.items.length === 0) {
     // Check if user has applied filters
     const hasFilters = hasActiveUserFilters(
       filters,
@@ -357,8 +358,11 @@ export default function SequencesPage({
         <div className="flex items-center gap-3 flex-wrap justify-end">
           {stageSelector}
           <div className="flex items-center space-x-2">
-            <label className="font-body text-sm text-haze">Show:</label>
+            <label htmlFor="page-size" className="font-body text-sm text-haze">
+              Show:
+            </label>
             <select
+              id="page-size"
               value={filters.size || 50}
               onChange={e => handleFilterChange({ size: Number(e.target.value) })}
               className="border border-line rounded px-2 py-1 font-body text-sm"

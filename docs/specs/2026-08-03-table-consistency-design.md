@@ -102,6 +102,9 @@ the prefix (Created takes the Recorded slot).
   - Placement: inside the card as a `border-t border-line px-4 py-3`
     footer on all five pages (moves `/localize`'s and groups' pagination
     into the card).
+  - The count line renders whenever a total is known — single-page lists
+    show "N items" with no buttons; the Previous/Next buttons appear only
+    when there is more than one page.
 - The classify pages' in-card count/page-size strip
   (`SequencesTableHeader`) is removed: the count was redundant with the
   footer's "Page X of Y · N sequences", and the page-size select moves up

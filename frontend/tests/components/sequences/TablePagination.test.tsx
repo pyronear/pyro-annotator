@@ -34,10 +34,27 @@ describe('TablePagination', () => {
     expect(screen.getByText('Page 1 of 4')).toBeInTheDocument();
   });
 
-  it('renders nothing for a single page', () => {
-    const { container } = render(<TablePagination page={1} pages={1} onPageChange={onPageChange} />);
+  it('renders nothing for a single page without a total', () => {
+    const { container } = render(
+      <TablePagination page={1} pages={1} onPageChange={onPageChange} />
+    );
 
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it('renders the count without buttons for a single page with a total', () => {
+    render(
+      <TablePagination
+        page={1}
+        pages={1}
+        total={3}
+        itemsLabel="sequences"
+        onPageChange={onPageChange}
+      />
+    );
+
+    expect(screen.getByText('3 sequences')).toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
   it('disables Previous on the first page and Next on the last', () => {

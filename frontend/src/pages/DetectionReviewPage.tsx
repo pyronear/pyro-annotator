@@ -333,8 +333,11 @@ export default function DetectionReviewPage() {
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center space-x-2">
-            <label className="font-body text-sm text-haze">Show:</label>
+            <label htmlFor="page-size" className="font-body text-sm text-haze">
+              Show:
+            </label>
             <select
+              id="page-size"
               value={filters.size || 50}
               onChange={e => handleFilterChange({ size: Number(e.target.value) })}
               className="border border-line rounded px-2 py-1 font-body text-sm"
