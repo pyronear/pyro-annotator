@@ -4,15 +4,22 @@ import { laneNeedsLocalization } from '@/utils/annotation/localizeUtils';
 import { deriveSequenceOutcome, formatSmokeType, rollupOutcomes } from '@/utils/modelAccuracy';
 import { ColumnHeader } from './ColumnHeader';
 import { OutcomeCode } from './OutcomeCode';
+import {
+  CELL_CLASSES,
+  CELL_TEXT,
+  DATA_CELL_TEXT,
+  HEADER_CELL_CLASSES,
+  PRIMARY_CELL_TEXT,
+  ROW_CLASSES,
+  TABLE_CLASSES,
+  TBODY_CLASSES,
+  THEAD_CLASSES,
+} from './tableStyles';
 
 interface LocalizeQueueTableProps {
   items: LocalizationQueueItem[];
   onItemClick: (item: LocalizationQueueItem) => void;
 }
-
-const HEADER_CLASSES =
-  'px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider';
-const CELL_CLASSES = 'px-4 py-2 whitespace-nowrap text-sm';
 
 // Objects the annotator will draw boxes on (smoke or missed smoke, not unsure).
 function smokeLanes(item: LocalizationQueueItem) {
@@ -45,10 +52,10 @@ function alertOutcome(item: LocalizationQueueItem) {
 export function LocalizeQueueTable({ items, onItemClick }: LocalizeQueueTableProps) {
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-gray-200">
-        <thead className="bg-gray-50">
+      <table className={TABLE_CLASSES}>
+        <thead className={THEAD_CLASSES}>
           <tr>
-            <th className={HEADER_CLASSES}>
+            <th className={HEADER_CELL_CLASSES}>
               <span className="sr-only">Thumbnail</span>
             </th>
             <ColumnHeader label="Camera" tip="Camera that recorded the alert" />
@@ -74,12 +81,12 @@ export function LocalizeQueueTable({ items, onItemClick }: LocalizeQueueTablePro
             />
           </tr>
         </thead>
-        <tbody className="bg-white divide-y divide-gray-200">
+        <tbody className={TBODY_CLASSES}>
           {items.map(item => (
             <tr
               key={`${item.source_api}-${item.platform_alert_id}`}
               onClick={() => onItemClick(item)}
-              className="cursor-pointer hover:bg-gray-50"
+              className={ROW_CLASSES}
             >
               <td className="px-4 py-2">
                 <DetectionImageThumbnail
@@ -87,20 +94,20 @@ export function LocalizeQueueTable({ items, onItemClick }: LocalizeQueueTablePro
                   className="h-10 w-16"
                 />
               </td>
-              <td className={`${CELL_CLASSES} font-medium text-gray-900`}>{item.camera_name}</td>
-              <td className={`${CELL_CLASSES} text-gray-500`}>{item.organisation_name}</td>
-              <td className={`${CELL_CLASSES} text-gray-500`}>
+              <td className={`${CELL_CLASSES} ${PRIMARY_CELL_TEXT}`}>{item.camera_name}</td>
+              <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>{item.organisation_name}</td>
+              <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
                 {new Date(item.recorded_at).toLocaleString()}
               </td>
-              <td className={`${CELL_CLASSES} text-gray-500`}>{item.source_api}</td>
-              <td className={`${CELL_CLASSES} text-gray-500`}>
+              <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>{item.source_api}</td>
+              <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
                 {item.azimuth !== null && item.azimuth !== undefined ? `${item.azimuth}°` : ''}
               </td>
-              <td className={`${CELL_CLASSES} text-gray-500`}>
+              <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>
                 {smokeTypes(item).map(formatSmokeType).join(', ')}
               </td>
-              <td className={`${CELL_CLASSES} text-gray-500`}>{smokeLanes(item).length}</td>
-              <td className={`${CELL_CLASSES} text-gray-500`}>{smokeFrames(item)}</td>
+              <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>{smokeLanes(item).length}</td>
+              <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>{smokeFrames(item)}</td>
               <td className={CELL_CLASSES}>
                 {(() => {
                   const rollup = alertOutcome(item);

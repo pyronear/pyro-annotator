@@ -158,6 +158,14 @@ describe('LocalizeQueueTable', () => {
     expect(thumb).toHaveClass('h-10', 'w-16');
   });
 
+  it('uses the fire-lookout row style', () => {
+    render(<LocalizeQueueTable items={[createItem()]} onItemClick={onItemClick} />);
+
+    const row = screen.getByText('Camera-01').closest('tr');
+    expect(row).toHaveClass('hover:bg-ash');
+    expect(row).not.toHaveClass('hover:bg-gray-50');
+  });
+
   it('calls onItemClick with the item when a row is clicked', () => {
     const item = createItem();
     render(<LocalizeQueueTable items={[item]} onItemClick={onItemClick} />);
