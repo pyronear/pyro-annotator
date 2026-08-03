@@ -11,8 +11,11 @@ from pydantic import BaseModel, Field, ConfigDict
 
 from app.models import SourceApi, AnnotationType
 from app.schemas.annotation_validation import SequenceAnnotationData
+from app.schemas.sequence_annotations import SequenceAnnotationRead
 
 __all__ = [
+    "AlertDetail",
+    "AlertLane",
     "Azimuth",
     "LocalizationQueueItem",
     "LocalizationQueueLane",
@@ -151,3 +154,21 @@ class LocalizationQueueItem(BaseModel):
     azimuth: Optional[int]
     recorded_at: datetime
     lanes: List[LocalizationQueueLane]
+
+
+class AlertLane(BaseModel):
+    """One object-sequence of an alert (lane in the detail view)."""
+
+    sequence: SequenceRead
+    annotation: Optional[SequenceAnnotationRead] = None
+
+
+class AlertDetail(BaseModel):
+    """All sibling lanes of one alert, ordered by alert_api_id."""
+
+    source_api: SourceApi
+    platform_alert_id: int
+    camera_name: str
+    organisation_name: str
+    recorded_at: datetime
+    lanes: List[AlertLane]

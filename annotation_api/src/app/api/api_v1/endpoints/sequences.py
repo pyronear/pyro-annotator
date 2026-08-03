@@ -9,6 +9,7 @@ from fastapi import (
     APIRouter,
     Depends,
     Form,
+    HTTPException,
     Path,
     Query,
     Response,
@@ -50,6 +51,8 @@ from app.models import (
     AnnotationType,
 )
 from app.schemas.sequence import (
+    AlertDetail,
+    AlertLane,
     LocalizationQueueItem,
     LocalizationQueueLane,
     SequenceCreate,
@@ -565,6 +568,90 @@ def _ready_smoke_lane(seq, ann):
         ann.processing_stage == SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
         needs_localization_clause(ann),
         seq.auto_annotated_at.is_not(None),
+    )
+
+
+@router.get("/alert")
+async def get_alert_detail(
+    source_api: SourceApi = Query(...),
+    platform_alert_id: int = Query(...),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> AlertDetail:
+    """All sibling lanes of one alert, primary first (spec: multi-object
+    alert collocation, shared foundation). One payload consumed by the
+    collocated classify/localize screens and lane-advance logic."""
+    rows = (
+        await session.execute(
+            select(Sequence, SequenceAnnotation)
+            .outerjoin(
+                SequenceAnnotation, SequenceAnnotation.sequence_id == Sequence.id
+            )
+            .where(
+                Sequence.source_api == source_api,
+                Sequence.platform_alert_id == platform_alert_id,
+            )
+            .order_by(asc(Sequence.alert_api_id))
+        )
+    ).all()
+    if not rows:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Alert not found"
+        )
+
+    first_seq = rows[0][0]
+
+    # Get contributors for all annotations in this alert
+    annotation_ids = [ann.id for seq, ann in rows if ann is not None]
+    contributors_map = {}
+    if annotation_ids:
+        contributors_query = (
+            select(
+                SequenceAnnotationContribution.sequence_annotation_id,
+                User.id,
+                User.username,
+            )
+            .join(User, SequenceAnnotationContribution.user_id == User.id)
+            .where(
+                SequenceAnnotationContribution.sequence_annotation_id.in_(
+                    annotation_ids
+                )
+            )
+        )
+        contributors_result = await session.execute(contributors_query)
+        contributors_data = contributors_result.all()
+
+        # Create mapping of annotation_id -> list of contributors
+        for annotation_id, user_id, username in contributors_data:
+            if annotation_id not in contributors_map:
+                contributors_map[annotation_id] = []
+            contributors_map[annotation_id].append(
+                {"id": user_id, "username": username}
+            )
+
+    lanes = []
+    for seq, ann in rows:
+        # Build sequence dict
+        seq_dict = {c.name: getattr(seq, c.name) for c in seq.__table__.columns}
+        seq_read = SequenceRead(**seq_dict)
+        if ann:
+            # Build annotation dict with contributors
+            annotation_dict = {
+                c.name: getattr(ann, c.name) for c in ann.__table__.columns
+            }
+            annotation_dict["contributors"] = contributors_map.get(ann.id, [])
+            ann_read = SequenceAnnotationRead(**annotation_dict)
+        else:
+            ann_read = None
+        lanes.append(AlertLane(sequence=seq_read, annotation=ann_read))
+
+    return AlertDetail(
+        source_api=first_seq.source_api,
+        platform_alert_id=platform_alert_id,
+        camera_name=first_seq.camera_name,
+        organisation_name=first_seq.organisation_name,
+        recorded_at=min(seq.recorded_at for seq, _ in rows),
+        lanes=lanes,
     )
 
 
