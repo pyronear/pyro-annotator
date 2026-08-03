@@ -194,7 +194,7 @@ export default function SequenceGroupsListPage({
                 key={f.value}
                 to={classifyGroups(f.value)}
                 aria-current={active ? 'page' : undefined}
-                className={`px-3.5 py-1.5 rounded-md ${
+                className={`inline-flex items-center px-3.5 py-1.5 rounded-md ${
                   active
                     ? 'border border-line bg-paper font-semibold text-char'
                     : 'border border-transparent font-medium text-haze hover:text-char'
