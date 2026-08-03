@@ -326,3 +326,39 @@ async def test_single_item_submit_degenerate_alert(
 
     get_resp = await authenticated_client.get(f"/annotations/sequences/{ann['id']}")
     assert get_resp.json()["processing_stage"] == "annotated"
+
+
+@pytest.mark.asyncio
+async def test_unsure_lane_reaching_annotated_skips_auto_create(
+    authenticated_client: AsyncClient, async_session, mock_img
+):
+    """Pins the combination case 5 didn't cover: target stage 'annotated'
+    WITH is_unsure=True. The lane must still be written at 'annotated', but
+    run_auto_create's `not is_unsure` condition (mirrored from PATCH) must
+    keep it from seeding detection-annotation rows."""
+    seq = await _create_sequence(
+        async_session, alert_api_id=1601, platform_alert_id=1000
+    )
+    det = await _create_detection(authenticated_client, mock_img, seq.id, 1601)
+    ann = await _create_sequence_annotation(
+        authenticated_client, seq.id, det, is_smoke=True, stage="ready_to_annotate"
+    )
+
+    resp = await authenticated_client.post(
+        "/annotations/sequences/classify-submit",
+        json={
+            "items": [
+                _item(ann, processing_stage="annotated", is_unsure=True),
+            ]
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.json()["results"][0]["processing_stage"] == "annotated"
+
+    get_resp = await authenticated_client.get(f"/annotations/sequences/{ann['id']}")
+    assert get_resp.json()["processing_stage"] == "annotated"
+
+    listing = await authenticated_client.get(
+        f"/annotations/detections/?sequence_id={seq.id}"
+    )
+    assert listing.json()["items"] == []
