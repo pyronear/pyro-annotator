@@ -51,6 +51,7 @@ const FILTERS: {
 
 // Same hover-tooltip bubble as components/sequences/ColumnHeader.tsx, kept
 // local because these headers are sortable and use this table's padding.
+// Also reused by the filter tabs above the table.
 function headerTip(tip: string, align: 'left' | 'right' = 'left') {
   return (
     <span

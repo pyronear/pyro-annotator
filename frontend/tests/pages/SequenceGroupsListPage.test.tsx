@@ -134,8 +134,11 @@ describe('SequenceGroupsListPage', () => {
     expect(screen.getByText("Groups that don't have a label yet")).toBeTruthy();
     expect(screen.getByText('Groups that already have a label')).toBeTruthy();
     expect(screen.getByText('Every group, labeled or not')).toBeTruthy();
-    // Tooltip text must not leak into the tab links' accessible names.
-    expect(screen.getByRole('link', { name: /To label/ }).textContent).not.toMatch(/Groups/);
+    // Tooltip text must not leak into the tab links' accessible names
+    // (exact names: label + mocked zero count).
+    expect(screen.getByRole('link', { name: 'To label 0' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Labeled 0' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'All 0' })).toBeTruthy();
   });
 
   it('column headers carry explanatory tooltips', async () => {
