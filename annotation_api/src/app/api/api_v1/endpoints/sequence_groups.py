@@ -106,6 +106,8 @@ async def list_sequence_groups(
             SequenceGroup.false_positive_type,
             SequenceGroup.is_unsure,
             SequenceGroup.is_validated,
+            SequenceGroup.validated_at,
+            User.username.label("validated_by_username"),
             SequenceGroup.labeled_at,
             SequenceGroup.created_at,
             member_count_subq.c.member_count,
@@ -113,6 +115,9 @@ async def list_sequence_groups(
         )
         # Inner-join so small groups (no row in the subquery) drop out.
         .join(member_count_subq, member_count_subq.c.group_id == SequenceGroup.id)
+        # Reviewer attribution; LEFT JOIN because legacy validations and
+        # unvalidated groups have no user.
+        .outerjoin(User, User.id == SequenceGroup.validated_by_user_id)
         # Caller-chosen primary sort; created_at/id remain as deterministic
         # tie-breakers so paginated offsets stay stable.
         .order_by(

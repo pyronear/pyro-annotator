@@ -870,6 +870,56 @@ async def test_revalidate_keeps_original_attribution(
     )
     assert second.status_code == 200, second.text
     assert second.json()["validated_at"] == first.json()["validated_at"]
-    assert (
-        second.json()["validated_by_user_id"] == first.json()["validated_by_user_id"]
+    assert second.json()["validated_by_user_id"] == first.json()["validated_by_user_id"]
+
+
+@pytest.mark.asyncio
+async def test_list_includes_validated_by_username(
+    authenticated_client: AsyncClient,
+    async_session: AsyncSession,
+    test_user: User,
+):
+    gid = await _seed_group_with_members(
+        async_session,
+        n_members=3,
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        alert_api_id_start=430,
     )
+    resp = await authenticated_client.patch(
+        f"/sequence_groups/{gid}", json={"is_validated": True}
+    )
+    assert resp.status_code == 200, resp.text
+
+    resp = await authenticated_client.get("/sequence_groups/")
+    assert resp.status_code == 200
+    row = next(i for i in resp.json()["items"] if i["id"] == gid)
+    assert row["validated_by_username"] == test_user.username
+    assert row["validated_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_list_legacy_validated_group_has_null_reviewer(
+    authenticated_client: AsyncClient,
+    async_session: AsyncSession,
+):
+    """Groups validated before attribution existed stay is_validated=true
+    with NULL reviewer fields — the list must return them, not 500."""
+    gid = await _seed_group_with_members(
+        async_session,
+        n_members=3,
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        alert_api_id_start=440,
+    )
+    await async_session.exec(
+        text(
+            "UPDATE sequence_groups SET is_validated = true WHERE id = :gid"
+        ).bindparams(gid=gid)
+    )
+    await async_session.commit()
+
+    resp = await authenticated_client.get("/sequence_groups/")
+    assert resp.status_code == 200
+    row = next(i for i in resp.json()["items"] if i["id"] == gid)
+    assert row["is_validated"] is True
+    assert row["validated_by_username"] is None
+    assert row["validated_at"] is None
