@@ -15,7 +15,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   AlertCircle,
   ArrowLeft,
@@ -27,7 +27,7 @@ import {
 } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { QUERY_KEYS } from '@/utils/constants';
-import { AlertDetail, AlertLane, ClassifySubmitItem, SequenceBbox } from '@/types/api';
+import { AlertDetail, AlertLane, ClassifySubmitItem, Detection, SequenceBbox } from '@/types/api';
 import { useSequenceStore } from '@/store/useSequenceStore';
 import { hasUserAnnotations, getInitialMissedSmokeReview } from '@/utils/annotation/sequenceUtils';
 import { determineClassifySubmitStage } from '@/utils/annotation/localizeUtils';
@@ -36,6 +36,7 @@ import {
   createPreviousDetectionNavigator,
   createNextDetectionNavigator,
 } from '@/utils/annotation/navigationUtils';
+import { getObjectColor, ObjectOverlay } from '@/utils/annotation/objectColors';
 import { getProcessingStageLabel } from '@/utils/processingStage';
 import { MissedSmokePanel, ObjectCard, CardClassification } from '@/components/sequence-annotation';
 import { NotificationSystem } from '@/components/ui/NotificationSystem';
@@ -58,6 +59,16 @@ interface FlatCard {
   trackIndex: number;
   isPrimary: boolean;
   locked: boolean;
+}
+
+/** One object's precomputed color identity + track boxes, keyed by frame `recorded_at`. */
+interface CardOverlayData {
+  cardKey: string;
+  color: string;
+  label: string;
+  boxesByRecordedAt: Record<string, [number, number, number, number]>;
+  /** `bbox.bboxes[i]`'s detection `recorded_at`, aligned by index to the card's own bboxes array. */
+  frameRecordedAt: (string | undefined)[];
 }
 
 const EMPTY_BBOX: SequenceBbox = { is_smoke: false, false_positive_types: [], bboxes: [] };
@@ -251,6 +262,66 @@ export default function ClassifyAlertPage() {
 
   const getBbox = (card: FlatCard): SequenceBbox =>
     laneBboxes[card.laneSequenceId]?.[card.trackIndex] ?? EMPTY_BBOX;
+
+  // --- Multi-object color-coded overlays: one color identity per object,
+  // consistent across its own card's accent swatch, the shared player's
+  // track overlay, and every other card's dimmed sibling overlay in its
+  // full-frame view. Colors/labels follow the same "Object N" numbering as
+  // the on-screen render loop below (computed from `renderItems`, not
+  // `cards`, so placeholders still consume a number and nothing drifts).
+  //
+  // A lane's own track boxes (`bbox.bboxes`) reference *that lane's*
+  // detection ids, which don't carry `recorded_at` themselves — so each
+  // lane appearing on screen needs its own small detections fetch to build
+  // the detection_id -> recorded_at join used to place its boxes on frames.
+  // Cached by TanStack Query under the same key `useSequenceDetections`
+  // uses, so this shares its cache with the primary lane's own fetch inside
+  // the player.
+  const laneSequenceIds = Array.from(new Set(cards.map(c => c.laneSequenceId)));
+
+  const laneDetectionsQueries = useQueries({
+    queries: laneSequenceIds.map(laneSequenceId => ({
+      queryKey: QUERY_KEYS.SEQUENCE_DETECTIONS(laneSequenceId),
+      queryFn: () => apiClient.getSequenceDetections(laneSequenceId),
+      staleTime: 1000 * 60 * 5,
+    })),
+  });
+
+  const detectionsByLaneId: Record<number, Detection[]> = {};
+  laneSequenceIds.forEach((laneSequenceId, i) => {
+    detectionsByLaneId[laneSequenceId] = laneDetectionsQueries[i]?.data ?? [];
+  });
+
+  const cardOverlayData: CardOverlayData[] = [];
+  renderItems.forEach((item, i) => {
+    if (item.kind !== 'card') return;
+    const { card } = item;
+    const bbox = getBbox(card);
+    const idToRecordedAt = new Map(
+      (detectionsByLaneId[card.laneSequenceId] ?? []).map(d => [d.id, d.recorded_at])
+    );
+    const boxesByRecordedAt: Record<string, [number, number, number, number]> = {};
+    const frameRecordedAt: (string | undefined)[] = [];
+    bbox.bboxes.forEach(b => {
+      const recordedAt = idToRecordedAt.get(b.detection_id);
+      frameRecordedAt.push(recordedAt);
+      if (recordedAt) boxesByRecordedAt[recordedAt] = b.xyxyn;
+    });
+    cardOverlayData.push({
+      cardKey: card.cardKey,
+      color: getObjectColor(i),
+      label: `Object ${i + 1}`,
+      boxesByRecordedAt,
+      frameRecordedAt,
+    });
+  });
+
+  const playerObjectOverlays: ObjectOverlay[] = cardOverlayData.map(o => ({
+    color: o.color,
+    label: o.label,
+    boxesByRecordedAt: o.boxesByRecordedAt,
+    isActive: o.cardKey === activeCardKey,
+  }));
 
   const handleBboxChangeByCardKey = (cardKey: string, updatedBbox: SequenceBbox) => {
     const card = cards.find(c => c.cardKey === cardKey);
@@ -660,6 +731,14 @@ export default function ClassifyAlertPage() {
             const stageBadge = card.locked
               ? getProcessingStageLabel(lane.annotation!.processing_stage)
               : undefined;
+            const overlay = cardOverlayData.find(o => o.cardKey === card.cardKey);
+            const siblingOverlays: ObjectOverlay[] = cardOverlayData
+              .filter(o => o.cardKey !== card.cardKey)
+              .map(o => ({
+                color: o.color,
+                label: o.label,
+                boxesByRecordedAt: o.boxesByRecordedAt,
+              }));
 
             return (
               <ObjectCard
@@ -675,6 +754,9 @@ export default function ClassifyAlertPage() {
                 locked={card.locked}
                 stageBadge={stageBadge}
                 unsure={laneUnsure[card.laneSequenceId] ?? false}
+                color={overlay?.color}
+                siblingOverlays={siblingOverlays}
+                frameRecordedAt={overlay?.frameRecordedAt}
                 onCardClick={key => {
                   setActiveCardKey(key);
                   setActiveSection('detections');
@@ -696,6 +778,7 @@ export default function ClassifyAlertPage() {
             annotationLoading={isLoading}
             activeSection={activeSection}
             sequenceReviewerRef={sequenceReviewerRef}
+            objectOverlays={playerObjectOverlays}
           />
         </div>
 

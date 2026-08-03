@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Detection, AlgoPrediction } from '@/types/api';
 import { useImagePreloader } from '@/hooks/useImagePreloader';
+import { ObjectOverlay } from '@/utils/annotation/objectColors';
 import MissedSmokeInstructionsModal from './MissedSmokeInstructionsModal';
 
 interface SequencePlayerProps {
@@ -23,6 +24,8 @@ interface SequencePlayerProps {
   onPreloadComplete?: () => void;
   missedSmokeReview: 'yes' | 'no' | null;
   onMissedSmokeReviewChange: (review: 'yes' | 'no') => void;
+  /** Every classified object's track boxes, color-coded per object and aligned to frames by `recorded_at`. The active card's object renders full-strength, others dimmed. */
+  objectOverlays?: ObjectOverlay[];
   // Player controls props
   isPlaying: boolean;
   playbackSpeed: number;
@@ -49,6 +52,7 @@ export default function SequencePlayer({
   onSeek,
   onSpeedChange,
   onReset,
+  objectOverlays,
   className = '',
 }: SequencePlayerProps) {
   const [imageInfo, setImageInfo] = useState<{
@@ -300,6 +304,55 @@ export default function SequencePlayer({
       .filter(Boolean);
   };
 
+  // Render per-object track box overlays (ClassifyAlertPage's objectOverlays
+  // — one color-coded box per object, aligned to this frame by
+  // `recorded_at`). The active card's object renders full-strength, others
+  // dimmed so the highlighted object still stands out.
+  const renderObjectOverlays = () => {
+    if (!imageInfo || !objectOverlays || objectOverlays.length === 0) return null;
+
+    const recordedAt = currentDetection.recorded_at;
+
+    return objectOverlays
+      .map(overlay => {
+        const box = overlay.boxesByRecordedAt[recordedAt];
+        if (!box) return null;
+
+        const [x1, y1, x2, y2] = box;
+        if (x2 <= x1 || y2 <= y1) return null;
+
+        const left = imageInfo.offsetX + x1 * imageInfo.width;
+        const top = imageInfo.offsetY + y1 * imageInfo.height;
+        const width = (x2 - x1) * imageInfo.width;
+        const height = (y2 - y1) * imageInfo.height;
+
+        return (
+          <div
+            key={`object-overlay-${overlay.label}-${currentDetection.id}`}
+            data-testid={`object-overlay-${overlay.label}`}
+            className={`absolute border-2 pointer-events-none transition-opacity ${
+              overlay.isActive ? 'opacity-100' : 'opacity-40'
+            }`}
+            style={{
+              left: `${left}px`,
+              top: `${top}px`,
+              width: `${width}px`,
+              height: `${height}px`,
+              borderColor: overlay.color,
+            }}
+          >
+            <div
+              className="absolute -top-5 left-0 text-white text-[10px] px-1 rounded whitespace-nowrap"
+              style={{ backgroundColor: overlay.color }}
+            >
+              {overlay.label}
+            </div>
+          </div>
+        );
+      })
+      .filter(Boolean);
+  };
+
   // Only show loading spinner when image isn't loaded
   const showLoadingState = !currentImage?.loaded;
   const hasError = currentImage?.error;
@@ -398,6 +451,7 @@ export default function SequencePlayer({
               <div className="absolute inset-0 pointer-events-none z-20">
                 {renderBoundingBoxes()}
                 {showSiblingBboxes && renderSiblingBoxes()}
+                {renderObjectOverlays()}
               </div>
             )}
           </>

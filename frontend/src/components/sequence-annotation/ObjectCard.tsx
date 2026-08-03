@@ -12,6 +12,7 @@ import { Keyboard, CheckCircle, AlertCircle } from 'lucide-react';
 import { SequenceBbox, FalsePositiveType, SmokeType } from '@/types/api';
 import { FALSE_POSITIVE_TYPES, SMOKE_TYPES } from '@/utils/constants';
 import { getSmokeTypeEmoji, formatSmokeType } from '@/utils/modelAccuracy';
+import { ObjectOverlay } from '@/utils/annotation/objectColors';
 import FullImageSequence from '@/components/annotation/FullImageSequence';
 import CroppedImageSequence from '@/components/annotation/CroppedImageSequence';
 
@@ -39,6 +40,12 @@ export interface ObjectCardProps {
   /** Read-only mode for locked lanes: disables all inputs and swaps the status badge for `stageBadge`. */
   locked?: boolean;
   stageBadge?: string;
+  /** This object's stable identity color (ClassifyAlertPage) — shown as a swatch and used for its own box in the full-frame view. Omit to render the card with no color identity (SequenceAnnotationGrid's single-object usage). */
+  color?: string;
+  /** Other objects' track boxes, dimmed, for the full-frame view — "which plume is mine" context. */
+  siblingOverlays?: ObjectOverlay[];
+  /** `bbox.bboxes[i]`'s detection `recorded_at`, aligning `siblingOverlays` to the full-frame view's current frame. */
+  frameRecordedAt?: (string | undefined)[];
 }
 
 const formatLabel = (type: string) =>
@@ -89,6 +96,9 @@ export const ObjectCard: React.FC<ObjectCardProps> = ({
   onUnsureChange,
   locked = false,
   stageBadge,
+  color,
+  siblingOverlays,
+  frameRecordedAt,
 }) => {
   return (
     <div
@@ -122,6 +132,14 @@ export const ObjectCard: React.FC<ObjectCardProps> = ({
 
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center space-x-3">
+          {color && (
+            <span
+              data-testid={`object-color-swatch-${cardKey}`}
+              className="inline-block w-3 h-3 rounded-full ring-1 ring-black/10 shrink-0"
+              style={{ backgroundColor: color }}
+              aria-hidden="true"
+            />
+          )}
           <h4 className="text-lg font-medium text-gray-900">Object {objectNumber}</h4>
           {isActive && !locked && (
             <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
@@ -142,7 +160,13 @@ export const ObjectCard: React.FC<ObjectCardProps> = ({
             {/* Full Image Sequence */}
             <div className="text-center">
               <h5 className="text-sm font-medium text-gray-700 mb-3">Full Sequence</h5>
-              <FullImageSequence bboxes={bbox.bboxes} sequenceId={sequenceId} />
+              <FullImageSequence
+                bboxes={bbox.bboxes}
+                sequenceId={sequenceId}
+                color={color}
+                siblingOverlays={siblingOverlays}
+                frameRecordedAt={frameRecordedAt}
+              />
             </div>
 
             {/* Cropped Image Sequence */}

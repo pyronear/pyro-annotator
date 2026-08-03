@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { AlertCircle } from 'lucide-react';
 // import { Detection } from '@/types/api';
 import { useSequenceDetections } from '@/hooks/useSequenceDetections';
+import { ObjectOverlay } from '@/utils/annotation/objectColors';
 import SequencePlayer from './SequencePlayer';
 
 interface SequenceReviewerProps {
@@ -10,6 +11,8 @@ interface SequenceReviewerProps {
   onMissedSmokeReviewChange: (review: 'yes' | 'no') => void;
   annotationLoading?: boolean;
   className?: string;
+  /** Every classified object's track boxes, color-coded per object — see SequencePlayer. */
+  objectOverlays?: ObjectOverlay[];
 }
 
 export default function SequenceReviewer({
@@ -18,6 +21,7 @@ export default function SequenceReviewer({
   onMissedSmokeReviewChange,
   annotationLoading = false,
   className = '',
+  objectOverlays,
 }: SequenceReviewerProps) {
   // Playback state
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -177,6 +181,7 @@ export default function SequenceReviewer({
         onSeek={handleSeek}
         onSpeedChange={handleSpeedChange}
         onReset={handleReset}
+        objectOverlays={objectOverlays}
       />
     </div>
   );

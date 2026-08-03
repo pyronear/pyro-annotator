@@ -9,12 +9,14 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import type { AlertDetail, Sequence, SequenceAnnotation, ClassifySubmitRequest } from '@/types/api';
+import { getObjectColor } from '@/utils/annotation/objectColors';
 
 vi.mock('@/services/api', () => ({
   apiClient: {
     getSequence: vi.fn(),
     getAlertDetail: vi.fn(),
     classifySubmit: vi.fn(),
+    getSequenceDetections: vi.fn(),
   },
 }));
 
@@ -34,21 +36,29 @@ vi.mock('@/components/annotation/CroppedImageSequence', () => ({
 // The primary-lane player (SequenceReviewer -> SequencePlayer) fetches
 // detections and renders a full playback UI unrelated to this page's own
 // logic; swap it for a trivial stand-in that exposes the missed-smoke
-// review callback so tests can drive it directly.
+// review callback so tests can drive it directly. `objectOverlaysSpy`
+// captures the `objectOverlays` prop the page builds for it so overlay
+// wiring can be asserted without rendering the real player.
+const objectOverlaysSpy = vi.fn();
 vi.mock('@/components/sequence-annotation', async importOriginal => {
   const actual = await importOriginal<typeof import('@/components/sequence-annotation')>();
   return {
     ...actual,
     MissedSmokePanel: ({
       onMissedSmokeReviewChange,
+      objectOverlays,
     }: {
       onMissedSmokeReviewChange: (review: 'yes' | 'no') => void;
-    }) => (
-      <div>
-        <button onClick={() => onMissedSmokeReviewChange('no')}>Mock: No missed smoke</button>
-        <button onClick={() => onMissedSmokeReviewChange('yes')}>Mock: Missed smoke</button>
-      </div>
-    ),
+      objectOverlays?: unknown;
+    }) => {
+      objectOverlaysSpy(objectOverlays);
+      return (
+        <div>
+          <button onClick={() => onMissedSmokeReviewChange('no')}>Mock: No missed smoke</button>
+          <button onClick={() => onMissedSmokeReviewChange('yes')}>Mock: Missed smoke</button>
+        </div>
+      );
+    },
   };
 });
 
@@ -173,6 +183,10 @@ describe('ClassifyAlertPage', () => {
     vi.clearAllMocks();
     vi.mocked(apiClient.getSequence).mockResolvedValue(makeSequence());
     vi.mocked(apiClient.getAlertDetail).mockResolvedValue(makeAlertDetail());
+    // Default: no detections, so overlay-building code has something to
+    // resolve against without erroring; overridden per-test where the
+    // overlay content itself is under test.
+    vi.mocked(apiClient.getSequenceDetections).mockResolvedValue([]);
     vi.mocked(apiClient.classifySubmit).mockResolvedValue({
       results: [
         {
@@ -400,5 +414,66 @@ describe('ClassifyAlertPage', () => {
         name: /false positive/i,
       })
     ).toBeDisabled();
+  });
+
+  it('gives every object a distinct color, matching between its card swatch and the shared player overlay', async () => {
+    // Each lane's own detections carry the recorded_at the page joins its
+    // track boxes against — lane A and B share a frame (t1), lane C only
+    // has a later frame (t2), matching each lane's makeAnnotation bboxes
+    // (detection_id 1, 2, 3 respectively).
+    vi.mocked(apiClient.getSequenceDetections).mockImplementation(async (sequenceId: number) => {
+      const bySequence: Record<number, { id: number; recorded_at: string }> = {
+        101: { id: 1, recorded_at: '2026-01-01T10:00:00Z' },
+        102: { id: 2, recorded_at: '2026-01-01T10:00:00Z' },
+        103: { id: 3, recorded_at: '2026-01-01T10:00:05Z' },
+      };
+      const d = bySequence[sequenceId];
+      return [
+        {
+          id: d.id,
+          sequence_id: sequenceId,
+          alert_api_id: 9000 + sequenceId,
+          created_at: '2026-01-01T09:00:00Z',
+          recorded_at: d.recorded_at,
+          algo_predictions: { predictions: [] },
+          last_modified_at: null,
+        },
+      ];
+    });
+
+    render(<ClassifyAlertPage />, { wrapper });
+    await waitFor(() => expect(screen.getByTestId('object-card-101:0')).toBeInTheDocument());
+
+    await waitFor(() => {
+      expect(screen.getByTestId('object-color-swatch-101:0')).toBeInTheDocument();
+      expect(screen.getByTestId('object-color-swatch-102:0')).toBeInTheDocument();
+      expect(screen.getByTestId('object-color-swatch-103:0')).toBeInTheDocument();
+    });
+
+    // Every object gets its own color, matching card swatch <-> palette index.
+    expect(screen.getByTestId('object-color-swatch-101:0')).toHaveStyle({
+      backgroundColor: getObjectColor(0),
+    });
+    expect(screen.getByTestId('object-color-swatch-102:0')).toHaveStyle({
+      backgroundColor: getObjectColor(1),
+    });
+    expect(screen.getByTestId('object-color-swatch-103:0')).toHaveStyle({
+      backgroundColor: getObjectColor(2),
+    });
+
+    await waitFor(() => expect(objectOverlaysSpy).toHaveBeenCalled());
+    type Overlay = { color: string; label: string; boxesByRecordedAt: Record<string, unknown> };
+    const lastOverlays = objectOverlaysSpy.mock.calls.at(-1)![0] as Overlay[];
+
+    expect(lastOverlays.map(o => o.label)).toEqual(['Object 1', 'Object 2', 'Object 3']);
+    // Colors match the card swatches for the same object, in the same order.
+    expect(lastOverlays[0].color).toBe(getObjectColor(0));
+    expect(lastOverlays[1].color).toBe(getObjectColor(1));
+    expect(lastOverlays[2].color).toBe(getObjectColor(2));
+    // Object 1 and 2 share frame t1; object 3 only has t2.
+    expect(lastOverlays[0].boxesByRecordedAt).toHaveProperty('2026-01-01T10:00:00Z');
+    expect(lastOverlays[1].boxesByRecordedAt).toHaveProperty('2026-01-01T10:00:00Z');
+    expect(lastOverlays[2].boxesByRecordedAt).toHaveProperty('2026-01-01T10:00:05Z');
+    expect(lastOverlays[2].boxesByRecordedAt).not.toHaveProperty('2026-01-01T10:00:00Z');
   });
 });

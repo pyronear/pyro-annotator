@@ -2,11 +2,23 @@ import { useState, useEffect, useRef } from 'react';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { BoundingBox } from '@/types/api';
 import { apiClient } from '@/services/api';
+import { ObjectOverlay } from '@/utils/annotation/objectColors';
+
+// Legacy default border color for the own-object box, kept for callers that
+// don't pass `color` (e.g. the single-object AnnotationInterface flow via
+// SequenceAnnotationGrid, where there's no per-object identity to color by).
+const DEFAULT_OWN_BOX_COLOR = '#ef4444'; // Tailwind red-500
 
 interface FullImageSequenceProps {
   bboxes: BoundingBox[];
   sequenceId: number;
   className?: string;
+  /** This object's accent color for its own box. Defaults to red (legacy look) when omitted. */
+  color?: string;
+  /** `bboxes[i]`'s detection `recorded_at`, used to align `siblingOverlays` boxes to the currently shown frame. Omit to skip sibling rendering. */
+  frameRecordedAt?: (string | undefined)[];
+  /** Other objects' track boxes, rendered dimmed in their own colors — "which plume is mine" context for this card. */
+  siblingOverlays?: ObjectOverlay[];
 }
 
 interface ImageData {
@@ -19,6 +31,9 @@ export default function FullImageSequence({
   bboxes,
   sequenceId,
   className = '',
+  color,
+  frameRecordedAt,
+  siblingOverlays,
 }: FullImageSequenceProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [images, setImages] = useState<ImageData[]>([]);
@@ -178,15 +193,59 @@ export default function FullImageSequence({
 
     return (
       <div
-        className="absolute border-2 border-red-500 pointer-events-none"
+        data-testid="full-own-box"
+        className="absolute border-2 pointer-events-none"
         style={{
           left: `${bboxLeft}px`,
           top: `${bboxTop}px`,
           width: `${bboxWidth}px`,
           height: `${bboxHeight}px`,
+          borderColor: color ?? DEFAULT_OWN_BOX_COLOR,
         }}
       />
     );
+  };
+
+  // Render other objects' boxes, dimmed, on this same frame (matched by
+  // `recorded_at`) — "which plume is mine" context for this card.
+  const renderSiblingOverlays = () => {
+    if (!imageInfo || !siblingOverlays || siblingOverlays.length === 0) return null;
+
+    const recordedAt = frameRecordedAt?.[currentIndex];
+    if (!recordedAt) return null;
+
+    const imageWidth = imageInfo.width;
+    const imageHeight = imageInfo.height;
+
+    return siblingOverlays
+      .map(overlay => {
+        const box = overlay.boxesByRecordedAt[recordedAt];
+        if (!box) return null;
+
+        const [x1, y1, x2, y2] = box;
+        if (x2 <= x1 || y2 <= y1) return null;
+
+        const left = imageInfo.offsetX + x1 * imageWidth;
+        const top = imageInfo.offsetY + y1 * imageHeight;
+        const width = (x2 - x1) * imageWidth;
+        const height = (y2 - y1) * imageHeight;
+
+        return (
+          <div
+            key={`full-sibling-overlay-${overlay.label}`}
+            data-testid={`full-sibling-overlay-${overlay.label}`}
+            className="absolute border-2 pointer-events-none opacity-40"
+            style={{
+              left: `${left}px`,
+              top: `${top}px`,
+              width: `${width}px`,
+              height: `${height}px`,
+              borderColor: overlay.color,
+            }}
+          />
+        );
+      })
+      .filter(Boolean);
   };
 
   if (isLoading) {
@@ -257,6 +316,7 @@ export default function FullImageSequence({
 
             {/* Bounding Box Overlay */}
             {renderBoundingBox()}
+            {renderSiblingOverlays()}
           </>
         )}
       </div>

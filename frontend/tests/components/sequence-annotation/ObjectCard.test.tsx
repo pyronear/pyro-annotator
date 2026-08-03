@@ -10,11 +10,14 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { ObjectCard } from '@/components/sequence-annotation/ObjectCard';
 import type { SequenceBbox } from '@/types/api';
 
+const fullImageSequenceMock = vi.fn(() => <div data-testid="full-image-sequence" />);
+const croppedImageSequenceMock = vi.fn(() => <div data-testid="cropped-image-sequence" />);
+
 vi.mock('@/components/annotation/FullImageSequence', () => ({
-  default: () => <div data-testid="full-image-sequence" />,
+  default: (props: unknown) => fullImageSequenceMock(props),
 }));
 vi.mock('@/components/annotation/CroppedImageSequence', () => ({
-  default: () => <div data-testid="cropped-image-sequence" />,
+  default: (props: unknown) => croppedImageSequenceMock(props),
 }));
 
 const makeBbox = (overrides: Partial<SequenceBbox> = {}): SequenceBbox => ({
@@ -167,5 +170,58 @@ describe('ObjectCard', () => {
       screen.getByText('🔥 This is smoke').closest('label')?.querySelector('input')
     ).toBeDisabled();
     expect(screen.getByLabelText('Unsure')).toBeDisabled();
+  });
+
+  it('renders a color swatch and forwards color/siblingOverlays to FullImageSequence only, never CroppedImageSequence', () => {
+    const siblingOverlays = [
+      { color: '#f97316', label: 'Object 2', boxesByRecordedAt: {} },
+    ];
+    const frameRecordedAt = ['2026-01-01T10:00:00Z'];
+
+    render(
+      <ObjectCard
+        objectNumber={1}
+        cardKey="55:0"
+        bbox={makeBbox()}
+        sequenceId={55}
+        classification="unselected"
+        isActive={false}
+        isAnnotated={false}
+        color="#3b82f6"
+        siblingOverlays={siblingOverlays}
+        frameRecordedAt={frameRecordedAt}
+        onBboxChange={noop}
+        onClassificationChange={noop}
+      />
+    );
+
+    const swatch = screen.getByTestId('object-color-swatch-55:0');
+    expect(swatch).toHaveStyle({ backgroundColor: '#3b82f6' });
+
+    expect(fullImageSequenceMock).toHaveBeenCalledWith(
+      expect.objectContaining({ color: '#3b82f6', siblingOverlays, frameRecordedAt })
+    );
+    const croppedProps = croppedImageSequenceMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(croppedProps).not.toHaveProperty('color');
+    expect(croppedProps).not.toHaveProperty('siblingOverlays');
+    expect(croppedProps).not.toHaveProperty('frameRecordedAt');
+  });
+
+  it('renders no color swatch when color is not provided (SequenceAnnotationGrid usage)', () => {
+    render(
+      <ObjectCard
+        objectNumber={1}
+        cardKey="55:0"
+        bbox={makeBbox()}
+        sequenceId={55}
+        classification="unselected"
+        isActive={false}
+        isAnnotated={false}
+        onBboxChange={noop}
+        onClassificationChange={noop}
+      />
+    );
+
+    expect(screen.queryByTestId('object-color-swatch-55:0')).not.toBeInTheDocument();
   });
 });
