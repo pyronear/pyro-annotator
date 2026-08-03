@@ -132,3 +132,6 @@ runs
 
 # Superpowers brainstorming sessions
 .superpowers/
+
+# Node
+node_modules/

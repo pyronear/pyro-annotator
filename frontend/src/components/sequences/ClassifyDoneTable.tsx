@@ -7,9 +7,9 @@ import {
   parseFalsePositiveTypes,
 } from '@/utils/modelAccuracy';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
+import { ColumnHeader } from './ColumnHeader';
 import { OutcomeCode } from './OutcomeCode';
 import { PlatformAnnotationLabel } from './PlatformAnnotationLabel';
-import { ColumnHeader } from './ColumnHeader';
 import {
   CELL_CLASSES,
   CELL_TEXT,
@@ -63,7 +63,7 @@ export function ClassifyDoneTable({ sequences, onSequenceClick }: ClassifyDoneTa
             />
             <ColumnHeader
               label="Result"
-              tip="Human classification — TP correct, FP false alarm, ⚑ FN missed smoke, ? unsure — and the chosen types"
+              tip="Model outcome — TP correct, FP false alarm, ⚑ FN missed smoke, ? unsure — and the classification detail"
               align="right"
             />
           </tr>
@@ -71,6 +71,8 @@ export function ClassifyDoneTable({ sequences, onSequenceClick }: ClassifyDoneTa
         <tbody className={TBODY_CLASSES}>
           {sequences.map(sequence => {
             const outcome = deriveSequenceOutcome(sequence.annotation);
+            const detail =
+              sequence.annotation && outcome ? resultDetail(sequence.annotation, outcome) : '';
             return (
               <tr
                 key={sequence.id}
@@ -95,12 +97,12 @@ export function ClassifyDoneTable({ sequences, onSequenceClick }: ClassifyDoneTa
                   <PlatformAnnotationLabel value={sequence.is_wildfire_alertapi} />
                 </td>
                 <td className={CELL_CLASSES}>
-                  {sequence.annotation && outcome && (
+                  {outcome && (
                     <>
                       <OutcomeCode outcome={outcome} />
-                      <span className="ml-2.5 font-body text-detail text-haze">
-                        {resultDetail(sequence.annotation, outcome)}
-                      </span>
+                      {detail && (
+                        <span className="ml-2.5 font-body text-detail text-haze">{detail}</span>
+                      )}
                     </>
                   )}
                 </td>

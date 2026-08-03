@@ -82,42 +82,42 @@ export function LocalizeQueueTable({ items, onItemClick }: LocalizeQueueTablePro
           </tr>
         </thead>
         <tbody className={TBODY_CLASSES}>
-          {items.map(item => (
-            <tr
-              key={`${item.source_api}-${item.platform_alert_id}`}
-              onClick={() => onItemClick(item)}
-              className={ROW_CLASSES}
-            >
-              <td className="px-4 py-2">
-                <DetectionImageThumbnail
-                  sequenceId={item.lanes[0].sequence_id}
-                  className="h-10 w-16"
-                />
-              </td>
-              <td className={`${CELL_CLASSES} ${PRIMARY_CELL_TEXT}`}>{item.camera_name}</td>
-              <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>{item.organisation_name}</td>
-              <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
-                {new Date(item.recorded_at).toLocaleString()}
-              </td>
-              <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>{item.source_api}</td>
-              <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
-                {item.azimuth !== null && item.azimuth !== undefined ? `${item.azimuth}°` : ''}
-              </td>
-              <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>
-                {smokeTypes(item).map(formatSmokeType).join(', ')}
-              </td>
-              <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>{smokeLanes(item).length}</td>
-              <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>{smokeFrames(item)}</td>
-              <td className={CELL_CLASSES}>
-                {(() => {
-                  const rollup = alertOutcome(item);
-                  return rollup ? (
+          {items.map(item => {
+            const rollup = alertOutcome(item);
+            return (
+              <tr
+                key={`${item.source_api}-${item.platform_alert_id}`}
+                onClick={() => onItemClick(item)}
+                className={ROW_CLASSES}
+              >
+                <td className="px-4 py-2">
+                  <DetectionImageThumbnail
+                    sequenceId={item.lanes[0].sequence_id}
+                    className="h-10 w-16"
+                  />
+                </td>
+                <td className={`${CELL_CLASSES} ${PRIMARY_CELL_TEXT}`}>{item.camera_name}</td>
+                <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>{item.organisation_name}</td>
+                <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
+                  {new Date(item.recorded_at).toLocaleString()}
+                </td>
+                <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>{item.source_api}</td>
+                <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
+                  {item.azimuth !== null && item.azimuth !== undefined ? `${item.azimuth}°` : ''}
+                </td>
+                <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>
+                  {smokeTypes(item).map(formatSmokeType).join(', ')}
+                </td>
+                <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>{smokeLanes(item).length}</td>
+                <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>{smokeFrames(item)}</td>
+                <td className={CELL_CLASSES}>
+                  {rollup && (
                     <OutcomeCode outcome={rollup.outcome} extraCount={rollup.extraCount} />
-                  ) : null;
-                })()}
-              </td>
-            </tr>
-          ))}
+                  )}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
