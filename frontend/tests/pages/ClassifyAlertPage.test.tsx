@@ -181,6 +181,9 @@ describe('ClassifyAlertPage', () => {
     // Clears call counts (not just implementations) so per-test assertions
     // like `toHaveBeenCalledTimes` aren't polluted by earlier tests' calls.
     vi.clearAllMocks();
+    // jsdom doesn't implement scrollIntoView; the presence-strip click
+    // handler calls it on the target card, so stub it as a no-op.
+    Element.prototype.scrollIntoView = vi.fn();
     vi.mocked(apiClient.getSequence).mockResolvedValue(makeSequence());
     vi.mocked(apiClient.getAlertDetail).mockResolvedValue(makeAlertDetail());
     // Default: no detections, so overlay-building code has something to
@@ -623,5 +626,38 @@ describe('ClassifyAlertPage', () => {
     // in document order.
     expect(strip.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(strip.compareDocumentPosition(player) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("clicking a presence-strip row scrolls to and activates that object's card", async () => {
+    render(<ClassifyAlertPage />, { wrapper });
+    await waitFor(() => expect(screen.getByTestId('object-card-101:0')).toBeInTheDocument());
+
+    // Lane B (sequence 102) is "Object 2" — see makeAlertDetail's laneB.
+    fireEvent.click(screen.getByRole('button', { name: 'Go to Object 2' }));
+
+    // The page owns turning the strip's click into "activate that card":
+    // Object 2's card shows the same "Active" pill a direct card click
+    // would produce, and no other card does.
+    await waitFor(() =>
+      expect(
+        within(screen.getByTestId('object-card-102:0')).getByText('Active')
+      ).toBeInTheDocument()
+    );
+    expect(
+      within(screen.getByTestId('object-card-101:0')).queryByText('Active')
+    ).not.toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('object-card-103:0')).queryByText('Active')
+    ).not.toBeInTheDocument();
+
+    // And it scrolled the card into view — the handler defers the actual
+    // scroll a frame (requestAnimationFrame), so wait for it (jsdom stub —
+    // see beforeEach).
+    await waitFor(() =>
+      expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({
+        behavior: 'smooth',
+        block: 'center',
+      })
+    );
   });
 });

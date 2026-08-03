@@ -360,6 +360,21 @@ export default function ClassifyAlertPage() {
     timestamps: (detectionsByLaneId[o.laneSequenceId] ?? []).map(d => d.recorded_at),
   }));
 
+  // Presence strip rows are clickable: jump to that object's card. The strip
+  // only knows the clicked row's position in `presenceStripObjects`, which is
+  // built 1:1 (same order, same length) from `cardOverlayData` — so that
+  // index resolves straight back to the card's key. Scrolling waits a frame
+  // so it targets the just-updated (possibly newly mounted) active card.
+  const handlePresenceObjectClick = (objectIndex: number) => {
+    const cardKey = cardOverlayData[objectIndex]?.cardKey;
+    if (!cardKey) return;
+    setActiveCardKey(cardKey);
+    setActiveSection('detections');
+    requestAnimationFrame(() => {
+      cardRefs.current[cardKey]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  };
+
   const handleBboxChangeByCardKey = (cardKey: string, updatedBbox: SequenceBbox) => {
     const card = cards.find(c => c.cardKey === cardKey);
     if (!card || card.locked) return;
@@ -705,7 +720,10 @@ export default function ClassifyAlertPage() {
       </div>
 
       <div className="space-y-6 pt-20">
-        <ObjectPresenceStrip objects={presenceStripObjects} />
+        <ObjectPresenceStrip
+          objects={presenceStripObjects}
+          onObjectClick={handlePresenceObjectClick}
+        />
 
         {groupConflictWarnings.length > 0 && (
           <div className="sticky top-20 z-30 bg-signal-soft border-b-2 border-signal px-4 py-3">

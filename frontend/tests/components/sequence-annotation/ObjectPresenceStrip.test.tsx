@@ -8,7 +8,7 @@
  */
 
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { ObjectPresenceStrip } from '@/components/sequence-annotation/ObjectPresenceStrip';
 
 describe('ObjectPresenceStrip', () => {
@@ -162,5 +162,54 @@ describe('ObjectPresenceStrip', () => {
     expect(axisLabel).toHaveTextContent('Frame');
     expect(axisLabel).toHaveClass('text-haze');
     expect(axisLabel).not.toHaveAttribute('style');
+
+    // A directional arrowhead marker sits at the line's right end, styled
+    // with the same recessive `line` token as the axis line — never an
+    // object color.
+    const axisArrow = screen.getByTestId('presence-axis-arrow');
+    expect(axisArrow).toBeInTheDocument();
+    expect(axisArrow).toHaveClass('border-l-line');
+    expect(axisArrow).not.toHaveAttribute('style');
+  });
+
+  it("renders each row as an accessible button and fires onObjectClick with that row's index", () => {
+    const onObjectClick = vi.fn();
+
+    render(
+      <ObjectPresenceStrip
+        objects={[
+          { label: 'Object 1', color: '#3b82f6', timestamps: [t1] },
+          { label: 'Object 2', color: '#f97316', timestamps: [t2] },
+        ]}
+        onObjectClick={onObjectClick}
+      />
+    );
+
+    const row0 = screen.getByRole('button', { name: 'Go to Object 1' });
+    const row1 = screen.getByRole('button', { name: 'Go to Object 2' });
+    expect(row0.tagName).toBe('BUTTON');
+    expect(row1.tagName).toBe('BUTTON');
+
+    fireEvent.click(row1);
+    expect(onObjectClick).toHaveBeenCalledTimes(1);
+    expect(onObjectClick).toHaveBeenCalledWith(1);
+
+    fireEvent.click(row0);
+    expect(onObjectClick).toHaveBeenCalledWith(0);
+  });
+
+  it('does not throw when a row is clicked without an onObjectClick handler', () => {
+    render(
+      <ObjectPresenceStrip
+        objects={[
+          { label: 'Object 1', color: '#3b82f6', timestamps: [t1] },
+          { label: 'Object 2', color: '#f97316', timestamps: [t2] },
+        ]}
+      />
+    );
+
+    expect(() =>
+      fireEvent.click(screen.getByRole('button', { name: 'Go to Object 1' }))
+    ).not.toThrow();
   });
 });

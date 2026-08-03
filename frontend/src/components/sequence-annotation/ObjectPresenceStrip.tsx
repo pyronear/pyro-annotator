@@ -1,14 +1,18 @@
 /**
  * Slim per-object presence strip for the collocated classify screen
  * (ClassifyAlertPage). Temporal context + color legend, not an editor: one
- * thin row per object — color swatch + label + a presence bar across the
- * union of the alert's frame timestamps, filled where that object's lane
- * has a detection at that timestamp, gap otherwise — plus a real axis
- * beneath the rows: a hairline axis line, tick marks + frame numbers at the
- * same adaptive columns, and a "Frame" axis label. The axis is deliberately
- * recessive (all `line`/`haze` tokens, never an object color) so the
- * presence bars stay the dominant layer. Pure presentational — the union is
- * computed from props, no data fetching or app state.
+ * clickable row per object — color swatch + label + a presence bar across
+ * the union of the alert's frame timestamps, filled where that object's
+ * lane has a detection at that timestamp, gap otherwise — plus a real axis
+ * beneath the rows: a hairline axis line with a directional arrowhead,
+ * tick marks + frame numbers at the same adaptive columns, and a "Frame"
+ * axis label. The axis is deliberately recessive (all `line`/`haze`
+ * tokens, never an object color) so the presence bars stay the dominant
+ * layer. Pure presentational — the union is computed from props, no data
+ * fetching or app state; clicking a row calls back to the page rather than
+ * navigating itself, so this component never touches page internals like
+ * card refs or active-card state. Presence bar segments are not
+ * individually interactive — only the row as a whole.
  *
  * Renders nothing for fewer than 2 objects (single-object alerts have no
  * legend to disambiguate).
@@ -27,6 +31,8 @@ export interface ObjectPresenceStripObject {
 
 interface ObjectPresenceStripProps {
   objects: ObjectPresenceStripObject[];
+  /** Called with an object's position in `objects` when its row is clicked — the caller (ClassifyAlertPage) owns turning that into "scroll to and activate that object's card." Omit to render rows non-interactively. */
+  onObjectClick?: (objectIndex: number) => void;
 }
 
 // Leading columns every row (object rows and the axis row alike) shares, so
@@ -64,7 +70,10 @@ function computeAxisTickIndices(frameCount: number): number[] {
   return indices;
 }
 
-export const ObjectPresenceStrip: React.FC<ObjectPresenceStripProps> = ({ objects }) => {
+export const ObjectPresenceStrip: React.FC<ObjectPresenceStripProps> = ({
+  objects,
+  onObjectClick,
+}) => {
   if (objects.length < 2) return null;
 
   // Numeric (chronological) sort, not string sort: same-second timestamps
@@ -77,15 +86,21 @@ export const ObjectPresenceStrip: React.FC<ObjectPresenceStripProps> = ({ object
   const tickIndices = new Set(computeAxisTickIndices(frameUnion.length));
 
   return (
-    <div className="space-y-1.5 rounded-lg border border-line bg-paper p-3">
-      <div className="font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze mb-1">
+    <div className="space-y-2.5 rounded-lg border border-line bg-paper p-4">
+      <div className="font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze mb-2">
         Object timeline
       </div>
 
       {objects.map((object, objectIndex) => {
         const presentAt = new Set(object.timestamps);
         return (
-          <div key={object.label} className="flex items-center gap-2">
+          <button
+            key={object.label}
+            type="button"
+            aria-label={`Go to ${object.label}`}
+            onClick={() => onObjectClick?.(objectIndex)}
+            className="flex w-full items-center gap-2 rounded py-1 text-left transition-colors hover:bg-ash focus:outline-none focus:ring-2 focus:ring-ember"
+          >
             <span
               data-testid={`object-presence-swatch-${objectIndex}`}
               className="h-2.5 w-2.5 shrink-0 rounded-full"
@@ -104,17 +119,17 @@ export const ObjectPresenceStrip: React.FC<ObjectPresenceStripProps> = ({ object
                 />
               ))}
             </div>
-          </div>
+          </button>
         );
       })}
 
-      {/* Frame axis — hairline + ticks + numbers share the object rows'
-          column layout; the "Frame" caption centers under the plot area
-          only (excludes the swatch/label spacer, standard axis-label
-          placement). Every stroke and label is a recessive line/haze
-          token — never an object color — so the presence bars above stay
-          the dominant layer. */}
-      <div data-testid="presence-axis" className="pt-1">
+      {/* Frame axis — hairline + arrowhead + ticks + numbers share the
+          object rows' column layout; the "Frame" caption centers under the
+          plot area only (excludes the swatch/label spacer, standard
+          axis-label placement). Every stroke and label is a recessive
+          line/haze token — never an object color — so the presence bars
+          above stay the dominant layer. */}
+      <div data-testid="presence-axis" className="pt-2">
         <div className="flex items-center gap-2">
           {LEADING_SPACER}
           <div
@@ -122,8 +137,15 @@ export const ObjectPresenceStrip: React.FC<ObjectPresenceStripProps> = ({ object
             className="h-px flex-1 bg-line"
             aria-hidden="true"
           />
+          {/* Directional arrowhead — a CSS border-triangle, not an image,
+              kept a few px so it stays subordinate to the data bars. */}
+          <span
+            data-testid="presence-axis-arrow"
+            aria-hidden="true"
+            className="block h-0 w-0 shrink-0 border-y-[3px] border-l-[4px] border-y-transparent border-l-line"
+          />
         </div>
-        <div className="flex items-start gap-2 mt-0.5">
+        <div className="flex items-start gap-2 mt-1">
           {LEADING_SPACER}
           <div className="flex flex-1">
             {frameUnion.map((timestamp, frameIndex) => (
@@ -143,7 +165,7 @@ export const ObjectPresenceStrip: React.FC<ObjectPresenceStripProps> = ({ object
             ))}
           </div>
         </div>
-        <div className="flex items-center gap-2 mt-1">
+        <div className="flex items-center gap-2 mt-1.5">
           {LEADING_SPACER}
           <div
             data-testid="presence-axis-label"
