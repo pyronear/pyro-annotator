@@ -128,6 +128,43 @@ describe('SequenceGroupsListPage', () => {
     expect(screen.queryByText('All groups labeled')).toBeNull();
   });
 
+  it('uses the fire-lookout row style and canonical column order', async () => {
+    vi.mocked(apiClient.getSequenceGroups).mockResolvedValue({
+      items: [group],
+      page: 1,
+      pages: 1,
+      size: 50,
+      total: 1,
+    });
+    renderAt('/classify/groups');
+    await waitFor(() => expect(screen.getByText('CAM_07')).toBeTruthy());
+
+    const row = screen.getByText('CAM_07').closest('tr');
+    expect(row?.className).toContain('hover:bg-ash');
+    expect(row?.className).not.toContain('hover:bg-blue-50');
+
+    const headerLabels = ['Camera', 'Created', 'Azimuth', 'Sequences', 'Label', 'Reviewed'];
+    const positions = headerLabels.map(l => {
+      const el = screen.getByText(l);
+      return Array.from(document.querySelectorAll('th')).findIndex(th => th.contains(el));
+    });
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+  });
+
+  it('renders a badge only for the "to label" state', async () => {
+    vi.mocked(apiClient.getSequenceGroups).mockResolvedValue({
+      items: [group],
+      page: 1,
+      pages: 1,
+      size: 50,
+      total: 1,
+    });
+    renderAt('/classify/groups');
+    await waitFor(() => expect(screen.getByText('CAM_07')).toBeTruthy());
+
+    expect(screen.getByText('to label')).toHaveClass('bg-ember-soft', 'text-ember');
+  });
+
   it('column headers carry explanatory tooltips', async () => {
     vi.mocked(apiClient.getSequenceGroups).mockResolvedValue({
       items: [group],
