@@ -19,7 +19,7 @@ export default function DetectionImageThumbnail({
 
   if (loadingDetections || loadingImage) {
     return (
-      <div className={`bg-gray-200 animate-pulse rounded ${className}`}>
+      <div className={`bg-gray-200 animate-pulse ${className}`}>
         <div className="w-full h-full flex items-center justify-center">
           <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
         </div>
@@ -30,7 +30,7 @@ export default function DetectionImageThumbnail({
   if (!imageData?.url) {
     return (
       <div
-        className={`bg-gray-100 border border-gray-200 rounded flex items-center justify-center ${className}`}
+        className={`bg-gray-100 border border-gray-200 flex items-center justify-center ${className}`}
       >
         <span className="text-gray-400 text-xs">No Image</span>
       </div>
@@ -38,7 +38,7 @@ export default function DetectionImageThumbnail({
   }
 
   return (
-    <div className={`overflow-hidden rounded ${className}`}>
+    <div className={`overflow-hidden ${className}`}>
       <img
         src={imageData.url}
         alt="Detection preview"
