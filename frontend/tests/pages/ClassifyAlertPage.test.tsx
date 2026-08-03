@@ -17,6 +17,7 @@ vi.mock('@/services/api', () => ({
     getAlertDetail: vi.fn(),
     classifySubmit: vi.fn(),
     getSequenceDetections: vi.fn(),
+    updateSequenceAnnotation: vi.fn(),
   },
 }));
 
@@ -76,6 +77,22 @@ function wrapper({ children }: { children: React.ReactNode }) {
       </MemoryRouter>
     </QueryClientProvider>
   );
+}
+
+/** Same shell as `wrapper`, but mounted under /classify/done/:id (done mode's route). */
+function makeDoneWrapper(entrySequenceId: number) {
+  return function DoneWrapper({ children }: { children: React.ReactNode }) {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return (
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={[`/classify/done/${entrySequenceId}`]}>
+          <Routes>
+            <Route path="/classify/done/:id" element={children} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+  };
 }
 
 function makeSequence(overrides: Partial<Sequence> = {}): Sequence {
@@ -383,6 +400,10 @@ describe('ClassifyAlertPage', () => {
     expect(itemB.processing_stage).toBe('annotated');
     expect(itemB.has_missed_smoke).toBe(false);
     expect(itemB.annotation.sequences_bbox[0].false_positive_types).toContain('antenna');
+
+    // Regression guard: queue mode (no `mode` prop) must keep using the
+    // atomic classify-submit endpoint, never the per-lane PATCH done mode uses.
+    expect(apiClient.updateSequenceAnnotation).not.toHaveBeenCalled();
   });
 
   it('shows an error toast (with server detail) and does not navigate when submit fails', async () => {
@@ -659,5 +680,172 @@ describe('ClassifyAlertPage', () => {
         block: 'center',
       })
     );
+  });
+});
+
+describe('ClassifyAlertPage done mode', () => {
+  // Two genuinely-labeled lanes at "done" stages (seq_annotation_done /
+  // annotated) plus one not-yet-imported placeholder lane — done mode's
+  // locked test is "has an annotation at all", not stage, so both labeled
+  // lanes must render editable regardless of already being past
+  // ready_to_annotate; the placeholder stays locked exactly as in queue mode.
+  function makeDoneAlertDetail(): AlertDetail {
+    const laneA = {
+      sequence: makeSequence({ id: 101, alert_api_id: 9001 }),
+      annotation: makeAnnotation({
+        id: 201,
+        sequence_id: 101,
+        processing_stage: 'seq_annotation_done',
+        has_smoke: true,
+        has_missed_smoke: false,
+        annotation: {
+          sequences_bbox: [
+            {
+              is_smoke: true,
+              smoke_type: 'wildfire',
+              false_positive_types: [],
+              bboxes: [{ detection_id: 1, xyxyn: [0, 0, 1, 1] }],
+            },
+          ],
+        },
+      }),
+    };
+    const laneB = {
+      sequence: makeSequence({ id: 102, alert_api_id: 9002 }),
+      annotation: makeAnnotation({
+        id: 202,
+        sequence_id: 102,
+        processing_stage: 'annotated',
+        annotation: {
+          sequences_bbox: [
+            {
+              is_smoke: false,
+              false_positive_types: ['antenna'],
+              bboxes: [{ detection_id: 2, xyxyn: [0, 0, 1, 1] }],
+            },
+          ],
+        },
+      }),
+    };
+    const laneC = {
+      sequence: makeSequence({ id: 103, alert_api_id: 9003 }),
+      annotation: null,
+    };
+    return {
+      source_api: 'pyronear_french',
+      platform_alert_id: 500,
+      camera_name: 'CAM-1',
+      organisation_name: 'Org',
+      recorded_at: '2026-01-01T10:00:00Z',
+      lanes: [laneA, laneB, laneC],
+    };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    Element.prototype.scrollIntoView = vi.fn();
+    vi.mocked(apiClient.getSequence).mockResolvedValue(makeSequence());
+    vi.mocked(apiClient.getAlertDetail).mockResolvedValue(makeDoneAlertDetail());
+    vi.mocked(apiClient.getSequenceDetections).mockResolvedValue([]);
+    vi.mocked(apiClient.updateSequenceAnnotation).mockImplementation(async (id: number) => ({
+      ...makeAnnotation({ id }),
+      processing_stage: 'seq_annotation_done',
+      group_propagation_warning: null,
+    }));
+  });
+
+  it('renders lanes with existing annotations as editable and pre-filled "Reviewed", regardless of processing stage', async () => {
+    render(<ClassifyAlertPage mode="done" />, { wrapper: makeDoneWrapper(101) });
+    await waitFor(() => expect(screen.getByTestId('object-card-101:0')).toBeInTheDocument());
+
+    const cardA = within(screen.getByTestId('object-card-101:0')); // seq_annotation_done
+    expect(cardA.getByText('Reviewed')).toBeInTheDocument();
+    expect(cardA.getByRole('radio', { name: /This is smoke/i })).not.toBeDisabled();
+    expect(cardA.getByRole('radio', { name: /This is smoke/i })).toBeChecked();
+
+    const cardB = within(screen.getByTestId('object-card-102:0')); // annotated
+    expect(cardB.getByText('Reviewed')).toBeInTheDocument();
+    expect(cardB.getByRole('radio', { name: /false positive/i })).not.toBeDisabled();
+    expect(cardB.getByRole('radio', { name: /false positive/i })).toBeChecked();
+
+    // The annotation-less lane still renders the read-only placeholder —
+    // done mode only changes the meaning of "has an annotation", not the
+    // "not imported yet" case.
+    expect(screen.getByTestId('object-card-placeholder-103')).toBeInTheDocument();
+    expect(screen.getByText('Not imported yet')).toBeInTheDocument();
+  });
+
+  it('keeps submit disabled until a lane actually changes, even though every card is already validly classified', async () => {
+    render(<ClassifyAlertPage mode="done" />, { wrapper: makeDoneWrapper(101) });
+    await waitFor(() => expect(screen.getByTestId('object-card-101:0')).toBeInTheDocument());
+
+    const submitButton = screen.getByRole('button', { name: /Submit alert/i });
+    expect(submitButton).toBeDisabled();
+
+    // Change lane A's smoke type — a real edit.
+    const cardA = within(screen.getByTestId('object-card-101:0'));
+    fireEvent.click(cardA.getByRole('radio', { name: /Industrial/i }));
+
+    expect(submitButton).not.toBeDisabled();
+  });
+
+  it('PATCHes only the changed lane via updateSequenceAnnotation, leaving the untouched lane alone', async () => {
+    render(<ClassifyAlertPage mode="done" />, { wrapper: makeDoneWrapper(101) });
+    await waitFor(() => expect(screen.getByTestId('object-card-101:0')).toBeInTheDocument());
+
+    const cardA = within(screen.getByTestId('object-card-101:0'));
+    fireEvent.click(cardA.getByRole('radio', { name: /Industrial/i }));
+
+    const submitButton = screen.getByRole('button', { name: /Submit alert/i });
+    expect(submitButton).not.toBeDisabled();
+    fireEvent.click(submitButton);
+
+    await waitFor(() => expect(apiClient.updateSequenceAnnotation).toHaveBeenCalledTimes(1));
+    expect(apiClient.updateSequenceAnnotation).toHaveBeenCalledWith(
+      201,
+      expect.objectContaining({
+        processing_stage: 'seq_annotation_done',
+        is_unsure: false,
+      })
+    );
+    const [, payload] = vi.mocked(apiClient.updateSequenceAnnotation).mock.calls[0];
+    expect(payload.annotation?.sequences_bbox[0].smoke_type).toBe('industrial');
+    // Lane B (202) was never touched, so it must never be PATCHed.
+    expect(apiClient.updateSequenceAnnotation).not.toHaveBeenCalledWith(202, expect.anything());
+    expect(apiClient.classifySubmit).not.toHaveBeenCalled();
+  });
+
+  it('an alert-level missed-smoke-only change makes the primary lane "changed" and is saved on its PATCH', async () => {
+    render(<ClassifyAlertPage mode="done" />, { wrapper: makeDoneWrapper(101) });
+    await waitFor(() => expect(screen.getByTestId('object-card-101:0')).toBeInTheDocument());
+
+    const submitButton = screen.getByRole('button', { name: /Submit alert/i });
+    expect(submitButton).toBeDisabled();
+
+    // No card edits at all — only the alert-level missed-smoke review changes.
+    fireEvent.click(screen.getByText('Mock: Missed smoke'));
+    expect(submitButton).not.toBeDisabled();
+
+    fireEvent.click(submitButton);
+
+    await waitFor(() => expect(apiClient.updateSequenceAnnotation).toHaveBeenCalledTimes(1));
+    expect(apiClient.updateSequenceAnnotation).toHaveBeenCalledWith(
+      201,
+      expect.objectContaining({ has_missed_smoke: true })
+    );
+  });
+
+  it('scroll-activates the clicked object on load', async () => {
+    render(<ClassifyAlertPage mode="done" />, { wrapper: makeDoneWrapper(102) });
+    await waitFor(() => expect(screen.getByTestId('object-card-102:0')).toBeInTheDocument());
+
+    await waitFor(() =>
+      expect(
+        within(screen.getByTestId('object-card-102:0')).getByText('Active')
+      ).toBeInTheDocument()
+    );
+    expect(
+      within(screen.getByTestId('object-card-101:0')).queryByText('Active')
+    ).not.toBeInTheDocument();
   });
 });

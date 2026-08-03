@@ -1,10 +1,14 @@
 /**
- * Collocated classify screen: renders every object (lane) of one alert and
- * submits them all with a single classifySubmit call. Sibling of
- * AnnotationInterface (which stays as the single-sequence `/classify/done/:id`
- * page) — steals its structure (header, toasts, shortcut modal, workflow nav,
- * keyboard shortcuts) but is a separate component because the data shape is
- * fundamentally multi-lane.
+ * Collocated classify/done-review screen: renders every object (lane) of
+ * one alert. Mounted at `/classify/:id` (queue mode) and
+ * `/classify/done/:id` (`mode="done"`, entered from the Done list).
+ *
+ * Queue mode submits all editable lanes atomically via a single
+ * `classifySubmit` call; done mode instead PATCHes only the lanes the
+ * annotator actually changed via `updateSequenceAnnotation`, since lanes
+ * there are independently re-editable regardless of stage rather than
+ * moving through the pipeline together. `AnnotationInterface` no longer
+ * has a route but stays in the tree (removal is a separate cleanup).
  *
  * Card identity is `${laneSequenceId}:${trackIndex}` (never a flat array
  * index) — all per-card state (classification, unsure, refs, active card)
@@ -27,7 +31,15 @@ import {
 } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { QUERY_KEYS } from '@/utils/constants';
-import { AlertDetail, AlertLane, ClassifySubmitItem, Detection, SequenceBbox } from '@/types/api';
+import {
+  AlertDetail,
+  AlertLane,
+  ClassifySubmitItem,
+  ClassifySubmitResult,
+  Detection,
+  SequenceAnnotation,
+  SequenceBbox,
+} from '@/types/api';
 import { useSequenceStore } from '@/store/useSequenceStore';
 import { hasUserAnnotations, getInitialMissedSmokeReview } from '@/utils/annotation/sequenceUtils';
 import { determineClassifySubmitStage } from '@/utils/annotation/localizeUtils';
@@ -48,13 +60,30 @@ import { NotificationSystem } from '@/components/ui/NotificationSystem';
 import { useToastNotifications } from '@/utils/notification/toastUtils';
 import { ROUTES, classifyDetail, classifyGroup } from '@/utils/routes';
 
-/** Locked lanes render read-only and are excluded from the submit payload. */
-function isLaneLocked(lane: AlertLane): boolean {
+/**
+ * Locked lanes render read-only and are excluded from the submit payload.
+ *
+ * Queue mode: a lane is locked once it has no annotation yet, or is already
+ * past ready_to_annotate (seq_annotation_done / annotated) — those are only
+ * editable from the done view.
+ *
+ * Done mode inverts the stage half of that rule: any lane WITH an
+ * annotation is editable regardless of stage (it's genuinely labeled, so it
+ * pre-fills as Reviewed and can be corrected here); only a lane with no
+ * annotation at all (not yet imported) stays a locked placeholder.
+ */
+function isLaneLocked(lane: AlertLane, mode?: 'done'): boolean {
+  if (mode === 'done') return !lane.annotation;
   return (
     !lane.annotation ||
     lane.annotation.processing_stage === 'seq_annotation_done' ||
     lane.annotation.processing_stage === 'annotated'
   );
+}
+
+/** JSON-shape equality for two SequenceBbox arrays — enough to detect a real edit. */
+function bboxesEqual(a: SequenceBbox[] | undefined, b: SequenceBbox[] | undefined): boolean {
+  return JSON.stringify(a ?? []) === JSON.stringify(b ?? []);
 }
 
 /** One card slot in the flattened, stably-ordered list driving keyboard nav. */
@@ -100,10 +129,24 @@ function extractErrorMessage(err: unknown): string {
   return 'Please try again.';
 }
 
-export default function ClassifyAlertPage() {
+interface ClassifyAlertPageProps {
+  /**
+   * 'done' when mounted under /classify/done/:id — entered from the Done
+   * list. Lanes with an existing annotation become editable regardless of
+   * their stage (instead of only ready_to_annotate lanes); submit PATCHes
+   * only the lanes that actually changed via `updateSequenceAnnotation`
+   * instead of the atomic `classifySubmit`.
+   */
+  mode?: 'done';
+}
+
+export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {}) {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  // Back navigation target follows the route provenance (queue vs done list).
+  const backUrl = mode === 'done' ? ROUTES.CLASSIFY_DONE : ROUTES.CLASSIFY;
   const {
     getNextSequenceInWorkflow,
     clearAnnotationWorkflow,
@@ -133,6 +176,15 @@ export default function ClassifyAlertPage() {
 
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const sequenceReviewerRef = useRef<HTMLDivElement | null>(null);
+
+  // Done mode only: snapshot of the just-loaded (or just-reset) state, used
+  // to diff against current state at submit time so only lanes the
+  // annotator actually touched get PATCHed.
+  const initialSnapshotRef = useRef<{
+    laneBboxes: Record<number, SequenceBbox[]>;
+    laneUnsure: Record<number, boolean>;
+    hasMissedSmoke: boolean;
+  } | null>(null);
 
   const { showToast, toastMessage, toastType, showToastNotification, dismissToast } =
     useToastNotifications();
@@ -231,6 +283,14 @@ export default function ClassifyAlertPage() {
     setLaneUnsure(newLaneUnsure);
     setMissedSmokeReview(newMissedSmokeReview);
     setHasMissedSmoke(newHasMissedSmoke);
+
+    // Done mode's "only PATCH what changed" diff base. Re-set on every call
+    // (including handleReset's) so reset also resets what counts as changed.
+    initialSnapshotRef.current = {
+      laneBboxes: newLaneBboxes,
+      laneUnsure: newLaneUnsure,
+      hasMissedSmoke: newHasMissedSmoke,
+    };
   };
 
   // Initialize card state once the alert's lanes load.
@@ -263,13 +323,13 @@ export default function ClassifyAlertPage() {
             laneSequenceId: lane.sequence.id,
             trackIndex,
             isPrimary: laneIdx === 0,
-            locked: isLaneLocked(lane),
+            locked: isLaneLocked(lane, mode),
           },
         });
       });
     });
     return result;
-  }, [alertDetail]);
+  }, [alertDetail, mode]);
 
   // Keyboard/nav-facing flattened card list (placeholders excluded — they
   // have nothing to classify or navigate into).
@@ -282,6 +342,21 @@ export default function ClassifyAlertPage() {
   );
 
   const editableCards = cards.filter(c => !c.locked);
+
+  // Done mode only: the sequence the annotator clicked in the Done list is
+  // its own card's lane — scroll-activate that card once the alert's cards
+  // are on screen, so they land exactly where they came from.
+  useEffect(() => {
+    if (mode !== 'done' || !sequenceId) return;
+    const cardKey = `${sequenceId}:0`;
+    if (!cards.some(c => c.cardKey === cardKey)) return;
+    setActiveCardKey(cardKey);
+    setActiveSection('detections');
+    requestAnimationFrame(() => {
+      cardRefs.current[cardKey]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, sequenceId, alertDetail]);
 
   const getBbox = (card: FlatCard): SequenceBbox =>
     laneBboxes[card.laneSequenceId]?.[card.trackIndex] ?? EMPTY_BBOX;
@@ -461,13 +536,84 @@ export default function ClassifyAlertPage() {
   const isComplete = editableCards.every(
     card => laneUnsure[card.laneSequenceId] || hasUserAnnotations(getBbox(card))
   );
-  const canSubmit = isComplete && missedSmokeReview !== null;
+
+  // Done mode only: which lanes actually changed since load (or since the
+  // last reset), diffed against initialSnapshotRef. Alert-level missed
+  // smoke lives on the primary lane, so a missed-smoke-only edit alone
+  // marks the primary lane changed.
+  const primaryLaneId = alertDetail?.lanes[0]?.sequence.id;
+  const isLaneChanged = (laneSequenceId: number, isPrimary: boolean): boolean => {
+    const snapshot = initialSnapshotRef.current;
+    if (!snapshot) return false;
+    const bboxesChanged = !bboxesEqual(
+      laneBboxes[laneSequenceId],
+      snapshot.laneBboxes[laneSequenceId]
+    );
+    const unsureChanged =
+      (laneUnsure[laneSequenceId] ?? false) !== (snapshot.laneUnsure[laneSequenceId] ?? false);
+    const missedSmokeChanged = isPrimary && hasMissedSmoke !== snapshot.hasMissedSmoke;
+    return bboxesChanged || unsureChanged || missedSmokeChanged;
+  };
+  const anyLaneChanged =
+    mode === 'done' &&
+    !!alertDetail &&
+    alertDetail.lanes.some(
+      lane =>
+        !isLaneLocked(lane, mode) &&
+        !!lane.annotation &&
+        isLaneChanged(lane.sequence.id, lane.sequence.id === primaryLaneId)
+    );
+
+  const canSubmit =
+    mode === 'done' ? isComplete && anyLaneChanged : isComplete && missedSmokeReview !== null;
 
   const submitMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (): Promise<{ results: ClassifySubmitResult[] }> => {
+      if (mode === 'done') {
+        const changedLanes = alertDetail!.lanes.filter(lane => {
+          if (isLaneLocked(lane, mode) || !lane.annotation) return false;
+          return isLaneChanged(lane.sequence.id, lane.sequence.id === primaryLaneId);
+        });
+        const results: ClassifySubmitResult[] = await Promise.all(
+          changedLanes.map(async lane => {
+            const isPrimary = lane.sequence.id === primaryLaneId;
+            const bboxes = laneBboxes[lane.sequence.id] ?? [];
+            const unsure = laneUnsure[lane.sequence.id] ?? false;
+            const hasSmokeNow = unsure ? false : bboxes.some(b => b.is_smoke);
+            const hasMissedSmokeForLane = isPrimary && !unsure ? hasMissedSmoke : false;
+            const updates: Partial<SequenceAnnotation> = {
+              annotation: { sequences_bbox: bboxes },
+              processing_stage: determineClassifySubmitStage({
+                currentStage: lane.annotation!.processing_stage,
+                isUnsure: unsure,
+                hasSmoke: hasSmokeNow,
+                hasMissedSmoke: hasMissedSmokeForLane,
+              }),
+              has_smoke: hasSmokeNow,
+              has_false_positives: unsure
+                ? false
+                : bboxes.some(b => b.false_positive_types.length > 0),
+              false_positive_types: unsure
+                ? '[]'
+                : JSON.stringify([...new Set(bboxes.flatMap(b => b.false_positive_types))]),
+              has_missed_smoke: hasMissedSmokeForLane,
+              is_unsure: unsure,
+            };
+            const saved = await apiClient.updateSequenceAnnotation(lane.annotation!.id, updates);
+            return {
+              annotation_id: lane.annotation!.id,
+              sequence_id: lane.sequence.id,
+              processing_stage: saved.processing_stage,
+              group_propagation_warning: saved.group_propagation_warning ?? null,
+            };
+          })
+        );
+        return { results };
+      }
+
       const items: ClassifySubmitItem[] = [];
       alertDetail!.lanes.forEach((lane, laneIdx) => {
-        if (isLaneLocked(lane) || !lane.annotation) return;
+        if (isLaneLocked(lane, mode) || !lane.annotation) return;
         const isPrimary = laneIdx === 0;
         const bboxes = laneBboxes[lane.sequence.id] ?? [];
         const unsure = laneUnsure[lane.sequence.id] ?? false;
@@ -526,7 +672,7 @@ export default function ClassifyAlertPage() {
           const currentIndex = annotationWorkflow?.currentIndex || 0;
           const totalAlerts = annotationWorkflow?.sequences?.length || 0;
           showToastNotification(`Moving to alert ${currentIndex + 2} of ${totalAlerts}`, 'info');
-          navigate(classifyDetail(nextAlert.id));
+          navigate(classifyDetail(nextAlert.id, mode === 'done'));
         } else {
           const totalCompleted = annotationWorkflow?.sequences?.length || 1;
           clearAnnotationWorkflow();
@@ -534,7 +680,7 @@ export default function ClassifyAlertPage() {
             `Workflow completed! Classified ${totalCompleted} alerts.`,
             'success'
           );
-          navigate(ROUTES.CLASSIFY);
+          navigate(backUrl);
         }
       }, 1000);
     },
@@ -550,7 +696,14 @@ export default function ClassifyAlertPage() {
 
   const handleSubmit = () => {
     if (!canSubmit) {
-      if (missedSmokeReview === null) {
+      if (mode === 'done') {
+        showToastNotification(
+          isComplete
+            ? 'Cannot submit: no changes to save'
+            : 'Cannot submit: some objects still need classification',
+          'error'
+        );
+      } else if (missedSmokeReview === null) {
         showToastNotification('Cannot submit: missed smoke review is required', 'error');
       } else {
         showToastNotification('Cannot submit: some objects still need classification', 'error');
@@ -593,12 +746,12 @@ export default function ClassifyAlertPage() {
 
   const handlePreviousAlert = () => {
     const prev = navigateToPreviousInWorkflow();
-    if (prev) navigate(classifyDetail(prev.id));
+    if (prev) navigate(classifyDetail(prev.id, mode === 'done'));
   };
 
   const handleNextAlert = () => {
     const next = navigateToNextInWorkflow();
-    if (next) navigate(classifyDetail(next.id));
+    if (next) navigate(classifyDetail(next.id, mode === 'done'));
   };
 
   if (isLoading) {
@@ -616,7 +769,7 @@ export default function ClassifyAlertPage() {
           <p className="font-body text-sm text-signal mb-2">Failed to load alert</p>
           <p className="font-body text-detail text-haze">{String(error)}</p>
           <button
-            onClick={() => navigate(ROUTES.CLASSIFY)}
+            onClick={() => navigate(backUrl)}
             className="mt-4 font-body text-detail text-haze hover:text-char"
           >
             Back to Alerts
@@ -641,7 +794,7 @@ export default function ClassifyAlertPage() {
         <button
           onClick={() => {
             clearAnnotationWorkflow();
-            navigate(ROUTES.CLASSIFY);
+            navigate(backUrl);
           }}
           className="font-body text-detail text-haze hover:text-char inline-flex items-center gap-1"
         >
@@ -656,11 +809,6 @@ export default function ClassifyAlertPage() {
             <span className="font-data text-detail text-haze">
               {new Date(alertDetail.recorded_at).toLocaleString()}
             </span>
-            {annotationWorkflow && annotationWorkflow.isActive && (
-              <span className="flex-none rounded-full bg-ash px-2.5 py-0.5 font-data text-xs font-semibold text-char">
-                Alert {annotationWorkflow.currentIndex + 1} of {annotationWorkflow.sequences.length}
-              </span>
-            )}
             <span
               className={`flex-none rounded-full px-2.5 py-0.5 font-data text-xs font-semibold ${
                 editableCards.length > 0 && classifiedCount === editableCards.length
