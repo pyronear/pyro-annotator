@@ -28,7 +28,7 @@ Once running, access the services at:
 - **Backend API**: http://localhost:5050
 - **API Documentation**: http://localhost:5050/docs
 - **PostgreSQL Database**: localhost:5432
-- **LocalStack S3**: http://localhost:4566
+- **MinIO S3**: http://localhost:4566 (console at http://localhost:9001, login `fake`/`fakefake`)
 
 ## Main Workflow
 
@@ -101,7 +101,7 @@ make import-alert-api DATE_FROM=2025-03-04 DATE_END=2025-03-04 \
 - `DATE_END` defaults to `DATE_FROM` if omitted.
 - `MAX_SEQUENCES` is an optional cap on the number of sequences imported; default is no cap.
 - `REMOTE_API` defaults to `https://annotationapi.pyronear.org`; override to target staging/local.
-- `IMAGE_TRANSFER=url` routes detection images through the `/from-url` endpoint instead of a server-side S3 bucket copy. This is required when the target annotation API can't reach the alert API's S3 bucket — notably local dev with LocalStack, where the default bucket-copy mode fails every detection with `Source object not found`. Leave it unset for the production API (the script picks the right mode per source).
+- `IMAGE_TRANSFER=url` routes detection images through the `/from-url` endpoint instead of a server-side S3 bucket copy. This is required when the target annotation API can't reach the alert API's S3 bucket — notably local dev, where the default bucket-copy mode fails every detection with `Source object not found`. Leave it unset for the production API (the script picks the right mode per source).
 - To use an alert-id filter, call the underlying script directly with `--sequence-list alerts_id_list.txt`.
 - Use `LOGLEVEL=debug` if you need more detail during imports.
 - Each alert sequence is object-split: one annotation sequence per detected smoke object (siblings get synthetic `alert_api_id`s).
@@ -159,7 +159,7 @@ For detailed documentation, parameter reference, and troubleshooting, see [Data 
 ### Troubleshooting
 
 **Services won't start:**
-- Ensure ports 3000, 5050, 5432, and 4566 are available
+- Ensure ports 3000, 5050, 5432, 4566, and 9001 are available
 - Check logs: `docker compose logs [service_name]`
 - Rebuild images: `docker compose build --no-cache`
 
