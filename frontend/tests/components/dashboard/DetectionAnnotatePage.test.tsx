@@ -156,7 +156,7 @@ describe('DetectionAnnotatePage (Localize queue)', () => {
     expect(navigateMock).toHaveBeenCalledWith('/localize/11');
   });
 
-  it('shows an empty state when the queue is empty', async () => {
+  it('shows an all-caught-up empty state linking to the classify queue', async () => {
     vi.mocked(apiClient.getLocalizationQueue).mockResolvedValue({
       items: [],
       page: 1,
@@ -165,6 +165,11 @@ describe('DetectionAnnotatePage (Localize queue)', () => {
       total: 0,
     });
     render(<DetectionAnnotatePage />, { wrapper });
-    await waitFor(() => expect(screen.getByText(/No alerts ready for localization/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Localization queue is clear')).toBeTruthy());
+    expect(screen.getByText(/Classifying more alerts is what fills this queue/)).toBeTruthy();
+    const cta = screen.getByRole('link', { name: 'Start classifying' });
+    expect(cta.getAttribute('href')).toBe('/classify');
+    // Old copy is gone
+    expect(screen.queryByText(/No alerts ready for localization/)).toBeNull();
   });
 });

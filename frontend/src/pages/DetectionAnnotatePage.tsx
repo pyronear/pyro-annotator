@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Check, ChevronLeft, ChevronRight } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { LocalizationQueueItem } from '@/types/api';
 import { LocalizeQueueTable } from '@/components/sequences';
 import { pickNextLocalizeLane } from '@/utils/annotation/localizeUtils';
-import { localizeDetail } from '@/utils/routes';
+import { localizeDetail, ROUTES } from '@/utils/routes';
 
 export default function DetectionAnnotatePage() {
   const navigate = useNavigate();
@@ -68,12 +68,26 @@ export default function DetectionAnnotatePage() {
 
       {items.length === 0 ? (
         <div className="flex items-center justify-center min-h-96">
-          <div className="text-center">
-            <p className="text-gray-900 font-medium">No alerts ready for localization</p>
-            <p className="mt-1 text-sm text-gray-500">
-              Alerts appear here once every object is classified and the auto reference layer is
-              computed
+          <div className="text-center max-w-md">
+            <span
+              aria-hidden="true"
+              className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-pine-soft"
+            >
+              <Check className="h-7 w-7 text-pine" />
+            </span>
+            <h2 className="mt-4 font-display text-base font-semibold text-char">
+              Localization queue is clear
+            </h2>
+            <p className="mt-1.5 font-body text-sm leading-relaxed text-haze">
+              Nice work — nothing to box right now. Classifying more alerts is what fills this
+              queue.
             </p>
+            <Link
+              to={ROUTES.CLASSIFY}
+              className="mt-5 inline-block rounded-lg bg-pine px-7 py-2.5 font-body text-[13.5px] font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2"
+            >
+              Start classifying
+            </Link>
           </div>
         </div>
       ) : (
