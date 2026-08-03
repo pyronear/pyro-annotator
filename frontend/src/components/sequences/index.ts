@@ -4,7 +4,6 @@ export { ClassifyDoneTable } from './ClassifyDoneTable';
 export { LocalizeQueueTable } from './LocalizeQueueTable';
 export { LocalizeDoneTable } from './LocalizeDoneTable';
 export { PlatformAnnotationLabel } from './PlatformAnnotationLabel';
-export { SequencesPagination } from './SequencesPagination';
 export { TablePagination } from './TablePagination';
 
 // Detection Review specific components

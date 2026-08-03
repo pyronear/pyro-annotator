@@ -320,7 +320,7 @@ describe('SequencesTableHeader', () => {
       const { container } = render(<SequencesTableHeader {...defaultProps} />);
       
       const headerDiv = container.firstChild as HTMLElement;
-      expect(headerDiv).toHaveClass('px-4', 'py-3', 'border-b', 'border-gray-200');
+      expect(headerDiv).toHaveClass('px-4', 'py-3', 'border-b', 'border-line');
     });
 
     it('should apply correct classes to inner container', () => {
@@ -335,22 +335,17 @@ describe('SequencesTableHeader', () => {
       render(<SequencesTableHeader {...defaultProps} />);
       
       const select = screen.getByRole('combobox');
-      expect(select).toHaveClass('border', 'border-gray-300', 'rounded', 'px-2', 'py-1', 'text-sm');
+      expect(select).toHaveClass('border', 'border-line', 'rounded', 'px-2', 'py-1', 'text-sm');
     });
 
     it('should apply correct text styling classes', () => {
       render(<SequencesTableHeader {...defaultProps} />);
       
       const resultsText = screen.getByText(/Showing \d+ to \d+ of \d+ results/);
-      expect(resultsText).toHaveClass('text-sm', 'text-gray-700');
-      
+      expect(resultsText).toHaveClass('font-body', 'text-sm', 'text-haze');
+
       const label = screen.getByText('Show:');
-      expect(label).toHaveClass('text-sm', 'text-gray-700');
-      
-      const filteredText = screen.queryByText(/\(filtered from/);
-      if (filteredText) {
-        expect(filteredText).toHaveClass('text-gray-500');
-      }
+      expect(label).toHaveClass('font-body', 'text-sm', 'text-haze');
     });
   });
 });

@@ -16,8 +16,9 @@ import {
   SequencesTableHeader,
   ClassifyQueueTable,
   ClassifyDoneTable,
-  SequencesPagination,
+  TablePagination,
 } from '@/components/sequences';
+import { TABLE_CARD_CLASSES } from '@/components/sequences/tableStyles';
 import { useSequenceStore } from '@/store/useSequenceStore';
 import { useCameras } from '@/hooks/useCameras';
 import { useOrganizations } from '@/hooks/useOrganizations';
@@ -394,7 +395,7 @@ export default function SequencesPage({
 
       {/* Results */}
       {filteredSequences && (
-        <div className="bg-white rounded-lg border border-gray-200">
+        <div className={TABLE_CARD_CLASSES}>
           <SequencesTableHeader
             filteredSequences={filteredSequences}
             sequences={sequences}
@@ -416,8 +417,11 @@ export default function SequencesPage({
             />
           )}
 
-          <SequencesPagination
-            filteredSequences={filteredSequences}
+          <TablePagination
+            page={filteredSequences.page}
+            pages={filteredSequences.pages}
+            total={filteredSequences.total}
+            itemsLabel="sequences"
             onPageChange={handlePageChange}
           />
         </div>
