@@ -184,7 +184,7 @@ export default function SequenceGroupsListPage({
         <p className="text-gray-600">Label many related sequences at once.</p>
       </div>
 
-      <div>
+      <div className="flex justify-center">
         <div className="inline-flex rounded-lg border border-line bg-ash p-0.5 gap-0.5 text-sm">
           {FILTERS.map(f => {
             const active = filter === f.value;
