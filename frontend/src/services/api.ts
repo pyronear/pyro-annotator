@@ -23,6 +23,10 @@ import {
   DetectionAnnotationFilters,
   ApiError,
   LocalizationQueueItem,
+  AlertDetail,
+  ClassifyQueueItem,
+  ClassifySubmitRequest,
+  ClassifySubmitResponse,
   SequenceGroup,
   SequenceGroupListItem,
   SequenceGroupStats,
@@ -165,6 +169,40 @@ class ApiClient {
     const response: AxiosResponse<PaginatedResponse<LocalizationQueueItem>> = await this.client.get(
       `${API_ENDPOINTS.SEQUENCES}localization-queue`,
       { params }
+    );
+    return response.data;
+  }
+
+  // Alert details with all sibling object-sequences and their annotations
+  async getAlertDetail(sourceApi: string, platformAlertId: number): Promise<AlertDetail> {
+    const response: AxiosResponse<AlertDetail> = await this.client.get(
+      `${API_ENDPOINTS.SEQUENCES}alert`,
+      {
+        params: {
+          source_api: sourceApi,
+          platform_alert_id: platformAlertId,
+        },
+      }
+    );
+    return response.data;
+  }
+
+  // Alerts ready for classification (alert-grouped Classify queue)
+  async getClassifyQueue(
+    params: { page?: number; size?: number } = {}
+  ): Promise<PaginatedResponse<ClassifyQueueItem>> {
+    const response: AxiosResponse<PaginatedResponse<ClassifyQueueItem>> = await this.client.get(
+      `${API_ENDPOINTS.SEQUENCES}classify-queue`,
+      { params }
+    );
+    return response.data;
+  }
+
+  // Bulk classification submit for all objects of an alert
+  async classifySubmit(payload: ClassifySubmitRequest): Promise<ClassifySubmitResponse> {
+    const response: AxiosResponse<ClassifySubmitResponse> = await this.client.post(
+      `${API_ENDPOINTS.SEQUENCE_ANNOTATIONS}classify-submit`,
+      payload
     );
     return response.data;
   }

@@ -10,7 +10,7 @@ export interface AnnotationCounts {
 }
 
 export function useAnnotationCounts(): AnnotationCounts {
-  // Query for sequences needing sequence-level annotation
+  // Query for alerts awaiting classification (counts alerts from the classify queue)
   const {
     data: sequenceData,
     isLoading: sequenceLoading,
@@ -18,8 +18,7 @@ export function useAnnotationCounts(): AnnotationCounts {
   } = useQuery({
     queryKey: ['annotation-counts', 'sequences'],
     queryFn: async () => {
-      const response = await apiClient.getSequencesWithAnnotations({
-        processing_stage: 'ready_to_annotate',
+      const response = await apiClient.getClassifyQueue({
         size: 1, // Only need the total count
       });
       return response.total;
