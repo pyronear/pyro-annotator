@@ -77,7 +77,7 @@ function SortableHeader({
       <button
         type="button"
         onClick={() => onSort(column)}
-        className="uppercase tracking-wide select-none cursor-help hover:text-gray-900"
+        className="uppercase tracking-wide select-none hover:text-gray-900"
       >
         {label}
         {active && <Arrow className="inline w-3 h-3 ml-1 text-blue-600" />}
@@ -197,7 +197,7 @@ export default function SequenceGroupsListPage({
                 className={`px-3.5 py-1.5 rounded-md ${
                   active
                     ? 'border border-line bg-paper font-semibold text-char'
-                    : 'font-medium text-haze hover:text-char'
+                    : 'border border-transparent font-medium text-haze hover:text-char'
                 }`}
               >
                 {f.label}
@@ -214,7 +214,10 @@ export default function SequenceGroupsListPage({
         </div>
       </div>
 
-      {items.length === 0 ? (
+      {/* Gate on total, not items: a stale page ≥ 2 can refetch empty while
+          groups still exist — that must keep the table + pagination, not
+          show a false "all labeled" success. */}
+      {(data?.total ?? 0) === 0 ? (
         <div className="flex items-center justify-center min-h-96">
           <div className="text-center max-w-md">
             {filter === 'unlabeled' ? (

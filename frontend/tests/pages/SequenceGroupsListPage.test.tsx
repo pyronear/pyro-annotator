@@ -21,7 +21,8 @@ function renderAt(path: string) {
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[path]}>
         <Routes>
-          <Route path="/classify/groups" element={<SequenceGroupsListPage filter="unlabeled" />} />
+          {/* No filter prop: covers the component's 'unlabeled' default, as App.tsx renders it */}
+          <Route path="/classify/groups" element={<SequenceGroupsListPage />} />
           <Route
             path="/classify/groups/labeled"
             element={<SequenceGroupsListPage filter="labeled" />}
@@ -111,6 +112,20 @@ describe('SequenceGroupsListPage', () => {
     renderAt('/classify/groups');
     await waitFor(() => expect(screen.getByText('CAM_07')).toBeTruthy());
     expect(screen.getByRole('table')).toBeTruthy();
+  });
+
+  it('an empty page with a non-zero total keeps the table, not the empty state', async () => {
+    // A stale page ≥ 2 can refetch empty while groups still exist elsewhere.
+    vi.mocked(apiClient.getSequenceGroups).mockResolvedValue({
+      items: [],
+      page: 2,
+      pages: 2,
+      size: 50,
+      total: 51,
+    });
+    renderAt('/classify/groups');
+    await waitFor(() => expect(screen.getByRole('table')).toBeTruthy());
+    expect(screen.queryByText('All groups labeled')).toBeNull();
   });
 
   it('column headers carry explanatory tooltips', async () => {
