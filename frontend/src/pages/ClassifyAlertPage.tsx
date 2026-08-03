@@ -695,6 +695,8 @@ export default function ClassifyAlertPage() {
       </div>
 
       <div className="space-y-6 pt-20">
+        <ObjectPresenceStrip objects={presenceStripObjects} />
+
         {groupConflictWarnings.length > 0 && (
           <div className="sticky top-20 z-30 bg-amber-50 border-b-2 border-amber-400 px-4 py-3 shadow">
             <div className="max-w-7xl mx-auto space-y-2">
@@ -788,8 +790,6 @@ export default function ClassifyAlertPage() {
             );
           })}
         </div>
-
-        <ObjectPresenceStrip objects={presenceStripObjects} />
 
         {/* Alert-level missed smoke review — shared player over the primary lane, footer control. */}
         <div ref={sequenceReviewerRef}>

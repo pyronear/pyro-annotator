@@ -525,4 +525,19 @@ describe('ClassifyAlertPage', () => {
       })
     );
   });
+
+  it('renders the presence strip as the first thing under the header, above the cards grid and the shared player', async () => {
+    render(<ClassifyAlertPage />, { wrapper });
+
+    await waitFor(() => expect(screen.getByTestId('object-card-101:0')).toBeInTheDocument());
+
+    const strip = screen.getByTestId('object-presence-swatch-0');
+    const card = screen.getByTestId('object-card-101:0');
+    const player = screen.getByText('Mock: No missed smoke');
+
+    // DOCUMENT_POSITION_FOLLOWING: the compared node comes *after* `strip`
+    // in document order.
+    expect(strip.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(strip.compareDocumentPosition(player) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
 });
