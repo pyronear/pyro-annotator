@@ -1,0 +1,84 @@
+/**
+ * Tests for ObjectPresenceStrip: a slim, dependency-free presentational
+ * strip on the collocated classify screen giving temporal context + a
+ * color legend across an alert's objects. One row per object — color
+ * swatch + label + a presence bar across the union of the alert's frame
+ * timestamps, filled where that object's lane has a detection at that
+ * timestamp.
+ */
+
+import React from 'react';
+import { render, screen } from '@testing-library/react';
+import { ObjectPresenceStrip } from '@/components/sequence-annotation/ObjectPresenceStrip';
+
+describe('ObjectPresenceStrip', () => {
+  const t1 = '2024-01-01T00:00:00.000Z';
+  const t2 = '2024-01-01T00:00:01.000Z';
+  const t3 = '2024-01-01T00:00:02.000Z';
+
+  it('renders nothing for a single-object alert', () => {
+    const { container } = render(
+      <ObjectPresenceStrip
+        objects={[{ label: 'Object 1', color: '#3b82f6', timestamps: [t1, t2] }]}
+      />
+    );
+
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('renders nothing when there are no objects', () => {
+    const { container } = render(<ObjectPresenceStrip objects={[]} />);
+
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('renders one row per object with correct colors and labels, and fills segments per the frame union', () => {
+    render(
+      <ObjectPresenceStrip
+        objects={[
+          { label: 'Object 1', color: '#3b82f6', timestamps: [t1, t2] },
+          { label: 'Object 2', color: '#f97316', timestamps: [t2, t3] },
+        ]}
+      />
+    );
+
+    expect(screen.getByText('Object 1')).toBeInTheDocument();
+    expect(screen.getByText('Object 2')).toBeInTheDocument();
+
+    // Object 1: present at t1, t2; absent at t3.
+    expect(screen.getByTestId('presence-segment-0-0')).toHaveStyle({ backgroundColor: '#3b82f6' });
+    expect(screen.getByTestId('presence-segment-0-1')).toHaveStyle({ backgroundColor: '#3b82f6' });
+    expect(screen.getByTestId('presence-segment-0-2')).not.toHaveStyle({
+      backgroundColor: '#3b82f6',
+    });
+
+    // Object 2: absent at t1; present at t2, t3.
+    expect(screen.getByTestId('presence-segment-1-0')).not.toHaveStyle({
+      backgroundColor: '#f97316',
+    });
+    expect(screen.getByTestId('presence-segment-1-1')).toHaveStyle({ backgroundColor: '#f97316' });
+    expect(screen.getByTestId('presence-segment-1-2')).toHaveStyle({ backgroundColor: '#f97316' });
+
+    // Union has exactly 3 frames, per object row.
+    expect(screen.getAllByTestId(/^presence-segment-0-/)).toHaveLength(3);
+    expect(screen.getAllByTestId(/^presence-segment-1-/)).toHaveLength(3);
+  });
+
+  it('uses each object color for its swatch', () => {
+    render(
+      <ObjectPresenceStrip
+        objects={[
+          { label: 'Object 1', color: '#3b82f6', timestamps: [t1] },
+          { label: 'Object 2', color: '#f97316', timestamps: [t1] },
+        ]}
+      />
+    );
+
+    expect(screen.getByTestId('object-presence-swatch-0')).toHaveStyle({
+      backgroundColor: '#3b82f6',
+    });
+    expect(screen.getByTestId('object-presence-swatch-1')).toHaveStyle({
+      backgroundColor: '#f97316',
+    });
+  });
+});

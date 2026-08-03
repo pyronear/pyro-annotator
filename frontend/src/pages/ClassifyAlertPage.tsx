@@ -38,7 +38,12 @@ import {
 } from '@/utils/annotation/navigationUtils';
 import { getObjectColor, ObjectOverlay } from '@/utils/annotation/objectColors';
 import { getProcessingStageLabel } from '@/utils/processingStage';
-import { MissedSmokePanel, ObjectCard, CardClassification } from '@/components/sequence-annotation';
+import {
+  MissedSmokePanel,
+  ObjectCard,
+  CardClassification,
+  ObjectPresenceStrip,
+} from '@/components/sequence-annotation';
 import { NotificationSystem } from '@/components/ui/NotificationSystem';
 import { useToastNotifications } from '@/utils/notification/toastUtils';
 import { ROUTES, classifyDetail, classifyGroup } from '@/utils/routes';
@@ -321,6 +326,15 @@ export default function ClassifyAlertPage() {
     label: o.label,
     boxesByRecordedAt: o.boxesByRecordedAt,
     isActive: o.cardKey === activeCardKey,
+  }));
+
+  // Presence strip: temporal context + color legend, keyed off the same
+  // per-object color/label identity as the overlays above. Renders nothing
+  // itself for < 2 objects.
+  const presenceStripObjects = cardOverlayData.map(o => ({
+    label: o.label,
+    color: o.color,
+    timestamps: Object.keys(o.boxesByRecordedAt),
   }));
 
   const handleBboxChangeByCardKey = (cardKey: string, updatedBbox: SequenceBbox) => {
@@ -768,6 +782,8 @@ export default function ClassifyAlertPage() {
             );
           })}
         </div>
+
+        <ObjectPresenceStrip objects={presenceStripObjects} />
 
         {/* Alert-level missed smoke review — shared player over the primary lane, footer control. */}
         <div ref={sequenceReviewerRef}>

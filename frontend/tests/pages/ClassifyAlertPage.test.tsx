@@ -208,9 +208,16 @@ describe('ClassifyAlertPage', () => {
   it('renders one card per lane-track for a 3-lane alert', async () => {
     render(<ClassifyAlertPage />, { wrapper });
 
-    await waitFor(() => expect(screen.getByText('Object 1')).toBeInTheDocument());
-    expect(screen.getByText('Object 2')).toBeInTheDocument();
-    expect(screen.getByText('Object 3')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId('object-card-101:0')).toBeInTheDocument());
+    expect(
+      within(screen.getByTestId('object-card-101:0')).getByText('Object 1')
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('object-card-102:0')).getByText('Object 2')
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('object-card-103:0')).getByText('Object 3')
+    ).toBeInTheDocument();
   });
 
   it('renders the locked lane card read-only with a stage badge', async () => {
