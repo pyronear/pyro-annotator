@@ -21,7 +21,7 @@ function Segment({ first, toneClass, label, count, detail, isLoading }: SegmentP
       className={`${first ? 'chevron-seg-first' : 'chevron-seg'} flex-1 bg-paper px-5 py-3.5 text-center md:px-8`}
     >
       <div
-        className={`font-data text-[10.5px] font-medium uppercase tracking-[0.12em] ${toneClass} mb-1`}
+        className={`font-data text-eyebrow font-medium uppercase tracking-[0.12em] ${toneClass} mb-1`}
       >
         {label}
       </div>

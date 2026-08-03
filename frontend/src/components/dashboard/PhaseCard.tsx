@@ -44,15 +44,15 @@ export default function PhaseCard({
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
 
   return (
-    <div className="flex-1 rounded-[10px] border border-line bg-paper px-[22px] py-5">
+    <div className="flex-1 rounded-card border border-line bg-paper px-[22px] py-5">
       <div
-        className={`mb-2.5 flex items-center gap-2 font-data text-[10.5px] font-medium uppercase tracking-[0.14em] ${t.text}`}
+        className={`mb-2.5 flex items-center gap-2 font-data text-eyebrow font-medium uppercase tracking-eyebrow ${t.text}`}
       >
         <span className={`h-2 w-2 rounded-full ${t.dot}`} aria-hidden />
         Pass {pass} — {passLabel}
       </div>
-      <h2 className="font-display text-[18.5px] font-semibold text-char">{title}</h2>
-      <p className="mb-4 font-body text-[12.5px] text-haze">{description}</p>
+      <h2 className="font-display text-heading font-semibold text-char">{title}</h2>
+      <p className="mb-4 font-body text-detail text-haze">{description}</p>
       {isLoading ? (
         <div className="mx-auto h-10 w-24 animate-pulse rounded bg-ash" />
       ) : (
@@ -76,13 +76,13 @@ export default function PhaseCard({
       </p>
       <Link
         to={ctaTo}
-        className={`mx-auto block w-fit rounded-lg ${t.bg} px-7 py-2.5 font-body text-[13.5px] font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2`}
+        className={`mx-auto block w-fit rounded-lg ${t.bg} px-7 py-2.5 font-body text-body font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2`}
       >
         {ctaLabel}
       </Link>
       <div className="mt-4 flex items-center justify-between border-t border-line pt-3">
         {secondaryLink && secondaryLink.count > 0 ? (
-          <Link to={secondaryLink.to} className="font-body text-[12.5px] text-haze hover:text-char">
+          <Link to={secondaryLink.to} className="font-body text-detail text-haze hover:text-char">
             {secondaryLink.label} ·{' '}
             <span className="font-semibold text-char">{secondaryLink.count.toLocaleString()}</span>
           </Link>
@@ -91,7 +91,7 @@ export default function PhaseCard({
         )}
         {/* No count on the review link: the review page opens on its own persisted
             stage tab, so any single number here would disagree with what it shows. */}
-        <Link to={reviewTo} className="font-body text-[12.5px] text-haze hover:text-char">
+        <Link to={reviewTo} className="font-body text-detail text-haze hover:text-char">
           {reviewLabel} →
         </Link>
       </div>

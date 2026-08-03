@@ -2,6 +2,10 @@
 
 React/TypeScript SPA for annotating wildfire detection sequences against the PyroAnnotator API.
 
+**Before any UI work, read [DESIGN.md](./DESIGN.md)** — the design guidelines
+(palette, typography, component recipes). New code uses the fire-lookout
+tokens; the legacy `gray-*` / `primary-*` palettes are deprecated.
+
 ## Stack
 - React 18 + TypeScript, Vite 5
 - Tailwind CSS 3, Headless UI, Lucide icons
