@@ -312,4 +312,54 @@ describe('ObjectStatusStrip', () => {
     expect(axisArrow).toHaveClass('border-l-line');
     expect(axisArrow).not.toHaveAttribute('style');
   });
+
+  it('renders a thumbnail slot beside the label when an object carries one', () => {
+    render(
+      <ObjectStatusStrip
+        objects={[
+          {
+            label: 'Object 1',
+            color: '#3b82f6',
+            statusByTimestamp: { [t1]: 'confirmed' },
+            thumbnail: <div data-testid="my-thumb">thumb</div>,
+          },
+        ]}
+      />
+    );
+
+    expect(screen.getByTestId('my-thumb')).toBeInTheDocument();
+  });
+
+  it('omits the thumbnail column entirely when no object in the strip carries one', () => {
+    render(
+      <ObjectStatusStrip
+        objects={[
+          { label: 'Object 1', color: '#3b82f6', statusByTimestamp: { [t1]: 'confirmed' } },
+        ]}
+      />
+    );
+
+    expect(screen.queryByTestId('my-thumb')).not.toBeInTheDocument();
+  });
+
+  it('reserves an empty thumbnail slot for an object without one when a sibling row has one', () => {
+    render(
+      <ObjectStatusStrip
+        objects={[
+          {
+            label: 'Object 1',
+            color: '#3b82f6',
+            statusByTimestamp: { [t1]: 'confirmed' },
+            thumbnail: <div data-testid="my-thumb">thumb</div>,
+          },
+          { label: 'Object 2', color: '#eb6834', statusByTimestamp: { [t1]: 'confirmed' } },
+        ]}
+      />
+    );
+
+    const row2 = screen.getByTestId('object-status-row-1');
+    // Object 2's row still has an (empty) thumbnail slot so both rows'
+    // status bars stay aligned in the same column.
+    expect(row2.querySelector('.overflow-hidden.rounded.border')).toBeInTheDocument();
+  });
 });

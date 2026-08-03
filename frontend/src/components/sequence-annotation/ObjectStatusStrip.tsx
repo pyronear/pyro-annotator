@@ -36,6 +36,8 @@ export interface ObjectStatusStripObject {
   flag?: boolean;
   /** This object's status per frame timestamp (ISO string); frames absent from the map render as `absent`. */
   statusByTimestamp: Record<string, ObjectStatusStripStatus>;
+  /** Optional small preview rendered beside the swatch/label (e.g. a cropped image thumbnail) — purely decorative, non-interactive. */
+  thumbnail?: React.ReactNode;
 }
 
 interface ObjectStatusStripProps {
@@ -50,13 +52,26 @@ interface ObjectStatusStripProps {
 // Leading columns every row (object rows and the axis row alike) shares, so
 // the axis's tick columns line up under the status bars' frame columns: the
 // color swatch's width, then the label's width, matching the `gap-2`
-// rhythm of an object row exactly (see the swatch/label spans below).
-const LEADING_SPACER = (
-  <>
-    <span className="h-2.5 w-2.5 shrink-0" aria-hidden="true" />
-    <span className="w-20 shrink-0" aria-hidden="true" />
-  </>
-);
+// rhythm of an object row exactly (see the swatch/label spans below). The
+// thumbnail column is included only when at least one object in this strip
+// instance carries one, so a plain (no-thumbnail) strip's axis keeps its
+// original alignment.
+const THUMBNAIL_CLASS = 'h-7 w-10 shrink-0 overflow-hidden rounded border border-line bg-ash';
+
+function leadingSpacer(hasThumbnails: boolean) {
+  return (
+    <>
+      <span className="h-2.5 w-2.5 shrink-0" aria-hidden="true" />
+      <span className="w-20 shrink-0" aria-hidden="true" />
+      {hasThumbnails && (
+        <span
+          className={`${THUMBNAIL_CLASS} border-transparent bg-transparent`}
+          aria-hidden="true"
+        />
+      )}
+    </>
+  );
+}
 
 /**
  * Which frame indices (0-based) get a tick label: the first and last frame
@@ -114,6 +129,8 @@ export const ObjectStatusStrip: React.FC<ObjectStatusStripProps> = ({
 }) => {
   if (objects.length < 1) return null;
 
+  const hasThumbnails = objects.some(o => !!o.thumbnail);
+
   // Numeric (chronological) sort, not string sort: same-second timestamps
   // can be serialized both as "...:00Z" and "...:00.500000Z" — the "." in
   // the fractional form sorts before "Z" lexicographically, which would
@@ -153,6 +170,11 @@ export const ObjectStatusStrip: React.FC<ObjectStatusStripProps> = ({
                 {flag ? `⚑ ${object.label}` : object.label}
               </span>
             </button>
+            {hasThumbnails && (
+              <span className={THUMBNAIL_CLASS} aria-hidden={!object.thumbnail}>
+                {object.thumbnail}
+              </span>
+            )}
             <div className="flex h-1.5 flex-1 gap-px overflow-hidden rounded-full bg-ash">
               {frameUnion.map((timestamp, frameIndex) => {
                 const status = object.statusByTimestamp[timestamp] ?? 'absent';
@@ -182,7 +204,7 @@ export const ObjectStatusStrip: React.FC<ObjectStatusStripProps> = ({
           above stay the dominant layer. */}
       <div data-testid="status-axis" className="pt-2">
         <div className="flex items-center gap-2">
-          {LEADING_SPACER}
+          {leadingSpacer(hasThumbnails)}
           <div data-testid="status-axis-line" className="h-px flex-1 bg-line" aria-hidden="true" />
           {/* Directional arrowhead — a CSS border-triangle, not an image,
               kept a few px so it stays subordinate to the data bars. */}
@@ -193,7 +215,7 @@ export const ObjectStatusStrip: React.FC<ObjectStatusStripProps> = ({
           />
         </div>
         <div className="flex items-start gap-2 mt-1">
-          {LEADING_SPACER}
+          {leadingSpacer(hasThumbnails)}
           <div className="flex flex-1">
             {frameUnion.map((timestamp, frameIndex) => (
               <div key={timestamp} className="flex flex-1 flex-col items-center">
@@ -213,7 +235,7 @@ export const ObjectStatusStrip: React.FC<ObjectStatusStripProps> = ({
           </div>
         </div>
         <div className="flex items-center gap-2 mt-1.5">
-          {LEADING_SPACER}
+          {leadingSpacer(hasThumbnails)}
           <div
             data-testid="status-axis-label"
             className="flex-1 text-center font-data text-[9px] leading-none text-haze"

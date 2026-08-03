@@ -9,6 +9,7 @@ import ClassifyAlertPage from '@/pages/ClassifyAlertPage';
 import DetectionAnnotatePage from '@/pages/DetectionAnnotatePage';
 import DetectionReviewPage from '@/pages/DetectionReviewPage';
 import DetectionSequenceAnnotatePage from '@/pages/DetectionSequenceAnnotatePage';
+import LocalizeAlertPage from '@/pages/LocalizeAlertPage';
 import SequenceGroupAnnotatePage from '@/pages/SequenceGroupAnnotatePage';
 import SequenceGroupsListPage from '@/pages/SequenceGroupsListPage';
 import UserManagementPage from '@/pages/UserManagementPage';
@@ -100,10 +101,13 @@ function App() {
                     path="/localize/done/:sequenceId/:detectionId?"
                     element={<DetectionSequenceAnnotatePage mode="done" />}
                   />
+                  {/* Literal /localize/lane segment must precede the dynamic
+                      /localize/:sequenceId below so it isn't shadowed. */}
                   <Route
-                    path="/localize/:sequenceId/:detectionId?"
+                    path="/localize/lane/:sequenceId/:detectionId?"
                     element={<DetectionSequenceAnnotatePage />}
                   />
+                  <Route path="/localize/:sequenceId" element={<LocalizeAlertPage />} />
                   {legacyRedirectRoutes}
                   <Route path="/users" element={<UserManagementPage />} />
                   <Route path="/guide" element={<GuidePage />} />

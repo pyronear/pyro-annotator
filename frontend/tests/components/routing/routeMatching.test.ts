@@ -1,8 +1,8 @@
 /**
  * Locks in React Router's static-over-dynamic segment ranking for the route
  * patterns App.tsx mounts (keep the list in sync with App.tsx). Guards the
- * spec claim that /classify/done, /classify/groups and /localize/done never
- * fall through to the :id / :sequenceId routes.
+ * spec claim that /classify/done, /classify/groups, /localize/done and
+ * /localize/lane never fall through to the :id / :sequenceId routes.
  */
 import { matchRoutes } from 'react-router-dom';
 
@@ -16,7 +16,8 @@ const routes = [
   { path: '/localize' },
   { path: '/localize/done' },
   { path: '/localize/done/:sequenceId/:detectionId?' },
-  { path: '/localize/:sequenceId/:detectionId?' },
+  { path: '/localize/lane/:sequenceId/:detectionId?' },
+  { path: '/localize/:sequenceId' },
 ];
 
 const matchedPath = (url: string): string | undefined => {
@@ -34,11 +35,22 @@ describe('taxonomy route matching precedence', () => {
     ['/classify/groups/7', '/classify/groups/:id'],
     ['/localize', '/localize'],
     ['/localize/done', '/localize/done'],
-    ['/localize/5', '/localize/:sequenceId/:detectionId?'],
-    ['/localize/5/9', '/localize/:sequenceId/:detectionId?'],
+    // Bare /localize/:sequenceId is the collocated alert page — it has no
+    // detection segment, so it only ever matches a two-segment path.
+    ['/localize/5', '/localize/:sequenceId'],
+    // The legacy per-lane box-drawing page lives under the literal /lane
+    // segment now, not directly under /localize/:sequenceId.
+    ['/localize/lane/5', '/localize/lane/:sequenceId/:detectionId?'],
+    ['/localize/lane/5/9', '/localize/lane/:sequenceId/:detectionId?'],
     ['/localize/done/5', '/localize/done/:sequenceId/:detectionId?'],
     ['/localize/done/5/9', '/localize/done/:sequenceId/:detectionId?'],
   ])('%s matches %s', (url, expected) => {
     expect(matchedPath(url)).toBe(expected);
+  });
+
+  it('a bare 3-segment /localize/:id/:id path (no /lane, no /done) matches nothing', () => {
+    // The old /localize/:sequenceId/:detectionId? shape is gone; only
+    // /localize/lane/... and /localize/done/... carry a detection segment.
+    expect(matchedPath('/localize/5/9')).toBeUndefined();
   });
 });
