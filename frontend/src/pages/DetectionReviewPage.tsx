@@ -352,7 +352,7 @@ export default function DetectionReviewPage() {
       {/* Results */}
       {filteredSequences && (
         <div className="bg-white rounded-lg border border-gray-200">
-          <SequencesLegend />
+          <SequencesLegend showPillTypes={false} />
 
           <LocalizeDoneTable
             sequences={filteredSequences.items}

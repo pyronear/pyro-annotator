@@ -58,7 +58,7 @@ export function LocalizeDoneTable({
             <ColumnHeader label="Camera" tip="Camera that recorded the sequence" />
             <ColumnHeader label="Organisation" tip="Organisation operating the camera" />
             <ColumnHeader label="Recorded" tip="When the sequence was recorded" />
-            <ColumnHeader label="Source" tip="Platform the sequence was imported from" />
+            <ColumnHeader label="Source" tip="Alert API the sequence was imported from" />
             <ColumnHeader label="Azimuth" tip="Camera viewing direction, in degrees" />
             <ColumnHeader label="Smoke types" tip="Smoke types assigned during classification" />
             <ColumnHeader label="Frames" tip="Images in this sequence" align="right" />

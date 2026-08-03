@@ -42,7 +42,7 @@ export function LocalizeQueueTable({ items, onItemClick }: LocalizeQueueTablePro
             <ColumnHeader label="Camera" tip="Camera that recorded the alert" />
             <ColumnHeader label="Organisation" tip="Organisation operating the camera" />
             <ColumnHeader label="Recorded" tip="When the alert was recorded" />
-            <ColumnHeader label="Source" tip="Platform the alert was imported from" />
+            <ColumnHeader label="Source" tip="Alert API the alert was imported from" />
             <ColumnHeader label="Azimuth" tip="Camera viewing direction, in degrees" />
             <ColumnHeader label="Smoke types" tip="Smoke types assigned during classification" />
             <ColumnHeader

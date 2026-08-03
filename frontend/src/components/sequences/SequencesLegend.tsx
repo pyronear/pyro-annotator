@@ -1,4 +1,10 @@
-export function SequencesLegend() {
+interface SequencesLegendProps {
+  // The pill-type swatches only make sense on tables that render smoke /
+  // false-positive pills (classify done); localize done shows plain text.
+  showPillTypes?: boolean;
+}
+
+export function SequencesLegend({ showPillTypes = true }: SequencesLegendProps) {
   return (
     <div className="px-4 py-2 bg-gray-50 border-b border-gray-200">
       <div className="flex items-center justify-between text-xs">
@@ -21,16 +27,18 @@ export function SequencesLegend() {
             <span className="text-gray-600">Unsure (Needs review)</span>
           </div>
         </div>
-        <div className="flex items-center space-x-2">
-          <div className="flex items-center space-x-1">
-            <div className="w-3 h-3 bg-orange-200 border border-orange-300 rounded"></div>
-            <span className="text-gray-600">Smoke Types</span>
+        {showPillTypes && (
+          <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-1">
+              <div className="w-3 h-3 bg-orange-200 border border-orange-300 rounded"></div>
+              <span className="text-gray-600">Smoke Types</span>
+            </div>
+            <div className="flex items-center space-x-1">
+              <div className="w-3 h-3 bg-yellow-200 border border-yellow-300 rounded"></div>
+              <span className="text-gray-600">False Positive Types</span>
+            </div>
           </div>
-          <div className="flex items-center space-x-1">
-            <div className="w-3 h-3 bg-yellow-200 border border-yellow-300 rounded"></div>
-            <span className="text-gray-600">False Positive Types</span>
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );
