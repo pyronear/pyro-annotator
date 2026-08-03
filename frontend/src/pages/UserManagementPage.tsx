@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Edit, Trash2, Key, Search, Filter, UserCheck, UserX } from 'lucide-react';
+import { Plus, Edit, Trash2, Key, Filter, UserCheck, UserX } from 'lucide-react';
 import { clsx } from 'clsx';
 import { User, UserCreate, UserUpdate, UserPasswordUpdate, UserFilters } from '@/types/api';
 
@@ -23,7 +23,6 @@ export default function UserManagementPage() {
     page: PAGINATION_DEFAULTS.PAGE,
     size: PAGINATION_DEFAULTS.SIZE,
   });
-  const [searchTerm, setSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
 
   // Modal states
@@ -33,19 +32,6 @@ export default function UserManagementPage() {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
   // ALL HOOKS MUST BE BEFORE ANY CONDITIONAL RETURNS
-  // Apply search filter with debounce
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setFilters(prev => ({
-        ...prev,
-        search: searchTerm || undefined,
-        page: 1, // Reset to first page when searching
-      }));
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [searchTerm]);
-
   // Fetch users
   const {
     data: usersData,
@@ -142,139 +128,131 @@ export default function UserManagementPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-ember"></div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <p className="text-red-700">Error loading users: {error?.message || 'Unknown error'}</p>
+      <div className="bg-signal-soft border border-signal/20 rounded-lg p-4">
+        <p className="font-body text-signal">
+          Error loading users: {error?.message || 'Unknown error'}
+        </p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-5xl space-y-6">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">User Management</h1>
-          <p className="text-sm text-gray-600 mt-1">Manage user accounts and permissions</p>
+          <h1 className="font-display text-[27px] font-semibold tracking-tight text-char">
+            User Management
+          </h1>
+          <p className="mt-1 font-body text-[13.5px] text-haze">
+            Manage user accounts and permissions
+          </p>
         </div>
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Create User
-        </button>
-      </div>
-
-      {/* Search and Filters */}
-      <div className="bg-white border border-gray-200 rounded-lg p-4">
-        <div className="flex items-center space-x-4">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search users..."
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
+        <div className="flex items-center gap-3">
           <button
             onClick={() => setShowFilters(!showFilters)}
             className={clsx(
-              'inline-flex items-center px-3 py-2 text-sm font-medium rounded-lg border transition-colors',
+              'inline-flex items-center rounded-lg border px-3 py-2 font-body text-sm font-medium transition-colors',
               showFilters
-                ? 'bg-blue-50 text-blue-700 border-blue-200'
-                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                ? 'border-ember/30 bg-ember-soft text-ember'
+                : 'border-line bg-paper text-char hover:bg-ash'
             )}
           >
             <Filter className="w-4 h-4 mr-2" />
             Filters
           </button>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="inline-flex items-center rounded-lg bg-ember px-4 py-2 font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Create User
+          </button>
         </div>
-
-        {/* Filter Options */}
-        {showFilters && (
-          <div className="mt-4 pt-4 border-t border-gray-200">
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => toggleFilter('is_active', true)}
-                className={clsx(
-                  'inline-flex items-center px-3 py-1 text-xs font-medium rounded-full transition-colors',
-                  filters.is_active === true
-                    ? 'bg-green-100 text-green-800'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                )}
-              >
-                <UserCheck className="w-3 h-3 mr-1" />
-                Active Only
-              </button>
-              <button
-                onClick={() => toggleFilter('is_active', false)}
-                className={clsx(
-                  'inline-flex items-center px-3 py-1 text-xs font-medium rounded-full transition-colors',
-                  filters.is_active === false
-                    ? 'bg-red-100 text-red-800'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                )}
-              >
-                <UserX className="w-3 h-3 mr-1" />
-                Inactive Only
-              </button>
-              <button
-                onClick={() => toggleFilter('is_superuser', true)}
-                className={clsx(
-                  'inline-flex items-center px-3 py-1 text-xs font-medium rounded-full transition-colors',
-                  filters.is_superuser === true
-                    ? 'bg-purple-100 text-purple-800'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                )}
-              >
-                Superusers Only
-              </button>
-            </div>
-          </div>
-        )}
       </div>
 
+      {/* Filter Options */}
+      {showFilters && (
+        <div className="rounded-[10px] border border-line bg-paper p-4">
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => toggleFilter('is_active', true)}
+              className={clsx(
+                'inline-flex items-center px-3 py-1 font-body text-xs font-medium rounded-full transition-colors',
+                filters.is_active === true
+                  ? 'bg-pine-soft text-pine'
+                  : 'bg-ash text-haze hover:text-char'
+              )}
+            >
+              <UserCheck className="w-3 h-3 mr-1" />
+              Active Only
+            </button>
+            <button
+              onClick={() => toggleFilter('is_active', false)}
+              className={clsx(
+                'inline-flex items-center px-3 py-1 font-body text-xs font-medium rounded-full transition-colors',
+                filters.is_active === false
+                  ? 'bg-signal-soft text-signal'
+                  : 'bg-ash text-haze hover:text-char'
+              )}
+            >
+              <UserX className="w-3 h-3 mr-1" />
+              Inactive Only
+            </button>
+            <button
+              onClick={() => toggleFilter('is_superuser', true)}
+              className={clsx(
+                'inline-flex items-center px-3 py-1 font-body text-xs font-medium rounded-full transition-colors',
+                filters.is_superuser === true
+                  ? 'bg-ember-soft text-ember'
+                  : 'bg-ash text-haze hover:text-char'
+              )}
+            >
+              Superusers Only
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Users List */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+      <div className="rounded-[10px] border border-line bg-paper overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+          <table className="min-w-full divide-y divide-line">
+            <thead className="bg-ash">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left font-data text-[10.5px] font-medium uppercase tracking-[0.14em] text-haze">
                   User
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left font-data text-[10.5px] font-medium uppercase tracking-[0.14em] text-haze">
                   Status
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left font-data text-[10.5px] font-medium uppercase tracking-[0.14em] text-haze">
                   Role
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left font-data text-[10.5px] font-medium uppercase tracking-[0.14em] text-haze">
                   Created
                 </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-right font-data text-[10.5px] font-medium uppercase tracking-[0.14em] text-haze">
                   Actions
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className="bg-paper divide-y divide-line">
               {usersData?.items?.map(user => (
-                <tr key={user.id} className="hover:bg-gray-50">
+                <tr key={user.id} className="hover:bg-ash">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
-                      <div className="text-sm font-medium text-gray-900">{user.username}</div>
+                      <div className="font-body text-sm font-medium text-char">{user.username}</div>
                       {user.is_system && (
                         <span
-                          className="ml-2 inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800 cursor-help"
+                          className="ml-2 inline-flex px-2 py-1 font-body text-xs font-semibold rounded-full bg-ash text-haze cursor-help"
                           title="Automated account used to attribute annotations inherited during group reassignment. It cannot log in, and cannot be edited or deleted."
                         >
                           System
@@ -285,8 +263,8 @@ export default function UserManagementPage() {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span
                       className={clsx(
-                        'inline-flex px-2 py-1 text-xs font-semibold rounded-full',
-                        user.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                        'inline-flex px-2 py-1 font-body text-xs font-semibold rounded-full',
+                        user.is_active ? 'bg-pine-soft text-pine' : 'bg-signal-soft text-signal'
                       )}
                     >
                       {user.is_active ? 'Active' : 'Inactive'}
@@ -295,16 +273,14 @@ export default function UserManagementPage() {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span
                       className={clsx(
-                        'inline-flex px-2 py-1 text-xs font-semibold rounded-full',
-                        user.is_superuser
-                          ? 'bg-purple-100 text-purple-800'
-                          : 'bg-gray-100 text-gray-800'
+                        'inline-flex px-2 py-1 font-body text-xs font-semibold rounded-full',
+                        user.is_superuser ? 'bg-ember-soft text-ember' : 'bg-ash text-haze'
                       )}
                     >
                       {user.is_superuser ? 'Superuser' : 'User'}
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <td className="px-6 py-4 whitespace-nowrap font-data text-[12.5px] text-haze">
                     {new Date(user.created_at).toLocaleDateString()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
@@ -312,14 +288,14 @@ export default function UserManagementPage() {
                       <>
                         <button
                           onClick={() => handleEditUser(user)}
-                          className="text-blue-600 hover:text-blue-900 p-1 rounded"
+                          className="text-haze hover:text-char p-1 rounded"
                           title="Edit user"
                         >
                           <Edit className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => handleChangePassword(user)}
-                          className="text-yellow-600 hover:text-yellow-900 p-1 rounded"
+                          className="text-haze hover:text-char p-1 rounded"
                           title="Change password"
                         >
                           <Key className="w-4 h-4" />
@@ -327,7 +303,7 @@ export default function UserManagementPage() {
                         {user.id !== currentUser?.id && (
                           <button
                             onClick={() => handleDeleteUser(user)}
-                            className="text-red-600 hover:text-red-900 p-1 rounded"
+                            className="text-haze hover:text-signal p-1 rounded"
                             title="Delete user"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -344,9 +320,9 @@ export default function UserManagementPage() {
 
         {/* Pagination */}
         {usersData && usersData.pages > 1 && (
-          <div className="bg-white px-4 py-3 border-t border-gray-200 sm:px-6">
+          <div className="bg-paper px-4 py-3 border-t border-line sm:px-6">
             <div className="flex items-center justify-between">
-              <div className="text-sm text-gray-700">
+              <div className="font-body text-sm text-haze">
                 Showing {(usersData.page - 1) * usersData.size + 1} to{' '}
                 {Math.min(usersData.page * usersData.size, usersData.total)} of {usersData.total}{' '}
                 results
@@ -355,14 +331,14 @@ export default function UserManagementPage() {
                 <button
                   onClick={() => handlePageChange(usersData.page - 1)}
                   disabled={usersData.page === 1}
-                  className="px-3 py-1 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="rounded-lg border border-line px-3 py-1 font-body text-sm text-char hover:bg-ash disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Previous
                 </button>
                 <button
                   onClick={() => handlePageChange(usersData.page + 1)}
                   disabled={usersData.page >= usersData.pages}
-                  className="px-3 py-1 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="rounded-lg border border-line px-3 py-1 font-body text-sm text-char hover:bg-ash disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Next
                 </button>
@@ -412,6 +388,18 @@ export default function UserManagementPage() {
 }
 
 // Modal Components
+function useEscapeToClose(onClose: () => void) {
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [onClose]);
+}
+
 function CreateUserModal({
   onClose,
   onSubmit,
@@ -423,6 +411,8 @@ function CreateUserModal({
   isLoading: boolean;
   error: MutationError;
 }) {
+  useEscapeToClose(onClose);
+
   const [formData, setFormData] = useState<UserCreate>({
     username: '',
     password: '',
@@ -495,14 +485,14 @@ function CreateUserModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                className="px-4 py-2 font-body text-sm font-medium text-char bg-paper border border-line rounded-lg hover:bg-ash"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={isLoading}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 disabled:opacity-50"
+                className="px-4 py-2 font-body text-sm font-semibold text-white bg-ember border border-transparent rounded-lg hover:brightness-95 disabled:opacity-50"
               >
                 {isLoading ? 'Creating...' : 'Create User'}
               </button>
@@ -527,6 +517,8 @@ function EditUserModal({
   isLoading: boolean;
   error: MutationError;
 }) {
+  useEscapeToClose(onClose);
+
   const [formData, setFormData] = useState<UserUpdate>({
     username: user.username,
     is_active: user.is_active,
@@ -588,14 +580,14 @@ function EditUserModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                className="px-4 py-2 font-body text-sm font-medium text-char bg-paper border border-line rounded-lg hover:bg-ash"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={isLoading}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 disabled:opacity-50"
+                className="px-4 py-2 font-body text-sm font-semibold text-white bg-ember border border-transparent rounded-lg hover:brightness-95 disabled:opacity-50"
               >
                 {isLoading ? 'Updating...' : 'Update User'}
               </button>
@@ -620,6 +612,8 @@ function PasswordChangeModal({
   isLoading: boolean;
   error: MutationError;
 }) {
+  useEscapeToClose(onClose);
+
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
@@ -686,14 +680,14 @@ function PasswordChangeModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                className="px-4 py-2 font-body text-sm font-medium text-char bg-paper border border-line rounded-lg hover:bg-ash"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={isLoading || password !== confirmPassword}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 disabled:opacity-50"
+                className="px-4 py-2 font-body text-sm font-semibold text-white bg-ember border border-transparent rounded-lg hover:brightness-95 disabled:opacity-50"
               >
                 {isLoading ? 'Updating...' : 'Update Password'}
               </button>
