@@ -17,6 +17,7 @@ __all__ = [
     "AlertDetail",
     "AlertLane",
     "Azimuth",
+    "ClassifyQueueItem",
     "LocalizationQueueItem",
     "LocalizationQueueLane",
     "SequenceCreate",
@@ -154,6 +155,21 @@ class LocalizationQueueItem(BaseModel):
     azimuth: Optional[int]
     recorded_at: datetime
     lanes: List[LocalizationQueueLane]
+
+
+class ClassifyQueueItem(BaseModel):
+    """One alert with at least one object awaiting classification (queue row)."""
+
+    source_api: SourceApi
+    platform_alert_id: int
+    camera_name: str
+    organisation_name: str
+    azimuth: Optional[float] = None
+    recorded_at: datetime
+    is_wildfire_alertapi: Optional[AnnotationType] = None
+    primary_sequence_id: int
+    total_objects: int
+    classified_objects: int
 
 
 class AlertLane(BaseModel):

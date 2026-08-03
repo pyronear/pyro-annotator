@@ -53,6 +53,7 @@ from app.models import (
 from app.schemas.sequence import (
     AlertDetail,
     AlertLane,
+    ClassifyQueueItem,
     LocalizationQueueItem,
     LocalizationQueueLane,
     SequenceCreate,
@@ -804,6 +805,103 @@ async def _build_queue_item(
             for seq, annotation in rows
         ],
     )
+
+
+# NOTE: declared before GET /{sequence_id} — the int path converter would
+# otherwise turn /classify-queue into a 422.
+@router.get("/classify-queue")
+async def classify_queue(
+    camera_name: Optional[str] = Query(None),
+    organisation_name: Optional[str] = Query(None),
+    source_api: Optional[SourceApi] = Query(None),
+    recorded_at_gte: Optional[datetime] = Query(None),
+    recorded_at_lte: Optional[datetime] = Query(None),
+    session: AsyncSession = Depends(get_session),
+    params: Params = Depends(),
+    current_user: User = Depends(get_current_user),
+) -> Page[ClassifyQueueItem]:
+    """Alerts with at least one object awaiting classification (spec:
+    multi-object alert collocation, sub-project 2). Pre-filters candidate
+    alerts before grouping so cost tracks the unclassified backlog (#215)."""
+    cand_seq = aliased(Sequence)
+    cand_ann = aliased(SequenceAnnotation)
+    candidates = (
+        select(cand_seq.source_api, cand_seq.platform_alert_id)
+        .join(cand_ann, cand_ann.sequence_id == cand_seq.id)
+        .where(
+            cand_ann.processing_stage
+            == SequenceAnnotationProcessingStage.READY_TO_ANNOTATE
+        )
+    )
+    for col, val in (
+        (cand_seq.camera_name, camera_name),
+        (cand_seq.organisation_name, organisation_name),
+        (cand_seq.source_api, source_api),
+    ):
+        if val is not None:
+            candidates = candidates.where(col == val)
+    if recorded_at_gte is not None:
+        candidates = candidates.where(cand_seq.recorded_at >= recorded_at_gte)
+    if recorded_at_lte is not None:
+        candidates = candidates.where(cand_seq.recorded_at <= recorded_at_lte)
+
+    alerts = (
+        select(
+            Sequence.source_api,
+            Sequence.platform_alert_id,
+            func.min(Sequence.recorded_at).label("recorded_at"),
+            func.count().label("total_objects"),
+            func.sum(
+                case((SequenceAnnotation.processing_stage.in_(DONE_STAGES), 1), else_=0)
+            ).label("classified_objects"),
+            func.min(Sequence.id).label("any_sequence_id"),
+        )
+        .outerjoin(SequenceAnnotation, SequenceAnnotation.sequence_id == Sequence.id)
+        .where(tuple_(Sequence.source_api, Sequence.platform_alert_id).in_(candidates))
+        .group_by(Sequence.source_api, Sequence.platform_alert_id)
+        .subquery()
+    )
+    total = (
+        await session.execute(select(func.count()).select_from(alerts))
+    ).scalar_one()
+    page_rows = (
+        await session.execute(
+            select(alerts)
+            .order_by(desc(alerts.c.recorded_at))
+            .offset((params.page - 1) * params.size)
+            .limit(params.size)
+        )
+    ).all()
+    items = []
+    for row in page_rows:
+        primary = (
+            await session.execute(
+                select(Sequence)
+                .where(
+                    Sequence.source_api == row.source_api,
+                    Sequence.platform_alert_id == row.platform_alert_id,
+                )
+                .order_by(Sequence.alert_api_id.asc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if primary is None:  # concurrent delete
+            continue
+        items.append(
+            ClassifyQueueItem(
+                source_api=row.source_api,
+                platform_alert_id=row.platform_alert_id,
+                camera_name=primary.camera_name,
+                organisation_name=primary.organisation_name,
+                azimuth=primary.azimuth,
+                recorded_at=row.recorded_at,
+                is_wildfire_alertapi=primary.is_wildfire_alertapi,
+                primary_sequence_id=primary.id,
+                total_objects=row.total_objects,
+                classified_objects=int(row.classified_objects or 0),
+            )
+        )
+    return Page.create(items=items, total=total, params=params)
 
 
 @router.get("/{sequence_id}")
