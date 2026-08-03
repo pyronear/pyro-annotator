@@ -103,9 +103,12 @@ the prefix (Created takes the Recorded slot).
     footer on all five pages (moves `/localize`'s and groups' pagination
     into the card).
 - The classify pages' in-card count/page-size strip
-  (`SequencesTableHeader`) stays functionally, restyled to tokens:
-  `border-b border-line`, text `text-haze`, select `border-line`. Same
-  for the page-size select on `/localize/done`.
+  (`SequencesTableHeader`) is removed: the count was redundant with the
+  footer's "Page X of Y · N sequences", and the page-size select moves up
+  into the page header next to Filters — matching `/localize/done`. The
+  conditional "(filtered from N total)" note folds into the footer label.
+  The page-size select on `/localize/done` is restyled to tokens
+  (`border-line`, `font-body`, `text-haze` label).
 
 ## 6. Out of scope
 

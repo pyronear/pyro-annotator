@@ -1,4 +1,3 @@
-export { SequencesTableHeader } from './SequencesTableHeader';
 export { ClassifyQueueTable } from './ClassifyQueueTable';
 export { ClassifyDoneTable } from './ClassifyDoneTable';
 export { LocalizeQueueTable } from './LocalizeQueueTable';

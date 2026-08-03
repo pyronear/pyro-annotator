@@ -279,7 +279,9 @@ export default function SequenceGroupsListPage({
                     tip="Whether a human validated the group's label"
                     align="right"
                   />
-                  <th className={HEADER_CELL_CLASSES} />
+                  <th className={HEADER_CELL_CLASSES}>
+                    <span className="sr-only">Open</span>
+                  </th>
                 </tr>
               </thead>
               <tbody className={TBODY_CLASSES}>

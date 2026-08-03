@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import React from 'react';
@@ -149,6 +149,32 @@ describe('SequenceGroupsListPage', () => {
       return Array.from(document.querySelectorAll('th')).findIndex(th => th.contains(el));
     });
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
+  });
+
+  it('clicking a sortable header refetches with that column and its natural direction', async () => {
+    vi.mocked(apiClient.getSequenceGroups).mockResolvedValue({
+      items: [group],
+      page: 1,
+      pages: 1,
+      size: 50,
+      total: 1,
+    });
+    renderAt('/classify/groups');
+    await waitFor(() => expect(screen.getByText('CAM_07')).toBeTruthy());
+
+    fireEvent.click(screen.getByRole('button', { name: /created/i }));
+    await waitFor(() =>
+      expect(apiClient.getSequenceGroups).toHaveBeenCalledWith(
+        expect.objectContaining({ order_by: 'created_at', order_direction: 'desc' })
+      )
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /camera/i }));
+    await waitFor(() =>
+      expect(apiClient.getSequenceGroups).toHaveBeenCalledWith(
+        expect.objectContaining({ order_by: 'camera_name', order_direction: 'asc' })
+      )
+    );
   });
 
   it('renders a badge only for the "to label" state', async () => {

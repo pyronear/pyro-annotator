@@ -8,16 +8,11 @@ import {
   ProcessingStageFilter,
   SequenceWithAnnotation,
 } from '@/types/api';
-import { QUERY_KEYS } from '@/utils/constants';
+import { PAGINATION_OPTIONS, QUERY_KEYS } from '@/utils/constants';
 import { analyzeSequenceAccuracy } from '@/utils/modelAccuracy';
 import { getStageFilterLabel, stageFilterIncludes } from '@/utils/processingStage';
 import FilterPopover from '@/components/filters/FilterPopover';
-import {
-  SequencesTableHeader,
-  ClassifyQueueTable,
-  ClassifyDoneTable,
-  TablePagination,
-} from '@/components/sequences';
+import { ClassifyQueueTable, ClassifyDoneTable, TablePagination } from '@/components/sequences';
 import { TABLE_CARD_CLASSES } from '@/components/sequences/tableStyles';
 import { useSequenceStore } from '@/store/useSequenceStore';
 import { useCameras } from '@/hooks/useCameras';
@@ -361,6 +356,20 @@ export default function SequencesPage({
         </div>
         <div className="flex items-center gap-3 flex-wrap justify-end">
           {stageSelector}
+          <div className="flex items-center space-x-2">
+            <label className="font-body text-sm text-haze">Show:</label>
+            <select
+              value={filters.size || 50}
+              onChange={e => handleFilterChange({ size: Number(e.target.value) })}
+              className="border border-line rounded px-2 py-1 font-body text-sm"
+            >
+              {PAGINATION_OPTIONS.map(size => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
+              ))}
+            </select>
+          </div>
           <FilterPopover
             filters={filters}
             onFiltersChange={handleFilterChange}
@@ -396,15 +405,6 @@ export default function SequencesPage({
       {/* Results */}
       {filteredSequences && (
         <div className={TABLE_CARD_CLASSES}>
-          <SequencesTableHeader
-            filteredSequences={filteredSequences}
-            sequences={sequences}
-            defaultProcessingStage={defaultProcessingStage}
-            selectedModelAccuracy={selectedModelAccuracy}
-            filters={filters}
-            onFilterChange={handleFilterChange}
-          />
-
           {isReviewPage ? (
             <ClassifyDoneTable
               sequences={filteredSequences.items}
@@ -421,7 +421,13 @@ export default function SequencesPage({
             page={filteredSequences.page}
             pages={filteredSequences.pages}
             total={filteredSequences.total}
-            itemsLabel="sequences"
+            itemsLabel={
+              selectedModelAccuracy !== 'all' &&
+              stageFilterIncludes(defaultProcessingStage, 'annotated') &&
+              sequences
+                ? `sequences (filtered from ${sequences.total} total)`
+                : 'sequences'
+            }
             onPageChange={handlePageChange}
           />
         </div>
