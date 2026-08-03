@@ -369,8 +369,20 @@ export default function SequenceGroupsListPage({
                     </td>
                     <td className={CELL_CLASSES}>
                       {g.is_validated ? (
-                        <span className="inline-flex items-center gap-1 font-body text-xs font-semibold text-pine">
+                        <span
+                          className="inline-flex items-center gap-1 font-body text-xs font-semibold text-pine"
+                          title={
+                            g.validated_at
+                              ? `Validated ${new Date(g.validated_at).toLocaleString()}`
+                              : undefined
+                          }
+                        >
                           <ShieldCheck className="w-3.5 h-3.5" /> validated
+                          {/* Legacy validations (pre-attribution) have no user —
+                              the badge alone is the whole cell for those. */}
+                          {g.validated_by_username && (
+                            <span className="font-normal">· {g.validated_by_username}</span>
+                          )}
                         </span>
                       ) : (
                         <span className="text-haze">—</span>
