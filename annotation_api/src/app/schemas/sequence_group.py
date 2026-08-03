@@ -123,6 +123,8 @@ class SequenceGroupRead(BaseModel):
     false_positive_type: Optional[FalsePositiveType]
     is_unsure: bool
     is_validated: bool
+    validated_at: Optional[datetime]
+    validated_by_user_id: Optional[int]
     labeled_at: Optional[datetime]
     labeled_by_user_id: Optional[int]
     created_at: datetime

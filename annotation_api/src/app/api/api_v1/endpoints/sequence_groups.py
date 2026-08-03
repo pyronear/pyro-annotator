@@ -282,7 +282,17 @@ async def update_sequence_group(
         )
     changes = payload.model_dump(exclude_unset=True)
     if "is_validated" in changes:
-        group.is_validated = changes["is_validated"]
+        new_value = changes["is_validated"]
+        if new_value and not group.is_validated:
+            # false→true: stamp the reviewer. Re-validating an already
+            # validated group is a no-op — first reviewer stands.
+            group.validated_by_user_id = current_user.id
+            group.validated_at = datetime.now(UTC)
+        elif not new_value:
+            # true→false (or already false): never carry stale attribution.
+            group.validated_by_user_id = None
+            group.validated_at = None
+        group.is_validated = new_value
     if changes:
         group.updated_at = datetime.now(UTC)
     session.add(group)

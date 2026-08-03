@@ -799,3 +799,77 @@ async def test_stats_counts_only_groups_with_three_plus_members(
         "labeled": 0,
         "unlabeled": 2,
     }
+
+
+@pytest.mark.asyncio
+async def test_validate_records_reviewer(
+    authenticated_client: AsyncClient,
+    async_session: AsyncSession,
+    test_user: User,
+):
+    """Flipping is_validated false→true stamps the caller and a timestamp."""
+    gid = await _seed_group_with_members(
+        async_session,
+        n_members=3,
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        alert_api_id_start=400,
+    )
+    resp = await authenticated_client.patch(
+        f"/sequence_groups/{gid}", json={"is_validated": True}
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["validated_by_user_id"] == test_user.id
+    assert body["validated_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_unvalidate_clears_reviewer(
+    authenticated_client: AsyncClient,
+    async_session: AsyncSession,
+):
+    """true→false wipes attribution so stale reviewers never linger."""
+    gid = await _seed_group_with_members(
+        async_session,
+        n_members=3,
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        alert_api_id_start=410,
+    )
+    resp = await authenticated_client.patch(
+        f"/sequence_groups/{gid}", json={"is_validated": True}
+    )
+    assert resp.status_code == 200, resp.text
+    resp = await authenticated_client.patch(
+        f"/sequence_groups/{gid}", json={"is_validated": False}
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["validated_by_user_id"] is None
+    assert body["validated_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_revalidate_keeps_original_attribution(
+    authenticated_client: AsyncClient,
+    async_session: AsyncSession,
+):
+    """Re-sending is_validated=true on a validated group is a no-op — the
+    first reviewer stands until someone unvalidates."""
+    gid = await _seed_group_with_members(
+        async_session,
+        n_members=3,
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        alert_api_id_start=420,
+    )
+    first = await authenticated_client.patch(
+        f"/sequence_groups/{gid}", json={"is_validated": True}
+    )
+    assert first.status_code == 200, first.text
+    second = await authenticated_client.patch(
+        f"/sequence_groups/{gid}", json={"is_validated": True}
+    )
+    assert second.status_code == 200, second.text
+    assert second.json()["validated_at"] == first.json()["validated_at"]
+    assert (
+        second.json()["validated_by_user_id"] == first.json()["validated_by_user_id"]
+    )
