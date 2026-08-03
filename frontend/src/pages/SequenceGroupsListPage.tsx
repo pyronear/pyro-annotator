@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { Popover } from '@headlessui/react';
 import {
   Loader2,
   AlertCircle,
@@ -123,19 +124,26 @@ export default function SequenceGroupsListPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Sequence groups</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-gray-900">Sequence groups</h1>
+          <Popover className="relative flex">
+            <Popover.Button
+              className="text-gray-400 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-full"
+              aria-label="What is a sequence group?"
+            >
+              <Info className="w-4 h-4" />
+            </Popover.Button>
+            <Popover.Panel className="absolute left-0 top-full z-20 mt-2 w-96 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 shadow-lg">
+              <span className="font-semibold">What is a sequence group?</span> After each import,
+              sequences from the same camera looking in the same direction at the same spot are
+              grouped automatically — usually one recurring smoke plume or false-positive source (an
+              antenna, a cloud bank…). Open a group, label one of its sequences, and once the group
+              is validated the label propagates to every member. Only groups with 3+ sequences are
+              shown.
+            </Popover.Panel>
+          </Popover>
+        </div>
         <p className="text-gray-600">Label many related sequences at once.</p>
-      </div>
-
-      <div className="flex gap-2.5 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-        <Info className="w-4 h-4 flex-none mt-0.5 text-blue-600" />
-        <p>
-          <span className="font-semibold">What is a sequence group?</span> After each import,
-          sequences from the same camera looking in the same direction at the same spot are grouped
-          automatically — usually one recurring smoke plume or false-positive source (an antenna, a
-          cloud bank…). Open a group, label one of its sequences, and once the group is validated
-          the label propagates to every member. Only groups with 3+ sequences are shown.
-        </p>
       </div>
 
       <div>
