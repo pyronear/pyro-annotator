@@ -37,6 +37,9 @@ from app.models import (
 )
 from app.schemas.annotation_validation import SequenceAnnotationData
 from app.schemas.sequence_annotations import (
+    ClassifySubmitRequest,
+    ClassifySubmitResponse,
+    ClassifySubmitResult,
     SequenceAnnotationBulkRequest,
     SequenceAnnotationBulkResponse,
     SequenceAnnotationBulkResult,
@@ -979,6 +982,140 @@ async def _propagate_to_group_if_validated(
     await annotations.record_contribution(sequence_annotation.id, current_user_id)
 
     await session.commit()
+
+
+_CLASSIFY_SUBMIT_TARGET_STAGES = {
+    SequenceAnnotationProcessingStage.ANNOTATED,
+    SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
+}
+
+
+@router.post(
+    "/classify-submit",
+    status_code=status.HTTP_200_OK,
+    response_model=ClassifySubmitResponse,
+    summary="Atomically classify all objects of one alert",
+)
+async def classify_submit(
+    payload: ClassifySubmitRequest = Body(...),
+    annotations: SequenceAnnotationCRUD = Depends(get_sequence_annotation_crud),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> ClassifySubmitResponse:
+    """Apply every lane's classification decision for one alert in a single
+    transaction (spec: multi-object alert collocation). Either every lane
+    lands or none does — a per-lane validation failure (e.g. bad
+    detection_id, localization exit guard) rolls back the whole batch.
+
+    Post-commit effects (auto-create detection annotations, group fan-out)
+    run afterwards, per lane in submit order, each with its own commit —
+    exactly as the PATCH path (`update_sequence_annotation`) does for a
+    single lane.
+    """
+    invalid_targets = [
+        item.annotation_id
+        for item in payload.items
+        if item.processing_stage not in _CLASSIFY_SUBMIT_TARGET_STAGES
+    ]
+    if invalid_targets:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"Item(s) {invalid_targets} target an unsupported processing_stage; "
+                "classify-submit only accepts annotated or seq_annotation_done"
+            ),
+        )
+
+    annotation_ids = [item.annotation_id for item in payload.items]
+    rows = (
+        await session.execute(
+            select(SequenceAnnotation, Sequence)
+            .join(Sequence, Sequence.id == SequenceAnnotation.sequence_id)
+            .where(SequenceAnnotation.id.in_(annotation_ids))
+        )
+    ).all()
+    by_id = {ann.id: (ann, seq) for ann, seq in rows}
+
+    missing_ids = [aid for aid in annotation_ids if aid not in by_id]
+    if missing_ids:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Sequence annotation(s) {missing_ids} not found",
+        )
+
+    alert_keys = {(seq.source_api, seq.platform_alert_id) for _, seq in by_id.values()}
+    if len(alert_keys) > 1:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="All items must belong to sequences of the same alert",
+        )
+
+    locked_ids = [
+        aid
+        for aid, (ann, _seq) in by_id.items()
+        if ann.processing_stage in _BULK_LOCKED_STAGES
+    ]
+    if locked_ids:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Annotation(s) {sorted(locked_ids)} are already past the "
+                "editable stages; refresh the queue and retry"
+            ),
+        )
+
+    lane_results: List[Tuple[SequenceAnnotation, bool]] = []
+    try:
+        for item in payload.items:
+            update_payload = SequenceAnnotationUpdate(
+                annotation=item.annotation,
+                has_missed_smoke=item.has_missed_smoke,
+                is_unsure=item.is_unsure,
+                processing_stage=item.processing_stage,
+            )
+            updated_annotation, run_auto_create = await apply_annotation_update(
+                item.annotation_id,
+                update_payload,
+                annotations,
+                session,
+                current_user,
+                commit=False,
+            )
+            lane_results.append((updated_annotation, run_auto_create))
+    except HTTPException:
+        await session.rollback()
+        raise
+
+    # The one atomic point: every lane's write lands together.
+    await session.commit()
+
+    results: List[ClassifySubmitResult] = []
+    for updated_annotation, run_auto_create in lane_results:
+        if run_auto_create:
+            await auto_create_detection_annotations(
+                sequence_id=updated_annotation.sequence_id,
+                has_smoke=updated_annotation.has_smoke,
+                has_missed_smoke=updated_annotation.has_missed_smoke,
+                has_false_positives=updated_annotation.has_false_positives,
+                session=session,
+                user_id=current_user.id,
+            )
+            await session.commit()
+
+        propagation_warning = await _propagate_to_group_if_validated(
+            updated_annotation, annotations, session, current_user.id
+        )
+
+        results.append(
+            ClassifySubmitResult(
+                annotation_id=updated_annotation.id,
+                sequence_id=updated_annotation.sequence_id,
+                processing_stage=updated_annotation.processing_stage,
+                group_propagation_warning=propagation_warning,
+            )
+        )
+
+    return ClassifySubmitResponse(results=results)
 
 
 @router.post(

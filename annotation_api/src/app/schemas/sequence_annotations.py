@@ -24,6 +24,10 @@ __all__ = [
     "SequenceAnnotationBulkRequest",
     "SequenceAnnotationBulkResult",
     "SequenceAnnotationBulkResponse",
+    "ClassifySubmitItem",
+    "ClassifySubmitRequest",
+    "ClassifySubmitResult",
+    "ClassifySubmitResponse",
 ]
 
 
@@ -62,6 +66,32 @@ class SequenceAnnotationBulkResponse(BaseModel):
     applied: List[SequenceAnnotationBulkResult]
     skipped: List[SequenceAnnotationBulkResult]
     group_label_updated: bool
+
+
+class ClassifySubmitItem(BaseModel):
+    """One lane's classification decision, as part of an atomic
+    classify-submit for all objects of one alert."""
+
+    annotation_id: int
+    annotation: SequenceAnnotationData
+    has_missed_smoke: bool = False
+    is_unsure: bool = False
+    processing_stage: SequenceAnnotationProcessingStage
+
+
+class ClassifySubmitRequest(BaseModel):
+    items: List[ClassifySubmitItem] = Field(..., min_length=1)
+
+
+class ClassifySubmitResult(BaseModel):
+    annotation_id: int
+    sequence_id: int
+    processing_stage: SequenceAnnotationProcessingStage
+    group_propagation_warning: Optional[str] = None
+
+
+class ClassifySubmitResponse(BaseModel):
+    results: List[ClassifySubmitResult]
 
 
 class SequenceAnnotationCreate(BaseModel):
