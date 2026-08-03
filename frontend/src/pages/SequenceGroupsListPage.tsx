@@ -35,34 +35,63 @@ const FILTERS: { value: SequenceGroupsFilter; label: string; countOf: keyof Sequ
     { value: 'all', label: 'All', countOf: 'total' },
   ];
 
+// Same hover-tooltip bubble as components/sequences/ColumnHeader.tsx, kept
+// local because these headers are sortable and use this table's padding.
+function headerTip(tip: string, align: 'left' | 'right' = 'left') {
+  return (
+    <span
+      role="tooltip"
+      className={`pointer-events-none absolute top-full z-10 mt-1 hidden w-max max-w-[16rem] whitespace-normal rounded bg-gray-900 px-2 py-1 text-xs font-normal normal-case tracking-normal text-white shadow group-hover:block ${
+        align === 'right' ? 'right-0' : 'left-0'
+      }`}
+    >
+      {tip}
+    </span>
+  );
+}
+
 function SortableHeader({
   column,
   label,
+  tip,
   orderBy,
   orderDirection,
   onSort,
+  align = 'left',
 }: {
   column: OrderBy;
   label: string;
+  tip: string;
   orderBy: OrderBy;
   orderDirection: OrderDirection;
   onSort: (column: OrderBy) => void;
+  align?: 'left' | 'right';
 }) {
   const active = orderBy === column;
   const Arrow = orderDirection === 'asc' ? ArrowUp : ArrowDown;
   return (
     <th
-      className="px-3 py-2.5 text-left whitespace-nowrap"
+      className="group relative px-3 py-2.5 text-left whitespace-nowrap"
       aria-sort={active ? (orderDirection === 'asc' ? 'ascending' : 'descending') : undefined}
     >
       <button
         type="button"
         onClick={() => onSort(column)}
-        className="uppercase tracking-wide select-none hover:text-gray-900"
+        className="uppercase tracking-wide select-none cursor-help hover:text-gray-900"
       >
         {label}
         {active && <Arrow className="inline w-3 h-3 ml-1 text-blue-600" />}
       </button>
+      {headerTip(tip, align)}
+    </th>
+  );
+}
+
+function PlainHeader({ label, tip }: { label: string; tip: string }) {
+  return (
+    <th className="group relative px-3 py-2.5 text-left">
+      <span className="cursor-help">{label}</span>
+      {headerTip(tip)}
     </th>
   );
 }
@@ -262,6 +291,7 @@ export default function SequenceGroupsListPage({
                   <SortableHeader
                     column="camera_name"
                     label="Camera"
+                    tip="Camera that recorded the group's sequences"
                     orderBy={orderBy}
                     orderDirection={orderDirection}
                     onSort={handleSort}
@@ -269,6 +299,7 @@ export default function SequenceGroupsListPage({
                   <SortableHeader
                     column="azimuth"
                     label="Azimuth"
+                    tip="Camera viewing direction, in degrees"
                     orderBy={orderBy}
                     orderDirection={orderDirection}
                     onSort={handleSort}
@@ -276,18 +307,24 @@ export default function SequenceGroupsListPage({
                   <SortableHeader
                     column="member_count"
                     label="Sequences"
+                    tip="Number of sequences in the group"
                     orderBy={orderBy}
                     orderDirection={orderDirection}
                     onSort={handleSort}
                   />
-                  <th className="px-3 py-2.5 text-left">Label</th>
-                  <th className="px-3 py-2.5 text-left">Reviewed</th>
+                  <PlainHeader
+                    label="Label"
+                    tip="Group label — propagates to every member once the group is validated"
+                  />
+                  <PlainHeader label="Reviewed" tip="Whether a human validated the group's label" />
                   <SortableHeader
                     column="created_at"
                     label="Created"
+                    tip="When the group was created"
                     orderBy={orderBy}
                     orderDirection={orderDirection}
                     onSort={handleSort}
+                    align="right"
                   />
                   <th className="px-3 py-2.5" />
                 </tr>

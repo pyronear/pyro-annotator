@@ -112,4 +112,21 @@ describe('SequenceGroupsListPage', () => {
     await waitFor(() => expect(screen.getByText('CAM_07')).toBeTruthy());
     expect(screen.getByRole('table')).toBeTruthy();
   });
+
+  it('column headers carry explanatory tooltips', async () => {
+    vi.mocked(apiClient.getSequenceGroups).mockResolvedValue({
+      items: [group],
+      page: 1,
+      pages: 1,
+      size: 50,
+      total: 1,
+    });
+    renderAt('/classify/groups');
+    await waitFor(() => expect(screen.getByText('CAM_07')).toBeTruthy());
+    // One tooltip per labeled column (Camera, Azimuth, Sequences, Label, Reviewed, Created)
+    expect(screen.getAllByRole('tooltip')).toHaveLength(6);
+    expect(screen.getByText('Number of sequences in the group')).toBeTruthy();
+    expect(screen.getByText(/propagates to every member/)).toBeTruthy();
+    expect(screen.getByText('Camera viewing direction, in degrees')).toBeTruthy();
+  });
 });
