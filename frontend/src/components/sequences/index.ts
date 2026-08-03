@@ -1,6 +1,7 @@
 export { SequencesTableHeader } from './SequencesTableHeader';
 export { SequencesLegend } from './SequencesLegend';
 export { ClassifyQueueTable } from './ClassifyQueueTable';
+export { ClassifyAlertQueueTable } from './ClassifyAlertQueueTable';
 export { ClassifyDoneTable } from './ClassifyDoneTable';
 export { PlatformAnnotationPill } from './PlatformAnnotationPill';
 export { SequencesPagination } from './SequencesPagination';

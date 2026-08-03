@@ -3,11 +3,12 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '@/services/api';
 import {
+  ClassifyQueueItem,
   ExtendedSequenceFilters,
   ProcessingStageFilter,
   SequenceWithAnnotation,
 } from '@/types/api';
-import { QUERY_KEYS } from '@/utils/constants';
+import { PAGINATION_OPTIONS, QUERY_KEYS } from '@/utils/constants';
 import { analyzeSequenceAccuracy } from '@/utils/modelAccuracy';
 import { getStageFilterLabel, stageFilterIncludes } from '@/utils/processingStage';
 import FilterPopover from '@/components/filters/FilterPopover';
@@ -15,6 +16,7 @@ import {
   SequencesTableHeader,
   SequencesLegend,
   ClassifyQueueTable,
+  ClassifyAlertQueueTable,
   ClassifyDoneTable,
   SequencesPagination,
 } from '@/components/sequences';
@@ -43,6 +45,10 @@ export default function SequencesPage({
 
   // Annotated-view features apply when the page's stage filter covers 'annotated'
   const isAnnotatedView = stageFilterIncludes(defaultProcessingStage, 'annotated');
+
+  // The classify queue (alert-grouped, one row per alert) replaces the plain
+  // sequences fetch/table only on the un-annotated queue page.
+  const isQueueMode = !isAnnotatedView && !isReviewPage;
 
   // Storage key separates done vs queue filters; done filters are shared across stages.
   const storageKey = isReviewPage ? 'filters-classify-done' : 'filters-classify';
@@ -129,15 +135,31 @@ export default function SequencesPage({
     return stripped;
   }, [filters, isAnnotatedView]);
 
-  // Fetch sequences with annotations in a single efficient call
+  // Fetch sequences with annotations in a single efficient call (review mode)
   const {
     data: sequences,
-    isLoading,
-    error,
+    isLoading: sequencesLoading,
+    error: sequencesError,
   } = useQuery({
     queryKey: [...QUERY_KEYS.SEQUENCES, 'with-annotations', apiFilters],
     queryFn: () => apiClient.getSequencesWithAnnotations(apiFilters),
+    enabled: !isQueueMode,
   });
+
+  // Fetch the alert-grouped classify queue — one row per alert, not per
+  // object-sequence (queue mode only)
+  const {
+    data: classifyQueue,
+    isLoading: classifyQueueLoading,
+    error: classifyQueueError,
+  } = useQuery({
+    queryKey: ['classify-queue', apiFilters],
+    queryFn: () => apiClient.getClassifyQueue(apiFilters),
+    enabled: isQueueMode,
+  });
+
+  const isLoading = isQueueMode ? classifyQueueLoading : sequencesLoading;
+  const error = isQueueMode ? classifyQueueError : sequencesError;
 
   // Filter sequences by model accuracy (only for review page)
   const filteredSequences = useMemo(() => {
@@ -184,6 +206,24 @@ export default function SequencesPage({
     navigate(classifyDetail(clickedSequence.id, isReviewPage));
   };
 
+  const handleAlertClick = (clickedItem: ClassifyQueueItem) => {
+    // Workflow navigation only reads `.id` and array length off each entry
+    // (see getNextSequenceInWorkflow / navigateTo{Next,Previous}InWorkflow in
+    // useSequenceStore), so primary-lane id stubs are sufficient here — the
+    // full SequenceWithAnnotation shape isn't needed for classify-queue rows.
+    if (classifyQueue?.items) {
+      startAnnotationWorkflow(
+        classifyQueue.items.map(
+          item => ({ id: item.primary_sequence_id }) as SequenceWithAnnotation
+        ),
+        clickedItem.primary_sequence_id,
+        apiFilters
+      );
+    }
+
+    navigate(classifyDetail(clickedItem.primary_sequence_id));
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-96">
@@ -203,8 +243,10 @@ export default function SequencesPage({
     );
   }
 
-  // Empty state when no sequences are available
-  if (sequences && sequences.items.length === 0) {
+  // Empty state when no results are available
+  const queueEmpty = isQueueMode && classifyQueue && classifyQueue.items.length === 0;
+  const reviewEmpty = !isQueueMode && sequences && sequences.items.length === 0;
+  if (queueEmpty || reviewEmpty) {
     // Check if user has applied filters
     const hasFilters = hasActiveUserFilters(
       filters,
@@ -225,11 +267,15 @@ export default function SequencesPage({
         {/* Header */}
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Sequences</h1>
+            <h1 className="text-2xl font-bold text-gray-900">
+              {isQueueMode ? 'Alerts' : 'Sequences'}
+            </h1>
             <p className="text-gray-600">
               {isReviewPage
                 ? 'Browse classified sequences and review past decisions'
-                : 'Manage and annotate wildfire detection sequences'}
+                : isQueueMode
+                  ? 'Classify every object of each alert'
+                  : 'Manage and annotate wildfire detection sequences'}
             </p>
           </div>
           <div className="flex items-center gap-3 flex-wrap justify-end">
@@ -274,9 +320,13 @@ export default function SequencesPage({
               <>
                 <div className="text-4xl mb-4">🔍</div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                  No matching sequences found
+                  {isQueueMode ? 'No matching alerts found' : 'No matching sequences found'}
                 </h3>
-                <p className="text-gray-500 mb-4">No sequences match your current filters.</p>
+                <p className="text-gray-500 mb-4">
+                  {isQueueMode
+                    ? 'No alerts match your current filters.'
+                    : 'No sequences match your current filters.'}
+                </p>
                 <p className="text-gray-400 text-sm">Try adjusting your search criteria above.</p>
               </>
             ) : isReviewPage ? (
@@ -286,13 +336,11 @@ export default function SequencesPage({
                 moment.
               </p>
             ) : (
-              // Annotation page - celebratory message
+              // Queue page - celebratory message
               <>
                 <div className="text-6xl mb-4">🎉</div>
                 <h3 className="text-xl font-semibold text-gray-900 mb-2">All caught up!</h3>
-                <p className="text-gray-500">
-                  No sequences available for annotation at the moment.
-                </p>
+                <p className="text-gray-500">No alerts awaiting classification.</p>
               </>
             )}
           </div>
@@ -306,11 +354,15 @@ export default function SequencesPage({
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Sequences</h1>
+          <h1 className="text-2xl font-bold text-gray-900">
+            {isQueueMode ? 'Alerts' : 'Sequences'}
+          </h1>
           <p className="text-gray-600">
             {isReviewPage
               ? 'Browse classified sequences and review past decisions'
-              : 'Manage and annotate wildfire detection sequences'}
+              : isQueueMode
+                ? 'Classify every object of each alert'
+                : 'Manage and annotate wildfire detection sequences'}
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap justify-end">
@@ -348,38 +400,93 @@ export default function SequencesPage({
       </div>
 
       {/* Results */}
-      {filteredSequences && (
-        <div className="bg-white rounded-lg border border-gray-200">
-          <SequencesTableHeader
-            filteredSequences={filteredSequences}
-            sequences={sequences}
-            defaultProcessingStage={defaultProcessingStage}
-            selectedModelAccuracy={selectedModelAccuracy}
-            filters={filters}
-            onFilterChange={handleFilterChange}
-          />
+      {isQueueMode
+        ? classifyQueue && (
+            <div className="bg-white rounded-lg border border-gray-200">
+              <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+                <p className="text-sm text-gray-700">
+                  Showing {(classifyQueue.page - 1) * classifyQueue.size + 1} to{' '}
+                  {Math.min(classifyQueue.page * classifyQueue.size, classifyQueue.total)} of{' '}
+                  {classifyQueue.total} alerts
+                </p>
+                <div className="flex items-center space-x-2">
+                  <label className="text-sm text-gray-700">Show:</label>
+                  <select
+                    value={filters.size || 50}
+                    onChange={e => handleFilterChange({ size: Number(e.target.value) })}
+                    className="border border-gray-300 rounded px-2 py-1 text-sm"
+                  >
+                    {PAGINATION_OPTIONS.map(size => (
+                      <option key={size} value={size}>
+                        {size}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
 
-          {/* Row Background Color Legend - Only show on review page */}
-          {isReviewPage && <SequencesLegend />}
+              <ClassifyAlertQueueTable
+                items={classifyQueue.items}
+                onAlertClick={handleAlertClick}
+              />
 
-          {isReviewPage ? (
-            <ClassifyDoneTable
-              sequences={filteredSequences.items}
-              onSequenceClick={handleSequenceClick}
-            />
-          ) : (
-            <ClassifyQueueTable
-              sequences={filteredSequences.items}
-              onSequenceClick={handleSequenceClick}
-            />
+              {classifyQueue.pages > 1 && (
+                <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => handlePageChange(classifyQueue.page - 1)}
+                      disabled={classifyQueue.page === 1}
+                      className="px-3 py-1 border border-gray-300 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                    >
+                      Previous
+                    </button>
+                    <span className="text-sm text-gray-700">
+                      Page {classifyQueue.page} of {classifyQueue.pages}
+                    </span>
+                    <button
+                      onClick={() => handlePageChange(classifyQueue.page + 1)}
+                      disabled={classifyQueue.page === classifyQueue.pages}
+                      className="px-3 py-1 border border-gray-300 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        : filteredSequences && (
+            <div className="bg-white rounded-lg border border-gray-200">
+              <SequencesTableHeader
+                filteredSequences={filteredSequences}
+                sequences={sequences}
+                defaultProcessingStage={defaultProcessingStage}
+                selectedModelAccuracy={selectedModelAccuracy}
+                filters={filters}
+                onFilterChange={handleFilterChange}
+              />
+
+              {/* Row Background Color Legend - Only show on review page */}
+              {isReviewPage && <SequencesLegend />}
+
+              {isReviewPage ? (
+                <ClassifyDoneTable
+                  sequences={filteredSequences.items}
+                  onSequenceClick={handleSequenceClick}
+                />
+              ) : (
+                <ClassifyQueueTable
+                  sequences={filteredSequences.items}
+                  onSequenceClick={handleSequenceClick}
+                />
+              )}
+
+              <SequencesPagination
+                filteredSequences={filteredSequences}
+                onPageChange={handlePageChange}
+              />
+            </div>
           )}
-
-          <SequencesPagination
-            filteredSequences={filteredSequences}
-            onPageChange={handlePageChange}
-          />
-        </div>
-      )}
     </div>
   );
 }

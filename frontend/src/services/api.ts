@@ -189,7 +189,15 @@ class ApiClient {
 
   // Alerts ready for classification (alert-grouped Classify queue)
   async getClassifyQueue(
-    params: { page?: number; size?: number } = {}
+    params: {
+      page?: number;
+      size?: number;
+      camera_name?: string;
+      organisation_name?: string;
+      source_api?: string;
+      recorded_at_gte?: string;
+      recorded_at_lte?: string;
+    } = {}
   ): Promise<PaginatedResponse<ClassifyQueueItem>> {
     const response: AxiosResponse<PaginatedResponse<ClassifyQueueItem>> = await this.client.get(
       `${API_ENDPOINTS.SEQUENCES}classify-queue`,
