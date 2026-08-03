@@ -36,12 +36,12 @@ describe('buildFilterPills', () => {
     expect(pills).toEqual([{ id: 'source', label: 'Source: Alert API' }]);
   });
 
-  it('labels wildfire classification values, including null as Unclassified', () => {
+  it('labels alert API annotation values, including null as Unclassified', () => {
     expect(
       buildFilterPills({ ...baseInput, filters: { is_wildfire_alertapi: 'wildfire_smoke' } })
-    ).toEqual([{ id: 'wildfire', label: 'Wildfire: Wildfire Smoke' }]);
+    ).toEqual([{ id: 'wildfire', label: 'Alert API: Wildfire smoke' }]);
     expect(buildFilterPills({ ...baseInput, filters: { is_wildfire_alertapi: null } })).toEqual([
-      { id: 'wildfire', label: 'Wildfire: Unclassified' },
+      { id: 'wildfire', label: 'Alert API: Unclassified' },
     ]);
   });
 

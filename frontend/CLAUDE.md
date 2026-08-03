@@ -2,6 +2,10 @@
 
 React/TypeScript SPA for annotating wildfire detection sequences against the PyroAnnotator API.
 
+**Before any UI work, read [DESIGN.md](./DESIGN.md)** — the design guidelines
+(palette, typography, component recipes). New code uses the fire-lookout
+tokens; the legacy `gray-*` / `primary-*` palettes are deprecated.
+
 ## Stack
 - React 18 + TypeScript, Vite 5
 - Tailwind CSS 3, Headless UI, Lucide icons
@@ -28,7 +32,7 @@ frontend/src/
 │   ├── sequence/                # SequencePlayer, SequenceReviewer, MediaControls, PlayerControls, MissedSmokePanel, MissedSmokeInstructionsModal
 │   ├── sequence-annotation/     # AnnotationHeader, MissedSmokePanel, ProcessingStageMessages, SequenceAnnotationGrid
 │   ├── sequences/               # Table headers/rows + pagination for annotate / review queues, plus SequencesLegend
-│   └── ui/                      # ContributorList, NotificationBadge, NotificationSystem, PasswordField, ProgressIndicator
+│   └── ui/                      # NotificationBadge, NotificationSystem, PasswordField, ProgressIndicator
 ├── hooks/
 │   ├── annotation/              # useDrawingCanvas, useKeyboardShortcuts
 │   └── *.ts                     # useAnnotationCounts, usePipelineStats, useCameras, useOrganizations, useSourceApis, useSequenceDetections, useDetectionImage, useImagePreloader, usePersistedFilters, usePersistedTabState

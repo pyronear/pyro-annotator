@@ -1,16 +1,10 @@
-export { SequencesTableHeader } from './SequencesTableHeader';
-export { SequencesLegend } from './SequencesLegend';
 export { ClassifyQueueTable } from './ClassifyQueueTable';
 export { ClassifyAlertQueueTable } from './ClassifyAlertQueueTable';
 export { ClassifyDoneTable } from './ClassifyDoneTable';
-export { PlatformAnnotationPill } from './PlatformAnnotationPill';
-export { SequencesPagination } from './SequencesPagination';
-
-// Detection Review specific components
-export { DetectionReviewTableHeader } from './DetectionReviewTableHeader';
-export { DetectionReviewTableRow } from './DetectionReviewTableRow';
-export { DetectionReviewPagination } from './DetectionReviewPagination';
+export { LocalizeQueueTable } from './LocalizeQueueTable';
+export { LocalizeDoneTable } from './LocalizeDoneTable';
+export { PlatformAnnotationLabel } from './PlatformAnnotationLabel';
+export { TablePagination } from './TablePagination';
 
 // Detection Annotate specific components
 export { DetectionAnnotateTableHeader } from './DetectionAnnotateTableHeader';
-export { DetectionAnnotateTableRow } from './DetectionAnnotateTableRow';

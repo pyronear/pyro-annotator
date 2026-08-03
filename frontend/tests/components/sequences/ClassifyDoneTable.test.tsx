@@ -1,6 +1,6 @@
 /**
- * Tests for ClassifyDoneTable: Result column (FP/smoke pills, unsure badge),
- * absolute timestamps, accuracy row coloring, and row click handling.
+ * Tests for ClassifyDoneTable: Result column (outcome code + detail text),
+ * absolute timestamps, untinted rows, and row click handling.
  */
 
 import React from 'react';
@@ -60,20 +60,61 @@ describe('ClassifyDoneTable', () => {
     vi.clearAllMocks();
   });
 
-  it('renders the column headers including Result', () => {
+  it('renders the column headers in canonical order including Result', () => {
     render(<ClassifyDoneTable sequences={[createSequence()]} onSequenceClick={onSequenceClick} />);
 
-    for (const header of [
+    const labels = [
       'Camera',
       'Organisation',
       'Recorded',
-      'Platform annotation',
       'Source',
       'Azimuth',
+      'Alert API annotation',
       'Result',
-    ]) {
-      expect(screen.getByText(header)).toBeInTheDocument();
-    }
+    ];
+    const positions = labels.map(l => {
+      const el = screen.getByText(l);
+      return Array.from(document.querySelectorAll('th')).findIndex(th => th.contains(el));
+    });
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+    expect(positions.every(p => p > 0)).toBe(true);
+  });
+
+  it('renders column tooltips and a plain-text source', () => {
+    render(<ClassifyDoneTable sequences={[createSequence()]} onSequenceClick={onSequenceClick} />);
+
+    expect(screen.getByText('Alert API the sequence was imported from')).toBeInTheDocument();
+    expect(screen.getByText('test-api')).not.toHaveClass('rounded-full');
+  });
+
+  it('explains the outcome codes in the Result column tooltip', () => {
+    render(<ClassifyDoneTable sequences={[createSequence()]} onSequenceClick={onSequenceClick} />);
+
+    expect(
+      screen.getByText(
+        'Model outcome — TP correct, FP false alarm, ⚑ FN missed smoke, ? unsure — and the classification detail'
+      )
+    ).toBeInTheDocument();
+  });
+
+  it('renders the code alone when the annotation has no detail text', () => {
+    render(
+      <ClassifyDoneTable
+        sequences={[
+          createSequence({
+            annotation: createAnnotation({
+              has_smoke: false,
+              smoke_types: [],
+              false_positive_types: '',
+            }),
+          }),
+        ]}
+        onSequenceClick={onSequenceClick}
+      />
+    );
+
+    const cell = screen.getByTitle('False positive — model flagged non-smoke').closest('td');
+    expect(cell?.querySelector('.ml-2\\.5')).toBeNull();
   });
 
   it('shows the absolute recorded timestamp', () => {
@@ -84,7 +125,7 @@ describe('ClassifyDoneTable', () => {
     ).toBeInTheDocument();
   });
 
-  it('renders smoke-type pills in the Result column', () => {
+  it('renders the TP code with smoke types as detail text', () => {
     render(
       <ClassifyDoneTable
         sequences={[createSequence({ is_wildfire_alertapi: 'other' })]}
@@ -92,10 +133,13 @@ describe('ClassifyDoneTable', () => {
       />
     );
 
-    expect(screen.getByText('🔥 Wildfire')).toBeInTheDocument();
+    expect(
+      screen.getByTitle('True positive — model correctly detected smoke')
+    ).toBeInTheDocument();
+    expect(screen.getByText('Wildfire')).toBeInTheDocument();
   });
 
-  it('renders false-positive pills in the Result column', () => {
+  it('renders the FP code with false-positive types as detail text', () => {
     render(
       <ClassifyDoneTable
         sequences={[
@@ -103,7 +147,7 @@ describe('ClassifyDoneTable', () => {
             annotation: createAnnotation({
               has_smoke: false,
               smoke_types: [],
-              false_positive_types: '["antenna"]',
+              false_positive_types: '["antenna", "high_cloud"]',
             }),
           }),
         ]}
@@ -111,10 +155,23 @@ describe('ClassifyDoneTable', () => {
       />
     );
 
-    expect(screen.getByText('📡 Antenna')).toBeInTheDocument();
+    expect(screen.getByTitle('False positive — model flagged non-smoke')).toBeInTheDocument();
+    expect(screen.getByText('Antenna, High Cloud')).toBeInTheDocument();
   });
 
-  it('renders the unsure badge and amber row background when unsure', () => {
+  it('renders the FN code with missed smoke ahead of smoke types', () => {
+    render(
+      <ClassifyDoneTable
+        sequences={[createSequence({ annotation: createAnnotation({ has_missed_smoke: true }) })]}
+        onSequenceClick={onSequenceClick}
+      />
+    );
+
+    expect(screen.getByTitle('False negative — smoke was missed')).toBeInTheDocument();
+    expect(screen.getByText('Missed smoke · Wildfire')).toBeInTheDocument();
+  });
+
+  it('renders the unsure code without tinting the row', () => {
     render(
       <ClassifyDoneTable
         sequences={[createSequence({ annotation: createAnnotation({ is_unsure: true }) })]}
@@ -122,32 +179,19 @@ describe('ClassifyDoneTable', () => {
       />
     );
 
-    expect(screen.getByText('⚠️ Unsure')).toBeInTheDocument();
-    expect(screen.getByText('Camera-01').closest('tr')).toHaveClass('bg-amber-50');
+    expect(screen.getByTitle('Unsure — needs review')).toBeInTheDocument();
+    expect(screen.getByText('Camera-01').closest('tr')).not.toHaveClass('bg-amber-50');
   });
 
-  it('applies true-positive row background when the human confirmed smoke', () => {
+  it('leaves rows untinted regardless of outcome', () => {
     render(<ClassifyDoneTable sequences={[createSequence()]} onSequenceClick={onSequenceClick} />);
 
-    expect(screen.getByText('Camera-01').closest('tr')).toHaveClass('bg-green-50');
+    const row = screen.getByText('Camera-01').closest('tr');
+    expect(row).toHaveClass('hover:bg-ash');
+    expect(row).not.toHaveClass('bg-green-50');
   });
 
-  it('applies false-positive row background when the human found no smoke', () => {
-    render(
-      <ClassifyDoneTable
-        sequences={[
-          createSequence({
-            annotation: createAnnotation({ has_smoke: false, smoke_types: [] }),
-          }),
-        ]}
-        onSequenceClick={onSequenceClick}
-      />
-    );
-
-    expect(screen.getByText('Camera-01').closest('tr')).toHaveClass('bg-red-50');
-  });
-
-  it('renders a plain row and empty Result cell when annotation is missing', () => {
+  it('renders an empty Result cell when annotation is missing', () => {
     render(
       <ClassifyDoneTable
         sequences={[createSequence({ annotation: null })]}
@@ -155,9 +199,7 @@ describe('ClassifyDoneTable', () => {
       />
     );
 
-    const row = screen.getByText('Camera-01').closest('tr');
-    expect(row).toHaveClass('hover:bg-gray-50');
-    expect(screen.queryByText('⚠️ Unsure')).not.toBeInTheDocument();
+    expect(screen.queryByTitle(/positive|negative|Unsure/)).not.toBeInTheDocument();
   });
 
   it('calls onSequenceClick with the sequence when a row is clicked', () => {

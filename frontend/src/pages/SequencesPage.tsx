@@ -1,6 +1,7 @@
 import { ReactNode, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { Check, ListChecks, Search } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import {
   ClassifyQueueItem,
@@ -13,13 +14,12 @@ import { analyzeSequenceAccuracy } from '@/utils/modelAccuracy';
 import { getStageFilterLabel, stageFilterIncludes } from '@/utils/processingStage';
 import FilterPopover from '@/components/filters/FilterPopover';
 import {
-  SequencesTableHeader,
-  SequencesLegend,
-  ClassifyQueueTable,
   ClassifyAlertQueueTable,
+  ClassifyQueueTable,
   ClassifyDoneTable,
-  SequencesPagination,
+  TablePagination,
 } from '@/components/sequences';
+import { TABLE_CARD_CLASSES } from '@/components/sequences/tableStyles';
 import { useSequenceStore } from '@/store/useSequenceStore';
 import { useCameras } from '@/hooks/useCameras';
 import { useOrganizations } from '@/hooks/useOrganizations';
@@ -27,7 +27,7 @@ import { useSourceApis } from '@/hooks/useSourceApis';
 import { usePersistedFilters, createDefaultFilterState } from '@/hooks/usePersistedFilters';
 import { calculatePresetDateRange } from '@/components/filters/shared/dateRangeUtils';
 import { hasActiveUserFilters } from '@/utils/filterHelpers';
-import { classifyDetail } from '@/utils/routes';
+import { classifyDetail, ROUTES } from '@/utils/routes';
 
 interface SequencesPageProps {
   defaultProcessingStage?: ProcessingStageFilter;
@@ -243,9 +243,13 @@ export default function SequencesPage({
     );
   }
 
-  // Empty state when no results are available
+  // Empty state when nothing survives the server page + client-side filters
+  // (gate reviewEmpty on filteredSequences: the accuracy filter can empty a
+  // non-empty page). Queue mode has no client-side filter, so gate on the
+  // classify-queue fetch directly.
   const queueEmpty = isQueueMode && classifyQueue && classifyQueue.items.length === 0;
-  const reviewEmpty = !isQueueMode && sequences && sequences.items.length === 0;
+  const reviewEmpty =
+    !isQueueMode && sequences && filteredSequences && filteredSequences.items.length === 0;
   if (queueEmpty || reviewEmpty) {
     // Check if user has applied filters
     const hasFilters = hasActiveUserFilters(
@@ -314,33 +318,76 @@ export default function SequencesPage({
 
         {/* Empty state message */}
         <div className="flex items-center justify-center min-h-96">
-          <div className="text-center">
+          <div className="text-center max-w-md">
             {hasFilters ? (
-              // Filtered results - no matches
+              // Filtered results - no matches (shared by queue and done)
               <>
-                <div className="text-4xl mb-4">🔍</div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                  {isQueueMode ? 'No matching alerts found' : 'No matching sequences found'}
-                </h3>
-                <p className="text-gray-500 mb-4">
-                  {isQueueMode
-                    ? 'No alerts match your current filters.'
-                    : 'No sequences match your current filters.'}
+                <span
+                  aria-hidden="true"
+                  className="inline-flex h-14 w-14 items-center justify-center rounded-full border border-line bg-white"
+                >
+                  <Search className="h-6 w-6 text-haze" />
+                </span>
+                <h2 className="mt-4 font-display text-base font-semibold text-char">
+                  {isQueueMode ? 'No matching alerts' : 'No matching sequences'}
+                </h2>
+                <p className="mt-1.5 font-body text-sm leading-relaxed text-haze">
+                  Nothing here matches your current filters. Loosen or clear them to see more.
                 </p>
-                <p className="text-gray-400 text-sm">Try adjusting your search criteria above.</p>
+                <button
+                  onClick={resetFilters}
+                  className="mt-5 inline-block rounded-lg border border-line bg-white px-7 py-2.5 font-body text-[13.5px] font-semibold text-char hover:bg-ash focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2"
+                >
+                  Clear filters
+                </button>
               </>
             ) : isReviewPage ? (
-              // Review page - simple message scoped to the selected stage
-              <p className="text-gray-500">
-                No sequences in &quot;{getStageFilterLabel(defaultProcessingStage)}&quot; at the
-                moment.
-              </p>
-            ) : (
-              // Queue page - celebratory message
+              // Review page - nothing classified yet (stage-aware)
               <>
-                <div className="text-6xl mb-4">🎉</div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">All caught up!</h3>
-                <p className="text-gray-500">No alerts awaiting classification.</p>
+                <span
+                  aria-hidden="true"
+                  className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-ember-soft"
+                >
+                  <ListChecks className="h-6 w-6 text-ember" />
+                </span>
+                <h2 className="mt-4 font-display text-base font-semibold text-char">
+                  {/* An array stage is the "All classified" pseudo-stage (see getStageFilterLabel) */}
+                  {Array.isArray(defaultProcessingStage)
+                    ? 'No classified sequences yet'
+                    : `No sequences in "${getStageFilterLabel(defaultProcessingStage)}"`}
+                </h2>
+                <p className="mt-1.5 font-body text-sm leading-relaxed text-haze">
+                  Sequences you classify land here for review.
+                </p>
+                <Link
+                  to={ROUTES.CLASSIFY}
+                  className="mt-5 inline-block rounded-lg bg-ember px-7 py-2.5 font-body text-[13.5px] font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2"
+                >
+                  Start classifying
+                </Link>
+              </>
+            ) : (
+              // Classification queue is clear - every alert has been classified
+              <>
+                <span
+                  aria-hidden="true"
+                  className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-pine-soft"
+                >
+                  <Check className="h-7 w-7 text-pine" />
+                </span>
+                <h2 className="mt-4 font-display text-base font-semibold text-char">
+                  Classification queue is clear
+                </h2>
+                <p className="mt-1.5 font-body text-sm leading-relaxed text-haze">
+                  Nice work — every alert has been classified. New ones appear here as imports come
+                  in.
+                </p>
+                <Link
+                  to={ROUTES.LOCALIZE}
+                  className="mt-5 inline-block rounded-lg bg-pine px-7 py-2.5 font-body text-[13.5px] font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2"
+                >
+                  Start localizing
+                </Link>
               </>
             )}
           </div>
@@ -367,6 +414,23 @@ export default function SequencesPage({
         </div>
         <div className="flex items-center gap-3 flex-wrap justify-end">
           {stageSelector}
+          <div className="flex items-center space-x-2">
+            <label htmlFor="page-size" className="font-body text-sm text-haze">
+              Show:
+            </label>
+            <select
+              id="page-size"
+              value={filters.size || 50}
+              onChange={e => handleFilterChange({ size: Number(e.target.value) })}
+              className="border border-line rounded px-2 py-1 font-body text-sm"
+            >
+              {PAGINATION_OPTIONS.map(size => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
+              ))}
+            </select>
+          </div>
           <FilterPopover
             filters={filters}
             onFiltersChange={handleFilterChange}
@@ -402,73 +466,23 @@ export default function SequencesPage({
       {/* Results */}
       {isQueueMode
         ? classifyQueue && (
-            <div className="bg-white rounded-lg border border-gray-200">
-              <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
-                <p className="text-sm text-gray-700">
-                  Showing {(classifyQueue.page - 1) * classifyQueue.size + 1} to{' '}
-                  {Math.min(classifyQueue.page * classifyQueue.size, classifyQueue.total)} of{' '}
-                  {classifyQueue.total} alerts
-                </p>
-                <div className="flex items-center space-x-2">
-                  <label className="text-sm text-gray-700">Show:</label>
-                  <select
-                    value={filters.size || 50}
-                    onChange={e => handleFilterChange({ size: Number(e.target.value) })}
-                    className="border border-gray-300 rounded px-2 py-1 text-sm"
-                  >
-                    {PAGINATION_OPTIONS.map(size => (
-                      <option key={size} value={size}>
-                        {size}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
+            <div className={TABLE_CARD_CLASSES}>
               <ClassifyAlertQueueTable
                 items={classifyQueue.items}
                 onAlertClick={handleAlertClick}
               />
 
-              {classifyQueue.pages > 1 && (
-                <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={() => handlePageChange(classifyQueue.page - 1)}
-                      disabled={classifyQueue.page === 1}
-                      className="px-3 py-1 border border-gray-300 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-                    >
-                      Previous
-                    </button>
-                    <span className="text-sm text-gray-700">
-                      Page {classifyQueue.page} of {classifyQueue.pages}
-                    </span>
-                    <button
-                      onClick={() => handlePageChange(classifyQueue.page + 1)}
-                      disabled={classifyQueue.page === classifyQueue.pages}
-                      className="px-3 py-1 border border-gray-300 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-                    >
-                      Next
-                    </button>
-                  </div>
-                </div>
-              )}
+              <TablePagination
+                page={classifyQueue.page}
+                pages={classifyQueue.pages}
+                total={classifyQueue.total}
+                itemsLabel="alerts"
+                onPageChange={handlePageChange}
+              />
             </div>
           )
         : filteredSequences && (
-            <div className="bg-white rounded-lg border border-gray-200">
-              <SequencesTableHeader
-                filteredSequences={filteredSequences}
-                sequences={sequences}
-                defaultProcessingStage={defaultProcessingStage}
-                selectedModelAccuracy={selectedModelAccuracy}
-                filters={filters}
-                onFilterChange={handleFilterChange}
-              />
-
-              {/* Row Background Color Legend - Only show on review page */}
-              {isReviewPage && <SequencesLegend />}
-
+            <div className={TABLE_CARD_CLASSES}>
               {isReviewPage ? (
                 <ClassifyDoneTable
                   sequences={filteredSequences.items}
@@ -481,8 +495,17 @@ export default function SequencesPage({
                 />
               )}
 
-              <SequencesPagination
-                filteredSequences={filteredSequences}
+              <TablePagination
+                page={filteredSequences.page}
+                pages={filteredSequences.pages}
+                total={filteredSequences.total}
+                itemsLabel={
+                  selectedModelAccuracy !== 'all' &&
+                  stageFilterIncludes(defaultProcessingStage, 'annotated') &&
+                  sequences
+                    ? `sequences (filtered from ${sequences.total} total)`
+                    : 'sequences'
+                }
                 onPageChange={handlePageChange}
               />
             </div>

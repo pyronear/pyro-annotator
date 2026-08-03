@@ -1,6 +1,5 @@
-import { SequenceAnnotation, SequenceWithAnnotation } from '@/types/api';
+import { SequenceAnnotation, SequenceWithDetectionProgress } from '@/types/api';
 import {
-  SequenceOutcome,
   deriveSequenceOutcome,
   formatFalsePositiveType,
   formatSmokeType,
@@ -9,7 +8,6 @@ import {
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
 import { ColumnHeader } from './ColumnHeader';
 import { OutcomeCode } from './OutcomeCode';
-import { PlatformAnnotationLabel } from './PlatformAnnotationLabel';
 import {
   CELL_CLASSES,
   CELL_TEXT,
@@ -22,28 +20,25 @@ import {
   THEAD_CLASSES,
 } from './tableStyles';
 
-interface ClassifyDoneTableProps {
-  sequences: SequenceWithAnnotation[];
-  onSequenceClick: (sequence: SequenceWithAnnotation) => void;
+interface LocalizeDoneTableProps {
+  sequences: SequenceWithDetectionProgress[];
+  annotations: Record<number, SequenceAnnotation | undefined>;
+  onSequenceClick: (sequence: SequenceWithDetectionProgress) => void;
 }
 
-// Quiet text after the outcome code: what the human concluded.
-function resultDetail(annotation: SequenceAnnotation, outcome: SequenceOutcome): string {
-  switch (outcome) {
-    case 'unsure':
-      return 'Unsure';
-    case 'fn':
-      return ['Missed smoke', ...(annotation.smoke_types ?? []).map(formatSmokeType)].join(' · ');
-    case 'tp':
-      return (annotation.smoke_types ?? []).map(formatSmokeType).join(', ');
-    case 'fp':
-      return parseFalsePositiveTypes(annotation.false_positive_types)
-        .map(formatFalsePositiveType)
-        .join(', ');
-  }
+// Quiet text after the outcome code: false-positive types. Smoke types have
+// their own column, and unsure is carried by the code itself.
+function resultDetail(annotation: SequenceAnnotation): string {
+  return parseFalsePositiveTypes(annotation.false_positive_types)
+    .map(formatFalsePositiveType)
+    .join(', ');
 }
 
-export function ClassifyDoneTable({ sequences, onSequenceClick }: ClassifyDoneTableProps) {
+export function LocalizeDoneTable({
+  sequences,
+  annotations,
+  onSequenceClick,
+}: LocalizeDoneTableProps) {
   return (
     <div className="overflow-x-auto">
       <table className={TABLE_CLASSES}>
@@ -57,22 +52,20 @@ export function ClassifyDoneTable({ sequences, onSequenceClick }: ClassifyDoneTa
             <ColumnHeader label="Recorded" tip="When the sequence was recorded" />
             <ColumnHeader label="Source" tip="Alert API the sequence was imported from" />
             <ColumnHeader label="Azimuth" tip="Camera viewing direction, in degrees" />
-            <ColumnHeader
-              label="Alert API annotation"
-              tip="Annotation reported by the alert platform"
-            />
+            <ColumnHeader label="Smoke types" tip="Smoke types assigned during classification" />
+            <ColumnHeader label="Frames" tip="Images in this sequence" align="right" />
             <ColumnHeader
               label="Result"
-              tip="Model outcome — TP correct, FP false alarm, ⚑ FN missed smoke, ? unsure — and the classification detail"
+              tip="Model outcome — TP correct, FP false alarm, ⚑ FN missed smoke, ? unsure — and false-positive types"
               align="right"
             />
           </tr>
         </thead>
         <tbody className={TBODY_CLASSES}>
           {sequences.map(sequence => {
-            const outcome = deriveSequenceOutcome(sequence.annotation);
-            const detail =
-              sequence.annotation && outcome ? resultDetail(sequence.annotation, outcome) : '';
+            const annotation = annotations[sequence.id];
+            const outcome = deriveSequenceOutcome(annotation);
+            const detail = annotation ? resultDetail(annotation) : '';
             return (
               <tr
                 key={sequence.id}
@@ -94,7 +87,10 @@ export function ClassifyDoneTable({ sequences, onSequenceClick }: ClassifyDoneTa
                     : ''}
                 </td>
                 <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>
-                  <PlatformAnnotationLabel value={sequence.is_wildfire_alertapi} />
+                  {(annotation?.smoke_types ?? []).map(formatSmokeType).join(', ')}
+                </td>
+                <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
+                  {sequence.detection_annotation_stats?.total_detections ?? ''}
                 </td>
                 <td className={CELL_CLASSES}>
                   {outcome && (

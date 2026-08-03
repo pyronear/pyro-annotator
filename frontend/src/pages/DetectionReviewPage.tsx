@@ -1,28 +1,25 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { BoxSelect, Search } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import {
   ExtendedSequenceFilters,
   SequenceWithDetectionProgress,
   SequenceAnnotation,
 } from '@/types/api';
-import { QUERY_KEYS } from '@/utils/constants';
+import { PAGINATION_OPTIONS, QUERY_KEYS } from '@/utils/constants';
 import { analyzeSequenceAccuracy } from '@/utils/modelAccuracy';
 import FilterPopover from '@/components/filters/FilterPopover';
-import {
-  DetectionReviewTableHeader,
-  SequencesLegend,
-  DetectionReviewTableRow,
-  DetectionReviewPagination,
-} from '@/components/sequences';
+import { LocalizeDoneTable, TablePagination } from '@/components/sequences';
+import { TABLE_CARD_CLASSES } from '@/components/sequences/tableStyles';
 import { useCameras } from '@/hooks/useCameras';
 import { useOrganizations } from '@/hooks/useOrganizations';
 import { useSourceApis } from '@/hooks/useSourceApis';
 import { usePersistedFilters, createDefaultFilterState } from '@/hooks/usePersistedFilters';
 import { calculatePresetDateRange } from '@/components/filters/shared/dateRangeUtils';
 import { hasActiveUserFilters } from '@/utils/filterHelpers';
-import { localizeDetail } from '@/utils/routes';
+import { localizeDetail, ROUTES } from '@/utils/routes';
 
 // Default filter contract for /localize/done — imported by its defaults test.
 // eslint-disable-next-line react-refresh/only-export-components
@@ -271,24 +268,52 @@ export default function DetectionReviewPage() {
 
         {/* Empty state message */}
         <div className="flex items-center justify-center min-h-96">
-          <div className="text-center">
+          <div className="text-center max-w-md">
             {hasFilters ? (
               // Filtered results - no matches
               <>
-                <div className="text-4xl mb-4">🔍</div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                  No matching sequences found
-                </h3>
-                <p className="text-gray-500 mb-4">
-                  No sequences with completed detection annotations match your current filters.
+                <span
+                  aria-hidden="true"
+                  className="inline-flex h-14 w-14 items-center justify-center rounded-full border border-line bg-white"
+                >
+                  <Search className="h-6 w-6 text-haze" />
+                </span>
+                <h2 className="mt-4 font-display text-base font-semibold text-char">
+                  No matching alerts
+                </h2>
+                <p className="mt-1.5 font-body text-sm leading-relaxed text-haze">
+                  Nothing localized matches your current filters. Loosen or clear them to see more.
                 </p>
-                <p className="text-gray-400 text-sm">Try adjusting your search criteria above.</p>
+                <button
+                  onClick={resetFilters}
+                  className="mt-5 inline-block rounded-lg border border-line bg-white px-7 py-2.5 font-body text-[13.5px] font-semibold text-char hover:bg-ash focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2"
+                >
+                  Clear filters
+                </button>
               </>
             ) : (
-              // No filters - no sequences available
-              <p className="text-gray-500">
-                No sequences with completed detection annotations to review at the moment.
-              </p>
+              // No filters - nothing localized yet
+              <>
+                <span
+                  aria-hidden="true"
+                  className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-ember-soft"
+                >
+                  <BoxSelect className="h-6 w-6 text-ember" />
+                </span>
+                <h2 className="mt-4 font-display text-base font-semibold text-char">
+                  No localized alerts yet
+                </h2>
+                <p className="mt-1.5 font-body text-sm leading-relaxed text-haze">
+                  Finished localizations show up here for review. Head to the queue to box your
+                  first alert.
+                </p>
+                <Link
+                  to={ROUTES.LOCALIZE}
+                  className="mt-5 inline-block rounded-lg bg-ember px-7 py-2.5 font-body text-[13.5px] font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2"
+                >
+                  Start localizing
+                </Link>
+              </>
             )}
           </div>
         </div>
@@ -306,61 +331,67 @@ export default function DetectionReviewPage() {
             Browse localized smoke detections and review past annotations
           </p>
         </div>
-        <FilterPopover
-          filters={filters}
-          onFiltersChange={handleFilterChange}
-          dateFrom={dateFrom}
-          dateTo={dateTo}
-          onDateFromChange={handleDateFromChange}
-          onDateToChange={handleDateToChange}
-          onDateRangeSet={setDateRange}
-          onDateRangeClear={clearDateRange}
-          selectedFalsePositiveTypes={selectedFalsePositiveTypes}
-          onFalsePositiveTypesChange={handleFalsePositiveFilterChange}
-          selectedSmokeTypes={selectedSmokeTypes}
-          onSmokeTypesChange={setSelectedSmokeTypes}
-          selectedModelAccuracy={selectedModelAccuracy}
-          onModelAccuracyChange={setSelectedModelAccuracy}
-          onResetFilters={resetFilters}
-          cameras={cameras}
-          organizations={organizations}
-          sourceApis={sourceApis}
-          camerasLoading={camerasLoading}
-          organizationsLoading={organizationsLoading}
-          sourceApisLoading={sourceApisLoading}
-          showModelAccuracy={true}
-          showFalsePositiveTypes={true}
-          showSmokeTypes={true}
-        />
+        <div className="flex items-center gap-3">
+          <div className="flex items-center space-x-2">
+            <label htmlFor="page-size" className="font-body text-sm text-haze">
+              Show:
+            </label>
+            <select
+              id="page-size"
+              value={filters.size || 50}
+              onChange={e => handleFilterChange({ size: Number(e.target.value) })}
+              className="border border-line rounded px-2 py-1 font-body text-sm"
+            >
+              {PAGINATION_OPTIONS.map(size => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
+              ))}
+            </select>
+          </div>
+          <FilterPopover
+            filters={filters}
+            onFiltersChange={handleFilterChange}
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            onDateFromChange={handleDateFromChange}
+            onDateToChange={handleDateToChange}
+            onDateRangeSet={setDateRange}
+            onDateRangeClear={clearDateRange}
+            selectedFalsePositiveTypes={selectedFalsePositiveTypes}
+            onFalsePositiveTypesChange={handleFalsePositiveFilterChange}
+            selectedSmokeTypes={selectedSmokeTypes}
+            onSmokeTypesChange={setSelectedSmokeTypes}
+            selectedModelAccuracy={selectedModelAccuracy}
+            onModelAccuracyChange={setSelectedModelAccuracy}
+            onResetFilters={resetFilters}
+            cameras={cameras}
+            organizations={organizations}
+            sourceApis={sourceApis}
+            camerasLoading={camerasLoading}
+            organizationsLoading={organizationsLoading}
+            sourceApisLoading={sourceApisLoading}
+            showModelAccuracy={true}
+            showFalsePositiveTypes={true}
+            showSmokeTypes={true}
+          />
+        </div>
       </div>
 
       {/* Results */}
       {filteredSequences && (
-        <div className="bg-white rounded-lg border border-gray-200">
-          <DetectionReviewTableHeader
-            filteredSequences={filteredSequences}
-            sequences={sequences}
-            selectedModelAccuracy={selectedModelAccuracy}
-            filters={filters}
-            onFilterChange={handleFilterChange}
+        <div className={TABLE_CARD_CLASSES}>
+          <LocalizeDoneTable
+            sequences={filteredSequences.items}
+            annotations={annotationMap}
+            onSequenceClick={handleSequenceClick}
           />
 
-          <SequencesLegend />
-
-          {/* Sequence List */}
-          <div className="divide-y divide-gray-200">
-            {filteredSequences.items.map(sequence => (
-              <DetectionReviewTableRow
-                key={sequence.id}
-                sequence={sequence}
-                annotation={annotationMap[sequence.id] || undefined}
-                onSequenceClick={handleSequenceClick}
-              />
-            ))}
-          </div>
-
-          <DetectionReviewPagination
-            filteredSequences={filteredSequences}
+          <TablePagination
+            page={filteredSequences.page}
+            pages={filteredSequences.pages}
+            total={filteredSequences.total}
+            itemsLabel="sequences"
             onPageChange={handlePageChange}
           />
         </div>

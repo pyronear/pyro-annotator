@@ -29,16 +29,16 @@ export default function LoginPage({ onLogin, isLoading = false, error }: LoginPa
           <div className="flex justify-center">
             <img src={logoImg} alt="PyroAnnotator Logo" className="w-20 h-20 object-contain" />
           </div>
-          <h2 className="mt-6 font-display text-[27px] font-semibold tracking-tight text-char">
+          <h2 className="mt-6 font-display text-title font-semibold tracking-tight text-char">
             Sign in to PyroAnnotator
           </h2>
-          <p className="mt-2 font-body text-[13.5px] text-haze">
+          <p className="mt-2 font-body text-body text-haze">
             Classify and localize wildfire smoke from Pyronear cameras.
           </p>
         </div>
 
         {/* Login Form */}
-        <div className="bg-paper rounded-[10px] border border-line p-8">
+        <div className="bg-paper rounded-card border border-line p-8">
           <form className="space-y-6" onSubmit={handleSubmit}>
             {/* Error Message */}
             {error && (
@@ -170,7 +170,7 @@ export default function LoginPage({ onLogin, isLoading = false, error }: LoginPa
 
         {/* Footer */}
         <div className="text-center">
-          <p className="font-data text-[10.5px] font-medium uppercase tracking-[0.14em] text-haze">
+          <p className="font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
             Pyronear
           </p>
         </div>

@@ -1,15 +1,23 @@
 import { ClassifyQueueItem } from '@/types/api';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
-import { PlatformAnnotationPill } from './PlatformAnnotationPill';
+import { ColumnHeader } from './ColumnHeader';
+import { PlatformAnnotationLabel } from './PlatformAnnotationLabel';
+import {
+  CELL_CLASSES,
+  CELL_TEXT,
+  DATA_CELL_TEXT,
+  HEADER_CELL_CLASSES,
+  PRIMARY_CELL_TEXT,
+  ROW_CLASSES,
+  TABLE_CLASSES,
+  TBODY_CLASSES,
+  THEAD_CLASSES,
+} from './tableStyles';
 
 interface ClassifyAlertQueueTableProps {
   items: ClassifyQueueItem[];
   onAlertClick: (item: ClassifyQueueItem) => void;
 }
-
-const HEADER_CLASSES =
-  'px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider';
-const CELL_CLASSES = 'px-4 py-2 whitespace-nowrap text-sm';
 
 // "3 objects · 1 classified"; drops the classified suffix when nothing is
 // classified yet, and pluralizes "object(s)" correctly.
@@ -21,27 +29,31 @@ function formatObjectsCell(totalObjects: number, classifiedObjects: number): str
 export function ClassifyAlertQueueTable({ items, onAlertClick }: ClassifyAlertQueueTableProps) {
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-gray-200">
-        <thead className="bg-gray-50">
+      <table className={TABLE_CLASSES}>
+        <thead className={THEAD_CLASSES}>
           <tr>
-            <th className={HEADER_CLASSES}>
+            <th className={HEADER_CELL_CLASSES}>
               <span className="sr-only">Thumbnail</span>
             </th>
-            <th className={HEADER_CLASSES}>Camera</th>
-            <th className={HEADER_CLASSES}>Organisation</th>
-            <th className={HEADER_CLASSES}>Recorded</th>
-            <th className={HEADER_CLASSES}>Platform annotation</th>
-            <th className={HEADER_CLASSES}>Source</th>
-            <th className={HEADER_CLASSES}>Azimuth</th>
-            <th className={HEADER_CLASSES}>Objects</th>
+            <ColumnHeader label="Camera" tip="Camera that recorded the alert" />
+            <ColumnHeader label="Organisation" tip="Organisation operating the camera" />
+            <ColumnHeader label="Recorded" tip="When the alert was recorded" />
+            <ColumnHeader label="Source" tip="Alert API the alert was imported from" />
+            <ColumnHeader label="Azimuth" tip="Camera viewing direction, in degrees" />
+            <ColumnHeader label="Objects" tip="Objects to classify in this alert" align="right" />
+            <ColumnHeader
+              label="Alert API annotation"
+              tip="Annotation reported by the alert platform"
+              align="right"
+            />
           </tr>
         </thead>
-        <tbody className="bg-white divide-y divide-gray-200">
+        <tbody className={TBODY_CLASSES}>
           {items.map(item => (
             <tr
               key={`${item.source_api}-${item.platform_alert_id}`}
               onClick={() => onAlertClick(item)}
-              className="cursor-pointer hover:bg-gray-50"
+              className={ROW_CLASSES}
             >
               <td className="px-4 py-2">
                 <DetectionImageThumbnail
@@ -49,24 +61,20 @@ export function ClassifyAlertQueueTable({ items, onAlertClick }: ClassifyAlertQu
                   className="h-10 w-16"
                 />
               </td>
-              <td className={`${CELL_CLASSES} font-medium text-gray-900`}>{item.camera_name}</td>
-              <td className={`${CELL_CLASSES} text-gray-500`}>{item.organisation_name}</td>
-              <td className={`${CELL_CLASSES} text-gray-500`}>
+              <td className={`${CELL_CLASSES} ${PRIMARY_CELL_TEXT}`}>{item.camera_name}</td>
+              <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>{item.organisation_name}</td>
+              <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
                 {new Date(item.recorded_at).toLocaleString()}
               </td>
-              <td className={CELL_CLASSES}>
-                <PlatformAnnotationPill value={item.is_wildfire_alertapi} />
-              </td>
-              <td className={CELL_CLASSES}>
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                  {item.source_api}
-                </span>
-              </td>
-              <td className={`${CELL_CLASSES} text-gray-500`}>
+              <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>{item.source_api}</td>
+              <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
                 {item.azimuth !== null && item.azimuth !== undefined ? `${item.azimuth}°` : ''}
               </td>
-              <td className={`${CELL_CLASSES} text-gray-500`}>
+              <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
                 {formatObjectsCell(item.total_objects, item.classified_objects)}
+              </td>
+              <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>
+                <PlatformAnnotationLabel value={item.is_wildfire_alertapi} />
               </td>
             </tr>
           ))}

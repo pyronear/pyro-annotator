@@ -14,7 +14,7 @@
  * classification, and visualization in the PyroAnnotator annotation interface.
  */
 
-import { SequenceWithAnnotation } from '@/types/api';
+import { SequenceAnnotation, SequenceWithAnnotation } from '@/types/api';
 
 /**
  * Model accuracy classification types for wildfire detection.
@@ -54,6 +54,48 @@ export interface ModelAccuracyResult {
   colorClass: string;
   borderClass: string;
   bgClass: string;
+}
+
+/**
+ * Outcome code shown in the done tables (see
+ * docs/specs/2026-08-03-outcome-codes-tables-design.md).
+ */
+export type SequenceOutcome = 'tp' | 'fp' | 'fn' | 'unsure';
+
+/**
+ * The three annotation flags an outcome derives from. Satisfied by
+ * SequenceAnnotation and LocalizationQueueLane alike.
+ */
+type OutcomeFlags = Pick<SequenceAnnotation, 'is_unsure' | 'has_smoke' | 'has_missed_smoke'>;
+
+/**
+ * Derives the outcome code for an annotated sequence.
+ *
+ * Precedence (first match wins): unsure, missed smoke (fn), smoke (tp),
+ * no smoke (fp). Returns null when there is no annotation to judge from.
+ */
+export function deriveSequenceOutcome(
+  annotation: OutcomeFlags | null | undefined
+): SequenceOutcome | null {
+  if (!annotation) return null;
+  if (annotation.is_unsure) return 'unsure';
+  const accuracy = getModelAccuracyType(annotation.has_smoke, annotation.has_missed_smoke);
+  if (accuracy === 'unknown') return null;
+  return accuracy === 'true_positive' ? 'tp' : accuracy === 'false_positive' ? 'fp' : 'fn';
+}
+
+/**
+ * Rolls per-object outcomes up to one alert-level code: the dominant outcome
+ * by fn > unsure > tp > fp precedence, plus how many other objects there are
+ * (rendered as a muted "+N" by OutcomeCode).
+ */
+export function rollupOutcomes(
+  outcomes: SequenceOutcome[]
+): { outcome: SequenceOutcome; extraCount: number } | null {
+  const precedence: SequenceOutcome[] = ['fn', 'unsure', 'tp', 'fp'];
+  const dominant = precedence.find(outcome => outcomes.includes(outcome));
+  if (!dominant) return null;
+  return { outcome: dominant, extraCount: outcomes.length - 1 };
 }
 
 /**
@@ -407,34 +449,6 @@ export function getModelAccuracyBadgeClasses(
   };
 
   return `inline-flex items-center rounded-full font-medium ${sizeClasses[size]} ${accuracy.colorClass} ${accuracy.bgClass}`;
-}
-
-/**
- * Gets background CSS classes for table rows based on model accuracy.
- *
- * Provides subtle background colors for table rows to visually distinguish
- * different accuracy types, enhancing the user's ability to quickly scan
- * and identify accuracy patterns in data tables.
- *
- * @param {ModelAccuracyResult} accuracy - The accuracy result to style
- * @returns {string} CSS classes for row background and hover effects
- *
- * @example
- * ```typescript
- * const accuracy = getModelAccuracyResult('false_positive');
- * const bgClasses = getRowBackgroundClasses(accuracy);
- * // Returns: 'bg-red-50 hover:bg-red-100'
- * ```
- */
-export function getRowBackgroundClasses(accuracy: ModelAccuracyResult): string {
-  const backgroundClasses = {
-    true_positive: 'bg-green-50 hover:bg-green-100',
-    false_positive: 'bg-red-50 hover:bg-red-100',
-    false_negative: 'bg-blue-50 hover:bg-blue-100',
-    unknown: 'hover:bg-gray-50',
-  };
-
-  return backgroundClasses[accuracy.type];
 }
 
 /**

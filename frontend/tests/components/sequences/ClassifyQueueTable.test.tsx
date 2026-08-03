@@ -43,12 +43,42 @@ describe('ClassifyQueueTable', () => {
     vi.clearAllMocks();
   });
 
-  it('renders the column headers', () => {
+  it('renders the column headers in canonical order', () => {
     render(<ClassifyQueueTable sequences={[createSequence()]} onSequenceClick={onSequenceClick} />);
 
-    for (const header of ['Camera', 'Organisation', 'Recorded', 'Platform annotation', 'Source', 'Azimuth']) {
-      expect(screen.getByText(header)).toBeInTheDocument();
-    }
+    const labels = [
+      'Camera',
+      'Organisation',
+      'Recorded',
+      'Source',
+      'Azimuth',
+      'Alert API annotation',
+    ];
+    const positions = labels.map(l => {
+      const el = screen.getByText(l);
+      return Array.from(document.querySelectorAll('th')).findIndex(th => th.contains(el));
+    });
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+    expect(positions.every(p => p > 0)).toBe(true); // all after the thumbnail th
+  });
+
+  it('renders column tooltips', () => {
+    render(<ClassifyQueueTable sequences={[createSequence()]} onSequenceClick={onSequenceClick} />);
+
+    expect(screen.getByText('Alert API the sequence was imported from')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Annotation reported by the alert platform'
+      )
+    ).toBeInTheDocument();
+  });
+
+  it('renders source as plain text and uses the fire-lookout row style', () => {
+    render(<ClassifyQueueTable sequences={[createSequence()]} onSequenceClick={onSequenceClick} />);
+
+    expect(screen.getByText('test-api')).not.toHaveClass('rounded-full');
+    const row = screen.getByText('Camera-01').closest('tr');
+    expect(row).toHaveClass('hover:bg-ash');
   });
 
   it('renders one row per sequence with camera, organisation, source and azimuth', () => {
@@ -75,7 +105,7 @@ describe('ClassifyQueueTable', () => {
     ).toBeInTheDocument();
   });
 
-  it('renders the platform annotation pill per value', () => {
+  it('renders the platform annotation label per value as plain text', () => {
     render(
       <ClassifyQueueTable
         sequences={[
@@ -88,9 +118,10 @@ describe('ClassifyQueueTable', () => {
       />
     );
 
-    expect(screen.getByText('🔥 Wildfire')).toBeInTheDocument();
-    expect(screen.getByText('💨 Other Smoke')).toBeInTheDocument();
-    expect(screen.getByText('○ Other')).toBeInTheDocument();
+    expect(screen.getByText('Wildfire')).toBeInTheDocument();
+    expect(screen.getByText('Other smoke')).toBeInTheDocument();
+    expect(screen.getByText('Other')).toBeInTheDocument();
+    expect(screen.getByText('Wildfire')).not.toHaveClass('rounded-full');
   });
 
   it('renders 0° when azimuth is zero', () => {

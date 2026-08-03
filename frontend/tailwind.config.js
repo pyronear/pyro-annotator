@@ -7,6 +7,9 @@ export default {
   theme: {
     extend: {
       colors: {
+        // DEPRECATED — legacy red ramp. Do not use in new code; use the
+        // fire-lookout tokens below instead (see DESIGN.md). Kept only until
+        // legacy pages are migrated.
         primary: {
           50: '#fdf4f3',
           100: '#fce7e6',
@@ -29,6 +32,19 @@ export default {
         display: ['Archivo', 'system-ui', 'sans-serif'],
         body: ['"IBM Plex Sans"', 'system-ui', 'sans-serif'],
         data: ['"IBM Plex Mono"', 'ui-monospace', 'monospace'],
+      },
+      fontSize: {
+        title: '27px',
+        heading: '18.5px',
+        body: '13.5px',
+        detail: '12.5px',
+        eyebrow: '10.5px',
+      },
+      letterSpacing: {
+        eyebrow: '0.14em',
+      },
+      borderRadius: {
+        card: '10px',
       },
     },
   },

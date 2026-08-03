@@ -23,8 +23,8 @@ const STEPS = [
 
 export default function HowItWorks() {
   return (
-    <div className="rounded-[10px] border border-line bg-paper px-[22px] py-5">
-      <h2 className="mb-3 font-data text-[10.5px] font-medium uppercase tracking-[0.14em] text-haze">
+    <div className="rounded-card border border-line bg-paper px-[22px] py-5">
+      <h2 className="mb-3 font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
         How annotation works
       </h2>
       <p className="mb-3.5 font-body text-[13px] leading-relaxed text-char">
@@ -35,15 +35,15 @@ export default function HowItWorks() {
         {STEPS.map(step => (
           <div key={step.key} className={`flex-1 border-l-2 pl-3.5 ${step.border}`}>
             <div
-              className={`mb-1 font-data text-[10.5px] font-medium uppercase tracking-[0.12em] ${step.text}`}
+              className={`mb-1 font-data text-eyebrow font-medium uppercase tracking-[0.12em] ${step.text}`}
             >
               {step.key}
             </div>
-            <p className="font-body text-[12.5px] leading-relaxed text-haze">{step.body}</p>
+            <p className="font-body text-detail leading-relaxed text-haze">{step.body}</p>
           </div>
         ))}
       </div>
-      <div className="flex items-baseline border-t border-line pt-3 font-body text-[12.5px] italic text-haze">
+      <div className="flex items-baseline border-t border-line pt-3 font-body text-detail italic text-haze">
         Why two passes? Classifying is quick and filters out false positives early, so the slower
         localization work is only spent on confirmed smoke.
         <Link

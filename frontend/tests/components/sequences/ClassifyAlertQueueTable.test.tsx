@@ -42,10 +42,10 @@ describe('ClassifyAlertQueueTable', () => {
       'Camera',
       'Organisation',
       'Recorded',
-      'Platform annotation',
       'Source',
       'Azimuth',
       'Objects',
+      'Alert API annotation',
     ]) {
       expect(screen.getByText(header)).toBeInTheDocument();
     }
@@ -84,7 +84,7 @@ describe('ClassifyAlertQueueTable', () => {
     expect(screen.getByText(new Date('2024-01-01T10:00:00Z').toLocaleString())).toBeInTheDocument();
   });
 
-  it('renders the platform annotation pill per value', () => {
+  it('renders the platform annotation label per value', () => {
     render(
       <ClassifyAlertQueueTable
         items={[
@@ -97,9 +97,9 @@ describe('ClassifyAlertQueueTable', () => {
       />
     );
 
-    expect(screen.getByText('🔥 Wildfire')).toBeInTheDocument();
-    expect(screen.getByText('💨 Other Smoke')).toBeInTheDocument();
-    expect(screen.getByText('○ Other')).toBeInTheDocument();
+    expect(screen.getByText('Wildfire')).toBeInTheDocument();
+    expect(screen.getByText('Other smoke')).toBeInTheDocument();
+    expect(screen.getByText('Other')).toBeInTheDocument();
   });
 
   it('renders 0° when azimuth is zero', () => {

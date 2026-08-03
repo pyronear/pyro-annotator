@@ -45,8 +45,8 @@ const PRESET_LABELS: Record<string, string> = {
 };
 
 const WILDFIRE_LABELS: Record<string, string> = {
-  wildfire_smoke: 'Wildfire Smoke',
-  other_smoke: 'Other Smoke',
+  wildfire_smoke: 'Wildfire smoke',
+  other_smoke: 'Other smoke',
   other: 'Other',
 };
 
@@ -81,7 +81,7 @@ export function buildFilterPills(input: FilterPillInput): FilterPill[] {
       filters.is_wildfire_alertapi === null
         ? 'Unclassified'
         : (WILDFIRE_LABELS[filters.is_wildfire_alertapi] ?? String(filters.is_wildfire_alertapi));
-    pills.push({ id: 'wildfire', label: `Wildfire: ${label}` });
+    pills.push({ id: 'wildfire', label: `Alert API: ${label}` });
   }
   if (input.showModelAccuracy && input.selectedModelAccuracy !== 'all') {
     pills.push({

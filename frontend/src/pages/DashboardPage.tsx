@@ -9,10 +9,10 @@ export default function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-5xl">
-      <h1 className="font-display text-[27px] font-semibold tracking-tight text-char">
+      <h1 className="font-display text-title font-semibold tracking-tight text-char">
         Annotation pipeline
       </h1>
-      <p className="mt-1 font-body text-[13.5px] text-haze">
+      <p className="mt-1 font-body text-body text-haze">
         Two passes: classify what the cameras saw, then localize the smoke.
       </p>
 

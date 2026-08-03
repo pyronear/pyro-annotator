@@ -286,7 +286,7 @@ export default function FilterPopover({
                     htmlFor="filter-wildfire"
                     className="block text-sm font-medium text-gray-700 mb-1"
                   >
-                    Wildfire Classification
+                    Alert API annotation
                   </label>
                   <select
                     id="filter-wildfire"
@@ -309,10 +309,10 @@ export default function FilterPopover({
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
                   >
                     <option value="">All</option>
-                    <option value="wildfire_smoke">🔥 Wildfire Smoke</option>
-                    <option value="other_smoke">💨 Other Smoke</option>
-                    <option value="other">○ Other</option>
-                    <option value="null">📝 Unclassified</option>
+                    <option value="wildfire_smoke">Wildfire smoke</option>
+                    <option value="other_smoke">Other smoke</option>
+                    <option value="other">Other</option>
+                    <option value="null">Unclassified</option>
                   </select>
                 </div>
 

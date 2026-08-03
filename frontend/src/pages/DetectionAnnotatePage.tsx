@@ -1,25 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Check } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { LocalizationQueueItem } from '@/types/api';
-import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
-import { laneNeedsLocalization, pickNextLocalizeLane } from '@/utils/annotation/localizeUtils';
-import { formatSmokeType, getSmokeTypeEmoji } from '@/utils/modelAccuracy';
-import { localizeDetail } from '@/utils/routes';
-
-// Images the annotator will draw boxes on: each smoke object replays the
-// alert's frames, so two objects x 10 frames is 20 boxes of work.
-function smokeFrames(item: LocalizationQueueItem): number {
-  return item.lanes.filter(laneNeedsLocalization).reduce((sum, l) => sum + l.total_detections, 0);
-}
-
-// Classify-phase smoke types across the alert's smoke objects, deduped.
-// `?? []` guards payloads from a backend that predates the field.
-function smokeTypes(item: LocalizationQueueItem): string[] {
-  return [...new Set(item.lanes.filter(laneNeedsLocalization).flatMap(l => l.smoke_types ?? []))];
-}
+import { LocalizeQueueTable, TablePagination } from '@/components/sequences';
+import { TABLE_CARD_CLASSES } from '@/components/sequences/tableStyles';
+import { pickNextLocalizeLane } from '@/utils/annotation/localizeUtils';
+import { localizeDetail, ROUTES } from '@/utils/routes';
 
 export default function DetectionAnnotatePage() {
   const navigate = useNavigate();
@@ -50,7 +38,7 @@ export default function DetectionAnnotatePage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-96">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-pine"></div>
       </div>
     );
   }
@@ -81,117 +69,40 @@ export default function DetectionAnnotatePage() {
 
       {items.length === 0 ? (
         <div className="flex items-center justify-center min-h-96">
-          <div className="text-center">
-            <p className="text-gray-900 font-medium">No alerts ready for localization</p>
-            <p className="mt-1 text-sm text-gray-500">
-              Alerts appear here once every object is classified and the auto reference layer is
-              computed
+          <div className="text-center max-w-md">
+            <span
+              aria-hidden="true"
+              className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-pine-soft"
+            >
+              <Check className="h-7 w-7 text-pine" />
+            </span>
+            <h2 className="mt-4 font-display text-base font-semibold text-char">
+              Localization queue is clear
+            </h2>
+            <p className="mt-1.5 font-body text-sm leading-relaxed text-haze">
+              Nice work — nothing to box right now. Classifying more alerts is what fills this
+              queue.
             </p>
+            <Link
+              to={ROUTES.CLASSIFY}
+              className="mt-5 inline-block rounded-lg bg-pine px-7 py-2.5 font-body text-[13.5px] font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2"
+            >
+              Start classifying
+            </Link>
           </div>
         </div>
       ) : (
-        <div className="bg-white shadow rounded-lg overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Preview
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Camera
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Organisation
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Source
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Smoke type
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Recorded
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Frames
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {items.map(item => (
-                <tr
-                  key={`${item.source_api}-${item.platform_alert_id}`}
-                  onClick={() => handleAlertClick(item)}
-                  className="cursor-pointer hover:bg-gray-50"
-                >
-                  <td className="px-4 py-4 whitespace-nowrap">
-                    <DetectionImageThumbnail
-                      sequenceId={item.lanes[0].sequence_id}
-                      className="h-16 w-24"
-                    />
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {item.camera_name}
-                    {item.azimuth !== null && item.azimuth !== undefined && (
-                      <span className="ml-2 text-xs font-normal text-gray-400">
-                        Azimuth: {item.azimuth}°
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {item.organisation_name}
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap">
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                      {item.source_api}
-                    </span>
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap">
-                    <div className="flex flex-wrap gap-1">
-                      {smokeTypes(item).map(type => (
-                        <span
-                          key={type}
-                          className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800"
-                        >
-                          {getSmokeTypeEmoji(type)} {formatSmokeType(type)}
-                        </span>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {new Date(item.recorded_at).toLocaleString()}
-                  </td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {smokeFrames(item)} frames
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {data && data.pages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-gray-500">
-            Page {data.page} of {data.pages} · {data.total} alerts
-          </p>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setPage(p => Math.max(1, p - 1))}
-              disabled={page <= 1}
-              className="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
-            >
-              <ChevronLeft className="h-4 w-4" /> Previous
-            </button>
-            <button
-              onClick={() => setPage(p => p + 1)}
-              disabled={page >= (data.pages ?? 1)}
-              className="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
-            >
-              Next <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
+        <div className={TABLE_CARD_CLASSES}>
+          <LocalizeQueueTable items={items} onItemClick={handleAlertClick} />
+          {data && (
+            <TablePagination
+              page={data.page}
+              pages={data.pages}
+              total={data.total}
+              itemsLabel="alerts"
+              onPageChange={setPage}
+            />
+          )}
         </div>
       )}
     </div>
