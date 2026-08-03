@@ -193,6 +193,46 @@ function makeAlertDetail(): AlertDetail {
   };
 }
 
+/**
+ * Renders the page and waits for card 101:0's SEEDED state to have
+ * committed — not just its presence. Used by every test in this file
+ * instead of `render(...)` + a bare `waitFor(testid present)`.
+ *
+ * The page settles in two separate React commits: (1) alert-detail
+ * arrives and `renderItems`/cards render structurally (testid, "Object N"
+ * title, locked/disabled attributes — all derived straight from
+ * `alertDetail`), then (2) a *separate* `useEffect`
+ * (`initializeFromAlertDetail`) seeds classification/bbox/unsure/missed-
+ * smoke local state from that same data — which is what actually drives
+ * checked radios, Reviewed/Pending badges, displayed smoke/FP text, and
+ * bbox counts. Under slow/CI scheduling, `waitFor` can observe the DOM in
+ * the gap between those two commits: a card can be "present" with none of
+ * its seeded content painted yet. This caused two separate CI-only test
+ * failures (asserting a radio was checked / "Reviewed" was rendered
+ * immediately after only waiting for the card's testid). Interacting with
+ * a card before commit (2) lands is also unsafe for a different reason:
+ * click handlers spread the CURRENT bbox prop, which is still the
+ * `EMPTY_BBOX` placeholder pre-commit-(2), silently discarding the card's
+ * real bbox data.
+ *
+ * Every real lane in every fixture in this file seeds >= 1 bbox entry,
+ * and a card's bbox-count text reads the `EMPTY_BBOX` default
+ * ("0 bboxes") until commit (2) lands — so waiting for card 101's count to
+ * move off "0 bboxes" is a settle signal common to every scenario here
+ * (editable, locked, or alongside an unrelated placeholder lane), without
+ * depending on any particular classification outcome.
+ */
+async function renderAndSettle(
+  ui: React.ReactElement,
+  options: { wrapper: React.ComponentType<{ children: React.ReactNode }> }
+): Promise<void> {
+  render(ui, options);
+  await waitFor(() => {
+    const card = within(screen.getByTestId('object-card-101:0'));
+    expect(card.queryByText('0 bboxes')).not.toBeInTheDocument();
+  });
+}
+
 describe('ClassifyAlertPage', () => {
   beforeEach(() => {
     // Clears call counts (not just implementations) so per-test assertions
@@ -226,9 +266,7 @@ describe('ClassifyAlertPage', () => {
   });
 
   it('renders one card per lane-track for a 3-lane alert', async () => {
-    render(<ClassifyAlertPage />, { wrapper });
-
-    await waitFor(() => expect(screen.getByTestId('object-card-101:0')).toBeInTheDocument());
+    await renderAndSettle(<ClassifyAlertPage />, { wrapper });
     expect(
       within(screen.getByTestId('object-card-101:0')).getByText('Object 1')
     ).toBeInTheDocument();
@@ -241,9 +279,7 @@ describe('ClassifyAlertPage', () => {
   });
 
   it('renders the locked lane card read-only with a stage badge', async () => {
-    render(<ClassifyAlertPage />, { wrapper });
-
-    await waitFor(() => expect(screen.getByTestId('object-card-103:0')).toBeInTheDocument());
+    await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 
     const lockedCard = within(screen.getByTestId('object-card-103:0'));
     expect(lockedCard.getByText('Fully annotated')).toBeInTheDocument();
@@ -257,8 +293,7 @@ describe('ClassifyAlertPage', () => {
   });
 
   it('disables submit until every editable card is classified and missed smoke is answered', async () => {
-    render(<ClassifyAlertPage />, { wrapper });
-    await waitFor(() => expect(screen.getByTestId('object-card-101:0')).toBeInTheDocument());
+    await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 
     const submitButton = screen.getByRole('button', { name: /Submit alert/i });
     expect(submitButton).toBeDisabled();
@@ -314,8 +349,7 @@ describe('ClassifyAlertPage', () => {
 
     vi.mocked(apiClient.getAlertDetail).mockResolvedValue(placeholderAlertDetail);
 
-    render(<ClassifyAlertPage />, { wrapper });
-    await waitFor(() => expect(screen.getByTestId('object-card-101:0')).toBeInTheDocument());
+    await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 
     const card = within(screen.getByTestId('object-card-101:0'));
     expect(card.getByRole('radio', { name: /This is smoke/i })).not.toBeChecked();
@@ -355,8 +389,7 @@ describe('ClassifyAlertPage', () => {
 
     vi.mocked(apiClient.getAlertDetail).mockResolvedValue(preLabeledAlertDetail);
 
-    render(<ClassifyAlertPage />, { wrapper });
-    await waitFor(() => expect(screen.getByTestId('object-card-101:0')).toBeInTheDocument());
+    await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 
     const card = within(screen.getByTestId('object-card-101:0'));
     expect(card.getByRole('radio', { name: /This is smoke/i })).toBeChecked();
@@ -368,8 +401,7 @@ describe('ClassifyAlertPage', () => {
   });
 
   it('submits with per-lane stages: FP-only lane annotated, smoke lane seq_annotation_done, primary carries has_missed_smoke', async () => {
-    render(<ClassifyAlertPage />, { wrapper });
-    await waitFor(() => expect(screen.getByTestId('object-card-101:0')).toBeInTheDocument());
+    await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 
     const cardA = within(screen.getByTestId('object-card-101:0'));
     fireEvent.click(cardA.getByRole('radio', { name: /This is smoke/i }));
@@ -464,8 +496,7 @@ describe('ClassifyAlertPage', () => {
     };
     vi.mocked(apiClient.getAlertDetail).mockResolvedValue(fullyLockedDetail);
 
-    render(<ClassifyAlertPage />, { wrapper });
-    await waitFor(() => expect(screen.getByTestId('object-card-101:0')).toBeInTheDocument());
+    await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 
     expect(screen.getByRole('button', { name: /Submit alert/i })).toBeDisabled();
   });
@@ -511,8 +542,7 @@ describe('ClassifyAlertPage', () => {
       ],
     });
 
-    render(<ClassifyAlertPage />, { wrapper });
-    await waitFor(() => expect(screen.getByTestId('object-card-102:0')).toBeInTheDocument());
+    await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 
     const cardB = within(screen.getByTestId('object-card-102:0'));
     fireEvent.click(cardB.getByRole('radio', { name: /false positive/i }));
@@ -536,8 +566,7 @@ describe('ClassifyAlertPage', () => {
   });
 
   it('pluralizes the workflow-completion toast correctly for a single alert', async () => {
-    render(<ClassifyAlertPage />, { wrapper });
-    await waitFor(() => expect(screen.getByTestId('object-card-101:0')).toBeInTheDocument());
+    await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 
     const cardA = within(screen.getByTestId('object-card-101:0'));
     fireEvent.click(cardA.getByRole('radio', { name: /This is smoke/i }));
@@ -555,8 +584,7 @@ describe('ClassifyAlertPage', () => {
     // in the real store), so a successful submit takes the
     // "workflow completed" branch after its 1s toast delay.
     await waitFor(
-      () =>
-        expect(screen.getByText('Workflow completed! Classified 1 alert.')).toBeInTheDocument(),
+      () => expect(screen.getByText('Workflow completed! Classified 1 alert.')).toBeInTheDocument(),
       { timeout: 2000 }
     );
   });
@@ -566,8 +594,7 @@ describe('ClassifyAlertPage', () => {
       response: { data: { detail: 'Lane 103 is locked' } },
     });
 
-    render(<ClassifyAlertPage />, { wrapper });
-    await waitFor(() => expect(screen.getByTestId('object-card-101:0')).toBeInTheDocument());
+    await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 
     const cardA = within(screen.getByTestId('object-card-101:0'));
     fireEvent.click(cardA.getByRole('radio', { name: /This is smoke/i }));
@@ -652,8 +679,7 @@ describe('ClassifyAlertPage', () => {
       ],
     });
 
-    render(<ClassifyAlertPage />, { wrapper });
-    await waitFor(() => expect(screen.getByTestId('object-card-101:0')).toBeInTheDocument());
+    await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 
     const cardA = within(screen.getByTestId('object-card-101:0'));
     fireEvent.click(cardA.getByRole('radio', { name: /This is smoke/i }));
@@ -711,8 +737,7 @@ describe('ClassifyAlertPage', () => {
       ];
     });
 
-    render(<ClassifyAlertPage />, { wrapper });
-    await waitFor(() => expect(screen.getByTestId('object-card-101:0')).toBeInTheDocument());
+    await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 
     await waitFor(() => {
       expect(screen.getByTestId('object-color-swatch-101:0')).toBeInTheDocument();
@@ -731,8 +756,18 @@ describe('ClassifyAlertPage', () => {
       backgroundColor: getObjectColor(2),
     });
 
-    await waitFor(() => expect(objectOverlaysSpy).toHaveBeenCalled());
+    // `objectOverlaysSpy` is called on every render of the (mocked)
+    // MissedSmokePanel, including earlier ones where the three lanes'
+    // `getSequenceDetections` queries haven't all resolved yet — waiting
+    // for "called at least once" and then reading `.at(-1)` right after
+    // can race an in-flight query. Wait for the actual settled content
+    // (object 3's later-frame box, only present once its detections query
+    // has resolved) so `.at(-1)` is guaranteed to be the final call.
     type Overlay = { color: string; label: string; boxesByRecordedAt: Record<string, unknown> };
+    await waitFor(() => {
+      const overlays = objectOverlaysSpy.mock.calls.at(-1)?.[0] as Overlay[] | undefined;
+      expect(overlays?.[2]?.boxesByRecordedAt).toHaveProperty('2026-01-01T10:00:05Z');
+    });
     const lastOverlays = objectOverlaysSpy.mock.calls.at(-1)![0] as Overlay[];
 
     expect(lastOverlays.map(o => o.label)).toEqual(['Object 1', 'Object 2', 'Object 3']);
@@ -776,8 +811,7 @@ describe('ClassifyAlertPage', () => {
       }));
     });
 
-    render(<ClassifyAlertPage />, { wrapper });
-    await waitFor(() => expect(screen.getByTestId('object-card-101:0')).toBeInTheDocument());
+    await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 
     // Frame union across all 3 objects sorts to [t1, t2] -> segment index 0
     // = t1, index 1 = t2. Object 1 (index 0) has no bbox at t2, but its
@@ -790,9 +824,7 @@ describe('ClassifyAlertPage', () => {
   });
 
   it('renders the presence strip as the first thing under the header, above the cards grid and the shared player', async () => {
-    render(<ClassifyAlertPage />, { wrapper });
-
-    await waitFor(() => expect(screen.getByTestId('object-card-101:0')).toBeInTheDocument());
+    await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 
     const strip = screen.getByTestId('object-presence-swatch-0');
     const card = screen.getByTestId('object-card-101:0');
@@ -805,8 +837,7 @@ describe('ClassifyAlertPage', () => {
   });
 
   it("clicking a presence-strip row scrolls to and activates that object's card", async () => {
-    render(<ClassifyAlertPage />, { wrapper });
-    await waitFor(() => expect(screen.getByTestId('object-card-101:0')).toBeInTheDocument());
+    await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 
     // Lane B (sequence 102) is "Object 2" — see makeAlertDetail's laneB.
     fireEvent.click(screen.getByRole('button', { name: 'Go to Object 2' }));
@@ -978,8 +1009,7 @@ describe('ClassifyAlertPage done mode', () => {
   });
 
   it('renders lanes with existing annotations as editable and pre-filled "Reviewed", regardless of processing stage', async () => {
-    render(<ClassifyAlertPage mode="done" />, { wrapper: makeDoneWrapper(101) });
-    await waitFor(() => expect(screen.getByTestId('object-card-101:0')).toBeInTheDocument());
+    await renderAndSettle(<ClassifyAlertPage mode="done" />, { wrapper: makeDoneWrapper(101) });
 
     const cardA = within(screen.getByTestId('object-card-101:0')); // seq_annotation_done
     expect(cardA.getByText('Reviewed')).toBeInTheDocument();
@@ -999,8 +1029,7 @@ describe('ClassifyAlertPage done mode', () => {
   });
 
   it('keeps submit disabled until a lane actually changes, even though every card is already validly classified', async () => {
-    render(<ClassifyAlertPage mode="done" />, { wrapper: makeDoneWrapper(101) });
-    await waitFor(() => expect(screen.getByTestId('object-card-101:0')).toBeInTheDocument());
+    await renderAndSettle(<ClassifyAlertPage mode="done" />, { wrapper: makeDoneWrapper(101) });
 
     const submitButton = screen.getByRole('button', { name: /Submit alert/i });
     expect(submitButton).toBeDisabled();
@@ -1013,8 +1042,7 @@ describe('ClassifyAlertPage done mode', () => {
   });
 
   it('PATCHes only the changed lane via updateSequenceAnnotation, leaving the untouched lane alone', async () => {
-    render(<ClassifyAlertPage mode="done" />, { wrapper: makeDoneWrapper(101) });
-    await waitFor(() => expect(screen.getByTestId('object-card-101:0')).toBeInTheDocument());
+    await renderAndSettle(<ClassifyAlertPage mode="done" />, { wrapper: makeDoneWrapper(101) });
 
     const cardA = within(screen.getByTestId('object-card-101:0'));
     fireEvent.click(cardA.getByRole('radio', { name: /Industrial/i }));
@@ -1045,8 +1073,7 @@ describe('ClassifyAlertPage done mode', () => {
   });
 
   it('an alert-level missed-smoke-only change makes the primary lane "changed" and is saved on its PATCH', async () => {
-    render(<ClassifyAlertPage mode="done" />, { wrapper: makeDoneWrapper(101) });
-    await waitFor(() => expect(screen.getByTestId('object-card-101:0')).toBeInTheDocument());
+    await renderAndSettle(<ClassifyAlertPage mode="done" />, { wrapper: makeDoneWrapper(101) });
 
     const submitButton = screen.getByRole('button', { name: /Submit alert/i });
     expect(submitButton).toBeDisabled();
@@ -1069,8 +1096,7 @@ describe('ClassifyAlertPage done mode', () => {
   });
 
   it('scroll-activates the clicked object on load', async () => {
-    render(<ClassifyAlertPage mode="done" />, { wrapper: makeDoneWrapper(102) });
-    await waitFor(() => expect(screen.getByTestId('object-card-102:0')).toBeInTheDocument());
+    await renderAndSettle(<ClassifyAlertPage mode="done" />, { wrapper: makeDoneWrapper(102) });
 
     await waitFor(() =>
       expect(
@@ -1092,8 +1118,7 @@ describe('ClassifyAlertPage done mode', () => {
       })
       .mockRejectedValueOnce({ response: { data: { detail: 'Lane 202 rejected' } } });
 
-    render(<ClassifyAlertPage mode="done" />, { wrapper: makeDoneWrapper(101) });
-    await waitFor(() => expect(screen.getByTestId('object-card-101:0')).toBeInTheDocument());
+    await renderAndSettle(<ClassifyAlertPage mode="done" />, { wrapper: makeDoneWrapper(101) });
 
     // Change all three lanes so all three land in changedLanes — proving the
     // loop is sequential (not Promise.all firing every lane at once) and
@@ -1112,16 +1137,8 @@ describe('ClassifyAlertPage done mode', () => {
     fireEvent.click(submitButton);
 
     await waitFor(() => expect(apiClient.updateSequenceAnnotation).toHaveBeenCalledTimes(2));
-    expect(apiClient.updateSequenceAnnotation).toHaveBeenNthCalledWith(
-      1,
-      201,
-      expect.anything()
-    );
-    expect(apiClient.updateSequenceAnnotation).toHaveBeenNthCalledWith(
-      2,
-      202,
-      expect.anything()
-    );
+    expect(apiClient.updateSequenceAnnotation).toHaveBeenNthCalledWith(1, 201, expect.anything());
+    expect(apiClient.updateSequenceAnnotation).toHaveBeenNthCalledWith(2, 202, expect.anything());
     // The third (changed) lane's PATCH must never fire once lane 202 rejected.
     expect(apiClient.updateSequenceAnnotation).not.toHaveBeenCalledWith(204, expect.anything());
 
