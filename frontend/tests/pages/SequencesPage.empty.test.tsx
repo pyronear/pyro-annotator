@@ -103,6 +103,16 @@ describe('SequencesPage empty states', () => {
     expect(cta.getAttribute('href')).toBe('/classify');
   });
 
+  it('review page with active filters shows no-matches, not the stage-aware state', async () => {
+    mockedCameraName = 'CAM_01';
+    render(<SequencesPage defaultProcessingStage={ALL_CLASSIFIED_STAGES} isReviewPage />, {
+      wrapper,
+    });
+    await waitFor(() => expect(screen.getByText('No matching sequences')).toBeTruthy());
+    expect(screen.queryByText('No classified sequences yet')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Clear filters' })).toBeTruthy();
+  });
+
   it('review page on a specific stage scopes the headline to that stage', async () => {
     render(<SequencesPage defaultProcessingStage="seq_annotation_done" isReviewPage />, {
       wrapper,

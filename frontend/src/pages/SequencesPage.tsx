@@ -302,6 +302,7 @@ export default function SequencesPage({
                   <ListChecks className="h-6 w-6 text-ember" />
                 </span>
                 <h2 className="mt-4 font-display text-base font-semibold text-char">
+                  {/* An array stage is the "All classified" pseudo-stage (see getStageFilterLabel) */}
                   {Array.isArray(defaultProcessingStage)
                     ? 'No classified sequences yet'
                     : `No sequences in "${getStageFilterLabel(defaultProcessingStage)}"`}
