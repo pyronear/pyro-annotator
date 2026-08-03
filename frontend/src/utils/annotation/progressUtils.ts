@@ -93,20 +93,20 @@ export const calculateCompletionPercentage = (completed: number, total: number):
  * @example
  * ```typescript
  * const message = formatRemainingMessage(2, true);
- * // Returns: '2 detections still need annotation and missed smoke review is required'
+ * // Returns: '2 objects still need annotation and missed smoke review is required'
  * ```
  */
 export const formatRemainingMessage = (
   remaining: number,
   includeMissedSmoke: boolean = false
 ): string => {
-  const detectionText = `${remaining} detection${remaining !== 1 ? 's' : ''} still need${remaining === 1 ? 's' : ''} annotation`;
+  const objectText = `${remaining} object${remaining !== 1 ? 's' : ''} still need${remaining === 1 ? 's' : ''} annotation`;
 
   if (includeMissedSmoke) {
-    return `${detectionText} and missed smoke review is required`;
+    return `${objectText} and missed smoke review is required`;
   }
 
-  return detectionText;
+  return objectText;
 };
 
 /**
@@ -141,7 +141,7 @@ export const isAnnotationComplete = (
  * @example
  * ```typescript
  * const errors = getAnnotationValidationErrors(bboxes, null);
- * // Returns: ['2 detections still need annotation', 'Missed smoke review is required']
+ * // Returns: ['2 objects still need annotation', 'Missed smoke review is required']
  * ```
  */
 export const getAnnotationValidationErrors = (
@@ -175,7 +175,7 @@ export const getAnnotationValidationErrors = (
  * @example
  * ```typescript
  * const text = formatProgressDisplay(progress, 'yes');
- * // Returns: 'Done • 3 of 5 detections • 60% complete'
+ * // Returns: 'Done • 3 of 5 objects • 60% complete'
  * ```
  */
 export const formatProgressDisplay = (
@@ -183,7 +183,7 @@ export const formatProgressDisplay = (
   missedSmokeReview: 'yes' | 'no' | null
 ): string => {
   const reviewStatus = missedSmokeReview ? 'Done' : 'Pending';
-  return `${reviewStatus} • ${progress.completed} of ${progress.total} detections • ${progress.percentage}% complete`;
+  return `${reviewStatus} • ${progress.completed} of ${progress.total} objects • ${progress.percentage}% complete`;
 };
 
 /**

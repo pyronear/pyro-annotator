@@ -104,7 +104,7 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
           badgeCount: groupCount,
           badgeTitle: `${groupCount} groups need validation`,
         },
-        { name: 'Sequences', href: ROUTES.CLASSIFY, badgeCount: sequenceCount },
+        { name: 'Alerts', href: ROUTES.CLASSIFY, badgeCount: sequenceCount },
         { name: 'Done', href: ROUTES.CLASSIFY_DONE },
       ],
     },

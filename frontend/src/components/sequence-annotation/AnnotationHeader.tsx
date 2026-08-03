@@ -138,7 +138,7 @@ export const AnnotationHeader: React.FC<AnnotationHeaderProps> = ({
                 <>
                   <span className="text-gray-400">•</span>
                   <span className="text-xs text-blue-600 font-medium">
-                    Sequence {annotationWorkflow.currentIndex + 1} of{' '}
+                    Object {annotationWorkflow.currentIndex + 1} of{' '}
                     {annotationWorkflow.sequences.length}
                   </span>
                 </>

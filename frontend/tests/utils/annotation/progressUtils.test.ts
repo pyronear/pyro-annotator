@@ -122,24 +122,24 @@ describe('progressUtils', () => {
   });
 
   describe('formatRemainingMessage', () => {
-    it('should format message for single detection', () => {
+    it('should format message for single object', () => {
       const message = formatRemainingMessage(1, false);
-      expect(message).toBe('1 detection still needs annotation');
+      expect(message).toBe('1 object still needs annotation');
     });
 
-    it('should format message for multiple detections', () => {
+    it('should format message for multiple objects', () => {
       const message = formatRemainingMessage(3, false);
-      expect(message).toBe('3 detections still need annotation');
+      expect(message).toBe('3 objects still need annotation');
     });
 
     it('should include missed smoke review requirement', () => {
       const message = formatRemainingMessage(2, true);
-      expect(message).toBe('2 detections still need annotation and missed smoke review is required');
+      expect(message).toBe('2 objects still need annotation and missed smoke review is required');
     });
 
     it('should handle zero remaining', () => {
       const message = formatRemainingMessage(0, false);
-      expect(message).toBe('0 detections still need annotation');
+      expect(message).toBe('0 objects still need annotation');
     });
   });
 
@@ -199,7 +199,7 @@ describe('progressUtils', () => {
       
       const errors = getAnnotationValidationErrors(bboxes, null);
       expect(errors).toHaveLength(1);
-      expect(errors[0]).toContain('1 detection still needs annotation and missed smoke review is required');
+      expect(errors[0]).toContain('1 object still needs annotation and missed smoke review is required');
     });
 
     it('should return error for incomplete bboxes only', () => {
@@ -210,7 +210,7 @@ describe('progressUtils', () => {
       
       const errors = getAnnotationValidationErrors(bboxes, 'no');
       expect(errors).toHaveLength(1);
-      expect(errors[0]).toContain('1 detection still needs annotation');
+      expect(errors[0]).toContain('1 object still needs annotation');
       expect(errors[0]).not.toContain('missed smoke review');
     });
 
@@ -237,17 +237,17 @@ describe('progressUtils', () => {
 
     it('should format display with done review status', () => {
       const display = formatProgressDisplay(mockProgress, 'yes');
-      expect(display).toBe('Done • 3 of 5 detections • 60% complete');
+      expect(display).toBe('Done • 3 of 5 objects • 60% complete');
     });
 
     it('should format display with pending review status', () => {
       const display = formatProgressDisplay(mockProgress, null);
-      expect(display).toBe('Pending • 3 of 5 detections • 60% complete');
+      expect(display).toBe('Pending • 3 of 5 objects • 60% complete');
     });
 
     it('should format display with no review status', () => {
       const display = formatProgressDisplay(mockProgress, 'no');
-      expect(display).toBe('Done • 3 of 5 detections • 60% complete');
+      expect(display).toBe('Done • 3 of 5 objects • 60% complete');
     });
   });
 

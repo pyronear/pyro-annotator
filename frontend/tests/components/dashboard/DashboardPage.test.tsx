@@ -25,7 +25,7 @@ describe('DashboardPage', () => {
     expect(
       screen.getByText('Two passes: classify what the cameras saw, then localize the smoke.')
     ).toBeInTheDocument();
-    expect(screen.getByText('Classify sequences')).toBeInTheDocument();
+    expect(screen.getByText('Classify alerts')).toBeInTheDocument();
     expect(screen.getByText('Localize smoke')).toBeInTheDocument();
     expect(screen.getByText('How annotation works')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Classify by group/ })).toHaveAttribute(
