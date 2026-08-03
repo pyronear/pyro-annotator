@@ -116,7 +116,7 @@ The API provides enhanced endpoints with pagination, filtering, and ordering:
 
 ### Docker Volume Persistence
 - **PostgreSQL**: Data persists in `postgres_data` named volume
-- **LocalStack S3**: Data persists in `localstack_data` named volume (limited persistence in Community edition with PERSISTENCE=1)
+- **LocalStack S3**: objects live in LocalStack process memory (`PERSISTENCE=1` is Pro-only) and do NOT survive container restart — the dev/test stack is ephemeral by design; the root compose stack uses MinIO for durable S3
 - **Preserving data**: Use `make stop` to stop containers while keeping volumes
 - **Reset volumes**: Use `make clean` (runs `docker compose down -v`) to remove all data
 - **Backup volumes**: Use `docker volume` commands or Docker Desktop

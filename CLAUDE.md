@@ -28,7 +28,7 @@ docker compose up -d
 # Frontend:  http://localhost:3000
 # API:       http://localhost:5050  (docs at /docs)
 # Database:  localhost:5432
-# S3:        http://localhost:4566
+# S3:        http://localhost:4566  (MinIO console: http://localhost:9001)
 ```
 
 ## Backend (`annotation_api/`)
