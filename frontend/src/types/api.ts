@@ -311,6 +311,7 @@ export interface ExtendedSequenceFilters extends SequenceFilters {
   processing_stage?: ProcessingStageFilter;
   has_missed_smoke?: boolean;
   has_smoke?: boolean;
+  needs_localization?: boolean; // (has_smoke OR has_missed_smoke) AND NOT is_unsure — server-side rule
   has_false_positives?: boolean;
   false_positive_types?: string[]; // Array of false positive types for OR filtering
   smoke_types?: string[]; // Array of smoke types for OR filtering
