@@ -157,6 +157,16 @@ describe('ClassificationChips', () => {
     expect(container.textContent).not.toMatch(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u);
   });
 
+  it('keeps every chip out of the tab order — rows own tab navigation', () => {
+    renderChips({
+      bbox: { ...baseBbox, false_positive_types: ['high_cloud'] },
+      classification: 'false_positive',
+    });
+    [...screen.getAllByRole('radio'), ...screen.getAllByRole('checkbox')].forEach(chip =>
+      expect(chip).toHaveAttribute('tabindex', '-1')
+    );
+  });
+
   it('formats FP labels', () => {
     expect(formatFalsePositiveLabel('high_cloud')).toBe('High cloud');
     expect(formatFalsePositiveLabel('water_body')).toBe('Water body');

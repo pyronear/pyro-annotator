@@ -56,7 +56,7 @@ export interface KeyboardHandlerDependencies {
   onPrimaryClassificationChange: (
     updates: Record<number, 'unselected' | 'smoke' | 'false_positive'>
   ) => void;
-  /** Optional: toggle the active detection's Unsure state (Q key) — wired only by the classify cockpit. */
+  /** Optional: toggle the active detection's Unsure state (U key) — wired only by the classify cockpit. */
   onUnsureToggle?: (detectionIndex: number) => void;
 }
 
@@ -219,9 +219,10 @@ export const createKeyboardHandler = (deps: KeyboardHandlerDependencies) => {
       return;
     }
 
-    // Unsure toggle (Q key) — optional, classify cockpit only. Handled
-    // before the FP-type letters so it works in every classification mode.
-    if ((e.key === 'q' || e.key === 'Q') && onUnsureToggle) {
+    // Unsure toggle (U key) — optional, classify cockpit only. Handled
+    // before the FP-type letters so it works in every classification mode
+    // (Dust moved to J to free the mnemonic).
+    if ((e.key === 'u' || e.key === 'U') && onUnsureToggle) {
       onUnsureToggle(activeDetectionIndex);
       e.preventDefault();
       return;

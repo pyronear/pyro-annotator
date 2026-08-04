@@ -36,7 +36,7 @@ const FP_TYPE_KEYS: Record<string, string> = {
   building: 'B',
   cliff: 'C',
   dark: 'D',
-  dust: 'U',
+  dust: 'J',
   high_cloud: 'H',
   low_cloud: 'L',
   lens_flare: 'G',
@@ -133,6 +133,7 @@ export const ClassificationChips: React.FC<ClassificationChipsProps> = ({
       <div role="radiogroup" aria-label="Classification" className="flex flex-wrap gap-1.5">
         <button
           type="button"
+          tabIndex={-1}
           role="radio"
           aria-checked={smokeSelected}
           aria-label="Smoke"
@@ -144,6 +145,7 @@ export const ClassificationChips: React.FC<ClassificationChipsProps> = ({
         </button>
         <button
           type="button"
+          tabIndex={-1}
           role="radio"
           aria-checked={fpSelected}
           aria-label="False positive"
@@ -156,6 +158,7 @@ export const ClassificationChips: React.FC<ClassificationChipsProps> = ({
         {onUnsureChange && (
           <button
             type="button"
+            tabIndex={-1}
             role="radio"
             aria-checked={unsure}
             aria-label="Unsure"
@@ -163,7 +166,7 @@ export const ClassificationChips: React.FC<ClassificationChipsProps> = ({
             className={primaryChip(unsure, 'border-signal bg-signal-soft text-signal')}
           >
             Unsure
-            {showKbdHints && <Kbd label="Q" />}
+            {showKbdHints && <Kbd label="U" />}
           </button>
         )}
       </div>
@@ -178,6 +181,7 @@ export const ClassificationChips: React.FC<ClassificationChipsProps> = ({
               <button
                 key={type}
                 type="button"
+                tabIndex={-1}
                 role="radio"
                 aria-checked={bbox.smoke_type === type}
                 aria-label={formatSmokeType(type)}
@@ -204,6 +208,7 @@ export const ClassificationChips: React.FC<ClassificationChipsProps> = ({
                 <button
                   key={type}
                   type="button"
+                  tabIndex={-1}
                   role="checkbox"
                   aria-checked={selected}
                   aria-label={formatFalsePositiveLabel(type)}

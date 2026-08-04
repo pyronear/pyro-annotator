@@ -73,6 +73,7 @@ export const DecisionRail: React.FC<DecisionRailProps> = ({
         >
           <button
             type="button"
+            tabIndex={-1}
             role="radio"
             aria-checked={missedSmokeReview === 'yes'}
             aria-label="Yes"
@@ -94,6 +95,7 @@ export const DecisionRail: React.FC<DecisionRailProps> = ({
           </button>
           <button
             type="button"
+            tabIndex={-1}
             role="radio"
             aria-checked={missedSmokeReview === 'no'}
             aria-label="No"

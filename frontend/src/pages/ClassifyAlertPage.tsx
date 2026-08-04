@@ -783,7 +783,7 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
       handleMissedSmokeReviewChange,
       handleBboxChange: handleBboxChangeAdapter,
       onPrimaryClassificationChange: handlePrimaryClassificationChangeAdapter,
-      // Q: toggle the active object's Unsure — same mutual exclusivity as
+      // U: toggle the active object's Unsure — same mutual exclusivity as
       // the Unsure chip (turning it on clears the classification).
       onUnsureToggle: index => {
         const card = cards[index];
@@ -1131,7 +1131,7 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="font-body text-sm text-char">Mark active object as unsure</span>
-                  <span className="font-data text-detail text-haze">Q</span>
+                  <span className="font-data text-detail text-haze">U</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="font-body text-sm text-char">Missed smoke yes / no</span>

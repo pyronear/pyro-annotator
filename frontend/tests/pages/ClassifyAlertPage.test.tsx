@@ -963,10 +963,10 @@ describe('ClassifyAlertPage', () => {
     await waitFor(() => expect(navigateMock).toHaveBeenCalled(), { timeout: 2000 });
   });
 
-  it('Q toggles unsure on the active object, mutually exclusive with S', async () => {
+  it('U toggles unsure on the active object, mutually exclusive with S', async () => {
     await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 
-    fireEvent.keyDown(document, { key: 'q' });
+    fireEvent.keyDown(document, { key: 'u' });
     const row = within(screen.getByTestId('object-card-101:0'));
     expect(row.getByRole('radio', { name: 'Unsure' })).toBeChecked();
 

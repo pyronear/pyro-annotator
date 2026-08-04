@@ -76,6 +76,9 @@ describe('DecisionRail', () => {
     expect(onMissedSmokeActivate).toHaveBeenCalledTimes(1);
     fireEvent.focus(within(row).getByRole('radio', { name: 'No' }));
     expect(onMissedSmokeActivate).toHaveBeenCalledTimes(1);
+    // The Yes/No chips themselves stay out of the tab order.
+    expect(within(row).getByRole('radio', { name: 'Yes' })).toHaveAttribute('tabindex', '-1');
+    expect(within(row).getByRole('radio', { name: 'No' })).toHaveAttribute('tabindex', '-1');
   });
 
   it('disables the chips when missedSmokeDisabled', () => {
