@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Loader2, AlertCircle, Minus, Plus } from 'lucide-react';
 import { BoundingBox } from '@/types/api';
 import { apiClient } from '@/services/api';
-import { computeSquareCrop, maxSquareZoom, MIN_ZOOM } from '@/utils/annotation/squareCropUtils';
+import { computeSquareCrop, MAX_ZOOM, MIN_ZOOM } from '@/utils/annotation/squareCropUtils';
 
 /** Constant canvas backing resolution — CSS scales it; zoom never resizes the element. */
 const CANVAS_RES = 840;
@@ -182,17 +182,6 @@ export default function CroppedImageSequence({
     ctx.drawImage(img, crop.x, crop.y, crop.size, crop.size, 0, 0, CANVAS_RES, CANVAS_RES);
   }, [bboxes, currentIndex, images, zoomLevel]);
 
-  // Zoom range: the wide default framing (1x) up to bbox+pad, from the
-  // first loaded frame's dimensions (all frames of a sequence share them).
-  const loadedImage = images.find(img => img.loaded && img.imageElement)?.imageElement;
-  const maxZoom = loadedImage
-    ? maxSquareZoom(
-        calculateAverageBbox(bboxes),
-        loadedImage.naturalWidth,
-        loadedImage.naturalHeight
-      )
-    : MIN_ZOOM;
-
   // Wheel-zoom must preventDefault so the page doesn't scroll — React's
   // onWheel is passive, so attach the listener manually.
   useEffect(() => {
@@ -201,11 +190,11 @@ export default function CroppedImageSequence({
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
-      setZoomLevel(prev => Math.min(maxZoom, Math.max(MIN_ZOOM, prev * factor)));
+      setZoomLevel(prev => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, prev * factor)));
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
-  }, [maxZoom]);
+  }, []);
 
   // Redraw canvas when current index or zoom level changes
   useEffect(() => {
@@ -282,8 +271,8 @@ export default function CroppedImageSequence({
                 {zoomLevel.toFixed(1)}x
               </span>
               <button
-                onClick={() => setZoomLevel(prev => Math.min(maxZoom, prev + 0.5))}
-                disabled={zoomLevel >= maxZoom}
+                onClick={() => setZoomLevel(prev => Math.min(MAX_ZOOM, prev + 0.5))}
+                disabled={zoomLevel >= MAX_ZOOM}
                 title="Zoom in"
                 aria-label="Zoom in"
                 className="p-0.5 hover:text-gray-300 disabled:opacity-40 disabled:cursor-not-allowed"

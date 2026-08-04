@@ -362,6 +362,10 @@ export default function SequencePlayer({
   const showLoadingState = !currentImage?.loaded;
   const hasError = currentImage?.error;
 
+  // With object-track overlays present (the classify whole-alert view), the
+  // raw prediction and sibling layers would only duplicate them.
+  const hasObjectOverlays = !!objectOverlays && objectOverlays.length > 0;
+
   return (
     <div className={`relative overflow-hidden ${className}`}>
       {/* Preload Progress Bar (only visible during initial load) */}
@@ -435,13 +439,14 @@ export default function SequencePlayer({
             />
 
             {/* Bounding Boxes Overlay. The object-track overlays are derived
-                from the raw algo predictions at import, so when they are
-                shown the red prediction boxes would duplicate them exactly —
-                render one or the other. */}
+                from the raw algo predictions at import, and sibling boxes
+                are just the other objects' predictions — with overlays
+                present both layers would duplicate them exactly, so the
+                overlays render alone. */}
             {imageInfo && !showLoadingState && (
               <div className="absolute inset-0 pointer-events-none z-20">
-                {(!objectOverlays || objectOverlays.length === 0) && renderBoundingBoxes()}
-                {showSiblingBboxes && renderSiblingBoxes()}
+                {!hasObjectOverlays && renderBoundingBoxes()}
+                {!hasObjectOverlays && showSiblingBboxes && renderSiblingBoxes()}
                 {renderObjectOverlays()}
               </div>
             )}
@@ -512,9 +517,9 @@ export default function SequencePlayer({
               <div className="flex-1 flex items-center justify-end space-x-3">
                 <div className="flex items-center space-x-2">
                   <Eye className="w-4 h-4" />
-                  {objectOverlays && objectOverlays.length > 0 ? (
+                  {hasObjectOverlays ? (
                     <span className="text-xs">
-                      {objectOverlays.length} object{objectOverlays.length !== 1 ? 's' : ''}
+                      {objectOverlays!.length} object{objectOverlays!.length !== 1 ? 's' : ''}
                     </span>
                   ) : (
                     <span className="text-xs">
@@ -523,20 +528,21 @@ export default function SequencePlayer({
                     </span>
                   )}
                 </div>
-                {(currentDetection.others_bboxes?.predictions?.length || 0) > 0 && (
-                  <label className="flex items-center cursor-pointer hover:bg-white/10 px-2 py-1 rounded transition-colors">
-                    <input
-                      type="checkbox"
-                      checked={showSiblingBboxes}
-                      onChange={e => setShowSiblingBboxes(e.target.checked)}
-                      className="w-3.5 h-3.5 mr-2 accent-gray-300"
-                    />
-                    <span className="text-xs">
-                      {currentDetection.others_bboxes?.predictions?.length} sibling
-                      {(currentDetection.others_bboxes?.predictions?.length || 0) > 1 ? 's' : ''}
-                    </span>
-                  </label>
-                )}
+                {!hasObjectOverlays &&
+                  (currentDetection.others_bboxes?.predictions?.length || 0) > 0 && (
+                    <label className="flex items-center cursor-pointer hover:bg-white/10 px-2 py-1 rounded transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={showSiblingBboxes}
+                        onChange={e => setShowSiblingBboxes(e.target.checked)}
+                        className="w-3.5 h-3.5 mr-2 accent-gray-300"
+                      />
+                      <span className="text-xs">
+                        {currentDetection.others_bboxes?.predictions?.length} sibling
+                        {(currentDetection.others_bboxes?.predictions?.length || 0) > 1 ? 's' : ''}
+                      </span>
+                    </label>
+                  )}
               </div>
             </div>
 

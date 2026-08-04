@@ -61,10 +61,10 @@ describe('CroppedImageSequence', () => {
     expect(screen.getByText('1.0x')).toBeInTheDocument();
     expect(screen.getByLabelText('Zoom out')).toBeDisabled();
 
-    // bbox 128px in 1280x720: default side 384, max zoom 384 / 153.6 = 2.5.
+    // Zoom runs to the flat MAX_ZOOM cap (8x), 0.5 per click from 1.0.
     const zoomIn = screen.getByLabelText('Zoom in');
-    for (let i = 0; i < 10; i++) fireEvent.click(zoomIn);
-    expect(screen.getByText('2.5x')).toBeInTheDocument();
+    for (let i = 0; i < 20; i++) fireEvent.click(zoomIn);
+    expect(screen.getByText('8.0x')).toBeInTheDocument();
     expect(zoomIn).toBeDisabled();
   });
 });

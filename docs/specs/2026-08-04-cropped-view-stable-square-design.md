@@ -42,7 +42,9 @@ No variant prop; one behavior everywhere.
 - **Zoom** divides the side: visible side = `defaultSide / zoom`.
   - `zoom = 1` is the default wide framing — the minimum, and the implicit
     "reset" state.
-  - Max zoom keeps the full bbox + small pad visible, capped at 8×.
+  - Max zoom is a flat 8× cap (amended 2026-08-04: the original
+    keep-bbox-visible ceiling ≈2.5× was too shallow for pixel-peeping —
+    zooming may crop into the bbox).
 - Geometry lives in a pure function in `frontend/src/utils/annotation/`
   (e.g. `computeSquareCrop(avgBbox, imageDims, zoom)` returning the source
   rect in normalized coordinates), unit-tested independently of the canvas.
@@ -68,8 +70,8 @@ No variant prop; one behavior everywhere.
 ## Testing
 
 - Unit tests for the geometry function: centering, edge clamping (shift not
-  shrink), default side, zoom bounds (min 1, bbox-visible max, 8× cap),
-  degenerate bboxes.
+  shrink), default side, zoom bounds (min 1, flat 8× cap), degenerate
+  bboxes.
 - Component tests updated: square viewport renders, zoom buttons clamp at
   both ends, no reset control present.
 - Existing consumer tests (`ClassifyMediaPanel`, page tests) keep passing —

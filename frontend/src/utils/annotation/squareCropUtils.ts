@@ -11,8 +11,6 @@
 export const CONTEXT_FACTOR = 3;
 export const MIN_ZOOM = 1;
 export const MAX_ZOOM = 8;
-/** Pad factor kept around the bbox at max zoom. */
-const BBOX_PAD = 1.2;
 
 export interface SquareCrop {
   /** Top-left corner and side length, in image pixels. */
@@ -44,24 +42,13 @@ const defaultSidePx = (
   return side > 0 ? Math.min(side, shortDim) : shortDim;
 };
 
-export function maxSquareZoom(
-  bbox: [number, number, number, number],
-  imgWidth: number,
-  imgHeight: number
-): number {
-  const bboxSide = bboxSidePx(bbox, imgWidth, imgHeight);
-  if (bboxSide <= 0) return MAX_ZOOM;
-  const zoomAtPad = defaultSidePx(bbox, imgWidth, imgHeight) / (bboxSide * BBOX_PAD);
-  return clamp(zoomAtPad, MIN_ZOOM, MAX_ZOOM);
-}
-
 export function computeSquareCrop(
   bbox: [number, number, number, number],
   imgWidth: number,
   imgHeight: number,
   zoom: number
 ): SquareCrop {
-  const effectiveZoom = clamp(zoom, MIN_ZOOM, maxSquareZoom(bbox, imgWidth, imgHeight));
+  const effectiveZoom = clamp(zoom, MIN_ZOOM, MAX_ZOOM);
   const size = defaultSidePx(bbox, imgWidth, imgHeight) / effectiveZoom;
   const cx = ((bbox[0] + bbox[2]) / 2) * imgWidth;
   const cy = ((bbox[1] + bbox[3]) / 2) * imgHeight;

@@ -1,10 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  computeSquareCrop,
-  maxSquareZoom,
-  CONTEXT_FACTOR,
-  MAX_ZOOM,
-} from '@/utils/annotation/squareCropUtils';
+import { computeSquareCrop, CONTEXT_FACTOR, MAX_ZOOM } from '@/utils/annotation/squareCropUtils';
 
 // 1280x720 frame; bbox 128px wide, 72px tall, centered at (640, 360).
 const IMG_W = 1280;
@@ -53,37 +48,14 @@ describe('computeSquareCrop', () => {
     expect(z.size).toBeCloseTo(384);
   });
 
-  it('never zooms past the bbox+pad framing', () => {
-    const zMax = maxSquareZoom(BBOX, IMG_W, IMG_H);
-    const crop = computeSquareCrop(BBOX, IMG_W, IMG_H, zMax * 2); // over-ask
-    expect(crop.size).toBeCloseTo(384 / zMax);
-    // bbox (128px wide) plus 20% pad still fits.
-    expect(crop.size).toBeGreaterThanOrEqual(128 * 1.2 - 0.001);
+  it('clamps zoom above MAX_ZOOM to MAX_ZOOM', () => {
+    const crop = computeSquareCrop(BBOX, IMG_W, IMG_H, MAX_ZOOM * 2); // over-ask
+    expect(crop.size).toBeCloseTo(384 / MAX_ZOOM);
   });
 
   it('handles a degenerate zero-size bbox with a whole-short-side square', () => {
     const dot: [number, number, number, number] = [0.5, 0.5, 0.5, 0.5];
     const crop = computeSquareCrop(dot, IMG_W, IMG_H, 1);
     expect(crop.size).toBeCloseTo(IMG_H);
-  });
-});
-
-describe('maxSquareZoom', () => {
-  it('is defaultSide / (bboxSide * 1.2), capped at MAX_ZOOM', () => {
-    // defaultSide 384, bbox larger side 128 → 384 / 153.6 = 2.5
-    expect(maxSquareZoom(BBOX, IMG_W, IMG_H)).toBeCloseTo(2.5);
-  });
-
-  it('equals CONTEXT_FACTOR / pad for uncapped framings (tiny boxes) and stays under MAX_ZOOM', () => {
-    // Uncapped default side = bboxSide * CONTEXT_FACTOR, so the ratio to
-    // the bbox+pad framing is CONTEXT_FACTOR / 1.2 regardless of bbox size.
-    const tiny: [number, number, number, number] = [0.5, 0.5, 0.5 + 4 / IMG_W, 0.5 + 4 / IMG_H];
-    expect(maxSquareZoom(tiny, IMG_W, IMG_H)).toBeCloseTo(CONTEXT_FACTOR / 1.2);
-    expect(maxSquareZoom(tiny, IMG_W, IMG_H)).toBeLessThanOrEqual(MAX_ZOOM);
-  });
-
-  it('is at least 1 even for huge boxes', () => {
-    const big: [number, number, number, number] = [0, 0, 1, 1];
-    expect(maxSquareZoom(big, IMG_W, IMG_H)).toBe(1);
   });
 });
