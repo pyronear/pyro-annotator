@@ -963,6 +963,11 @@ describe('ClassifyAlertPage', () => {
     await waitFor(() => expect(navigateMock).toHaveBeenCalled(), { timeout: 2000 });
   });
 
+  it('focuses the active row on load so Tab cycles the rail immediately', async () => {
+    await renderAndSettle(<ClassifyAlertPage />, { wrapper });
+    await waitFor(() => expect(screen.getByTestId('object-card-101:0')).toHaveFocus());
+  });
+
   it('U toggles unsure on the active object, mutually exclusive with S', async () => {
     await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 

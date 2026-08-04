@@ -340,6 +340,11 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
     const first = cards.find(c => !c.locked) ?? cards[0];
     setActiveCardKey(first.cardKey);
     setActiveSection('detections');
+    // Seed focus on the row so Tab / Shift+Tab cycle the rail immediately,
+    // without first tabbing through the header and media panel.
+    requestAnimationFrame(() => {
+      cardRefs.current[first.cardKey]?.focus({ preventScroll: true });
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, cards]);
 
@@ -354,6 +359,8 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
     setActiveSection('detections');
     requestAnimationFrame(() => {
       cardRefs.current[cardKey]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Seed focus so Tab / Shift+Tab cycle the rail immediately on load.
+      cardRefs.current[cardKey]?.focus({ preventScroll: true });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, sequenceId, alertDetail]);
