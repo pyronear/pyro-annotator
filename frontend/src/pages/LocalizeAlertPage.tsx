@@ -509,13 +509,20 @@ export default function LocalizeAlertPage() {
     },
     onError: err => {
       const detail = (err as { detail?: string })?.detail || (err as Error)?.message || '';
+      // Any failure here — a mid-loop accept save (server truth may already
+      // include some of this attempt's writes) or a rejected localize-submit
+      // — can leave the page's cache stale relative to the server. Always
+      // invalidate every workable lane's detection-annotations query so a
+      // retry re-derives its plan from server truth instead of re-POSTing
+      // creates for detections the server already has annotated (constraint
+      // errors).
+      workableLanePlans.forEach(({ laneSequenceId }) => {
+        queryClient.invalidateQueries({
+          queryKey: [...QUERY_KEYS.DETECTION_ANNOTATIONS, 'by-sequence', laneSequenceId],
+        });
+      });
       if (detail.includes('localization incomplete')) {
         showToastNotification('Submit rejected — some frames are not yet annotated', 'error');
-        workableLanePlans.forEach(({ laneSequenceId }) => {
-          queryClient.invalidateQueries({
-            queryKey: [...QUERY_KEYS.DETECTION_ANNOTATIONS, 'by-sequence', laneSequenceId],
-          });
-        });
         return;
       }
       showToastNotification(`Submit failed: ${detail || 'unknown error'}`, 'error');

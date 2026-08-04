@@ -653,6 +653,61 @@ describe('LocalizeAlertPage', () => {
       });
     });
 
+    it('a save that fails mid-loop across lanes never submits, toasts the failure, and invalidates every workable lane\'s cache (not just the failed one) so a retry re-derives from server truth', async () => {
+      // Lane 1 (Object 1 / detection 1001) saves fine; lane 2's first
+      // pending frame (1002) rejects with a generic (non-"incomplete")
+      // error — a mid-loop network blip, not a 422 from localize-submit
+      // itself (localizeSubmit is never even reached).
+      vi.mocked(apiClient.createDetectionAnnotation).mockImplementation(async payload => {
+        if (payload.detection_id === 1002) {
+          throw { detail: 'Network error' };
+        }
+        return {
+          id: 9100 + payload.detection_id,
+          detection_id: payload.detection_id,
+          annotation: payload.annotation,
+          processing_stage: payload.processing_stage,
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: null,
+        };
+      });
+
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      const callsForLane = (id: number) =>
+        vi
+          .mocked(apiClient.getDetectionAnnotations)
+          .mock.calls.filter(([filters]) => filters?.sequence_id === id).length;
+      const lane101Before = callsForLane(101);
+      const lane102Before = callsForLane(102);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Accept all & submit alert' }));
+
+      // Lane 1 saved successfully before lane 2 failed.
+      await waitFor(() => {
+        expect(apiClient.createDetectionAnnotation).toHaveBeenCalledWith(
+          expect.objectContaining({ detection_id: 1001 })
+        );
+      });
+      // Fail-fast within lane 2 too: its second frame (1003) is never attempted.
+      await waitFor(() => {
+        expect(screen.getByText('Submit failed: Network error')).toBeInTheDocument();
+      });
+      expect(apiClient.createDetectionAnnotation).not.toHaveBeenCalledWith(
+        expect.objectContaining({ detection_id: 1003 })
+      );
+      expect(apiClient.localizeSubmit).not.toHaveBeenCalled();
+
+      // Both workable lanes' detection-annotation caches are invalidated —
+      // including lane 1's, whose saves actually landed server-side — so a
+      // retry re-derives its plan from server truth instead of re-POSTing
+      // creates for already-annotated detections.
+      await waitFor(() => {
+        expect(callsForLane(101)).toBeGreaterThan(lane101Before);
+        expect(callsForLane(102)).toBeGreaterThan(lane102Before);
+      });
+    });
+
     it('warns with a two-step confirm when some pending frames have no box, then proceeds on the second click', async () => {
       // Detection 1002 has no predictions at all (no auto, no algo) -> a
       // pending frame with zero boxes, contributing to the no-box count.
