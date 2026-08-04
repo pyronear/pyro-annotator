@@ -1,9 +1,12 @@
+import { matchPath } from 'react-router-dom';
 import {
   ROUTES,
   classifyDetail,
   classifyDetailWithReturn,
   classifyGroup,
   localizeDetail,
+  localizeObject,
+  localizeObjectRoute,
   parseLocalizeReturn,
 } from '@/utils/routes';
 
@@ -63,4 +66,29 @@ describe('routes', () => {
     expect(localizeDetail(5, undefined, true)).toBe('/localize/done/5');
     expect(localizeDetail(5, 9, true)).toBe('/localize/done/5/9');
   });
+
+  it('builds the per-frame editor path naming both the object and the frame', () => {
+    expect(localizeObject(5, 7, 9)).toBe('/localize/5/object/7/9');
+    expect(localizeObject('5', '7', '9')).toBe('/localize/5/object/7/9');
+  });
+
+  it('keeps the editor under the Done prefix when that is where it was entered from', () => {
+    expect(localizeObject(5, 7, 9, true)).toBe('/localize/done/5/object/7/9');
+    expect(localizeObjectRoute(true)).toBe('/localize/done/:sequenceId/object/:laneId/:detectionId');
+  });
+
+  it.each([[false], [true]])(
+    'keeps the editor route pattern and its builder in agreement (done=%s)',
+    done => {
+      // App.tsx's route and LocalizeAlertPage's useMatch both read the
+      // pattern; the builder produces the URLs that have to match it. A drift
+      // between them fails silently in the app (useMatch just returns null,
+      // so the editor stops opening with no error), so pin it.
+      expect(matchPath(localizeObjectRoute(done), localizeObject(5, 7, 9, done))?.params).toEqual({
+        sequenceId: '5',
+        laneId: '7',
+        detectionId: '9',
+      });
+    }
+  );
 });
