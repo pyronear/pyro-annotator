@@ -7,6 +7,7 @@ import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ClassifyAlertQueueTable } from '@/components/sequences/ClassifyAlertQueueTable';
 import type { ClassifyQueueItem } from '@/types/api';
+import { formatDateTime } from '@/utils/datetime';
 
 vi.mock('@/components/DetectionImageThumbnail', () => ({
   default: ({ sequenceId, className }: { sequenceId: number; className?: string }) => (
@@ -81,7 +82,7 @@ describe('ClassifyAlertQueueTable', () => {
   it('shows the absolute recorded timestamp', () => {
     render(<ClassifyAlertQueueTable items={[createItem()]} onAlertClick={onAlertClick} />);
 
-    expect(screen.getByText(new Date('2024-01-01T10:00:00Z').toLocaleString())).toBeInTheDocument();
+    expect(screen.getByText(formatDateTime('2024-01-01T10:00:00Z'))).toBeInTheDocument();
   });
 
   it('renders the platform annotation label per value', () => {

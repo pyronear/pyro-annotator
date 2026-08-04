@@ -60,6 +60,7 @@ import { usePersistedTabState } from '@/hooks/usePersistedTabState';
 import { useToastNotifications } from '@/utils/notification/toastUtils';
 import { NotificationSystem } from '@/components/ui/NotificationSystem';
 import { ROUTES } from '@/utils/routes';
+import { formatDateTime } from '@/utils/datetime';
 
 // Shared with the legacy grid's card-size knob (DetectionSequenceAnnotatePage)
 // via the same persisted key, so the preference carries across both pages.
@@ -891,7 +892,7 @@ export default function LocalizeAlertPage() {
               {alertDetail.organisation_name} · {alertDetail.camera_name}
             </h1>
             <span className="font-data text-detail text-haze">
-              {new Date(alertDetail.recorded_at).toLocaleString()}
+              {formatDateTime(alertDetail.recorded_at)}
             </span>
             <span className="flex-none rounded-full px-2.5 py-0.5 font-data text-xs font-semibold bg-ember-soft text-ember">
               {workableObjects.length} object{workableObjects.length === 1 ? '' : 's'}

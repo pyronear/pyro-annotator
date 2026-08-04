@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { DetectionImageCard } from '@/components/detection-annotation/DetectionImageCard';
 import type { Detection, DetectionAnnotation } from '@/types/api';
+import { formatDateTime } from '@/utils/datetime';
 
 vi.mock('@/hooks/useDetectionImage', () => ({
   useDetectionImage: () => ({ data: { url: 'http://test/img.jpg' }, isLoading: false }),
@@ -73,7 +74,7 @@ describe('DetectionImageCard dense restyle', () => {
     const { container } = render(
       <DetectionImageCard detection={detection} onClick={noop} cellState="auto" />
     );
-    const label = screen.getByText(new Date('2024-01-01T10:00:00Z').toLocaleString());
+    const label = screen.getByText(formatDateTime('2024-01-01T10:00:00Z'));
     expect(label.className).toContain('group-hover:opacity-100');
     expect(container.firstElementChild?.className).toContain('group');
   });

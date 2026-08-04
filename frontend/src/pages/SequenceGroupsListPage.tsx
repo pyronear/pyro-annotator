@@ -4,7 +4,6 @@ import { useQuery } from '@tanstack/react-query';
 import { Popover } from '@headlessui/react';
 import { Loader2, AlertCircle, Check, Info, Layers, ShieldCheck, ChevronRight } from 'lucide-react';
 import { apiClient } from '@/services/api';
-import { formatRelativeTime } from '@/utils/relativeTime';
 import { SequenceGroupStats } from '@/types/api';
 import { classifyGroup, classifyGroups, ROUTES, SequenceGroupsFilter } from '@/utils/routes';
 import { ColumnHeader } from '@/components/sequences/ColumnHeader';
@@ -21,6 +20,7 @@ import {
   TBODY_CLASSES,
   THEAD_CLASSES,
 } from '@/components/sequences/tableStyles';
+import { formatDateTime } from '@/utils/datetime';
 type OrderBy = 'member_count' | 'camera_name' | 'azimuth' | 'created_at';
 type OrderDirection = 'asc' | 'desc';
 
@@ -339,11 +339,8 @@ export default function SequenceGroupsListPage({
                         {g.camera_name}
                       </Link>
                     </td>
-                    <td
-                      className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}
-                      title={new Date(g.created_at).toLocaleString()}
-                    >
-                      {formatRelativeTime(g.created_at)}
+                    <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
+                      {formatDateTime(g.created_at)}
                     </td>
                     <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>{g.azimuth}°</td>
                     <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>{g.member_count}</td>
@@ -373,7 +370,7 @@ export default function SequenceGroupsListPage({
                           className="inline-flex items-center gap-1 font-body text-xs font-semibold text-pine"
                           title={
                             g.validated_at
-                              ? `Validated ${new Date(g.validated_at).toLocaleString()}`
+                              ? `Validated ${formatDateTime(g.validated_at)}`
                               : undefined
                           }
                         >

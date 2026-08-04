@@ -7,6 +7,7 @@ import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { LocalizeQueueTable } from '@/components/sequences/LocalizeQueueTable';
 import type { LocalizationQueueItem, LocalizationQueueLane } from '@/types/api';
+import { formatDateTime } from '@/utils/datetime';
 
 vi.mock('@/components/DetectionImageThumbnail', () => ({
   default: ({ sequenceId, className }: { sequenceId: number; className?: string }) => (
@@ -99,7 +100,7 @@ describe('LocalizeQueueTable', () => {
 
     expect(screen.getByText('test-api')).toBeInTheDocument();
     expect(screen.getByText('180°')).toBeInTheDocument();
-    expect(screen.getByText(new Date('2024-01-01T10:00:00Z').toLocaleString())).toBeInTheDocument();
+    expect(screen.getByText(formatDateTime('2024-01-01T10:00:00Z'))).toBeInTheDocument();
   });
 
   it('renders 0° when azimuth is zero', () => {

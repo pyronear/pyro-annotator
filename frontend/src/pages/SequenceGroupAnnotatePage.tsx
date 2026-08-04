@@ -15,10 +15,10 @@ import {
 import { apiClient } from '@/services/api';
 import { useDetectionImage } from '@/hooks/useDetectionImage';
 import { usePersistedTabState } from '@/hooks/usePersistedTabState';
-import { formatRelativeTime } from '@/utils/relativeTime';
 import { useState } from 'react';
 import { AlgoPrediction, SequenceGroup, SequenceGroupMember } from '@/types/api';
 import { ROUTES, classifyDetail, classifyGroup } from '@/utils/routes';
+import { formatDateTime } from '@/utils/datetime';
 
 // Minimum card width per size step; the auto-fill grid derives the column
 // count from it, so bigger cards automatically flow into more rows.
@@ -218,10 +218,8 @@ function MemberCard({
         </div>
         <div className="px-2 py-1 font-data text-detail text-haze flex items-center justify-between">
           {/* Full timestamp like the queue tables — the sequence id means
-              nothing to annotators; relative time lives in the tooltip. */}
-          <span title={formatRelativeTime(member.recorded_at)}>
-            {new Date(member.recorded_at).toLocaleString()}
-          </span>
+              nothing to annotators. */}
+          <span>{formatDateTime(member.recorded_at)}</span>
           {memberIsAnnotated(member) ? (
             <CheckCircle className="w-3 h-3 text-pine" aria-label="annotated" />
           ) : (

@@ -22,6 +22,7 @@ import {
   getProgressColor,
 } from '@/utils/annotation/progressUtils';
 import { isSequenceAnnotationSubmitted } from '@/utils/processingStage';
+import { formatDateTime } from '@/utils/datetime';
 
 interface AnnotationHeaderProps {
   // Navigation
@@ -107,9 +108,7 @@ export const AnnotationHeader: React.FC<AnnotationHeaderProps> = ({
               <span className="text-sm text-gray-600">{sequence?.camera_name || 'Loading...'}</span>
               <span className="text-gray-400">•</span>
               <span className="text-sm text-gray-600">
-                {sequence?.recorded_at
-                  ? new Date(sequence.recorded_at).toLocaleString()
-                  : 'Loading...'}
+                {sequence?.recorded_at ? formatDateTime(sequence.recorded_at) : 'Loading...'}
               </span>
 
               {/* Azimuth */}

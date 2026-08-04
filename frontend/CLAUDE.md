@@ -142,6 +142,7 @@ Endpoints used: `/api/v1/sequences`, `/api/v1/detections`, `/api/v1/annotations/
 - TypeScript strict mode; `noUnusedLocals` / `noUnusedParameters` enabled — don't leave unused imports.
 - Annotation logic lives in `src/utils/annotation/` and `src/hooks/annotation/`. Prefer extending those modules over inlining canvas/keyboard/coordinate logic into components.
 - Notifications: use `src/utils/notification/toastUtils.ts` and the `NotificationSystem` UI — don't roll your own.
+- Dates: render every user-facing date through `src/utils/datetime.ts` — `formatDateTime` (`YYYY-MM-DD HH:mm`) or `formatDate` (`YYYY-MM-DD`), both viewer-local. Don't call `toLocaleString` / `toLocaleDateString` on a date; they render differently per browser locale.
 - Filter state: persisted via `usePersistedFilters` / `usePersistedTabState`.
 
 ## Common Issues

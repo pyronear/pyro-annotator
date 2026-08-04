@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Detection } from '@/types/api';
 import { calculateWorkflowProgress } from '@/utils/annotation';
+import { formatDateTime } from '@/utils/datetime';
 
 interface DetectionProgressHeaderProps {
   currentIndex: number;
@@ -148,9 +149,7 @@ export function DetectionProgressHeader({
             {detection.confidence && <>Confidence: {(detection.confidence * 100).toFixed(1)}%</>}
           </div>
 
-          <div className="text-xs text-gray-500">
-            {new Date(detection.recorded_at).toLocaleString()}
-          </div>
+          <div className="text-xs text-gray-500">{formatDateTime(detection.recorded_at)}</div>
 
           {detection.algo_predictions?.predictions?.length && (
             <div className="flex items-center justify-end space-x-1 text-xs text-blue-600 mt-1">

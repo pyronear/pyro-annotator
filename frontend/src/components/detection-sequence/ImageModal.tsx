@@ -28,6 +28,7 @@ import {
 } from '@/components/detection-annotation';
 import type { ObjectOverlayItem } from '@/components/annotation/ImageOverlays';
 import { useKeyboardShortcuts } from '@/hooks/annotation';
+import { formatDateTime } from '@/utils/datetime';
 
 interface ImageModalProps {
   detection: Detection;
@@ -1024,9 +1025,7 @@ export function ImageModal({
                 Frame {currentIndex + 1} of {totalCount}
               </span>
               <span className="text-gray-300">•</span>
-              <span className="text-gray-300">
-                {new Date(detection.recorded_at).toLocaleString()}
-              </span>
+              <span className="text-gray-300">{formatDateTime(detection.recorded_at)}</span>
               {isAnnotated && (
                 <>
                   <span className="text-gray-300">•</span>

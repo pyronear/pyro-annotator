@@ -9,6 +9,7 @@ import { ArrowLeft, ChevronLeft, ChevronRight, CheckCircle, Upload } from 'lucid
 import { Sequence, SequenceAnnotation } from '@/types/api';
 import { analyzeSequenceAccuracy, getModelAccuracyBadgeClasses } from '@/utils/modelAccuracy';
 import { ViewToolbar, CardSize } from './ViewToolbar';
+import { formatDateTime } from '@/utils/datetime';
 
 export type { CardSize } from './ViewToolbar';
 
@@ -126,7 +127,7 @@ export function DetectionHeader({
           </span>
           <span className="text-gray-400">•</span>
           <span className="text-sm text-gray-600 whitespace-nowrap">
-            {sequence?.recorded_at ? new Date(sequence.recorded_at).toLocaleString() : 'Loading...'}
+            {sequence?.recorded_at ? formatDateTime(sequence.recorded_at) : 'Loading...'}
           </span>
         </div>
 

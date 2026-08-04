@@ -16,6 +16,7 @@ vi.mock('@/services/api', () => ({
 
 import { apiClient } from '@/services/api';
 import SequenceGroupAnnotatePage from '@/pages/SequenceGroupAnnotatePage';
+import { formatDateTime } from '@/utils/datetime';
 
 function renderAt(path: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -116,7 +117,7 @@ describe('SequenceGroupAnnotatePage', () => {
 
   it('member cards use the hairline card recipe with a mono timestamp footer', async () => {
     await renderGroup();
-    const recorded = new Date(member.recorded_at).toLocaleString();
+    const recorded = formatDateTime(member.recorded_at);
     const card = screen.getByText(recorded).closest('a')?.parentElement;
     // Square corners on member cards — deliberate deviation from the card
     // recipe so dense image grids read as a contact sheet.

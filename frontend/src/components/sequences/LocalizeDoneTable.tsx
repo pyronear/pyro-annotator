@@ -19,6 +19,7 @@ import {
   TBODY_CLASSES,
   THEAD_CLASSES,
 } from './tableStyles';
+import { formatDateTime } from '@/utils/datetime';
 
 interface LocalizeDoneTableProps {
   sequences: SequenceWithDetectionProgress[];
@@ -78,7 +79,7 @@ export function LocalizeDoneTable({
                 <td className={`${CELL_CLASSES} ${PRIMARY_CELL_TEXT}`}>{sequence.camera_name}</td>
                 <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>{sequence.organisation_name}</td>
                 <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
-                  {new Date(sequence.recorded_at).toLocaleString()}
+                  {formatDateTime(sequence.recorded_at)}
                 </td>
                 <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>{sequence.source_api}</td>
                 <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>

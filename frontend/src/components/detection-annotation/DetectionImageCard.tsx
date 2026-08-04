@@ -15,6 +15,7 @@ import {
   SiblingBoundingBoxOverlay,
   UserAnnotationOverlay,
 } from '@/components/annotation/ImageOverlays';
+import { formatDateTime } from '@/utils/datetime';
 
 interface DetectionImageCardProps {
   detection: Detection;
@@ -181,7 +182,7 @@ export function DetectionImageCard({
 
       {/* Hover metadata (replaces the removed footer) */}
       <div className="absolute bottom-0 left-0 bg-black/60 text-white text-[10px] px-1 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-        {new Date(detection.recorded_at).toLocaleString()}
+        {formatDateTime(detection.recorded_at)}
       </div>
     </div>
   );

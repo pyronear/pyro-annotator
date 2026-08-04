@@ -15,6 +15,7 @@ import { Detection, AlgoPrediction } from '@/types/api';
 import { useImagePreloader } from '@/hooks/useImagePreloader';
 import { ObjectOverlay } from '@/utils/annotation/objectColors';
 import MissedSmokeInstructionsModal from './MissedSmokeInstructionsModal';
+import { formatDateTime } from '@/utils/datetime';
 
 interface SequencePlayerProps {
   detections: Detection[];
@@ -169,13 +170,6 @@ export default function SequencePlayer({
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isPlaying, currentIndex, detections.length, onPlay, onPause, onSeek]);
-
-  // Local time in an ISO-like layout, easy to scan across frames.
-  const formatRecordedAt = (iso: string) => {
-    const d = new Date(iso);
-    const pad = (n: number) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-  };
 
   const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newIndex = parseInt(e.target.value);
@@ -461,7 +455,7 @@ export default function SequencePlayer({
               {/* Left - frame timestamp (the control strip already counts frames) */}
               <div className="flex-1">
                 <p className="text-sm font-medium font-mono">
-                  {formatRecordedAt(currentDetection.recorded_at)}
+                  {formatDateTime(currentDetection.recorded_at, { seconds: true })}
                 </p>
               </div>
 

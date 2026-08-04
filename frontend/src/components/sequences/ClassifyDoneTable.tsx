@@ -20,6 +20,7 @@ import {
   TBODY_CLASSES,
   THEAD_CLASSES,
 } from './tableStyles';
+import { formatDateTime } from '@/utils/datetime';
 
 interface ClassifyDoneTableProps {
   items: ClassifyDoneItem[];
@@ -96,7 +97,7 @@ export function ClassifyDoneTable({ items, onItemClick }: ClassifyDoneTableProps
                 <td className={`${CELL_CLASSES} ${PRIMARY_CELL_TEXT}`}>{item.camera_name}</td>
                 <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>{item.organisation_name}</td>
                 <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
-                  {new Date(item.recorded_at).toLocaleString()}
+                  {formatDateTime(item.recorded_at)}
                 </td>
                 <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>{item.source_api}</td>
                 <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>

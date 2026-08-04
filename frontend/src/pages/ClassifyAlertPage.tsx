@@ -48,6 +48,7 @@ import {
 import { NotificationSystem } from '@/components/ui/NotificationSystem';
 import { useToastNotifications } from '@/utils/notification/toastUtils';
 import { ROUTES, classifyDetail, classifyGroup } from '@/utils/routes';
+import { formatDateTime } from '@/utils/datetime';
 
 /**
  * Locked lanes render read-only and are excluded from the submit payload.
@@ -979,7 +980,7 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
               {alertDetail.organisation_name} · {alertDetail.camera_name}
             </h1>
             <span className="font-data text-detail text-haze">
-              {new Date(alertDetail.recorded_at).toLocaleString()}
+              {formatDateTime(alertDetail.recorded_at)}
             </span>
             <span
               className={`flex-none rounded-full px-2.5 py-0.5 font-data text-xs font-semibold ${
