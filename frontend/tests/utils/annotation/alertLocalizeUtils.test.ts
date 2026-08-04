@@ -236,4 +236,86 @@ describe('buildAlertFrameModel', () => {
     expect(objectStatus[0].label).toBe('Object 2');
     expect(objectStatus[0].color).toBe(getObjectColor(1));
   });
+
+  describe('false-positive context lanes (includeFalsePositives)', () => {
+    /**
+     * The real shape of an FP-only lane: the backend writes its detection
+     * annotations as `{"annotation": []}` at stage `annotated` (the human
+     * said "no smoke here"), leaving the object's actual location in
+     * `algo_predictions`. Reading the committed boxes gives the lane
+     * nothing to draw, which is the bug this suite pins down.
+     */
+    const fpLane = () => makeLane(1, { has_smoke: false, has_missed_smoke: false });
+
+    it('shows the engine track for an FP lane whose committed annotation is empty', () => {
+      const t1 = '2026-01-01T10:00:00Z';
+      const engineBox = box(0.4, 0.4, 0.5, 0.5);
+
+      const { frames, objectStatus } = buildAlertFrameModel(
+        [fpLane()],
+        { 1: [makeDetection(1, t1, { engine: [engineBox], auto: [] })] },
+        { 1: [makeDetAnnotation(1, 'annotated', [])] },
+        { includeFalsePositives: true }
+      );
+
+      const cell = frames[0].cells[0];
+      expect(cell.isFalsePositive).toBe(true);
+      expect(cell.boxes).toEqual([{ xyxyn: [0.4, 0.4, 0.5, 0.5], color: getObjectColor(0) }]);
+      // The timeline row can only read 'confirmed' once boxes exist.
+      expect(objectStatus[0].statusByTimestamp[t1]).toBe('confirmed');
+    });
+
+    it('prefers the engine track over auto_predictions for an FP lane', () => {
+      const t1 = '2026-01-01T10:00:00Z';
+
+      const { frames } = buildAlertFrameModel(
+        [fpLane()],
+        {
+          1: [
+            makeDetection(1, t1, {
+              engine: [box(0.4, 0.4, 0.5, 0.5)],
+              auto: [box(0.7, 0.7, 0.8, 0.8)],
+            }),
+          ],
+        },
+        { 1: [makeDetAnnotation(1, 'annotated', [])] },
+        { includeFalsePositives: true }
+      );
+
+      expect(frames[0].cells[0].boxes.map(b => b.xyxyn)).toEqual([[0.4, 0.4, 0.5, 0.5]]);
+    });
+
+    it('reads empty for an FP frame with no engine box at all', () => {
+      const t1 = '2026-01-01T10:00:00Z';
+
+      const { frames, objectStatus } = buildAlertFrameModel(
+        [fpLane()],
+        { 1: [makeDetection(1, t1, { engine: [], auto: [] })] },
+        { 1: [makeDetAnnotation(1, 'annotated', [])] },
+        { includeFalsePositives: true }
+      );
+
+      expect(frames[0].cells[0].boxes).toEqual([]);
+      expect(objectStatus[0].statusByTimestamp[t1]).toBe('empty');
+    });
+
+    it('leaves a smoke lane reading its committed boxes, not the engine track', () => {
+      const t1 = '2026-01-01T10:00:00Z';
+
+      const { frames } = buildAlertFrameModel(
+        [makeLane(1)],
+        { 1: [makeDetection(1, t1, { engine: [box(0.4, 0.4, 0.5, 0.5)], auto: [] })] },
+        {
+          1: [
+            makeDetAnnotation(1, 'annotated', [
+              { xyxyn: [0.2, 0.2, 0.3, 0.3], class_name: 'smoke', smoke_type: 'wildfire' },
+            ]),
+          ],
+        },
+        { includeFalsePositives: true }
+      );
+
+      expect(frames[0].cells[0].boxes.map(b => b.xyxyn)).toEqual([[0.2, 0.2, 0.3, 0.3]]);
+    });
+  });
 });

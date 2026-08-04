@@ -1,11 +1,8 @@
 /**
  * Create-or-update save for a single detection's smoke annotation, with
- * false-positive item preservation. Extracted from
- * `DetectionSequenceAnnotatePage`'s inline `annotateIndividualDetection`
- * mutation (PATCH-preserving-FP-items vs POST) so the collocated
- * LocalizeAlertPage (Task 4) and the legacy per-lane page share one tested
- * implementation. The legacy page keeps its own inline copy for now
- * (deliberate temporary duplication, pending a later cleanup).
+ * false-positive item preservation (PATCH preserving FP items vs POST).
+ * `LocalizeAlertPage` is the only caller — the legacy per-lane page this was
+ * originally extracted from, which kept a duplicate inline copy, is gone.
  */
 
 import { apiClient as defaultApiClient } from '@/services/api';
