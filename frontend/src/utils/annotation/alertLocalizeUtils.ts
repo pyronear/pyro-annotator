@@ -11,19 +11,32 @@
  *    shape — feeds the page's status strip(s).
  *
  * A lane "contributes" (renders at all, in either the grid or the strip)
- * only when it has an annotation AND `laneNeedsLocalization` is true —
- * unsure lanes and FP-only lanes are excluded entirely, mirroring the
- * queue's own filter (`LocalizeQueueTable`). Among contributing lanes,
- * `workable` distinguishes the ones still open for localization
- * (`processing_stage === 'seq_annotation_done'`) from already-annotated
- * lanes, which still render as read-only context.
+ * only when it has an annotation AND `laneNeedsLocalization` is true,
+ * mirroring the queue's own filter (`LocalizeQueueTable`). Among
+ * contributing lanes, `workable` distinguishes the ones still open for
+ * localization (`processing_stage === 'seq_annotation_done'`) from
+ * already-annotated lanes, which still render as read-only context.
+ *
+ * Two kinds of lane fall outside that rule. Unsure lanes are excluded
+ * unconditionally. False-positive lanes are excluded by default too, but
+ * `options.includeFalsePositives` opts them in as read-only context
+ * (`isFalsePositive`, never `workable`) — enough to answer "is that plume
+ * already accounted for?" without offering to re-box it.
  */
 
-import { AlertLane, Detection, DetectionAnnotation } from '@/types/api';
+import {
+  AlertLane,
+  Detection,
+  DetectionAnnotation,
+  SequenceAnnotation,
+  SmokeType,
+} from '@/types/api';
 import { CellState, getCellState, getWinningBoxes } from './quickSubmitUtils';
 import { focusOnMainObject } from './gridCropUtils';
 import { laneNeedsLocalization } from './localizeUtils';
 import { getObjectColor } from './objectColors';
+import { sequenceSmokeType } from './reviewUtils';
+import { parseFalsePositiveTypes } from '@/utils/modelAccuracy';
 import type {
   ObjectStatusStripObject,
   ObjectStatusStripStatus,
@@ -40,6 +53,8 @@ export interface AlertFrameCell {
   detectionId: number;
   cellState: CellState;
   boxes: AlertFrameBox[];
+  /** Read-only false-positive context (opt-in) — visible, never openable in the editor. */
+  isFalsePositive?: boolean;
 }
 
 export interface AlertFrame {
@@ -52,6 +67,12 @@ export interface AlertObjectStatus extends ObjectStatusStripObject {
   laneSequenceId: number;
   /** True when the lane is still open for localization (`seq_annotation_done`); false for already-annotated context lanes. */
   workable: boolean;
+  /** What classify decided this object is — shown on its row so you know what you're boxing. */
+  smokeType?: SmokeType;
+  /** Set on opt-in false-positive context rows; they are never workable. */
+  isFalsePositive?: boolean;
+  /** The false-positive types classify recorded, for the row's label. */
+  falsePositiveTypes?: string[];
 }
 
 export interface AlertFrameModel {
@@ -59,10 +80,26 @@ export interface AlertFrameModel {
   objectStatus: AlertObjectStatus[];
 }
 
+/**
+ * A lane classify settled as a false positive: no smoke and no missed smoke,
+ * but a definite answer (an unsure lane is a different thing — "don't know",
+ * not "confirmed not smoke" — and stays excluded either way).
+ */
+function isFalsePositiveLane(annotation: SequenceAnnotation): boolean {
+  return !laneNeedsLocalization(annotation) && !annotation.is_unsure;
+}
+
 export function buildAlertFrameModel(
   lanes: AlertLane[],
   detectionsByLaneId: Record<number, Detection[]>,
-  annotationsByLaneId: Record<number, DetectionAnnotation[]>
+  annotationsByLaneId: Record<number, DetectionAnnotation[]>,
+  /**
+   * Opt in to rendering false-positive lanes as read-only context. Off by
+   * default, matching the queue's own rule. On, they answer "is that plume
+   * already accounted for?" before someone adds a duplicate object for
+   * something classify already rejected.
+   */
+  options: { includeFalsePositives?: boolean } = {}
 ): AlertFrameModel {
   const objectStatus: AlertObjectStatus[] = [];
   // recordedAt -> laneSequenceId -> cell, so each lane's later frame keeps
@@ -72,11 +109,17 @@ export function buildAlertFrameModel(
   const frameMap = new Map<string, Map<number, AlertFrameCell>>();
 
   lanes.forEach((lane, index) => {
-    if (!lane.annotation || !laneNeedsLocalization(lane.annotation)) return;
+    if (!lane.annotation) return;
+    const needsLocalization = laneNeedsLocalization(lane.annotation);
+    const falsePositive = isFalsePositiveLane(lane.annotation);
+    // Unsure lanes are neither, so they fall through and stay excluded.
+    if (!needsLocalization && !(falsePositive && options.includeFalsePositives)) return;
 
     const laneSequenceId = lane.sequence.id;
+    // Indexed over ALL lanes, so an object's color and number never shift
+    // when the false-positive toggle changes which lanes render.
     const color = getObjectColor(index);
-    const workable = lane.annotation.processing_stage === 'seq_annotation_done';
+    const workable = !falsePositive && lane.annotation.processing_stage === 'seq_annotation_done';
     const detections = detectionsByLaneId[laneSequenceId] ?? [];
     const annotationByDetectionId = new Map(
       (annotationsByLaneId[laneSequenceId] ?? []).map(a => [a.detection_id, a])
@@ -87,8 +130,6 @@ export function buildAlertFrameModel(
     for (const detection of detections) {
       const annotation = annotationByDetectionId.get(detection.id);
       const cellState = getCellState(detection, annotation);
-      statusByTimestamp[detection.recorded_at] = cellState === 'done' ? 'confirmed' : 'pending';
-
       const rawBoxes =
         cellState === 'done'
           ? (annotation?.annotation?.annotation ?? [])
@@ -97,6 +138,25 @@ export function buildAlertFrameModel(
           : cellState === 'auto'
             ? getWinningBoxes(detection).boxes.map(b => ({ xyxyn: b.xyxyn }))
             : [];
+
+      // All three cell states stay distinct on the strip. Collapsing 'auto'
+      // and 'no-box' into one "pending" fill made a frame with nothing on it
+      // look identical to one with a model box waiting to be accepted — most
+      // visibly on a just-added object, whose lane has no predictions at all
+      // yet still painted a full, colored timeline.
+      //
+      // A false-positive lane is settled — it needs no localization work, so
+      // its frames read as done-or-nothing rather than borrowing the
+      // pending/empty vocabulary of frames still awaiting a box.
+      statusByTimestamp[detection.recorded_at] = falsePositive
+        ? rawBoxes.length > 0
+          ? 'confirmed'
+          : 'empty'
+        : cellState === 'done'
+          ? 'confirmed'
+          : cellState === 'auto'
+            ? 'pending'
+            : 'empty';
       const boxes: AlertFrameBox[] = focusOnMainObject(detection, rawBoxes).map(b => ({
         xyxyn: b.xyxyn,
         color,
@@ -112,6 +172,7 @@ export function buildAlertFrameModel(
         detectionId: detection.id,
         cellState,
         boxes,
+        isFalsePositive: falsePositive || undefined,
       });
     }
 
@@ -120,6 +181,11 @@ export function buildAlertFrameModel(
       color,
       laneSequenceId,
       workable,
+      smokeType: falsePositive ? undefined : sequenceSmokeType(lane.annotation),
+      isFalsePositive: falsePositive || undefined,
+      falsePositiveTypes: falsePositive
+        ? parseFalsePositiveTypes(lane.annotation.false_positive_types)
+        : undefined,
       statusByTimestamp,
     });
   });

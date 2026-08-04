@@ -1,10 +1,16 @@
 /**
- * Tri-state, clickable-segment object timeline for the collocated localize
- * screens. One row per object — a color swatch + label button ("Go to
- * Object N") plus a per-frame status bar across the union of the alert's
- * frame timestamps, where each frame is its own button reporting that
- * object's status at that timestamp: `confirmed` (solid fill), `pending`
- * (reduced-opacity fill), or `absent` (neutral track, no fill).
+ * Clickable-segment object timeline for the collocated localize screens. One
+ * row per object — a color swatch + label button ("Go to Object N") plus a
+ * per-frame status bar across the union of the alert's frame timestamps,
+ * where each frame is its own button reporting that object's status at that
+ * timestamp: `confirmed` (solid fill), `pending` (reduced-opacity fill — a
+ * model box waiting to be accepted), `empty` (outline only — on this frame
+ * but with nothing on it yet), or `absent` (neutral track, no fill — not on
+ * this frame at all).
+ *
+ * `empty` is deliberately distinct from `pending`: collapsing the two made a
+ * frame with nothing on it look identical to one with a box to accept, which
+ * painted a just-added object's whole timeline as if it were already full.
  *
  * Renders for `objects.length >= 1` — unlike ObjectPresenceStrip's ≥2 gate,
  * a single-object alert still benefits from seeing its own frame statuses.
@@ -30,7 +36,7 @@
 
 import React from 'react';
 
-export type ObjectStatusStripStatus = 'confirmed' | 'pending' | 'absent';
+export type ObjectStatusStripStatus = 'confirmed' | 'pending' | 'empty' | 'absent';
 
 export interface ObjectStatusStripObject {
   /** e.g. "Object 2" — same numbering as the object's card. */
@@ -39,8 +45,6 @@ export interface ObjectStatusStripObject {
   color: string;
   /** This object's status per frame timestamp (ISO string); frames absent from the map render as `absent`. */
   statusByTimestamp: Record<string, ObjectStatusStripStatus>;
-  /** Optional action (e.g. a quick-accept button) rendered at the row's trailing edge. */
-  action?: React.ReactNode;
   /** Renders the row with an accent fill + left border — this object's current "focused" state. */
   selected?: boolean;
 }
@@ -94,6 +98,16 @@ function segmentAppearance(
   }
   if (status === 'pending') {
     return { className: `${SEGMENT_BASE_CLASS} opacity-40`, style: { backgroundColor: color } };
+  }
+  if (status === 'empty') {
+    // Present on this frame, but nothing to show yet — no committed box and
+    // no model prediction to accept. An outline in the object's own color
+    // keeps it legible as "this object's frame" without the fill that would
+    // imply content (a just-added object's whole timeline is this state).
+    return {
+      className: `${SEGMENT_BASE_CLASS} opacity-50`,
+      style: { boxShadow: `inset 0 0 0 1px ${color}` },
+    };
   }
   // absent — neutral track, no fill; the row's track background shows through.
   return { className: SEGMENT_BASE_CLASS };
@@ -155,7 +169,6 @@ export const ObjectStatusStrip: React.FC<ObjectStatusStripProps> = ({
                 );
               })}
             </div>
-            {object.action}
           </div>
         );
       })}

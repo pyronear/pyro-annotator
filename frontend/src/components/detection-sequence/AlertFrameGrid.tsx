@@ -34,6 +34,8 @@ interface AlertFrameGridProps {
   onCellClick: (recordedAt: string, laneSequenceId: number, detectionId: number) => void;
   /** Registers the cell's DOM node for the page's scroll-to-frame behavior (segment click). */
   cellRef?: (recordedAt: string, el: HTMLDivElement | null) => void;
+  /** The active object's accent color — outlines the frames it actually appears on. */
+  activeColor?: string;
   /** Minimum cell width driving the auto-fill column count — matches DetectionGrid's card-size knob. */
   cardMinWidth?: number;
   /** Zoom each cell around the active object's boxes for that frame; no-op with no active object. */
@@ -47,6 +49,7 @@ export function AlertFrameGrid({
   activeLaneId,
   onCellClick,
   cellRef,
+  activeColor,
   cardMinWidth = 220,
   cropMode = false,
   highlightedFrame = null,
@@ -65,6 +68,7 @@ export function AlertFrameGrid({
           key={frame.recordedAt}
           frame={frame}
           activeLaneId={activeLaneId}
+          activeColor={activeColor}
           cropMode={cropMode}
           highlighted={highlightedFrame === frame.recordedAt}
           onClick={activeCell =>
@@ -80,6 +84,7 @@ export function AlertFrameGrid({
 interface AlertFrameCellViewProps {
   frame: AlertFrame;
   activeLaneId: number | null;
+  activeColor?: string;
   cropMode: boolean;
   highlighted: boolean;
   onClick: (activeCell: AlertFrameCell) => void;
@@ -89,13 +94,19 @@ interface AlertFrameCellViewProps {
 function AlertFrameCellView({
   frame,
   activeLaneId,
+  activeColor,
   cropMode,
   highlighted,
   onClick,
   cellRef,
 }: AlertFrameCellViewProps) {
+  // Fallback (no active object) prefers a lane that can actually be worked:
+  // landing on a false-positive cell would make the whole frame read-only,
+  // hiding the smoke object that shares it behind an un-clickable cell.
   const activeCell: AlertFrameCell =
-    frame.cells.find(c => c.laneSequenceId === activeLaneId) ?? frame.cells[0];
+    frame.cells.find(c => c.laneSequenceId === activeLaneId) ??
+    frame.cells.find(c => !c.isFalsePositive) ??
+    frame.cells[0];
   // Crop only applies when the active lane is actually present on this
   // frame — a fallback cell (active lane absent here) has no "the object"
   // box to focus on, so it stays full-frame.
@@ -118,12 +129,27 @@ function AlertFrameCellView({
     if (imgRef.current && containerRef.current) {
       const containerRect = containerRef.current.getBoundingClientRect();
       const imgRect = imgRef.current.getBoundingClientRect();
-      setImageInfo({
+      const next: ImageInfo = {
         width: imgRect.width,
         height: imgRect.height,
         offsetX: imgRect.left - containerRect.left,
         offsetY: imgRect.top - containerRect.top,
-      });
+      };
+      // Bail out when the measurement is unchanged. This runs from a
+      // ResizeObserver callback, and an unconditional setState there is a
+      // feedback loop waiting to happen: re-render -> layout -> observer
+      // fires -> setState -> ... Activating an object used to trip it —
+      // focus mode flips crop on AND forces small cards, so the grid
+      // re-columns and every cell re-measures at once.
+      setImageInfo(prev =>
+        prev &&
+        prev.width === next.width &&
+        prev.height === next.height &&
+        prev.offsetX === next.offsetX &&
+        prev.offsetY === next.offsetY
+          ? prev
+          : next
+      );
     }
   }, []);
 
@@ -143,9 +169,17 @@ function AlertFrameCellView({
     return () => observer.disconnect();
   }, [handleImageLoad, isLoading, imageData?.url]);
 
-  const doneCount = frame.cells.filter(c => c.cellState === 'done').length;
-  const total = frame.cells.length;
-  const allDone = doneCount === total;
+  // With an object active, a frame it doesn't appear on is context only:
+  // there is nothing of THIS object to annotate there. It fades back so the
+  // object's own span reads at a glance, and it stops being a click target —
+  // clicking used to open the fallback lane's detection, silently switching
+  // which object you were editing.
+  const isContextFrame = activeLaneId !== null && !isActiveLaneCell;
+  const isAccented = activeLaneId !== null && isActiveLaneCell;
+  // A false-positive object is settled; its frames are here to be LOOKED at
+  // (including via the cropped-view strip), never edited. Opening the editor
+  // on one would offer to re-box something classify already rejected.
+  const isReadOnly = isContextFrame || activeCell.isFalsePositive === true;
 
   return (
     <div
@@ -155,10 +189,22 @@ function AlertFrameCellView({
       }}
       data-testid={`alert-frame-cell-${frame.recordedAt}`}
       data-highlighted={highlighted ? 'true' : undefined}
-      className={`group aspect-video relative overflow-hidden bg-ash cursor-pointer transition-shadow duration-700 ${
+      data-context={isContextFrame ? 'true' : undefined}
+      data-readonly={isReadOnly ? 'true' : undefined}
+      className={`group aspect-video relative overflow-hidden bg-ash transition-shadow duration-700 ${
+        isContextFrame ? 'opacity-40 saturate-50' : ''
+      } ${isReadOnly ? 'cursor-default' : 'cursor-pointer'} ${
         highlighted ? 'ring-2 ring-pine ring-offset-2' : ''
       }`}
-      onClick={() => onClick(activeCell)}
+      // `outline` rather than a Tailwind ring: the arrival highlight above
+      // already owns the ring (box-shadow), and the two would clobber each
+      // other on a cell that is both accented and highlighted.
+      style={
+        isAccented && activeColor
+          ? { outline: `2px solid ${activeColor}`, outlineOffset: '-2px' }
+          : undefined
+      }
+      onClick={isReadOnly ? undefined : () => onClick(activeCell)}
     >
       {isLoading && <div className="absolute inset-0 animate-pulse bg-ash" />}
 
@@ -194,15 +240,6 @@ function AlertFrameCellView({
             );
           })
         )}
-
-      <span
-        data-testid={`alert-frame-status-${frame.recordedAt}`}
-        className={`absolute top-1 right-1 rounded-full px-1.5 py-0.5 font-data text-[10px] font-semibold ${
-          allDone ? 'bg-pine-soft text-pine' : 'bg-ember-soft text-ember'
-        }`}
-      >
-        {doneCount}/{total}
-      </span>
 
       <div className="absolute bottom-0 left-0 bg-char/60 text-white text-[10px] px-1 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
         {new Date(frame.recordedAt).toLocaleString()}
