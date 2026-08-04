@@ -9,8 +9,12 @@ vi.mock('@/components/annotation/CroppedImageSequence', () => ({
   default: () => <div data-testid="cropped-image-sequence" />,
 }));
 vi.mock('@/components/sequence/SequenceReviewer', () => ({
-  default: (props: { hideReviewControls?: boolean }) => (
-    <div data-testid="sequence-reviewer" data-hide-controls={String(props.hideReviewControls)} />
+  default: (props: { hideReviewControls?: boolean; onToggleFullscreen?: () => void }) => (
+    <div data-testid="sequence-reviewer" data-hide-controls={String(props.hideReviewControls)}>
+      {props.onToggleFullscreen && (
+        <button aria-label="Enter fullscreen" onClick={props.onToggleFullscreen} />
+      )}
+    </div>
   ),
 }));
 
@@ -39,7 +43,7 @@ describe('ClassifyMediaPanel', () => {
     );
     expect(screen.getByTestId('full-image-sequence')).toBeInTheDocument();
     expect(screen.getByTestId('cropped-image-sequence')).toBeInTheDocument();
-    expect(screen.getByText(/Cropped · Object 1/)).toBeInTheDocument();
+    expect(screen.getByTestId('object-media').getAttribute('data-object-label')).toBe('Object 1');
     expect(screen.queryByTestId('sequence-reviewer')).not.toBeInTheDocument();
   });
 
@@ -64,7 +68,7 @@ describe('ClassifyMediaPanel', () => {
     expect(screen.queryByText('No objects to review yet')).not.toBeInTheDocument();
   });
 
-  it('offers a fullscreen toggle in sequence mode and requests fullscreen on click', () => {
+  it('forwards a fullscreen toggle to the reviewer in sequence mode and requests fullscreen on invoke', () => {
     const requestSpy = vi.fn().mockResolvedValue(undefined);
     HTMLElement.prototype.requestFullscreen = requestSpy;
     render(

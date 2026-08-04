@@ -19,6 +19,8 @@ export interface DecisionRailProps {
   /** Disables Yes/No (e.g. no open lane to carry the flag). */
   missedSmokeDisabled?: boolean;
   missedSmokeRowRef?: React.RefObject<HTMLDivElement>;
+  /** Rendered top-right of the Objects header (e.g. the keyboard-shortcuts button). */
+  headerAction?: React.ReactNode;
   /** Rendered after the missed-smoke row — the page passes its rail-level Submit button here. */
   footer?: React.ReactNode;
   /** Object rows / placeholders, already ordered. */
@@ -37,12 +39,16 @@ export const DecisionRail: React.FC<DecisionRailProps> = ({
   onMissedSmokeActivate,
   missedSmokeDisabled = false,
   missedSmokeRowRef,
+  headerAction,
   footer,
   children,
 }) => (
   <div className="rounded-card border border-line bg-paper px-[22px] py-5">
-    <div className="font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze mb-3">
-      Objects
+    <div className="mb-3 flex items-center justify-between">
+      <div className="font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
+        Objects
+      </div>
+      {headerAction}
     </div>
     <div className="space-y-2">{children}</div>
 
