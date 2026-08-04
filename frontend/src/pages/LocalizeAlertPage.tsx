@@ -123,6 +123,7 @@ import CroppedImageSequence from '@/components/annotation/CroppedImageSequence';
 import { usePersistedTabState } from '@/hooks/usePersistedTabState';
 import { useToastNotifications } from '@/utils/notification/toastUtils';
 import { NotificationSystem } from '@/components/ui/NotificationSystem';
+import { Tooltip } from '@/components/ui/Tooltip';
 import {
   ROUTES,
   classifyDetailWithReturn,
@@ -763,6 +764,17 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   // already-annotated objects must not satisfy (or block) the gate.
   const allObjectsAccepted = workableObjects.length > 0 && workableObjects.every(isObjectLocalized);
 
+  // What the submit button's tooltip says. The blocked case counts the
+  // objects rather than restating the rule: "2 objects still have frames
+  // without a box" tells you how much is left, where "accept every object's
+  // boxes" only tells you what you already tried to do.
+  const objectsAwaitingBoxes = workableObjects.filter(o => !isObjectLocalized(o)).length;
+  const submitTooltip = allObjectsAccepted
+    ? 'Submits every object still awaiting localization, then returns you to the list.'
+    : `${objectsAwaitingBoxes} object${objectsAwaitingBoxes === 1 ? '' : 's'} still ${
+        objectsAwaitingBoxes === 1 ? 'has' : 'have'
+      } frames without a box. Accept or draw them to enable submit.`;
+
   // Every workable lane's sequence-annotation id — the payload
   // `localizeSubmit` takes, and the set both bulk actions iterate.
   const workableLanes: { laneSequenceId: number; annotationId: number }[] = useMemo(
@@ -1244,36 +1256,33 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                   All objects localized
                 </p>
               ) : (
-                <div className="space-y-1.5">
-                  <button
-                    type="button"
-                    onClick={e => {
-                      e.stopPropagation();
-                      handleSubmitClick();
-                    }}
-                    disabled={!allObjectsAccepted || submitAlert.isPending}
-                    title={
-                      allObjectsAccepted
-                        ? 'Submit every object still awaiting localization'
-                        : "Accept every object's boxes first"
-                    }
-                    className="mx-auto flex items-center justify-center rounded-lg bg-pine px-5 py-2.5 text-center font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {submitAlert.isPending ? (
-                      <div className="w-3.5 h-3.5 mr-1.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <Upload className="w-3.5 h-3.5 mr-1.5 shrink-0" />
-                    )}
-                    Submit
-                  </button>
-                  {/* Says WHY it's disabled — otherwise the gate reads as a
-                    bug once every row looks handled but one still has a
-                    pending frame. */}
-                  {!allObjectsAccepted && (
-                    <p className="text-center font-body text-detail text-haze">
-                      Accept every object&rsquo;s boxes to enable
-                    </p>
-                  )}
+                <div className="flex justify-center">
+                  {/* The tooltip carries the gate's explanation, which used to
+                      be a line of copy under the button. Hovering the thing
+                      you can't click is where the question gets asked, and it
+                      names HOW MANY objects are holding submit back rather
+                      than restating the rule — otherwise the gate reads as a
+                      bug once every row looks handled but one still has a
+                      pending frame. Above, because the footer is the last
+                      thing in a rail that scrolls. */}
+                  <Tooltip placement="above" tip={submitTooltip}>
+                    <button
+                      type="button"
+                      onClick={e => {
+                        e.stopPropagation();
+                        handleSubmitClick();
+                      }}
+                      disabled={!allObjectsAccepted || submitAlert.isPending}
+                      className="flex items-center justify-center rounded-lg bg-pine px-5 py-2.5 text-center font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {submitAlert.isPending ? (
+                        <div className="w-3.5 h-3.5 mr-1.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Upload className="w-3.5 h-3.5 mr-1.5 shrink-0" />
+                      )}
+                      Submit
+                    </button>
+                  </Tooltip>
                 </div>
               )
             }

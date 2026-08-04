@@ -38,4 +38,23 @@ describe('Tooltip', () => {
     expect(tip).toHaveClass('group-hover:block');
     expect(tip).toHaveClass('group-focus-within:block');
   });
+
+  it('hangs below the trigger by default and above it on request', () => {
+    // Placement is the caller's call because the panel edge decides it: a
+    // control at the bottom of a scrolling rail would have its bubble clipped
+    // if it always dropped downward.
+    const { rerender } = render(
+      <Tooltip tip="Below.">
+        <button type="button">Down</button>
+      </Tooltip>
+    );
+    expect(screen.getByRole('tooltip')).toHaveClass('top-full');
+
+    rerender(
+      <Tooltip tip="Above." placement="above">
+        <button type="button">Up</button>
+      </Tooltip>
+    );
+    expect(screen.getByRole('tooltip')).toHaveClass('bottom-full');
+  });
 });

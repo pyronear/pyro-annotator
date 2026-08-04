@@ -1033,9 +1033,26 @@ describe('LocalizeAlertPage', () => {
     it('stays disabled, with an explanation, while any object still has a pending frame', async () => {
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
-      expect(screen.getByRole('button', { name: /Submit/ })).toBeDisabled();
-      expect(screen.getByText(/Accept every object’s boxes to enable/)).toBeInTheDocument();
+      const submit = screen.getByRole('button', { name: /Submit/ });
+      expect(submit).toBeDisabled();
+
+      // The explanation lives in the button's tooltip now, and counts the
+      // objects holding submit back rather than restating the rule.
+      const tip = screen.getByRole('tooltip');
+      expect(submit).toHaveAttribute('aria-describedby', tip.id);
+      expect(tip).toHaveTextContent('2 objects still have frames without a box');
+
       expect(screen.getByText('0 of 2 objects localized')).toBeInTheDocument();
+    });
+
+    it('switches the tooltip to what submit will do once every object is accepted', async () => {
+      mockAllFramesAccepted();
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      await waitFor(() => expect(screen.getByRole('button', { name: /Submit/ })).toBeEnabled());
+      expect(screen.getByRole('tooltip')).toHaveTextContent(
+        'Submits every object still awaiting localization'
+      );
     });
 
     it('enables once every object is accepted, submits exactly the workable annotation ids, and navigates back to the queue', async () => {
