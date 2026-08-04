@@ -31,13 +31,13 @@
  * (independent of the editor's `:detectionId` path param — the two coexist),
  * so reloading or sharing the link reproduces the scroll+highlight without
  * opening the editor. Activating an object via the timeline (row or segment
- * click) also enters "object focus mode" — crop-on + small cards + the
- * cropped-view flipbook strip, a lens for looking closely at just that
- * object — stashing the prior crop/size so clicking the selected row again
- * restores them. An explicit S/M/L click while focused clears the small-card
- * override immediately (visible feedback for what's otherwise a silent
- * preference write); the timeline rows no longer carry a hover preview
- * popover (dropped — the inline cropped-view strip replaces it).
+ * click) also enters "object focus mode" — crop-on + small cards, a lens for
+ * looking closely at just that object — stashing the prior crop/size so
+ * clicking the selected row again restores them. An explicit S/M/L click
+ * while focused clears the small-card override immediately (visible feedback
+ * for what's otherwise a silent preference write); the timeline rows no
+ * longer carry a hover preview popover (dropped — the selected rail row's
+ * cropped loop replaces it).
  *
  * Task 9 retires the earlier ⚑ pseudo-object row (a carrier-lane box that
  * stood in for missed smoke) in favor of "+ Add object": a footer action
@@ -45,8 +45,8 @@
  * so it gets its own real object row like any other.
  *
  * Cockpit round: the page adopts ClassifyAlertPage's two-column shape —
- * a media column (the active object's frame grid, plus its cropped-view
- * flipbook) beside a sticky `LocalizeRail` carrying the whole alert's
+ * a media column (the active object's frame grid) beside a sticky
+ * `LocalizeRail` carrying the whole alert's
  * localization state. That collapses the three blocks the body used to
  * stack (workable timeline -> standalone "+ Add object" card -> a separate
  * dimmed "Already localized" timeline) into one rail: every object gets a
@@ -98,7 +98,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate, useLocation, useSearchParams, useMatch } from 'react-router-dom';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Plus, Upload } from 'lucide-react';
+import { ArrowLeft, PlayCircle, Plus, Upload } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { QUERY_KEYS } from '@/utils/constants';
 import { Detection, DetectionAnnotation, DetectionAnnotationBbox, SmokeType } from '@/types/api';
@@ -182,7 +182,11 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
 
   const [cardSize, setCardSize] = usePersistedTabState<CardSize>('detectionAnnotateCardSize', 'md');
   const [cropMode, setCropMode] = useState(false);
-  const [showCroppedView, setShowCroppedView] = useState(false);
+  // Whether the active row's cropped loop is unfolded. Deliberately NOT
+  // per-lane: an annotator either wants to watch the plume evolve or doesn't,
+  // so the choice follows them from object to object instead of resetting on
+  // every selection.
+  const [cropExpanded, setCropExpanded] = useState(false);
   // Opt-in read-only context: objects classify settled as false positives.
   // Off by default so the default view matches the queue's own rule; on, it
   // answers "is that plume already accounted for?" before someone adds a
@@ -743,6 +747,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       presentCount: 0,
       confirmedCount: 0,
     };
+    const isActive = isFocused && activeLaneId === object.laneSequenceId;
     return (
       <LocalizeObjectRow
         key={object.laneSequenceId}
@@ -758,7 +763,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
         // only context when there's still live work beside it — on a fully
         // localized alert those rows are the page's subject.
         dimmed={object.isFalsePositive || (!object.workable && workableObjects.length > 0)}
-        isActive={isFocused && activeLaneId === object.laneSequenceId}
+        isActive={isActive}
         onActivate={() => handleObjectClick(object.laneSequenceId)}
         {...objectActionProps(object)}
       />
@@ -868,13 +873,12 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     proceedPastSoftConfirm();
   };
 
-  // Cropped flipbook: the active object's boxes across all its frames —
-  // mirrors the legacy grid's cropped-view block, scoped to whichever
-  // object is currently active. Feeds two triggers for the strip rendered
-  // between the timeline and the grid: the manual toolbar toggle
-  // (`showCroppedView`, works standalone) and object-focus mode (`isFocused`
-  // — shows it automatically while an object is focused, per the render
-  // condition below).
+  // Cropped flipbook: the active object's boxes across all its frames, fed to
+  // the loop the selected rail row discloses. It used to hide behind a `Film`
+  // toggle in the frame grid's toolbar — a control in one column for
+  // something that appeared in another, which is why nobody found it. It now
+  // hangs off the row whose object it shows. Selecting nothing shows nothing:
+  // there is no "the object" to crop around.
   // A false-positive lane's committed annotation is empty by construction,
   // so the flipbook has to read its engine track instead — otherwise
   // activating an FP object shows no strip at all, and looking closely at
@@ -889,9 +893,15 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     );
   }, [activeLaneId, detectionsByLaneId, annotationsByLaneId, activeLaneIsFalsePositive]);
 
+  // Keyed on `activeLaneId` alone rather than on focus mode, matching the
+  // panel's actions beside it: closing the frame editor leaves an object
+  // active without re-entering focus, and that is exactly when someone is
+  // most obviously working one object.
+  const canShowCrop = activeLaneId != null && activeLaneBoxes.length > 0;
+
   // Enters (or switches) object-focus mode: crop-on + small cards, a lens
-  // for looking closely at just this object, plus the cropped-view strip
-  // (rendered below from `activeLaneBoxes`). The pre-focus crop-mode is
+  // for looking closely at just this object, and the selection its rail row
+  // needs before it will offer the cropped loop. The pre-focus crop-mode is
   // stashed only the FIRST time focus is entered (`prev => prev ?? cropMode`
   // — a functional update so it reads `cropMode` as of THIS click, before
   // this same call's `setCropMode(true)` below applies) — switching to a
@@ -910,8 +920,9 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
 
   // Deselects: restores the stashed pre-focus crop-mode (and, since
   // `effectiveCardSize` is a derived override, the card size falls back to
-  // the untouched persisted preference automatically) and hides the
-  // cropped-view strip. A no-op when not focused.
+  // the untouched persisted preference automatically). The cropped loop goes
+  // with the selection, since no row is selected any more. A no-op when not
+  // focused.
   const exitFocus = () => {
     if (!isFocused) return;
     setCropMode(preFocusCropMode as boolean);
@@ -970,21 +981,6 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       setActiveLaneId(null);
     }
     setShowFalsePositives(prev => !prev);
-  };
-
-  // The cropped-view toolbar toggle while focused: the strip is already
-  // forced visible by focus mode, so a plain on/off toggle would either do
-  // nothing (if disabled) or fight focus mode (if it toggled the underlying
-  // `showCroppedView` while focus keeps overriding the display). Chosen
-  // instead: clicking it exits focus mode entirely — a meaningful action
-  // (deselecting already hides the strip) rather than a dead disabled
-  // button. Unaffected when not focused (plain toggle, as before).
-  const handleToggleCroppedView = (next: boolean) => {
-    if (isFocused) {
-      exitFocus();
-      return;
-    }
-    setShowCroppedView(next);
   };
 
   // Segment click: activates/switches focus (same re-stash semantics as
@@ -1166,29 +1162,70 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                 <span className="font-data text-detail text-haze">
                   {frameModel.frames.length} frame{frameModel.frames.length === 1 ? '' : 's'}
                 </span>
+                {/* Sits with the panel's other view controls because that is
+                    where its effect lands — the loop opens directly below,
+                    above the frames it is cropped from. Withheld until a lane
+                    with boxes is active, so it never opens onto an empty
+                    square. Its own pill rather than a slot inside ViewToolbar:
+                    that toolbar is about how the CELLS render, and this opens
+                    a different view entirely — but it borrows the toolbar's
+                    pressed language so the two read as peers.
+                    The name stays put and `aria-expanded` carries the state;
+                    a name that also flipped Show/Hide would announce the state
+                    twice, in two directions. */}
+                {canShowCrop && (
+                  <div className="inline-flex items-center rounded-lg bg-ash p-0.5">
+                    <button
+                      type="button"
+                      title="Cropped view — loop this object's crops across its frames"
+                      aria-label="Cropped view"
+                      aria-expanded={cropExpanded}
+                      onClick={() => setCropExpanded(prev => !prev)}
+                      className={`rounded p-1.5 transition-colors ${
+                        cropExpanded ? 'bg-pine-soft text-pine' : 'text-haze hover:text-char'
+                      }`}
+                    >
+                      <PlayCircle className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
                 <ViewToolbar
                   cardSize={effectiveCardSize}
                   onCardSizeChange={handleCardSizeChange}
                   cropMode={cropMode}
                   onToggleCropMode={setCropMode}
-                  showCroppedView={isFocused || showCroppedView}
-                  onToggleCroppedView={handleToggleCroppedView}
                 />
               </>
             }
           />
+
+          {/* Between the panel and the frames: the loop is what the frames
+              look like close up, so it reads as a lead-in to the grid rather
+              than as a separate widget. Capped by viewport height so a tall
+              loop can't push every frame below the fold. */}
+          {/* A block wrapper, NOT `flex justify-center`: the loop's own root
+              is `w-full max-w-…` and centres itself with `mx-auto`. Make that
+              root a flex item and it gets shrink-to-fit width, whose only
+              content is an absolutely-positioned canvas — so `w-full`
+              resolves against ~zero and the square collapses to a few pixels.
+              Centring is the component's job; the wrapper just gives it a
+              width to fill. */}
+          {canShowCrop && cropExpanded && activeLaneId != null && (
+            <div className="mb-4">
+              <CroppedImageSequence
+                bboxes={activeLaneBoxes}
+                sequenceId={activeLaneId}
+                accentColor={activeObject?.color}
+                maxSize="min(420px, 40vh)"
+              />
+            </div>
+          )}
 
           {/* The cells sit straight on the page, with no card of their own:
               everything that frames them — the object, the actions, the view
               controls — moved up into the panel above, so a second border
               around the images was drawing a box around a box. The images
               carry their own edges. */}
-          {(isFocused || showCroppedView) && activeLaneId != null && activeLaneBoxes.length > 0 && (
-            <div className="mb-4 flex justify-center">
-              <CroppedImageSequence bboxes={activeLaneBoxes} sequenceId={activeLaneId} />
-            </div>
-          )}
-
           <AlertFrameGrid
             frames={frameModel.frames}
             activeLaneId={activeLaneId}

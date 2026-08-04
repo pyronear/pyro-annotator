@@ -7,11 +7,28 @@ import { computeSquareCrop, MAX_ZOOM, MIN_ZOOM } from '@/utils/annotation/square
 /** Constant canvas backing resolution — CSS scales it; zoom never resizes the element. */
 const CANVAS_RES = 840;
 
+/**
+ * Sized for the classify cockpit's media column, where the crop shares space
+ * with the full-frame player. Consumers with a different budget — localize
+ * discloses it inside a rail row, which is narrower — pass their own.
+ */
+const DEFAULT_MAX_SIZE = 'min(380px, 33vh)';
+
 interface CroppedImageSequenceProps {
   bboxes: BoundingBox[];
   sequenceId: number;
   /** Ties the crop to its object: a thin viewport frame in the object's overlay color. */
   accentColor?: string;
+  /**
+   * CSS max-width for the square viewport, e.g. `min(100%, 22vh)`. The
+   * viewport is always square and always centred; only its ceiling changes.
+   * Defaults to the classify sizing.
+   *
+   * Keep the resolved size at or under `CANVAS_RES / 2` (420 CSS px) — the
+   * backing canvas is fixed, and past that the loop goes soft on a hiDPI
+   * screen. Raising the ceiling means raising `CANVAS_RES` with it.
+   */
+  maxSize?: string;
   className?: string;
 }
 
@@ -26,6 +43,7 @@ export default function CroppedImageSequence({
   bboxes,
   sequenceId,
   accentColor,
+  maxSize,
   className = '',
 }: CroppedImageSequenceProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -209,14 +227,29 @@ export default function CroppedImageSequence({
     ctx.drawImage(img, crop.x, crop.y, crop.size, crop.size, 0, 0, CANVAS_RES, CANVAS_RES);
   }, [bboxes, currentIndex, images, zoomLevel]);
 
-  // Wheel-zoom must preventDefault so the page doesn't scroll — React's
-  // onWheel is passive, so attach the listener manually.
+  // Mirrors `zoomLevel` for the wheel handler, which is bound once (see below)
+  // and so can't close over the state value.
+  const zoomRef = useRef(zoomLevel);
+  useEffect(() => {
+    zoomRef.current = zoomLevel;
+  }, [zoomLevel]);
+
+  // Wheel-zoom must preventDefault so the page doesn't scroll instead — but
+  // ONLY when the wheel actually moved the zoom. At either clamp a blanket
+  // preventDefault traps the pointer: the localize rail puts this loop inside
+  // a fixed-height scroller, so wheeling down at 8x would stop the rail
+  // scrolling with no visible reason. Falling through at the clamps lets the
+  // container scroll normally once there's no zoom left to give.
+  // React's onWheel is passive, so the listener is attached manually.
   useEffect(() => {
     if (!viewportEl) return;
     const onWheel = (e: WheelEvent) => {
-      e.preventDefault();
       const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
-      setZoomLevel(prev => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, prev * factor)));
+      const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoomRef.current * factor));
+      if (next === zoomRef.current) return;
+      e.preventDefault();
+      zoomRef.current = next;
+      setZoomLevel(next);
     };
     viewportEl.addEventListener('wheel', onWheel, { passive: false });
     return () => viewportEl.removeEventListener('wheel', onWheel);
@@ -251,16 +284,26 @@ export default function CroppedImageSequence({
   const showLoadingState = !currentImage?.loaded && !currentImage?.error;
 
   return (
-    <div className={className}>
+    // `w-full` is load-bearing, not decoration: the viewport below sizes
+    // itself with `w-full max-w-…`, so it needs a parent with a real width.
+    // Without this, a caller that makes this root a flex item (e.g. wrapping
+    // it in `flex justify-center` to centre it) gives it shrink-to-fit width
+    // — and since every child of the viewport is absolutely positioned, that
+    // resolves to zero and the square collapses to a few pixels. Centring is
+    // this component's job via `mx-auto`; callers only supply the width.
+    <div className={`w-full ${className}`}>
       {/* Fixed square viewport — the element never resizes; zoom changes the
           drawn source rect instead (see squareCropUtils). */}
       <div
         ref={setViewportEl}
         data-testid="cropped-viewport"
-        className={`relative mx-auto w-full max-w-[min(380px,33vh)] aspect-square overflow-hidden bg-gray-900 ${
+        className={`relative mx-auto w-full aspect-square overflow-hidden bg-gray-900 ${
           accentColor ? 'border-2' : ''
         }`}
-        style={accentColor ? { borderColor: accentColor } : undefined}
+        style={{
+          maxWidth: maxSize ?? DEFAULT_MAX_SIZE,
+          ...(accentColor ? { borderColor: accentColor } : {}),
+        }}
       >
         {showLoadingState && (
           <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-10">
