@@ -65,7 +65,7 @@ export const ObjectRow: React.FC<ObjectRowProps> = ({
   const frame = locked
     ? 'border border-line bg-paper opacity-60 cursor-pointer'
     : isActive
-      ? 'border border-line border-l-[3px] border-l-ember bg-paper cursor-pointer'
+      ? 'border border-line border-l-[3px] border-l-pine bg-paper cursor-pointer'
       : 'border border-line bg-paper hover:bg-ash cursor-pointer';
 
   return (

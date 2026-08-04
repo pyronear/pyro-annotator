@@ -64,18 +64,18 @@ export const ObjectPresenceStrip: React.FC<ObjectPresenceStripProps> = ({
             aria-label={`Go to ${object.label}`}
             aria-current={isRowActive || undefined}
             onClick={() => onObjectClick?.(objectIndex)}
-            className={`flex w-full items-center gap-2 rounded py-1 pr-1.5 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-ember ${
-              isRowActive ? 'bg-ash' : 'hover:bg-ash'
+            className={`flex w-full items-center gap-2 rounded py-1 pr-1.5 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-pine ${
+              isRowActive ? 'bg-pine-soft' : 'hover:bg-ash'
             }`}
           >
             <span
               data-testid={`object-presence-swatch-${objectIndex}`}
-              className={`h-2.5 w-2.5 shrink-0 rounded-full ${isRowActive ? 'ring-2 ring-char/20' : ''}`}
+              className={`h-2.5 w-2.5 shrink-0 rounded-full ${isRowActive ? 'ring-2 ring-pine/30' : ''}`}
               style={{ backgroundColor: object.color }}
             />
             <span
               className={`w-20 shrink-0 truncate font-body text-detail ${
-                isRowActive ? 'font-medium text-char' : 'text-haze'
+                isRowActive ? 'font-medium text-pine' : 'text-haze'
               }`}
             >
               {object.label}

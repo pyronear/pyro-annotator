@@ -170,9 +170,9 @@ describe('ObjectPresenceStrip', () => {
 
     const row0 = screen.getByRole('button', { name: 'Go to Object 1' });
     const row1 = screen.getByRole('button', { name: 'Go to Object 2' });
-    expect(row1).toHaveClass('bg-ash');
+    expect(row1).toHaveClass('bg-pine-soft');
     expect(row1).toHaveAttribute('aria-current', 'true');
-    expect(row0).not.toHaveClass('bg-ash');
+    expect(row0).not.toHaveClass('bg-pine-soft');
     expect(row0).not.toHaveAttribute('aria-current');
   });
 
