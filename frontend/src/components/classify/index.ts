@@ -4,3 +4,5 @@ export { ObjectRow, getObjectRowStatus } from './ObjectRow';
 export type { ObjectRowProps, ObjectRowStatus } from './ObjectRow';
 export { DecisionRail } from './DecisionRail';
 export type { DecisionRailProps } from './DecisionRail';
+export { ClassifyMediaPanel } from './ClassifyMediaPanel';
+export type { ClassifyMediaPanelProps } from './ClassifyMediaPanel';
