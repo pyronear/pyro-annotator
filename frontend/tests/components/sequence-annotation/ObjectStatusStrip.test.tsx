@@ -276,7 +276,7 @@ describe('ObjectStatusStrip', () => {
     expect(screen.getByTestId('status-segment-0-2')).not.toHaveAttribute('style');
   });
 
-  it('renders a real axis: hairline, tick marks + numbers at the first/last frame, and a "Frame" axis label', () => {
+  it('renders no frame axis (dropped for the localize timeline)', () => {
     const frames = Array.from(
       { length: 12 },
       (_, i) => `2024-01-01T00:00:${String(i).padStart(2, '0')}Z`
@@ -287,30 +287,11 @@ describe('ObjectStatusStrip', () => {
       <ObjectStatusStrip objects={[{ label: 'Object 1', color: '#3b82f6', statusByTimestamp }]} />
     );
 
-    expect(screen.getByTestId('status-axis')).toBeInTheDocument();
-
-    const axisLine = screen.getByTestId('status-axis-line');
-    expect(axisLine).toHaveClass('bg-line');
-    expect(axisLine).not.toHaveAttribute('style');
-
-    const tick0 = screen.getByTestId('status-axis-tick-0');
-    expect(tick0).toHaveTextContent('1');
-    const tick11 = screen.getByTestId('status-axis-tick-11');
-    expect(tick11).toHaveTextContent('12');
-    expect(tick0).toHaveClass('text-haze');
-    expect(tick0).not.toHaveAttribute('style');
-
-    expect(screen.queryAllByText(/^\d+$/).length).toBeLessThan(frames.length);
-
-    const axisLabel = screen.getByTestId('status-axis-label');
-    expect(axisLabel).toHaveTextContent('Frame');
-    expect(axisLabel).toHaveClass('text-haze');
-    expect(axisLabel).not.toHaveAttribute('style');
-
-    const axisArrow = screen.getByTestId('status-axis-arrow');
-    expect(axisArrow).toBeInTheDocument();
-    expect(axisArrow).toHaveClass('border-l-line');
-    expect(axisArrow).not.toHaveAttribute('style');
+    expect(screen.queryByTestId('status-axis')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('status-axis-line')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('status-axis-arrow')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('status-axis-tick-0')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('status-axis-label')).not.toBeInTheDocument();
   });
 
   it('never renders the preview inline — it does not appear without hover/focus', () => {

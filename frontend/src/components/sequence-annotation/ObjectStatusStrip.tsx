@@ -24,6 +24,10 @@
  * delay) or keyboard focus, and is `pointer-events-none` so it can never
  * intercept a click meant for the row or its segments.
  *
+ * No frame axis here (dropped — the strip's segments read fine without tick
+ * labels at this scale); `ObjectPresenceStrip` (classify) is unaffected and
+ * keeps its own axis.
+ *
  * Pure presentational — the union is computed from props, no data fetching
  * or app state; clicking calls back to the caller rather than navigating
  * itself.
@@ -58,19 +62,6 @@ interface ObjectStatusStripProps {
   /** Called with an object's position in `objects` when its label is clicked — the caller owns turning that into "scroll to and activate that object's card." Omit to render labels non-interactively. */
   onObjectClick?: (objectIndex: number) => void;
   title?: string;
-}
-
-// Leading columns every row (object rows and the axis row alike) shares, so
-// the axis's tick columns line up under the status bars' frame columns: the
-// color swatch's width, then the label's width, matching the `gap-2`
-// rhythm of an object row exactly (see the swatch/label spans below).
-function leadingSpacer() {
-  return (
-    <>
-      <span className="h-2.5 w-2.5 shrink-0" aria-hidden="true" />
-      <span className="w-20 shrink-0" aria-hidden="true" />
-    </>
-  );
 }
 
 /**
@@ -155,30 +146,6 @@ function ObjectLabelButton({
   );
 }
 
-/**
- * Which frame indices (0-based) get a tick label: the first and last frame
- * always, plus intermediate ticks at a step that grows with the frame count
- * — so labels stay legible instead of crowding at typical strip widths.
- * The last tick before the final one is dropped if it would land within one
- * step of it (avoids two labels touching at the right edge).
- */
-function computeAxisTickIndices(frameCount: number): number[] {
-  if (frameCount <= 0) return [];
-  if (frameCount === 1) return [0];
-
-  const maxTicks = 8;
-  const step = Math.max(1, Math.ceil((frameCount - 1) / (maxTicks - 1)));
-  const indices: number[] = [];
-  for (let i = 0; i < frameCount - 1; i += step) indices.push(i);
-
-  const last = frameCount - 1;
-  if (indices.length > 0 && last - indices[indices.length - 1] < step) {
-    indices.pop();
-  }
-  indices.push(last);
-  return indices;
-}
-
 const SEGMENT_BASE_CLASS =
   'h-full flex-1 rounded-sm p-0 transition-opacity focus:outline-none focus:ring-1 focus:ring-ember';
 
@@ -218,7 +185,6 @@ export const ObjectStatusStrip: React.FC<ObjectStatusStripProps> = ({
   const frameUnion = Array.from(
     new Set(objects.flatMap(o => Object.keys(o.statusByTimestamp)))
   ).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
-  const tickIndices = new Set(computeAxisTickIndices(frameUnion.length));
 
   return (
     <div className="space-y-2.5 rounded-lg border border-line bg-paper p-4">
@@ -264,55 +230,6 @@ export const ObjectStatusStrip: React.FC<ObjectStatusStripProps> = ({
           </div>
         );
       })}
-
-      {/* Frame axis — hairline + arrowhead + ticks + numbers share the
-          object rows' column layout; the "Frame" caption centers under the
-          plot area only (excludes the swatch/label spacer, standard
-          axis-label placement). Every stroke and label is a recessive
-          line/haze token — never an object color — so the status bars
-          above stay the dominant layer. */}
-      <div data-testid="status-axis" className="pt-2">
-        <div className="flex items-center gap-2">
-          {leadingSpacer()}
-          <div data-testid="status-axis-line" className="h-px flex-1 bg-line" aria-hidden="true" />
-          {/* Directional arrowhead — a CSS border-triangle, not an image,
-              kept a few px so it stays subordinate to the data bars. */}
-          <span
-            data-testid="status-axis-arrow"
-            aria-hidden="true"
-            className="block h-0 w-0 shrink-0 border-y-[3px] border-l-[4px] border-y-transparent border-l-line"
-          />
-        </div>
-        <div className="flex items-start gap-2 mt-1">
-          {leadingSpacer()}
-          <div className="flex flex-1">
-            {frameUnion.map((timestamp, frameIndex) => (
-              <div key={timestamp} className="flex flex-1 flex-col items-center">
-                {tickIndices.has(frameIndex) && (
-                  <>
-                    <span className="h-[3px] w-px bg-line" aria-hidden="true" />
-                    <span
-                      data-testid={`status-axis-tick-${frameIndex}`}
-                      className="mt-0.5 font-data text-[10px] leading-none text-haze"
-                    >
-                      {frameIndex + 1}
-                    </span>
-                  </>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="flex items-center gap-2 mt-1.5">
-          {leadingSpacer()}
-          <div
-            data-testid="status-axis-label"
-            className="flex-1 text-center font-data text-[9px] leading-none text-haze"
-          >
-            Frame
-          </div>
-        </div>
-      </div>
     </div>
   );
 };
