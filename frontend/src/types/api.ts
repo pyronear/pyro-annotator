@@ -427,6 +427,7 @@ export interface User {
   username: string;
   is_active: boolean;
   is_superuser: boolean;
+  can_localize: boolean;
   is_system: boolean;
   created_at: string;
   updated_at?: string;
@@ -437,12 +438,14 @@ export interface UserCreate {
   password: string;
   is_active?: boolean;
   is_superuser?: boolean;
+  can_localize?: boolean;
 }
 
 export interface UserUpdate {
   username?: string;
   is_active?: boolean;
   is_superuser?: boolean;
+  can_localize?: boolean;
 }
 
 export interface UserPasswordUpdate {
