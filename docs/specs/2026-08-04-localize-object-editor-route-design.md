@@ -68,9 +68,17 @@ The editor path is declared as a **child route** of the cockpit's route, and
 
 ```tsx
 <Route path="/localize/:sequenceId" element={<RequireLocalize><LocalizeAlertPage /></RequireLocalize>}>
-  <Route path="object/:laneId/:detectionId" element={null} />
+  <Route path={LOCALIZE_OBJECT_ROUTE} element={null} />
 </Route>
 ```
+
+`LOCALIZE_OBJECT_ROUTE` is the full pattern
+(`/localize/:sequenceId/object/:laneId/:detectionId`), exported from
+`src/utils/routes.ts` — an absolute child path, which React Router accepts
+because it starts with the parent's. It is declared once because the route and
+the page's `useMatch` must read the same string: if they drifted, `useMatch`
+would simply return null and the editor would stop opening, with no error and
+nothing for a test mounting its own route table to catch.
 
 This is load-bearing, not stylistic. Two sibling `<Route>` entries rendering
 `<LocalizeAlertPage />` occupy two different positions in the element tree, so
