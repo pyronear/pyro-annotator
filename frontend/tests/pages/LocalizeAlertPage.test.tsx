@@ -1705,4 +1705,48 @@ describe('LocalizeAlertPage', () => {
       ).toBeInTheDocument();
     });
   });
+
+  describe('nothing left to localize', () => {
+    /** Both lanes already annotated — no workable object remains. */
+    function alertWithNoWorkableLane() {
+      vi.mocked(apiClient.getAlertDetail).mockResolvedValue({
+        ...makeTwoLaneAlertDetail(),
+        lanes: [
+          {
+            sequence: makeSequence({ id: 101, alert_api_id: 9001 }),
+            annotation: makeAnnotation({
+              id: 201,
+              sequence_id: 101,
+              processing_stage: 'annotated',
+            }),
+          },
+          {
+            sequence: makeSequence({ id: 102, alert_api_id: 9002 }),
+            annotation: makeAnnotation({
+              id: 202,
+              sequence_id: 102,
+              processing_stage: 'annotated',
+            }),
+          },
+        ],
+      });
+    }
+
+    it('says so under the disabled submit, instead of leaving it unexplained', async () => {
+      alertWithNoWorkableLane();
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      expect(screen.getByRole('button', { name: /Submit alert/ })).toBeDisabled();
+      expect(screen.getByText('No objects left to localize')).toBeInTheDocument();
+      // The other hint is about objects that still need accepting — not this case.
+      expect(screen.queryByText(/Accept every object/)).not.toBeInTheDocument();
+    });
+
+    it('shows the accept hint, not the empty message, while work remains', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      expect(screen.getByText(/Accept every object/)).toBeInTheDocument();
+      expect(screen.queryByText('No objects left to localize')).not.toBeInTheDocument();
+    });
+  });
 });

@@ -1171,6 +1171,15 @@ export default function LocalizeAlertPage() {
                     Accept every object&rsquo;s boxes to enable
                   </p>
                 )}
+                {/* The other way submit stays disabled: nothing to submit at
+                    all. Reachable by reclassifying the alert's last smoke
+                    object as a false positive, and otherwise a screen that
+                    reads as broken. */}
+                {workableObjects.length === 0 && (
+                  <p className="text-center font-body text-detail text-haze">
+                    No objects left to localize
+                  </p>
+                )}
               </div>
             }
           >
