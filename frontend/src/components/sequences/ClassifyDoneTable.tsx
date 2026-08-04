@@ -1,10 +1,9 @@
-import { SequenceAnnotation, SequenceWithAnnotation } from '@/types/api';
+import { ClassifyDoneItem, ClassifyDoneLane } from '@/types/api';
 import {
-  SequenceOutcome,
   deriveSequenceOutcome,
   formatFalsePositiveType,
   formatSmokeType,
-  parseFalsePositiveTypes,
+  rollupOutcomes,
 } from '@/utils/modelAccuracy';
 import DetectionImageThumbnail from '@/components/DetectionImageThumbnail';
 import { ColumnHeader } from './ColumnHeader';
@@ -23,27 +22,37 @@ import {
 } from './tableStyles';
 
 interface ClassifyDoneTableProps {
-  sequences: SequenceWithAnnotation[];
-  onSequenceClick: (sequence: SequenceWithAnnotation) => void;
+  items: ClassifyDoneItem[];
+  onItemClick: (item: ClassifyDoneItem) => void;
 }
 
-// Quiet text after the outcome code: what the human concluded.
-function resultDetail(annotation: SequenceAnnotation, outcome: SequenceOutcome): string {
-  switch (outcome) {
-    case 'unsure':
-      return 'Unsure';
-    case 'fn':
-      return ['Missed smoke', ...(annotation.smoke_types ?? []).map(formatSmokeType)].join(' · ');
-    case 'tp':
-      return (annotation.smoke_types ?? []).map(formatSmokeType).join(', ');
-    case 'fp':
-      return parseFalsePositiveTypes(annotation.false_positive_types)
-        .map(formatFalsePositiveType)
-        .join(', ');
-  }
+// Alert-level rollup over every lane: dominant outcome + count of the others.
+function alertOutcome(lanes: ClassifyDoneLane[]) {
+  return rollupOutcomes(
+    lanes.flatMap(lane => {
+      const outcome = deriveSequenceOutcome(lane);
+      return outcome ? [outcome] : [];
+    })
+  );
 }
 
-export function ClassifyDoneTable({ sequences, onSequenceClick }: ClassifyDoneTableProps) {
+// Quiet text after the outcome code: everything the annotators concluded,
+// across all lanes — missed smoke first, then smoke types, then FP types.
+function alertDetail(lanes: ClassifyDoneLane[]): string {
+  const parts: string[] = [];
+  if (lanes.some(lane => lane.has_missed_smoke)) parts.push('Missed smoke');
+  parts.push(
+    ...[...new Set(lanes.filter(lane => lane.has_smoke).flatMap(lane => lane.smoke_types))].map(
+      formatSmokeType
+    )
+  );
+  parts.push(
+    ...[...new Set(lanes.flatMap(lane => lane.false_positive_types))].map(formatFalsePositiveType)
+  );
+  return parts.join(' · ');
+}
+
+export function ClassifyDoneTable({ items, onItemClick }: ClassifyDoneTableProps) {
   return (
     <div className="overflow-x-auto">
       <table className={TABLE_CLASSES}>
@@ -52,10 +61,10 @@ export function ClassifyDoneTable({ sequences, onSequenceClick }: ClassifyDoneTa
             <th className={HEADER_CELL_CLASSES}>
               <span className="sr-only">Thumbnail</span>
             </th>
-            <ColumnHeader label="Camera" tip="Camera that recorded the sequence" />
+            <ColumnHeader label="Camera" tip="Camera that recorded the alert" />
             <ColumnHeader label="Organisation" tip="Organisation operating the camera" />
-            <ColumnHeader label="Recorded" tip="When the sequence was recorded" />
-            <ColumnHeader label="Source" tip="Alert API the sequence was imported from" />
+            <ColumnHeader label="Recorded" tip="When the alert was recorded" />
+            <ColumnHeader label="Source" tip="Alert API the alert was imported from" />
             <ColumnHeader label="Azimuth" tip="Camera viewing direction, in degrees" />
             <ColumnHeader
               label="Alert API annotation"
@@ -69,37 +78,37 @@ export function ClassifyDoneTable({ sequences, onSequenceClick }: ClassifyDoneTa
           </tr>
         </thead>
         <tbody className={TBODY_CLASSES}>
-          {sequences.map(sequence => {
-            const outcome = deriveSequenceOutcome(sequence.annotation);
-            const detail =
-              sequence.annotation && outcome ? resultDetail(sequence.annotation, outcome) : '';
+          {items.map(item => {
+            const rollup = alertOutcome(item.lanes);
+            const detail = alertDetail(item.lanes);
             return (
               <tr
-                key={sequence.id}
-                onClick={() => onSequenceClick(sequence)}
+                key={`${item.source_api}-${item.platform_alert_id}`}
+                onClick={() => onItemClick(item)}
                 className={ROW_CLASSES}
               >
                 <td className="px-4 py-2">
-                  <DetectionImageThumbnail sequenceId={sequence.id} className="h-10 w-16" />
+                  <DetectionImageThumbnail
+                    sequenceId={item.primary_sequence_id}
+                    className="h-10 w-16"
+                  />
                 </td>
-                <td className={`${CELL_CLASSES} ${PRIMARY_CELL_TEXT}`}>{sequence.camera_name}</td>
-                <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>{sequence.organisation_name}</td>
+                <td className={`${CELL_CLASSES} ${PRIMARY_CELL_TEXT}`}>{item.camera_name}</td>
+                <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>{item.organisation_name}</td>
                 <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
-                  {new Date(sequence.recorded_at).toLocaleString()}
+                  {new Date(item.recorded_at).toLocaleString()}
                 </td>
-                <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>{sequence.source_api}</td>
+                <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>{item.source_api}</td>
                 <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
-                  {sequence.azimuth !== null && sequence.azimuth !== undefined
-                    ? `${sequence.azimuth}°`
-                    : ''}
+                  {item.azimuth !== null && item.azimuth !== undefined ? `${item.azimuth}°` : ''}
                 </td>
                 <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>
-                  <PlatformAnnotationLabel value={sequence.is_wildfire_alertapi} />
+                  <PlatformAnnotationLabel value={item.is_wildfire_alertapi} />
                 </td>
                 <td className={CELL_CLASSES}>
-                  {outcome && (
+                  {rollup && (
                     <>
-                      <OutcomeCode outcome={outcome} />
+                      <OutcomeCode outcome={rollup.outcome} extraCount={rollup.extraCount} />
                       {detail && (
                         <span className="ml-2.5 font-body text-detail text-haze">{detail}</span>
                       )}

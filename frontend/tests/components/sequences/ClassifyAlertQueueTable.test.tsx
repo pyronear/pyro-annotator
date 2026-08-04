@@ -1,6 +1,6 @@
 /**
  * Tests for ClassifyAlertQueueTable: column rendering, objects-cell copy,
- * and row click handling. Mirrors ClassifyQueueTable.test.tsx.
+ * and row click handling.
  */
 
 import React from 'react';

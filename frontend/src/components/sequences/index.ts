@@ -1,4 +1,3 @@
-export { ClassifyQueueTable } from './ClassifyQueueTable';
 export { ClassifyAlertQueueTable } from './ClassifyAlertQueueTable';
 export { ClassifyDoneTable } from './ClassifyDoneTable';
 export { LocalizeQueueTable } from './LocalizeQueueTable';

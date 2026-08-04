@@ -84,6 +84,29 @@ export interface ClassifyQueueItem {
   classified_objects: number;
 }
 
+// One classified object-sequence of a done alert (outcome-relevant fields only).
+export interface ClassifyDoneLane {
+  sequence_id: number;
+  has_smoke: boolean;
+  has_missed_smoke: boolean;
+  is_unsure: boolean;
+  smoke_types: string[];
+  false_positive_types: string[];
+}
+
+// One fully classified alert (done-list row).
+export interface ClassifyDoneItem {
+  source_api: string;
+  platform_alert_id: number;
+  camera_name: string;
+  organisation_name: string;
+  azimuth: number | null;
+  recorded_at: string;
+  is_wildfire_alertapi: AnnotationType | null;
+  primary_sequence_id: number;
+  lanes: ClassifyDoneLane[];
+}
+
 // Submission payload for bulk classification of all objects in an alert.
 export interface ClassifySubmitItem {
   annotation_id: number;

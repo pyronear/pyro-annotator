@@ -24,7 +24,9 @@ import {
   ApiError,
   LocalizationQueueItem,
   AlertDetail,
+  AnnotationType,
   ClassifyQueueItem,
+  ClassifyDoneItem,
   ClassifySubmitRequest,
   ClassifySubmitResponse,
   SequenceGroup,
@@ -201,6 +203,30 @@ class ApiClient {
   ): Promise<PaginatedResponse<ClassifyQueueItem>> {
     const response: AxiosResponse<PaginatedResponse<ClassifyQueueItem>> = await this.client.get(
       `${API_ENDPOINTS.SEQUENCES}classify-queue`,
+      { params }
+    );
+    return response.data;
+  }
+
+  // Fully classified alerts for the Done list (alert-grouped)
+  async getClassifyDone(
+    params: {
+      page?: number;
+      size?: number;
+      camera_name?: string;
+      organisation_name?: string;
+      source_api?: string;
+      recorded_at_gte?: string;
+      recorded_at_lte?: string;
+      is_wildfire_alertapi?: AnnotationType | 'null' | null;
+      false_positive_types?: string[];
+      smoke_types?: string[];
+      is_unsure?: boolean;
+      model_accuracy?: 'tp' | 'fp' | 'fn';
+    } = {}
+  ): Promise<PaginatedResponse<ClassifyDoneItem>> {
+    const response: AxiosResponse<PaginatedResponse<ClassifyDoneItem>> = await this.client.get(
+      `${API_ENDPOINTS.SEQUENCES}classify-done`,
       { params }
     );
     return response.data;
