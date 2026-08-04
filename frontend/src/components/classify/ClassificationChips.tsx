@@ -201,7 +201,7 @@ export const ClassificationChips: React.FC<ClassificationChipsProps> = ({
           <div className="font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze mb-1.5">
             FP types — select all that apply
           </div>
-          <div aria-label="False positive types" className="flex flex-wrap gap-1.5">
+          <div role="group" aria-label="False positive types" className="flex flex-wrap gap-1.5">
             {FALSE_POSITIVE_TYPES.map(type => {
               const selected = bbox.false_positive_types.includes(type as FalsePositiveType);
               return (

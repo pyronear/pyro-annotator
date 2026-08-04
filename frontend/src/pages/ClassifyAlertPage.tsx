@@ -166,6 +166,20 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
   const sequenceReviewerRef = useRef<HTMLDivElement | null>(null);
   const railSubmitRef = useRef<HTMLButtonElement | null>(null);
 
+  // Post-submit auto-advance bookkeeping: the deferred navigation must not
+  // fire after unmount or an alert switch, and no re-submit may slip into
+  // the window between success and navigation (Enter isn't disabled the
+  // way the buttons are).
+  const advanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const advancingRef = useRef(false);
+  useEffect(
+    () => () => {
+      if (advanceTimerRef.current) clearTimeout(advanceTimerRef.current);
+      advancingRef.current = false;
+    },
+    []
+  );
+
   // Done mode only: snapshot of the just-loaded (or just-reset) state, used
   // to diff against current state at submit time so only lanes the
   // annotator actually touched get PATCHed.
@@ -216,6 +230,9 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
     setHasMissedSmoke(false);
     setActiveCardKey(null);
     setGroupConflictWarnings([]);
+    if (advanceTimerRef.current) clearTimeout(advanceTimerRef.current);
+    advanceTimerRef.current = null;
+    advancingRef.current = false;
   }, [sequenceId]);
 
   const initializeFromAlertDetail = (detail: AlertDetail) => {
@@ -755,7 +772,15 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
       setGroupConflictWarnings([]);
       showToastNotification('Alert submitted successfully', 'success');
 
-      setTimeout(async () => {
+      // The app-wide 5-minute staleTime would otherwise re-serve this
+      // alert's PRE-submit detail from the cache — e.g. opening
+      // /classify/done/:id right after submitting here would show the lanes
+      // unclassified. Mark it stale so any future mount refetches.
+      queryClient.invalidateQueries({ queryKey: alertDetailQueryKey });
+
+      advancingRef.current = true;
+      advanceTimerRef.current = setTimeout(async () => {
+        advanceTimerRef.current = null;
         const nextAlert = getNextSequenceInWorkflow();
         if (nextAlert) {
           const currentIndex = annotationWorkflow?.currentIndex || 0;
@@ -773,6 +798,10 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
         if (mode !== 'done') {
           try {
             const queue = await apiClient.getClassifyQueue({ page: 1, size: 2 });
+            // The user may have navigated elsewhere while the lookup was in
+            // flight (unmount / alert switch reset the flag) — don't yank
+            // them into another alert.
+            if (!advancingRef.current) return;
             const next = queue.items.find(item => item.primary_sequence_id !== sequenceId);
             if (next) {
               clearAnnotationWorkflow();
@@ -784,6 +813,7 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
             // Queue lookup failed — fall through to the completed path.
           }
         }
+        if (!advancingRef.current) return;
 
         const totalCompleted = annotationWorkflow?.sequences?.length || 1;
         clearAnnotationWorkflow();
@@ -805,6 +835,10 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
   });
 
   const handleSubmit = () => {
+    // The buttons disable themselves while pending, but the Enter shortcut
+    // doesn't — and after a success the 1s auto-advance window would accept
+    // a second Enter and re-submit already-advanced lanes.
+    if (submitMutation.isPending || advancingRef.current) return;
     if (!canSubmit) {
       if (mode === 'done') {
         showToastNotification(
@@ -884,7 +918,11 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
   // shortcuts modal is open so its close button stays reachable.
   useEffect(() => {
     const handleTab = (e: KeyboardEvent) => {
-      if (e.key !== 'Tab' || showKeyboardModal) return;
+      // Suspended while the shortcuts modal or the group-propagation
+      // warning banner is up — both carry focusables (close button, "Open
+      // group" link, Dismiss) that the trap would otherwise make
+      // keyboard-unreachable.
+      if (e.key !== 'Tab' || showKeyboardModal || groupConflictWarnings.length > 0) return;
       const stops = (
         [
           ...cards.map(c => cardRefs.current[c.cardKey]),
@@ -901,7 +939,7 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
     };
     document.addEventListener('keydown', handleTab, true);
     return () => document.removeEventListener('keydown', handleTab, true);
-  }, [cards, showKeyboardModal]);
+  }, [cards, showKeyboardModal, groupConflictWarnings]);
 
   const handlePreviousAlert = () => {
     const prev = navigateToPreviousInWorkflow();
@@ -1168,19 +1206,22 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
             </DecisionRail>
 
             {/* Temporal context + color legend for the rail's objects
-                (self-hides under 2 objects). Highlights the active object's
-                row in sync with the rail. */}
-            <div className="mt-4">
-              <ObjectPresenceStrip
-                objects={presenceStripObjects}
-                onObjectClick={handlePresenceObjectClick}
-                activeIndex={
-                  activeSection === 'detections' && activeCard
-                    ? cardOverlayData.findIndex(o => o.cardKey === activeCard.cardKey)
-                    : null
-                }
-              />
-            </div>
+                (the strip self-hides under 2 objects — the wrapper's margin
+                must go with it). Highlights the active object's row in sync
+                with the rail. */}
+            {presenceStripObjects.length >= 2 && (
+              <div className="mt-4">
+                <ObjectPresenceStrip
+                  objects={presenceStripObjects}
+                  onObjectClick={handlePresenceObjectClick}
+                  activeIndex={
+                    activeSection === 'detections' && activeCard
+                      ? cardOverlayData.findIndex(o => o.cardKey === activeCard.cardKey)
+                      : null
+                  }
+                />
+              </div>
+            )}
           </div>
         </div>
 

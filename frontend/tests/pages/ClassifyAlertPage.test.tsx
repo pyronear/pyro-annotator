@@ -1088,6 +1088,34 @@ describe('ClassifyAlertPage', () => {
     expect(row.getByText('Pending')).toBeInTheDocument();
   });
 
+  it('blocks re-submission during the post-submit window and invalidates the cached alert detail', async () => {
+    await renderAndSettle(<ClassifyAlertPage />, { wrapper });
+
+    const cardA = openRow('101:0');
+    fireEvent.click(cardA.getByRole('radio', { name: 'Smoke' }));
+    fireEvent.click(cardA.getByRole('radio', { name: 'Wildfire' }));
+    const cardB = openRow('102:0');
+    fireEvent.click(cardB.getByRole('radio', { name: 'False positive' }));
+    fireEvent.click(cardB.getByRole('checkbox', { name: 'Antenna' }));
+    fireEvent.click(missedSmokeChip('No'));
+
+    fireEvent.keyDown(document, { key: 'Enter' });
+    await waitFor(() => expect(apiClient.classifySubmit).toHaveBeenCalledTimes(1));
+
+    // Enter again inside the 1s auto-advance window must not re-submit the
+    // already-submitted lanes.
+    fireEvent.keyDown(document, { key: 'Enter' });
+    fireEvent.keyDown(document, { key: 'Enter' });
+    expect(apiClient.classifySubmit).toHaveBeenCalledTimes(1);
+
+    // The success path invalidates the alert-detail cache (5-minute global
+    // staleTime would otherwise re-serve the PRE-submit lanes to
+    // /classify/done/:id) — the still-mounted query refetches.
+    await waitFor(() => expect(apiClient.getAlertDetail).toHaveBeenCalledTimes(2));
+
+    await waitFor(() => expect(navigateMock).toHaveBeenCalled(), { timeout: 2000 });
+  });
+
   it('auto-advances to the next alert in the classify queue after submit when no table workflow is active', async () => {
     vi.mocked(apiClient.getClassifyQueue).mockResolvedValue({
       items: [

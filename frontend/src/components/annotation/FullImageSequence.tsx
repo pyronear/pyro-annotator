@@ -65,8 +65,10 @@ export default function FullImageSequence({
   // rebuild the bboxes array every render, so keying the reset/fetch effects
   // on the array reference would loop them forever. Box coordinates aren't
   // part of the key on purpose — they only affect drawing, not which images
-  // to fetch.
-  const frameKey = `${sequenceId}:${bboxes.map(b => b.detection_id).join(',')}`;
+  // to fetch. Nor is sequenceId: detection ids are globally unique, and in
+  // the cockpit every object of an alert shares the same union frame list —
+  // keying on ids alone means switching objects doesn't reload the images.
+  const frameKey = bboxes.map(b => b.detection_id).join(',');
 
   // Clear state immediately when the frame list changes to prevent stale data
   useEffect(() => {

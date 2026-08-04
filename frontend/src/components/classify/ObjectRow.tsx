@@ -77,7 +77,11 @@ export const ObjectRow: React.FC<ObjectRowProps> = ({
       data-testid={`object-card-${cardKey}`}
       // Tab stop: tabbing to a row activates it (chips expand, media panel
       // follows), same as clicking. Guarded to direct focus so focusing a
-      // chip inside the row doesn't re-fire activation.
+      // chip inside the row doesn't re-fire activation. role="group" +
+      // aria-label give the focused row an accessible name (it can't be a
+      // button — it contains the chip buttons).
+      role="group"
+      aria-label={`Object ${objectNumber}`}
       tabIndex={0}
       onFocus={e => {
         if (e.target === e.currentTarget) onRowClick?.(cardKey);
