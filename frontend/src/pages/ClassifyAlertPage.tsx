@@ -18,7 +18,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useParams, useNavigate } from 'react-router-dom';
+import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ChevronLeft, ChevronRight, Keyboard, Upload } from 'lucide-react';
 import { apiClient } from '@/services/api';
@@ -47,7 +47,7 @@ import {
 } from '@/components/classify';
 import { NotificationSystem } from '@/components/ui/NotificationSystem';
 import { useToastNotifications } from '@/utils/notification/toastUtils';
-import { ROUTES, classifyDetail, classifyGroup } from '@/utils/routes';
+import { ROUTES, classifyDetail, classifyGroup, parseLocalizeReturn } from '@/utils/routes';
 import { formatDateTime } from '@/utils/datetime';
 
 /**
@@ -135,8 +135,14 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  // Back navigation target follows the route provenance (queue vs done list).
-  const backUrl = mode === 'done' ? ROUTES.CLASSIFY_DONE : ROUTES.CLASSIFY;
+  // Back navigation target follows the route provenance (queue vs done list),
+  // unless a `return` param overrides it — the Localize screen's per-object
+  // Reclassify action sets one so the trip out to classify comes back to the
+  // localize page it started from. Validated (localize paths only) before
+  // anything navigates to it.
+  const [searchParams] = useSearchParams();
+  const returnTo = parseLocalizeReturn(searchParams.get('return'));
+  const backUrl = returnTo ?? (mode === 'done' ? ROUTES.CLASSIFY_DONE : ROUTES.CLASSIFY);
   const {
     getNextSequenceInWorkflow,
     clearAnnotationWorkflow,
@@ -760,6 +766,14 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
       advancingRef.current = true;
       advanceTimerRef.current = setTimeout(async () => {
         advanceTimerRef.current = null;
+        // Came from localize: go back where we came from. Deliberately ahead
+        // of the workflow lookup — a stale annotationWorkflow left in the
+        // store by an earlier classify session would otherwise divert this
+        // into an unrelated alert.
+        if (returnTo) {
+          navigate(returnTo);
+          return;
+        }
         const nextAlert = getNextSequenceInWorkflow();
         if (nextAlert) {
           const currentIndex = annotationWorkflow?.currentIndex || 0;
