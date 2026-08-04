@@ -61,6 +61,31 @@ because a freshly added lane has no annotation row yet.
 which frame it wants, and requiring the frame avoids a resolve-then-redirect
 step.
 
+### Declared as a nested route (not a sibling)
+
+The editor path is declared as a **child route** of the cockpit's route, and
+`LocalizeAlertPage` reads its params with `useMatch` rather than `useParams`:
+
+```tsx
+<Route path="/localize/:sequenceId" element={<RequireLocalize><LocalizeAlertPage /></RequireLocalize>}>
+  <Route path="object/:laneId/:detectionId" element={null} />
+</Route>
+```
+
+This is load-bearing, not stylistic. Two sibling `<Route>` entries rendering
+`<LocalizeAlertPage />` occupy two different positions in the element tree, so
+React Router unmounts and remounts the page on every open and close — losing
+scroll position, crop mode, object-focus mode and the active object. That is
+precisely the cost this design avoids by keeping the editor a modal. Today's
+single route with an optional `:detectionId?` segment has the same property by
+accident; the nested route makes it explicit.
+
+The child route renders `element={null}` — it exists only so the URL matches
+and so `useMatch` has a pattern to read. The parent renders no `<Outlet />`.
+
+A test locks this in: entering and leaving the editor must preserve
+object-focus mode in the cockpit behind it.
+
 ### Route table placement
 
 The new path has five segments and cannot collide with the existing
@@ -95,8 +120,10 @@ path-only navigation within the page appends the current query string.
 
 ### Reading the params
 
-The page reads `laneId` alongside `sequenceId` and `detectionId` from
-`useParams`.
+`sequenceId` still comes from `useParams` (it belongs to the page's own
+route). `laneId` and `detectionId` belong to the child route, so they come from
+`useMatch('/localize/:sequenceId/object/:laneId/:detectionId')` — a parent's
+`useParams` cannot see a child route's params.
 
 ### `modalContext`
 
