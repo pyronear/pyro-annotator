@@ -53,6 +53,8 @@ from app.models import (
 from app.schemas.sequence import (
     AlertDetail,
     AlertLane,
+    ClassifyDoneItem,
+    ClassifyDoneLane,
     ClassifyQueueItem,
     LocalizationQueueItem,
     LocalizationQueueLane,
@@ -899,6 +901,103 @@ async def classify_queue(
                 primary_sequence_id=primary.id,
                 total_objects=row.total_objects,
                 classified_objects=int(row.classified_objects or 0),
+            )
+        )
+    return Page.create(items=items, total=total, params=params)
+
+
+# NOTE: declared before GET /{sequence_id} — the int path converter would
+# otherwise turn /classify-done into a 422.
+@router.get("/classify-done")
+async def classify_done(
+    camera_name: Optional[str] = Query(None),
+    organisation_name: Optional[str] = Query(None),
+    source_api: Optional[SourceApi] = Query(None),
+    recorded_at_gte: Optional[datetime] = Query(None),
+    recorded_at_lte: Optional[datetime] = Query(None),
+    session: AsyncSession = Depends(get_session),
+    params: Params = Depends(),
+    current_user: User = Depends(get_current_user),
+) -> Page[ClassifyDoneItem]:
+    """Fully classified alerts — every lane has an annotation past
+    READY_TO_ANNOTATE — one row per alert with per-lane outcome data
+    (spec: 2026-08-04 classify-done alert rows)."""
+    lane_done = case((SequenceAnnotation.processing_stage.in_(DONE_STAGES), 1), else_=0)
+    alerts = (
+        select(
+            Sequence.source_api,
+            Sequence.platform_alert_id,
+            func.min(Sequence.recorded_at).label("recorded_at"),
+        )
+        .outerjoin(SequenceAnnotation, SequenceAnnotation.sequence_id == Sequence.id)
+        .group_by(Sequence.source_api, Sequence.platform_alert_id)
+        # every lane classified: an unannotated lane contributes 0 to the sum
+        .having(func.count() == func.sum(lane_done))
+    )
+    for col, val in (
+        (Sequence.camera_name, camera_name),
+        (Sequence.organisation_name, organisation_name),
+        (Sequence.source_api, source_api),
+    ):
+        if val is not None:
+            alerts = alerts.where(col == val)
+    if recorded_at_gte is not None:
+        alerts = alerts.where(Sequence.recorded_at >= recorded_at_gte)
+    if recorded_at_lte is not None:
+        alerts = alerts.where(Sequence.recorded_at <= recorded_at_lte)
+
+    alerts_sq = alerts.subquery()
+    total = (
+        await session.execute(select(func.count()).select_from(alerts_sq))
+    ).scalar_one()
+    page_rows = (
+        await session.execute(
+            select(alerts_sq)
+            .order_by(desc(alerts_sq.c.recorded_at))
+            .offset((params.page - 1) * params.size)
+            .limit(params.size)
+        )
+    ).all()
+    items = []
+    for row in page_rows:
+        lane_rows = (
+            await session.execute(
+                select(Sequence, SequenceAnnotation)
+                .join(
+                    SequenceAnnotation,
+                    SequenceAnnotation.sequence_id == Sequence.id,
+                )
+                .where(
+                    Sequence.source_api == row.source_api,
+                    Sequence.platform_alert_id == row.platform_alert_id,
+                )
+                .order_by(Sequence.alert_api_id.asc())
+            )
+        ).all()
+        if not lane_rows:  # concurrent delete
+            continue
+        primary = lane_rows[0][0]
+        items.append(
+            ClassifyDoneItem(
+                source_api=row.source_api,
+                platform_alert_id=row.platform_alert_id,
+                camera_name=primary.camera_name,
+                organisation_name=primary.organisation_name,
+                azimuth=primary.azimuth,
+                recorded_at=row.recorded_at,
+                is_wildfire_alertapi=primary.is_wildfire_alertapi,
+                primary_sequence_id=primary.id,
+                lanes=[
+                    ClassifyDoneLane(
+                        sequence_id=seq.id,
+                        has_smoke=ann.has_smoke,
+                        has_missed_smoke=ann.has_missed_smoke,
+                        is_unsure=bool(ann.is_unsure),
+                        smoke_types=ann.smoke_types or [],
+                        false_positive_types=ann.false_positive_types or [],
+                    )
+                    for seq, ann in lane_rows
+                ],
             )
         )
     return Page.create(items=items, total=total, params=params)
