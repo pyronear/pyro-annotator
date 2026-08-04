@@ -134,14 +134,25 @@ export const LocalizeObjectRow: React.FC<LocalizeObjectRowProps> = ({
             style={{ backgroundColor: color }}
             aria-hidden="true"
           />
-          <span className="min-w-0">
-            <span className="block truncate font-body text-sm font-semibold text-char">
-              {label}
-            </span>
+          {/* Name and what-it-is on one line: the row is a one-line summary,
+              and stacking them made it two lines tall for a word. The name
+              never shrinks (it's short and it's the row's identity); the
+              subtitle truncates, since a long false-positive list is the only
+              thing here that can outgrow the rail. */}
+          <span className="flex min-w-0 items-baseline gap-1.5">
+            <span className="shrink-0 font-body text-sm font-semibold text-char">{label}</span>
             {subtitle && (
-              <span className="block truncate font-body text-detail capitalize text-haze">
-                {subtitle}
-              </span>
+              <>
+                {/* Same separator the alert header uses between organisation
+                    and camera. Hidden from screen readers, which get the two
+                    spans as separate phrases already. */}
+                <span className="shrink-0 font-body text-detail text-haze" aria-hidden="true">
+                  ·
+                </span>
+                <span className="truncate font-body text-detail capitalize text-haze">
+                  {subtitle}
+                </span>
+              </>
             )}
           </span>
         </span>
