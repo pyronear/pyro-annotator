@@ -19,11 +19,12 @@ interface ClassifyAlertQueueTableProps {
   onAlertClick: (item: ClassifyQueueItem) => void;
 }
 
-// "3 objects · 1 classified"; drops the classified suffix when nothing is
-// classified yet, and pluralizes "object(s)" correctly.
+// "3 · 1 classified"; drops the classified suffix when nothing is
+// classified yet.
 function formatObjectsCell(totalObjects: number, classifiedObjects: number): string {
-  const objectsText = `${totalObjects} ${totalObjects === 1 ? 'object' : 'objects'}`;
-  return classifiedObjects > 0 ? `${objectsText} · ${classifiedObjects} classified` : objectsText;
+  return classifiedObjects > 0
+    ? `${totalObjects} · ${classifiedObjects} classified`
+    : `${totalObjects}`;
 }
 
 export function ClassifyAlertQueueTable({ items, onAlertClick }: ClassifyAlertQueueTableProps) {
