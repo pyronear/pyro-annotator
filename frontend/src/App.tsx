@@ -130,14 +130,23 @@ function App() {
                       </RequireLocalize>
                     }
                   />
+                  {/* The per-frame editor is a CHILD route, not a sibling: a
+                      sibling would sit at a different position in the element
+                      tree and remount LocalizeAlertPage on every open/close,
+                      losing scroll, crop mode, focus mode and the active
+                      object. The child renders nothing — the page reads its
+                      params via useMatch and opens the modal itself — so the
+                      page renders no <Outlet />. */}
                   <Route
-                    path="/localize/:sequenceId/:detectionId?"
+                    path="/localize/:sequenceId"
                     element={
                       <RequireLocalize>
                         <LocalizeAlertPage />
                       </RequireLocalize>
                     }
-                  />
+                  >
+                    <Route path="object/:laneId/:detectionId" element={null} />
+                  </Route>
                   {legacyRedirectRoutes}
                   <Route path="/users" element={<UserManagementPage />} />
                   <Route path="/guide" element={<GuidePage />} />

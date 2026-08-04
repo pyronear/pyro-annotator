@@ -42,6 +42,20 @@ function LegacyLocalizeDetailRedirect() {
   return <Navigate to={target} replace />;
 }
 
+/**
+ * Pre-object-route editor links. `/localize/:sequenceId/:detectionId` opened
+ * the per-frame editor back when the URL named only the frame; the editor now
+ * lives at `/localize/:sequenceId/object/:laneId/:detectionId`. The object
+ * can't be resolved here without loading the alert and every lane's
+ * detections, so this lands on the alert with that frame scrolled into view
+ * and highlighted, editor closed — the `?frame=` deep link the alert page
+ * already understands.
+ */
+function LegacyLocalizeFrameRedirect() {
+  const { sequenceId, detectionId } = useParams();
+  return <Navigate to={`${localizeDetail(sequenceId!)}?frame=${detectionId}`} replace />;
+}
+
 export const legacyRedirectRoutes: ReactElement[] = [
   <Route
     key="/sequences/annotate"
@@ -82,5 +96,10 @@ export const legacyRedirectRoutes: ReactElement[] = [
     key="/detections/:sequenceId/annotate/:detectionId?"
     path="/detections/:sequenceId/annotate/:detectionId?"
     element={<LegacyLocalizeDetailRedirect />}
+  />,
+  <Route
+    key="/localize/:sequenceId/:detectionId"
+    path="/localize/:sequenceId/:detectionId"
+    element={<LegacyLocalizeFrameRedirect />}
   />,
 ];

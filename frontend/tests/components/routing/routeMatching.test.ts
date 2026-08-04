@@ -17,7 +17,8 @@ const routes = [
   { path: '/localize/done' },
   { path: '/localize/done/:sequenceId/:detectionId?' },
   { path: '/localize/lane/:sequenceId/:detectionId?' },
-  { path: '/localize/:sequenceId/:detectionId?' },
+  { path: '/localize/:sequenceId', children: [{ path: 'object/:laneId/:detectionId' }] },
+  { path: '/localize/:sequenceId/:detectionId' },
 ];
 
 const matchedPath = (url: string): string | undefined => {
@@ -35,9 +36,12 @@ describe('taxonomy route matching precedence', () => {
     ['/classify/groups/7', '/classify/groups/:id'],
     ['/localize', '/localize'],
     ['/localize/done', '/localize/done'],
-    // Bare /localize/:sequenceId is the collocated alert page. It also
-    // accepts an optional :detectionId? segment for deep-linked edits.
-    ['/localize/5', '/localize/:sequenceId/:detectionId?'],
+    // Bare /localize/:sequenceId is the collocated alert page.
+    ['/localize/5', '/localize/:sequenceId'],
+    // The per-frame editor names the object (lane sequence id) as well as the
+    // frame, and is a CHILD of the alert page's route so the page stays
+    // mounted when it opens and closes.
+    ['/localize/5/object/7/9', 'object/:laneId/:detectionId'],
     // The legacy per-lane box-drawing page lives under the literal /lane
     // segment now, not directly under /localize/:sequenceId.
     ['/localize/lane/5', '/localize/lane/:sequenceId/:detectionId?'],
@@ -48,11 +52,21 @@ describe('taxonomy route matching precedence', () => {
     expect(matchedPath(url)).toBe(expected);
   });
 
-  it('a 3-segment /localize/:id/:id path (no /lane, no /done) matches the collocated alert page, not nothing', () => {
-    // Real behavior: the alert page's own route carries an optional
-    // :detectionId? segment for deep-linked edits, so this isn't shadowed by
-    // /localize/lane/... (which requires the literal "lane" segment) or
-    // left unmatched.
-    expect(matchedPath('/localize/5/9')).toBe('/localize/:sequenceId/:detectionId?');
+  it('the editor path resolves as a child of the alert page route, keeping the page mounted', () => {
+    // Load-bearing: two SIBLING routes rendering LocalizeAlertPage would sit
+    // at different positions in the element tree, so React Router would
+    // remount the page on every editor open/close — losing scroll, crop mode,
+    // focus mode and the active object.
+    const matches = matchRoutes(routes, '/localize/5/object/7/9');
+    expect(matches).toHaveLength(2);
+    expect(matches?.[0].route.path).toBe('/localize/:sequenceId');
+    expect(matches?.[1].route.path).toBe('object/:laneId/:detectionId');
+    expect(matches?.[1].params).toMatchObject({ sequenceId: '5', laneId: '7', detectionId: '9' });
+  });
+
+  it('the pre-object-route /localize/:seq/:det shape still matches its redirect route', () => {
+    // Not shadowed by /localize/lane/... (which needs the literal "lane"
+    // segment) and not left unmatched — it redirects to a ?frame= deep link.
+    expect(matchedPath('/localize/5/9')).toBe('/localize/:sequenceId/:detectionId');
   });
 });
