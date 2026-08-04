@@ -9,8 +9,9 @@
  * detection in `ImageModal` (URL-driven via the optional `:detectionId`, so
  * the back button closes the editor), a per-object "Accept boxes" quick
  * action on each workable strip row, and the S/M/L card-size + crop-zoom
- * view controls. The header's submit button still renders disabled — lane
- * submit lands in Task 5.
+ * view controls. Task 5 wires the header's submit button: "Accept all &
+ * submit alert" runs every workable lane's quick-accept plan, then submits
+ * the whole alert atomically via the bulk `localize-submit` endpoint.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -27,6 +28,7 @@ import {
   getIsAnnotated,
   saveDetectionReview,
   sequenceSmokeType,
+  type QuickSubmitPlan,
 } from '@/utils/annotation';
 import { ObjectStatusStrip } from '@/components/sequence-annotation';
 import { AlertFrameGrid, ImageModal, ViewToolbar } from '@/components/detection-sequence';
@@ -59,6 +61,7 @@ export default function LocalizeAlertPage() {
   const [persistentDrawMode, setPersistentDrawMode] = useState(false);
   const [selectedSmokeType, setSelectedSmokeType] = useState<SmokeType>('wildfire');
   const smokeTypeInitFor = useRef<number | null>(null);
+  const [submitConfirming, setSubmitConfirming] = useState(false);
 
   const { showToast, toastMessage, toastType, showToastNotification, dismissToast } =
     useToastNotifications();
@@ -272,10 +275,13 @@ export default function LocalizeAlertPage() {
     );
   };
 
-  // Per-object quick-accept: the winning model boxes for every pending frame
-  // of one lane, saved sequentially (fail-fast). Does not submit the lane.
-  const quickAcceptLane = useMutation({
-    mutationFn: async (laneSequenceId: number) => {
+  // Shared step: accept the winning model boxes for every pending frame of
+  // one lane (create-or-update, sequential — fail-fast on the first
+  // rejection). Does not submit the lane. Used both by the per-object
+  // quick-accept button and by "Accept all & submit alert", which runs this
+  // for every workable lane before the atomic localize-submit call.
+  const runLaneQuickAccept = useCallback(
+    async (laneSequenceId: number) => {
       const lane = alertDetail?.lanes.find(l => l.sequence.id === laneSequenceId);
       if (!lane) throw new Error('Lane not found');
       const detections = detectionsByLaneId[laneSequenceId] ?? [];
@@ -297,6 +303,15 @@ export default function LocalizeAlertPage() {
           });
         }
       }
+    },
+    [alertDetail, detectionsByLaneId, annotationsByLaneId]
+  );
+
+  // Per-object quick-accept: runs the lane's plan, then redraws just that
+  // lane's strip/grid status.
+  const quickAcceptLane = useMutation({
+    mutationFn: async (laneSequenceId: number) => {
+      await runLaneQuickAccept(laneSequenceId);
       return laneSequenceId;
     },
     onSuccess: laneSequenceId => {
@@ -355,6 +370,87 @@ export default function LocalizeAlertPage() {
   const workableObjects = objectStatusWithThumb.filter(o => o.workable);
   const contextObjects = objectStatusWithThumb.filter(o => !o.workable);
 
+  // Every workable lane's quick-accept plan plus its sequence-annotation id
+  // (the id `localizeSubmit` needs) — feeds both the two-step confirm's
+  // no-box count and the accept-all mutation's submit payload.
+  const workableLanePlans: {
+    laneSequenceId: number;
+    annotationId: number;
+    plan: QuickSubmitPlan;
+  }[] = useMemo(
+    () =>
+      workableObjects.flatMap(object => {
+        const lane = alertDetail?.lanes.find(l => l.sequence.id === object.laneSequenceId);
+        if (!lane?.annotation) return [];
+        const detections = detectionsByLaneId[object.laneSequenceId] ?? [];
+        const annotations = new Map(
+          (annotationsByLaneId[object.laneSequenceId] ?? []).map(a => [a.detection_id, a])
+        );
+        const plan = buildQuickSubmitPlan(
+          detections,
+          annotations,
+          sequenceSmokeType(lane.annotation)
+        );
+        return [{ laneSequenceId: object.laneSequenceId, annotationId: lane.annotation.id, plan }];
+      }),
+    [workableObjects, alertDetail, detectionsByLaneId, annotationsByLaneId]
+  );
+  const totalNoBoxCount = workableLanePlans.reduce((sum, { plan }) => sum + plan.noBoxCount, 0);
+
+  // Accept-all & submit: runs every workable lane's quick-accept plan in
+  // order (sequential, fail-fast), then atomically submits the whole alert.
+  const acceptAllAndSubmit = useMutation({
+    mutationFn: async () => {
+      for (const { laneSequenceId } of workableLanePlans) {
+        await runLaneQuickAccept(laneSequenceId);
+      }
+      return apiClient.localizeSubmit(workableLanePlans.map(p => p.annotationId));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['localization-queue'] });
+      queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.SEQUENCE_ANNOTATIONS });
+      showToastNotification('Alert submitted', 'success');
+      setTimeout(() => navigate(ROUTES.LOCALIZE), 1000);
+    },
+    onError: err => {
+      const detail = (err as { detail?: string })?.detail || (err as Error)?.message || '';
+      if (detail.includes('localization incomplete')) {
+        showToastNotification('Submit rejected — some frames are not yet annotated', 'error');
+        workableLanePlans.forEach(({ laneSequenceId }) => {
+          queryClient.invalidateQueries({
+            queryKey: [...QUERY_KEYS.DETECTION_ANNOTATIONS, 'by-sequence', laneSequenceId],
+          });
+        });
+        return;
+      }
+      showToastNotification(`Submit failed: ${detail || 'unknown error'}`, 'error');
+    },
+  });
+
+  // Same two-step confirm pattern as the legacy page's quick-submit: a
+  // lane with pending frames that have no box at all needs an explicit
+  // "submit anyway?" before the button's second click actually submits.
+  const handleSubmitClick = () => {
+    if (workableObjects.length === 0 || acceptAllAndSubmit.isPending) return;
+    if (totalNoBoxCount > 0 && !submitConfirming) {
+      setSubmitConfirming(true);
+      return;
+    }
+    setSubmitConfirming(false);
+    acceptAllAndSubmit.mutate();
+  };
+
+  // A click anywhere else cancels the pending confirm (the header button
+  // stops propagation, so its own click never lands here).
+  useEffect(() => {
+    if (!submitConfirming) return;
+    const cancel = () => setSubmitConfirming(false);
+    window.addEventListener('click', cancel);
+    return () => window.removeEventListener('click', cancel);
+  }, [submitConfirming]);
+
   // Cropped flipbook (toolbar toggle): the active object's boxes across all
   // its frames — mirrors the legacy grid's cropped-view block, scoped to
   // whichever object is currently active.
@@ -375,6 +471,33 @@ export default function LocalizeAlertPage() {
     requestAnimationFrame(() => {
       frameRefs.current[timestamp]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
+  };
+
+  // "Open Object N ✎" header shortcut: the first workable object that still
+  // has a pending frame, and that frame's own (chronologically earliest)
+  // timestamp — activating + scrolling reuses the exact segment-click path.
+  const firstPendingObject = workableObjects
+    .map(object => {
+      const pendingTimestamps = Object.entries(object.statusByTimestamp)
+        .filter(([, status]) => status === 'pending')
+        .map(([timestamp]) => timestamp)
+        .sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+      return pendingTimestamps.length > 0
+        ? {
+            laneSequenceId: object.laneSequenceId,
+            label: object.label,
+            timestamp: pendingTimestamps[0],
+          }
+        : null;
+    })
+    .find(
+      (entry): entry is { laneSequenceId: number; label: string; timestamp: string } =>
+        entry !== null
+    );
+
+  const handleOpenPendingObject = () => {
+    if (!firstPendingObject) return;
+    handleSegmentClick(firstPendingObject.laneSequenceId, firstPendingObject.timestamp);
   };
 
   const handleCellRef = (recordedAt: string, el: HTMLDivElement | null) => {
@@ -465,15 +588,39 @@ export default function LocalizeAlertPage() {
               onToggleCroppedView={setShowCroppedView}
             />
 
-            {/* Submit lands in Task 5 — placeholder disabled so the header's
-                final layout is in place now. */}
+            {firstPendingObject && (
+              <button
+                type="button"
+                onClick={handleOpenPendingObject}
+                title={`Jump to ${firstPendingObject.label}'s first pending frame`}
+                className="inline-flex items-center rounded-lg border border-line bg-paper px-3 py-2 font-body text-sm font-medium text-char hover:bg-ash"
+              >
+                Open {firstPendingObject.label} ✎
+              </button>
+            )}
+
             <button
-              disabled
-              title="Submit — coming soon"
-              className="inline-flex items-center rounded-lg bg-ember px-4 py-2 font-body text-sm font-semibold text-white opacity-50 cursor-not-allowed"
+              type="button"
+              onClick={e => {
+                e.stopPropagation();
+                handleSubmitClick();
+              }}
+              disabled={workableObjects.length === 0 || acceptAllAndSubmit.isPending}
+              title="Accept predicted boxes for every pending frame and submit the whole alert"
+              className={`inline-flex items-center rounded-lg px-4 py-2 font-body text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 ${
+                submitConfirming
+                  ? 'bg-amber-500 hover:bg-amber-600'
+                  : 'bg-ember hover:brightness-95'
+              }`}
             >
-              <Upload className="w-3.5 h-3.5 mr-1.5" />
-              Submit alert
+              {acceptAllAndSubmit.isPending ? (
+                <div className="w-3.5 h-3.5 mr-1.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Upload className="w-3.5 h-3.5 mr-1.5" />
+              )}
+              {submitConfirming
+                ? `${totalNoBoxCount} frame${totalNoBoxCount === 1 ? '' : 's'} with no box — submit anyway?`
+                : 'Accept all & submit alert'}
             </button>
           </div>
         </div>

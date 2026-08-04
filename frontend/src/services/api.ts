@@ -27,6 +27,7 @@ import {
   ClassifyQueueItem,
   ClassifySubmitRequest,
   ClassifySubmitResponse,
+  LocalizeSubmitResponse,
   SequenceGroup,
   SequenceGroupListItem,
   SequenceGroupStats,
@@ -211,6 +212,15 @@ class ApiClient {
     const response: AxiosResponse<ClassifySubmitResponse> = await this.client.post(
       `${API_ENDPOINTS.SEQUENCE_ANNOTATIONS}classify-submit`,
       payload
+    );
+    return response.data;
+  }
+
+  // Atomic submit of every localized lane of one alert
+  async localizeSubmit(annotationIds: number[]): Promise<LocalizeSubmitResponse> {
+    const response: AxiosResponse<LocalizeSubmitResponse> = await this.client.post(
+      `${API_ENDPOINTS.SEQUENCE_ANNOTATIONS}localize-submit`,
+      { annotation_ids: annotationIds }
     );
     return response.data;
   }

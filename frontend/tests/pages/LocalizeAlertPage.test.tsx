@@ -27,6 +27,7 @@ vi.mock('@/services/api', () => ({
     getDetectionImageUrl: vi.fn(),
     createDetectionAnnotation: vi.fn(),
     updateDetectionAnnotation: vi.fn(),
+    localizeSubmit: vi.fn(),
   },
 }));
 
@@ -73,6 +74,7 @@ vi.mock('@/components/detection-sequence/ImageModal', () => ({
 
 import { apiClient } from '@/services/api';
 import LocalizeAlertPage from '@/pages/LocalizeAlertPage';
+import { ROUTES } from '@/utils/routes';
 
 function wrapper({ children }: { children: React.ReactNode }) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -81,6 +83,11 @@ function wrapper({ children }: { children: React.ReactNode }) {
       <MemoryRouter initialEntries={['/localize/101']}>
         <Routes>
           <Route path="/localize/:sequenceId/:detectionId?" element={children} />
+          {/* A real route for the queue landing page so a post-submit
+              `navigate(ROUTES.LOCALIZE)` is observable (it actually
+              navigates, unlike a mocked useNavigate, which would also break
+              the modal-close-on-navigate tests elsewhere in this file). */}
+          <Route path={ROUTES.LOCALIZE} element={<div data-testid="localize-queue-landing" />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>
@@ -200,6 +207,20 @@ describe('LocalizeAlertPage', () => {
     vi.mocked(apiClient.getDetectionImageUrl).mockImplementation(async (id: number) => ({
       url: `https://img.example/${id}.jpg`,
     }));
+    vi.mocked(apiClient.createDetectionAnnotation).mockImplementation(async payload => ({
+      id: 9100 + payload.detection_id,
+      detection_id: payload.detection_id,
+      annotation: payload.annotation,
+      processing_stage: payload.processing_stage,
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: null,
+    }));
+    vi.mocked(apiClient.localizeSubmit).mockResolvedValue({
+      results: [
+        { annotation_id: 201, sequence_id: 101, processing_stage: 'annotated' },
+        { annotation_id: 202, sequence_id: 102, processing_stage: 'annotated' },
+      ],
+    });
   });
 
   it('renders a status strip row and a grid cell for each object of a 2-object alert', async () => {
@@ -446,6 +467,142 @@ describe('LocalizeAlertPage', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('cropped-image-sequence')).toBeInTheDocument();
+    });
+  });
+
+  describe('Accept all & submit alert', () => {
+    it("runs each workable lane's quick-accept plan, then submits exactly the workable annotation ids, and navigates back to the queue", async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Accept all & submit alert' }));
+
+      // Every pending frame across both lanes is accepted before submit.
+      await waitFor(() => {
+        expect(apiClient.createDetectionAnnotation).toHaveBeenCalledTimes(3);
+      });
+      expect(apiClient.createDetectionAnnotation).toHaveBeenCalledWith(
+        expect.objectContaining({ detection_id: 1001 })
+      );
+      expect(apiClient.createDetectionAnnotation).toHaveBeenCalledWith(
+        expect.objectContaining({ detection_id: 1002 })
+      );
+      expect(apiClient.createDetectionAnnotation).toHaveBeenCalledWith(
+        expect.objectContaining({ detection_id: 1003 })
+      );
+
+      // Exactly one bulk submit call, with both lanes' sequence-annotation ids.
+      await waitFor(() => {
+        expect(apiClient.localizeSubmit).toHaveBeenCalledWith([201, 202]);
+      });
+      expect(apiClient.localizeSubmit).toHaveBeenCalledTimes(1);
+
+      expect(screen.getByText('Alert submitted')).toBeInTheDocument();
+      await waitFor(
+        () => expect(screen.getByTestId('localize-queue-landing')).toBeInTheDocument(),
+        {
+          timeout: 2000,
+        }
+      );
+    });
+
+    it('toasts and refetches statuses without navigating when the backend rejects an incomplete lane (422)', async () => {
+      vi.mocked(apiClient.localizeSubmit).mockRejectedValue({
+        detail:
+          'Cannot submit: 1 detection(s) lack an annotated-stage detection annotation (localization incomplete)',
+      });
+
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      const callsBefore = vi.mocked(apiClient.getDetectionAnnotations).mock.calls.length;
+
+      fireEvent.click(screen.getByRole('button', { name: 'Accept all & submit alert' }));
+
+      await waitFor(() => {
+        expect(
+          screen.getByText('Submit rejected — some frames are not yet annotated')
+        ).toBeInTheDocument();
+      });
+
+      expect(screen.queryByTestId('localize-queue-landing')).not.toBeInTheDocument();
+
+      // The lanes' detection-annotation queries were invalidated -> refetched.
+      await waitFor(() => {
+        expect(vi.mocked(apiClient.getDetectionAnnotations).mock.calls.length).toBeGreaterThan(
+          callsBefore
+        );
+      });
+    });
+
+    it('warns with a two-step confirm when some pending frames have no box, then proceeds on the second click', async () => {
+      // Detection 1002 has no predictions at all (no auto, no algo) -> a
+      // pending frame with zero boxes, contributing to the no-box count.
+      vi.mocked(apiClient.getSequenceDetections).mockImplementation(async (id: number) => {
+        if (id === 101) return [makeDetection(1001, T1)];
+        if (id === 102) {
+          return [
+            { ...makeDetection(1002, T1), auto_predictions: { predictions: [] } },
+            makeDetection(1003, T2),
+          ];
+        }
+        return [];
+      });
+
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Accept all & submit alert' }));
+
+      await waitFor(() => {
+        expect(screen.getByText('1 frame with no box — submit anyway?')).toBeInTheDocument();
+      });
+      expect(apiClient.createDetectionAnnotation).not.toHaveBeenCalled();
+      expect(apiClient.localizeSubmit).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole('button', { name: '1 frame with no box — submit anyway?' }));
+
+      await waitFor(() => {
+        expect(apiClient.localizeSubmit).toHaveBeenCalledWith([201, 202]);
+      });
+    });
+
+    it('disables the submit button when no lane is workable (both lanes already annotated)', async () => {
+      vi.mocked(apiClient.getAlertDetail).mockResolvedValue({
+        ...makeTwoLaneAlertDetail(),
+        lanes: [
+          {
+            sequence: makeSequence({ id: 101, alert_api_id: 9001 }),
+            annotation: makeAnnotation({
+              id: 201,
+              sequence_id: 101,
+              processing_stage: 'annotated',
+            }),
+          },
+          {
+            sequence: makeSequence({ id: 102, alert_api_id: 9002 }),
+            annotation: makeAnnotation({
+              id: 202,
+              sequence_id: 102,
+              processing_stage: 'annotated',
+            }),
+          },
+        ],
+      });
+
+      render(<LocalizeAlertPage />, { wrapper });
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Accept all & submit alert' })).toBeDisabled()
+      );
+    });
+  });
+
+  it('the "Open Object N" shortcut activates the first workable object with a pending frame and scrolls to it', async () => {
+    await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open Object 1 ✎' }));
+
+    await waitFor(() => expect(Element.prototype.scrollIntoView).toHaveBeenCalled());
+    await waitFor(() => {
+      const img = within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img');
+      expect(img).toHaveAttribute('src', 'https://img.example/1001.jpg');
     });
   });
 });

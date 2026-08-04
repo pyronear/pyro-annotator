@@ -108,6 +108,23 @@ export interface ClassifySubmitResponse {
   results: ClassifySubmitResult[];
 }
 
+// Atomic submit of every localized lane of one alert (spec:
+// smoke-localization entry point): each moves seq_annotation_done ->
+// annotated together, or none does.
+export interface LocalizeSubmitRequest {
+  annotation_ids: number[];
+}
+
+export interface LocalizeSubmitResult {
+  annotation_id: number;
+  sequence_id: number;
+  processing_stage: ProcessingStage;
+}
+
+export interface LocalizeSubmitResponse {
+  results: LocalizeSubmitResult[];
+}
+
 export interface Detection {
   id: number;
   sequence_id: number;
