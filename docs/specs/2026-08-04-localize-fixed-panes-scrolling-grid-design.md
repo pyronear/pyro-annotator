@@ -31,9 +31,14 @@ exact number rather than a guess. The root's reserve drops from `pt-20` to
 `pt-8`: `AppLayout`'s `p-6` already contributes 24px, so content starts 8px
 under the bar.
 
-This diverges from `ClassifyAlertPage`, which keeps the two-row header. The
-two pages mirror each other, but only localize was asked for; classify can
-follow later if the compaction reads well.
+`ClassifyAlertPage` takes the same treatment, so the two mirrored pages keep
+matching. Its header carries one extra element — the prev/next alert nav —
+which becomes the last item on the row via `ml-auto`. Three anchors
+downstream follow the new bar height: the root's reserve (`pt-20` -> `pt-8`),
+the group-conflict banner (`sticky top-20` -> `top-12`), and the decision
+rail (`lg:top-20` / `max-h-[calc(100vh-6rem)]` -> `lg:top-12` /
+`max-h-[calc(100vh-4rem)]`). Classify does NOT get the viewport-height shell;
+only the header changes there.
 
 ### 2. Cockpit becomes a viewport-height shell at `lg:`
 
@@ -105,6 +110,6 @@ the progress badge off a bar that cannot scroll.
 
 ## Out of scope
 
-- `ClassifyAlertPage`'s header and cockpit.
+- `ClassifyAlertPage`'s cockpit layout — only its header is touched.
 - Any change to `AppLayout`'s scroll container.
 - `CroppedImageSequence` itself, its trigger, or its other consumers.
