@@ -1,16 +1,15 @@
 /**
  * Collocated localize screen: renders every workable object (lane) of one
  * alert as a status strip plus a frame grid, mirroring ClassifyAlertPage's
- * alert-level shape for the localize task. Mounted at
- * `/localize/:sequenceId/:detectionId?`.
+ * alert-level shape for the localize task. Mounted at `/localize/:sequenceId`.
  *
  * Task 3 built the data loading, status/frame model, strip, and grid. Task 4
  * wires per-frame editing: clicking a grid cell opens the shown object's
- * detection in `ImageModal` (URL-driven via the optional `:detectionId`, so
- * the back button closes the editor), a per-object "Accept boxes" quick
- * action on each workable strip row, and the S/M/L card-size + crop-zoom
- * view controls. Task 5 wires submitting the whole alert atomically via the
- * bulk `localize-submit` endpoint.
+ * detection in `ImageModal` (URL-driven, so the back button closes the
+ * editor), a per-object "Accept boxes" quick action on each workable strip
+ * row, and the S/M/L card-size + crop-zoom view controls. Task 5 wires
+ * submitting the whole alert atomically via the bulk `localize-submit`
+ * endpoint.
  *
  * Post-Task-5 feedback round: a segment click gives its target cell a fading
  * ring highlight and encodes the shown detection in a `?frame=` query param
@@ -44,6 +43,16 @@
  * view toolbar, and a progress badge that now reports how many objects are
  * fully localized rather than a bare object count.
  *
+ * The per-frame editor is URL-driven from a CHILD route,
+ * `/localize/:sequenceId/object/:laneId/:detectionId`, which names the object
+ * (the lane's own sequence id) as well as the frame — so a shared or pasted
+ * editor link is unambiguous, and a detection that belongs to some other lane
+ * is refused rather than silently editing that lane. A child route rather
+ * than a sibling because a sibling would remount this page on every open and
+ * close, losing scroll, crop mode, focus mode and the active object; the page
+ * reads the child's params with `useMatch`. See
+ * docs/specs/2026-08-04-localize-object-editor-route-design.md.
+ *
  * Submit is also gated now: it enables only once every workable object
  * already carries a committed box on every frame it appears on, accepted
  * per object from its own rail row. Submit therefore no longer accepts
@@ -66,7 +75,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate, useLocation, useSearchParams, useMatch } from 'react-router-dom';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Plus, Upload } from 'lucide-react';
 import { apiClient } from '@/services/api';
@@ -93,7 +102,7 @@ import CroppedImageSequence from '@/components/annotation/CroppedImageSequence';
 import { usePersistedTabState } from '@/hooks/usePersistedTabState';
 import { useToastNotifications } from '@/utils/notification/toastUtils';
 import { NotificationSystem } from '@/components/ui/NotificationSystem';
-import { ROUTES } from '@/utils/routes';
+import { ROUTES, localizeObject } from '@/utils/routes';
 import { formatDateTime } from '@/utils/datetime';
 
 // Shared with the legacy grid's card-size knob (DetectionSequenceAnnotatePage)
@@ -101,13 +110,19 @@ import { formatDateTime } from '@/utils/datetime';
 const CARD_MIN_WIDTH: Record<CardSize, number> = { sm: 240, md: 340, lg: 500 };
 
 export default function LocalizeAlertPage() {
-  const { sequenceId, detectionId } = useParams<{ sequenceId: string; detectionId?: string }>();
+  const { sequenceId } = useParams<{ sequenceId: string }>();
+  // The editor's object + frame live on a CHILD route (see App.tsx), and a
+  // parent's useParams cannot see a child's params — hence useMatch.
+  const editorMatch = useMatch(`${ROUTES.LOCALIZE}/:sequenceId/object/:laneId/:detectionId`);
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const sequenceIdNum = sequenceId ? parseInt(sequenceId, 10) : null;
-  const detectionIdNum = detectionId ? parseInt(detectionId, 10) : null;
+  const laneIdNum = editorMatch?.params.laneId ? parseInt(editorMatch.params.laneId, 10) : null;
+  const detectionIdNum = editorMatch?.params.detectionId
+    ? parseInt(editorMatch.params.detectionId, 10)
+    : null;
 
   const [activeLaneId, setActiveLaneId] = useState<number | null>(null);
   const frameRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -354,32 +369,30 @@ export default function LocalizeAlertPage() {
     });
   }, [frameParamNum, frameModel.frames, highlightFrame]);
 
-  // The URL's :detectionId, resolved against every lane's loaded detections
-  // to find which lane owns it — so the modal (and its save) always targets
-  // the right lane regardless of how the URL was reached (cell click or a
-  // pasted/back-button URL).
+  // The URL names both the object (`:laneId` — the lane's own sequence id) and
+  // the frame (`:detectionId`). Both have to agree for the editor to open: a
+  // lane that isn't part of this alert, a lane that doesn't need localization
+  // (false positive / unsure — the grid already refuses to open those, and
+  // this closes the pasted/back-button route in as well), or a detection that
+  // belongs to some OTHER lane all leave the editor closed and the cockpit
+  // rendering normally. That last case was undetectable under the old
+  // frame-only route, where any valid detection id resolved to whichever lane
+  // happened to own it.
   const modalContext = useMemo(() => {
-    if (detectionIdNum == null || !alertDetail) return null;
-    for (const lane of alertDetail.lanes) {
-      const laneId = lane.sequence.id;
-      const detection = (detectionsByLaneId[laneId] ?? []).find(d => d.id === detectionIdNum);
-      if (detection) {
-        // Lanes that don't need localization (false positives, unsure) are
-        // never editable here — the grid already refuses to open them, and
-        // this closes the pasted/back-button URL route in as well.
-        if (!lane.annotation || !laneNeedsLocalization(lane.annotation)) return null;
-        const existingAnnotation =
-          (annotationsByLaneId[laneId] ?? []).find(a => a.detection_id === detectionIdNum) ?? null;
-        return {
-          laneId,
-          detection,
-          existingAnnotation,
-          smokeType: sequenceSmokeType(lane.annotation),
-        };
-      }
-    }
-    return null;
-  }, [detectionIdNum, alertDetail, detectionsByLaneId, annotationsByLaneId]);
+    if (laneIdNum == null || detectionIdNum == null || !alertDetail) return null;
+    const lane = alertDetail.lanes.find(l => l.sequence.id === laneIdNum);
+    if (!lane?.annotation || !laneNeedsLocalization(lane.annotation)) return null;
+    const detection = (detectionsByLaneId[laneIdNum] ?? []).find(d => d.id === detectionIdNum);
+    if (!detection) return null;
+    const existingAnnotation =
+      (annotationsByLaneId[laneIdNum] ?? []).find(a => a.detection_id === detectionIdNum) ?? null;
+    return {
+      laneId: laneIdNum,
+      detection,
+      existingAnnotation,
+      smokeType: sequenceSmokeType(lane.annotation),
+    };
+  }, [laneIdNum, detectionIdNum, alertDetail, detectionsByLaneId, annotationsByLaneId]);
 
   // Object-identity overlays for the open detection's OTHER contributing
   // lanes on this same frame (`recorded_at`) — passed to `ImageModal` so it
@@ -444,16 +457,18 @@ export default function LocalizeAlertPage() {
 
   const navigateModal = useCallback(
     (direction: 'prev' | 'next') => {
-      if (modalIndex < 0 || sequenceIdNum == null) return;
+      if (!modalContext || modalIndex < 0 || sequenceIdNum == null) return;
       const newIndex =
         direction === 'prev'
           ? Math.max(0, modalIndex - 1)
           : Math.min(laneDetectionsSorted.length - 1, modalIndex + 1);
       const newDetection = laneDetectionsSorted[newIndex];
       if (newDetection)
-        navigate(`${ROUTES.LOCALIZE}/${sequenceIdNum}/${newDetection.id}${location.search}`);
+        navigate(
+          `${localizeObject(sequenceIdNum, modalContext.laneId, newDetection.id)}${location.search}`
+        );
     },
-    [modalIndex, laneDetectionsSorted, sequenceIdNum, location.search, navigate]
+    [modalContext, modalIndex, laneDetectionsSorted, sequenceIdNum, location.search, navigate]
   );
 
   // Per-frame save: create-or-update with FP preservation (shared util),
@@ -903,7 +918,7 @@ export default function LocalizeAlertPage() {
   const handleCellClick = (_recordedAt: string, laneSequenceId: number, detId: number) => {
     setActiveLaneId(laneSequenceId);
     if (sequenceIdNum != null)
-      navigate(`${ROUTES.LOCALIZE}/${sequenceIdNum}/${detId}${location.search}`);
+      navigate(`${localizeObject(sequenceIdNum, laneSequenceId, detId)}${location.search}`);
   };
 
   // 'c' toggles crop mode, matching the legacy grid — inert while the modal

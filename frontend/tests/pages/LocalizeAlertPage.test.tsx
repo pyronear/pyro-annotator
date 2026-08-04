@@ -14,7 +14,7 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import type {
   AlertDetail,
   AlertLane,
@@ -55,6 +55,7 @@ vi.mock('@/components/detection-sequence/ImageModal', () => ({
   ImageModal: (props: {
     detection: Detection;
     onClose: () => void;
+    onNavigate: (direction: 'prev' | 'next') => void;
     onSubmit: (
       detection: Detection,
       items: unknown[],
@@ -92,6 +93,9 @@ vi.mock('@/components/detection-sequence/ImageModal', () => ({
       >
         Mock Submit
       </button>
+      <button type="button" onClick={() => props.onNavigate('next')}>
+        Mock Next
+      </button>
       <button type="button" onClick={props.onClose}>
         Mock Close
       </button>
@@ -103,14 +107,26 @@ import { apiClient } from '@/services/api';
 import LocalizeAlertPage from '@/pages/LocalizeAlertPage';
 import { ROUTES } from '@/utils/routes';
 
+// Lets tests assert the URL the page navigated to (which object + frame the
+// editor was opened for), not just that a modal appeared.
+function LocationProbe() {
+  const location = useLocation();
+  return <span data-testid="location">{`${location.pathname}${location.search}`}</span>;
+}
+
 function makeWrapper(initialPath = '/localize/101') {
   return function TestWrapper({ children }: { children: React.ReactNode }) {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     return (
       <QueryClientProvider client={client}>
         <MemoryRouter initialEntries={[initialPath]}>
+          <LocationProbe />
           <Routes>
-            <Route path="/localize/:sequenceId/:detectionId?" element={children} />
+            {/* Mirrors App.tsx: the editor is a CHILD route so the page is
+                never remounted when the editor opens or closes. */}
+            <Route path="/localize/:sequenceId" element={children}>
+              <Route path="object/:laneId/:detectionId" element={null} />
+            </Route>
             {/* A real route for the queue landing page so a post-submit
                 `navigate(ROUTES.LOCALIZE)` is observable (it actually
                 navigates, unlike a mocked useNavigate, which would also break
@@ -415,6 +431,88 @@ describe('LocalizeAlertPage', () => {
       const img = within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img');
       expect(img).toHaveAttribute('src', 'https://img.example/1002.jpg');
     });
+  });
+
+  it('clicking a grid cell navigates to the editor URL naming the object and the frame', async () => {
+    await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+    // T2 is present only in lane 102 (Object 2 / detection 1003).
+    fireEvent.click(screen.getByTestId(`alert-frame-cell-${T2}`));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/102/1003');
+    });
+    expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1003');
+  });
+
+  it('opens the editor from a directly-entered object URL', async () => {
+    await renderAndSettle(<LocalizeAlertPage />, {
+      wrapper: makeWrapper('/localize/101/object/102/1003'),
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1003');
+    });
+  });
+
+  it('leaves the editor closed when the frame belongs to a different object than the URL names', async () => {
+    // Detection 1001 belongs to lane 101, but the URL claims lane 102. Under
+    // the old frame-only route this silently edited whichever lane owned the
+    // detection; now the two facts can disagree, and disagreement wins.
+    await renderAndSettle(<LocalizeAlertPage />, {
+      wrapper: makeWrapper('/localize/101/object/102/1001'),
+    });
+
+    expect(screen.queryByTestId('image-modal')).not.toBeInTheDocument();
+  });
+
+  it('leaves the editor closed when the URL names a lane that is not part of this alert', async () => {
+    await renderAndSettle(<LocalizeAlertPage />, {
+      wrapper: makeWrapper('/localize/101/object/999/1001'),
+    });
+
+    expect(screen.queryByTestId('image-modal')).not.toBeInTheDocument();
+  });
+
+  it('keeps the object segment in the URL when stepping to the next frame', async () => {
+    // Lane 102 has two frames (1002 at T1, 1003 at T2), so prev/next has
+    // somewhere to go within the object's own lane.
+    await renderAndSettle(<LocalizeAlertPage />, {
+      wrapper: makeWrapper('/localize/101/object/102/1002'),
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1002');
+    });
+
+    fireEvent.click(screen.getByText('Mock Next'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/102/1003');
+    });
+  });
+
+  it('does not remount the page when the editor opens and closes', async () => {
+    // The editor is a child route precisely so cockpit state survives. Focus
+    // mode (crop on + small cards) is the visible proof: a remount would
+    // reset the grid to the persisted card size.
+    localStorage.setItem('detectionAnnotateCardSize', 'lg');
+    const { container } = render(<LocalizeAlertPage />, { wrapper });
+    await waitFor(() => expect(screen.getByTestId('status-segment-0-0')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Go to Object 2' }));
+    const grid = container.querySelector('.grid') as HTMLElement;
+    await waitFor(() => expect(grid.style.gridTemplateColumns).toContain('240px'));
+
+    fireEvent.click(screen.getByTestId(`alert-frame-cell-${T2}`));
+    await waitFor(() => expect(screen.getByTestId('image-modal')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Mock Close'));
+    await waitFor(() => expect(screen.queryByTestId('image-modal')).not.toBeInTheDocument());
+
+    // Still focused, still small cards — the page was never remounted.
+    expect(screen.getByTestId('object-status-row-1')).toHaveAttribute('data-selected', 'true');
+    expect((container.querySelector('.grid') as HTMLElement).style.gridTemplateColumns).toContain(
+      '240px'
+    );
   });
 
   it("clicking a grid cell opens the ACTIVE object's detection at that frame when the active lane is present there", async () => {
@@ -1250,6 +1348,17 @@ describe('LocalizeAlertPage', () => {
       // But its frames never open the editable modal.
       expect(screen.getByTestId(`alert-frame-cell-${T2}`)).toHaveAttribute('data-readonly', 'true');
       fireEvent.click(screen.getByTestId(`alert-frame-cell-${T2}`));
+      expect(screen.queryByTestId('image-modal')).not.toBeInTheDocument();
+    });
+
+    it('refuses a pasted editor URL naming a false-positive object', async () => {
+      // The grid already refuses to open these frames; this closes the
+      // pasted / back-button route in as well.
+      alertWithFalsePositive();
+      await renderAndSettle(<LocalizeAlertPage />, {
+        wrapper: makeWrapper('/localize/101/object/102/1003'),
+      });
+
       expect(screen.queryByTestId('image-modal')).not.toBeInTheDocument();
     });
 
