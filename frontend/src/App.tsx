@@ -15,6 +15,7 @@ import UserManagementPage from '@/pages/UserManagementPage';
 import GuidePage from '@/pages/GuidePage';
 import LoginPage from '@/pages/LoginPage';
 import { legacyRedirectRoutes } from '@/components/routing/legacyRedirects';
+import { localizeObjectRoute } from '@/utils/routes';
 import RequireLocalize from '@/components/routing/RequireLocalize';
 import { useAuthStore } from '@/store/useAuthStore';
 
@@ -115,22 +116,34 @@ function App() {
                       the /localize/done route must precede the dynamic
                       /localize/:sequenceId below so "done" isn't swallowed
                       as a sequence id. */}
+                  {/* Both provenances carry the per-frame editor as a CHILD
+                      route, not a sibling: a sibling would sit at a different
+                      position in the element tree and remount
+                      LocalizeAlertPage on every open/close, losing scroll,
+                      crop mode, focus mode and the active object. The child
+                      renders nothing — the page reads its params via useMatch
+                      and opens the modal itself — so the page renders no
+                      <Outlet />. */}
                   <Route
-                    path="/localize/done/:sequenceId/:detectionId?"
+                    path="/localize/done/:sequenceId"
                     element={
                       <RequireLocalize>
                         <LocalizeAlertPage mode="done" />
                       </RequireLocalize>
                     }
-                  />
+                  >
+                    <Route path={localizeObjectRoute(true)} element={null} />
+                  </Route>
                   <Route
-                    path="/localize/:sequenceId/:detectionId?"
+                    path="/localize/:sequenceId"
                     element={
                       <RequireLocalize>
                         <LocalizeAlertPage />
                       </RequireLocalize>
                     }
-                  />
+                  >
+                    <Route path={localizeObjectRoute()} element={null} />
+                  </Route>
                   {legacyRedirectRoutes}
                   <Route path="/users" element={<UserManagementPage />} />
                   <Route path="/guide" element={<GuidePage />} />

@@ -86,8 +86,9 @@ provenance in the path: `/classify/:id` was entered from the queue,
 | `/classify/groups/:id`                     | `SequenceGroupAnnotatePage`       |
 | `/localize`                                | `DetectionAnnotatePage` (alert-grouped Localize queue) |
 | `/localize/done`                           | `DetectionReviewPage` (alert-grouped Done list) |
-| `/localize/:sequenceId/:detectionId?`      | `LocalizeAlertPage`               |
-| `/localize/done/:sequenceId/:detectionId?` | `LocalizeAlertPage` (done mode)   |
+| `/localize/:sequenceId`                    | `LocalizeAlertPage`               |
+| `/localize/done/:sequenceId`               | `LocalizeAlertPage` (done mode)   |
+| `/localize/:sequenceId/object/:laneId/:detectionId` | `LocalizeAlertPage` + per-frame editor (child route, so the page is not remounted; same under the `/localize/done` prefix) |
 | `/users`                                   | `UserManagementPage`              |
 | `/guide`                                   | `GuidePage`                       |
 
