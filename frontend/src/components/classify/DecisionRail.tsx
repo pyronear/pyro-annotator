@@ -28,7 +28,7 @@ export interface DecisionRailProps {
 }
 
 const chip = (selected: boolean, selectedClasses: string, disabled: boolean) =>
-  `inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 font-body text-xs font-medium transition-colors ${
+  `inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 font-body text-xs font-medium transition-colors ${
     selected ? selectedClasses : 'border-line bg-paper text-char hover:bg-ash'
   } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`;
 
