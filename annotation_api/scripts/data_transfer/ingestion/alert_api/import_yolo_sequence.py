@@ -439,6 +439,25 @@ def main() -> None:
 
     token = annotation_api.get_auth_token(base_url, username, password)
 
+    if args.sequence_stage == "annotated":
+        # The annotated stage writes detection annotations, which require the
+        # can_localize permission (or superuser). Fail fast before creating
+        # anything rather than 403-ing mid-import with a partial sequence.
+        me = requests.get(
+            f"{base_url}/api/v1/users/me",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=30,
+        )
+        me.raise_for_status()
+        user = me.json()
+        if not (user.get("is_superuser") or user.get("can_localize")):
+            raise PermissionError(
+                f"User {user.get('username')!r} lacks the can_localize permission "
+                "required to import with --sequence-stage annotated (it writes "
+                "detection annotations). Ask an admin to grant it from the user "
+                "management page, or use different credentials."
+            )
+
     rest_slug, az_from_name, _ = parse_name_parts(image_paths[0].stem)
     org_map, cam_map = fetch_slug_maps(base_url, token)
     names = resolve_names(args, rest_slug, org_map, cam_map)

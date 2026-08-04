@@ -21,6 +21,7 @@ import {
 } from '@/components/sequences';
 import { TABLE_CARD_CLASSES } from '@/components/sequences/tableStyles';
 import { useSequenceStore } from '@/store/useSequenceStore';
+import { useAuthStore } from '@/store/useAuthStore';
 import { useCameras } from '@/hooks/useCameras';
 import { useOrganizations } from '@/hooks/useOrganizations';
 import { useSourceApis } from '@/hooks/useSourceApis';
@@ -42,6 +43,7 @@ export default function SequencesPage({
 }: SequencesPageProps = {}) {
   const navigate = useNavigate();
   const { startAnnotationWorkflow } = useSequenceStore();
+  const { canLocalize } = useAuthStore();
 
   // Annotated-view features apply when the page's stage filter covers 'annotated'
   const isAnnotatedView = stageFilterIncludes(defaultProcessingStage, 'annotated');
@@ -382,12 +384,14 @@ export default function SequencesPage({
                   Nice work — every alert has been classified. New ones appear here as imports come
                   in.
                 </p>
-                <Link
-                  to={ROUTES.LOCALIZE}
-                  className="mt-5 inline-block rounded-lg bg-pine px-7 py-2.5 font-body text-[13.5px] font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2"
-                >
-                  Start localizing
-                </Link>
+                {canLocalize() && (
+                  <Link
+                    to={ROUTES.LOCALIZE}
+                    className="mt-5 inline-block rounded-lg bg-pine px-7 py-2.5 font-body text-[13.5px] font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2"
+                  >
+                    Start localizing
+                  </Link>
+                )}
               </>
             )}
           </div>

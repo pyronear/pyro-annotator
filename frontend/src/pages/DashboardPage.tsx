@@ -3,9 +3,11 @@ import PipelineStrip from '@/components/dashboard/PipelineStrip';
 import PhaseCard from '@/components/dashboard/PhaseCard';
 import HowItWorks from '@/components/dashboard/HowItWorks';
 import { ROUTES } from '@/utils/routes';
+import { useAuthStore } from '@/store/useAuthStore';
 
 export default function DashboardPage() {
   const stats = usePipelineStats();
+  const { canLocalize } = useAuthStore();
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -51,21 +53,23 @@ export default function DashboardPage() {
             count: stats.groupsToLabel,
           }}
         />
-        <PhaseCard
-          pass="02"
-          tone="pine"
-          passLabel="Localize"
-          title="Localize smoke"
-          description="Draw a tight box around the smoke in every image. Unlocked by Pass 01."
-          todo={stats.localizeTodo}
-          done={stats.complete}
-          doneNoun="localized"
-          ctaLabel="Start localizing"
-          ctaTo={ROUTES.LOCALIZE}
-          reviewLabel="Review localized"
-          reviewTo={ROUTES.LOCALIZE_DONE}
-          isLoading={stats.isLoading}
-        />
+        {canLocalize() && (
+          <PhaseCard
+            pass="02"
+            tone="pine"
+            passLabel="Localize"
+            title="Localize smoke"
+            description="Draw a tight box around the smoke in every image. Unlocked by Pass 01."
+            todo={stats.localizeTodo}
+            done={stats.complete}
+            doneNoun="localized"
+            ctaLabel="Start localizing"
+            ctaTo={ROUTES.LOCALIZE}
+            reviewLabel="Review localized"
+            reviewTo={ROUTES.LOCALIZE_DONE}
+            isLoading={stats.isLoading}
+          />
+        )}
       </div>
 
       <HowItWorks />

@@ -11,6 +11,8 @@ import pytest
 from httpx import AsyncClient
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.api.api_v1.endpoints import auto_annotate as auto_annotate_ep
+
 VALID_ANNOTATION = json.dumps(
     {
         "annotation": [
@@ -134,3 +136,42 @@ class TestLocalizerAllowed:
         )
         assert response.status_code == 201
         assert response.json()["processing_stage"] == "visual_check"
+        annotation_id = response.json()["id"]
+
+        # PATCH and DELETE succeed for the localizer too.
+        response = await async_client.patch(
+            f"/annotations/detections/{annotation_id}",
+            json={"processing_stage": "annotated"},
+            headers=headers,
+        )
+        assert response.status_code == 200
+        assert response.json()["processing_stage"] == "annotated"
+
+        response = await async_client.delete(
+            f"/annotations/detections/{annotation_id}", headers=headers
+        )
+        assert response.status_code == 204
+
+    @pytest.mark.asyncio
+    async def test_localizer_can_enqueue_auto_annotate(
+        self,
+        async_client: AsyncClient,
+        localizer_user_token: str,
+        sequence_session: AsyncSession,
+        monkeypatch,
+    ):
+        calls = {}
+
+        async def fake_defer(**kwargs):
+            calls.update(kwargs)
+
+        monkeypatch.setattr(
+            auto_annotate_ep.auto_annotate_sequence, "defer_async", fake_defer
+        )
+
+        headers = {"Authorization": f"Bearer {localizer_user_token}"}
+        response = await async_client.post(
+            "/auto-annotate/sequences/1", headers=headers
+        )
+        assert response.status_code == 202
+        assert calls == {"sequence_id": 1}
