@@ -265,7 +265,8 @@ removes the documented data-ambiguity limitation entirely.
   (`detections/sequence_{id}/…`). Content-hash dedup is possible but is a
   storage-cost optimization with zero UX effect — explicitly out of scope.
 - **Box→object linkage in detection annotations**: no schema change; the
-  sequence *is* the object, and ⚑ carries the one stated limitation.
+  sequence *is* the object, including missed-smoke objects added via
+  `add-object` — no data-ambiguity limitation to carry.
 - **First-class `alerts` table**; **re-merging** objects into multi-track
   sequences; renaming the alert API's own "sequence" terminology.
 - **Legacy classify-review path** (`/classify/done`): it can still push a
@@ -286,7 +287,8 @@ removes the documented data-ambiguity limitation entirely.
   candidate-pre-filter query shape; perf criterion (P95 ms-range on
   production-scale data, EXPLAIN-verified).
 - Alert-detail endpoint: lane ordering, null annotations, singleton alerts.
-- ⚑ storage rule: primary lane; first-open-lane fallback; retroactive flag.
+- `has_missed_smoke` storage rule: stored on the first-still-open lane at
+  classify submit.
 
 **Frontend (Vitest)**
 
@@ -295,7 +297,8 @@ removes the documented data-ambiguity limitation entirely.
   primary lane.
 - Localize: frame-union building on `recorded_at` (including disjoint
   siblings); timeline presence/status mapping; drawn-box attribution to the
-  active object; ⚑ retro-flag; soft-confirm paths.
+  active object; add-object flow (new sibling lane, empty algo_predictions);
+  soft-confirm paths.
 - Visual pass with the screenshot recipe for both new screens.
 
 ## Rollout
@@ -306,7 +309,7 @@ Three independently shippable branches, in order:
 2. **Collocated classify** — classify-queue endpoint, alert-detail endpoint,
    classify-submit bulk endpoint, the new screen, naming (#224: "alert" copy,
    "Object N" cards), sidebar count switches to alerts.
-3. **Collocated localize** — the timeline/grid screen, ⚑ pseudo-object,
+3. **Collocated localize** — the timeline/grid screen, add-object flow,
    localize-submit bulk endpoint; replaces the per-lane flow (the per-lane
    route keeps working for deep links until then).
 
