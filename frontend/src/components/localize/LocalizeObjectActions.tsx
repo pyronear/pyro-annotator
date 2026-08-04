@@ -23,10 +23,25 @@ export interface LocalizeObjectActionsProps {
   onReclassify?: () => void;
   /** Passed through to the tooltips — `above` where the panel edge is below the buttons. */
   tooltipPlacement?: 'below' | 'above';
+  /**
+   * `compact` fits the rail row's line, where these are one of several things
+   * competing for a narrow strip. `prominent` is the media column's call to
+   * action, where they ARE the point of the screen: full-size buttons, and
+   * Accept in the primary fill, since it is the one that moves the work on.
+   */
+  size?: 'compact' | 'prominent';
 }
 
-const BUTTON_CLASSES =
+const COMPACT =
   'whitespace-nowrap rounded-lg border border-line bg-paper px-2 py-1 font-body text-xs font-medium text-char hover:bg-ash disabled:cursor-not-allowed disabled:opacity-50';
+// Pine rather than ember: on this page pine is the colour of work moving
+// forward — it is what Submit wears — and accepting an object's boxes is the
+// same motion, one object at a time. Ember would read as the alert's headline
+// action and compete with Submit for it.
+const PROMINENT_PRIMARY =
+  'inline-flex items-center whitespace-nowrap rounded-lg bg-pine px-4 py-2 font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50';
+const PROMINENT_SECONDARY =
+  'inline-flex items-center whitespace-nowrap rounded-lg border border-line bg-paper px-3 py-2 font-body text-sm font-medium text-char hover:bg-ash';
 
 export const LocalizeObjectActions: React.FC<LocalizeObjectActionsProps> = ({
   label,
@@ -34,6 +49,7 @@ export const LocalizeObjectActions: React.FC<LocalizeObjectActionsProps> = ({
   isAccepting = false,
   onReclassify,
   tooltipPlacement = 'below',
+  size = 'compact',
 }) => (
   <>
     {onAcceptBoxes && (
@@ -55,7 +71,7 @@ export const LocalizeObjectActions: React.FC<LocalizeObjectActionsProps> = ({
             onAcceptBoxes();
           }}
           disabled={isAccepting}
-          className={BUTTON_CLASSES}
+          className={size === 'prominent' ? PROMINENT_PRIMARY : COMPACT}
         >
           {isAccepting ? 'Accepting…' : 'Accept boxes'}
         </button>
@@ -75,7 +91,7 @@ export const LocalizeObjectActions: React.FC<LocalizeObjectActionsProps> = ({
             e.stopPropagation();
             onReclassify();
           }}
-          className={BUTTON_CLASSES}
+          className={size === 'prominent' ? PROMINENT_SECONDARY : COMPACT}
         >
           Reclassify
         </button>

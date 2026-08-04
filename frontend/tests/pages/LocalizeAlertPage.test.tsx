@@ -1858,8 +1858,8 @@ describe('LocalizeAlertPage', () => {
     });
   });
 
-  describe('active object CTA, on the media column header', () => {
-    it('appears with the view controls only once an object is active, naming the work left', async () => {
+  describe('active object CTA, over the media column', () => {
+    it('appears above the frames only once an object is active', async () => {
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
       expect(screen.queryByTestId('localize-active-object-actions')).not.toBeInTheDocument();
@@ -1869,9 +1869,8 @@ describe('LocalizeAlertPage', () => {
       const cta = within(screen.getByTestId('localize-active-object-actions'));
       expect(cta.getByRole('button', { name: "Accept Object 1's boxes" })).toBeInTheDocument();
       expect(cta.getByRole('button', { name: 'Reclassify Object 1' })).toBeInTheDocument();
-      // The header names the object and what is left on it.
+      // The column header still names whose frames these are.
       expect(screen.getByText(/Frames — Object 1/)).toBeInTheDocument();
-      expect(screen.getByText(/1 frame still needs a box/)).toBeInTheDocument();
     });
 
     it("accepts the active object's boxes from the header, then reports nothing left and drops the action", async () => {
@@ -1906,22 +1905,19 @@ describe('LocalizeAlertPage', () => {
       expect(apiClient.updateDetectionAnnotation).not.toHaveBeenCalled();
     });
 
-    it('reports nothing left and drops Accept once the object has every box', async () => {
-      // The header is where a finished object becomes legible: the selected
-      // rail row traded its progress for its buttons, so this is the only
-      // place that can say the accept landed — and re-accepting is withheld
-      // rather than firing a mutation with nothing in it.
+    it('drops Accept once the object has every box, keeping Reclassify', async () => {
+      // Withheld rather than firing a mutation with nothing in it — and the
+      // button disappearing is what tells you the accept landed.
       mockAllFramesAccepted();
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
       fireEvent.click(screen.getByTestId('localize-object-row-object-1'));
 
       await waitFor(() => {
-        expect(screen.getByText(/every frame has a box/)).toBeInTheDocument();
+        const cta = within(screen.getByTestId('localize-active-object-actions'));
+        expect(cta.queryByRole('button', { name: /Accept/ })).not.toBeInTheDocument();
+        expect(cta.getByRole('button', { name: 'Reclassify Object 1' })).toBeInTheDocument();
       });
-      const cta = within(screen.getByTestId('localize-active-object-actions'));
-      expect(cta.queryByRole('button', { name: /Accept/ })).not.toBeInTheDocument();
-      expect(cta.getByRole('button', { name: 'Reclassify Object 1' })).toBeInTheDocument();
     });
   });
 

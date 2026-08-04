@@ -117,6 +117,7 @@ import {
 } from '@/utils/annotation';
 import { ObjectStatusStrip } from '@/components/sequence-annotation';
 import {
+  LocalizeActionPanel,
   LocalizeMissedSmokeRow,
   LocalizeObjectActions,
   LocalizeObjectRow,
@@ -769,14 +770,6 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   // The color also outlines the frames it actually appears on.
   const activeObject = objectStatusRows.find(o => o.laneSequenceId === activeLaneId);
   const activeObjectLabel = activeObject?.label ?? null;
-  // Frames of the active object still without a box — the media column's
-  // header states it, since the selected rail row gave up its own count.
-  const activeObjectPending = activeObject
-    ? (() => {
-        const progress = objectProgress.get(activeObject.laneSequenceId);
-        return progress ? progress.presentCount - progress.confirmedCount : null;
-      })()
-    : null;
 
   // Submit gate: every workable object must already have a committed box on
   // every frame it appears on. An object is "accepted" either via its row's
@@ -1146,51 +1139,30 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
           viewport. Below lg they stack. */}
       <div className="flex flex-col gap-4 pt-20 lg:flex-row lg:items-start">
         <div className="lg:flex-[1.5] lg:min-w-0">
-          <div className="rounded-card border border-line bg-paper px-[22px] py-5">
-            {/* The view controls sit with the grid they drive, not in the
-                alert header — S/M/L, crop and the flipbook are all about
-                how these cells render. */}
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <div className="flex min-w-0 items-baseline gap-1.5">
-                <span className="font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
-                  {/* Which object's images the cells are showing — invisible
-                      before the cockpit split, and the grid's cells only make
-                      sense once you know whose frames they are. */}
-                  Frames{activeObjectLabel ? ` — ${activeObjectLabel}` : ''}
-                </span>
-                {/* What is left on the active object. The selected rail row
-                    trades its progress for its buttons, so this is where an
-                    accept becomes visible on the object it acted on. */}
-                {activeObjectPending !== null && (
-                  <span className="truncate font-body text-detail text-haze">
-                    ·{' '}
-                    {activeObjectPending === 0
-                      ? 'every frame has a box'
-                      : `${activeObjectPending} frame${
-                          activeObjectPending === 1 ? '' : 's'
-                        } still need${activeObjectPending === 1 ? 's' : ''} a box`}
-                  </span>
-                )}
-              </div>
-              <div className="flex shrink-0 items-center gap-2.5">
-                {/* The active object's actions ride the same line as the view
-                    controls, where the eye already is once an object is
-                    selected — the rail's copy is across the page. Driven by
-                    `activeLaneId` alone, not by focus mode: closing the frame
-                    editor leaves an object active without re-entering focus,
-                    and that is exactly when the annotator is most obviously
-                    working one object. */}
-                {activeObject && (
-                  <span
-                    data-testid="localize-active-object-actions"
-                    className="flex items-center gap-1.5"
-                  >
-                    <LocalizeObjectActions
-                      label={activeObject.label}
-                      {...objectActionProps(activeObject)}
-                    />
-                  </span>
-                )}
+          {/* Everything that acts on the frames, in one bar above the card
+              that holds them: which object they belong to, what to do about
+              it, and how to render them. The actions are driven by
+              `activeLaneId` alone, not by focus mode — closing the frame
+              editor leaves an object active without re-entering focus, and
+              that is exactly when the annotator is most obviously working one
+              object. */}
+          <LocalizeActionPanel
+            // Which object's images the cells are showing — invisible before
+            // the cockpit split, and the grid's cells only make sense once
+            // you know whose frames they are.
+            title={`Frames${activeObjectLabel ? ` — ${activeObjectLabel}` : ''}`}
+            color={activeObject?.color}
+            actions={
+              activeObject && (
+                <LocalizeObjectActions
+                  label={activeObject.label}
+                  size="prominent"
+                  {...objectActionProps(activeObject)}
+                />
+              )
+            }
+            controls={
+              <>
                 <span className="font-data text-detail text-haze">
                   {frameModel.frames.length} frame{frameModel.frames.length === 1 ? '' : 's'}
                 </span>
@@ -1202,9 +1174,11 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                   showCroppedView={isFocused || showCroppedView}
                   onToggleCroppedView={handleToggleCroppedView}
                 />
-              </div>
-            </div>
+              </>
+            }
+          />
 
+          <div className="rounded-card border border-line bg-paper px-[22px] py-5">
             {(isFocused || showCroppedView) &&
               activeLaneId != null &&
               activeLaneBoxes.length > 0 && (
