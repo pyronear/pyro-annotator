@@ -968,8 +968,8 @@ describe('ClassifyAlertPage', () => {
 
     const row = openRow('101:0');
     fireEvent.click(row.getByRole('radio', { name: 'False positive' }));
-    // 18 FP type chips + the Unsure chip = 19 checkboxes on the row.
-    expect(row.getAllByRole('checkbox')).toHaveLength(19);
+    // 18 FP type chips (Unsure is a radio in the exclusive group).
+    expect(row.getAllByRole('checkbox')).toHaveLength(18);
   });
 });
 

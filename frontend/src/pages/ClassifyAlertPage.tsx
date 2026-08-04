@@ -482,7 +482,7 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
 
   const handleClassificationChangeByCardKey = (
     cardKey: string,
-    classification: 'smoke' | 'false_positive'
+    classification: CardClassification
   ) => {
     const card = cards.find(c => c.cardKey === cardKey);
     if (!card || card.locked) return;
@@ -549,6 +549,9 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
       const card = cards[Number(idxStr)];
       if (card && value !== 'unselected') {
         handleClassificationChangeByCardKey(card.cardKey, value);
+        // Classification and Unsure are mutually exclusive — the S/F
+        // keyboard path must clear unsure exactly like the chips do.
+        handleUnsureChangeByCardKey(card.cardKey, false);
       }
     });
   };

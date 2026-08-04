@@ -51,8 +51,15 @@ export const DecisionRail: React.FC<DecisionRailProps> = ({
     <div
       ref={missedSmokeRowRef}
       data-testid="missed-smoke-row"
+      // Tab stop: tabbing to the row activates the missed-smoke section
+      // (media swaps to the whole-alert player). Guarded to direct focus so
+      // tabbing/clicking onto the Yes/No chips answers without swapping.
+      tabIndex={0}
+      onFocus={e => {
+        if (e.target === e.currentTarget) onMissedSmokeActivate();
+      }}
       onClick={onMissedSmokeActivate}
-      className={`rounded-lg border border-line px-3.5 py-2.5 cursor-pointer transition-colors ${
+      className={`rounded-lg border border-line px-3.5 py-2.5 cursor-pointer transition-colors focus:outline-none focus:ring-2 focus:ring-ember ${
         missedSmokeActive ? 'border-l-[3px] border-l-ember' : 'hover:bg-ash'
       }`}
     >

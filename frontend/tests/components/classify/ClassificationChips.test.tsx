@@ -73,8 +73,8 @@ describe('ClassificationChips', () => {
       bbox: { ...baseBbox, false_positive_types: ['high_cloud'] },
       classification: 'false_positive',
     });
-    // 18 FP chips + the Unsure chip = 19 checkboxes
-    expect(screen.getAllByRole('checkbox')).toHaveLength(19);
+    // 18 FP chips (Unsure is a radio in the exclusive classification group)
+    expect(screen.getAllByRole('checkbox')).toHaveLength(18);
     expect(screen.getByRole('checkbox', { name: 'High cloud' })).toBeChecked();
     fireEvent.click(screen.getByRole('checkbox', { name: 'Antenna' }));
     expect(onBboxChange).toHaveBeenCalledWith('101:0', {
@@ -88,11 +88,45 @@ describe('ClassificationChips', () => {
     });
   });
 
-  it('toggles unsure and reflects checked state', () => {
+  it('toggles unsure off and reflects checked state', () => {
     const { onUnsureChange } = renderChips({ unsure: true });
-    expect(screen.getByRole('checkbox', { name: 'Unsure' })).toBeChecked();
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Unsure' }));
+    expect(screen.getByRole('radio', { name: 'Unsure' })).toBeChecked();
+    fireEvent.click(screen.getByRole('radio', { name: 'Unsure' }));
     expect(onUnsureChange).toHaveBeenCalledWith('101:0', false);
+  });
+
+  it('turning unsure on clears the classification and its bbox labels (mutual exclusivity)', () => {
+    const { onUnsureChange, onClassificationChange, onBboxChange } = renderChips({
+      bbox: { ...baseBbox, is_smoke: true, smoke_type: 'wildfire' },
+      classification: 'smoke',
+    });
+    fireEvent.click(screen.getByRole('radio', { name: 'Unsure' }));
+    expect(onUnsureChange).toHaveBeenCalledWith('101:0', true);
+    expect(onClassificationChange).toHaveBeenCalledWith('101:0', 'unselected');
+    expect(onBboxChange).toHaveBeenCalledWith('101:0', {
+      ...baseBbox,
+      is_smoke: false,
+      smoke_type: undefined,
+      false_positive_types: [],
+    });
+  });
+
+  it('picking a classification clears unsure (mutual exclusivity)', () => {
+    const { onUnsureChange } = renderChips({ unsure: true });
+    fireEvent.click(screen.getByRole('radio', { name: 'Smoke' }));
+    expect(onUnsureChange).toHaveBeenCalledWith('101:0', false);
+  });
+
+  it('renders Unsure as the only selected chip when a stale classification coexists with unsure', () => {
+    renderChips({
+      bbox: { ...baseBbox, is_smoke: true, smoke_type: 'wildfire' },
+      classification: 'smoke',
+      unsure: true,
+    });
+    expect(screen.getByRole('radio', { name: 'Unsure' })).toBeChecked();
+    expect(screen.getByRole('radio', { name: 'Smoke' })).not.toBeChecked();
+    // The smoke-type row stays hidden while unsure is on.
+    expect(screen.queryByRole('radio', { name: 'Wildfire' })).not.toBeInTheDocument();
   });
 
   it('hides the Unsure chip when no handler is wired', () => {
@@ -106,7 +140,7 @@ describe('ClassificationChips', () => {
         onClassificationChange={vi.fn()}
       />
     );
-    expect(screen.queryByRole('checkbox', { name: 'Unsure' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: 'Unsure' })).not.toBeInTheDocument();
   });
 
   it('contains no emojis anywhere', () => {

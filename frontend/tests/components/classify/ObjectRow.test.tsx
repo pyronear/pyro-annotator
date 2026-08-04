@@ -95,6 +95,14 @@ describe('ObjectRow', () => {
     expect(onRowClick).toHaveBeenCalledWith('101:0');
   });
 
+  it('is a tab stop and activates when focused directly', () => {
+    const { onRowClick } = renderRow();
+    const row = screen.getByTestId('object-card-101:0');
+    expect(row).toHaveAttribute('tabindex', '0');
+    fireEvent.focus(row);
+    expect(onRowClick).toHaveBeenCalledWith('101:0');
+  });
+
   it('shows the changed dot only when changed', () => {
     renderRow({ changed: true });
     expect(screen.getByTestId('object-row-changed-101:0')).toBeInTheDocument();

@@ -68,6 +68,16 @@ describe('DecisionRail', () => {
     ).toBeTruthy();
   });
 
+  it('is a tab stop: direct focus activates the section, but focusing a chip does not', () => {
+    const { onMissedSmokeActivate } = renderRail();
+    const row = screen.getByTestId('missed-smoke-row');
+    expect(row).toHaveAttribute('tabindex', '0');
+    fireEvent.focus(row);
+    expect(onMissedSmokeActivate).toHaveBeenCalledTimes(1);
+    fireEvent.focus(within(row).getByRole('radio', { name: 'No' }));
+    expect(onMissedSmokeActivate).toHaveBeenCalledTimes(1);
+  });
+
   it('disables the chips when missedSmokeDisabled', () => {
     const { onMissedSmokeReviewChange } = renderRail({ missedSmokeDisabled: true });
     const row = within(screen.getByTestId('missed-smoke-row'));

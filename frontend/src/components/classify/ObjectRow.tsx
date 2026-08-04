@@ -38,7 +38,10 @@ export interface ObjectRowProps {
   rowRef?: (el: HTMLDivElement | null) => void;
   onRowClick?: (cardKey: string) => void;
   onBboxChange: (cardKey: string, updatedBbox: SequenceBbox) => void;
-  onClassificationChange: (cardKey: string, classification: 'smoke' | 'false_positive') => void;
+  onClassificationChange: (
+    cardKey: string,
+    classification: 'smoke' | 'false_positive' | 'unselected'
+  ) => void;
   onUnsureChange?: (cardKey: string, unsure: boolean) => void;
 }
 
@@ -72,7 +75,14 @@ export const ObjectRow: React.FC<ObjectRowProps> = ({
     <div
       ref={rowRef}
       data-testid={`object-card-${cardKey}`}
-      className={`rounded-lg px-3.5 py-2.5 transition-colors ${frame}`}
+      // Tab stop: tabbing to a row activates it (chips expand, media panel
+      // follows), same as clicking. Guarded to direct focus so focusing a
+      // chip inside the row doesn't re-fire activation.
+      tabIndex={0}
+      onFocus={e => {
+        if (e.target === e.currentTarget) onRowClick?.(cardKey);
+      }}
+      className={`rounded-lg px-3.5 py-2.5 transition-colors focus:outline-none focus:ring-2 focus:ring-pine ${frame}`}
       onClick={() => onRowClick?.(cardKey)}
     >
       <div className="flex items-center justify-between gap-2">

@@ -20,7 +20,11 @@ export interface ClassificationChipsProps {
   unsure: boolean;
   showKbdHints?: boolean;
   onBboxChange: (cardKey: string, updatedBbox: SequenceBbox) => void;
-  onClassificationChange: (cardKey: string, classification: 'smoke' | 'false_positive') => void;
+  /** 'unselected' is sent when the Unsure chip clears the classification — Smoke / False positive / Unsure are mutually exclusive. */
+  onClassificationChange: (
+    cardKey: string,
+    classification: 'smoke' | 'false_positive' | 'unselected'
+  ) => void;
   /** Omit to hide the Unsure chip. */
   onUnsureChange?: (cardKey: string, unsure: boolean) => void;
 }
@@ -81,14 +85,38 @@ export const ClassificationChips: React.FC<ClassificationChipsProps> = ({
   onClassificationChange,
   onUnsureChange,
 }) => {
+  // Smoke / False positive / Unsure are mutually exclusive: picking either
+  // classification clears unsure, and turning unsure on clears the
+  // classification (and its bbox labels).
   const markSmoke = () => {
+    if (unsure) onUnsureChange?.(cardKey, false);
     onClassificationChange(cardKey, 'smoke');
     onBboxChange(cardKey, { ...bbox, is_smoke: true, false_positive_types: [] });
   };
   const markFalsePositive = () => {
+    if (unsure) onUnsureChange?.(cardKey, false);
     onClassificationChange(cardKey, 'false_positive');
     onBboxChange(cardKey, { ...bbox, is_smoke: false, smoke_type: undefined });
   };
+  const toggleUnsure = () => {
+    const next = !unsure;
+    if (next) {
+      onClassificationChange(cardKey, 'unselected');
+      onBboxChange(cardKey, {
+        ...bbox,
+        is_smoke: false,
+        smoke_type: undefined,
+        false_positive_types: [],
+      });
+    }
+    onUnsureChange?.(cardKey, next);
+  };
+
+  // Display-level guard for the same rule: a lane seeded with both a saved
+  // classification and is_unsure (possible in done mode) renders as Unsure
+  // only — never two selected chips at once.
+  const smokeSelected = !unsure && classification === 'smoke';
+  const fpSelected = !unsure && classification === 'false_positive';
   const setSmokeType = (type: SmokeType) => onBboxChange(cardKey, { ...bbox, smoke_type: type });
   const toggleFpType = (type: FalsePositiveType) => {
     const selected = bbox.false_positive_types.includes(type);
@@ -106,35 +134,32 @@ export const ClassificationChips: React.FC<ClassificationChipsProps> = ({
         <button
           type="button"
           role="radio"
-          aria-checked={classification === 'smoke'}
+          aria-checked={smokeSelected}
           aria-label="Smoke"
           onClick={markSmoke}
-          className={primaryChip(classification === 'smoke', 'border-pine bg-pine text-white')}
+          className={primaryChip(smokeSelected, 'border-pine bg-pine text-white')}
         >
           Smoke
-          {showKbdHints && <Kbd label="S" onDark={classification === 'smoke'} />}
+          {showKbdHints && <Kbd label="S" onDark={smokeSelected} />}
         </button>
         <button
           type="button"
           role="radio"
-          aria-checked={classification === 'false_positive'}
+          aria-checked={fpSelected}
           aria-label="False positive"
           onClick={markFalsePositive}
-          className={primaryChip(
-            classification === 'false_positive',
-            'border-char bg-char text-white'
-          )}
+          className={primaryChip(fpSelected, 'border-char bg-char text-white')}
         >
           False positive
-          {showKbdHints && <Kbd label="F" onDark={classification === 'false_positive'} />}
+          {showKbdHints && <Kbd label="F" onDark={fpSelected} />}
         </button>
         {onUnsureChange && (
           <button
             type="button"
-            role="checkbox"
+            role="radio"
             aria-checked={unsure}
             aria-label="Unsure"
-            onClick={() => onUnsureChange(cardKey, !unsure)}
+            onClick={toggleUnsure}
             className={primaryChip(unsure, 'border-signal bg-signal-soft text-signal')}
           >
             Unsure
@@ -142,7 +167,7 @@ export const ClassificationChips: React.FC<ClassificationChipsProps> = ({
         )}
       </div>
 
-      {classification === 'smoke' && (
+      {smokeSelected && (
         <div>
           <div className="font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze mb-1.5">
             Smoke type
@@ -166,7 +191,7 @@ export const ClassificationChips: React.FC<ClassificationChipsProps> = ({
         </div>
       )}
 
-      {classification === 'false_positive' && (
+      {fpSelected && (
         <div>
           <div className="font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze mb-1.5">
             FP types — select all that apply
