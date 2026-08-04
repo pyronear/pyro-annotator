@@ -13,7 +13,9 @@
  * `AlertFrameGrid` never read `showPredictions` (only `ImageModal` does, and
  * it owns its own toggle), so both went with it rather than lingering as
  * controls that move nothing on screen. The cropped-flipbook toggle went the
- * same way once the flipbook became a permanent part of selecting an object.
+ * same way once the loop moved into the rail row it belongs to, where the row
+ * discloses it — a toolbar toggle for something in another column was the
+ * reason nobody found it.
  */
 
 import { Crop } from 'lucide-react';

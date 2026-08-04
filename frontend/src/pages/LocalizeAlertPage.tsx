@@ -31,13 +31,13 @@
  * (independent of the editor's `:detectionId` path param — the two coexist),
  * so reloading or sharing the link reproduces the scroll+highlight without
  * opening the editor. Activating an object via the timeline (row or segment
- * click) also enters "object focus mode" — crop-on + small cards + the
- * cropped-view flipbook strip, a lens for looking closely at just that
- * object — stashing the prior crop/size so clicking the selected row again
- * restores them. An explicit S/M/L click while focused clears the small-card
- * override immediately (visible feedback for what's otherwise a silent
- * preference write); the timeline rows no longer carry a hover preview
- * popover (dropped — the inline cropped-view strip replaces it).
+ * click) also enters "object focus mode" — crop-on + small cards, a lens for
+ * looking closely at just that object — stashing the prior crop/size so
+ * clicking the selected row again restores them. An explicit S/M/L click
+ * while focused clears the small-card override immediately (visible feedback
+ * for what's otherwise a silent preference write); the timeline rows no
+ * longer carry a hover preview popover (dropped — the selected rail row's
+ * cropped loop replaces it).
  *
  * Task 9 retires the earlier ⚑ pseudo-object row (a carrier-lane box that
  * stood in for missed smoke) in favor of "+ Add object": a footer action
@@ -45,8 +45,8 @@
  * so it gets its own real object row like any other.
  *
  * Cockpit round: the page adopts ClassifyAlertPage's two-column shape —
- * a media column (the active object's frame grid, plus its cropped-view
- * flipbook) beside a sticky `LocalizeRail` carrying the whole alert's
+ * a media column (the active object's frame grid) beside a sticky
+ * `LocalizeRail` carrying the whole alert's
  * localization state. That collapses the three blocks the body used to
  * stack (workable timeline -> standalone "+ Add object" card -> a separate
  * dimmed "Already localized" timeline) into one rail: every object gets a
@@ -890,11 +890,11 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     proceedPastSoftConfirm();
   };
 
-  // Cropped flipbook: the active object's boxes across all its frames,
-  // rendered above the grid whenever an object is active. It used to hide
-  // behind a `Film` toolbar toggle; watching the plume evolve is the whole
-  // point of picking an object, so it now comes with the selection rather
-  // than waiting to be discovered. Selecting nothing still shows nothing —
+  // Cropped flipbook: the active object's boxes across all its frames, fed to
+  // the loop the selected rail row discloses. It used to hide behind a `Film`
+  // toggle in the frame grid's toolbar — a control in one column for
+  // something that appeared in another, which is why nobody found it. It now
+  // hangs off the row whose object it shows. Selecting nothing shows nothing:
   // there is no "the object" to crop around.
   // A false-positive lane's committed annotation is empty by construction,
   // so the flipbook has to read its engine track instead — otherwise
@@ -911,8 +911,8 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   }, [activeLaneId, detectionsByLaneId, annotationsByLaneId, activeLaneIsFalsePositive]);
 
   // Enters (or switches) object-focus mode: crop-on + small cards, a lens
-  // for looking closely at just this object, plus the cropped-view strip
-  // (rendered below from `activeLaneBoxes`). The pre-focus crop-mode is
+  // for looking closely at just this object, and the selection its rail row
+  // needs before it will offer the cropped loop. The pre-focus crop-mode is
   // stashed only the FIRST time focus is entered (`prev => prev ?? cropMode`
   // — a functional update so it reads `cropMode` as of THIS click, before
   // this same call's `setCropMode(true)` below applies) — switching to a
@@ -931,8 +931,9 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
 
   // Deselects: restores the stashed pre-focus crop-mode (and, since
   // `effectiveCardSize` is a derived override, the card size falls back to
-  // the untouched persisted preference automatically) and hides the
-  // cropped-view strip. A no-op when not focused.
+  // the untouched persisted preference automatically). The cropped loop goes
+  // with the selection, since no row is selected any more. A no-op when not
+  // focused.
   const exitFocus = () => {
     if (!isFocused) return;
     setCropMode(preFocusCropMode as boolean);

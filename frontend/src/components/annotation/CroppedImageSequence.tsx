@@ -9,7 +9,8 @@ const CANVAS_RES = 840;
 
 /**
  * Sized for the classify cockpit's media column, where the crop shares space
- * with the full-frame player. Wider columns (localize) pass their own.
+ * with the full-frame player. Consumers with a different budget — localize
+ * discloses it inside a rail row, which is narrower — pass their own.
  */
 const DEFAULT_MAX_SIZE = 'min(380px, 33vh)';
 
@@ -19,9 +20,13 @@ interface CroppedImageSequenceProps {
   /** Ties the crop to its object: a thin viewport frame in the object's overlay color. */
   accentColor?: string;
   /**
-   * CSS max-width for the square viewport, e.g. `min(560px, 55vh)`. The
+   * CSS max-width for the square viewport, e.g. `min(100%, 22vh)`. The
    * viewport is always square and always centred; only its ceiling changes.
    * Defaults to the classify sizing.
+   *
+   * Keep the resolved size at or under `CANVAS_RES / 2` (420 CSS px) — the
+   * backing canvas is fixed, and past that the loop goes soft on a hiDPI
+   * screen. Raising the ceiling means raising `CANVAS_RES` with it.
    */
   maxSize?: string;
   className?: string;
@@ -222,14 +227,29 @@ export default function CroppedImageSequence({
     ctx.drawImage(img, crop.x, crop.y, crop.size, crop.size, 0, 0, CANVAS_RES, CANVAS_RES);
   }, [bboxes, currentIndex, images, zoomLevel]);
 
-  // Wheel-zoom must preventDefault so the page doesn't scroll — React's
-  // onWheel is passive, so attach the listener manually.
+  // Mirrors `zoomLevel` for the wheel handler, which is bound once (see below)
+  // and so can't close over the state value.
+  const zoomRef = useRef(zoomLevel);
+  useEffect(() => {
+    zoomRef.current = zoomLevel;
+  }, [zoomLevel]);
+
+  // Wheel-zoom must preventDefault so the page doesn't scroll instead — but
+  // ONLY when the wheel actually moved the zoom. At either clamp a blanket
+  // preventDefault traps the pointer: the localize rail puts this loop inside
+  // a fixed-height scroller, so wheeling down at 8x would stop the rail
+  // scrolling with no visible reason. Falling through at the clamps lets the
+  // container scroll normally once there's no zoom left to give.
+  // React's onWheel is passive, so the listener is attached manually.
   useEffect(() => {
     if (!viewportEl) return;
     const onWheel = (e: WheelEvent) => {
-      e.preventDefault();
       const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
-      setZoomLevel(prev => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, prev * factor)));
+      const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoomRef.current * factor));
+      if (next === zoomRef.current) return;
+      e.preventDefault();
+      zoomRef.current = next;
+      setZoomLevel(next);
     };
     viewportEl.addEventListener('wheel', onWheel, { passive: false });
     return () => viewportEl.removeEventListener('wheel', onWheel);

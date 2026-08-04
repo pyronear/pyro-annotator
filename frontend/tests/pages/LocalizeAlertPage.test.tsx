@@ -980,6 +980,26 @@ describe('LocalizeAlertPage', () => {
     });
   });
 
+  // The disclosure is a real toggle, not a one-way reveal: the page holds the
+  // flag, so the second click has to travel back through it.
+  it('collapses the loop again on a second click of the disclosure', async () => {
+    await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Go to Object 1' }));
+    await expandCrop('Object 1');
+    await waitFor(() => {
+      expect(screen.getByTestId('cropped-image-sequence')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: "Hide Object 1's cropped view" }));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('cropped-image-sequence')).not.toBeInTheDocument();
+    });
+    // The row stays selected — collapsing the loop is not deselecting.
+    expect(screen.getByTestId('localize-object-row-object-1')).toHaveAttribute('data-active');
+  });
+
   // Opening the editor activates a lane WITHOUT entering focus mode, so its
   // row never reads as selected. The disclosure belongs to the selected row,
   // so neither it nor the strip appears on that path — there is no control
@@ -1380,8 +1400,13 @@ describe('LocalizeAlertPage', () => {
           'true'
         );
       });
-      // Focus mode forces the cropped-view strip, but the lane has no boxes
-      // to crop — it must simply not render rather than spin.
+      // A freshly added lane has no boxes yet, so the row must not even offer
+      // the disclosure — a chevron that opens onto an empty spinning square is
+      // worse than no chevron. Asserting on the CONTROL, not on the loop: the
+      // loop is collapsed by default, so its absence would prove nothing.
+      expect(
+        screen.queryByRole('button', { name: "Show Object 3's cropped view" })
+      ).not.toBeInTheDocument();
       expect(screen.queryByTestId('cropped-image-sequence')).not.toBeInTheDocument();
     });
 

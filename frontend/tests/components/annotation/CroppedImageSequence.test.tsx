@@ -76,4 +76,46 @@ describe('CroppedImageSequence', () => {
     expect(screen.getByText('8.0x')).toBeInTheDocument();
     expect(zoomIn).toBeDisabled();
   });
+
+  // The size ceiling used to be a Tailwind class. It became a prop so the
+  // localize rail could pass a smaller one — every OTHER consumer must keep
+  // the sizing it had, which is what the default encodes.
+  it('caps the viewport at the classify sizing unless a consumer overrides it', async () => {
+    await renderLoaded();
+    expect(screen.getByTestId('cropped-viewport').style.maxWidth).toBe('min(380px, 33vh)');
+  });
+
+  it('takes a consumer max size, and keeps the accent border alongside it', async () => {
+    render(
+      <CroppedImageSequence
+        bboxes={BBOXES}
+        sequenceId={9}
+        maxSize="min(100%, 22vh)"
+        accentColor="#E4572E"
+      />
+    );
+    await waitFor(() => expect(screen.getByLabelText('Zoom in')).toBeInTheDocument());
+
+    const viewport = screen.getByTestId('cropped-viewport');
+    expect(viewport.style.maxWidth).toBe('min(100%, 22vh)');
+    // Both live on the same inline style object — one must not clobber the other.
+    expect(viewport.style.borderColor).toBe('rgb(228, 87, 46)');
+  });
+
+  // The loop is disclosed inside the localize rail, which is a fixed-height
+  // scroller. A blanket preventDefault would trap the wheel there: at the
+  // clamp there is no zoom left to give, so the event has to fall through and
+  // let the container scroll.
+  it('stops swallowing the wheel once zoom is clamped, so its scroller keeps scrolling', async () => {
+    await renderLoaded();
+
+    const viewport = screen.getByTestId('cropped-viewport');
+    // At MIN_ZOOM already: wheeling further out changes nothing.
+    expect(screen.getByText('1.0x')).toBeInTheDocument();
+    expect(fireEvent.wheel(viewport, { deltaY: 100, cancelable: true })).toBe(true);
+
+    // A wheel that DOES move the zoom is still consumed.
+    expect(fireEvent.wheel(viewport, { deltaY: -100, cancelable: true })).toBe(false);
+    expect(screen.getByText('1.1x')).toBeInTheDocument();
+  });
 });
