@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { buildAlertFrameModel } from '@/utils/annotation/alertLocalizeUtils';
+import {
+  buildAlertFrameModel,
+  findCarrierLaneId,
+  buildMissedRowStatus,
+} from '@/utils/annotation/alertLocalizeUtils';
 import { getObjectColor } from '@/utils/annotation/objectColors';
 import type { AlertLane, Detection, DetectionAnnotation, SequenceAnnotation } from '@/types/api';
 
@@ -226,5 +230,78 @@ describe('buildAlertFrameModel', () => {
     expect(objectStatus).toHaveLength(1);
     expect(objectStatus[0].label).toBe('Object 2');
     expect(objectStatus[0].color).toBe(getObjectColor(1));
+  });
+});
+
+describe('findCarrierLaneId', () => {
+  it('picks the first still-open (seq_annotation_done) lane, primary-first', () => {
+    const primary = makeLane(1, { processing_stage: 'seq_annotation_done' });
+    const sibling = makeLane(2, { processing_stage: 'seq_annotation_done' });
+
+    expect(findCarrierLaneId([primary, sibling])).toBe(1);
+  });
+
+  it('falls back to the next still-open lane when the primary already exited', () => {
+    const primary = makeLane(1, { processing_stage: 'annotated' });
+    const sibling = makeLane(2, { processing_stage: 'seq_annotation_done' });
+
+    expect(findCarrierLaneId([primary, sibling])).toBe(2);
+  });
+
+  it('returns null when no lane is still open', () => {
+    const primary = makeLane(1, { processing_stage: 'annotated' });
+    const noAnnotation = makeLane(2, null);
+
+    expect(findCarrierLaneId([primary, noAnnotation])).toBeNull();
+  });
+});
+
+describe('buildMissedRowStatus', () => {
+  it('spans every frame, defaulting to pending', () => {
+    const t1 = '2026-01-01T10:00:00Z';
+    const t2 = '2026-01-01T10:00:10Z';
+    const lane = makeLane(1);
+    const { frames } = buildAlertFrameModel(
+      [lane],
+      { 1: [makeDetection(1, t1), makeDetection(2, t2)] },
+      { 1: [] }
+    );
+
+    expect(buildMissedRowStatus(frames, 1)).toEqual({ [t1]: 'pending', [t2]: 'pending' });
+  });
+
+  it('marks a frame confirmed once the carrier lane has a committed box there', () => {
+    const t1 = '2026-01-01T10:00:00Z';
+    const t2 = '2026-01-01T10:00:10Z';
+    const lane = makeLane(1);
+    const { frames } = buildAlertFrameModel(
+      [lane],
+      { 1: [makeDetection(1, t1), makeDetection(2, t2)] },
+      { 1: [makeDetAnnotation(1, 'annotated', [{ xyxyn: [0.1, 0.1, 0.2, 0.2], class_name: 'smoke' }])] }
+    );
+
+    expect(buildMissedRowStatus(frames, 1)).toEqual({ [t1]: 'confirmed', [t2]: 'pending' });
+  });
+
+  it('stays pending everywhere when the carrier lane has no cell on any frame (not contributing yet)', () => {
+    const t1 = '2026-01-01T10:00:00Z';
+    // Lane 1 is unsure (excluded from frameModel entirely); lane 2 contributes the frame.
+    const excludedCarrier = makeLane(1, { is_unsure: true });
+    const other = makeLane(2);
+    const { frames } = buildAlertFrameModel(
+      [excludedCarrier, other],
+      { 1: [], 2: [makeDetection(1, t1)] },
+      { 1: [], 2: [] }
+    );
+
+    expect(buildMissedRowStatus(frames, 1)).toEqual({ [t1]: 'pending' });
+  });
+
+  it('is entirely pending when there is no carrier lane at all', () => {
+    const t1 = '2026-01-01T10:00:00Z';
+    const lane = makeLane(1);
+    const { frames } = buildAlertFrameModel([lane], { 1: [makeDetection(1, t1)] }, { 1: [] });
+
+    expect(buildMissedRowStatus(frames, null)).toEqual({ [t1]: 'pending' });
   });
 });

@@ -135,6 +135,47 @@ export function buildAlertFrameModel(
 }
 
 /**
+ * The ⚑ Missed pseudo-object's carrier lane: the first still-open lane in
+ * `lanes` order (primary-first, per the `AlertDetail` contract) — "still
+ * open" meaning it has an annotation and hasn't yet exited localization
+ * (`processing_stage === 'seq_annotation_done'`). Mirrors
+ * ClassifyAlertPage's `missedSmokeCarrierLaneId`, adapted to localize's own
+ * open/closed boundary (`seq_annotation_done`, not `annotated` — that stage
+ * is CLOSED here, the opposite of classify's reading of it). Null when no
+ * lane is still open (nothing left to carry the flag).
+ */
+export function findCarrierLaneId(lanes: AlertLane[]): number | null {
+  const lane = lanes.find(
+    l => !!l.annotation && l.annotation.processing_stage === 'seq_annotation_done'
+  );
+  return lane ? lane.sequence.id : null;
+}
+
+/**
+ * The ⚑ Missed row's per-frame status, spanning every frame of the union
+ * (never `absent` — the row always covers the whole alert timeline,
+ * regardless of whether the carrier lane itself contributes a cell to any
+ * given frame): `confirmed` wherever the carrier lane already has a
+ * committed box there, `pending` everywhere else. Since ⚑ boxes save as
+ * ordinary boxes on the carrier lane's own detection annotations (the
+ * spec-stated storage limitation), this can't distinguish a ⚑-drawn box
+ * from the carrier's own — any committed box reads as "missed smoke
+ * reviewed here".
+ */
+export function buildMissedRowStatus(
+  frames: AlertFrame[],
+  carrierLaneId: number | null
+): Record<string, ObjectStatusStripStatus> {
+  const status: Record<string, ObjectStatusStripStatus> = {};
+  for (const frame of frames) {
+    const cell =
+      carrierLaneId != null ? frame.cells.find(c => c.laneSequenceId === carrierLaneId) : undefined;
+    status[frame.recordedAt] = cell?.cellState === 'done' ? 'confirmed' : 'pending';
+  }
+  return status;
+}
+
+/**
  * Locates the frame (and owning lane) a given detection id belongs to,
  * across every cell of every frame. Feeds LocalizeAlertPage's `?frame=`
  * deep link — the query param carries a detection id (the shown lane's

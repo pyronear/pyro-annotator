@@ -29,6 +29,7 @@ vi.mock('@/services/api', () => ({
     getDetectionImageUrl: vi.fn(),
     createDetectionAnnotation: vi.fn(),
     updateDetectionAnnotation: vi.fn(),
+    updateSequenceAnnotation: vi.fn(),
     localizeSubmit: vi.fn(),
   },
 }));
@@ -230,6 +231,10 @@ describe('LocalizeAlertPage', () => {
         { annotation_id: 202, sequence_id: 102, processing_stage: 'annotated' },
       ],
     });
+    vi.mocked(apiClient.updateSequenceAnnotation).mockImplementation(async (id, updates) => ({
+      ...makeAnnotation({ id, sequence_id: id === 201 ? 101 : 102 }),
+      ...updates,
+    }));
   });
 
   it('renders a status strip row and a grid cell for each object of a 2-object alert', async () => {
@@ -301,7 +306,9 @@ describe('LocalizeAlertPage', () => {
 
     await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
-    expect(screen.getAllByTestId(/^object-status-row-/)).toHaveLength(1);
+    // The single real object row, plus the always-present ⚑ Missed row.
+    expect(screen.getAllByTestId(/^object-status-row-/)).toHaveLength(2);
+    expect(screen.getByTestId('object-status-row-1')).toHaveAttribute('data-flag', 'true');
     expect(screen.getByText('1 object')).toBeInTheDocument();
   });
 
@@ -891,6 +898,225 @@ describe('LocalizeAlertPage', () => {
     await waitFor(() => {
       const img = within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img');
       expect(img).toHaveAttribute('src', 'https://img.example/1001.jpg');
+    });
+  });
+
+  describe('⚑ Missed pseudo-object', () => {
+    // Default fixture: both lanes seq_annotation_done, primary-first ->
+    // lane 101 (Object 1) is the carrier lane. Neither lane is flagged and
+    // neither has a committed box yet.
+
+    it('always renders, ghosted (all-pending, dashed) when unflagged and untouched', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      const flagRow = screen.getByTestId('object-status-row-2');
+      expect(flagRow).toHaveAttribute('data-flag', 'true');
+      expect(within(flagRow).getByText('⚑ Missed')).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Missed, frame 1: pending' })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Missed, frame 2: pending' })
+      ).toBeInTheDocument();
+    });
+
+    it('activating it (row click) focuses the carrier lane, and a grid cell click opens the editor on the carrier lane\'s detection', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Go to Missed' }));
+
+      // Focus mode targets the carrier lane (101 / Object 1)'s cropped strip.
+      await waitFor(() => {
+        expect(screen.getByTestId('cropped-image-sequence')).toHaveAttribute(
+          'data-sequence-id',
+          '101'
+        );
+      });
+      expect(screen.getByTestId('object-status-row-2')).toHaveAttribute('data-selected', 'true');
+      // The carrier's own row (Object 1) is NOT also marked selected — ⚑
+      // mode and plain object focus are mutually exclusive accents.
+      expect(screen.getByTestId('object-status-row-0')).not.toHaveAttribute('data-selected');
+
+      fireEvent.click(screen.getByTestId(`alert-frame-cell-${T1}`));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1001');
+      });
+    });
+
+    it('retro-flags the carrier lane\'s sequence annotation on the first ⚑-mode save, and only once', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Go to Missed' }));
+      await waitFor(() => {
+        expect(screen.getByTestId('cropped-image-sequence')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId(`alert-frame-cell-${T1}`));
+      await waitFor(() => {
+        expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1001');
+      });
+      fireEvent.click(screen.getByText('Mock Submit'));
+
+      await waitFor(() => {
+        expect(apiClient.updateSequenceAnnotation).toHaveBeenCalledWith(201, {
+          has_missed_smoke: true,
+        });
+      });
+      // Closes on a non-autoSave submit, same as any other lane's save.
+      await waitFor(() => expect(screen.queryByTestId('image-modal')).not.toBeInTheDocument());
+
+      // A second ⚑-mode save (still the same session, before the alert's
+      // has_missed_smoke actually flips in the mocked cache) must not
+      // PATCH a second time.
+      fireEvent.click(screen.getByTestId(`alert-frame-cell-${T1}`));
+      await waitFor(() => {
+        expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1001');
+      });
+      fireEvent.click(screen.getByText('Mock Submit'));
+      await waitFor(() => expect(screen.queryByTestId('image-modal')).not.toBeInTheDocument());
+
+      expect(apiClient.updateSequenceAnnotation).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not retro-flag a save made on the carrier lane\'s own row outside ⚑ mode', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      // Ordinary focus on Object 1 (not the ⚑ row) — an everyday edit of
+      // that object's own smoke, not a missed-smoke drawing.
+      fireEvent.click(screen.getByRole('button', { name: 'Go to Object 1' }));
+      await waitFor(() => {
+        expect(screen.getByTestId('cropped-image-sequence')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId(`alert-frame-cell-${T1}`));
+      await waitFor(() => {
+        expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1001');
+      });
+      fireEvent.click(screen.getByText('Mock Submit'));
+
+      await waitFor(() => expect(apiClient.createDetectionAnnotation).toHaveBeenCalled());
+      expect(apiClient.updateSequenceAnnotation).not.toHaveBeenCalled();
+    });
+
+    describe('soft-confirm on submit (flagged, carrier lane has no boxes)', () => {
+      function mockFlaggedAlert() {
+        vi.mocked(apiClient.getAlertDetail).mockResolvedValue({
+          ...makeTwoLaneAlertDetail(),
+          lanes: [
+            {
+              sequence: makeSequence({ id: 101, alert_api_id: 9001 }),
+              annotation: makeAnnotation({ id: 201, sequence_id: 101, has_missed_smoke: true }),
+            },
+            {
+              sequence: makeSequence({ id: 102, alert_api_id: 9002 }),
+              annotation: makeAnnotation({ id: 202, sequence_id: 102 }),
+            },
+          ],
+        });
+      }
+
+      it('"Go back" cancels — nothing is submitted or patched', async () => {
+        mockFlaggedAlert();
+        await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Accept all & submit alert' }));
+
+        await waitFor(() => {
+          expect(
+            screen.getByText('You flagged missed smoke but drew no boxes — submit anyway?')
+          ).toBeInTheDocument();
+        });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Go back' }));
+
+        expect(
+          screen.queryByText('You flagged missed smoke but drew no boxes — submit anyway?')
+        ).not.toBeInTheDocument();
+        expect(apiClient.localizeSubmit).not.toHaveBeenCalled();
+        expect(apiClient.updateSequenceAnnotation).not.toHaveBeenCalled();
+      });
+
+      it('"Submit anyway" proceeds to submit without touching the flag', async () => {
+        mockFlaggedAlert();
+        await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Accept all & submit alert' }));
+        await waitFor(() => {
+          expect(screen.getByTestId('missed-smoke-confirm')).toBeInTheDocument();
+        });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Submit anyway' }));
+
+        await waitFor(() => {
+          expect(apiClient.localizeSubmit).toHaveBeenCalledWith([201, 202]);
+        });
+        expect(apiClient.updateSequenceAnnotation).not.toHaveBeenCalled();
+      });
+
+      it('"Submit & clear flag" PATCHes has_missed_smoke: false on the carrier, then submits', async () => {
+        mockFlaggedAlert();
+        await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Accept all & submit alert' }));
+        await waitFor(() => {
+          expect(screen.getByTestId('missed-smoke-confirm')).toBeInTheDocument();
+        });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Submit & clear flag' }));
+
+        await waitFor(() => {
+          expect(apiClient.updateSequenceAnnotation).toHaveBeenCalledWith(201, {
+            has_missed_smoke: false,
+          });
+        });
+        await waitFor(() => {
+          expect(apiClient.localizeSubmit).toHaveBeenCalledWith([201, 202]);
+        });
+      });
+
+      it('composes with the no-box two-step confirm: soft-confirm resolves first, then the routine no-box warning', async () => {
+        mockFlaggedAlert();
+        // Detection 1002 has no predictions -> a pending frame with zero
+        // boxes, same setup as the plain no-box confirm test.
+        vi.mocked(apiClient.getSequenceDetections).mockImplementation(async (id: number) => {
+          if (id === 101) return [makeDetection(1001, T1)];
+          if (id === 102) {
+            return [
+              { ...makeDetection(1002, T1), auto_predictions: { predictions: [] } },
+              makeDetection(1003, T2),
+            ];
+          }
+          return [];
+        });
+
+        await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Accept all & submit alert' }));
+        await waitFor(() => {
+          expect(screen.getByTestId('missed-smoke-confirm')).toBeInTheDocument();
+        });
+        expect(apiClient.localizeSubmit).not.toHaveBeenCalled();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Submit anyway' }));
+
+        // Soft-confirm resolved -> falls through to the ordinary per-frame
+        // no-box two-step, not straight to submit.
+        await waitFor(() => {
+          expect(
+            screen.getByText('1 frame with no box — submit anyway?')
+          ).toBeInTheDocument();
+        });
+        expect(apiClient.localizeSubmit).not.toHaveBeenCalled();
+
+        fireEvent.click(
+          screen.getByRole('button', { name: '1 frame with no box — submit anyway?' })
+        );
+
+        await waitFor(() => {
+          expect(apiClient.localizeSubmit).toHaveBeenCalledWith([201, 202]);
+        });
+      });
     });
   });
 });
