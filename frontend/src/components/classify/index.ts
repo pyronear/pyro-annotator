@@ -1,7 +1,9 @@
-export { ClassificationChips, formatFalsePositiveLabel } from './ClassificationChips';
+export { ClassificationChips } from './ClassificationChips';
 export type { ClassificationChipsProps } from './ClassificationChips';
-export { ObjectRow, getObjectRowStatus } from './ObjectRow';
-export type { ObjectRowProps, ObjectRowStatus } from './ObjectRow';
+export { ObjectRow } from './ObjectRow';
+export type { ObjectRowProps } from './ObjectRow';
+export { formatFalsePositiveLabel, getObjectRowStatus } from './status';
+export type { ObjectRowStatus } from './status';
 export { DecisionRail } from './DecisionRail';
 export type { DecisionRailProps } from './DecisionRail';
 export { ClassifyMediaPanel } from './ClassifyMediaPanel';

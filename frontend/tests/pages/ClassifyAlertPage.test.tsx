@@ -1,7 +1,8 @@
 /**
- * Tests for ClassifyAlertPage: the collocated classify screen that renders
- * every object (lane) of one alert and submits them all in a single
- * classifySubmit call.
+ * Tests for ClassifyAlertPage: the collocated classify cockpit that renders
+ * every object (lane) of one alert — a media panel for the active object
+ * plus a decision rail of per-object rows — and submits them all in a
+ * single classifySubmit call (queue mode) or per-lane PATCHes (done mode).
  */
 
 import React from 'react';
@@ -27,41 +28,32 @@ vi.mock('react-router-dom', async importOriginal => {
   return { ...actual, useNavigate: () => navigateMock };
 });
 
+// The media panel's full-frame player stand-in exposes the bbox count it
+// was handed — renderAndSettle keys on it as the "seeded state has
+// committed" signal (see its comment).
 vi.mock('@/components/annotation/FullImageSequence', () => ({
-  default: () => <div data-testid="full-image-sequence" />,
+  default: ({ bboxes }: { bboxes?: unknown[] }) => (
+    <div data-testid="full-image-sequence" data-bbox-count={bboxes?.length ?? 0} />
+  ),
 }));
 vi.mock('@/components/annotation/CroppedImageSequence', () => ({
   default: () => <div data-testid="cropped-image-sequence" />,
 }));
 
-// The primary-lane player (SequenceReviewer -> SequencePlayer) fetches
+// The whole-alert player (SequenceReviewer -> SequencePlayer) fetches
 // detections and renders a full playback UI unrelated to this page's own
-// logic; swap it for a trivial stand-in that exposes the missed-smoke
-// review callback so tests can drive it directly. `objectOverlaysSpy`
-// captures the `objectOverlays` prop the page builds for it so overlay
-// wiring can be asserted without rendering the real player.
+// logic; swap it for a trivial stand-in. It only mounts once the
+// missed-smoke section is activated (the media panel swaps to it).
+// `objectOverlaysSpy` captures the `objectOverlays` prop the page builds
+// for it so overlay wiring can be asserted without rendering the real
+// player.
 const objectOverlaysSpy = vi.fn();
-vi.mock('@/components/sequence-annotation', async importOriginal => {
-  const actual = await importOriginal<typeof import('@/components/sequence-annotation')>();
-  return {
-    ...actual,
-    MissedSmokePanel: ({
-      onMissedSmokeReviewChange,
-      objectOverlays,
-    }: {
-      onMissedSmokeReviewChange: (review: 'yes' | 'no') => void;
-      objectOverlays?: unknown;
-    }) => {
-      objectOverlaysSpy(objectOverlays);
-      return (
-        <div>
-          <button onClick={() => onMissedSmokeReviewChange('no')}>Mock: No missed smoke</button>
-          <button onClick={() => onMissedSmokeReviewChange('yes')}>Mock: Missed smoke</button>
-        </div>
-      );
-    },
-  };
-});
+vi.mock('@/components/sequence/SequenceReviewer', () => ({
+  default: (props: { objectOverlays?: unknown }) => {
+    objectOverlaysSpy(props.objectOverlays);
+    return <div data-testid="sequence-reviewer" />;
+  },
+}));
 
 import { apiClient } from '@/services/api';
 import ClassifyAlertPage from '@/pages/ClassifyAlertPage';
@@ -194,33 +186,27 @@ function makeAlertDetail(): AlertDetail {
 }
 
 /**
- * Renders the page and waits for card 101:0's SEEDED state to have
+ * Renders the page and waits for the entry row's SEEDED state to have
  * committed — not just its presence. Used by every test in this file
  * instead of `render(...)` + a bare `waitFor(testid present)`.
  *
- * The page settles in two separate React commits: (1) alert-detail
- * arrives and `renderItems`/cards render structurally (testid, "Object N"
- * title, locked/disabled attributes — all derived straight from
- * `alertDetail`), then (2) a *separate* `useEffect`
- * (`initializeFromAlertDetail`) seeds classification/bbox/unsure/missed-
- * smoke local state from that same data — which is what actually drives
- * checked radios, Reviewed/Pending badges, displayed smoke/FP text, and
- * bbox counts. Under slow/CI scheduling, `waitFor` can observe the DOM in
- * the gap between those two commits: a card can be "present" with none of
- * its seeded content painted yet. This caused two separate CI-only test
- * failures (asserting a radio was checked / "Reviewed" was rendered
- * immediately after only waiting for the card's testid). Interacting with
- * a card before commit (2) lands is also unsafe for a different reason:
- * click handlers spread the CURRENT bbox prop, which is still the
- * `EMPTY_BBOX` placeholder pre-commit-(2), silently discarding the card's
- * real bbox data.
+ * The page settles across separate React commits: (1) alert-detail arrives
+ * and rows render structurally, (2) a `useEffect` activates the entry row
+ * (queue: first editable; done: the clicked sequence), and (3) another
+ * `useEffect` (`initializeFromAlertDetail`) seeds classification/bbox/
+ * unsure/missed-smoke local state from that same data — which is what
+ * actually drives checked chips, status labels, and the media panel's bbox
+ * data. Under slow/CI scheduling, `waitFor` can observe the DOM in the gap
+ * between those commits. Interacting with a row before the seed commit
+ * lands is also unsafe: chip handlers spread the CURRENT bbox prop, which
+ * is still the `EMPTY_BBOX` placeholder pre-seed, silently discarding the
+ * row's real bbox data.
  *
- * Every real lane in every fixture in this file seeds >= 1 bbox entry,
- * and a card's bbox-count text reads the `EMPTY_BBOX` default
- * ("0 bboxes") until commit (2) lands — so waiting for card 101's count to
- * move off "0 bboxes" is a settle signal common to every scenario here
- * (editable, locked, or alongside an unrelated placeholder lane), without
- * depending on any particular classification outcome.
+ * Every fixture's entry lane seeds >= 1 bbox entry, and the (mocked)
+ * full-frame player reports the bbox count it was handed — so waiting for
+ * that count to move off "0" is a settle signal common to every scenario
+ * here: it proves an object is active AND its seeded (non-EMPTY_BBOX) data
+ * reached the media panel.
  */
 async function renderAndSettle(
   ui: React.ReactElement,
@@ -228,9 +214,19 @@ async function renderAndSettle(
 ): Promise<void> {
   render(ui, options);
   await waitFor(() => {
-    const card = within(screen.getByTestId('object-card-101:0'));
-    expect(card.queryByText('0 bboxes')).not.toBeInTheDocument();
+    expect(screen.getByTestId('full-image-sequence').getAttribute('data-bbox-count')).not.toBe('0');
   });
+}
+
+/** Activate a row, then return a `within` scope for it (chips only render on the active row). */
+function openRow(cardKey: string) {
+  fireEvent.click(screen.getByTestId(`object-card-${cardKey}`));
+  return within(screen.getByTestId(`object-card-${cardKey}`));
+}
+
+/** The missed-smoke rail row's Yes/No chips. */
+function missedSmokeChip(name: 'Yes' | 'No') {
+  return within(screen.getByTestId('missed-smoke-row')).getByRole('radio', { name });
 }
 
 describe('ClassifyAlertPage', () => {
@@ -239,7 +235,7 @@ describe('ClassifyAlertPage', () => {
     // like `toHaveBeenCalledTimes` aren't polluted by earlier tests' calls.
     vi.clearAllMocks();
     // jsdom doesn't implement scrollIntoView; the presence-strip click
-    // handler calls it on the target card, so stub it as a no-op.
+    // handler calls it on the target row, so stub it as a no-op.
     Element.prototype.scrollIntoView = vi.fn();
     vi.mocked(apiClient.getSequence).mockResolvedValue(makeSequence());
     vi.mocked(apiClient.getAlertDetail).mockResolvedValue(makeAlertDetail());
@@ -265,7 +261,7 @@ describe('ClassifyAlertPage', () => {
     });
   });
 
-  it('renders one card per lane-track for a 3-lane alert', async () => {
+  it('renders one rail row per lane-track for a 3-lane alert', async () => {
     await renderAndSettle(<ClassifyAlertPage />, { wrapper });
     expect(
       within(screen.getByTestId('object-card-101:0')).getByText('Object 1')
@@ -278,42 +274,45 @@ describe('ClassifyAlertPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('renders the locked lane card read-only with a stage badge', async () => {
+  it('renders the locked lane row read-only with a stage badge and its classification summary', async () => {
     await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 
-    const lockedCard = within(screen.getByTestId('object-card-103:0'));
-    expect(lockedCard.getByText('Fully annotated')).toBeInTheDocument();
-    expect(lockedCard.getByRole('radio', { name: /This is smoke/i })).toBeDisabled();
+    const lockedRow = within(screen.getByTestId('object-card-103:0'));
+    expect(lockedRow.getByText('Fully annotated')).toBeInTheDocument();
     // Its existing (already-submitted) classification renders, not blank.
-    expect(lockedCard.getByRole('radio', { name: /This is smoke/i })).toBeChecked();
-    expect(lockedCard.getAllByText(/Wildfire/).length).toBeGreaterThan(0);
+    expect(lockedRow.getByText('Smoke · Wildfire')).toBeInTheDocument();
 
-    const editableCard = within(screen.getByTestId('object-card-101:0'));
-    expect(editableCard.getByRole('radio', { name: /This is smoke/i })).not.toBeDisabled();
+    // Activating the locked row shows its media but never chips.
+    fireEvent.click(screen.getByTestId('object-card-103:0'));
+    expect(lockedRow.queryByRole('radio', { name: 'Smoke' })).not.toBeInTheDocument();
+
+    // An editable row does render enabled chips once active.
+    const editableRow = openRow('101:0');
+    expect(editableRow.getByRole('radio', { name: 'Smoke' })).not.toBeDisabled();
   });
 
-  it('disables submit until every editable card is classified and missed smoke is answered', async () => {
+  it('disables submit until every editable row is classified and missed smoke is answered', async () => {
     await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 
     const submitButton = screen.getByRole('button', { name: /Submit alert/i });
     expect(submitButton).toBeDisabled();
 
     // Classify object 1 as smoke + wildfire
-    const cardA = within(screen.getByTestId('object-card-101:0'));
-    fireEvent.click(cardA.getByRole('radio', { name: /This is smoke/i }));
-    fireEvent.click(cardA.getByRole('radio', { name: /Wildfire/i }));
+    const cardA = openRow('101:0');
+    fireEvent.click(cardA.getByRole('radio', { name: 'Smoke' }));
+    fireEvent.click(cardA.getByRole('radio', { name: 'Wildfire' }));
 
     expect(submitButton).toBeDisabled();
 
     // Classify object 2 as false positive + a type
-    const cardB = within(screen.getByTestId('object-card-102:0'));
-    fireEvent.click(cardB.getByRole('radio', { name: /false positive/i }));
-    fireEvent.click(cardB.getByRole('checkbox', { name: /Antenna/i }));
+    const cardB = openRow('102:0');
+    fireEvent.click(cardB.getByRole('radio', { name: 'False positive' }));
+    fireEvent.click(cardB.getByRole('checkbox', { name: 'Antenna' }));
 
     // Still missing the missed-smoke review
     expect(submitButton).toBeDisabled();
 
-    fireEvent.click(screen.getByText('Mock: No missed smoke'));
+    fireEvent.click(missedSmokeChip('No'));
 
     expect(submitButton).not.toBeDisabled();
   });
@@ -351,15 +350,16 @@ describe('ClassifyAlertPage', () => {
 
     await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 
+    // The single editable row auto-activates, so its chips are on screen.
     const card = within(screen.getByTestId('object-card-101:0'));
-    expect(card.getByRole('radio', { name: /This is smoke/i })).not.toBeChecked();
-    expect(card.getByRole('radio', { name: /false positive/i })).not.toBeChecked();
+    expect(card.getByRole('radio', { name: 'Smoke' })).not.toBeChecked();
+    expect(card.getByRole('radio', { name: 'False positive' })).not.toBeChecked();
     expect(card.getByText('Pending')).toBeInTheDocument();
-    expect(card.queryByText('Reviewed')).not.toBeInTheDocument();
+    expect(card.queryByText(/Smoke ·/)).not.toBeInTheDocument();
 
     // Even after answering missed smoke, submit stays disabled — the
     // placeholder track alone doesn't count as classified.
-    fireEvent.click(screen.getByText('Mock: No missed smoke'));
+    fireEvent.click(missedSmokeChip('No'));
     expect(screen.getByRole('button', { name: /Submit alert/i })).toBeDisabled();
   });
 
@@ -392,26 +392,25 @@ describe('ClassifyAlertPage', () => {
     await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 
     const card = within(screen.getByTestId('object-card-101:0'));
-    expect(card.getByRole('radio', { name: /This is smoke/i })).toBeChecked();
-    expect(card.getAllByText(/Wildfire/).length).toBeGreaterThan(0);
-    expect(card.getByText('Reviewed')).toBeInTheDocument();
+    expect(card.getByRole('radio', { name: 'Smoke' })).toBeChecked();
+    expect(card.getByText('Smoke · Wildfire')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText('Mock: No missed smoke'));
+    fireEvent.click(missedSmokeChip('No'));
     expect(screen.getByRole('button', { name: /Submit alert/i })).not.toBeDisabled();
   });
 
   it('submits with per-lane stages: FP-only lane annotated, smoke lane seq_annotation_done, primary carries has_missed_smoke', async () => {
     await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 
-    const cardA = within(screen.getByTestId('object-card-101:0'));
-    fireEvent.click(cardA.getByRole('radio', { name: /This is smoke/i }));
-    fireEvent.click(cardA.getByRole('radio', { name: /Wildfire/i }));
+    const cardA = openRow('101:0');
+    fireEvent.click(cardA.getByRole('radio', { name: 'Smoke' }));
+    fireEvent.click(cardA.getByRole('radio', { name: 'Wildfire' }));
 
-    const cardB = within(screen.getByTestId('object-card-102:0'));
-    fireEvent.click(cardB.getByRole('radio', { name: /false positive/i }));
-    fireEvent.click(cardB.getByRole('checkbox', { name: /Antenna/i }));
+    const cardB = openRow('102:0');
+    fireEvent.click(cardB.getByRole('radio', { name: 'False positive' }));
+    fireEvent.click(cardB.getByRole('checkbox', { name: 'Antenna' }));
 
-    fireEvent.click(screen.getByText('Mock: Missed smoke'));
+    fireEvent.click(missedSmokeChip('Yes'));
 
     const submitButton = screen.getByRole('button', { name: /Submit alert/i });
     expect(submitButton).not.toBeDisabled();
@@ -447,7 +446,7 @@ describe('ClassifyAlertPage', () => {
   });
 
   it('renders Submit disabled when every lane is already locked (deep-linking a fully-classified alert)', async () => {
-    // Zero editable cards: `isComplete` (`.every()` over an empty list) is
+    // Zero editable rows: `isComplete` (`.every()` over an empty list) is
     // vacuously true, and the primary lane's own submitted missed-smoke
     // answer makes `missedSmokeReview !== null` true too — without an
     // explicit "something to submit" guard, Submit would stay enabled and
@@ -544,11 +543,11 @@ describe('ClassifyAlertPage', () => {
 
     await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 
-    const cardB = within(screen.getByTestId('object-card-102:0'));
-    fireEvent.click(cardB.getByRole('radio', { name: /false positive/i }));
-    fireEvent.click(cardB.getByRole('checkbox', { name: /Antenna/i }));
+    const cardB = openRow('102:0');
+    fireEvent.click(cardB.getByRole('radio', { name: 'False positive' }));
+    fireEvent.click(cardB.getByRole('checkbox', { name: 'Antenna' }));
 
-    fireEvent.click(screen.getByText('Mock: Missed smoke'));
+    fireEvent.click(missedSmokeChip('Yes'));
 
     const submitButton = screen.getByRole('button', { name: /Submit alert/i });
     expect(submitButton).not.toBeDisabled();
@@ -568,15 +567,15 @@ describe('ClassifyAlertPage', () => {
   it('pluralizes the workflow-completion toast correctly for a single alert', async () => {
     await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 
-    const cardA = within(screen.getByTestId('object-card-101:0'));
-    fireEvent.click(cardA.getByRole('radio', { name: /This is smoke/i }));
-    fireEvent.click(cardA.getByRole('radio', { name: /Wildfire/i }));
+    const cardA = openRow('101:0');
+    fireEvent.click(cardA.getByRole('radio', { name: 'Smoke' }));
+    fireEvent.click(cardA.getByRole('radio', { name: 'Wildfire' }));
 
-    const cardB = within(screen.getByTestId('object-card-102:0'));
-    fireEvent.click(cardB.getByRole('radio', { name: /false positive/i }));
-    fireEvent.click(cardB.getByRole('checkbox', { name: /Antenna/i }));
+    const cardB = openRow('102:0');
+    fireEvent.click(cardB.getByRole('radio', { name: 'False positive' }));
+    fireEvent.click(cardB.getByRole('checkbox', { name: 'Antenna' }));
 
-    fireEvent.click(screen.getByText('Mock: No missed smoke'));
+    fireEvent.click(missedSmokeChip('No'));
     fireEvent.click(screen.getByRole('button', { name: /Submit alert/i }));
 
     await waitFor(() => expect(apiClient.classifySubmit).toHaveBeenCalledTimes(1));
@@ -596,15 +595,15 @@ describe('ClassifyAlertPage', () => {
 
     await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 
-    const cardA = within(screen.getByTestId('object-card-101:0'));
-    fireEvent.click(cardA.getByRole('radio', { name: /This is smoke/i }));
-    fireEvent.click(cardA.getByRole('radio', { name: /Wildfire/i }));
+    const cardA = openRow('101:0');
+    fireEvent.click(cardA.getByRole('radio', { name: 'Smoke' }));
+    fireEvent.click(cardA.getByRole('radio', { name: 'Wildfire' }));
 
-    const cardB = within(screen.getByTestId('object-card-102:0'));
-    fireEvent.click(cardB.getByRole('radio', { name: /false positive/i }));
-    fireEvent.click(cardB.getByRole('checkbox', { name: /Antenna/i }));
+    const cardB = openRow('102:0');
+    fireEvent.click(cardB.getByRole('radio', { name: 'False positive' }));
+    fireEvent.click(cardB.getByRole('checkbox', { name: 'Antenna' }));
 
-    fireEvent.click(screen.getByText('Mock: No missed smoke'));
+    fireEvent.click(missedSmokeChip('No'));
     fireEvent.click(screen.getByRole('button', { name: /Submit alert/i }));
 
     await waitFor(() =>
@@ -681,38 +680,42 @@ describe('ClassifyAlertPage', () => {
 
     await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 
-    const cardA = within(screen.getByTestId('object-card-101:0'));
-    fireEvent.click(cardA.getByRole('radio', { name: /This is smoke/i }));
-    fireEvent.click(cardA.getByRole('radio', { name: /Wildfire/i }));
+    const cardA = openRow('101:0');
+    fireEvent.click(cardA.getByRole('radio', { name: 'Smoke' }));
+    fireEvent.click(cardA.getByRole('radio', { name: 'Wildfire' }));
 
-    const cardB = within(screen.getByTestId('object-card-102:0'));
-    fireEvent.click(cardB.getByRole('radio', { name: /false positive/i }));
-    fireEvent.click(cardB.getByRole('checkbox', { name: /Antenna/i }));
+    const cardB = openRow('102:0');
+    fireEvent.click(cardB.getByRole('radio', { name: 'False positive' }));
+    fireEvent.click(cardB.getByRole('checkbox', { name: 'Antenna' }));
 
-    fireEvent.click(screen.getByText('Mock: No missed smoke'));
+    fireEvent.click(missedSmokeChip('No'));
     fireEvent.click(screen.getByRole('button', { name: /Submit alert/i }));
 
     await waitFor(() => expect(screen.getByText(/Group propagation skipped/)).toBeInTheDocument());
 
     // The submitted lanes are still on screen (no auto-advance on the
     // warning path) — the page must refetch alert-detail so they redraw
-    // locked/read-only instead of staying editable with stale state.
+    // locked/read-only instead of staying editable with stale state. Row
+    // 102 was left active by the interactions above; once its lane comes
+    // back locked its chips must unmount, and both lanes' new stage badges
+    // must render.
     await waitFor(() => expect(apiClient.getAlertDetail).toHaveBeenCalledTimes(2));
     await waitFor(() =>
       expect(
-        within(screen.getByTestId('object-card-101:0')).getByRole('radio', {
-          name: /This is smoke/i,
+        within(screen.getByTestId('object-card-102:0')).queryByRole('radio', {
+          name: 'False positive',
         })
-      ).toBeDisabled()
+      ).not.toBeInTheDocument()
     );
     expect(
-      within(screen.getByTestId('object-card-102:0')).getByRole('radio', {
-        name: /false positive/i,
-      })
-    ).toBeDisabled();
+      within(screen.getByTestId('object-card-101:0')).getByText('Awaiting localization')
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('object-card-102:0')).getByText('Fully annotated')
+    ).toBeInTheDocument();
   });
 
-  it('gives every object a distinct color, matching between its card swatch and the shared player overlay', async () => {
+  it('gives every object a distinct color, matching between its row swatch and the shared player overlay', async () => {
     // Each lane's own detections carry the recorded_at the page joins its
     // track boxes against — lane A and B share a frame (t1), lane C only
     // has a later frame (t2), matching each lane's makeAnnotation bboxes
@@ -745,7 +748,7 @@ describe('ClassifyAlertPage', () => {
       expect(screen.getByTestId('object-color-swatch-103:0')).toBeInTheDocument();
     });
 
-    // Every object gets its own color, matching card swatch <-> palette index.
+    // Every object gets its own color, matching row swatch <-> palette index.
     expect(screen.getByTestId('object-color-swatch-101:0')).toHaveStyle({
       backgroundColor: getObjectColor(0),
     });
@@ -756,8 +759,13 @@ describe('ClassifyAlertPage', () => {
       backgroundColor: getObjectColor(2),
     });
 
+    // The whole-alert player only mounts once the missed-smoke section is
+    // active — activate it so the (mocked) reviewer starts receiving the
+    // objectOverlays prop.
+    fireEvent.click(screen.getByTestId('missed-smoke-row'));
+
     // `objectOverlaysSpy` is called on every render of the (mocked)
-    // MissedSmokePanel, including earlier ones where the three lanes'
+    // reviewer, including earlier ones where the three lanes'
     // `getSequenceDetections` queries haven't all resolved yet — waiting
     // for "called at least once" and then reading `.at(-1)` right after
     // can race an in-flight query. Wait for the actual settled content
@@ -771,7 +779,7 @@ describe('ClassifyAlertPage', () => {
     const lastOverlays = objectOverlaysSpy.mock.calls.at(-1)![0] as Overlay[];
 
     expect(lastOverlays.map(o => o.label)).toEqual(['Object 1', 'Object 2', 'Object 3']);
-    // Colors match the card swatches for the same object, in the same order.
+    // Colors match the row swatches for the same object, in the same order.
     expect(lastOverlays[0].color).toBe(getObjectColor(0));
     expect(lastOverlays[1].color).toBe(getObjectColor(1));
     expect(lastOverlays[2].color).toBe(getObjectColor(2));
@@ -823,41 +831,43 @@ describe('ClassifyAlertPage', () => {
     );
   });
 
-  it('renders the presence strip as the first thing under the header, above the cards grid and the shared player', async () => {
+  it('renders the presence strip inside the media panel, between the full-frame player and the cropped loop', async () => {
     await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 
+    const panel = screen.getByTestId('classify-media-panel');
     const strip = screen.getByTestId('object-presence-swatch-0');
-    const card = screen.getByTestId('object-card-101:0');
-    const player = screen.getByText('Mock: No missed smoke');
+    expect(panel.contains(strip)).toBe(true);
 
-    // DOCUMENT_POSITION_FOLLOWING: the compared node comes *after* `strip`
-    // in document order.
-    expect(strip.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(strip.compareDocumentPosition(player) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const full = screen.getByTestId('full-image-sequence');
+    const cropped = screen.getByTestId('cropped-image-sequence');
+    // DOCUMENT_POSITION_FOLLOWING: the compared node comes *after* the
+    // receiver in document order.
+    expect(full.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(strip.compareDocumentPosition(cropped) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("clicking a presence-strip row scrolls to and activates that object's card", async () => {
+  it("clicking a presence-strip row scrolls to and activates that object's rail row", async () => {
     await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 
     // Lane B (sequence 102) is "Object 2" — see makeAlertDetail's laneB.
     fireEvent.click(screen.getByRole('button', { name: 'Go to Object 2' }));
 
-    // The page owns turning the strip's click into "activate that card":
-    // Object 2's card shows the same "Active" pill a direct card click
-    // would produce, and no other card does.
+    // The page owns turning the strip's click into "activate that row":
+    // Object 2's row expands its chips exactly as a direct row click would,
+    // and no other row is expanded.
     await waitFor(() =>
       expect(
-        within(screen.getByTestId('object-card-102:0')).getByText('Active')
+        within(screen.getByTestId('object-card-102:0')).getByRole('radio', { name: 'Smoke' })
       ).toBeInTheDocument()
     );
     expect(
-      within(screen.getByTestId('object-card-101:0')).queryByText('Active')
+      within(screen.getByTestId('object-card-101:0')).queryByRole('radio', { name: 'Smoke' })
     ).not.toBeInTheDocument();
     expect(
-      within(screen.getByTestId('object-card-103:0')).queryByText('Active')
+      within(screen.getByTestId('object-card-103:0')).queryByRole('radio', { name: 'Smoke' })
     ).not.toBeInTheDocument();
 
-    // And it scrolled the card into view — the handler defers the actual
+    // And it scrolled the row into view — the handler defers the actual
     // scroll a frame (requestAnimationFrame), so wait for it (jsdom stub —
     // see beforeEach).
     await waitFor(() =>
@@ -1008,18 +1018,19 @@ describe('ClassifyAlertPage done mode', () => {
     }));
   });
 
-  it('renders lanes with existing annotations as editable and pre-filled "Reviewed", regardless of processing stage', async () => {
+  it('renders lanes with existing annotations as editable and pre-filled, regardless of processing stage', async () => {
     await renderAndSettle(<ClassifyAlertPage mode="done" />, { wrapper: makeDoneWrapper(101) });
 
-    const cardA = within(screen.getByTestId('object-card-101:0')); // seq_annotation_done
-    expect(cardA.getByText('Reviewed')).toBeInTheDocument();
-    expect(cardA.getByRole('radio', { name: /This is smoke/i })).not.toBeDisabled();
-    expect(cardA.getByRole('radio', { name: /This is smoke/i })).toBeChecked();
+    const cardA = within(screen.getByTestId('object-card-101:0')); // seq_annotation_done, entry-activated
+    expect(cardA.getByText('Smoke · Wildfire')).toBeInTheDocument();
+    expect(cardA.getByText('Awaiting localization')).toBeInTheDocument(); // stage badge stays visible
+    expect(cardA.getByRole('radio', { name: 'Smoke' })).not.toBeDisabled();
+    expect(cardA.getByRole('radio', { name: 'Smoke' })).toBeChecked();
 
-    const cardB = within(screen.getByTestId('object-card-102:0')); // annotated
-    expect(cardB.getByText('Reviewed')).toBeInTheDocument();
-    expect(cardB.getByRole('radio', { name: /false positive/i })).not.toBeDisabled();
-    expect(cardB.getByRole('radio', { name: /false positive/i })).toBeChecked();
+    const cardB = openRow('102:0'); // annotated — still editable in done mode
+    expect(cardB.getByText('Fully annotated')).toBeInTheDocument();
+    expect(cardB.getByRole('radio', { name: 'False positive' })).not.toBeDisabled();
+    expect(cardB.getByRole('radio', { name: 'False positive' })).toBeChecked();
 
     // The annotation-less lane still renders the read-only placeholder —
     // done mode only changes the meaning of "has an annotation", not the
@@ -1028,15 +1039,15 @@ describe('ClassifyAlertPage done mode', () => {
     expect(screen.getByText('Not imported yet')).toBeInTheDocument();
   });
 
-  it('keeps submit disabled until a lane actually changes, even though every card is already validly classified', async () => {
+  it('keeps save disabled until a lane actually changes, even though every row is already validly classified', async () => {
     await renderAndSettle(<ClassifyAlertPage mode="done" />, { wrapper: makeDoneWrapper(101) });
 
-    const submitButton = screen.getByRole('button', { name: /Submit alert/i });
+    const submitButton = screen.getByRole('button', { name: /Save changes/ });
     expect(submitButton).toBeDisabled();
 
     // Change lane A's smoke type — a real edit.
     const cardA = within(screen.getByTestId('object-card-101:0'));
-    fireEvent.click(cardA.getByRole('radio', { name: /Industrial/i }));
+    fireEvent.click(cardA.getByRole('radio', { name: 'Industrial' }));
 
     expect(submitButton).not.toBeDisabled();
   });
@@ -1045,9 +1056,9 @@ describe('ClassifyAlertPage done mode', () => {
     await renderAndSettle(<ClassifyAlertPage mode="done" />, { wrapper: makeDoneWrapper(101) });
 
     const cardA = within(screen.getByTestId('object-card-101:0'));
-    fireEvent.click(cardA.getByRole('radio', { name: /Industrial/i }));
+    fireEvent.click(cardA.getByRole('radio', { name: 'Industrial' }));
 
-    const submitButton = screen.getByRole('button', { name: /Submit alert/i });
+    const submitButton = screen.getByRole('button', { name: /Save changes/ });
     expect(submitButton).not.toBeDisabled();
     fireEvent.click(submitButton);
 
@@ -1075,11 +1086,13 @@ describe('ClassifyAlertPage done mode', () => {
   it('an alert-level missed-smoke-only change makes the primary lane "changed" and is saved on its PATCH', async () => {
     await renderAndSettle(<ClassifyAlertPage mode="done" />, { wrapper: makeDoneWrapper(101) });
 
-    const submitButton = screen.getByRole('button', { name: /Submit alert/i });
+    const submitButton = screen.getByRole('button', { name: /Save changes/ });
     expect(submitButton).toBeDisabled();
 
-    // No card edits at all — only the alert-level missed-smoke review changes.
-    fireEvent.click(screen.getByText('Mock: Missed smoke'));
+    // No row edits at all — only the alert-level missed-smoke review changes.
+    fireEvent.click(
+      within(screen.getByTestId('missed-smoke-row')).getByRole('radio', { name: 'Yes' })
+    );
     expect(submitButton).not.toBeDisabled();
 
     fireEvent.click(submitButton);
@@ -1095,16 +1108,18 @@ describe('ClassifyAlertPage done mode', () => {
     await waitFor(() => expect(navigateMock).toHaveBeenCalled(), { timeout: 2000 });
   });
 
-  it('scroll-activates the clicked object on load', async () => {
+  it('activates the clicked object on load (chips expand on its row, not the primary)', async () => {
     await renderAndSettle(<ClassifyAlertPage mode="done" />, { wrapper: makeDoneWrapper(102) });
 
     await waitFor(() =>
       expect(
-        within(screen.getByTestId('object-card-102:0')).getByText('Active')
+        within(screen.getByTestId('object-card-102:0')).getByRole('radio', {
+          name: 'False positive',
+        })
       ).toBeInTheDocument()
     );
     expect(
-      within(screen.getByTestId('object-card-101:0')).queryByText('Active')
+      within(screen.getByTestId('object-card-101:0')).queryByRole('radio', { name: 'Smoke' })
     ).not.toBeInTheDocument();
   });
 
@@ -1124,15 +1139,15 @@ describe('ClassifyAlertPage done mode', () => {
     // loop is sequential (not Promise.all firing every lane at once) and
     // that it stops immediately on the first rejection.
     const cardA = within(screen.getByTestId('object-card-101:0'));
-    fireEvent.click(cardA.getByRole('radio', { name: /Industrial/i }));
+    fireEvent.click(cardA.getByRole('radio', { name: 'Industrial' }));
 
-    const cardB = within(screen.getByTestId('object-card-102:0'));
-    fireEvent.click(cardB.getByRole('checkbox', { name: /Building/i }));
+    const cardB = openRow('102:0');
+    fireEvent.click(cardB.getByRole('checkbox', { name: 'Building' }));
 
-    const cardD = within(screen.getByTestId('object-card-104:0'));
-    fireEvent.click(cardD.getByRole('radio', { name: /Wildfire/i }));
+    const cardD = openRow('104:0');
+    fireEvent.click(cardD.getByRole('radio', { name: 'Wildfire' }));
 
-    const submitButton = screen.getByRole('button', { name: /Submit alert/i });
+    const submitButton = screen.getByRole('button', { name: /Save changes/ });
     expect(submitButton).not.toBeDisabled();
     fireEvent.click(submitButton);
 

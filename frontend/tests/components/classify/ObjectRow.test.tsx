@@ -30,19 +30,13 @@ function renderRow(overrides: Partial<React.ComponentProps<typeof ObjectRow>> = 
 describe('getObjectRowStatus', () => {
   it('maps states to labels and tones', () => {
     expect(
-      getObjectRowStatus({
-        bbox: baseBbox,
-        classification: 'unselected',
-        unsure: false,
-        locked: false,
-      })
+      getObjectRowStatus({ bbox: baseBbox, classification: 'unselected', unsure: false })
     ).toEqual({ label: 'Pending', tone: 'pending' });
     expect(
       getObjectRowStatus({
         bbox: { ...baseBbox, is_smoke: true, smoke_type: 'wildfire' },
         classification: 'smoke',
         unsure: false,
-        locked: false,
       })
     ).toEqual({ label: 'Smoke · Wildfire', tone: 'positive' });
     expect(
@@ -50,7 +44,6 @@ describe('getObjectRowStatus', () => {
         bbox: { ...baseBbox, is_smoke: true },
         classification: 'smoke',
         unsure: false,
-        locked: false,
       })
     ).toEqual({ label: 'Type needed', tone: 'pending' });
     expect(
@@ -58,26 +51,11 @@ describe('getObjectRowStatus', () => {
         bbox: { ...baseBbox, false_positive_types: ['high_cloud', 'sky'] },
         classification: 'false_positive',
         unsure: false,
-        locked: false,
       })
     ).toEqual({ label: 'FP · High cloud +1', tone: 'neutral' });
     expect(
-      getObjectRowStatus({
-        bbox: baseBbox,
-        classification: 'unselected',
-        unsure: true,
-        locked: false,
-      })
+      getObjectRowStatus({ bbox: baseBbox, classification: 'unselected', unsure: true })
     ).toEqual({ label: 'Unsure', tone: 'unsure' });
-    expect(
-      getObjectRowStatus({
-        bbox: baseBbox,
-        classification: 'unselected',
-        unsure: false,
-        locked: true,
-        stageBadge: 'Fully annotated',
-      })
-    ).toEqual({ label: 'Fully annotated', tone: 'neutral' });
   });
 });
 
@@ -100,9 +78,13 @@ describe('ObjectRow', () => {
       locked: true,
       isActive: true,
       stageBadge: 'Fully annotated',
+      bbox: { ...baseBbox, is_smoke: true, smoke_type: 'wildfire' },
+      classification: 'smoke',
     });
     expect(screen.queryByRole('radio', { name: 'Smoke' })).not.toBeInTheDocument();
+    // Stage badge AND the data-derived classification summary both render.
     expect(screen.getByText('Fully annotated')).toBeInTheDocument();
+    expect(screen.getByText('Smoke · Wildfire')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('object-card-101:0'));
     expect(onRowClick).toHaveBeenCalledWith('101:0');
   });

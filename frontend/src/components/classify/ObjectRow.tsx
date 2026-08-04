@@ -1,45 +1,21 @@
 /**
  * One object's row in the classify cockpit's decision rail. Collapsed rows
- * are a one-line summary (color dot + name + status chip); the active,
- * unlocked row expands to the classification chips. Locked rows stay
- * activatable (click shows their media in the panel) but never render
- * chips — the page's mutation handlers guard `card.locked` independently.
- * Keeps the legacy `object-card-${cardKey}` testid so the page test suite
- * tracks rows the same way it tracked cards.
+ * are a one-line summary (color dot + name + optional stage badge + status
+ * chip); the active, unlocked row expands to the classification chips.
+ * Locked rows stay activatable (click shows their media in the panel) but
+ * never render chips — the page's mutation handlers guard `card.locked`
+ * independently. The status chip is always computed from the object's data
+ * (a locked lane is genuinely labeled, so its classification still shows);
+ * the processing-stage badge renders alongside whenever `stageBadge` is
+ * given. Keeps the legacy `object-card-${cardKey}` testid so the page test
+ * suite tracks rows the same way it tracked cards.
  */
 
 import React from 'react';
 import { SequenceBbox } from '@/types/api';
-import { formatSmokeType } from '@/utils/modelAccuracy';
 import { CardClassification } from '@/components/sequence-annotation';
-import { ClassificationChips, formatFalsePositiveLabel } from './ClassificationChips';
-
-export interface ObjectRowStatus {
-  label: string;
-  tone: 'pending' | 'positive' | 'neutral' | 'unsure';
-}
-
-export function getObjectRowStatus(args: {
-  bbox: SequenceBbox;
-  classification: CardClassification;
-  unsure: boolean;
-  locked: boolean;
-  stageBadge?: string;
-}): ObjectRowStatus {
-  const { bbox, classification, unsure, locked, stageBadge } = args;
-  if (locked) return { label: stageBadge ?? 'Locked', tone: 'neutral' };
-  if (unsure) return { label: 'Unsure', tone: 'unsure' };
-  if (classification === 'smoke' && bbox.smoke_type !== undefined) {
-    return { label: `Smoke · ${formatSmokeType(bbox.smoke_type)}`, tone: 'positive' };
-  }
-  if (classification === 'smoke') return { label: 'Type needed', tone: 'pending' };
-  if (bbox.false_positive_types.length > 0) {
-    const extra = bbox.false_positive_types.length - 1;
-    const first = formatFalsePositiveLabel(bbox.false_positive_types[0]);
-    return { label: `FP · ${first}${extra > 0 ? ` +${extra}` : ''}`, tone: 'neutral' };
-  }
-  return { label: 'Pending', tone: 'pending' };
-}
+import { ClassificationChips } from './ClassificationChips';
+import { getObjectRowStatus, ObjectRowStatus } from './status';
 
 const TONE_CLASSES: Record<ObjectRowStatus['tone'], string> = {
   pending: 'bg-ember-soft text-ember',
@@ -83,7 +59,7 @@ export const ObjectRow: React.FC<ObjectRowProps> = ({
   onClassificationChange,
   onUnsureChange,
 }) => {
-  const status = getObjectRowStatus({ bbox, classification, unsure, locked, stageBadge });
+  const status = getObjectRowStatus({ bbox, classification, unsure });
   const expanded = isActive && !locked;
 
   const frame = locked
@@ -121,7 +97,7 @@ export const ObjectRow: React.FC<ObjectRowProps> = ({
           )}
         </span>
         <span className="flex items-center gap-1.5 shrink-0">
-          {!locked && stageBadge && (
+          {stageBadge && (
             <span className="rounded-full px-2 py-0.5 font-body text-xs font-semibold bg-ash text-haze whitespace-nowrap">
               {stageBadge}
             </span>

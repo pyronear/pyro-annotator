@@ -11,6 +11,7 @@ import { SequenceBbox, FalsePositiveType, SmokeType } from '@/types/api';
 import { FALSE_POSITIVE_TYPES, SMOKE_TYPES } from '@/utils/constants';
 import { formatSmokeType } from '@/utils/modelAccuracy';
 import { CardClassification } from '@/components/sequence-annotation';
+import { formatFalsePositiveLabel } from './status';
 
 export interface ClassificationChipsProps {
   cardKey: string;
@@ -23,11 +24,6 @@ export interface ClassificationChipsProps {
   /** Omit to hide the Unsure chip. */
   onUnsureChange?: (cardKey: string, unsure: boolean) => void;
 }
-
-export const formatFalsePositiveLabel = (type: string): string => {
-  const [first, ...rest] = type.split('_');
-  return [first.charAt(0).toUpperCase() + first.slice(1), ...rest].join(' ');
-};
 
 // Keyboard letter per FP type — mirrors keyboardUtils' bindings (same map
 // as the legacy ObjectCard, which stays untouched for AnnotationInterface).

@@ -48,7 +48,10 @@ export const ClassifyMediaPanel: React.FC<ClassifyMediaPanelProps> = ({
   annotationLoading,
   objectOverlays,
 }) => (
-  <div data-testid="classify-media-panel" className="rounded-card border border-line bg-paper px-[22px] py-5">
+  <div
+    data-testid="classify-media-panel"
+    className="rounded-card border border-line bg-paper px-[22px] py-5"
+  >
     {activeSection === 'sequence' ? (
       <div className="space-y-3">
         <div className={eyebrow}>Whole alert — watch for smoke the model missed</div>

@@ -20,15 +20,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  AlertCircle,
-  ArrowLeft,
-  ChevronLeft,
-  ChevronRight,
-  Keyboard,
-  Upload,
-  X,
-} from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, Keyboard, Upload, X } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { QUERY_KEYS } from '@/utils/constants';
 import {
@@ -50,12 +42,8 @@ import {
 } from '@/utils/annotation/navigationUtils';
 import { getObjectColor, ObjectOverlay } from '@/utils/annotation/objectColors';
 import { getProcessingStageLabel } from '@/utils/processingStage';
-import {
-  MissedSmokePanel,
-  ObjectCard,
-  CardClassification,
-  ObjectPresenceStrip,
-} from '@/components/sequence-annotation';
+import { CardClassification } from '@/components/sequence-annotation';
+import { ClassifyMediaPanel, DecisionRail, ObjectRow } from '@/components/classify';
 import { NotificationSystem } from '@/components/ui/NotificationSystem';
 import { useToastNotifications } from '@/utils/notification/toastUtils';
 import { ROUTES, classifyDetail, classifyGroup } from '@/utils/routes';
@@ -343,6 +331,18 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
 
   const editableCards = cards.filter(c => !c.locked);
 
+  // Cockpit: the media column always shows the active thing, so an object
+  // must be active from the start. Queue mode activates the first editable
+  // card (first card as fallback for fully-locked deep links); done mode
+  // keeps its own entry-sequence activation effect below.
+  useEffect(() => {
+    if (mode === 'done' || activeCardKey !== null || cards.length === 0) return;
+    const first = cards.find(c => !c.locked) ?? cards[0];
+    setActiveCardKey(first.cardKey);
+    setActiveSection('detections');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, cards]);
+
   // Done mode only: the sequence the annotator clicked in the Done list is
   // its own card's lane — scroll-activate that card once the alert's cards
   // are on screen, so they land exactly where they came from.
@@ -421,6 +421,26 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
     boxesByRecordedAt: o.boxesByRecordedAt,
     isActive: o.cardKey === activeCardKey,
   }));
+
+  // The media panel always shows the active object's players (the panel
+  // itself swaps to the whole-alert player when the missed-smoke section is
+  // active). Null only when the alert has no cards at all.
+  const activeCard = activeCardKey ? cards.find(c => c.cardKey === activeCardKey) : undefined;
+  const activeOverlay = activeCard
+    ? cardOverlayData.find(o => o.cardKey === activeCard.cardKey)
+    : undefined;
+  const activeMediaObject = activeCard
+    ? {
+        label: activeOverlay?.label ?? 'Object',
+        bboxes: getBbox(activeCard).bboxes,
+        sequenceId: activeCard.laneSequenceId,
+        color: activeOverlay?.color,
+        siblingOverlays: cardOverlayData
+          .filter(o => o.cardKey !== activeCard.cardKey)
+          .map(o => ({ color: o.color, label: o.label, boxesByRecordedAt: o.boxesByRecordedAt })),
+        frameRecordedAt: activeOverlay?.frameRecordedAt ?? [],
+      }
+    : null;
 
   // Presence strip: temporal context + color legend, keyed off the same
   // per-object color/label identity as the overlays above. Renders nothing
@@ -564,15 +584,16 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
     const missedSmokeChanged = carriesMissedSmoke && hasMissedSmoke !== snapshot.hasMissedSmoke;
     return bboxesChanged || unsureChanged || missedSmokeChanged;
   };
-  const anyLaneChanged =
-    mode === 'done' &&
-    !!alertDetail &&
-    alertDetail.lanes.some(
-      lane =>
-        !isLaneLocked(lane, mode) &&
-        !!lane.annotation &&
-        isLaneChanged(lane.sequence.id, lane.sequence.id === missedSmokeCarrierLaneId)
-    );
+  const changedLaneCount =
+    mode === 'done' && alertDetail
+      ? alertDetail.lanes.filter(
+          lane =>
+            !isLaneLocked(lane, mode) &&
+            !!lane.annotation &&
+            isLaneChanged(lane.sequence.id, lane.sequence.id === missedSmokeCarrierLaneId)
+        ).length
+      : 0;
+  const anyLaneChanged = mode === 'done' && changedLaneCount > 0;
 
   // Deep-linking a fully-classified alert leaves zero editable cards —
   // `isComplete` is vacuously true over an empty list, so it alone can't
@@ -865,14 +886,16 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
               onClick={handleSubmit}
               disabled={!canSubmit || submitMutation.isPending}
               className="inline-flex items-center rounded-lg bg-ember px-4 py-2 font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Submit alert (Enter)"
+              title={mode === 'done' ? 'Save changes (Enter)' : 'Submit alert (Enter)'}
             >
               {submitMutation.isPending ? (
                 <div className="w-3.5 h-3.5 mr-1.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
               ) : (
                 <Upload className="w-3.5 h-3.5 mr-1.5" />
               )}
-              Submit alert ({editableCards.length} objects)
+              {mode === 'done'
+                ? `Save changes (${changedLaneCount})`
+                : `Submit alert (${editableCards.length} objects)`}
             </button>
 
             <button
@@ -886,12 +909,7 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
         </div>
       </div>
 
-      <div className="space-y-6 pt-20">
-        <ObjectPresenceStrip
-          objects={presenceStripObjects}
-          onObjectClick={handlePresenceObjectClick}
-        />
-
+      <div className="space-y-4 pt-20">
         {groupConflictWarnings.length > 0 && (
           <div className="sticky top-20 z-30 bg-signal-soft border-b-2 border-signal px-4 py-3">
             <div className="max-w-7xl mx-auto space-y-2">
@@ -924,81 +942,92 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
           </div>
         )}
 
-        <div className="space-y-8">
-          {renderItems.map((item, i) => {
-            const objectNumber = i + 1;
+        {/* Cockpit: media column (the active thing) + decision rail (the
+            whole alert's state). Desktop pins both columns to the viewport
+            below the fixed header and scrolls each internally; below lg
+            they stack in natural flow. */}
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:h-[calc(100vh-7rem)]">
+          <div className="lg:flex-[1.5] lg:min-w-0 lg:overflow-y-auto lg:h-full">
+            <ClassifyMediaPanel
+              activeSection={activeSection}
+              activeObject={activeMediaObject}
+              presenceObjects={presenceStripObjects}
+              onPresenceObjectClick={handlePresenceObjectClick}
+              primarySequenceId={primaryLane.sequence.id}
+              missedSmokeReview={missedSmokeReview}
+              onMissedSmokeReviewChange={handleMissedSmokeReviewChange}
+              annotationLoading={isLoading}
+              objectOverlays={playerObjectOverlays}
+            />
+          </div>
+          <div className="lg:flex-1 lg:min-w-0 lg:overflow-y-auto lg:h-full">
+            <DecisionRail
+              missedSmokeReview={missedSmokeReview}
+              onMissedSmokeReviewChange={handleMissedSmokeReviewChange}
+              missedSmokeActive={activeSection === 'sequence'}
+              onMissedSmokeActivate={() => setActiveSection('sequence')}
+              missedSmokeDisabled={missedSmokeCarrierLaneId === undefined}
+              missedSmokeRowRef={sequenceReviewerRef}
+            >
+              {renderItems.map((item, i) => {
+                const objectNumber = i + 1;
 
-            if (item.kind === 'placeholder') {
-              return (
-                <div
-                  key={`placeholder-${item.laneSequenceId}`}
-                  data-testid={`object-card-placeholder-${item.laneSequenceId}`}
-                  className="border border-dashed border-line bg-ash px-[22px] py-5 text-center"
-                >
-                  <h4 className="font-display text-heading font-semibold text-char mb-2">
-                    Object {objectNumber}
-                  </h4>
-                  <AlertCircle className="w-8 h-8 text-haze mx-auto mb-2" />
-                  <p className="font-body text-sm text-haze">Not imported yet</p>
-                </div>
-              );
-            }
+                if (item.kind === 'placeholder') {
+                  return (
+                    <div
+                      key={`placeholder-${item.laneSequenceId}`}
+                      data-testid={`object-card-placeholder-${item.laneSequenceId}`}
+                      className="rounded-lg border border-dashed border-line bg-ash px-3.5 py-2.5 flex items-center justify-between"
+                    >
+                      <span className="font-body text-sm font-semibold text-char">
+                        Object {objectNumber}
+                      </span>
+                      <span className="font-body text-xs text-haze">Not imported yet</span>
+                    </div>
+                  );
+                }
 
-            const { card } = item;
-            const lane = alertDetail.lanes.find(l => l.sequence.id === card.laneSequenceId)!;
-            const bbox = getBbox(card);
-            const stageBadge = card.locked
-              ? getProcessingStageLabel(lane.annotation!.processing_stage)
-              : undefined;
-            const overlay = cardOverlayData.find(o => o.cardKey === card.cardKey);
-            const siblingOverlays: ObjectOverlay[] = cardOverlayData
-              .filter(o => o.cardKey !== card.cardKey)
-              .map(o => ({
-                color: o.color,
-                label: o.label,
-                boxesByRecordedAt: o.boxesByRecordedAt,
-              }));
+                const { card } = item;
+                const lane = alertDetail.lanes.find(l => l.sequence.id === card.laneSequenceId)!;
+                const stageBadge =
+                  card.locked || mode === 'done'
+                    ? getProcessingStageLabel(lane.annotation!.processing_stage)
+                    : undefined;
+                const overlay = cardOverlayData.find(o => o.cardKey === card.cardKey);
 
-            return (
-              <ObjectCard
-                key={card.cardKey}
-                cardRef={el => (cardRefs.current[card.cardKey] = el)}
-                objectNumber={objectNumber}
-                cardKey={card.cardKey}
-                bbox={bbox}
-                sequenceId={card.laneSequenceId}
-                classification={primaryClassification[card.cardKey] ?? 'unselected'}
-                isActive={activeCardKey === card.cardKey}
-                isAnnotated={card.locked || hasUserAnnotations(bbox)}
-                locked={card.locked}
-                stageBadge={stageBadge}
-                unsure={laneUnsure[card.laneSequenceId] ?? false}
-                color={overlay?.color}
-                siblingOverlays={siblingOverlays}
-                frameRecordedAt={overlay?.frameRecordedAt}
-                onCardClick={key => {
-                  setActiveCardKey(key);
-                  setActiveSection('detections');
-                }}
-                onBboxChange={handleBboxChangeByCardKey}
-                onClassificationChange={handleClassificationChangeByCardKey}
-                onUnsureChange={card.locked ? undefined : handleUnsureChangeByCardKey}
-              />
-            );
-          })}
-        </div>
-
-        {/* Alert-level missed smoke review — shared player over the primary lane, footer control. */}
-        <div ref={sequenceReviewerRef}>
-          <MissedSmokePanel
-            sequenceId={primaryLane.sequence.id}
-            missedSmokeReview={missedSmokeReview}
-            onMissedSmokeReviewChange={handleMissedSmokeReviewChange}
-            annotationLoading={isLoading}
-            activeSection={activeSection}
-            sequenceReviewerRef={sequenceReviewerRef}
-            objectOverlays={playerObjectOverlays}
-          />
+                return (
+                  <ObjectRow
+                    key={card.cardKey}
+                    rowRef={el => (cardRefs.current[card.cardKey] = el)}
+                    objectNumber={objectNumber}
+                    cardKey={card.cardKey}
+                    color={overlay?.color}
+                    bbox={getBbox(card)}
+                    classification={primaryClassification[card.cardKey] ?? 'unselected'}
+                    unsure={laneUnsure[card.laneSequenceId] ?? false}
+                    isActive={activeCardKey === card.cardKey && activeSection === 'detections'}
+                    locked={card.locked}
+                    stageBadge={stageBadge}
+                    changed={
+                      mode === 'done' &&
+                      !card.locked &&
+                      isLaneChanged(
+                        card.laneSequenceId,
+                        card.laneSequenceId === missedSmokeCarrierLaneId
+                      )
+                    }
+                    onRowClick={key => {
+                      setActiveCardKey(key);
+                      setActiveSection('detections');
+                    }}
+                    onBboxChange={handleBboxChangeByCardKey}
+                    onClassificationChange={handleClassificationChangeByCardKey}
+                    onUnsureChange={card.locked ? undefined : handleUnsureChangeByCardKey}
+                  />
+                );
+              })}
+            </DecisionRail>
+          </div>
         </div>
 
         <NotificationSystem

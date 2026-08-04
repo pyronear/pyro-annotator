@@ -477,46 +477,50 @@ export default function SequencePlayer({
 
               {/* Center - Missed Smoke Review */}
               {!hideReviewControls && (
-              <div className="flex items-center space-x-4 bg-black/40 px-4 py-2 rounded-lg border border-white/20">
-                <span className="text-sm font-medium text-white">
-                  Did the model miss any smoke?
-                </span>
-                <label className="flex items-center cursor-pointer hover:bg-white/10 px-2 py-1 rounded transition-colors">
-                  <input
-                    type="radio"
-                    name="missedSmokeOverlay"
-                    value="yes"
-                    checked={missedSmokeReview === 'yes'}
-                    onChange={() => onMissedSmokeReviewChange('yes')}
-                    className="w-4 h-4 text-orange-500 focus:ring-orange-500 border-gray-300 bg-white/20 mr-2"
-                  />
+                <div className="flex items-center space-x-4 bg-black/40 px-4 py-2 rounded-lg border border-white/20">
                   <span className="text-sm font-medium text-white">
-                    Yes{' '}
-                    <kbd className="ml-1 px-1 py-0.5 bg-white/20 rounded text-xs font-mono">Y</kbd>
+                    Did the model miss any smoke?
                   </span>
-                </label>
-                <label className="flex items-center cursor-pointer hover:bg-white/10 px-2 py-1 rounded transition-colors">
-                  <input
-                    type="radio"
-                    name="missedSmokeOverlay"
-                    value="no"
-                    checked={missedSmokeReview === 'no'}
-                    onChange={() => onMissedSmokeReviewChange('no')}
-                    className="w-4 h-4 text-green-500 focus:ring-green-500 border-gray-300 bg-white/20 mr-2"
-                  />
-                  <span className="text-sm font-medium text-white">
-                    No{' '}
-                    <kbd className="ml-1 px-1 py-0.5 bg-white/20 rounded text-xs font-mono">N</kbd>
-                  </span>
-                </label>
-                <button
-                  onClick={() => setShowInstructionsModal(true)}
-                  className="p-1.5 hover:bg-white/20 rounded transition-colors"
-                  title="Show review instructions"
-                >
-                  <Info className="w-4 h-4 text-white" />
-                </button>
-              </div>
+                  <label className="flex items-center cursor-pointer hover:bg-white/10 px-2 py-1 rounded transition-colors">
+                    <input
+                      type="radio"
+                      name="missedSmokeOverlay"
+                      value="yes"
+                      checked={missedSmokeReview === 'yes'}
+                      onChange={() => onMissedSmokeReviewChange('yes')}
+                      className="w-4 h-4 text-orange-500 focus:ring-orange-500 border-gray-300 bg-white/20 mr-2"
+                    />
+                    <span className="text-sm font-medium text-white">
+                      Yes{' '}
+                      <kbd className="ml-1 px-1 py-0.5 bg-white/20 rounded text-xs font-mono">
+                        Y
+                      </kbd>
+                    </span>
+                  </label>
+                  <label className="flex items-center cursor-pointer hover:bg-white/10 px-2 py-1 rounded transition-colors">
+                    <input
+                      type="radio"
+                      name="missedSmokeOverlay"
+                      value="no"
+                      checked={missedSmokeReview === 'no'}
+                      onChange={() => onMissedSmokeReviewChange('no')}
+                      className="w-4 h-4 text-green-500 focus:ring-green-500 border-gray-300 bg-white/20 mr-2"
+                    />
+                    <span className="text-sm font-medium text-white">
+                      No{' '}
+                      <kbd className="ml-1 px-1 py-0.5 bg-white/20 rounded text-xs font-mono">
+                        N
+                      </kbd>
+                    </span>
+                  </label>
+                  <button
+                    onClick={() => setShowInstructionsModal(true)}
+                    className="p-1.5 hover:bg-white/20 rounded transition-colors"
+                    title="Show review instructions"
+                  >
+                    <Info className="w-4 h-4 text-white" />
+                  </button>
+                </div>
               )}
 
               {/* Right - Predictions + sibling toggle */}
