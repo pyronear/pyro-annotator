@@ -1068,6 +1068,7 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
             <ClassifyMediaPanel
               activeSection={activeSection}
               activeObject={activeMediaObject}
+              loading={cards.length > 0 && !activeMediaObject}
               primarySequenceId={primaryLane.sequence.id}
               missedSmokeReview={missedSmokeReview}
               onMissedSmokeReviewChange={handleMissedSmokeReviewChange}

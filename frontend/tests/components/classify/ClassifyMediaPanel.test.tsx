@@ -56,6 +56,14 @@ describe('ClassifyMediaPanel', () => {
     expect(screen.getByText('No objects to review yet')).toBeInTheDocument();
   });
 
+  it('renders a skeleton instead of the empty state while loading', () => {
+    render(
+      <ClassifyMediaPanel {...baseProps} activeSection="detections" activeObject={null} loading />
+    );
+    expect(screen.getByTestId('media-panel-skeleton')).toBeInTheDocument();
+    expect(screen.queryByText('No objects to review yet')).not.toBeInTheDocument();
+  });
+
   it('offers a fullscreen toggle in sequence mode and requests fullscreen on click', () => {
     const requestSpy = vi.fn().mockResolvedValue(undefined);
     HTMLElement.prototype.requestFullscreen = requestSpy;

@@ -29,6 +29,8 @@ export interface ClassifyMediaPanelProps {
     siblingOverlays: ObjectOverlay[];
     frameRecordedAt: (string | undefined)[];
   } | null;
+  /** True while an object exists but hasn't activated yet (initial load / alert switch) — renders a skeleton instead of the empty state. */
+  loading?: boolean;
   primarySequenceId: number;
   missedSmokeReview: 'yes' | 'no' | null;
   onMissedSmokeReviewChange: (review: 'yes' | 'no') => void;
@@ -41,6 +43,7 @@ const eyebrow = 'font-data text-eyebrow font-medium uppercase tracking-eyebrow t
 export const ClassifyMediaPanel: React.FC<ClassifyMediaPanelProps> = ({
   activeSection,
   activeObject,
+  loading = false,
   primarySequenceId,
   missedSmokeReview,
   onMissedSmokeReviewChange,
@@ -122,6 +125,11 @@ export const ClassifyMediaPanel: React.FC<ClassifyMediaPanelProps> = ({
               sequenceId={activeObject.sequenceId}
             />
           </div>
+        </div>
+      ) : loading ? (
+        <div data-testid="media-panel-skeleton" className="space-y-4">
+          <div className="aspect-video w-full animate-pulse rounded bg-ash" />
+          <div className="h-28 w-full animate-pulse rounded bg-ash" />
         </div>
       ) : (
         <p className="py-16 text-center font-body text-sm text-haze">No objects to review yet</p>
