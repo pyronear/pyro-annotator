@@ -877,6 +877,53 @@ describe('ClassifyAlertPage', () => {
       })
     );
   });
+
+  it('auto-activates the first editable object on load', async () => {
+    await renderAndSettle(<ClassifyAlertPage />, { wrapper });
+    // Chips only render on the active row — their presence proves activation.
+    const row = within(screen.getByTestId('object-card-101:0'));
+    expect(row.getByRole('radio', { name: 'Smoke' })).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('object-card-102:0')).queryByRole('radio', { name: 'Smoke' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('clicking another row moves the chips and the media panel to it', async () => {
+    await renderAndSettle(<ClassifyAlertPage />, { wrapper });
+
+    fireEvent.click(screen.getByTestId('object-card-102:0'));
+
+    expect(
+      within(screen.getByTestId('object-card-102:0')).getByRole('radio', { name: 'Smoke' })
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('object-card-101:0')).queryByRole('radio', { name: 'Smoke' })
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(/Cropped · Object 2/)).toBeInTheDocument();
+  });
+
+  it('activating the missed-smoke row swaps the media panel to the whole-alert player, and an object row swaps it back', async () => {
+    await renderAndSettle(<ClassifyAlertPage />, { wrapper });
+
+    expect(screen.queryByTestId('sequence-reviewer')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('missed-smoke-row'));
+    expect(screen.getByTestId('sequence-reviewer')).toBeInTheDocument();
+    expect(screen.queryByTestId('cropped-image-sequence')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('object-card-101:0'));
+    expect(screen.queryByTestId('sequence-reviewer')).not.toBeInTheDocument();
+    expect(screen.getByTestId('cropped-image-sequence')).toBeInTheDocument();
+  });
+
+  it('shows the FP type chips as a full inline wrap on the active row', async () => {
+    await renderAndSettle(<ClassifyAlertPage />, { wrapper });
+
+    const row = openRow('101:0');
+    fireEvent.click(row.getByRole('radio', { name: 'False positive' }));
+    // 18 FP type chips + the Unsure chip = 19 checkboxes on the row.
+    expect(row.getAllByRole('checkbox')).toHaveLength(19);
+  });
 });
 
 describe('ClassifyAlertPage done mode', () => {
@@ -1165,5 +1212,19 @@ describe('ClassifyAlertPage done mode', () => {
     // onError refetches alert-detail so lane 201 (already patched on the
     // server) redraws with server truth rather than staying on stale local state.
     await waitFor(() => expect(apiClient.getAlertDetail).toHaveBeenCalledTimes(2));
+  });
+
+  it('shows the changed dot on edited rows and counts changed lanes in the Save button', async () => {
+    await renderAndSettle(<ClassifyAlertPage mode="done" />, { wrapper: makeDoneWrapper(101) });
+
+    expect(screen.getByRole('button', { name: /Save changes \(0\)/ })).toBeDisabled();
+    expect(screen.queryByTestId('object-row-changed-101:0')).not.toBeInTheDocument();
+
+    const cardA = within(screen.getByTestId('object-card-101:0'));
+    fireEvent.click(cardA.getByRole('radio', { name: 'Industrial' }));
+
+    expect(screen.getByTestId('object-row-changed-101:0')).toBeInTheDocument();
+    expect(screen.queryByTestId('object-row-changed-102:0')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Save changes \(1\)/ })).toBeEnabled();
   });
 });
