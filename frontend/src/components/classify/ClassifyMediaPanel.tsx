@@ -1,10 +1,9 @@
 /**
  * The classify cockpit's media column: always shows "the active thing".
  * Detections section -> the active object's full-frame player (own box
- * solid, siblings dimmed), the presence strip (self-hides under 2
- * objects), and the object's cropped loop. Sequence section -> the primary
- * lane's whole-alert player with every object's overlay, review controls
- * hidden (the decision rail owns yes/no).
+ * solid, siblings dimmed) and the object's cropped loop. Sequence section
+ * -> the primary lane's whole-alert player with every object's overlay,
+ * review controls hidden (the decision rail owns yes/no).
  */
 
 import React from 'react';
@@ -13,7 +12,6 @@ import { ObjectOverlay } from '@/utils/annotation/objectColors';
 import FullImageSequence from '@/components/annotation/FullImageSequence';
 import CroppedImageSequence from '@/components/annotation/CroppedImageSequence';
 import SequenceReviewer from '@/components/sequence/SequenceReviewer';
-import { ObjectPresenceStrip, ObjectPresenceStripObject } from '@/components/sequence-annotation';
 
 export interface ClassifyMediaPanelProps {
   activeSection: 'detections' | 'sequence';
@@ -26,8 +24,6 @@ export interface ClassifyMediaPanelProps {
     siblingOverlays: ObjectOverlay[];
     frameRecordedAt: (string | undefined)[];
   } | null;
-  presenceObjects: ObjectPresenceStripObject[];
-  onPresenceObjectClick: (objectIndex: number) => void;
   primarySequenceId: number;
   missedSmokeReview: 'yes' | 'no' | null;
   onMissedSmokeReviewChange: (review: 'yes' | 'no') => void;
@@ -40,8 +36,6 @@ const eyebrow = 'font-data text-eyebrow font-medium uppercase tracking-eyebrow t
 export const ClassifyMediaPanel: React.FC<ClassifyMediaPanelProps> = ({
   activeSection,
   activeObject,
-  presenceObjects,
-  onPresenceObjectClick,
   primarySequenceId,
   missedSmokeReview,
   onMissedSmokeReviewChange,
@@ -73,7 +67,6 @@ export const ClassifyMediaPanel: React.FC<ClassifyMediaPanelProps> = ({
           siblingOverlays={activeObject.siblingOverlays}
           frameRecordedAt={activeObject.frameRecordedAt}
         />
-        <ObjectPresenceStrip objects={presenceObjects} onObjectClick={onPresenceObjectClick} />
         <div>
           <div className={`${eyebrow} mb-2`}>Cropped · {activeObject.label}</div>
           <CroppedImageSequence bboxes={activeObject.bboxes} sequenceId={activeObject.sequenceId} />

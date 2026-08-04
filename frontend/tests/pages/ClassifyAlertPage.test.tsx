@@ -831,19 +831,18 @@ describe('ClassifyAlertPage', () => {
     );
   });
 
-  it('renders the presence strip inside the media panel, between the full-frame player and the cropped loop', async () => {
+  it('renders the presence strip in the rail column, below the objects and missed-smoke row — not in the media panel', async () => {
     await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 
-    const panel = screen.getByTestId('classify-media-panel');
     const strip = screen.getByTestId('object-presence-swatch-0');
-    expect(panel.contains(strip)).toBe(true);
+    expect(screen.getByTestId('classify-media-panel').contains(strip)).toBe(false);
 
-    const full = screen.getByTestId('full-image-sequence');
-    const cropped = screen.getByTestId('cropped-image-sequence');
     // DOCUMENT_POSITION_FOLLOWING: the compared node comes *after* the
-    // receiver in document order.
-    expect(full.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(strip.compareDocumentPosition(cropped) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // receiver in document order — the strip follows the whole rail.
+    const missedSmokeRow = screen.getByTestId('missed-smoke-row');
+    expect(
+      missedSmokeRow.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
   });
 
   it("clicking a presence-strip row scrolls to and activates that object's rail row", async () => {
@@ -914,6 +913,25 @@ describe('ClassifyAlertPage', () => {
     fireEvent.click(screen.getByTestId('object-card-101:0'));
     expect(screen.queryByTestId('sequence-reviewer')).not.toBeInTheDocument();
     expect(screen.getByTestId('cropped-image-sequence')).toBeInTheDocument();
+  });
+
+  it("keeps the timeline's highlighted row in sync with the active rail row", async () => {
+    await renderAndSettle(<ClassifyAlertPage />, { wrapper });
+
+    // Object 1 auto-activates -> its timeline row is highlighted.
+    expect(screen.getByRole('button', { name: 'Go to Object 1' })).toHaveAttribute(
+      'aria-current',
+      'true'
+    );
+
+    fireEvent.click(screen.getByTestId('object-card-102:0'));
+    expect(screen.getByRole('button', { name: 'Go to Object 2' })).toHaveAttribute(
+      'aria-current',
+      'true'
+    );
+    expect(screen.getByRole('button', { name: 'Go to Object 1' })).not.toHaveAttribute(
+      'aria-current'
+    );
   });
 
   it('shows the FP type chips as a full inline wrap on the active row', async () => {

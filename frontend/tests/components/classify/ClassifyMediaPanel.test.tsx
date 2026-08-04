@@ -15,8 +15,6 @@ vi.mock('@/components/sequence/SequenceReviewer', () => ({
 }));
 
 const baseProps = {
-  presenceObjects: [],
-  onPresenceObjectClick: vi.fn(),
   primarySequenceId: 101,
   missedSmokeReview: null,
   onMissedSmokeReviewChange: vi.fn(),

@@ -42,7 +42,7 @@ import {
 } from '@/utils/annotation/navigationUtils';
 import { getObjectColor, ObjectOverlay } from '@/utils/annotation/objectColors';
 import { getProcessingStageLabel } from '@/utils/processingStage';
-import { CardClassification } from '@/components/sequence-annotation';
+import { CardClassification, ObjectPresenceStrip } from '@/components/sequence-annotation';
 import { ClassifyMediaPanel, DecisionRail, ObjectRow } from '@/components/classify';
 import { NotificationSystem } from '@/components/ui/NotificationSystem';
 import { useToastNotifications } from '@/utils/notification/toastUtils';
@@ -951,8 +951,6 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
             <ClassifyMediaPanel
               activeSection={activeSection}
               activeObject={activeMediaObject}
-              presenceObjects={presenceStripObjects}
-              onPresenceObjectClick={handlePresenceObjectClick}
               primarySequenceId={primaryLane.sequence.id}
               missedSmokeReview={missedSmokeReview}
               onMissedSmokeReviewChange={handleMissedSmokeReviewChange}
@@ -1027,6 +1025,21 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
                 );
               })}
             </DecisionRail>
+
+            {/* Temporal context + color legend for the rail's objects
+                (self-hides under 2 objects). Highlights the active object's
+                row in sync with the rail. */}
+            <div className="mt-4">
+              <ObjectPresenceStrip
+                objects={presenceStripObjects}
+                onObjectClick={handlePresenceObjectClick}
+                activeIndex={
+                  activeSection === 'detections' && activeCard
+                    ? cardOverlayData.findIndex(o => o.cardKey === activeCard.cardKey)
+                    : null
+                }
+              />
+            </div>
           </div>
         </div>
 
