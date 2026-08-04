@@ -4,18 +4,20 @@
  * *classification*, this one carries a per-object *localization progress*:
  * how many of the frames the object appears on already have a committed box.
  *
- * Unlike classify's row, the action doesn't hide behind activation: Accept
+ * Unlike classify's row, the actions don't hide behind activation: Accept
  * boxes is a one-click bulk action on the row's own lane, so it stays visible
  * on every workable row (matching the pre-cockpit strip's behavior).
  * Activation therefore shows up purely as the accent treatment — the media
  * column follows the active object, so the row doesn't need to expand.
  *
- * Context rows (lanes already localized) render dimmed and action-less, but
- * stay clickable: activating one points the media column at its frames,
+ * Context rows (lanes already localized) render dimmed and lose Accept boxes,
+ * but keep Reclassify — a finished lane can still have been classified wrong
+ * — and stay clickable: activating one points the media column at its frames,
  * which is the whole reason they're on screen.
  */
 
 import React from 'react';
+import { Pencil } from 'lucide-react';
 
 export interface LocalizeObjectRowProps {
   /** e.g. "Object 2" — the object's own label, shared with the timeline and grid overlays. */
@@ -40,6 +42,12 @@ export interface LocalizeObjectRowProps {
   /** Bulk-accepts the winning model boxes for this lane's pending frames. Omit on context rows. */
   onAcceptBoxes?: () => void;
   isAccepting?: boolean;
+  /**
+   * Opens this object's classification for correction (classify's done mode).
+   * Withheld on false-positive rows — promoting an FP back to smoke needs an
+   * auto-review pass first (issue #275).
+   */
+  onReclassify?: () => void;
 }
 
 export const LocalizeObjectRow: React.FC<LocalizeObjectRowProps> = ({
@@ -55,6 +63,7 @@ export const LocalizeObjectRow: React.FC<LocalizeObjectRowProps> = ({
   onActivate,
   onAcceptBoxes,
   isAccepting = false,
+  onReclassify,
 }) => {
   const pendingCount = presentCount - confirmedCount;
 
@@ -123,25 +132,41 @@ export const LocalizeObjectRow: React.FC<LocalizeObjectRowProps> = ({
         </span>
       </div>
 
-      {onAcceptBoxes && (
-        <div className="mt-2">
-          <button
-            type="button"
-            // The visible label stays short for the rail's width; the
-            // accessible name keeps naming the object, so "accept THIS
-            // object's boxes" is unambiguous to a screen reader (and to the
-            // page tests, which address rows by object).
-            aria-label={`Accept ${label}'s boxes`}
-            onClick={e => {
-              e.stopPropagation();
-              onAcceptBoxes();
-            }}
-            disabled={isAccepting}
-            title={`Accept ${label}'s predicted boxes for all pending frames`}
-            className="rounded-lg border border-line bg-paper px-2 py-1 font-body text-xs font-medium text-char hover:bg-ash disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {isAccepting ? 'Accepting…' : 'Accept boxes'}
-          </button>
+      {(onAcceptBoxes || onReclassify) && (
+        <div className="mt-2 flex items-center gap-1.5">
+          {onAcceptBoxes && (
+            <button
+              type="button"
+              // The visible label stays short for the rail's width; the
+              // accessible name keeps naming the object, so "accept THIS
+              // object's boxes" is unambiguous to a screen reader (and to the
+              // page tests, which address rows by object).
+              aria-label={`Accept ${label}'s boxes`}
+              onClick={e => {
+                e.stopPropagation();
+                onAcceptBoxes();
+              }}
+              disabled={isAccepting}
+              title={`Accept ${label}'s predicted boxes for all pending frames`}
+              className="rounded-lg border border-line bg-paper px-2 py-1 font-body text-xs font-medium text-char hover:bg-ash disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isAccepting ? 'Accepting…' : 'Accept boxes'}
+            </button>
+          )}
+          {onReclassify && (
+            <button
+              type="button"
+              aria-label={`Reclassify ${label}`}
+              onClick={e => {
+                e.stopPropagation();
+                onReclassify();
+              }}
+              title={`Correct ${label}'s classification`}
+              className="inline-flex items-center gap-1 rounded-lg border border-line bg-paper px-2 py-1 font-body text-xs font-medium text-char hover:bg-ash"
+            >
+              <Pencil className="h-3 w-3" aria-hidden="true" /> Reclassify
+            </button>
+          )}
         </div>
       )}
     </div>
