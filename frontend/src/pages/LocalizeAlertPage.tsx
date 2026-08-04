@@ -102,7 +102,7 @@ import CroppedImageSequence from '@/components/annotation/CroppedImageSequence';
 import { usePersistedTabState } from '@/hooks/usePersistedTabState';
 import { useToastNotifications } from '@/utils/notification/toastUtils';
 import { NotificationSystem } from '@/components/ui/NotificationSystem';
-import { ROUTES, localizeObject } from '@/utils/routes';
+import { ROUTES, LOCALIZE_OBJECT_ROUTE, localizeObject } from '@/utils/routes';
 import { formatDateTime } from '@/utils/datetime';
 
 // Shared with the legacy grid's card-size knob (DetectionSequenceAnnotatePage)
@@ -113,7 +113,7 @@ export default function LocalizeAlertPage() {
   const { sequenceId } = useParams<{ sequenceId: string }>();
   // The editor's object + frame live on a CHILD route (see App.tsx), and a
   // parent's useParams cannot see a child's params — hence useMatch.
-  const editorMatch = useMatch(`${ROUTES.LOCALIZE}/:sequenceId/object/:laneId/:detectionId`);
+  const editorMatch = useMatch(LOCALIZE_OBJECT_ROUTE);
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();

@@ -16,6 +16,7 @@ import UserManagementPage from '@/pages/UserManagementPage';
 import GuidePage from '@/pages/GuidePage';
 import LoginPage from '@/pages/LoginPage';
 import { legacyRedirectRoutes } from '@/components/routing/legacyRedirects';
+import { LOCALIZE_OBJECT_ROUTE } from '@/utils/routes';
 import RequireLocalize from '@/components/routing/RequireLocalize';
 import { useAuthStore } from '@/store/useAuthStore';
 
@@ -145,7 +146,7 @@ function App() {
                       </RequireLocalize>
                     }
                   >
-                    <Route path="object/:laneId/:detectionId" element={null} />
+                    <Route path={LOCALIZE_OBJECT_ROUTE} element={null} />
                   </Route>
                   {legacyRedirectRoutes}
                   <Route path="/users" element={<UserManagementPage />} />

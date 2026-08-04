@@ -105,7 +105,7 @@ vi.mock('@/components/detection-sequence/ImageModal', () => ({
 
 import { apiClient } from '@/services/api';
 import LocalizeAlertPage from '@/pages/LocalizeAlertPage';
-import { ROUTES } from '@/utils/routes';
+import { LOCALIZE_OBJECT_ROUTE, ROUTES } from '@/utils/routes';
 
 // Lets tests assert the URL the page navigated to (which object + frame the
 // editor was opened for), not just that a modal appeared.
@@ -123,9 +123,11 @@ function makeWrapper(initialPath = '/localize/101') {
           <LocationProbe />
           <Routes>
             {/* Mirrors App.tsx: the editor is a CHILD route so the page is
-                never remounted when the editor opens or closes. */}
+                never remounted when the editor opens or closes. The pattern
+                comes from the shared constant the page's useMatch also reads,
+                so this wrapper can't silently disagree with the real app. */}
             <Route path="/localize/:sequenceId" element={children}>
-              <Route path="object/:laneId/:detectionId" element={null} />
+              <Route path={LOCALIZE_OBJECT_ROUTE} element={null} />
             </Route>
             {/* A real route for the queue landing page so a post-submit
                 `navigate(ROUTES.LOCALIZE)` is observable (it actually

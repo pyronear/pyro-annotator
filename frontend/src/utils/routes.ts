@@ -54,6 +54,18 @@ export function localizeLane(sequenceId: number | string, detectionId?: number |
 }
 
 /**
+ * Route pattern for the per-frame editor, declared once so App.tsx's route
+ * and LocalizeAlertPage's `useMatch` can't drift apart. If they did, the
+ * failure would be silent — `useMatch` would return null and the editor
+ * would simply stop opening — so the two must read the same string.
+ *
+ * It is mounted as a CHILD of `/localize/:sequenceId` (an absolute child
+ * path, which React Router accepts because it starts with the parent's),
+ * keeping LocalizeAlertPage mounted when the editor opens and closes.
+ */
+export const LOCALIZE_OBJECT_ROUTE = `${ROUTES.LOCALIZE}/:sequenceId/object/:laneId/:detectionId`;
+
+/**
  * The collocated alert page's per-frame editor, which names both the object
  * (`laneId` — the lane's own sequence id) and the frame. The lane segment is
  * what makes a shared editor link unambiguous: a detection id alone resolves
