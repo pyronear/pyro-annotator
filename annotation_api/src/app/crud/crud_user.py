@@ -30,6 +30,7 @@ class UserCRUD(BaseCRUD[User, UserCreate, UserUpdate]):
             hashed_password=self.get_password_hash(user_create.password),
             is_active=user_create.is_active,
             is_superuser=user_create.is_superuser,
+            can_localize=user_create.can_localize,
         )
         self.session.add(db_user)
         await self.session.commit()
