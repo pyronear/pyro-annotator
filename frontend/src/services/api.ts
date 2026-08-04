@@ -23,6 +23,7 @@ import {
   DetectionAnnotationFilters,
   ApiError,
   LocalizationQueueItem,
+  LocalizeDoneQueueItem,
   AlertDetail,
   AlertLane,
   SmokeType,
@@ -218,6 +219,25 @@ class ApiClient {
   ): Promise<PaginatedResponse<ClassifyQueueItem>> {
     const response: AxiosResponse<PaginatedResponse<ClassifyQueueItem>> = await this.client.get(
       `${API_ENDPOINTS.SEQUENCES}classify-queue`,
+      { params }
+    );
+    return response.data;
+  }
+
+  // Alerts with at least one localized smoke lane (alert-grouped Localize done queue)
+  async getLocalizeDoneQueue(
+    params: {
+      page?: number;
+      size?: number;
+      camera_name?: string;
+      organisation_name?: string;
+      source_api?: string;
+      recorded_at_gte?: string;
+      recorded_at_lte?: string;
+    } = {}
+  ): Promise<PaginatedResponse<LocalizeDoneQueueItem>> {
+    const response: AxiosResponse<PaginatedResponse<LocalizeDoneQueueItem>> = await this.client.get(
+      `${API_ENDPOINTS.SEQUENCES}localize-done-queue`,
       { params }
     );
     return response.data;

@@ -6,8 +6,7 @@ import React from 'react';
 
 vi.mock('@/services/api', () => ({
   apiClient: {
-    getSequences: vi.fn(),
-    getSequenceAnnotations: vi.fn(),
+    getLocalizeDoneQueue: vi.fn(),
   },
 }));
 
@@ -22,7 +21,7 @@ vi.mock('@/hooks/useSourceApis', () => ({
 }));
 
 const resetFiltersMock = vi.fn();
-let mockedSmokeTypes: string[] = [];
+let mockedCameraName: string | undefined;
 
 vi.mock('@/hooks/usePersistedFilters', async importOriginal => {
   const actual = await importOriginal<typeof import('@/hooks/usePersistedFilters')>();
@@ -32,18 +31,20 @@ vi.mock('@/hooks/usePersistedFilters', async importOriginal => {
       _key: string,
       defaultState: Parameters<typeof actual.usePersistedFilters>[1]
     ): ReturnType<typeof actual.usePersistedFilters> => ({
-      filters: { ...defaultState.filters },
+      filters: { ...defaultState.filters, camera_name: mockedCameraName },
       dateFrom: '',
       dateTo: '',
       selectedFalsePositiveTypes: [],
-      selectedSmokeTypes: mockedSmokeTypes,
+      selectedSmokeTypes: [],
       selectedModelAccuracy: 'all',
+      selectedUnsure: 'all',
       setFilters: vi.fn(),
       setDateFrom: vi.fn(),
       setDateTo: vi.fn(),
       setSelectedFalsePositiveTypes: vi.fn(),
       setSelectedSmokeTypes: vi.fn(),
       setSelectedModelAccuracy: vi.fn(),
+      setSelectedUnsure: vi.fn(),
       resetFilters: resetFiltersMock,
     }),
   };
@@ -66,9 +67,8 @@ const emptyPage = { items: [], page: 1, pages: 0, size: 50, total: 0 };
 describe('DetectionReviewPage empty states', () => {
   beforeEach(() => {
     resetFiltersMock.mockClear();
-    mockedSmokeTypes = [];
-    vi.mocked(apiClient.getSequences).mockResolvedValue(emptyPage);
-    vi.mocked(apiClient.getSequenceAnnotations).mockResolvedValue(emptyPage);
+    mockedCameraName = undefined;
+    vi.mocked(apiClient.getLocalizeDoneQueue).mockResolvedValue(emptyPage);
   });
 
   it('without filters, shows nothing-localized-yet state linking to the localize queue', async () => {
@@ -80,7 +80,7 @@ describe('DetectionReviewPage empty states', () => {
   });
 
   it('with active filters, shows no-matches state and Clear filters resets them', async () => {
-    mockedSmokeTypes = ['wildfire'];
+    mockedCameraName = 'CAM_01';
     render(<DetectionReviewPage />, { wrapper });
     await waitFor(() => expect(screen.getByText('No matching alerts')).toBeTruthy());
     expect(screen.getByText(/matches your current filters/)).toBeTruthy();
