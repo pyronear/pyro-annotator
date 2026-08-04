@@ -86,7 +86,7 @@ export function buildFilterPills(input: FilterPillInput): FilterPill[] {
   if (input.showModelAccuracy && input.selectedModelAccuracy !== 'all') {
     pills.push({
       id: 'accuracy',
-      label: `Accuracy: ${getModelAccuracyResult(input.selectedModelAccuracy).label}`,
+      label: `Result: ${getModelAccuracyResult(input.selectedModelAccuracy).label}`,
     });
   }
   if (input.showUnsureFilter && input.selectedUnsure !== 'all') {
