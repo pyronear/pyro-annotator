@@ -10,6 +10,8 @@ const CANVAS_RES = 840;
 interface CroppedImageSequenceProps {
   bboxes: BoundingBox[];
   sequenceId: number;
+  /** Ties the crop to its object: a thin viewport frame in the object's overlay color. */
+  accentColor?: string;
   className?: string;
 }
 
@@ -23,6 +25,7 @@ interface ImageData {
 export default function CroppedImageSequence({
   bboxes,
   sequenceId,
+  accentColor,
   className = '',
 }: CroppedImageSequenceProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -239,7 +242,10 @@ export default function CroppedImageSequence({
       <div
         ref={containerRef}
         data-testid="cropped-viewport"
-        className="relative mx-auto w-full max-w-[420px] aspect-square overflow-hidden bg-gray-900"
+        className={`relative mx-auto w-full max-w-[min(380px,33vh)] aspect-square overflow-hidden bg-gray-900 ${
+          accentColor ? 'border-2' : ''
+        }`}
+        style={accentColor ? { borderColor: accentColor } : undefined}
       >
         {showLoadingState && (
           <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-10">

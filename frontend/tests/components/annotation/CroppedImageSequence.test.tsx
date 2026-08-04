@@ -48,6 +48,14 @@ describe('CroppedImageSequence', () => {
     expect(screen.queryByRole('slider')).not.toBeInTheDocument();
   });
 
+  it('frames the viewport in the object accent color when given', async () => {
+    render(<CroppedImageSequence bboxes={BBOXES} sequenceId={9} accentColor="#E4572E" />);
+    await waitFor(() => expect(screen.getByLabelText('Zoom in')).toBeInTheDocument());
+    const viewport = screen.getByTestId('cropped-viewport');
+    expect(viewport.className).toContain('border-2');
+    expect(viewport.style.borderColor).toBe('rgb(228, 87, 46)');
+  });
+
   it('starts at 1.0x with zoom-out disabled, and clamps zoom-in at the max', async () => {
     await renderLoaded();
     expect(screen.getByText('1.0x')).toBeInTheDocument();
