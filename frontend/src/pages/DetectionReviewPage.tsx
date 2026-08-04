@@ -1,17 +1,11 @@
-import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { BoxSelect, Search } from 'lucide-react';
 import { apiClient } from '@/services/api';
-import {
-  ExtendedSequenceFilters,
-  SequenceWithDetectionProgress,
-  SequenceAnnotation,
-} from '@/types/api';
-import { PAGINATION_OPTIONS, QUERY_KEYS } from '@/utils/constants';
-import { analyzeSequenceAccuracy } from '@/utils/modelAccuracy';
+import { ExtendedSequenceFilters, LocalizeDoneQueueItem } from '@/types/api';
+import { PAGINATION_OPTIONS } from '@/utils/constants';
 import FilterPopover from '@/components/filters/FilterPopover';
-import { LocalizeDoneTable, TablePagination } from '@/components/sequences';
+import { LocalizeDoneQueueTable, TablePagination } from '@/components/sequences';
 import { TABLE_CARD_CLASSES } from '@/components/sequences/tableStyles';
 import { useCameras } from '@/hooks/useCameras';
 import { useOrganizations } from '@/hooks/useOrganizations';
@@ -22,28 +16,20 @@ import { hasActiveUserFilters } from '@/utils/filterHelpers';
 import { localizeDetail, ROUTES } from '@/utils/routes';
 
 // Default filter contract for /localize/done — imported by its defaults test.
+// Membership (which alerts qualify) is entirely server-side now, via
+// GET /sequences/localize-done-queue; the page only carries pagination plus
+// the camera/org/source/date filters that endpoint accepts.
 // eslint-disable-next-line react-refresh/only-export-components
-export const detectionReviewDefaultState = {
-  ...createDefaultFilterState('annotated'),
-  filters: {
-    ...createDefaultFilterState('annotated').filters,
-    detection_annotation_completion: 'complete' as const,
-    include_detection_stats: true,
-    processing_stage: 'annotated' as const, // Only show sequences that have completed sequence-level annotation
-    is_unsure: false, // Exclude unsure sequences from detection annotation workflow
-    // Verification is for localized boxes (smoke or missed smoke); auto-final
-    // FP lanes have nothing to verify (their classification is reviewed in
-    // Sequences > Review). Unsure lanes resolve through sequence review.
-    needs_localization: true,
-  },
-};
+export const detectionReviewDefaultState = createDefaultFilterState();
 
 export default function DetectionReviewPage() {
   const navigate = useNavigate();
 
   const defaultState = detectionReviewDefaultState;
 
-  // Use persisted filters hook
+  // Use persisted filters hook. v3: annotation-type/model-accuracy filters
+  // don't apply to alert rows and are hidden on this page (see task-10b
+  // report) — bumped so stale v2 filter state can't confuse the new endpoint.
   const {
     filters,
     dateFrom,
@@ -58,7 +44,7 @@ export default function DetectionReviewPage() {
     setSelectedSmokeTypes,
     setSelectedModelAccuracy,
     resetFilters,
-  } = usePersistedFilters('filters-localize-done-v2', defaultState);
+  } = usePersistedFilters('filters-localize-done-v3', defaultState);
 
   // Fetch cameras, organizations, and source APIs for dropdown options
   const { data: cameras = [], isLoading: camerasLoading } = useCameras();
@@ -101,78 +87,20 @@ export default function DetectionReviewPage() {
     handleFilterChange({ recorded_at_lte: dateTimeValue });
   };
 
-  // Fetch sequences with complete detection annotations
-  const {
-    data: sequences,
-    isLoading,
-    error,
-  } = useQuery({
-    queryKey: [...QUERY_KEYS.SEQUENCES, 'detection-review', filters],
-    queryFn: () => apiClient.getSequences(filters),
+  // Alert-grouped localize-done queue — one row per alert.
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['localize-done-queue', filters],
+    queryFn: () =>
+      apiClient.getLocalizeDoneQueue({
+        page: filters.page,
+        size: filters.size,
+        camera_name: filters.camera_name,
+        organisation_name: filters.organisation_name,
+        source_api: filters.source_api,
+        recorded_at_gte: filters.recorded_at_gte,
+        recorded_at_lte: filters.recorded_at_lte,
+      }),
   });
-
-  // Fetch sequence annotations for model accuracy analysis
-  const { data: sequenceAnnotations } = useQuery({
-    queryKey: [
-      ...QUERY_KEYS.SEQUENCE_ANNOTATIONS,
-      'detection-review',
-      sequences?.items?.map(s => s.id),
-    ],
-    queryFn: async () => {
-      if (!sequences?.items?.length) return [];
-
-      const annotationPromises = sequences.items.map(sequence =>
-        apiClient
-          .getSequenceAnnotations({ sequence_id: sequence.id, size: 1 })
-          .then(response => ({ sequenceId: sequence.id, annotation: response.items[0] || null }))
-          .catch(() => ({ sequenceId: sequence.id, annotation: null }))
-      );
-
-      return Promise.all(annotationPromises);
-    },
-    enabled: !!sequences?.items?.length,
-  });
-
-  // Create a map for quick annotation lookup
-  const annotationMap = useMemo(
-    () =>
-      sequenceAnnotations?.reduce(
-        (acc, { sequenceId, annotation }) => {
-          acc[sequenceId] = annotation || undefined;
-          return acc;
-        },
-        {} as Record<number, SequenceAnnotation | undefined>
-      ) || {},
-    [sequenceAnnotations]
-  );
-
-  // Filter sequences by model accuracy
-  const filteredSequences = useMemo(() => {
-    if (!sequences || selectedModelAccuracy === 'all') {
-      return sequences;
-    }
-
-    const filtered = sequences.items.filter(sequence => {
-      const annotation = annotationMap[sequence.id];
-      if (!annotation) {
-        return selectedModelAccuracy === 'unknown';
-      }
-
-      const accuracy = analyzeSequenceAccuracy({
-        ...sequence,
-        annotation: annotation,
-      });
-
-      return accuracy.type === selectedModelAccuracy;
-    });
-
-    return {
-      ...sequences,
-      items: filtered,
-      total: filtered.length,
-      pages: Math.ceil(filtered.length / sequences.size),
-    };
-  }, [sequences, annotationMap, selectedModelAccuracy]);
 
   const handleFilterChange = (newFilters: Partial<ExtendedSequenceFilters>) => {
     setFilters({ ...filters, ...newFilters, page: 1 });
@@ -187,9 +115,12 @@ export default function DetectionReviewPage() {
     setFilters({ ...filters, page });
   };
 
-  const handleSequenceClick = (clickedSequence: SequenceWithDetectionProgress) => {
-    // Navigate to detection annotation interface for review purposes
-    navigate(localizeDetail(clickedSequence.id, undefined, true));
+  const handleAlertClick = (item: LocalizeDoneQueueItem) => {
+    // Legacy done view of the alert's first (primary) lane.
+    const first = item.lanes[0];
+    if (first) {
+      navigate(localizeDetail(first.sequence_id, undefined, true));
+    }
   };
 
   if (isLoading) {
@@ -211,8 +142,10 @@ export default function DetectionReviewPage() {
     );
   }
 
-  // Empty state when no sequences are available for review
-  if (filteredSequences && filteredSequences.items.length === 0) {
+  const items = data?.items ?? [];
+
+  // Empty state when no alerts are available for review
+  if (items.length === 0) {
     // Check if user has applied filters
     const hasFilters = hasActiveUserFilters(
       filters,
@@ -221,11 +154,9 @@ export default function DetectionReviewPage() {
       selectedFalsePositiveTypes,
       selectedSmokeTypes,
       selectedModelAccuracy,
-      'all', // selectedUnsure
-      true, // showModelAccuracy
-      true, // showFalsePositiveTypes
-      true, // showSmokeTypes
-      false // showUnsureFilter
+      'all' // selectedUnsure
+      // showModelAccuracy / showFalsePositiveTypes / showSmokeTypes / showUnsureFilter
+      // all default false — those filters don't apply to alert rows
     );
 
     return (
@@ -260,9 +191,6 @@ export default function DetectionReviewPage() {
             camerasLoading={camerasLoading}
             organizationsLoading={organizationsLoading}
             sourceApisLoading={sourceApisLoading}
-            showModelAccuracy={true}
-            showFalsePositiveTypes={true}
-            showSmokeTypes={true}
           />
         </div>
 
@@ -371,27 +299,20 @@ export default function DetectionReviewPage() {
             camerasLoading={camerasLoading}
             organizationsLoading={organizationsLoading}
             sourceApisLoading={sourceApisLoading}
-            showModelAccuracy={true}
-            showFalsePositiveTypes={true}
-            showSmokeTypes={true}
           />
         </div>
       </div>
 
       {/* Results */}
-      {filteredSequences && (
+      {data && (
         <div className={TABLE_CARD_CLASSES}>
-          <LocalizeDoneTable
-            sequences={filteredSequences.items}
-            annotations={annotationMap}
-            onSequenceClick={handleSequenceClick}
-          />
+          <LocalizeDoneQueueTable items={items} onItemClick={handleAlertClick} />
 
           <TablePagination
-            page={filteredSequences.page}
-            pages={filteredSequences.pages}
-            total={filteredSequences.total}
-            itemsLabel="sequences"
+            page={data.page}
+            pages={data.pages}
+            total={data.total}
+            itemsLabel="alerts"
             onPageChange={handlePageChange}
           />
         </div>

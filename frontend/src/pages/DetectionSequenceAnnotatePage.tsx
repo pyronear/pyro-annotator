@@ -35,7 +35,7 @@ import { ImageModal, DetectionGrid, DetectionHeader } from '@/components/detecti
 import type { CardSize } from '@/components/detection-sequence/DetectionHeader';
 import CroppedImageSequence from '@/components/annotation/CroppedImageSequence';
 import { usePersistedTabState } from '@/hooks/usePersistedTabState';
-import { ROUTES, localizeDetail } from '@/utils/routes';
+import { ROUTES, localizeLane } from '@/utils/routes';
 
 const CARD_MIN_WIDTH: Record<CardSize, number> = { sm: 240, md: 340, lg: 500 };
 
@@ -71,8 +71,14 @@ export default function DetectionSequenceAnnotatePage({
   const [persistentDrawMode, setPersistentDrawMode] = useState(false);
   const isAutoAdvanceRef = useRef(false);
 
-  // Provenance comes from the mounted route: /localize/… vs /localize/done/…
-  const basePath = mode === 'done' ? ROUTES.LOCALIZE_DONE : ROUTES.LOCALIZE;
+  // Provenance comes from the mounted route: /localize/lane/… vs
+  // /localize/done/…. Done mode's list and detail routes share one prefix
+  // (ROUTES.LOCALIZE_DONE), so basePath alone covers both there; queue mode
+  // no longer does — its detail prefix is /localize/lane, but its list page
+  // lives at /localize (the alert page owns bare /localize/:sequenceId) —
+  // see listPath below for "go back to the queue".
+  const basePath = mode === 'done' ? ROUTES.LOCALIZE_DONE : ROUTES.LOCALIZE_LANE;
+  const listPath = mode === 'done' ? ROUTES.LOCALIZE_DONE : ROUTES.LOCALIZE;
 
   // Determine source page and appropriate filter storage key
   const sourcePage = mode === 'done' ? 'review' : 'annotate';
@@ -395,7 +401,10 @@ export default function DetectionSequenceAnnotatePage({
       }
       setTimeout(() => {
         if (next !== null) {
-          navigate(localizeDetail(next));
+          // Stay on the lane-editing page for the alert's next unfinished
+          // lane, not the alert overview — this is a walk-through-lanes
+          // flow, not a "go look at the alert" one.
+          navigate(localizeLane(next));
         } else {
           navigate(ROUTES.LOCALIZE);
         }
@@ -663,7 +672,7 @@ export default function DetectionSequenceAnnotatePage({
   });
 
   const handleBack = () => {
-    navigate(basePath);
+    navigate(listPath);
   };
 
   const handleSave = useCallback(() => {

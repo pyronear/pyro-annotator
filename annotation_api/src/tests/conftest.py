@@ -240,6 +240,21 @@ async def regular_user(async_session: AsyncSession) -> User:
 
 
 @pytest_asyncio.fixture(scope="function")
+async def localizer_user(async_session: AsyncSession) -> User:
+    """Create a non-admin user with localization access."""
+    user_crud = UserCRUD(async_session)
+    user_create = UserCreate(
+        username="localizeruser",
+        password="testpassword123",
+        is_active=True,
+        is_superuser=False,
+        can_localize=True,
+    )
+    user = await user_crud.create_user(user_create)
+    return user
+
+
+@pytest_asyncio.fixture(scope="function")
 async def inactive_user(async_session: AsyncSession) -> User:
     """Create an inactive user for status testing."""
     user_crud = UserCRUD(async_session)
@@ -280,6 +295,14 @@ async def regular_user_token(regular_user: User) -> str:
     """Generate an authentication token for regular user."""
     return create_access_token(
         data={"sub": regular_user.username, "user_id": regular_user.id}
+    )
+
+
+@pytest_asyncio.fixture(scope="function")
+async def localizer_user_token(localizer_user: User) -> str:
+    """Generate an authentication token for the localizer user."""
+    return create_access_token(
+        data={"sub": localizer_user.username, "user_id": localizer_user.id}
     )
 
 

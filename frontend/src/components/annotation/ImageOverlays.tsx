@@ -129,6 +129,72 @@ export function SiblingBoundingBoxOverlay({
 }
 
 /**
+ * One other object's boxes on a shared frame, for `ObjectIdentityOverlay`
+ * below — built by the caller (e.g. LocalizeAlertPage) from its own
+ * per-object color/label bookkeeping, not derived here.
+ */
+export interface ObjectOverlayItem {
+  color: string;
+  label: string;
+  boxes: { xyxyn: [number, number, number, number] }[];
+}
+
+/**
+ * Read-only overlay for OTHER objects' boxes on a shared frame, in the
+ * collocated localize editor: each box color-coded and labeled with its own
+ * object identity (e.g. "Object 2"), replacing the generic, identity-less
+ * `SiblingBoundingBoxOverlay` ("sibling NN%") vocabulary for that context —
+ * a collocated alert's "siblings" are real tracked objects with their own
+ * rows/colors, not anonymous detector noise. The caller (LocalizeAlertPage)
+ * builds `objects` from the OTHER contributing lanes' cells at the same
+ * frame; passing this prop down through DetectionAnnotationCanvas/ImageModal
+ * also suppresses the sibling layer for that render (see those components).
+ */
+interface ObjectIdentityOverlayProps {
+  objects: ObjectOverlayItem[];
+  imageInfo: ImageInfo;
+}
+
+export function ObjectIdentityOverlay({ objects, imageInfo }: ObjectIdentityOverlayProps) {
+  if (!objects || objects.length === 0) return null;
+
+  return (
+    <>
+      {objects.flatMap((object, objectIndex) =>
+        object.boxes
+          .map((box, boxIndex) => {
+            if (!validateBoundingBox(box.xyxyn)) return null;
+
+            const { left, top, width, height } = normalizedToPixelBox(box.xyxyn, imageInfo);
+
+            return (
+              <div
+                key={`object-overlay-${objectIndex}-${boxIndex}`}
+                className="absolute border-2 border-dashed pointer-events-none opacity-90"
+                style={{
+                  left: `${left}px`,
+                  top: `${top}px`,
+                  width: `${width}px`,
+                  height: `${height}px`,
+                  borderColor: object.color,
+                }}
+              >
+                <div
+                  className="absolute -top-5 left-0 text-white text-[10px] px-1 rounded whitespace-nowrap"
+                  style={{ backgroundColor: object.color }}
+                >
+                  {object.label}
+                </div>
+              </div>
+            );
+          })
+          .filter(Boolean)
+      )}
+    </>
+  );
+}
+
+/**
  * Read-only overlay for an immutable model reference layer (engine =
  * algo_predictions, dotted; auto = auto_predictions, dashed). Line style
  * encodes the layer; border color always encodes the active smoke_type — the

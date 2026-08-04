@@ -19,17 +19,20 @@ vi.mock('@/hooks/useAnnotationCounts', () => ({
 }));
 
 let isSuperuserValue = false;
+let canLocalizeValue = true;
 
 vi.mock('@/store/useAuthStore', () => ({
   useAuthStore: () => ({
     user: { username: 'tester' },
     logout: vi.fn(),
     isSuperuser: () => isSuperuserValue,
+    canLocalize: () => canLocalizeValue,
   }),
 }));
 
 beforeEach(() => {
   isSuperuserValue = false;
+  canLocalizeValue = true;
 });
 
 describe('AppLayout sidebar navigation', () => {
@@ -236,5 +239,31 @@ describe('AppLayout path-based nav highlighting', () => {
       a.className.includes('text-pine')
     );
     expect(activeLinks).toHaveLength(0);
+  });
+});
+
+describe('AppLayout localize nav visibility', () => {
+  const renderLayout = () =>
+    render(
+      <MemoryRouter>
+        <AppLayout>
+          <div>page content</div>
+        </AppLayout>
+      </MemoryRouter>
+    );
+
+  it('hides the Localize section for classify-only users', () => {
+    canLocalizeValue = false;
+    renderLayout();
+
+    expect(screen.queryByText('Localize')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /smoke/i })).not.toBeInTheDocument();
+  });
+
+  it('shows the Localize section when the user can localize', () => {
+    renderLayout();
+
+    expect(screen.getByText('Localize')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /smoke/i })).toHaveAttribute('href', '/localize');
   });
 });

@@ -28,6 +28,9 @@ __all__ = [
     "ClassifySubmitRequest",
     "ClassifySubmitResult",
     "ClassifySubmitResponse",
+    "LocalizeSubmitRequest",
+    "LocalizeSubmitResult",
+    "LocalizeSubmitResponse",
 ]
 
 
@@ -92,6 +95,24 @@ class ClassifySubmitResult(BaseModel):
 
 class ClassifySubmitResponse(BaseModel):
     results: List[ClassifySubmitResult]
+
+
+class LocalizeSubmitRequest(BaseModel):
+    """Atomically submit all localized lanes of one alert (spec:
+    smoke-localization entry point): every lane moves
+    seq_annotation_done -> annotated together."""
+
+    annotation_ids: List[int] = Field(..., min_length=1)
+
+
+class LocalizeSubmitResult(BaseModel):
+    annotation_id: int
+    sequence_id: int
+    processing_stage: SequenceAnnotationProcessingStage
+
+
+class LocalizeSubmitResponse(BaseModel):
+    results: List[LocalizeSubmitResult]
 
 
 class SequenceAnnotationCreate(BaseModel):

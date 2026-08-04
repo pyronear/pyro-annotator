@@ -119,7 +119,8 @@ async def update_user(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
     if target_user.username == settings.WORKER_USERNAME and (
-        user_update.model_fields_set & {"username", "is_active", "is_superuser"}
+        user_update.model_fields_set
+        & {"username", "is_active", "is_superuser", "can_localize"}
     ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

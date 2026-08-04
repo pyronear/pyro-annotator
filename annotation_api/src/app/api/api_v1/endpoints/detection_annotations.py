@@ -14,6 +14,7 @@ from sqlalchemy import asc, desc, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.dependencies import get_current_user, get_detection_annotation_crud
+from app.auth.dependencies import get_current_localizer
 from app.models import User
 from app.crud import DetectionAnnotationCRUD
 from app.db import get_session
@@ -58,7 +59,7 @@ async def create_detection_annotation(
         description="Processing stage for this detection annotation. Options: imported (initial import), visual_check (human verification), bbox_annotation (manual bbox drawing), annotated (fully processed)",
     ),
     annotations: DetectionAnnotationCRUD = Depends(get_detection_annotation_crud),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_localizer),
 ) -> DetectionAnnotationRead:
     # Parse and validate annotation
     parsed_annotation = json.loads(annotation)
@@ -281,7 +282,7 @@ async def update_annotation(
     annotation_id: int = Path(..., ge=0),
     payload: DetectionAnnotationUpdate = Body(...),
     annotations: DetectionAnnotationCRUD = Depends(get_detection_annotation_crud),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_localizer),
 ) -> DetectionAnnotationRead:
     # Use CRUD method which handles contribution tracking with proper conditional logic
     updated_annotation = await annotations.update(
@@ -310,6 +311,6 @@ async def update_annotation(
 async def delete_annotation(
     annotation_id: int = Path(..., ge=0),
     annotations: DetectionAnnotationCRUD = Depends(get_detection_annotation_crud),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_localizer),
 ) -> None:
     await annotations.delete(annotation_id)
