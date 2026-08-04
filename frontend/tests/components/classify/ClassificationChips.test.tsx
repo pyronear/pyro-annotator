@@ -1,0 +1,130 @@
+import React from 'react';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { ClassificationChips, formatFalsePositiveLabel } from '@/components/classify';
+import type { SequenceBbox } from '@/types/api';
+
+const baseBbox: SequenceBbox = { is_smoke: false, false_positive_types: [], bboxes: [] };
+
+function renderChips(overrides: Partial<React.ComponentProps<typeof ClassificationChips>> = {}) {
+  const onBboxChange = vi.fn();
+  const onClassificationChange = vi.fn();
+  const onUnsureChange = vi.fn();
+  render(
+    <ClassificationChips
+      cardKey="101:0"
+      bbox={baseBbox}
+      classification="unselected"
+      unsure={false}
+      onBboxChange={onBboxChange}
+      onClassificationChange={onClassificationChange}
+      onUnsureChange={onUnsureChange}
+      {...overrides}
+    />
+  );
+  return { onBboxChange, onClassificationChange, onUnsureChange };
+}
+
+describe('ClassificationChips', () => {
+  it('marks smoke: sets is_smoke, clears FP types, keeps smoke_type', () => {
+    const { onBboxChange, onClassificationChange } = renderChips({
+      bbox: { ...baseBbox, false_positive_types: ['antenna'], smoke_type: 'wildfire' },
+    });
+    fireEvent.click(screen.getByRole('radio', { name: 'Smoke' }));
+    expect(onClassificationChange).toHaveBeenCalledWith('101:0', 'smoke');
+    expect(onBboxChange).toHaveBeenCalledWith('101:0', {
+      ...baseBbox,
+      is_smoke: true,
+      false_positive_types: [],
+      smoke_type: 'wildfire',
+    });
+  });
+
+  it('marks false positive: clears smoke_type, keeps existing FP types', () => {
+    const { onBboxChange, onClassificationChange } = renderChips({
+      bbox: { ...baseBbox, is_smoke: true, smoke_type: 'wildfire', false_positive_types: ['sky'] },
+      classification: 'smoke',
+    });
+    fireEvent.click(screen.getByRole('radio', { name: 'False positive' }));
+    expect(onClassificationChange).toHaveBeenCalledWith('101:0', 'false_positive');
+    expect(onBboxChange).toHaveBeenCalledWith('101:0', {
+      ...baseBbox,
+      is_smoke: false,
+      smoke_type: undefined,
+      false_positive_types: ['sky'],
+    });
+  });
+
+  it('shows smoke-type chips only for smoke, and sets the type', () => {
+    const { onBboxChange } = renderChips({
+      bbox: { ...baseBbox, is_smoke: true },
+      classification: 'smoke',
+    });
+    fireEvent.click(screen.getByRole('radio', { name: 'Industrial' }));
+    expect(onBboxChange).toHaveBeenCalledWith('101:0', {
+      ...baseBbox,
+      is_smoke: true,
+      smoke_type: 'industrial',
+    });
+    expect(screen.queryByRole('checkbox', { name: 'High cloud' })).not.toBeInTheDocument();
+  });
+
+  it('renders all 18 FP type chips for false_positive and toggles membership both ways', () => {
+    const { onBboxChange } = renderChips({
+      bbox: { ...baseBbox, false_positive_types: ['high_cloud'] },
+      classification: 'false_positive',
+    });
+    // 18 FP chips + the Unsure chip = 19 checkboxes
+    expect(screen.getAllByRole('checkbox')).toHaveLength(19);
+    expect(screen.getByRole('checkbox', { name: 'High cloud' })).toBeChecked();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Antenna' }));
+    expect(onBboxChange).toHaveBeenCalledWith('101:0', {
+      ...baseBbox,
+      false_positive_types: ['high_cloud', 'antenna'],
+    });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'High cloud' }));
+    expect(onBboxChange).toHaveBeenCalledWith('101:0', {
+      ...baseBbox,
+      false_positive_types: [],
+    });
+  });
+
+  it('toggles unsure and reflects checked state', () => {
+    const { onUnsureChange } = renderChips({ unsure: true });
+    expect(screen.getByRole('checkbox', { name: 'Unsure' })).toBeChecked();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Unsure' }));
+    expect(onUnsureChange).toHaveBeenCalledWith('101:0', false);
+  });
+
+  it('hides the Unsure chip when no handler is wired', () => {
+    render(
+      <ClassificationChips
+        cardKey="101:0"
+        bbox={baseBbox}
+        classification="unselected"
+        unsure={false}
+        onBboxChange={vi.fn()}
+        onClassificationChange={vi.fn()}
+      />
+    );
+    expect(screen.queryByRole('checkbox', { name: 'Unsure' })).not.toBeInTheDocument();
+  });
+
+  it('contains no emojis anywhere', () => {
+    const { container } = render(
+      <ClassificationChips
+        cardKey="101:0"
+        bbox={{ ...baseBbox, is_smoke: true }}
+        classification="smoke"
+        unsure={false}
+        onBboxChange={vi.fn()}
+        onClassificationChange={vi.fn()}
+      />
+    );
+    expect(container.textContent).not.toMatch(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u);
+  });
+
+  it('formats FP labels', () => {
+    expect(formatFalsePositiveLabel('high_cloud')).toBe('High cloud');
+    expect(formatFalsePositiveLabel('water_body')).toBe('Water body');
+  });
+});
