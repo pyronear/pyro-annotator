@@ -68,7 +68,11 @@ describe('buildAlertFrameModel', () => {
     };
     const annotationsByLaneId = { 1: [], 2: [] };
 
-    const { frames } = buildAlertFrameModel([laneA, laneB], detectionsByLaneId, annotationsByLaneId);
+    const { frames } = buildAlertFrameModel(
+      [laneA, laneB],
+      detectionsByLaneId,
+      annotationsByLaneId
+    );
 
     expect(frames.map(f => f.recordedAt)).toEqual([t1, t3, t2]);
     // t2 is shared by both lanes -> two cells there.
@@ -78,7 +82,7 @@ describe('buildAlertFrameModel', () => {
     expect(frames.find(f => f.recordedAt === t3)?.cells).toHaveLength(1);
   });
 
-  it('maps per-frame status: annotated -> confirmed, auto winning boxes -> pending, no-box -> pending', () => {
+  it('maps per-frame status: annotated -> confirmed, auto winning boxes -> pending, no-box -> empty', () => {
     const tDone = '2026-01-01T10:00:00Z';
     const tAuto = '2026-01-01T10:00:10Z';
     const tNoBox = '2026-01-01T10:00:20Z';
@@ -109,7 +113,9 @@ describe('buildAlertFrameModel', () => {
     expect(objectStatus[0].statusByTimestamp).toEqual({
       [tDone]: 'confirmed',
       [tAuto]: 'pending',
-      [tNoBox]: 'pending',
+      // Distinct from 'pending': nothing committed AND no model box to
+      // accept, so the strip must not paint it as if it had content.
+      [tNoBox]: 'empty',
     });
 
     const doneCell = frames.find(f => f.recordedAt === tDone)!.cells[0];
@@ -145,7 +151,8 @@ describe('buildAlertFrameModel', () => {
     );
 
     const objectA = objectStatus.find(o => o.laneSequenceId === 1)!;
-    expect(objectA.statusByTimestamp[t1]).toBe('pending');
+    // Present at t1 but with no boxes at all -> 'empty', not 'pending'.
+    expect(objectA.statusByTimestamp[t1]).toBe('empty');
     expect(objectA.statusByTimestamp[t2]).toBeUndefined();
 
     // Frame t2's only cell belongs to lane B; lane A contributes nothing there.
@@ -158,7 +165,9 @@ describe('buildAlertFrameModel', () => {
     const lane = makeLane(1, { processing_stage: 'annotated' });
     const detectionsByLaneId = { 1: [makeDetection(1, t1, { engine: [] })] };
     const annotationsByLaneId = {
-      1: [makeDetAnnotation(1, 'annotated', [{ xyxyn: [0.1, 0.1, 0.2, 0.2], class_name: 'smoke' }])],
+      1: [
+        makeDetAnnotation(1, 'annotated', [{ xyxyn: [0.1, 0.1, 0.2, 0.2], class_name: 'smoke' }]),
+      ],
     };
 
     const { objectStatus, frames } = buildAlertFrameModel(

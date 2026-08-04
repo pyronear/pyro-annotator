@@ -3,7 +3,7 @@
  * used by the collocated localize screens. One row per object — color
  * swatch + label (as a button, "Go to Object N") plus a per-frame status
  * bar across the union of the alert's frame timestamps, where each frame
- * segment is itself a button (confirmed/pending/absent fill) firing
+ * segment is itself a button (confirmed/pending/empty/absent fill) firing
  * `onSegmentClick`. Unlike ObjectPresenceStrip, this renders from a single
  * object up.
  */
@@ -64,7 +64,30 @@ describe('ObjectStatusStrip', () => {
     expect(screen.queryByText('Object timeline')).not.toBeInTheDocument();
   });
 
-  it('renders tri-state fills: confirmed solid, pending reduced opacity, absent neutral (no inline fill)', () => {
+  it('renders empty distinctly from pending: outlined in the object color, never filled', () => {
+    render(
+      <ObjectStatusStrip
+        objects={[
+          {
+            label: 'Object 1',
+            color: '#3b82f6',
+            statusByTimestamp: { [t1]: 'pending', [t2]: 'empty' },
+          },
+        ]}
+      />
+    );
+
+    // pending = a model box waiting to be accepted -> filled.
+    expect(screen.getByTestId('status-segment-0-0')).toHaveStyle({ backgroundColor: '#3b82f6' });
+
+    // empty = on the frame, but nothing on it yet -> outline only, so a
+    // just-added object's timeline can't read as already full.
+    const empty = screen.getByTestId('status-segment-0-1');
+    expect(empty).toHaveStyle({ boxShadow: 'inset 0 0 0 1px #3b82f6' });
+    expect(empty).not.toHaveStyle({ backgroundColor: '#3b82f6' });
+  });
+
+  it('renders fills: confirmed solid, pending reduced opacity, absent neutral (no inline fill)', () => {
     render(
       <ObjectStatusStrip
         objects={[
@@ -295,22 +318,5 @@ describe('ObjectStatusStrip', () => {
     expect(selectedRow).toHaveAttribute('data-selected', 'true');
     expect(selectedRow).toHaveClass('bg-pine-soft');
     expect(selectedRow).toHaveClass('border-l-pine');
-  });
-
-  it('renders an optional trailing action for an object (e.g. a quick-accept button)', () => {
-    render(
-      <ObjectStatusStrip
-        objects={[
-          {
-            label: 'Object 1',
-            color: '#3b82f6',
-            statusByTimestamp: { [t1]: 'confirmed' },
-            action: <button data-testid="my-action">Accept</button>,
-          },
-        ]}
-      />
-    );
-
-    expect(screen.getByTestId('my-action')).toBeInTheDocument();
   });
 });

@@ -206,6 +206,55 @@ function makeTwoLaneAlertDetail(): AlertDetail {
 const emptyAnnotationsPage = { items: [], page: 1, pages: 1, size: 100, total: 0 };
 
 /**
+ * "+ Add object" is gated behind the rail's missed-smoke question, which
+ * starts at No on every alert (deliberately NOT seeded from the flag classify
+ * set — adding an object has to be a decision made on this screen). Any test
+ * that adds an object has to open that gate first.
+ */
+function answerMissedSmokeYes() {
+  fireEvent.click(
+    within(screen.getByTestId('localize-missed-smoke-row')).getByRole('radio', { name: 'Yes' })
+  );
+}
+
+function makeDetectionAnnotation(detectionId: number): DetectionAnnotation {
+  return {
+    id: 9200 + detectionId,
+    detection_id: detectionId,
+    annotation: {
+      annotation: [
+        {
+          xyxyn: [0.1, 0.1, 0.3, 0.3],
+          class_name: 'smoke',
+          smoke_type: 'wildfire',
+          origin: 'human',
+        },
+      ],
+    },
+    processing_stage: 'annotated',
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: null,
+  };
+}
+
+/**
+ * Puts every frame of both default lanes into the `done` cell state (an
+ * annotated-stage detection annotation per detection). This is the state the
+ * submit gate demands: "Submit alert" only enables once every workable object
+ * already carries a committed box on every frame it appears on, so any test
+ * that needs to actually reach a submit has to start from here.
+ */
+function mockAllFramesAccepted() {
+  const detectionIdsByLane: Record<number, number[]> = { 101: [1001], 102: [1002, 1003] };
+  vi.mocked(apiClient.getDetectionAnnotations).mockImplementation(async filters => {
+    const items = (detectionIdsByLane[filters?.sequence_id ?? 0] ?? []).map(
+      makeDetectionAnnotation
+    );
+    return { ...emptyAnnotationsPage, items, total: items.length };
+  });
+}
+
+/**
  * Renders and waits for the async chain (sequence -> alert-detail ->
  * per-lane detections) to settle far enough for real frame data to have
  * landed — waiting for testid presence alone can catch the page mid-flight,
@@ -275,7 +324,13 @@ describe('LocalizeAlertPage', () => {
     // Both lanes are seq_annotation_done (workable) -> no context strip.
     expect(screen.queryByTestId('context-object-strip')).not.toBeInTheDocument();
 
-    expect(screen.getByText('2 objects')).toBeInTheDocument();
+    // Each object also gets a rail row carrying its localization progress.
+    expect(screen.getByTestId('localize-object-row-object-1')).toBeInTheDocument();
+    expect(screen.getByTestId('localize-object-row-object-2')).toBeInTheDocument();
+
+    // Header badge reports progress, not just a count: neither lane has any
+    // committed box yet, so nothing is localized.
+    expect(screen.getByText('0 of 2 objects localized')).toBeInTheDocument();
   });
 
   it('clicking a strip row activates that object (the shared frame now shows its detection)', async () => {
@@ -328,7 +383,8 @@ describe('LocalizeAlertPage', () => {
     await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
     expect(screen.getAllByTestId(/^object-status-row-/)).toHaveLength(1);
-    expect(screen.getByText('1 object')).toBeInTheDocument();
+    expect(screen.getAllByTestId(/^localize-object-row-/)).toHaveLength(1);
+    expect(screen.getByText('0 of 1 object localized')).toBeInTheDocument();
   });
 
   it('no ⚑ flag row renders (retired in favor of "+ Add object")', async () => {
@@ -374,6 +430,38 @@ describe('LocalizeAlertPage', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1002');
+    });
+  });
+
+  // Object 1 (lane 101) is only on T1; T2 belongs to Object 2 alone. With
+  // Object 1 active, T2 is context: nothing of Object 1 to annotate there.
+  it('marks frames the active object is absent from as context, and makes them non-interactive', async () => {
+    await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Go to Object 1' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`alert-frame-cell-${T2}`)).toHaveAttribute('data-context', 'true');
+    });
+    // The object's own frame stays full-strength and outlined in its color.
+    const ownCell = screen.getByTestId(`alert-frame-cell-${T1}`);
+    expect(ownCell).not.toHaveAttribute('data-context');
+    expect(ownCell.style.outline).toContain('solid');
+
+    // Clicking the context frame must NOT open the fallback lane's editor —
+    // that used to silently switch which object you were annotating.
+    fireEvent.click(screen.getByTestId(`alert-frame-cell-${T2}`));
+    expect(screen.queryByTestId('image-modal')).not.toBeInTheDocument();
+  });
+
+  it('leaves every frame interactive when no object is active', async () => {
+    await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+    expect(screen.getByTestId(`alert-frame-cell-${T2}`)).not.toHaveAttribute('data-context');
+
+    fireEvent.click(screen.getByTestId(`alert-frame-cell-${T2}`));
+    await waitFor(() => {
+      expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1003');
     });
   });
 
@@ -430,7 +518,10 @@ describe('LocalizeAlertPage', () => {
     await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
     // No active object: T1 falls back to the first present lane (Object 1 / detection 1001, no existing annotation).
-    expect(screen.getByTestId(`alert-frame-status-${T1}`)).toHaveTextContent('0/2');
+    expect(screen.getByTestId('status-segment-0-0')).toHaveAttribute(
+      'aria-label',
+      'Object 1, frame 1: pending'
+    );
     fireEvent.click(screen.getByTestId(`alert-frame-cell-${T1}`));
     await waitFor(() => {
       expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1001');
@@ -451,10 +542,18 @@ describe('LocalizeAlertPage', () => {
     });
 
     // Only lane 101's detection-annotations query was invalidated/refetched
-    // — the grid status for T1 now reflects one committed box of two.
+    // — Object 1's T1 frame now reads as confirmed on the timeline, while
+    // Object 2's own T1 frame is untouched.
     await waitFor(() => {
-      expect(screen.getByTestId(`alert-frame-status-${T1}`)).toHaveTextContent('1/2');
+      expect(screen.getByTestId('status-segment-0-0')).toHaveAttribute(
+        'aria-label',
+        'Object 1, frame 1: confirmed'
+      );
     });
+    expect(screen.getByTestId('status-segment-1-0')).toHaveAttribute(
+      'aria-label',
+      'Object 2, frame 1: pending'
+    );
 
     expect(screen.getByText('Frame saved')).toBeInTheDocument();
   });
@@ -765,52 +864,56 @@ describe('LocalizeAlertPage', () => {
     });
   });
 
-  describe('Accept all & submit alert', () => {
-    it("runs each workable lane's quick-accept plan, then submits exactly the workable annotation ids, and navigates back to the queue", async () => {
+  describe('Submit alert', () => {
+    it('stays disabled, with an explanation, while any object still has a pending frame', async () => {
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
-      fireEvent.click(screen.getByRole('button', { name: 'Accept all & submit alert' }));
+      expect(screen.getByRole('button', { name: /Submit alert/ })).toBeDisabled();
+      expect(screen.getByText(/Accept every object’s boxes to enable/)).toBeInTheDocument();
+      expect(screen.getByText('0 of 2 objects localized')).toBeInTheDocument();
+    });
 
-      // Every pending frame across both lanes is accepted before submit.
-      await waitFor(() => {
-        expect(apiClient.createDetectionAnnotation).toHaveBeenCalledTimes(3);
-      });
-      expect(apiClient.createDetectionAnnotation).toHaveBeenCalledWith(
-        expect.objectContaining({ detection_id: 1001 })
-      );
-      expect(apiClient.createDetectionAnnotation).toHaveBeenCalledWith(
-        expect.objectContaining({ detection_id: 1002 })
-      );
-      expect(apiClient.createDetectionAnnotation).toHaveBeenCalledWith(
-        expect.objectContaining({ detection_id: 1003 })
-      );
+    it('enables once every object is accepted, submits exactly the workable annotation ids, and navigates back to the queue', async () => {
+      mockAllFramesAccepted();
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
-      // Exactly one bulk submit call, with both lanes' sequence-annotation ids.
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: /Submit alert/ })).toBeEnabled()
+      );
+      expect(screen.getByText('2 of 2 objects localized')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: /Submit alert/ }));
+
+      // Exactly one bulk submit, with both lanes' sequence-annotation ids —
+      // and no accepting of its own: submit no longer writes boxes.
       await waitFor(() => {
         expect(apiClient.localizeSubmit).toHaveBeenCalledWith([201, 202]);
       });
       expect(apiClient.localizeSubmit).toHaveBeenCalledTimes(1);
+      expect(apiClient.createDetectionAnnotation).not.toHaveBeenCalled();
 
       expect(screen.getByText('Alert submitted')).toBeInTheDocument();
       await waitFor(
         () => expect(screen.getByTestId('localize-queue-landing')).toBeInTheDocument(),
-        {
-          timeout: 2000,
-        }
+        { timeout: 2000 }
       );
     });
 
     it('toasts and refetches statuses without navigating when the backend rejects an incomplete lane (422)', async () => {
+      mockAllFramesAccepted();
       vi.mocked(apiClient.localizeSubmit).mockRejectedValue({
         detail:
           'Cannot submit: 1 detection(s) lack an annotated-stage detection annotation (localization incomplete)',
       });
 
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: /Submit alert/ })).toBeEnabled()
+      );
 
       const callsBefore = vi.mocked(apiClient.getDetectionAnnotations).mock.calls.length;
 
-      fireEvent.click(screen.getByRole('button', { name: 'Accept all & submit alert' }));
+      fireEvent.click(screen.getByRole('button', { name: /Submit alert/ }));
 
       await waitFor(() => {
         expect(
@@ -828,93 +931,7 @@ describe('LocalizeAlertPage', () => {
       });
     });
 
-    it("a save that fails mid-loop across lanes never submits, toasts the failure, and invalidates every workable lane's cache (not just the failed one) so a retry re-derives from server truth", async () => {
-      // Lane 1 (Object 1 / detection 1001) saves fine; lane 2's first
-      // pending frame (1002) rejects with a generic (non-"incomplete")
-      // error — a mid-loop network blip, not a 422 from localize-submit
-      // itself (localizeSubmit is never even reached).
-      vi.mocked(apiClient.createDetectionAnnotation).mockImplementation(async payload => {
-        if (payload.detection_id === 1002) {
-          throw { detail: 'Network error' };
-        }
-        return {
-          id: 9100 + payload.detection_id,
-          detection_id: payload.detection_id,
-          annotation: payload.annotation,
-          processing_stage: payload.processing_stage,
-          created_at: '2026-01-01T00:00:00Z',
-          updated_at: null,
-        };
-      });
-
-      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
-
-      const callsForLane = (id: number) =>
-        vi
-          .mocked(apiClient.getDetectionAnnotations)
-          .mock.calls.filter(([filters]) => filters?.sequence_id === id).length;
-      const lane101Before = callsForLane(101);
-      const lane102Before = callsForLane(102);
-
-      fireEvent.click(screen.getByRole('button', { name: 'Accept all & submit alert' }));
-
-      // Lane 1 saved successfully before lane 2 failed.
-      await waitFor(() => {
-        expect(apiClient.createDetectionAnnotation).toHaveBeenCalledWith(
-          expect.objectContaining({ detection_id: 1001 })
-        );
-      });
-      // Fail-fast within lane 2 too: its second frame (1003) is never attempted.
-      await waitFor(() => {
-        expect(screen.getByText('Submit failed: Network error')).toBeInTheDocument();
-      });
-      expect(apiClient.createDetectionAnnotation).not.toHaveBeenCalledWith(
-        expect.objectContaining({ detection_id: 1003 })
-      );
-      expect(apiClient.localizeSubmit).not.toHaveBeenCalled();
-
-      // Both workable lanes' detection-annotation caches are invalidated —
-      // including lane 1's, whose saves actually landed server-side — so a
-      // retry re-derives its plan from server truth instead of re-POSTing
-      // creates for already-annotated detections.
-      await waitFor(() => {
-        expect(callsForLane(101)).toBeGreaterThan(lane101Before);
-        expect(callsForLane(102)).toBeGreaterThan(lane102Before);
-      });
-    });
-
-    it('warns with a two-step confirm when some pending frames have no box, then proceeds on the second click', async () => {
-      // Detection 1002 has no predictions at all (no auto, no algo) -> a
-      // pending frame with zero boxes, contributing to the no-box count.
-      vi.mocked(apiClient.getSequenceDetections).mockImplementation(async (id: number) => {
-        if (id === 101) return [makeDetection(1001, T1)];
-        if (id === 102) {
-          return [
-            { ...makeDetection(1002, T1), auto_predictions: { predictions: [] } },
-            makeDetection(1003, T2),
-          ];
-        }
-        return [];
-      });
-
-      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
-
-      fireEvent.click(screen.getByRole('button', { name: 'Accept all & submit alert' }));
-
-      await waitFor(() => {
-        expect(screen.getByText('1 frame with no box — submit anyway?')).toBeInTheDocument();
-      });
-      expect(apiClient.createDetectionAnnotation).not.toHaveBeenCalled();
-      expect(apiClient.localizeSubmit).not.toHaveBeenCalled();
-
-      fireEvent.click(screen.getByRole('button', { name: '1 frame with no box — submit anyway?' }));
-
-      await waitFor(() => {
-        expect(apiClient.localizeSubmit).toHaveBeenCalledWith([201, 202]);
-      });
-    });
-
-    it('disables the submit button when no lane is workable (both lanes already annotated)', async () => {
+    it('is disabled when no lane is workable (both lanes already annotated)', async () => {
       vi.mocked(apiClient.getAlertDetail).mockResolvedValue({
         ...makeTwoLaneAlertDetail(),
         lanes: [
@@ -939,20 +956,8 @@ describe('LocalizeAlertPage', () => {
 
       render(<LocalizeAlertPage />, { wrapper });
       await waitFor(() =>
-        expect(screen.getByRole('button', { name: 'Accept all & submit alert' })).toBeDisabled()
+        expect(screen.getByRole('button', { name: /Submit alert/ })).toBeDisabled()
       );
-    });
-  });
-
-  it('the "Open Object N" shortcut activates the first workable object with a pending frame and scrolls to it', async () => {
-    await renderAndSettle(<LocalizeAlertPage />, { wrapper });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Open Object 1 ✎' }));
-
-    await waitFor(() => expect(Element.prototype.scrollIntoView).toHaveBeenCalled());
-    await waitFor(() => {
-      const img = within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img');
-      expect(img).toHaveAttribute('src', 'https://img.example/1001.jpg');
     });
   });
 
@@ -976,21 +981,24 @@ describe('LocalizeAlertPage', () => {
         return [];
       });
       let nextId = 103;
-      vi.mocked(apiClient.addObject).mockImplementation(async (_sourceApi, _platformAlertId, smokeType) => {
-        const id = nextId;
-        nextId += 1;
-        const newLane: AlertLane = {
-          sequence: makeSequence({ id, alert_api_id: 9000 + id }),
-          annotation: makeAnnotation({ id: id * 10, sequence_id: id, smoke_types: [smokeType] }),
-        };
-        alertLanes = [...alertLanes, newLane];
-        return newLane;
-      });
+      vi.mocked(apiClient.addObject).mockImplementation(
+        async (_sourceApi, _platformAlertId, smokeType) => {
+          const id = nextId;
+          nextId += 1;
+          const newLane: AlertLane = {
+            sequence: makeSequence({ id, alert_api_id: 9000 + id }),
+            annotation: makeAnnotation({ id: id * 10, sequence_id: id, smoke_types: [smokeType] }),
+          };
+          alertLanes = [...alertLanes, newLane];
+          return newLane;
+        }
+      );
     }
 
     it('opens a smoke-type picker, and Cancel closes it without adding anything', async () => {
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
+      answerMissedSmokeYes();
       fireEvent.click(screen.getByRole('button', { name: 'Add object' }));
       expect(screen.getByRole('button', { name: 'wildfire' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'industrial' })).toBeInTheDocument();
@@ -1006,6 +1014,7 @@ describe('LocalizeAlertPage', () => {
       mockAddObjectFlow();
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
+      answerMissedSmokeYes();
       fireEvent.click(screen.getByRole('button', { name: 'Add object' }));
       fireEvent.click(screen.getByRole('button', { name: 'industrial' }));
 
@@ -1036,10 +1045,12 @@ describe('LocalizeAlertPage', () => {
       mockAddObjectFlow();
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
+      answerMissedSmokeYes();
       fireEvent.click(screen.getByRole('button', { name: 'Add object' }));
       fireEvent.click(screen.getByRole('button', { name: 'wildfire' }));
       await waitFor(() => expect(screen.getByTestId('object-status-row-2')).toBeInTheDocument());
 
+      answerMissedSmokeYes();
       fireEvent.click(screen.getByRole('button', { name: 'Add object' }));
       fireEvent.click(screen.getByRole('button', { name: 'other' }));
       await waitFor(() => expect(screen.getByTestId('object-status-row-3')).toBeInTheDocument());
@@ -1053,11 +1064,118 @@ describe('LocalizeAlertPage', () => {
       ).toBeInTheDocument();
     });
 
+    /**
+     * Faithful to the backend's `/alert/add-object`: the spawned lane's
+     * detections are cloned with `algo_predictions: []` and no
+     * auto_predictions (the AI never saw this object), and every frame gets
+     * a DetectionAnnotation at `bbox_annotation` stage — so every cell is
+     * `no-box`, with nothing to accept until the annotator draws.
+     * `mockAddObjectFlow` above is deliberately looser (its lanes carry
+     * model boxes); this is the shape the real endpoint produces.
+     */
+    function mockRealisticAddObjectFlow() {
+      let alertLanes: AlertLane[] = makeTwoLaneAlertDetail().lanes;
+      vi.mocked(apiClient.getAlertDetail).mockImplementation(async () => ({
+        ...makeTwoLaneAlertDetail(),
+        lanes: alertLanes,
+      }));
+      vi.mocked(apiClient.getSequenceDetections).mockImplementation(async (id: number) => {
+        if (id === 101) return [makeDetection(1001, T1)];
+        if (id === 102) return [makeDetection(1002, T1), makeDetection(1003, T2)];
+        if (id === 103) {
+          // Cloned frames: no predictions of any kind.
+          return [
+            {
+              ...makeDetection(1004, T1),
+              algo_predictions: { predictions: [] },
+              auto_predictions: undefined,
+            },
+            {
+              ...makeDetection(1005, T2),
+              algo_predictions: { predictions: [] },
+              auto_predictions: undefined,
+            },
+          ];
+        }
+        return [];
+      });
+      vi.mocked(apiClient.getDetectionAnnotations).mockImplementation(async filters => {
+        if (filters?.sequence_id !== 103) return emptyAnnotationsPage;
+        const items = [1004, 1005].map(detectionId => ({
+          ...makeDetectionAnnotation(detectionId),
+          annotation: { annotation: [] },
+          processing_stage: 'bbox_annotation' as const,
+        }));
+        return { ...emptyAnnotationsPage, items, total: items.length };
+      });
+      vi.mocked(apiClient.addObject).mockImplementation(async () => {
+        const newLane: AlertLane = {
+          sequence: makeSequence({ id: 103, alert_api_id: 9003 }),
+          annotation: makeAnnotation({ id: 203, sequence_id: 103 }),
+        };
+        alertLanes = [...alertLanes, newLane];
+        return newLane;
+      });
+    }
+
+    it('a just-added object reads as empty across its timeline — no fill implying boxes it does not have', async () => {
+      mockRealisticAddObjectFlow();
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      answerMissedSmokeYes();
+      fireEvent.click(screen.getByRole('button', { name: 'Add object' }));
+      fireEvent.click(screen.getByRole('button', { name: 'wildfire' }));
+      await waitFor(() => expect(screen.getByTestId('object-status-row-2')).toBeInTheDocument());
+
+      // Both of its frames are 'empty' (present, nothing on them), NOT
+      // 'pending' — which used to paint a filled bar across the whole row.
+      await waitFor(() => {
+        expect(screen.getByTestId('status-segment-2-0')).toHaveAttribute(
+          'aria-label',
+          'Object 3, frame 1: empty'
+        );
+      });
+      expect(screen.getByTestId('status-segment-2-1')).toHaveAttribute(
+        'aria-label',
+        'Object 3, frame 2: empty'
+      );
+
+      // And its rail row says 0 of 2 done rather than implying progress.
+      expect(
+        within(screen.getByTestId('localize-object-row-object-3')).getByText('0/2')
+      ).toBeInTheDocument();
+    });
+
+    it('clicking a just-added object activates it without hanging (no boxes to focus on)', async () => {
+      mockRealisticAddObjectFlow();
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      answerMissedSmokeYes();
+      fireEvent.click(screen.getByRole('button', { name: 'Add object' }));
+      fireEvent.click(screen.getByRole('button', { name: 'wildfire' }));
+      await waitFor(() => expect(screen.getByTestId('object-status-row-2')).toBeInTheDocument());
+
+      // Row click toggles focus off (add already focused it), then on again.
+      fireEvent.click(screen.getByTestId('localize-object-row-object-3'));
+      fireEvent.click(screen.getByTestId('localize-object-row-object-3'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('localize-object-row-object-3')).toHaveAttribute(
+          'data-active',
+          'true'
+        );
+      });
+      // Focus mode forces the cropped-view strip, but the lane has no boxes
+      // to crop — it must simply not render rather than spin.
+      expect(screen.queryByTestId('cropped-image-sequence')).not.toBeInTheDocument();
+    });
+
     it('toasts on a failed add and keeps the picker usable for a retry', async () => {
       vi.mocked(apiClient.addObject).mockRejectedValueOnce(new Error('Network error'));
 
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
+      answerMissedSmokeYes();
       fireEvent.click(screen.getByRole('button', { name: 'Add object' }));
       fireEvent.click(screen.getByRole('button', { name: 'wildfire' }));
 
@@ -1068,7 +1186,269 @@ describe('LocalizeAlertPage', () => {
     });
   });
 
+  describe('false-positive context toggle', () => {
+    /** Lane 102 classified as a false positive rather than smoke. */
+    function alertWithFalsePositive() {
+      vi.mocked(apiClient.getAlertDetail).mockResolvedValue({
+        ...makeTwoLaneAlertDetail(),
+        lanes: [
+          {
+            sequence: makeSequence({ id: 101, alert_api_id: 9001 }),
+            annotation: makeAnnotation({ id: 201, sequence_id: 101 }),
+          },
+          {
+            sequence: makeSequence({ id: 102, alert_api_id: 9002 }),
+            annotation: makeAnnotation({
+              id: 202,
+              sequence_id: 102,
+              has_smoke: false,
+              has_missed_smoke: false,
+              smoke_types: [],
+              false_positive_types: '["cloud"]',
+            }),
+          },
+        ],
+      });
+    }
+
+    it('disables the toggle when the alert has no false-positive objects', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      const toggle = screen.getByRole('button', { name: /False positives/ });
+      expect(toggle).toBeDisabled();
+      // No count badge when there is nothing to reveal.
+      expect(toggle).toHaveTextContent(/^False positives$/);
+    });
+
+    it('shows how many false-positive objects the alert has', async () => {
+      alertWithFalsePositive();
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      const toggle = screen.getByRole('button', { name: /False positives/ });
+      expect(toggle).toBeEnabled();
+      expect(toggle).toHaveTextContent('False positives1');
+    });
+
+    it('keeps false-positive frames read-only — visible, never openable in the editor', async () => {
+      alertWithFalsePositive();
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: /False positives/ }));
+      await waitFor(() => {
+        expect(screen.getByTestId('localize-object-row-object-2')).toBeInTheDocument();
+      });
+
+      // Activate the false-positive object: its cropped view is the point.
+      fireEvent.click(screen.getByRole('button', { name: 'Go to Object 2' }));
+      await waitFor(() => {
+        expect(screen.getByTestId('cropped-image-sequence')).toHaveAttribute(
+          'data-sequence-id',
+          '102'
+        );
+      });
+
+      // But its frames never open the editable modal.
+      expect(screen.getByTestId(`alert-frame-cell-${T2}`)).toHaveAttribute('data-readonly', 'true');
+      fireEvent.click(screen.getByTestId(`alert-frame-cell-${T2}`));
+      expect(screen.queryByTestId('image-modal')).not.toBeInTheDocument();
+    });
+
+    it('keeps a shared frame workable when the FIRST lane on it is the false positive', async () => {
+      // Primary lane is the false positive; the smoke object is the sibling.
+      // With no object active the grid falls back to a cell — it must pick
+      // the workable one, or the whole frame would go read-only and hide the
+      // smoke object behind an un-clickable cell.
+      vi.mocked(apiClient.getAlertDetail).mockResolvedValue({
+        ...makeTwoLaneAlertDetail(),
+        lanes: [
+          {
+            sequence: makeSequence({ id: 101, alert_api_id: 9001 }),
+            annotation: makeAnnotation({
+              id: 201,
+              sequence_id: 101,
+              has_smoke: false,
+              has_missed_smoke: false,
+              smoke_types: [],
+              false_positive_types: '["cloud"]',
+            }),
+          },
+          {
+            sequence: makeSequence({ id: 102, alert_api_id: 9002 }),
+            annotation: makeAnnotation({ id: 202, sequence_id: 102 }),
+          },
+        ],
+      });
+
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      fireEvent.click(screen.getByRole('button', { name: /False positives/ }));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('localize-object-row-object-1')).toBeInTheDocument();
+      });
+
+      // T1 carries both lanes; it stays openable, on the smoke lane.
+      expect(screen.getByTestId(`alert-frame-cell-${T1}`)).not.toHaveAttribute('data-readonly');
+      fireEvent.click(screen.getByTestId(`alert-frame-cell-${T1}`));
+      await waitFor(() => {
+        expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1002');
+      });
+    });
+
+    it('hides false-positive objects by default, matching the queue rule', async () => {
+      alertWithFalsePositive();
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      expect(screen.getByTestId('localize-object-row-object-1')).toBeInTheDocument();
+      expect(screen.queryByTestId('localize-object-row-object-2')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('false-positive-divider')).not.toBeInTheDocument();
+    });
+
+    it('surfaces them as a separated, read-only group when toggled on', async () => {
+      alertWithFalsePositive();
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: /False positives/ }));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('localize-object-row-object-2')).toBeInTheDocument();
+      });
+      // Visually separated from the objects that still need work.
+      expect(screen.getByTestId('false-positive-divider')).toBeInTheDocument();
+
+      const fpRow = screen.getByTestId('localize-object-row-object-2');
+      expect(within(fpRow).getByText('False positive')).toBeInTheDocument();
+      expect(within(fpRow).getByText('cloud')).toBeInTheDocument();
+      // No localization work, so no progress fraction.
+      expect(within(fpRow).queryByText(/^\d+\/\d+$/)).not.toBeInTheDocument();
+      // Read-only: no accept action, and it never becomes work to do.
+      expect(within(fpRow).queryByRole('button', { name: /Accept/ })).not.toBeInTheDocument();
+      expect(screen.getByText('0 of 1 object localized')).toBeInTheDocument();
+    });
+
+    it("shows each smoke object's type on its row", async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      expect(
+        within(screen.getByTestId('localize-object-row-object-1')).getByText('wildfire')
+      ).toBeInTheDocument();
+    });
+  });
+
+  describe('missed-smoke row', () => {
+    function flaggedAlert() {
+      vi.mocked(apiClient.getAlertDetail).mockResolvedValue({
+        ...makeTwoLaneAlertDetail(),
+        lanes: [
+          {
+            sequence: makeSequence({ id: 101, alert_api_id: 9001 }),
+            annotation: makeAnnotation({ id: 201, sequence_id: 101, has_missed_smoke: true }),
+          },
+          {
+            sequence: makeSequence({ id: 102, alert_api_id: 9002 }),
+            annotation: makeAnnotation({ id: 202, sequence_id: 102 }),
+          },
+        ],
+      });
+    }
+
+    it('starts at No even on an alert classify already flagged — adding an object is a decision made here', async () => {
+      flaggedAlert();
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      const row = screen.getByTestId('localize-missed-smoke-row');
+      expect(within(row).getByRole('radio', { name: 'No' })).toHaveAttribute(
+        'aria-checked',
+        'true'
+      );
+      // And so the inherited flag alone never pre-authorizes adding.
+      expect(screen.queryByRole('button', { name: 'Add object' })).not.toBeInTheDocument();
+    });
+
+    it('gates "+ Add object" until answered Yes, and re-locks it on No', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      // The control does not exist at all until the question is answered Yes.
+      expect(screen.queryByRole('button', { name: 'Add object' })).not.toBeInTheDocument();
+
+      answerMissedSmokeYes();
+      expect(screen.getByRole('button', { name: 'Add object' })).toBeEnabled();
+      // It lives inside the question it answers, not beside it.
+      expect(
+        within(screen.getByTestId('localize-missed-smoke-row')).getByRole('button', {
+          name: 'Add object',
+        })
+      ).toBeInTheDocument();
+      expect(
+        within(screen.getByTestId('localize-missed-smoke-row')).getByText(
+          /Add the object the AI missed/
+        )
+      ).toBeInTheDocument();
+
+      // Both radios disable while the PATCH is in flight (no double-writes),
+      // so wait for it to settle before answering the other way.
+      const noRadio = within(screen.getByTestId('localize-missed-smoke-row')).getByRole('radio', {
+        name: 'No',
+      });
+      await waitFor(() => expect(noRadio).toBeEnabled());
+      fireEvent.click(noRadio);
+      expect(screen.queryByRole('button', { name: 'Add object' })).not.toBeInTheDocument();
+    });
+
+    it('answering Yes PATCHes the flag onto the first annotated lane', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(
+        within(screen.getByTestId('localize-missed-smoke-row')).getByRole('radio', { name: 'Yes' })
+      );
+
+      await waitFor(() => {
+        expect(apiClient.updateSequenceAnnotation).toHaveBeenCalledWith(201, {
+          has_missed_smoke: true,
+        });
+      });
+    });
+
+    it('answering No clears it from whichever lane already carries it', async () => {
+      flaggedAlert();
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(
+        within(screen.getByTestId('localize-missed-smoke-row')).getByRole('radio', { name: 'No' })
+      );
+
+      await waitFor(() => {
+        expect(apiClient.updateSequenceAnnotation).toHaveBeenCalledWith(201, {
+          has_missed_smoke: false,
+        });
+      });
+    });
+
+    it('answering Yes is what records the flag — the add itself no longer needs to', async () => {
+      vi.mocked(apiClient.addObject).mockResolvedValue({
+        sequence: makeSequence({ id: 103, alert_api_id: 9003 }),
+        annotation: makeAnnotation({ id: 203, sequence_id: 103 }),
+      });
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      answerMissedSmokeYes();
+      fireEvent.click(screen.getByRole('button', { name: 'Add object' }));
+      fireEvent.click(screen.getByRole('button', { name: 'wildfire' }));
+
+      await waitFor(() => {
+        expect(apiClient.updateSequenceAnnotation).toHaveBeenCalledWith(201, {
+          has_missed_smoke: true,
+        });
+      });
+    });
+  });
+
   describe('soft-confirm on submit (flagged, no object added this session)', () => {
+    // Every case here has to actually reach submit, which is gated on all
+    // objects already being accepted.
+    beforeEach(() => {
+      mockAllFramesAccepted();
+    });
+
     function mockFlaggedAlert() {
       vi.mocked(apiClient.getAlertDetail).mockResolvedValue({
         ...makeTwoLaneAlertDetail(),
@@ -1089,7 +1469,7 @@ describe('LocalizeAlertPage', () => {
       mockFlaggedAlert();
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
-      fireEvent.click(screen.getByRole('button', { name: 'Accept all & submit alert' }));
+      fireEvent.click(screen.getByRole('button', { name: /Submit alert/ }));
 
       await waitFor(() => {
         expect(
@@ -1120,6 +1500,13 @@ describe('LocalizeAlertPage', () => {
         if (id === 103) return [makeDetection(1004, T1)];
         return [];
       });
+      // The spawned lane's own frame must be accepted too, or the submit
+      // gate (not the soft-confirm) would be what blocks the click.
+      vi.mocked(apiClient.getDetectionAnnotations).mockImplementation(async filters => {
+        const byLane: Record<number, number[]> = { 101: [1001], 102: [1002, 1003], 103: [1004] };
+        const items = (byLane[filters?.sequence_id ?? 0] ?? []).map(makeDetectionAnnotation);
+        return { ...emptyAnnotationsPage, items, total: items.length };
+      });
       vi.mocked(apiClient.addObject).mockImplementation(async () => {
         const newLane: AlertLane = {
           sequence: makeSequence({ id: 103, alert_api_id: 9003 }),
@@ -1131,11 +1518,12 @@ describe('LocalizeAlertPage', () => {
 
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
+      answerMissedSmokeYes();
       fireEvent.click(screen.getByRole('button', { name: 'Add object' }));
       fireEvent.click(screen.getByRole('button', { name: 'wildfire' }));
       await waitFor(() => expect(screen.getByTestId('object-status-row-2')).toBeInTheDocument());
 
-      fireEvent.click(screen.getByRole('button', { name: 'Accept all & submit alert' }));
+      fireEvent.click(screen.getByRole('button', { name: /Submit alert/ }));
 
       expect(
         screen.queryByText('You flagged missed smoke but added no object — submit anyway?')
@@ -1146,7 +1534,7 @@ describe('LocalizeAlertPage', () => {
       mockFlaggedAlert();
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
-      fireEvent.click(screen.getByRole('button', { name: 'Accept all & submit alert' }));
+      fireEvent.click(screen.getByRole('button', { name: /Submit alert/ }));
 
       await waitFor(() => {
         expect(
@@ -1167,7 +1555,7 @@ describe('LocalizeAlertPage', () => {
       mockFlaggedAlert();
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
-      fireEvent.click(screen.getByRole('button', { name: 'Accept all & submit alert' }));
+      fireEvent.click(screen.getByRole('button', { name: /Submit alert/ }));
       await waitFor(() => {
         expect(screen.getByTestId('missed-smoke-confirm')).toBeInTheDocument();
       });
@@ -1184,7 +1572,7 @@ describe('LocalizeAlertPage', () => {
       mockFlaggedAlert();
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
-      fireEvent.click(screen.getByRole('button', { name: 'Accept all & submit alert' }));
+      fireEvent.click(screen.getByRole('button', { name: /Submit alert/ }));
       await waitFor(() => {
         expect(screen.getByTestId('missed-smoke-confirm')).toBeInTheDocument();
       });
@@ -1201,41 +1589,20 @@ describe('LocalizeAlertPage', () => {
       });
     });
 
-    it('composes with the no-box two-step confirm: soft-confirm resolves first, then the routine no-box warning', async () => {
+    it('is the only gate left in front of submit — resolving it submits straight away', async () => {
       mockFlaggedAlert();
-      // Detection 1002 has no predictions -> a pending frame with zero
-      // boxes, same setup as the plain no-box confirm test.
-      vi.mocked(apiClient.getSequenceDetections).mockImplementation(async (id: number) => {
-        if (id === 101) return [makeDetection(1001, T1)];
-        if (id === 102) {
-          return [
-            { ...makeDetection(1002, T1), auto_predictions: { predictions: [] } },
-            makeDetection(1003, T2),
-          ];
-        }
-        return [];
-      });
-
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
-      fireEvent.click(screen.getByRole('button', { name: 'Accept all & submit alert' }));
+      fireEvent.click(screen.getByRole('button', { name: /Submit alert/ }));
       await waitFor(() => {
         expect(screen.getByTestId('missed-smoke-confirm')).toBeInTheDocument();
       });
       expect(apiClient.localizeSubmit).not.toHaveBeenCalled();
 
+      // The old per-frame "N frames with no box — submit anyway?" two-step
+      // went away with the bulk-accept-on-submit it guarded: submit now
+      // requires every frame to already carry a committed box.
       fireEvent.click(screen.getByRole('button', { name: 'Submit anyway' }));
-
-      // Soft-confirm resolved -> falls through to the ordinary per-frame
-      // no-box two-step, not straight to submit.
-      await waitFor(() => {
-        expect(screen.getByText('1 frame with no box — submit anyway?')).toBeInTheDocument();
-      });
-      expect(apiClient.localizeSubmit).not.toHaveBeenCalled();
-
-      fireEvent.click(
-        screen.getByRole('button', { name: '1 frame with no box — submit anyway?' })
-      );
 
       await waitFor(() => {
         expect(apiClient.localizeSubmit).toHaveBeenCalledWith([201, 202]);
