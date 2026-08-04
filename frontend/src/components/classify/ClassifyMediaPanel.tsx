@@ -40,8 +40,6 @@ export interface ClassifyMediaPanelProps {
   objectOverlays: ObjectOverlay[];
 }
 
-const eyebrow = 'font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze';
-
 export const ClassifyMediaPanel: React.FC<ClassifyMediaPanelProps> = ({
   activeSection,
   activeObject,
@@ -99,7 +97,6 @@ export const ClassifyMediaPanel: React.FC<ClassifyMediaPanelProps> = ({
             isFullscreen ? 'flex h-full flex-col justify-center overflow-hidden bg-char p-6' : ''
           }
         >
-          {!isFullscreen && <div className={`mb-3 ${eyebrow}`}>Missed smoke review</div>}
           <SequenceReviewer
             sequenceId={primarySequenceId}
             missedSmokeReview={missedSmokeReview}
