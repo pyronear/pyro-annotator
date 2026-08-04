@@ -226,7 +226,6 @@ class SequenceAnnotationUpdate(BaseModel):
         description="Updated processing stage in the sequence annotation workflow. Use to advance or modify the current stage.",
         examples=["ready_to_annotate", "annotated"],
     )
-    updated_at: Optional[datetime] = None
 
     # Optional configuration parameters for automatic annotation generation
     confidence_threshold: Optional[float] = Field(
