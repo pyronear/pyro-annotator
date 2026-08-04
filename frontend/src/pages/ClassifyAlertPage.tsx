@@ -766,7 +766,11 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
   // Keyboard shortcuts over the flattened card list.
   useEffect(() => {
     const handleKeyDown = createKeyboardHandler({
-      activeDetectionIndex: activeIndex,
+      // Classification shortcuts (S/F, types, Q) only apply while the
+      // object section is active — a null index makes them inert when the
+      // missed-smoke section is selected. The navigators keep their own
+      // (ungated) state, so ArrowUp still leaves the sequence section.
+      activeDetectionIndex: activeSection === 'detections' ? activeIndex : null,
       bboxes: adapterBboxes,
       showKeyboardModal,
       missedSmokeReview,
@@ -779,6 +783,23 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
       handleMissedSmokeReviewChange,
       handleBboxChange: handleBboxChangeAdapter,
       onPrimaryClassificationChange: handlePrimaryClassificationChangeAdapter,
+      // Q: toggle the active object's Unsure — same mutual exclusivity as
+      // the Unsure chip (turning it on clears the classification).
+      onUnsureToggle: index => {
+        const card = cards[index];
+        if (!card || card.locked) return;
+        const next = !(laneUnsure[card.laneSequenceId] ?? false);
+        if (next) {
+          handleClassificationChangeByCardKey(card.cardKey, 'unselected');
+          handleBboxChangeByCardKey(card.cardKey, {
+            ...getBbox(card),
+            is_smoke: false,
+            smoke_type: undefined,
+            false_positive_types: [],
+          });
+        }
+        handleUnsureChangeByCardKey(card.cardKey, next);
+      },
     });
 
     document.addEventListener('keydown', handleKeyDown, true);
@@ -786,8 +807,10 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     activeIndex,
+    activeSection,
     cards,
     laneBboxes,
+    laneUnsure,
     showKeyboardModal,
     missedSmokeReview,
     primaryClassification,
@@ -1105,6 +1128,10 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
                     Smoke type (wildfire / industrial / other)
                   </span>
                   <span className="font-data text-detail text-haze">1 / 2 / 3</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="font-body text-sm text-char">Mark active object as unsure</span>
+                  <span className="font-data text-detail text-haze">Q</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="font-body text-sm text-char">Missed smoke yes / no</span>

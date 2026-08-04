@@ -163,6 +163,7 @@ export const ClassificationChips: React.FC<ClassificationChipsProps> = ({
             className={primaryChip(unsure, 'border-signal bg-signal-soft text-signal')}
           >
             Unsure
+            {showKbdHints && <Kbd label="Q" />}
           </button>
         )}
       </div>

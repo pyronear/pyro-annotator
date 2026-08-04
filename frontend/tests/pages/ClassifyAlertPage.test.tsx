@@ -963,6 +963,31 @@ describe('ClassifyAlertPage', () => {
     await waitFor(() => expect(navigateMock).toHaveBeenCalled(), { timeout: 2000 });
   });
 
+  it('Q toggles unsure on the active object, mutually exclusive with S', async () => {
+    await renderAndSettle(<ClassifyAlertPage />, { wrapper });
+
+    fireEvent.keyDown(document, { key: 'q' });
+    const row = within(screen.getByTestId('object-card-101:0'));
+    expect(row.getByRole('radio', { name: 'Unsure' })).toBeChecked();
+
+    fireEvent.keyDown(document, { key: 's' });
+    expect(row.getByRole('radio', { name: 'Unsure' })).not.toBeChecked();
+    expect(row.getByRole('radio', { name: 'Smoke' })).toBeChecked();
+  });
+
+  it('classification shortcuts are inert while the missed-smoke section is active', async () => {
+    await renderAndSettle(<ClassifyAlertPage />, { wrapper });
+
+    fireEvent.click(screen.getByTestId('missed-smoke-row'));
+    fireEvent.keyDown(document, { key: 'f' });
+
+    // Back to the object view: the active object was never classified.
+    fireEvent.click(screen.getByTestId('object-card-101:0'));
+    const row = within(screen.getByTestId('object-card-101:0'));
+    expect(row.getByRole('radio', { name: 'False positive' })).not.toBeChecked();
+    expect(row.getByText('Pending')).toBeInTheDocument();
+  });
+
   it('shows the FP type chips as a full inline wrap on the active row', async () => {
     await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 
