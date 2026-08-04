@@ -915,6 +915,20 @@ async def classify_done(
     source_api: Optional[SourceApi] = Query(None),
     recorded_at_gte: Optional[datetime] = Query(None),
     recorded_at_lte: Optional[datetime] = Query(None),
+    false_positive_types: Optional[List[FalsePositiveType]] = Query(
+        None, description="Alerts with any lane matching one of these FP types"
+    ),
+    smoke_types: Optional[List[SmokeType]] = Query(
+        None, description="Alerts with any lane matching one of these smoke types"
+    ),
+    is_unsure: Optional[bool] = Query(
+        None, description="Alerts with any lane whose unsure flag equals this"
+    ),
+    model_accuracy: Optional[Literal["tp", "fp", "fn"]] = Query(
+        None,
+        description="Alerts with any lane of this derived accuracy "
+        "(missed smoke → fn, else smoke → tp, else fp)",
+    ),
     session: AsyncSession = Depends(get_session),
     params: Params = Depends(),
     current_user: User = Depends(get_current_user),
@@ -945,6 +959,56 @@ async def classify_done(
         alerts = alerts.where(Sequence.recorded_at >= recorded_at_gte)
     if recorded_at_lte is not None:
         alerts = alerts.where(Sequence.recorded_at <= recorded_at_lte)
+
+    def any_lane(condition):
+        # HAVING-level "at least one lane matches" over the grouped join.
+        return func.sum(case((condition, 1), else_=0)) > 0
+
+    if false_positive_types:
+        alerts = alerts.having(
+            any_lane(
+                SequenceAnnotation.false_positive_types.op("?|")(
+                    cast(
+                        [fp_type.value for fp_type in false_positive_types],
+                        ARRAY(String),
+                    )
+                )
+            )
+        )
+    if smoke_types:
+        alerts = alerts.having(
+            any_lane(
+                SequenceAnnotation.smoke_types.op("?|")(
+                    cast(
+                        [smoke_type.value for smoke_type in smoke_types], ARRAY(String)
+                    )
+                )
+            )
+        )
+    if is_unsure is not None:
+        alerts = alerts.having(
+            any_lane(func.coalesce(SequenceAnnotation.is_unsure, False).is_(is_unsure))
+        )
+    if model_accuracy == "fn":
+        alerts = alerts.having(any_lane(SequenceAnnotation.has_missed_smoke.is_(True)))
+    elif model_accuracy == "tp":
+        alerts = alerts.having(
+            any_lane(
+                and_(
+                    SequenceAnnotation.has_missed_smoke.is_(False),
+                    SequenceAnnotation.has_smoke.is_(True),
+                )
+            )
+        )
+    elif model_accuracy == "fp":
+        alerts = alerts.having(
+            any_lane(
+                and_(
+                    SequenceAnnotation.has_missed_smoke.is_(False),
+                    SequenceAnnotation.has_smoke.is_(False),
+                )
+            )
+        )
 
     alerts_sq = alerts.subquery()
     total = (

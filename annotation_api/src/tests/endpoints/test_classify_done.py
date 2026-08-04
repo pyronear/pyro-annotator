@@ -214,3 +214,152 @@ async def test_camera_name_filter(authenticated_client: AsyncClient, async_sessi
     data = response.json()
     assert data["total"] == 1
     assert data["items"][0]["camera_name"] == "cam-a"
+
+
+@pytest.mark.asyncio
+async def test_false_positive_type_filter_matches_any_lane(
+    authenticated_client: AsyncClient, async_session
+):
+    # alert 1000: smoke lane + antenna lane; alert 1010: building lane only
+    await _lane(
+        async_session,
+        alert_api_id=1000,
+        platform_alert_id=1000,
+        stage=Stage.SEQ_ANNOTATION_DONE,
+        has_smoke=True,
+        smoke_types=["wildfire"],
+    )
+    await _lane(
+        async_session,
+        alert_api_id=1001,
+        platform_alert_id=1000,
+        stage=Stage.ANNOTATED,
+        false_positive_types=["antenna"],
+    )
+    await _lane(
+        async_session,
+        alert_api_id=1010,
+        platform_alert_id=1010,
+        stage=Stage.ANNOTATED,
+        false_positive_types=["building"],
+    )
+
+    response = await authenticated_client.get(
+        "/sequences/classify-done",
+        params={"false_positive_types": ["antenna"]},
+    )
+    data = response.json()
+    assert data["total"] == 1
+    assert data["items"][0]["platform_alert_id"] == 1000
+
+
+@pytest.mark.asyncio
+async def test_smoke_type_filter_matches_any_lane(
+    authenticated_client: AsyncClient, async_session
+):
+    await _lane(
+        async_session,
+        alert_api_id=1020,
+        platform_alert_id=1020,
+        stage=Stage.SEQ_ANNOTATION_DONE,
+        has_smoke=True,
+        smoke_types=["industrial"],
+    )
+    await _lane(
+        async_session,
+        alert_api_id=1030,
+        platform_alert_id=1030,
+        stage=Stage.ANNOTATED,
+        false_positive_types=["building"],
+    )
+
+    response = await authenticated_client.get(
+        "/sequences/classify-done", params={"smoke_types": ["industrial"]}
+    )
+    data = response.json()
+    assert data["total"] == 1
+    assert data["items"][0]["platform_alert_id"] == 1020
+
+
+@pytest.mark.asyncio
+async def test_is_unsure_filter_matches_any_lane(
+    authenticated_client: AsyncClient, async_session
+):
+    await _lane(
+        async_session,
+        alert_api_id=1040,
+        platform_alert_id=1040,
+        stage=Stage.ANNOTATED,
+        is_unsure=True,
+    )
+    await _lane(
+        async_session,
+        alert_api_id=1050,
+        platform_alert_id=1050,
+        stage=Stage.ANNOTATED,
+        false_positive_types=["building"],
+    )
+
+    response = await authenticated_client.get(
+        "/sequences/classify-done", params={"is_unsure": True}
+    )
+    data = response.json()
+    assert data["total"] == 1
+    assert data["items"][0]["platform_alert_id"] == 1040
+
+
+@pytest.mark.asyncio
+async def test_model_accuracy_fn_takes_precedence_over_fp(
+    authenticated_client: AsyncClient, async_session
+):
+    # The motivating alert: FP-antenna object + missed smoke -> fn, not fp.
+    await _lane(
+        async_session,
+        alert_api_id=1060,
+        platform_alert_id=1060,
+        stage=Stage.ANNOTATED,
+        has_smoke=False,
+        has_missed_smoke=True,
+        false_positive_types=["antenna"],
+    )
+
+    fn_response = await authenticated_client.get(
+        "/sequences/classify-done", params={"model_accuracy": "fn"}
+    )
+    assert fn_response.json()["total"] == 1
+    fp_response = await authenticated_client.get(
+        "/sequences/classify-done", params={"model_accuracy": "fp"}
+    )
+    assert fp_response.json()["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_model_accuracy_tp_and_fp(
+    authenticated_client: AsyncClient, async_session
+):
+    await _lane(
+        async_session,
+        alert_api_id=1070,
+        platform_alert_id=1070,
+        stage=Stage.SEQ_ANNOTATION_DONE,
+        has_smoke=True,
+        smoke_types=["wildfire"],
+    )
+    await _lane(
+        async_session,
+        alert_api_id=1080,
+        platform_alert_id=1080,
+        stage=Stage.ANNOTATED,
+        false_positive_types=["building"],
+    )
+
+    tp_response = await authenticated_client.get(
+        "/sequences/classify-done", params={"model_accuracy": "tp"}
+    )
+    assert tp_response.json()["total"] == 1
+    assert tp_response.json()["items"][0]["platform_alert_id"] == 1070
+    fp_response = await authenticated_client.get(
+        "/sequences/classify-done", params={"model_accuracy": "fp"}
+    )
+    assert fp_response.json()["total"] == 1
+    assert fp_response.json()["items"][0]["platform_alert_id"] == 1080
