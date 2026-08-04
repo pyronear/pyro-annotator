@@ -20,15 +20,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  AlertCircle,
-  ArrowLeft,
-  ChevronLeft,
-  ChevronRight,
-  Keyboard,
-  Upload,
-  X,
-} from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, Keyboard, Upload, X } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { QUERY_KEYS } from '@/utils/constants';
 import {
@@ -50,12 +42,8 @@ import {
 } from '@/utils/annotation/navigationUtils';
 import { getObjectColor, ObjectOverlay } from '@/utils/annotation/objectColors';
 import { getProcessingStageLabel } from '@/utils/processingStage';
-import {
-  MissedSmokePanel,
-  ObjectCard,
-  CardClassification,
-  ObjectPresenceStrip,
-} from '@/components/sequence-annotation';
+import { CardClassification, ObjectPresenceStrip } from '@/components/sequence-annotation';
+import { ClassifyMediaPanel, DecisionRail, ObjectRow } from '@/components/classify';
 import { NotificationSystem } from '@/components/ui/NotificationSystem';
 import { useToastNotifications } from '@/utils/notification/toastUtils';
 import { ROUTES, classifyDetail, classifyGroup } from '@/utils/routes';
@@ -176,6 +164,21 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
 
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const sequenceReviewerRef = useRef<HTMLDivElement | null>(null);
+  const railSubmitRef = useRef<HTMLButtonElement | null>(null);
+
+  // Post-submit auto-advance bookkeeping: the deferred navigation must not
+  // fire after unmount or an alert switch, and no re-submit may slip into
+  // the window between success and navigation (Enter isn't disabled the
+  // way the buttons are).
+  const advanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const advancingRef = useRef(false);
+  useEffect(
+    () => () => {
+      if (advanceTimerRef.current) clearTimeout(advanceTimerRef.current);
+      advancingRef.current = false;
+    },
+    []
+  );
 
   // Done mode only: snapshot of the just-loaded (or just-reset) state, used
   // to diff against current state at submit time so only lanes the
@@ -227,6 +230,9 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
     setHasMissedSmoke(false);
     setActiveCardKey(null);
     setGroupConflictWarnings([]);
+    if (advanceTimerRef.current) clearTimeout(advanceTimerRef.current);
+    advanceTimerRef.current = null;
+    advancingRef.current = false;
   }, [sequenceId]);
 
   const initializeFromAlertDetail = (detail: AlertDetail) => {
@@ -343,6 +349,22 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
 
   const editableCards = cards.filter(c => !c.locked);
 
+  // Cockpit: the media column always shows the active thing, so an object
+  // must be active from the start. Queue mode activates the first editable
+  // card (first card as fallback for fully-locked deep links); done mode
+  // keeps its own entry-sequence activation effect below.
+  useEffect(() => {
+    if (mode === 'done' || activeCardKey !== null || cards.length === 0) return;
+    const first = cards.find(c => !c.locked) ?? cards[0];
+    setActiveCardKey(first.cardKey);
+    setActiveSection('detections');
+    // Seed focus on the row so Tab / Shift+Tab cycle the rail immediately.
+    // Synchronous (the row is already committed) — a deferred focus could
+    // fire AFTER the user activates another row and steal activation back.
+    cardRefs.current[first.cardKey]?.focus({ preventScroll: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, cards]);
+
   // Done mode only: the sequence the annotator clicked in the Done list is
   // its own card's lane — scroll-activate that card once the alert's cards
   // are on screen, so they land exactly where they came from.
@@ -352,6 +374,9 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
     if (!cards.some(c => c.cardKey === cardKey)) return;
     setActiveCardKey(cardKey);
     setActiveSection('detections');
+    // Focus synchronously (see the queue-mode effect above); only the
+    // scroll is deferred a frame.
+    cardRefs.current[cardKey]?.focus({ preventScroll: true });
     requestAnimationFrame(() => {
       cardRefs.current[cardKey]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
@@ -422,6 +447,57 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
     isActive: o.cardKey === activeCardKey,
   }));
 
+  // The media panel always shows the active object's players (the panel
+  // itself swaps to the whole-alert player when the missed-smoke section is
+  // active). Null only when the alert has no cards at all.
+  const activeCard = activeCardKey ? cards.find(c => c.cardKey === activeCardKey) : undefined;
+  const activeOverlay = activeCard
+    ? cardOverlayData.find(o => o.cardKey === activeCard.cardKey)
+    : undefined;
+
+  // Frame union across every lane, deduped by recorded_at (sibling lanes
+  // materialize the same physical frame as their own detection). The active
+  // object's full-frame player runs over this union so frames its own track
+  // has no box on still play — just without the box — instead of being
+  // skipped. Falls back to the track's own frames until detections resolve.
+  const unionFrames: { detection_id: number; recorded_at: string }[] = [];
+  {
+    const seenFrames = new Set<string>();
+    Object.values(detectionsByLaneId)
+      .flat()
+      .forEach(d => {
+        if (seenFrames.has(d.recorded_at)) return;
+        seenFrames.add(d.recorded_at);
+        unionFrames.push({ detection_id: d.id, recorded_at: d.recorded_at });
+      });
+    unionFrames.sort(
+      (a, b) => new Date(a.recorded_at).getTime() - new Date(b.recorded_at).getTime()
+    );
+  }
+
+  const activeMediaObject = activeCard
+    ? {
+        label: activeOverlay?.label ?? 'Object',
+        bboxes:
+          unionFrames.length > 0
+            ? unionFrames.map(f => ({
+                detection_id: f.detection_id,
+                xyxyn: activeOverlay?.boxesByRecordedAt[f.recorded_at] ?? null,
+              }))
+            : getBbox(activeCard).bboxes,
+        croppedBboxes: getBbox(activeCard).bboxes,
+        sequenceId: activeCard.laneSequenceId,
+        color: activeOverlay?.color,
+        siblingOverlays: cardOverlayData
+          .filter(o => o.cardKey !== activeCard.cardKey)
+          .map(o => ({ color: o.color, label: o.label, boxesByRecordedAt: o.boxesByRecordedAt })),
+        frameRecordedAt:
+          unionFrames.length > 0
+            ? unionFrames.map(f => f.recorded_at)
+            : (activeOverlay?.frameRecordedAt ?? []),
+      }
+    : null;
+
   // Presence strip: temporal context + color legend, keyed off the same
   // per-object color/label identity as the overlays above. Renders nothing
   // itself for < 2 objects. Timestamps come from the object's *lane's*
@@ -462,7 +538,7 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
 
   const handleClassificationChangeByCardKey = (
     cardKey: string,
-    classification: 'smoke' | 'false_positive'
+    classification: CardClassification
   ) => {
     const card = cards.find(c => c.cardKey === cardKey);
     if (!card || card.locked) return;
@@ -529,6 +605,9 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
       const card = cards[Number(idxStr)];
       if (card && value !== 'unselected') {
         handleClassificationChangeByCardKey(card.cardKey, value);
+        // Classification and Unsure are mutually exclusive — the S/F
+        // keyboard path must clear unsure exactly like the chips do.
+        handleUnsureChangeByCardKey(card.cardKey, false);
       }
     });
   };
@@ -564,15 +643,16 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
     const missedSmokeChanged = carriesMissedSmoke && hasMissedSmoke !== snapshot.hasMissedSmoke;
     return bboxesChanged || unsureChanged || missedSmokeChanged;
   };
-  const anyLaneChanged =
-    mode === 'done' &&
-    !!alertDetail &&
-    alertDetail.lanes.some(
-      lane =>
-        !isLaneLocked(lane, mode) &&
-        !!lane.annotation &&
-        isLaneChanged(lane.sequence.id, lane.sequence.id === missedSmokeCarrierLaneId)
-    );
+  const changedLaneCount =
+    mode === 'done' && alertDetail
+      ? alertDetail.lanes.filter(
+          lane =>
+            !isLaneLocked(lane, mode) &&
+            !!lane.annotation &&
+            isLaneChanged(lane.sequence.id, lane.sequence.id === missedSmokeCarrierLaneId)
+        ).length
+      : 0;
+  const anyLaneChanged = mode === 'done' && changedLaneCount > 0;
 
   // Deep-linking a fully-classified alert leaves zero editable cards —
   // `isComplete` is vacuously true over an empty list, so it alone can't
@@ -580,6 +660,13 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
   const canSubmit =
     editableCards.length > 0 &&
     (mode === 'done' ? isComplete && anyLaneChanged : isComplete && missedSmokeReview !== null);
+
+  // Shared by the header submit and its rail-footer mirror.
+  const submitLabel =
+    mode === 'done'
+      ? `Save changes (${changedLaneCount})`
+      : `Submit alert (${editableCards.length} objects)`;
+  const submitTitle = mode === 'done' ? 'Save changes (Enter)' : 'Submit alert (Enter)';
 
   const submitMutation = useMutation({
     mutationFn: async (): Promise<{ results: ClassifySubmitResult[] }> => {
@@ -686,22 +773,56 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
       setGroupConflictWarnings([]);
       showToastNotification('Alert submitted successfully', 'success');
 
-      setTimeout(() => {
+      // The app-wide 5-minute staleTime would otherwise re-serve this
+      // alert's PRE-submit detail from the cache — e.g. opening
+      // /classify/done/:id right after submitting here would show the lanes
+      // unclassified. Mark it stale so any future mount refetches.
+      queryClient.invalidateQueries({ queryKey: alertDetailQueryKey });
+
+      advancingRef.current = true;
+      advanceTimerRef.current = setTimeout(async () => {
+        advanceTimerRef.current = null;
         const nextAlert = getNextSequenceInWorkflow();
         if (nextAlert) {
           const currentIndex = annotationWorkflow?.currentIndex || 0;
           const totalAlerts = annotationWorkflow?.sequences?.length || 0;
           showToastNotification(`Moving to alert ${currentIndex + 2} of ${totalAlerts}`, 'info');
           navigate(classifyDetail(nextAlert.id, mode === 'done'));
-        } else {
-          const totalCompleted = annotationWorkflow?.sequences?.length || 1;
-          clearAnnotationWorkflow();
-          showToastNotification(
-            `Workflow completed! Classified ${totalCompleted} alert${totalCompleted === 1 ? '' : 's'}.`,
-            'success'
-          );
-          navigate(backUrl);
+          return;
         }
+
+        // Queue mode with no (or an exhausted) table workflow: pull the next
+        // alert straight from the classify queue so submitting flows
+        // continuously — deep links included. The just-submitted alert has
+        // left the queue server-side (all its lanes moved past
+        // ready_to_annotate), but guard against it anyway.
+        if (mode !== 'done') {
+          try {
+            const queue = await apiClient.getClassifyQueue({ page: 1, size: 2 });
+            // The user may have navigated elsewhere while the lookup was in
+            // flight (unmount / alert switch reset the flag) — don't yank
+            // them into another alert.
+            if (!advancingRef.current) return;
+            const next = queue.items.find(item => item.primary_sequence_id !== sequenceId);
+            if (next) {
+              clearAnnotationWorkflow();
+              showToastNotification('Moving to the next alert in the queue', 'info');
+              navigate(classifyDetail(next.primary_sequence_id, false));
+              return;
+            }
+          } catch {
+            // Queue lookup failed — fall through to the completed path.
+          }
+        }
+        if (!advancingRef.current) return;
+
+        const totalCompleted = annotationWorkflow?.sequences?.length || 1;
+        clearAnnotationWorkflow();
+        showToastNotification(
+          `Workflow completed! Classified ${totalCompleted} alert${totalCompleted === 1 ? '' : 's'}.`,
+          'success'
+        );
+        navigate(backUrl);
       }, 1000);
     },
     onError: err => {
@@ -715,6 +836,10 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
   });
 
   const handleSubmit = () => {
+    // The buttons disable themselves while pending, but the Enter shortcut
+    // doesn't — and after a success the 1s auto-advance window would accept
+    // a second Enter and re-submit already-advanced lanes.
+    if (submitMutation.isPending || advancingRef.current) return;
     if (!canSubmit) {
       if (mode === 'done') {
         showToastNotification(
@@ -736,7 +861,11 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
   // Keyboard shortcuts over the flattened card list.
   useEffect(() => {
     const handleKeyDown = createKeyboardHandler({
-      activeDetectionIndex: activeIndex,
+      // Classification shortcuts (S/F, types, Q) only apply while the
+      // object section is active — a null index makes them inert when the
+      // missed-smoke section is selected. The navigators keep their own
+      // (ungated) state, so ArrowUp still leaves the sequence section.
+      activeDetectionIndex: activeSection === 'detections' ? activeIndex : null,
       bboxes: adapterBboxes,
       showKeyboardModal,
       missedSmokeReview,
@@ -749,6 +878,23 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
       handleMissedSmokeReviewChange,
       handleBboxChange: handleBboxChangeAdapter,
       onPrimaryClassificationChange: handlePrimaryClassificationChangeAdapter,
+      // U: toggle the active object's Unsure — same mutual exclusivity as
+      // the Unsure chip (turning it on clears the classification).
+      onUnsureToggle: index => {
+        const card = cards[index];
+        if (!card || card.locked) return;
+        const next = !(laneUnsure[card.laneSequenceId] ?? false);
+        if (next) {
+          handleClassificationChangeByCardKey(card.cardKey, 'unselected');
+          handleBboxChangeByCardKey(card.cardKey, {
+            ...getBbox(card),
+            is_smoke: false,
+            smoke_type: undefined,
+            false_positive_types: [],
+          });
+        }
+        handleUnsureChangeByCardKey(card.cardKey, next);
+      },
     });
 
     document.addEventListener('keydown', handleKeyDown, true);
@@ -756,13 +902,45 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     activeIndex,
+    activeSection,
     cards,
     laneBboxes,
+    laneUnsure,
     showKeyboardModal,
     missedSmokeReview,
     primaryClassification,
     canSubmit,
   ]);
+
+  // Focus cycle: Tab / Shift+Tab move strictly between the rail's stops —
+  // object rows, the missed-smoke row, the rail Submit — wrapping at the
+  // ends and never escaping to the header/media chrome. Focus landing on a
+  // row activates it (its own onFocus handler). Suspended while the
+  // shortcuts modal is open so its close button stays reachable.
+  useEffect(() => {
+    const handleTab = (e: KeyboardEvent) => {
+      // Suspended while the shortcuts modal or the group-propagation
+      // warning banner is up — both carry focusables (close button, "Open
+      // group" link, Dismiss) that the trap would otherwise make
+      // keyboard-unreachable.
+      if (e.key !== 'Tab' || showKeyboardModal || groupConflictWarnings.length > 0) return;
+      const stops = (
+        [
+          ...cards.map(c => cardRefs.current[c.cardKey]),
+          sequenceReviewerRef.current,
+          railSubmitRef.current,
+        ] as (HTMLElement | null)[]
+      ).filter((el): el is HTMLElement => el !== null && !(el as HTMLButtonElement).disabled);
+      if (stops.length === 0) return;
+      e.preventDefault();
+      const current = stops.indexOf(document.activeElement as HTMLElement);
+      const delta = e.shiftKey ? -1 : 1;
+      const next = current === -1 ? 0 : (current + delta + stops.length) % stops.length;
+      stops[next].focus();
+    };
+    document.addEventListener('keydown', handleTab, true);
+    return () => document.removeEventListener('keydown', handleTab, true);
+  }, [cards, showKeyboardModal, groupConflictWarnings]);
 
   const handlePreviousAlert = () => {
     const prev = navigateToPreviousInWorkflow();
@@ -866,14 +1044,14 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
               onClick={handleSubmit}
               disabled={!canSubmit || submitMutation.isPending}
               className="inline-flex items-center rounded-lg bg-ember px-4 py-2 font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Submit alert (Enter)"
+              title={submitTitle}
             >
               {submitMutation.isPending ? (
                 <div className="w-3.5 h-3.5 mr-1.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
               ) : (
                 <Upload className="w-3.5 h-3.5 mr-1.5" />
               )}
-              Submit alert ({editableCards.length} objects)
+              {submitLabel}
             </button>
 
             <button
@@ -887,12 +1065,7 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
         </div>
       </div>
 
-      <div className="space-y-6 pt-20">
-        <ObjectPresenceStrip
-          objects={presenceStripObjects}
-          onObjectClick={handlePresenceObjectClick}
-        />
-
+      <div className="space-y-4 pt-20">
         {groupConflictWarnings.length > 0 && (
           <div className="sticky top-20 z-30 bg-signal-soft border-b-2 border-signal px-4 py-3">
             <div className="max-w-7xl mx-auto space-y-2">
@@ -925,81 +1098,132 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
           </div>
         )}
 
-        <div className="space-y-8">
-          {renderItems.map((item, i) => {
-            const objectNumber = i + 1;
-
-            if (item.kind === 'placeholder') {
-              return (
-                <div
-                  key={`placeholder-${item.laneSequenceId}`}
-                  data-testid={`object-card-placeholder-${item.laneSequenceId}`}
-                  className="border border-dashed border-line bg-ash px-[22px] py-5 text-center"
+        {/* Cockpit: media column (the active thing) + decision rail (the
+            whole alert's state). Desktop pins both columns to the viewport
+            below the fixed header and scrolls each internally; below lg
+            they stack in natural flow. */}
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:h-[calc(100vh-7rem)]">
+          <div className="lg:flex-[1.5] lg:min-w-0 lg:overflow-y-auto lg:h-full">
+            <ClassifyMediaPanel
+              activeSection={activeSection}
+              activeObject={activeMediaObject}
+              loading={cards.length > 0 && !activeMediaObject}
+              primarySequenceId={primaryLane.sequence.id}
+              missedSmokeReview={missedSmokeReview}
+              onMissedSmokeReviewChange={handleMissedSmokeReviewChange}
+              annotationLoading={isLoading}
+              objectOverlays={playerObjectOverlays}
+            />
+          </div>
+          <div className="lg:flex-1 lg:min-w-0 lg:overflow-y-auto lg:h-full">
+            <DecisionRail
+              missedSmokeReview={missedSmokeReview}
+              onMissedSmokeReviewChange={handleMissedSmokeReviewChange}
+              missedSmokeActive={activeSection === 'sequence'}
+              onMissedSmokeActivate={() => setActiveSection('sequence')}
+              missedSmokeDisabled={missedSmokeCarrierLaneId === undefined}
+              missedSmokeRowRef={sequenceReviewerRef}
+              footer={
+                <button
+                  ref={railSubmitRef}
+                  onClick={handleSubmit}
+                  disabled={!canSubmit || submitMutation.isPending}
+                  data-testid="rail-submit"
+                  className="w-full inline-flex items-center justify-center rounded-lg bg-ember px-4 py-2.5 font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title={submitTitle}
                 >
-                  <h4 className="font-display text-heading font-semibold text-char mb-2">
-                    Object {objectNumber}
-                  </h4>
-                  <AlertCircle className="w-8 h-8 text-haze mx-auto mb-2" />
-                  <p className="font-body text-sm text-haze">Not imported yet</p>
-                </div>
-              );
-            }
+                  {submitMutation.isPending ? (
+                    <div className="w-3.5 h-3.5 mr-1.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  ) : (
+                    <Upload className="w-3.5 h-3.5 mr-1.5" />
+                  )}
+                  {submitLabel}
+                  <kbd
+                    aria-hidden="true"
+                    className="ml-2 px-1 py-0.5 rounded bg-white/20 font-data text-[10px] font-medium text-white"
+                  >
+                    Enter
+                  </kbd>
+                </button>
+              }
+            >
+              {renderItems.map((item, i) => {
+                const objectNumber = i + 1;
 
-            const { card } = item;
-            const lane = alertDetail.lanes.find(l => l.sequence.id === card.laneSequenceId)!;
-            const bbox = getBbox(card);
-            const stageBadge = card.locked
-              ? getProcessingStageLabel(lane.annotation!.processing_stage)
-              : undefined;
-            const overlay = cardOverlayData.find(o => o.cardKey === card.cardKey);
-            const siblingOverlays: ObjectOverlay[] = cardOverlayData
-              .filter(o => o.cardKey !== card.cardKey)
-              .map(o => ({
-                color: o.color,
-                label: o.label,
-                boxesByRecordedAt: o.boxesByRecordedAt,
-              }));
+                if (item.kind === 'placeholder') {
+                  return (
+                    <div
+                      key={`placeholder-${item.laneSequenceId}`}
+                      data-testid={`object-card-placeholder-${item.laneSequenceId}`}
+                      className="rounded-lg border border-dashed border-line bg-ash px-3.5 py-2.5 flex items-center justify-between"
+                    >
+                      <span className="font-body text-sm font-semibold text-char">
+                        Object {objectNumber}
+                      </span>
+                      <span className="font-body text-xs text-haze">Not imported yet</span>
+                    </div>
+                  );
+                }
 
-            return (
-              <ObjectCard
-                key={card.cardKey}
-                cardRef={el => (cardRefs.current[card.cardKey] = el)}
-                objectNumber={objectNumber}
-                cardKey={card.cardKey}
-                bbox={bbox}
-                sequenceId={card.laneSequenceId}
-                classification={primaryClassification[card.cardKey] ?? 'unselected'}
-                isActive={activeCardKey === card.cardKey}
-                isAnnotated={card.locked || hasUserAnnotations(bbox)}
-                locked={card.locked}
-                stageBadge={stageBadge}
-                unsure={laneUnsure[card.laneSequenceId] ?? false}
-                color={overlay?.color}
-                siblingOverlays={siblingOverlays}
-                frameRecordedAt={overlay?.frameRecordedAt}
-                onCardClick={key => {
-                  setActiveCardKey(key);
-                  setActiveSection('detections');
-                }}
-                onBboxChange={handleBboxChangeByCardKey}
-                onClassificationChange={handleClassificationChangeByCardKey}
-                onUnsureChange={card.locked ? undefined : handleUnsureChangeByCardKey}
-              />
-            );
-          })}
-        </div>
+                const { card } = item;
+                const lane = alertDetail.lanes.find(l => l.sequence.id === card.laneSequenceId)!;
+                const stageBadge =
+                  card.locked || mode === 'done'
+                    ? getProcessingStageLabel(lane.annotation!.processing_stage)
+                    : undefined;
+                const overlay = cardOverlayData.find(o => o.cardKey === card.cardKey);
 
-        {/* Alert-level missed smoke review — shared player over the primary lane, footer control. */}
-        <div ref={sequenceReviewerRef}>
-          <MissedSmokePanel
-            sequenceId={primaryLane.sequence.id}
-            missedSmokeReview={missedSmokeReview}
-            onMissedSmokeReviewChange={handleMissedSmokeReviewChange}
-            annotationLoading={isLoading}
-            activeSection={activeSection}
-            sequenceReviewerRef={sequenceReviewerRef}
-            objectOverlays={playerObjectOverlays}
-          />
+                return (
+                  <ObjectRow
+                    key={card.cardKey}
+                    rowRef={el => (cardRefs.current[card.cardKey] = el)}
+                    objectNumber={objectNumber}
+                    cardKey={card.cardKey}
+                    color={overlay?.color}
+                    bbox={getBbox(card)}
+                    classification={primaryClassification[card.cardKey] ?? 'unselected'}
+                    unsure={laneUnsure[card.laneSequenceId] ?? false}
+                    isActive={activeCardKey === card.cardKey && activeSection === 'detections'}
+                    locked={card.locked}
+                    stageBadge={stageBadge}
+                    changed={
+                      mode === 'done' &&
+                      !card.locked &&
+                      isLaneChanged(
+                        card.laneSequenceId,
+                        card.laneSequenceId === missedSmokeCarrierLaneId
+                      )
+                    }
+                    onRowClick={key => {
+                      setActiveCardKey(key);
+                      setActiveSection('detections');
+                    }}
+                    onBboxChange={handleBboxChangeByCardKey}
+                    onClassificationChange={handleClassificationChangeByCardKey}
+                    onUnsureChange={card.locked ? undefined : handleUnsureChangeByCardKey}
+                  />
+                );
+              })}
+            </DecisionRail>
+
+            {/* Temporal context + color legend for the rail's objects
+                (the strip self-hides under 2 objects — the wrapper's margin
+                must go with it). Highlights the active object's row in sync
+                with the rail. */}
+            {presenceStripObjects.length >= 2 && (
+              <div className="mt-4">
+                <ObjectPresenceStrip
+                  objects={presenceStripObjects}
+                  onObjectClick={handlePresenceObjectClick}
+                  activeIndex={
+                    activeSection === 'detections' && activeCard
+                      ? cardOverlayData.findIndex(o => o.cardKey === activeCard.cardKey)
+                      : null
+                  }
+                />
+              </div>
+            )}
+          </div>
         </div>
 
         <NotificationSystem
@@ -1040,6 +1264,10 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
                     Smoke type (wildfire / industrial / other)
                   </span>
                   <span className="font-data text-detail text-haze">1 / 2 / 3</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="font-body text-sm text-char">Mark active object as unsure</span>
+                  <span className="font-data text-detail text-haze">U</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="font-body text-sm text-char">Missed smoke yes / no</span>

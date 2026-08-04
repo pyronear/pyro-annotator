@@ -61,7 +61,7 @@ const getKeyForType = (type: string) => {
     building: 'B',
     cliff: 'C',
     dark: 'D',
-    dust: 'U',
+    dust: 'J', // 'u' toggles Unsure in the shared keyboard handler
     high_cloud: 'H',
     low_cloud: 'L',
     lens_flare: 'G',

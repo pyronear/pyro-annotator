@@ -56,6 +56,8 @@ export interface KeyboardHandlerDependencies {
   onPrimaryClassificationChange: (
     updates: Record<number, 'unselected' | 'smoke' | 'false_positive'>
   ) => void;
+  /** Optional: toggle the active detection's Unsure state (U key) — wired only by the classify cockpit. */
+  onUnsureToggle?: (detectionIndex: number) => void;
 }
 
 /**
@@ -111,6 +113,7 @@ export const createKeyboardHandler = (deps: KeyboardHandlerDependencies) => {
       handleMissedSmokeReviewChange,
       handleBboxChange,
       onPrimaryClassificationChange,
+      onUnsureToggle,
     } = deps;
 
     // Handle help modal first (works regardless of focus)
@@ -212,6 +215,15 @@ export const createKeyboardHandler = (deps: KeyboardHandlerDependencies) => {
         updatedBbox.smoke_type = undefined; // Clear smoke type
         handleBboxChange(activeDetectionIndex, updatedBbox);
       }
+      e.preventDefault();
+      return;
+    }
+
+    // Unsure toggle (U key) — optional, classify cockpit only. Handled
+    // before the FP-type letters so it works in every classification mode
+    // (Dust moved to J to free the mnemonic).
+    if ((e.key === 'u' || e.key === 'U') && onUnsureToggle) {
+      onUnsureToggle(activeDetectionIndex);
       e.preventDefault();
       return;
     }
