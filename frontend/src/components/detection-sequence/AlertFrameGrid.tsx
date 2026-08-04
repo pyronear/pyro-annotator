@@ -6,24 +6,34 @@
  * on that frame in its own accent color (solid for a committed box, dashed
  * for a winning-but-not-yet-committed one), and a small status chip.
  *
- * No editing here — Task 4 wires that in. Clicking a cell just reports the
- * frame's timestamp via `onCellClick`.
+ * Clicking a cell reports the frame's timestamp plus the shown (active, or
+ * first-present-fallback) object's lane and detection id via `onCellClick`
+ * — the page opens that detection in the per-frame editor and makes the
+ * lane active if it wasn't already (Task 4).
+ *
+ * Crop mode (`cropMode`, active only when an object is active) zooms each
+ * cell around that object's boxes on that frame, mirroring the legacy
+ * grid's crop-mode zoom (`gridCropUtils.computeCellCrop`) — a frame where
+ * the active lane isn't present stays full-frame (no object to focus on).
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useDetectionImage } from '@/hooks/useDetectionImage';
 import { normalizedToPixelBox, ImageInfo } from '@/utils/annotation/coordinateUtils';
+import { computeCellCrop } from '@/utils/annotation/gridCropUtils';
 import { AlertFrame, AlertFrameCell } from '@/utils/annotation/alertLocalizeUtils';
 
 interface AlertFrameGridProps {
   frames: AlertFrame[];
   /** The strip's currently active object — determines which lane's image a cell shows when it has one. */
   activeLaneId: number | null;
-  onCellClick: (recordedAt: string) => void;
+  onCellClick: (recordedAt: string, laneSequenceId: number, detectionId: number) => void;
   /** Registers the cell's DOM node for the page's scroll-to-frame behavior (segment click). */
   cellRef?: (recordedAt: string, el: HTMLDivElement | null) => void;
   /** Minimum cell width driving the auto-fill column count — matches DetectionGrid's card-size knob. */
   cardMinWidth?: number;
+  /** Zoom each cell around the active object's boxes for that frame; no-op with no active object. */
+  cropMode?: boolean;
 }
 
 export function AlertFrameGrid({
@@ -32,6 +42,7 @@ export function AlertFrameGrid({
   onCellClick,
   cellRef,
   cardMinWidth = 220,
+  cropMode = false,
 }: AlertFrameGridProps) {
   if (frames.length === 0) return null;
 
@@ -47,7 +58,10 @@ export function AlertFrameGrid({
           key={frame.recordedAt}
           frame={frame}
           activeLaneId={activeLaneId}
-          onClick={() => onCellClick(frame.recordedAt)}
+          cropMode={cropMode}
+          onClick={activeCell =>
+            onCellClick(frame.recordedAt, activeCell.laneSequenceId, activeCell.detectionId)
+          }
           cellRef={cellRef ? el => cellRef(frame.recordedAt, el) : undefined}
         />
       ))}
@@ -58,13 +72,32 @@ export function AlertFrameGrid({
 interface AlertFrameCellViewProps {
   frame: AlertFrame;
   activeLaneId: number | null;
-  onClick: () => void;
+  cropMode: boolean;
+  onClick: (activeCell: AlertFrameCell) => void;
   cellRef?: (el: HTMLDivElement | null) => void;
 }
 
-function AlertFrameCellView({ frame, activeLaneId, onClick, cellRef }: AlertFrameCellViewProps) {
+function AlertFrameCellView({
+  frame,
+  activeLaneId,
+  cropMode,
+  onClick,
+  cellRef,
+}: AlertFrameCellViewProps) {
   const activeCell: AlertFrameCell =
     frame.cells.find(c => c.laneSequenceId === activeLaneId) ?? frame.cells[0];
+  // Crop only applies when the active lane is actually present on this
+  // frame — a fallback cell (active lane absent here) has no "the object"
+  // box to focus on, so it stays full-frame.
+  const isActiveLaneCell = activeLaneId !== null && activeCell.laneSequenceId === activeLaneId;
+  const crop =
+    cropMode && isActiveLaneCell
+      ? computeCellCrop(activeCell.boxes)
+      : { scale: 1, originX: 50, originY: 50 };
+  const cropStyle =
+    crop.scale > 1
+      ? { transform: `scale(${crop.scale})`, transformOrigin: `${crop.originX}% ${crop.originY}%` }
+      : undefined;
 
   const { data: imageData, isLoading } = useDetectionImage(activeCell.detectionId);
   const [imageInfo, setImageInfo] = useState<ImageInfo | null>(null);
@@ -84,10 +117,11 @@ function AlertFrameCellView({ frame, activeLaneId, onClick, cellRef }: AlertFram
     }
   }, []);
 
-  // Re-measure when the active object (and so the displayed image) changes.
+  // Re-measure when the active object (and so the displayed image) changes,
+  // or when the crop transform changes the image's rendered rect.
   useEffect(() => {
     if (imgRef.current?.complete) handleImageLoad();
-  }, [activeCell.detectionId, handleImageLoad]);
+  }, [activeCell.detectionId, crop.scale, handleImageLoad]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -111,7 +145,7 @@ function AlertFrameCellView({ frame, activeLaneId, onClick, cellRef }: AlertFram
       }}
       data-testid={`alert-frame-cell-${frame.recordedAt}`}
       className="group aspect-video relative overflow-hidden bg-ash cursor-pointer"
-      onClick={onClick}
+      onClick={() => onClick(activeCell)}
     >
       {isLoading && <div className="absolute inset-0 animate-pulse bg-ash" />}
 
@@ -121,6 +155,7 @@ function AlertFrameCellView({ frame, activeLaneId, onClick, cellRef }: AlertFram
           src={imageData.url}
           alt={`Frame ${frame.recordedAt}`}
           className="w-full h-full object-contain"
+          style={cropStyle}
           onLoad={handleImageLoad}
           draggable={false}
         />

@@ -107,7 +107,10 @@ function App() {
                     path="/localize/lane/:sequenceId/:detectionId?"
                     element={<DetectionSequenceAnnotatePage />}
                   />
-                  <Route path="/localize/:sequenceId" element={<LocalizeAlertPage />} />
+                  <Route
+                    path="/localize/:sequenceId/:detectionId?"
+                    element={<LocalizeAlertPage />}
+                  />
                   {legacyRedirectRoutes}
                   <Route path="/users" element={<UserManagementPage />} />
                   <Route path="/guide" element={<GuidePage />} />

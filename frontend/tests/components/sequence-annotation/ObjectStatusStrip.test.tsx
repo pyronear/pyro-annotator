@@ -9,7 +9,7 @@
  */
 
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { ObjectStatusStrip } from '@/components/sequence-annotation/ObjectStatusStrip';
 
 describe('ObjectStatusStrip', () => {
@@ -313,7 +313,7 @@ describe('ObjectStatusStrip', () => {
     expect(axisArrow).not.toHaveAttribute('style');
   });
 
-  it('renders a thumbnail slot beside the label when an object carries one', () => {
+  it('never renders the preview inline — it does not appear without hover/focus', () => {
     render(
       <ObjectStatusStrip
         objects={[
@@ -321,28 +321,132 @@ describe('ObjectStatusStrip', () => {
             label: 'Object 1',
             color: '#3b82f6',
             statusByTimestamp: { [t1]: 'confirmed' },
-            thumbnail: <div data-testid="my-thumb">thumb</div>,
+            preview: <div data-testid="my-preview">preview</div>,
           },
         ]}
       />
     );
 
-    expect(screen.getByTestId('my-thumb')).toBeInTheDocument();
+    expect(screen.queryByTestId('my-preview')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('object-status-preview-popover-0')).not.toBeInTheDocument();
   });
 
-  it('omits the thumbnail column entirely when no object in the strip carries one', () => {
-    render(
-      <ObjectStatusStrip
-        objects={[
-          { label: 'Object 1', color: '#3b82f6', statusByTimestamp: { [t1]: 'confirmed' } },
-        ]}
-      />
-    );
+  it('shows the preview popover after a hover delay on the label, and hides it on mouse leave', async () => {
+    vi.useFakeTimers();
+    try {
+      render(
+        <ObjectStatusStrip
+          objects={[
+            {
+              label: 'Object 1',
+              color: '#3b82f6',
+              statusByTimestamp: { [t1]: 'confirmed' },
+              preview: <div data-testid="my-preview">preview</div>,
+            },
+          ]}
+        />
+      );
 
-    expect(screen.queryByTestId('my-thumb')).not.toBeInTheDocument();
+      const wrap = screen.getByTestId('object-status-label-wrap-0');
+      fireEvent.mouseEnter(wrap);
+
+      // Not yet — the popover only appears after the hover delay.
+      expect(screen.queryByTestId('my-preview')).not.toBeInTheDocument();
+
+      act(() => {
+        vi.advanceTimersByTime(150);
+      });
+      expect(screen.getByTestId('my-preview')).toBeInTheDocument();
+
+      fireEvent.mouseLeave(wrap);
+      expect(screen.queryByTestId('my-preview')).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
-  it('reserves an empty thumbnail slot for an object without one when a sibling row has one', () => {
+  it('shows the preview popover on keyboard focus of the label, and hides it on blur', () => {
+    vi.useFakeTimers();
+    try {
+      render(
+        <ObjectStatusStrip
+          objects={[
+            {
+              label: 'Object 1',
+              color: '#3b82f6',
+              statusByTimestamp: { [t1]: 'confirmed' },
+              preview: <div data-testid="my-preview">preview</div>,
+            },
+          ]}
+        />
+      );
+
+      const label = screen.getByRole('button', { name: 'Go to Object 1' });
+      fireEvent.focus(label);
+      act(() => {
+        vi.advanceTimersByTime(150);
+      });
+      expect(screen.getByTestId('my-preview')).toBeInTheDocument();
+
+      fireEvent.blur(label);
+      expect(screen.queryByTestId('my-preview')).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('never shows a popover for an object without a preview', () => {
+    vi.useFakeTimers();
+    try {
+      render(
+        <ObjectStatusStrip
+          objects={[
+            { label: 'Object 1', color: '#3b82f6', statusByTimestamp: { [t1]: 'confirmed' } },
+          ]}
+        />
+      );
+
+      fireEvent.mouseEnter(screen.getByTestId('object-status-label-wrap-0'));
+      act(() => {
+        vi.advanceTimersByTime(150);
+      });
+
+      expect(screen.queryByTestId('object-status-preview-popover-0')).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('the popover is pointer-events-none so it never blocks clicks on the row below', () => {
+    vi.useFakeTimers();
+    try {
+      render(
+        <ObjectStatusStrip
+          objects={[
+            {
+              label: 'Object 1',
+              color: '#3b82f6',
+              statusByTimestamp: { [t1]: 'confirmed' },
+              preview: <div data-testid="my-preview">preview</div>,
+            },
+          ]}
+        />
+      );
+
+      fireEvent.mouseEnter(screen.getByTestId('object-status-label-wrap-0'));
+      act(() => {
+        vi.advanceTimersByTime(150);
+      });
+
+      expect(screen.getByTestId('object-status-preview-popover-0')).toHaveClass(
+        'pointer-events-none'
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('renders an optional trailing action for an object (e.g. a quick-accept button)', () => {
     render(
       <ObjectStatusStrip
         objects={[
@@ -350,16 +454,12 @@ describe('ObjectStatusStrip', () => {
             label: 'Object 1',
             color: '#3b82f6',
             statusByTimestamp: { [t1]: 'confirmed' },
-            thumbnail: <div data-testid="my-thumb">thumb</div>,
+            action: <button data-testid="my-action">Accept</button>,
           },
-          { label: 'Object 2', color: '#eb6834', statusByTimestamp: { [t1]: 'confirmed' } },
         ]}
       />
     );
 
-    const row2 = screen.getByTestId('object-status-row-1');
-    // Object 2's row still has an (empty) thumbnail slot so both rows'
-    // status bars stay aligned in the same column.
-    expect(row2.querySelector('.overflow-hidden.rounded.border')).toBeInTheDocument();
+    expect(screen.getByTestId('my-action')).toBeInTheDocument();
   });
 });

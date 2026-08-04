@@ -18,12 +18,21 @@
  * cluster is a button (row-level navigation); segments are separate
  * buttons (per-frame navigation).
  *
+ * An object's optional `preview` (e.g. a looping cropped image sequence) is
+ * never rendered inline — the row is too narrow to make it legible. Instead
+ * it shows in a popover anchored beside the label, on hover (after a short
+ * delay) or keyboard focus, and is `pointer-events-none` so it can never
+ * intercept a click meant for the row or its segments.
+ *
  * Pure presentational — the union is computed from props, no data fetching
  * or app state; clicking calls back to the caller rather than navigating
  * itself.
  */
 
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+
+/** Delay before the preview popover appears on hover, matching common tooltip conventions. */
+const POPOVER_HOVER_DELAY_MS = 150;
 
 export type ObjectStatusStripStatus = 'confirmed' | 'pending' | 'absent';
 
@@ -36,8 +45,10 @@ export interface ObjectStatusStripObject {
   flag?: boolean;
   /** This object's status per frame timestamp (ISO string); frames absent from the map render as `absent`. */
   statusByTimestamp: Record<string, ObjectStatusStripStatus>;
-  /** Optional small preview rendered beside the swatch/label (e.g. a cropped image thumbnail) — purely decorative, non-interactive. */
-  thumbnail?: React.ReactNode;
+  /** Optional bigger preview (e.g. a looping cropped image sequence) shown in a popover on hover/focus of the label — purely decorative, non-interactive. */
+  preview?: React.ReactNode;
+  /** Optional action (e.g. a quick-accept button) rendered at the row's trailing edge. */
+  action?: React.ReactNode;
 }
 
 interface ObjectStatusStripProps {
@@ -52,24 +63,95 @@ interface ObjectStatusStripProps {
 // Leading columns every row (object rows and the axis row alike) shares, so
 // the axis's tick columns line up under the status bars' frame columns: the
 // color swatch's width, then the label's width, matching the `gap-2`
-// rhythm of an object row exactly (see the swatch/label spans below). The
-// thumbnail column is included only when at least one object in this strip
-// instance carries one, so a plain (no-thumbnail) strip's axis keeps its
-// original alignment.
-const THUMBNAIL_CLASS = 'h-7 w-10 shrink-0 overflow-hidden rounded border border-line bg-ash';
-
-function leadingSpacer(hasThumbnails: boolean) {
+// rhythm of an object row exactly (see the swatch/label spans below).
+function leadingSpacer() {
   return (
     <>
       <span className="h-2.5 w-2.5 shrink-0" aria-hidden="true" />
       <span className="w-20 shrink-0" aria-hidden="true" />
-      {hasThumbnails && (
-        <span
-          className={`${THUMBNAIL_CLASS} border-transparent bg-transparent`}
-          aria-hidden="true"
-        />
-      )}
     </>
+  );
+}
+
+/**
+ * The swatch + label cluster, wrapped so a preview popover can anchor beside
+ * it. Hover (after a short delay) or focus reveals the popover; leaving or
+ * blurring hides it immediately. `pointer-events-none` on the popover means
+ * it can never swallow a click meant for the row below/beside it.
+ */
+function ObjectLabelButton({
+  objectIndex,
+  label,
+  color,
+  flag,
+  preview,
+  onClick,
+}: {
+  objectIndex: number;
+  label: string;
+  color: string;
+  flag: boolean;
+  preview?: React.ReactNode;
+  onClick?: () => void;
+}) {
+  const [popoverOpen, setPopoverOpen] = useState(false);
+  const showTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearShowTimer = () => {
+    if (showTimer.current) {
+      clearTimeout(showTimer.current);
+      showTimer.current = null;
+    }
+  };
+
+  const scheduleShow = () => {
+    if (!preview) return;
+    clearShowTimer();
+    showTimer.current = setTimeout(() => setPopoverOpen(true), POPOVER_HOVER_DELAY_MS);
+  };
+
+  const hide = () => {
+    clearShowTimer();
+    setPopoverOpen(false);
+  };
+
+  useEffect(() => clearShowTimer, []);
+
+  return (
+    <div
+      className="relative shrink-0"
+      onMouseEnter={scheduleShow}
+      onMouseLeave={hide}
+      data-testid={`object-status-label-wrap-${objectIndex}`}
+    >
+      <button
+        type="button"
+        aria-label={`Go to ${label}`}
+        onClick={onClick}
+        onFocus={scheduleShow}
+        onBlur={hide}
+        className="flex shrink-0 items-center gap-2 rounded py-0.5 pr-1 text-left transition-colors hover:bg-ash focus:outline-none focus:ring-2 focus:ring-ember"
+      >
+        <span
+          data-testid={`object-status-swatch-${objectIndex}`}
+          className="h-2.5 w-2.5 shrink-0 rounded-full"
+          style={{ backgroundColor: color }}
+        />
+        <span className="w-20 shrink-0 truncate font-body text-detail text-haze">
+          {flag ? `⚑ ${label}` : label}
+        </span>
+      </button>
+
+      {popoverOpen && preview && (
+        <div
+          role="tooltip"
+          data-testid={`object-status-preview-popover-${objectIndex}`}
+          className="pointer-events-none absolute left-full top-1/2 z-20 ml-2 w-80 -translate-y-1/2 overflow-hidden rounded-card border border-line bg-paper p-2"
+        >
+          {preview}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -129,8 +211,6 @@ export const ObjectStatusStrip: React.FC<ObjectStatusStripProps> = ({
 }) => {
   if (objects.length < 1) return null;
 
-  const hasThumbnails = objects.some(o => !!o.thumbnail);
-
   // Numeric (chronological) sort, not string sort: same-second timestamps
   // can be serialized both as "...:00Z" and "...:00.500000Z" — the "." in
   // the fractional form sorts before "Z" lexicographically, which would
@@ -155,26 +235,14 @@ export const ObjectStatusStrip: React.FC<ObjectStatusStripProps> = ({
             data-flag={flag ? 'true' : undefined}
             className="flex w-full items-center gap-2 py-1"
           >
-            <button
-              type="button"
-              aria-label={`Go to ${object.label}`}
+            <ObjectLabelButton
+              objectIndex={objectIndex}
+              label={object.label}
+              color={object.color}
+              flag={flag}
+              preview={object.preview}
               onClick={() => onObjectClick?.(objectIndex)}
-              className="flex shrink-0 items-center gap-2 rounded py-0.5 pr-1 text-left transition-colors hover:bg-ash focus:outline-none focus:ring-2 focus:ring-ember"
-            >
-              <span
-                data-testid={`object-status-swatch-${objectIndex}`}
-                className="h-2.5 w-2.5 shrink-0 rounded-full"
-                style={{ backgroundColor: object.color }}
-              />
-              <span className="w-20 shrink-0 truncate font-body text-detail text-haze">
-                {flag ? `⚑ ${object.label}` : object.label}
-              </span>
-            </button>
-            {hasThumbnails && (
-              <span className={THUMBNAIL_CLASS} aria-hidden={!object.thumbnail}>
-                {object.thumbnail}
-              </span>
-            )}
+            />
             <div className="flex h-1.5 flex-1 gap-px overflow-hidden rounded-full bg-ash">
               {frameUnion.map((timestamp, frameIndex) => {
                 const status = object.statusByTimestamp[timestamp] ?? 'absent';
@@ -192,6 +260,7 @@ export const ObjectStatusStrip: React.FC<ObjectStatusStripProps> = ({
                 );
               })}
             </div>
+            {object.action}
           </div>
         );
       })}
@@ -204,7 +273,7 @@ export const ObjectStatusStrip: React.FC<ObjectStatusStripProps> = ({
           above stay the dominant layer. */}
       <div data-testid="status-axis" className="pt-2">
         <div className="flex items-center gap-2">
-          {leadingSpacer(hasThumbnails)}
+          {leadingSpacer()}
           <div data-testid="status-axis-line" className="h-px flex-1 bg-line" aria-hidden="true" />
           {/* Directional arrowhead — a CSS border-triangle, not an image,
               kept a few px so it stays subordinate to the data bars. */}
@@ -215,7 +284,7 @@ export const ObjectStatusStrip: React.FC<ObjectStatusStripProps> = ({
           />
         </div>
         <div className="flex items-start gap-2 mt-1">
-          {leadingSpacer(hasThumbnails)}
+          {leadingSpacer()}
           <div className="flex flex-1">
             {frameUnion.map((timestamp, frameIndex) => (
               <div key={timestamp} className="flex flex-1 flex-col items-center">
@@ -235,7 +304,7 @@ export const ObjectStatusStrip: React.FC<ObjectStatusStripProps> = ({
           </div>
         </div>
         <div className="flex items-center gap-2 mt-1.5">
-          {leadingSpacer(hasThumbnails)}
+          {leadingSpacer()}
           <div
             data-testid="status-axis-label"
             className="flex-1 text-center font-data text-[9px] leading-none text-haze"
