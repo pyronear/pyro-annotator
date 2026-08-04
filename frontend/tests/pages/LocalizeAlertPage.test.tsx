@@ -1353,6 +1353,38 @@ describe('LocalizeAlertPage', () => {
       });
     });
 
+    it('deselects a false-positive object when the toggle hides it again', async () => {
+      realisticFalsePositiveAlert();
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: /False positives/ }));
+      await waitFor(() => {
+        expect(screen.getByTestId('localize-object-row-object-2')).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Go to Object 2' }));
+      await waitFor(() => {
+        expect(screen.getByTestId('cropped-image-sequence')).toBeInTheDocument();
+      });
+
+      // Hiding false positives again while one is the active object used to
+      // strand `activeLaneId` on a lane the model no longer contains: every
+      // remaining cell then read as "not this object's frame", so the whole
+      // grid went dimmed and unclickable with no way back except clicking a
+      // row.
+      fireEvent.click(screen.getByRole('button', { name: /False positives/ }));
+      await waitFor(() => {
+        expect(screen.queryByTestId('localize-object-row-object-2')).not.toBeInTheDocument();
+      });
+
+      const cell = screen.getByTestId(`alert-frame-cell-${T1}`);
+      expect(cell).not.toHaveAttribute('data-context');
+      expect(cell).not.toHaveAttribute('data-readonly');
+      fireEvent.click(cell);
+      await waitFor(() => {
+        expect(screen.getByTestId('image-modal')).toBeInTheDocument();
+      });
+    });
+
     it('disables the toggle when the alert has no false-positive objects', async () => {
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 

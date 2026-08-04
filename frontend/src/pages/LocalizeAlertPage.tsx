@@ -827,6 +827,20 @@ export default function LocalizeAlertPage() {
     if (isFocused) setSizeOverrideCleared(true);
   };
 
+  // Hiding false positives again while one is the ACTIVE object would strand
+  // `activeLaneId` on a lane the frame model no longer contains: every
+  // remaining cell then reads as "not this object's frame", dimming the whole
+  // grid and making it unclickable with no way back except clicking a row.
+  // Deselect first. `exitFocus` is a no-op when not focused, so the explicit
+  // `setActiveLaneId(null)` covers that path too.
+  const handleToggleFalsePositives = () => {
+    if (showFalsePositives && activeLaneIsFalsePositive) {
+      exitFocus();
+      setActiveLaneId(null);
+    }
+    setShowFalsePositives(prev => !prev);
+  };
+
   // The cropped-view toolbar toggle while focused: the strip is already
   // forced visible by focus mode, so a plain on/off toggle would either do
   // nothing (if disabled) or fight focus mode (if it toggled the underlying
@@ -1051,7 +1065,7 @@ export default function LocalizeAlertPage() {
                 type="button"
                 aria-pressed={showFalsePositives}
                 disabled={falsePositiveLaneCount === 0}
-                onClick={() => setShowFalsePositives(prev => !prev)}
+                onClick={handleToggleFalsePositives}
                 title={
                   falsePositiveLaneCount === 0
                     ? 'This alert has no false-positive objects'
