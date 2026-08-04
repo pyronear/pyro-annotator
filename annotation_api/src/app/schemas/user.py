@@ -19,6 +19,7 @@ class UserBase(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
     is_active: bool = True
     is_superuser: bool = False
+    can_localize: bool = False
 
 
 class UserCreate(UserBase):
@@ -29,6 +30,7 @@ class UserUpdate(BaseModel):
     username: Optional[str] = Field(None, min_length=3, max_length=50)
     is_active: Optional[bool] = None
     is_superuser: Optional[bool] = None
+    can_localize: Optional[bool] = None
 
 
 class UserPasswordUpdate(BaseModel):

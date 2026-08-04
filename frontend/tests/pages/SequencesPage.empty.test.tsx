@@ -6,7 +6,7 @@ import React from 'react';
 
 vi.mock('@/services/api', () => ({
   apiClient: {
-    getSequencesWithAnnotations: vi.fn(),
+    getClassifyDone: vi.fn(),
     getClassifyQueue: vi.fn(),
   },
 }));
@@ -23,6 +23,13 @@ vi.mock('@/hooks/useSourceApis', () => ({
 
 const resetFiltersMock = vi.fn();
 let mockedCameraName: string | undefined;
+let canLocalizeValue = true;
+
+vi.mock('@/store/useAuthStore', () => ({
+  useAuthStore: () => ({
+    canLocalize: () => canLocalizeValue,
+  }),
+}));
 
 vi.mock('@/hooks/usePersistedFilters', async importOriginal => {
   const actual = await importOriginal<typeof import('@/hooks/usePersistedFilters')>();
@@ -70,7 +77,8 @@ describe('SequencesPage empty states', () => {
   beforeEach(() => {
     resetFiltersMock.mockClear();
     mockedCameraName = undefined;
-    vi.mocked(apiClient.getSequencesWithAnnotations).mockResolvedValue(emptyPage);
+    canLocalizeValue = true;
+    vi.mocked(apiClient.getClassifyDone).mockResolvedValue(emptyPage);
     // Default (no props) SequencesPage is queue mode — alert-grouped queue, not
     // the plain sequences fetch.
     vi.mocked(apiClient.getClassifyQueue).mockResolvedValue(emptyPage);
@@ -85,6 +93,13 @@ describe('SequencesPage empty states', () => {
     // Old celebratory state is gone
     expect(screen.queryByText('🎉')).toBeNull();
     expect(screen.queryByText('All caught up!')).toBeNull();
+  });
+
+  it('queue-is-clear state hides the localize CTA for classify-only users', async () => {
+    canLocalizeValue = false;
+    render(<SequencesPage />, { wrapper });
+    await waitFor(() => expect(screen.getByText('Classification queue is clear')).toBeTruthy());
+    expect(screen.queryByRole('link', { name: 'Start localizing' })).toBeNull();
   });
 
   it('with active filters shows no-matches state and Clear filters resets them', async () => {

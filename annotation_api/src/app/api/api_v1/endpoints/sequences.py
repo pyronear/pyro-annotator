@@ -57,6 +57,8 @@ from app.schemas.sequence import (
     AddObjectRequest,
     AlertDetail,
     AlertLane,
+    ClassifyDoneItem,
+    ClassifyDoneLane,
     ClassifyQueueItem,
     LocalizationQueueItem,
     LocalizationQueueLane,
@@ -1157,6 +1159,198 @@ async def localize_done_queue(
     # An alert can lose its sequences between the page query and item build
     # (concurrent delete); drop such rows rather than 500.
     items = [item for item in maybe_items if item is not None]
+    return Page.create(items=items, total=total, params=params)
+
+
+# NOTE: declared before GET /{sequence_id} — the int path converter would
+# otherwise turn /classify-done into a 422.
+@router.get("/classify-done")
+async def classify_done(
+    camera_name: Optional[str] = Query(None),
+    organisation_name: Optional[str] = Query(None),
+    source_api: Optional[SourceApi] = Query(None),
+    recorded_at_gte: Optional[datetime] = Query(None),
+    recorded_at_lte: Optional[datetime] = Query(None),
+    is_wildfire_alertapi: Optional[str] = Query(
+        None,
+        description="Filter by the alert platform's annotation: "
+        "'wildfire_smoke', 'other_smoke', 'other', or 'null' for unclassified",
+    ),
+    false_positive_types: Optional[List[FalsePositiveType]] = Query(
+        None, description="Alerts with any lane matching one of these FP types"
+    ),
+    smoke_types: Optional[List[SmokeType]] = Query(
+        None, description="Alerts with any lane matching one of these smoke types"
+    ),
+    is_unsure: Optional[bool] = Query(
+        None, description="Alerts with any lane whose unsure flag equals this"
+    ),
+    model_accuracy: Optional[Literal["tp", "fp", "fn"]] = Query(
+        None,
+        description="Alerts with any lane of this derived accuracy "
+        "(missed smoke → fn, else smoke → tp, else fp)",
+    ),
+    session: AsyncSession = Depends(get_session),
+    params: Params = Depends(),
+    current_user: User = Depends(get_current_user),
+) -> Page[ClassifyDoneItem]:
+    """Fully classified alerts — every lane has an annotation past
+    READY_TO_ANNOTATE — one row per alert with per-lane outcome data
+    (spec: 2026-08-04 classify-done alert rows)."""
+    # Sequence-level filters pre-select candidate alerts on an alias, so the
+    # membership predicate and any-lane filters below always aggregate over
+    # ALL lanes of an alert. Filtering lanes directly would evaluate "every
+    # lane classified" on the in-window subset only — sibling lanes don't
+    # share recorded_at, so a date range could surface partial alerts.
+    cand_seq = aliased(Sequence)
+    candidates = select(cand_seq.source_api, cand_seq.platform_alert_id).distinct()
+    for col, val in (
+        (cand_seq.camera_name, camera_name),
+        (cand_seq.organisation_name, organisation_name),
+        (cand_seq.source_api, source_api),
+    ):
+        if val is not None:
+            candidates = candidates.where(col == val)
+    if recorded_at_gte is not None:
+        candidates = candidates.where(cand_seq.recorded_at >= recorded_at_gte)
+    if recorded_at_lte is not None:
+        candidates = candidates.where(cand_seq.recorded_at <= recorded_at_lte)
+    if is_wildfire_alertapi is not None:
+        # "null" selects unclassified alerts; invalid values disable the
+        # filter (same contract as the list-sequences endpoint).
+        if is_wildfire_alertapi == "null":
+            candidates = candidates.where(cand_seq.is_wildfire_alertapi.is_(None))
+        else:
+            try:
+                enum_value = AnnotationType(is_wildfire_alertapi)
+                candidates = candidates.where(
+                    cand_seq.is_wildfire_alertapi == enum_value
+                )
+            except ValueError:
+                pass
+
+    lane_done = case((SequenceAnnotation.processing_stage.in_(DONE_STAGES), 1), else_=0)
+    alerts = (
+        select(
+            Sequence.source_api,
+            Sequence.platform_alert_id,
+            func.min(Sequence.recorded_at).label("recorded_at"),
+        )
+        .outerjoin(SequenceAnnotation, SequenceAnnotation.sequence_id == Sequence.id)
+        .where(tuple_(Sequence.source_api, Sequence.platform_alert_id).in_(candidates))
+        .group_by(Sequence.source_api, Sequence.platform_alert_id)
+        # every lane classified: an unannotated lane contributes 0 to the sum
+        .having(func.count() == func.sum(lane_done))
+    )
+
+    def any_lane(condition):
+        # HAVING-level "at least one lane matches" over the grouped join.
+        return func.sum(case((condition, 1), else_=0)) > 0
+
+    if false_positive_types:
+        alerts = alerts.having(
+            any_lane(
+                SequenceAnnotation.false_positive_types.op("?|")(
+                    cast(
+                        [fp_type.value for fp_type in false_positive_types],
+                        ARRAY(String),
+                    )
+                )
+            )
+        )
+    if smoke_types:
+        alerts = alerts.having(
+            any_lane(
+                SequenceAnnotation.smoke_types.op("?|")(
+                    cast(
+                        [smoke_type.value for smoke_type in smoke_types], ARRAY(String)
+                    )
+                )
+            )
+        )
+    if is_unsure is not None:
+        alerts = alerts.having(
+            any_lane(func.coalesce(SequenceAnnotation.is_unsure, False).is_(is_unsure))
+        )
+    if model_accuracy == "fn":
+        alerts = alerts.having(any_lane(SequenceAnnotation.has_missed_smoke.is_(True)))
+    elif model_accuracy == "tp":
+        alerts = alerts.having(
+            any_lane(
+                and_(
+                    SequenceAnnotation.has_missed_smoke.is_(False),
+                    SequenceAnnotation.has_smoke.is_(True),
+                )
+            )
+        )
+    elif model_accuracy == "fp":
+        alerts = alerts.having(
+            any_lane(
+                and_(
+                    SequenceAnnotation.has_missed_smoke.is_(False),
+                    SequenceAnnotation.has_smoke.is_(False),
+                )
+            )
+        )
+
+    alerts_sq = alerts.subquery()
+    total = (
+        await session.execute(select(func.count()).select_from(alerts_sq))
+    ).scalar_one()
+    page_rows = (
+        await session.execute(
+            select(alerts_sq)
+            # platform_alert_id tie-break keeps page boundaries stable when
+            # alerts share a recorded_at
+            .order_by(
+                desc(alerts_sq.c.recorded_at), desc(alerts_sq.c.platform_alert_id)
+            )
+            .offset((params.page - 1) * params.size)
+            .limit(params.size)
+        )
+    ).all()
+    items = []
+    for row in page_rows:
+        lane_rows = (
+            await session.execute(
+                select(Sequence, SequenceAnnotation)
+                .join(
+                    SequenceAnnotation,
+                    SequenceAnnotation.sequence_id == Sequence.id,
+                )
+                .where(
+                    Sequence.source_api == row.source_api,
+                    Sequence.platform_alert_id == row.platform_alert_id,
+                )
+                .order_by(Sequence.alert_api_id.asc())
+            )
+        ).all()
+        if not lane_rows:  # concurrent delete
+            continue
+        primary = lane_rows[0][0]
+        items.append(
+            ClassifyDoneItem(
+                source_api=row.source_api,
+                platform_alert_id=row.platform_alert_id,
+                camera_name=primary.camera_name,
+                organisation_name=primary.organisation_name,
+                azimuth=primary.azimuth,
+                recorded_at=row.recorded_at,
+                is_wildfire_alertapi=primary.is_wildfire_alertapi,
+                primary_sequence_id=primary.id,
+                lanes=[
+                    ClassifyDoneLane(
+                        sequence_id=seq.id,
+                        has_smoke=ann.has_smoke,
+                        has_missed_smoke=ann.has_missed_smoke,
+                        is_unsure=bool(ann.is_unsure),
+                        smoke_types=ann.smoke_types or [],
+                        false_positive_types=ann.false_positive_types or [],
+                    )
+                    for seq, ann in lane_rows
+                ],
+            )
+        )
     return Page.create(items=items, total=total, params=params)
 
 

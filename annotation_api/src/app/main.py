@@ -47,6 +47,7 @@ async def seed_default_users(session: AsyncSession) -> None:
                 password=settings.AUTH_PASSWORD,
                 is_active=True,
                 is_superuser=True,
+                can_localize=True,
             )
             await user_crud.create_user(admin_create)
             logger.info("Admin user created successfully")
@@ -71,6 +72,7 @@ async def seed_default_users(session: AsyncSession) -> None:
                 password=secrets.token_urlsafe(32),
                 is_active=False,
                 is_superuser=False,
+                can_localize=False,
             )
             await user_crud.create_user(worker_create)
             logger.info("Worker user created successfully")

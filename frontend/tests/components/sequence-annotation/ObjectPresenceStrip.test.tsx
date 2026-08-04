@@ -115,61 +115,20 @@ describe('ObjectPresenceStrip', () => {
     expect(screen.getByTestId('presence-segment-2-2')).toHaveStyle({ backgroundColor: '#a855f7' });
   });
 
-  it('renders a real axis: hairline, tick marks + numbers at the first/last frame, and a "Frame" axis label', () => {
-    // 12 distinct frames, one per object timestamp — enough to exercise the
-    // axis's adaptive intermediate-tick step, not just the always-shown ends.
-    const frames = Array.from(
-      { length: 12 },
-      (_, i) => `2024-01-01T00:00:${String(i).padStart(2, '0')}Z`
-    );
-
+  it('renders no frame axis — just the rows (cockpit keeps the strip minimal)', () => {
     render(
       <ObjectPresenceStrip
         objects={[
-          { label: 'Object 1', color: '#3b82f6', timestamps: frames },
-          { label: 'Object 2', color: '#f97316', timestamps: frames },
+          { label: 'Object 1', color: '#3b82f6', timestamps: [t1, t2] },
+          { label: 'Object 2', color: '#f97316', timestamps: [t2, t3] },
         ]}
       />
     );
 
-    expect(screen.getByTestId('presence-axis')).toBeInTheDocument();
-
-    // The axis line is a recessive hairline (the `line` token), not styled
-    // with any object color.
-    const axisLine = screen.getByTestId('presence-axis-line');
-    expect(axisLine).toHaveClass('bg-line');
-    expect(axisLine).not.toHaveAttribute('style');
-
-    // First frame is always ticked, labeled "1".
-    const tick0 = screen.getByTestId('presence-axis-tick-0');
-    expect(tick0).toHaveTextContent('1');
-    // Last frame (index 11) is always ticked, labeled "12".
-    const tick11 = screen.getByTestId('presence-axis-tick-11');
-    expect(tick11).toHaveTextContent('12');
-    // Tick labels wear a muted text token, never an inline (object) color —
-    // text always wears text tokens, per DESIGN.md.
-    expect(tick0).toHaveClass('text-haze');
-    expect(tick0).not.toHaveAttribute('style');
-    expect(tick11).toHaveClass('text-haze');
-    expect(tick11).not.toHaveAttribute('style');
-
-    // Not every one of the 12 columns gets a label — intermediate ticks are
-    // spaced out, not one per frame.
-    expect(screen.queryAllByText(/^\d+$/).length).toBeLessThan(frames.length);
-
-    // The "Frame" axis label renders once, muted, no object color.
-    const axisLabel = screen.getByTestId('presence-axis-label');
-    expect(axisLabel).toHaveTextContent('Frame');
-    expect(axisLabel).toHaveClass('text-haze');
-    expect(axisLabel).not.toHaveAttribute('style');
-
-    // A directional arrowhead marker sits at the line's right end, styled
-    // with the same recessive `line` token as the axis line — never an
-    // object color.
-    const axisArrow = screen.getByTestId('presence-axis-arrow');
-    expect(axisArrow).toBeInTheDocument();
-    expect(axisArrow).toHaveClass('border-l-line');
-    expect(axisArrow).not.toHaveAttribute('style');
+    expect(screen.queryByTestId('presence-axis')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('presence-axis-arrow')).not.toBeInTheDocument();
+    expect(screen.queryByText('Frame')).not.toBeInTheDocument();
+    expect(screen.queryByText(/^\d+$/)).not.toBeInTheDocument();
   });
 
   it("renders each row as an accessible button and fires onObjectClick with that row's index", () => {
@@ -196,6 +155,25 @@ describe('ObjectPresenceStrip', () => {
 
     fireEvent.click(row0);
     expect(onObjectClick).toHaveBeenCalledWith(0);
+  });
+
+  it('highlights the activeIndex row and only that row', () => {
+    render(
+      <ObjectPresenceStrip
+        activeIndex={1}
+        objects={[
+          { label: 'Object 1', color: '#3b82f6', timestamps: [t1] },
+          { label: 'Object 2', color: '#f97316', timestamps: [t2] },
+        ]}
+      />
+    );
+
+    const row0 = screen.getByRole('button', { name: 'Go to Object 1' });
+    const row1 = screen.getByRole('button', { name: 'Go to Object 2' });
+    expect(row1).toHaveClass('bg-pine-soft');
+    expect(row1).toHaveAttribute('aria-current', 'true');
+    expect(row0).not.toHaveClass('bg-pine-soft');
+    expect(row0).not.toHaveAttribute('aria-current');
   });
 
   it('does not throw when a row is clicked without an onObjectClick handler', () => {

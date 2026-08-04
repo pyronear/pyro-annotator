@@ -6,7 +6,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.api.dependencies import get_current_user
+from app.auth.dependencies import get_current_localizer
 from app.db import get_session
 from app.models import Sequence, User
 from app.worker import auto_annotate_sequence
@@ -18,7 +18,7 @@ router = APIRouter()
 async def enqueue_auto_annotate(
     sequence_id: int,
     session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_localizer),
 ) -> dict:
     """Enqueue an auto-annotation job for every detection in the sequence."""
     sequence = await session.get(Sequence, sequence_id)

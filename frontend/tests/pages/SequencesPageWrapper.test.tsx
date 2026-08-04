@@ -14,15 +14,13 @@ describe('SequencesPageWrapper', () => {
     localStorage.clear();
   });
 
-  it('uses the persisted review stage when it is still valid', () => {
-    localStorage.setItem('classify-done-stage', 'annotated');
+  it('always renders the review page on the All classified union', () => {
     render(<SequencesPageWrapper defaultProcessingStage="annotated" />);
-    expect(screen.getByTestId('stage-probe')).toHaveTextContent('annotated');
+    expect(screen.getByTestId('stage-probe')).toHaveTextContent('seq_annotation_done,annotated');
   });
 
-  it('falls back to All classified when the persisted stage is retired', () => {
-    // e.g. 'in_review' persisted before the stage was removed (#207)
-    localStorage.setItem('classify-done-stage', 'in_review');
+  it('ignores any stage persisted by the retired stage selector', () => {
+    localStorage.setItem('classify-done-stage', 'annotated');
     render(<SequencesPageWrapper defaultProcessingStage="annotated" />);
     expect(screen.getByTestId('stage-probe')).toHaveTextContent('seq_annotation_done,annotated');
   });
