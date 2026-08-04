@@ -70,23 +70,29 @@ export default function FullImageSequence({
   // keying on ids alone means switching objects doesn't reload the images.
   const frameKey = bboxes.map(b => b.detection_id).join(',');
 
-  // Clear state immediately when the frame list changes to prevent stale data
+  // Reset + fetch in ONE effect keyed on the frame list, with the in-flight
+  // fetch cancelled on change. Splitting them (reset here, fetch in a second
+  // effect gated on `images.length === 0`) raced: switching alerts while the
+  // previous alert's URL fetch was still in flight let that stale fetch
+  // commit its results afterwards, and the length guard then permanently
+  // blocked a fetch for the current frame list — the player stayed on the
+  // previous alert's images until a page reload.
   useEffect(() => {
+    let cancelled = false;
+
     setImages([]);
     setCurrentIndex(0);
     setIsLoading(true);
     setError(null);
     setImageInfo(null); // Clear image positioning info
-  }, [frameKey]);
 
-  // Fetch detection image URLs
-  useEffect(() => {
+    // No frames yet (the classify cockpit renders an object before its
+    // detections resolve). Stay in the loading state rather than falling
+    // through to the "Failed to load" branch — an empty list isn't a failure,
+    // and the effect re-runs with real frames the moment they arrive.
+    if (!bboxes.length || !sequenceId) return;
+
     const fetchImages = async () => {
-      if (!bboxes.length || !sequenceId) {
-        setIsLoading(false);
-        return;
-      }
-
       try {
         // Fetch all detection image URLs
         const imagePromises = bboxes.map(async bbox => {
@@ -108,6 +114,7 @@ export default function FullImageSequence({
         });
 
         const imageResults = await Promise.all(imagePromises);
+        if (cancelled) return;
         setImages(imageResults);
 
         // Start preloading images
@@ -115,11 +122,13 @@ export default function FullImageSequence({
           if (!image.error && image.url) {
             const img = new Image();
             img.onload = () => {
+              if (cancelled) return;
               setImages(prev =>
                 prev.map((item, i) => (i === index ? { ...item, loaded: true } : item))
               );
             };
             img.onerror = () => {
+              if (cancelled) return;
               setImages(prev =>
                 prev.map((item, i) => (i === index ? { ...item, error: true } : item))
               );
@@ -128,19 +137,21 @@ export default function FullImageSequence({
           }
         });
       } catch (err) {
-        setError('Failed to fetch detection images');
+        if (!cancelled) setError('Failed to fetch detection images');
         // Error fetching images
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     };
 
-    // Only fetch if we have cleared state (prevents duplicate fetching)
-    if (bboxes.length > 0 && sequenceId && images.length === 0) {
-      fetchImages();
-    }
+    fetchImages();
+    return () => {
+      cancelled = true;
+    };
+    // `bboxes`/`sequenceId` are read through the closure on purpose — see
+    // `frameKey` above for why neither belongs in the dependency list.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [frameKey, images.length]);
+  }, [frameKey]);
 
   // Auto-play animation with 200ms interval - only when images are loaded
   useEffect(() => {
