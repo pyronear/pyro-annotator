@@ -25,6 +25,7 @@ const baseProps = {
 const activeObject = {
   label: 'Object 1',
   bboxes: [],
+  croppedBboxes: [],
   sequenceId: 101,
   color: '#E4572E',
   siblingOverlays: [],

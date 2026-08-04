@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
 import { Loader2, AlertCircle } from 'lucide-react';
-import { BoundingBox } from '@/types/api';
 import { apiClient } from '@/services/api';
 import { ObjectOverlay } from '@/utils/annotation/objectColors';
 
@@ -9,8 +8,20 @@ import { ObjectOverlay } from '@/utils/annotation/objectColors';
 // SequenceAnnotationGrid, where there's no per-object identity to color by).
 const DEFAULT_OWN_BOX_COLOR = '#ef4444'; // Tailwind red-500
 
+/**
+ * One frame of the sequence: which detection image to show, and (optionally)
+ * the object's own box on it. `xyxyn: null` shows the frame with no own box
+ * drawn — the classify cockpit plays the whole alert's frame union so an
+ * object's absence on a frame is visible instead of the frame being skipped.
+ * `BoundingBox` from the API types is assignable (its `xyxyn` is always set).
+ */
+export interface FullImageFrame {
+  detection_id: number;
+  xyxyn: number[] | null;
+}
+
 interface FullImageSequenceProps {
-  bboxes: BoundingBox[];
+  bboxes: FullImageFrame[];
   sequenceId: number;
   className?: string;
   /** This object's accent color for its own box. Defaults to red (legacy look) when omitted. */
@@ -50,14 +61,21 @@ export default function FullImageSequence({
   const imgRef = useRef<HTMLImageElement>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Clear state immediately when props change to prevent stale data
+  // Value-based identity for the frame list: callers (the classify cockpit)
+  // rebuild the bboxes array every render, so keying the reset/fetch effects
+  // on the array reference would loop them forever. Box coordinates aren't
+  // part of the key on purpose — they only affect drawing, not which images
+  // to fetch.
+  const frameKey = `${sequenceId}:${bboxes.map(b => b.detection_id).join(',')}`;
+
+  // Clear state immediately when the frame list changes to prevent stale data
   useEffect(() => {
     setImages([]);
     setCurrentIndex(0);
     setIsLoading(true);
     setError(null);
     setImageInfo(null); // Clear image positioning info
-  }, [bboxes, sequenceId]);
+  }, [frameKey]);
 
   // Fetch detection image URLs
   useEffect(() => {
@@ -119,7 +137,8 @@ export default function FullImageSequence({
     if (bboxes.length > 0 && sequenceId && images.length === 0) {
       fetchImages();
     }
-  }, [bboxes, sequenceId, images.length]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [frameKey, images.length]);
 
   // Auto-play animation with 200ms interval - only when images are loaded
   useEffect(() => {
@@ -177,6 +196,8 @@ export default function FullImageSequence({
     if (!imageInfo || currentIndex >= bboxes.length) return null;
 
     const currentBbox = bboxes[currentIndex];
+    // A frame the object has no box on renders box-less rather than being skipped.
+    if (!currentBbox.xyxyn) return null;
     const [x1, y1, x2, y2] = currentBbox.xyxyn;
 
     // Ensure valid bbox

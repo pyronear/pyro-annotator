@@ -437,16 +437,47 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
   const activeOverlay = activeCard
     ? cardOverlayData.find(o => o.cardKey === activeCard.cardKey)
     : undefined;
+
+  // Frame union across every lane, deduped by recorded_at (sibling lanes
+  // materialize the same physical frame as their own detection). The active
+  // object's full-frame player runs over this union so frames its own track
+  // has no box on still play — just without the box — instead of being
+  // skipped. Falls back to the track's own frames until detections resolve.
+  const unionFrames: { detection_id: number; recorded_at: string }[] = [];
+  {
+    const seenFrames = new Set<string>();
+    Object.values(detectionsByLaneId)
+      .flat()
+      .forEach(d => {
+        if (seenFrames.has(d.recorded_at)) return;
+        seenFrames.add(d.recorded_at);
+        unionFrames.push({ detection_id: d.id, recorded_at: d.recorded_at });
+      });
+    unionFrames.sort(
+      (a, b) => new Date(a.recorded_at).getTime() - new Date(b.recorded_at).getTime()
+    );
+  }
+
   const activeMediaObject = activeCard
     ? {
         label: activeOverlay?.label ?? 'Object',
-        bboxes: getBbox(activeCard).bboxes,
+        bboxes:
+          unionFrames.length > 0
+            ? unionFrames.map(f => ({
+                detection_id: f.detection_id,
+                xyxyn: activeOverlay?.boxesByRecordedAt[f.recorded_at] ?? null,
+              }))
+            : getBbox(activeCard).bboxes,
+        croppedBboxes: getBbox(activeCard).bboxes,
         sequenceId: activeCard.laneSequenceId,
         color: activeOverlay?.color,
         siblingOverlays: cardOverlayData
           .filter(o => o.cardKey !== activeCard.cardKey)
           .map(o => ({ color: o.color, label: o.label, boxesByRecordedAt: o.boxesByRecordedAt })),
-        frameRecordedAt: activeOverlay?.frameRecordedAt ?? [],
+        frameRecordedAt:
+          unionFrames.length > 0
+            ? unionFrames.map(f => f.recorded_at)
+            : (activeOverlay?.frameRecordedAt ?? []),
       }
     : null;
 

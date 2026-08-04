@@ -831,6 +831,41 @@ describe('ClassifyAlertPage', () => {
     );
   });
 
+  it("plays the alert's full frame union for the active object, including frames its own track has no box on", async () => {
+    // Same shape as the presence-strip fixture: lane 101 is captured on two
+    // frames (t1, t2) but its track only references detection 1 (t1) —
+    // the full-frame player must still play both frames.
+    const t1 = '2026-01-01T10:00:00Z';
+    const t2 = '2026-01-01T10:00:05Z';
+    vi.mocked(apiClient.getSequenceDetections).mockImplementation(async (sequenceId: number) => {
+      const bySequence: Record<number, { id: number; recorded_at: string }[]> = {
+        101: [
+          { id: 1, recorded_at: t1 },
+          { id: 4, recorded_at: t2 },
+        ],
+        102: [{ id: 2, recorded_at: t1 }],
+        103: [{ id: 3, recorded_at: t1 }],
+      };
+      return bySequence[sequenceId].map(d => ({
+        id: d.id,
+        sequence_id: sequenceId,
+        alert_api_id: 9000 + sequenceId,
+        created_at: '2026-01-01T09:00:00Z',
+        recorded_at: d.recorded_at,
+        algo_predictions: { predictions: [] },
+        last_modified_at: null,
+      }));
+    });
+
+    await renderAndSettle(<ClassifyAlertPage />, { wrapper });
+
+    // Union is [t1, t2] -> 2 frames handed to the player, though the active
+    // track only has 1 box.
+    await waitFor(() =>
+      expect(screen.getByTestId('full-image-sequence').getAttribute('data-bbox-count')).toBe('2')
+    );
+  });
+
   it('renders the presence strip in the rail column, below the objects and missed-smoke row — not in the media panel', async () => {
     await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 

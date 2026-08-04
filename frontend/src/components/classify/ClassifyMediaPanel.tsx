@@ -9,7 +9,7 @@
 import React from 'react';
 import { BoundingBox } from '@/types/api';
 import { ObjectOverlay } from '@/utils/annotation/objectColors';
-import FullImageSequence from '@/components/annotation/FullImageSequence';
+import FullImageSequence, { FullImageFrame } from '@/components/annotation/FullImageSequence';
 import CroppedImageSequence from '@/components/annotation/CroppedImageSequence';
 import SequenceReviewer from '@/components/sequence/SequenceReviewer';
 
@@ -18,7 +18,10 @@ export interface ClassifyMediaPanelProps {
   /** Null when the alert has no cards at all (placeholder-only). */
   activeObject: {
     label: string;
-    bboxes: BoundingBox[];
+    /** Frames for the full-frame player — the alert's frame union; `xyxyn: null` frames render box-less. */
+    bboxes: FullImageFrame[];
+    /** The object's own track boxes — the cropped loop needs real boxes to crop around. */
+    croppedBboxes: BoundingBox[];
     sequenceId: number;
     color?: string;
     siblingOverlays: ObjectOverlay[];
@@ -69,7 +72,10 @@ export const ClassifyMediaPanel: React.FC<ClassifyMediaPanelProps> = ({
         />
         <div>
           <div className={`${eyebrow} mb-2`}>Cropped · {activeObject.label}</div>
-          <CroppedImageSequence bboxes={activeObject.bboxes} sequenceId={activeObject.sequenceId} />
+          <CroppedImageSequence
+            bboxes={activeObject.croppedBboxes}
+            sequenceId={activeObject.sequenceId}
+          />
         </div>
       </div>
     ) : (
