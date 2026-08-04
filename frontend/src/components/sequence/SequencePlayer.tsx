@@ -8,9 +8,8 @@ import {
   Pause,
   SkipBack,
   SkipForward,
-  RotateCcw,
-  Clock,
-  CheckCircle,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
 import { Detection, AlgoPrediction } from '@/types/api';
 import { useImagePreloader } from '@/hooks/useImagePreloader';
@@ -33,9 +32,11 @@ interface SequencePlayerProps {
   onPause: () => void;
   onSeek: (index: number) => void;
   onSpeedChange: (speed: number) => void;
-  onReset: () => void;
   /** Hide the embedded "Did the model miss any smoke?" overlay — used by the classify cockpit, where the decision rail owns the yes/no controls. */
   hideReviewControls?: boolean;
+  /** When set, a fullscreen toggle renders in the control strip (the owner fullscreens its own container). */
+  onToggleFullscreen?: () => void;
+  isFullscreen?: boolean;
   className?: string;
 }
 
@@ -53,9 +54,10 @@ export default function SequencePlayer({
   onPause,
   onSeek,
   onSpeedChange,
-  onReset,
   objectOverlays,
   hideReviewControls = false,
+  onToggleFullscreen,
+  isFullscreen = false,
   className = '',
 }: SequencePlayerProps) {
   const [imageInfo, setImageInfo] = useState<{
@@ -168,11 +170,11 @@ export default function SequencePlayer({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isPlaying, currentIndex, detections.length, onPlay, onPause, onSeek]);
 
-  // Player controls utility functions
-  const formatTime = (index: number) => {
-    const minutes = Math.floor(index / 60);
-    const seconds = index % 60;
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  // Local time in an ISO-like layout, easy to scan across frames.
+  const formatRecordedAt = (iso: string) => {
+    const d = new Date(iso);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   };
 
   const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -360,25 +362,8 @@ export default function SequencePlayer({
   const showLoadingState = !currentImage?.loaded;
   const hasError = currentImage?.error;
 
-  const isCompleted = missedSmokeReview !== null;
-
   return (
-    <div
-      className={`relative rounded-lg overflow-hidden transition-all duration-200 ${
-        isCompleted
-          ? 'border-4 border-green-500 bg-green-50 hover:border-green-600 hover:bg-green-100'
-          : 'border-4 border-orange-400 bg-orange-50 hover:border-orange-500 hover:bg-orange-100 animate-pulse-subtle'
-      } ${className}`}
-    >
-      {/* Status Badge Overlay */}
-      <div
-        className={`absolute top-3 right-3 px-2 py-1 rounded-full text-xs font-semibold backdrop-blur-sm z-30 ${
-          isCompleted ? 'bg-green-600/90 text-white' : 'bg-orange-500/90 text-white'
-        }`}
-      >
-        {isCompleted ? 'Reviewed' : 'Pending'}
-      </div>
-
+    <div className={`relative overflow-hidden ${className}`}>
       {/* Preload Progress Bar (only visible during initial load) */}
       {isInitialLoading && preloadProgress.percentage < 100 && (
         <div className="bg-gray-50 px-4 py-2 border-b border-gray-200">
@@ -439,7 +424,7 @@ export default function SequencePlayer({
             <img
               ref={imgRef}
               src={currentImage.url}
-              alt={`Detection ${currentIndex + 1} of ${detections.length}`}
+              alt={`Frame ${currentIndex + 1} of ${detections.length}`}
               className="max-w-full max-h-full object-contain"
               style={{
                 opacity: showLoadingState && !isLoopingBack.current ? 0 : 1,
@@ -449,10 +434,13 @@ export default function SequencePlayer({
               onLoad={handleImageLoad}
             />
 
-            {/* Bounding Boxes Overlay */}
+            {/* Bounding Boxes Overlay. The object-track overlays are derived
+                from the raw algo predictions at import, so when they are
+                shown the red prediction boxes would duplicate them exactly —
+                render one or the other. */}
             {imageInfo && !showLoadingState && (
               <div className="absolute inset-0 pointer-events-none z-20">
-                {renderBoundingBoxes()}
+                {(!objectOverlays || objectOverlays.length === 0) && renderBoundingBoxes()}
                 {showSiblingBboxes && renderSiblingBoxes()}
                 {renderObjectOverlays()}
               </div>
@@ -465,13 +453,10 @@ export default function SequencePlayer({
           <div className="space-y-3 text-white">
             {/* Row 1 - Detection Info & Missed Smoke Review */}
             <div className="flex items-end justify-between">
-              {/* Left - Detection Info */}
+              {/* Left - frame timestamp (the control strip already counts frames) */}
               <div className="flex-1">
-                <p className="text-sm font-medium">
-                  Detection {currentIndex + 1} of {detections.length}
-                </p>
-                <p className="text-xs opacity-90">
-                  {new Date(currentDetection.recorded_at).toLocaleString()}
+                <p className="text-sm font-medium font-mono">
+                  {formatRecordedAt(currentDetection.recorded_at)}
                 </p>
               </div>
 
@@ -527,10 +512,16 @@ export default function SequencePlayer({
               <div className="flex-1 flex items-center justify-end space-x-3">
                 <div className="flex items-center space-x-2">
                   <Eye className="w-4 h-4" />
-                  <span className="text-xs">
-                    {currentDetection.algo_predictions?.predictions?.length || 0} prediction
-                    {currentDetection.algo_predictions?.predictions?.length !== 1 ? 's' : ''}
-                  </span>
+                  {objectOverlays && objectOverlays.length > 0 ? (
+                    <span className="text-xs">
+                      {objectOverlays.length} object{objectOverlays.length !== 1 ? 's' : ''}
+                    </span>
+                  ) : (
+                    <span className="text-xs">
+                      {currentDetection.algo_predictions?.predictions?.length || 0} prediction
+                      {currentDetection.algo_predictions?.predictions?.length !== 1 ? 's' : ''}
+                    </span>
+                  )}
                 </div>
                 {(currentDetection.others_bboxes?.predictions?.length || 0) > 0 && (
                   <label className="flex items-center cursor-pointer hover:bg-white/10 px-2 py-1 rounded transition-colors">
@@ -582,10 +573,6 @@ export default function SequencePlayer({
 
               {/* Progress Slider */}
               <div className="flex-1 flex items-center space-x-3">
-                <span className="text-xs text-white/80 font-mono min-w-[3rem]">
-                  {formatTime(currentIndex)}
-                </span>
-
                 <div className="flex-1 relative">
                   <input
                     ref={sliderRef}
@@ -602,10 +589,6 @@ export default function SequencePlayer({
                     }}
                   />
                 </div>
-
-                <span className="text-xs text-white/80 font-mono min-w-[3rem]">
-                  {formatTime(detections.length - 1)}
-                </span>
               </div>
 
               {/* Frame Counter */}
@@ -631,43 +614,22 @@ export default function SequencePlayer({
                 </select>
               </div>
 
-              {/* Reset Button */}
-              <button
-                onClick={onReset}
-                className="flex-shrink-0 p-2 text-white hover:text-gray-300 border border-white/30 rounded-md hover:bg-white/10"
-                title="Reset to beginning"
-              >
-                <RotateCcw className="w-4 h-4" />
-              </button>
+              {/* Fullscreen Toggle */}
+              {onToggleFullscreen && (
+                <button
+                  onClick={onToggleFullscreen}
+                  className="flex-shrink-0 p-2 text-white hover:text-gray-300 border border-white/30 rounded-md hover:bg-white/10"
+                  title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen the player'}
+                  aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+                >
+                  {isFullscreen ? (
+                    <Minimize2 className="w-4 h-4" />
+                  ) : (
+                    <Maximize2 className="w-4 h-4" />
+                  )}
+                </button>
+              )}
             </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Enhanced Status Bar */}
-      <div
-        className={`px-3 py-2 ${
-          isCompleted
-            ? 'bg-green-100 border-t border-green-300'
-            : 'bg-orange-100 border-t border-orange-300'
-        }`}
-      >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            {isCompleted ? (
-              <>
-                <CheckCircle className="w-5 h-5 text-green-600" />
-                <span className="text-sm font-medium text-green-700">Completed</span>
-              </>
-            ) : (
-              <>
-                <Clock className="w-5 h-5 text-orange-600 animate-pulse" />
-                <span className="text-sm font-medium text-orange-700">Needs Review</span>
-              </>
-            )}
-          </div>
-          <div className="text-xs text-gray-600">
-            Missed smoke review: {isCompleted ? 'Complete' : 'Pending'}
           </div>
         </div>
       </div>
