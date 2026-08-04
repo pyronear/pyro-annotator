@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { ClassifyMediaPanel } from '@/components/classify';
 
 vi.mock('@/components/annotation/FullImageSequence', () => ({
@@ -54,5 +54,20 @@ describe('ClassifyMediaPanel', () => {
   it('renders an empty state when there is no active object', () => {
     render(<ClassifyMediaPanel {...baseProps} activeSection="detections" activeObject={null} />);
     expect(screen.getByText('No objects to review yet')).toBeInTheDocument();
+  });
+
+  it('offers a fullscreen toggle in sequence mode and requests fullscreen on click', () => {
+    const requestSpy = vi.fn().mockResolvedValue(undefined);
+    HTMLElement.prototype.requestFullscreen = requestSpy;
+    render(
+      <ClassifyMediaPanel {...baseProps} activeSection="sequence" activeObject={activeObject} />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Enter fullscreen' }));
+    expect(requestSpy).toHaveBeenCalled();
+    // No fullscreen toggle in the per-object (detections) view.
+    render(
+      <ClassifyMediaPanel {...baseProps} activeSection="detections" activeObject={activeObject} />
+    );
+    expect(screen.queryAllByRole('button', { name: 'Enter fullscreen' })).toHaveLength(1);
   });
 });

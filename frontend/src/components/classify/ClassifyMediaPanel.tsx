@@ -3,10 +3,12 @@
  * Detections section -> the active object's full-frame player (own box
  * solid, siblings dimmed) and the object's cropped loop. Sequence section
  * -> the primary lane's whole-alert player with every object's overlay,
- * review controls hidden (the decision rail owns yes/no).
+ * review controls hidden (the decision rail owns yes/no), with a
+ * fullscreen toggle for easier missed-smoke assessment.
  */
 
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Maximize2, Minimize2 } from 'lucide-react';
 import { BoundingBox } from '@/types/api';
 import { ObjectOverlay } from '@/utils/annotation/objectColors';
 import FullImageSequence, { FullImageFrame } from '@/components/annotation/FullImageSequence';
@@ -44,42 +46,86 @@ export const ClassifyMediaPanel: React.FC<ClassifyMediaPanelProps> = ({
   onMissedSmokeReviewChange,
   annotationLoading,
   objectOverlays,
-}) => (
-  <div
-    data-testid="classify-media-panel"
-    className="rounded-card border border-line bg-paper px-[22px] py-5"
-  >
-    {activeSection === 'sequence' ? (
-      <div className="space-y-3">
-        <div className={eyebrow}>Whole alert — watch for smoke the model missed</div>
-        <SequenceReviewer
-          sequenceId={primarySequenceId}
-          missedSmokeReview={missedSmokeReview}
-          onMissedSmokeReviewChange={onMissedSmokeReviewChange}
-          annotationLoading={annotationLoading}
-          objectOverlays={objectOverlays}
-          hideReviewControls
-        />
-      </div>
-    ) : activeObject ? (
-      <div className="space-y-4">
-        <FullImageSequence
-          bboxes={activeObject.bboxes}
-          sequenceId={activeObject.sequenceId}
-          color={activeObject.color}
-          siblingOverlays={activeObject.siblingOverlays}
-          frameRecordedAt={activeObject.frameRecordedAt}
-        />
-        <div>
-          <div className={`${eyebrow} mb-2`}>Cropped · {activeObject.label}</div>
-          <CroppedImageSequence
-            bboxes={activeObject.croppedBboxes}
-            sequenceId={activeObject.sequenceId}
+}) => {
+  // Fullscreen for the whole-alert (missed-smoke) view. Tracks the browser
+  // state so Esc / browser chrome exits stay in sync with the toggle icon.
+  const sequenceViewRef = useRef<HTMLDivElement | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const onFullscreenChange = () =>
+      setIsFullscreen(document.fullscreenElement === sequenceViewRef.current);
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) {
+      void document.exitFullscreen?.();
+    } else {
+      void sequenceViewRef.current?.requestFullscreen?.();
+    }
+  };
+
+  return (
+    <div
+      data-testid="classify-media-panel"
+      className="rounded-card border border-line bg-paper px-[22px] py-5"
+    >
+      {activeSection === 'sequence' ? (
+        <div
+          ref={sequenceViewRef}
+          className={
+            isFullscreen ? 'flex h-full flex-col justify-center overflow-auto bg-char p-6' : ''
+          }
+        >
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <div className={isFullscreen ? `${eyebrow} !text-paper` : eyebrow}>
+              Whole alert — watch for smoke the model missed
+            </div>
+            <button
+              type="button"
+              onClick={toggleFullscreen}
+              aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+              title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen the player'}
+              className={`inline-flex items-center rounded-lg border p-1.5 transition-colors ${
+                isFullscreen
+                  ? 'border-paper/30 bg-transparent text-paper hover:bg-paper/10'
+                  : 'border-line bg-paper text-haze hover:bg-ash'
+              }`}
+            >
+              {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            </button>
+          </div>
+          <SequenceReviewer
+            sequenceId={primarySequenceId}
+            missedSmokeReview={missedSmokeReview}
+            onMissedSmokeReviewChange={onMissedSmokeReviewChange}
+            annotationLoading={annotationLoading}
+            objectOverlays={objectOverlays}
+            hideReviewControls
           />
         </div>
-      </div>
-    ) : (
-      <p className="py-16 text-center font-body text-sm text-haze">No objects to review yet</p>
-    )}
-  </div>
-);
+      ) : activeObject ? (
+        <div className="space-y-4">
+          <FullImageSequence
+            bboxes={activeObject.bboxes}
+            sequenceId={activeObject.sequenceId}
+            color={activeObject.color}
+            siblingOverlays={activeObject.siblingOverlays}
+            frameRecordedAt={activeObject.frameRecordedAt}
+          />
+          <div>
+            <div className={`${eyebrow} mb-2`}>Cropped · {activeObject.label}</div>
+            <CroppedImageSequence
+              bboxes={activeObject.croppedBboxes}
+              sequenceId={activeObject.sequenceId}
+            />
+          </div>
+        </div>
+      ) : (
+        <p className="py-16 text-center font-body text-sm text-haze">No objects to review yet</p>
+      )}
+    </div>
+  );
+};
