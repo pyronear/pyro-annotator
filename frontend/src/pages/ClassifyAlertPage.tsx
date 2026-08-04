@@ -755,22 +755,43 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
       setGroupConflictWarnings([]);
       showToastNotification('Alert submitted successfully', 'success');
 
-      setTimeout(() => {
+      setTimeout(async () => {
         const nextAlert = getNextSequenceInWorkflow();
         if (nextAlert) {
           const currentIndex = annotationWorkflow?.currentIndex || 0;
           const totalAlerts = annotationWorkflow?.sequences?.length || 0;
           showToastNotification(`Moving to alert ${currentIndex + 2} of ${totalAlerts}`, 'info');
           navigate(classifyDetail(nextAlert.id, mode === 'done'));
-        } else {
-          const totalCompleted = annotationWorkflow?.sequences?.length || 1;
-          clearAnnotationWorkflow();
-          showToastNotification(
-            `Workflow completed! Classified ${totalCompleted} alert${totalCompleted === 1 ? '' : 's'}.`,
-            'success'
-          );
-          navigate(backUrl);
+          return;
         }
+
+        // Queue mode with no (or an exhausted) table workflow: pull the next
+        // alert straight from the classify queue so submitting flows
+        // continuously — deep links included. The just-submitted alert has
+        // left the queue server-side (all its lanes moved past
+        // ready_to_annotate), but guard against it anyway.
+        if (mode !== 'done') {
+          try {
+            const queue = await apiClient.getClassifyQueue({ page: 1, size: 2 });
+            const next = queue.items.find(item => item.primary_sequence_id !== sequenceId);
+            if (next) {
+              clearAnnotationWorkflow();
+              showToastNotification('Moving to the next alert in the queue', 'info');
+              navigate(classifyDetail(next.primary_sequence_id, false));
+              return;
+            }
+          } catch {
+            // Queue lookup failed — fall through to the completed path.
+          }
+        }
+
+        const totalCompleted = annotationWorkflow?.sequences?.length || 1;
+        clearAnnotationWorkflow();
+        showToastNotification(
+          `Workflow completed! Classified ${totalCompleted} alert${totalCompleted === 1 ? '' : 's'}.`,
+          'success'
+        );
+        navigate(backUrl);
       }, 1000);
     },
     onError: err => {

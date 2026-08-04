@@ -19,6 +19,7 @@ vi.mock('@/services/api', () => ({
     classifySubmit: vi.fn(),
     getSequenceDetections: vi.fn(),
     updateSequenceAnnotation: vi.fn(),
+    getClassifyQueue: vi.fn(),
   },
 }));
 
@@ -243,6 +244,15 @@ describe('ClassifyAlertPage', () => {
     // resolve against without erroring; overridden per-test where the
     // overlay content itself is under test.
     vi.mocked(apiClient.getSequenceDetections).mockResolvedValue([]);
+    // Default: empty queue, so post-submit auto-advance falls through to the
+    // "workflow completed" path most tests assert.
+    vi.mocked(apiClient.getClassifyQueue).mockResolvedValue({
+      items: [],
+      page: 1,
+      pages: 0,
+      size: 2,
+      total: 0,
+    });
     vi.mocked(apiClient.classifySubmit).mockResolvedValue({
       results: [
         {
@@ -1076,6 +1086,46 @@ describe('ClassifyAlertPage', () => {
     const row = within(screen.getByTestId('object-card-101:0'));
     expect(row.getByRole('radio', { name: 'False positive' })).not.toBeChecked();
     expect(row.getByText('Pending')).toBeInTheDocument();
+  });
+
+  it('auto-advances to the next alert in the classify queue after submit when no table workflow is active', async () => {
+    vi.mocked(apiClient.getClassifyQueue).mockResolvedValue({
+      items: [
+        {
+          source_api: 'pyronear_french',
+          platform_alert_id: 900,
+          camera_name: 'CAM-2',
+          organisation_name: 'Org',
+          azimuth: null,
+          recorded_at: '2026-01-01T11:00:00Z',
+          is_wildfire_alertapi: null,
+          primary_sequence_id: 555,
+          total_objects: 1,
+          classified_objects: 0,
+        },
+      ],
+      page: 1,
+      pages: 1,
+      size: 2,
+      total: 1,
+    });
+
+    await renderAndSettle(<ClassifyAlertPage />, { wrapper });
+
+    const cardA = openRow('101:0');
+    fireEvent.click(cardA.getByRole('radio', { name: 'Smoke' }));
+    fireEvent.click(cardA.getByRole('radio', { name: 'Wildfire' }));
+    const cardB = openRow('102:0');
+    fireEvent.click(cardB.getByRole('radio', { name: 'False positive' }));
+    fireEvent.click(cardB.getByRole('checkbox', { name: 'Antenna' }));
+    fireEvent.click(missedSmokeChip('No'));
+
+    fireEvent.click(screen.getAllByRole('button', { name: /Submit alert/i })[0]);
+    await waitFor(() => expect(apiClient.classifySubmit).toHaveBeenCalledTimes(1));
+
+    await waitFor(() => expect(navigateMock).toHaveBeenCalledWith('/classify/555'), {
+      timeout: 2000,
+    });
   });
 
   it('shows the FP type chips as a full inline wrap on the active row', async () => {
