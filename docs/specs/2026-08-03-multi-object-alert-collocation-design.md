@@ -217,26 +217,33 @@ Top to bottom:
   a navigation. Per-object quick-accept remains for "this whole track is
   fine".
 
-### Missed smoke: the ⚑ pseudo-object
+### Missed smoke: add real objects (supersedes the ⚑ pseudo-object, 2026-08-04)
 
-A **⚑ Missed row is always present** (ghosted until used), because classify
-can miss it too:
+**Decision evolution (user-approved 2026-08-04):** missed smoke is resolved by
+**adding first-class objects**, not by drawing anonymous boxes on a carrier
+lane. The ⚑ pseudo-object row and carrier-lane box storage are retired. This
+removes the documented data-ambiguity limitation entirely.
 
-- If the alert was flagged at classify, the row starts highlighted with zero
-  boxes.
-- Drawing a first ⚑ box on an unflagged alert sets `has_missed_smoke`
-  retroactively.
-- **Storage rule**: ⚑ boxes and the flag live on the alert's **primary lane —
-  or the first still-open lane if the primary already exited** (e.g. FP-only
-  fast path). One deterministic home. Known limitation, stated plainly: after
-  save, ⚑ boxes are indistinguishable from that lane's own boxes (detection
-  annotation boxes carry no object id); if training data ever needs the
-  distinction, the follow-up is spawning a real lane for missed smoke — out of
-  scope here.
-- **Soft confirm on submit**: if `has_missed_smoke` is set and no ⚑ box was
-  drawn, "Accept all & submit" asks "You flagged missed smoke but drew no
-  boxes — submit anyway?" with options *submit anyway*, *submit & clear flag*,
-  *go back*. No hard block (the flag may simply have been wrong).
+- `has_missed_smoke` keeps its existing meaning and writers: the classify-time
+  signal ("smoke not covered by any object") that routes the alert into
+  localization via the shared rule. It is stored on the first-still-open lane
+  at classify submit, exactly as before.
+- **Add object** (`POST /sequences/alert/add-object` with `source_api`,
+  `platform_alert_id`, `smoke_type`): creates a new sibling lane — next
+  synthetic object index, frame rows cloned from the alert's richest lane with
+  **empty** `algo_predictions` (the AI did not detect this object), one-track
+  annotation (`is_smoke: true`, the chosen smoke type, no bboxes) born at
+  `seq_annotation_done`, with `auto_annotated_at`/`auto_annotate_enqueued_at`
+  stamped so the sweep never GPU-processes it and the sibling gate is never
+  re-blocked. The new lane is immediately workable in the alert's localize
+  screen: a new Object N+1 row in its own color, all frames pending; the
+  annotator draws its boxes like any object's. Repeatable — one add per missed
+  plume (smoke type chosen at creation via a small picker).
+- **Soft-confirm reworded**: when `has_missed_smoke` is set on any lane and no
+  object was added this session, "Accept all & submit" asks "You flagged
+  missed smoke but added no object — submit anyway?" with *Submit anyway* /
+  *Submit & clear flag* (PATCHes `has_missed_smoke: false` on the
+  flag-carrying lane) / *Go back*. Never a hard block.
 
 ### Data flow
 
