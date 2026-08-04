@@ -1,7 +1,7 @@
 /**
  * Tests for saveDetectionReview: the create-or-update save for a single
  * detection's smoke annotation, extracted from
- * DetectionSequenceAnnotatePage's inline mutation so the collocated
+ * the legacy per-lane page's inline mutation so the collocated
  * LocalizeAlertPage (Task 4) can share it. Pins the two behaviors that
  * matter most: routing (PATCH vs POST) and false-positive item survival.
  */

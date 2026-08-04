@@ -10,9 +10,10 @@
  * Activation therefore shows up purely as the accent treatment — the media
  * column follows the active object, so the row doesn't need to expand.
  *
- * Context rows (lanes already localized) render dimmed and action-less, but
- * stay clickable: activating one points the media column at its frames,
- * which is the whole reason they're on screen.
+ * Rows past localization are action-less but stay clickable: activating one
+ * points the media column at its frames, which is the whole reason they're on
+ * screen. Whether they also fade back is the caller's call (`dimmed`) — that
+ * only reads as "context" when there is live work beside them.
  */
 
 import React from 'react';
@@ -32,6 +33,13 @@ export interface LocalizeObjectRowProps {
   smokeType?: string;
   /** Read-only false-positive context, surfaced by the opt-in toggle. */
   isFalsePositive?: boolean;
+  /**
+   * Fade the row back as context. The caller decides, because "already
+   * localized" only reads as context when there is live work beside it — on
+   * a fully localized alert those rows ARE the subject, and dimming every
+   * one of them just made the page look disabled.
+   */
+  dimmed?: boolean;
   /** The false-positive types classify recorded, shown in place of a smoke type. */
   falsePositiveTypes?: string[];
   /** True when this object drives the media column (focus mode). */
@@ -51,6 +59,7 @@ export const LocalizeObjectRow: React.FC<LocalizeObjectRowProps> = ({
   smokeType,
   isFalsePositive = false,
   falsePositiveTypes,
+  dimmed = false,
   isActive,
   onActivate,
   onAcceptBoxes,
@@ -61,7 +70,9 @@ export const LocalizeObjectRow: React.FC<LocalizeObjectRowProps> = ({
   const status = isFalsePositive
     ? { label: 'False positive', tone: 'bg-ash text-haze' }
     : !workable
-      ? { label: 'Context', tone: 'bg-ash text-haze' }
+      ? // Past localization: say what it is rather than "Context", which
+        // described its role beside live work rather than its own state.
+        { label: 'Localized', tone: 'bg-pine-soft text-pine' }
       : pendingCount === 0
         ? { label: 'Done', tone: 'bg-pine-soft text-pine' }
         : { label: `${pendingCount} left`, tone: 'bg-ember-soft text-ember' };
@@ -72,7 +83,7 @@ export const LocalizeObjectRow: React.FC<LocalizeObjectRowProps> = ({
     ? (falsePositiveTypes ?? []).map(t => t.replace(/_/g, ' ')).join(', ') || null
     : (smokeType ?? null);
 
-  // Selection is checked BEFORE workability. A non-workable row (a false
+  // Selection is checked BEFORE dimming. A non-workable row (a false
   // positive, or an already-localized context lane) is still clickable and
   // still drives the media column, so it needs the same "this is what
   // you're looking at" feedback — and leaving it dimmed while it is the
@@ -81,7 +92,7 @@ export const LocalizeObjectRow: React.FC<LocalizeObjectRowProps> = ({
   // a claim a settled object shouldn't make.
   const frame = isActive
     ? `border border-line border-l-[3px] bg-paper ${workable ? 'border-l-pine' : 'border-l-char'}`
-    : !workable
+    : dimmed
       ? 'border border-line bg-paper opacity-60'
       : 'border border-line bg-paper hover:bg-ash';
 
@@ -89,6 +100,7 @@ export const LocalizeObjectRow: React.FC<LocalizeObjectRowProps> = ({
     <div
       data-testid={`localize-object-row-${label.replace(/\s+/g, '-').toLowerCase()}`}
       data-active={isActive ? 'true' : undefined}
+      data-dimmed={dimmed ? 'true' : undefined}
       // role="group" rather than a button: workable rows contain their own
       // action buttons, and nesting interactive controls is invalid HTML.
       role="group"

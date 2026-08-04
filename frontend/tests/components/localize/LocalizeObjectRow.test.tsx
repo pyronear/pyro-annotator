@@ -23,7 +23,10 @@ const row = () => screen.getByTestId('localize-object-row-object-2');
 
 describe('LocalizeObjectRow selection treatment', () => {
   it('leaves an unselected false-positive row dimmed and unaccented', () => {
-    render(<LocalizeObjectRow {...baseProps} workable={false} isFalsePositive />);
+    // Dimming is the caller's call now (`dimmed`) rather than derived from
+    // `workable`: on a fully localized alert, localized rows are the page's
+    // subject and must NOT fade. The page still dims false positives always.
+    render(<LocalizeObjectRow {...baseProps} workable={false} isFalsePositive dimmed />);
 
     expect(row()).toHaveClass('opacity-60');
     expect(row()).not.toHaveClass('border-l-char');
