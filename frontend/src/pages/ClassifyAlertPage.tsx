@@ -164,6 +164,7 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
 
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const sequenceReviewerRef = useRef<HTMLDivElement | null>(null);
+  const railSubmitRef = useRef<HTMLButtonElement | null>(null);
 
   // Done mode only: snapshot of the just-loaded (or just-reset) state, used
   // to diff against current state at submit time so only lanes the
@@ -340,11 +341,10 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
     const first = cards.find(c => !c.locked) ?? cards[0];
     setActiveCardKey(first.cardKey);
     setActiveSection('detections');
-    // Seed focus on the row so Tab / Shift+Tab cycle the rail immediately,
-    // without first tabbing through the header and media panel.
-    requestAnimationFrame(() => {
-      cardRefs.current[first.cardKey]?.focus({ preventScroll: true });
-    });
+    // Seed focus on the row so Tab / Shift+Tab cycle the rail immediately.
+    // Synchronous (the row is already committed) — a deferred focus could
+    // fire AFTER the user activates another row and steal activation back.
+    cardRefs.current[first.cardKey]?.focus({ preventScroll: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, cards]);
 
@@ -357,10 +357,11 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
     if (!cards.some(c => c.cardKey === cardKey)) return;
     setActiveCardKey(cardKey);
     setActiveSection('detections');
+    // Focus synchronously (see the queue-mode effect above); only the
+    // scroll is deferred a frame.
+    cardRefs.current[cardKey]?.focus({ preventScroll: true });
     requestAnimationFrame(() => {
       cardRefs.current[cardKey]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      // Seed focus so Tab / Shift+Tab cycle the rail immediately on load.
-      cardRefs.current[cardKey]?.focus({ preventScroll: true });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, sequenceId, alertDetail]);
@@ -824,6 +825,32 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
     canSubmit,
   ]);
 
+  // Focus cycle: Tab / Shift+Tab move strictly between the rail's stops —
+  // object rows, the missed-smoke row, the rail Submit — wrapping at the
+  // ends and never escaping to the header/media chrome. Focus landing on a
+  // row activates it (its own onFocus handler). Suspended while the
+  // shortcuts modal is open so its close button stays reachable.
+  useEffect(() => {
+    const handleTab = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab' || showKeyboardModal) return;
+      const stops = (
+        [
+          ...cards.map(c => cardRefs.current[c.cardKey]),
+          sequenceReviewerRef.current,
+          railSubmitRef.current,
+        ] as (HTMLElement | null)[]
+      ).filter((el): el is HTMLElement => el !== null && !(el as HTMLButtonElement).disabled);
+      if (stops.length === 0) return;
+      e.preventDefault();
+      const current = stops.indexOf(document.activeElement as HTMLElement);
+      const delta = e.shiftKey ? -1 : 1;
+      const next = current === -1 ? 0 : (current + delta + stops.length) % stops.length;
+      stops[next].focus();
+    };
+    document.addEventListener('keydown', handleTab, true);
+    return () => document.removeEventListener('keydown', handleTab, true);
+  }, [cards, showKeyboardModal]);
+
   const handlePreviousAlert = () => {
     const prev = navigateToPreviousInWorkflow();
     if (prev) navigate(classifyDetail(prev.id, mode === 'done'));
@@ -1006,6 +1033,7 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
               missedSmokeRowRef={sequenceReviewerRef}
               footer={
                 <button
+                  ref={railSubmitRef}
                   onClick={handleSubmit}
                   disabled={!canSubmit || submitMutation.isPending}
                   data-testid="rail-submit"
@@ -1018,6 +1046,12 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
                     <Upload className="w-3.5 h-3.5 mr-1.5" />
                   )}
                   {submitLabel}
+                  <kbd
+                    aria-hidden="true"
+                    className="ml-2 px-1 py-0.5 rounded bg-white/20 font-data text-[10px] font-medium text-white"
+                  >
+                    Enter
+                  </kbd>
                 </button>
               }
             >

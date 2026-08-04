@@ -968,6 +968,56 @@ describe('ClassifyAlertPage', () => {
     await waitFor(() => expect(screen.getByTestId('object-card-101:0')).toHaveFocus());
   });
 
+  it('Tab cycles rows -> missed smoke and wraps both ways, never escaping the rail; the disabled submit is skipped until enabled', async () => {
+    await renderAndSettle(<ClassifyAlertPage />, { wrapper });
+    await waitFor(() => expect(screen.getByTestId('object-card-101:0')).toHaveFocus());
+
+    fireEvent.keyDown(document, { key: 'Tab' });
+    expect(screen.getByTestId('object-card-102:0')).toHaveFocus();
+    fireEvent.keyDown(document, { key: 'Tab' });
+    expect(screen.getByTestId('object-card-103:0')).toHaveFocus();
+    fireEvent.keyDown(document, { key: 'Tab' });
+    expect(screen.getByTestId('missed-smoke-row')).toHaveFocus();
+    // Submit is disabled (nothing classified) so the cycle wraps straight
+    // back to the first row instead of escaping the rail.
+    fireEvent.keyDown(document, { key: 'Tab' });
+    expect(screen.getByTestId('object-card-101:0')).toHaveFocus();
+    // Backward from the first row wraps to the missed-smoke row.
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+    expect(screen.getByTestId('missed-smoke-row')).toHaveFocus();
+
+    // Classify everything — the now-enabled submit joins the cycle.
+    const cardA = openRow('101:0');
+    fireEvent.click(cardA.getByRole('radio', { name: 'Smoke' }));
+    fireEvent.click(cardA.getByRole('radio', { name: 'Wildfire' }));
+    const cardB = openRow('102:0');
+    fireEvent.click(cardB.getByRole('radio', { name: 'False positive' }));
+    fireEvent.click(cardB.getByRole('checkbox', { name: 'Antenna' }));
+    fireEvent.click(missedSmokeChip('No'));
+
+    fireEvent.keyDown(document, { key: 'Tab' }); // 102 -> 103 (row 102 was last activated by openRow's click? focus is unchanged by clicks in jsdom)
+    fireEvent.keyDown(document, { key: 'Tab' });
+    fireEvent.keyDown(document, { key: 'Tab' });
+    // Wherever the cycle started, within four Tabs it must reach the
+    // enabled submit without ever leaving the rail.
+    fireEvent.keyDown(document, { key: 'Tab' });
+    const focusable = [
+      screen.getByTestId('object-card-101:0'),
+      screen.getByTestId('object-card-102:0'),
+      screen.getByTestId('object-card-103:0'),
+      screen.getByTestId('missed-smoke-row'),
+      screen.getByTestId('rail-submit'),
+    ];
+    expect(focusable).toContain(document.activeElement);
+    // Cycle a full loop: the enabled submit must be visited.
+    const visited = new Set<Element | null>();
+    for (let i = 0; i < 5; i += 1) {
+      visited.add(document.activeElement);
+      fireEvent.keyDown(document, { key: 'Tab' });
+    }
+    expect(visited.has(screen.getByTestId('rail-submit'))).toBe(true);
+  });
+
   it('U toggles unsure on the active object, mutually exclusive with S', async () => {
     await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 
