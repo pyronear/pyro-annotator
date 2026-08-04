@@ -121,7 +121,7 @@ describe('ClassifyAlertQueueTable', () => {
     expect(screen.queryByText(/°/)).not.toBeInTheDocument();
   });
 
-  it('renders "N objects · M classified" when some objects are classified', () => {
+  it('renders "N · M classified" when some objects are classified', () => {
     render(
       <ClassifyAlertQueueTable
         items={[createItem({ total_objects: 3, classified_objects: 1 })]}
@@ -129,10 +129,10 @@ describe('ClassifyAlertQueueTable', () => {
       />
     );
 
-    expect(screen.getByText('3 objects · 1 classified')).toBeInTheDocument();
+    expect(screen.getByText('3 · 1 classified')).toBeInTheDocument();
   });
 
-  it('renders "1 object" with no classified suffix for a single unclassified object', () => {
+  it('renders the bare count with no classified suffix for a single unclassified object', () => {
     render(
       <ClassifyAlertQueueTable
         items={[createItem({ total_objects: 1, classified_objects: 0 })]}
@@ -140,11 +140,11 @@ describe('ClassifyAlertQueueTable', () => {
       />
     );
 
-    expect(screen.getByText('1 object')).toBeInTheDocument();
+    expect(screen.getByText('1')).toBeInTheDocument();
     expect(screen.queryByText(/classified/)).not.toBeInTheDocument();
   });
 
-  it('renders "N objects" with no classified suffix when none are classified', () => {
+  it('renders the bare count with no classified suffix when none are classified', () => {
     render(
       <ClassifyAlertQueueTable
         items={[createItem({ total_objects: 3, classified_objects: 0 })]}
@@ -152,7 +152,7 @@ describe('ClassifyAlertQueueTable', () => {
       />
     );
 
-    expect(screen.getByText('3 objects')).toBeInTheDocument();
+    expect(screen.getByText('3')).toBeInTheDocument();
     expect(screen.queryByText(/classified/)).not.toBeInTheDocument();
   });
 
