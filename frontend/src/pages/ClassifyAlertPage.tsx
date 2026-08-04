@@ -20,7 +20,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ChevronLeft, ChevronRight, Keyboard, Upload, X } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, Keyboard, Upload } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { QUERY_KEYS } from '@/utils/constants';
 import {
@@ -36,14 +36,15 @@ import { useSequenceStore } from '@/store/useSequenceStore';
 import { hasUserAnnotations, getInitialMissedSmokeReview } from '@/utils/annotation/sequenceUtils';
 import { determineClassifySubmitStage } from '@/utils/annotation/localizeUtils';
 import { createKeyboardHandler } from '@/utils/annotation/keyboardUtils';
-import {
-  createPreviousDetectionNavigator,
-  createNextDetectionNavigator,
-} from '@/utils/annotation/navigationUtils';
 import { getObjectColor, ObjectOverlay } from '@/utils/annotation/objectColors';
 import { getProcessingStageLabel } from '@/utils/processingStage';
 import { CardClassification, ObjectPresenceStrip } from '@/components/sequence-annotation';
-import { ClassifyMediaPanel, DecisionRail, ObjectRow } from '@/components/classify';
+import {
+  ClassifyMediaPanel,
+  ClassifyShortcutsModal,
+  DecisionRail,
+  ObjectRow,
+} from '@/components/classify';
 import { NotificationSystem } from '@/components/ui/NotificationSystem';
 import { useToastNotifications } from '@/utils/notification/toastUtils';
 import { ROUTES, classifyDetail, classifyGroup } from '@/utils/routes';
@@ -440,11 +441,13 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
     });
   });
 
+  // Only consumed by the whole-alert (missed smoke) player, where every
+  // object matters equally — all full-strength, no active-card dimming.
   const playerObjectOverlays: ObjectOverlay[] = cardOverlayData.map(o => ({
     color: o.color,
     label: o.label,
     boxesByRecordedAt: o.boxesByRecordedAt,
-    isActive: o.cardKey === activeCardKey,
+    isActive: true,
   }));
 
   // The media panel always shows the active object's players (the panel
@@ -571,28 +574,6 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
   cards.forEach((c, i) => {
     adapterClassification[i] = primaryClassification[c.cardKey] ?? 'unselected';
   });
-  const detectionRefsAdapter = { current: cards.map(c => cardRefs.current[c.cardKey] ?? null) };
-
-  const navigateToPreviousDetection = createPreviousDetectionNavigator(
-    { activeDetectionIndex: activeIndex, activeSection, bboxes: adapterBboxes, showKeyboardModal },
-    {
-      setActiveDetectionIndex: index =>
-        setActiveCardKey(index === null ? null : (cards[index]?.cardKey ?? null)),
-      setActiveSection,
-    },
-    { detectionRefs: detectionRefsAdapter, sequenceReviewerRef }
-  );
-
-  const navigateToNextDetection = createNextDetectionNavigator(
-    { activeDetectionIndex: activeIndex, activeSection, bboxes: adapterBboxes, showKeyboardModal },
-    {
-      setActiveDetectionIndex: index =>
-        setActiveCardKey(index === null ? null : (cards[index]?.cardKey ?? null)),
-      setActiveSection,
-    },
-    { detectionRefs: detectionRefsAdapter, sequenceReviewerRef }
-  );
-
   const handleBboxChangeAdapter = (index: number, updatedBbox: SequenceBbox) => {
     const card = cards[index];
     if (card) handleBboxChangeByCardKey(card.cardKey, updatedBbox);
@@ -661,11 +642,7 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
     editableCards.length > 0 &&
     (mode === 'done' ? isComplete && anyLaneChanged : isComplete && missedSmokeReview !== null);
 
-  // Shared by the header submit and its rail-footer mirror.
-  const submitLabel =
-    mode === 'done'
-      ? `Save changes (${changedLaneCount})`
-      : `Submit alert (${editableCards.length} objects)`;
+  const submitLabel = mode === 'done' ? `Save changes (${changedLaneCount})` : 'Submit';
   const submitTitle = mode === 'done' ? 'Save changes (Enter)' : 'Submit alert (Enter)';
 
   const submitMutation = useMutation({
@@ -861,10 +838,9 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
   // Keyboard shortcuts over the flattened card list.
   useEffect(() => {
     const handleKeyDown = createKeyboardHandler({
-      // Classification shortcuts (S/F, types, Q) only apply while the
+      // Classification shortcuts (S/F, types, U) only apply while the
       // object section is active — a null index makes them inert when the
-      // missed-smoke section is selected. The navigators keep their own
-      // (ungated) state, so ArrowUp still leaves the sequence section.
+      // missed-smoke section is selected.
       activeDetectionIndex: activeSection === 'detections' ? activeIndex : null,
       bboxes: adapterBboxes,
       showKeyboardModal,
@@ -873,8 +849,6 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
       setShowKeyboardModal,
       handleReset,
       handleSave: handleSubmit,
-      navigateToPreviousDetection,
-      navigateToNextDetection,
       handleMissedSmokeReviewChange,
       handleBboxChange: handleBboxChangeAdapter,
       onPrimaryClassificationChange: handlePrimaryClassificationChangeAdapter,
@@ -1039,28 +1013,6 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
                 </button>
               </>
             )}
-
-            <button
-              onClick={handleSubmit}
-              disabled={!canSubmit || submitMutation.isPending}
-              className="inline-flex items-center rounded-lg bg-ember px-4 py-2 font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              title={submitTitle}
-            >
-              {submitMutation.isPending ? (
-                <div className="w-3.5 h-3.5 mr-1.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-              ) : (
-                <Upload className="w-3.5 h-3.5 mr-1.5" />
-              )}
-              {submitLabel}
-            </button>
-
-            <button
-              onClick={() => setShowKeyboardModal(true)}
-              className="p-2 rounded-lg border border-line bg-paper text-haze hover:bg-ash"
-              title="Show keyboard shortcuts (?)"
-            >
-              <Keyboard className="w-4 h-4" />
-            </button>
           </div>
         </div>
       </div>
@@ -1099,11 +1051,12 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
         )}
 
         {/* Cockpit: media column (the active thing) + decision rail (the
-            whole alert's state). Desktop pins both columns to the viewport
-            below the fixed header and scrolls each internally; below lg
-            they stack in natural flow. */}
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:h-[calc(100vh-7rem)]">
-          <div className="lg:flex-[1.5] lg:min-w-0 lg:overflow-y-auto lg:h-full">
+            whole alert's state). The media column flows with the page (one
+            window-edge scrollbar, no nested one inside the card); the rail
+            sticks below the fixed header on desktop, scrolling internally
+            only if it outgrows the viewport. Below lg they stack. */}
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+          <div className="lg:flex-[1.5] lg:min-w-0">
             <ClassifyMediaPanel
               activeSection={activeSection}
               activeObject={activeMediaObject}
@@ -1111,11 +1064,12 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
               primarySequenceId={primaryLane.sequence.id}
               missedSmokeReview={missedSmokeReview}
               onMissedSmokeReviewChange={handleMissedSmokeReviewChange}
+              missedSmokeDisabled={missedSmokeCarrierLaneId === undefined}
               annotationLoading={isLoading}
               objectOverlays={playerObjectOverlays}
             />
           </div>
-          <div className="lg:flex-1 lg:min-w-0 lg:overflow-y-auto lg:h-full">
+          <div className="lg:flex-1 lg:min-w-0 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
             <DecisionRail
               missedSmokeReview={missedSmokeReview}
               onMissedSmokeReviewChange={handleMissedSmokeReviewChange}
@@ -1123,13 +1077,22 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
               onMissedSmokeActivate={() => setActiveSection('sequence')}
               missedSmokeDisabled={missedSmokeCarrierLaneId === undefined}
               missedSmokeRowRef={sequenceReviewerRef}
+              headerAction={
+                <button
+                  onClick={() => setShowKeyboardModal(true)}
+                  className="p-1.5 rounded-lg border border-line bg-paper text-haze hover:bg-ash"
+                  title="Show keyboard shortcuts (?)"
+                >
+                  <Keyboard className="w-4 h-4" />
+                </button>
+              }
               footer={
                 <button
                   ref={railSubmitRef}
                   onClick={handleSubmit}
                   disabled={!canSubmit || submitMutation.isPending}
                   data-testid="rail-submit"
-                  className="w-full inline-flex items-center justify-center rounded-lg bg-ember px-4 py-2.5 font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="mx-auto flex items-center justify-center rounded-lg bg-pine px-5 py-2.5 font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   title={submitTitle}
                 >
                   {submitMutation.isPending ? (
@@ -1167,8 +1130,11 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
 
                 const { card } = item;
                 const lane = alertDetail.lanes.find(l => l.sequence.id === card.laneSequenceId)!;
+                // Queue mode's locked rows explain themselves via the stage
+                // label; done mode's rows are all re-editable, so the label
+                // (Awaiting localization / Fully annotated) is just noise.
                 const stageBadge =
-                  card.locked || mode === 'done'
+                  card.locked && mode !== 'done'
                     ? getProcessingStageLabel(lane.annotation!.processing_stage)
                     : undefined;
                 const overlay = cardOverlayData.find(o => o.cardKey === card.cardKey);
@@ -1235,51 +1201,7 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
         />
 
         {showKeyboardModal && (
-          <div className="fixed inset-0 bg-char/50 flex items-center justify-center z-50">
-            <div className="bg-paper border border-line rounded-lg max-w-2xl max-h-[90vh] overflow-y-auto m-4">
-              <div className="flex items-center justify-between p-6 border-b border-line">
-                <h2 className="font-display text-heading font-semibold text-char">
-                  Keyboard Shortcuts
-                </h2>
-                <button
-                  onClick={() => setShowKeyboardModal(false)}
-                  className="p-2 hover:bg-ash rounded-md"
-                >
-                  <X className="w-5 h-5 text-haze" />
-                </button>
-              </div>
-              <div className="p-6 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="font-body text-sm text-char">Previous / next object</span>
-                  <span className="font-data text-detail text-haze">↑ / ↓</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="font-body text-sm text-char">
-                    Mark active object as smoke / false positive
-                  </span>
-                  <span className="font-data text-detail text-haze">S / F</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="font-body text-sm text-char">
-                    Smoke type (wildfire / industrial / other)
-                  </span>
-                  <span className="font-data text-detail text-haze">1 / 2 / 3</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="font-body text-sm text-char">Mark active object as unsure</span>
-                  <span className="font-data text-detail text-haze">U</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="font-body text-sm text-char">Missed smoke yes / no</span>
-                  <span className="font-data text-detail text-haze">Y / N</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="font-body text-sm text-char">Submit alert</span>
-                  <span className="font-data text-detail text-haze">Enter</span>
-                </div>
-              </div>
-            </div>
-          </div>
+          <ClassifyShortcutsModal onClose={() => setShowKeyboardModal(false)} />
         )}
       </div>
     </>

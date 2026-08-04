@@ -59,7 +59,7 @@ function renderPlayer(objectOverlays: ObjectOverlay[], currentIndex = 0) {
   );
   // jsdom never fires a real image load; drive handleImageLoad manually so
   // imageInfo is populated and the overlay layer renders.
-  fireEvent.load(screen.getByAltText(/Detection/));
+  fireEvent.load(screen.getByAltText(/Frame/));
 }
 
 describe('SequencePlayer object overlays', () => {
