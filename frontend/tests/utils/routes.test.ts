@@ -1,4 +1,4 @@
-import { ROUTES, classifyDetail, classifyGroup, localizeDetail, localizeLane } from '@/utils/routes';
+import { ROUTES, classifyDetail, classifyGroup, localizeDetail } from '@/utils/routes';
 
 describe('routes', () => {
   it('exposes the taxonomy path constants', () => {
@@ -7,7 +7,6 @@ describe('routes', () => {
     expect(ROUTES.CLASSIFY_GROUPS).toBe('/classify/groups');
     expect(ROUTES.LOCALIZE).toBe('/localize');
     expect(ROUTES.LOCALIZE_DONE).toBe('/localize/done');
-    expect(ROUTES.LOCALIZE_LANE).toBe('/localize/lane');
   });
 
   it('builds classify detail paths for queue and done provenance', () => {
@@ -19,15 +18,12 @@ describe('routes', () => {
     expect(classifyGroup(7)).toBe('/classify/groups/7');
   });
 
-  it('builds localize detail paths: queue provenance always targets the alert page (no detection segment), done provenance keeps the legacy per-lane path', () => {
+  // Both provenances land on the collocated alert page, and both carry the
+  // optional detection segment that deep-links into that frame's editor.
+  it('builds localize detail paths for queue and done provenance, with an optional detection id', () => {
     expect(localizeDetail(5)).toBe('/localize/5');
-    expect(localizeDetail(5, 9)).toBe('/localize/5');
+    expect(localizeDetail(5, 9)).toBe('/localize/5/9');
     expect(localizeDetail(5, undefined, true)).toBe('/localize/done/5');
     expect(localizeDetail(5, 9, true)).toBe('/localize/done/5/9');
-  });
-
-  it('builds legacy lane paths with an optional detection id', () => {
-    expect(localizeLane(5)).toBe('/localize/lane/5');
-    expect(localizeLane(5, 9)).toBe('/localize/lane/5/9');
   });
 });

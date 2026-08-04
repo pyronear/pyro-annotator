@@ -26,11 +26,12 @@ frontend/src/
 │   ├── annotation/              # Sequence annotation pieces (CroppedImageSequence, FullImageSequence, ImageOverlays, SmokeTypeSelector)
 │   ├── dashboard/               # PipelineStrip, PhaseCard, HowItWorks
 │   ├── detection-annotation/    # Detection-level bbox annotation (canvas, toolbar, shortcuts modal, image card, progress header, submission)
-│   ├── detection-sequence/      # DetectionGrid, DetectionHeader, ImageModal
+│   ├── detection-sequence/      # AlertFrameGrid, ImageModal, ViewToolbar
 │   ├── filters/                 # FalsePositiveFilter, ModelAccuracyFilter, SmokeTypeFilter, TabbedFilters, shared/
 │   ├── layout/                  # AppLayout
 │   ├── sequence/                # SequencePlayer, SequenceReviewer, MediaControls, PlayerControls, MissedSmokePanel, MissedSmokeInstructionsModal
-│   ├── sequence-annotation/     # AnnotationHeader, MissedSmokePanel, ProcessingStageMessages, SequenceAnnotationGrid
+│   ├── localize/                # LocalizeRail, LocalizeObjectRow, LocalizeMissedSmokeRow
+│   ├── sequence-annotation/     # AnnotationHeader, MissedSmokePanel, ObjectStatusStrip, ProcessingStageMessages
 │   ├── sequences/               # Table headers/rows + pagination for annotate / review queues, plus SequencesLegend
 │   └── ui/                      # NotificationBadge, NotificationSystem, PasswordField, ProgressIndicator
 ├── hooks/
@@ -44,9 +45,9 @@ frontend/src/
 │   ├── SequencesPage.tsx              # Annotate queue
 │   ├── SequencesPageWrapper.tsx       # Stage-parameterized list (annotated, etc.)
 │   ├── AnnotationInterface.tsx        # Annotate one sequence
-│   ├── DetectionAnnotatePage.tsx
-│   ├── DetectionReviewPage.tsx
-│   ├── DetectionSequenceAnnotatePage.tsx
+│   ├── DetectionAnnotatePage.tsx      # Localize queue (alert-grouped)
+│   ├── DetectionReviewPage.tsx        # Localize done list (alert-grouped)
+│   ├── LocalizeAlertPage.tsx          # Localize one alert (queue + done modes)
 │   └── UserManagementPage.tsx
 ├── services/api.ts              # Axios client (interceptors, JWT)
 ├── store/
@@ -84,9 +85,9 @@ provenance in the path: `/classify/:id` was entered from the queue,
 | `/classify/groups`                         | `SequenceGroupsListPage`          |
 | `/classify/groups/:id`                     | `SequenceGroupAnnotatePage`       |
 | `/localize`                                | `DetectionAnnotatePage` (alert-grouped Localize queue) |
-| `/localize/done`                           | `DetectionReviewPage` (verification, smoke lanes only) |
-| `/localize/:sequenceId/:detectionId?`      | `DetectionSequenceAnnotatePage`   |
-| `/localize/done/:sequenceId/:detectionId?` | `DetectionSequenceAnnotatePage` (done mode) |
+| `/localize/done`                           | `DetectionReviewPage` (alert-grouped Done list) |
+| `/localize/:sequenceId/:detectionId?`      | `LocalizeAlertPage`               |
+| `/localize/done/:sequenceId/:detectionId?` | `LocalizeAlertPage` (done mode)   |
 | `/users`                                   | `UserManagementPage`              |
 | `/guide`                                   | `GuidePage`                       |
 

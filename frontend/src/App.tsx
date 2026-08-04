@@ -8,7 +8,6 @@ import SequencesPageWrapper from '@/pages/SequencesPageWrapper';
 import ClassifyAlertPage from '@/pages/ClassifyAlertPage';
 import DetectionAnnotatePage from '@/pages/DetectionAnnotatePage';
 import DetectionReviewPage from '@/pages/DetectionReviewPage';
-import DetectionSequenceAnnotatePage from '@/pages/DetectionSequenceAnnotatePage';
 import LocalizeAlertPage from '@/pages/LocalizeAlertPage';
 import SequenceGroupAnnotatePage from '@/pages/SequenceGroupAnnotatePage';
 import SequenceGroupsListPage from '@/pages/SequenceGroupsListPage';
@@ -112,21 +111,15 @@ function App() {
                       </RequireLocalize>
                     }
                   />
+                  {/* Same component either side, provenance from the path —
+                      the /localize/done route must precede the dynamic
+                      /localize/:sequenceId below so "done" isn't swallowed
+                      as a sequence id. */}
                   <Route
                     path="/localize/done/:sequenceId/:detectionId?"
                     element={
                       <RequireLocalize>
-                        <DetectionSequenceAnnotatePage mode="done" />
-                      </RequireLocalize>
-                    }
-                  />
-                  {/* Literal /localize/lane segment must precede the dynamic
-                      /localize/:sequenceId below so it isn't shadowed. */}
-                  <Route
-                    path="/localize/lane/:sequenceId/:detectionId?"
-                    element={
-                      <RequireLocalize>
-                        <DetectionSequenceAnnotatePage />
+                        <LocalizeAlertPage mode="done" />
                       </RequireLocalize>
                     }
                   />

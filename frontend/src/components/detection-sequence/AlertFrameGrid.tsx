@@ -35,9 +35,7 @@ interface AlertFrameGridProps {
   onCellClick: (recordedAt: string, laneSequenceId: number, detectionId: number) => void;
   /** Registers the cell's DOM node for the page's scroll-to-frame behavior (segment click). */
   cellRef?: (recordedAt: string, el: HTMLDivElement | null) => void;
-  /** The active object's accent color — outlines the frames it actually appears on. */
-  activeColor?: string;
-  /** Minimum cell width driving the auto-fill column count — matches DetectionGrid's card-size knob. */
+  /** Minimum cell width driving the auto-fill column count — set by the S/M/L card-size knob. */
   cardMinWidth?: number;
   /** Zoom each cell around the active object's boxes for that frame; no-op with no active object. */
   cropMode?: boolean;
@@ -50,7 +48,6 @@ export function AlertFrameGrid({
   activeLaneId,
   onCellClick,
   cellRef,
-  activeColor,
   cardMinWidth = 220,
   cropMode = false,
   highlightedFrame = null,
@@ -69,7 +66,6 @@ export function AlertFrameGrid({
           key={frame.recordedAt}
           frame={frame}
           activeLaneId={activeLaneId}
-          activeColor={activeColor}
           cropMode={cropMode}
           highlighted={highlightedFrame === frame.recordedAt}
           onClick={activeCell =>
@@ -85,7 +81,6 @@ export function AlertFrameGrid({
 interface AlertFrameCellViewProps {
   frame: AlertFrame;
   activeLaneId: number | null;
-  activeColor?: string;
   cropMode: boolean;
   highlighted: boolean;
   onClick: (activeCell: AlertFrameCell) => void;
@@ -95,7 +90,6 @@ interface AlertFrameCellViewProps {
 function AlertFrameCellView({
   frame,
   activeLaneId,
-  activeColor,
   cropMode,
   highlighted,
   onClick,
@@ -176,7 +170,6 @@ function AlertFrameCellView({
   // clicking used to open the fallback lane's detection, silently switching
   // which object you were editing.
   const isContextFrame = activeLaneId !== null && !isActiveLaneCell;
-  const isAccented = activeLaneId !== null && isActiveLaneCell;
   // A false-positive object is settled; its frames are here to be LOOKED at
   // (including via the cropped-view strip), never edited. Opening the editor
   // on one would offer to re-box something classify already rejected.
@@ -197,14 +190,6 @@ function AlertFrameCellView({
       } ${isReadOnly ? 'cursor-default' : 'cursor-pointer'} ${
         highlighted ? 'ring-2 ring-pine ring-offset-2' : ''
       }`}
-      // `outline` rather than a Tailwind ring: the arrival highlight above
-      // already owns the ring (box-shadow), and the two would clobber each
-      // other on a cell that is both accented and highlighted.
-      style={
-        isAccented && activeColor
-          ? { outline: `2px solid ${activeColor}`, outlineOffset: '-2px' }
-          : undefined
-      }
       onClick={isReadOnly ? undefined : () => onClick(activeCell)}
     >
       {isLoading && <div className="absolute inset-0 animate-pulse bg-ash" />}

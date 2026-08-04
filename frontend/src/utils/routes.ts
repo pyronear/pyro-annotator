@@ -9,10 +9,6 @@ export const ROUTES = {
   CLASSIFY_GROUPS: '/classify/groups',
   LOCALIZE: '/localize',
   LOCALIZE_DONE: '/localize/done',
-  // The legacy per-lane box-drawing page (formerly at /localize/:sequenceId
-  // itself) — /localize/:sequenceId now renders the collocated
-  // LocalizeAlertPage instead.
-  LOCALIZE_LANE: '/localize/lane',
 } as const;
 
 export function classifyDetail(id: number | string, done = false): string {
@@ -31,24 +27,17 @@ export function classifyGroups(filter: SequenceGroupsFilter): string {
 }
 
 /**
- * Queue provenance (`done = false`) always lands on the collocated
- * LocalizeAlertPage, whose route accepts an optional `:detectionId?` segment
- * for deep-linked edits — this builder omits it because no queue caller
- * passes one. Done provenance still targets the legacy per-lane page at
- * `/localize/done/:sequenceId/:detectionId?`.
+ * Both provenances land on the collocated LocalizeAlertPage — queue at
+ * `/localize/:sequenceId`, Done list at `/localize/done/:sequenceId` — and
+ * both routes accept the optional `:detectionId?` segment that deep-links
+ * straight into that frame's editor.
  */
 export function localizeDetail(
   sequenceId: number | string,
   detectionId?: number | string,
   done = false
 ): string {
-  if (!done) return `${ROUTES.LOCALIZE}/${sequenceId}`;
+  const base = done ? ROUTES.LOCALIZE_DONE : ROUTES.LOCALIZE;
   const detSegment = detectionId !== undefined ? `/${detectionId}` : '';
-  return `${ROUTES.LOCALIZE_DONE}/${sequenceId}${detSegment}`;
-}
-
-/** The legacy per-lane box-drawing page, entered from within the alert page or the done list's internal navigation. */
-export function localizeLane(sequenceId: number | string, detectionId?: number | string): string {
-  const detSegment = detectionId !== undefined ? `/${detectionId}` : '';
-  return `${ROUTES.LOCALIZE_LANE}/${sequenceId}${detSegment}`;
+  return `${base}/${sequenceId}${detSegment}`;
 }

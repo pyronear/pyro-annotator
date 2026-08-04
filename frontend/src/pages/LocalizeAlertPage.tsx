@@ -2,7 +2,21 @@
  * Collocated localize screen: renders every workable object (lane) of one
  * alert as a status strip plus a frame grid, mirroring ClassifyAlertPage's
  * alert-level shape for the localize task. Mounted at
- * `/localize/:sequenceId/:detectionId?`.
+ * `/localize/:sequenceId/:detectionId?` (queue provenance) and
+ * `/localize/done/:sequenceId/:detectionId?` (`mode="done"`, entered from
+ * the Done list) — the same component either side, exactly as classify does
+ * it. `mode` is pure provenance: the list to go back to, and the prefix this
+ * page's own URLs are built from. It gates no behavior, because a "done"
+ * alert isn't necessarily finished — the localize-done queue surfaces an
+ * alert as soon as ONE lane is annotated and returns all its lanes, so the
+ * mix of annotated and still-workable objects the rail already models turns
+ * up on both routes.
+ *
+ * Done mode replaced `DetectionSequenceAnnotatePage`, which rendered only the
+ * alert's FIRST lane (siblings invisible) and switched off crop mode, the
+ * cropped-view flipbook and per-frame cell states via `isLocalize = mode !==
+ * 'done'`. That page, its `DetectionGrid`/`DetectionHeader`, and the
+ * `/localize/lane` route are gone.
  *
  * Task 3 built the data loading, status/frame model, strip, and grid. Task 4
  * wires per-frame editing: clicking a grid cell opens the shown object's
@@ -96,11 +110,23 @@ import { NotificationSystem } from '@/components/ui/NotificationSystem';
 import { ROUTES } from '@/utils/routes';
 import { formatDateTime } from '@/utils/datetime';
 
-// Shared with the legacy grid's card-size knob (DetectionSequenceAnnotatePage)
-// via the same persisted key, so the preference carries across both pages.
 const CARD_MIN_WIDTH: Record<CardSize, number> = { sm: 240, md: 340, lg: 500 };
 
-export default function LocalizeAlertPage() {
+interface LocalizeAlertPageProps {
+  /**
+   * 'done' when mounted under /localize/done/… — entered from the Done list.
+   *
+   * Provenance only: it picks the list to return to and the prefix this
+   * page's own URLs are built from, nothing else. A "done" alert is not
+   * necessarily finished — the localize-done queue surfaces an alert as soon
+   * as ONE lane is annotated and returns all of its lanes, so the same mix of
+   * annotated and still-workable objects the queue view already models can
+   * (and does) show up here.
+   */
+  mode?: 'done';
+}
+
+export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {}) {
   const { sequenceId, detectionId } = useParams<{ sequenceId: string; detectionId?: string }>();
   const navigate = useNavigate();
   const location = useLocation();
@@ -108,6 +134,13 @@ export default function LocalizeAlertPage() {
   const queryClient = useQueryClient();
   const sequenceIdNum = sequenceId ? parseInt(sequenceId, 10) : null;
   const detectionIdNum = detectionId ? parseInt(detectionId, 10) : null;
+
+  // Back target and the prefix every in-page URL is built from, both driven
+  // by which list you came in through. `basePath` matters because opening,
+  // stepping through and closing the frame editor all navigate — without it
+  // the first cell click would silently move you onto the queue route.
+  const listPath = mode === 'done' ? ROUTES.LOCALIZE_DONE : ROUTES.LOCALIZE;
+  const basePath = `${listPath}/${sequenceIdNum}`;
 
   const [activeLaneId, setActiveLaneId] = useState<number | null>(null);
   const frameRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -246,8 +279,7 @@ export default function LocalizeAlertPage() {
 
   // Each lane's detections (frame identity: recorded_at) and detection
   // annotations (committed boxes), fetched the same way ClassifyAlertPage
-  // fetches per-lane detections and DetectionSequenceAnnotatePage fetches a
-  // single lane's annotations — one query per lane, paginated for
+  // fetches per-lane detections — one query per lane, paginated for
   // annotations since a lane can have more than one page of frames.
   const laneDetectionsQueries = useQueries({
     queries: laneSequenceIds.map(laneSequenceId => ({
@@ -439,8 +471,8 @@ export default function LocalizeAlertPage() {
   // param) survives opening/closing/stepping through the editor — the two
   // coexist rather than one clobbering the other.
   const closeModal = useCallback(() => {
-    if (sequenceIdNum != null) navigate(`${ROUTES.LOCALIZE}/${sequenceIdNum}${location.search}`);
-  }, [sequenceIdNum, location.search, navigate]);
+    if (sequenceIdNum != null) navigate(`${basePath}${location.search}`);
+  }, [sequenceIdNum, basePath, location.search, navigate]);
 
   const navigateModal = useCallback(
     (direction: 'prev' | 'next') => {
@@ -450,10 +482,9 @@ export default function LocalizeAlertPage() {
           ? Math.max(0, modalIndex - 1)
           : Math.min(laneDetectionsSorted.length - 1, modalIndex + 1);
       const newDetection = laneDetectionsSorted[newIndex];
-      if (newDetection)
-        navigate(`${ROUTES.LOCALIZE}/${sequenceIdNum}/${newDetection.id}${location.search}`);
+      if (newDetection) navigate(`${basePath}/${newDetection.id}${location.search}`);
     },
-    [modalIndex, laneDetectionsSorted, sequenceIdNum, location.search, navigate]
+    [modalIndex, laneDetectionsSorted, sequenceIdNum, basePath, location.search, navigate]
   );
 
   // Per-frame save: create-or-update with FP preservation (shared util),
@@ -612,18 +643,24 @@ export default function LocalizeAlertPage() {
     })
   );
 
-  // Header progress badge: workable objects with no pending frame left.
-  const localizedObjectCount = workableObjects.filter(object => {
-    const progress = objectProgress.get(object.laneSequenceId);
-    return !!progress && progress.confirmedCount === progress.presentCount;
-  }).length;
-
   // The rail (and the timeline below it) group false positives after the
   // real objects, so the read-only context can't be mistaken for work.
   // Both consume this same order, keeping their row indices aligned.
   const smokeObjectRows = objectStatusRows.filter(o => !o.isFalsePositive);
   const falsePositiveRows = objectStatusRows.filter(o => o.isFalsePositive);
   const orderedObjectRows = [...smokeObjectRows, ...falsePositiveRows];
+
+  const isObjectLocalized = (object: AlertObjectStatus): boolean => {
+    const progress = objectProgress.get(object.laneSequenceId);
+    return !!progress && progress.confirmedCount === progress.presentCount;
+  };
+
+  // Header progress badge, counted over EVERY object that needs localizing —
+  // not just the workable ones. Counting workable-only made a fully localized
+  // alert read "0 of 0 objects localized", since a finished lane leaves the
+  // workable set entirely; an already-annotated lane is localized, so it
+  // belongs in both halves of the fraction.
+  const localizedObjectCount = smokeObjectRows.filter(isObjectLocalized).length;
 
   // Counted straight off the lanes, not off `frameModel` — the model only
   // materializes false-positive lanes while the toggle is ON, so the toggle
@@ -650,6 +687,10 @@ export default function LocalizeAlertPage() {
         smokeType={object.smokeType}
         isFalsePositive={object.isFalsePositive}
         falsePositiveTypes={object.falsePositiveTypes}
+        // False positives are always context. An already-localized object is
+        // only context when there's still live work beside it — on a fully
+        // localized alert those rows are the page's subject.
+        dimmed={object.isFalsePositive || (!object.workable && workableObjects.length > 0)}
         isActive={isFocused && activeLaneId === object.laneSequenceId}
         onActivate={() => handleObjectClick(object.laneSequenceId)}
         onAcceptBoxes={
@@ -672,8 +713,9 @@ export default function LocalizeAlertPage() {
   // every frame it appears on. An object is "accepted" either via its row's
   // Accept-boxes action or by drawing its frames in the editor — submitting
   // is the last step, not a shortcut past the per-object review.
-  const allObjectsAccepted =
-    workableObjects.length > 0 && localizedObjectCount === workableObjects.length;
+  // Deliberately NOT the badge's count: submit only ships workable lanes, so
+  // already-annotated objects must not satisfy (or block) the gate.
+  const allObjectsAccepted = workableObjects.length > 0 && workableObjects.every(isObjectLocalized);
 
   // Every workable lane's sequence-annotation id — the payload
   // `localizeSubmit` takes, and the set both bulk actions iterate.
@@ -697,8 +739,8 @@ export default function LocalizeAlertPage() {
       queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
       queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.SEQUENCE_ANNOTATIONS });
-      showToastNotification('Alert submitted', 'success');
-      setTimeout(() => navigate(ROUTES.LOCALIZE), 1000);
+      showToastNotification('Objects submitted', 'success');
+      setTimeout(() => navigate(listPath), 1000);
     },
     onError: err => {
       const detail = (err as { detail?: string })?.detail || (err as Error)?.message || '';
@@ -902,8 +944,7 @@ export default function LocalizeAlertPage() {
   // shouldn't also silently flip the background grid into focus mode.
   const handleCellClick = (_recordedAt: string, laneSequenceId: number, detId: number) => {
     setActiveLaneId(laneSequenceId);
-    if (sequenceIdNum != null)
-      navigate(`${ROUTES.LOCALIZE}/${sequenceIdNum}/${detId}${location.search}`);
+    if (sequenceIdNum != null) navigate(`${basePath}/${detId}${location.search}`);
   };
 
   // 'c' toggles crop mode, matching the legacy grid — inert while the modal
@@ -934,7 +975,7 @@ export default function LocalizeAlertPage() {
           <p className="font-body text-sm text-signal mb-2">Failed to load alert</p>
           <p className="font-body text-detail text-haze">{String(error)}</p>
           <button
-            onClick={() => navigate(ROUTES.LOCALIZE)}
+            onClick={() => navigate(listPath)}
             className="mt-4 font-body text-detail text-haze hover:text-char"
           >
             Back to Alerts
@@ -951,7 +992,7 @@ export default function LocalizeAlertPage() {
           space. */}
       <div className="fixed top-0 left-0 md:left-64 right-0 z-30 px-6 pt-3 pb-2.5 bg-paper/85 border-b border-line backdrop-blur-sm">
         <button
-          onClick={() => navigate(ROUTES.LOCALIZE)}
+          onClick={() => navigate(listPath)}
           className="font-body text-detail text-haze hover:text-char inline-flex items-center gap-1"
         >
           <ArrowLeft className="w-3.5 h-3.5" /> Alerts
@@ -967,13 +1008,13 @@ export default function LocalizeAlertPage() {
             </span>
             <span
               className={`flex-none rounded-full px-2.5 py-0.5 font-data text-xs font-semibold ${
-                workableObjects.length > 0 && localizedObjectCount === workableObjects.length
+                smokeObjectRows.length > 0 && localizedObjectCount === smokeObjectRows.length
                   ? 'bg-pine-soft text-pine'
                   : 'bg-ember-soft text-ember'
               }`}
             >
-              {localizedObjectCount} of {workableObjects.length} object
-              {workableObjects.length === 1 ? '' : 's'} localized
+              {localizedObjectCount} of {smokeObjectRows.length} object
+              {smokeObjectRows.length === 1 ? '' : 's'} localized
             </span>
           </div>
         </div>
@@ -989,9 +1030,7 @@ export default function LocalizeAlertPage() {
           <div className="rounded-card border border-line bg-paper px-[22px] py-5">
             {/* The view controls sit with the grid they drive, not in the
                 alert header — S/M/L, crop and the flipbook are all about
-                how these cells render. The predictions toggle is omitted:
-                AlertFrameGrid never reads `showPredictions` (only ImageModal
-                does, and it carries its own toggle). */}
+                how these cells render. */}
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <div className="font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
                 {/* Which object's images the cells are showing — invisible
@@ -1006,7 +1045,6 @@ export default function LocalizeAlertPage() {
                 <ViewToolbar
                   cardSize={effectiveCardSize}
                   onCardSizeChange={handleCardSizeChange}
-                  isLocalize
                   cropMode={cropMode}
                   onToggleCropMode={setCropMode}
                   showCroppedView={isFocused || showCroppedView}
@@ -1026,7 +1064,6 @@ export default function LocalizeAlertPage() {
             <AlertFrameGrid
               frames={frameModel.frames}
               activeLaneId={activeLaneId}
-              activeColor={activeObject?.color}
               onCellClick={handleCellClick}
               cellRef={handleCellRef}
               cardMinWidth={cardMinWidth}
@@ -1114,37 +1151,46 @@ export default function LocalizeAlertPage() {
               />
             }
             footer={
-              <div className="space-y-1.5">
-                <button
-                  type="button"
-                  onClick={e => {
-                    e.stopPropagation();
-                    handleSubmitClick();
-                  }}
-                  disabled={!allObjectsAccepted || submitAlert.isPending}
-                  title={
-                    allObjectsAccepted
-                      ? 'Submit the whole alert'
-                      : "Accept every object's boxes first"
-                  }
-                  className="mx-auto flex items-center justify-center rounded-lg bg-pine px-5 py-2.5 text-center font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              workableObjects.length === 0 ? (
+                <p
+                  data-testid="all-objects-localized"
+                  className="text-center font-body text-detail text-haze"
                 >
-                  {submitAlert.isPending ? (
-                    <div className="w-3.5 h-3.5 mr-1.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <Upload className="w-3.5 h-3.5 mr-1.5 shrink-0" />
-                  )}
-                  Submit alert
-                </button>
-                {/* Says WHY it's disabled — otherwise the gate reads as a
+                  All objects localized
+                </p>
+              ) : (
+                <div className="space-y-1.5">
+                  <button
+                    type="button"
+                    onClick={e => {
+                      e.stopPropagation();
+                      handleSubmitClick();
+                    }}
+                    disabled={!allObjectsAccepted || submitAlert.isPending}
+                    title={
+                      allObjectsAccepted
+                        ? 'Submit every object still awaiting localization'
+                        : "Accept every object's boxes first"
+                    }
+                    className="mx-auto flex items-center justify-center rounded-lg bg-pine px-5 py-2.5 text-center font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {submitAlert.isPending ? (
+                      <div className="w-3.5 h-3.5 mr-1.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <Upload className="w-3.5 h-3.5 mr-1.5 shrink-0" />
+                    )}
+                    Submit
+                  </button>
+                  {/* Says WHY it's disabled — otherwise the gate reads as a
                     bug once every row looks handled but one still has a
                     pending frame. */}
-                {!allObjectsAccepted && workableObjects.length > 0 && (
-                  <p className="text-center font-body text-detail text-haze">
-                    Accept every object&rsquo;s boxes to enable
-                  </p>
-                )}
-              </div>
+                  {!allObjectsAccepted && (
+                    <p className="text-center font-body text-detail text-haze">
+                      Accept every object&rsquo;s boxes to enable
+                    </p>
+                  )}
+                </div>
+              )
             }
           >
             {smokeObjectRows.map(renderObjectRow)}
