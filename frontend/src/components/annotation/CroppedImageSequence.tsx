@@ -7,10 +7,6 @@ interface CroppedImageSequenceProps {
   bboxes: BoundingBox[];
   sequenceId: number;
   className?: string;
-  /** Padding around the average bbox, as a fraction of its size (default 0.2 — existing behavior). Raise for more surrounding context. */
-  contextPadding?: number;
-  /** Starting zoom level, 1-8 (default 4 — existing behavior). Lower shows more of the padded crop at once. */
-  initialZoom?: number;
 }
 
 interface ImageData {
@@ -24,14 +20,12 @@ export default function CroppedImageSequence({
   bboxes,
   sequenceId,
   className = '',
-  contextPadding = 0.2,
-  initialZoom = 4,
 }: CroppedImageSequenceProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [images, setImages] = useState<ImageData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [zoomLevel, setZoomLevel] = useState(initialZoom);
+  const [zoomLevel, setZoomLevel] = useState(4); // Default 4x zoom
 
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -56,8 +50,8 @@ export default function CroppedImageSequence({
     setCurrentIndex(0);
     setIsLoading(true);
     setError(null);
-    setZoomLevel(initialZoom); // Reset zoom to default
-  }, [bboxes, sequenceId, initialZoom]);
+    setZoomLevel(4); // Reset zoom to default
+  }, [bboxes, sequenceId]);
 
   // Fetch detection image URLs
   useEffect(() => {
@@ -173,8 +167,9 @@ export default function CroppedImageSequence({
     const [avgX1, avgY1, avgX2, avgY2] = avgBbox;
 
     // Padding around the bbox to show surrounding context.
-    const padX = (avgX2 - avgX1) * contextPadding;
-    const padY = (avgY2 - avgY1) * contextPadding;
+    const padding = 0.2;
+    const padX = (avgX2 - avgX1) * padding;
+    const padY = (avgY2 - avgY1) * padding;
 
     const cropX1 = Math.max(0, avgX1 - padX);
     const cropY1 = Math.max(0, avgY1 - padY);
@@ -218,7 +213,7 @@ export default function CroppedImageSequence({
       canvasWidth,
       canvasHeight // destination rectangle
     );
-  }, [bboxes, currentIndex, images, zoomLevel, contextPadding]);
+  }, [bboxes, currentIndex, images, zoomLevel]);
 
   // Redraw canvas when current index or zoom level changes
   useEffect(() => {
@@ -330,7 +325,7 @@ export default function CroppedImageSequence({
               {zoomLevel.toFixed(1)}x
             </span>
             <button
-              onClick={() => setZoomLevel(initialZoom)}
+              onClick={() => setZoomLevel(4)}
               title="Reset zoom"
               aria-label="Reset zoom"
               className="px-1.5 py-0.5 rounded text-xs text-gray-600 hover:text-gray-900 hover:bg-white"

@@ -4,10 +4,7 @@
  * Object N") plus a per-frame status bar across the union of the alert's
  * frame timestamps, where each frame is its own button reporting that
  * object's status at that timestamp: `confirmed` (solid fill), `pending`
- * (reduced-opacity fill), or `absent` (neutral track, no fill). Rows with
- * `flag: true` (the ⚑ Missed row) prefix their label with ⚑ and render
- * `pending` segments as a dashed outline instead of a fill, since there's
- * no per-object color identity for a synthetic "missed" lane.
+ * (reduced-opacity fill), or `absent` (neutral track, no fill).
  *
  * Renders for `objects.length >= 1` — unlike ObjectPresenceStrip's ≥2 gate,
  * a single-object alert still benefits from seeing its own frame statuses.
@@ -40,8 +37,6 @@ export interface ObjectStatusStripObject {
   label: string;
   /** Stable per-object color (hex) — matches the object's card accent. */
   color: string;
-  /** Renders the label with a ⚑ prefix and gives `pending` a dashed outline instead of a fill (the synthetic ⚑ Missed row). */
-  flag?: boolean;
   /** This object's status per frame timestamp (ISO string); frames absent from the map render as `absent`. */
   statusByTimestamp: Record<string, ObjectStatusStripStatus>;
   /** Optional action (e.g. a quick-accept button) rendered at the row's trailing edge. */
@@ -63,13 +58,11 @@ function ObjectLabelButton({
   objectIndex,
   label,
   color,
-  flag,
   onClick,
 }: {
   objectIndex: number;
   label: string;
   color: string;
-  flag: boolean;
   onClick?: () => void;
 }) {
   return (
@@ -84,9 +77,7 @@ function ObjectLabelButton({
         className="h-2.5 w-2.5 shrink-0 rounded-full"
         style={{ backgroundColor: color }}
       />
-      <span className="w-20 shrink-0 truncate font-body text-detail text-haze">
-        {flag ? `⚑ ${label}` : label}
-      </span>
+      <span className="w-20 shrink-0 truncate font-body text-detail text-haze">{label}</span>
     </button>
   );
 }
@@ -96,19 +87,12 @@ const SEGMENT_BASE_CLASS =
 
 function segmentAppearance(
   status: ObjectStatusStripStatus,
-  color: string,
-  flag: boolean
+  color: string
 ): { className: string; style?: React.CSSProperties } {
   if (status === 'confirmed') {
     return { className: SEGMENT_BASE_CLASS, style: { backgroundColor: color } };
   }
   if (status === 'pending') {
-    if (flag) {
-      return {
-        className: `${SEGMENT_BASE_CLASS} border border-dashed`,
-        style: { borderColor: color },
-      };
-    }
     return { className: `${SEGMENT_BASE_CLASS} opacity-40`, style: { backgroundColor: color } };
   }
   // absent — neutral track, no fill; the row's track background shows through.
@@ -138,13 +122,11 @@ export const ObjectStatusStrip: React.FC<ObjectStatusStripProps> = ({
       </div>
 
       {objects.map((object, objectIndex) => {
-        const flag = object.flag ?? false;
         const selected = object.selected ?? false;
         return (
           <div
             key={object.label}
             data-testid={`object-status-row-${objectIndex}`}
-            data-flag={flag ? 'true' : undefined}
             data-selected={selected ? 'true' : undefined}
             className={`flex w-full items-center gap-2 border-l-[3px] py-1 pl-1 transition-colors ${
               selected ? 'border-l-pine bg-pine-soft' : 'border-l-transparent'
@@ -154,13 +136,12 @@ export const ObjectStatusStrip: React.FC<ObjectStatusStripProps> = ({
               objectIndex={objectIndex}
               label={object.label}
               color={object.color}
-              flag={flag}
               onClick={() => onObjectClick?.(objectIndex)}
             />
             <div className="flex h-1.5 flex-1 gap-px overflow-hidden rounded-full bg-ash">
               {frameUnion.map((timestamp, frameIndex) => {
                 const status = object.statusByTimestamp[timestamp] ?? 'absent';
-                const { className, style } = segmentAppearance(status, object.color, flag);
+                const { className, style } = segmentAppearance(status, object.color);
                 return (
                   <button
                     key={timestamp}

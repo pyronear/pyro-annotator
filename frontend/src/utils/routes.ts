@@ -32,9 +32,10 @@ export function classifyGroups(filter: SequenceGroupsFilter): string {
 
 /**
  * Queue provenance (`done = false`) always lands on the collocated
- * LocalizeAlertPage at `/localize/:sequenceId`, which has no detection
- * segment — any `detectionId` is ignored there. Done provenance still
- * targets the legacy per-lane page at `/localize/done/:sequenceId/:detectionId?`.
+ * LocalizeAlertPage, whose route accepts an optional `:detectionId?` segment
+ * for deep-linked edits — this builder omits it because no queue caller
+ * passes one. Done provenance still targets the legacy per-lane page at
+ * `/localize/done/:sequenceId/:detectionId?`.
  */
 export function localizeDetail(
   sequenceId: number | string,

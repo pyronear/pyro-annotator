@@ -103,28 +103,6 @@ describe('ObjectStatusStrip', () => {
     expect(screen.getByTestId('status-segment-0-1')).not.toHaveAttribute('style');
   });
 
-  it('renders flag rows with a ⚑ label prefix and a dashed/outline pending treatment (no solid fill)', () => {
-    render(
-      <ObjectStatusStrip
-        objects={[
-          {
-            label: 'Missed',
-            color: '#a855f7',
-            flag: true,
-            statusByTimestamp: { [t1]: 'pending' },
-          },
-        ]}
-      />
-    );
-
-    expect(screen.getByText('⚑ Missed')).toBeInTheDocument();
-
-    const segment = screen.getByTestId('status-segment-0-0');
-    expect(segment).toHaveClass('border-dashed');
-    expect(segment).toHaveStyle({ borderColor: '#a855f7' });
-    expect(segment).not.toHaveStyle({ backgroundColor: '#a855f7' });
-  });
-
   it('fires onSegmentClick with the object index and the segment timestamp', () => {
     const onSegmentClick = vi.fn();
 

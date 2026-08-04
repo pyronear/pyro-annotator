@@ -17,7 +17,7 @@ const routes = [
   { path: '/localize/done' },
   { path: '/localize/done/:sequenceId/:detectionId?' },
   { path: '/localize/lane/:sequenceId/:detectionId?' },
-  { path: '/localize/:sequenceId' },
+  { path: '/localize/:sequenceId/:detectionId?' },
 ];
 
 const matchedPath = (url: string): string | undefined => {
@@ -35,9 +35,9 @@ describe('taxonomy route matching precedence', () => {
     ['/classify/groups/7', '/classify/groups/:id'],
     ['/localize', '/localize'],
     ['/localize/done', '/localize/done'],
-    // Bare /localize/:sequenceId is the collocated alert page — it has no
-    // detection segment, so it only ever matches a two-segment path.
-    ['/localize/5', '/localize/:sequenceId'],
+    // Bare /localize/:sequenceId is the collocated alert page. It also
+    // accepts an optional :detectionId? segment for deep-linked edits.
+    ['/localize/5', '/localize/:sequenceId/:detectionId?'],
     // The legacy per-lane box-drawing page lives under the literal /lane
     // segment now, not directly under /localize/:sequenceId.
     ['/localize/lane/5', '/localize/lane/:sequenceId/:detectionId?'],
@@ -48,9 +48,11 @@ describe('taxonomy route matching precedence', () => {
     expect(matchedPath(url)).toBe(expected);
   });
 
-  it('a bare 3-segment /localize/:id/:id path (no /lane, no /done) matches nothing', () => {
-    // The old /localize/:sequenceId/:detectionId? shape is gone; only
-    // /localize/lane/... and /localize/done/... carry a detection segment.
-    expect(matchedPath('/localize/5/9')).toBeUndefined();
+  it('a 3-segment /localize/:id/:id path (no /lane, no /done) matches the collocated alert page, not nothing', () => {
+    // Real behavior: the alert page's own route carries an optional
+    // :detectionId? segment for deep-linked edits, so this isn't shadowed by
+    // /localize/lane/... (which requires the literal "lane" segment) or
+    // left unmatched.
+    expect(matchedPath('/localize/5/9')).toBe('/localize/:sequenceId/:detectionId?');
   });
 });
