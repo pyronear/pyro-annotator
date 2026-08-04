@@ -32,18 +32,27 @@ export const formatDate = (value: Date | string): string => {
 /**
  * Formats a timestamp as YYYY-MM-DD HH:mm in the viewer's local timezone.
  *
- * Seconds are dropped — detection timestamps are meaningful to the minute.
+ * Seconds are dropped by default — list and header timestamps are meaningful
+ * to the minute. Pass `{ seconds: true }` where frames sit seconds apart and
+ * the minute alone would render them identically (the sequence player).
  *
  * @pure Function formats dates consistently
  * @param value - Date object or parseable date string
- * @returns Timestamp string in YYYY-MM-DD HH:mm format, or an em dash if unparseable
+ * @param options - Set `seconds` to append `:ss`
+ * @returns Timestamp string in YYYY-MM-DD HH:mm[:ss] format, or an em dash if unparseable
  *
  * @example
  * formatDateTime('2026-08-04T15:12:45Z');
  * // Returns: "2026-08-04 17:12" (in a UTC+2 timezone)
+ *
+ * @example
+ * formatDateTime('2026-08-04T15:12:45Z', { seconds: true });
+ * // Returns: "2026-08-04 17:12:45" (in a UTC+2 timezone)
  */
-export const formatDateTime = (value: Date | string): string => {
+export const formatDateTime = (value: Date | string, options?: { seconds?: boolean }): string => {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return INVALID_DATE;
-  return `${formatDate(date)} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  const time = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  const withSeconds = options?.seconds ? `${time}:${pad(date.getSeconds())}` : time;
+  return `${formatDate(date)} ${withSeconds}`;
 };

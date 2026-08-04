@@ -221,18 +221,16 @@ describe('Annotation Workflow Integration', () => {
       expect(result[0].smoke_type).toBe('wildfire');
     });
 
-    it('should handle navigation shortcuts', () => {
+    it('ignores Arrow Up/Down (navigation is Tab-based now)', () => {
       const handleKeyDown = createKeyboardHandler(mockDeps);
-      
-      // Test arrow down
+
       mockEvent.key = 'ArrowDown';
       handleKeyDown(mockEvent as KeyboardEvent);
-      expect(mockDeps.navigateToNextDetection).toHaveBeenCalled();
+      expect(mockDeps.navigateToNextDetection).not.toHaveBeenCalled();
 
-      // Test arrow up
       mockEvent.key = 'ArrowUp';
       handleKeyDown(mockEvent as KeyboardEvent);
-      expect(mockDeps.navigateToPreviousDetection).toHaveBeenCalled();
+      expect(mockDeps.navigateToPreviousDetection).not.toHaveBeenCalled();
     });
 
     it('should handle save shortcut (Enter)', () => {

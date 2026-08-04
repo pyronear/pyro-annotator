@@ -304,7 +304,7 @@ describe('ClassifyAlertPage', () => {
   it('disables submit until every editable row is classified and missed smoke is answered', async () => {
     await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 
-    const submitButton = screen.getAllByRole('button', { name: /Submit alert/i })[0];
+    const submitButton = screen.getAllByRole('button', { name: /^Submit$/i })[0];
     expect(submitButton).toBeDisabled();
 
     // Classify object 1 as smoke + wildfire
@@ -370,7 +370,7 @@ describe('ClassifyAlertPage', () => {
     // Even after answering missed smoke, submit stays disabled — the
     // placeholder track alone doesn't count as classified.
     fireEvent.click(missedSmokeChip('No'));
-    expect(screen.getAllByRole('button', { name: /Submit alert/i })[0]).toBeDisabled();
+    expect(screen.getAllByRole('button', { name: /^Submit$/i })[0]).toBeDisabled();
   });
 
   it('still pre-fills a genuinely labeled track (e.g. group inheritance) that carries a real smoke_type', async () => {
@@ -406,7 +406,7 @@ describe('ClassifyAlertPage', () => {
     expect(card.getByText('Smoke · Wildfire')).toBeInTheDocument();
 
     fireEvent.click(missedSmokeChip('No'));
-    expect(screen.getAllByRole('button', { name: /Submit alert/i })[0]).not.toBeDisabled();
+    expect(screen.getAllByRole('button', { name: /^Submit$/i })[0]).not.toBeDisabled();
   });
 
   it('submits with per-lane stages: FP-only lane annotated, smoke lane seq_annotation_done, primary carries has_missed_smoke', async () => {
@@ -422,7 +422,7 @@ describe('ClassifyAlertPage', () => {
 
     fireEvent.click(missedSmokeChip('Yes'));
 
-    const submitButton = screen.getAllByRole('button', { name: /Submit alert/i })[0];
+    const submitButton = screen.getAllByRole('button', { name: /^Submit$/i })[0];
     expect(submitButton).not.toBeDisabled();
     fireEvent.click(submitButton);
 
@@ -507,7 +507,7 @@ describe('ClassifyAlertPage', () => {
 
     await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 
-    expect(screen.getAllByRole('button', { name: /Submit alert/i })[0]).toBeDisabled();
+    expect(screen.getAllByRole('button', { name: /^Submit$/i })[0]).toBeDisabled();
   });
 
   it('routes alert-level missed smoke to the first still-open lane when the primary lane is already locked', async () => {
@@ -559,7 +559,7 @@ describe('ClassifyAlertPage', () => {
 
     fireEvent.click(missedSmokeChip('Yes'));
 
-    const submitButton = screen.getAllByRole('button', { name: /Submit alert/i })[0];
+    const submitButton = screen.getAllByRole('button', { name: /^Submit$/i })[0];
     expect(submitButton).not.toBeDisabled();
     fireEvent.click(submitButton);
 
@@ -586,7 +586,7 @@ describe('ClassifyAlertPage', () => {
     fireEvent.click(cardB.getByRole('checkbox', { name: 'Antenna' }));
 
     fireEvent.click(missedSmokeChip('No'));
-    fireEvent.click(screen.getAllByRole('button', { name: /Submit alert/i })[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: /^Submit$/i })[0]);
 
     await waitFor(() => expect(apiClient.classifySubmit).toHaveBeenCalledTimes(1));
     // No active workflow in this test (annotationWorkflow defaults to null
@@ -614,7 +614,7 @@ describe('ClassifyAlertPage', () => {
     fireEvent.click(cardB.getByRole('checkbox', { name: 'Antenna' }));
 
     fireEvent.click(missedSmokeChip('No'));
-    fireEvent.click(screen.getAllByRole('button', { name: /Submit alert/i })[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: /^Submit$/i })[0]);
 
     await waitFor(() =>
       expect(screen.getByText(/Submit failed: Lane 103 is locked/)).toBeInTheDocument()
@@ -699,7 +699,7 @@ describe('ClassifyAlertPage', () => {
     fireEvent.click(cardB.getByRole('checkbox', { name: 'Antenna' }));
 
     fireEvent.click(missedSmokeChip('No'));
-    fireEvent.click(screen.getAllByRole('button', { name: /Submit alert/i })[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: /^Submit$/i })[0]);
 
     await waitFor(() => expect(screen.getByText(/Group propagation skipped/)).toBeInTheDocument());
 
@@ -943,7 +943,7 @@ describe('ClassifyAlertPage', () => {
     expect(
       within(screen.getByTestId('object-card-101:0')).queryByRole('radio', { name: 'Smoke' })
     ).not.toBeInTheDocument();
-    expect(screen.getByText(/Cropped · Object 2/)).toBeInTheDocument();
+    expect(screen.getByTestId('object-media').getAttribute('data-object-label')).toBe('Object 2');
   });
 
   it('activating the missed-smoke row swaps the media panel to the whole-alert player, and an object row swaps it back', async () => {
@@ -1148,7 +1148,7 @@ describe('ClassifyAlertPage', () => {
     fireEvent.click(cardB.getByRole('checkbox', { name: 'Antenna' }));
     fireEvent.click(missedSmokeChip('No'));
 
-    fireEvent.click(screen.getAllByRole('button', { name: /Submit alert/i })[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: /^Submit$/i })[0]);
     await waitFor(() => expect(apiClient.classifySubmit).toHaveBeenCalledTimes(1));
 
     await waitFor(() => expect(navigateMock).toHaveBeenCalledWith('/classify/555'), {
@@ -1310,12 +1310,13 @@ describe('ClassifyAlertPage done mode', () => {
 
     const cardA = within(screen.getByTestId('object-card-101:0')); // seq_annotation_done, entry-activated
     expect(cardA.getByText('Smoke · Wildfire')).toBeInTheDocument();
-    expect(cardA.getByText('Awaiting localization')).toBeInTheDocument(); // stage badge stays visible
+    // Done-mode rows are all re-editable, so no stage badge noise.
+    expect(cardA.queryByText('Awaiting localization')).not.toBeInTheDocument();
     expect(cardA.getByRole('radio', { name: 'Smoke' })).not.toBeDisabled();
     expect(cardA.getByRole('radio', { name: 'Smoke' })).toBeChecked();
 
     const cardB = openRow('102:0'); // annotated — still editable in done mode
-    expect(cardB.getByText('Fully annotated')).toBeInTheDocument();
+    expect(cardB.queryByText('Fully annotated')).not.toBeInTheDocument();
     expect(cardB.getByRole('radio', { name: 'False positive' })).not.toBeDisabled();
     expect(cardB.getByRole('radio', { name: 'False positive' })).toBeChecked();
 

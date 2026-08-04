@@ -19,6 +19,8 @@ export interface DecisionRailProps {
   /** Disables Yes/No (e.g. no open lane to carry the flag). */
   missedSmokeDisabled?: boolean;
   missedSmokeRowRef?: React.RefObject<HTMLDivElement>;
+  /** Rendered top-right of the Objects header (e.g. the keyboard-shortcuts button). */
+  headerAction?: React.ReactNode;
   /** Rendered after the missed-smoke row — the page passes its rail-level Submit button here. */
   footer?: React.ReactNode;
   /** Object rows / placeholders, already ordered. */
@@ -26,7 +28,7 @@ export interface DecisionRailProps {
 }
 
 const chip = (selected: boolean, selectedClasses: string, disabled: boolean) =>
-  `inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 font-body text-xs font-medium transition-colors ${
+  `inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 font-body text-xs font-medium transition-colors ${
     selected ? selectedClasses : 'border-line bg-paper text-char hover:bg-ash'
   } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`;
 
@@ -37,12 +39,16 @@ export const DecisionRail: React.FC<DecisionRailProps> = ({
   onMissedSmokeActivate,
   missedSmokeDisabled = false,
   missedSmokeRowRef,
+  headerAction,
   footer,
   children,
 }) => (
   <div className="rounded-card border border-line bg-paper px-[22px] py-5">
-    <div className="font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze mb-3">
-      Objects
+    <div className="mb-3 flex items-center justify-between">
+      <div className="font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
+        Objects
+      </div>
+      {headerAction}
     </div>
     <div className="space-y-2">{children}</div>
 

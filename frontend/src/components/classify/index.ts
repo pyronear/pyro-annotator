@@ -8,3 +8,5 @@ export { DecisionRail } from './DecisionRail';
 export type { DecisionRailProps } from './DecisionRail';
 export { ClassifyMediaPanel } from './ClassifyMediaPanel';
 export type { ClassifyMediaPanelProps } from './ClassifyMediaPanel';
+export { ClassifyShortcutsModal } from './ClassifyShortcutsModal';
+export type { ClassifyShortcutsModalProps } from './ClassifyShortcutsModal';

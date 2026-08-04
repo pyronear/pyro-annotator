@@ -44,10 +44,10 @@ export interface KeyboardHandlerDependencies {
   handleReset: () => void;
   /** Function to save current annotation */
   handleSave: () => void;
-  /** Function to navigate to previous detection */
-  navigateToPreviousDetection: () => void;
-  /** Function to navigate to next detection */
-  navigateToNextDetection: () => void;
+  /** Unused — Arrow Up/Down navigation was removed (Tab owns navigation); kept optional so legacy AnnotationInterface still type-checks until its removal. */
+  navigateToPreviousDetection?: () => void;
+  /** Unused — see navigateToPreviousDetection. */
+  navigateToNextDetection?: () => void;
   /** Function to handle missed smoke review changes */
   handleMissedSmokeReviewChange: MissedSmokeHandler;
   /** Function to handle bbox changes */
@@ -90,7 +90,6 @@ export interface KeyboardHandlerDependencies {
  * - Escape: Close modal
  * - Ctrl+Z: Reset annotation
  * - Enter: Save annotation
- * - Arrow Up/Down: Navigate between detections
  * - Y/N: Missed smoke review
  * - S: Mark as smoke
  * - F: Mark as false positive
@@ -108,8 +107,6 @@ export const createKeyboardHandler = (deps: KeyboardHandlerDependencies) => {
       setShowKeyboardModal,
       handleReset,
       handleSave,
-      navigateToPreviousDetection,
-      navigateToNextDetection,
       handleMissedSmokeReviewChange,
       handleBboxChange,
       onPrimaryClassificationChange,
@@ -146,19 +143,6 @@ export const createKeyboardHandler = (deps: KeyboardHandlerDependencies) => {
       } else {
         handleSave(); // Use the same error logic as handleSave
       }
-      e.preventDefault();
-      return;
-    }
-
-    // Navigation shortcuts (Arrow Up/Down)
-    if (e.key === 'ArrowUp' && !showKeyboardModal) {
-      navigateToPreviousDetection();
-      e.preventDefault();
-      return;
-    }
-
-    if (e.key === 'ArrowDown' && !showKeyboardModal) {
-      navigateToNextDetection();
       e.preventDefault();
       return;
     }

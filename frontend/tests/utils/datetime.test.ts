@@ -34,8 +34,23 @@ describe('formatDateTime', () => {
     expect(formatDateTime(localIso(2026, 1, 15, 22, 30))).toBe('2026-01-15 22:30');
   });
 
+  it('appends seconds when asked, for frames that sit seconds apart', () => {
+    expect(formatDateTime('2026-08-04T15:12:45', { seconds: true })).toBe('2026-08-04 15:12:45');
+  });
+
+  it('zero-pads seconds', () => {
+    expect(formatDateTime('2026-08-04T15:12:05', { seconds: true })).toBe('2026-08-04 15:12:05');
+  });
+
+  it('distinguishes frames five seconds apart when seconds are on', () => {
+    const a = formatDateTime('2026-01-01T10:00:00', { seconds: true });
+    const b = formatDateTime('2026-01-01T10:00:05', { seconds: true });
+    expect(a).not.toBe(b);
+  });
+
   it('returns an em dash for an unparseable value', () => {
     expect(formatDateTime('not-a-date')).toBe('—');
+    expect(formatDateTime('not-a-date', { seconds: true })).toBe('—');
   });
 });
 
