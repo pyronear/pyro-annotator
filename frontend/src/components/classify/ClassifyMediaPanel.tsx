@@ -110,7 +110,7 @@ export const ClassifyMediaPanel: React.FC<ClassifyMediaPanelProps> = ({
             isFullscreen={isFullscreen}
           />
           {!isFullscreen && (
-            <div className="mt-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+            <div className="mt-6 rounded-card border border-line bg-paper px-[18px] py-3.5 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
               <p className="flex-1 min-w-[16rem] font-body text-sm text-haze">
                 Did the model miss any smoke? Every tracked object is boxed — watch the loop for
                 smoke without a box: faint plumes, rising columns, drifting haze.
