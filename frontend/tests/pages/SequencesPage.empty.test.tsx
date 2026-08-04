@@ -6,7 +6,7 @@ import React from 'react';
 
 vi.mock('@/services/api', () => ({
   apiClient: {
-    getSequencesWithAnnotations: vi.fn(),
+    getClassifyDone: vi.fn(),
     getClassifyQueue: vi.fn(),
   },
 }));
@@ -70,7 +70,7 @@ describe('SequencesPage empty states', () => {
   beforeEach(() => {
     resetFiltersMock.mockClear();
     mockedCameraName = undefined;
-    vi.mocked(apiClient.getSequencesWithAnnotations).mockResolvedValue(emptyPage);
+    vi.mocked(apiClient.getClassifyDone).mockResolvedValue(emptyPage);
     // Default (no props) SequencesPage is queue mode — alert-grouped queue, not
     // the plain sequences fetch.
     vi.mocked(apiClient.getClassifyQueue).mockResolvedValue(emptyPage);
