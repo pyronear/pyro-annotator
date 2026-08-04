@@ -116,13 +116,20 @@ import {
   sequenceSmokeType,
 } from '@/utils/annotation';
 import { ObjectStatusStrip } from '@/components/sequence-annotation';
-import { LocalizeMissedSmokeRow, LocalizeObjectRow, LocalizeRail } from '@/components/localize';
+import {
+  LocalizeActionPanel,
+  LocalizeMissedSmokeRow,
+  LocalizeObjectActions,
+  LocalizeObjectRow,
+  LocalizeRail,
+} from '@/components/localize';
 import { AlertFrameGrid, ImageModal, ViewToolbar } from '@/components/detection-sequence';
 import type { CardSize } from '@/components/detection-sequence/ViewToolbar';
 import CroppedImageSequence from '@/components/annotation/CroppedImageSequence';
 import { usePersistedTabState } from '@/hooks/usePersistedTabState';
 import { useToastNotifications } from '@/utils/notification/toastUtils';
 import { NotificationSystem } from '@/components/ui/NotificationSystem';
+import { Tooltip } from '@/components/ui/Tooltip';
 import {
   ROUTES,
   classifyDetailWithReturn,
@@ -652,8 +659,8 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
 
   // The timeline's rows: identity + per-frame statuses + the "selected"
   // accent for whichever object is currently focused. The quick-accept
-  // action no longer rides along here — it moved to the rail's own row,
-  // where an object's progress and its actions sit together.
+  // action no longer rides along here — it lives on the selected object's
+  // rail row and above the media column, on the active object.
   const objectStatusRows: AlertObjectStatus[] = frameModel.objectStatus.map(object => ({
     ...object,
     selected: isFocused && activeLaneId === object.laneSequenceId,
@@ -711,6 +718,26 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
         !!lane.annotation && !laneNeedsLocalization(lane.annotation) && !lane.annotation.is_unsure
     ).length ?? 0;
 
+  // Which actions an object gets, and what they do — shared by the rail row
+  // and the media column's CTA bar so the two can't disagree about whether an
+  // object is acceptable or correctable.
+  const objectActionProps = (object: AlertObjectStatus) => ({
+    // Withheld once the lane has nothing pending: re-accepting would fire a
+    // mutation with an empty payload and toast success for a no-op. It is
+    // also the only way the selected row/bar can show that the accept landed.
+    onAcceptBoxes:
+      object.workable && !isObjectLocalized(object)
+        ? () => quickAcceptLane.mutate(object.laneSequenceId)
+        : undefined,
+    isAccepting: quickAcceptLane.isPending && quickAcceptLane.variables === object.laneSequenceId,
+    // Withheld on false-positive rows: promoting one back to smoke needs an
+    // auto-review pass first (issue #275), so offering the action would ship
+    // a path that silently does nothing for localize.
+    onReclassify: object.isFalsePositive
+      ? undefined
+      : () => handleReclassify(object.laneSequenceId),
+  });
+
   const renderObjectRow = (object: AlertObjectStatus) => {
     const progress = objectProgress.get(object.laneSequenceId) ?? {
       presentCount: 0,
@@ -733,18 +760,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
         dimmed={object.isFalsePositive || (!object.workable && workableObjects.length > 0)}
         isActive={isFocused && activeLaneId === object.laneSequenceId}
         onActivate={() => handleObjectClick(object.laneSequenceId)}
-        onAcceptBoxes={
-          object.workable ? () => quickAcceptLane.mutate(object.laneSequenceId) : undefined
-        }
-        isAccepting={
-          quickAcceptLane.isPending && quickAcceptLane.variables === object.laneSequenceId
-        }
-        onReclassify={
-          // Withheld on false-positive rows: promoting one back to smoke
-          // needs an auto-review pass first (issue #275), so offering the
-          // action would ship a path that silently does nothing for localize.
-          object.isFalsePositive ? undefined : () => handleReclassify(object.laneSequenceId)
-        }
+        {...objectActionProps(object)}
       />
     );
   };
@@ -762,6 +778,17 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   // Deliberately NOT the badge's count: submit only ships workable lanes, so
   // already-annotated objects must not satisfy (or block) the gate.
   const allObjectsAccepted = workableObjects.length > 0 && workableObjects.every(isObjectLocalized);
+
+  // What the submit button's tooltip says. The blocked case counts the
+  // objects rather than restating the rule: "2 objects still have frames
+  // without a box" tells you how much is left, where "accept every object's
+  // boxes" only tells you what you already tried to do.
+  const objectsAwaitingBoxes = workableObjects.filter(o => !isObjectLocalized(o)).length;
+  const submitTooltip = allObjectsAccepted
+    ? 'Submits every object still awaiting localization, then returns you to the list.'
+    : `${objectsAwaitingBoxes} object${objectsAwaitingBoxes === 1 ? '' : 's'} still ${
+        objectsAwaitingBoxes === 1 ? 'has' : 'have'
+      } frames without a box. Accept or draw them to enable submit.`;
 
   // Every workable lane's sequence-annotation id — the payload
   // `localizeSubmit` takes, and the set both bulk actions iterate.
@@ -1112,18 +1139,30 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
           viewport. Below lg they stack. */}
       <div className="flex flex-col gap-4 pt-20 lg:flex-row lg:items-start">
         <div className="lg:flex-[1.5] lg:min-w-0">
-          <div className="rounded-card border border-line bg-paper px-[22px] py-5">
-            {/* The view controls sit with the grid they drive, not in the
-                alert header — S/M/L, crop and the flipbook are all about
-                how these cells render. */}
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <div className="font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
-                {/* Which object's images the cells are showing — invisible
-                    before the cockpit split, and the grid's cells only make
-                    sense once you know whose frames they are. */}
-                Frames{activeObjectLabel ? ` — ${activeObjectLabel}` : ''}
-              </div>
-              <div className="flex shrink-0 items-center gap-2.5">
+          {/* Everything that acts on the frames, in one bar above the card
+              that holds them: which object they belong to, what to do about
+              it, and how to render them. The actions are driven by
+              `activeLaneId` alone, not by focus mode — closing the frame
+              editor leaves an object active without re-entering focus, and
+              that is exactly when the annotator is most obviously working one
+              object. */}
+          <LocalizeActionPanel
+            // Which object's images the cells are showing — invisible before
+            // the cockpit split, and the grid's cells only make sense once
+            // you know whose frames they are.
+            title={`Frames${activeObjectLabel ? ` — ${activeObjectLabel}` : ''}`}
+            color={activeObject?.color}
+            actions={
+              activeObject && (
+                <LocalizeObjectActions
+                  label={activeObject.label}
+                  size="prominent"
+                  {...objectActionProps(activeObject)}
+                />
+              )
+            }
+            controls={
+              <>
                 <span className="font-data text-detail text-haze">
                   {frameModel.frames.length} frame{frameModel.frames.length === 1 ? '' : 's'}
                 </span>
@@ -1135,27 +1174,30 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                   showCroppedView={isFocused || showCroppedView}
                   onToggleCroppedView={handleToggleCroppedView}
                 />
-              </div>
+              </>
+            }
+          />
+
+          {/* The cells sit straight on the page, with no card of their own:
+              everything that frames them — the object, the actions, the view
+              controls — moved up into the panel above, so a second border
+              around the images was drawing a box around a box. The images
+              carry their own edges. */}
+          {(isFocused || showCroppedView) && activeLaneId != null && activeLaneBoxes.length > 0 && (
+            <div className="mb-4 flex justify-center">
+              <CroppedImageSequence bboxes={activeLaneBoxes} sequenceId={activeLaneId} />
             </div>
+          )}
 
-            {(isFocused || showCroppedView) &&
-              activeLaneId != null &&
-              activeLaneBoxes.length > 0 && (
-                <div className="mb-4 flex justify-center">
-                  <CroppedImageSequence bboxes={activeLaneBoxes} sequenceId={activeLaneId} />
-                </div>
-              )}
-
-            <AlertFrameGrid
-              frames={frameModel.frames}
-              activeLaneId={activeLaneId}
-              onCellClick={handleCellClick}
-              cellRef={handleCellRef}
-              cardMinWidth={cardMinWidth}
-              cropMode={cropMode}
-              highlightedFrame={highlightedFrame}
-            />
-          </div>
+          <AlertFrameGrid
+            frames={frameModel.frames}
+            activeLaneId={activeLaneId}
+            onCellClick={handleCellClick}
+            cellRef={handleCellRef}
+            cardMinWidth={cardMinWidth}
+            cropMode={cropMode}
+            highlightedFrame={highlightedFrame}
+          />
         </div>
 
         <div className="lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:flex-1 lg:min-w-0 lg:overflow-y-auto">
@@ -1244,36 +1286,33 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                   All objects localized
                 </p>
               ) : (
-                <div className="space-y-1.5">
-                  <button
-                    type="button"
-                    onClick={e => {
-                      e.stopPropagation();
-                      handleSubmitClick();
-                    }}
-                    disabled={!allObjectsAccepted || submitAlert.isPending}
-                    title={
-                      allObjectsAccepted
-                        ? 'Submit every object still awaiting localization'
-                        : "Accept every object's boxes first"
-                    }
-                    className="mx-auto flex items-center justify-center rounded-lg bg-pine px-5 py-2.5 text-center font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {submitAlert.isPending ? (
-                      <div className="w-3.5 h-3.5 mr-1.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <Upload className="w-3.5 h-3.5 mr-1.5 shrink-0" />
-                    )}
-                    Submit
-                  </button>
-                  {/* Says WHY it's disabled — otherwise the gate reads as a
-                    bug once every row looks handled but one still has a
-                    pending frame. */}
-                  {!allObjectsAccepted && (
-                    <p className="text-center font-body text-detail text-haze">
-                      Accept every object&rsquo;s boxes to enable
-                    </p>
-                  )}
+                <div className="flex justify-center">
+                  {/* The tooltip carries the gate's explanation, which used to
+                      be a line of copy under the button. Hovering the thing
+                      you can't click is where the question gets asked, and it
+                      names HOW MANY objects are holding submit back rather
+                      than restating the rule — otherwise the gate reads as a
+                      bug once every row looks handled but one still has a
+                      pending frame. Above, because the footer is the last
+                      thing in a rail that scrolls. */}
+                  <Tooltip placement="above" tip={submitTooltip}>
+                    <button
+                      type="button"
+                      onClick={e => {
+                        e.stopPropagation();
+                        handleSubmitClick();
+                      }}
+                      disabled={!allObjectsAccepted || submitAlert.isPending}
+                      className="flex items-center justify-center rounded-lg bg-pine px-5 py-2.5 text-center font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {submitAlert.isPending ? (
+                        <div className="w-3.5 h-3.5 mr-1.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Upload className="w-3.5 h-3.5 mr-1.5 shrink-0" />
+                      )}
+                      Submit
+                    </button>
+                  </Tooltip>
                 </div>
               )
             }

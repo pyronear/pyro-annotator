@@ -4,11 +4,17 @@
  * *classification*, this one carries a per-object *localization progress*:
  * how many of the frames the object appears on already have a committed box.
  *
- * Unlike classify's row, the actions don't hide behind activation: Accept
- * boxes is a one-click bulk action on the row's own lane, so it stays visible
- * on every workable row (matching the pre-cockpit strip's behavior).
- * Activation therefore shows up purely as the accent treatment — the media
- * column follows the active object, so the row doesn't need to expand.
+ * Like classify's row, the actions hide behind activation — but they appear
+ * on the header line's right rather than expanding the row, taking the place
+ * of the progress count and status chip. The selected row is the one being
+ * worked, so its right side turns into what you can DO to it; every other row
+ * keeps saying where it stands. The buttons are wider than the metadata they
+ * replace, so the name and subtitle truncate to absorb the difference. The
+ * trade is deliberate: reaching Accept boxes costs the click that selects the
+ * row (which also points the media column at the object), and in exchange the
+ * rail stops showing a wall of buttons for lanes nobody is looking at. The
+ * same pair of actions also sits above the media column, where the object's
+ * frames are — see `LocalizeActiveObjectBar`.
  *
  * Rows past localization lose Accept boxes but keep Reclassify — a finished
  * lane can still have been classified wrong — and stay clickable: activating
@@ -19,7 +25,7 @@
  */
 
 import React from 'react';
-import { Pencil } from 'lucide-react';
+import { LocalizeObjectActions } from './LocalizeObjectActions';
 
 export interface LocalizeObjectRowProps {
   /** e.g. "Object 2" — the object's own label, shared with the timeline and grid overlays. */
@@ -77,6 +83,11 @@ export const LocalizeObjectRow: React.FC<LocalizeObjectRowProps> = ({
 }) => {
   const pendingCount = presentCount - confirmedCount;
 
+  // The right-hand swap. A row the page gave no actions (a false positive)
+  // has nothing to swap in, so selecting it must not blank the one thing it
+  // says about itself.
+  const showActions = isActive && !!(onAcceptBoxes || onReclassify);
+
   const status = isFalsePositive
     ? { label: 'False positive', tone: 'bg-ash text-haze' }
     : !workable
@@ -113,9 +124,23 @@ export const LocalizeObjectRow: React.FC<LocalizeObjectRowProps> = ({
       data-dimmed={dimmed ? 'true' : undefined}
       // role="group" rather than a button: workable rows contain their own
       // action buttons, and nesting interactive controls is invalid HTML.
+      // It still has to be reachable and operable from the keyboard, because
+      // selecting the row is now the ONLY way to reach those buttons — a
+      // mouse-only affordance in front of them would put the actions out of
+      // keyboard reach entirely. Enter/Space rather than activate-on-focus:
+      // tabbing across the rail shouldn't drag the media column (and
+      // crop-mode) along with it.
       role="group"
       aria-label={label}
-      className={`cursor-pointer rounded-lg px-3.5 py-2.5 transition-colors ${frame}`}
+      tabIndex={0}
+      onKeyDown={e => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onActivate();
+        }
+      }}
+      className={`cursor-pointer rounded-lg px-3.5 py-2.5 transition-colors focus:outline-none focus:ring-2 focus:ring-pine ${frame}`}
       onClick={onActivate}
     >
       <div className="flex items-center justify-between gap-2">
@@ -125,70 +150,55 @@ export const LocalizeObjectRow: React.FC<LocalizeObjectRowProps> = ({
             style={{ backgroundColor: color }}
             aria-hidden="true"
           />
-          <span className="min-w-0">
-            <span className="block truncate font-body text-sm font-semibold text-char">
-              {label}
-            </span>
+          {/* Name and what-it-is on one line: the row is a one-line summary,
+              and stacking them made it two lines tall for a word. Both
+              truncate rather than push: the selected row's buttons are wider
+              than the metadata they replace, and at the narrow end of the
+              rail something has to give — better a clipped word than a row
+              that overflows into a horizontal scrollbar. */}
+          <span className="flex min-w-0 items-baseline gap-1.5">
+            <span className="truncate font-body text-sm font-semibold text-char">{label}</span>
             {subtitle && (
-              <span className="block truncate font-body text-detail capitalize text-haze">
-                {subtitle}
-              </span>
+              <>
+                {/* Same separator the alert header uses between organisation
+                    and camera. Hidden from screen readers, which get the two
+                    spans as separate phrases already. */}
+                <span className="shrink-0 font-body text-detail text-haze" aria-hidden="true">
+                  ·
+                </span>
+                <span className="truncate font-body text-detail capitalize text-haze">
+                  {subtitle}
+                </span>
+              </>
             )}
           </span>
         </span>
         <span className="flex shrink-0 items-center gap-1.5">
-          {/* A false positive has no localization work, so a progress
-              fraction over its frames would be meaningless. */}
-          {!isFalsePositive && (
-            <span className="font-data text-detail text-haze">
-              {confirmedCount}/{presentCount}
-            </span>
+          {showActions ? (
+            <LocalizeObjectActions
+              label={label}
+              onAcceptBoxes={onAcceptBoxes}
+              isAccepting={isAccepting}
+              onReclassify={onReclassify}
+            />
+          ) : (
+            <>
+              {/* A false positive has no localization work, so a progress
+                  fraction over its frames would be meaningless. */}
+              {!isFalsePositive && (
+                <span className="font-data text-detail text-haze">
+                  {confirmedCount}/{presentCount}
+                </span>
+              )}
+              <span
+                className={`whitespace-nowrap rounded-full px-2 py-0.5 font-body text-xs font-semibold ${status.tone}`}
+              >
+                {status.label}
+              </span>
+            </>
           )}
-          <span
-            className={`whitespace-nowrap rounded-full px-2 py-0.5 font-body text-xs font-semibold ${status.tone}`}
-          >
-            {status.label}
-          </span>
         </span>
       </div>
-
-      {(onAcceptBoxes || onReclassify) && (
-        <div className="mt-2 flex items-center gap-1.5">
-          {onAcceptBoxes && (
-            <button
-              type="button"
-              // The visible label stays short for the rail's width; the
-              // accessible name keeps naming the object, so "accept THIS
-              // object's boxes" is unambiguous to a screen reader (and to the
-              // page tests, which address rows by object).
-              aria-label={`Accept ${label}'s boxes`}
-              onClick={e => {
-                e.stopPropagation();
-                onAcceptBoxes();
-              }}
-              disabled={isAccepting}
-              title={`Accept ${label}'s predicted boxes for all pending frames`}
-              className="rounded-lg border border-line bg-paper px-2 py-1 font-body text-xs font-medium text-char hover:bg-ash disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isAccepting ? 'Accepting…' : 'Accept boxes'}
-            </button>
-          )}
-          {onReclassify && (
-            <button
-              type="button"
-              aria-label={`Reclassify ${label}`}
-              onClick={e => {
-                e.stopPropagation();
-                onReclassify();
-              }}
-              title={`Correct ${label}'s classification`}
-              className="inline-flex items-center gap-1 rounded-lg border border-line bg-paper px-2 py-1 font-body text-xs font-medium text-char hover:bg-ash"
-            >
-              <Pencil className="h-3 w-3" aria-hidden="true" /> Reclassify
-            </button>
-          )}
-        </div>
-      )}
     </div>
   );
 };

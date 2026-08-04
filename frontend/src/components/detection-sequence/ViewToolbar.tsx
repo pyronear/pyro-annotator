@@ -4,6 +4,12 @@
  * One shared button style — the header and flipbook speak the same visual
  * language.
  *
+ * The pressed state is pine-on-pine-soft rather than the old white pill: the
+ * toolbar moved onto a white control panel, where "white pill on a pale ash
+ * track" was two near-identical neutrals and you could no longer tell which
+ * size was selected. Soft rather than a solid fill, so a view preference
+ * doesn't shout as loudly as the actions beside it.
+ *
  * It used to carry a predictions toggle and an `isLocalize` switch, both for
  * the legacy per-lane page's `DetectionGrid`. That page is gone, and
  * `AlertFrameGrid` never read `showPredictions` (only `ImageModal` does, and
@@ -49,7 +55,7 @@ function IconToggle({
       aria-pressed={pressed}
       onClick={onClick}
       className={`rounded p-1.5 transition-colors ${
-        pressed ? 'bg-paper text-char' : 'text-haze hover:text-char'
+        pressed ? 'bg-pine-soft text-pine' : 'text-haze hover:text-char'
       }`}
     >
       {children}
@@ -75,7 +81,7 @@ export function ViewToolbar({
           aria-pressed={cardSize === s.value}
           onClick={() => onCardSizeChange(s.value)}
           className={`rounded px-2 py-0.5 font-body text-xs font-semibold transition-colors ${
-            cardSize === s.value ? 'bg-paper text-char' : 'text-haze hover:text-char'
+            cardSize === s.value ? 'bg-pine-soft text-pine' : 'text-haze hover:text-char'
           }`}
         >
           {s.label}
