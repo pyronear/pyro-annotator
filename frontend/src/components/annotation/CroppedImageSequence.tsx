@@ -166,7 +166,7 @@ export default function CroppedImageSequence({
     const avgBbox = calculateAverageBbox(bboxes);
     const [avgX1, avgY1, avgX2, avgY2] = avgBbox;
 
-    // 20% padding around the bbox to show surrounding context.
+    // Padding around the bbox to show surrounding context.
     const padding = 0.2;
     const padX = (avgX2 - avgX1) * padding;
     const padY = (avgY2 - avgY1) * padding;

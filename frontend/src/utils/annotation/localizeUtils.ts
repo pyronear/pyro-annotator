@@ -22,8 +22,15 @@ export function determineClassifySubmitStage(args: {
  * annotation_api/src/app/services/localization_rule.py:
  *
  *     (has_smoke OR has_missed_smoke) AND NOT is_unsure
+ *
+ * Accepts just the three flags (a `Pick` of `LocalizationQueueLane`) so a
+ * `SequenceAnnotation` (which carries the same three booleans but not the
+ * rest of the queue-lane shape) can be checked directly, e.g. from
+ * `AlertLane.annotation` on the collocated localize page.
  */
-export function laneNeedsLocalization(lane: LocalizationQueueLane): boolean {
+export function laneNeedsLocalization(
+  lane: Pick<LocalizationQueueLane, 'has_smoke' | 'has_missed_smoke' | 'is_unsure'>
+): boolean {
   return (lane.has_smoke || lane.has_missed_smoke) && !lane.is_unsure;
 }
 

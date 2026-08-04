@@ -46,6 +46,10 @@ export type { ModelLayer } from './referenceLayerUtils';
 // Seed-at-submit review utilities
 export { materializeReviewAnnotation, sequenceSmokeType } from './reviewUtils';
 
+// Create-or-update detection annotation save (FP-item preservation)
+export { saveDetectionReview } from './laneAnnotationSave';
+export type { SaveDetectionReviewParams } from './laneAnnotationSave';
+
 // Localize quick submit
 export {
   getCellState,

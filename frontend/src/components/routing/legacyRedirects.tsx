@@ -2,7 +2,13 @@
    redirect helpers never need hot refresh */
 import { ReactElement } from 'react';
 import { Navigate, Route, useParams, useSearchParams } from 'react-router-dom';
-import { ROUTES, classifyDetail, classifyGroup, localizeDetail } from '@/utils/routes';
+import {
+  ROUTES,
+  classifyDetail,
+  classifyGroup,
+  localizeDetail,
+  localizeLane,
+} from '@/utils/routes';
 
 /**
  * Redirects from the pre-#210 entity-named routes to the task-taxonomy routes.
@@ -25,7 +31,15 @@ function LegacyLocalizeDetailRedirect() {
   const { sequenceId, detectionId } = useParams();
   const [searchParams] = useSearchParams();
   const done = searchParams.get('from') === 'detections-review';
-  return <Navigate to={localizeDetail(sequenceId!, detectionId, done)} replace />;
+  // Done provenance and a bare sequence id (no specific frame requested)
+  // both still resolve via localizeDetail; a detection id under queue
+  // provenance means the old link wanted a specific frame open, which only
+  // the legacy per-lane page understands.
+  const target =
+    done || !detectionId
+      ? localizeDetail(sequenceId!, detectionId, done)
+      : localizeLane(sequenceId!, detectionId);
+  return <Navigate to={target} replace />;
 }
 
 export const legacyRedirectRoutes: ReactElement[] = [

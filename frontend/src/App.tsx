@@ -9,6 +9,7 @@ import ClassifyAlertPage from '@/pages/ClassifyAlertPage';
 import DetectionAnnotatePage from '@/pages/DetectionAnnotatePage';
 import DetectionReviewPage from '@/pages/DetectionReviewPage';
 import DetectionSequenceAnnotatePage from '@/pages/DetectionSequenceAnnotatePage';
+import LocalizeAlertPage from '@/pages/LocalizeAlertPage';
 import SequenceGroupAnnotatePage from '@/pages/SequenceGroupAnnotatePage';
 import SequenceGroupsListPage from '@/pages/SequenceGroupsListPage';
 import UserManagementPage from '@/pages/UserManagementPage';
@@ -119,11 +120,21 @@ function App() {
                       </RequireLocalize>
                     }
                   />
+                  {/* Literal /localize/lane segment must precede the dynamic
+                      /localize/:sequenceId below so it isn't shadowed. */}
+                  <Route
+                    path="/localize/lane/:sequenceId/:detectionId?"
+                    element={
+                      <RequireLocalize>
+                        <DetectionSequenceAnnotatePage />
+                      </RequireLocalize>
+                    }
+                  />
                   <Route
                     path="/localize/:sequenceId/:detectionId?"
                     element={
                       <RequireLocalize>
-                        <DetectionSequenceAnnotatePage />
+                        <LocalizeAlertPage />
                       </RequireLocalize>
                     }
                   />

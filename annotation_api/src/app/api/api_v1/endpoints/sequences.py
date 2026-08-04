@@ -7,6 +7,7 @@ from typing import List, Literal, Optional
 
 from fastapi import (
     APIRouter,
+    Body,
     Depends,
     Form,
     HTTPException,
@@ -40,6 +41,7 @@ from app.services.localization_rule import needs_localization_clause
 from app.models import (
     Detection,
     DetectionAnnotation,
+    DetectionAnnotationProcessingStage,
     FalsePositiveType,
     SmokeType,
     Sequence,
@@ -50,7 +52,9 @@ from app.models import (
     User,
     AnnotationType,
 )
+from app.schemas.annotation_validation import SequenceAnnotationData, SequenceBBox
 from app.schemas.sequence import (
+    AddObjectRequest,
     AlertDetail,
     AlertLane,
     ClassifyDoneItem,
@@ -58,10 +62,11 @@ from app.schemas.sequence import (
     ClassifyQueueItem,
     LocalizationQueueItem,
     LocalizationQueueLane,
+    LocalizeDoneQueueItem,
     SequenceCreate,
     SequenceRead,
 )
-from app.services.alert_identity import resolve_platform_alert_id
+from app.services.alert_identity import ALERT_ID_BASE, resolve_platform_alert_id
 from app.services.auto_annotate_scheduling import DONE_STAGES
 from app.schemas.sequence_annotations import SequenceAnnotationRead
 from app.schemas.combined import SequenceWithAnnotationRead
@@ -658,6 +663,176 @@ async def get_alert_detail(
     )
 
 
+def _object_index(seq: Sequence, platform_alert_id: int) -> int:
+    """Decode a lane's object index from its alert_api_id (primary = raw
+    platform_alert_id = index 0; synthetic siblings per `alert_identity`)."""
+    if seq.alert_api_id == platform_alert_id:
+        return 0
+    return seq.alert_api_id - ALERT_ID_BASE - platform_alert_id * 1000
+
+
+# NOTE: declared before GET /{sequence_id} — the int path converter would
+# otherwise turn /alert/add-object into a 422.
+@router.post(
+    "/alert/add-object",
+    status_code=status.HTTP_201_CREATED,
+    summary="Spawn a new sibling lane for a missed smoke plume",
+)
+async def add_object(
+    payload: AddObjectRequest = Body(...),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> AlertLane:
+    """Missed smoke: add a real object (spec: multi-object alert
+    collocation, supersedes the ⚑ carrier-lane/pseudo-object design). Spawns
+    a new sibling lane — next synthetic object index — with detections
+    cloned from the alert's richest lane (empty algo_predictions: the AI did
+    not detect this object) and a one-track smoke annotation born at
+    seq_annotation_done, with auto_annotated_at/auto_annotate_enqueued_at
+    stamped so the sweep never GPU-processes it and the sibling gate is
+    never re-blocked. All writes land in one transaction.
+    """
+    lanes = (
+        (
+            await session.execute(
+                select(Sequence)
+                .where(
+                    Sequence.source_api == payload.source_api,
+                    Sequence.platform_alert_id == payload.platform_alert_id,
+                )
+                .order_by(asc(Sequence.alert_api_id))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not lanes:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Alert not found"
+        )
+    primary = lanes[0]
+
+    next_index = (
+        max(_object_index(lane, payload.platform_alert_id) for lane in lanes) + 1
+    )
+    new_alert_api_id = ALERT_ID_BASE + payload.platform_alert_id * 1000 + next_index
+
+    # Richest lane: the sibling with the most detections is the frame source
+    # (the missed object is presumably visible wherever the tracked object
+    # is, and this maximizes frame coverage).
+    lane_ids = [lane.id for lane in lanes]
+    counts = (
+        await session.execute(
+            select(Detection.sequence_id, func.count(Detection.id))
+            .where(Detection.sequence_id.in_(lane_ids))
+            .group_by(Detection.sequence_id)
+        )
+    ).all()
+    counts_by_id = dict(counts)
+    richest_id = max(lane_ids, key=lambda sid: counts_by_id.get(sid, 0))
+    source_detections = (
+        (
+            await session.execute(
+                select(Detection)
+                .where(Detection.sequence_id == richest_id)
+                .order_by(asc(Detection.recorded_at))
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    now = datetime.now(UTC)
+    new_seq = Sequence(
+        source_api=primary.source_api,
+        alert_api_id=new_alert_api_id,
+        platform_alert_id=payload.platform_alert_id,
+        recorded_at=primary.recorded_at,
+        last_seen_at=primary.last_seen_at,
+        camera_name=primary.camera_name,
+        camera_id=primary.camera_id,
+        lat=primary.lat,
+        lon=primary.lon,
+        azimuth=primary.azimuth,
+        is_wildfire_alertapi=primary.is_wildfire_alertapi,
+        organisation_name=primary.organisation_name,
+        organisation_id=primary.organisation_id,
+        auto_annotate_enqueued_at=now,
+        auto_annotated_at=now,
+    )
+    session.add(new_seq)
+    await session.flush()
+
+    new_detections = [
+        Detection(
+            recorded_at=det.recorded_at,
+            alert_api_id=det.alert_api_id,
+            sequence_id=new_seq.id,
+            bucket_key=det.bucket_key,
+            algo_predictions={"predictions": []},
+        )
+        for det in source_detections
+    ]
+    session.add_all(new_detections)
+    await session.flush()
+
+    annotation_data = SequenceAnnotationData(
+        sequences_bbox=[
+            SequenceBBox(
+                is_smoke=True,
+                smoke_type=payload.smoke_type,
+                false_positive_types=[],
+                bboxes=[],
+            )
+        ]
+    )
+    annotation = SequenceAnnotation(
+        sequence_id=new_seq.id,
+        has_smoke=True,
+        has_false_positives=False,
+        false_positive_types=[],
+        smoke_types=[payload.smoke_type.value],
+        has_missed_smoke=False,
+        is_unsure=False,
+        annotation=annotation_data.model_dump(),
+        processing_stage=SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
+    )
+    session.add(annotation)
+    await session.flush()
+
+    session.add(
+        SequenceAnnotationContribution(
+            sequence_annotation_id=annotation.id, user_id=current_user.id
+        )
+    )
+
+    # Every frame starts pending bbox annotation — unlike a classify-time
+    # smoke lane (auto_create_detection_annotations' VISUAL_CHECK shortcut),
+    # this object has no AI-proposed box to confirm; the annotator draws it.
+    session.add_all(
+        DetectionAnnotation(
+            detection_id=det.id,
+            annotation={"annotation": []},
+            processing_stage=DetectionAnnotationProcessingStage.BBOX_ANNOTATION,
+        )
+        for det in new_detections
+    )
+
+    await session.commit()
+
+    seq_dict = {c.name: getattr(new_seq, c.name) for c in new_seq.__table__.columns}
+    annotation_dict = {
+        c.name: getattr(annotation, c.name) for c in annotation.__table__.columns
+    }
+    annotation_dict["contributors"] = [
+        {"id": current_user.id, "username": current_user.username}
+    ]
+    return AlertLane(
+        sequence=SequenceRead(**seq_dict),
+        annotation=SequenceAnnotationRead(**annotation_dict),
+    )
+
+
 # NOTE: declared before GET /{sequence_id} — the int path converter would
 # otherwise turn /localization-queue into a 422.
 @router.get("/localization-queue")
@@ -740,7 +915,9 @@ async def _build_queue_item(
     source_api: SourceApi,
     platform_alert_id: int,
     recorded_at: datetime,
-) -> Optional[LocalizationQueueItem]:
+    item_cls: type[LocalizationQueueItem]
+    | type[LocalizeDoneQueueItem] = LocalizationQueueItem,
+) -> Optional[LocalizationQueueItem | LocalizeDoneQueueItem]:
     rows = (
         await session.execute(
             select(Sequence, SequenceAnnotation)
@@ -780,7 +957,7 @@ async def _build_queue_item(
         r.sequence_id: (r.total_detections, r.completed_annotations) for r in stats_rows
     }
     first_seq = rows[0][0]
-    return LocalizationQueueItem(
+    return item_cls(
         source_api=source_api,
         platform_alert_id=platform_alert_id,
         camera_name=first_seq.camera_name,
@@ -903,6 +1080,85 @@ async def classify_queue(
                 classified_objects=int(row.classified_objects or 0),
             )
         )
+    return Page.create(items=items, total=total, params=params)
+
+
+# NOTE: declared before GET /{sequence_id} — the int path converter would
+# otherwise turn /localize-done-queue into a 422.
+@router.get("/localize-done-queue")
+async def localize_done_queue(
+    camera_name: Optional[str] = Query(None),
+    organisation_name: Optional[str] = Query(None),
+    source_api: Optional[SourceApi] = Query(None),
+    recorded_at_gte: Optional[datetime] = Query(None),
+    recorded_at_lte: Optional[datetime] = Query(None),
+    session: AsyncSession = Depends(get_session),
+    params: Params = Depends(),
+    current_user: User = Depends(get_current_user),
+) -> Page[LocalizeDoneQueueItem]:
+    """Alerts with at least one localized smoke lane (spec: multi-object
+    alert collocation, sub-project 3): a lane whose annotation is ANNOTATED
+    AND matches the localization rule (see `localization_rule`). Unlike the
+    localization queue, membership doesn't require every sibling to be done
+    — an alert surfaces as soon as one qualifying lane exists, with all its
+    sibling lanes rolled up in the item (classify-queue candidate-pre-filter
+    pattern, #215)."""
+    cand_seq = aliased(Sequence)
+    cand_ann = aliased(SequenceAnnotation)
+    candidates = (
+        select(cand_seq.source_api, cand_seq.platform_alert_id)
+        .join(cand_ann, cand_ann.sequence_id == cand_seq.id)
+        .where(
+            cand_ann.processing_stage == SequenceAnnotationProcessingStage.ANNOTATED,
+            needs_localization_clause(cand_ann),
+        )
+    )
+    for col, val in (
+        (cand_seq.camera_name, camera_name),
+        (cand_seq.organisation_name, organisation_name),
+        (cand_seq.source_api, source_api),
+    ):
+        if val is not None:
+            candidates = candidates.where(col == val)
+    if recorded_at_gte is not None:
+        candidates = candidates.where(cand_seq.recorded_at >= recorded_at_gte)
+    if recorded_at_lte is not None:
+        candidates = candidates.where(cand_seq.recorded_at <= recorded_at_lte)
+
+    alerts = (
+        select(
+            Sequence.source_api,
+            Sequence.platform_alert_id,
+            func.min(Sequence.recorded_at).label("recorded_at"),
+        )
+        .where(tuple_(Sequence.source_api, Sequence.platform_alert_id).in_(candidates))
+        .group_by(Sequence.source_api, Sequence.platform_alert_id)
+        .subquery()
+    )
+    total = (
+        await session.execute(select(func.count()).select_from(alerts))
+    ).scalar_one()
+    page_rows = (
+        await session.execute(
+            select(alerts)
+            .order_by(desc(alerts.c.recorded_at))
+            .offset((params.page - 1) * params.size)
+            .limit(params.size)
+        )
+    ).all()
+    maybe_items = [
+        await _build_queue_item(
+            session,
+            row.source_api,
+            row.platform_alert_id,
+            row.recorded_at,
+            item_cls=LocalizeDoneQueueItem,
+        )
+        for row in page_rows
+    ]
+    # An alert can lose its sequences between the page query and item build
+    # (concurrent delete); drop such rows rather than 500.
+    items = [item for item in maybe_items if item is not None]
     return Page.create(items=items, total=total, params=params)
 
 

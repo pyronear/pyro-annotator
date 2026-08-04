@@ -54,6 +54,18 @@ export interface LocalizationQueueItem {
   lanes: LocalizationQueueLane[];
 }
 
+// One alert with at least one localized (ANNOTATED, rule-matching) smoke
+// lane (localize-done queue row). Mirrors LocalizationQueueItem.
+export interface LocalizeDoneQueueItem {
+  source_api: string;
+  platform_alert_id: number;
+  camera_name: string;
+  organisation_name: string;
+  azimuth: number | null;
+  recorded_at: string;
+  lanes: LocalizationQueueLane[];
+}
+
 // One object-sequence of an alert with annotation, as returned by the alert-detail endpoint.
 export interface AlertLane {
   sequence: Sequence;
@@ -129,6 +141,23 @@ export interface ClassifySubmitResult {
 
 export interface ClassifySubmitResponse {
   results: ClassifySubmitResult[];
+}
+
+// Atomic submit of every localized lane of one alert (spec:
+// smoke-localization entry point): each moves seq_annotation_done ->
+// annotated together, or none does.
+export interface LocalizeSubmitRequest {
+  annotation_ids: number[];
+}
+
+export interface LocalizeSubmitResult {
+  annotation_id: number;
+  sequence_id: number;
+  processing_stage: ProcessingStage;
+}
+
+export interface LocalizeSubmitResponse {
+  results: LocalizeSubmitResult[];
 }
 
 export interface Detection {

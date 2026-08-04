@@ -277,8 +277,29 @@ describe('ImageModal', () => {
 
     it('should display detection information', () => {
       renderWithProviders(<ImageModal {...defaultProps} currentIndex={2} totalCount={10} />);
-      
+
       expect(screen.getByText(/Frame 3 of 10/)).toBeInTheDocument();
+    });
+
+    it('should render normally when an objectOverlays prop is passed (collocated localize context)', () => {
+      // ImageModal has no logic of its own around this prop — it's threaded
+      // straight through to DetectionAnnotationCanvas (see that component's
+      // own tests for the actual sibling-layer-suppression behavior). This
+      // just pins that passing it doesn't break the modal's own rendering,
+      // and that every other test in this file (which never passes the
+      // prop) continues to exercise the legacy, byte-unchanged path.
+      const { container } = renderWithProviders(
+        <ImageModal
+          {...defaultProps}
+          objectOverlays={[
+            { color: '#166A5D', label: 'Object 2', boxes: [{ xyxyn: [0.1, 0.1, 0.2, 0.2] }] },
+          ]}
+        />
+      );
+
+      const modalBackdrop = container.querySelector('.fixed.inset-0.bg-black.bg-opacity-90');
+      expect(modalBackdrop).toBeInTheDocument();
+      expect(screen.getByTestId('x-icon')).toBeInTheDocument();
     });
   });
 

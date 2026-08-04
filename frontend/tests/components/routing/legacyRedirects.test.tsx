@@ -30,7 +30,7 @@ describe('legacy route redirects', () => {
     ['/detections/review', '/localize/done'],
     ['/detections/5/annotate', '/localize/5'],
     ['/detections/5/annotate?from=localize', '/localize/5'],
-    ['/detections/5/annotate/9?from=localize', '/localize/5/9'],
+    ['/detections/5/annotate/9?from=localize', '/localize/lane/5/9'],
     ['/detections/5/annotate?from=detections-review', '/localize/done/5'],
     ['/detections/5/annotate/9?from=detections-review', '/localize/done/5/9'],
   ])('redirects %s to %s', (oldUrl, newPath) => {

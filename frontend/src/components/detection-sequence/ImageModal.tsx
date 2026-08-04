@@ -26,6 +26,7 @@ import {
   SubmissionControls,
   DetectionAnnotationCanvas,
 } from '@/components/detection-annotation';
+import type { ObjectOverlayItem } from '@/components/annotation/ImageOverlays';
 import { useKeyboardShortcuts } from '@/hooks/annotation';
 
 interface ImageModalProps {
@@ -47,6 +48,11 @@ interface ImageModalProps {
   isSubmitting?: boolean;
   isAnnotated?: boolean;
   existingAnnotation?: DetectionAnnotation | null;
+  // Collocated localize context: the OTHER contributing objects' boxes on
+  // this same frame (color + label). Additive and optional — when omitted
+  // (legacy per-lane page), behavior is byte-unchanged (the generic
+  // "sibling" others_bboxes layer still renders). See DetectionAnnotationCanvas.
+  objectOverlays?: ObjectOverlayItem[];
   // Persistent smoke type props
   selectedSmokeType: SmokeType;
   onSmokeTypeChange: (smokeType: SmokeType) => void;
@@ -70,6 +76,7 @@ export function ImageModal({
   isSubmitting = false,
   isAnnotated = false,
   existingAnnotation = null,
+  objectOverlays,
   selectedSmokeType,
   onSmokeTypeChange,
   persistentDrawMode,
@@ -945,6 +952,7 @@ export function ImageModal({
             showPredictions={showPredictions}
             activeLayer={activeLayer}
             selectedSmokeType={selectedSmokeType}
+            objectOverlays={objectOverlays}
             winningLayer={winningLayer}
             isDrawMode={isDrawMode}
             reviewInteractive={!alreadyReviewed}

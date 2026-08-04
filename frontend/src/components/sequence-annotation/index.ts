@@ -11,3 +11,5 @@ export { ObjectCard } from './ObjectCard';
 export type { ObjectCardProps, CardClassification } from './ObjectCard';
 export { ObjectPresenceStrip } from './ObjectPresenceStrip';
 export type { ObjectPresenceStripObject } from './ObjectPresenceStrip';
+export { ObjectStatusStrip } from './ObjectStatusStrip';
+export type { ObjectStatusStripObject, ObjectStatusStripStatus } from './ObjectStatusStrip';
