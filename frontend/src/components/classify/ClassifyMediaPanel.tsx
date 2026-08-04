@@ -63,14 +63,16 @@ export const ClassifyMediaPanel: React.FC<ClassifyMediaPanelProps> = ({
     return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
   }, []);
 
-  // Browsers exit native fullscreen on Escape themselves, but the page's
-  // capture-phase key handlers also see the event — handle it explicitly so
-  // the exit is guaranteed and nothing else reacts to that Escape press.
+  // Browsers exit native fullscreen on Escape themselves; this handler
+  // makes the exit explicit. stopImmediatePropagation keeps other
+  // same-node capture listeners (the page's shortcut handlers) from also
+  // reacting — best-effort only, since it can't suppress listeners
+  // registered before this one.
   useEffect(() => {
     if (!isFullscreen) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && document.fullscreenElement) {
-        e.stopPropagation();
+        e.stopImmediatePropagation();
         void document.exitFullscreen?.();
       }
     };
@@ -115,7 +117,7 @@ export const ClassifyMediaPanel: React.FC<ClassifyMediaPanelProps> = ({
               </p>
               <span
                 role="radiogroup"
-                aria-label="Missed smoke review"
+                aria-label="Missed smoke review (player)"
                 className="flex flex-none items-center gap-2"
               >
                 <button

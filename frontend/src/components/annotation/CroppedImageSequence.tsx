@@ -34,7 +34,10 @@ export default function CroppedImageSequence({
   const [error, setError] = useState<string | null>(null);
   const [zoomLevel, setZoomLevel] = useState(MIN_ZOOM); // 1x = wide default framing
 
-  const containerRef = useRef<HTMLDivElement>(null);
+  // Callback-ref state, not a plain ref: the viewport doesn't exist during
+  // the loading/error branches, so the wheel listener must (re)bind when
+  // the element actually mounts, not on component mount.
+  const [viewportEl, setViewportEl] = useState<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -176,8 +179,11 @@ export default function CroppedImageSequence({
       zoomLevel
     );
 
-    canvas.width = CANVAS_RES;
-    canvas.height = CANVAS_RES;
+    // Size once — reassigning width/height reallocates the buffer per draw.
+    if (canvas.width !== CANVAS_RES) {
+      canvas.width = CANVAS_RES;
+      canvas.height = CANVAS_RES;
+    }
     ctx.clearRect(0, 0, CANVAS_RES, CANVAS_RES);
     ctx.drawImage(img, crop.x, crop.y, crop.size, crop.size, 0, 0, CANVAS_RES, CANVAS_RES);
   }, [bboxes, currentIndex, images, zoomLevel]);
@@ -185,16 +191,15 @@ export default function CroppedImageSequence({
   // Wheel-zoom must preventDefault so the page doesn't scroll — React's
   // onWheel is passive, so attach the listener manually.
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
+    if (!viewportEl) return;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
       setZoomLevel(prev => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, prev * factor)));
     };
-    el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
-  }, []);
+    viewportEl.addEventListener('wheel', onWheel, { passive: false });
+    return () => viewportEl.removeEventListener('wheel', onWheel);
+  }, [viewportEl]);
 
   // Redraw canvas when current index or zoom level changes
   useEffect(() => {
@@ -229,7 +234,7 @@ export default function CroppedImageSequence({
       {/* Fixed square viewport — the element never resizes; zoom changes the
           drawn source rect instead (see squareCropUtils). */}
       <div
-        ref={containerRef}
+        ref={setViewportEl}
         data-testid="cropped-viewport"
         className={`relative mx-auto w-full max-w-[min(380px,33vh)] aspect-square overflow-hidden bg-gray-900 ${
           accentColor ? 'border-2' : ''

@@ -51,9 +51,11 @@ No variant prop; one behavior everywhere.
 
 ### Viewport & rendering
 
-- Fixed square viewport: responsive width capped at ~420px, centered,
-  `aspect-square`. The canvas is sized to the viewport once (DPR-aware) and
-  **never changes size with zoom** — the source rect changes instead.
+- Fixed square viewport: responsive width capped at `min(380px, 33vh)`
+  (amended 2026-08-04 from ~420px so the full frame + crop fit the viewport
+  together), centered, `aspect-square`. The canvas has a constant 840px
+  backing resolution (≥2× the CSS cap, covering hiDPI) and **never changes
+  size with zoom** — the source rect changes instead.
 - Image fetching, preloading, frame looping, and loading/error states are
   unchanged.
 

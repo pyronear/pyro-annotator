@@ -838,7 +838,7 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
   // Keyboard shortcuts over the flattened card list.
   useEffect(() => {
     const handleKeyDown = createKeyboardHandler({
-      // Classification shortcuts (S/F, types, Q) only apply while the
+      // Classification shortcuts (S/F, types, U) only apply while the
       // object section is active — a null index makes them inert when the
       // missed-smoke section is selected.
       activeDetectionIndex: activeSection === 'detections' ? activeIndex : null,

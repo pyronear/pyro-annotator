@@ -48,6 +48,15 @@ describe('CroppedImageSequence', () => {
     expect(screen.queryByRole('slider')).not.toBeInTheDocument();
   });
 
+  it('wheel-zooms over the viewport even though it mounts after loading', async () => {
+    // The viewport div does not exist during the loading state — the wheel
+    // listener must bind when it appears (callback-ref state), not on mount.
+    await renderLoaded();
+    expect(screen.getByText('1.0x')).toBeInTheDocument();
+    fireEvent.wheel(screen.getByTestId('cropped-viewport'), { deltaY: -100 });
+    expect(screen.getByText('1.1x')).toBeInTheDocument();
+  });
+
   it('frames the viewport in the object accent color when given', async () => {
     render(<CroppedImageSequence bboxes={BBOXES} sequenceId={9} accentColor="#E4572E" />);
     await waitFor(() => expect(screen.getByLabelText('Zoom in')).toBeInTheDocument());
