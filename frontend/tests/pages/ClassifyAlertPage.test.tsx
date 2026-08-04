@@ -58,6 +58,7 @@ vi.mock('@/components/sequence/SequenceReviewer', () => ({
 
 import { apiClient } from '@/services/api';
 import ClassifyAlertPage from '@/pages/ClassifyAlertPage';
+import { useSequenceStore } from '@/store/useSequenceStore';
 
 function wrapper({ children }: { children: React.ReactNode }) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -73,12 +74,12 @@ function wrapper({ children }: { children: React.ReactNode }) {
 }
 
 /** Same shell as `wrapper`, but mounted under /classify/done/:id (done mode's route). */
-function makeDoneWrapper(entrySequenceId: number) {
+function makeDoneWrapper(entrySequenceId: number, search = '') {
   return function DoneWrapper({ children }: { children: React.ReactNode }) {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     return (
       <QueryClientProvider client={client}>
-        <MemoryRouter initialEntries={[`/classify/done/${entrySequenceId}`]}>
+        <MemoryRouter initialEntries={[`/classify/done/${entrySequenceId}${search}`]}>
           <Routes>
             <Route path="/classify/done/:id" element={children} />
           </Routes>
@@ -1467,5 +1468,59 @@ describe('ClassifyAlertPage done mode', () => {
     expect(screen.getByTestId('object-row-changed-101:0')).toBeInTheDocument();
     expect(screen.queryByTestId('object-row-changed-102:0')).not.toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: /Save changes \(1\)/ })[0]).toBeEnabled();
+  });
+
+  describe('return trip from localize', () => {
+    const RETURN_SEARCH = `?return=${encodeURIComponent('/localize/101')}`;
+
+    afterEach(() => {
+      useSequenceStore.getState().clearAnnotationWorkflow();
+    });
+
+    it('sends the back button to the return target instead of the Done list', async () => {
+      await renderAndSettle(<ClassifyAlertPage mode="done" />, {
+        wrapper: makeDoneWrapper(101, RETURN_SEARCH),
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /Alerts/ }));
+
+      expect(navigateMock).toHaveBeenCalledWith('/localize/101');
+    });
+
+    it('returns to the localize page after saving, even with a stale workflow in the store', async () => {
+      // The exact hazard the skip exists for: an annotationWorkflow left in
+      // the store by an earlier classify session. Without the short-circuit,
+      // getNextSequenceInWorkflow() hands back sequence 999 and the save
+      // navigates there instead of back to localize.
+      useSequenceStore
+        .getState()
+        .startAnnotationWorkflow([makeSequence({ id: 101 }), makeSequence({ id: 999 })], 101, {});
+
+      await renderAndSettle(<ClassifyAlertPage mode="done" />, {
+        wrapper: makeDoneWrapper(101, RETURN_SEARCH),
+      });
+
+      const cardA = within(screen.getByTestId('object-card-101:0'));
+      fireEvent.click(cardA.getByRole('radio', { name: 'Industrial' }));
+
+      const submitButton = screen.getAllByRole('button', { name: /Save changes/ })[0];
+      fireEvent.click(submitButton);
+
+      await waitFor(() => expect(apiClient.updateSequenceAnnotation).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(navigateMock).toHaveBeenCalledWith('/localize/101'), {
+        timeout: 2000,
+      });
+      expect(navigateMock).not.toHaveBeenCalledWith('/classify/done/999');
+    });
+
+    it('ignores an off-site return target and falls back to the Done list', async () => {
+      await renderAndSettle(<ClassifyAlertPage mode="done" />, {
+        wrapper: makeDoneWrapper(101, `?return=${encodeURIComponent('//evil.example.com')}`),
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /Alerts/ }));
+
+      expect(navigateMock).toHaveBeenCalledWith('/classify/done');
+    });
   });
 });

@@ -77,6 +77,11 @@
  * separated, read-only group — enough to answer "is that plume already
  * accounted for?" before someone adds a duplicate object for it. Unsure
  * lanes stay excluded either way.
+ *
+ * Each smoke object's row also carries a "Reclassify" action — workable and
+ * already-localized rows alike — routing to `/classify/done/<lane>` with a
+ * `return` param back to this page. False-positive rows deliberately don't
+ * get it (see issue #275).
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -107,7 +112,7 @@ import CroppedImageSequence from '@/components/annotation/CroppedImageSequence';
 import { usePersistedTabState } from '@/hooks/usePersistedTabState';
 import { useToastNotifications } from '@/utils/notification/toastUtils';
 import { NotificationSystem } from '@/components/ui/NotificationSystem';
-import { ROUTES } from '@/utils/routes';
+import { ROUTES, classifyDetailWithReturn } from '@/utils/routes';
 import { formatDateTime } from '@/utils/datetime';
 
 const CARD_MIN_WIDTH: Record<CardSize, number> = { sm: 240, md: 340, lg: 500 };
@@ -699,6 +704,12 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
         isAccepting={
           quickAcceptLane.isPending && quickAcceptLane.variables === object.laneSequenceId
         }
+        onReclassify={
+          // Withheld on false-positive rows: promoting one back to smoke
+          // needs an auto-review pass first (issue #275), so offering the
+          // action would ship a path that silently does nothing for localize.
+          object.isFalsePositive ? undefined : () => handleReclassify(object.laneSequenceId)
+        }
       />
     );
   };
@@ -856,6 +867,22 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       return;
     }
     activateFocus(laneSequenceId);
+  };
+
+  // Reclassify: hands this object's classification to the classify cockpit's
+  // done mode, which makes an annotated lane editable at any stage and
+  // auto-activates the lane named in the URL — so the annotator lands on the
+  // object they clicked. The `return` param brings both classify's back
+  // button and its post-save navigation back to this page (with `?frame=`
+  // intact, so a deep-linked moment survives the round trip). Built from
+  // `listPath`, not a hardcoded queue prefix, so a reclassify started from
+  // done mode returns to `/localize/done/:id` rather than dumping the
+  // annotator on the queue-mode page for the same alert.
+  const handleReclassify = (laneSequenceId: number) => {
+    if (sequenceIdNum == null) return;
+    navigate(
+      classifyDetailWithReturn(laneSequenceId, `${listPath}/${sequenceIdNum}${location.search}`)
+    );
   };
 
   // Re-review fix: an explicit S/M/L click always writes the real

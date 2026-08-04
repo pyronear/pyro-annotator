@@ -15,6 +15,29 @@ export function classifyDetail(id: number | string, done = false): string {
   return done ? `${ROUTES.CLASSIFY_DONE}/${id}` : `${ROUTES.CLASSIFY}/${id}`;
 }
 
+/**
+ * `/classify/done/:id` plus a `return` param naming where to come back to.
+ * Used by the Localize screen's per-object Reclassify action, so the trip out
+ * to classify returns to the localize page it started from — see
+ * docs/specs/2026-08-04-localize-reclassify-object-design.md.
+ */
+export function classifyDetailWithReturn(id: number | string, returnTo: string): string {
+  return `${classifyDetail(id, true)}?return=${encodeURIComponent(returnTo)}`;
+}
+
+/**
+ * Validates a `return` param before anything navigates to it. Only an
+ * internal localize *alert* path is accepted — `/localize/<id>` or its done
+ * counterpart `/localize/done/<id>`, either optionally carrying a query
+ * string. A protocol-relative `//host` or an absolute URL would leave the
+ * app, and other internal paths aren't this param's business; anything else
+ * yields null and the caller falls back to its default.
+ */
+export function parseLocalizeReturn(value: string | null | undefined): string | null {
+  if (!value) return null;
+  return /^\/localize\/(done\/)?\d+(\?[^#]*)?$/.test(value) ? value : null;
+}
+
 export function classifyGroup(id: number | string): string {
   return `${ROUTES.CLASSIFY_GROUPS}/${id}`;
 }
