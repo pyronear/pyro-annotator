@@ -12,16 +12,29 @@
  * view controls. Task 5 wires the header's submit button: "Accept all &
  * submit alert" runs every workable lane's quick-accept plan, then submits
  * the whole alert atomically via the bulk `localize-submit` endpoint.
+ *
+ * Post-Task-5 feedback round: a segment click gives its target cell a fading
+ * ring highlight and encodes the shown detection in a `?frame=` query param
+ * (independent of the editor's `:detectionId` path param — the two coexist),
+ * so reloading or sharing the link reproduces the scroll+highlight without
+ * opening the editor. Activating an object via the timeline (row or segment
+ * click) also enters "object focus mode" — crop-on + small cards, a lens for
+ * looking closely at just that object — stashing the prior crop/size so
+ * clicking the selected row again restores them.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Upload } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { QUERY_KEYS } from '@/utils/constants';
 import { Detection, DetectionAnnotation, DetectionAnnotationBbox, SmokeType } from '@/types/api';
-import { buildAlertFrameModel, AlertObjectStatus } from '@/utils/annotation/alertLocalizeUtils';
+import {
+  buildAlertFrameModel,
+  findFrameByDetectionId,
+  AlertObjectStatus,
+} from '@/utils/annotation/alertLocalizeUtils';
 import {
   buildQuickSubmitPlan,
   collectLaneBoxes,
@@ -46,6 +59,8 @@ const CARD_MIN_WIDTH: Record<CardSize, number> = { sm: 240, md: 340, lg: 500 };
 export default function LocalizeAlertPage() {
   const { sequenceId, detectionId } = useParams<{ sequenceId: string; detectionId?: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const sequenceIdNum = sequenceId ? parseInt(sequenceId, 10) : null;
   const detectionIdNum = detectionId ? parseInt(detectionId, 10) : null;
@@ -54,7 +69,6 @@ export default function LocalizeAlertPage() {
   const frameRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const [cardSize, setCardSize] = usePersistedTabState<CardSize>('detectionAnnotateCardSize', 'md');
-  const cardMinWidth = CARD_MIN_WIDTH[cardSize] ?? CARD_MIN_WIDTH.md;
   const [cropMode, setCropMode] = useState(false);
   const [showCroppedView, setShowCroppedView] = useState(false);
   const [showPredictions, setShowPredictions] = useState(true);
@@ -63,13 +77,55 @@ export default function LocalizeAlertPage() {
   const smokeTypeInitFor = useRef<number | null>(null);
   const [submitConfirming, setSubmitConfirming] = useState(false);
 
+  // Object-focus mode: entering it (row/segment click activating an object)
+  // stashes the pre-focus crop-mode so the selected row's second click can
+  // restore it. Card size is handled differently (see `effectiveCardSize`
+  // below) — its persisted value is never written to while focused, so
+  // there's nothing to stash for it.
+  const [preFocusCropMode, setPreFocusCropMode] = useState<boolean | null>(null);
+  const isFocused = preFocusCropMode !== null;
+  // Card size while focused is a purely DERIVED override to 'sm' — the real
+  // `usePersistedTabState` setter is never called with 'sm', so the
+  // shared-with-the-legacy-page localStorage preference can never be
+  // clobbered by entering/leaving focus mode (chosen over "call the real
+  // setter but suspend its localStorage write", which would need reaching
+  // into the hook's internals).
+  const effectiveCardSize: CardSize = isFocused ? 'sm' : cardSize;
+  const cardMinWidth = CARD_MIN_WIDTH[effectiveCardSize] ?? CARD_MIN_WIDTH.md;
+
+  // Arrival highlight for a segment click / `?frame=` deep link: a ~2s fade
+  // (via the ring's own `transition-shadow` plus a timed clear) rather than
+  // "persistent until next click" — simpler state (no need to track what
+  // counts as "the next interaction that should clear it": another segment
+  // click, a cell click opening the editor, deselecting focus mode, etc.)
+  // and it reads clearly as "you arrived here" without lingering as a
+  // permanent UI fixture.
+  const [highlightedFrame, setHighlightedFrame] = useState<string | null>(null);
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const highlightFrame = useCallback((recordedAt: string) => {
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    setHighlightedFrame(recordedAt);
+    highlightTimerRef.current = setTimeout(() => setHighlightedFrame(null), 2000);
+  }, []);
+  useEffect(
+    () => () => {
+      if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    },
+    []
+  );
+
   const { showToast, toastMessage, toastType, showToastNotification, dismissToast } =
     useToastNotifications();
 
-  // Clear active-object state immediately when the alert changes so a
-  // stale selection from a previous alert can't linger.
+  // Clear active-object and focus-mode state immediately when the alert
+  // changes so a stale selection from a previous alert can't linger —
+  // including a hard reset of crop-mode (not just the focus stash), so a
+  // switch mid-focus can never leave the new alert stuck in crop mode.
   useEffect(() => {
     setActiveLaneId(null);
+    setPreFocusCropMode(null);
+    setCropMode(false);
+    setHighlightedFrame(null);
     frameRefs.current = {};
   }, [sequenceIdNum]);
 
@@ -162,6 +218,36 @@ export default function LocalizeAlertPage() {
     ? buildAlertFrameModel(alertDetail.lanes, detectionsByLaneId, annotationsByLaneId)
     : { frames: [], objectStatus: [] };
 
+  // Reproduces a shared/reloaded `?frame=<detectionId>` link: resolves the
+  // detection id against every lane's frames (independent of the editor's
+  // `:detectionId` path param — this never opens the modal), then activates
+  // + scrolls + highlights exactly like the segment click that produced the
+  // link, MINUS entering focus mode (a fresh page load reproducing "where
+  // you were looking" shouldn't also silently force crop-on + small cards).
+  // `handledFrameParamRef` guards against reprocessing the same value once
+  // handled (frameModel is rebuilt every render, so this effect re-runs
+  // often as data loads — cheap to no-op once a value's been handled) and
+  // is pre-set by `handleSegmentClick` since that path already does the
+  // scroll+highlight itself.
+  const frameParam = searchParams.get('frame');
+  const frameParamNum = frameParam ? parseInt(frameParam, 10) : null;
+  const handledFrameParamRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (frameParamNum == null) {
+      handledFrameParamRef.current = null;
+      return;
+    }
+    if (handledFrameParamRef.current === frameParamNum) return;
+    const target = findFrameByDetectionId(frameModel.frames, frameParamNum);
+    if (!target) return; // frames not loaded yet (or an invalid id) — retries once data lands
+    handledFrameParamRef.current = frameParamNum;
+    setActiveLaneId(target.laneSequenceId);
+    highlightFrame(target.recordedAt);
+    requestAnimationFrame(() => {
+      frameRefs.current[target.recordedAt]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }, [frameParamNum, frameModel.frames, highlightFrame]);
+
   // The URL's :detectionId, resolved against every lane's loaded detections
   // to find which lane owns it — so the modal (and its save) always targets
   // the right lane regardless of how the URL was reached (cell click or a
@@ -208,9 +294,14 @@ export default function LocalizeAlertPage() {
     ? laneDetectionsSorted.findIndex(d => d.id === modalContext.detection.id)
     : -1;
 
+  // Path-only navigation within this page always appends the current query
+  // string, so the `?frame=` deep-link param (owned by the highlight
+  // feature, entirely separate from the editor's `:detectionId` path
+  // param) survives opening/closing/stepping through the editor — the two
+  // coexist rather than one clobbering the other.
   const closeModal = useCallback(() => {
-    if (sequenceIdNum != null) navigate(`${ROUTES.LOCALIZE}/${sequenceIdNum}`);
-  }, [sequenceIdNum, navigate]);
+    if (sequenceIdNum != null) navigate(`${ROUTES.LOCALIZE}/${sequenceIdNum}${location.search}`);
+  }, [sequenceIdNum, location.search, navigate]);
 
   const navigateModal = useCallback(
     (direction: 'prev' | 'next') => {
@@ -220,9 +311,10 @@ export default function LocalizeAlertPage() {
           ? Math.max(0, modalIndex - 1)
           : Math.min(laneDetectionsSorted.length - 1, modalIndex + 1);
       const newDetection = laneDetectionsSorted[newIndex];
-      if (newDetection) navigate(`${ROUTES.LOCALIZE}/${sequenceIdNum}/${newDetection.id}`);
+      if (newDetection)
+        navigate(`${ROUTES.LOCALIZE}/${sequenceIdNum}/${newDetection.id}${location.search}`);
     },
-    [modalIndex, laneDetectionsSorted, sequenceIdNum, navigate]
+    [modalIndex, laneDetectionsSorted, sequenceIdNum, location.search, navigate]
   );
 
   // Per-frame save: create-or-update with FP preservation (shared util),
@@ -364,6 +456,7 @@ export default function LocalizeAlertPage() {
           {isAccepting ? 'Accepting…' : `Accept ${object.label}'s boxes`}
         </button>
       ) : undefined,
+      selected: isFocused && activeLaneId === object.laneSequenceId,
     };
   });
 
@@ -462,12 +555,60 @@ export default function LocalizeAlertPage() {
     );
   }, [activeLaneId, detectionsByLaneId, annotationsByLaneId]);
 
-  const handleObjectClick = (laneSequenceId: number) => {
+  // Enters (or switches) object-focus mode: crop-on + small cards, a lens
+  // for looking closely at just this object. The pre-focus crop-mode is
+  // stashed only the FIRST time focus is entered (`prev => prev ?? cropMode`
+  // — a functional update so it reads `cropMode` as of THIS click, before
+  // this same call's `setCropMode(true)` below applies) — switching to a
+  // different object while already focused (another row, or a segment of a
+  // different object) reuses that same stash rather than overwriting it
+  // with the just-focused object's now-true crop-mode, so deselecting
+  // always restores the settings from *before the first selection*, not
+  // from whichever object was focused most recently.
+  const activateFocus = (laneSequenceId: number) => {
     setActiveLaneId(laneSequenceId);
+    setPreFocusCropMode(prev => prev ?? cropMode);
+    setCropMode(true);
   };
 
+  // Row click: activates (or switches focus to) the clicked object, UNLESS
+  // it's already the focused one — a second click on the selected row
+  // deselects, restoring the stashed pre-focus crop-mode (and, since
+  // `effectiveCardSize` is a derived override, the card size falls back to
+  // the untouched persisted preference automatically).
+  const handleObjectClick = (laneSequenceId: number) => {
+    if (isFocused && activeLaneId === laneSequenceId) {
+      setCropMode(preFocusCropMode as boolean);
+      setPreFocusCropMode(null);
+      setActiveLaneId(null);
+      return;
+    }
+    activateFocus(laneSequenceId);
+  };
+
+  // Segment click: activates/switches focus (same re-stash semantics as
+  // `activateFocus`), scrolls to the frame, gives it a fading arrival
+  // highlight, and encodes the shown detection in `?frame=` so the moment
+  // is shareable/reloadable (read back by the deep-link effect below).
   const handleSegmentClick = (laneSequenceId: number, timestamp: string) => {
-    setActiveLaneId(laneSequenceId);
+    activateFocus(laneSequenceId);
+    highlightFrame(timestamp);
+
+    const cellDetectionId = frameModel.frames
+      .find(f => f.recordedAt === timestamp)
+      ?.cells.find(c => c.laneSequenceId === laneSequenceId)?.detectionId;
+    if (cellDetectionId != null) {
+      handledFrameParamRef.current = cellDetectionId;
+      setSearchParams(
+        prev => {
+          const next = new URLSearchParams(prev);
+          next.set('frame', String(cellDetectionId));
+          return next;
+        },
+        { replace: true }
+      );
+    }
+
     requestAnimationFrame(() => {
       frameRefs.current[timestamp]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
@@ -505,10 +646,13 @@ export default function LocalizeAlertPage() {
   };
 
   // Opens the shown (active, or first-present-fallback) object's detection
-  // in the editor and makes that lane active, per Task 4.
+  // in the editor and makes that lane active, per Task 4. Deliberately
+  // plain `setActiveLaneId` (not `activateFocus`) — opening the editor
+  // shouldn't also silently flip the background grid into focus mode.
   const handleCellClick = (_recordedAt: string, laneSequenceId: number, detId: number) => {
     setActiveLaneId(laneSequenceId);
-    if (sequenceIdNum != null) navigate(`${ROUTES.LOCALIZE}/${sequenceIdNum}/${detId}`);
+    if (sequenceIdNum != null)
+      navigate(`${ROUTES.LOCALIZE}/${sequenceIdNum}/${detId}${location.search}`);
   };
 
   // 'c' toggles crop mode, matching the legacy grid — inert while the modal
@@ -577,7 +721,7 @@ export default function LocalizeAlertPage() {
 
           <div className="flex flex-none items-center gap-2">
             <ViewToolbar
-              cardSize={cardSize}
+              cardSize={effectiveCardSize}
               onCardSizeChange={setCardSize}
               showPredictions={showPredictions}
               onTogglePredictions={setShowPredictions}
@@ -658,6 +802,7 @@ export default function LocalizeAlertPage() {
           cellRef={handleCellRef}
           cardMinWidth={cardMinWidth}
           cropMode={cropMode}
+          highlightedFrame={highlightedFrame}
         />
       </div>
 

@@ -3,11 +3,13 @@
  * — data loading, status strip, frame grid. Task 4 adds per-frame editing
  * (cell click -> ImageModal, URL-driven via the optional :detectionId),
  * per-object quick-accept, and the S/M/L card-size + crop-zoom view
- * controls.
+ * controls. Post-Task-5 feedback round adds the segment-click arrival
+ * highlight + shareable `?frame=` deep link, and object-focus mode
+ * (crop-on + small cards while an object is the timeline's selected row).
  */
 
 import React from 'react';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import type {
@@ -76,23 +78,27 @@ import { apiClient } from '@/services/api';
 import LocalizeAlertPage from '@/pages/LocalizeAlertPage';
 import { ROUTES } from '@/utils/routes';
 
-function wrapper({ children }: { children: React.ReactNode }) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return (
-    <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={['/localize/101']}>
-        <Routes>
-          <Route path="/localize/:sequenceId/:detectionId?" element={children} />
-          {/* A real route for the queue landing page so a post-submit
-              `navigate(ROUTES.LOCALIZE)` is observable (it actually
-              navigates, unlike a mocked useNavigate, which would also break
-              the modal-close-on-navigate tests elsewhere in this file). */}
-          <Route path={ROUTES.LOCALIZE} element={<div data-testid="localize-queue-landing" />} />
-        </Routes>
-      </MemoryRouter>
-    </QueryClientProvider>
-  );
+function makeWrapper(initialPath = '/localize/101') {
+  return function TestWrapper({ children }: { children: React.ReactNode }) {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return (
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={[initialPath]}>
+          <Routes>
+            <Route path="/localize/:sequenceId/:detectionId?" element={children} />
+            {/* A real route for the queue landing page so a post-submit
+                `navigate(ROUTES.LOCALIZE)` is observable (it actually
+                navigates, unlike a mocked useNavigate, which would also break
+                the modal-close-on-navigate tests elsewhere in this file). */}
+            <Route path={ROUTES.LOCALIZE} element={<div data-testid="localize-queue-landing" />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+  };
 }
+
+const wrapper = makeWrapper();
 
 function makeSequence(overrides: Partial<Sequence> = {}): Sequence {
   return {
@@ -456,6 +462,120 @@ describe('LocalizeAlertPage', () => {
       const img = within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img');
       expect(img.style.transform).toBe('');
     });
+  });
+
+  it('a segment click gives its target cell an arrival highlight that fades after ~2s', async () => {
+    await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(screen.getByTestId('status-segment-0-0'));
+
+      expect(screen.getByTestId(`alert-frame-cell-${T1}`)).toHaveAttribute(
+        'data-highlighted',
+        'true'
+      );
+
+      act(() => {
+        vi.advanceTimersByTime(2000);
+      });
+
+      expect(screen.getByTestId(`alert-frame-cell-${T1}`)).not.toHaveAttribute('data-highlighted');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a ?frame=<detectionId> deep link scrolls to and highlights that frame on load, without opening the editor modal', async () => {
+    // Detection 1002 (lane 102 / Object 2) is present at T1.
+    await renderAndSettle(<LocalizeAlertPage />, {
+      wrapper: makeWrapper('/localize/101?frame=1002'),
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`alert-frame-cell-${T1}`)).toHaveAttribute(
+        'data-highlighted',
+        'true'
+      );
+    });
+    // The scroll happens inside a requestAnimationFrame callback, so it
+    // lands a tick after the effect that resolved the `?frame=` param.
+    await waitFor(() => expect(Element.prototype.scrollIntoView).toHaveBeenCalled());
+    expect(screen.queryByTestId('image-modal')).not.toBeInTheDocument();
+
+    // The resolved lane was made active, so T1 (present in both lanes) now
+    // shows Object 2's detection.
+    await waitFor(() => {
+      const img = within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img');
+      expect(img).toHaveAttribute('src', 'https://img.example/1002.jpg');
+    });
+  });
+
+  it('object-focus mode (row click) forces crop-on + small cards without clobbering the persisted card-size preference, and restores both on deselect', async () => {
+    localStorage.setItem('detectionAnnotateCardSize', 'lg');
+
+    const { container } = render(<LocalizeAlertPage />, { wrapper });
+    await waitFor(() => expect(screen.getByTestId('status-segment-0-0')).toBeInTheDocument());
+
+    const grid = container.querySelector('.grid') as HTMLElement;
+    expect(grid.style.gridTemplateColumns).toContain('500px'); // persisted 'lg'
+
+    fireEvent.click(screen.getByRole('button', { name: 'Go to Object 1' }));
+
+    // Focus mode: the grid is forced to small cards...
+    await waitFor(() => expect(grid.style.gridTemplateColumns).toContain('240px'));
+    // ...crop is applied to the now-active object's cell...
+    await waitFor(() => {
+      const img = within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img');
+      expect(img.style.transform).toContain('scale(');
+    });
+    // ...the row gets the selected treatment...
+    expect(screen.getByTestId('object-status-row-0')).toHaveAttribute('data-selected', 'true');
+    // ...and the real persisted preference is never overwritten with 'sm'.
+    expect(localStorage.getItem('detectionAnnotateCardSize')).toBe('lg');
+
+    // Clicking the now-selected row again deselects, restoring both.
+    fireEvent.click(screen.getByRole('button', { name: 'Go to Object 1' }));
+
+    await waitFor(() => expect(grid.style.gridTemplateColumns).toContain('500px'));
+    await waitFor(() => {
+      const img = within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img');
+      expect(img.style.transform).toBe('');
+    });
+    expect(screen.getByTestId('object-status-row-0')).not.toHaveAttribute('data-selected');
+    expect(localStorage.getItem('detectionAnnotateCardSize')).toBe('lg');
+  });
+
+  it("switching focus to another object (segment click) keeps the ORIGINAL pre-focus settings for restore, not the most recent object's", async () => {
+    await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+    // Neither cropMode (default false) nor cardSize (default 'md', no
+    // persisted value) has been touched yet.
+
+    fireEvent.click(screen.getByRole('button', { name: 'Go to Object 1' }));
+    await waitFor(() => {
+      const img = within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img');
+      expect(img.style.transform).toContain('scale(');
+    });
+
+    // Switch focus to Object 2 via a segment click — this must NOT re-stash
+    // (Object 1's crop-on state is not the "pre-focus" value to restore).
+    fireEvent.click(screen.getByTestId('status-segment-1-1'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('object-status-row-1')).toHaveAttribute('data-selected', 'true')
+    );
+    expect(screen.getByTestId('object-status-row-0')).not.toHaveAttribute('data-selected');
+
+    // Deselecting Object 2 restores the ORIGINAL pre-focus crop-mode (false,
+    // from before Object 1 was ever selected) — not "whatever was true a
+    // moment ago".
+    fireEvent.click(screen.getByRole('button', { name: 'Go to Object 2' }));
+
+    await waitFor(() => {
+      const img = within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img');
+      expect(img.style.transform).toBe('');
+    });
+    expect(screen.getByTestId('object-status-row-1')).not.toHaveAttribute('data-selected');
   });
 
   it('a timeline row shows its boxes preview in a popover on hover, never inline', async () => {

@@ -15,6 +15,10 @@
  * cell around that object's boxes on that frame, mirroring the legacy
  * grid's crop-mode zoom (`gridCropUtils.computeCellCrop`) — a frame where
  * the active lane isn't present stays full-frame (no object to focus on).
+ *
+ * `highlightedFrame` (a `recordedAt`) gives that one cell a temporary accent
+ * ring — the page sets it on a segment click or a `?frame=` deep-link
+ * arrival, then clears it after a couple of seconds.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -34,6 +38,8 @@ interface AlertFrameGridProps {
   cardMinWidth?: number;
   /** Zoom each cell around the active object's boxes for that frame; no-op with no active object. */
   cropMode?: boolean;
+  /** The `recordedAt` of the one cell to ring-highlight (segment click / `?frame=` deep link arrival). */
+  highlightedFrame?: string | null;
 }
 
 export function AlertFrameGrid({
@@ -43,6 +49,7 @@ export function AlertFrameGrid({
   cellRef,
   cardMinWidth = 220,
   cropMode = false,
+  highlightedFrame = null,
 }: AlertFrameGridProps) {
   if (frames.length === 0) return null;
 
@@ -59,6 +66,7 @@ export function AlertFrameGrid({
           frame={frame}
           activeLaneId={activeLaneId}
           cropMode={cropMode}
+          highlighted={highlightedFrame === frame.recordedAt}
           onClick={activeCell =>
             onCellClick(frame.recordedAt, activeCell.laneSequenceId, activeCell.detectionId)
           }
@@ -73,6 +81,7 @@ interface AlertFrameCellViewProps {
   frame: AlertFrame;
   activeLaneId: number | null;
   cropMode: boolean;
+  highlighted: boolean;
   onClick: (activeCell: AlertFrameCell) => void;
   cellRef?: (el: HTMLDivElement | null) => void;
 }
@@ -81,6 +90,7 @@ function AlertFrameCellView({
   frame,
   activeLaneId,
   cropMode,
+  highlighted,
   onClick,
   cellRef,
 }: AlertFrameCellViewProps) {
@@ -144,7 +154,10 @@ function AlertFrameCellView({
         cellRef?.(el);
       }}
       data-testid={`alert-frame-cell-${frame.recordedAt}`}
-      className="group aspect-video relative overflow-hidden bg-ash cursor-pointer"
+      data-highlighted={highlighted ? 'true' : undefined}
+      className={`group aspect-video relative overflow-hidden bg-ash cursor-pointer transition-shadow duration-700 ${
+        highlighted ? 'ring-2 ring-pine ring-offset-2' : ''
+      }`}
       onClick={() => onClick(activeCell)}
     >
       {isLoading && <div className="absolute inset-0 animate-pulse bg-ash" />}

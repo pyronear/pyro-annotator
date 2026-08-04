@@ -133,3 +133,22 @@ export function buildAlertFrameModel(
 
   return { frames, objectStatus };
 }
+
+/**
+ * Locates the frame (and owning lane) a given detection id belongs to,
+ * across every cell of every frame. Feeds LocalizeAlertPage's `?frame=`
+ * deep link — the query param carries a detection id (the shown lane's
+ * detection at the moment a segment was clicked), and this resolves it back
+ * to a scrollable/highlightable frame on load, without involving the
+ * `:detectionId` path param the editor modal owns.
+ */
+export function findFrameByDetectionId(
+  frames: AlertFrame[],
+  detectionId: number
+): { recordedAt: string; laneSequenceId: number } | null {
+  for (const frame of frames) {
+    const cell = frame.cells.find(c => c.detectionId === detectionId);
+    if (cell) return { recordedAt: frame.recordedAt, laneSequenceId: cell.laneSequenceId };
+  }
+  return null;
+}

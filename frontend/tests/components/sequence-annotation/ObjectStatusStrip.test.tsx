@@ -294,6 +294,31 @@ describe('ObjectStatusStrip', () => {
     expect(screen.queryByTestId('status-axis-label')).not.toBeInTheDocument();
   });
 
+  it('gives a selected object row an unmistakable accent treatment, off by default', () => {
+    render(
+      <ObjectStatusStrip
+        objects={[
+          { label: 'Object 1', color: '#3b82f6', statusByTimestamp: { [t1]: 'confirmed' } },
+          {
+            label: 'Object 2',
+            color: '#f97316',
+            statusByTimestamp: { [t1]: 'confirmed' },
+            selected: true,
+          },
+        ]}
+      />
+    );
+
+    const unselectedRow = screen.getByTestId('object-status-row-0');
+    expect(unselectedRow).not.toHaveAttribute('data-selected');
+    expect(unselectedRow).not.toHaveClass('bg-pine-soft');
+
+    const selectedRow = screen.getByTestId('object-status-row-1');
+    expect(selectedRow).toHaveAttribute('data-selected', 'true');
+    expect(selectedRow).toHaveClass('bg-pine-soft');
+    expect(selectedRow).toHaveClass('border-l-pine');
+  });
+
   it('never renders the preview inline — it does not appear without hover/focus', () => {
     render(
       <ObjectStatusStrip

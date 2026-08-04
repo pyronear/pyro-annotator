@@ -24,6 +24,10 @@
  * delay) or keyboard focus, and is `pointer-events-none` so it can never
  * intercept a click meant for the row or its segments.
  *
+ * `selected` gives a row an unmistakable accent treatment (fill + left
+ * border) — LocalizeAlertPage's object-focus mode uses it to mark whichever
+ * object is currently focused.
+ *
  * No frame axis here (dropped — the strip's segments read fine without tick
  * labels at this scale); `ObjectPresenceStrip` (classify) is unaffected and
  * keeps its own axis.
@@ -53,6 +57,8 @@ export interface ObjectStatusStripObject {
   preview?: React.ReactNode;
   /** Optional action (e.g. a quick-accept button) rendered at the row's trailing edge. */
   action?: React.ReactNode;
+  /** Renders the row with an accent fill + left border — this object's current "focused" state. */
+  selected?: boolean;
 }
 
 interface ObjectStatusStripProps {
@@ -194,12 +200,16 @@ export const ObjectStatusStrip: React.FC<ObjectStatusStripProps> = ({
 
       {objects.map((object, objectIndex) => {
         const flag = object.flag ?? false;
+        const selected = object.selected ?? false;
         return (
           <div
             key={object.label}
             data-testid={`object-status-row-${objectIndex}`}
             data-flag={flag ? 'true' : undefined}
-            className="flex w-full items-center gap-2 py-1"
+            data-selected={selected ? 'true' : undefined}
+            className={`flex w-full items-center gap-2 rounded-md border-l-[3px] py-1 pl-1 transition-colors ${
+              selected ? 'border-l-pine bg-pine-soft' : 'border-l-transparent'
+            }`}
           >
             <ObjectLabelButton
               objectIndex={objectIndex}
