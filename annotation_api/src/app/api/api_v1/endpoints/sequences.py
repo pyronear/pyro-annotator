@@ -60,6 +60,7 @@ from app.schemas.sequence import (
     ClassifyQueueItem,
     LocalizationQueueItem,
     LocalizationQueueLane,
+    LocalizeDoneQueueItem,
     SequenceCreate,
     SequenceRead,
 )
@@ -912,7 +913,9 @@ async def _build_queue_item(
     source_api: SourceApi,
     platform_alert_id: int,
     recorded_at: datetime,
-) -> Optional[LocalizationQueueItem]:
+    item_cls: type[LocalizationQueueItem]
+    | type[LocalizeDoneQueueItem] = LocalizationQueueItem,
+) -> Optional[LocalizationQueueItem | LocalizeDoneQueueItem]:
     rows = (
         await session.execute(
             select(Sequence, SequenceAnnotation)
@@ -952,7 +955,7 @@ async def _build_queue_item(
         r.sequence_id: (r.total_detections, r.completed_annotations) for r in stats_rows
     }
     first_seq = rows[0][0]
-    return LocalizationQueueItem(
+    return item_cls(
         source_api=source_api,
         platform_alert_id=platform_alert_id,
         camera_name=first_seq.camera_name,
@@ -1075,6 +1078,85 @@ async def classify_queue(
                 classified_objects=int(row.classified_objects or 0),
             )
         )
+    return Page.create(items=items, total=total, params=params)
+
+
+# NOTE: declared before GET /{sequence_id} — the int path converter would
+# otherwise turn /localize-done-queue into a 422.
+@router.get("/localize-done-queue")
+async def localize_done_queue(
+    camera_name: Optional[str] = Query(None),
+    organisation_name: Optional[str] = Query(None),
+    source_api: Optional[SourceApi] = Query(None),
+    recorded_at_gte: Optional[datetime] = Query(None),
+    recorded_at_lte: Optional[datetime] = Query(None),
+    session: AsyncSession = Depends(get_session),
+    params: Params = Depends(),
+    current_user: User = Depends(get_current_user),
+) -> Page[LocalizeDoneQueueItem]:
+    """Alerts with at least one localized smoke lane (spec: multi-object
+    alert collocation, sub-project 3): a lane whose annotation is ANNOTATED
+    AND matches the localization rule (see `localization_rule`). Unlike the
+    localization queue, membership doesn't require every sibling to be done
+    — an alert surfaces as soon as one qualifying lane exists, with all its
+    sibling lanes rolled up in the item (classify-queue candidate-pre-filter
+    pattern, #215)."""
+    cand_seq = aliased(Sequence)
+    cand_ann = aliased(SequenceAnnotation)
+    candidates = (
+        select(cand_seq.source_api, cand_seq.platform_alert_id)
+        .join(cand_ann, cand_ann.sequence_id == cand_seq.id)
+        .where(
+            cand_ann.processing_stage == SequenceAnnotationProcessingStage.ANNOTATED,
+            needs_localization_clause(cand_ann),
+        )
+    )
+    for col, val in (
+        (cand_seq.camera_name, camera_name),
+        (cand_seq.organisation_name, organisation_name),
+        (cand_seq.source_api, source_api),
+    ):
+        if val is not None:
+            candidates = candidates.where(col == val)
+    if recorded_at_gte is not None:
+        candidates = candidates.where(cand_seq.recorded_at >= recorded_at_gte)
+    if recorded_at_lte is not None:
+        candidates = candidates.where(cand_seq.recorded_at <= recorded_at_lte)
+
+    alerts = (
+        select(
+            Sequence.source_api,
+            Sequence.platform_alert_id,
+            func.min(Sequence.recorded_at).label("recorded_at"),
+        )
+        .where(tuple_(Sequence.source_api, Sequence.platform_alert_id).in_(candidates))
+        .group_by(Sequence.source_api, Sequence.platform_alert_id)
+        .subquery()
+    )
+    total = (
+        await session.execute(select(func.count()).select_from(alerts))
+    ).scalar_one()
+    page_rows = (
+        await session.execute(
+            select(alerts)
+            .order_by(desc(alerts.c.recorded_at))
+            .offset((params.page - 1) * params.size)
+            .limit(params.size)
+        )
+    ).all()
+    maybe_items = [
+        await _build_queue_item(
+            session,
+            row.source_api,
+            row.platform_alert_id,
+            row.recorded_at,
+            item_cls=LocalizeDoneQueueItem,
+        )
+        for row in page_rows
+    ]
+    # An alert can lose its sequences between the page query and item build
+    # (concurrent delete); drop such rows rather than 500.
+    items = [item for item in maybe_items if item is not None]
     return Page.create(items=items, total=total, params=params)
 
 

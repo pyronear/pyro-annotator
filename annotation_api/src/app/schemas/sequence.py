@@ -158,6 +158,19 @@ class LocalizationQueueItem(BaseModel):
     lanes: List[LocalizationQueueLane]
 
 
+class LocalizeDoneQueueItem(BaseModel):
+    """One alert with at least one localized (ANNOTATED, rule-matching) smoke
+    lane (localize-done queue row). Mirrors LocalizationQueueItem."""
+
+    source_api: SourceApi
+    platform_alert_id: int
+    camera_name: str
+    organisation_name: str
+    azimuth: Optional[int]
+    recorded_at: datetime
+    lanes: List[LocalizationQueueLane]
+
+
 class ClassifyQueueItem(BaseModel):
     """One alert with at least one object awaiting classification (queue row)."""
 
