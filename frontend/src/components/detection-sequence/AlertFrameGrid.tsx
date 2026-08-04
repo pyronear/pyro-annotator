@@ -4,7 +4,9 @@
  * cell shows the frame image (of the active object's detection when it has
  * one there, else the first present lane's), a mini box per object present
  * on that frame in its own accent color (solid for a committed box, dashed
- * for a winning-but-not-yet-committed one), and a small status chip.
+ * for anything not committed — a winning model box awaiting acceptance, or
+ * a false-positive lane's engine track, which is read-only context and
+ * never gets committed at all), and a small status chip.
  *
  * Clicking a cell reports the frame's timestamp plus the shown (active, or
  * first-present-fallback) object's lane and detection id via `onCellClick`
@@ -176,7 +178,12 @@ function AlertFrameCellView({
   // clicking used to open the fallback lane's detection, silently switching
   // which object you were editing.
   const isContextFrame = activeLaneId !== null && !isActiveLaneCell;
-  const isAccented = activeLaneId !== null && isActiveLaneCell;
+  // The full-cell accent outline says "this object is here — work on it".
+  // A false positive is settled and its cells are read-only, so the outline
+  // would be claiming work that doesn't exist; its dashed box already marks
+  // where the object is.
+  const isAccented =
+    activeLaneId !== null && isActiveLaneCell && activeCell.isFalsePositive !== true;
   // A false-positive object is settled; its frames are here to be LOOKED at
   // (including via the cropped-view strip), never edited. Opening the editor
   // on one would offer to re-box something classify already rejected.
@@ -235,7 +242,14 @@ function AlertFrameCellView({
                   top: `${top}px`,
                   width: `${width}px`,
                   height: `${height}px`,
-                  border: `2px ${cell.cellState === 'done' ? 'solid' : 'dashed'} ${box.color}`,
+                  // Solid means committed. A false-positive cell's state is
+                  // genuinely 'done' (its lane is annotated), but the boxes
+                  // shown are the engine track, not anything a human
+                  // committed — so it stays dashed like any other
+                  // not-yet-committed box.
+                  border: `2px ${
+                    cell.cellState === 'done' && !cell.isFalsePositive ? 'solid' : 'dashed'
+                  } ${box.color}`,
                 }}
               />
             );

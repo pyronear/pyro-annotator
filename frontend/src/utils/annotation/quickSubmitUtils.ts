@@ -49,6 +49,24 @@ export function getWinningBoxes(detection: Detection) {
   return { layer, boxes };
 }
 
+/**
+ * The boxes to SHOW for a false-positive lane. Its committed annotation is
+ * deliberately empty — the backend writes `{"annotation": []}` at ANNOTATED
+ * for FP-only lanes, since the human's answer was "no smoke here" — so the
+ * engine track the lane was object-split on is the only record of where the
+ * object actually is. Deliberately `algo_predictions` rather than
+ * `getWinningBoxes`: the split ran on the engine track, so that track is the
+ * lane's identity, and a later auto-model box is not.
+ *
+ * Read-only context only — these are never committed, offered for
+ * acceptance, or submitted.
+ */
+export function falsePositiveContextBoxes(
+  detection: Detection
+): { xyxyn: [number, number, number, number] }[] {
+  return (detection.algo_predictions?.predictions ?? []).map(p => ({ xyxyn: p.xyxyn }));
+}
+
 export function getCellState(
   detection: Detection,
   annotation: DetectionAnnotation | undefined
@@ -61,17 +79,24 @@ export function getCellState(
  * The lane's committal boxes across all frames, in CroppedImageSequence's
  * input shape: committed smoke boxes for done frames, winning-layer boxes
  * for pending frames, nothing for no-box frames.
+ *
+ * `options.falsePositive` switches the whole lane to its engine track
+ * instead: an FP lane's committed annotation is empty by construction, so
+ * the default path would give the flipbook nothing to show. See
+ * `falsePositiveContextBoxes`.
  */
 export function collectLaneBoxes(
   detections: Detection[],
-  annotations: Map<number, DetectionAnnotation>
+  annotations: Map<number, DetectionAnnotation>,
+  options: { falsePositive?: boolean } = {}
 ): BoundingBox[] {
   const out: BoundingBox[] = [];
   for (const detection of detections) {
     const existing = annotations.get(detection.id);
     const state = getCellState(detection, existing);
-    const boxes =
-      state === 'done'
+    const boxes: { xyxyn: number[] }[] = options.falsePositive
+      ? falsePositiveContextBoxes(detection)
+      : state === 'done'
         ? (existing?.annotation?.annotation ?? []).filter(item => item.false_positive_type == null)
         : state === 'auto'
           ? getWinningBoxes(detection).boxes

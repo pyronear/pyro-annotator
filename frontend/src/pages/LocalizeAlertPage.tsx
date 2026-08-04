@@ -760,13 +760,19 @@ export default function LocalizeAlertPage() {
   // (`showCroppedView`, works standalone) and object-focus mode (`isFocused`
   // — shows it automatically while an object is focused, per the render
   // condition below).
+  // A false-positive lane's committed annotation is empty by construction,
+  // so the flipbook has to read its engine track instead — otherwise
+  // activating an FP object shows no strip at all, and looking closely at
+  // the rejected plume is the whole reason the row is on screen.
+  const activeLaneIsFalsePositive = activeObject?.isFalsePositive === true;
   const activeLaneBoxes = useMemo(() => {
     if (activeLaneId == null) return [];
     return collectLaneBoxes(
       detectionsByLaneId[activeLaneId] ?? [],
-      new Map((annotationsByLaneId[activeLaneId] ?? []).map(a => [a.detection_id, a]))
+      new Map((annotationsByLaneId[activeLaneId] ?? []).map(a => [a.detection_id, a])),
+      { falsePositive: activeLaneIsFalsePositive }
     );
-  }, [activeLaneId, detectionsByLaneId, annotationsByLaneId]);
+  }, [activeLaneId, detectionsByLaneId, annotationsByLaneId, activeLaneIsFalsePositive]);
 
   // Enters (or switches) object-focus mode: crop-on + small cards, a lens
   // for looking closely at just this object, plus the cropped-view strip
@@ -819,6 +825,20 @@ export default function LocalizeAlertPage() {
   const handleCardSizeChange = (size: CardSize) => {
     setCardSize(size);
     if (isFocused) setSizeOverrideCleared(true);
+  };
+
+  // Hiding false positives again while one is the ACTIVE object would strand
+  // `activeLaneId` on a lane the frame model no longer contains: every
+  // remaining cell then reads as "not this object's frame", dimming the whole
+  // grid and making it unclickable with no way back except clicking a row.
+  // Deselect first. `exitFocus` is a no-op when not focused, so the explicit
+  // `setActiveLaneId(null)` covers that path too.
+  const handleToggleFalsePositives = () => {
+    if (showFalsePositives && activeLaneIsFalsePositive) {
+      exitFocus();
+      setActiveLaneId(null);
+    }
+    setShowFalsePositives(prev => !prev);
   };
 
   // The cropped-view toolbar toggle while focused: the strip is already
@@ -1045,7 +1065,7 @@ export default function LocalizeAlertPage() {
                 type="button"
                 aria-pressed={showFalsePositives}
                 disabled={falsePositiveLaneCount === 0}
-                onClick={() => setShowFalsePositives(prev => !prev)}
+                onClick={handleToggleFalsePositives}
                 title={
                   falsePositiveLaneCount === 0
                     ? 'This alert has no false-positive objects'
