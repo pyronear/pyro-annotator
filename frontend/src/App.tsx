@@ -15,6 +15,7 @@ import UserManagementPage from '@/pages/UserManagementPage';
 import GuidePage from '@/pages/GuidePage';
 import LoginPage from '@/pages/LoginPage';
 import { legacyRedirectRoutes } from '@/components/routing/legacyRedirects';
+import RequireLocalize from '@/components/routing/RequireLocalize';
 import { useAuthStore } from '@/store/useAuthStore';
 
 // Create a client
@@ -94,15 +95,37 @@ function App() {
                   <Route path="/classify/groups/:id" element={<SequenceGroupAnnotatePage />} />
                   <Route path="/classify/done/:id" element={<ClassifyAlertPage mode="done" />} />
                   <Route path="/classify/:id" element={<ClassifyAlertPage />} />
-                  <Route path="/localize" element={<DetectionAnnotatePage />} />
-                  <Route path="/localize/done" element={<DetectionReviewPage />} />
+                  <Route
+                    path="/localize"
+                    element={
+                      <RequireLocalize>
+                        <DetectionAnnotatePage />
+                      </RequireLocalize>
+                    }
+                  />
+                  <Route
+                    path="/localize/done"
+                    element={
+                      <RequireLocalize>
+                        <DetectionReviewPage />
+                      </RequireLocalize>
+                    }
+                  />
                   <Route
                     path="/localize/done/:sequenceId/:detectionId?"
-                    element={<DetectionSequenceAnnotatePage mode="done" />}
+                    element={
+                      <RequireLocalize>
+                        <DetectionSequenceAnnotatePage mode="done" />
+                      </RequireLocalize>
+                    }
                   />
                   <Route
                     path="/localize/:sequenceId/:detectionId?"
-                    element={<DetectionSequenceAnnotatePage />}
+                    element={
+                      <RequireLocalize>
+                        <DetectionSequenceAnnotatePage />
+                      </RequireLocalize>
+                    }
                   />
                   {legacyRedirectRoutes}
                   <Route path="/users" element={<UserManagementPage />} />
