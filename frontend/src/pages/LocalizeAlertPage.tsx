@@ -116,7 +116,12 @@ import {
   sequenceSmokeType,
 } from '@/utils/annotation';
 import { ObjectStatusStrip } from '@/components/sequence-annotation';
-import { LocalizeMissedSmokeRow, LocalizeObjectRow, LocalizeRail } from '@/components/localize';
+import {
+  LocalizeMissedSmokeRow,
+  LocalizeObjectActions,
+  LocalizeObjectRow,
+  LocalizeRail,
+} from '@/components/localize';
 import { AlertFrameGrid, ImageModal, ViewToolbar } from '@/components/detection-sequence';
 import type { CardSize } from '@/components/detection-sequence/ViewToolbar';
 import CroppedImageSequence from '@/components/annotation/CroppedImageSequence';
@@ -653,8 +658,8 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
 
   // The timeline's rows: identity + per-frame statuses + the "selected"
   // accent for whichever object is currently focused. The quick-accept
-  // action no longer rides along here — it moved to the rail's own row,
-  // where an object's progress and its actions sit together.
+  // action no longer rides along here — it lives on the selected object's
+  // rail row and above the media column, on the active object.
   const objectStatusRows: AlertObjectStatus[] = frameModel.objectStatus.map(object => ({
     ...object,
     selected: isFocused && activeLaneId === object.laneSequenceId,
@@ -712,6 +717,26 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
         !!lane.annotation && !laneNeedsLocalization(lane.annotation) && !lane.annotation.is_unsure
     ).length ?? 0;
 
+  // Which actions an object gets, and what they do — shared by the rail row
+  // and the media column's CTA bar so the two can't disagree about whether an
+  // object is acceptable or correctable.
+  const objectActionProps = (object: AlertObjectStatus) => ({
+    // Withheld once the lane has nothing pending: re-accepting would fire a
+    // mutation with an empty payload and toast success for a no-op. It is
+    // also the only way the selected row/bar can show that the accept landed.
+    onAcceptBoxes:
+      object.workable && !isObjectLocalized(object)
+        ? () => quickAcceptLane.mutate(object.laneSequenceId)
+        : undefined,
+    isAccepting: quickAcceptLane.isPending && quickAcceptLane.variables === object.laneSequenceId,
+    // Withheld on false-positive rows: promoting one back to smoke needs an
+    // auto-review pass first (issue #275), so offering the action would ship
+    // a path that silently does nothing for localize.
+    onReclassify: object.isFalsePositive
+      ? undefined
+      : () => handleReclassify(object.laneSequenceId),
+  });
+
   const renderObjectRow = (object: AlertObjectStatus) => {
     const progress = objectProgress.get(object.laneSequenceId) ?? {
       presentCount: 0,
@@ -734,18 +759,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
         dimmed={object.isFalsePositive || (!object.workable && workableObjects.length > 0)}
         isActive={isFocused && activeLaneId === object.laneSequenceId}
         onActivate={() => handleObjectClick(object.laneSequenceId)}
-        onAcceptBoxes={
-          object.workable ? () => quickAcceptLane.mutate(object.laneSequenceId) : undefined
-        }
-        isAccepting={
-          quickAcceptLane.isPending && quickAcceptLane.variables === object.laneSequenceId
-        }
-        onReclassify={
-          // Withheld on false-positive rows: promoting one back to smoke
-          // needs an auto-review pass first (issue #275), so offering the
-          // action would ship a path that silently does nothing for localize.
-          object.isFalsePositive ? undefined : () => handleReclassify(object.laneSequenceId)
-        }
+        {...objectActionProps(object)}
       />
     );
   };
@@ -755,6 +769,14 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   // The color also outlines the frames it actually appears on.
   const activeObject = objectStatusRows.find(o => o.laneSequenceId === activeLaneId);
   const activeObjectLabel = activeObject?.label ?? null;
+  // Frames of the active object still without a box — the media column's
+  // header states it, since the selected rail row gave up its own count.
+  const activeObjectPending = activeObject
+    ? (() => {
+        const progress = objectProgress.get(activeObject.laneSequenceId);
+        return progress ? progress.presentCount - progress.confirmedCount : null;
+      })()
+    : null;
 
   // Submit gate: every workable object must already have a committed box on
   // every frame it appears on. An object is "accepted" either via its row's
@@ -1129,13 +1151,46 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                 alert header — S/M/L, crop and the flipbook are all about
                 how these cells render. */}
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <div className="font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
-                {/* Which object's images the cells are showing — invisible
-                    before the cockpit split, and the grid's cells only make
-                    sense once you know whose frames they are. */}
-                Frames{activeObjectLabel ? ` — ${activeObjectLabel}` : ''}
+              <div className="flex min-w-0 items-baseline gap-1.5">
+                <span className="font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
+                  {/* Which object's images the cells are showing — invisible
+                      before the cockpit split, and the grid's cells only make
+                      sense once you know whose frames they are. */}
+                  Frames{activeObjectLabel ? ` — ${activeObjectLabel}` : ''}
+                </span>
+                {/* What is left on the active object. The selected rail row
+                    trades its progress for its buttons, so this is where an
+                    accept becomes visible on the object it acted on. */}
+                {activeObjectPending !== null && (
+                  <span className="truncate font-body text-detail text-haze">
+                    ·{' '}
+                    {activeObjectPending === 0
+                      ? 'every frame has a box'
+                      : `${activeObjectPending} frame${
+                          activeObjectPending === 1 ? '' : 's'
+                        } still need${activeObjectPending === 1 ? 's' : ''} a box`}
+                  </span>
+                )}
               </div>
               <div className="flex shrink-0 items-center gap-2.5">
+                {/* The active object's actions ride the same line as the view
+                    controls, where the eye already is once an object is
+                    selected — the rail's copy is across the page. Driven by
+                    `activeLaneId` alone, not by focus mode: closing the frame
+                    editor leaves an object active without re-entering focus,
+                    and that is exactly when the annotator is most obviously
+                    working one object. */}
+                {activeObject && (
+                  <span
+                    data-testid="localize-active-object-actions"
+                    className="flex items-center gap-1.5"
+                  >
+                    <LocalizeObjectActions
+                      label={activeObject.label}
+                      {...objectActionProps(activeObject)}
+                    />
+                  </span>
+                )}
                 <span className="font-data text-detail text-haze">
                   {frameModel.frames.length} frame{frameModel.frames.length === 1 ? '' : 's'}
                 </span>

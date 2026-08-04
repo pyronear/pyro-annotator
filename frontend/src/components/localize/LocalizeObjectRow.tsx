@@ -8,11 +8,13 @@
  * on the header line's right rather than expanding the row, taking the place
  * of the progress count and status chip. The selected row is the one being
  * worked, so its right side turns into what you can DO to it; every other row
- * keeps saying where it stands. Both halves are the same width class, so the
- * swap doesn't reflow the rail, and the trade is deliberate: reaching Accept
- * boxes costs the click that selects the row (which also points the media
- * column at the object), and in exchange the rail stops showing a wall of
- * buttons for lanes nobody is looking at.
+ * keeps saying where it stands. The buttons are wider than the metadata they
+ * replace, so the name and subtitle truncate to absorb the difference. The
+ * trade is deliberate: reaching Accept boxes costs the click that selects the
+ * row (which also points the media column at the object), and in exchange the
+ * rail stops showing a wall of buttons for lanes nobody is looking at. The
+ * same pair of actions also sits above the media column, where the object's
+ * frames are — see `LocalizeActiveObjectBar`.
  *
  * Rows past localization lose Accept boxes but keep Reclassify — a finished
  * lane can still have been classified wrong — and stay clickable: activating
@@ -23,7 +25,7 @@
  */
 
 import React from 'react';
-import { Tooltip } from '@/components/ui/Tooltip';
+import { LocalizeObjectActions } from './LocalizeObjectActions';
 
 export interface LocalizeObjectRowProps {
   /** e.g. "Object 2" — the object's own label, shared with the timeline and grid overlays. */
@@ -122,9 +124,23 @@ export const LocalizeObjectRow: React.FC<LocalizeObjectRowProps> = ({
       data-dimmed={dimmed ? 'true' : undefined}
       // role="group" rather than a button: workable rows contain their own
       // action buttons, and nesting interactive controls is invalid HTML.
+      // It still has to be reachable and operable from the keyboard, because
+      // selecting the row is now the ONLY way to reach those buttons — a
+      // mouse-only affordance in front of them would put the actions out of
+      // keyboard reach entirely. Enter/Space rather than activate-on-focus:
+      // tabbing across the rail shouldn't drag the media column (and
+      // crop-mode) along with it.
       role="group"
       aria-label={label}
-      className={`cursor-pointer rounded-lg px-3.5 py-2.5 transition-colors ${frame}`}
+      tabIndex={0}
+      onKeyDown={e => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onActivate();
+        }
+      }}
+      className={`cursor-pointer rounded-lg px-3.5 py-2.5 transition-colors focus:outline-none focus:ring-2 focus:ring-pine ${frame}`}
       onClick={onActivate}
     >
       <div className="flex items-center justify-between gap-2">
@@ -135,12 +151,13 @@ export const LocalizeObjectRow: React.FC<LocalizeObjectRowProps> = ({
             aria-hidden="true"
           />
           {/* Name and what-it-is on one line: the row is a one-line summary,
-              and stacking them made it two lines tall for a word. The name
-              never shrinks (it's short and it's the row's identity); the
-              subtitle truncates, since a long false-positive list is the only
-              thing here that can outgrow the rail. */}
+              and stacking them made it two lines tall for a word. Both
+              truncate rather than push: the selected row's buttons are wider
+              than the metadata they replace, and at the narrow end of the
+              rail something has to give — better a clipped word than a row
+              that overflows into a horizontal scrollbar. */}
           <span className="flex min-w-0 items-baseline gap-1.5">
-            <span className="shrink-0 font-body text-sm font-semibold text-char">{label}</span>
+            <span className="truncate font-body text-sm font-semibold text-char">{label}</span>
             {subtitle && (
               <>
                 {/* Same separator the alert header uses between organisation
@@ -158,51 +175,12 @@ export const LocalizeObjectRow: React.FC<LocalizeObjectRowProps> = ({
         </span>
         <span className="flex shrink-0 items-center gap-1.5">
           {showActions ? (
-            <>
-              {onAcceptBoxes && (
-                // Says what it commits and what it leaves alone: the action is
-                // bulk, and the row it sits on is the only thing it touches.
-                <Tooltip
-                  tip={`Commits the model's predicted box on every frame of ${label} that still needs one. No other object is affected.`}
-                >
-                  <button
-                    type="button"
-                    // The visible label stays short for the rail's width; the
-                    // accessible name keeps naming the object, so "accept THIS
-                    // object's boxes" is unambiguous to a screen reader (and to
-                    // the page tests, which address rows by object).
-                    aria-label={`Accept ${label}'s boxes`}
-                    onClick={e => {
-                      e.stopPropagation();
-                      onAcceptBoxes();
-                    }}
-                    disabled={isAccepting}
-                    className="whitespace-nowrap rounded-lg border border-line bg-paper px-2 py-1 font-body text-xs font-medium text-char hover:bg-ash disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {isAccepting ? 'Accepting…' : 'Accept boxes'}
-                  </button>
-                </Tooltip>
-              )}
-              {onReclassify && (
-                // Warns that it leaves the page — and that you come back,
-                // which is the part that makes clicking it feel safe.
-                <Tooltip
-                  tip={`Opens ${label} in classify to correct its smoke type or mark it a false positive, then returns you here.`}
-                >
-                  <button
-                    type="button"
-                    aria-label={`Reclassify ${label}`}
-                    onClick={e => {
-                      e.stopPropagation();
-                      onReclassify();
-                    }}
-                    className="whitespace-nowrap rounded-lg border border-line bg-paper px-2 py-1 font-body text-xs font-medium text-char hover:bg-ash"
-                  >
-                    Reclassify
-                  </button>
-                </Tooltip>
-              )}
-            </>
+            <LocalizeObjectActions
+              label={label}
+              onAcceptBoxes={onAcceptBoxes}
+              isAccepting={isAccepting}
+              onReclassify={onReclassify}
+            />
           ) : (
             <>
               {/* A false positive has no localization work, so a progress

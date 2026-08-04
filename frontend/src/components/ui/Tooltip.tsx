@@ -3,8 +3,10 @@
  * browser's `title`, which arrives after a delay, can't be themed, and never
  * shows up for keyboard users at all.
  *
- * CSS-only, like the table headers' bubble it generalizes
- * (`sequences/ColumnHeader`): no timers, no positioning library, no state.
+ * CSS-only, like the hand-rolled bubble in `sequences/ColumnHeader` it takes
+ * its look from: no timers, no positioning library, no state. That one (and
+ * the two in the sequence-group pages) still carries its own copy — this is
+ * the version worth migrating them onto, not a migration that happened.
  * `group-focus-within` earns the tooltip its keyboard path, and
  * `aria-describedby` (wired onto the trigger, so the trigger keeps its own
  * accessible name) gives screen readers the same sentence sighted users hover
@@ -35,7 +37,11 @@ export const Tooltip: React.FC<TooltipProps> = ({ tip, placement = 'below', chil
 
   return (
     <span className="group relative inline-flex">
-      {React.cloneElement(children, { 'aria-describedby': id })}
+      {React.cloneElement(children, {
+        // Appended, not assigned: a trigger that already points at its own
+        // description keeps it, and gains this one.
+        'aria-describedby': [children.props['aria-describedby'], id].filter(Boolean).join(' '),
+      })}
       <span
         id={id}
         role="tooltip"

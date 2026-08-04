@@ -117,22 +117,25 @@ describe('LocalizeObjectRow reclassify action', () => {
     expect(screen.queryByRole('button', { name: /Accept/ })).not.toBeInTheDocument();
   });
 
-  it('renders no action strip at all when the page withholds both actions', () => {
-    renderRow({
-      isFalsePositive: true,
-      workable: false,
-      smokeType: undefined,
-      falsePositiveTypes: ['cloud'],
-      onAcceptBoxes: undefined,
-      onReclassify: undefined,
-    });
-
-    expect(screen.queryByRole('button', { name: /Reclassify/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Accept/ })).not.toBeInTheDocument();
-  });
 });
 
 describe('LocalizeObjectRow action visibility', () => {
+  it('is selectable from the keyboard, since selection now gates the actions', () => {
+    // Without this the row is a mouse-only affordance in front of the only
+    // copy of these buttons in the rail — the actions would be unreachable
+    // by keyboard entirely.
+    const { onActivate } = renderRow({ isActive: false, onAcceptBoxes: vi.fn() });
+    const row = screen.getByTestId('localize-object-row-object-1');
+
+    expect(row).toHaveAttribute('tabindex', '0');
+
+    fireEvent.keyDown(row, { key: 'Enter' });
+    expect(onActivate).toHaveBeenCalledTimes(1);
+
+    fireEvent.keyDown(row, { key: ' ' });
+    expect(onActivate).toHaveBeenCalledTimes(2);
+  });
+
   it('withholds both actions until the row is selected', () => {
     renderRow({ isActive: false, onAcceptBoxes: vi.fn() });
 
@@ -152,6 +155,40 @@ describe('LocalizeObjectRow action visibility', () => {
     // the rail is too narrow to carry both.
     expect(screen.queryByText('0/2')).not.toBeInTheDocument();
     expect(screen.queryByText('2 left')).not.toBeInTheDocument();
+  });
+
+  it('swaps a context row’s Localized chip for its one action when selected', () => {
+    // The rule is the same past localization: the chip is what the row says
+    // at rest, Reclassify is what it offers when you turn to it.
+    const { rerender } = render(
+      <LocalizeObjectRow
+        label="Object 1"
+        color="#E4572E"
+        confirmedCount={2}
+        presentCount={2}
+        workable={false}
+        isActive={false}
+        onActivate={() => {}}
+        onReclassify={() => {}}
+      />
+    );
+    expect(screen.getByText('Localized')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Reclassify/ })).not.toBeInTheDocument();
+
+    rerender(
+      <LocalizeObjectRow
+        label="Object 1"
+        color="#E4572E"
+        confirmedCount={2}
+        presentCount={2}
+        workable={false}
+        isActive
+        onActivate={() => {}}
+        onReclassify={() => {}}
+      />
+    );
+    expect(screen.getByRole('button', { name: 'Reclassify Object 1' })).toBeInTheDocument();
+    expect(screen.queryByText('Localized')).not.toBeInTheDocument();
   });
 
   it('keeps the status chip on a selected row that has no actions to show', () => {

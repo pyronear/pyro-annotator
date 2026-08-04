@@ -733,9 +733,14 @@ describe('LocalizeAlertPage', () => {
     await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
     // The action lives on the selected row, so reaching it goes through
-    // selecting the object it belongs to.
+    // selecting the object it belongs to. Scoped to the row because the media
+    // column's CTA bar offers the same action for the same object.
     fireEvent.click(screen.getByTestId('localize-object-row-object-1'));
-    fireEvent.click(screen.getByRole('button', { name: "Accept Object 1's boxes" }));
+    fireEvent.click(
+      within(screen.getByTestId('localize-object-row-object-1')).getByRole('button', {
+        name: "Accept Object 1's boxes",
+      })
+    );
 
     await waitFor(() => {
       expect(apiClient.createDetectionAnnotation).toHaveBeenCalledWith(
@@ -1836,7 +1841,10 @@ describe('LocalizeAlertPage', () => {
       expect(within(fpRow).getByText('cloud')).toBeInTheDocument();
       // No localization work, so no progress fraction.
       expect(within(fpRow).queryByText(/^\d+\/\d+$/)).not.toBeInTheDocument();
-      // Read-only: no accept action, and it never becomes work to do.
+      // Read-only: no accept action, and it never becomes work to do. Asserted
+      // with the row SELECTED — unselected rows show no actions at all now, so
+      // checking a resting row would pass no matter what this row is.
+      fireEvent.click(fpRow);
       expect(within(fpRow).queryByRole('button', { name: /Accept/ })).not.toBeInTheDocument();
       expect(screen.getByText('0 of 1 object localized')).toBeInTheDocument();
     });
@@ -1847,6 +1855,73 @@ describe('LocalizeAlertPage', () => {
       expect(
         within(screen.getByTestId('localize-object-row-object-1')).getByText('wildfire')
       ).toBeInTheDocument();
+    });
+  });
+
+  describe('active object CTA, on the media column header', () => {
+    it('appears with the view controls only once an object is active, naming the work left', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      expect(screen.queryByTestId('localize-active-object-actions')).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId('localize-object-row-object-1'));
+
+      const cta = within(screen.getByTestId('localize-active-object-actions'));
+      expect(cta.getByRole('button', { name: "Accept Object 1's boxes" })).toBeInTheDocument();
+      expect(cta.getByRole('button', { name: 'Reclassify Object 1' })).toBeInTheDocument();
+      // The header names the object and what is left on it.
+      expect(screen.getByText(/Frames — Object 1/)).toBeInTheDocument();
+      expect(screen.getByText(/1 frame still needs a box/)).toBeInTheDocument();
+    });
+
+    it("accepts the active object's boxes from the header, then reports nothing left and drops the action", async () => {
+      vi.mocked(apiClient.createDetectionAnnotation).mockImplementation(async payload => ({
+        id: 9100 + payload.detection_id,
+        detection_id: payload.detection_id,
+        annotation: payload.annotation,
+        processing_stage: payload.processing_stage,
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: null,
+      }));
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByTestId('localize-object-row-object-1'));
+      fireEvent.click(
+        within(screen.getByTestId('localize-active-object-actions')).getByRole('button', {
+          name: "Accept Object 1's boxes",
+        })
+      );
+
+      // Object 1's lane is detection 1001 only — the CTA acts on the active
+      // object, not on the alert.
+      await waitFor(() => {
+        expect(apiClient.createDetectionAnnotation).toHaveBeenCalledWith(
+          expect.objectContaining({ detection_id: 1001 })
+        );
+      });
+      expect(apiClient.createDetectionAnnotation).not.toHaveBeenCalledWith(
+        expect.objectContaining({ detection_id: 1002 })
+      );
+
+      expect(apiClient.updateDetectionAnnotation).not.toHaveBeenCalled();
+    });
+
+    it('reports nothing left and drops Accept once the object has every box', async () => {
+      // The header is where a finished object becomes legible: the selected
+      // rail row traded its progress for its buttons, so this is the only
+      // place that can say the accept landed — and re-accepting is withheld
+      // rather than firing a mutation with nothing in it.
+      mockAllFramesAccepted();
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByTestId('localize-object-row-object-1'));
+
+      await waitFor(() => {
+        expect(screen.getByText(/every frame has a box/)).toBeInTheDocument();
+      });
+      const cta = within(screen.getByTestId('localize-active-object-actions'));
+      expect(cta.queryByRole('button', { name: /Accept/ })).not.toBeInTheDocument();
+      expect(cta.getByRole('button', { name: 'Reclassify Object 1' })).toBeInTheDocument();
     });
   });
 
