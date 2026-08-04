@@ -55,7 +55,7 @@ describe('buildFilterPills', () => {
     expect(
       buildFilterPills({ ...active, showModelAccuracy: true, showUnsureFilter: true })
     ).toEqual([
-      { id: 'accuracy', label: 'Accuracy: False Positive' },
+      { id: 'accuracy', label: 'Result: False Positive' },
       { id: 'unsure', label: 'Only Unsure' },
     ]);
   });

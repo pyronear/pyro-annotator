@@ -57,7 +57,7 @@ describe('FilterPopover', () => {
     fireEvent.click(screen.getByRole('button', { name: /more filters \(3\)/i }));
     expect(screen.getByLabelText('Source API')).toBeInTheDocument();
     expect(screen.getByLabelText('Alert API annotation')).toBeInTheDocument();
-    expect(screen.getByText('Model Accuracy')).toBeInTheDocument();
+    expect(screen.getByRole('radiogroup', { name: 'Result' })).toBeInTheDocument();
     // Not enabled for this page:
     expect(screen.queryByLabelText('Certainty')).not.toBeInTheDocument();
   });
