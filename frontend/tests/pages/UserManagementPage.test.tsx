@@ -85,6 +85,46 @@ describe('UserManagementPage can_localize', () => {
     );
   });
 
+  it('explains each permission toggle in the create dialog', async () => {
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: /create user/i }));
+    const modal = screen.getByText('Create New User').closest('div.fixed') as HTMLElement;
+
+    expect(
+      within(modal).getByText('Can sign in. Deactivated users keep their history but cannot log in.')
+    ).toBeInTheDocument();
+    expect(
+      within(modal).getByText('Full admin: manage users and all permissions (includes localization).')
+    ).toBeInTheDocument();
+    expect(
+      within(modal).getByText(
+        'Can draw smoke boxes in the Localize section. Otherwise the user only classifies.'
+      )
+    ).toBeInTheDocument();
+  });
+
+  it('explains each permission toggle in the edit dialog', async () => {
+    renderPage();
+
+    fireEvent.click(await screen.findByTitle('Edit user'));
+    const modal = screen
+      .getByText(/edit user: scout/i)
+      .closest('div.fixed') as HTMLElement;
+
+    expect(
+      within(modal).getByText('Can sign in. Deactivated users keep their history but cannot log in.')
+    ).toBeInTheDocument();
+    expect(
+      within(modal).getByText('Full admin: manage users and all permissions (includes localization).')
+    ).toBeInTheDocument();
+    expect(
+      within(modal).getByText(
+        'Can draw smoke boxes in the Localize section. Otherwise the user only classifies.'
+      )
+    ).toBeInTheDocument();
+  });
+
   it('initializes and sends can_localize in the edit payload', async () => {
     renderPage();
 

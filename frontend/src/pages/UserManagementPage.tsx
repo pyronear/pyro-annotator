@@ -464,34 +464,50 @@ function CreateUserModal({
             />
 
             <div className="space-y-3">
-              <label className="flex items-center">
+              <label className="flex items-start">
                 <input
                   type="checkbox"
                   checked={formData.is_active}
                   onChange={e => setFormData(prev => ({ ...prev, is_active: e.target.checked }))}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  className="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
-                <span className="ml-2 text-sm text-gray-700">Active user</span>
+                <span className="ml-2">
+                  <span className="block text-sm text-gray-700">Active user</span>
+                  <span className="block text-xs text-gray-500">
+                    Can sign in. Deactivated users keep their history but cannot log in.
+                  </span>
+                </span>
               </label>
 
-              <label className="flex items-center">
+              <label className="flex items-start">
                 <input
                   type="checkbox"
                   checked={formData.is_superuser}
                   onChange={e => setFormData(prev => ({ ...prev, is_superuser: e.target.checked }))}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  className="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
-                <span className="ml-2 text-sm text-gray-700">Superuser privileges</span>
+                <span className="ml-2">
+                  <span className="block text-sm text-gray-700">Superuser privileges</span>
+                  <span className="block text-xs text-gray-500">
+                    Full admin: manage users and all permissions (includes localization).
+                  </span>
+                </span>
               </label>
 
-              <label className="flex items-center">
+              <label className="flex items-start">
                 <input
                   type="checkbox"
                   checked={formData.can_localize}
                   onChange={e => setFormData(prev => ({ ...prev, can_localize: e.target.checked }))}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  className="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
-                <span className="ml-2 text-sm text-gray-700">Can localize</span>
+                <span className="ml-2">
+                  <span className="block text-sm text-gray-700">Can localize</span>
+                  <span className="block text-xs text-gray-500">
+                    Can draw smoke boxes in the Localize section. Otherwise the user only
+                    classifies.
+                  </span>
+                </span>
               </label>
             </div>
 
@@ -570,34 +586,50 @@ function EditUserModal({
             </div>
 
             <div className="space-y-3">
-              <label className="flex items-center">
+              <label className="flex items-start">
                 <input
                   type="checkbox"
                   checked={formData.is_active}
                   onChange={e => setFormData(prev => ({ ...prev, is_active: e.target.checked }))}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  className="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
-                <span className="ml-2 text-sm text-gray-700">Active user</span>
+                <span className="ml-2">
+                  <span className="block text-sm text-gray-700">Active user</span>
+                  <span className="block text-xs text-gray-500">
+                    Can sign in. Deactivated users keep their history but cannot log in.
+                  </span>
+                </span>
               </label>
 
-              <label className="flex items-center">
+              <label className="flex items-start">
                 <input
                   type="checkbox"
                   checked={formData.is_superuser}
                   onChange={e => setFormData(prev => ({ ...prev, is_superuser: e.target.checked }))}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  className="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
-                <span className="ml-2 text-sm text-gray-700">Superuser privileges</span>
+                <span className="ml-2">
+                  <span className="block text-sm text-gray-700">Superuser privileges</span>
+                  <span className="block text-xs text-gray-500">
+                    Full admin: manage users and all permissions (includes localization).
+                  </span>
+                </span>
               </label>
 
-              <label className="flex items-center">
+              <label className="flex items-start">
                 <input
                   type="checkbox"
                   checked={formData.can_localize}
                   onChange={e => setFormData(prev => ({ ...prev, can_localize: e.target.checked }))}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  className="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
-                <span className="ml-2 text-sm text-gray-700">Can localize</span>
+                <span className="ml-2">
+                  <span className="block text-sm text-gray-700">Can localize</span>
+                  <span className="block text-xs text-gray-500">
+                    Can draw smoke boxes in the Localize section. Otherwise the user only
+                    classifies.
+                  </span>
+                </span>
               </label>
             </div>
 
