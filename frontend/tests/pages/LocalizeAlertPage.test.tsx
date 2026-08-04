@@ -105,7 +105,7 @@ vi.mock('@/components/detection-sequence/ImageModal', () => ({
 
 import { apiClient } from '@/services/api';
 import LocalizeAlertPage from '@/pages/LocalizeAlertPage';
-import { LOCALIZE_OBJECT_ROUTE, ROUTES } from '@/utils/routes';
+import { ROUTES, localizeObjectRoute } from '@/utils/routes';
 
 // Lets tests assert the URL the page navigated to (which object + frame the
 // editor was opened for), not just that a modal appeared.
@@ -114,6 +114,13 @@ function LocationProbe() {
   return <span data-testid="location">{`${location.pathname}${location.search}`}</span>;
 }
 
+/**
+ * Mounts both provenances so a test can assert which one a navigation landed
+ * on. The two detail routes mirror App.tsx (done declared first, so "done"
+ * isn't swallowed as a sequence id), and both list routes are real elements
+ * so post-submit / back navigation is observable — a mocked useNavigate would
+ * also break the modal-close-on-navigate tests elsewhere in this file.
+ */
 function makeWrapper(initialPath = '/localize/101') {
   return function TestWrapper({ children }: { children: React.ReactNode }) {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -122,24 +129,35 @@ function makeWrapper(initialPath = '/localize/101') {
         <MemoryRouter initialEntries={[initialPath]}>
           <LocationProbe />
           <Routes>
-            {/* Mirrors App.tsx: the editor is a CHILD route so the page is
-                never remounted when the editor opens or closes. The pattern
-                comes from the shared constant the page's useMatch also reads,
-                so this wrapper can't silently disagree with the real app. */}
-            <Route path="/localize/:sequenceId" element={children}>
-              <Route path={LOCALIZE_OBJECT_ROUTE} element={null} />
+            {/* Mirrors App.tsx: each provenance carries the editor as a CHILD
+                route so the page is never remounted when the editor opens or
+                closes. The pattern comes from the shared builder the page's
+                useMatch also reads, so this wrapper can't silently disagree
+                with the real app. */}
+            <Route path="/localize/done/:sequenceId" element={children}>
+              <Route path={localizeObjectRoute(true)} element={null} />
             </Route>
-            {/* A real route for the queue landing page so a post-submit
-                `navigate(ROUTES.LOCALIZE)` is observable (it actually
-                navigates, unlike a mocked useNavigate, which would also break
-                the modal-close-on-navigate tests elsewhere in this file). */}
+            <Route path="/localize/:sequenceId" element={children}>
+              <Route path={localizeObjectRoute()} element={null} />
+            </Route>
+            {/* Real routes for the landing pages so a post-submit
+                `navigate(listPath)` is observable (it actually navigates,
+                unlike a mocked useNavigate, which would also break the
+                modal-close-on-navigate tests elsewhere in this file). */}
             <Route path={ROUTES.LOCALIZE} element={<div data-testid="localize-queue-landing" />} />
+            <Route
+              path={ROUTES.LOCALIZE_DONE}
+              element={<div data-testid="localize-done-landing" />}
+            />
           </Routes>
         </MemoryRouter>
       </QueryClientProvider>
     );
   };
 }
+
+/** Wrapper entering the same alert from the Done list instead of the queue. */
+const doneWrapper = makeWrapper('/localize/done/101');
 
 const wrapper = makeWrapper();
 
@@ -561,10 +579,11 @@ describe('LocalizeAlertPage', () => {
     await waitFor(() => {
       expect(screen.getByTestId(`alert-frame-cell-${T2}`)).toHaveAttribute('data-context', 'true');
     });
-    // The object's own frame stays full-strength and outlined in its color.
+    // The object's own frame stays full-strength — the contrast against the
+    // dimmed context frames is the whole signal; no border is drawn.
     const ownCell = screen.getByTestId(`alert-frame-cell-${T1}`);
     expect(ownCell).not.toHaveAttribute('data-context');
-    expect(ownCell.style.outline).toContain('solid');
+    expect(ownCell.style.outline).toBe('');
 
     // Clicking the context frame must NOT open the fallback lane's editor —
     // that used to silently switch which object you were annotating.
@@ -986,7 +1005,7 @@ describe('LocalizeAlertPage', () => {
     it('stays disabled, with an explanation, while any object still has a pending frame', async () => {
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
-      expect(screen.getByRole('button', { name: /Submit alert/ })).toBeDisabled();
+      expect(screen.getByRole('button', { name: /Submit/ })).toBeDisabled();
       expect(screen.getByText(/Accept every object’s boxes to enable/)).toBeInTheDocument();
       expect(screen.getByText('0 of 2 objects localized')).toBeInTheDocument();
     });
@@ -995,12 +1014,10 @@ describe('LocalizeAlertPage', () => {
       mockAllFramesAccepted();
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
-      await waitFor(() =>
-        expect(screen.getByRole('button', { name: /Submit alert/ })).toBeEnabled()
-      );
+      await waitFor(() => expect(screen.getByRole('button', { name: /Submit/ })).toBeEnabled());
       expect(screen.getByText('2 of 2 objects localized')).toBeInTheDocument();
 
-      fireEvent.click(screen.getByRole('button', { name: /Submit alert/ }));
+      fireEvent.click(screen.getByRole('button', { name: /Submit/ }));
 
       // Exactly one bulk submit, with both lanes' sequence-annotation ids —
       // and no accepting of its own: submit no longer writes boxes.
@@ -1010,7 +1027,7 @@ describe('LocalizeAlertPage', () => {
       expect(apiClient.localizeSubmit).toHaveBeenCalledTimes(1);
       expect(apiClient.createDetectionAnnotation).not.toHaveBeenCalled();
 
-      expect(screen.getByText('Alert submitted')).toBeInTheDocument();
+      expect(screen.getByText('Objects submitted')).toBeInTheDocument();
       await waitFor(
         () => expect(screen.getByTestId('localize-queue-landing')).toBeInTheDocument(),
         { timeout: 2000 }
@@ -1025,13 +1042,11 @@ describe('LocalizeAlertPage', () => {
       });
 
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
-      await waitFor(() =>
-        expect(screen.getByRole('button', { name: /Submit alert/ })).toBeEnabled()
-      );
+      await waitFor(() => expect(screen.getByRole('button', { name: /Submit/ })).toBeEnabled());
 
       const callsBefore = vi.mocked(apiClient.getDetectionAnnotations).mock.calls.length;
 
-      fireEvent.click(screen.getByRole('button', { name: /Submit alert/ }));
+      fireEvent.click(screen.getByRole('button', { name: /Submit/ }));
 
       await waitFor(() => {
         expect(
@@ -1073,9 +1088,10 @@ describe('LocalizeAlertPage', () => {
       });
 
       render(<LocalizeAlertPage />, { wrapper });
-      await waitFor(() =>
-        expect(screen.getByRole('button', { name: /Submit alert/ })).toBeDisabled()
-      );
+      // Nothing to submit: the rail says the alert is finished rather than
+      // offering a dead button under "accept every object's boxes".
+      await waitFor(() => expect(screen.getByTestId('all-objects-localized')).toBeInTheDocument());
+      expect(screen.queryByRole('button', { name: /Submit/ })).not.toBeInTheDocument();
     });
   });
 
@@ -1304,6 +1320,150 @@ describe('LocalizeAlertPage', () => {
     });
   });
 
+  // /localize/done/:sequenceId used to mount the legacy per-lane page, which
+  // showed ONLY the alert's first lane. It now mounts this same collocated
+  // component with mode="done" — provenance is the only difference.
+  describe('done provenance (entered from the Done list)', () => {
+    it('shows every object of the alert, not just the entry lane', async () => {
+      await renderAndSettle(<LocalizeAlertPage mode="done" />, { wrapper: doneWrapper });
+
+      expect(
+        within(screen.getByTestId('object-status-row-0')).getByText('Object 1')
+      ).toBeInTheDocument();
+      expect(
+        within(screen.getByTestId('object-status-row-1')).getByText('Object 2')
+      ).toBeInTheDocument();
+      expect(screen.getByTestId('localize-object-row-object-2')).toBeInTheDocument();
+    });
+
+    it('counts already-localized objects in the progress badge, not "0 of 0"', async () => {
+      // Every lane past localization: nothing is workable, but both objects
+      // ARE localized — the badge must say so rather than collapsing to zero.
+      vi.mocked(apiClient.getAlertDetail).mockResolvedValue({
+        ...makeTwoLaneAlertDetail(),
+        lanes: [
+          {
+            sequence: makeSequence({ id: 101, alert_api_id: 9001 }),
+            annotation: makeAnnotation({
+              id: 201,
+              sequence_id: 101,
+              processing_stage: 'annotated',
+            }),
+          },
+          {
+            sequence: makeSequence({ id: 102, alert_api_id: 9002 }),
+            annotation: makeAnnotation({
+              id: 202,
+              sequence_id: 102,
+              processing_stage: 'annotated',
+            }),
+          },
+        ],
+      });
+      mockAllFramesAccepted();
+
+      await renderAndSettle(<LocalizeAlertPage mode="done" />, { wrapper: doneWrapper });
+
+      expect(screen.getByText('2 of 2 objects localized')).toBeInTheDocument();
+      // Nothing workable left: a finished alert reads as finished, not as a
+      // blocked action under "accept every object's boxes".
+      expect(screen.getByTestId('all-objects-localized')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Submit/ })).not.toBeInTheDocument();
+      // And its rows are the subject of the page, not dimmed-out context.
+      expect(screen.getByTestId('localize-object-row-object-1')).not.toHaveAttribute('data-dimmed');
+    });
+
+    it('returns to the Done list, not the queue', async () => {
+      await renderAndSettle(<LocalizeAlertPage mode="done" />, { wrapper: doneWrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: /Alerts/ }));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('localize-done-landing')).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('localize-queue-landing')).not.toBeInTheDocument();
+    });
+
+    it('keeps the editor on the done route when opening, stepping and closing a frame', async () => {
+      await renderAndSettle(<LocalizeAlertPage mode="done" />, { wrapper: doneWrapper });
+
+      // Opening a frame must not silently move the session onto the queue
+      // route — the whole page is mounted from the path.
+      fireEvent.click(screen.getByTestId(`alert-frame-cell-${T2}`));
+      await waitFor(() => {
+        expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1003');
+      });
+      expect(screen.queryByTestId('localize-queue-landing')).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByText('Mock Close'));
+      await waitFor(() => expect(screen.queryByTestId('image-modal')).not.toBeInTheDocument());
+      // Still on the alert, still under /localize/done.
+      expect(screen.getByTestId(`alert-frame-cell-${T2}`)).toBeInTheDocument();
+      expect(screen.queryByTestId('localize-queue-landing')).not.toBeInTheDocument();
+    });
+
+    it('opens the editor under the Done prefix, object segment and all', async () => {
+      await renderAndSettle(<LocalizeAlertPage mode="done" />, { wrapper: doneWrapper });
+
+      // T2 is present only in lane 102 (Object 2 / detection 1003).
+      fireEvent.click(screen.getByTestId(`alert-frame-cell-${T2}`));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('location')).toHaveTextContent(
+          '/localize/done/101/object/102/1003'
+        );
+      });
+      expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1003');
+    });
+
+    it('opens from a directly-entered Done editor URL, and steps frames without losing the prefix', async () => {
+      await renderAndSettle(<LocalizeAlertPage mode="done" />, {
+        wrapper: makeWrapper('/localize/done/101/object/102/1002'),
+      });
+      await waitFor(() => {
+        expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1002');
+      });
+
+      fireEvent.click(screen.getByText('Mock Next'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('location')).toHaveTextContent(
+          '/localize/done/101/object/102/1003'
+        );
+      });
+    });
+
+    it('still edits frames — a save routes through saveDetectionReview as in queue mode', async () => {
+      await renderAndSettle(<LocalizeAlertPage mode="done" />, { wrapper: doneWrapper });
+
+      fireEvent.click(screen.getByTestId(`alert-frame-cell-${T2}`));
+      await waitFor(() => {
+        expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1003');
+      });
+
+      fireEvent.click(screen.getByText('Mock Submit'));
+
+      await waitFor(() => {
+        expect(apiClient.createDetectionAnnotation).toHaveBeenCalledWith(
+          expect.objectContaining({ detection_id: 1003, processing_stage: 'annotated' })
+        );
+      });
+    });
+
+    it('returns to the Done list after submitting', async () => {
+      mockAllFramesAccepted();
+      await renderAndSettle(<LocalizeAlertPage mode="done" />, { wrapper: doneWrapper });
+
+      await waitFor(() => expect(screen.getByRole('button', { name: /Submit/ })).toBeEnabled());
+      fireEvent.click(screen.getByRole('button', { name: /Submit/ }));
+
+      await waitFor(() => expect(apiClient.localizeSubmit).toHaveBeenCalled());
+      await waitFor(() => expect(screen.getByTestId('localize-done-landing')).toBeInTheDocument(), {
+        timeout: 2000,
+      });
+    });
+  });
+
   describe('false-positive context toggle', () => {
     /** Lane 102 classified as a false positive rather than smoke. */
     function alertWithFalsePositive() {
@@ -1329,6 +1489,185 @@ describe('LocalizeAlertPage', () => {
       });
     }
 
+    /**
+     * Production-shaped false-positive lane, which `alertWithFalsePositive`
+     * above is NOT: a real FP lane carries an `annotated` detection
+     * annotation with an EMPTY box list (the backend writes
+     * `{"annotation": []}` when the human answers "no smoke here") and keeps
+     * the object's real location in `algo_predictions`. The default
+     * `makeDetection` fixture has an empty engine track and a populated
+     * `auto_predictions`, which is the reverse — so tests about what an FP
+     * lane displays must build their own detections.
+     */
+    function realisticFalsePositiveAlert() {
+      alertWithFalsePositive();
+      vi.mocked(apiClient.getSequenceDetections).mockImplementation(async (id: number) => {
+        if (id === 101) return [makeDetection(1001, T1)];
+        if (id === 102) {
+          return [makeDetection(1002, T1), makeDetection(1003, T2)].map(d => ({
+            ...d,
+            algo_predictions: {
+              predictions: [
+                {
+                  xyxyn: [0.5, 0.5, 0.7, 0.7] as [number, number, number, number],
+                  confidence: 0.8,
+                  class_name: 'smoke',
+                },
+              ],
+            },
+            auto_predictions: null,
+          }));
+        }
+        return [];
+      });
+      vi.mocked(apiClient.getDetectionAnnotations).mockImplementation(async filters => {
+        if (filters?.sequence_id !== 102) return emptyAnnotationsPage;
+        const items = [1002, 1003].map(detectionId => ({
+          ...makeDetectionAnnotation(detectionId),
+          annotation: { annotation: [] },
+        }));
+        return { ...emptyAnnotationsPage, items, total: items.length };
+      });
+    }
+
+    it('draws the engine track for a false-positive object, dashed as uncommitted context', async () => {
+      realisticFalsePositiveAlert();
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: /False positives/ }));
+      await waitFor(() => {
+        expect(screen.getByTestId('localize-object-row-object-2')).toBeInTheDocument();
+      });
+
+      // The grid only paints box overlays once it has measured the rendered
+      // image, and jsdom never fires `load` on its own — so drive it here.
+      const frameImage = await within(screen.getByTestId(`alert-frame-cell-${T2}`)).findByRole(
+        'img'
+      );
+      fireEvent.load(frameImage);
+
+      const fpBox = await screen.findByTestId(`alert-frame-box-${T2}-102`);
+      // Dashed, not solid: nothing here is committed — it's where the engine
+      // thought the object was, kept for "is that plume already accounted
+      // for?" context.
+      expect(fpBox.getAttribute('style')).toContain('dashed');
+    });
+
+    it('gives a false-positive object a present timeline, not an empty one', async () => {
+      realisticFalsePositiveAlert();
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: /False positives/ }));
+      await waitFor(() => {
+        expect(screen.getByTestId('localize-object-row-object-2')).toBeInTheDocument();
+      });
+
+      // Object 2 is the second row (`orderedObjectRows` puts FP rows last);
+      // its first segment covers T1, where the engine track puts a box.
+      // `ObjectStatusStrip` exposes a segment's status only through its
+      // aria-label.
+      expect(screen.getByTestId('status-segment-1-0')).toHaveAttribute(
+        'aria-label',
+        'Object 2, frame 1: confirmed'
+      );
+    });
+
+    it('shows the cropped flipbook for an activated false-positive object', async () => {
+      realisticFalsePositiveAlert();
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: /False positives/ }));
+      await waitFor(() => {
+        expect(screen.getByTestId('localize-object-row-object-2')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Go to Object 2' }));
+
+      // Looking closely at the rejected plume is the entire point of the
+      // read-only FP view — the flipbook is gated on the lane having boxes,
+      // which its empty committed annotation never provided.
+      await waitFor(() => {
+        expect(screen.getByTestId('cropped-image-sequence')).toHaveAttribute(
+          'data-sequence-id',
+          '102'
+        );
+      });
+    });
+
+    it("does not outline an activated false-positive object's frames", async () => {
+      realisticFalsePositiveAlert();
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: /False positives/ }));
+      await waitFor(() => {
+        expect(screen.getByTestId('localize-object-row-object-2')).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Go to Object 2' }));
+
+      // The full-cell accent outline says "this object is here, work on it".
+      // A false positive is settled and its cells are read-only — the dashed
+      // box already marks where it is.
+      await waitFor(() => {
+        expect(screen.getByTestId(`alert-frame-cell-${T2}`)).toHaveAttribute(
+          'data-readonly',
+          'true'
+        );
+      });
+      expect(
+        screen.getByTestId(`alert-frame-cell-${T2}`).getAttribute('style') ?? ''
+      ).not.toContain('outline');
+    });
+
+    // The per-cell accent outline was dropped entirely: object identity
+    // colors include blue, which read as stray chrome around the frames.
+    // The contrast against dimmed context cells already says which frames
+    // belong to the active object.
+    it("draws no accent outline on an activated object's frames", async () => {
+      realisticFalsePositiveAlert();
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Go to Object 1' }));
+
+      await waitFor(() => {
+        expect(screen.getByTestId(`alert-frame-cell-${T1}`)).not.toHaveAttribute('data-context');
+      });
+      expect(
+        screen.getByTestId(`alert-frame-cell-${T1}`).getAttribute('style') ?? ''
+      ).not.toContain('outline');
+    });
+
+    it('deselects a false-positive object when the toggle hides it again', async () => {
+      realisticFalsePositiveAlert();
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: /False positives/ }));
+      await waitFor(() => {
+        expect(screen.getByTestId('localize-object-row-object-2')).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Go to Object 2' }));
+      await waitFor(() => {
+        expect(screen.getByTestId('cropped-image-sequence')).toBeInTheDocument();
+      });
+
+      // Hiding false positives again while one is the active object used to
+      // strand `activeLaneId` on a lane the model no longer contains: every
+      // remaining cell then read as "not this object's frame", so the whole
+      // grid went dimmed and unclickable with no way back except clicking a
+      // row.
+      fireEvent.click(screen.getByRole('button', { name: /False positives/ }));
+      await waitFor(() => {
+        expect(screen.queryByTestId('localize-object-row-object-2')).not.toBeInTheDocument();
+      });
+
+      const cell = screen.getByTestId(`alert-frame-cell-${T1}`);
+      expect(cell).not.toHaveAttribute('data-context');
+      expect(cell).not.toHaveAttribute('data-readonly');
+      fireEvent.click(cell);
+      await waitFor(() => {
+        expect(screen.getByTestId('image-modal')).toBeInTheDocument();
+      });
+    });
+
     it('disables the toggle when the alert has no false-positive objects', async () => {
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
@@ -1348,7 +1687,7 @@ describe('LocalizeAlertPage', () => {
     });
 
     it('keeps false-positive frames read-only — visible, never openable in the editor', async () => {
-      alertWithFalsePositive();
+      realisticFalsePositiveAlert();
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
       fireEvent.click(screen.getByRole('button', { name: /False positives/ }));
@@ -1598,7 +1937,7 @@ describe('LocalizeAlertPage', () => {
       mockFlaggedAlert();
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
-      fireEvent.click(screen.getByRole('button', { name: /Submit alert/ }));
+      fireEvent.click(screen.getByRole('button', { name: /Submit/ }));
 
       await waitFor(() => {
         expect(
@@ -1652,7 +1991,7 @@ describe('LocalizeAlertPage', () => {
       fireEvent.click(screen.getByRole('button', { name: 'wildfire' }));
       await waitFor(() => expect(screen.getByTestId('object-status-row-2')).toBeInTheDocument());
 
-      fireEvent.click(screen.getByRole('button', { name: /Submit alert/ }));
+      fireEvent.click(screen.getByRole('button', { name: /Submit/ }));
 
       expect(
         screen.queryByText('You flagged missed smoke but added no object — submit anyway?')
@@ -1663,7 +2002,7 @@ describe('LocalizeAlertPage', () => {
       mockFlaggedAlert();
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
-      fireEvent.click(screen.getByRole('button', { name: /Submit alert/ }));
+      fireEvent.click(screen.getByRole('button', { name: /Submit/ }));
 
       await waitFor(() => {
         expect(
@@ -1684,7 +2023,7 @@ describe('LocalizeAlertPage', () => {
       mockFlaggedAlert();
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
-      fireEvent.click(screen.getByRole('button', { name: /Submit alert/ }));
+      fireEvent.click(screen.getByRole('button', { name: /Submit/ }));
       await waitFor(() => {
         expect(screen.getByTestId('missed-smoke-confirm')).toBeInTheDocument();
       });
@@ -1701,7 +2040,7 @@ describe('LocalizeAlertPage', () => {
       mockFlaggedAlert();
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
-      fireEvent.click(screen.getByRole('button', { name: /Submit alert/ }));
+      fireEvent.click(screen.getByRole('button', { name: /Submit/ }));
       await waitFor(() => {
         expect(screen.getByTestId('missed-smoke-confirm')).toBeInTheDocument();
       });
@@ -1722,7 +2061,7 @@ describe('LocalizeAlertPage', () => {
       mockFlaggedAlert();
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
-      fireEvent.click(screen.getByRole('button', { name: /Submit alert/ }));
+      fireEvent.click(screen.getByRole('button', { name: /Submit/ }));
       await waitFor(() => {
         expect(screen.getByTestId('missed-smoke-confirm')).toBeInTheDocument();
       });

@@ -116,7 +116,9 @@ export default function DetectionReviewPage() {
   };
 
   const handleAlertClick = (item: LocalizeDoneQueueItem) => {
-    // Legacy done view of the alert's first (primary) lane.
+    // Any lane of the alert gets there: the detail page resolves the whole
+    // alert from the sequence id (getSequence -> getAlertDetail) and renders
+    // every object, so the first lane is just the entry point.
     const first = item.lanes[0];
     if (first) {
       navigate(localizeDetail(first.sequence_id, undefined, true));

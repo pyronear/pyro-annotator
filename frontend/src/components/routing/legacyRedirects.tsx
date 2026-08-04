@@ -2,13 +2,7 @@
    redirect helpers never need hot refresh */
 import { ReactElement } from 'react';
 import { Navigate, Route, useParams, useSearchParams } from 'react-router-dom';
-import {
-  ROUTES,
-  classifyDetail,
-  classifyGroup,
-  localizeDetail,
-  localizeLane,
-} from '@/utils/routes';
+import { ROUTES, classifyDetail, classifyGroup, localizeDetail } from '@/utils/routes';
 
 /**
  * Redirects from the pre-#210 entity-named routes to the task-taxonomy routes.
@@ -27,33 +21,37 @@ function LegacyGroupDetailRedirect() {
   return <Navigate to={classifyGroup(id!)} replace />;
 }
 
+/**
+ * The alert page's own URLs no longer carry a bare detection id — the editor
+ * names its object too (`…/object/:laneId/:detectionId`) — and that object
+ * can't be resolved here without loading the alert and every lane's
+ * detections. So a link that asked for a frame lands on the alert with that
+ * frame scrolled into view and highlighted, editor closed: the `?frame=`
+ * deep link the alert page already understands.
+ */
+function frameDeepLink(sequenceId: string, detectionId: string | undefined, done: boolean): string {
+  const base = localizeDetail(sequenceId, undefined, done);
+  return detectionId === undefined ? base : `${base}?frame=${detectionId}`;
+}
+
 function LegacyLocalizeDetailRedirect() {
   const { sequenceId, detectionId } = useParams();
   const [searchParams] = useSearchParams();
   const done = searchParams.get('from') === 'detections-review';
-  // Done provenance and a bare sequence id (no specific frame requested)
-  // both still resolve via localizeDetail; a detection id under queue
-  // provenance means the old link wanted a specific frame open, which only
-  // the legacy per-lane page understands.
-  const target =
-    done || !detectionId
-      ? localizeDetail(sequenceId!, detectionId, done)
-      : localizeLane(sequenceId!, detectionId);
-  return <Navigate to={target} replace />;
+  // Both provenances land on the collocated alert page now that it serves
+  // them; a detection id in the old link becomes a `?frame=` deep link.
+  return <Navigate to={frameDeepLink(sequenceId!, detectionId, done)} replace />;
 }
 
 /**
- * Pre-object-route editor links. `/localize/:sequenceId/:detectionId` opened
- * the per-frame editor back when the URL named only the frame; the editor now
- * lives at `/localize/:sequenceId/object/:laneId/:detectionId`. The object
- * can't be resolved here without loading the alert and every lane's
- * detections, so this lands on the alert with that frame scrolled into view
- * and highlighted, editor closed — the `?frame=` deep link the alert page
- * already understands.
+ * Pre-object-route editor links: `/localize/:sequenceId/:detectionId` and its
+ * `/localize/done/…` twin opened the per-frame editor back when the URL named
+ * only the frame. Both provenances need this — the Done route produced that
+ * shape too, right up until the object segment landed.
  */
-function LegacyLocalizeFrameRedirect() {
+function LegacyLocalizeFrameRedirect({ done = false }: { done?: boolean }) {
   const { sequenceId, detectionId } = useParams();
-  return <Navigate to={`${localizeDetail(sequenceId!)}?frame=${detectionId}`} replace />;
+  return <Navigate to={frameDeepLink(sequenceId!, detectionId, done)} replace />;
 }
 
 export const legacyRedirectRoutes: ReactElement[] = [
@@ -96,6 +94,11 @@ export const legacyRedirectRoutes: ReactElement[] = [
     key="/detections/:sequenceId/annotate/:detectionId?"
     path="/detections/:sequenceId/annotate/:detectionId?"
     element={<LegacyLocalizeDetailRedirect />}
+  />,
+  <Route
+    key="/localize/done/:sequenceId/:detectionId"
+    path="/localize/done/:sequenceId/:detectionId"
+    element={<LegacyLocalizeFrameRedirect done />}
   />,
   <Route
     key="/localize/:sequenceId/:detectionId"

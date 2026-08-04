@@ -1,16 +1,17 @@
 /**
- * Compact view controls for the detection grid: S/M/L card size plus icon
- * toggles for predictions, crop mode, and the cropped flipbook. One shared
- * button style — the header and flipbook speak the same visual language.
+ * Compact view controls for the collocated localize screen's frame grid:
+ * S/M/L card size plus icon toggles for crop mode and the cropped flipbook.
+ * One shared button style — the header and flipbook speak the same visual
+ * language.
  *
- * The predictions toggle is opt-in (`onTogglePredictions`): it drives
- * `DetectionGrid`'s overlays on the legacy per-lane page, but `AlertFrameGrid`
- * on the collocated localize screen never reads `showPredictions`, so the
- * cockpit omits it rather than showing a control that moves nothing on
- * screen.
+ * It used to carry a predictions toggle and an `isLocalize` switch, both for
+ * the legacy per-lane page's `DetectionGrid`. That page is gone, and
+ * `AlertFrameGrid` never read `showPredictions` (only `ImageModal` does, and
+ * it owns its own toggle), so both went with it rather than lingering as
+ * controls that move nothing on screen.
  */
 
-import { Crop, Eye, Film } from 'lucide-react';
+import { Crop, Film } from 'lucide-react';
 
 export type CardSize = 'sm' | 'md' | 'lg';
 
@@ -23,10 +24,6 @@ const CARD_SIZES: { value: CardSize; label: string; title: string }[] = [
 interface ViewToolbarProps {
   cardSize: CardSize;
   onCardSizeChange: (size: CardSize) => void;
-  showPredictions?: boolean;
-  /** Omit to hide the predictions toggle entirely (see the note above). */
-  onTogglePredictions?: (show: boolean) => void;
-  isLocalize?: boolean;
   cropMode?: boolean;
   onToggleCropMode?: (crop: boolean) => void;
   showCroppedView?: boolean;
@@ -63,9 +60,6 @@ function IconToggle({
 export function ViewToolbar({
   cardSize,
   onCardSizeChange,
-  showPredictions,
-  onTogglePredictions,
-  isLocalize = false,
   cropMode = false,
   onToggleCropMode,
   showCroppedView = false,
@@ -88,33 +82,20 @@ export function ViewToolbar({
         </button>
       ))}
       <div className="mx-0.5 w-px self-stretch bg-line" />
-      {onTogglePredictions && (
-        <IconToggle
-          title="Show predictions (P)"
-          pressed={showPredictions ?? false}
-          onClick={() => onTogglePredictions(!showPredictions)}
-        >
-          <Eye className="w-3.5 h-3.5" />
-        </IconToggle>
-      )}
-      {isLocalize && (
-        <>
-          <IconToggle
-            title="Crop cells (C)"
-            pressed={cropMode}
-            onClick={() => onToggleCropMode?.(!cropMode)}
-          >
-            <Crop className="w-3.5 h-3.5" />
-          </IconToggle>
-          <IconToggle
-            title="Cropped view"
-            pressed={showCroppedView}
-            onClick={() => onToggleCroppedView?.(!showCroppedView)}
-          >
-            <Film className="w-3.5 h-3.5" />
-          </IconToggle>
-        </>
-      )}
+      <IconToggle
+        title="Crop cells (C)"
+        pressed={cropMode}
+        onClick={() => onToggleCropMode?.(!cropMode)}
+      >
+        <Crop className="w-3.5 h-3.5" />
+      </IconToggle>
+      <IconToggle
+        title="Cropped view"
+        pressed={showCroppedView}
+        onClick={() => onToggleCroppedView?.(!showCroppedView)}
+      >
+        <Film className="w-3.5 h-3.5" />
+      </IconToggle>
     </div>
   );
 }

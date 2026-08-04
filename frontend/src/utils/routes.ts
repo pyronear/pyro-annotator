@@ -9,10 +9,6 @@ export const ROUTES = {
   CLASSIFY_GROUPS: '/classify/groups',
   LOCALIZE: '/localize',
   LOCALIZE_DONE: '/localize/done',
-  // The legacy per-lane box-drawing page (formerly at /localize/:sequenceId
-  // itself) — /localize/:sequenceId now renders the collocated
-  // LocalizeAlertPage instead.
-  LOCALIZE_LANE: '/localize/lane',
 } as const;
 
 export function classifyDetail(id: number | string, done = false): string {
@@ -31,39 +27,38 @@ export function classifyGroups(filter: SequenceGroupsFilter): string {
 }
 
 /**
- * Queue provenance (`done = false`) always lands on the collocated
- * LocalizeAlertPage, whose route accepts an optional `:detectionId?` segment
- * for deep-linked edits — this builder omits it because no queue caller
- * passes one. Done provenance still targets the legacy per-lane page at
- * `/localize/done/:sequenceId/:detectionId?`.
+ * Both provenances land on the collocated LocalizeAlertPage — queue at
+ * `/localize/:sequenceId`, Done list at `/localize/done/:sequenceId` — and
+ * both routes accept the optional `:detectionId?` segment that deep-links
+ * straight into that frame's editor.
  */
 export function localizeDetail(
   sequenceId: number | string,
   detectionId?: number | string,
   done = false
 ): string {
-  if (!done) return `${ROUTES.LOCALIZE}/${sequenceId}`;
+  const base = done ? ROUTES.LOCALIZE_DONE : ROUTES.LOCALIZE;
   const detSegment = detectionId !== undefined ? `/${detectionId}` : '';
-  return `${ROUTES.LOCALIZE_DONE}/${sequenceId}${detSegment}`;
-}
-
-/** The legacy per-lane box-drawing page, entered from within the alert page or the done list's internal navigation. */
-export function localizeLane(sequenceId: number | string, detectionId?: number | string): string {
-  const detSegment = detectionId !== undefined ? `/${detectionId}` : '';
-  return `${ROUTES.LOCALIZE_LANE}/${sequenceId}${detSegment}`;
+  return `${base}/${sequenceId}${detSegment}`;
 }
 
 /**
- * Route pattern for the per-frame editor, declared once so App.tsx's route
- * and LocalizeAlertPage's `useMatch` can't drift apart. If they did, the
- * failure would be silent — `useMatch` would return null and the editor
- * would simply stop opening — so the two must read the same string.
+ * Route pattern for the per-frame editor, under whichever provenance prefix
+ * the page was entered from. Declared once so App.tsx's route and
+ * LocalizeAlertPage's `useMatch` can't drift apart: if they did, the failure
+ * would be silent — `useMatch` would return null and the editor would simply
+ * stop opening — so the two must read the same string.
  *
- * It is mounted as a CHILD of `/localize/:sequenceId` (an absolute child
+ * It is mounted as a CHILD of the alert page's own route (an absolute child
  * path, which React Router accepts because it starts with the parent's),
- * keeping LocalizeAlertPage mounted when the editor opens and closes.
+ * keeping LocalizeAlertPage mounted when the editor opens and closes. A
+ * sibling route would sit elsewhere in the element tree and remount the page,
+ * losing scroll position, crop mode, focus mode and the active object.
  */
-export const LOCALIZE_OBJECT_ROUTE = `${ROUTES.LOCALIZE}/:sequenceId/object/:laneId/:detectionId`;
+export function localizeObjectRoute(done = false): string {
+  const base = done ? ROUTES.LOCALIZE_DONE : ROUTES.LOCALIZE;
+  return `${base}/:sequenceId/object/:laneId/:detectionId`;
+}
 
 /**
  * The collocated alert page's per-frame editor, which names both the object
@@ -71,11 +66,17 @@ export const LOCALIZE_OBJECT_ROUTE = `${ROUTES.LOCALIZE}/:sequenceId/object/:lan
  * what makes a shared editor link unambiguous: a detection id alone resolves
  * to whichever lane happens to own it, so a mismatched URL used to be
  * undetectable. The frame is always required — there is no frameless form.
+ *
+ * `done` carries the same provenance as `localizeDetail`, so an editor opened
+ * from the Done list keeps its `/localize/done` prefix and closes back to the
+ * list it came from.
  */
 export function localizeObject(
   sequenceId: number | string,
   laneId: number | string,
-  detectionId: number | string
+  detectionId: number | string,
+  done = false
 ): string {
-  return `${ROUTES.LOCALIZE}/${sequenceId}/object/${laneId}/${detectionId}`;
+  const base = done ? ROUTES.LOCALIZE_DONE : ROUTES.LOCALIZE;
+  return `${base}/${sequenceId}/object/${laneId}/${detectionId}`;
 }

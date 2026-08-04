@@ -27,9 +27,16 @@ editor, the invalid-URL guards that the new route makes possible, and the
 tests for all of it.
 
 **Out:** any change to the editor's layout, tools, keyboard shortcuts, or save
-behavior. No `ImageModal` refactor. The legacy per-lane pages at
-`/localize/lane/...` and `/localize/done/...` are untouched, and continue to
-use `ImageModal` as they do today.
+behavior. No `ImageModal` refactor.
+
+> **Amended after #278 landed.** This spec was written when `/localize/done/…`
+> and `/localize/lane/…` were served by the legacy per-lane
+> `DetectionSequenceAnnotatePage`, and scoped that page out. #278 deleted it:
+> `LocalizeAlertPage` now serves the Done list too, via a `mode` prop that
+> carries provenance only (the list to return to, and the prefix its own URLs
+> are built from), and `/localize/lane` is gone. The editor route therefore
+> exists under **both** provenance prefixes rather than the queue one alone.
+> Every section below reflects the amended design.
 
 The editor **stays a modal** rendered over the mounted cockpit. Promoting it to
 a standalone page was considered and deliberately rejected for now: the modal
@@ -39,13 +46,21 @@ crop mode, active object and card size for free.
 ## Route
 
 ```
-/localize/:sequenceId                                cockpit, editor closed
-/localize/:sequenceId/object/:laneId/:detectionId    cockpit, editor open
+/localize/:sequenceId                                     cockpit, editor closed
+/localize/:sequenceId/object/:laneId/:detectionId         cockpit, editor open
+/localize/done/:sequenceId                                same, Done provenance
+/localize/done/:sequenceId/object/:laneId/:detectionId    same, Done provenance
 ```
 
-Both paths render `LocalizeAlertPage`. The second additionally renders
-`ImageModal` over it. Same component, same mount — navigating between the two
-is a param change, not a remount.
+All four render `LocalizeAlertPage`; the object paths additionally render
+`ImageModal` over it. Same component, same mount — navigating between a
+cockpit path and its editor path is a param change, not a remount.
+
+The prefix is provenance, exactly as `mode` already means elsewhere on the
+page: an editor opened from the Done list keeps the `/localize/done` prefix and
+closes back to the list it came from. `localizeObjectRoute(done)` builds the
+pattern and `localizeObject(seq, lane, det, done)` builds the URL, mirroring
+`localizeDetail`'s existing signature.
 
 `:laneId` is the **lane's sequence id** (`lane.sequence.id`). This is what the
 cockpit already keys everything on — `activeLaneId`, `detectionsByLaneId`,
@@ -72,13 +87,13 @@ The editor path is declared as a **child route** of the cockpit's route, and
 </Route>
 ```
 
-`LOCALIZE_OBJECT_ROUTE` is the full pattern
-(`/localize/:sequenceId/object/:laneId/:detectionId`), exported from
-`src/utils/routes.ts` — an absolute child path, which React Router accepts
-because it starts with the parent's. It is declared once because the route and
-the page's `useMatch` must read the same string: if they drifted, `useMatch`
-would simply return null and the editor would stop opening, with no error and
-nothing for a test mounting its own route table to catch.
+`localizeObjectRoute(done)` returns the full pattern for that provenance — an
+absolute child path, which React Router accepts because it starts with the
+parent's. Each of the two parent routes declares its own child. The pattern is
+built in one place because the route and the page's `useMatch` must read the
+same string: if they drifted, `useMatch` would simply return null and the
+editor would stop opening, with no error and nothing for a test mounting its
+own route table to catch.
 
 This is load-bearing, not stylistic. Two sibling `<Route>` entries rendering
 `<LocalizeAlertPage />` occupy two different positions in the element tree, so
@@ -96,25 +111,27 @@ object-focus mode in the cockpit behind it.
 
 ### Route table placement
 
-The new path has five segments and cannot collide with the existing
-three-segment `/localize/lane/:sequenceId/:detectionId?`,
-`/localize/done/:sequenceId/:detectionId?`, or `/localize/:sequenceId`. The
-existing ordering rule in `App.tsx` — literal segments declared before the
-dynamic `/localize/:sequenceId` — is preserved.
+The queue editor path has five segments and the Done one six, so neither
+collides with the two-segment cockpit routes. The literal `done` segment
+outranks the dynamic `:sequenceId` (React Router scores static above dynamic),
+so `/localize/done/5` is never read as sequence id `done` — locked by
+`routeMatching.test.ts`.
 
 ### URL builder
 
 `src/utils/routes.ts` gains:
 
 ```ts
+export function localizeObjectRoute(done?: boolean): string;
 export function localizeObject(
   sequenceId: number | string,
   laneId: number | string,
-  detectionId: number | string
+  detectionId: number | string,
+  done?: boolean
 ): string
 ```
 
-returning `/localize/${sequenceId}/object/${laneId}/${detectionId}`. All
+returning `<prefix>/${sequenceId}/object/${laneId}/${detectionId}`. All
 navigation to the editor goes through it.
 
 ### Relationship to `?frame=`
@@ -198,22 +215,28 @@ mismatched URL silently edits whichever object owns the detection.
 
 The first two rows preserve today's behavior for their equivalent situations.
 
-## Legacy `/localize/:sequenceId/:detectionId`
+## Legacy bare-frame URLs
 
-Redirects to `/localize/:sequenceId?frame=:detectionId`: the user lands on the
+`/localize/:sequenceId/:detectionId` and its `/localize/done/…` twin both
+redirect to `<prefix>/:sequenceId?frame=:detectionId`: the user lands on the
 alert with that frame scrolled into view and ring-highlighted, editor closed.
 
-Nothing currently produces this URL except the cockpit itself.
-`localizeDetail()` never emits a detection id on the queue path, and the
-pre-#210 redirect (`LegacyLocalizeDetailRedirect`) routes a queue-provenance
-detection id to `localizeLane` instead. The only exposure is a stale bookmark
-from a session on the current build.
+Both provenances need this. Before this change the page built its editor URLs
+as `${basePath}/${detectionId}`, so **both** shapes were live and either could
+be sitting in a bookmark or an open tab.
 
-Resolving such a URL all the way back to an open editor would require loading
-the alert and every lane's detections before deciding where to redirect. That
-is not worth it for a URL shape with no producer.
+The same reasoning covers `LegacyLocalizeDetailRedirect`, which forwards
+pre-#210 `/detections/:seq/annotate/:det` links: it used to hand the detection
+id straight to `localizeDetail`, producing a URL that is now a dead end. It
+emits the `?frame=` form instead, so those links resolve in one hop rather than
+bouncing through a second redirect.
 
-The redirect is declared alongside the other entries in
+Resolving any of these all the way back to an open editor would require loading
+the alert and every lane's detections before deciding where to redirect — the
+object simply isn't derivable from the URL. Not worth it to reopen an editor
+the user can reopen with one click on the highlighted frame.
+
+Both redirects are declared alongside the other entries in
 `src/components/routing/legacyRedirects.tsx`.
 
 ## Testing
@@ -236,7 +259,14 @@ New tests:
 - A URL naming a false-positive lane leaves the editor closed (moved to the new
   shape from the existing read-only test).
 - Prev/next preserves the lane segment in the URL.
-- `/localize/:seq/:det` redirects to `/localize/:seq?frame=:det`.
+- Entering and leaving the editor preserves object-focus mode in the cockpit —
+  the regression lock on the child-route (no-remount) decision.
+- `/localize/:seq/:det` redirects to `/localize/:seq?frame=:det`, and the
+  `/localize/done/…` twin to its own prefix.
+- Under Done provenance: a cell click opens
+  `/localize/done/:seq/object/:lane/:det`, and prev/next keeps that prefix.
+- The route pattern and the URL builder agree, for both provenances — a drift
+  fails silently in the app, so it is pinned in `routes.test.ts`.
 
-Success criteria: `npm run quality` clean, and the full suite green — 954 tests
-today, plus the new ones, with no test deleted rather than migrated.
+Success criteria: `npm run quality` clean, and the full suite green, with no
+test deleted rather than migrated.

@@ -8,7 +8,6 @@ import SequencesPageWrapper from '@/pages/SequencesPageWrapper';
 import ClassifyAlertPage from '@/pages/ClassifyAlertPage';
 import DetectionAnnotatePage from '@/pages/DetectionAnnotatePage';
 import DetectionReviewPage from '@/pages/DetectionReviewPage';
-import DetectionSequenceAnnotatePage from '@/pages/DetectionSequenceAnnotatePage';
 import LocalizeAlertPage from '@/pages/LocalizeAlertPage';
 import SequenceGroupAnnotatePage from '@/pages/SequenceGroupAnnotatePage';
 import SequenceGroupsListPage from '@/pages/SequenceGroupsListPage';
@@ -16,7 +15,7 @@ import UserManagementPage from '@/pages/UserManagementPage';
 import GuidePage from '@/pages/GuidePage';
 import LoginPage from '@/pages/LoginPage';
 import { legacyRedirectRoutes } from '@/components/routing/legacyRedirects';
-import { LOCALIZE_OBJECT_ROUTE } from '@/utils/routes';
+import { localizeObjectRoute } from '@/utils/routes';
 import RequireLocalize from '@/components/routing/RequireLocalize';
 import { useAuthStore } from '@/store/useAuthStore';
 
@@ -113,31 +112,28 @@ function App() {
                       </RequireLocalize>
                     }
                   />
+                  {/* Same component either side, provenance from the path —
+                      the /localize/done route must precede the dynamic
+                      /localize/:sequenceId below so "done" isn't swallowed
+                      as a sequence id. */}
+                  {/* Both provenances carry the per-frame editor as a CHILD
+                      route, not a sibling: a sibling would sit at a different
+                      position in the element tree and remount
+                      LocalizeAlertPage on every open/close, losing scroll,
+                      crop mode, focus mode and the active object. The child
+                      renders nothing — the page reads its params via useMatch
+                      and opens the modal itself — so the page renders no
+                      <Outlet />. */}
                   <Route
-                    path="/localize/done/:sequenceId/:detectionId?"
+                    path="/localize/done/:sequenceId"
                     element={
                       <RequireLocalize>
-                        <DetectionSequenceAnnotatePage mode="done" />
+                        <LocalizeAlertPage mode="done" />
                       </RequireLocalize>
                     }
-                  />
-                  {/* Literal /localize/lane segment must precede the dynamic
-                      /localize/:sequenceId below so it isn't shadowed. */}
-                  <Route
-                    path="/localize/lane/:sequenceId/:detectionId?"
-                    element={
-                      <RequireLocalize>
-                        <DetectionSequenceAnnotatePage />
-                      </RequireLocalize>
-                    }
-                  />
-                  {/* The per-frame editor is a CHILD route, not a sibling: a
-                      sibling would sit at a different position in the element
-                      tree and remount LocalizeAlertPage on every open/close,
-                      losing scroll, crop mode, focus mode and the active
-                      object. The child renders nothing — the page reads its
-                      params via useMatch and opens the modal itself — so the
-                      page renders no <Outlet />. */}
+                  >
+                    <Route path={localizeObjectRoute(true)} element={null} />
+                  </Route>
                   <Route
                     path="/localize/:sequenceId"
                     element={
@@ -146,7 +142,7 @@ function App() {
                       </RequireLocalize>
                     }
                   >
-                    <Route path={LOCALIZE_OBJECT_ROUTE} element={null} />
+                    <Route path={localizeObjectRoute()} element={null} />
                   </Route>
                   {legacyRedirectRoutes}
                   <Route path="/users" element={<UserManagementPage />} />

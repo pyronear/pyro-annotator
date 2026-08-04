@@ -5,8 +5,6 @@ import { ViewToolbar } from '@/components/detection-sequence/ViewToolbar';
 const baseProps = {
   cardSize: 'md' as const,
   onCardSizeChange: vi.fn(),
-  showPredictions: true,
-  onTogglePredictions: vi.fn(),
 };
 
 describe('ViewToolbar', () => {
@@ -24,27 +22,22 @@ describe('ViewToolbar', () => {
     expect(screen.getByRole('button', { name: 'S' })).toHaveAttribute('aria-pressed', 'false');
   });
 
-  it('predictions toggle fires with the inverted value and shows pressed state', () => {
+  // The crop and flipbook toggles used to hide behind an `isLocalize` flag,
+  // for the legacy per-lane page that also used this toolbar. That page is
+  // gone and the collocated localize screen is the only consumer, so they
+  // always render.
+  it('always renders the crop and cropped-view toggles', () => {
     render(<ViewToolbar {...baseProps} />);
-    const btn = screen.getByTitle('Show predictions (P)');
-    expect(btn).toHaveAttribute('aria-pressed', 'true');
-    fireEvent.click(btn);
-    expect(baseProps.onTogglePredictions).toHaveBeenCalledWith(false);
+    expect(screen.getByTitle('Crop cells (C)')).toBeInTheDocument();
+    expect(screen.getByTitle('Cropped view')).toBeInTheDocument();
   });
 
-  it('hides Crop and Cropped view outside localize', () => {
-    render(<ViewToolbar {...baseProps} />);
-    expect(screen.queryByTitle('Crop cells (C)')).toBeNull();
-    expect(screen.queryByTitle('Cropped view')).toBeNull();
-  });
-
-  it('localize: crop toggles fire', () => {
+  it('crop toggles fire with the inverted value', () => {
     const onToggleCropMode = vi.fn();
     const onToggleCroppedView = vi.fn();
     render(
       <ViewToolbar
         {...baseProps}
-        isLocalize
         cropMode={false}
         onToggleCropMode={onToggleCropMode}
         showCroppedView
@@ -55,5 +48,11 @@ describe('ViewToolbar', () => {
     expect(onToggleCropMode).toHaveBeenCalledWith(true);
     fireEvent.click(screen.getByTitle('Cropped view'));
     expect(onToggleCroppedView).toHaveBeenCalledWith(false);
+  });
+
+  it('reflects pressed state on the toggles', () => {
+    render(<ViewToolbar {...baseProps} cropMode showCroppedView={false} />);
+    expect(screen.getByTitle('Crop cells (C)')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTitle('Cropped view')).toHaveAttribute('aria-pressed', 'false');
   });
 });

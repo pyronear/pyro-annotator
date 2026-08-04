@@ -13,12 +13,13 @@ const renderAt = (url: string) =>
     <MemoryRouter initialEntries={[url]}>
       <Routes>
         {legacyRedirectRoutes}
-        {/* Present in App.tsx, and they outrank the redirect table's dynamic
-            /localize/:sequenceId/:detectionId entry (static segments win).
-            Without them this partial table lets that entry swallow
-            /localize/done/5 and re-redirect it to /localize/done?frame=5. */}
-        <Route path="/localize/done/:sequenceId/:detectionId?" element={<LocationProbe />} />
-        <Route path="/localize/lane/:sequenceId/:detectionId?" element={<LocationProbe />} />
+        {/* The alert page's own routes, as App.tsx mounts them. They are what
+            the redirects land on, and the literal "done" one outranks the
+            redirect table's dynamic /localize/:sequenceId/:detectionId entry
+            (static segments win) — without it this partial table would let
+            that entry swallow /localize/done/5. */}
+        <Route path="/localize/done/:sequenceId" element={<LocationProbe />} />
+        <Route path="/localize/:sequenceId" element={<LocationProbe />} />
         <Route path="*" element={<LocationProbe />} />
       </Routes>
     </MemoryRouter>
@@ -36,12 +37,16 @@ describe('legacy route redirects', () => {
     ['/detections/review', '/localize/done'],
     ['/detections/5/annotate', '/localize/5'],
     ['/detections/5/annotate?from=localize', '/localize/5'],
-    ['/detections/5/annotate/9?from=localize', '/localize/lane/5/9'],
     ['/detections/5/annotate?from=detections-review', '/localize/done/5'],
-    ['/detections/5/annotate/9?from=detections-review', '/localize/done/5/9'],
-    // Pre-object-route editor link: the frame survives as a ?frame= deep
-    // link, but the editor stays closed (the object can't be resolved here).
+    // A frame in an old link becomes a ?frame= deep link, not an open editor:
+    // the editor URL names its object now, and the object can't be resolved
+    // without loading the alert and every lane's detections.
+    ['/detections/5/annotate/9?from=localize', '/localize/5?frame=9'],
+    ['/detections/5/annotate/9?from=detections-review', '/localize/done/5?frame=9'],
+    // Same for the pre-object-route editor shape itself, under either
+    // provenance — the Done route produced it too.
     ['/localize/5/9', '/localize/5?frame=9'],
+    ['/localize/done/5/9', '/localize/done/5?frame=9'],
   ])('redirects %s to %s', (oldUrl, newPath) => {
     renderAt(oldUrl);
     expect(screen.getByTestId('location')).toHaveTextContent(newPath);

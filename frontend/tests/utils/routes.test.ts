@@ -1,12 +1,11 @@
 import { matchPath } from 'react-router-dom';
 import {
-  LOCALIZE_OBJECT_ROUTE,
   ROUTES,
   classifyDetail,
   classifyGroup,
   localizeDetail,
-  localizeLane,
   localizeObject,
+  localizeObjectRoute,
 } from '@/utils/routes';
 
 describe('routes', () => {
@@ -16,7 +15,6 @@ describe('routes', () => {
     expect(ROUTES.CLASSIFY_GROUPS).toBe('/classify/groups');
     expect(ROUTES.LOCALIZE).toBe('/localize');
     expect(ROUTES.LOCALIZE_DONE).toBe('/localize/done');
-    expect(ROUTES.LOCALIZE_LANE).toBe('/localize/lane');
   });
 
   it('builds classify detail paths for queue and done provenance', () => {
@@ -28,16 +26,13 @@ describe('routes', () => {
     expect(classifyGroup(7)).toBe('/classify/groups/7');
   });
 
-  it('builds localize detail paths: queue provenance always targets the alert page (no detection segment), done provenance keeps the legacy per-lane path', () => {
+  // Both provenances land on the collocated alert page, and both carry the
+  // optional detection segment that deep-links into that frame's editor.
+  it('builds localize detail paths for queue and done provenance, with an optional detection id', () => {
     expect(localizeDetail(5)).toBe('/localize/5');
-    expect(localizeDetail(5, 9)).toBe('/localize/5');
+    expect(localizeDetail(5, 9)).toBe('/localize/5/9');
     expect(localizeDetail(5, undefined, true)).toBe('/localize/done/5');
     expect(localizeDetail(5, 9, true)).toBe('/localize/done/5/9');
-  });
-
-  it('builds legacy lane paths with an optional detection id', () => {
-    expect(localizeLane(5)).toBe('/localize/lane/5');
-    expect(localizeLane(5, 9)).toBe('/localize/lane/5/9');
   });
 
   it('builds the per-frame editor path naming both the object and the frame', () => {
@@ -45,15 +40,23 @@ describe('routes', () => {
     expect(localizeObject('5', '7', '9')).toBe('/localize/5/object/7/9');
   });
 
-  it('keeps the editor route pattern and its builder in agreement', () => {
-    // App.tsx's route and LocalizeAlertPage's useMatch both read the pattern;
-    // the builder produces the URLs that have to match it. A drift between
-    // them fails silently in the app (useMatch just returns null), so pin it.
-    expect(LOCALIZE_OBJECT_ROUTE).toBe('/localize/:sequenceId/object/:laneId/:detectionId');
-    expect(matchPath(LOCALIZE_OBJECT_ROUTE, localizeObject(5, 7, 9))?.params).toEqual({
-      sequenceId: '5',
-      laneId: '7',
-      detectionId: '9',
-    });
+  it('keeps the editor under the Done prefix when that is where it was entered from', () => {
+    expect(localizeObject(5, 7, 9, true)).toBe('/localize/done/5/object/7/9');
+    expect(localizeObjectRoute(true)).toBe('/localize/done/:sequenceId/object/:laneId/:detectionId');
   });
+
+  it.each([[false], [true]])(
+    'keeps the editor route pattern and its builder in agreement (done=%s)',
+    done => {
+      // App.tsx's route and LocalizeAlertPage's useMatch both read the
+      // pattern; the builder produces the URLs that have to match it. A drift
+      // between them fails silently in the app (useMatch just returns null,
+      // so the editor stops opening with no error), so pin it.
+      expect(matchPath(localizeObjectRoute(done), localizeObject(5, 7, 9, done))?.params).toEqual({
+        sequenceId: '5',
+        laneId: '7',
+        detectionId: '9',
+      });
+    }
+  );
 });

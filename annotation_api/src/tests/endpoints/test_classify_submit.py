@@ -329,6 +329,48 @@ async def test_single_item_submit_degenerate_alert(
 
 
 @pytest.mark.asyncio
+async def test_submit_stamps_updated_at_on_every_lane(
+    authenticated_client: AsyncClient, async_session, mock_img
+):
+    """This path writes each lane with commit=False (flush, then one shared
+    commit), unlike the single-lane PATCH. The server-side updated_at stamp
+    (#216) has to survive that too, on every lane of the alert."""
+    seq_a = await _create_sequence(
+        async_session, alert_api_id=1601, platform_alert_id=950
+    )
+    seq_b = await _create_sequence(
+        async_session, alert_api_id=1602, platform_alert_id=950
+    )
+    det_a = await _create_detection(authenticated_client, mock_img, seq_a.id, 1601)
+    det_b = await _create_detection(authenticated_client, mock_img, seq_b.id, 1602)
+    ann_a = await _create_sequence_annotation(
+        authenticated_client, seq_a.id, det_a, is_smoke=False, stage="ready_to_annotate"
+    )
+    ann_b = await _create_sequence_annotation(
+        authenticated_client, seq_b.id, det_b, is_smoke=True, stage="ready_to_annotate"
+    )
+    assert ann_a["updated_at"] is None
+    assert ann_b["updated_at"] is None
+
+    resp = await authenticated_client.post(
+        "/annotations/sequences/classify-submit",
+        json={
+            "items": [
+                _item(ann_a, processing_stage="annotated"),
+                _item(ann_b, processing_stage="seq_annotation_done"),
+            ]
+        },
+    )
+    assert resp.status_code == 200
+
+    for annotation in (ann_a, ann_b):
+        stored = await authenticated_client.get(
+            f"/annotations/sequences/{annotation['id']}"
+        )
+        assert stored.json()["updated_at"] is not None, annotation["id"]
+
+
+@pytest.mark.asyncio
 async def test_unsure_lane_reaching_annotated_skips_auto_create(
     authenticated_client: AsyncClient, async_session, mock_img
 ):
