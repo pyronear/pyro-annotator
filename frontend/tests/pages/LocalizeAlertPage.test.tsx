@@ -1316,6 +1316,43 @@ describe('LocalizeAlertPage', () => {
       });
     });
 
+    it("does not outline an activated false-positive object's frames", async () => {
+      realisticFalsePositiveAlert();
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: /False positives/ }));
+      await waitFor(() => {
+        expect(screen.getByTestId('localize-object-row-object-2')).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Go to Object 2' }));
+
+      // The full-cell accent outline says "this object is here, work on it".
+      // A false positive is settled and its cells are read-only — the dashed
+      // box already marks where it is.
+      await waitFor(() => {
+        expect(screen.getByTestId(`alert-frame-cell-${T2}`)).toHaveAttribute(
+          'data-readonly',
+          'true'
+        );
+      });
+      expect(screen.getByTestId(`alert-frame-cell-${T2}`).getAttribute('style') ?? '').not.toContain(
+        'outline'
+      );
+    });
+
+    it("still outlines an activated workable object's frames", async () => {
+      realisticFalsePositiveAlert();
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Go to Object 1' }));
+
+      await waitFor(() => {
+        expect(screen.getByTestId(`alert-frame-cell-${T1}`).getAttribute('style') ?? '').toContain(
+          'outline'
+        );
+      });
+    });
+
     it('disables the toggle when the alert has no false-positive objects', async () => {
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 

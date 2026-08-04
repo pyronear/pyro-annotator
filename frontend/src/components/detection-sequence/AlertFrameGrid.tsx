@@ -178,7 +178,12 @@ function AlertFrameCellView({
   // clicking used to open the fallback lane's detection, silently switching
   // which object you were editing.
   const isContextFrame = activeLaneId !== null && !isActiveLaneCell;
-  const isAccented = activeLaneId !== null && isActiveLaneCell;
+  // The full-cell accent outline says "this object is here — work on it".
+  // A false positive is settled and its cells are read-only, so the outline
+  // would be claiming work that doesn't exist; its dashed box already marks
+  // where the object is.
+  const isAccented =
+    activeLaneId !== null && isActiveLaneCell && activeCell.isFalsePositive !== true;
   // A false-positive object is settled; its frames are here to be LOOKED at
   // (including via the cropped-view strip), never edited. Opening the editor
   // on one would offer to re-box something classify already rejected.
