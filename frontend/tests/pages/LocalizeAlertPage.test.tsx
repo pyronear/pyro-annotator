@@ -1211,6 +1211,89 @@ describe('LocalizeAlertPage', () => {
       });
     }
 
+    /**
+     * Production-shaped false-positive lane, which `alertWithFalsePositive`
+     * above is NOT: a real FP lane carries an `annotated` detection
+     * annotation with an EMPTY box list (the backend writes
+     * `{"annotation": []}` when the human answers "no smoke here") and keeps
+     * the object's real location in `algo_predictions`. The default
+     * `makeDetection` fixture has an empty engine track and a populated
+     * `auto_predictions`, which is the reverse — so tests about what an FP
+     * lane displays must build their own detections.
+     */
+    function realisticFalsePositiveAlert() {
+      alertWithFalsePositive();
+      vi.mocked(apiClient.getSequenceDetections).mockImplementation(async (id: number) => {
+        if (id === 101) return [makeDetection(1001, T1)];
+        if (id === 102) {
+          return [makeDetection(1002, T1), makeDetection(1003, T2)].map(d => ({
+            ...d,
+            algo_predictions: {
+              predictions: [
+                {
+                  xyxyn: [0.5, 0.5, 0.7, 0.7] as [number, number, number, number],
+                  confidence: 0.8,
+                  class_name: 'smoke',
+                },
+              ],
+            },
+            auto_predictions: null,
+          }));
+        }
+        return [];
+      });
+      vi.mocked(apiClient.getDetectionAnnotations).mockImplementation(async filters => {
+        if (filters?.sequence_id !== 102) return emptyAnnotationsPage;
+        const items = [1002, 1003].map(detectionId => ({
+          ...makeDetectionAnnotation(detectionId),
+          annotation: { annotation: [] },
+        }));
+        return { ...emptyAnnotationsPage, items, total: items.length };
+      });
+    }
+
+    it('draws the engine track for a false-positive object, dashed as uncommitted context', async () => {
+      realisticFalsePositiveAlert();
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: /False positives/ }));
+      await waitFor(() => {
+        expect(screen.getByTestId('localize-object-row-object-2')).toBeInTheDocument();
+      });
+
+      // The grid only paints box overlays once it has measured the rendered
+      // image, and jsdom never fires `load` on its own — so drive it here.
+      const frameImage = await within(screen.getByTestId(`alert-frame-cell-${T2}`)).findByRole(
+        'img'
+      );
+      fireEvent.load(frameImage);
+
+      const fpBox = await screen.findByTestId(`alert-frame-box-${T2}-102`);
+      // Dashed, not solid: nothing here is committed — it's where the engine
+      // thought the object was, kept for "is that plume already accounted
+      // for?" context.
+      expect(fpBox.getAttribute('style')).toContain('dashed');
+    });
+
+    it('gives a false-positive object a present timeline, not an empty one', async () => {
+      realisticFalsePositiveAlert();
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: /False positives/ }));
+      await waitFor(() => {
+        expect(screen.getByTestId('localize-object-row-object-2')).toBeInTheDocument();
+      });
+
+      // Object 2 is the second row (`orderedObjectRows` puts FP rows last);
+      // its first segment covers T1, where the engine track puts a box.
+      // `ObjectStatusStrip` exposes a segment's status only through its
+      // aria-label.
+      expect(screen.getByTestId('status-segment-1-0')).toHaveAttribute(
+        'aria-label',
+        'Object 2, frame 1: confirmed'
+      );
+    });
+
     it('disables the toggle when the alert has no false-positive objects', async () => {
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
