@@ -58,6 +58,13 @@
  * view toolbar, and a progress badge that now reports how many objects are
  * fully localized rather than a bare object count.
  *
+ * Fixed-pane round: from lg up the cockpit is a viewport-height shell and
+ * the frame cells are the page's only scroller, so everything that acts on
+ * them — the Frames panel and the cropped loop above, the Objects rail and
+ * Timeline beside — never leaves the screen. The header compacted to a
+ * single 48px row to pay for it. See
+ * docs/specs/2026-08-04-localize-fixed-panes-scrolling-grid-design.md.
+ *
  * The per-frame editor is URL-driven from a CHILD route under whichever
  * provenance prefix the page is mounted at —
  * `<basePath>/object/:laneId/:detectionId` — which names the object
@@ -1095,46 +1102,57 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
 
   return (
     <>
-      {/* Pinned toolbar-scale header — same idiom as ClassifyAlertPage: fixed
-          to the viewport past the sidebar; the root's pt-20 reserves its
-          space. */}
-      <div className="fixed top-0 left-0 md:left-64 right-0 z-30 px-6 pt-3 pb-2.5 bg-paper/85 border-b border-line backdrop-blur-sm">
+      {/* Pinned header, one row deep: the back link used to sit on a line of
+          its own above the identity row, and that second line was 32px of
+          the viewport the frame grid below now keeps. `h-12` is a fixed
+          height rather than one derived from padding, because the root's
+          reserve below has to be an exact number, not a guess. */}
+      <div className="fixed top-0 left-0 md:left-64 right-0 z-30 flex h-12 items-center gap-3 px-6 bg-paper/85 border-b border-line backdrop-blur-sm">
         <button
           onClick={() => navigate(listPath)}
-          className="font-body text-detail text-haze hover:text-char inline-flex items-center gap-1"
+          className="font-body text-detail text-haze hover:text-char inline-flex shrink-0 items-center gap-1"
         >
           <ArrowLeft className="w-3.5 h-3.5" /> Alerts
         </button>
-
-        <div className="mt-1 flex items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-2.5 min-w-0">
-            <h1 className="font-display text-heading font-semibold text-char truncate">
-              {alertDetail.organisation_name} · {alertDetail.camera_name}
-            </h1>
-            <span className="font-data text-detail text-haze">
-              {formatDateTime(alertDetail.recorded_at)}
-            </span>
-            <span
-              className={`flex-none rounded-full px-2.5 py-0.5 font-data text-xs font-semibold ${
-                smokeObjectRows.length > 0 && localizedObjectCount === smokeObjectRows.length
-                  ? 'bg-pine-soft text-pine'
-                  : 'bg-ember-soft text-ember'
-              }`}
-            >
-              {localizedObjectCount} of {smokeObjectRows.length} object
-              {smokeObjectRows.length === 1 ? '' : 's'} localized
-            </span>
-          </div>
-        </div>
+        <span className="h-4 w-px shrink-0 bg-line" />
+        <h1 className="font-display text-heading font-semibold text-char truncate">
+          {alertDetail.organisation_name} · {alertDetail.camera_name}
+        </h1>
+        {/* One row means nothing wraps, so the narrowest viewports have to
+            shed something rather than squeeze the title to nothing and push
+            the badge off a bar that cannot scroll. The timestamp goes first:
+            every frame cell below carries its own. */}
+        <span className="hidden sm:inline font-data text-detail text-haze shrink-0">
+          {formatDateTime(alertDetail.recorded_at)}
+        </span>
+        <span
+          className={`flex-none rounded-full px-2.5 py-0.5 font-data text-xs font-semibold ${
+            smokeObjectRows.length > 0 && localizedObjectCount === smokeObjectRows.length
+              ? 'bg-pine-soft text-pine'
+              : 'bg-ember-soft text-ember'
+          }`}
+        >
+          {localizedObjectCount} of {smokeObjectRows.length} object
+          {smokeObjectRows.length === 1 ? '' : 's'} localized
+        </span>
       </div>
 
       {/* Cockpit: media column (the active object's frames) + the rail (the
-          whole alert's localization state), mirroring ClassifyAlertPage. The
-          media column flows with the page; the rail sticks below the fixed
-          header on desktop, scrolling internally only if it outgrows the
-          viewport. Below lg they stack. */}
-      <div className="flex flex-col gap-4 pt-20 lg:flex-row lg:items-start">
-        <div className="lg:flex-[1.5] lg:min-w-0">
+          whole alert's localization state), mirroring ClassifyAlertPage.
+          From lg up the whole thing is a viewport-height shell that never
+          scrolls: the frame cells are the only scroller on the page, so the
+          controls that act on them — the Frames panel and the cropped loop
+          above, the Objects rail and Timeline beside — stay on screen no
+          matter how deep into the grid you are. `calc(100vh-3rem)` is the
+          viewport less AppLayout's `p-6` top and bottom; `pt-8` clears the
+          48px header, 24px of which the same padding already covers. Below
+          lg the columns stack and the page scrolls normally, which is the
+          only thing that works on a narrow viewport. */}
+      <div className="flex flex-col gap-4 pt-8 lg:h-[calc(100vh-3rem)] lg:flex-row lg:overflow-hidden">
+        {/* min-h-0 on every flex-column ancestor of a scroller: the default
+            `min-height: auto` would let the cells push the column past the
+            viewport, and the page would scroll instead of the grid. */}
+        <div className="lg:flex lg:min-h-0 lg:flex-[1.5] lg:min-w-0 lg:flex-col">
           {/* Everything that acts on the frames, in one bar above the card
               that holds them: which object they belong to, what to do about
               it, and how to render them. The actions are driven by
@@ -1210,8 +1228,11 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
               resolves against ~zero and the square collapses to a few pixels.
               Centring is the component's job; the wrapper just gives it a
               width to fill. */}
+          {/* `shrink-0`, because it is pinned above the scroller: the loop
+              keeps its full height and the grid takes what is left, rather
+              than the loop squashing as the cells grow. */}
           {canShowCrop && cropExpanded && activeLaneId != null && (
-            <div className="mb-4">
+            <div className="mb-4 shrink-0">
               <CroppedImageSequence
                 bboxes={activeLaneBoxes}
                 sequenceId={activeLaneId}
@@ -1225,19 +1246,34 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
               everything that frames them — the object, the actions, the view
               controls — moved up into the panel above, so a second border
               around the images was drawing a box around a box. The images
-              carry their own edges. */}
-          <AlertFrameGrid
-            frames={frameModel.frames}
-            activeLaneId={activeLaneId}
-            onCellClick={handleCellClick}
-            cellRef={handleCellRef}
-            cardMinWidth={cardMinWidth}
-            cropMode={cropMode}
-            highlightedFrame={highlightedFrame}
-          />
+              carry their own edges.
+
+              This wrapper is the page's only scroller. `scrollIntoView` on
+              the cell refs (the `?frame=` deep link, timeline segment
+              clicks) resolves against the nearest scrollable ancestor, so it
+              now scrolls this container rather than the window — same
+              behavior, smaller box. */}
+          <div
+            data-testid="frame-grid-scroller"
+            className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto"
+          >
+            <AlertFrameGrid
+              frames={frameModel.frames}
+              activeLaneId={activeLaneId}
+              onCellClick={handleCellClick}
+              cellRef={handleCellRef}
+              cardMinWidth={cardMinWidth}
+              cropMode={cropMode}
+              highlightedFrame={highlightedFrame}
+            />
+          </div>
         </div>
 
-        <div className="lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:flex-1 lg:min-w-0 lg:overflow-y-auto">
+        {/* The rail no longer sticks: it is a full-height column of the
+            shell, so its ceiling is structural rather than a max-height
+            guess. Objects and Timeline scroll together inside it when the
+            alert has more objects than fit. */}
+        <div className="lg:flex lg:min-h-0 lg:flex-1 lg:min-w-0 lg:flex-col lg:overflow-y-auto">
           <LocalizeRail
             // The toggle governs which object ROWS exist, so it belongs with
             // Objects rather than with the frame grid's view controls.

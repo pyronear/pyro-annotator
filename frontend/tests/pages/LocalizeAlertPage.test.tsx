@@ -414,6 +414,33 @@ describe('LocalizeAlertPage', () => {
     expect(screen.getByText('0 of 2 objects localized')).toBeInTheDocument();
   });
 
+  // jsdom does not lay anything out, so this is a structural guard rather
+  // than proof: it pins WHICH element owns the scroll, so a later refactor
+  // cannot quietly return the cockpit to one page-level scroller and carry
+  // the Frames panel, the cropped loop and the rail off screen with the
+  // cells.
+  it('scrolls the frame cells alone — the Frames panel and the rail are not inside the scroller', async () => {
+    await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+    const scroller = screen.getByTestId('frame-grid-scroller');
+    expect(scroller).toContainElement(screen.getByTestId(`alert-frame-cell-${T1}`));
+
+    // The controls that act on those cells sit outside it.
+    expect(scroller).not.toContainElement(screen.getByText('Frames'));
+    expect(scroller).not.toContainElement(screen.getByTestId('localize-object-row-object-1'));
+
+    // The scroller alone proves nothing: an overflow container inside an
+    // unbounded column just grows instead of scrolling. What makes the grid
+    // the ONLY scroller is the bounded ancestor chain — a fixed-height root,
+    // and `min-h-0` on every flex column between it and the cells, without
+    // which `min-height: auto` lets the cells push the whole page taller.
+    expect(scroller.className).toContain('lg:min-h-0');
+    const column = scroller.parentElement as HTMLElement;
+    expect(column.className).toContain('lg:min-h-0');
+    expect(column.className).toContain('lg:flex-col');
+    expect((column.parentElement as HTMLElement).className).toContain('lg:h-[calc(100vh-3rem)]');
+  });
+
   it('clicking a strip row activates that object (the shared frame now shows its detection)', async () => {
     await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
@@ -496,6 +523,17 @@ describe('LocalizeAlertPage', () => {
       const img = within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img');
       expect(img).toHaveAttribute('src', 'https://img.example/1002.jpg');
     });
+
+    // Active, but NOT focused: `handleCellClick` uses a plain
+    // `setActiveLaneId` on purpose, because opening the editor shouldn't also
+    // flip the background grid into crop-on + small cards behind the modal.
+    // Nothing else pins that distinction for the click path — the pasted-URL
+    // path has its own test — so unifying the two activation helpers would
+    // otherwise pass CI.
+    expect(screen.getByTestId('object-status-row-1')).not.toHaveAttribute('data-selected');
+    expect(
+      within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img').style.transform
+    ).toBe('');
   });
 
   it('clicking a grid cell navigates to the editor URL naming the object and the frame', async () => {

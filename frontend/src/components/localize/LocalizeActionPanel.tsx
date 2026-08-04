@@ -36,7 +36,11 @@ export const LocalizeActionPanel: React.FC<LocalizeActionPanelProps> = ({
   // Same card surface as the Objects rail beside it — paper on a hairline,
   // per DESIGN.md. A tinted bar would have made the controls read as a
   // toolbar bolted onto the page rather than one of its cards.
-  <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-card border border-line bg-paper px-[22px] py-3">
+  // Padding is tighter than the rail's card beside it: this one is a control
+  // bar that never scrolls away, so every row of it is a row the grid below
+  // doesn't get. The buttons keep the view toolbar's height — shrinking them
+  // instead would make the panel twitch as objects are selected.
+  <div className="mb-2 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 rounded-card border border-line bg-paper px-4 py-1.5">
     <span className="flex min-w-0 flex-1 items-center gap-2">
       {color && (
         <span
