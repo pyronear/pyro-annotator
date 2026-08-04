@@ -36,7 +36,7 @@ export const LocalizeActionPanel: React.FC<LocalizeActionPanelProps> = ({
   // Same card surface as the Objects rail beside it — paper on a hairline,
   // per DESIGN.md. A tinted bar would have made the controls read as a
   // toolbar bolted onto the page rather than one of its cards.
-  <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-card border border-line bg-paper px-[22px] py-3">
+  <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-card border border-line bg-paper px-[22px] py-3">
     <span className="flex min-w-0 flex-1 items-center gap-2">
       {color && (
         <span

@@ -1178,25 +1178,26 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
             }
           />
 
-          <div className="rounded-card border border-line bg-paper px-[22px] py-5">
-            {(isFocused || showCroppedView) &&
-              activeLaneId != null &&
-              activeLaneBoxes.length > 0 && (
-                <div className="mb-4 flex justify-center">
-                  <CroppedImageSequence bboxes={activeLaneBoxes} sequenceId={activeLaneId} />
-                </div>
-              )}
+          {/* The cells sit straight on the page, with no card of their own:
+              everything that frames them — the object, the actions, the view
+              controls — moved up into the panel above, so a second border
+              around the images was drawing a box around a box. The images
+              carry their own edges. */}
+          {(isFocused || showCroppedView) && activeLaneId != null && activeLaneBoxes.length > 0 && (
+            <div className="mb-4 flex justify-center">
+              <CroppedImageSequence bboxes={activeLaneBoxes} sequenceId={activeLaneId} />
+            </div>
+          )}
 
-            <AlertFrameGrid
-              frames={frameModel.frames}
-              activeLaneId={activeLaneId}
-              onCellClick={handleCellClick}
-              cellRef={handleCellRef}
-              cardMinWidth={cardMinWidth}
-              cropMode={cropMode}
-              highlightedFrame={highlightedFrame}
-            />
-          </div>
+          <AlertFrameGrid
+            frames={frameModel.frames}
+            activeLaneId={activeLaneId}
+            onCellClick={handleCellClick}
+            cellRef={handleCellRef}
+            cardMinWidth={cardMinWidth}
+            cropMode={cropMode}
+            highlightedFrame={highlightedFrame}
+          />
         </div>
 
         <div className="lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:flex-1 lg:min-w-0 lg:overflow-y-auto">

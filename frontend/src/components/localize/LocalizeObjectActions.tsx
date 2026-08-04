@@ -26,22 +26,29 @@ export interface LocalizeObjectActionsProps {
   /**
    * `compact` fits the rail row's line, where these are one of several things
    * competing for a narrow strip. `prominent` is the media column's call to
-   * action, where they ARE the point of the screen: full-size buttons, and
-   * Accept in the primary fill, since it is the one that moves the work on.
+   * action: the same height, so the control panel doesn't grow when an object
+   * is selected, but Accept carries the primary fill since it is the one that
+   * moves the work on.
    */
   size?: 'compact' | 'prominent';
 }
 
 const COMPACT =
   'whitespace-nowrap rounded-lg border border-line bg-paper px-2 py-1 font-body text-xs font-medium text-char hover:bg-ash disabled:cursor-not-allowed disabled:opacity-50';
+// Prominence comes from fill and placement, not from size: these sit on the
+// control panel's line, and anything taller than the view toolbar beside them
+// would grow the panel the moment an object is selected — the page would
+// twitch on every selection. So they match the toolbar's height and earn
+// their weight from colour.
+//
 // Pine rather than ember: on this page pine is the colour of work moving
 // forward — it is what Submit wears — and accepting an object's boxes is the
 // same motion, one object at a time. Ember would read as the alert's headline
 // action and compete with Submit for it.
 const PROMINENT_PRIMARY =
-  'inline-flex items-center whitespace-nowrap rounded-lg bg-pine px-4 py-2 font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50';
+  'inline-flex items-center whitespace-nowrap rounded-lg bg-pine px-3 py-1 font-body text-xs font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50';
 const PROMINENT_SECONDARY =
-  'inline-flex items-center whitespace-nowrap rounded-lg border border-line bg-paper px-3 py-2 font-body text-sm font-medium text-char hover:bg-ash';
+  'inline-flex items-center whitespace-nowrap rounded-lg border border-line bg-paper px-3 py-1 font-body text-xs font-medium text-char hover:bg-ash';
 
 export const LocalizeObjectActions: React.FC<LocalizeObjectActionsProps> = ({
   label,
