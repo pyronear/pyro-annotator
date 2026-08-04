@@ -600,6 +600,9 @@ describe('LocalizeAlertPage', () => {
 
     await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
+    // The action lives on the selected row, so reaching it goes through
+    // selecting the object it belongs to.
+    fireEvent.click(screen.getByTestId('localize-object-row-object-1'));
     fireEvent.click(screen.getByRole('button', { name: "Accept Object 1's boxes" }));
 
     await waitFor(() => {
@@ -1168,6 +1171,9 @@ describe('LocalizeAlertPage', () => {
       );
 
       // And its rail row says 0 of 2 done rather than implying progress.
+      // Adding an object activates it, and a selected row shows its actions
+      // in the fraction's place — so deselect to read the progress off it.
+      fireEvent.click(screen.getByTestId('localize-object-row-object-3'));
       expect(
         within(screen.getByTestId('localize-object-row-object-3')).getByText('0/2')
       ).toBeInTheDocument();
@@ -1933,6 +1939,8 @@ describe('LocalizeAlertPage', () => {
     it("navigates to the row's OWN lane in classify done mode, carrying a return to this page", async () => {
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
+      // Reclassify is on the selected row only, so select Object 2 first.
+      fireEvent.click(screen.getByTestId('localize-object-row-object-2'));
       fireEvent.click(
         within(screen.getByTestId('localize-object-row-object-2')).getByRole('button', {
           name: 'Reclassify Object 2',
@@ -1952,6 +1960,7 @@ describe('LocalizeAlertPage', () => {
       // from.
       await renderAndSettle(<LocalizeAlertPage mode="done" />, { wrapper: doneWrapper });
 
+      fireEvent.click(screen.getByTestId('localize-object-row-object-2'));
       fireEvent.click(
         within(screen.getByTestId('localize-object-row-object-2')).getByRole('button', {
           name: 'Reclassify Object 2',
@@ -1983,6 +1992,7 @@ describe('LocalizeAlertPage', () => {
       });
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
+      fireEvent.click(screen.getByTestId('localize-object-row-object-2'));
       const contextRow = within(screen.getByTestId('localize-object-row-object-2'));
       // Context rows carry no Accept boxes action, but stay correctable.
       expect(contextRow.queryByRole('button', { name: /Accept/ })).not.toBeInTheDocument();
@@ -2014,9 +2024,14 @@ describe('LocalizeAlertPage', () => {
 
       fireEvent.click(screen.getByRole('button', { name: /False positives/ }));
 
-      const fpRow = within(await screen.findByTestId('localize-object-row-object-2'));
+      // Selected, where every other row shows its actions, the false
+      // positive still shows none.
+      fireEvent.click(await screen.findByTestId('localize-object-row-object-2'));
+      const fpRow = within(screen.getByTestId('localize-object-row-object-2'));
       expect(fpRow.queryByRole('button', { name: /Reclassify/ })).not.toBeInTheDocument();
+
       // The smoke row above it still has one.
+      fireEvent.click(screen.getByTestId('localize-object-row-object-1'));
       expect(
         within(screen.getByTestId('localize-object-row-object-1')).getByRole('button', {
           name: 'Reclassify Object 1',

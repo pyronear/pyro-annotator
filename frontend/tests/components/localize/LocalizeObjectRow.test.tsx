@@ -10,6 +10,10 @@
  * Actions: `Accept boxes` is covered through the page; `Reclassify` is
  * covered here — which rows get it, and that it doesn't double as a row
  * activation.
+ *
+ * Action visibility: the actions live behind selection, and they take the
+ * right-hand metadata's place rather than adding a line — so the rail reads
+ * as one column of quiet rows plus whichever one you're working on.
  */
 
 import React from 'react';
@@ -67,6 +71,8 @@ describe('LocalizeObjectRow selection treatment', () => {
   });
 });
 
+// Selected by default: the actions only exist on the selected row, so a
+// suite about the actions has to start there.
 function renderRow(overrides: Partial<React.ComponentProps<typeof LocalizeObjectRow>> = {}) {
   const onActivate = vi.fn();
   const onReclassify = vi.fn();
@@ -78,7 +84,7 @@ function renderRow(overrides: Partial<React.ComponentProps<typeof LocalizeObject
       presentCount={2}
       workable
       smokeType="wildfire"
-      isActive={false}
+      isActive
       onActivate={onActivate}
       onReclassify={onReclassify}
       {...overrides}
@@ -123,5 +129,44 @@ describe('LocalizeObjectRow reclassify action', () => {
 
     expect(screen.queryByRole('button', { name: /Reclassify/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Accept/ })).not.toBeInTheDocument();
+  });
+});
+
+describe('LocalizeObjectRow action visibility', () => {
+  it('withholds both actions until the row is selected', () => {
+    renderRow({ isActive: false, onAcceptBoxes: vi.fn() });
+
+    expect(screen.queryByRole('button', { name: /Accept/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Reclassify/ })).not.toBeInTheDocument();
+    // What an unselected row says instead: how far along it is.
+    expect(screen.getByText('0/2')).toBeInTheDocument();
+    expect(screen.getByText('2 left')).toBeInTheDocument();
+  });
+
+  it('reveals them in the metadata’s place once selected', () => {
+    renderRow({ onAcceptBoxes: vi.fn() });
+
+    expect(screen.getByRole('button', { name: "Accept Object 1's boxes" })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reclassify Object 1' })).toBeInTheDocument();
+    // The count and status chip step aside rather than sharing the line —
+    // the rail is too narrow to carry both.
+    expect(screen.queryByText('0/2')).not.toBeInTheDocument();
+    expect(screen.queryByText('2 left')).not.toBeInTheDocument();
+  });
+
+  it('keeps the status chip on a selected row that has no actions to show', () => {
+    // A false positive gets neither action, so there is nothing to swap in —
+    // blanking its right side would lose the only thing it says.
+    renderRow({
+      isActive: true,
+      isFalsePositive: true,
+      workable: false,
+      smokeType: undefined,
+      falsePositiveTypes: ['cloud'],
+      onAcceptBoxes: undefined,
+      onReclassify: undefined,
+    });
+
+    expect(screen.getByText('False positive')).toBeInTheDocument();
   });
 });

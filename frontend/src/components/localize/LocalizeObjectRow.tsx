@@ -4,11 +4,15 @@
  * *classification*, this one carries a per-object *localization progress*:
  * how many of the frames the object appears on already have a committed box.
  *
- * Unlike classify's row, the actions don't hide behind activation: Accept
- * boxes is a one-click bulk action on the row's own lane, so it stays visible
- * on every workable row (matching the pre-cockpit strip's behavior).
- * Activation therefore shows up purely as the accent treatment — the media
- * column follows the active object, so the row doesn't need to expand.
+ * Like classify's row, the actions hide behind activation — but they appear
+ * on the header line's right rather than expanding the row, taking the place
+ * of the progress count and status chip. The selected row is the one being
+ * worked, so its right side turns into what you can DO to it; every other row
+ * keeps saying where it stands. Both halves are the same width class, so the
+ * swap doesn't reflow the rail, and the trade is deliberate: reaching Accept
+ * boxes costs the click that selects the row (which also points the media
+ * column at the object), and in exchange the rail stops showing a wall of
+ * buttons for lanes nobody is looking at.
  *
  * Rows past localization lose Accept boxes but keep Reclassify — a finished
  * lane can still have been classified wrong — and stay clickable: activating
@@ -19,7 +23,7 @@
  */
 
 import React from 'react';
-import { Pencil } from 'lucide-react';
+import { Tooltip } from '@/components/ui/Tooltip';
 
 export interface LocalizeObjectRowProps {
   /** e.g. "Object 2" — the object's own label, shared with the timeline and grid overlays. */
@@ -76,6 +80,11 @@ export const LocalizeObjectRow: React.FC<LocalizeObjectRowProps> = ({
   onReclassify,
 }) => {
   const pendingCount = presentCount - confirmedCount;
+
+  // The right-hand swap. A row the page gave no actions (a false positive)
+  // has nothing to swap in, so selecting it must not blank the one thing it
+  // says about itself.
+  const showActions = isActive && !!(onAcceptBoxes || onReclassify);
 
   const status = isFalsePositive
     ? { label: 'False positive', tone: 'bg-ash text-haze' }
@@ -137,58 +146,70 @@ export const LocalizeObjectRow: React.FC<LocalizeObjectRowProps> = ({
           </span>
         </span>
         <span className="flex shrink-0 items-center gap-1.5">
-          {/* A false positive has no localization work, so a progress
-              fraction over its frames would be meaningless. */}
-          {!isFalsePositive && (
-            <span className="font-data text-detail text-haze">
-              {confirmedCount}/{presentCount}
-            </span>
+          {showActions ? (
+            <>
+              {onAcceptBoxes && (
+                // Says what it commits and what it leaves alone: the action is
+                // bulk, and the row it sits on is the only thing it touches.
+                <Tooltip
+                  tip={`Commits the model's predicted box on every frame of ${label} that still needs one. No other object is affected.`}
+                >
+                  <button
+                    type="button"
+                    // The visible label stays short for the rail's width; the
+                    // accessible name keeps naming the object, so "accept THIS
+                    // object's boxes" is unambiguous to a screen reader (and to
+                    // the page tests, which address rows by object).
+                    aria-label={`Accept ${label}'s boxes`}
+                    onClick={e => {
+                      e.stopPropagation();
+                      onAcceptBoxes();
+                    }}
+                    disabled={isAccepting}
+                    className="whitespace-nowrap rounded-lg border border-line bg-paper px-2 py-1 font-body text-xs font-medium text-char hover:bg-ash disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isAccepting ? 'Accepting…' : 'Accept boxes'}
+                  </button>
+                </Tooltip>
+              )}
+              {onReclassify && (
+                // Warns that it leaves the page — and that you come back,
+                // which is the part that makes clicking it feel safe.
+                <Tooltip
+                  tip={`Opens ${label} in classify to correct its smoke type or mark it a false positive, then returns you here.`}
+                >
+                  <button
+                    type="button"
+                    aria-label={`Reclassify ${label}`}
+                    onClick={e => {
+                      e.stopPropagation();
+                      onReclassify();
+                    }}
+                    className="whitespace-nowrap rounded-lg border border-line bg-paper px-2 py-1 font-body text-xs font-medium text-char hover:bg-ash"
+                  >
+                    Reclassify
+                  </button>
+                </Tooltip>
+              )}
+            </>
+          ) : (
+            <>
+              {/* A false positive has no localization work, so a progress
+                  fraction over its frames would be meaningless. */}
+              {!isFalsePositive && (
+                <span className="font-data text-detail text-haze">
+                  {confirmedCount}/{presentCount}
+                </span>
+              )}
+              <span
+                className={`whitespace-nowrap rounded-full px-2 py-0.5 font-body text-xs font-semibold ${status.tone}`}
+              >
+                {status.label}
+              </span>
+            </>
           )}
-          <span
-            className={`whitespace-nowrap rounded-full px-2 py-0.5 font-body text-xs font-semibold ${status.tone}`}
-          >
-            {status.label}
-          </span>
         </span>
       </div>
-
-      {(onAcceptBoxes || onReclassify) && (
-        <div className="mt-2 flex items-center gap-1.5">
-          {onAcceptBoxes && (
-            <button
-              type="button"
-              // The visible label stays short for the rail's width; the
-              // accessible name keeps naming the object, so "accept THIS
-              // object's boxes" is unambiguous to a screen reader (and to the
-              // page tests, which address rows by object).
-              aria-label={`Accept ${label}'s boxes`}
-              onClick={e => {
-                e.stopPropagation();
-                onAcceptBoxes();
-              }}
-              disabled={isAccepting}
-              title={`Accept ${label}'s predicted boxes for all pending frames`}
-              className="rounded-lg border border-line bg-paper px-2 py-1 font-body text-xs font-medium text-char hover:bg-ash disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isAccepting ? 'Accepting…' : 'Accept boxes'}
-            </button>
-          )}
-          {onReclassify && (
-            <button
-              type="button"
-              aria-label={`Reclassify ${label}`}
-              onClick={e => {
-                e.stopPropagation();
-                onReclassify();
-              }}
-              title={`Correct ${label}'s classification`}
-              className="inline-flex items-center gap-1 rounded-lg border border-line bg-paper px-2 py-1 font-body text-xs font-medium text-char hover:bg-ash"
-            >
-              <Pencil className="h-3 w-3" aria-hidden="true" /> Reclassify
-            </button>
-          )}
-        </div>
-      )}
     </div>
   );
 };
