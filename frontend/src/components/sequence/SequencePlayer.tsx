@@ -16,6 +16,7 @@ import { Detection, AlgoPrediction } from '@/types/api';
 import { useImagePreloader } from '@/hooks/useImagePreloader';
 import { ObjectOverlay } from '@/utils/annotation/objectColors';
 import MissedSmokeInstructionsModal from './MissedSmokeInstructionsModal';
+import { formatDateTime } from '@/utils/datetime';
 
 interface SequencePlayerProps {
   detections: Detection[];
@@ -470,9 +471,7 @@ export default function SequencePlayer({
                 <p className="text-sm font-medium">
                   Detection {currentIndex + 1} of {detections.length}
                 </p>
-                <p className="text-xs opacity-90">
-                  {new Date(currentDetection.recorded_at).toLocaleString()}
-                </p>
+                <p className="text-xs opacity-90">{formatDateTime(currentDetection.recorded_at)}</p>
               </div>
 
               {/* Center - Missed Smoke Review */}

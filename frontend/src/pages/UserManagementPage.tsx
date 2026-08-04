@@ -13,6 +13,7 @@ import { apiClient } from '@/services/api';
 import { QUERY_KEYS, PAGINATION_DEFAULTS } from '@/utils/constants';
 import { useAuthStore } from '@/store/useAuthStore';
 import PasswordField from '@/components/ui/PasswordField';
+import { formatDate } from '@/utils/datetime';
 
 export default function UserManagementPage() {
   const { user: currentUser, isSuperuser } = useAuthStore();
@@ -284,7 +285,7 @@ export default function UserManagementPage() {
                     )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap font-data text-detail text-haze">
-                    {new Date(user.created_at).toLocaleDateString()}
+                    {formatDate(user.created_at)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
                     {!user.is_system && (

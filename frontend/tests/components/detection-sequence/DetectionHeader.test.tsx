@@ -6,6 +6,7 @@ import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { DetectionHeader } from '@/components/detection-sequence/DetectionHeader';
 import type { Sequence, SequenceAnnotation } from '@/types/api';
+import { formatDateTime } from '@/utils/datetime';
 
 // Mock the icons to avoid test complications
 vi.mock('lucide-react', async importOriginal => {
@@ -104,7 +105,7 @@ describe('DetectionHeader', () => {
       render(<DetectionHeader {...defaultProps} />);
       expect(screen.getByText('Test Org')).toBeInTheDocument();
       expect(screen.getByText('Camera-01')).toBeInTheDocument();
-      expect(screen.getByText(/1\/1\/2024/)).toBeInTheDocument();
+      expect(screen.getByText(formatDateTime('2024-01-01T10:00:00Z'))).toBeInTheDocument();
       expect(screen.queryByText('180°')).toBeNull();
       expect(screen.queryByText(/45\.123/)).toBeNull();
       expect(screen.queryByText(/frames/)).toBeNull();

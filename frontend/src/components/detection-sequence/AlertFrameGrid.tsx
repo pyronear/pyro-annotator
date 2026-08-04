@@ -26,6 +26,7 @@ import { useDetectionImage } from '@/hooks/useDetectionImage';
 import { normalizedToPixelBox, ImageInfo } from '@/utils/annotation/coordinateUtils';
 import { computeCellCrop } from '@/utils/annotation/gridCropUtils';
 import { AlertFrame, AlertFrameCell } from '@/utils/annotation/alertLocalizeUtils';
+import { formatDateTime } from '@/utils/datetime';
 
 interface AlertFrameGridProps {
   frames: AlertFrame[];
@@ -205,7 +206,7 @@ function AlertFrameCellView({
       </span>
 
       <div className="absolute bottom-0 left-0 bg-char/60 text-white text-[10px] px-1 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-        {new Date(frame.recordedAt).toLocaleString()}
+        {formatDateTime(frame.recordedAt)}
       </div>
     </div>
   );

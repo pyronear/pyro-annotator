@@ -20,6 +20,7 @@ vi.mock('react-router-dom', async importOriginal => {
 
 import { apiClient } from '@/services/api';
 import DetectionAnnotatePage from '@/pages/DetectionAnnotatePage';
+import { formatDateTime } from '@/utils/datetime';
 
 function wrapper({ children }: { children: React.ReactNode }) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -81,7 +82,7 @@ describe('DetectionAnnotatePage (Localize queue)', () => {
     // Source as plain text
     expect(screen.getByText('pyronear_french')).toBeTruthy();
     // Absolute date-time, app-wide convention
-    expect(screen.getByText(new Date('2026-07-27T10:00:00Z').toLocaleString())).toBeTruthy();
+    expect(screen.getByText(formatDateTime('2026-07-27T10:00:00Z'))).toBeTruthy();
     // Azimuth column
     expect(screen.getByText('143°')).toBeTruthy();
     // Objects / Frames = smoke lanes only (lane 11; lane 12 is FP)
