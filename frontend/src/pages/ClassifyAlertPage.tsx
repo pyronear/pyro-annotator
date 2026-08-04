@@ -602,6 +602,13 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
     editableCards.length > 0 &&
     (mode === 'done' ? isComplete && anyLaneChanged : isComplete && missedSmokeReview !== null);
 
+  // Shared by the header submit and its rail-footer mirror.
+  const submitLabel =
+    mode === 'done'
+      ? `Save changes (${changedLaneCount})`
+      : `Submit alert (${editableCards.length} objects)`;
+  const submitTitle = mode === 'done' ? 'Save changes (Enter)' : 'Submit alert (Enter)';
+
   const submitMutation = useMutation({
     mutationFn: async (): Promise<{ results: ClassifySubmitResult[] }> => {
       if (mode === 'done') {
@@ -886,16 +893,14 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
               onClick={handleSubmit}
               disabled={!canSubmit || submitMutation.isPending}
               className="inline-flex items-center rounded-lg bg-ember px-4 py-2 font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              title={mode === 'done' ? 'Save changes (Enter)' : 'Submit alert (Enter)'}
+              title={submitTitle}
             >
               {submitMutation.isPending ? (
                 <div className="w-3.5 h-3.5 mr-1.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
               ) : (
                 <Upload className="w-3.5 h-3.5 mr-1.5" />
               )}
-              {mode === 'done'
-                ? `Save changes (${changedLaneCount})`
-                : `Submit alert (${editableCards.length} objects)`}
+              {submitLabel}
             </button>
 
             <button
@@ -966,6 +971,22 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
               onMissedSmokeActivate={() => setActiveSection('sequence')}
               missedSmokeDisabled={missedSmokeCarrierLaneId === undefined}
               missedSmokeRowRef={sequenceReviewerRef}
+              footer={
+                <button
+                  onClick={handleSubmit}
+                  disabled={!canSubmit || submitMutation.isPending}
+                  data-testid="rail-submit"
+                  className="w-full inline-flex items-center justify-center rounded-lg bg-ember px-4 py-2.5 font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title={submitTitle}
+                >
+                  {submitMutation.isPending ? (
+                    <div className="w-3.5 h-3.5 mr-1.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  ) : (
+                    <Upload className="w-3.5 h-3.5 mr-1.5" />
+                  )}
+                  {submitLabel}
+                </button>
+              }
             >
               {renderItems.map((item, i) => {
                 const objectNumber = i + 1;

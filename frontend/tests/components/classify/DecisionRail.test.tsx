@@ -49,6 +49,25 @@ describe('DecisionRail', () => {
     expect(onMissedSmokeReviewChange).not.toHaveBeenCalled();
   });
 
+  it('renders the footer after the missed-smoke row when provided', () => {
+    render(
+      <DecisionRail
+        missedSmokeReview={null}
+        onMissedSmokeReviewChange={vi.fn()}
+        missedSmokeActive={false}
+        onMissedSmokeActivate={vi.fn()}
+        footer={<button data-testid="footer-button">Submit</button>}
+      >
+        <div />
+      </DecisionRail>
+    );
+    const footerButton = screen.getByTestId('footer-button');
+    expect(
+      screen.getByTestId('missed-smoke-row').compareDocumentPosition(footerButton) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+
   it('disables the chips when missedSmokeDisabled', () => {
     const { onMissedSmokeReviewChange } = renderRail({ missedSmokeDisabled: true });
     const row = within(screen.getByTestId('missed-smoke-row'));

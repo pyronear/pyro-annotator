@@ -19,6 +19,8 @@ export interface DecisionRailProps {
   /** Disables Yes/No (e.g. no open lane to carry the flag). */
   missedSmokeDisabled?: boolean;
   missedSmokeRowRef?: React.RefObject<HTMLDivElement>;
+  /** Rendered after the missed-smoke row — the page passes its rail-level Submit button here. */
+  footer?: React.ReactNode;
   /** Object rows / placeholders, already ordered. */
   children: React.ReactNode;
 }
@@ -35,6 +37,7 @@ export const DecisionRail: React.FC<DecisionRailProps> = ({
   onMissedSmokeActivate,
   missedSmokeDisabled = false,
   missedSmokeRowRef,
+  footer,
   children,
 }) => (
   <div className="rounded-card border border-line bg-paper px-[22px] py-5">
@@ -111,5 +114,7 @@ export const DecisionRail: React.FC<DecisionRailProps> = ({
         </p>
       )}
     </div>
+
+    {footer && <div className="mt-4">{footer}</div>}
   </div>
 );

@@ -294,7 +294,7 @@ describe('ClassifyAlertPage', () => {
   it('disables submit until every editable row is classified and missed smoke is answered', async () => {
     await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 
-    const submitButton = screen.getByRole('button', { name: /Submit alert/i });
+    const submitButton = screen.getAllByRole('button', { name: /Submit alert/i })[0];
     expect(submitButton).toBeDisabled();
 
     // Classify object 1 as smoke + wildfire
@@ -360,7 +360,7 @@ describe('ClassifyAlertPage', () => {
     // Even after answering missed smoke, submit stays disabled — the
     // placeholder track alone doesn't count as classified.
     fireEvent.click(missedSmokeChip('No'));
-    expect(screen.getByRole('button', { name: /Submit alert/i })).toBeDisabled();
+    expect(screen.getAllByRole('button', { name: /Submit alert/i })[0]).toBeDisabled();
   });
 
   it('still pre-fills a genuinely labeled track (e.g. group inheritance) that carries a real smoke_type', async () => {
@@ -396,7 +396,7 @@ describe('ClassifyAlertPage', () => {
     expect(card.getByText('Smoke · Wildfire')).toBeInTheDocument();
 
     fireEvent.click(missedSmokeChip('No'));
-    expect(screen.getByRole('button', { name: /Submit alert/i })).not.toBeDisabled();
+    expect(screen.getAllByRole('button', { name: /Submit alert/i })[0]).not.toBeDisabled();
   });
 
   it('submits with per-lane stages: FP-only lane annotated, smoke lane seq_annotation_done, primary carries has_missed_smoke', async () => {
@@ -412,7 +412,7 @@ describe('ClassifyAlertPage', () => {
 
     fireEvent.click(missedSmokeChip('Yes'));
 
-    const submitButton = screen.getByRole('button', { name: /Submit alert/i });
+    const submitButton = screen.getAllByRole('button', { name: /Submit alert/i })[0];
     expect(submitButton).not.toBeDisabled();
     fireEvent.click(submitButton);
 
@@ -497,7 +497,7 @@ describe('ClassifyAlertPage', () => {
 
     await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 
-    expect(screen.getByRole('button', { name: /Submit alert/i })).toBeDisabled();
+    expect(screen.getAllByRole('button', { name: /Submit alert/i })[0]).toBeDisabled();
   });
 
   it('routes alert-level missed smoke to the first still-open lane when the primary lane is already locked', async () => {
@@ -549,7 +549,7 @@ describe('ClassifyAlertPage', () => {
 
     fireEvent.click(missedSmokeChip('Yes'));
 
-    const submitButton = screen.getByRole('button', { name: /Submit alert/i });
+    const submitButton = screen.getAllByRole('button', { name: /Submit alert/i })[0];
     expect(submitButton).not.toBeDisabled();
     fireEvent.click(submitButton);
 
@@ -576,7 +576,7 @@ describe('ClassifyAlertPage', () => {
     fireEvent.click(cardB.getByRole('checkbox', { name: 'Antenna' }));
 
     fireEvent.click(missedSmokeChip('No'));
-    fireEvent.click(screen.getByRole('button', { name: /Submit alert/i }));
+    fireEvent.click(screen.getAllByRole('button', { name: /Submit alert/i })[0]);
 
     await waitFor(() => expect(apiClient.classifySubmit).toHaveBeenCalledTimes(1));
     // No active workflow in this test (annotationWorkflow defaults to null
@@ -604,7 +604,7 @@ describe('ClassifyAlertPage', () => {
     fireEvent.click(cardB.getByRole('checkbox', { name: 'Antenna' }));
 
     fireEvent.click(missedSmokeChip('No'));
-    fireEvent.click(screen.getByRole('button', { name: /Submit alert/i }));
+    fireEvent.click(screen.getAllByRole('button', { name: /Submit alert/i })[0]);
 
     await waitFor(() =>
       expect(screen.getByText(/Submit failed: Lane 103 is locked/)).toBeInTheDocument()
@@ -689,7 +689,7 @@ describe('ClassifyAlertPage', () => {
     fireEvent.click(cardB.getByRole('checkbox', { name: 'Antenna' }));
 
     fireEvent.click(missedSmokeChip('No'));
-    fireEvent.click(screen.getByRole('button', { name: /Submit alert/i }));
+    fireEvent.click(screen.getAllByRole('button', { name: /Submit alert/i })[0]);
 
     await waitFor(() => expect(screen.getByText(/Group propagation skipped/)).toBeInTheDocument());
 
@@ -934,6 +934,35 @@ describe('ClassifyAlertPage', () => {
     );
   });
 
+  it('mirrors Submit in the rail below the missed-smoke row, tracking the same enablement, and submits from there', async () => {
+    await renderAndSettle(<ClassifyAlertPage />, { wrapper });
+
+    const railSubmit = screen.getByTestId('rail-submit');
+    // Sits after the missed-smoke row in document order.
+    expect(
+      screen.getByTestId('missed-smoke-row').compareDocumentPosition(railSubmit) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(railSubmit).toBeDisabled();
+
+    const cardA = openRow('101:0');
+    fireEvent.click(cardA.getByRole('radio', { name: 'Smoke' }));
+    fireEvent.click(cardA.getByRole('radio', { name: 'Wildfire' }));
+    const cardB = openRow('102:0');
+    fireEvent.click(cardB.getByRole('radio', { name: 'False positive' }));
+    fireEvent.click(cardB.getByRole('checkbox', { name: 'Antenna' }));
+    expect(railSubmit).toBeDisabled();
+
+    fireEvent.click(missedSmokeChip('No'));
+    expect(railSubmit).not.toBeDisabled();
+
+    fireEvent.click(railSubmit);
+    await waitFor(() => expect(apiClient.classifySubmit).toHaveBeenCalledTimes(1));
+
+    // Drain the success path's deferred navigate (see the submit tests above).
+    await waitFor(() => expect(navigateMock).toHaveBeenCalled(), { timeout: 2000 });
+  });
+
   it('shows the FP type chips as a full inline wrap on the active row', async () => {
     await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 
@@ -1107,7 +1136,7 @@ describe('ClassifyAlertPage done mode', () => {
   it('keeps save disabled until a lane actually changes, even though every row is already validly classified', async () => {
     await renderAndSettle(<ClassifyAlertPage mode="done" />, { wrapper: makeDoneWrapper(101) });
 
-    const submitButton = screen.getByRole('button', { name: /Save changes/ });
+    const submitButton = screen.getAllByRole('button', { name: /Save changes/ })[0];
     expect(submitButton).toBeDisabled();
 
     // Change lane A's smoke type — a real edit.
@@ -1123,7 +1152,7 @@ describe('ClassifyAlertPage done mode', () => {
     const cardA = within(screen.getByTestId('object-card-101:0'));
     fireEvent.click(cardA.getByRole('radio', { name: 'Industrial' }));
 
-    const submitButton = screen.getByRole('button', { name: /Save changes/ });
+    const submitButton = screen.getAllByRole('button', { name: /Save changes/ })[0];
     expect(submitButton).not.toBeDisabled();
     fireEvent.click(submitButton);
 
@@ -1151,7 +1180,7 @@ describe('ClassifyAlertPage done mode', () => {
   it('an alert-level missed-smoke-only change makes the primary lane "changed" and is saved on its PATCH', async () => {
     await renderAndSettle(<ClassifyAlertPage mode="done" />, { wrapper: makeDoneWrapper(101) });
 
-    const submitButton = screen.getByRole('button', { name: /Save changes/ });
+    const submitButton = screen.getAllByRole('button', { name: /Save changes/ })[0];
     expect(submitButton).toBeDisabled();
 
     // No row edits at all — only the alert-level missed-smoke review changes.
@@ -1212,7 +1241,7 @@ describe('ClassifyAlertPage done mode', () => {
     const cardD = openRow('104:0');
     fireEvent.click(cardD.getByRole('radio', { name: 'Wildfire' }));
 
-    const submitButton = screen.getByRole('button', { name: /Save changes/ });
+    const submitButton = screen.getAllByRole('button', { name: /Save changes/ })[0];
     expect(submitButton).not.toBeDisabled();
     fireEvent.click(submitButton);
 
@@ -1235,7 +1264,7 @@ describe('ClassifyAlertPage done mode', () => {
   it('shows the changed dot on edited rows and counts changed lanes in the Save button', async () => {
     await renderAndSettle(<ClassifyAlertPage mode="done" />, { wrapper: makeDoneWrapper(101) });
 
-    expect(screen.getByRole('button', { name: /Save changes \(0\)/ })).toBeDisabled();
+    expect(screen.getAllByRole('button', { name: /Save changes \(0\)/ })[0]).toBeDisabled();
     expect(screen.queryByTestId('object-row-changed-101:0')).not.toBeInTheDocument();
 
     const cardA = within(screen.getByTestId('object-card-101:0'));
@@ -1243,6 +1272,6 @@ describe('ClassifyAlertPage done mode', () => {
 
     expect(screen.getByTestId('object-row-changed-101:0')).toBeInTheDocument();
     expect(screen.queryByTestId('object-row-changed-102:0')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Save changes \(1\)/ })).toBeEnabled();
+    expect(screen.getAllByRole('button', { name: /Save changes \(1\)/ })[0]).toBeEnabled();
   });
 });
