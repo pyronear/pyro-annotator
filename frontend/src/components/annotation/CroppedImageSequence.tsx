@@ -1,7 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Loader2, AlertCircle, Minus, Plus, RotateCcw } from 'lucide-react';
+import { Loader2, AlertCircle, Minus, Plus } from 'lucide-react';
 import { BoundingBox } from '@/types/api';
 import { apiClient } from '@/services/api';
+import { computeSquareCrop, maxSquareZoom, MIN_ZOOM } from '@/utils/annotation/squareCropUtils';
+
+/** Constant canvas backing resolution — CSS scales it; zoom never resizes the element. */
+const CANVAS_RES = 840;
 
 interface CroppedImageSequenceProps {
   bboxes: BoundingBox[];
@@ -25,7 +29,7 @@ export default function CroppedImageSequence({
   const [images, setImages] = useState<ImageData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [zoomLevel, setZoomLevel] = useState(4); // Default 4x zoom
+  const [zoomLevel, setZoomLevel] = useState(MIN_ZOOM); // 1x = wide default framing
 
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -50,7 +54,7 @@ export default function CroppedImageSequence({
     setCurrentIndex(0);
     setIsLoading(true);
     setError(null);
-    setZoomLevel(4); // Reset zoom to default
+    setZoomLevel(MIN_ZOOM); // Reset zoom to default
   }, [bboxes, sequenceId]);
 
   // Fetch detection image URLs
@@ -162,58 +166,43 @@ export default function CroppedImageSequence({
 
     const img = currentImage.imageElement;
 
-    // Calculate crop coordinates
-    const avgBbox = calculateAverageBbox(bboxes);
-    const [avgX1, avgY1, avgX2, avgY2] = avgBbox;
-
-    // 20% padding around the bbox to show surrounding context.
-    const padding = 0.2;
-    const padX = (avgX2 - avgX1) * padding;
-    const padY = (avgY2 - avgY1) * padding;
-
-    const cropX1 = Math.max(0, avgX1 - padX);
-    const cropY1 = Math.max(0, avgY1 - padY);
-    const cropX2 = Math.min(1, avgX2 + padX);
-    const cropY2 = Math.min(1, avgY2 + padY);
-
-    // Convert normalized coordinates to pixels
-    const imgWidth = img.naturalWidth;
-    const imgHeight = img.naturalHeight;
-
-    const sourceX = cropX1 * imgWidth;
-    const sourceY = cropY1 * imgHeight;
-    const sourceWidth = (cropX2 - cropX1) * imgWidth;
-    const sourceHeight = (cropY2 - cropY1) * imgHeight;
-
-    // Calculate maximum allowed zoom based on original image dimensions
-    const maxZoomX = imgWidth / sourceWidth;
-    const maxZoomY = imgHeight / sourceHeight;
-    const maxAllowedZoom = Math.min(maxZoomX, maxZoomY, 8); // Cap at 8x
-
-    // Use effective zoom (user's choice or maximum allowed)
-    const effectiveZoom = Math.min(zoomLevel, maxAllowedZoom);
-
-    // Set canvas size to cropped area × effective zoom
-    const canvasWidth = Math.round(sourceWidth * effectiveZoom);
-    const canvasHeight = Math.round(sourceHeight * effectiveZoom);
-
-    canvas.width = canvasWidth;
-    canvas.height = canvasHeight;
-
-    // Clear canvas and draw cropped image
-    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-    ctx.drawImage(
-      img,
-      sourceX,
-      sourceY,
-      sourceWidth,
-      sourceHeight, // source rectangle
-      0,
-      0,
-      canvasWidth,
-      canvasHeight // destination rectangle
+    const crop = computeSquareCrop(
+      calculateAverageBbox(bboxes),
+      img.naturalWidth,
+      img.naturalHeight,
+      zoomLevel
     );
+
+    canvas.width = CANVAS_RES;
+    canvas.height = CANVAS_RES;
+    ctx.clearRect(0, 0, CANVAS_RES, CANVAS_RES);
+    ctx.drawImage(img, crop.x, crop.y, crop.size, crop.size, 0, 0, CANVAS_RES, CANVAS_RES);
   }, [bboxes, currentIndex, images, zoomLevel]);
+
+  // Zoom range: the wide default framing (1x) up to bbox+pad, from the
+  // first loaded frame's dimensions (all frames of a sequence share them).
+  const loadedImage = images.find(img => img.loaded && img.imageElement)?.imageElement;
+  const maxZoom = loadedImage
+    ? maxSquareZoom(
+        calculateAverageBbox(bboxes),
+        loadedImage.naturalWidth,
+        loadedImage.naturalHeight
+      )
+    : MIN_ZOOM;
+
+  // Wheel-zoom must preventDefault so the page doesn't scroll — React's
+  // onWheel is passive, so attach the listener manually.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+      setZoomLevel(prev => Math.min(maxZoom, Math.max(MIN_ZOOM, prev * factor)));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [maxZoom]);
 
   // Redraw canvas when current index or zoom level changes
   useEffect(() => {
@@ -245,19 +234,13 @@ export default function CroppedImageSequence({
 
   return (
     <div className={className}>
-      {/* Cropped Image Container */}
+      {/* Fixed square viewport — the element never resizes; zoom changes the
+          drawn source rect instead (see squareCropUtils). */}
       <div
         ref={containerRef}
-        className="relative mx-auto overflow-hidden"
-        style={{
-          width: '900px',
-          maxWidth: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
+        data-testid="cropped-viewport"
+        className="relative mx-auto w-full max-w-[420px] aspect-square overflow-hidden bg-gray-900"
       >
-        {/* Loading State */}
         {showLoadingState && (
           <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-10">
             <div className="flex flex-col items-center space-y-3">
@@ -267,7 +250,6 @@ export default function CroppedImageSequence({
           </div>
         )}
 
-        {/* Error State */}
         {currentImage?.error && (
           <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-10">
             <div className="flex flex-col items-center space-y-2">
@@ -277,64 +259,35 @@ export default function CroppedImageSequence({
           </div>
         )}
 
-        {/* Cropped Canvas */}
         {currentImage?.loaded && currentImage.imageElement && (
-          <canvas
-            ref={canvasRef}
-            className="max-w-full h-auto"
-            style={{
-              display: 'block',
-              margin: '0 auto',
-            }}
-          />
+          <>
+            <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
+            <div className="absolute bottom-2 right-2 z-20 flex items-center gap-1.5 rounded-full bg-black/55 px-2.5 py-1 text-white">
+              <button
+                onClick={() => setZoomLevel(prev => Math.max(MIN_ZOOM, prev - 0.5))}
+                disabled={zoomLevel <= MIN_ZOOM}
+                title="Zoom out"
+                aria-label="Zoom out"
+                className="p-0.5 hover:text-gray-300 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Minus className="w-3.5 h-3.5" />
+              </button>
+              <span className="font-data text-[11px] font-medium w-8 text-center">
+                {zoomLevel.toFixed(1)}x
+              </span>
+              <button
+                onClick={() => setZoomLevel(prev => Math.min(maxZoom, prev + 0.5))}
+                disabled={zoomLevel >= maxZoom}
+                title="Zoom in"
+                aria-label="Zoom in"
+                className="p-0.5 hover:text-gray-300 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </>
         )}
       </div>
-
-      {/* Zoom controls — compact strip matching the grid's ViewToolbar */}
-      {currentImage?.loaded && currentImage.imageElement && (
-        <div className="mt-2 flex items-center justify-center">
-          <div className="inline-flex items-center rounded-md bg-gray-200 p-0.5 gap-1">
-            <button
-              onClick={() => setZoomLevel(prev => Math.max(1, prev - 0.5))}
-              disabled={zoomLevel <= 1}
-              title="Zoom out"
-              aria-label="Zoom out"
-              className="px-1.5 py-0.5 rounded text-xs font-semibold text-gray-600 hover:text-gray-900 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <Minus className="w-3.5 h-3.5" />
-            </button>
-            <input
-              type="range"
-              min="1"
-              max="8"
-              step="0.5"
-              value={zoomLevel}
-              onChange={e => setZoomLevel(parseFloat(e.target.value))}
-              className="w-24 h-1.5 bg-gray-300 rounded-lg appearance-none cursor-pointer"
-            />
-            <button
-              onClick={() => setZoomLevel(prev => Math.min(8, prev + 0.5))}
-              disabled={zoomLevel >= 8}
-              title="Zoom in"
-              aria-label="Zoom in"
-              className="px-1.5 py-0.5 rounded text-xs font-semibold text-gray-600 hover:text-gray-900 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <Plus className="w-3.5 h-3.5" />
-            </button>
-            <span className="text-xs font-medium text-gray-700 w-8 text-center">
-              {zoomLevel.toFixed(1)}x
-            </span>
-            <button
-              onClick={() => setZoomLevel(4)}
-              title="Reset zoom"
-              aria-label="Reset zoom"
-              className="px-1.5 py-0.5 rounded text-xs text-gray-600 hover:text-gray-900 hover:bg-white"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
