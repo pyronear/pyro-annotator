@@ -17,6 +17,8 @@ __all__ = [
     "AlertDetail",
     "AlertLane",
     "Azimuth",
+    "ClassifyDoneItem",
+    "ClassifyDoneLane",
     "ClassifyQueueItem",
     "LocalizationQueueItem",
     "LocalizationQueueLane",
@@ -170,6 +172,31 @@ class ClassifyQueueItem(BaseModel):
     primary_sequence_id: int
     total_objects: int
     classified_objects: int
+
+
+class ClassifyDoneLane(BaseModel):
+    """One classified object-sequence of a done alert (outcome-relevant fields only)."""
+
+    sequence_id: int
+    has_smoke: bool
+    has_missed_smoke: bool
+    is_unsure: bool
+    smoke_types: List[str] = []
+    false_positive_types: List[str] = []
+
+
+class ClassifyDoneItem(BaseModel):
+    """One fully classified alert (done-list row)."""
+
+    source_api: SourceApi
+    platform_alert_id: int
+    camera_name: str
+    organisation_name: str
+    azimuth: Optional[float] = None
+    recorded_at: datetime
+    is_wildfire_alertapi: Optional[AnnotationType] = None
+    primary_sequence_id: int
+    lanes: List[ClassifyDoneLane]
 
 
 class AlertLane(BaseModel):
