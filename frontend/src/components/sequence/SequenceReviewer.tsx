@@ -13,6 +13,8 @@ interface SequenceReviewerProps {
   className?: string;
   /** Every classified object's track boxes, color-coded per object — see SequencePlayer. */
   objectOverlays?: ObjectOverlay[];
+  /** Hide the player's embedded "Did the model miss any smoke?" overlay — used by the classify cockpit, where the decision rail owns the yes/no controls. */
+  hideReviewControls?: boolean;
 }
 
 export default function SequenceReviewer({
@@ -22,6 +24,7 @@ export default function SequenceReviewer({
   annotationLoading = false,
   className = '',
   objectOverlays,
+  hideReviewControls,
 }: SequenceReviewerProps) {
   // Playback state
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -182,6 +185,7 @@ export default function SequenceReviewer({
         onSpeedChange={handleSpeedChange}
         onReset={handleReset}
         objectOverlays={objectOverlays}
+        hideReviewControls={hideReviewControls}
       />
     </div>
   );

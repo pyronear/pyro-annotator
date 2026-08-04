@@ -34,6 +34,8 @@ interface SequencePlayerProps {
   onSeek: (index: number) => void;
   onSpeedChange: (speed: number) => void;
   onReset: () => void;
+  /** Hide the embedded "Did the model miss any smoke?" overlay — used by the classify cockpit, where the decision rail owns the yes/no controls. */
+  hideReviewControls?: boolean;
   className?: string;
 }
 
@@ -53,6 +55,7 @@ export default function SequencePlayer({
   onSpeedChange,
   onReset,
   objectOverlays,
+  hideReviewControls = false,
   className = '',
 }: SequencePlayerProps) {
   const [imageInfo, setImageInfo] = useState<{
@@ -473,6 +476,7 @@ export default function SequencePlayer({
               </div>
 
               {/* Center - Missed Smoke Review */}
+              {!hideReviewControls && (
               <div className="flex items-center space-x-4 bg-black/40 px-4 py-2 rounded-lg border border-white/20">
                 <span className="text-sm font-medium text-white">
                   Did the model miss any smoke?
@@ -513,6 +517,7 @@ export default function SequencePlayer({
                   <Info className="w-4 h-4 text-white" />
                 </button>
               </div>
+              )}
 
               {/* Right - Predictions + sibling toggle */}
               <div className="flex-1 flex items-center justify-end space-x-3">
