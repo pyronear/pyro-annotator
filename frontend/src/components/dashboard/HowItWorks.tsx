@@ -5,19 +5,19 @@ const STEPS = [
     key: 'Pass 01 · Classify',
     border: 'border-ember',
     text: 'text-ember',
-    body: 'Watch the sequence and decide what each highlighted track really is: wildfire smoke, other smoke, or a false positive. Flag any smoke the AI missed.',
+    body: 'Watch the alert and decide what each highlighted object really is: wildfire smoke, other smoke, or a false positive. Flag any smoke the AI missed.',
   },
   {
     key: 'Pass 02 · Localize',
     border: 'border-pine',
     text: 'text-pine',
-    body: 'For sequences that passed classification, draw a tight bounding box around the smoke in each image — the labels that train better detection models.',
+    body: 'For objects that passed classification, draw a tight bounding box around the smoke in each frame — the labels that train better detection models.',
   },
   {
     key: 'Complete',
     border: 'border-char',
     text: 'text-char',
-    body: "Both passes done: the sequence's labels are ready for dataset export and model training.",
+    body: "Both passes done: the object's labels are ready for dataset export and model training.",
   },
 ];
 
@@ -28,8 +28,8 @@ export default function HowItWorks() {
         How annotation works
       </h2>
       <p className="mb-3.5 font-body text-[13px] leading-relaxed text-char">
-        Wildfire cameras send detection sequences to the platform. Every sequence travels the same
-        path, and your work happens in two passes:
+        Wildfire cameras send alerts to the platform. Each alert groups the objects it caught, and
+        every object travels the same path — your work happens in two passes:
       </p>
       <div className="mb-3.5 flex flex-col gap-4 md:flex-row">
         {STEPS.map(step => (

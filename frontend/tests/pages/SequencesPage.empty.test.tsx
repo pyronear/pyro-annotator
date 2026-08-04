@@ -7,6 +7,7 @@ import React from 'react';
 vi.mock('@/services/api', () => ({
   apiClient: {
     getSequencesWithAnnotations: vi.fn(),
+    getClassifyQueue: vi.fn(),
   },
 }));
 
@@ -70,12 +71,15 @@ describe('SequencesPage empty states', () => {
     resetFiltersMock.mockClear();
     mockedCameraName = undefined;
     vi.mocked(apiClient.getSequencesWithAnnotations).mockResolvedValue(emptyPage);
+    // Default (no props) SequencesPage is queue mode — alert-grouped queue, not
+    // the plain sequences fetch.
+    vi.mocked(apiClient.getClassifyQueue).mockResolvedValue(emptyPage);
   });
 
   it('queue without filters shows queue-is-clear state linking to localize', async () => {
     render(<SequencesPage />, { wrapper });
     await waitFor(() => expect(screen.getByText('Classification queue is clear')).toBeTruthy());
-    expect(screen.getByText(/every imported sequence has been classified/)).toBeTruthy();
+    expect(screen.getByText(/every alert has been classified/)).toBeTruthy();
     const cta = screen.getByRole('link', { name: 'Start localizing' });
     expect(cta.getAttribute('href')).toBe('/localize');
     // Old celebratory state is gone
@@ -86,7 +90,7 @@ describe('SequencesPage empty states', () => {
   it('with active filters shows no-matches state and Clear filters resets them', async () => {
     mockedCameraName = 'CAM_01';
     render(<SequencesPage />, { wrapper });
-    await waitFor(() => expect(screen.getByText('No matching sequences')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('No matching alerts')).toBeTruthy());
     expect(screen.getByText(/matches your current filters/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
     expect(resetFiltersMock).toHaveBeenCalledTimes(1);

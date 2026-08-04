@@ -10,8 +10,8 @@ This script provides a streamlined workflow to fetch alert API data and generate
    threshold are dropped (same rule as the platform frontend), so annotation happens
    per object rather than per camera event
 3. Import the resulting object sequences into the annotation API
-4. Generate annotations from AI predictions for successfully imported sequences only
-5. Set sequences to READY_TO_ANNOTATE stage
+4. Generate annotations from AI predictions for successfully imported object sequences only
+5. Set object sequences to READY_TO_ANNOTATE stage
 
 Usage:
   # Basic usage - full pipeline for date range

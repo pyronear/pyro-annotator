@@ -5,7 +5,7 @@ import AppLayout from '@/components/layout/AppLayout';
 import DashboardPage from '@/pages/DashboardPage';
 import SequencesPage from '@/pages/SequencesPage';
 import SequencesPageWrapper from '@/pages/SequencesPageWrapper';
-import AnnotationInterface from '@/pages/AnnotationInterface';
+import ClassifyAlertPage from '@/pages/ClassifyAlertPage';
 import DetectionAnnotatePage from '@/pages/DetectionAnnotatePage';
 import DetectionReviewPage from '@/pages/DetectionReviewPage';
 import DetectionSequenceAnnotatePage from '@/pages/DetectionSequenceAnnotatePage';
@@ -92,8 +92,8 @@ function App() {
                     element={<SequenceGroupsListPage filter="all" />}
                   />
                   <Route path="/classify/groups/:id" element={<SequenceGroupAnnotatePage />} />
-                  <Route path="/classify/done/:id" element={<AnnotationInterface mode="done" />} />
-                  <Route path="/classify/:id" element={<AnnotationInterface />} />
+                  <Route path="/classify/done/:id" element={<ClassifyAlertPage mode="done" />} />
+                  <Route path="/classify/:id" element={<ClassifyAlertPage />} />
                   <Route path="/localize" element={<DetectionAnnotatePage />} />
                   <Route path="/localize/done" element={<DetectionReviewPage />} />
                   <Route

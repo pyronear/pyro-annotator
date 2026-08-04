@@ -105,17 +105,17 @@ describe('AppLayout sidebar navigation', () => {
 
     const classifyHeader = screen.getByText('Classify');
     const groupsLink = screen.getByRole('link', { name: /groups/i });
-    const sequencesLinks = screen.getAllByRole('link', { name: /sequences/i });
-    const classifySequencesLink = sequencesLinks.find(
+    const alertsLinks = screen.getAllByRole('link', { name: /alerts/i });
+    const classifyAlertsLink = alertsLinks.find(
       link => link.getAttribute('href') === '/classify'
     );
 
-    expect(classifySequencesLink).toBeDefined();
+    expect(classifyAlertsLink).toBeDefined();
     expect(
       classifyHeader.compareDocumentPosition(groupsLink) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
     expect(
-      groupsLink.compareDocumentPosition(classifySequencesLink!) & Node.DOCUMENT_POSITION_FOLLOWING
+      groupsLink.compareDocumentPosition(classifyAlertsLink!) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
   });
 

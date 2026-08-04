@@ -90,7 +90,12 @@ class SequenceAnnotationCRUD(
         return annotation
 
     async def update(
-        self, annotation_id: int, payload: SequenceAnnotationUpdate, user_id: int
+        self,
+        annotation_id: int,
+        payload: SequenceAnnotationUpdate,
+        user_id: int,
+        *,
+        commit: bool = True,
     ) -> Optional[SequenceAnnotation]:
         """Update sequence annotation and record user contribution.
 
@@ -101,6 +106,10 @@ class SequenceAnnotationCRUD(
         1. payload.model_dump() converts Pydantic models to dictionaries
         2. For derive methods, we convert back to SequenceAnnotationData Pydantic model
         3. Finally store as dictionary in the database
+
+        commit=False flushes the changes (visible within the current
+        transaction, including to the subsequent refresh()) without
+        committing, so a caller can apply several updates and commit once.
         """
         # Update the annotation
         annotation = await self.get(annotation_id)
@@ -149,7 +158,10 @@ class SequenceAnnotationCRUD(
 
         # Save changes (annotation + contribution)
         self.session.add(annotation)
-        await self.session.commit()
+        if commit:
+            await self.session.commit()
+        else:
+            await self.session.flush()
         await self.session.refresh(annotation)
 
         return annotation

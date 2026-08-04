@@ -11,9 +11,13 @@ from pydantic import BaseModel, Field, ConfigDict
 
 from app.models import SourceApi, AnnotationType
 from app.schemas.annotation_validation import SequenceAnnotationData
+from app.schemas.sequence_annotations import SequenceAnnotationRead
 
 __all__ = [
+    "AlertDetail",
+    "AlertLane",
     "Azimuth",
+    "ClassifyQueueItem",
     "LocalizationQueueItem",
     "LocalizationQueueLane",
     "SequenceCreate",
@@ -151,3 +155,36 @@ class LocalizationQueueItem(BaseModel):
     azimuth: Optional[int]
     recorded_at: datetime
     lanes: List[LocalizationQueueLane]
+
+
+class ClassifyQueueItem(BaseModel):
+    """One alert with at least one object awaiting classification (queue row)."""
+
+    source_api: SourceApi
+    platform_alert_id: int
+    camera_name: str
+    organisation_name: str
+    azimuth: Optional[float] = None
+    recorded_at: datetime
+    is_wildfire_alertapi: Optional[AnnotationType] = None
+    primary_sequence_id: int
+    total_objects: int
+    classified_objects: int
+
+
+class AlertLane(BaseModel):
+    """One object-sequence of an alert (lane in the detail view)."""
+
+    sequence: SequenceRead
+    annotation: Optional[SequenceAnnotationRead] = None
+
+
+class AlertDetail(BaseModel):
+    """All sibling lanes of one alert, ordered by alert_api_id."""
+
+    source_api: SourceApi
+    platform_alert_id: int
+    camera_name: str
+    organisation_name: str
+    recorded_at: datetime
+    lanes: List[AlertLane]

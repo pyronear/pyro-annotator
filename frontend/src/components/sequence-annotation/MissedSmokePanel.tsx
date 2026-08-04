@@ -5,6 +5,7 @@
 
 import React from 'react';
 import SequenceReviewer from '@/components/sequence/SequenceReviewer';
+import { ObjectOverlay } from '@/utils/annotation/objectColors';
 
 interface MissedSmokePanelProps {
   sequenceId: number;
@@ -13,6 +14,8 @@ interface MissedSmokePanelProps {
   annotationLoading: boolean;
   activeSection: string;
   sequenceReviewerRef: React.RefObject<HTMLDivElement>;
+  /** Every classified object's track boxes, color-coded per object — see SequencePlayer. */
+  objectOverlays?: ObjectOverlay[];
 }
 
 export const MissedSmokePanel: React.FC<MissedSmokePanelProps> = ({
@@ -22,6 +25,7 @@ export const MissedSmokePanel: React.FC<MissedSmokePanelProps> = ({
   annotationLoading,
   activeSection,
   sequenceReviewerRef,
+  objectOverlays,
 }) => {
   return (
     <div
@@ -33,6 +37,7 @@ export const MissedSmokePanel: React.FC<MissedSmokePanelProps> = ({
         missedSmokeReview={missedSmokeReview}
         onMissedSmokeReviewChange={onMissedSmokeReviewChange}
         annotationLoading={annotationLoading}
+        objectOverlays={objectOverlays}
       />
     </div>
   );

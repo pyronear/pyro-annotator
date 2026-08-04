@@ -2,6 +2,10 @@
 
 This guide covers the data import script for ingesting data from the Pyronear alert API into the annotation API. This script provides an end-to-end workflow that fetches sequences and detections from the production alert API, object-splits each alert sequence into one annotation sequence per detected smoke object, and transfers them to your annotation API, ready for human review.
 
+### Terminology: alert-API sequence vs. annotation-API sequence
+
+The alert API and the annotation API use the word "sequence" for two different things. One alert-API sequence (one camera event — what the frontend UI calls an **alert**) is object-split on import into N annotation-API sequences, one per detected object (a smoke plume, a false-positive source — what the frontend UI calls an **object**). Downstream of the import script, "sequence" in this codebase (the `Sequence` model, `sequence_id`, `/api/v1/sequences`) always means the annotation-API sequence, i.e. one object.
+
 ## Overview
 
 The data ingestion system uses a single comprehensive script:

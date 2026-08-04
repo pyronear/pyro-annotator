@@ -79,8 +79,8 @@ provenance in the path: `/classify/:id` was entered from the queue,
 | `/`                                        | `DashboardPage`                   |
 | `/classify`                                | `SequencesPage` (classify queue)  |
 | `/classify/done`                           | `SequencesPageWrapper`            |
-| `/classify/:id`                            | `AnnotationInterface`             |
-| `/classify/done/:id`                       | `AnnotationInterface` (done mode) |
+| `/classify/:id`                            | `ClassifyAlertPage`               |
+| `/classify/done/:id`                       | `ClassifyAlertPage` (done mode)   |
 | `/classify/groups`                         | `SequenceGroupsListPage`          |
 | `/classify/groups/:id`                     | `SequenceGroupAnnotatePage`       |
 | `/localize`                                | `DetectionAnnotatePage` (alert-grouped Localize queue) |

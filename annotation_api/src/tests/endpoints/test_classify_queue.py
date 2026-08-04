@@ -1,0 +1,167 @@
+from datetime import UTC, datetime, timedelta
+
+import pytest
+from httpx import AsyncClient
+
+from app.models import (
+    Sequence,
+    SequenceAnnotation,
+    SequenceAnnotationProcessingStage as Stage,
+    SourceApi,
+)
+
+NOW = datetime(2026, 7, 28, 12, 0, tzinfo=UTC)
+
+
+async def _lane(
+    session,
+    *,
+    alert_api_id,
+    platform_alert_id,
+    stage=None,
+    has_smoke=False,
+    has_missed_smoke=False,
+    is_unsure=False,
+    auto_annotated=False,
+    n_detections=0,
+    n_annotated=0,
+    recorded_at=NOW,
+    camera_name="cam",
+    azimuth=None,
+    smoke_types=None,
+):
+    seq = Sequence(
+        source_api=SourceApi.PYRONEAR_FRENCH_API,
+        alert_api_id=alert_api_id,
+        platform_alert_id=platform_alert_id,
+        created_at=recorded_at,
+        recorded_at=recorded_at,
+        last_seen_at=recorded_at,
+        camera_name=camera_name,
+        camera_id=1,
+        lat=0.0,
+        lon=0.0,
+        organisation_name="org",
+        organisation_id=1,
+        auto_annotated_at=NOW if auto_annotated else None,
+        azimuth=azimuth,
+    )
+    session.add(seq)
+    await session.flush()
+    if stage is not None:
+        session.add(
+            SequenceAnnotation(
+                sequence_id=seq.id,
+                has_smoke=has_smoke,
+                has_false_positives=not has_smoke,
+                has_missed_smoke=has_missed_smoke,
+                is_unsure=is_unsure,
+                annotation={"sequences_bbox": []},
+                processing_stage=stage,
+                created_at=recorded_at,
+                smoke_types=smoke_types or [],
+            )
+        )
+    await session.commit()
+    return seq
+
+
+@pytest.mark.asyncio
+async def test_alert_with_ready_lane_appears_with_counts(
+    authenticated_client: AsyncClient, async_session
+):
+    # alert 800: 3 objects — 1 ready, 1 done, 1 annotation-less (imported)
+    primary = await _lane(
+        async_session,
+        alert_api_id=800,
+        platform_alert_id=800,
+        stage=Stage.READY_TO_ANNOTATE,
+    )
+    await _lane(
+        async_session,
+        alert_api_id=1000000000 + 800 * 1000 + 1,
+        platform_alert_id=800,
+        stage=Stage.SEQ_ANNOTATION_DONE,
+        has_smoke=True,
+    )
+    await _lane(
+        async_session,
+        alert_api_id=1000000000 + 800 * 1000 + 2,
+        platform_alert_id=800,
+        stage=None,
+    )
+    resp = await authenticated_client.get("/sequences/classify-queue")
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert len(items) == 1
+    item = items[0]
+    assert item["platform_alert_id"] == 800
+    assert item["primary_sequence_id"] == primary.id
+    assert item["total_objects"] == 3
+    assert item["classified_objects"] == 1
+
+
+@pytest.mark.asyncio
+async def test_fully_classified_alert_absent(
+    authenticated_client: AsyncClient, async_session
+):
+    await _lane(
+        async_session,
+        alert_api_id=801,
+        platform_alert_id=801,
+        stage=Stage.SEQ_ANNOTATION_DONE,
+        has_smoke=True,
+    )
+    resp = await authenticated_client.get("/sequences/classify-queue")
+    assert resp.json()["items"] == []
+
+
+@pytest.mark.asyncio
+async def test_ordering_and_pagination(
+    authenticated_client: AsyncClient, async_session
+):
+    for i, days in ((0, 2), (1, 1), (2, 0)):  # newest = alert 812
+        await _lane(
+            async_session,
+            alert_api_id=810 + i,
+            platform_alert_id=810 + i,
+            stage=Stage.READY_TO_ANNOTATE,
+            recorded_at=NOW - timedelta(days=days),
+        )
+    resp = await authenticated_client.get(
+        "/sequences/classify-queue", params={"size": 2}
+    )
+    body = resp.json()
+    assert body["total"] == 3
+    assert [it["platform_alert_id"] for it in body["items"]] == [812, 811]
+
+
+@pytest.mark.asyncio
+async def test_filters(authenticated_client: AsyncClient, async_session):
+    await _lane(
+        async_session,
+        alert_api_id=820,
+        platform_alert_id=820,
+        stage=Stage.READY_TO_ANNOTATE,
+        camera_name="cam-a",
+    )
+    await _lane(
+        async_session,
+        alert_api_id=821,
+        platform_alert_id=821,
+        stage=Stage.READY_TO_ANNOTATE,
+        camera_name="cam-b",
+    )
+    resp = await authenticated_client.get(
+        "/sequences/classify-queue", params={"camera_name": "cam-a"}
+    )
+    assert [it["platform_alert_id"] for it in resp.json()["items"]] == [820]
+
+
+@pytest.mark.asyncio
+async def test_empty_queue(authenticated_client: AsyncClient, async_session):
+    resp = await authenticated_client.get("/sequences/classify-queue")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["items"] == []
+    assert body["total"] == 0

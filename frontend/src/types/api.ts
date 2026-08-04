@@ -54,6 +54,60 @@ export interface LocalizationQueueItem {
   lanes: LocalizationQueueLane[];
 }
 
+// One object-sequence of an alert with annotation, as returned by the alert-detail endpoint.
+export interface AlertLane {
+  sequence: Sequence;
+  annotation: SequenceAnnotation | null;
+}
+
+// One alert with all its sibling object-sequences, ordered by alert_api_id ascending (primary first).
+export interface AlertDetail {
+  source_api: string;
+  platform_alert_id: number;
+  camera_name: string;
+  organisation_name: string;
+  recorded_at: string;
+  lanes: AlertLane[];
+}
+
+// One alert ready for classification (queue row).
+export interface ClassifyQueueItem {
+  source_api: string;
+  platform_alert_id: number;
+  camera_name: string;
+  organisation_name: string;
+  azimuth: number | null;
+  recorded_at: string;
+  is_wildfire_alertapi: AnnotationType | null;
+  primary_sequence_id: number;
+  total_objects: number;
+  classified_objects: number;
+}
+
+// Submission payload for bulk classification of all objects in an alert.
+export interface ClassifySubmitItem {
+  annotation_id: number;
+  annotation: SequenceAnnotationData;
+  has_missed_smoke?: boolean;
+  is_unsure?: boolean;
+  processing_stage: ProcessingStage;
+}
+
+export interface ClassifySubmitRequest {
+  items: ClassifySubmitItem[];
+}
+
+export interface ClassifySubmitResult {
+  annotation_id: number;
+  sequence_id: number;
+  processing_stage: ProcessingStage;
+  group_propagation_warning: string | null;
+}
+
+export interface ClassifySubmitResponse {
+  results: ClassifySubmitResult[];
+}
+
 export interface Detection {
   id: number;
   sequence_id: number;

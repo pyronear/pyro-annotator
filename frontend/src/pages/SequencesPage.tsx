@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Check, ListChecks, Search } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import {
+  ClassifyQueueItem,
   ExtendedSequenceFilters,
   ProcessingStageFilter,
   SequenceWithAnnotation,
@@ -12,7 +13,12 @@ import { PAGINATION_OPTIONS, QUERY_KEYS } from '@/utils/constants';
 import { analyzeSequenceAccuracy } from '@/utils/modelAccuracy';
 import { getStageFilterLabel, stageFilterIncludes } from '@/utils/processingStage';
 import FilterPopover from '@/components/filters/FilterPopover';
-import { ClassifyQueueTable, ClassifyDoneTable, TablePagination } from '@/components/sequences';
+import {
+  ClassifyAlertQueueTable,
+  ClassifyQueueTable,
+  ClassifyDoneTable,
+  TablePagination,
+} from '@/components/sequences';
 import { TABLE_CARD_CLASSES } from '@/components/sequences/tableStyles';
 import { useSequenceStore } from '@/store/useSequenceStore';
 import { useCameras } from '@/hooks/useCameras';
@@ -39,6 +45,10 @@ export default function SequencesPage({
 
   // Annotated-view features apply when the page's stage filter covers 'annotated'
   const isAnnotatedView = stageFilterIncludes(defaultProcessingStage, 'annotated');
+
+  // The classify queue (alert-grouped, one row per alert) replaces the plain
+  // sequences fetch/table only on the un-annotated queue page.
+  const isQueueMode = !isAnnotatedView && !isReviewPage;
 
   // Storage key separates done vs queue filters; done filters are shared across stages.
   const storageKey = isReviewPage ? 'filters-classify-done' : 'filters-classify';
@@ -125,15 +135,31 @@ export default function SequencesPage({
     return stripped;
   }, [filters, isAnnotatedView]);
 
-  // Fetch sequences with annotations in a single efficient call
+  // Fetch sequences with annotations in a single efficient call (review mode)
   const {
     data: sequences,
-    isLoading,
-    error,
+    isLoading: sequencesLoading,
+    error: sequencesError,
   } = useQuery({
     queryKey: [...QUERY_KEYS.SEQUENCES, 'with-annotations', apiFilters],
     queryFn: () => apiClient.getSequencesWithAnnotations(apiFilters),
+    enabled: !isQueueMode,
   });
+
+  // Fetch the alert-grouped classify queue — one row per alert, not per
+  // object-sequence (queue mode only)
+  const {
+    data: classifyQueue,
+    isLoading: classifyQueueLoading,
+    error: classifyQueueError,
+  } = useQuery({
+    queryKey: ['classify-queue', apiFilters],
+    queryFn: () => apiClient.getClassifyQueue(apiFilters),
+    enabled: isQueueMode,
+  });
+
+  const isLoading = isQueueMode ? classifyQueueLoading : sequencesLoading;
+  const error = isQueueMode ? classifyQueueError : sequencesError;
 
   // Filter sequences by model accuracy (only for review page)
   const filteredSequences = useMemo(() => {
@@ -180,6 +206,24 @@ export default function SequencesPage({
     navigate(classifyDetail(clickedSequence.id, isReviewPage));
   };
 
+  const handleAlertClick = (clickedItem: ClassifyQueueItem) => {
+    // Workflow navigation only reads `.id` and array length off each entry
+    // (see getNextSequenceInWorkflow / navigateTo{Next,Previous}InWorkflow in
+    // useSequenceStore), so primary-lane id stubs are sufficient here — the
+    // full SequenceWithAnnotation shape isn't needed for classify-queue rows.
+    if (classifyQueue?.items) {
+      startAnnotationWorkflow(
+        classifyQueue.items.map(
+          item => ({ id: item.primary_sequence_id }) as SequenceWithAnnotation
+        ),
+        clickedItem.primary_sequence_id,
+        apiFilters
+      );
+    }
+
+    navigate(classifyDetail(clickedItem.primary_sequence_id));
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-96">
@@ -200,8 +244,13 @@ export default function SequencesPage({
   }
 
   // Empty state when nothing survives the server page + client-side filters
-  // (gate on filteredSequences: the accuracy filter can empty a non-empty page).
-  if (sequences && filteredSequences && filteredSequences.items.length === 0) {
+  // (gate reviewEmpty on filteredSequences: the accuracy filter can empty a
+  // non-empty page). Queue mode has no client-side filter, so gate on the
+  // classify-queue fetch directly.
+  const queueEmpty = isQueueMode && classifyQueue && classifyQueue.items.length === 0;
+  const reviewEmpty =
+    !isQueueMode && sequences && filteredSequences && filteredSequences.items.length === 0;
+  if (queueEmpty || reviewEmpty) {
     // Check if user has applied filters
     const hasFilters = hasActiveUserFilters(
       filters,
@@ -222,11 +271,15 @@ export default function SequencesPage({
         {/* Header */}
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Sequences</h1>
+            <h1 className="text-2xl font-bold text-gray-900">
+              {isQueueMode ? 'Alerts' : 'Sequences'}
+            </h1>
             <p className="text-gray-600">
               {isReviewPage
                 ? 'Browse classified sequences and review past decisions'
-                : 'Manage and annotate wildfire detection sequences'}
+                : isQueueMode
+                  ? 'Classify every object of each alert'
+                  : 'Manage and annotate wildfire detection sequences'}
             </p>
           </div>
           <div className="flex items-center gap-3 flex-wrap justify-end">
@@ -276,7 +329,7 @@ export default function SequencesPage({
                   <Search className="h-6 w-6 text-haze" />
                 </span>
                 <h2 className="mt-4 font-display text-base font-semibold text-char">
-                  No matching sequences
+                  {isQueueMode ? 'No matching alerts' : 'No matching sequences'}
                 </h2>
                 <p className="mt-1.5 font-body text-sm leading-relaxed text-haze">
                   Nothing here matches your current filters. Loosen or clear them to see more.
@@ -314,7 +367,7 @@ export default function SequencesPage({
                 </Link>
               </>
             ) : (
-              // Annotation queue - all imported sequences classified
+              // Classification queue is clear - every alert has been classified
               <>
                 <span
                   aria-hidden="true"
@@ -326,8 +379,8 @@ export default function SequencesPage({
                   Classification queue is clear
                 </h2>
                 <p className="mt-1.5 font-body text-sm leading-relaxed text-haze">
-                  Nice work — every imported sequence has been classified. New ones appear here as
-                  imports come in.
+                  Nice work — every alert has been classified. New ones appear here as imports come
+                  in.
                 </p>
                 <Link
                   to={ROUTES.LOCALIZE}
@@ -348,11 +401,15 @@ export default function SequencesPage({
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Sequences</h1>
+          <h1 className="text-2xl font-bold text-gray-900">
+            {isQueueMode ? 'Alerts' : 'Sequences'}
+          </h1>
           <p className="text-gray-600">
             {isReviewPage
               ? 'Browse classified sequences and review past decisions'
-              : 'Manage and annotate wildfire detection sequences'}
+              : isQueueMode
+                ? 'Classify every object of each alert'
+                : 'Manage and annotate wildfire detection sequences'}
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap justify-end">
@@ -407,35 +464,52 @@ export default function SequencesPage({
       </div>
 
       {/* Results */}
-      {filteredSequences && (
-        <div className={TABLE_CARD_CLASSES}>
-          {isReviewPage ? (
-            <ClassifyDoneTable
-              sequences={filteredSequences.items}
-              onSequenceClick={handleSequenceClick}
-            />
-          ) : (
-            <ClassifyQueueTable
-              sequences={filteredSequences.items}
-              onSequenceClick={handleSequenceClick}
-            />
-          )}
+      {isQueueMode
+        ? classifyQueue && (
+            <div className={TABLE_CARD_CLASSES}>
+              <ClassifyAlertQueueTable
+                items={classifyQueue.items}
+                onAlertClick={handleAlertClick}
+              />
 
-          <TablePagination
-            page={filteredSequences.page}
-            pages={filteredSequences.pages}
-            total={filteredSequences.total}
-            itemsLabel={
-              selectedModelAccuracy !== 'all' &&
-              stageFilterIncludes(defaultProcessingStage, 'annotated') &&
-              sequences
-                ? `sequences (filtered from ${sequences.total} total)`
-                : 'sequences'
-            }
-            onPageChange={handlePageChange}
-          />
-        </div>
-      )}
+              <TablePagination
+                page={classifyQueue.page}
+                pages={classifyQueue.pages}
+                total={classifyQueue.total}
+                itemsLabel="alerts"
+                onPageChange={handlePageChange}
+              />
+            </div>
+          )
+        : filteredSequences && (
+            <div className={TABLE_CARD_CLASSES}>
+              {isReviewPage ? (
+                <ClassifyDoneTable
+                  sequences={filteredSequences.items}
+                  onSequenceClick={handleSequenceClick}
+                />
+              ) : (
+                <ClassifyQueueTable
+                  sequences={filteredSequences.items}
+                  onSequenceClick={handleSequenceClick}
+                />
+              )}
+
+              <TablePagination
+                page={filteredSequences.page}
+                pages={filteredSequences.pages}
+                total={filteredSequences.total}
+                itemsLabel={
+                  selectedModelAccuracy !== 'all' &&
+                  stageFilterIncludes(defaultProcessingStage, 'annotated') &&
+                  sequences
+                    ? `sequences (filtered from ${sequences.total} total)`
+                    : 'sequences'
+                }
+                onPageChange={handlePageChange}
+              />
+            </div>
+          )}
     </div>
   );
 }

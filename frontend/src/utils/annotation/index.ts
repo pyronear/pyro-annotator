@@ -148,3 +148,7 @@ export {
 } from './progressUtils';
 
 export type { AnnotationProgress } from './progressUtils';
+
+// Per-object color identity (ClassifyAlertPage multi-object overlays)
+export { getObjectColor } from './objectColors';
+export type { ObjectOverlay } from './objectColors';

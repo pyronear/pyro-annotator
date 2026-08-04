@@ -35,8 +35,8 @@ export default function DashboardPage() {
           pass="01"
           tone="ember"
           passLabel="Classify"
-          title="Classify sequences"
-          description="Watch each sequence and decide: wildfire smoke, other smoke, or false positive."
+          title="Classify alerts"
+          description="Watch each alert and decide, per object: wildfire smoke, other smoke, or false positive."
           todo={stats.classifyTodo}
           done={stats.classifyDone}
           doneNoun="classified"
