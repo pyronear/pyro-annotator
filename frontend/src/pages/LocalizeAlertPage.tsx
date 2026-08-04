@@ -25,19 +25,22 @@
  * override immediately (visible feedback for what's otherwise a silent
  * preference write); the timeline rows no longer carry a hover preview
  * popover (dropped — the inline cropped-view strip replaces it).
+ *
+ * Task 9 retires the earlier ⚑ pseudo-object row (a carrier-lane box that
+ * stood in for missed smoke) in favor of "+ Add object": a timeline footer
+ * action that spawns a brand-new sibling lane for a plume the AI missed
+ * entirely, so it gets its own real object row like any other.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Upload } from 'lucide-react';
+import { ArrowLeft, Plus, Upload } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { QUERY_KEYS } from '@/utils/constants';
 import { Detection, DetectionAnnotation, DetectionAnnotationBbox, SmokeType } from '@/types/api';
 import {
   buildAlertFrameModel,
-  findCarrierLaneId,
-  buildMissedRowStatus,
   findFrameByDetectionId,
   AlertObjectStatus,
 } from '@/utils/annotation/alertLocalizeUtils';
@@ -50,7 +53,6 @@ import {
   type QuickSubmitPlan,
 } from '@/utils/annotation';
 import { ObjectStatusStrip } from '@/components/sequence-annotation';
-import type { ObjectStatusStripObject } from '@/components/sequence-annotation';
 import { AlertFrameGrid, ImageModal, ViewToolbar } from '@/components/detection-sequence';
 import type { CardSize } from '@/components/detection-sequence/ViewToolbar';
 import CroppedImageSequence from '@/components/annotation/CroppedImageSequence';
@@ -84,22 +86,16 @@ export default function LocalizeAlertPage() {
   const smokeTypeInitFor = useRef<number | null>(null);
   const [submitConfirming, setSubmitConfirming] = useState(false);
 
-  // ⚑ Missed mode: a focus-mode variant (see `activateFlagFocus` below)
-  // targeting the alert's carrier lane rather than any object the user
-  // picked directly — distinguishes "editing the carrier's own row" from
-  // "drawing missed smoke via the ⚑ row" so a save only retro-flags/counts
-  // as a ⚑ box when it actually came from the ⚑ row.
-  const [flagMode, setFlagMode] = useState(false);
-  // Guards the retro-flag PATCH (unflagged alert, first ⚑-mode save) to
-  // fire at most once per alert, even if the alert-detail refetch it
-  // triggers hasn't landed yet when a second ⚑ save happens right after.
-  const retroFlagFiredRef = useRef(false);
-  // The three-way "you flagged missed smoke but drew no boxes" dialog and
+  // The three-way "you flagged missed smoke but added no object" dialog and
   // whether it's already been answered this submit round (so re-clicking
   // "Accept all & submit" after "Submit anyway" falls through to the
   // ordinary no-box confirm instead of re-asking the same question).
   const [missedSmokeConfirm, setMissedSmokeConfirm] = useState(false);
   const [softConfirmResolved, setSoftConfirmResolved] = useState(false);
+  // "+ Add object": lane ids spawned via the picker this session (feeds the
+  // soft-confirm gate below) and whether the picker is currently open.
+  const [sessionAddedObjects, setSessionAddedObjects] = useState<number[]>([]);
+  const [addObjectPickerOpen, setAddObjectPickerOpen] = useState(false);
 
   // Object-focus mode: entering it (row/segment click activating an object)
   // stashes the pre-focus crop-mode so the selected row's second click can
@@ -164,10 +160,10 @@ export default function LocalizeAlertPage() {
     setCropMode(false);
     setSizeOverrideCleared(false);
     setHighlightedFrame(null);
-    setFlagMode(false);
     setMissedSmokeConfirm(false);
     setSoftConfirmResolved(false);
-    retroFlagFiredRef.current = false;
+    setSessionAddedObjects([]);
+    setAddObjectPickerOpen(false);
     frameRefs.current = {};
   }, [sequenceIdNum]);
 
@@ -260,35 +256,13 @@ export default function LocalizeAlertPage() {
     ? buildAlertFrameModel(alertDetail.lanes, detectionsByLaneId, annotationsByLaneId)
     : { frames: [], objectStatus: [] };
 
-  // ⚑ Missed pseudo-object: the carrier lane (first still-open lane,
-  // primary-first — see `findCarrierLaneId`), its own per-frame status
-  // (spanning the full frame union), and whether it already has any
-  // committed HUMAN-origin box anywhere — the closest data-level signal to
-  // "a ⚑ box was drawn" given ⚑ boxes are stored indistinguishably from the
-  // carrier lane's own human edits (spec-stated limitation). A quick-accept
-  // (origin auto/engine) must NOT count — it's the model's own box, never
-  // reviewed for missed smoke — hence reading raw annotations (with
-  // `origin`) rather than `AlertFrameCell`'s display-filtered boxes.
-  const carrierLaneId = alertDetail ? findCarrierLaneId(alertDetail.lanes) : null;
-  const carrierLane = alertDetail?.lanes.find(l => l.sequence.id === carrierLaneId) ?? null;
-  const carrierAnnotationsByDetectionId = new Map(
-    (carrierLaneId != null ? (annotationsByLaneId[carrierLaneId] ?? []) : []).map(a => [
-      a.detection_id,
-      a,
-    ])
-  );
-  const missedRowStatus = buildMissedRowStatus(
-    frameModel.frames,
-    carrierLaneId,
-    carrierAnnotationsByDetectionId
-  );
-  const carrierHasConfirmedBox = Object.values(missedRowStatus).some(s => s === 'confirmed');
+  // Soft-confirm gate for submit: `has_missed_smoke` is set on some lane,
+  // but no object was added this session to address it (`sessionAddedObjects`
+  // — see the "+ Add object" mutation below), and the question hasn't
+  // already been answered this submit round.
   const anyLaneFlagged = alertDetail?.lanes.some(l => l.annotation?.has_missed_smoke) ?? false;
-  // Soft-confirm gate for submit: flagged somewhere, but the carrier lane
-  // (the flag's one deterministic home) has no committed HUMAN-origin box
-  // at all — "no ⚑ box was drawn" — and the question hasn't already been
-  // answered this submit round.
-  const softConfirmNeeded = anyLaneFlagged && !carrierHasConfirmedBox && !softConfirmResolved;
+  const softConfirmNeeded =
+    anyLaneFlagged && sessionAddedObjects.length === 0 && !softConfirmResolved;
 
   // Reproduces a shared/reloaded `?frame=<detectionId>` link: resolves the
   // detection id against every lane's frames (independent of the editor's
@@ -414,27 +388,6 @@ export default function LocalizeAlertPage() {
     },
   });
 
-  // Retro-flag: an unflagged alert's first ⚑-mode save PATCHes the carrier
-  // lane's sequence annotation to `has_missed_smoke: true`, so classify's
-  // own missed-smoke bookkeeping (and any downstream rule keyed on the
-  // flag) picks up a flag that was only ever set here, at localize time.
-  const retroFlagMissedSmoke = useMutation({
-    mutationFn: (annotationId: number) =>
-      apiClient.updateSequenceAnnotation(annotationId, { has_missed_smoke: true }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: alertDetailQueryKey });
-    },
-    // `retroFlagFiredRef` was already set before this ran (see
-    // `handleModalSubmit`) to prevent a second save from double-firing
-    // while this one is in flight — a failure must undo that, or a failed
-    // PATCH silently disables the flag for the rest of the session with no
-    // way to retry.
-    onError: () => {
-      retroFlagFiredRef.current = false;
-      showToastNotification('Failed to flag missed smoke — try drawing another box', 'error');
-    },
-  });
-
   // Soft-confirm's "Submit & clear flag" path: PATCHes the flag off the
   // lane currently carrying it before the submit proceeds.
   const clearMissedSmokeFlag = useMutation({
@@ -453,17 +406,6 @@ export default function LocalizeAlertPage() {
   ) => {
     if (!modalContext) return;
     setPersistentDrawMode(currentDrawMode);
-    // Only counts as a ⚑-mode save when: it actually landed on the carrier
-    // lane (guards against the rare frame where the carrier is absent and
-    // the grid's cell-click fell back to a different lane's own cell), AND
-    // the submitted items include at least one HUMAN-origin box — merely
-    // accepting/re-saving the model's own predictions (origin auto/engine)
-    // is not a missed-smoke drawing and must not retro-flag.
-    const isFlagSave =
-      flagMode &&
-      carrierLaneId != null &&
-      modalContext.laneId === carrierLaneId &&
-      items.some(item => item.origin === 'human');
     saveDetection.mutate(
       {
         laneId: modalContext.laneId,
@@ -473,15 +415,6 @@ export default function LocalizeAlertPage() {
       },
       {
         onSuccess: () => {
-          if (
-            isFlagSave &&
-            !retroFlagFiredRef.current &&
-            carrierLane?.annotation &&
-            !carrierLane.annotation.has_missed_smoke
-          ) {
-            retroFlagFiredRef.current = true;
-            retroFlagMissedSmoke.mutate(carrierLane.annotation.id);
-          }
           if (options?.autoSave) return;
           showToastNotification('Frame saved', 'success');
           closeModal();
@@ -564,32 +497,12 @@ export default function LocalizeAlertPage() {
           {isAccepting ? 'Accepting…' : `Accept ${object.label}'s boxes`}
         </button>
       ) : undefined,
-      // Excludes flagMode so a real row and the ⚑ row are never both
-      // "selected" at once, even though ⚑ mode sets `activeLaneId` to this
-      // same carrier lane — the accent unambiguously shows which of the
-      // two the user is currently in.
-      selected: isFocused && !flagMode && activeLaneId === object.laneSequenceId,
+      selected: isFocused && activeLaneId === object.laneSequenceId,
     };
   });
 
   const workableObjects = objectStatusRows.filter(o => o.workable);
   const contextObjects = objectStatusRows.filter(o => !o.workable);
-
-  // ⚑ Missed row: always appended last to the workable strip's objects (not
-  // to `workableObjects` itself, which other logic — the header count,
-  // per-lane plans, the no-box confirm — must keep reading as "the real
-  // objects only"). Ghosted automatically when unflagged/untouched: with no
-  // committed carrier-lane box anywhere, every segment renders `pending`,
-  // which the strip already shows as an unfilled dashed outline for `flag`
-  // rows (Task 2) — no separate muted styling needed.
-  const missedRow: ObjectStatusStripObject = {
-    label: 'Missed',
-    color: '#D9581E',
-    flag: true,
-    statusByTimestamp: missedRowStatus,
-    selected: isFocused && flagMode,
-  };
-  const stripObjects: ObjectStatusStripObject[] = [...workableObjects, missedRow];
 
   // Every workable lane's quick-accept plan plus its sequence-annotation id
   // (the id `localizeSubmit` needs) — feeds both the two-step confirm's
@@ -661,8 +574,8 @@ export default function LocalizeAlertPage() {
   // lane with pending frames that have no box at all needs an explicit
   // "submit anyway?" before the button's second click actually submits.
   //
-  // Composes with the ⚑ soft-confirm below: the soft-confirm (an
-  // alert-wide "did you forget to review missed smoke" question) is
+  // Composes with the missed-smoke soft-confirm below: the soft-confirm (an
+  // alert-wide "did you forget to add the missed object" question) is
   // resolved FIRST, since it's the more meaningful of the two; only once
   // it's answered does this fall through to the routine per-frame no-box
   // warning.
@@ -739,15 +652,10 @@ export default function LocalizeAlertPage() {
   // always restores the settings from *before the first selection*, not
   // from whichever object was focused most recently. `sizeOverrideCleared`
   // only resets on a genuinely fresh entry (see its declaration).
-  // Always resets ⚑ mode: this is "focus a real object", so any prior ⚑
-  // session ends the moment a real row/segment is activated instead.
-  // `activateFlagFocus` (below) layers `flagMode` back on after calling
-  // this for the carrier lane specifically.
   const activateFocus = (laneSequenceId: number) => {
     setActiveLaneId(laneSequenceId);
     setPreFocusCropMode(prev => prev ?? cropMode);
     setCropMode(true);
-    setFlagMode(false);
     if (!isFocused) setSizeOverrideCleared(false);
   };
 
@@ -761,7 +669,6 @@ export default function LocalizeAlertPage() {
     setPreFocusCropMode(null);
     setSizeOverrideCleared(false);
     setActiveLaneId(null);
-    setFlagMode(false);
   };
 
   // Row click: activates (or switches focus to) the clicked object, UNLESS
@@ -829,56 +736,33 @@ export default function LocalizeAlertPage() {
     });
   };
 
-  // Activating the ⚑ row: a focus-mode variant targeting the carrier lane
-  // specifically (reuses `activateFocus`'s crop/size/stash plumbing, so the
-  // ⚑ row's "focus" shows the carrier lane's own cropped strip exactly like
-  // any other object), plus `flagMode` layered on top so a subsequent save
-  // is attributed as a ⚑-mode drawing (retro-flag, soft-confirm). A no-op
-  // when there's no still-open lane to carry the flag.
-  const activateFlagFocus = () => {
-    if (carrierLaneId == null) return;
-    activateFocus(carrierLaneId);
-    setFlagMode(true);
-  };
-
-  // ⚑ row click: mirrors `handleObjectClick`'s "second click deselects".
-  const handleFlagRowClick = () => {
-    if (carrierLaneId == null) return;
-    if (isFocused && flagMode) {
-      exitFocus();
-      return;
-    }
-    activateFlagFocus();
-  };
-
-  // ⚑ row segment click: mirrors `handleSegmentClick`, targeting the
-  // carrier lane's own cell at that frame (present or not — a frame where
-  // the carrier is absent still highlights/scrolls, it just has nothing to
-  // encode into `?frame=`).
-  const handleFlagSegmentClick = (timestamp: string) => {
-    if (carrierLaneId == null) return;
-    activateFlagFocus();
-    highlightFrame(timestamp);
-
-    const cellDetectionId = frameModel.frames
-      .find(f => f.recordedAt === timestamp)
-      ?.cells.find(c => c.laneSequenceId === carrierLaneId)?.detectionId;
-    if (cellDetectionId != null) {
-      handledFrameParamRef.current = cellDetectionId;
-      setSearchParams(
-        prev => {
-          const next = new URLSearchParams(prev);
-          next.set('frame', String(cellDetectionId));
-          return next;
-        },
-        { replace: true }
-      );
-    }
-
-    requestAnimationFrame(() => {
-      frameRefs.current[timestamp]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    });
-  };
+  // "+ Add object": the ⚑ row's replacement for missed smoke — spawns a
+  // brand-new sibling lane server-side (empty algo_predictions, one-track
+  // smoke annotation born at seq_annotation_done; see the backend's
+  // `/alert/add-object`) rather than drawing an anonymous box on an
+  // existing lane. On success: invalidate alert-detail so the new Object
+  // N+1 row appears (its index/color fall out of its position in
+  // `alertDetail.lanes`, same as any other lane), record its lane id in
+  // `sessionAddedObjects` (feeds the soft-confirm gate above), close the
+  // picker, and auto-enter focus mode on it — a lens for immediately
+  // drawing its boxes. Repeatable: each success re-closes the picker so a
+  // further click reopens it for another add.
+  const addObject = useMutation({
+    mutationFn: (smokeType: SmokeType) => {
+      if (!sequence) throw new Error('Alert not loaded');
+      return apiClient.addObject(sequence.source_api, sequence.platform_alert_id, smokeType);
+    },
+    onSuccess: newLane => {
+      queryClient.invalidateQueries({ queryKey: alertDetailQueryKey });
+      setSessionAddedObjects(prev => [...prev, newLane.sequence.id]);
+      setAddObjectPickerOpen(false);
+      activateFocus(newLane.sequence.id);
+      showToastNotification('Object added', 'success');
+    },
+    onError: () => {
+      showToastNotification('Failed to add object — try again', 'error');
+    },
+  });
 
   // "Open Object N ✎" header shortcut: the first workable object that still
   // has a pending frame, and that frame's own (chronologically earliest)
@@ -1035,23 +919,51 @@ export default function LocalizeAlertPage() {
       </div>
 
       <div className="space-y-6 pt-20">
-        {/* The ⚑ Missed row is always the trailing entry of `stripObjects`
-            (index === workableObjects.length) — indices below that are the
-            real objects, routed exactly as before. */}
         <ObjectStatusStrip
-          objects={stripObjects}
-          onObjectClick={i =>
-            i < workableObjects.length
-              ? handleObjectClick(workableObjects[i].laneSequenceId)
-              : handleFlagRowClick()
-          }
-          onSegmentClick={(i, ts) =>
-            i < workableObjects.length
-              ? handleSegmentClick(workableObjects[i].laneSequenceId, ts)
-              : handleFlagSegmentClick(ts)
-          }
+          objects={workableObjects}
+          onObjectClick={i => handleObjectClick(workableObjects[i].laneSequenceId)}
+          onSegmentClick={(i, ts) => handleSegmentClick(workableObjects[i].laneSequenceId, ts)}
           title="Objects to localize"
         />
+
+        {/* "+ Add object": spawns a brand-new sibling lane for smoke the
+            classify pass missed entirely — the timeline's own footer
+            action, replacing the retired ⚑ row. */}
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-paper px-4 py-3">
+          {addObjectPickerOpen ? (
+            <>
+              <span className="font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
+                Smoke type
+              </span>
+              {(['wildfire', 'industrial', 'other'] as SmokeType[]).map(type => (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => addObject.mutate(type)}
+                  disabled={addObject.isPending}
+                  className="inline-flex items-center rounded-full bg-ash px-3 py-1 font-body text-xs font-medium capitalize text-haze transition-colors hover:bg-pine-soft hover:text-pine disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {type}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => setAddObjectPickerOpen(false)}
+                className="font-body text-detail text-haze hover:text-char"
+              >
+                Cancel
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setAddObjectPickerOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-paper px-3 py-2 font-body text-sm font-medium text-char hover:bg-ash"
+            >
+              <Plus className="w-3.5 h-3.5" /> Add object
+            </button>
+          )}
+        </div>
 
         {contextObjects.length > 0 && (
           <div className="opacity-60" data-testid="context-object-strip">
@@ -1111,7 +1023,7 @@ export default function LocalizeAlertPage() {
         >
           <div className="w-full max-w-sm rounded-lg border border-line bg-paper p-5">
             <p className="font-body text-sm text-char mb-4">
-              You flagged missed smoke but drew no boxes — submit anyway?
+              You flagged missed smoke but added no object — submit anyway?
             </p>
             <div className="flex flex-col gap-2">
               <button

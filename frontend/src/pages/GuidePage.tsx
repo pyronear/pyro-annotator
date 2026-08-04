@@ -54,10 +54,11 @@ export default function GuidePage() {
         </p>
         <p className="font-body text-body leading-relaxed text-haze">
           Start from the dashboard’s “Start localizing” queue — it opens the alert page with every
-          object’s status, plus a ⚑ Missed row for drawing boxes on smoke the classify pass missed.
-          “Accept all & submit alert” accepts every object’s pending predictions and submits the
-          whole alert in one step. The old per-object editor still exists, but only as a direct link
-          to a specific frame — it’s no longer part of the normal queue flow.
+          object’s status, plus a “+ Add object” button for smoke the classify pass missed entirely:
+          pick a smoke type and it spawns a brand-new object row to draw. “Accept all & submit
+          alert” accepts every object’s pending predictions and submits the whole alert in one step.
+          The old per-object editor still exists, but only as a direct link to a specific frame —
+          it’s no longer part of the normal queue flow.
         </p>
       </section>
 

@@ -24,6 +24,8 @@ import {
   ApiError,
   LocalizationQueueItem,
   AlertDetail,
+  AlertLane,
+  SmokeType,
   ClassifyQueueItem,
   ClassifySubmitRequest,
   ClassifySubmitResponse,
@@ -184,6 +186,20 @@ class ApiClient {
           platform_alert_id: platformAlertId,
         },
       }
+    );
+    return response.data;
+  }
+
+  // Missed smoke: spawn a new sibling lane (Object N+1) for a plume the AI
+  // missed entirely — replaces the retired ⚑ carrier-lane flow.
+  async addObject(
+    sourceApi: string,
+    platformAlertId: number,
+    smokeType: SmokeType
+  ): Promise<AlertLane> {
+    const response: AxiosResponse<AlertLane> = await this.client.post(
+      `${API_ENDPOINTS.SEQUENCES}alert/add-object`,
+      { source_api: sourceApi, platform_alert_id: platformAlertId, smoke_type: smokeType }
     );
     return response.data;
   }
