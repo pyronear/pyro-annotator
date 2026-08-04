@@ -9,11 +9,12 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field, ConfigDict
 
-from app.models import SourceApi, AnnotationType
+from app.models import SourceApi, AnnotationType, SmokeType
 from app.schemas.annotation_validation import SequenceAnnotationData
 from app.schemas.sequence_annotations import SequenceAnnotationRead
 
 __all__ = [
+    "AddObjectRequest",
     "AlertDetail",
     "AlertLane",
     "Azimuth",
@@ -188,3 +189,13 @@ class AlertDetail(BaseModel):
     organisation_name: str
     recorded_at: datetime
     lanes: List[AlertLane]
+
+
+class AddObjectRequest(BaseModel):
+    """Missed smoke: add a real object (spec: multi-object alert
+    collocation, supersedes the carrier-lane pseudo-object). Spawns a new
+    sibling lane for one plume the AI missed entirely."""
+
+    source_api: SourceApi
+    platform_alert_id: int
+    smoke_type: SmokeType

@@ -7,6 +7,7 @@ from typing import List, Literal, Optional
 
 from fastapi import (
     APIRouter,
+    Body,
     Depends,
     Form,
     HTTPException,
@@ -40,6 +41,7 @@ from app.services.localization_rule import needs_localization_clause
 from app.models import (
     Detection,
     DetectionAnnotation,
+    DetectionAnnotationProcessingStage,
     FalsePositiveType,
     SmokeType,
     Sequence,
@@ -50,7 +52,9 @@ from app.models import (
     User,
     AnnotationType,
 )
+from app.schemas.annotation_validation import SequenceAnnotationData, SequenceBBox
 from app.schemas.sequence import (
+    AddObjectRequest,
     AlertDetail,
     AlertLane,
     ClassifyQueueItem,
@@ -59,7 +63,7 @@ from app.schemas.sequence import (
     SequenceCreate,
     SequenceRead,
 )
-from app.services.alert_identity import resolve_platform_alert_id
+from app.services.alert_identity import ALERT_ID_BASE, resolve_platform_alert_id
 from app.services.auto_annotate_scheduling import DONE_STAGES
 from app.schemas.sequence_annotations import SequenceAnnotationRead
 from app.schemas.combined import SequenceWithAnnotationRead
@@ -653,6 +657,176 @@ async def get_alert_detail(
         organisation_name=first_seq.organisation_name,
         recorded_at=min(seq.recorded_at for seq, _ in rows),
         lanes=lanes,
+    )
+
+
+def _object_index(seq: Sequence, platform_alert_id: int) -> int:
+    """Decode a lane's object index from its alert_api_id (primary = raw
+    platform_alert_id = index 0; synthetic siblings per `alert_identity`)."""
+    if seq.alert_api_id == platform_alert_id:
+        return 0
+    return seq.alert_api_id - ALERT_ID_BASE - platform_alert_id * 1000
+
+
+# NOTE: declared before GET /{sequence_id} — the int path converter would
+# otherwise turn /alert/add-object into a 422.
+@router.post(
+    "/alert/add-object",
+    status_code=status.HTTP_201_CREATED,
+    summary="Spawn a new sibling lane for a missed smoke plume",
+)
+async def add_object(
+    payload: AddObjectRequest = Body(...),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> AlertLane:
+    """Missed smoke: add a real object (spec: multi-object alert
+    collocation, supersedes the ⚑ carrier-lane/pseudo-object design). Spawns
+    a new sibling lane — next synthetic object index — with detections
+    cloned from the alert's richest lane (empty algo_predictions: the AI did
+    not detect this object) and a one-track smoke annotation born at
+    seq_annotation_done, with auto_annotated_at/auto_annotate_enqueued_at
+    stamped so the sweep never GPU-processes it and the sibling gate is
+    never re-blocked. All writes land in one transaction.
+    """
+    lanes = (
+        (
+            await session.execute(
+                select(Sequence)
+                .where(
+                    Sequence.source_api == payload.source_api,
+                    Sequence.platform_alert_id == payload.platform_alert_id,
+                )
+                .order_by(asc(Sequence.alert_api_id))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not lanes:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Alert not found"
+        )
+    primary = lanes[0]
+
+    next_index = (
+        max(_object_index(lane, payload.platform_alert_id) for lane in lanes) + 1
+    )
+    new_alert_api_id = ALERT_ID_BASE + payload.platform_alert_id * 1000 + next_index
+
+    # Richest lane: the sibling with the most detections is the frame source
+    # (the missed object is presumably visible wherever the tracked object
+    # is, and this maximizes frame coverage).
+    lane_ids = [lane.id for lane in lanes]
+    counts = (
+        await session.execute(
+            select(Detection.sequence_id, func.count(Detection.id))
+            .where(Detection.sequence_id.in_(lane_ids))
+            .group_by(Detection.sequence_id)
+        )
+    ).all()
+    counts_by_id = dict(counts)
+    richest_id = max(lane_ids, key=lambda sid: counts_by_id.get(sid, 0))
+    source_detections = (
+        (
+            await session.execute(
+                select(Detection)
+                .where(Detection.sequence_id == richest_id)
+                .order_by(asc(Detection.recorded_at))
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    now = datetime.now(UTC)
+    new_seq = Sequence(
+        source_api=primary.source_api,
+        alert_api_id=new_alert_api_id,
+        platform_alert_id=payload.platform_alert_id,
+        recorded_at=primary.recorded_at,
+        last_seen_at=primary.last_seen_at,
+        camera_name=primary.camera_name,
+        camera_id=primary.camera_id,
+        lat=primary.lat,
+        lon=primary.lon,
+        azimuth=primary.azimuth,
+        is_wildfire_alertapi=primary.is_wildfire_alertapi,
+        organisation_name=primary.organisation_name,
+        organisation_id=primary.organisation_id,
+        auto_annotate_enqueued_at=now,
+        auto_annotated_at=now,
+    )
+    session.add(new_seq)
+    await session.flush()
+
+    new_detections = [
+        Detection(
+            recorded_at=det.recorded_at,
+            alert_api_id=det.alert_api_id,
+            sequence_id=new_seq.id,
+            bucket_key=det.bucket_key,
+            algo_predictions={"predictions": []},
+        )
+        for det in source_detections
+    ]
+    session.add_all(new_detections)
+    await session.flush()
+
+    annotation_data = SequenceAnnotationData(
+        sequences_bbox=[
+            SequenceBBox(
+                is_smoke=True,
+                smoke_type=payload.smoke_type,
+                false_positive_types=[],
+                bboxes=[],
+            )
+        ]
+    )
+    annotation = SequenceAnnotation(
+        sequence_id=new_seq.id,
+        has_smoke=True,
+        has_false_positives=False,
+        false_positive_types=[],
+        smoke_types=[payload.smoke_type.value],
+        has_missed_smoke=False,
+        is_unsure=False,
+        annotation=annotation_data.model_dump(),
+        processing_stage=SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
+    )
+    session.add(annotation)
+    await session.flush()
+
+    session.add(
+        SequenceAnnotationContribution(
+            sequence_annotation_id=annotation.id, user_id=current_user.id
+        )
+    )
+
+    # Every frame starts pending bbox annotation — unlike a classify-time
+    # smoke lane (auto_create_detection_annotations' VISUAL_CHECK shortcut),
+    # this object has no AI-proposed box to confirm; the annotator draws it.
+    session.add_all(
+        DetectionAnnotation(
+            detection_id=det.id,
+            annotation={"annotation": []},
+            processing_stage=DetectionAnnotationProcessingStage.BBOX_ANNOTATION,
+        )
+        for det in new_detections
+    )
+
+    await session.commit()
+
+    seq_dict = {c.name: getattr(new_seq, c.name) for c in new_seq.__table__.columns}
+    annotation_dict = {
+        c.name: getattr(annotation, c.name) for c in annotation.__table__.columns
+    }
+    annotation_dict["contributors"] = [
+        {"id": current_user.id, "username": current_user.username}
+    ]
+    return AlertLane(
+        sequence=SequenceRead(**seq_dict),
+        annotation=SequenceAnnotationRead(**annotation_dict),
     )
 
 
