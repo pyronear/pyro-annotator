@@ -59,12 +59,18 @@ vi.mock('@/components/annotation/CroppedImageSequence', () => ({
 }));
 
 /**
- * The cropped loop folds away behind a per-row disclosure, offered only on the
- * active row. Tests that want to see it open it once; the choice then persists
- * across selections, so switching objects afterwards keeps it open.
+ * The cropped loop folds away behind a toggle in the media column's control
+ * panel, offered only once an active lane has boxes. Tests that want to see it
+ * open it once; the choice then persists across selections, so switching
+ * objects afterwards keeps it open.
+ *
+ * The control's name is stable — `aria-expanded` carries open/closed — so a
+ * test that cares about the direction asserts on that, not on the name.
  */
-const expandCrop = async (label: string) => {
-  fireEvent.click(await screen.findByRole('button', { name: `Show ${label}'s cropped view` }));
+const cropToggle = () => screen.getByRole('button', { name: 'Cropped view' });
+
+const expandCrop = async () => {
+  fireEvent.click(await screen.findByRole('button', { name: 'Cropped view' }));
 };
 
 // ImageModal is a heavy, canvas/keyboard-driven editor covered by its own
@@ -952,7 +958,7 @@ describe('LocalizeAlertPage', () => {
     });
     expect(screen.queryByTestId('cropped-image-sequence')).not.toBeInTheDocument();
 
-    await expandCrop('Object 1');
+    await expandCrop();
 
     await waitFor(() => {
       expect(screen.getByTestId('cropped-image-sequence')).toHaveAttribute(
@@ -986,12 +992,13 @@ describe('LocalizeAlertPage', () => {
     await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
     fireEvent.click(screen.getByRole('button', { name: 'Go to Object 1' }));
-    await expandCrop('Object 1');
+    await expandCrop();
     await waitFor(() => {
       expect(screen.getByTestId('cropped-image-sequence')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: "Hide Object 1's cropped view" }));
+    expect(cropToggle()).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(cropToggle());
 
     await waitFor(() => {
       expect(screen.queryByTestId('cropped-image-sequence')).not.toBeInTheDocument();
@@ -1000,12 +1007,14 @@ describe('LocalizeAlertPage', () => {
     expect(screen.getByTestId('localize-object-row-object-1')).toHaveAttribute('data-active');
   });
 
-  // Opening the editor activates a lane WITHOUT entering focus mode, so its
-  // row never reads as selected. The disclosure belongs to the selected row,
-  // so neither it nor the strip appears on that path — there is no control
-  // hanging off a row that doesn't look active.
-  it('offers no cropped-view disclosure for a lane activated without entering focus mode', async () => {
+  // The disclosure sits in the media panel and follows `activeLaneId`, like
+  // the actions beside it — NOT focus mode. Closing the frame editor leaves a
+  // lane active without re-entering focus, and that is exactly when someone is
+  // most obviously working one object, so the loop stays reachable there.
+  it('offers the disclosure for a lane activated without entering focus mode', async () => {
     await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+    expect(screen.queryByRole('button', { name: /cropped view/i })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByTestId(`alert-frame-cell-${T1}`));
     await waitFor(() => {
@@ -1014,10 +1023,13 @@ describe('LocalizeAlertPage', () => {
     fireEvent.click(screen.getByText('Mock Close'));
     await waitFor(() => expect(screen.queryByTestId('image-modal')).not.toBeInTheDocument());
 
-    expect(
-      screen.queryByRole('button', { name: "Show Object 1's cropped view" })
-    ).not.toBeInTheDocument();
-    expect(screen.queryByTestId('cropped-image-sequence')).not.toBeInTheDocument();
+    await expandCrop();
+    await waitFor(() => {
+      expect(screen.getByTestId('cropped-image-sequence')).toHaveAttribute(
+        'data-sequence-id',
+        '101'
+      );
+    });
   });
 
   // The strip carries the object's overlay colour, the same tie-to-identity
@@ -1027,7 +1039,7 @@ describe('LocalizeAlertPage', () => {
     await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
     fireEvent.click(screen.getByRole('button', { name: 'Go to Object 1' }));
-    await expandCrop('Object 1');
+    await expandCrop();
 
     await waitFor(() => {
       const strip = screen.getByTestId('cropped-image-sequence');
@@ -1040,7 +1052,7 @@ describe('LocalizeAlertPage', () => {
     await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
     fireEvent.click(screen.getByRole('button', { name: 'Go to Object 1' }));
-    await expandCrop('Object 1');
+    await expandCrop();
     await waitFor(() => {
       expect(screen.getByTestId('cropped-image-sequence')).toBeInTheDocument();
     });
@@ -1263,7 +1275,7 @@ describe('LocalizeAlertPage', () => {
       expect(screen.getByTestId('object-status-row-2')).toHaveAttribute('data-selected', 'true');
       expect(screen.queryByRole('button', { name: 'industrial' })).not.toBeInTheDocument();
 
-      await expandCrop('Object 3');
+      await expandCrop();
       await waitFor(() => {
         expect(screen.getByTestId('cropped-image-sequence')).toHaveAttribute(
           'data-sequence-id',
@@ -1404,9 +1416,7 @@ describe('LocalizeAlertPage', () => {
       // the disclosure — a chevron that opens onto an empty spinning square is
       // worse than no chevron. Asserting on the CONTROL, not on the loop: the
       // loop is collapsed by default, so its absence would prove nothing.
-      expect(
-        screen.queryByRole('button', { name: "Show Object 3's cropped view" })
-      ).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /cropped view/i })).not.toBeInTheDocument();
       expect(screen.queryByTestId('cropped-image-sequence')).not.toBeInTheDocument();
     });
 
@@ -1688,7 +1698,7 @@ describe('LocalizeAlertPage', () => {
       });
 
       fireEvent.click(screen.getByRole('button', { name: 'Go to Object 2' }));
-      await expandCrop('Object 2');
+      await expandCrop();
 
       // Looking closely at the rejected plume is the entire point of the
       // read-only FP view — the flipbook is gated on the lane having boxes,
@@ -1754,7 +1764,7 @@ describe('LocalizeAlertPage', () => {
         expect(screen.getByTestId('localize-object-row-object-2')).toBeInTheDocument();
       });
       fireEvent.click(screen.getByRole('button', { name: 'Go to Object 2' }));
-      await expandCrop('Object 2');
+      await expandCrop();
       await waitFor(() => {
         expect(screen.getByTestId('cropped-image-sequence')).toBeInTheDocument();
       });
@@ -1807,7 +1817,7 @@ describe('LocalizeAlertPage', () => {
 
       // Activate the false-positive object: its cropped view is the point.
       fireEvent.click(screen.getByRole('button', { name: 'Go to Object 2' }));
-      await expandCrop('Object 2');
+      await expandCrop();
       await waitFor(() => {
         expect(screen.getByTestId('cropped-image-sequence')).toHaveAttribute(
           'data-sequence-id',

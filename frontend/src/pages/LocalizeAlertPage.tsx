@@ -98,7 +98,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate, useLocation, useSearchParams, useMatch } from 'react-router-dom';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Plus, Upload } from 'lucide-react';
+import { ArrowLeft, PlayCircle, Plus, Upload } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { QUERY_KEYS } from '@/utils/constants';
 import { Detection, DetectionAnnotation, DetectionAnnotationBbox, SmokeType } from '@/types/api';
@@ -747,12 +747,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       presentCount: 0,
       confirmedCount: 0,
     };
-    // The cropped loop is disclosed by the selected row — see the row's own
-    // header for why it lives there. Offered only on that row, and only once
-    // the lane has boxes to loop, so the chevron never opens onto an empty
-    // square.
     const isActive = isFocused && activeLaneId === object.laneSequenceId;
-    const canShowCrop = isActive && activeLaneBoxes.length > 0;
     return (
       <LocalizeObjectRow
         key={object.laneSequenceId}
@@ -771,18 +766,6 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
         isActive={isActive}
         onActivate={() => handleObjectClick(object.laneSequenceId)}
         {...objectActionProps(object)}
-        onToggleCrop={canShowCrop ? () => setCropExpanded(prev => !prev) : undefined}
-        cropExpanded={cropExpanded}
-        crop={
-          canShowCrop && cropExpanded && activeLaneId != null ? (
-            <CroppedImageSequence
-              bboxes={activeLaneBoxes}
-              sequenceId={activeLaneId}
-              accentColor={object.color}
-              maxSize="min(100%, 22vh)"
-            />
-          ) : undefined
-        }
       />
     );
   };
@@ -909,6 +892,12 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       { falsePositive: activeLaneIsFalsePositive }
     );
   }, [activeLaneId, detectionsByLaneId, annotationsByLaneId, activeLaneIsFalsePositive]);
+
+  // Keyed on `activeLaneId` alone rather than on focus mode, matching the
+  // panel's actions beside it: closing the frame editor leaves an object
+  // active without re-entering focus, and that is exactly when someone is
+  // most obviously working one object.
+  const canShowCrop = activeLaneId != null && activeLaneBoxes.length > 0;
 
   // Enters (or switches) object-focus mode: crop-on + small cards, a lens
   // for looking closely at just this object, and the selection its rail row
@@ -1173,6 +1162,33 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                 <span className="font-data text-detail text-haze">
                   {frameModel.frames.length} frame{frameModel.frames.length === 1 ? '' : 's'}
                 </span>
+                {/* Sits with the panel's other view controls because that is
+                    where its effect lands — the loop opens directly below,
+                    above the frames it is cropped from. Withheld until a lane
+                    with boxes is active, so it never opens onto an empty
+                    square. Its own pill rather than a slot inside ViewToolbar:
+                    that toolbar is about how the CELLS render, and this opens
+                    a different view entirely — but it borrows the toolbar's
+                    pressed language so the two read as peers.
+                    The name stays put and `aria-expanded` carries the state;
+                    a name that also flipped Show/Hide would announce the state
+                    twice, in two directions. */}
+                {canShowCrop && (
+                  <div className="inline-flex items-center rounded-lg bg-ash p-0.5">
+                    <button
+                      type="button"
+                      title="Cropped view — loop this object's crops across its frames"
+                      aria-label="Cropped view"
+                      aria-expanded={cropExpanded}
+                      onClick={() => setCropExpanded(prev => !prev)}
+                      className={`rounded p-1.5 transition-colors ${
+                        cropExpanded ? 'bg-pine-soft text-pine' : 'text-haze hover:text-char'
+                      }`}
+                    >
+                      <PlayCircle className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
                 <ViewToolbar
                   cardSize={effectiveCardSize}
                   onCardSizeChange={handleCardSizeChange}
@@ -1182,6 +1198,28 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
               </>
             }
           />
+
+          {/* Between the panel and the frames: the loop is what the frames
+              look like close up, so it reads as a lead-in to the grid rather
+              than as a separate widget. Capped by viewport height so a tall
+              loop can't push every frame below the fold. */}
+          {/* A block wrapper, NOT `flex justify-center`: the loop's own root
+              is `w-full max-w-…` and centres itself with `mx-auto`. Make that
+              root a flex item and it gets shrink-to-fit width, whose only
+              content is an absolutely-positioned canvas — so `w-full`
+              resolves against ~zero and the square collapses to a few pixels.
+              Centring is the component's job; the wrapper just gives it a
+              width to fill. */}
+          {canShowCrop && cropExpanded && activeLaneId != null && (
+            <div className="mb-4">
+              <CroppedImageSequence
+                bboxes={activeLaneBoxes}
+                sequenceId={activeLaneId}
+                accentColor={activeObject?.color}
+                maxSize="min(420px, 40vh)"
+              />
+            </div>
+          )}
 
           {/* The cells sit straight on the page, with no card of their own:
               everything that frames them — the object, the actions, the view

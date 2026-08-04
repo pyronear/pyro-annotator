@@ -284,7 +284,14 @@ export default function CroppedImageSequence({
   const showLoadingState = !currentImage?.loaded && !currentImage?.error;
 
   return (
-    <div className={className}>
+    // `w-full` is load-bearing, not decoration: the viewport below sizes
+    // itself with `w-full max-w-…`, so it needs a parent with a real width.
+    // Without this, a caller that makes this root a flex item (e.g. wrapping
+    // it in `flex justify-center` to centre it) gives it shrink-to-fit width
+    // — and since every child of the viewport is absolutely positioned, that
+    // resolves to zero and the square collapses to a few pixels. Centring is
+    // this component's job via `mx-auto`; callers only supply the width.
+    <div className={`w-full ${className}`}>
       {/* Fixed square viewport — the element never resizes; zoom changes the
           drawn source rect instead (see squareCropUtils). */}
       <div
