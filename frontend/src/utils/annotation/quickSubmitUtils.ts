@@ -49,6 +49,24 @@ export function getWinningBoxes(detection: Detection) {
   return { layer, boxes };
 }
 
+/**
+ * The boxes to SHOW for a false-positive lane. Its committed annotation is
+ * deliberately empty — the backend writes `{"annotation": []}` at ANNOTATED
+ * for FP-only lanes, since the human's answer was "no smoke here" — so the
+ * engine track the lane was object-split on is the only record of where the
+ * object actually is. Deliberately `algo_predictions` rather than
+ * `getWinningBoxes`: the split ran on the engine track, so that track is the
+ * lane's identity, and a later auto-model box is not.
+ *
+ * Read-only context only — these are never committed, offered for
+ * acceptance, or submitted.
+ */
+export function falsePositiveContextBoxes(
+  detection: Detection
+): { xyxyn: [number, number, number, number] }[] {
+  return (detection.algo_predictions?.predictions ?? []).map(p => ({ xyxyn: p.xyxyn }));
+}
+
 export function getCellState(
   detection: Detection,
   annotation: DetectionAnnotation | undefined
