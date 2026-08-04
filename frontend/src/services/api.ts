@@ -24,6 +24,7 @@ import {
   ApiError,
   LocalizationQueueItem,
   AlertDetail,
+  AnnotationType,
   ClassifyQueueItem,
   ClassifyDoneItem,
   ClassifySubmitRequest,
@@ -217,6 +218,7 @@ class ApiClient {
       source_api?: string;
       recorded_at_gte?: string;
       recorded_at_lte?: string;
+      is_wildfire_alertapi?: AnnotationType | 'null' | null;
       false_positive_types?: string[];
       smoke_types?: string[];
       is_unsure?: boolean;

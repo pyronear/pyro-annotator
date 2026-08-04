@@ -363,3 +363,68 @@ async def test_model_accuracy_tp_and_fp(
     )
     assert fp_response.json()["total"] == 1
     assert fp_response.json()["items"][0]["platform_alert_id"] == 1080
+
+
+@pytest.mark.asyncio
+async def test_date_filter_does_not_leak_partial_alerts(
+    authenticated_client: AsyncClient, async_session
+):
+    # Sibling lanes straddle the date window: the in-window lane is classified,
+    # the out-of-window lane is not. The alert is partial and must stay out
+    # even when the filter window only "sees" the classified lane.
+    await _lane(
+        async_session,
+        alert_api_id=1100,
+        platform_alert_id=1100,
+        stage=Stage.ANNOTATED,
+        recorded_at=NOW,
+    )
+    await _lane(
+        async_session,
+        alert_api_id=1101,
+        platform_alert_id=1100,
+        stage=Stage.READY_TO_ANNOTATE,
+        recorded_at=NOW + timedelta(hours=2),
+    )
+
+    response = await authenticated_client.get(
+        "/sequences/classify-done",
+        params={"recorded_at_lte": (NOW + timedelta(hours=1)).isoformat()},
+    )
+    assert response.json()["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_is_wildfire_alertapi_filter(
+    authenticated_client: AsyncClient, async_session
+):
+    wildfire = await _lane(
+        async_session,
+        alert_api_id=1110,
+        platform_alert_id=1110,
+        stage=Stage.ANNOTATED,
+    )
+    wildfire.is_wildfire_alertapi = "wildfire_smoke"
+    async_session.add(wildfire)
+    await async_session.commit()
+    await _lane(
+        async_session,
+        alert_api_id=1120,
+        platform_alert_id=1120,
+        stage=Stage.ANNOTATED,
+    )
+
+    response = await authenticated_client.get(
+        "/sequences/classify-done",
+        params={"is_wildfire_alertapi": "wildfire_smoke"},
+    )
+    data = response.json()
+    assert data["total"] == 1
+    assert data["items"][0]["platform_alert_id"] == 1110
+
+    null_response = await authenticated_client.get(
+        "/sequences/classify-done", params={"is_wildfire_alertapi": "null"}
+    )
+    null_data = null_response.json()
+    assert null_data["total"] == 1
+    assert null_data["items"][0]["platform_alert_id"] == 1120

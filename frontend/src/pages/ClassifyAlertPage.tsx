@@ -656,6 +656,7 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
     },
     onSuccess: response => {
       queryClient.invalidateQueries({ queryKey: ['classify-queue'] });
+      queryClient.invalidateQueries({ queryKey: ['classify-done'] });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.SEQUENCE_ANNOTATIONS });
       queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
       queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });

@@ -915,6 +915,11 @@ async def classify_done(
     source_api: Optional[SourceApi] = Query(None),
     recorded_at_gte: Optional[datetime] = Query(None),
     recorded_at_lte: Optional[datetime] = Query(None),
+    is_wildfire_alertapi: Optional[str] = Query(
+        None,
+        description="Filter by the alert platform's annotation: "
+        "'wildfire_smoke', 'other_smoke', 'other', or 'null' for unclassified",
+    ),
     false_positive_types: Optional[List[FalsePositiveType]] = Query(
         None, description="Alerts with any lane matching one of these FP types"
     ),
@@ -936,6 +941,38 @@ async def classify_done(
     """Fully classified alerts — every lane has an annotation past
     READY_TO_ANNOTATE — one row per alert with per-lane outcome data
     (spec: 2026-08-04 classify-done alert rows)."""
+    # Sequence-level filters pre-select candidate alerts on an alias, so the
+    # membership predicate and any-lane filters below always aggregate over
+    # ALL lanes of an alert. Filtering lanes directly would evaluate "every
+    # lane classified" on the in-window subset only — sibling lanes don't
+    # share recorded_at, so a date range could surface partial alerts.
+    cand_seq = aliased(Sequence)
+    candidates = select(cand_seq.source_api, cand_seq.platform_alert_id).distinct()
+    for col, val in (
+        (cand_seq.camera_name, camera_name),
+        (cand_seq.organisation_name, organisation_name),
+        (cand_seq.source_api, source_api),
+    ):
+        if val is not None:
+            candidates = candidates.where(col == val)
+    if recorded_at_gte is not None:
+        candidates = candidates.where(cand_seq.recorded_at >= recorded_at_gte)
+    if recorded_at_lte is not None:
+        candidates = candidates.where(cand_seq.recorded_at <= recorded_at_lte)
+    if is_wildfire_alertapi is not None:
+        # "null" selects unclassified alerts; invalid values disable the
+        # filter (same contract as the list-sequences endpoint).
+        if is_wildfire_alertapi == "null":
+            candidates = candidates.where(cand_seq.is_wildfire_alertapi.is_(None))
+        else:
+            try:
+                enum_value = AnnotationType(is_wildfire_alertapi)
+                candidates = candidates.where(
+                    cand_seq.is_wildfire_alertapi == enum_value
+                )
+            except ValueError:
+                pass
+
     lane_done = case((SequenceAnnotation.processing_stage.in_(DONE_STAGES), 1), else_=0)
     alerts = (
         select(
@@ -944,21 +981,11 @@ async def classify_done(
             func.min(Sequence.recorded_at).label("recorded_at"),
         )
         .outerjoin(SequenceAnnotation, SequenceAnnotation.sequence_id == Sequence.id)
+        .where(tuple_(Sequence.source_api, Sequence.platform_alert_id).in_(candidates))
         .group_by(Sequence.source_api, Sequence.platform_alert_id)
         # every lane classified: an unannotated lane contributes 0 to the sum
         .having(func.count() == func.sum(lane_done))
     )
-    for col, val in (
-        (Sequence.camera_name, camera_name),
-        (Sequence.organisation_name, organisation_name),
-        (Sequence.source_api, source_api),
-    ):
-        if val is not None:
-            alerts = alerts.where(col == val)
-    if recorded_at_gte is not None:
-        alerts = alerts.where(Sequence.recorded_at >= recorded_at_gte)
-    if recorded_at_lte is not None:
-        alerts = alerts.where(Sequence.recorded_at <= recorded_at_lte)
 
     def any_lane(condition):
         # HAVING-level "at least one lane matches" over the grouped join.
@@ -1017,7 +1044,11 @@ async def classify_done(
     page_rows = (
         await session.execute(
             select(alerts_sq)
-            .order_by(desc(alerts_sq.c.recorded_at))
+            # platform_alert_id tie-break keeps page boundaries stable when
+            # alerts share a recorded_at
+            .order_by(
+                desc(alerts_sq.c.recorded_at), desc(alerts_sq.c.platform_alert_id)
+            )
             .offset((params.page - 1) * params.size)
             .limit(params.size)
         )
