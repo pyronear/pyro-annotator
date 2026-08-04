@@ -64,12 +64,41 @@ vi.mock('@/components/detection-sequence/ImageModal', () => ({
         onClick={() =>
           props.onSubmit(
             props.detection,
-            [{ xyxyn: [0.1, 0.1, 0.2, 0.2], class_name: 'smoke', smoke_type: 'wildfire' }],
+            [
+              {
+                xyxyn: [0.1, 0.1, 0.2, 0.2],
+                class_name: 'smoke',
+                smoke_type: 'wildfire',
+                origin: 'human',
+              },
+            ],
             false
           )
         }
       >
         Mock Submit
+      </button>
+      {/* A save with no hand-drawn box — e.g. re-saving/accepting the
+          model's own prediction — for tests asserting the ⚑ retro-flag
+          only fires on an actual human-origin box. */}
+      <button
+        type="button"
+        onClick={() =>
+          props.onSubmit(
+            props.detection,
+            [
+              {
+                xyxyn: [0.1, 0.1, 0.2, 0.2],
+                class_name: 'smoke',
+                smoke_type: 'wildfire',
+                origin: 'auto',
+              },
+            ],
+            false
+          )
+        }
+      >
+        Mock Submit (no human box)
       </button>
       <button type="button" onClick={props.onClose}>
         Mock Close
@@ -999,6 +1028,68 @@ describe('LocalizeAlertPage', () => {
       expect(apiClient.updateSequenceAnnotation).not.toHaveBeenCalled();
     });
 
+    it('does not retro-flag a ⚑-mode save with zero human-origin boxes (e.g. re-saving the model\'s own prediction)', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Go to Missed' }));
+      await waitFor(() => {
+        expect(screen.getByTestId('cropped-image-sequence')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId(`alert-frame-cell-${T1}`));
+      await waitFor(() => {
+        expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1001');
+      });
+      fireEvent.click(screen.getByText('Mock Submit (no human box)'));
+
+      await waitFor(() => {
+        expect(apiClient.createDetectionAnnotation).toHaveBeenCalledWith(
+          expect.objectContaining({ detection_id: 1001 })
+        );
+      });
+      expect(apiClient.updateSequenceAnnotation).not.toHaveBeenCalled();
+    });
+
+    it('toasts on a failed retro-flag PATCH and retries it on the next human-box save', async () => {
+      vi.mocked(apiClient.updateSequenceAnnotation).mockRejectedValueOnce(
+        new Error('Network error')
+      );
+
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Go to Missed' }));
+      await waitFor(() => {
+        expect(screen.getByTestId('cropped-image-sequence')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId(`alert-frame-cell-${T1}`));
+      await waitFor(() => {
+        expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1001');
+      });
+      fireEvent.click(screen.getByText('Mock Submit'));
+
+      await waitFor(() => {
+        expect(
+          screen.getByText('Failed to flag missed smoke — try drawing another box')
+        ).toBeInTheDocument();
+      });
+      expect(apiClient.updateSequenceAnnotation).toHaveBeenCalledTimes(1);
+
+      // The failure reset the one-shot guard — a later human-box save retries.
+      fireEvent.click(screen.getByTestId(`alert-frame-cell-${T1}`));
+      await waitFor(() => {
+        expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1001');
+      });
+      fireEvent.click(screen.getByText('Mock Submit'));
+
+      await waitFor(() => {
+        expect(apiClient.updateSequenceAnnotation).toHaveBeenCalledTimes(2);
+      });
+      expect(apiClient.updateSequenceAnnotation).toHaveBeenLastCalledWith(201, {
+        has_missed_smoke: true,
+      });
+    });
+
     describe('soft-confirm on submit (flagged, carrier lane has no boxes)', () => {
       function mockFlaggedAlert() {
         vi.mocked(apiClient.getAlertDetail).mockResolvedValue({
@@ -1015,6 +1106,96 @@ describe('LocalizeAlertPage', () => {
           ],
         });
       }
+
+      // Both tests below need the carrier lane (101)'s detection-annotations
+      // query to actually reflect what gets saved — the suite's default
+      // mock is static (always empty), which would silently make the gate
+      // look satisfied/unsatisfied regardless of what's saved. Mirrors the
+      // dynamic-cache pattern from the "saving a frame in the modal" test.
+      function trackLane101Annotations() {
+        let lane101Items: DetectionAnnotation[] = [];
+        vi.mocked(apiClient.getDetectionAnnotations).mockImplementation(
+          async (filters?: { sequence_id?: number }) => {
+            if (filters?.sequence_id === 101) {
+              return { ...emptyAnnotationsPage, items: lane101Items };
+            }
+            return emptyAnnotationsPage;
+          }
+        );
+        vi.mocked(apiClient.createDetectionAnnotation).mockImplementation(async payload => {
+          const created: DetectionAnnotation = {
+            id: 9001,
+            detection_id: payload.detection_id,
+            annotation: payload.annotation,
+            processing_stage: payload.processing_stage,
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: null,
+          };
+          lane101Items = [created];
+          return created;
+        });
+      }
+
+      it('a quick-accepted carrier-lane box (origin auto) does NOT satisfy the gate — the soft-confirm still fires', async () => {
+        mockFlaggedAlert();
+        trackLane101Annotations();
+        await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+        fireEvent.click(screen.getByRole('button', { name: "Accept Object 1's boxes" }));
+        await waitFor(() => {
+          expect(apiClient.createDetectionAnnotation).toHaveBeenCalledWith(
+            expect.objectContaining({ detection_id: 1001 })
+          );
+        });
+        // The refetched cache now has a committed box for the carrier lane,
+        // but it's origin 'auto' (quick-accept), not human — the ⚑ row
+        // stays pending.
+        await waitFor(() => {
+          expect(
+            screen.getByRole('button', { name: 'Missed, frame 1: pending' })
+          ).toBeInTheDocument();
+        });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Accept all & submit alert' }));
+
+        await waitFor(() => {
+          expect(
+            screen.getByText('You flagged missed smoke but drew no boxes — submit anyway?')
+          ).toBeInTheDocument();
+        });
+        expect(apiClient.localizeSubmit).not.toHaveBeenCalled();
+      });
+
+      it('a human-origin ⚑ box satisfies the gate — submit proceeds straight through, no soft-confirm', async () => {
+        mockFlaggedAlert();
+        trackLane101Annotations();
+        await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Go to Missed' }));
+        await waitFor(() => {
+          expect(screen.getByTestId('cropped-image-sequence')).toBeInTheDocument();
+        });
+        fireEvent.click(screen.getByTestId(`alert-frame-cell-${T1}`));
+        await waitFor(() => {
+          expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1001');
+        });
+        fireEvent.click(screen.getByText('Mock Submit'));
+
+        await waitFor(() => {
+          expect(
+            screen.getByRole('button', { name: 'Missed, frame 1: confirmed' })
+          ).toBeInTheDocument();
+        });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Accept all & submit alert' }));
+
+        expect(
+          screen.queryByText('You flagged missed smoke but drew no boxes — submit anyway?')
+        ).not.toBeInTheDocument();
+        await waitFor(() => {
+          expect(apiClient.localizeSubmit).toHaveBeenCalledWith([201, 202]);
+        });
+      });
 
       it('"Go back" cancels — nothing is submitted or patched', async () => {
         mockFlaggedAlert();

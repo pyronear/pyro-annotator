@@ -156,21 +156,37 @@ export function findCarrierLaneId(lanes: AlertLane[]): number | null {
  * (never `absent` — the row always covers the whole alert timeline,
  * regardless of whether the carrier lane itself contributes a cell to any
  * given frame): `confirmed` wherever the carrier lane already has a
- * committed box there, `pending` everywhere else. Since ⚑ boxes save as
- * ordinary boxes on the carrier lane's own detection annotations (the
- * spec-stated storage limitation), this can't distinguish a ⚑-drawn box
- * from the carrier's own — any committed box reads as "missed smoke
- * reviewed here".
+ * committed HUMAN-origin box there, `pending` everywhere else.
+ *
+ * Gated on `origin === 'human'` specifically (not merely "a committed box
+ * exists") because a quick-accepted box — the carrier lane's own smoke,
+ * accepted via its per-object "Accept boxes" button or "Accept all &
+ * submit" — carries `origin: 'auto'`/`'engine'` and was never reviewed for
+ * missed smoke at all. Reads the CARRIER LANE'S OWN raw annotations
+ * (`carrierAnnotationsByDetectionId`, keyed by detection id) rather than
+ * `AlertFrameCell.boxes`, which are pre-filtered by `focusOnMainObject` for
+ * display and could silently drop a human box that doesn't intersect the
+ * model's own anchor predictions — exactly the shape of box a missed-smoke
+ * drawing is likely to be. Since ⚑ boxes save as ordinary human boxes on
+ * the carrier lane's own detection annotations (the spec-stated storage
+ * limitation), this still can't distinguish a ⚑-drawn box from a human
+ * edit of the carrier's own smoke — either reads as "missed smoke reviewed
+ * here".
  */
 export function buildMissedRowStatus(
   frames: AlertFrame[],
-  carrierLaneId: number | null
+  carrierLaneId: number | null,
+  carrierAnnotationsByDetectionId: Map<number, DetectionAnnotation>
 ): Record<string, ObjectStatusStripStatus> {
   const status: Record<string, ObjectStatusStripStatus> = {};
   for (const frame of frames) {
     const cell =
       carrierLaneId != null ? frame.cells.find(c => c.laneSequenceId === carrierLaneId) : undefined;
-    status[frame.recordedAt] = cell?.cellState === 'done' ? 'confirmed' : 'pending';
+    const annotation = cell ? carrierAnnotationsByDetectionId.get(cell.detectionId) : undefined;
+    const hasHumanBox = (annotation?.annotation?.annotation ?? []).some(
+      item => item.origin === 'human'
+    );
+    status[frame.recordedAt] = hasHumanBox ? 'confirmed' : 'pending';
   }
   return status;
 }

@@ -263,18 +263,31 @@ export default function LocalizeAlertPage() {
   // ⚑ Missed pseudo-object: the carrier lane (first still-open lane,
   // primary-first — see `findCarrierLaneId`), its own per-frame status
   // (spanning the full frame union), and whether it already has any
-  // committed box anywhere — the closest data-level signal to "a ⚑ box was
-  // drawn" given ⚑ boxes are stored indistinguishably from the carrier
-  // lane's own (spec-stated limitation).
+  // committed HUMAN-origin box anywhere — the closest data-level signal to
+  // "a ⚑ box was drawn" given ⚑ boxes are stored indistinguishably from the
+  // carrier lane's own human edits (spec-stated limitation). A quick-accept
+  // (origin auto/engine) must NOT count — it's the model's own box, never
+  // reviewed for missed smoke — hence reading raw annotations (with
+  // `origin`) rather than `AlertFrameCell`'s display-filtered boxes.
   const carrierLaneId = alertDetail ? findCarrierLaneId(alertDetail.lanes) : null;
   const carrierLane = alertDetail?.lanes.find(l => l.sequence.id === carrierLaneId) ?? null;
-  const missedRowStatus = buildMissedRowStatus(frameModel.frames, carrierLaneId);
+  const carrierAnnotationsByDetectionId = new Map(
+    (carrierLaneId != null ? (annotationsByLaneId[carrierLaneId] ?? []) : []).map(a => [
+      a.detection_id,
+      a,
+    ])
+  );
+  const missedRowStatus = buildMissedRowStatus(
+    frameModel.frames,
+    carrierLaneId,
+    carrierAnnotationsByDetectionId
+  );
   const carrierHasConfirmedBox = Object.values(missedRowStatus).some(s => s === 'confirmed');
   const anyLaneFlagged = alertDetail?.lanes.some(l => l.annotation?.has_missed_smoke) ?? false;
   // Soft-confirm gate for submit: flagged somewhere, but the carrier lane
-  // (the flag's one deterministic home) has no committed box at all —
-  // "no ⚑ box was drawn" — and the question hasn't already been answered
-  // this submit round.
+  // (the flag's one deterministic home) has no committed HUMAN-origin box
+  // at all — "no ⚑ box was drawn" — and the question hasn't already been
+  // answered this submit round.
   const softConfirmNeeded = anyLaneFlagged && !carrierHasConfirmedBox && !softConfirmResolved;
 
   // Reproduces a shared/reloaded `?frame=<detectionId>` link: resolves the
@@ -411,6 +424,15 @@ export default function LocalizeAlertPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: alertDetailQueryKey });
     },
+    // `retroFlagFiredRef` was already set before this ran (see
+    // `handleModalSubmit`) to prevent a second save from double-firing
+    // while this one is in flight — a failure must undo that, or a failed
+    // PATCH silently disables the flag for the rest of the session with no
+    // way to retry.
+    onError: () => {
+      retroFlagFiredRef.current = false;
+      showToastNotification('Failed to flag missed smoke — try drawing another box', 'error');
+    },
   });
 
   // Soft-confirm's "Submit & clear flag" path: PATCHes the flag off the
@@ -431,10 +453,17 @@ export default function LocalizeAlertPage() {
   ) => {
     if (!modalContext) return;
     setPersistentDrawMode(currentDrawMode);
-    // Only counts as a ⚑-mode save when it actually landed on the carrier
-    // lane — guards against the rare frame where the carrier is absent and
-    // the grid's cell-click fell back to a different lane's own cell.
-    const isFlagSave = flagMode && carrierLaneId != null && modalContext.laneId === carrierLaneId;
+    // Only counts as a ⚑-mode save when: it actually landed on the carrier
+    // lane (guards against the rare frame where the carrier is absent and
+    // the grid's cell-click fell back to a different lane's own cell), AND
+    // the submitted items include at least one HUMAN-origin box — merely
+    // accepting/re-saving the model's own predictions (origin auto/engine)
+    // is not a missed-smoke drawing and must not retro-flag.
+    const isFlagSave =
+      flagMode &&
+      carrierLaneId != null &&
+      modalContext.laneId === carrierLaneId &&
+      items.some(item => item.origin === 'human');
     saveDetection.mutate(
       {
         laneId: modalContext.laneId,

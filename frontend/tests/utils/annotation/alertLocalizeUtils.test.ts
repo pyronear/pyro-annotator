@@ -257,6 +257,9 @@ describe('findCarrierLaneId', () => {
 });
 
 describe('buildMissedRowStatus', () => {
+  const annotationsMap = (items: DetectionAnnotation[]) =>
+    new Map(items.map(a => [a.detection_id, a]));
+
   it('spans every frame, defaulting to pending', () => {
     const t1 = '2026-01-01T10:00:00Z';
     const t2 = '2026-01-01T10:00:10Z';
@@ -267,20 +270,53 @@ describe('buildMissedRowStatus', () => {
       { 1: [] }
     );
 
-    expect(buildMissedRowStatus(frames, 1)).toEqual({ [t1]: 'pending', [t2]: 'pending' });
+    expect(buildMissedRowStatus(frames, 1, annotationsMap([]))).toEqual({
+      [t1]: 'pending',
+      [t2]: 'pending',
+    });
   });
 
-  it('marks a frame confirmed once the carrier lane has a committed box there', () => {
+  it('marks a frame confirmed once the carrier lane has a committed HUMAN-origin box there', () => {
     const t1 = '2026-01-01T10:00:00Z';
     const t2 = '2026-01-01T10:00:10Z';
     const lane = makeLane(1);
     const { frames } = buildAlertFrameModel(
       [lane],
       { 1: [makeDetection(1, t1), makeDetection(2, t2)] },
-      { 1: [makeDetAnnotation(1, 'annotated', [{ xyxyn: [0.1, 0.1, 0.2, 0.2], class_name: 'smoke' }])] }
+      { 1: [] }
     );
+    const annotations = annotationsMap([
+      makeDetAnnotation(1, 'annotated', [
+        { xyxyn: [0.1, 0.1, 0.2, 0.2], class_name: 'smoke', origin: 'human' },
+      ]),
+    ]);
 
-    expect(buildMissedRowStatus(frames, 1)).toEqual({ [t1]: 'confirmed', [t2]: 'pending' });
+    expect(buildMissedRowStatus(frames, 1, annotations)).toEqual({
+      [t1]: 'confirmed',
+      [t2]: 'pending',
+    });
+  });
+
+  it('stays pending when the carrier lane\'s committed box is quick-accepted (origin auto/engine), not human-drawn', () => {
+    // Regression: "Accept boxes" / "Accept all & submit" writes origin
+    // 'auto'/'engine' boxes — the model's own predictions, never reviewed
+    // for missed smoke. A committed box existing at all must not be enough.
+    const t1 = '2026-01-01T10:00:00Z';
+    const lane = makeLane(1);
+    const { frames } = buildAlertFrameModel([lane], { 1: [makeDetection(1, t1)] }, { 1: [] });
+    const autoAccepted = annotationsMap([
+      makeDetAnnotation(1, 'annotated', [
+        { xyxyn: [0.1, 0.1, 0.2, 0.2], class_name: 'smoke', origin: 'auto' },
+      ]),
+    ]);
+    const engineAccepted = annotationsMap([
+      makeDetAnnotation(1, 'annotated', [
+        { xyxyn: [0.1, 0.1, 0.2, 0.2], class_name: 'smoke', origin: 'engine' },
+      ]),
+    ]);
+
+    expect(buildMissedRowStatus(frames, 1, autoAccepted)).toEqual({ [t1]: 'pending' });
+    expect(buildMissedRowStatus(frames, 1, engineAccepted)).toEqual({ [t1]: 'pending' });
   });
 
   it('stays pending everywhere when the carrier lane has no cell on any frame (not contributing yet)', () => {
@@ -294,7 +330,7 @@ describe('buildMissedRowStatus', () => {
       { 1: [], 2: [] }
     );
 
-    expect(buildMissedRowStatus(frames, 1)).toEqual({ [t1]: 'pending' });
+    expect(buildMissedRowStatus(frames, 1, annotationsMap([]))).toEqual({ [t1]: 'pending' });
   });
 
   it('is entirely pending when there is no carrier lane at all', () => {
@@ -302,6 +338,6 @@ describe('buildMissedRowStatus', () => {
     const lane = makeLane(1);
     const { frames } = buildAlertFrameModel([lane], { 1: [makeDetection(1, t1)] }, { 1: [] });
 
-    expect(buildMissedRowStatus(frames, null)).toEqual({ [t1]: 'pending' });
+    expect(buildMissedRowStatus(frames, null, annotationsMap([]))).toEqual({ [t1]: 'pending' });
   });
 });
