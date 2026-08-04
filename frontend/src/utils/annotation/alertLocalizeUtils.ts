@@ -31,7 +31,12 @@ import {
   SequenceAnnotation,
   SmokeType,
 } from '@/types/api';
-import { CellState, getCellState, getWinningBoxes } from './quickSubmitUtils';
+import {
+  CellState,
+  falsePositiveContextBoxes,
+  getCellState,
+  getWinningBoxes,
+} from './quickSubmitUtils';
 import { focusOnMainObject } from './gridCropUtils';
 import { laneNeedsLocalization } from './localizeUtils';
 import { getObjectColor } from './objectColors';
@@ -130,8 +135,14 @@ export function buildAlertFrameModel(
     for (const detection of detections) {
       const annotation = annotationByDetectionId.get(detection.id);
       const cellState = getCellState(detection, annotation);
-      const rawBoxes =
-        cellState === 'done'
+      // An FP lane's committed annotation is empty by construction (see
+      // `falsePositiveContextBoxes`), so reading it would leave this lane
+      // with nothing to draw — no mini-boxes, no crop-mode zoom, and a
+      // timeline row stuck at 'empty'. Its engine track is what the
+      // read-only context view is for.
+      const rawBoxes = falsePositive
+        ? falsePositiveContextBoxes(detection)
+        : cellState === 'done'
           ? (annotation?.annotation?.annotation ?? [])
               .filter(item => item.false_positive_type == null)
               .map(item => ({ xyxyn: item.xyxyn }))

@@ -116,6 +116,26 @@ describe('collectLaneBoxes', () => {
 
     expect(result).toEqual([{ detection_id: 1, xyxyn: [0.25, 0.25, 0.35, 0.35] }]);
   });
+
+  it('reads the engine track for a false-positive lane, whose committed annotation is empty', () => {
+    // The production shape: an `annotated` detection annotation with an
+    // empty box list, and the object's real location in the engine track.
+    const detection = makeDetection(1, {
+      engine: [box(0.5, 0.5, 0.7, 0.7)],
+      auto: [box(0.1, 0.1, 0.2, 0.2)],
+    });
+    const annotations = new Map([[1, makeAnnotation(1, 'annotated', [])]]);
+
+    // Without the flag, the empty committed annotation wins and the lane
+    // contributes nothing — the bug this fixes.
+    expect(collectLaneBoxes([detection], annotations)).toEqual([]);
+
+    // With it, the engine track shows through — and beats auto_predictions,
+    // because the lane was object-split on the engine track.
+    expect(collectLaneBoxes([detection], annotations, { falsePositive: true })).toEqual([
+      { detection_id: 1, xyxyn: [0.5, 0.5, 0.7, 0.7] },
+    ]);
+  });
 });
 
 describe('buildQuickSubmitPlan', () => {

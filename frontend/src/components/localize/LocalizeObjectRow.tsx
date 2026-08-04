@@ -83,10 +83,17 @@ export const LocalizeObjectRow: React.FC<LocalizeObjectRowProps> = ({
     ? (falsePositiveTypes ?? []).map(t => t.replace(/_/g, ' ')).join(', ') || null
     : (smokeType ?? null);
 
-  const frame = dimmed
-    ? 'border border-line bg-paper opacity-60'
-    : isActive
-      ? 'border border-line border-l-[3px] border-l-pine bg-paper'
+  // Selection is checked BEFORE dimming. A non-workable row (a false
+  // positive, or an already-localized context lane) is still clickable and
+  // still drives the media column, so it needs the same "this is what
+  // you're looking at" feedback — and leaving it dimmed while it is the
+  // active object contradicts the selection. Its accent is neutral rather
+  // than pine, which on this page means workable / positive / in progress —
+  // a claim a settled object shouldn't make.
+  const frame = isActive
+    ? `border border-line border-l-[3px] bg-paper ${workable ? 'border-l-pine' : 'border-l-char'}`
+    : dimmed
+      ? 'border border-line bg-paper opacity-60'
       : 'border border-line bg-paper hover:bg-ash';
 
   return (

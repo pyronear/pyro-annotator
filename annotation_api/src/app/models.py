@@ -359,8 +359,10 @@ class SequenceAnnotation(SQLModel, table=True):
         default_factory=lambda: datetime.now(UTC),
         sa_column=Column(DateTime(timezone=True)),
     )
+    # Server-owned: stamped on every UPDATE, never supplied by clients (#216).
     updated_at: Optional[datetime] = Field(
-        default=None, sa_column=Column(DateTime(timezone=True))
+        default=None,
+        sa_column=Column(DateTime(timezone=True), onupdate=lambda: datetime.now(UTC)),
     )
     processing_stage: SequenceAnnotationProcessingStage
 
@@ -420,8 +422,10 @@ class DetectionAnnotation(SQLModel, table=True):
         default_factory=lambda: datetime.now(UTC),
         sa_column=Column(DateTime(timezone=True)),
     )
+    # Server-owned: stamped on every UPDATE, never supplied by clients (#216).
     updated_at: Optional[datetime] = Field(
-        default=None, sa_column=Column(DateTime(timezone=True))
+        default=None,
+        sa_column=Column(DateTime(timezone=True), onupdate=lambda: datetime.now(UTC)),
     )
 
 

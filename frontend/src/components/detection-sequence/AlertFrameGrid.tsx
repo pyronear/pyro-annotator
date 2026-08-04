@@ -4,7 +4,9 @@
  * cell shows the frame image (of the active object's detection when it has
  * one there, else the first present lane's), a mini box per object present
  * on that frame in its own accent color (solid for a committed box, dashed
- * for a winning-but-not-yet-committed one), and a small status chip.
+ * for anything not committed — a winning model box awaiting acceptance, or
+ * a false-positive lane's engine track, which is read-only context and
+ * never gets committed at all), and a small status chip.
  *
  * Clicking a cell reports the frame's timestamp plus the shown (active, or
  * first-present-fallback) object's lane and detection id via `onCellClick`
@@ -220,7 +222,14 @@ function AlertFrameCellView({
                   top: `${top}px`,
                   width: `${width}px`,
                   height: `${height}px`,
-                  border: `2px ${cell.cellState === 'done' ? 'solid' : 'dashed'} ${box.color}`,
+                  // Solid means committed. A false-positive cell's state is
+                  // genuinely 'done' (its lane is annotated), but the boxes
+                  // shown are the engine track, not anything a human
+                  // committed — so it stays dashed like any other
+                  // not-yet-committed box.
+                  border: `2px ${
+                    cell.cellState === 'done' && !cell.isFalsePositive ? 'solid' : 'dashed'
+                  } ${box.color}`,
                 }}
               />
             );
