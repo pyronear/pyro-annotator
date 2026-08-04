@@ -277,6 +277,11 @@ export default function UserManagementPage() {
                     >
                       {user.is_superuser ? 'Superuser' : 'User'}
                     </span>
+                    {user.can_localize && (
+                      <span className="ml-1 inline-flex px-2 py-1 font-body text-xs font-semibold rounded-full bg-pine-soft text-pine">
+                        Localize
+                      </span>
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap font-data text-detail text-haze">
                     {new Date(user.created_at).toLocaleDateString()}
@@ -416,6 +421,7 @@ function CreateUserModal({
     password: '',
     is_active: true,
     is_superuser: false,
+    can_localize: false,
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -477,6 +483,16 @@ function CreateUserModal({
                 />
                 <span className="ml-2 text-sm text-gray-700">Superuser privileges</span>
               </label>
+
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={formData.can_localize}
+                  onChange={e => setFormData(prev => ({ ...prev, can_localize: e.target.checked }))}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="ml-2 text-sm text-gray-700">Can localize</span>
+              </label>
             </div>
 
             <div className="flex justify-end space-x-3 pt-4">
@@ -521,6 +537,7 @@ function EditUserModal({
     username: user.username,
     is_active: user.is_active,
     is_superuser: user.is_superuser,
+    can_localize: user.can_localize,
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -571,6 +588,16 @@ function EditUserModal({
                   className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
                 <span className="ml-2 text-sm text-gray-700">Superuser privileges</span>
+              </label>
+
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={formData.can_localize}
+                  onChange={e => setFormData(prev => ({ ...prev, can_localize: e.target.checked }))}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="ml-2 text-sm text-gray-700">Can localize</span>
               </label>
             </div>
 
