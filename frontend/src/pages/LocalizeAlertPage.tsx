@@ -317,6 +317,35 @@ export default function LocalizeAlertPage() {
     return null;
   }, [detectionIdNum, alertDetail, detectionsByLaneId, annotationsByLaneId]);
 
+  // Object-identity overlays for the open detection's OTHER contributing
+  // lanes on this same frame (`recorded_at`) — passed to `ImageModal` so it
+  // renders those boxes color-coded and labeled with their own object
+  // identity ("Object N") instead of the generic, identity-less "sibling"
+  // others_bboxes layer. Sourced from the frame model's own per-cell boxes
+  // (committed for done cells, winning for auto cells — the same boxes
+  // AlertFrameGrid's mini-boxes already render) and `objectStatus`'s
+  // label/color, so it stays consistent with what's on screen elsewhere.
+  // A plain derivation (not useMemo) — `frameModel` itself is recomputed
+  // every render, same as the other values (objectStatusRows, etc.) derived
+  // from it below.
+  const modalFrame = modalContext
+    ? frameModel.frames.find(f => f.recordedAt === modalContext.detection.recorded_at)
+    : undefined;
+  const objectOverlays = modalContext
+    ? (modalFrame?.cells ?? [])
+        .filter(cell => cell.laneSequenceId !== modalContext.laneId && cell.boxes.length > 0)
+        .map(cell => {
+          const object = frameModel.objectStatus.find(
+            o => o.laneSequenceId === cell.laneSequenceId
+          );
+          return {
+            color: object?.color ?? cell.boxes[0].color,
+            label: object?.label ?? 'Object',
+            boxes: cell.boxes.map(b => ({ xyxyn: b.xyxyn })),
+          };
+        })
+    : [];
+
   // Reset the modal's smoke-type default to the lane's classified type only
   // when the lane changes — not on every render/refetch, which would clobber
   // a manual in-modal change.
@@ -1008,6 +1037,7 @@ export default function LocalizeAlertPage() {
           isSubmitting={saveDetection.isPending}
           isAnnotated={getIsAnnotated(modalContext.existingAnnotation ?? undefined)}
           existingAnnotation={modalContext.existingAnnotation}
+          objectOverlays={objectOverlays}
           selectedSmokeType={selectedSmokeType}
           onSmokeTypeChange={setSelectedSmokeType}
           persistentDrawMode={persistentDrawMode}

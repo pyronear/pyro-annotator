@@ -18,6 +18,8 @@ import {
   ReviewBoxOverlay,
   DrawingOverlay,
   SiblingBoundingBoxOverlay,
+  ObjectIdentityOverlay,
+  type ObjectOverlayItem,
 } from '@/components/annotation/ImageOverlays';
 
 interface ImageInfo {
@@ -36,6 +38,12 @@ interface DetectionAnnotationCanvasProps {
   activeLayer: ModelLayer;
   selectedSmokeType: SmokeType;
   showSiblingBboxes?: boolean;
+  // Collocated localize context: the OTHER contributing objects' boxes on
+  // this same frame, color-coded and labeled with their own object
+  // identity. Additive and optional — when provided (even an empty array),
+  // it replaces the generic `SiblingBoundingBoxOverlay` layer for this
+  // render; when omitted (legacy per-lane page), behavior is unchanged.
+  objectOverlays?: ObjectOverlayItem[];
   // Seed-at-submit review of the winning model layer
   winningLayer: ModelLayer;
   isDrawMode: boolean;
@@ -79,6 +87,7 @@ export function DetectionAnnotationCanvas({
   activeLayer,
   selectedSmokeType,
   showSiblingBboxes = true,
+  objectOverlays,
   winningLayer,
   isDrawMode,
   reviewInteractive,
@@ -172,8 +181,16 @@ export function DetectionAnnotationCanvas({
             detectionId={detection.id}
           />
         )}
-        {showPredictions && showSiblingBboxes && imageInfo && (
+        {/* `objectOverlays` (collocated localize) replaces the generic
+            sibling layer with object-identity-labeled boxes when provided —
+            even an empty array suppresses it, since the wrong vocabulary
+            applies regardless of whether this particular frame has any
+            other objects to show. */}
+        {showPredictions && objectOverlays === undefined && showSiblingBboxes && imageInfo && (
           <SiblingBoundingBoxOverlay detection={detection} imageInfo={imageInfo} />
+        )}
+        {showPredictions && objectOverlays !== undefined && imageInfo && (
+          <ObjectIdentityOverlay objects={objectOverlays} imageInfo={imageInfo} />
         )}
       </div>
 

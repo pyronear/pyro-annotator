@@ -61,9 +61,18 @@ vi.mock('@/components/detection-sequence/ImageModal', () => ({
       currentDrawMode: boolean,
       options?: { autoSave?: boolean }
     ) => void;
+    objectOverlays?: Array<{ color: string; label: string; boxes: unknown[] }>;
   }) => (
     <div data-testid="image-modal">
       <span data-testid="image-modal-detection-id">{props.detection.id}</span>
+      {/* Exposes the object-identity overlays LocalizeAlertPage computed for
+          this frame, so tests can assert which OTHER objects' boxes it built
+          (and under what label/color) without exercising the real overlay
+          rendering — covered at the DetectionAnnotationCanvas/ImageOverlays
+          level instead. */}
+      <span data-testid="image-modal-object-overlays">
+        {(props.objectOverlays ?? []).map(o => o.label).join(',')}
+      </span>
       <button
         type="button"
         onClick={() =>
@@ -365,6 +374,33 @@ describe('LocalizeAlertPage', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1002');
+    });
+  });
+
+  describe('object-identity overlays in the modal', () => {
+    it("opening a frame shared with another contributing lane passes that lane's boxes as a labeled object overlay (not the generic sibling layer)", async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      // T1 is present in both lanes -> opening Object 1's cell there should
+      // surface Object 2's box as an object-identity overlay.
+      fireEvent.click(screen.getByTestId(`alert-frame-cell-${T1}`));
+      await waitFor(() => {
+        expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1001');
+      });
+
+      expect(screen.getByTestId('image-modal-object-overlays')).toHaveTextContent('Object 2');
+    });
+
+    it('opening a frame with no other contributing lane yields no object overlays', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      // T2 is present only in lane 102 (Object 2) -> no other lane to overlay.
+      fireEvent.click(screen.getByTestId(`alert-frame-cell-${T2}`));
+      await waitFor(() => {
+        expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1003');
+      });
+
+      expect(screen.getByTestId('image-modal-object-overlays')).toHaveTextContent('');
     });
   });
 
