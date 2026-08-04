@@ -79,17 +79,24 @@ export function getCellState(
  * The lane's committal boxes across all frames, in CroppedImageSequence's
  * input shape: committed smoke boxes for done frames, winning-layer boxes
  * for pending frames, nothing for no-box frames.
+ *
+ * `options.falsePositive` switches the whole lane to its engine track
+ * instead: an FP lane's committed annotation is empty by construction, so
+ * the default path would give the flipbook nothing to show. See
+ * `falsePositiveContextBoxes`.
  */
 export function collectLaneBoxes(
   detections: Detection[],
-  annotations: Map<number, DetectionAnnotation>
+  annotations: Map<number, DetectionAnnotation>,
+  options: { falsePositive?: boolean } = {}
 ): BoundingBox[] {
   const out: BoundingBox[] = [];
   for (const detection of detections) {
     const existing = annotations.get(detection.id);
     const state = getCellState(detection, existing);
-    const boxes =
-      state === 'done'
+    const boxes: { xyxyn: number[] }[] = options.falsePositive
+      ? falsePositiveContextBoxes(detection)
+      : state === 'done'
         ? (existing?.annotation?.annotation ?? []).filter(item => item.false_positive_type == null)
         : state === 'auto'
           ? getWinningBoxes(detection).boxes

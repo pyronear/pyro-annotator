@@ -1294,6 +1294,28 @@ describe('LocalizeAlertPage', () => {
       );
     });
 
+    it('shows the cropped flipbook for an activated false-positive object', async () => {
+      realisticFalsePositiveAlert();
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: /False positives/ }));
+      await waitFor(() => {
+        expect(screen.getByTestId('localize-object-row-object-2')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Go to Object 2' }));
+
+      // Looking closely at the rejected plume is the entire point of the
+      // read-only FP view — the flipbook is gated on the lane having boxes,
+      // which its empty committed annotation never provided.
+      await waitFor(() => {
+        expect(screen.getByTestId('cropped-image-sequence')).toHaveAttribute(
+          'data-sequence-id',
+          '102'
+        );
+      });
+    });
+
     it('disables the toggle when the alert has no false-positive objects', async () => {
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
@@ -1313,7 +1335,7 @@ describe('LocalizeAlertPage', () => {
     });
 
     it('keeps false-positive frames read-only — visible, never openable in the editor', async () => {
-      alertWithFalsePositive();
+      realisticFalsePositiveAlert();
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
       fireEvent.click(screen.getByRole('button', { name: /False positives/ }));
