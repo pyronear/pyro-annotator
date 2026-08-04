@@ -1130,8 +1130,11 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
 
                 const { card } = item;
                 const lane = alertDetail.lanes.find(l => l.sequence.id === card.laneSequenceId)!;
+                // Queue mode's locked rows explain themselves via the stage
+                // label; done mode's rows are all re-editable, so the label
+                // (Awaiting localization / Fully annotated) is just noise.
                 const stageBadge =
-                  card.locked || mode === 'done'
+                  card.locked && mode !== 'done'
                     ? getProcessingStageLabel(lane.annotation!.processing_stage)
                     : undefined;
                 const overlay = cardOverlayData.find(o => o.cardKey === card.cardKey);

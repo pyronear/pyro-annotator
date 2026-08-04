@@ -1310,12 +1310,13 @@ describe('ClassifyAlertPage done mode', () => {
 
     const cardA = within(screen.getByTestId('object-card-101:0')); // seq_annotation_done, entry-activated
     expect(cardA.getByText('Smoke · Wildfire')).toBeInTheDocument();
-    expect(cardA.getByText('Awaiting localization')).toBeInTheDocument(); // stage badge stays visible
+    // Done-mode rows are all re-editable, so no stage badge noise.
+    expect(cardA.queryByText('Awaiting localization')).not.toBeInTheDocument();
     expect(cardA.getByRole('radio', { name: 'Smoke' })).not.toBeDisabled();
     expect(cardA.getByRole('radio', { name: 'Smoke' })).toBeChecked();
 
     const cardB = openRow('102:0'); // annotated — still editable in done mode
-    expect(cardB.getByText('Fully annotated')).toBeInTheDocument();
+    expect(cardB.queryByText('Fully annotated')).not.toBeInTheDocument();
     expect(cardB.getByRole('radio', { name: 'False positive' })).not.toBeDisabled();
     expect(cardB.getByRole('radio', { name: 'False positive' })).toBeChecked();
 
