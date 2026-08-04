@@ -14,7 +14,7 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useParams, useSearchParams } from 'react-router-dom';
 import type {
   AlertDetail,
   AlertLane,
@@ -103,6 +103,23 @@ import { apiClient } from '@/services/api';
 import LocalizeAlertPage from '@/pages/LocalizeAlertPage';
 import { ROUTES } from '@/utils/routes';
 
+/**
+ * Stands in for the classify cockpit at the Reclassify destination, exposing
+ * the lane id and `return` param it was reached with so the navigation can be
+ * asserted without mounting ClassifyAlertPage.
+ */
+function ClassifyDestinationProbe() {
+  const { id } = useParams<{ id: string }>();
+  const [params] = useSearchParams();
+  return (
+    <div
+      data-testid="classify-destination"
+      data-lane-id={id}
+      data-return={params.get('return') ?? ''}
+    />
+  );
+}
+
 function makeWrapper(initialPath = '/localize/101') {
   return function TestWrapper({ children }: { children: React.ReactNode }) {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -116,6 +133,7 @@ function makeWrapper(initialPath = '/localize/101') {
                 navigates, unlike a mocked useNavigate, which would also break
                 the modal-close-on-navigate tests elsewhere in this file). */}
             <Route path={ROUTES.LOCALIZE} element={<div data-testid="localize-queue-landing" />} />
+            <Route path="/classify/done/:id" element={<ClassifyDestinationProbe />} />
           </Routes>
         </MemoryRouter>
       </QueryClientProvider>
@@ -1607,6 +1625,84 @@ describe('LocalizeAlertPage', () => {
       await waitFor(() => {
         expect(apiClient.localizeSubmit).toHaveBeenCalledWith([201, 202]);
       });
+    });
+  });
+
+  describe('reclassify', () => {
+    it("navigates to the row's OWN lane in classify done mode, carrying a return to this page", async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(
+        within(screen.getByTestId('localize-object-row-object-2')).getByRole('button', {
+          name: 'Reclassify Object 2',
+        })
+      );
+
+      const destination = await screen.findByTestId('classify-destination');
+      // Object 2 is lane 102 — not 101, the alert's entry sequence.
+      expect(destination.getAttribute('data-lane-id')).toBe('102');
+      expect(destination.getAttribute('data-return')).toBe('/localize/101');
+    });
+
+    it('offers Reclassify on an already-localized context row', async () => {
+      vi.mocked(apiClient.getAlertDetail).mockResolvedValue({
+        ...makeTwoLaneAlertDetail(),
+        lanes: [
+          {
+            sequence: makeSequence({ id: 101, alert_api_id: 9001 }),
+            annotation: makeAnnotation({ id: 201, sequence_id: 101 }),
+          },
+          {
+            sequence: makeSequence({ id: 102, alert_api_id: 9002 }),
+            annotation: makeAnnotation({
+              id: 202,
+              sequence_id: 102,
+              processing_stage: 'annotated',
+            }),
+          },
+        ],
+      });
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      const contextRow = within(screen.getByTestId('localize-object-row-object-2'));
+      // Context rows carry no Accept boxes action, but stay correctable.
+      expect(contextRow.queryByRole('button', { name: /Accept/ })).not.toBeInTheDocument();
+      expect(contextRow.getByRole('button', { name: 'Reclassify Object 2' })).toBeInTheDocument();
+    });
+
+    it('withholds Reclassify from false-positive context rows (FP -> smoke is issue #275)', async () => {
+      vi.mocked(apiClient.getAlertDetail).mockResolvedValue({
+        ...makeTwoLaneAlertDetail(),
+        lanes: [
+          {
+            sequence: makeSequence({ id: 101, alert_api_id: 9001 }),
+            annotation: makeAnnotation({ id: 201, sequence_id: 101 }),
+          },
+          {
+            sequence: makeSequence({ id: 102, alert_api_id: 9002 }),
+            annotation: makeAnnotation({
+              id: 202,
+              sequence_id: 102,
+              has_smoke: false,
+              has_missed_smoke: false,
+              smoke_types: [],
+              false_positive_types: '["cloud"]',
+            }),
+          },
+        ],
+      });
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: /False positives/ }));
+
+      const fpRow = within(await screen.findByTestId('localize-object-row-object-2'));
+      expect(fpRow.queryByRole('button', { name: /Reclassify/ })).not.toBeInTheDocument();
+      // The smoke row above it still has one.
+      expect(
+        within(screen.getByTestId('localize-object-row-object-1')).getByRole('button', {
+          name: 'Reclassify Object 1',
+        })
+      ).toBeInTheDocument();
     });
   });
 });
