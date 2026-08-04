@@ -46,13 +46,18 @@ export default function GuidePage() {
           Pass 02 — Localize smoke
         </h2>
         <p className="mb-2 font-body text-body leading-relaxed text-char">
-          For objects that passed classification, draw a tight bounding box around the smoke in each
-          frame. Boxes should hug the visible plume — tight boxes make better training labels than
-          generous ones.
+          Opens the whole alert as an object timeline: one row per object, a segment per frame.
+          Click a row or a segment to focus that object — the frame grid crops in and steps you
+          through just its frames. Draw a tight bounding box around the smoke in each frame, or
+          accept a frame outright when the model’s own prediction already looks right; boxes should
+          hug the visible plume, since tight boxes make better training labels than generous ones.
         </p>
         <p className="font-body text-body leading-relaxed text-haze">
-          Start from the dashboard’s “Start localizing” queue. Finishing the last frame completes
-          the object.
+          Start from the dashboard’s “Start localizing” queue — it opens the alert page with every
+          object’s status, plus a ⚑ Missed row for drawing boxes on smoke the classify pass missed.
+          “Accept all & submit alert” accepts every object’s pending predictions and submits the
+          whole alert in one step. The old per-object editor still exists, but only as a direct link
+          to a specific frame — it’s no longer part of the normal queue flow.
         </p>
       </section>
 

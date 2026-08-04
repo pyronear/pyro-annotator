@@ -1017,10 +1017,8 @@ export default function LocalizeAlertPage() {
               }}
               disabled={workableObjects.length === 0 || acceptAllAndSubmit.isPending}
               title="Accept predicted boxes for every pending frame and submit the whole alert"
-              className={`inline-flex items-center rounded-lg px-4 py-2 font-body text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 ${
-                submitConfirming
-                  ? 'bg-amber-500 hover:bg-amber-600'
-                  : 'bg-ember hover:brightness-95'
+              className={`inline-flex items-center rounded-lg px-4 py-2 font-body text-sm font-semibold text-white focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${
+                submitConfirming ? 'bg-signal hover:brightness-95' : 'bg-ember hover:brightness-95'
               }`}
             >
               {acceptAllAndSubmit.isPending ? (
@@ -1119,7 +1117,7 @@ export default function LocalizeAlertPage() {
               <button
                 type="button"
                 onClick={handleSubmitAndClearFlag}
-                className="inline-flex items-center justify-center rounded-lg bg-ember px-4 py-2 font-body text-sm font-semibold text-white hover:brightness-95"
+                className="inline-flex items-center justify-center rounded-lg bg-ember px-4 py-2 font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2"
               >
                 Submit & clear flag
               </button>

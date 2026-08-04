@@ -146,7 +146,7 @@ export const ObjectStatusStrip: React.FC<ObjectStatusStripProps> = ({
             data-testid={`object-status-row-${objectIndex}`}
             data-flag={flag ? 'true' : undefined}
             data-selected={selected ? 'true' : undefined}
-            className={`flex w-full items-center gap-2 rounded-md border-l-[3px] py-1 pl-1 transition-colors ${
+            className={`flex w-full items-center gap-2 border-l-[3px] py-1 pl-1 transition-colors ${
               selected ? 'border-l-pine bg-pine-soft' : 'border-l-transparent'
             }`}
           >
