@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { Check, ListChecks, Search } from 'lucide-react';
@@ -13,7 +13,11 @@ import {
 import { PAGINATION_OPTIONS } from '@/utils/constants';
 import { getStageFilterLabel, stageFilterIncludes } from '@/utils/processingStage';
 import FilterPopover from '@/components/filters/FilterPopover';
-import { ClassifyAlertQueueTable, ClassifyDoneTable, TablePagination } from '@/components/sequences';
+import {
+  ClassifyAlertQueueTable,
+  ClassifyDoneTable,
+  TablePagination,
+} from '@/components/sequences';
 import { TABLE_CARD_CLASSES } from '@/components/sequences/tableStyles';
 import { useSequenceStore } from '@/store/useSequenceStore';
 import { useCameras } from '@/hooks/useCameras';
@@ -34,13 +38,11 @@ const MODEL_ACCURACY_PARAM: Partial<Record<string, 'tp' | 'fp' | 'fn'>> = {
 interface SequencesPageProps {
   defaultProcessingStage?: ProcessingStageFilter;
   isReviewPage?: boolean;
-  stageSelector?: ReactNode;
 }
 
 export default function SequencesPage({
   defaultProcessingStage = 'ready_to_annotate',
   isReviewPage = false,
-  stageSelector,
 }: SequencesPageProps = {}) {
   const navigate = useNavigate();
   const { startAnnotationWorkflow } = useSequenceStore();
@@ -74,8 +76,8 @@ export default function SequencesPage({
     resetFilters,
   } = usePersistedFilters(storageKey, createDefaultFilterState(defaultProcessingStage));
 
-  // Keep filters.processing_stage in sync with the parent-controlled stage prop
-  // (used by the review page stage selector). Reset to page 1 on stage change.
+  // Keep filters.processing_stage in sync with the parent-controlled stage prop.
+  // Reset to page 1 on stage change.
   // Value-compare: stage OR-lists are arrays, so identity comparison would loop.
   useEffect(() => {
     if (JSON.stringify(filters.processing_stage) !== JSON.stringify(defaultProcessingStage)) {
@@ -147,7 +149,8 @@ export default function SequencesPage({
     queryFn: () => {
       // processing_stage is a sequences-endpoint concept; classify-done's
       // membership (fully classified) replaces it.
-      const { processing_stage: _stage, ...rest } = apiFilters;
+      const rest = { ...apiFilters };
+      delete rest.processing_stage;
       return apiClient.getClassifyDone({
         ...rest,
         model_accuracy: MODEL_ACCURACY_PARAM[selectedModelAccuracy],
@@ -272,7 +275,6 @@ export default function SequencesPage({
             </p>
           </div>
           <div className="flex items-center gap-3 flex-wrap justify-end">
-            {stageSelector}
             <FilterPopover
               filters={filters}
               onFiltersChange={handleFilterChange}
@@ -402,7 +404,6 @@ export default function SequencesPage({
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap justify-end">
-          {stageSelector}
           <div className="flex items-center space-x-2">
             <label htmlFor="page-size" className="font-body text-sm text-haze">
               Show:
