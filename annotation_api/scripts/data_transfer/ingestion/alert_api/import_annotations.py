@@ -23,7 +23,6 @@ import json
 import logging
 import os
 from copy import deepcopy
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -96,10 +95,6 @@ def setup_logging(level: str) -> None:
         level=getattr(logging, level.upper()),
         format="[%(levelname)s] %(message)s",
     )
-
-
-def iso_utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def get_token(
@@ -245,7 +240,6 @@ def build_payload_keep_bboxes_update_labels(
 
     ann_curr["sequences_bbox"] = curr_groups
     payload["annotation"] = ann_curr
-    payload["updated_at"] = iso_utc_now()
     return payload
 
 
