@@ -568,3 +568,18 @@ class TestCanLocalizeField:
         )
         assert response.status_code == 200
         assert response.json()["can_localize"] is True
+
+
+class TestWorkerUserCanLocalizeGuard:
+    @pytest.mark.asyncio
+    async def test_cannot_set_can_localize_on_worker_user(
+        self, async_client: AsyncClient, auth_token: str, worker_user: User
+    ):
+        headers = {"Authorization": f"Bearer {auth_token}"}
+        response = await async_client.patch(
+            f"/users/{worker_user.id}",
+            json={"can_localize": True},
+            headers=headers,
+        )
+        assert response.status_code == 403
+        assert "Cannot modify the system worker user" in response.json()["detail"]
