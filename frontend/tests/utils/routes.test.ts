@@ -1,4 +1,11 @@
-import { ROUTES, classifyDetail, classifyGroup, localizeDetail, localizeLane } from '@/utils/routes';
+import {
+  ROUTES,
+  classifyDetail,
+  classifyGroup,
+  localizeDetail,
+  localizeLane,
+  localizeObject,
+} from '@/utils/routes';
 
 describe('routes', () => {
   it('exposes the taxonomy path constants', () => {
@@ -29,5 +36,10 @@ describe('routes', () => {
   it('builds legacy lane paths with an optional detection id', () => {
     expect(localizeLane(5)).toBe('/localize/lane/5');
     expect(localizeLane(5, 9)).toBe('/localize/lane/5/9');
+  });
+
+  it('builds the per-frame editor path naming both the object and the frame', () => {
+    expect(localizeObject(5, 7, 9)).toBe('/localize/5/object/7/9');
+    expect(localizeObject('5', '7', '9')).toBe('/localize/5/object/7/9');
   });
 });

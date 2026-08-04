@@ -52,3 +52,18 @@ export function localizeLane(sequenceId: number | string, detectionId?: number |
   const detSegment = detectionId !== undefined ? `/${detectionId}` : '';
   return `${ROUTES.LOCALIZE_LANE}/${sequenceId}${detSegment}`;
 }
+
+/**
+ * The collocated alert page's per-frame editor, which names both the object
+ * (`laneId` — the lane's own sequence id) and the frame. The lane segment is
+ * what makes a shared editor link unambiguous: a detection id alone resolves
+ * to whichever lane happens to own it, so a mismatched URL used to be
+ * undetectable. The frame is always required — there is no frameless form.
+ */
+export function localizeObject(
+  sequenceId: number | string,
+  laneId: number | string,
+  detectionId: number | string
+): string {
+  return `${ROUTES.LOCALIZE}/${sequenceId}/object/${laneId}/${detectionId}`;
+}
