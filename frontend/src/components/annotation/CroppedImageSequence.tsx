@@ -54,23 +54,39 @@ export default function CroppedImageSequence({
     return [avgX1, avgY1, avgX2, avgY2];
   };
 
-  // Clear state immediately when props change to prevent stale data
+  // Value-based identity for the frame list, mirroring FullImageSequence:
+  // which images to fetch depends only on the detection ids, never on the box
+  // coordinates (those drive the crop, and `drawToCanvas` keys on them
+  // separately). Keying the effect below on the `bboxes` array *reference*
+  // instead would make it hostage to caller memoization — and now that the
+  // effect cancels its in-flight fetch, a caller that rebuilt the array each
+  // render would leave this stuck on a permanent spinner rather than merely
+  // flickering.
+  const frameKey = bboxes.map(b => b.detection_id).join(',');
+
+  // Reset + fetch in ONE effect keyed on that frame list, with the in-flight
+  // fetch cancelled on change. Splitting them (reset here, fetch in a second
+  // effect gated on `images.length === 0`) raced: switching alerts while the
+  // previous alert's URL fetch was still in flight let that stale fetch
+  // commit its results afterwards, and the length guard then permanently
+  // blocked a fetch for the current props — the loop stayed on the previous
+  // alert's images until a page reload.
   useEffect(() => {
+    let cancelled = false;
+
     setImages([]);
     setCurrentIndex(0);
     setIsLoading(true);
     setError(null);
     setZoomLevel(MIN_ZOOM); // Reset zoom to default
-  }, [bboxes, sequenceId]);
 
-  // Fetch detection image URLs
-  useEffect(() => {
+    // No frames yet (the classify cockpit renders an object before its
+    // detections resolve). Stay in the loading state rather than falling
+    // through to the "Failed to load" branch — an empty list isn't a failure,
+    // and the effect re-runs with real frames the moment they arrive.
+    if (!bboxes.length || !sequenceId) return;
+
     const fetchImages = async () => {
-      if (!bboxes.length || !sequenceId) {
-        setIsLoading(false);
-        return;
-      }
-
       try {
         // Fetch all detection image URLs
         const imagePromises = bboxes.map(async bbox => {
@@ -92,6 +108,7 @@ export default function CroppedImageSequence({
         });
 
         const imageResults = await Promise.all(imagePromises);
+        if (cancelled) return;
         setImages(imageResults);
 
         // Start preloading images
@@ -100,6 +117,7 @@ export default function CroppedImageSequence({
             const img = new Image();
             // Note: Not setting crossOrigin to avoid CORS issues with local S3
             img.onload = () => {
+              if (cancelled) return;
               setImages(prev =>
                 prev.map((item, i) =>
                   i === index ? { ...item, loaded: true, imageElement: img } : item
@@ -107,6 +125,7 @@ export default function CroppedImageSequence({
               );
             };
             img.onerror = () => {
+              if (cancelled) return;
               setImages(prev =>
                 prev.map((item, i) => (i === index ? { ...item, error: true } : item))
               );
@@ -115,18 +134,20 @@ export default function CroppedImageSequence({
           }
         });
       } catch (err) {
-        setError('Failed to fetch detection images');
+        if (!cancelled) setError('Failed to fetch detection images');
         // Error fetching images
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     };
 
-    // Only fetch if we have cleared state (prevents duplicate fetching)
-    if (bboxes.length > 0 && sequenceId && images.length === 0) {
-      fetchImages();
-    }
-  }, [bboxes, sequenceId, images.length]);
+    fetchImages();
+    return () => {
+      cancelled = true;
+    };
+    // `bboxes` is read through the closure on purpose — see `frameKey` above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [frameKey, sequenceId]);
 
   // Auto-play animation with 200ms interval - only when images are loaded
   useEffect(() => {
