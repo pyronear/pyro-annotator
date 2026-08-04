@@ -18,12 +18,6 @@
  * cluster is a button (row-level navigation); segments are separate
  * buttons (per-frame navigation).
  *
- * An object's optional `preview` (e.g. a looping cropped image sequence) is
- * never rendered inline — the row is too narrow to make it legible. Instead
- * it shows in a popover anchored beside the label, on hover (after a short
- * delay) or keyboard focus, and is `pointer-events-none` so it can never
- * intercept a click meant for the row or its segments.
- *
  * `selected` gives a row an unmistakable accent treatment (fill + left
  * border) — LocalizeAlertPage's object-focus mode uses it to mark whichever
  * object is currently focused.
@@ -37,10 +31,7 @@
  * itself.
  */
 
-import React, { useEffect, useRef, useState } from 'react';
-
-/** Delay before the preview popover appears on hover, matching common tooltip conventions. */
-const POPOVER_HOVER_DELAY_MS = 150;
+import React from 'react';
 
 export type ObjectStatusStripStatus = 'confirmed' | 'pending' | 'absent';
 
@@ -53,8 +44,6 @@ export interface ObjectStatusStripObject {
   flag?: boolean;
   /** This object's status per frame timestamp (ISO string); frames absent from the map render as `absent`. */
   statusByTimestamp: Record<string, ObjectStatusStripStatus>;
-  /** Optional bigger preview (e.g. a looping cropped image sequence) shown in a popover on hover/focus of the label — purely decorative, non-interactive. */
-  preview?: React.ReactNode;
   /** Optional action (e.g. a quick-accept button) rendered at the row's trailing edge. */
   action?: React.ReactNode;
   /** Renders the row with an accent fill + left border — this object's current "focused" state. */
@@ -70,85 +59,35 @@ interface ObjectStatusStripProps {
   title?: string;
 }
 
-/**
- * The swatch + label cluster, wrapped so a preview popover can anchor beside
- * it. Hover (after a short delay) or focus reveals the popover; leaving or
- * blurring hides it immediately. `pointer-events-none` on the popover means
- * it can never swallow a click meant for the row below/beside it.
- */
 function ObjectLabelButton({
   objectIndex,
   label,
   color,
   flag,
-  preview,
   onClick,
 }: {
   objectIndex: number;
   label: string;
   color: string;
   flag: boolean;
-  preview?: React.ReactNode;
   onClick?: () => void;
 }) {
-  const [popoverOpen, setPopoverOpen] = useState(false);
-  const showTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const clearShowTimer = () => {
-    if (showTimer.current) {
-      clearTimeout(showTimer.current);
-      showTimer.current = null;
-    }
-  };
-
-  const scheduleShow = () => {
-    if (!preview) return;
-    clearShowTimer();
-    showTimer.current = setTimeout(() => setPopoverOpen(true), POPOVER_HOVER_DELAY_MS);
-  };
-
-  const hide = () => {
-    clearShowTimer();
-    setPopoverOpen(false);
-  };
-
-  useEffect(() => clearShowTimer, []);
-
   return (
-    <div
-      className="relative shrink-0"
-      onMouseEnter={scheduleShow}
-      onMouseLeave={hide}
-      data-testid={`object-status-label-wrap-${objectIndex}`}
+    <button
+      type="button"
+      aria-label={`Go to ${label}`}
+      onClick={onClick}
+      className="flex shrink-0 items-center gap-2 rounded py-0.5 pr-1 text-left transition-colors hover:bg-ash focus:outline-none focus:ring-2 focus:ring-ember"
     >
-      <button
-        type="button"
-        aria-label={`Go to ${label}`}
-        onClick={onClick}
-        onFocus={scheduleShow}
-        onBlur={hide}
-        className="flex shrink-0 items-center gap-2 rounded py-0.5 pr-1 text-left transition-colors hover:bg-ash focus:outline-none focus:ring-2 focus:ring-ember"
-      >
-        <span
-          data-testid={`object-status-swatch-${objectIndex}`}
-          className="h-2.5 w-2.5 shrink-0 rounded-full"
-          style={{ backgroundColor: color }}
-        />
-        <span className="w-20 shrink-0 truncate font-body text-detail text-haze">
-          {flag ? `⚑ ${label}` : label}
-        </span>
-      </button>
-
-      {popoverOpen && preview && (
-        <div
-          role="tooltip"
-          data-testid={`object-status-preview-popover-${objectIndex}`}
-          className="pointer-events-none absolute left-full top-1/2 z-20 ml-2 w-80 -translate-y-1/2 overflow-hidden rounded-card border border-line bg-paper p-2"
-        >
-          {preview}
-        </div>
-      )}
-    </div>
+      <span
+        data-testid={`object-status-swatch-${objectIndex}`}
+        className="h-2.5 w-2.5 shrink-0 rounded-full"
+        style={{ backgroundColor: color }}
+      />
+      <span className="w-20 shrink-0 truncate font-body text-detail text-haze">
+        {flag ? `⚑ ${label}` : label}
+      </span>
+    </button>
   );
 }
 
@@ -216,7 +155,6 @@ export const ObjectStatusStrip: React.FC<ObjectStatusStripProps> = ({
               label={object.label}
               color={object.color}
               flag={flag}
-              preview={object.preview}
               onClick={() => onObjectClick?.(objectIndex)}
             />
             <div className="flex h-1.5 flex-1 gap-px overflow-hidden rounded-full bg-ash">

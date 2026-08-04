@@ -9,7 +9,7 @@
  */
 
 import React from 'react';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { ObjectStatusStrip } from '@/components/sequence-annotation/ObjectStatusStrip';
 
 describe('ObjectStatusStrip', () => {
@@ -317,139 +317,6 @@ describe('ObjectStatusStrip', () => {
     expect(selectedRow).toHaveAttribute('data-selected', 'true');
     expect(selectedRow).toHaveClass('bg-pine-soft');
     expect(selectedRow).toHaveClass('border-l-pine');
-  });
-
-  it('never renders the preview inline — it does not appear without hover/focus', () => {
-    render(
-      <ObjectStatusStrip
-        objects={[
-          {
-            label: 'Object 1',
-            color: '#3b82f6',
-            statusByTimestamp: { [t1]: 'confirmed' },
-            preview: <div data-testid="my-preview">preview</div>,
-          },
-        ]}
-      />
-    );
-
-    expect(screen.queryByTestId('my-preview')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('object-status-preview-popover-0')).not.toBeInTheDocument();
-  });
-
-  it('shows the preview popover after a hover delay on the label, and hides it on mouse leave', async () => {
-    vi.useFakeTimers();
-    try {
-      render(
-        <ObjectStatusStrip
-          objects={[
-            {
-              label: 'Object 1',
-              color: '#3b82f6',
-              statusByTimestamp: { [t1]: 'confirmed' },
-              preview: <div data-testid="my-preview">preview</div>,
-            },
-          ]}
-        />
-      );
-
-      const wrap = screen.getByTestId('object-status-label-wrap-0');
-      fireEvent.mouseEnter(wrap);
-
-      // Not yet — the popover only appears after the hover delay.
-      expect(screen.queryByTestId('my-preview')).not.toBeInTheDocument();
-
-      act(() => {
-        vi.advanceTimersByTime(150);
-      });
-      expect(screen.getByTestId('my-preview')).toBeInTheDocument();
-
-      fireEvent.mouseLeave(wrap);
-      expect(screen.queryByTestId('my-preview')).not.toBeInTheDocument();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it('shows the preview popover on keyboard focus of the label, and hides it on blur', () => {
-    vi.useFakeTimers();
-    try {
-      render(
-        <ObjectStatusStrip
-          objects={[
-            {
-              label: 'Object 1',
-              color: '#3b82f6',
-              statusByTimestamp: { [t1]: 'confirmed' },
-              preview: <div data-testid="my-preview">preview</div>,
-            },
-          ]}
-        />
-      );
-
-      const label = screen.getByRole('button', { name: 'Go to Object 1' });
-      fireEvent.focus(label);
-      act(() => {
-        vi.advanceTimersByTime(150);
-      });
-      expect(screen.getByTestId('my-preview')).toBeInTheDocument();
-
-      fireEvent.blur(label);
-      expect(screen.queryByTestId('my-preview')).not.toBeInTheDocument();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it('never shows a popover for an object without a preview', () => {
-    vi.useFakeTimers();
-    try {
-      render(
-        <ObjectStatusStrip
-          objects={[
-            { label: 'Object 1', color: '#3b82f6', statusByTimestamp: { [t1]: 'confirmed' } },
-          ]}
-        />
-      );
-
-      fireEvent.mouseEnter(screen.getByTestId('object-status-label-wrap-0'));
-      act(() => {
-        vi.advanceTimersByTime(150);
-      });
-
-      expect(screen.queryByTestId('object-status-preview-popover-0')).not.toBeInTheDocument();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it('the popover is pointer-events-none so it never blocks clicks on the row below', () => {
-    vi.useFakeTimers();
-    try {
-      render(
-        <ObjectStatusStrip
-          objects={[
-            {
-              label: 'Object 1',
-              color: '#3b82f6',
-              statusByTimestamp: { [t1]: 'confirmed' },
-              preview: <div data-testid="my-preview">preview</div>,
-            },
-          ]}
-        />
-      );
-
-      fireEvent.mouseEnter(screen.getByTestId('object-status-label-wrap-0'));
-      act(() => {
-        vi.advanceTimersByTime(150);
-      });
-
-      expect(screen.getByTestId('object-status-preview-popover-0')).toHaveClass(
-        'pointer-events-none'
-      );
-    } finally {
-      vi.useRealTimers();
-    }
   });
 
   it('renders an optional trailing action for an object (e.g. a quick-accept button)', () => {

@@ -34,7 +34,10 @@ vi.mock('@/services/api', () => ({
 }));
 
 vi.mock('@/components/annotation/CroppedImageSequence', () => ({
-  default: () => <div data-testid="cropped-image-sequence" />,
+  // Exposes sequenceId so tests can assert WHICH lane's strip is showing.
+  default: (props: { sequenceId: number }) => (
+    <div data-testid="cropped-image-sequence" data-sequence-id={props.sequenceId} />
+  ),
 }));
 
 // ImageModal is a heavy, canvas/keyboard-driven editor covered by its own
@@ -578,15 +581,125 @@ describe('LocalizeAlertPage', () => {
     expect(screen.getByTestId('object-status-row-1')).not.toHaveAttribute('data-selected');
   });
 
-  it('a timeline row shows its boxes preview in a popover on hover, never inline', async () => {
+  it('a timeline row never shows a hover preview popover (dropped in favor of the focus-mode cropped strip)', async () => {
     await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
     expect(screen.queryByTestId('cropped-image-sequence')).not.toBeInTheDocument();
 
-    fireEvent.mouseEnter(screen.getByTestId('object-status-label-wrap-0'));
+    fireEvent.mouseEnter(screen.getByTestId('object-status-row-0'));
+    fireEvent.focus(screen.getByRole('button', { name: 'Go to Object 1' }));
+
+    // Nothing appears from hover/focus alone — the strip only shows via
+    // focus MODE (a click) or the manual toolbar toggle, covered below.
+    expect(screen.queryByTestId('cropped-image-sequence')).not.toBeInTheDocument();
+  });
+
+  it('object-focus mode shows the cropped-view strip for the focused lane, switches lanes with it, and hides it on deselect', async () => {
+    await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+    expect(screen.queryByTestId('cropped-image-sequence')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Go to Object 1' }));
 
     await waitFor(() => {
+      expect(screen.getByTestId('cropped-image-sequence')).toHaveAttribute(
+        'data-sequence-id',
+        '101'
+      );
+    });
+
+    // Switching focus to Object 2 (segment click) shows Object 2's strip.
+    fireEvent.click(screen.getByTestId('status-segment-1-1'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('cropped-image-sequence')).toHaveAttribute(
+        'data-sequence-id',
+        '102'
+      );
+    });
+
+    // Deselecting hides it.
+    fireEvent.click(screen.getByRole('button', { name: 'Go to Object 2' }));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('cropped-image-sequence')).not.toBeInTheDocument();
+    });
+  });
+
+  it('the manual cropped-view toolbar toggle keeps working independently when nothing is focused', async () => {
+    await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+    // Cell click activates a lane without entering focus mode.
+    fireEvent.click(screen.getByTestId(`alert-frame-cell-${T1}`));
+    await waitFor(() => {
+      expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1001');
+    });
+    fireEvent.click(screen.getByText('Mock Close'));
+    await waitFor(() => expect(screen.queryByTestId('image-modal')).not.toBeInTheDocument());
+
+    expect(screen.queryByTestId('cropped-image-sequence')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTitle('Cropped view'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('cropped-image-sequence')).toHaveAttribute(
+        'data-sequence-id',
+        '101'
+      );
+    });
+
+    // Toggling off (not focused) is a plain toggle.
+    fireEvent.click(screen.getByTitle('Cropped view'));
+    await waitFor(() => {
+      expect(screen.queryByTestId('cropped-image-sequence')).not.toBeInTheDocument();
+    });
+  });
+
+  it('while focused, the cropped-view toggle shows pressed and clicking it exits focus mode (early-exit, not a disabled dead button)', async () => {
+    await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Go to Object 1' }));
+    await waitFor(() => {
       expect(screen.getByTestId('cropped-image-sequence')).toBeInTheDocument();
+    });
+
+    const croppedViewToggle = screen.getByTitle('Cropped view');
+    expect(croppedViewToggle).toHaveAttribute('aria-pressed', 'true');
+    expect(croppedViewToggle).not.toBeDisabled();
+
+    fireEvent.click(croppedViewToggle);
+
+    // Exits focus entirely: the strip hides and crop-mode is restored (was
+    // off before this focus session), not just a toggle of the strip alone.
+    await waitFor(() => {
+      expect(screen.queryByTestId('cropped-image-sequence')).not.toBeInTheDocument();
+    });
+    expect(screen.getByTestId('object-status-row-0')).not.toHaveAttribute('data-selected');
+    const img = within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img');
+    expect(img.style.transform).toBe('');
+  });
+
+  it('an explicit S/M/L click while focused clears the small-card override immediately (visible + intentional preference write)', async () => {
+    const { container } = render(<LocalizeAlertPage />, { wrapper });
+    await waitFor(() => expect(screen.getByTestId('status-segment-0-0')).toBeInTheDocument());
+
+    const grid = container.querySelector('.grid') as HTMLElement;
+
+    fireEvent.click(screen.getByRole('button', { name: 'Go to Object 1' }));
+    await waitFor(() => expect(grid.style.gridTemplateColumns).toContain('240px')); // forced 'sm'
+
+    fireEvent.click(screen.getByTitle('Medium cards'));
+
+    // Immediate visible effect — the grid honors the click right away.
+    expect(grid.style.gridTemplateColumns).toContain('340px');
+    // And the write was intentional: the real preference is now 'md'.
+    expect(localStorage.getItem('detectionAnnotateCardSize')).toBe('md');
+
+    // Focus otherwise continues unaffected — still selected/cropped.
+    expect(screen.getByTestId('object-status-row-0')).toHaveAttribute('data-selected', 'true');
+    await waitFor(() => {
+      const img = within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img');
+      expect(img.style.transform).toContain('scale(');
     });
   });
 
@@ -653,7 +766,7 @@ describe('LocalizeAlertPage', () => {
       });
     });
 
-    it('a save that fails mid-loop across lanes never submits, toasts the failure, and invalidates every workable lane\'s cache (not just the failed one) so a retry re-derives from server truth', async () => {
+    it("a save that fails mid-loop across lanes never submits, toasts the failure, and invalidates every workable lane's cache (not just the failed one) so a retry re-derives from server truth", async () => {
       // Lane 1 (Object 1 / detection 1001) saves fine; lane 2's first
       // pending frame (1002) rejects with a generic (non-"incomplete")
       // error — a mid-loop network blip, not a 422 from localize-submit

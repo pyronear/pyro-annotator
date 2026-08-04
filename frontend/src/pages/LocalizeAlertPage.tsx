@@ -18,9 +18,13 @@
  * (independent of the editor's `:detectionId` path param — the two coexist),
  * so reloading or sharing the link reproduces the scroll+highlight without
  * opening the editor. Activating an object via the timeline (row or segment
- * click) also enters "object focus mode" — crop-on + small cards, a lens for
- * looking closely at just that object — stashing the prior crop/size so
- * clicking the selected row again restores them.
+ * click) also enters "object focus mode" — crop-on + small cards + the
+ * cropped-view flipbook strip, a lens for looking closely at just that
+ * object — stashing the prior crop/size so clicking the selected row again
+ * restores them. An explicit S/M/L click while focused clears the small-card
+ * override immediately (visible feedback for what's otherwise a silent
+ * preference write); the timeline rows no longer carry a hover preview
+ * popover (dropped — the inline cropped-view strip replaces it).
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -80,8 +84,9 @@ export default function LocalizeAlertPage() {
   // Object-focus mode: entering it (row/segment click activating an object)
   // stashes the pre-focus crop-mode so the selected row's second click can
   // restore it. Card size is handled differently (see `effectiveCardSize`
-  // below) — its persisted value is never written to while focused, so
-  // there's nothing to stash for it.
+  // below) — its persisted value is never written to while focused (unless
+  // explicitly overridden — see `sizeOverrideCleared`), so there's nothing
+  // to stash for it.
   const [preFocusCropMode, setPreFocusCropMode] = useState<boolean | null>(null);
   const isFocused = preFocusCropMode !== null;
   // Card size while focused is a purely DERIVED override to 'sm' — the real
@@ -90,7 +95,19 @@ export default function LocalizeAlertPage() {
   // clobbered by entering/leaving focus mode (chosen over "call the real
   // setter but suspend its localStorage write", which would need reaching
   // into the hook's internals).
-  const effectiveCardSize: CardSize = isFocused ? 'sm' : cardSize;
+  //
+  // Re-review fix: the S/M/L buttons stayed live but invisible while
+  // focused — a click wrote the real preference (via `handleCardSizeChange`
+  // below) while the grid's displayed size stayed pinned at the derived
+  // 'sm'. `sizeOverrideCleared` lets an EXPLICIT size click cancel the
+  // override for the rest of THIS focus session, so the click has visible
+  // effect the moment it happens (the write was already intentional; now
+  // the display honors it too). It resets to `false` on a fresh focus
+  // entry, but — mirroring the crop-mode stash's "don't chain" rule — is
+  // deliberately left alone when focus merely *switches* to another object,
+  // so an explicit choice made earlier in the session keeps applying.
+  const [sizeOverrideCleared, setSizeOverrideCleared] = useState(false);
+  const effectiveCardSize: CardSize = isFocused && !sizeOverrideCleared ? 'sm' : cardSize;
   const cardMinWidth = CARD_MIN_WIDTH[effectiveCardSize] ?? CARD_MIN_WIDTH.md;
 
   // Arrival highlight for a segment click / `?frame=` deep link: a ~2s fade
@@ -125,6 +142,7 @@ export default function LocalizeAlertPage() {
     setActiveLaneId(null);
     setPreFocusCropMode(null);
     setCropMode(false);
+    setSizeOverrideCleared(false);
     setHighlightedFrame(null);
     frameRefs.current = {};
   }, [sequenceIdNum]);
@@ -418,30 +436,15 @@ export default function LocalizeAlertPage() {
     },
   });
 
-  // Strip rows get a preview popover beside the label — the lane's
-  // committed-or-winning boxes across all its frames, same source the
-  // legacy page's cropped flipbook uses, with extra context padding and a
-  // lower initial zoom (popover-scale surroundings vs. the flipbook's tight
-  // crop). Omitted (no popover) for a lane with no boxes anywhere yet.
-  // Workable lanes also get a trailing quick-accept action.
-  const objectStatusWithThumb: AlertObjectStatus[] = frameModel.objectStatus.map(object => {
-    const laneBoxes = collectLaneBoxes(
-      detectionsByLaneId[object.laneSequenceId] ?? [],
-      new Map((annotationsByLaneId[object.laneSequenceId] ?? []).map(a => [a.detection_id, a]))
-    );
+  // Workable lanes get a trailing quick-accept action; every row gets the
+  // "selected" accent treatment when it's the currently focused object (see
+  // object-focus mode below — its cropped-view strip renders separately,
+  // not per-row here).
+  const objectStatusRows: AlertObjectStatus[] = frameModel.objectStatus.map(object => {
     const isAccepting =
       quickAcceptLane.isPending && quickAcceptLane.variables === object.laneSequenceId;
     return {
       ...object,
-      preview:
-        laneBoxes.length > 0 ? (
-          <CroppedImageSequence
-            bboxes={laneBoxes}
-            sequenceId={object.laneSequenceId}
-            contextPadding={0.5}
-            initialZoom={2}
-          />
-        ) : undefined,
       action: object.workable ? (
         <button
           type="button"
@@ -460,8 +463,8 @@ export default function LocalizeAlertPage() {
     };
   });
 
-  const workableObjects = objectStatusWithThumb.filter(o => o.workable);
-  const contextObjects = objectStatusWithThumb.filter(o => !o.workable);
+  const workableObjects = objectStatusRows.filter(o => o.workable);
+  const contextObjects = objectStatusRows.filter(o => !o.workable);
 
   // Every workable lane's quick-accept plan plus its sequence-annotation id
   // (the id `localizeSubmit` needs) — feeds both the two-step confirm's
@@ -551,9 +554,13 @@ export default function LocalizeAlertPage() {
     return () => window.removeEventListener('click', cancel);
   }, [submitConfirming]);
 
-  // Cropped flipbook (toolbar toggle): the active object's boxes across all
-  // its frames — mirrors the legacy grid's cropped-view block, scoped to
-  // whichever object is currently active.
+  // Cropped flipbook: the active object's boxes across all its frames —
+  // mirrors the legacy grid's cropped-view block, scoped to whichever
+  // object is currently active. Feeds two triggers for the strip rendered
+  // between the timeline and the grid: the manual toolbar toggle
+  // (`showCroppedView`, works standalone) and object-focus mode (`isFocused`
+  // — shows it automatically while an object is focused, per the render
+  // condition below).
   const activeLaneBoxes = useMemo(() => {
     if (activeLaneId == null) return [];
     return collectLaneBoxes(
@@ -563,7 +570,8 @@ export default function LocalizeAlertPage() {
   }, [activeLaneId, detectionsByLaneId, annotationsByLaneId]);
 
   // Enters (or switches) object-focus mode: crop-on + small cards, a lens
-  // for looking closely at just this object. The pre-focus crop-mode is
+  // for looking closely at just this object, plus the cropped-view strip
+  // (rendered below from `activeLaneBoxes`). The pre-focus crop-mode is
   // stashed only the FIRST time focus is entered (`prev => prev ?? cropMode`
   // — a functional update so it reads `cropMode` as of THIS click, before
   // this same call's `setCropMode(true)` below applies) — switching to a
@@ -571,26 +579,62 @@ export default function LocalizeAlertPage() {
   // different object) reuses that same stash rather than overwriting it
   // with the just-focused object's now-true crop-mode, so deselecting
   // always restores the settings from *before the first selection*, not
-  // from whichever object was focused most recently.
+  // from whichever object was focused most recently. `sizeOverrideCleared`
+  // only resets on a genuinely fresh entry (see its declaration).
   const activateFocus = (laneSequenceId: number) => {
     setActiveLaneId(laneSequenceId);
     setPreFocusCropMode(prev => prev ?? cropMode);
     setCropMode(true);
+    if (!isFocused) setSizeOverrideCleared(false);
+  };
+
+  // Deselects: restores the stashed pre-focus crop-mode (and, since
+  // `effectiveCardSize` is a derived override, the card size falls back to
+  // the untouched persisted preference automatically) and hides the
+  // cropped-view strip. A no-op when not focused.
+  const exitFocus = () => {
+    if (!isFocused) return;
+    setCropMode(preFocusCropMode as boolean);
+    setPreFocusCropMode(null);
+    setSizeOverrideCleared(false);
+    setActiveLaneId(null);
   };
 
   // Row click: activates (or switches focus to) the clicked object, UNLESS
   // it's already the focused one — a second click on the selected row
-  // deselects, restoring the stashed pre-focus crop-mode (and, since
-  // `effectiveCardSize` is a derived override, the card size falls back to
-  // the untouched persisted preference automatically).
+  // deselects.
   const handleObjectClick = (laneSequenceId: number) => {
     if (isFocused && activeLaneId === laneSequenceId) {
-      setCropMode(preFocusCropMode as boolean);
-      setPreFocusCropMode(null);
-      setActiveLaneId(null);
+      exitFocus();
       return;
     }
     activateFocus(laneSequenceId);
+  };
+
+  // Re-review fix: an explicit S/M/L click always writes the real
+  // preference (unchanged); while focused, it ALSO cancels the 'sm'
+  // override for the rest of this session so the click has immediate
+  // visible effect instead of silently writing a preference the grid
+  // doesn't yet honor. Focus (crop-mode, active lane, the cropped strip)
+  // continues unaffected.
+  const handleCardSizeChange = (size: CardSize) => {
+    setCardSize(size);
+    if (isFocused) setSizeOverrideCleared(true);
+  };
+
+  // The cropped-view toolbar toggle while focused: the strip is already
+  // forced visible by focus mode, so a plain on/off toggle would either do
+  // nothing (if disabled) or fight focus mode (if it toggled the underlying
+  // `showCroppedView` while focus keeps overriding the display). Chosen
+  // instead: clicking it exits focus mode entirely — a meaningful action
+  // (deselecting already hides the strip) rather than a dead disabled
+  // button. Unaffected when not focused (plain toggle, as before).
+  const handleToggleCroppedView = (next: boolean) => {
+    if (isFocused) {
+      exitFocus();
+      return;
+    }
+    setShowCroppedView(next);
   };
 
   // Segment click: activates/switches focus (same re-stash semantics as
@@ -729,14 +773,14 @@ export default function LocalizeAlertPage() {
           <div className="flex flex-none items-center gap-2">
             <ViewToolbar
               cardSize={effectiveCardSize}
-              onCardSizeChange={setCardSize}
+              onCardSizeChange={handleCardSizeChange}
               showPredictions={showPredictions}
               onTogglePredictions={setShowPredictions}
               isLocalize
               cropMode={cropMode}
               onToggleCropMode={setCropMode}
-              showCroppedView={showCroppedView}
-              onToggleCroppedView={setShowCroppedView}
+              showCroppedView={isFocused || showCroppedView}
+              onToggleCroppedView={handleToggleCroppedView}
             />
 
             {firstPendingObject && (
@@ -796,7 +840,7 @@ export default function LocalizeAlertPage() {
           </div>
         )}
 
-        {showCroppedView && activeLaneId != null && activeLaneBoxes.length > 0 && (
+        {(isFocused || showCroppedView) && activeLaneId != null && activeLaneBoxes.length > 0 && (
           <div className="flex justify-center">
             <CroppedImageSequence bboxes={activeLaneBoxes} sequenceId={activeLaneId} />
           </div>
