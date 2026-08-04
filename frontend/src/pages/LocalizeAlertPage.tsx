@@ -394,6 +394,17 @@ export default function LocalizeAlertPage() {
     };
   }, [laneIdNum, detectionIdNum, alertDetail, detectionsByLaneId, annotationsByLaneId]);
 
+  // A directly-entered editor URL (paste, refresh, back button) names the
+  // object, so the cockpit behind the editor should agree with it — otherwise
+  // closing the editor drops you on an alert with nothing selected. Keyed on
+  // the lane id rather than the whole `modalContext` object, which is rebuilt
+  // on every refetch. The alert-change reset that clears `activeLaneId` runs
+  // on `sequenceIdNum`; this re-derives from the URL afterwards.
+  const modalLaneId = modalContext?.laneId ?? null;
+  useEffect(() => {
+    if (modalLaneId != null) setActiveLaneId(modalLaneId);
+  }, [modalLaneId]);
+
   // Object-identity overlays for the open detection's OTHER contributing
   // lanes on this same frame (`recorded_at`) — passed to `ImageModal` so it
   // renders those boxes color-coded and labeled with their own object

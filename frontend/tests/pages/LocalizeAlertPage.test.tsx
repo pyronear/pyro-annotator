@@ -455,6 +455,24 @@ describe('LocalizeAlertPage', () => {
     });
   });
 
+  it('makes the URL-named object active in the cockpit behind a directly-entered editor URL', async () => {
+    // Arriving by paste / refresh / back button, not by the click that would
+    // otherwise have set the active object. T1 is present in both lanes, so
+    // the cell image proves which lane the cockpit considers active.
+    await renderAndSettle(<LocalizeAlertPage />, {
+      wrapper: makeWrapper('/localize/101/object/102/1002'),
+    });
+
+    await waitFor(() => {
+      const img = within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img');
+      expect(img).toHaveAttribute('src', 'https://img.example/1002.jpg');
+    });
+    // Active, but NOT focused: focus mode forces crop-on + small cards, and
+    // a pasted link shouldn't silently change how the grid is rendered. Same
+    // rule the `?frame=` deep link follows.
+    expect(screen.getByTestId('object-status-row-1')).not.toHaveAttribute('data-selected');
+  });
+
   it('leaves the editor closed when the frame belongs to a different object than the URL names', async () => {
     // Detection 1001 belongs to lane 101, but the URL claims lane 102. Under
     // the old frame-only route this silently edited whichever lane owned the
