@@ -7,11 +7,23 @@ import { computeSquareCrop, MAX_ZOOM, MIN_ZOOM } from '@/utils/annotation/square
 /** Constant canvas backing resolution — CSS scales it; zoom never resizes the element. */
 const CANVAS_RES = 840;
 
+/**
+ * Sized for the classify cockpit's media column, where the crop shares space
+ * with the full-frame player. Wider columns (localize) pass their own.
+ */
+const DEFAULT_MAX_SIZE = 'min(380px, 33vh)';
+
 interface CroppedImageSequenceProps {
   bboxes: BoundingBox[];
   sequenceId: number;
   /** Ties the crop to its object: a thin viewport frame in the object's overlay color. */
   accentColor?: string;
+  /**
+   * CSS max-width for the square viewport, e.g. `min(560px, 55vh)`. The
+   * viewport is always square and always centred; only its ceiling changes.
+   * Defaults to the classify sizing.
+   */
+  maxSize?: string;
   className?: string;
 }
 
@@ -26,6 +38,7 @@ export default function CroppedImageSequence({
   bboxes,
   sequenceId,
   accentColor,
+  maxSize,
   className = '',
 }: CroppedImageSequenceProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -257,10 +270,13 @@ export default function CroppedImageSequence({
       <div
         ref={setViewportEl}
         data-testid="cropped-viewport"
-        className={`relative mx-auto w-full max-w-[min(380px,33vh)] aspect-square overflow-hidden bg-gray-900 ${
+        className={`relative mx-auto w-full aspect-square overflow-hidden bg-gray-900 ${
           accentColor ? 'border-2' : ''
         }`}
-        style={accentColor ? { borderColor: accentColor } : undefined}
+        style={{
+          maxWidth: maxSize ?? DEFAULT_MAX_SIZE,
+          ...(accentColor ? { borderColor: accentColor } : {}),
+        }}
       >
         {showLoadingState && (
           <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-10">

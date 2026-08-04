@@ -47,11 +47,25 @@ vi.mock('@/services/api', () => ({
 }));
 
 vi.mock('@/components/annotation/CroppedImageSequence', () => ({
-  // Exposes sequenceId so tests can assert WHICH lane's strip is showing.
-  default: (props: { sequenceId: number }) => (
-    <div data-testid="cropped-image-sequence" data-sequence-id={props.sequenceId} />
+  // Exposes sequenceId so tests can assert WHICH lane's strip is showing, and
+  // accentColor so they can assert it's tied to that object's identity.
+  default: (props: { sequenceId: number; accentColor?: string }) => (
+    <div
+      data-testid="cropped-image-sequence"
+      data-sequence-id={props.sequenceId}
+      data-accent-color={props.accentColor}
+    />
   ),
 }));
+
+/**
+ * The cropped loop folds away behind a per-row disclosure, offered only on the
+ * active row. Tests that want to see it open it once; the choice then persists
+ * across selections, so switching objects afterwards keeps it open.
+ */
+const expandCrop = async (label: string) => {
+  fireEvent.click(await screen.findByRole('button', { name: `Show ${label}'s cropped view` }));
+};
 
 // ImageModal is a heavy, canvas/keyboard-driven editor covered by its own
 // unit-level pieces elsewhere; here it's stubbed to a thin, inspectable
@@ -920,17 +934,25 @@ describe('LocalizeAlertPage', () => {
     fireEvent.mouseEnter(screen.getByTestId('object-status-row-0'));
     fireEvent.focus(screen.getByRole('button', { name: 'Go to Object 1' }));
 
-    // Nothing appears from hover/focus alone — the strip only shows via
-    // focus MODE (a click) or the manual toolbar toggle, covered below.
+    // Nothing appears from hover/focus alone — the strip needs an actually
+    // ACTIVE lane (a click), covered below.
     expect(screen.queryByTestId('cropped-image-sequence')).not.toBeInTheDocument();
   });
 
-  it('object-focus mode shows the cropped-view strip for the focused lane, switches lanes with it, and hides it on deselect', async () => {
+  it("the active row's disclosure shows that lane's cropped strip, stays open across a lane switch, and hides on deselect", async () => {
     await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
     expect(screen.queryByTestId('cropped-image-sequence')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Go to Object 1' }));
+
+    // Selecting alone doesn't unfold it — the row's own control does.
+    await waitFor(() => {
+      expect(screen.getByTestId('localize-object-row-object-1')).toHaveAttribute('data-active');
+    });
+    expect(screen.queryByTestId('cropped-image-sequence')).not.toBeInTheDocument();
+
+    await expandCrop('Object 1');
 
     await waitFor(() => {
       expect(screen.getByTestId('cropped-image-sequence')).toHaveAttribute(
@@ -939,7 +961,8 @@ describe('LocalizeAlertPage', () => {
       );
     });
 
-    // Switching focus to Object 2 (segment click) shows Object 2's strip.
+    // Switching focus to Object 2 (segment click) carries the open disclosure
+    // over and shows Object 2's strip — no second click to re-open it.
     fireEvent.click(screen.getByTestId('status-segment-1-1'));
 
     await waitFor(() => {
@@ -957,10 +980,13 @@ describe('LocalizeAlertPage', () => {
     });
   });
 
-  it('the manual cropped-view toolbar toggle keeps working independently when nothing is focused', async () => {
+  // Opening the editor activates a lane WITHOUT entering focus mode, so its
+  // row never reads as selected. The disclosure belongs to the selected row,
+  // so neither it nor the strip appears on that path — there is no control
+  // hanging off a row that doesn't look active.
+  it('offers no cropped-view disclosure for a lane activated without entering focus mode', async () => {
     await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
-    // Cell click activates a lane without entering focus mode.
     fireEvent.click(screen.getByTestId(`alert-frame-cell-${T1}`));
     await waitFor(() => {
       expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1001');
@@ -968,44 +994,45 @@ describe('LocalizeAlertPage', () => {
     fireEvent.click(screen.getByText('Mock Close'));
     await waitFor(() => expect(screen.queryByTestId('image-modal')).not.toBeInTheDocument());
 
+    expect(
+      screen.queryByRole('button', { name: "Show Object 1's cropped view" })
+    ).not.toBeInTheDocument();
     expect(screen.queryByTestId('cropped-image-sequence')).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByTitle('Cropped view'));
-
-    await waitFor(() => {
-      expect(screen.getByTestId('cropped-image-sequence')).toHaveAttribute(
-        'data-sequence-id',
-        '101'
-      );
-    });
-
-    // Toggling off (not focused) is a plain toggle.
-    fireEvent.click(screen.getByTitle('Cropped view'));
-    await waitFor(() => {
-      expect(screen.queryByTestId('cropped-image-sequence')).not.toBeInTheDocument();
-    });
   });
 
-  it('while focused, the cropped-view toggle shows pressed and clicking it exits focus mode (early-exit, not a disabled dead button)', async () => {
+  // The strip carries the object's overlay colour, the same tie-to-identity
+  // classify's media panel makes — with several objects in an alert, an
+  // uncoloured crop is ambiguous about whose plume it is.
+  it('tints the strip with the active object accent colour', async () => {
     await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
     fireEvent.click(screen.getByRole('button', { name: 'Go to Object 1' }));
+    await expandCrop('Object 1');
+
+    await waitFor(() => {
+      const strip = screen.getByTestId('cropped-image-sequence');
+      expect(strip).toHaveAttribute('data-sequence-id', '101');
+      expect(strip.getAttribute('data-accent-color')).toBeTruthy();
+    });
+  });
+
+  it('deselecting the focused object restores the pre-focus crop mode', async () => {
+    await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Go to Object 1' }));
+    await expandCrop('Object 1');
     await waitFor(() => {
       expect(screen.getByTestId('cropped-image-sequence')).toBeInTheDocument();
     });
 
-    const croppedViewToggle = screen.getByTitle('Cropped view');
-    expect(croppedViewToggle).toHaveAttribute('aria-pressed', 'true');
-    expect(croppedViewToggle).not.toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Go to Object 1' }));
 
-    fireEvent.click(croppedViewToggle);
-
-    // Exits focus entirely: the strip hides and crop-mode is restored (was
-    // off before this focus session), not just a toggle of the strip alone.
     await waitFor(() => {
       expect(screen.queryByTestId('cropped-image-sequence')).not.toBeInTheDocument();
     });
     expect(screen.getByTestId('object-status-row-0')).not.toHaveAttribute('data-selected');
+    // Crop-mode was off before this focus session, so the cells go back to
+    // untransformed images.
     const img = within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img');
     expect(img.style.transform).toBe('');
   });
@@ -1216,6 +1243,7 @@ describe('LocalizeAlertPage', () => {
       expect(screen.getByTestId('object-status-row-2')).toHaveAttribute('data-selected', 'true');
       expect(screen.queryByRole('button', { name: 'industrial' })).not.toBeInTheDocument();
 
+      await expandCrop('Object 3');
       await waitFor(() => {
         expect(screen.getByTestId('cropped-image-sequence')).toHaveAttribute(
           'data-sequence-id',
@@ -1635,10 +1663,13 @@ describe('LocalizeAlertPage', () => {
       });
 
       fireEvent.click(screen.getByRole('button', { name: 'Go to Object 2' }));
+      await expandCrop('Object 2');
 
       // Looking closely at the rejected plume is the entire point of the
       // read-only FP view — the flipbook is gated on the lane having boxes,
-      // which its empty committed annotation never provided.
+      // which its empty committed annotation never provided. An FP row has no
+      // Accept-boxes action, so this also covers the disclosure appearing on a
+      // row whose only action it is.
       await waitFor(() => {
         expect(screen.getByTestId('cropped-image-sequence')).toHaveAttribute(
           'data-sequence-id',
@@ -1698,6 +1729,7 @@ describe('LocalizeAlertPage', () => {
         expect(screen.getByTestId('localize-object-row-object-2')).toBeInTheDocument();
       });
       fireEvent.click(screen.getByRole('button', { name: 'Go to Object 2' }));
+      await expandCrop('Object 2');
       await waitFor(() => {
         expect(screen.getByTestId('cropped-image-sequence')).toBeInTheDocument();
       });
@@ -1750,6 +1782,7 @@ describe('LocalizeAlertPage', () => {
 
       // Activate the false-positive object: its cropped view is the point.
       fireEvent.click(screen.getByRole('button', { name: 'Go to Object 2' }));
+      await expandCrop('Object 2');
       await waitFor(() => {
         expect(screen.getByTestId('cropped-image-sequence')).toHaveAttribute(
           'data-sequence-id',

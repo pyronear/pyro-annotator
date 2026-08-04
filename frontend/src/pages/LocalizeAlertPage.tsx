@@ -182,7 +182,11 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
 
   const [cardSize, setCardSize] = usePersistedTabState<CardSize>('detectionAnnotateCardSize', 'md');
   const [cropMode, setCropMode] = useState(false);
-  const [showCroppedView, setShowCroppedView] = useState(false);
+  // Whether the active row's cropped loop is unfolded. Deliberately NOT
+  // per-lane: an annotator either wants to watch the plume evolve or doesn't,
+  // so the choice follows them from object to object instead of resetting on
+  // every selection.
+  const [cropExpanded, setCropExpanded] = useState(false);
   // Opt-in read-only context: objects classify settled as false positives.
   // Off by default so the default view matches the queue's own rule; on, it
   // answers "is that plume already accounted for?" before someone adds a
@@ -743,6 +747,12 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       presentCount: 0,
       confirmedCount: 0,
     };
+    // The cropped loop is disclosed by the selected row — see the row's own
+    // header for why it lives there. Offered only on that row, and only once
+    // the lane has boxes to loop, so the chevron never opens onto an empty
+    // square.
+    const isActive = isFocused && activeLaneId === object.laneSequenceId;
+    const canShowCrop = isActive && activeLaneBoxes.length > 0;
     return (
       <LocalizeObjectRow
         key={object.laneSequenceId}
@@ -758,9 +768,21 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
         // only context when there's still live work beside it — on a fully
         // localized alert those rows are the page's subject.
         dimmed={object.isFalsePositive || (!object.workable && workableObjects.length > 0)}
-        isActive={isFocused && activeLaneId === object.laneSequenceId}
+        isActive={isActive}
         onActivate={() => handleObjectClick(object.laneSequenceId)}
         {...objectActionProps(object)}
+        onToggleCrop={canShowCrop ? () => setCropExpanded(prev => !prev) : undefined}
+        cropExpanded={cropExpanded}
+        crop={
+          canShowCrop && cropExpanded && activeLaneId != null ? (
+            <CroppedImageSequence
+              bboxes={activeLaneBoxes}
+              sequenceId={activeLaneId}
+              accentColor={object.color}
+              maxSize="min(100%, 22vh)"
+            />
+          ) : undefined
+        }
       />
     );
   };
@@ -868,13 +890,12 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     proceedPastSoftConfirm();
   };
 
-  // Cropped flipbook: the active object's boxes across all its frames —
-  // mirrors the legacy grid's cropped-view block, scoped to whichever
-  // object is currently active. Feeds two triggers for the strip rendered
-  // between the timeline and the grid: the manual toolbar toggle
-  // (`showCroppedView`, works standalone) and object-focus mode (`isFocused`
-  // — shows it automatically while an object is focused, per the render
-  // condition below).
+  // Cropped flipbook: the active object's boxes across all its frames,
+  // rendered above the grid whenever an object is active. It used to hide
+  // behind a `Film` toolbar toggle; watching the plume evolve is the whole
+  // point of picking an object, so it now comes with the selection rather
+  // than waiting to be discovered. Selecting nothing still shows nothing —
+  // there is no "the object" to crop around.
   // A false-positive lane's committed annotation is empty by construction,
   // so the flipbook has to read its engine track instead — otherwise
   // activating an FP object shows no strip at all, and looking closely at
@@ -970,21 +991,6 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       setActiveLaneId(null);
     }
     setShowFalsePositives(prev => !prev);
-  };
-
-  // The cropped-view toolbar toggle while focused: the strip is already
-  // forced visible by focus mode, so a plain on/off toggle would either do
-  // nothing (if disabled) or fight focus mode (if it toggled the underlying
-  // `showCroppedView` while focus keeps overriding the display). Chosen
-  // instead: clicking it exits focus mode entirely — a meaningful action
-  // (deselecting already hides the strip) rather than a dead disabled
-  // button. Unaffected when not focused (plain toggle, as before).
-  const handleToggleCroppedView = (next: boolean) => {
-    if (isFocused) {
-      exitFocus();
-      return;
-    }
-    setShowCroppedView(next);
   };
 
   // Segment click: activates/switches focus (same re-stash semantics as
@@ -1171,8 +1177,6 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                   onCardSizeChange={handleCardSizeChange}
                   cropMode={cropMode}
                   onToggleCropMode={setCropMode}
-                  showCroppedView={isFocused || showCroppedView}
-                  onToggleCroppedView={handleToggleCroppedView}
                 />
               </>
             }
@@ -1183,12 +1187,6 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
               controls — moved up into the panel above, so a second border
               around the images was drawing a box around a box. The images
               carry their own edges. */}
-          {(isFocused || showCroppedView) && activeLaneId != null && activeLaneBoxes.length > 0 && (
-            <div className="mb-4 flex justify-center">
-              <CroppedImageSequence bboxes={activeLaneBoxes} sequenceId={activeLaneId} />
-            </div>
-          )}
-
           <AlertFrameGrid
             frames={frameModel.frames}
             activeLaneId={activeLaneId}

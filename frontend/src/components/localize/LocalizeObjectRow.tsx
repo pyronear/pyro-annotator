@@ -22,9 +22,17 @@
  * they're on screen. Whether they also fade back is the caller's call
  * (`dimmed`) — that only reads as "context" when there is live work beside
  * them.
+ *
+ * The selected row is also the one place the cropped loop lives: a chevron
+ * discloses it inside the row's own card. It sits here rather than in the
+ * media column because with several objects listed, a loop rendered away
+ * from its row is ambiguous about whose plume it shows — and the rail is
+ * already sticky, so the loop stays put while the frame grid scrolls.
  */
 
 import React from 'react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
+import { Tooltip } from '@/components/ui/Tooltip';
 import { LocalizeObjectActions } from './LocalizeObjectActions';
 
 export interface LocalizeObjectRowProps {
@@ -63,6 +71,20 @@ export interface LocalizeObjectRowProps {
    * auto-review pass first (issue #275).
    */
   onReclassify?: () => void;
+  /**
+   * Toggles the cropped loop this row discloses. Omit to hide the control —
+   * the caller only offers it on the selected row, since the loop shows the
+   * object the media column is already pointed at.
+   */
+  onToggleCrop?: () => void;
+  /** Whether that loop is currently showing — drives the chevron and aria-expanded. */
+  cropExpanded?: boolean;
+  /**
+   * The loop itself, rendered inside the row's card so it reads as part of
+   * the object rather than as something floating beneath it. The row swallows
+   * clicks on it — see the wrapper below.
+   */
+  crop?: React.ReactNode;
 }
 
 export const LocalizeObjectRow: React.FC<LocalizeObjectRowProps> = ({
@@ -80,6 +102,9 @@ export const LocalizeObjectRow: React.FC<LocalizeObjectRowProps> = ({
   onAcceptBoxes,
   isAccepting = false,
   onReclassify,
+  onToggleCrop,
+  cropExpanded = false,
+  crop,
 }) => {
   const pendingCount = presentCount - confirmedCount;
 
@@ -197,8 +222,45 @@ export const LocalizeObjectRow: React.FC<LocalizeObjectRowProps> = ({
               </span>
             </>
           )}
+          {/* Follows the swap rather than joining it: a false-positive row
+              has no actions to swap in and keeps its chip, but its crop is
+              the whole reason it's on screen, so the disclosure has to
+              survive both branches. Icon-only because it lands on a line
+              that already truncates the object's name to fit. */}
+          {onToggleCrop && (
+            <Tooltip tip={`Loop ${label}'s crops across the frames it appears on.`}>
+              <button
+                type="button"
+                aria-label={`${cropExpanded ? 'Hide' : 'Show'} ${label}'s cropped view`}
+                aria-expanded={cropExpanded}
+                onClick={e => {
+                  e.stopPropagation();
+                  onToggleCrop();
+                }}
+                className="rounded p-1 text-haze transition-colors hover:bg-ash hover:text-char"
+              >
+                {cropExpanded ? (
+                  <ChevronUp className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronDown className="h-3.5 w-3.5" />
+                )}
+              </button>
+            </Tooltip>
+          )}
         </span>
       </div>
+
+      {crop && (
+        // The row is click-to-activate and activating the row it is ALREADY
+        // on deselects it — so a click on the loop's zoom buttons would
+        // bounce the object out of focus and unmount the loop mid-drag. The
+        // wrapper stops the bubble; the loop's own controls keep working.
+        // Keyboard needs no equivalent: the row's Enter/Space handler already
+        // ignores events that didn't start on the row itself.
+        <div className="mt-2.5 cursor-default" onClick={e => e.stopPropagation()}>
+          {crop}
+        </div>
+      )}
     </div>
   );
 };

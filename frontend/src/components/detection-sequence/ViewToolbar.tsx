@@ -1,8 +1,6 @@
 /**
  * Compact view controls for the collocated localize screen's frame grid:
- * S/M/L card size plus icon toggles for crop mode and the cropped flipbook.
- * One shared button style — the header and flipbook speak the same visual
- * language.
+ * S/M/L card size plus a crop-mode toggle, in one shared button style.
  *
  * The pressed state is pine-on-pine-soft rather than the old white pill: the
  * toolbar moved onto a white control panel, where "white pill on a pale ash
@@ -14,10 +12,11 @@
  * the legacy per-lane page's `DetectionGrid`. That page is gone, and
  * `AlertFrameGrid` never read `showPredictions` (only `ImageModal` does, and
  * it owns its own toggle), so both went with it rather than lingering as
- * controls that move nothing on screen.
+ * controls that move nothing on screen. The cropped-flipbook toggle went the
+ * same way once the flipbook became a permanent part of selecting an object.
  */
 
-import { Crop, Film } from 'lucide-react';
+import { Crop } from 'lucide-react';
 
 export type CardSize = 'sm' | 'md' | 'lg';
 
@@ -32,8 +31,6 @@ interface ViewToolbarProps {
   onCardSizeChange: (size: CardSize) => void;
   cropMode?: boolean;
   onToggleCropMode?: (crop: boolean) => void;
-  showCroppedView?: boolean;
-  onToggleCroppedView?: (show: boolean) => void;
 }
 
 function IconToggle({
@@ -68,8 +65,6 @@ export function ViewToolbar({
   onCardSizeChange,
   cropMode = false,
   onToggleCropMode,
-  showCroppedView = false,
-  onToggleCroppedView,
 }: ViewToolbarProps) {
   return (
     <div className="inline-flex items-center gap-0.5 rounded-lg bg-ash p-0.5">
@@ -94,13 +89,6 @@ export function ViewToolbar({
         onClick={() => onToggleCropMode?.(!cropMode)}
       >
         <Crop className="w-3.5 h-3.5" />
-      </IconToggle>
-      <IconToggle
-        title="Cropped view"
-        pressed={showCroppedView}
-        onClick={() => onToggleCroppedView?.(!showCroppedView)}
-      >
-        <Film className="w-3.5 h-3.5" />
       </IconToggle>
     </div>
   );

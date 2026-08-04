@@ -207,3 +207,114 @@ describe('LocalizeObjectRow action visibility', () => {
     expect(screen.getByText('False positive')).toBeInTheDocument();
   });
 });
+
+describe('LocalizeObjectRow cropped-view disclosure', () => {
+  it('offers no control when the caller withholds the toggle', () => {
+    render(<LocalizeObjectRow {...baseProps} workable isActive />);
+
+    expect(screen.queryByRole('button', { name: /cropped view/i })).not.toBeInTheDocument();
+  });
+
+  // The right-hand side swaps metadata for actions when a row is selected,
+  // and a false positive has no actions to swap in — so a disclosure placed
+  // *inside* that swap would vanish on exactly the row whose crop is the
+  // reason it's on screen at all.
+  it('offers the control on a selected false positive, which has no actions', () => {
+    render(
+      <LocalizeObjectRow
+        {...baseProps}
+        workable={false}
+        isFalsePositive
+        falsePositiveTypes={['cloud']}
+        isActive
+        onToggleCrop={() => {}}
+      />
+    );
+
+    expect(
+      screen.getByRole('button', { name: "Show Object 2's cropped view" })
+    ).toBeInTheDocument();
+    // And it doesn't cost the chip, which is all such a row says about itself.
+    expect(screen.getByText('False positive')).toBeInTheDocument();
+  });
+
+  it('names the action by what the next click does, and reports its state', () => {
+    const { rerender } = render(
+      <LocalizeObjectRow {...baseProps} workable isActive onToggleCrop={() => {}} />
+    );
+
+    const toggle = screen.getByRole('button', { name: "Show Object 2's cropped view" });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+    rerender(
+      <LocalizeObjectRow {...baseProps} workable isActive onToggleCrop={() => {}} cropExpanded />
+    );
+    expect(screen.getByRole('button', { name: "Hide Object 2's cropped view" })).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    );
+  });
+
+  it('does not activate the row when the toggle is clicked', () => {
+    const onActivate = vi.fn();
+    const onToggleCrop = vi.fn();
+    render(
+      <LocalizeObjectRow
+        {...baseProps}
+        workable
+        isActive
+        onActivate={onActivate}
+        onToggleCrop={onToggleCrop}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: "Show Object 2's cropped view" }));
+
+    expect(onToggleCrop).toHaveBeenCalledTimes(1);
+    expect(onActivate).not.toHaveBeenCalled();
+  });
+
+  // The row is click-to-activate and activating the ALREADY-active row
+  // deselects it — so without a click boundary, using the loop's zoom controls
+  // would bounce the object out of focus and unmount the loop mid-interaction.
+  it('swallows clicks inside the crop so its own controls never deselect the object', () => {
+    const onActivate = vi.fn();
+    render(
+      <LocalizeObjectRow
+        {...baseProps}
+        workable
+        isActive
+        onActivate={onActivate}
+        onToggleCrop={() => {}}
+        cropExpanded
+        crop={<button type="button">Zoom in</button>}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
+
+    expect(onActivate).not.toHaveBeenCalled();
+  });
+
+  // The row's own Enter/Space handler bails when the event didn't start on the
+  // row, so the crop needs no keyboard equivalent of the click boundary — but
+  // that guard is what makes it safe, so it gets a test.
+  it('does not activate the row from a key press inside the crop', () => {
+    const onActivate = vi.fn();
+    render(
+      <LocalizeObjectRow
+        {...baseProps}
+        workable
+        isActive
+        onActivate={onActivate}
+        onToggleCrop={() => {}}
+        cropExpanded
+        crop={<button type="button">Zoom in</button>}
+      />
+    );
+
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Zoom in' }), { key: 'Enter' });
+
+    expect(onActivate).not.toHaveBeenCalled();
+  });
+});
