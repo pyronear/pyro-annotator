@@ -791,16 +791,34 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   // already-annotated objects must not satisfy (or block) the gate.
   const allObjectsAccepted = workableObjects.length > 0 && workableObjects.every(isObjectLocalized);
 
+  // An alert with an undecided object is not ready for localization (spec:
+  // 2026-08-05 unsure lanes gate the localize queue). The queue hides it;
+  // this covers deep links and stale tabs, and matches the server guard on
+  // localize-submit — better to say so up front than to let a 422 explain it
+  // after every box is drawn.
+  const undecidedLanes = (alertDetail?.lanes ?? []).filter(
+    lane => lane.annotation?.is_unsure && lane.annotation.processing_stage === 'seq_annotation_done'
+  );
+  const undecidedLaneCount = undecidedLanes.length;
+  const submitBlocked = !allObjectsAccepted || undecidedLaneCount > 0;
+
   // What the submit button's tooltip says. The blocked case counts the
   // objects rather than restating the rule: "2 objects still have frames
   // without a box" tells you how much is left, where "accept every object's
   // boxes" only tells you what you already tried to do.
   const objectsAwaitingBoxes = workableObjects.filter(o => !isObjectLocalized(o)).length;
-  const submitTooltip = allObjectsAccepted
-    ? 'Submits every object still awaiting localization, then returns you to the list.'
-    : `${objectsAwaitingBoxes} object${objectsAwaitingBoxes === 1 ? '' : 's'} still ${
-        objectsAwaitingBoxes === 1 ? 'has' : 'have'
-      } frames without a box. Accept or draw them to enable submit.`;
+  const submitTooltip =
+    undecidedLaneCount > 0
+      ? `${undecidedLaneCount} object${undecidedLaneCount === 1 ? '' : 's'} in this alert ${
+          undecidedLaneCount === 1 ? 'is' : 'are'
+        } still marked unsure. Settle ${
+          undecidedLaneCount === 1 ? 'it' : 'them'
+        } in Classify to unlock submit.`
+      : allObjectsAccepted
+        ? 'Submits every object still awaiting localization, then returns you to the list.'
+        : `${objectsAwaitingBoxes} object${objectsAwaitingBoxes === 1 ? '' : 's'} still ${
+            objectsAwaitingBoxes === 1 ? 'has' : 'have'
+          } frames without a box. Accept or draw them to enable submit.`;
 
   // Every workable lane's sequence-annotation id — the payload
   // `localizeSubmit` takes, and the set both bulk actions iterate.
@@ -851,7 +869,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   // submit now requires every frame to already carry a committed box, so
   // there is never a pending no-box frame left to warn about.
   const handleSubmitClick = () => {
-    if (!allObjectsAccepted || submitAlert.isPending) return;
+    if (submitBlocked || submitAlert.isPending) return;
     if (softConfirmNeeded) {
       setMissedSmokeConfirm(true);
       return;
@@ -1359,8 +1377,35 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                   All objects localized
                 </p>
               ) : (
-                <div className="flex justify-center">
-                  {/* The tooltip carries the gate's explanation, which used to
+                <div>
+                  {/* An undecided object holds the whole alert back. Say so
+                      here rather than letting the server's 422 explain it
+                      after every box is drawn — and offer the one action
+                      that clears it, which round-trips back to this page. */}
+                  {undecidedLaneCount > 0 && (
+                    <div
+                      data-testid="undecided-lanes-banner"
+                      className="mb-2.5 rounded-lg border border-signal bg-signal-soft px-3 py-2 font-body text-detail text-signal"
+                    >
+                      {undecidedLaneCount === 1
+                        ? '1 object is'
+                        : `${undecidedLaneCount} objects are`}{' '}
+                      still undecided.{' '}
+                      <button
+                        type="button"
+                        onClick={e => {
+                          e.stopPropagation();
+                          handleReclassify(undecidedLanes[0].sequence.id);
+                        }}
+                        className="font-semibold underline underline-offset-2 hover:no-underline"
+                      >
+                        Settle in Classify
+                      </button>{' '}
+                      to unlock submit.
+                    </div>
+                  )}
+                  <div className="flex justify-center">
+                    {/* The tooltip carries the gate's explanation, which used to
                       be a line of copy under the button. Hovering the thing
                       you can't click is where the question gets asked, and it
                       names HOW MANY objects are holding submit back rather
@@ -1368,24 +1413,25 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                       bug once every row looks handled but one still has a
                       pending frame. Above, because the footer is the last
                       thing in a rail that scrolls. */}
-                  <Tooltip placement="above" tip={submitTooltip}>
-                    <button
-                      type="button"
-                      onClick={e => {
-                        e.stopPropagation();
-                        handleSubmitClick();
-                      }}
-                      disabled={!allObjectsAccepted || submitAlert.isPending}
-                      className="flex items-center justify-center rounded-lg bg-pine px-5 py-2.5 text-center font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {submitAlert.isPending ? (
-                        <div className="w-3.5 h-3.5 mr-1.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <Upload className="w-3.5 h-3.5 mr-1.5 shrink-0" />
-                      )}
-                      Submit
-                    </button>
-                  </Tooltip>
+                    <Tooltip placement="above" tip={submitTooltip}>
+                      <button
+                        type="button"
+                        onClick={e => {
+                          e.stopPropagation();
+                          handleSubmitClick();
+                        }}
+                        disabled={submitBlocked || submitAlert.isPending}
+                        className="flex items-center justify-center rounded-lg bg-pine px-5 py-2.5 text-center font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {submitAlert.isPending ? (
+                          <div className="w-3.5 h-3.5 mr-1.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <Upload className="w-3.5 h-3.5 mr-1.5 shrink-0" />
+                        )}
+                        Submit
+                      </button>
+                    </Tooltip>
+                  </div>
                 </div>
               )
             }

@@ -1157,6 +1157,44 @@ describe('LocalizeAlertPage', () => {
       );
     });
 
+    it('blocks submit and explains why while a sibling object is still undecided', async () => {
+      // The queue hides such an alert; this covers a deep link or a stale
+      // tab, and mirrors the server guard on localize-submit (spec:
+      // 2026-08-05 unsure lanes gate the localize queue).
+      const detail = makeTwoLaneAlertDetail();
+      vi.mocked(apiClient.getAlertDetail).mockResolvedValue({
+        ...detail,
+        lanes: [
+          ...detail.lanes,
+          {
+            sequence: makeSequence({ id: 103, alert_api_id: 9003 }),
+            annotation: makeAnnotation({
+              id: 203,
+              sequence_id: 103,
+              is_unsure: true,
+              has_smoke: false,
+              processing_stage: 'seq_annotation_done',
+            }),
+          },
+        ],
+      });
+      mockAllFramesAccepted();
+
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      // Every workable object is boxed, so only the undecided sibling can be
+      // holding submit back.
+      await waitFor(() =>
+        expect(screen.getByText('2 of 2 objects localized')).toBeInTheDocument()
+      );
+      expect(screen.getByTestId('undecided-lanes-banner')).toBeInTheDocument();
+
+      const submit = screen.getByRole('button', { name: /Submit/ });
+      expect(submit).toBeDisabled();
+      fireEvent.click(submit);
+      expect(apiClient.localizeSubmit).not.toHaveBeenCalled();
+    });
+
     it('enables once every object is accepted, submits exactly the workable annotation ids, and navigates back to the queue', async () => {
       mockAllFramesAccepted();
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
