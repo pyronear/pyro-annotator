@@ -741,12 +741,10 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
         ? () => quickAcceptLane.mutate(object.laneSequenceId)
         : undefined,
     isAccepting: quickAcceptLane.isPending && quickAcceptLane.variables === object.laneSequenceId,
-    // Withheld on false-positive rows: promoting one back to smoke needs an
-    // auto-review pass first (issue #275), so offering the action would ship
-    // a path that silently does nothing for localize.
-    onReclassify: object.isFalsePositive
-      ? undefined
-      : () => handleReclassify(object.laneSequenceId),
+    // Offered on false-positive rows too: promoting one back to smoke
+    // demotes the lane server-side and re-runs its auto-review pass
+    // (spec: fp-promote-relocalize, issue #275).
+    onReclassify: () => handleReclassify(object.laneSequenceId),
   });
 
   const renderObjectRow = (object: AlertObjectStatus) => {

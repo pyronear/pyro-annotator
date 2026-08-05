@@ -736,6 +736,10 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.SEQUENCE_ANNOTATIONS });
       queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
       queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });
+      // A promoted FP lane's stale detection annotations were deleted
+      // server-side (#275); without this the localize page redraws the lane
+      // against the cached ones and shows every frame as already confirmed.
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.DETECTION_ANNOTATIONS });
 
       const warnings = response.results
         .filter(r => r.group_propagation_warning)

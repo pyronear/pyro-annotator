@@ -2367,7 +2367,7 @@ describe('LocalizeAlertPage', () => {
       expect(contextRow.getByRole('button', { name: 'Reclassify Object 2' })).toBeInTheDocument();
     });
 
-    it('withholds Reclassify from false-positive context rows (FP -> smoke is issue #275)', async () => {
+    it('offers Reclassify on a false-positive context row (FP -> smoke, issue #275)', async () => {
       vi.mocked(apiClient.getAlertDetail).mockResolvedValue({
         ...makeTwoLaneAlertDetail(),
         lanes: [
@@ -2392,19 +2392,16 @@ describe('LocalizeAlertPage', () => {
 
       fireEvent.click(screen.getByRole('button', { name: /False positives/ }));
 
-      // Selected, where every other row shows its actions, the false
-      // positive still shows none.
+      // Still no localization action — but the classification is correctable.
       fireEvent.click(await screen.findByTestId('localize-object-row-object-2'));
       const fpRow = within(screen.getByTestId('localize-object-row-object-2'));
-      expect(fpRow.queryByRole('button', { name: /Reclassify/ })).not.toBeInTheDocument();
+      expect(fpRow.queryByRole('button', { name: /Accept/ })).not.toBeInTheDocument();
+      fireEvent.click(fpRow.getByRole('button', { name: 'Reclassify Object 2' }));
 
-      // The smoke row above it still has one.
-      fireEvent.click(screen.getByTestId('localize-object-row-object-1'));
-      expect(
-        within(screen.getByTestId('localize-object-row-object-1')).getByRole('button', {
-          name: 'Reclassify Object 1',
-        })
-      ).toBeInTheDocument();
+      // Same destination contract as smoke rows: the row's OWN lane.
+      const destination = await screen.findByTestId('classify-destination');
+      expect(destination.getAttribute('data-lane-id')).toBe('102');
+      expect(destination.getAttribute('data-return')).toBe('/localize/101');
     });
   });
 
