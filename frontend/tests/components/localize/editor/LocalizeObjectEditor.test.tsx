@@ -236,3 +236,84 @@ describe('LocalizeObjectEditor', () => {
     expect(onNavigateToDetection).toHaveBeenCalledWith(lastDetection.id);
   });
 });
+
+describe('LocalizeObjectEditor out-of-range frames', () => {
+  it('steps into a frame the object is absent from without navigating', () => {
+    const onNavigateToDetection = vi.fn();
+    renderEditor({ onNavigateToDetection });
+    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+    expect(onNavigateToDetection).not.toHaveBeenCalled();
+    expect(screen.getByTestId('out-of-range-banner')).toBeInTheDocument();
+  });
+
+  it('disables every editing action on an out-of-range frame', () => {
+    renderEditor();
+    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+    expect(screen.getByTestId('editor-draw')).toBeDisabled();
+    expect(screen.getByTestId('source-row-auto')).toBeDisabled();
+    expect(screen.getByTestId('editor-clear')).toBeDisabled();
+  });
+
+  it('Enter does nothing on an out-of-range frame', () => {
+    const onCommit = vi.fn();
+    const onNavigateToDetection = vi.fn();
+    renderEditor({ onCommit, onNavigateToDetection });
+    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+    fireEvent.keyDown(window, { key: 'Enter' });
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(onNavigateToDetection).not.toHaveBeenCalled();
+  });
+
+  it('resumes driving the URL when stepping back into range', () => {
+    const onNavigateToDetection = vi.fn();
+    renderEditor({ onNavigateToDetection });
+    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+    expect(onNavigateToDetection).toHaveBeenCalledWith(firstDetection.id);
+    expect(screen.queryByTestId('out-of-range-banner')).not.toBeInTheDocument();
+  });
+
+  it('peeks when an out-of-range filmstrip cell is clicked', () => {
+    const onNavigateToDetection = vi.fn();
+    renderEditor({ onNavigateToDetection });
+    fireEvent.click(screen.getByTestId('filmstrip-cell-99001'));
+    expect(onNavigateToDetection).not.toHaveBeenCalled();
+    expect(screen.getByTestId('out-of-range-banner')).toBeInTheDocument();
+  });
+
+  it('clears the peek when the open detection changes underneath it', () => {
+    const { rerender } = renderEditor();
+    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+    expect(screen.getByTestId('out-of-range-banner')).toBeInTheDocument();
+    rerender(editorWith({ detection: lastDetection }));
+    expect(screen.queryByTestId('out-of-range-banner')).not.toBeInTheDocument();
+  });
+
+  it('steps out of the object range at the end too', () => {
+    const onNavigateToDetection = vi.fn();
+    renderEditor({ onNavigateToDetection, detection: lastDetection });
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+    expect(onNavigateToDetection).not.toHaveBeenCalled();
+    expect(screen.getByTestId('out-of-range-banner')).toBeInTheDocument();
+  });
+
+  it('refuses to arm draw mode while peeking, so no box lands on the wrong frame', () => {
+    const onCommit = vi.fn();
+    renderEditor({ onCommit });
+    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+    fireEvent.keyDown(window, { key: 'd' });
+    fireEvent.click(screen.getByAltText(/^Detection /));
+    fireEvent.click(screen.getByAltText(/^Detection /));
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('does not step past the very first alert frame', () => {
+    renderEditor();
+    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+    // t003 -> t002 -> t001, then nothing left before it.
+    expect(screen.getByTestId('out-of-range-banner')).toBeInTheDocument();
+    expect(screen.getByTestId('filmstrip-cell-99001')).toHaveAttribute('aria-current', 'true');
+  });
+});

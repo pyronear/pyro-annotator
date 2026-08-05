@@ -28,7 +28,7 @@ import {
   priorityPick,
   type BoxCandidate,
 } from '@/utils/annotation/objectBoxCandidates';
-import { buildFilmstripEntries } from '@/utils/annotation/objectFilmstrip';
+import { buildFilmstripEntries, type FilmstripEntry } from '@/utils/annotation/objectFilmstrip';
 import { computeCellCrop } from '@/utils/annotation/gridCropUtils';
 import type { AlertFrame } from '@/utils/annotation/alertLocalizeUtils';
 import {
@@ -164,22 +164,53 @@ export function LocalizeObjectEditor({
 
   // --- Navigation ---------------------------------------------------------
 
-  const laneIndex = laneDetections.findIndex(d => d.id === detection.id);
+  /**
+   * A frame outside this object's range, held locally. The route requires
+   * `:detectionId` to belong to `:laneId`, and a gap frame has no detection
+   * in this lane, so the URL cannot name it without weakening the guard that
+   * makes an inconsistent editor link detectable at all. Peeking is therefore
+   * component state; the URL keeps naming the last in-object frame. Drawing
+   * on one of these is issue #287.
+   */
+  const [peeked, setPeeked] = useState<FilmstripEntry | null>(null);
+
+  // The URL owns in-range frames, so a change to it means the user navigated
+  // for real and any peek is stale.
+  useEffect(() => setPeeked(null), [detection.id]);
+
+  const editable = peeked === null;
+
+  const currentEntryIndex = peeked
+    ? entries.findIndex(en => en.recordedAt === peeked.recordedAt)
+    : entries.findIndex(en => en.detectionId === detection.id);
+
+  const goToEntry = useCallback(
+    (entry: FilmstripEntry) => {
+      if (entry.inObject) {
+        setPeeked(null);
+        onNavigateToDetection(entry.detectionId);
+      } else {
+        setPeeked(entry);
+      }
+    },
+    [onNavigateToDetection]
+  );
 
   const step = useCallback(
     (direction: -1 | 1) => {
-      const next = laneDetections[laneIndex + direction];
-      if (next) onNavigateToDetection(next.id);
+      const next = entries[currentEntryIndex + direction];
+      if (next) goToEntry(next);
     },
-    [laneDetections, laneIndex, onNavigateToDetection]
+    [entries, currentEntryIndex, goToEntry]
   );
 
   const acceptAndNext = useCallback(() => {
+    if (!editable) return;
     const pick = priorityPick(candidates);
     if (!pick) return;
     commitCandidate(pick);
     step(1);
-  }, [candidates, commitCandidate, step]);
+  }, [editable, candidates, commitCandidate, step]);
 
   // --- Zoom ---------------------------------------------------------------
 
@@ -370,7 +401,10 @@ export function LocalizeObjectEditor({
       didDragBoxRef.current = false;
       return;
     }
-    if (!isDrawMode) return;
+    // Never draw onto a peeked frame: the image on screen is a sibling
+    // lane's, so the box would silently land on the object's own frame
+    // instead of the one being looked at.
+    if (!isDrawMode || !editable) return;
 
     const coords = screenToImageCoords(e.clientX, e.clientY);
     if (!isActivelyDrawing) {
@@ -449,6 +483,7 @@ export function LocalizeObjectEditor({
           break;
         case 'd':
         case 'D':
+          if (!editable) return;
           setIsDrawMode(v => !v);
           setIsActivelyDrawing(false);
           setCurrentDrawing(null);
@@ -481,11 +516,28 @@ export function LocalizeObjectEditor({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [step, acceptAndNext, isActivelyDrawing, resetZoom, onClose]);
+  }, [step, acceptAndNext, isActivelyDrawing, resetZoom, onClose, editable]);
 
   // --- Render -------------------------------------------------------------
 
-  const frameNumber = entries.findIndex(en => en.detectionId === detection.id) + 1;
+  const frameNumber = currentEntryIndex + 1;
+
+  /**
+   * While peeking, the canvas shows a sibling lane's detection — the same
+   * photograph at the same instant. It is a stand-in for the image only: no
+   * predictions, no boxes, nothing committable. The real `detection` prop is
+   * untouched, so leaving the peek restores the object's own frame.
+   */
+  const shownDetection: Detection = peeked
+    ? ({
+        ...detection,
+        id: peeked.detectionId,
+        recorded_at: peeked.recordedAt,
+        algo_predictions: { predictions: [] },
+        auto_predictions: { predictions: [] },
+        others_bboxes: null,
+      } as unknown as Detection)
+    : detection;
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black/95">
@@ -505,7 +557,7 @@ export function LocalizeObjectEditor({
           type="button"
           data-testid="editor-prev"
           onClick={() => step(-1)}
-          disabled={laneIndex <= 0}
+          disabled={currentEntryIndex <= 0}
           className="rounded p-1 hover:bg-white/10 disabled:opacity-30"
           aria-label="Previous frame"
         >
@@ -515,14 +567,20 @@ export function LocalizeObjectEditor({
           type="button"
           data-testid="editor-next"
           onClick={() => step(1)}
-          disabled={laneIndex < 0 || laneIndex >= laneDetections.length - 1}
+          disabled={currentEntryIndex < 0 || currentEntryIndex >= entries.length - 1}
           className="rounded p-1 hover:bg-white/10 disabled:opacity-30"
           aria-label="Next frame"
         >
           <ChevronRight className="h-4 w-4" />
         </button>
 
-        <span className="ml-auto text-white/50">{formatDateTime(detection.recorded_at)}</span>
+        {peeked && (
+          <span className="rounded-full border border-[#d98b7d]/50 px-2 py-0.5 text-[10px] text-[#d98b7d]">
+            not part of this object
+          </span>
+        )}
+
+        <span className="ml-auto text-white/50">{formatDateTime(shownDetection.recorded_at)}</span>
         {isSaving && <span className="text-white/50">saving…</span>}
         <button
           type="button"
@@ -538,9 +596,9 @@ export function LocalizeObjectEditor({
       <div className="flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 items-center justify-center overflow-hidden p-2">
           <DetectionAnnotationCanvas
-            detection={detection}
-            committed={shownCommitted}
-            ghosts={ghosts}
+            detection={shownDetection}
+            committed={editable ? shownCommitted : null}
+            ghosts={editable ? ghosts : []}
             showGhosts={showGhosts}
             selectedSmokeType={smokeType}
             objectOverlays={objectOverlays}
@@ -567,20 +625,31 @@ export function LocalizeObjectEditor({
         </div>
 
         <BoxSourceRail
-          candidates={candidates}
-          committed={committed}
-          imageUrl={imageData?.url ?? null}
-          disabled={false}
+          candidates={editable ? candidates : []}
+          committed={editable ? committed : null}
+          imageUrl={editable ? (imageData?.url ?? null) : null}
+          disabled={!editable}
           onCommit={commitCandidate}
           onDraw={() => setIsDrawMode(true)}
           onClear={clear}
         />
       </div>
 
+      {peeked && (
+        <div
+          data-testid="out-of-range-banner"
+          className="flex-none border-t border-[#d98b7d]/30 bg-[#d98b7d]/10 px-3 py-1.5 text-[11px] text-[#e0b3aa]"
+        >
+          Viewing a frame outside this object&apos;s range — image from the alert&apos;s other
+          objects. {objectLabel} was never detected here, so there is no frame to draw on yet (issue
+          #287).
+        </div>
+      )}
+
       <ObjectFilmstrip
         entries={entries}
-        currentDetectionId={detection.id}
-        onSelect={entry => entry.inObject && onNavigateToDetection(entry.detectionId)}
+        currentDetectionId={shownDetection.id}
+        onSelect={goToEntry}
       />
 
       <p className="flex-none border-t border-white/10 px-3 py-1.5 text-[10px] text-white/40">
