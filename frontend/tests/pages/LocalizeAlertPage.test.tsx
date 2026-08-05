@@ -133,7 +133,12 @@ vi.mock('@/components/detection-sequence/ImageModal', () => ({
 
 import { apiClient } from '@/services/api';
 import LocalizeAlertPage from '@/pages/LocalizeAlertPage';
-import { ROUTES, localizeObjectRoute } from '@/utils/routes';
+import {
+  ROUTES,
+  localizeObjectRoute,
+  localizeObjectSelect,
+  localizeObjectSelectRoute,
+} from '@/utils/routes';
 
 // Lets tests assert the URL the page navigated to (which object + frame the
 // editor was opened for), not just that a modal appeared.
@@ -180,9 +185,11 @@ function makeWrapper(initialPath = '/localize/101') {
                 useMatch also reads, so this wrapper can't silently disagree
                 with the real app. */}
             <Route path="/localize/done/:sequenceId" element={children}>
+              <Route path={localizeObjectSelectRoute(true)} element={null} />
               <Route path={localizeObjectRoute(true)} element={null} />
             </Route>
             <Route path="/localize/:sequenceId" element={children}>
+              <Route path={localizeObjectSelectRoute()} element={null} />
               <Route path={localizeObjectRoute()} element={null} />
             </Route>
             {/* Real routes for the landing pages so a post-submit
@@ -984,7 +991,7 @@ describe('LocalizeAlertPage', () => {
     expect(screen.queryByTestId('cropped-image-sequence')).not.toBeInTheDocument();
   });
 
-  it("the active row's disclosure shows that lane's cropped strip, stays open across a lane switch, and hides on deselect", async () => {
+  it("the active row's disclosure shows that lane's cropped strip, stays open across a lane switch, and persists after exiting focus", async () => {
     await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
     expect(screen.queryByTestId('cropped-image-sequence')).not.toBeInTheDocument();
@@ -1022,12 +1029,17 @@ describe('LocalizeAlertPage', () => {
       );
     });
 
-    // Deselecting hides it.
+    // A second click on the focused row exits focus but keeps the object
+    // active (selection lives in the URL now), so the strip stays with it.
     fireEvent.click(screen.getByRole('button', { name: 'Go to Object 2' }));
 
     await waitFor(() => {
-      expect(screen.queryByTestId('cropped-image-sequence')).not.toBeInTheDocument();
+      expect(screen.getByTestId('object-status-row-1')).not.toHaveAttribute('data-selected');
     });
+    expect(screen.getByTestId('cropped-image-sequence')).toHaveAttribute(
+      'data-sequence-id',
+      '102'
+    );
   });
 
   // The disclosure is a real toggle, not a one-way reveal: the page holds the
@@ -1092,7 +1104,7 @@ describe('LocalizeAlertPage', () => {
     });
   });
 
-  it('deselecting the focused object restores the pre-focus crop mode', async () => {
+  it('exiting focus restores the pre-focus crop mode while the object stays active', async () => {
     await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
     fireEvent.click(screen.getByRole('button', { name: 'Go to Object 1' }));
@@ -1104,13 +1116,17 @@ describe('LocalizeAlertPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Go to Object 1' }));
 
     await waitFor(() => {
-      expect(screen.queryByTestId('cropped-image-sequence')).not.toBeInTheDocument();
+      expect(screen.getByTestId('object-status-row-0')).not.toHaveAttribute('data-selected');
     });
-    expect(screen.getByTestId('object-status-row-0')).not.toHaveAttribute('data-selected');
     // Crop-mode was off before this focus session, so the cells go back to
-    // untransformed images.
+    // untransformed images…
     const img = within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img');
     expect(img.style.transform).toBe('');
+    // …but the object is still active, so its cropped loop stays available.
+    expect(screen.getByTestId('cropped-image-sequence')).toHaveAttribute(
+      'data-sequence-id',
+      '101'
+    );
   });
 
   it('an explicit S/M/L click while focused clears the small-card override immediately (visible + intentional preference write)', async () => {
@@ -2347,6 +2363,64 @@ describe('LocalizeAlertPage', () => {
     });
   });
 
+  describe('URL-addressed selection', () => {
+    it("clicking a rail row navigates to that object's selection URL", async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByTestId('localize-object-row-object-2'));
+
+      expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/102');
+      expect(screen.getByText(/Frames — Object 2/)).toBeInTheDocument();
+    });
+
+    it('a second click on the focused row exits focus but keeps the object active (URL unchanged)', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByTestId('localize-object-row-object-2'));
+      await waitFor(() =>
+        expect(screen.getByTestId('object-status-row-1')).toHaveAttribute('data-selected', 'true')
+      );
+
+      fireEvent.click(screen.getByTestId('localize-object-row-object-2'));
+
+      // Focus ended: the row loses the selected treatment and crop restores
+      // to its pre-focus off state…
+      await waitFor(() =>
+        expect(screen.getByTestId('object-status-row-1')).not.toHaveAttribute('data-selected')
+      );
+      await waitFor(() => {
+        const img = within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img');
+        expect(img.style.transform).toBe('');
+      });
+      // …but the object stays active: URL and Frames panel still name it.
+      expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/102');
+      expect(screen.getByText(/Frames — Object 2/)).toBeInTheDocument();
+    });
+
+    it("closing the editor lands on the edited object's selection URL, not the bare alert URL", async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      // T2 is present only in lane 102 (Object 2 / detection 1003).
+      fireEvent.click(screen.getByTestId(`alert-frame-cell-${T2}`));
+      await screen.findByTestId('image-modal');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Mock Close' }));
+
+      await waitFor(() =>
+        expect(screen.getByTestId('location')).toHaveTextContent(/\/localize\/101\/object\/102$/)
+      );
+      expect(screen.queryByTestId('image-modal')).not.toBeInTheDocument();
+    });
+
+    it('a directly-loaded selection URL arrives with that object active', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, {
+        wrapper: makeWrapper(localizeObjectSelect(101, 102)),
+      });
+
+      expect(screen.getByText(/Frames — Object 2/)).toBeInTheDocument();
+    });
+  });
+
   describe('reclassify', () => {
     it("navigates to the row's OWN lane in classify done mode, carrying a return to this page", async () => {
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
@@ -2360,9 +2434,11 @@ describe('LocalizeAlertPage', () => {
       );
 
       const destination = await screen.findByTestId('classify-destination');
-      // Object 2 is lane 102 — not 101, the alert's entry sequence.
+      // Object 2 is lane 102 — not 101, the alert's entry sequence. The
+      // return names that object's own selection URL, so the round trip
+      // lands back with it selected.
       expect(destination.getAttribute('data-lane-id')).toBe('102');
-      expect(destination.getAttribute('data-return')).toBe('/localize/101');
+      expect(destination.getAttribute('data-return')).toBe('/localize/101/object/102');
     });
 
     it('returns to the DONE page when the reclassify started from done mode', async () => {
@@ -2381,7 +2457,7 @@ describe('LocalizeAlertPage', () => {
 
       const destination = await screen.findByTestId('classify-destination');
       expect(destination.getAttribute('data-lane-id')).toBe('102');
-      expect(destination.getAttribute('data-return')).toBe('/localize/done/101');
+      expect(destination.getAttribute('data-return')).toBe('/localize/done/101/object/102');
     });
 
     it('offers Reclassify on an already-localized context row', async () => {

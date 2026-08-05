@@ -142,6 +142,8 @@ import {
   classifyDetailWithReturn,
   localizeObject,
   localizeObjectRoute,
+  localizeObjectSelect,
+  localizeObjectSelectRoute,
 } from '@/utils/routes';
 import { formatDateTime } from '@/utils/datetime';
 
@@ -167,9 +169,10 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   // prefix this page is mounted under (see App.tsx), and a parent's useParams
   // cannot see a child route's params — hence useMatch.
   const editorMatch = useMatch(localizeObjectRoute(mode === 'done'));
+  const selectMatch = useMatch(localizeObjectSelectRoute(mode === 'done'));
   const navigate = useNavigate();
   const location = useLocation();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const sequenceIdNum = sequenceId ? parseInt(sequenceId, 10) : null;
   const laneIdNum = editorMatch?.params.laneId ? parseInt(editorMatch.params.laneId, 10) : null;
@@ -184,7 +187,35 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   const listPath = mode === 'done' ? ROUTES.LOCALIZE_DONE : ROUTES.LOCALIZE;
   const basePath = `${listPath}/${sequenceIdNum}`;
 
-  const [activeLaneId, setActiveLaneId] = useState<number | null>(null);
+  // The active object IS the URL: the selection child route names it
+  // directly, and while the editor is open the editor's own route carries
+  // the lane. No state to sync, so a pasted/reloaded/back-button URL can't
+  // disagree with the cockpit. See
+  // docs/specs/2026-08-05-localize-object-selection-routes-design.md.
+  const selectLaneIdNum = selectMatch?.params.laneId
+    ? parseInt(selectMatch.params.laneId, 10)
+    : null;
+  const activeLaneId = laneIdNum ?? selectLaneIdNum;
+
+  // "Make this lane active" is a navigation. Always `replace`: stepping
+  // through objects is one workspace, not a trail — Back returns to the
+  // list, not through every selection made. The query string rides along so
+  // the `?frame=` deep-link param survives selection changes; a caller that
+  // wants to CHANGE the query in the same step passes `search` explicitly
+  // (a second navigation to set it separately would race this one and win
+  // with the stale pathname).
+  const setActiveLane = useCallback(
+    (laneSequenceId: number | null, search: string = location.search) => {
+      if (sequenceIdNum == null) return;
+      const path =
+        laneSequenceId == null
+          ? basePath
+          : localizeObjectSelect(sequenceIdNum, laneSequenceId, mode === 'done');
+      navigate(`${path}${search}`, { replace: true });
+    },
+    [sequenceIdNum, basePath, mode, location.search, navigate]
+  );
+
   const frameRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const [cardSize, setCardSize] = usePersistedTabState<CardSize>('detectionAnnotateCardSize', 'md');
@@ -275,12 +306,12 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   const { showToast, toastMessage, toastType, showToastNotification, dismissToast } =
     useToastNotifications();
 
-  // Clear active-object and focus-mode state immediately when the alert
-  // changes so a stale selection from a previous alert can't linger —
-  // including a hard reset of crop-mode (not just the focus stash), so a
-  // switch mid-focus can never leave the new alert stuck in crop mode.
+  // Clear focus-mode and per-alert session state immediately when the alert
+  // changes so nothing from a previous alert can linger — including a hard
+  // reset of crop-mode (not just the focus stash), so a switch mid-focus can
+  // never leave the new alert stuck in crop mode. The active object needs no
+  // clearing here: it lives in the URL, which changed with the alert.
   useEffect(() => {
-    setActiveLaneId(null);
     setPreFocusCropMode(null);
     setCropMode(false);
     setSizeOverrideCleared(false);
@@ -425,12 +456,12 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     const target = findFrameByDetectionId(frameModel.frames, frameParamNum);
     if (!target) return; // frames not loaded yet (or an invalid id) — retries once data lands
     handledFrameParamRef.current = frameParamNum;
-    setActiveLaneId(target.laneSequenceId);
+    setActiveLane(target.laneSequenceId);
     highlightFrame(target.recordedAt);
     requestAnimationFrame(() => {
       frameRefs.current[target.recordedAt]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
-  }, [frameParamNum, frameModel.frames, highlightFrame]);
+  }, [frameParamNum, frameModel.frames, highlightFrame, setActiveLane]);
 
   // The URL names both the object (`:laneId` — the lane's own sequence id) and
   // the frame (`:detectionId`). Both have to agree for the editor to open: a
@@ -456,17 +487,6 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       smokeType: sequenceSmokeType(lane.annotation),
     };
   }, [laneIdNum, detectionIdNum, alertDetail, detectionsByLaneId, annotationsByLaneId]);
-
-  // A directly-entered editor URL (paste, refresh, back button) names the
-  // object, so the cockpit behind the editor should agree with it — otherwise
-  // closing the editor drops you on an alert with nothing selected. Keyed on
-  // the lane id rather than the whole `modalContext` object, which is rebuilt
-  // on every refetch. The alert-change reset that clears `activeLaneId` runs
-  // on `sequenceIdNum`; this re-derives from the URL afterwards.
-  const modalLaneId = modalContext?.laneId ?? null;
-  useEffect(() => {
-    if (modalLaneId != null) setActiveLaneId(modalLaneId);
-  }, [modalLaneId]);
 
   // Object-identity overlays for the open detection's OTHER contributing
   // lanes on this same frame (`recorded_at`) — passed to `ImageModal` so it
@@ -520,14 +540,22 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     ? laneDetectionsSorted.findIndex(d => d.id === modalContext.detection.id)
     : -1;
 
-  // Path-only navigation within this page always appends the current query
-  // string, so the `?frame=` deep-link param (owned by the highlight
-  // feature, entirely separate from the editor's `:detectionId` path
-  // param) survives opening/closing/stepping through the editor — the two
-  // coexist rather than one clobbering the other.
+  // Closing the editor keeps its object selected: the editor URL names the
+  // lane, so the close target is that lane's selection URL (bare alert URL
+  // only if the lane is somehow absent). Path-only navigation within this
+  // page always appends the current query string, so the `?frame=`
+  // deep-link param (owned by the highlight feature, entirely separate from
+  // the editor's `:detectionId` path param) survives opening/closing/
+  // stepping through the editor — the two coexist rather than one
+  // clobbering the other.
   const closeModal = useCallback(() => {
-    if (sequenceIdNum != null) navigate(`${basePath}${location.search}`);
-  }, [sequenceIdNum, basePath, location.search, navigate]);
+    if (sequenceIdNum == null) return;
+    const target =
+      laneIdNum != null
+        ? localizeObjectSelect(sequenceIdNum, laneIdNum, mode === 'done')
+        : basePath;
+    navigate(`${target}${location.search}`);
+  }, [sequenceIdNum, laneIdNum, mode, basePath, location.search, navigate]);
 
   const navigateModal = useCallback(
     (direction: 'prev' | 'next') => {
@@ -936,24 +964,24 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   // always restores the settings from *before the first selection*, not
   // from whichever object was focused most recently. `sizeOverrideCleared`
   // only resets on a genuinely fresh entry (see its declaration).
-  const activateFocus = (laneSequenceId: number) => {
-    setActiveLaneId(laneSequenceId);
+  const activateFocus = (laneSequenceId: number, search?: string) => {
+    setActiveLane(laneSequenceId, search);
     setPreFocusCropMode(prev => prev ?? cropMode);
     setCropMode(true);
     if (!isFocused) setSizeOverrideCleared(false);
   };
 
-  // Deselects: restores the stashed pre-focus crop-mode (and, since
+  // Exits focus: restores the stashed pre-focus crop-mode (and, since
   // `effectiveCardSize` is a derived override, the card size falls back to
-  // the untouched persisted preference automatically). The cropped loop goes
-  // with the selection, since no row is selected any more. A no-op when not
-  // focused.
+  // the untouched persisted preference automatically). The object stays
+  // active — and its cropped loop stays available — because clearing it
+  // would bounce the URL through the bare alert path and re-select the
+  // first object, a jump that would feel broken. A no-op when not focused.
   const exitFocus = () => {
     if (!isFocused) return;
     setCropMode(preFocusCropMode as boolean);
     setPreFocusCropMode(null);
     setSizeOverrideCleared(false);
-    setActiveLaneId(null);
   };
 
   // Row click: activates (or switches focus to) the clicked object, UNLESS
@@ -970,16 +998,20 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   // Reclassify: hands this object's classification to the classify cockpit's
   // done mode, which makes an annotated lane editable at any stage and
   // auto-activates the lane named in the URL — so the annotator lands on the
-  // object they clicked. The `return` param brings both classify's back
-  // button and its post-save navigation back to this page (with `?frame=`
-  // intact, so a deep-linked moment survives the round trip). Built from
-  // `listPath`, not a hardcoded queue prefix, so a reclassify started from
-  // done mode returns to `/localize/done/:id` rather than dumping the
-  // annotator on the queue-mode page for the same alert.
+  // object they clicked. The `return` param names the reclassified object's
+  // own selection URL, so the round trip — classify's back button or its
+  // post-save navigation — lands back here with that object selected (and
+  // `?frame=` intact, so a deep-linked moment survives it). Built with the
+  // page's provenance, so a reclassify started from done mode returns to
+  // `/localize/done/…` rather than dumping the annotator on the queue-mode
+  // page for the same alert.
   const handleReclassify = (laneSequenceId: number) => {
     if (sequenceIdNum == null) return;
     navigate(
-      classifyDetailWithReturn(laneSequenceId, `${listPath}/${sequenceIdNum}${location.search}`)
+      classifyDetailWithReturn(
+        laneSequenceId,
+        `${localizeObjectSelect(sequenceIdNum, laneSequenceId, mode === 'done')}${location.search}`
+      )
     );
   };
 
@@ -1003,7 +1035,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   const handleToggleFalsePositives = () => {
     if (showFalsePositives && activeLaneIsFalsePositive) {
       exitFocus();
-      setActiveLaneId(null);
+      setActiveLane(null);
     }
     setShowFalsePositives(prev => !prev);
   };
@@ -1011,25 +1043,23 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   // Segment click: activates/switches focus (same re-stash semantics as
   // `activateFocus`), scrolls to the frame, gives it a fading arrival
   // highlight, and encodes the shown detection in `?frame=` so the moment
-  // is shareable/reloadable (read back by the deep-link effect below).
+  // is shareable/reloadable (read back by the deep-link effect below). The
+  // frame param travels INSIDE the activation navigation — selection is a
+  // path change now, and a separate setSearchParams call would race it and
+  // win with the stale pathname.
   const handleSegmentClick = (laneSequenceId: number, timestamp: string) => {
-    activateFocus(laneSequenceId);
-    highlightFrame(timestamp);
-
     const cellDetectionId = frameModel.frames
       .find(f => f.recordedAt === timestamp)
       ?.cells.find(c => c.laneSequenceId === laneSequenceId)?.detectionId;
     if (cellDetectionId != null) {
       handledFrameParamRef.current = cellDetectionId;
-      setSearchParams(
-        prev => {
-          const next = new URLSearchParams(prev);
-          next.set('frame', String(cellDetectionId));
-          return next;
-        },
-        { replace: true }
-      );
+      const next = new URLSearchParams(location.search);
+      next.set('frame', String(cellDetectionId));
+      activateFocus(laneSequenceId, `?${next}`);
+    } else {
+      activateFocus(laneSequenceId);
     }
+    highlightFrame(timestamp);
 
     requestAnimationFrame(() => {
       frameRefs.current[timestamp]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1069,11 +1099,11 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   };
 
   // Opens the shown (active, or first-present-fallback) object's detection
-  // in the editor and makes that lane active, per Task 4. Deliberately
-  // plain `setActiveLaneId` (not `activateFocus`) — opening the editor
-  // shouldn't also silently flip the background grid into focus mode.
+  // in the editor. The editor URL itself carries the lane, so opening it
+  // selects the object — deliberately without `activateFocus`, so opening
+  // the editor doesn't also silently flip the background grid into focus
+  // mode.
   const handleCellClick = (_recordedAt: string, laneSequenceId: number, detId: number) => {
-    setActiveLaneId(laneSequenceId);
     if (sequenceIdNum != null)
       navigate(
         `${localizeObject(sequenceIdNum, laneSequenceId, detId, mode === 'done')}${location.search}`
