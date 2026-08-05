@@ -47,6 +47,8 @@ import type { ObjectOverlayItem } from '@/components/annotation/ImageOverlays';
 import { DetectionAnnotationCanvas } from '@/components/detection-annotation';
 import { useDetectionImage } from '@/hooks/useDetectionImage';
 import { formatDateTime } from '@/utils/datetime';
+import { collectLaneBoxes } from '@/utils/annotation/quickSubmitUtils';
+import { AcceptRemainingDialog } from './AcceptRemainingDialog';
 import { BoxSourceRail } from './BoxSourceRail';
 import { ObjectFilmstrip } from './ObjectFilmstrip';
 
@@ -68,10 +70,17 @@ export interface LocalizeObjectEditorProps {
   /** Other objects' boxes on this frame; rendered as identity overlays. */
   objectOverlays: ObjectOverlayItem[];
   isSaving: boolean;
+  /** True while the bulk accept is in flight. */
+  isAccepting: boolean;
   /** Commit one box, or none. Autosaves; success is silent. */
   onCommit: (detection: Detection, items: DetectionAnnotationBbox[]) => void;
   /** Navigate to another of THIS lane's detections; drives the URL. */
   onNavigateToDetection: (detectionId: number) => void;
+  /**
+   * Commit the winning model box on every frame of this object that has
+   * none. Never overwrites a frame the annotator already decided.
+   */
+  onAcceptRemaining: () => void;
   onClose: () => void;
 }
 
@@ -87,8 +96,10 @@ export function LocalizeObjectEditor({
   alertFrames,
   objectOverlays,
   isSaving,
+  isAccepting,
   onCommit,
   onNavigateToDetection,
+  onAcceptRemaining,
   onClose,
 }: LocalizeObjectEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -123,6 +134,7 @@ export function LocalizeObjectEditor({
   // becomes primary only when ADDING an object (issue #287's sibling work).
   const [showOtherObjects, setShowOtherObjects] = useState(false);
   const [cropView, setCropView] = useState(false);
+  const [acceptOpen, setAcceptOpen] = useState(false);
 
   // The committed box is unselected on arrival: it renders in its own
   // smoke-type color and shows no handles until you click it. Selection is
@@ -585,7 +597,9 @@ export function LocalizeObjectEditor({
         case 'Escape':
           // Unwind one layer at a time: cancel a drawing, then drop the
           // selection, and only then leave the editor.
-          if (isActivelyDrawing) {
+          if (acceptOpen) {
+            setAcceptOpen(false);
+          } else if (isActivelyDrawing) {
             setCurrentDrawing(null);
             setIsActivelyDrawing(false);
           } else if (boxSelected) {
@@ -601,11 +615,37 @@ export function LocalizeObjectEditor({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [step, acceptAndNext, isActivelyDrawing, boxSelected, resetZoom, onClose, editable]);
+  }, [
+    step,
+    acceptAndNext,
+    isActivelyDrawing,
+    boxSelected,
+    acceptOpen,
+    resetZoom,
+    onClose,
+    editable,
+  ]);
 
   // --- Render -------------------------------------------------------------
 
   const frameNumber = currentEntryIndex + 1;
+
+  // Frames of this object that a bulk accept would fill, and frames it
+  // cannot — no source offers a box there, so they stay empty and keep the
+  // alert off the submit gate.
+  const acceptRemainingCount = entries.filter(
+    e => e.inObject && !e.committedSource && e.availableSource
+  ).length;
+  const gapCount = entries.filter(
+    e => e.inObject && !e.committedSource && !e.availableSource
+  ).length;
+
+  // Exactly what the lane's track would be after accepting: committed boxes
+  // where the annotator decided, winning boxes everywhere else. Only built
+  // while the dialog is open — it walks every frame of the lane.
+  const previewBoxes = acceptOpen
+    ? collectLaneBoxes(laneDetections, new Map(laneAnnotations.map(a => [a.detection_id, a])))
+    : [];
 
   /**
    * While peeking, the canvas shows a sibling lane's detection — the same
@@ -720,6 +760,8 @@ export function LocalizeObjectEditor({
           onCommit={commitCandidate}
           onDraw={() => setIsDrawMode(true)}
           onClear={clear}
+          acceptRemainingCount={acceptRemainingCount}
+          onAcceptRemaining={() => setAcceptOpen(true)}
         />
       </div>
 
@@ -738,6 +780,23 @@ export function LocalizeObjectEditor({
         currentDetectionId={shownDetection.id}
         onSelect={goToEntry}
       />
+
+      {acceptOpen && (
+        <AcceptRemainingDialog
+          objectLabel={objectLabel}
+          objectColor={objectColor}
+          sequenceId={laneSequenceId}
+          previewBoxes={previewBoxes}
+          acceptCount={acceptRemainingCount}
+          gapCount={gapCount}
+          isAccepting={isAccepting}
+          onConfirm={() => {
+            onAcceptRemaining();
+            setAcceptOpen(false);
+          }}
+          onCancel={() => setAcceptOpen(false)}
+        />
+      )}
 
       <p className="flex-none border-t border-line bg-paper px-4 py-2 font-data text-[11px] text-haze">
         ← → step · Enter accept &amp; next · D draw · Del remove box · G other boxes · O other

@@ -90,7 +90,9 @@ const baseProps = (): Props => ({
   alertFrames,
   objectOverlays: [],
   isSaving: false,
+  isAccepting: false,
   onCommit: vi.fn(),
+  onAcceptRemaining: vi.fn(),
   onNavigateToDetection: vi.fn(),
   onClose: vi.fn(),
 });
@@ -344,6 +346,77 @@ describe('LocalizeObjectEditor box selection', () => {
     );
     fireEvent.load(screen.getByAltText(/^Detection /));
     expect(screen.queryByTestId(/^resize-handle-/)).not.toBeInTheDocument();
+  });
+});
+
+describe('LocalizeObjectEditor accept remaining', () => {
+  it('offers the action only while frames are still without a box', () => {
+    renderEditor();
+    expect(screen.getByTestId('editor-accept-remaining')).toHaveTextContent(
+      'Accept the model on 2 more'
+    );
+  });
+
+  it('hides the action once every frame has a box', () => {
+    renderEditor({
+      laneAnnotations: [
+        committedAnnotation(firstDetection.id, 'auto'),
+        committedAnnotation(lastDetection.id, 'auto'),
+      ],
+    });
+    expect(screen.queryByTestId('editor-accept-remaining')).not.toBeInTheDocument();
+  });
+
+  it('confirms before writing, and does not write on cancel', () => {
+    const onAcceptRemaining = vi.fn();
+    renderEditor({ onAcceptRemaining });
+
+    fireEvent.click(screen.getByTestId('editor-accept-remaining'));
+    expect(screen.getByTestId('accept-remaining-dialog')).toBeInTheDocument();
+    expect(onAcceptRemaining).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId('accept-remaining-cancel'));
+    expect(screen.queryByTestId('accept-remaining-dialog')).not.toBeInTheDocument();
+    expect(onAcceptRemaining).not.toHaveBeenCalled();
+  });
+
+  it('writes on confirm and closes the dialog', () => {
+    const onAcceptRemaining = vi.fn();
+    renderEditor({ onAcceptRemaining });
+    fireEvent.click(screen.getByTestId('editor-accept-remaining'));
+    fireEvent.click(screen.getByTestId('accept-remaining-confirm'));
+    expect(onAcceptRemaining).toHaveBeenCalled();
+    expect(screen.queryByTestId('accept-remaining-dialog')).not.toBeInTheDocument();
+  });
+
+  it('warns about frames no model found smoke on, without blocking', () => {
+    // One frame has candidates, the other has none at all.
+    renderEditor({
+      detection: detectionWithNoBoxes,
+      laneDetections: [detectionWithNoBoxes, lastDetection],
+    });
+    fireEvent.click(screen.getByTestId('editor-accept-remaining'));
+
+    expect(screen.getByTestId('accept-remaining-gap-warning')).toHaveTextContent(
+      'One frame will still have no box'
+    );
+    expect(screen.getByTestId('accept-remaining-confirm')).not.toBeDisabled();
+  });
+
+  it('does not warn when every remaining frame has a box on offer', () => {
+    renderEditor();
+    fireEvent.click(screen.getByTestId('editor-accept-remaining'));
+    expect(screen.queryByTestId('accept-remaining-gap-warning')).not.toBeInTheDocument();
+  });
+
+  it('Escape closes the dialog before it closes the editor', () => {
+    const onClose = vi.fn();
+    renderEditor({ onClose });
+    fireEvent.click(screen.getByTestId('editor-accept-remaining'));
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByTestId('accept-remaining-dialog')).not.toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
   });
 });
 
