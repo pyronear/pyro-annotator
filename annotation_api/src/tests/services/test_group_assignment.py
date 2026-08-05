@@ -136,9 +136,7 @@ async def test_join_labeled_group_never_writes_annotation(
     assert len(tracks) == 1
     assert tracks[0]["bboxes"] == curated_bboxes
     assert "smoke_type" not in tracks[0]
-    assert (
-        anno.processing_stage == SequenceAnnotationProcessingStage.READY_TO_ANNOTATE
-    )
+    assert anno.processing_stage == SequenceAnnotationProcessingStage.READY_TO_ANNOTATE
     contributions = (
         await async_session.exec(
             text(
@@ -182,9 +180,7 @@ async def test_validated_group_never_gains_members(
     assert seq.sequence_group_id != validated_group.id
 
     anno = await _get_annotation(async_session, seq_id)
-    assert (
-        anno.processing_stage == SequenceAnnotationProcessingStage.READY_TO_ANNOTATE
-    )
+    assert anno.processing_stage == SequenceAnnotationProcessingStage.READY_TO_ANNOTATE
 
 
 @pytest.mark.asyncio
