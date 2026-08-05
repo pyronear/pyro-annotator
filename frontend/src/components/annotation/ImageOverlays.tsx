@@ -556,6 +556,7 @@ export function DrawingOverlay({
               (Object.keys(HANDLE_STYLES) as ResizeHandle[]).map(handle => (
                 <div
                   key={handle}
+                  data-testid={`resize-handle-${handle}`}
                   onMouseDown={e => onHandlePointerDown(rect.id, handle, e)}
                   className="absolute w-2 h-2 bg-white border border-gray-800 pointer-events-auto"
                   style={{ ...HANDLE_STYLES[handle], cursor: HANDLE_CURSOR[handle] }}
