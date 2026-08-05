@@ -118,7 +118,6 @@ import { laneNeedsLocalization } from '@/utils/annotation/localizeUtils';
 import {
   buildQuickSubmitPlan,
   collectLaneBoxes,
-  getIsAnnotated,
   saveDetectionReview,
   sequenceSmokeType,
 } from '@/utils/annotation';
@@ -130,7 +129,8 @@ import {
   LocalizeObjectRow,
   LocalizeRail,
 } from '@/components/localize';
-import { AlertFrameGrid, ImageModal, ViewToolbar } from '@/components/detection-sequence';
+import { AlertFrameGrid, ViewToolbar } from '@/components/detection-sequence';
+import { LocalizeObjectEditor } from '@/components/localize/editor';
 import type { CardSize } from '@/components/detection-sequence/ViewToolbar';
 import CroppedImageSequence from '@/components/annotation/CroppedImageSequence';
 import { usePersistedTabState } from '@/hooks/usePersistedTabState';
@@ -199,8 +199,6 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   // answers "is that plume already accounted for?" before someone adds a
   // duplicate object for something already rejected.
   const [showFalsePositives, setShowFalsePositives] = useState(false);
-  const [showPredictions, setShowPredictions] = useState(true);
-  const [persistentDrawMode, setPersistentDrawMode] = useState(false);
   const [selectedSmokeType, setSelectedSmokeType] = useState<SmokeType>('wildfire');
   const smokeTypeInitFor = useRef<number | null>(null);
 
@@ -497,6 +495,11 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
         })
     : [];
 
+  // The open object's identity (label + color), as the rail and grid show it.
+  const modalObject = modalContext
+    ? frameModel.objectStatus.find(o => o.laneSequenceId === modalContext.laneId)
+    : undefined;
+
   // Reset the modal's smoke-type default to the lane's classified type only
   // when the lane changes — not on every render/refetch, which would clobber
   // a manual in-modal change.
@@ -516,9 +519,6 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       (a, b) => new Date(a.recorded_at).getTime() - new Date(b.recorded_at).getTime()
     );
   }, [modalContext, detectionsByLaneId]);
-  const modalIndex = modalContext
-    ? laneDetectionsSorted.findIndex(d => d.id === modalContext.detection.id)
-    : -1;
 
   // Path-only navigation within this page always appends the current query
   // string, so the `?frame=` deep-link param (owned by the highlight
@@ -529,20 +529,18 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     if (sequenceIdNum != null) navigate(`${basePath}${location.search}`);
   }, [sequenceIdNum, basePath, location.search, navigate]);
 
-  const navigateModal = useCallback(
-    (direction: 'prev' | 'next') => {
-      if (!modalContext || modalIndex < 0 || sequenceIdNum == null) return;
-      const newIndex =
-        direction === 'prev'
-          ? Math.max(0, modalIndex - 1)
-          : Math.min(laneDetectionsSorted.length - 1, modalIndex + 1);
-      const newDetection = laneDetectionsSorted[newIndex];
-      if (newDetection)
-        navigate(
-          `${localizeObject(sequenceIdNum, modalContext.laneId, newDetection.id, mode === 'done')}${location.search}`
-        );
+  // The editor asks for a frame by id; which frame is its own business (it
+  // steps the alert's whole range, and holds out-of-range frames locally
+  // rather than in the URL — see the spec). The page's job is only to keep
+  // the URL naming whichever of THIS lane's detections is open.
+  const navigateModalTo = useCallback(
+    (detectionId: number) => {
+      if (!modalContext || sequenceIdNum == null) return;
+      navigate(
+        `${localizeObject(sequenceIdNum, modalContext.laneId, detectionId, mode === 'done')}${location.search}`
+      );
     },
-    [modalContext, modalIndex, laneDetectionsSorted, sequenceIdNum, mode, location.search, navigate]
+    [modalContext, sequenceIdNum, mode, location.search, navigate]
   );
 
   // Per-frame save: create-or-update with FP preservation (shared util),
@@ -592,29 +590,17 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     setMissedSmokeFlag.mutate({ annotationId: missedSmokeAnnotationId, value });
   };
 
-  const handleModalSubmit = (
-    detection: Detection,
-    items: DetectionAnnotationBbox[],
-    currentDrawMode: boolean,
-    options?: { autoSave?: boolean }
-  ) => {
+  // Every editor action autosaves, so a save is silent and leaves the editor
+  // open — there is no submit-and-close step left to toast about. Failure
+  // still surfaces through `saveDetection`'s own onError.
+  const handleEditorCommit = (detection: Detection, items: DetectionAnnotationBbox[]) => {
     if (!modalContext) return;
-    setPersistentDrawMode(currentDrawMode);
-    saveDetection.mutate(
-      {
-        laneId: modalContext.laneId,
-        detectionId: detection.id,
-        existingAnnotation: modalContext.existingAnnotation,
-        items,
-      },
-      {
-        onSuccess: () => {
-          if (options?.autoSave) return;
-          showToastNotification('Frame saved', 'success');
-          closeModal();
-        },
-      }
-    );
+    saveDetection.mutate({
+      laneId: modalContext.laneId,
+      detectionId: detection.id,
+      existingAnnotation: modalContext.existingAnnotation,
+      items,
+    });
   };
 
   // Shared step: accept the winning model boxes for every pending frame of
@@ -1468,26 +1454,24 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       </div>
 
       {modalContext && (
-        <ImageModal
+        <LocalizeObjectEditor
+          laneSequenceId={modalContext.laneId}
+          objectLabel={modalObject?.label ?? 'Object'}
+          objectColor={modalObject?.color ?? '#2a78d6'}
+          smokeType={selectedSmokeType}
           detection={modalContext.detection}
-          onClose={closeModal}
-          onNavigate={navigateModal}
-          onSubmit={handleModalSubmit}
-          onTogglePredictions={setShowPredictions}
-          canNavigatePrev={modalIndex > 0}
-          canNavigateNext={modalIndex >= 0 && modalIndex < laneDetectionsSorted.length - 1}
-          currentIndex={Math.max(modalIndex, 0)}
-          totalCount={laneDetectionsSorted.length}
-          showPredictions={showPredictions}
-          isSubmitting={saveDetection.isPending}
-          isAnnotated={getIsAnnotated(modalContext.existingAnnotation ?? undefined)}
           existingAnnotation={modalContext.existingAnnotation}
+          laneDetections={laneDetectionsSorted}
+          laneAnnotations={annotationsByLaneId[modalContext.laneId] ?? []}
+          alertFrames={frameModel.frames}
           objectOverlays={objectOverlays}
-          selectedSmokeType={selectedSmokeType}
-          onSmokeTypeChange={setSelectedSmokeType}
-          persistentDrawMode={persistentDrawMode}
-          onDrawModeChange={setPersistentDrawMode}
-          isAutoAdvance={false}
+          isSaving={saveDetection.isPending}
+          isAccepting={quickAcceptLane.isPending}
+          onCommit={handleEditorCommit}
+          onAcceptRemaining={() => quickAcceptLane.mutate(modalContext.laneId)}
+          onReclassify={() => handleReclassify(modalContext.laneId)}
+          onNavigateToDetection={navigateModalTo}
+          onClose={closeModal}
         />
       )}
 

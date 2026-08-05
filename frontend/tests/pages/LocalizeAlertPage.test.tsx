@@ -74,26 +74,29 @@ const expandCrop = async () => {
   fireEvent.click(await screen.findByRole('button', { name: 'Cropped view' }));
 };
 
-// ImageModal is a heavy, canvas/keyboard-driven editor covered by its own
-// unit-level pieces elsewhere; here it's stubbed to a thin, inspectable
-// stand-in so LocalizeAlertPage's wiring (which detection/lane it opens for,
-// how a submit routes to saveDetectionReview) can be tested without
-// exercising canvas drawing.
-vi.mock('@/components/detection-sequence/ImageModal', () => ({
-  ImageModal: (props: {
+// LocalizeObjectEditor is a heavy, canvas/keyboard-driven editor covered by
+// its own unit tests; here it's stubbed to a thin, inspectable stand-in so
+// LocalizeAlertPage's wiring (which detection/lane it opens for, how a commit
+// routes to saveDetectionReview) can be tested without exercising canvas
+// drawing.
+vi.mock('@/components/localize/editor', () => ({
+  LocalizeObjectEditor: (props: {
     detection: Detection;
+    laneSequenceId: number;
+    objectLabel: string;
+    laneDetections: Detection[];
+    alertFrames: unknown[];
     onClose: () => void;
-    onNavigate: (direction: 'prev' | 'next') => void;
-    onSubmit: (
-      detection: Detection,
-      items: unknown[],
-      currentDrawMode: boolean,
-      options?: { autoSave?: boolean }
-    ) => void;
+    onNavigateToDetection: (detectionId: number) => void;
+    onCommit: (detection: Detection, items: unknown[]) => void;
     objectOverlays?: Array<{ color: string; label: string; boxes: unknown[] }>;
   }) => (
     <div data-testid="image-modal">
       <span data-testid="image-modal-detection-id">{props.detection.id}</span>
+      <span data-testid="image-modal-lane-id">{props.laneSequenceId}</span>
+      <span data-testid="image-modal-object-label">{props.objectLabel}</span>
+      <span data-testid="image-modal-lane-frames">{props.laneDetections.length}</span>
+      <span data-testid="image-modal-alert-frames">{props.alertFrames.length}</span>
       {/* Exposes the object-identity overlays LocalizeAlertPage computed for
           this frame, so tests can assert which OTHER objects' boxes it built
           (and under what label/color) without exercising the real overlay
@@ -105,23 +108,27 @@ vi.mock('@/components/detection-sequence/ImageModal', () => ({
       <button
         type="button"
         onClick={() =>
-          props.onSubmit(
-            props.detection,
-            [
-              {
-                xyxyn: [0.1, 0.1, 0.2, 0.2],
-                class_name: 'smoke',
-                smoke_type: 'wildfire',
-                origin: 'human',
-              },
-            ],
-            false
-          )
+          props.onCommit(props.detection, [
+            {
+              xyxyn: [0.1, 0.1, 0.2, 0.2],
+              class_name: 'smoke',
+              smoke_type: 'wildfire',
+              origin: 'human',
+            },
+          ])
         }
       >
         Mock Submit
       </button>
-      <button type="button" onClick={() => props.onNavigate('next')}>
+      <button
+        type="button"
+        onClick={() => {
+          // Mirrors the real editor's step: the next of THIS lane's frames.
+          const index = props.laneDetections.findIndex(d => d.id === props.detection.id);
+          const next = props.laneDetections[index + 1];
+          if (next) props.onNavigateToDetection(next.id);
+        }}
+      >
         Mock Next
       </button>
       <button type="button" onClick={props.onClose}>
@@ -713,7 +720,7 @@ describe('LocalizeAlertPage', () => {
     });
   });
 
-  it('saving a frame in the modal creates the annotation via saveDetectionReview, closes the editor, and redraws the grid status', async () => {
+  it('saving a frame in the editor creates the annotation via saveDetectionReview, keeps the editor open, and redraws the grid status', async () => {
     let lane101Items: DetectionAnnotation[] = [];
     vi.mocked(apiClient.getDetectionAnnotations).mockImplementation(
       async (filters?: { sequence_id?: number }) => {
@@ -757,10 +764,11 @@ describe('LocalizeAlertPage', () => {
     });
     expect(apiClient.updateDetectionAnnotation).not.toHaveBeenCalled();
 
-    // A non-autoSave submit closes the editor (URL drops :detectionId).
-    await waitFor(() => {
-      expect(screen.queryByTestId('image-modal')).not.toBeInTheDocument();
-    });
+    // Every editor action autosaves, so a save leaves the editor open on the
+    // same frame — there is no submit-and-close step any more, and no success
+    // toast to go with one. The annotator keeps working; Esc closes.
+    expect(screen.getByTestId('image-modal')).toBeInTheDocument();
+    expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1001');
 
     // Only lane 101's detection-annotations query was invalidated/refetched
     // — Object 1's T1 frame now reads as confirmed on the timeline, while
@@ -776,7 +784,34 @@ describe('LocalizeAlertPage', () => {
       'Object 2, frame 1: pending'
     );
 
-    expect(screen.getByText('Frame saved')).toBeInTheDocument();
+    expect(screen.queryByText('Frame saved')).not.toBeInTheDocument();
+  });
+
+  it('hands the editor the object named in the URL, not just the frame', async () => {
+    await renderAndSettle(<LocalizeAlertPage />, {
+      wrapper: makeWrapper(`${ROUTES.LOCALIZE}/101/object/101/1001`),
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('image-modal-lane-id')).toHaveTextContent('101');
+    });
+    expect(screen.getByTestId('image-modal-object-label')).toHaveTextContent('Object 1');
+    expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1001');
+  });
+
+  it('hands the editor the whole alert frame range, so it can show out-of-object frames', async () => {
+    await renderAndSettle(<LocalizeAlertPage />, {
+      wrapper: makeWrapper(`${ROUTES.LOCALIZE}/101/object/101/1001`),
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('image-modal')).toBeInTheDocument();
+    });
+    // The lane's own detections are a subset of the alert's frames; the page
+    // must pass the alert-wide model, not the lane's.
+    expect(Number(screen.getByTestId('image-modal-alert-frames').textContent)).toBeGreaterThanOrEqual(
+      Number(screen.getByTestId('image-modal-lane-frames').textContent)
+    );
   });
 
   it("per-object quick-accept saves only that lane's frames, scoped per lane", async () => {

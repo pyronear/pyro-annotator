@@ -56,3 +56,25 @@ export const formatDateTime = (value: Date | string, options?: { seconds?: boole
   const withSeconds = options?.seconds ? `${time}:${pad(date.getSeconds())}` : time;
   return `${formatDate(date)} ${withSeconds}`;
 };
+
+/**
+ * Formats a timestamp as HH:mm:ss in the viewer's local timezone.
+ *
+ * For places that are already anchored to a date by their surroundings and
+ * only need to tell two frames apart — the object editor's filmstrip, where
+ * the header carries the full timestamp and neighbouring frames can be
+ * seconds apart.
+ *
+ * @pure Function formats dates consistently
+ * @param value - Date object or parseable date string
+ * @returns Time string in HH:mm:ss format, or an em dash if unparseable
+ *
+ * @example
+ * formatTime('2026-08-04T15:12:45Z');
+ * // Returns: "17:12:45" (in a UTC+2 timezone)
+ */
+export const formatTime = (value: Date | string): string => {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return INVALID_DATE;
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+};

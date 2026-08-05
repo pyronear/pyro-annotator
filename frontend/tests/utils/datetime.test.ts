@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatDate, formatDateTime } from '@/utils/datetime';
+import { formatDate, formatDateTime, formatTime } from '@/utils/datetime';
 
 // These tests must pass in any host timezone, so they never hardcode a UTC
 // offset. Timezone handling is covered by round-tripping: a Date built from
@@ -69,5 +69,23 @@ describe('formatDate', () => {
 
   it('returns an em dash for an unparseable value', () => {
     expect(formatDate('not-a-date')).toBe('—');
+  });
+});
+
+describe('formatTime', () => {
+  it('formats an ISO timestamp as HH:mm:ss, dropping the date', () => {
+    expect(formatTime('2026-08-04T15:12:45')).toBe('15:12:45');
+  });
+
+  it('zero-pads single-digit hour, minute and second', () => {
+    expect(formatTime('2026-01-02T03:04:05')).toBe('03:04:05');
+  });
+
+  it('reads the local wall clock, not UTC', () => {
+    expect(formatTime(localIso(2026, 8, 4, 23, 30))).toBe('23:30:00');
+  });
+
+  it('returns an em dash for an unparseable value', () => {
+    expect(formatTime('not-a-date')).toBe('—');
   });
 });

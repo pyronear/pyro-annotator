@@ -25,17 +25,18 @@ frontend/src/
 ├── components/
 │   ├── annotation/              # Sequence annotation pieces (CroppedImageSequence, FullImageSequence, ImageOverlays, SmokeTypeSelector)
 │   ├── dashboard/               # PipelineStrip, PhaseCard, HowItWorks
-│   ├── detection-annotation/    # Detection-level bbox annotation (canvas, toolbar, shortcuts modal, image card, progress header, submission)
-│   ├── detection-sequence/      # AlertFrameGrid, ImageModal, ViewToolbar
+│   ├── detection-annotation/    # Detection-level bbox annotation (canvas, image card, progress header)
+│   ├── detection-sequence/      # AlertFrameGrid, ViewToolbar
 │   ├── filters/                 # FalsePositiveFilter, ModelAccuracyFilter, SmokeTypeFilter, TabbedFilters, shared/
 │   ├── layout/                  # AppLayout
 │   ├── sequence/                # SequencePlayer, SequenceReviewer, MediaControls, PlayerControls, MissedSmokePanel, MissedSmokeInstructionsModal
 │   ├── localize/                # LocalizeRail, LocalizeObjectRow, LocalizeMissedSmokeRow
+│   ├── localize/editor/         # LocalizeObjectEditor, BoxSourceRail, ObjectFilmstrip, FilmstripThumbnail, AcceptRemainingPopover, EditorShortcutsModal, sourceIdentity
 │   ├── sequence-annotation/     # AnnotationHeader, MissedSmokePanel, ObjectStatusStrip, ProcessingStageMessages
 │   ├── sequences/               # Table headers/rows + pagination for annotate / review queues, plus SequencesLegend
 │   └── ui/                      # NotificationBadge, NotificationSystem, PasswordField, ProgressIndicator
 ├── hooks/
-│   ├── annotation/              # useDrawingCanvas, useKeyboardShortcuts
+│   ├── annotation/              # useDrawingCanvas
 │   └── *.ts                     # useAnnotationCounts, usePipelineStats, useCameras, useOrganizations, useSourceApis, useSequenceDetections, useDetectionImage, useImagePreloader, usePersistedFilters, usePersistedTabState
 ├── pages/
 │   ├── LoginPage.tsx
@@ -88,7 +89,7 @@ provenance in the path: `/classify/:id` was entered from the queue,
 | `/localize/done`                           | `DetectionReviewPage` (alert-grouped Done list) |
 | `/localize/:sequenceId`                    | `LocalizeAlertPage`               |
 | `/localize/done/:sequenceId`               | `LocalizeAlertPage` (done mode)   |
-| `/localize/:sequenceId/object/:laneId/:detectionId` | `LocalizeAlertPage` + per-frame editor (child route, so the page is not remounted; same under the `/localize/done` prefix) |
+| `/localize/:sequenceId/object/:laneId/:detectionId` | `LocalizeAlertPage` + `LocalizeObjectEditor` (child route, so the page is not remounted; same under the `/localize/done` prefix) |
 | `/users`                                   | `UserManagementPage`              |
 | `/guide`                                   | `GuidePage`                       |
 

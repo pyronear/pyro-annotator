@@ -12,6 +12,7 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { DetectionAnnotationCanvas } from '@/components/detection-annotation/DetectionAnnotationCanvas';
 import type { Detection } from '@/types/api';
+import type { BoxCandidate } from '@/utils/annotation/objectBoxCandidates';
 
 vi.mock('@/hooks/useDetectionImage', () => ({
   useDetectionImage: () => ({ data: { url: 'https://img.example/1.jpg' } }),
@@ -38,20 +39,12 @@ const noop = () => undefined;
 
 const defaultProps = {
   detection: makeDetection(),
-  drawnRectangles: [],
-  selectedRectangleId: null,
-  showPredictions: true,
-  activeLayer: 'auto' as const,
+  committed: null as BoxCandidate | null,
+  ghosts: [] as BoxCandidate[],
+  showGhosts: true,
+  selected: false,
   selectedSmokeType: 'wildfire' as const,
-  winningLayer: 'auto' as const,
   isDrawMode: false,
-  reviewInteractive: true,
-  rejectedBoxes: new Set<number>(),
-  hiddenBoxes: new Set<number>(),
-  selectedModelBox: null,
-  onSelectModelBox: noop,
-  onRejectModelBox: noop,
-  onAdjustModelBox: noop,
   onBoxPointerDown: noop,
   onHandlePointerDown: noop,
   currentDrawing: null,
@@ -112,5 +105,77 @@ describe('DetectionAnnotationCanvas object-identity overlay', () => {
 
     expect(screen.getByText('Object 3')).toBeInTheDocument();
     expect(screen.queryByText(/sibling/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('DetectionAnnotationCanvas single-box model', () => {
+  const auto: BoxCandidate = { source: 'auto', index: 0, xyxyn: [0.2, 0.2, 0.3, 0.3] };
+  const engine: BoxCandidate = { source: 'engine', index: 0, xyxyn: [0.1, 0.1, 0.4, 0.4] };
+
+  it('renders a ghost for every non-committed candidate', () => {
+    render(<DetectionAnnotationCanvas {...defaultProps} committed={auto} ghosts={[engine]} />);
+
+    expect(screen.getByTestId('ghost-box-engine-0')).toBeInTheDocument();
+    expect(screen.getByTestId('committed-box')).toBeInTheDocument();
+  });
+
+  it('hides ghosts when showGhosts is false', () => {
+    render(
+      <DetectionAnnotationCanvas
+        {...defaultProps}
+        committed={auto}
+        ghosts={[engine]}
+        showGhosts={false}
+      />
+    );
+
+    expect(screen.queryByTestId('ghost-box-engine-0')).not.toBeInTheDocument();
+    expect(screen.getByTestId('committed-box')).toBeInTheDocument();
+  });
+
+  it('shows no resize handles until the committed box is selected', () => {
+    render(<DetectionAnnotationCanvas {...defaultProps} committed={auto} ghosts={[]} />);
+
+    expect(screen.queryByTestId(/^resize-handle-/)).not.toBeInTheDocument();
+  });
+
+  it('gives the selected committed box resize handles', () => {
+    render(<DetectionAnnotationCanvas {...defaultProps} committed={auto} ghosts={[]} selected />);
+
+    expect(screen.getAllByTestId(/^resize-handle-/).length).toBeGreaterThan(0);
+  });
+
+  it('renders no committed box on a frame that has none', () => {
+    render(<DetectionAnnotationCanvas {...defaultProps} committed={null} ghosts={[auto]} />);
+
+    expect(screen.queryByTestId('committed-box')).not.toBeInTheDocument();
+    expect(screen.getByTestId('ghost-box-auto-0')).toBeInTheDocument();
+  });
+
+  it('thins the strokes as the zoom grows, so they keep their on-screen weight', () => {
+    const { rerender } = render(
+      <DetectionAnnotationCanvas {...defaultProps} committed={auto} ghosts={[engine]} />
+    );
+    const at1x = screen.getByTestId('ghost-box-engine-0').style.borderWidth;
+
+    rerender(
+      <DetectionAnnotationCanvas
+        {...defaultProps}
+        committed={auto}
+        ghosts={[engine]}
+        zoomLevel={3}
+      />
+    );
+    const at3x = screen.getByTestId('ghost-box-engine-0').style.borderWidth;
+
+    expect(parseFloat(at3x)).toBeCloseTo(parseFloat(at1x) / 3);
+  });
+
+  it('suppresses the resize handles while drawing, so a click lands on the canvas', () => {
+    render(
+      <DetectionAnnotationCanvas {...defaultProps} committed={auto} ghosts={[]} selected isDrawMode />
+    );
+
+    expect(screen.queryByTestId(/^resize-handle-/)).not.toBeInTheDocument();
   });
 });
