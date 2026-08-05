@@ -428,7 +428,7 @@ describe('LocalizeObjectEditor accept remaining', () => {
     fireEvent.click(screen.getByTestId('editor-accept-remaining'));
 
     expect(screen.getByTestId('accept-remaining-gap-warning')).toHaveTextContent(
-      'One frame will still have no box'
+      'One frame has no box at all'
     );
     expect(screen.getByTestId('accept-remaining-confirm')).not.toBeDisabled();
   });

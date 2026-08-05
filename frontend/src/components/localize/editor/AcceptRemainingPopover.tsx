@@ -67,10 +67,10 @@ export function AcceptRemainingPopover({
         </p>
         <p className="mt-2 font-body text-sm text-char">
           {acceptCount === 1
-            ? 'One frame carries a model box you have not accepted yet.'
-            : `${acceptCount} frames carry a model box you have not accepted yet.`}{' '}
-          Accepting commits them exactly as shown below. Frames you have already decided are left
-          alone.
+            ? 'One frame has a model box you have not accepted.'
+            : `${acceptCount} frames have a model box you have not accepted.`}{' '}
+          Take them all, exactly as the loop below shows. Boxes you picked or drew yourself stay as
+          they are.
         </p>
 
         <div className="mt-4">
@@ -92,9 +92,9 @@ export function AcceptRemainingPopover({
             className="mt-4 rounded-lg bg-signal-soft px-3 py-2 font-body text-detail text-signal"
           >
             {gapCount === 1
-              ? 'One frame will still have no box — no model found smoke there.'
-              : `${gapCount} frames will still have no box — no model found smoke there.`}{' '}
-            Draw on them yourself, or the alert stays unsubmittable.
+              ? 'One frame has no box at all — no model found smoke there. Draw on it yourself;'
+              : `${gapCount} frames have no box at all — no model found smoke there. Draw on them yourself;`}{' '}
+            the alert cannot be submitted until every frame has one.
           </p>
         )}
 
