@@ -232,6 +232,7 @@ export function DetectionAnnotationCanvas({
             transformOrigin={transformOrigin}
             isDragging={isDragging}
             normalizedToImage={normalizedToImage}
+            boxColor={committed ? SOURCE_COLOR[committed.source] : undefined}
             onBoxPointerDown={(_id, e) => onBoxPointerDown(e)}
             onHandlePointerDown={
               isDrawMode ? undefined : (_id, handle, e) => onHandlePointerDown(handle, e)
@@ -241,8 +242,8 @@ export function DetectionAnnotationCanvas({
       </div>
     </div>
   ) : (
-    <div className="w-96 h-96 bg-gray-800 flex items-center justify-center rounded-lg">
-      <span className="text-gray-400">No image available</span>
+    <div className="flex h-96 w-96 items-center justify-center rounded-card border border-line bg-ash">
+      <span className="font-body text-sm text-haze">No image available</span>
     </div>
   );
 }

@@ -10,7 +10,7 @@
  */
 
 import { useEffect, useRef } from 'react';
-import { Pencil, Eraser } from 'lucide-react';
+import { Pencil, Eraser, Check } from 'lucide-react';
 import type { BoxCandidate } from '@/utils/annotation/objectBoxCandidates';
 import { computeSquareCrop } from '@/utils/annotation/squareCropUtils';
 import { SOURCE_COLOR, SOURCE_LABEL, SOURCE_ORDER } from './sourceIdentity';
@@ -81,13 +81,13 @@ function CandidateCrop({
     img.src = imageUrl;
   }, [imageUrl, region, candidate]);
 
-  if (!candidate) return <span className="h-11 w-14 flex-none rounded bg-white/5" />;
+  if (!candidate) return <span className="h-11 w-14 flex-none rounded border border-line bg-ash" />;
   return (
     <canvas
       ref={canvasRef}
       width={CROP_RES}
       height={CROP_RES}
-      className="h-11 w-14 flex-none rounded"
+      className="h-11 w-14 flex-none rounded border border-line"
       data-testid={`source-crop-${candidate.source}`}
     />
   );
@@ -105,8 +105,10 @@ export function BoxSourceRail({
   const region = unionBox(candidates);
 
   return (
-    <div className="w-56 flex-none border-l border-white/10 p-3 text-white">
-      <p className="mb-2 text-[9px] uppercase tracking-[0.1em] text-white/50">Box for this frame</p>
+    <div className="w-60 flex-none overflow-y-auto border-l border-line bg-paper p-4">
+      <p className="mb-2.5 font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
+        Box for this frame
+      </p>
 
       {SOURCE_ORDER.map(source => {
         const candidate = candidates.find(c => c.source === source);
@@ -119,51 +121,56 @@ export function BoxSourceRail({
             aria-pressed={isCommitted}
             disabled={disabled || !candidate || isCommitted}
             onClick={() => candidate && !isCommitted && onCommit(candidate)}
-            className={`mb-1.5 flex w-full items-center gap-2 rounded-md border p-1.5 text-left transition-colors ${
-              isCommitted ? 'border-[#5bbf8f] bg-[#5bbf8f]/10' : 'border-transparent'
-            } ${candidate ? 'hover:bg-white/5' : 'opacity-35'}`}
+            className={`mb-1.5 flex w-full items-center gap-2.5 rounded-lg border p-2 text-left transition-colors ${
+              isCommitted ? 'border-pine bg-pine-soft' : 'border-transparent'
+            } ${candidate && !isCommitted ? 'hover:bg-ash' : ''} ${candidate ? '' : 'opacity-40'}`}
           >
             <CandidateCrop imageUrl={imageUrl} region={region} candidate={candidate} />
-            <span>
-              <span className="block text-[11.5px] font-semibold">
-                <span style={{ color: SOURCE_COLOR[source] }}>●</span> {SOURCE_LABEL[source]}
-                {isCommitted && <span className="ml-1.5 text-[#5bbf8f]">✓</span>}
+            <span className="min-w-0">
+              <span className="flex items-center gap-1.5 font-body text-sm font-medium text-char">
+                <span
+                  aria-hidden
+                  className="h-2.5 w-2.5 flex-none rounded-sm"
+                  style={{ backgroundColor: SOURCE_COLOR[source] }}
+                />
+                {SOURCE_LABEL[source]}
+                {isCommitted && <Check className="h-3.5 w-3.5 text-pine" />}
               </span>
-              <span className="block text-[9.5px] text-white/50">
+              <span className="block font-data text-detail text-haze">
                 {!candidate
-                  ? '—'
+                  ? 'no box'
                   : candidate.confidence !== undefined
-                    ? `conf ${candidate.confidence.toFixed(2).replace(/^0/, '')}`
-                    : 'drawn'}
+                    ? `${(candidate.confidence * 100).toFixed(0)}% confident`
+                    : 'you drew this'}
               </span>
             </span>
           </button>
         );
       })}
 
-      <div className="mt-2 flex gap-1.5">
+      <div className="mt-3 flex gap-2">
         <button
           type="button"
           data-testid="editor-draw"
           disabled={disabled}
           onClick={onDraw}
-          className="inline-flex items-center gap-1 rounded-md bg-[#f0a24b] px-2.5 py-1.5 text-[10.5px] font-semibold text-char hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-white/60 disabled:opacity-30"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-pine px-3 py-2 font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:opacity-40"
         >
-          <Pencil className="h-3 w-3" /> Draw
+          <Pencil className="h-3.5 w-3.5" /> Draw
         </button>
         <button
           type="button"
           data-testid="editor-clear"
           disabled={disabled || !committed}
           onClick={onClear}
-          className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-white/5 px-2.5 py-1.5 text-[10.5px] font-medium hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white/60 disabled:opacity-30"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-paper px-3 py-2 font-body text-sm font-medium text-char hover:bg-ash focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:opacity-40"
         >
-          <Eraser className="h-3 w-3" /> Clear
+          <Eraser className="h-3.5 w-3.5" /> Clear
         </button>
       </div>
 
-      <p className="mt-2.5 text-[9.5px] leading-relaxed text-white/40">
-        Drawing replaces whatever is committed — one box per frame, per object.
+      <p className="mt-3 font-body text-detail leading-relaxed text-haze">
+        Drawing replaces the box on this frame. Each object carries one box per frame.
       </p>
     </div>
   );

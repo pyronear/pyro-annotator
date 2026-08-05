@@ -1,13 +1,22 @@
 /**
  * Visual identity for a box's SOURCE (who proposed it), shared by the rail
- * rows, the stage's ghost outlines and the filmstrip badges so one source
- * reads the same everywhere on this screen.
+ * rows, the box on the stage, the ghost outlines and the filmstrip badges, so
+ * one source reads the same everywhere on this screen.
  *
- * Deliberately not DESIGN.md's ember/pine/signal tokens — those mark action,
- * positive state and error, and a box's provenance is none of those. Also
- * deliberately not the object-identity palette in `objectColors.ts`, which
- * distinguishes objects from each other; on this screen there is exactly one
- * object and the thing being distinguished is where its box came from.
+ * The three sources are not peers — they are a priority ladder, manual > auto
+ * > engine, and the screen's whole job is deciding where on it this frame
+ * sits. So they are encoded ORDINALLY, as descending strength in DESIGN.md's
+ * own neutrals plus the Localize accent, rather than as three unrelated hues:
+ *
+ *   manual  char  the human's own answer, the strongest claim
+ *   auto    pine  Localize's accent
+ *   engine  haze  muted, the weakest claim
+ *
+ * This also keeps the source vocabulary clear of `objectColors.ts`, whose
+ * categorical palette distinguishes objects from each other. An earlier
+ * categorical scheme collided with it badly — engine's blue sat next to
+ * Object 1's blue, so a dashed blue box was ambiguous between "the engine's
+ * proposal for your object" and "Object 1's box".
  */
 
 import type { BoxSource } from '@/utils/annotation/objectBoxCandidates';
@@ -20,10 +29,18 @@ export const SOURCE_LABEL: Record<BoxSource, string> = {
   engine: 'Engine',
 };
 
+/** DESIGN.md tokens, as literals for the canvas overlays that style inline. */
 export const SOURCE_COLOR: Record<BoxSource, string> = {
-  manual: '#f0a24b',
-  auto: '#5bbf8f',
-  engine: '#7aa7d9',
+  manual: '#20261F', // char
+  auto: '#166A5D', // pine
+  engine: '#767B72', // haze
+};
+
+/** Tailwind text colour for the same ladder, for markup that can use classes. */
+export const SOURCE_TEXT: Record<BoxSource, string> = {
+  manual: 'text-char',
+  auto: 'text-pine',
+  engine: 'text-haze',
 };
 
 /** Filmstrip badge letter; lowercased when the source is available but uncommitted. */

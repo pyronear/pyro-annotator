@@ -347,7 +347,7 @@ describe('LocalizeObjectEditor chrome', () => {
 
   it('reports an in-flight save', () => {
     renderEditor({ isSaving: true });
-    expect(screen.getByText('saving…')).toBeInTheDocument();
+    expect(screen.getByText('Saving…')).toBeInTheDocument();
   });
 
   it('removes its keydown listener on unmount', () => {

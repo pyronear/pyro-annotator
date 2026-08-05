@@ -462,6 +462,12 @@ interface DrawingOverlayProps {
   // Drag-to-move (box body) and drag-to-resize (handles) on the selected box.
   onBoxPointerDown?: (id: string, e: React.MouseEvent) => void;
   onHandlePointerDown?: (id: string, handle: ResizeHandle, e: React.MouseEvent) => void;
+  /**
+   * Overrides the smoke-type colour. The localize object editor colours a box
+   * by its SOURCE instead: an object has one smoke type across every frame,
+   * so smoke type says nothing that varies here, while the source does.
+   */
+  boxColor?: string;
 }
 
 export function DrawingOverlay({
@@ -476,6 +482,7 @@ export function DrawingOverlay({
   normalizedToImage,
   onBoxPointerDown,
   onHandlePointerDown,
+  boxColor,
 }: DrawingOverlayProps) {
   const renderRectangle = (
     rect: { xyxyn: [number, number, number, number]; id?: string } | CurrentDrawing,
@@ -529,14 +536,19 @@ export function DrawingOverlay({
             // box has to reach it, and the consumer decides whether a given
             // press means "select me" or "start dragging me".
             onMouseDown={onBoxPointerDown ? e => onBoxPointerDown(rect.id, e) : undefined}
-            className={`absolute border-2 ${isSelected ? 'border-yellow-400' : colors.border} pointer-events-auto ${
-              isSelected ? 'cursor-move' : 'cursor-pointer'
+            // Selection reads from the handles and the heavier stroke, not
+            // from a colour change: the box's colour is carrying meaning
+            // already, and overriding it to signal a UI state would hide
+            // what the box is.
+            className={`absolute pointer-events-auto ${boxColor ? '' : colors.border} ${
+              isSelected ? 'border-[3px] cursor-move' : 'border-2 cursor-pointer'
             }`}
             style={{
               left: `${left}px`,
               top: `${top}px`,
               width: `${width}px`,
               height: `${height}px`,
+              ...(boxColor ? { borderColor: boxColor, borderStyle: 'solid' } : {}),
             }}
           >
             {/* Resize handles on the selected box */}
@@ -547,7 +559,7 @@ export function DrawingOverlay({
                   key={handle}
                   data-testid={`resize-handle-${handle}`}
                   onMouseDown={e => onHandlePointerDown(rect.id, handle, e)}
-                  className="absolute w-2 h-2 bg-white border border-gray-800 pointer-events-auto"
+                  className="absolute w-2 h-2 bg-paper border border-char pointer-events-auto"
                   style={{ ...HANDLE_STYLES[handle], cursor: HANDLE_CURSOR[handle] }}
                 />
               ))}

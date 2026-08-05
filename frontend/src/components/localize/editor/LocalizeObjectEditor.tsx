@@ -581,17 +581,17 @@ export function LocalizeObjectEditor({
     : detection;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-black/95">
-      <div className="flex h-10 flex-none items-center gap-3 border-b border-white/10 px-3 text-xs text-white">
+    <div className="fixed inset-0 z-50 flex flex-col bg-ash">
+      <div className="flex h-12 flex-none items-center gap-3 border-b border-line bg-paper px-4">
         <span
           data-testid="editor-object-identity"
-          className="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px]"
-          style={{ borderColor: objectColor, color: objectColor }}
+          className="inline-flex items-center gap-2 border-l-2 pl-2.5 font-body text-sm font-medium text-char"
+          style={{ borderColor: objectColor }}
         >
-          ◆ {objectLabel}
-          <span className="text-white/70">· {smokeType}</span>
+          {objectLabel}
+          <span className="font-data text-detail text-haze">{smokeType}</span>
         </span>
-        <span className="rounded-full border border-white/15 px-2 py-0.5 text-[10px] text-white/60">
+        <span className="inline-flex rounded-full bg-ash px-2 py-1 font-data text-detail text-haze">
           frame {frameNumber} / {entries.length}
         </span>
         <button
@@ -599,7 +599,7 @@ export function LocalizeObjectEditor({
           data-testid="editor-prev"
           onClick={() => step(-1)}
           disabled={currentEntryIndex <= 0}
-          className="rounded p-1 hover:bg-white/10 disabled:opacity-30"
+          className="rounded-lg border border-line bg-paper p-1.5 text-char hover:bg-ash focus:outline-none focus:ring-2 focus:ring-char disabled:opacity-40"
           aria-label="Previous frame"
         >
           <ChevronLeft className="h-4 w-4" />
@@ -609,25 +609,27 @@ export function LocalizeObjectEditor({
           data-testid="editor-next"
           onClick={() => step(1)}
           disabled={currentEntryIndex < 0 || currentEntryIndex >= entries.length - 1}
-          className="rounded p-1 hover:bg-white/10 disabled:opacity-30"
+          className="rounded-lg border border-line bg-paper p-1.5 text-char hover:bg-ash focus:outline-none focus:ring-2 focus:ring-char disabled:opacity-40"
           aria-label="Next frame"
         >
           <ChevronRight className="h-4 w-4" />
         </button>
 
         {peeked && (
-          <span className="rounded-full border border-[#d98b7d]/50 px-2 py-0.5 text-[10px] text-[#d98b7d]">
+          <span className="inline-flex rounded-full bg-signal-soft px-2 py-1 font-body text-xs font-semibold text-signal">
             not part of this object
           </span>
         )}
 
-        <span className="ml-auto text-white/50">{formatDateTime(shownDetection.recorded_at)}</span>
-        {isSaving && <span className="text-white/50">saving…</span>}
+        <span className="ml-auto font-data text-detail text-haze">
+          {formatDateTime(shownDetection.recorded_at)}
+        </span>
+        {isSaving && <span className="font-data text-detail text-haze">Saving…</span>}
         <button
           type="button"
           data-testid="editor-close"
           onClick={onClose}
-          className="rounded p-1 hover:bg-white/10"
+          className="rounded-lg border border-line bg-paper p-1.5 text-char hover:bg-ash focus:outline-none focus:ring-2 focus:ring-char"
           aria-label="Close editor"
         >
           <X className="h-4 w-4" />
@@ -635,7 +637,7 @@ export function LocalizeObjectEditor({
       </div>
 
       <div className="flex min-h-0 flex-1">
-        <div className="flex min-w-0 flex-1 items-center justify-center overflow-hidden p-2">
+        <div className="flex min-w-0 flex-1 items-center justify-center overflow-hidden bg-ash p-3">
           <DetectionAnnotationCanvas
             detection={shownDetection}
             committed={editable ? shownCommitted : null}
@@ -680,11 +682,10 @@ export function LocalizeObjectEditor({
       {peeked && (
         <div
           data-testid="out-of-range-banner"
-          className="flex-none border-t border-[#d98b7d]/30 bg-[#d98b7d]/10 px-3 py-1.5 text-[11px] text-[#e0b3aa]"
+          className="flex-none border-t border-line bg-signal-soft px-4 py-2 font-body text-detail text-signal"
         >
-          Viewing a frame outside this object&apos;s range — image from the alert&apos;s other
-          objects. {objectLabel} was never detected here, so there is no frame to draw on yet (issue
-          #287).
+          {objectLabel} was never detected on this frame, so there is nothing here to draw on. The
+          image comes from another object in the same alert.
         </div>
       )}
 
@@ -694,9 +695,9 @@ export function LocalizeObjectEditor({
         onSelect={goToEntry}
       />
 
-      <p className="flex-none border-t border-white/10 px-3 py-1.5 text-[10px] text-white/40">
-        ← → step · Enter accept &amp; next · D draw · G ghosts · O other objects · Z crop · R reset
-        · Esc close
+      <p className="flex-none border-t border-line bg-paper px-4 py-2 font-data text-[11px] text-haze">
+        ← → step · Enter accept &amp; next · D draw · G other boxes · O other objects · Z zoom to
+        object · R reset · Esc close
       </p>
     </div>
   );

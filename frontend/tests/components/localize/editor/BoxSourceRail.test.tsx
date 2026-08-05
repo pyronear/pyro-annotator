@@ -71,9 +71,9 @@ describe('BoxSourceRail', () => {
     expect(onCommit).not.toHaveBeenCalled();
   });
 
-  it('shows the model confidence', () => {
+  it('shows the model confidence in plain terms', () => {
     render(<BoxSourceRail {...props} />);
-    expect(screen.getByTestId('source-row-auto')).toHaveTextContent('.87');
+    expect(screen.getByTestId('source-row-auto')).toHaveTextContent('87% confident');
   });
 
   it('disables every action when the frame is not editable', () => {

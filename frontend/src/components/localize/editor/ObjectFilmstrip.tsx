@@ -7,7 +7,7 @@
  */
 
 import type { FilmstripEntry, FilmstripRun } from '@/utils/annotation/objectFilmstrip';
-import { SOURCE_COLOR, SOURCE_LETTER } from './sourceIdentity';
+import { SOURCE_LETTER, SOURCE_TEXT } from './sourceIdentity';
 import { FilmstripThumbnail } from './FilmstripThumbnail';
 
 const RUN_LABEL: Record<FilmstripRun, string> = {
@@ -25,9 +25,11 @@ export interface ObjectFilmstripProps {
 function Badge({ entry }: { entry: FilmstripEntry }) {
   const testId = `filmstrip-badge-${entry.detectionId}`;
 
+  const base = 'mt-1 block text-center font-data text-[10px]';
+
   if (!entry.inObject)
     return (
-      <span data-testid={testId} className="block text-center text-[9px] text-white/25">
+      <span data-testid={testId} className={`${base} text-line`}>
         ·
       </span>
     );
@@ -36,8 +38,7 @@ function Badge({ entry }: { entry: FilmstripEntry }) {
     return (
       <span
         data-testid={testId}
-        className="block text-center text-[9px] font-bold"
-        style={{ color: SOURCE_COLOR[entry.committedSource] }}
+        className={`${base} font-semibold ${SOURCE_TEXT[entry.committedSource]}`}
       >
         {SOURCE_LETTER[entry.committedSource]}
       </span>
@@ -47,15 +48,14 @@ function Badge({ entry }: { entry: FilmstripEntry }) {
     return (
       <span
         data-testid={testId}
-        className="block text-center text-[9px] opacity-50"
-        style={{ color: SOURCE_COLOR[entry.availableSource] }}
+        className={`${base} opacity-45 ${SOURCE_TEXT[entry.availableSource]}`}
       >
         {SOURCE_LETTER[entry.availableSource].toLowerCase()}
       </span>
     );
 
   return (
-    <span data-testid={testId} className="block text-center text-[9px] font-bold text-[#d98b7d]">
+    <span data-testid={testId} className={`${base} font-semibold text-signal`}>
       —
     </span>
   );
@@ -80,10 +80,10 @@ export function ObjectFilmstrip({ entries, currentDetectionId, onSelect }: Objec
   const showRunLabels = groups.length > 1;
 
   return (
-    <div className="border-t border-white/10 px-3 pb-3 pt-2 text-white">
+    <div className="border-t border-line bg-paper px-4 pb-3 pt-2.5">
       <p
         data-testid="filmstrip-summary"
-        className="mb-1.5 text-[9px] uppercase tracking-[0.1em] text-white/50"
+        className="mb-2 font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze"
       >
         Frames · object present on {inObjectCount} of {entries.length}
       </p>
@@ -92,8 +92,8 @@ export function ObjectFilmstrip({ entries, currentDetectionId, onSelect }: Objec
           <div key={`${group.run}-${groupIndex}`}>
             {showRunLabels && (
               <p
-                className={`mb-0.5 text-[8.5px] uppercase tracking-wider ${
-                  group.run === 'object' ? 'text-[#5bbf8f]' : 'text-white/30'
+                className={`mb-1 font-data text-[9px] uppercase tracking-eyebrow ${
+                  group.run === 'object' ? 'text-pine' : 'text-haze/60'
                 }`}
               >
                 {RUN_LABEL[group.run]}
@@ -107,14 +107,12 @@ export function ObjectFilmstrip({ entries, currentDetectionId, onSelect }: Objec
                   data-testid={`filmstrip-cell-${entry.detectionId}`}
                   aria-current={entry.detectionId === currentDetectionId}
                   onClick={() => onSelect(entry)}
-                  className="w-10 flex-none focus:outline-none focus:ring-1 focus:ring-white/60"
+                  className="w-11 flex-none rounded focus:outline-none focus:ring-2 focus:ring-char"
                 >
                   <span
-                    className={`block h-8 overflow-hidden rounded border ${
-                      entry.detectionId === currentDetectionId
-                        ? 'border-white'
-                        : 'border-transparent'
-                    } ${entry.inObject ? '' : 'opacity-55 grayscale'}`}
+                    className={`block h-9 overflow-hidden rounded border-2 ${
+                      entry.detectionId === currentDetectionId ? 'border-char' : 'border-line'
+                    } ${entry.inObject ? '' : 'opacity-60 grayscale'}`}
                   >
                     <FilmstripThumbnail detectionId={entry.detectionId} xyxyn={entry.xyxyn} />
                   </span>
