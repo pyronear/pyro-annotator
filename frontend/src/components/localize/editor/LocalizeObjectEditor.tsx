@@ -14,6 +14,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { X, ChevronLeft, ChevronRight, Keyboard } from 'lucide-react';
 import type {
   Detection,
@@ -46,6 +47,8 @@ import {
 import type { ObjectOverlayItem } from '@/components/annotation/ImageOverlays';
 import { DetectionAnnotationCanvas } from '@/components/detection-annotation';
 import { useDetectionImage } from '@/hooks/useDetectionImage';
+import { apiClient } from '@/services/api';
+import { QUERY_KEYS } from '@/utils/constants';
 import { formatDateTime } from '@/utils/datetime';
 import { collectLaneBoxes } from '@/utils/annotation/quickSubmitUtils';
 import { AcceptRemainingPopover } from './AcceptRemainingPopover';
@@ -160,6 +163,7 @@ export function LocalizeObjectEditor({
   const didPanRef = useRef(false);
 
   const { data: imageData } = useDetectionImage(detection.id);
+  const queryClient = useQueryClient();
 
   // Read by the keyboard handler; kept in refs so a save (which changes the
   // committed box) doesn't re-bind the window listener.
@@ -320,7 +324,11 @@ export function LocalizeObjectEditor({
     setBoxEdit(null);
     setBoxSelected(false);
     setGhostsOverridden(false);
-    setImageInfo(null);
+    // `imageInfo` deliberately survives the change. Every frame of an alert
+    // comes from one camera at one size and lands in the same box, so the
+    // previous geometry stays correct; clearing it unmounted every overlay
+    // until the next image fired onLoad, which read as the boxes blinking out
+    // on each arrow press. `handleImageLoad` refreshes it either way.
   }, [detection.id]);
 
   // --- Coordinates --------------------------------------------------------
@@ -523,6 +531,31 @@ export function LocalizeObjectEditor({
     if (zoomLevel <= 1) return 'default';
     return isDragging ? 'grabbing' : 'grab';
   };
+
+  // Warm the frames either side, so an arrow press swaps to a bitmap the
+  // browser has already decoded rather than to an empty <img>. Prefetching
+  // through the query client rather than `useImagePreloader` on purpose: that
+  // hook holds its cache in state and re-renders this component on every
+  // image it resolves, which is the opposite of what a flicker fix wants.
+  useEffect(() => {
+    const neighbours = [entries[currentEntryIndex - 1], entries[currentEntryIndex + 1]]
+      .filter(Boolean)
+      .map(entry => entry.detectionId)
+      .filter(id => id > 0);
+
+    for (const id of neighbours) {
+      queryClient
+        .fetchQuery({
+          queryKey: [...QUERY_KEYS.DETECTION_IMAGE, id],
+          queryFn: () => apiClient.getDetectionImageUrl(id),
+          staleTime: 5 * 60 * 1000,
+        })
+        .then(data => {
+          if (data?.url) new Image().src = data.url;
+        })
+        .catch(() => undefined);
+    }
+  }, [entries, currentEntryIndex, queryClient]);
 
   useEffect(() => {
     if (!acceptOpen) return;

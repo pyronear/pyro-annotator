@@ -106,7 +106,10 @@ export function ObjectFilmstrip({ entries, currentDetectionId, onSelect }: Objec
                 {RUN_LABEL[group.run]}
               </p>
             )}
-            <div className="flex gap-1">
+            {/* Pinned to the tall cell's height. Without it the row tracks its
+                tallest child, so mid-transition — one cell shrinking while
+                another grows — the whole strip dips and springs back. */}
+            <div className="flex h-16 items-end gap-1">
               {group.items.map(entry => (
                 <button
                   key={entry.detectionId}
