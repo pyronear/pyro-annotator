@@ -173,8 +173,29 @@ describe('ObjectFilmstrip', () => {
     expect(onSelect).toHaveBeenCalledWith(entries[2]);
   });
 
-  it('reports how many frames the object is present on', () => {
+  it('reports where you are and how many frames the object is present on', () => {
     renderStrip();
-    expect(screen.getByTestId('filmstrip-summary')).toHaveTextContent('3 of 5');
+    expect(screen.getByTestId('filmstrip-summary')).toHaveTextContent(
+      'Frame 2 of 5 · object present on 3'
+    );
+  });
+
+  it('steps through the strip with its own chevrons, via the same callback', () => {
+    const onSelect = vi.fn();
+    renderStrip({ onSelect });
+
+    fireEvent.click(screen.getByTestId('filmstrip-next'));
+    expect(onSelect).toHaveBeenCalledWith(entries[2]);
+
+    fireEvent.click(screen.getByTestId('filmstrip-prev'));
+    expect(onSelect).toHaveBeenCalledWith(entries[0]);
+  });
+
+  it('disables stepping at each end of the alert', () => {
+    renderStrip({ currentDetectionId: 991 });
+    expect(screen.getByTestId('filmstrip-prev')).toBeDisabled();
+
+    renderStrip({ currentDetectionId: 995 });
+    expect(screen.getAllByTestId('filmstrip-next')[1]).toBeDisabled();
   });
 });

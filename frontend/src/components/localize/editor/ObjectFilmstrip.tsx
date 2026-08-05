@@ -8,6 +8,10 @@
  * Each cell's BORDER carries its state, so the strip reads as a run of
  * colour rather than a line of letters:
  *
+ * It carries its own position readout and stepping controls: the chevrons
+ * move through this strip, and clicking a cell already does the same thing, so
+ * both go through one callback and live beside what they move.
+ *
  * The frame you are on shows its clock time underneath — the header has the
  * full timestamp, and cells can sit anywhere from two seconds to two minutes
  * apart, so the row alone never says where in the alert you are.
@@ -27,6 +31,7 @@
  * source by name, so the strip needs no legend of its own.
  */
 
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { FilmstripEntry, FilmstripRun } from '@/utils/annotation/objectFilmstrip';
 import { formatTime } from '@/utils/datetime';
 import { SOURCE_COLOR } from './sourceIdentity';
@@ -87,18 +92,49 @@ function groupRuns(entries: FilmstripEntry[]): { run: FilmstripRun; items: Films
 export function ObjectFilmstrip({ entries, currentDetectionId, onSelect }: ObjectFilmstripProps) {
   const groups = groupRuns(entries);
   const inObjectCount = entries.filter(e => e.inObject).length;
+  // Stepping is the same move as clicking a cell, so it goes through the same
+  // callback — the strip owns where you are in it.
+  const currentIndex = entries.findIndex(e => e.detectionId === currentDetectionId);
+  const step = (direction: -1 | 1) => {
+    const next = entries[currentIndex + direction];
+    if (next) onSelect(next);
+  };
   // With one run there is nothing to distinguish, and a lone "object" label
   // is noise — 92.6% of lanes land here.
   const showRunLabels = groups.length > 1;
 
   return (
     <div className="border-t border-line bg-paper px-4 pb-3 pt-2.5">
-      <p
-        data-testid="filmstrip-summary"
-        className="mb-2 font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze"
-      >
-        Frames · object present on {inObjectCount} of {entries.length}
-      </p>
+      <div className="mb-2 flex items-center gap-2">
+        <button
+          type="button"
+          data-testid="filmstrip-prev"
+          onClick={() => step(-1)}
+          disabled={currentIndex <= 0}
+          aria-label="Previous frame"
+          title="Previous frame (←)"
+          className="rounded-lg border border-line bg-paper p-1 text-char hover:bg-ash focus:outline-none focus:ring-2 focus:ring-char disabled:opacity-40"
+        >
+          <ChevronLeft className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          data-testid="filmstrip-next"
+          onClick={() => step(1)}
+          disabled={currentIndex < 0 || currentIndex >= entries.length - 1}
+          aria-label="Next frame"
+          title="Next frame (→)"
+          className="rounded-lg border border-line bg-paper p-1 text-char hover:bg-ash focus:outline-none focus:ring-2 focus:ring-char disabled:opacity-40"
+        >
+          <ChevronRight className="h-3.5 w-3.5" />
+        </button>
+        <p
+          data-testid="filmstrip-summary"
+          className="font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze"
+        >
+          Frame {currentIndex + 1} of {entries.length} · object present on {inObjectCount}
+        </p>
+      </div>
       <div className="flex items-end gap-3 overflow-x-auto">
         {groups.map((group, groupIndex) => (
           <div key={`${group.run}-${groupIndex}`}>

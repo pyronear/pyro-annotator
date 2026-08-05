@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { X, ChevronLeft, ChevronRight, Keyboard, Crop } from 'lucide-react';
+import { X, Keyboard, Crop } from 'lucide-react';
 import type {
   Detection,
   DetectionAnnotation,
@@ -699,8 +699,6 @@ export function LocalizeObjectEditor({
 
   // --- Render -------------------------------------------------------------
 
-  const frameNumber = currentEntryIndex + 1;
-
   // Frames of this object that a bulk accept would fill, and frames it
   // cannot — no source offers a box there, so they stay empty and keep the
   // alert off the submit gate.
@@ -750,29 +748,6 @@ export function LocalizeObjectEditor({
           {objectLabel}
           <span className="font-data text-detail text-haze">{smokeType}</span>
         </span>
-        <span className="inline-flex rounded-full bg-ash px-2 py-1 font-data text-detail text-haze">
-          frame {frameNumber} / {entries.length}
-        </span>
-        <button
-          type="button"
-          data-testid="editor-prev"
-          onClick={() => step(-1)}
-          disabled={currentEntryIndex <= 0}
-          className="rounded-lg border border-line bg-paper p-1.5 text-char hover:bg-ash focus:outline-none focus:ring-2 focus:ring-char disabled:opacity-40"
-          aria-label="Previous frame"
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          data-testid="editor-next"
-          onClick={() => step(1)}
-          disabled={currentEntryIndex < 0 || currentEntryIndex >= entries.length - 1}
-          className="rounded-lg border border-line bg-paper p-1.5 text-char hover:bg-ash focus:outline-none focus:ring-2 focus:ring-char disabled:opacity-40"
-          aria-label="Next frame"
-        >
-          <ChevronRight className="h-4 w-4" />
-        </button>
 
         {/* The cockpit's own crop control, same icon and same pressed
             language, because it is the same idea: frame the object instead of

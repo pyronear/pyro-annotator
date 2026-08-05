@@ -488,19 +488,19 @@ describe('LocalizeObjectEditor chrome', () => {
   it('steps with the prev/next buttons', () => {
     const onNavigateToDetection = vi.fn();
     renderEditor({ onNavigateToDetection });
-    fireEvent.click(screen.getByTestId('editor-next'));
+    fireEvent.click(screen.getByTestId('filmstrip-next'));
     expect(onNavigateToDetection).toHaveBeenCalledWith(lastDetection.id);
   });
 
-  it('disables next on the alert’s last frame and prev on its first', () => {
+  it('disables prev at the start of the alert', () => {
     renderEditor({ detection: firstDetection });
     // The object starts on frame 3 of 5, so both directions are open.
-    expect(screen.getByTestId('editor-prev')).not.toBeDisabled();
-    expect(screen.getByTestId('editor-next')).not.toBeDisabled();
+    expect(screen.getByTestId('filmstrip-prev')).not.toBeDisabled();
+    expect(screen.getByTestId('filmstrip-next')).not.toBeDisabled();
 
     fireEvent.keyDown(window, { key: 'ArrowLeft' });
     fireEvent.keyDown(window, { key: 'ArrowLeft' });
-    expect(screen.getByTestId('editor-prev')).toBeDisabled();
+    expect(screen.getByTestId('filmstrip-prev')).toBeDisabled();
   });
 
   it('arms draw mode on D and shows the crosshair cursor', () => {
@@ -631,9 +631,9 @@ describe('LocalizeObjectEditor chrome', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  it('shows the frame position within the alert', () => {
+  it('shows the frame position on the filmstrip, not in the header', () => {
     renderEditor();
-    expect(screen.getByText('frame 3 / 5')).toBeInTheDocument();
+    expect(screen.getByTestId('filmstrip-summary')).toHaveTextContent('Frame 3 of 5');
   });
 });
 
