@@ -2054,6 +2054,28 @@ describe('LocalizeAlertPage', () => {
         within(screen.getByTestId('localize-object-row-object-1')).getByText('wildfire')
       ).toBeInTheDocument();
     });
+
+    it('Tab includes false-positive rows only while the toggle shows them', async () => {
+      alertWithFalsePositive();
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      // Toggle off: the lone smoke object cycles onto itself.
+      fireEvent.keyDown(document, { key: 'Tab' });
+      expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/101');
+
+      fireEvent.click(screen.getByRole('button', { name: /False positives/ }));
+      await waitFor(() => {
+        expect(screen.getByTestId('localize-object-row-object-2')).toBeInTheDocument();
+      });
+
+      // Toggle on: the FP row joins the cycle and Tab lands on it.
+      fireEvent.keyDown(document, { key: 'Tab' });
+      expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/102');
+      expect(screen.getByTestId('localize-object-row-object-2')).toHaveAttribute(
+        'data-active',
+        'true'
+      );
+    });
   });
 
   describe('active object CTA, over the media column', () => {
@@ -2643,6 +2665,22 @@ describe('LocalizeAlertPage', () => {
       // Backward from the first wraps to the last.
       fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
       expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/102');
+    });
+
+    it('is inert while the per-frame editor is open, so the editor keeps its own keys', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      // Open the editor on the arrival object's T1 frame (lane 101,
+      // detection 1001).
+      fireEvent.click(screen.getByTestId(`alert-frame-cell-${T1}`));
+      await screen.findByTestId('image-modal');
+      const editorUrl = screen.getByTestId('location').textContent;
+
+      fireEvent.keyDown(document, { key: 'Tab' });
+
+      // No cycling happened: the URL still names the open editor.
+      expect(screen.getByTestId('location')).toHaveTextContent(editorUrl!);
+      expect(screen.getByTestId('image-modal')).toBeInTheDocument();
     });
   });
 

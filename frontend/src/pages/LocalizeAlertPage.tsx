@@ -1182,6 +1182,11 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   useEffect(() => {
     const handleTab = (e: KeyboardEvent) => {
       if (e.key !== 'Tab') return;
+      // Suspended whenever an overlay with its own focusables is up — the
+      // per-frame editor, the add-object smoke-type picker, the
+      // missed-smoke submit dialog — so their controls stay
+      // keyboard-reachable (mirrors classify's modal guards).
+      if (detectionIdNum != null || addObjectPickerOpen || missedSmokeConfirm) return;
       if (orderedObjectRows.length === 0) return;
       e.preventDefault();
       const current = orderedObjectRows.findIndex(o => o.laneSequenceId === activeLaneId);
