@@ -135,6 +135,15 @@ class SequenceUpdateBboxVerified(BaseModel):
     algo_prediction: Optional[SequenceAnnotationData] = Field(default=None)
 
 
+class AlertSkipInfo(BaseModel):
+    """Skip metadata carried on skipped queue rows and returned by skip
+    (docs/specs/2026-08-05-alert-skip-escape-hatch-design.md)."""
+
+    skipped_at: datetime
+    skipped_by: Optional[str] = None
+    note: Optional[str] = None
+
+
 class LocalizationQueueLane(BaseModel):
     """One object-sequence of an alert, as shown in the Localize queue."""
 
@@ -188,6 +197,8 @@ class ClassifyQueueItem(BaseModel):
     primary_sequence_id: int
     total_objects: int
     classified_objects: int
+    # Present only on skipped=true queue rows.
+    skip: Optional[AlertSkipInfo] = None
 
 
 class ClassifyDoneLane(BaseModel):
@@ -241,15 +252,6 @@ class AddObjectRequest(BaseModel):
     source_api: SourceApi
     platform_alert_id: int
     smoke_type: SmokeType
-
-
-class AlertSkipInfo(BaseModel):
-    """Skip metadata carried on skipped queue rows and returned by skip
-    (docs/specs/2026-08-05-alert-skip-escape-hatch-design.md)."""
-
-    skipped_at: datetime
-    skipped_by: Optional[str] = None
-    note: Optional[str] = None
 
 
 class AlertSkipRequest(BaseModel):

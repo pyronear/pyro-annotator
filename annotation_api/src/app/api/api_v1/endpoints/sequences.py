@@ -37,6 +37,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.api.dependencies import get_current_user, get_sequence_crud
 from app.crud import SequenceCRUD
 from app.db import get_session
+from app.services.alert_skip import alert_skip_exists_clause
 from app.services.localization_rule import (
     needs_localization_clause,
     unsettled_unsure_clause,
@@ -1020,6 +1021,31 @@ async def localization_queue(
     return Page.create(items=items, total=total, params=params)
 
 
+async def _attach_skip_info(session: AsyncSession, items: list) -> None:
+    """Bulk-attach AlertSkipInfo to queue items (skipped=true views)."""
+    if not items:
+        return
+    keys = [(item.source_api, item.platform_alert_id) for item in items]
+    rows = (
+        await session.execute(
+            select(AlertSkip, User.username)
+            .outerjoin(User, User.id == AlertSkip.skipped_by_user_id)
+            .where(tuple_(AlertSkip.source_api, AlertSkip.platform_alert_id).in_(keys))
+        )
+    ).all()
+    by_key = {
+        (skip.source_api, skip.platform_alert_id): (skip, username)
+        for skip, username in rows
+    }
+    for item in items:
+        entry = by_key.get((item.source_api, item.platform_alert_id))
+        if entry is not None:
+            skip, username = entry
+            item.skip = AlertSkipInfo(
+                skipped_at=skip.skipped_at, skipped_by=username, note=skip.note
+            )
+
+
 async def _build_queue_item(
     session: AsyncSession,
     source_api: SourceApi,
@@ -1105,13 +1131,16 @@ async def classify_queue(
     source_api: Optional[SourceApi] = Query(None),
     recorded_at_gte: Optional[datetime] = Query(None),
     recorded_at_lte: Optional[datetime] = Query(None),
+    skipped: bool = Query(False),
     session: AsyncSession = Depends(get_session),
     params: Params = Depends(),
     current_user: User = Depends(get_current_user),
 ) -> Page[ClassifyQueueItem]:
     """Alerts with at least one object awaiting classification (spec:
     multi-object alert collocation, sub-project 2). Pre-filters candidate
-    alerts before grouping so cost tracks the unclassified backlog (#215)."""
+    alerts before grouping so cost tracks the unclassified backlog (#215).
+    skipped=false excludes skip-overlay alerts; skipped=true lists only them,
+    with skip metadata attached (spec: alert-skip-escape-hatch)."""
     cand_seq = aliased(Sequence)
     cand_ann = aliased(SequenceAnnotation)
     candidates = (
@@ -1146,7 +1175,12 @@ async def classify_queue(
             func.min(Sequence.id).label("any_sequence_id"),
         )
         .outerjoin(SequenceAnnotation, SequenceAnnotation.sequence_id == Sequence.id)
-        .where(tuple_(Sequence.source_api, Sequence.platform_alert_id).in_(candidates))
+        .where(
+            tuple_(Sequence.source_api, Sequence.platform_alert_id).in_(candidates),
+            alert_skip_exists_clause(Sequence)
+            if skipped
+            else ~alert_skip_exists_clause(Sequence),
+        )
         .group_by(Sequence.source_api, Sequence.platform_alert_id)
         .subquery()
     )
@@ -1190,6 +1224,8 @@ async def classify_queue(
                 classified_objects=int(row.classified_objects or 0),
             )
         )
+    if skipped:
+        await _attach_skip_info(session, items)
     return Page.create(items=items, total=total, params=params)
 
 
