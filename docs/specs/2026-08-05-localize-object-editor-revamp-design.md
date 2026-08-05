@@ -166,7 +166,11 @@ the old ✎ adjust flow, without a separate mode.
 Zoom/pan (wheel, `+`, `-`, `R` to reset) is unchanged from `ImageModal`.
 
 **Default view is the full frame**, with `Z` toggling to an object-crop view
-built on `focusOnMainObject`. The choice of default is deliberately unresolved:
+built on `computeCellCrop(boxes) → { scale, originX, originY }`
+(`gridCropUtils.ts:44`, already used by the cockpit's crop-mode grid cells).
+Its output maps directly onto the canvas's existing `zoomLevel` and
+`transformOrigin` props, so the toggle is a state change, not a second
+rendering path. The choice of default is deliberately unresolved:
 full-frame preserves the context that catches "the box grabbed the wrong
 plume", object-crop makes tightness judgements immediate. `Z` persists as a
 preference so the default can be changed later from use rather than from
@@ -295,8 +299,11 @@ New, under `src/components/localize/editor/`:
 - **`ObjectFilmstrip.tsx`** — the full-alert-span strip, its three runs, and
   its badges.
 
-Reused as-is: `focusOnMainObject` (crop math), `saveDetectionReview` (writes),
-`getObjectColor` (identity color), `formatDateTime`.
+Reused as-is: `computeSquareCrop` (`squareCropUtils.ts:45` — the canvas
+source-rect crop `CroppedImageSequence` already uses, for the rail crops and
+the filmstrip thumbnails), `computeCellCrop` (the CSS-transform crop, for the
+`Z` stage view), `saveDetectionReview` (writes), `getObjectColor` (identity
+color), `formatDateTime`.
 
 Changed: **`DetectionAnnotationCanvas`** simplifies to a single committed box
 plus ghosts, dropping the per-model-box review props
