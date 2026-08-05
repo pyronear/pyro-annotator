@@ -7,6 +7,7 @@ from httpx import AsyncClient
 from PIL import Image
 
 from app import models
+from app.api.api_v1.endpoints import sequence_annotations as ep
 
 now = datetime.now(UTC)
 
@@ -1666,7 +1667,7 @@ async def _get_detection_annotation(
 ) -> dict:
     """Fetch the auto-created detection annotation for a detection."""
     response = await authenticated_client.get("/annotations/detections/?sequence_id=1")
-    assert response.status_code == 200
+    assert response.status_code == 200, response.text
     for ann in response.json()["items"]:
         if ann["detection_id"] == detection_id:
             return ann
@@ -2665,3 +2666,170 @@ async def test_sequence_annotation_update_edge_cases(
     assert "lens_flare" in fp_types
     assert "other" in fp_types
     assert len(fp_types) == 3  # No duplicates
+
+
+@pytest.mark.asyncio
+async def test_fp_promotion_demotes_and_resets_localization(
+    authenticated_client: AsyncClient, sequence_session, monkeypatch
+):
+    """Promoting an FP lane back to smoke (issue #275) demotes it to
+    seq_annotation_done, deletes the empty auto-created detection
+    annotations, stamps auto_annotate_enqueued_at, and defers the
+    auto-annotate job."""
+    deferred = {}
+
+    async def fake_defer(**kwargs):
+        deferred.update(kwargs)
+
+    monkeypatch.setattr(ep.auto_annotate_sequence, "defer_async", fake_defer)
+
+    detection_id = await _create_detection(authenticated_client, "3101")
+
+    fp_payload = {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": False,
+                    "false_positive_types": ["high_cloud"],
+                    "bboxes": [
+                        {"detection_id": detection_id, "xyxyn": [0.1, 0.1, 0.2, 0.2]}
+                    ],
+                }
+            ]
+        },
+        "processing_stage": "annotated",
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+    response = await authenticated_client.post(
+        "/annotations/sequences/", json=fp_payload
+    )
+    assert response.status_code == 201
+    annotation_id = response.json()["id"]
+    # The FP exit auto-created an empty annotated-stage detection annotation.
+    stale = await _get_detection_annotation(authenticated_client, detection_id)
+    assert stale["processing_stage"] == "annotated"
+    assert stale["annotation"] == {"annotation": []}
+
+    promote_payload = {
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": True,
+                    "smoke_type": "wildfire",
+                    "false_positive_types": [],
+                    "bboxes": [
+                        {"detection_id": detection_id, "xyxyn": [0.1, 0.1, 0.2, 0.2]}
+                    ],
+                }
+            ]
+        },
+        "has_missed_smoke": False,
+        "is_unsure": False,
+        "processing_stage": "seq_annotation_done",
+    }
+    response = await authenticated_client.patch(
+        f"/annotations/sequences/{annotation_id}", json=promote_payload
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["processing_stage"] == "seq_annotation_done"
+    assert body["has_smoke"] is True
+
+    # Stale detection annotations are gone — the lane must not read as
+    # already-localized on the localize screens.
+    response = await authenticated_client.get("/annotations/detections/?sequence_id=1")
+    assert response.json()["items"] == []
+
+    # The auto-annotate reference pass was re-armed and deferred.
+    sequence = await sequence_session.get(models.Sequence, 1)
+    await sequence_session.refresh(sequence)
+    assert sequence.auto_annotate_enqueued_at is not None
+    assert deferred == {"sequence_id": 1}
+
+
+@pytest.mark.asyncio
+async def test_fp_promotion_rejected_when_lane_has_committed_boxes(
+    authenticated_client: AsyncClient, sequence_session, monkeypatch
+):
+    """A lane carrying committed localization work never demotes: 422, stage
+    untouched, detection annotations untouched, no job deferred."""
+    deferred = False
+
+    async def fake_defer(**kwargs):
+        nonlocal deferred
+        deferred = True
+
+    monkeypatch.setattr(ep.auto_annotate_sequence, "defer_async", fake_defer)
+
+    detection_id = await _create_detection(authenticated_client, "3102")
+
+    fp_payload = {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": False,
+                    "false_positive_types": ["high_cloud"],
+                    "bboxes": [
+                        {"detection_id": detection_id, "xyxyn": [0.1, 0.1, 0.2, 0.2]}
+                    ],
+                }
+            ]
+        },
+        "processing_stage": "annotated",
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+    response = await authenticated_client.post(
+        "/annotations/sequences/", json=fp_payload
+    )
+    assert response.status_code == 201
+    annotation_id = response.json()["id"]
+
+    # Give the auto-created detection annotation committed content, as a
+    # finished localization would have (written directly — the endpoint
+    # layer is not what's under test here).
+    da = await _get_detection_annotation(authenticated_client, detection_id)
+    da_row = await sequence_session.get(models.DetectionAnnotation, da["id"])
+    da_row.annotation = {
+        "annotation": [
+            {
+                "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                "class_name": "smoke",
+                "smoke_type": "wildfire",
+            }
+        ]
+    }
+    sequence_session.add(da_row)
+    await sequence_session.commit()
+
+    promote_payload = {
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": True,
+                    "smoke_type": "wildfire",
+                    "false_positive_types": [],
+                    "bboxes": [
+                        {"detection_id": detection_id, "xyxyn": [0.1, 0.1, 0.2, 0.2]}
+                    ],
+                }
+            ]
+        },
+        "has_missed_smoke": False,
+        "is_unsure": False,
+        "processing_stage": "seq_annotation_done",
+    }
+    response = await authenticated_client.patch(
+        f"/annotations/sequences/{annotation_id}", json=promote_payload
+    )
+    assert response.status_code == 422
+
+    # Nothing moved: stage, detection annotation, and no deferred job.
+    response = await authenticated_client.get(f"/annotations/sequences/{annotation_id}")
+    assert response.json()["processing_stage"] == "annotated"
+    survivor = await _get_detection_annotation(authenticated_client, detection_id)
+    assert survivor["annotation"]["annotation"] != []
+    assert not deferred
