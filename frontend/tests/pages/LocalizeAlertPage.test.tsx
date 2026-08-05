@@ -49,11 +49,12 @@ vi.mock('@/services/api', () => ({
 vi.mock('@/components/annotation/CroppedImageSequence', () => ({
   // Exposes sequenceId so tests can assert WHICH lane's strip is showing, and
   // accentColor so they can assert it's tied to that object's identity.
-  default: (props: { sequenceId: number; accentColor?: string }) => (
+  default: (props: { sequenceId: number; accentColor?: string; showBoxes?: boolean }) => (
     <div
       data-testid="cropped-image-sequence"
       data-sequence-id={props.sequenceId}
       data-accent-color={props.accentColor}
+      data-show-boxes={props.showBoxes ? 'true' : undefined}
     />
   ),
 }));
@@ -1038,6 +1039,11 @@ describe('LocalizeAlertPage', () => {
         'data-sequence-id',
         '101'
       );
+      // Localize opts in to the winner-box overlay on the loop.
+      expect(screen.getByTestId('cropped-image-sequence')).toHaveAttribute(
+        'data-show-boxes',
+        'true'
+      );
     });
 
     // Switching focus to Object 2 (segment click) carries the open disclosure
@@ -1190,6 +1196,44 @@ describe('LocalizeAlertPage', () => {
       expect(screen.getByRole('tooltip')).toHaveTextContent(
         'Submits every object still awaiting localization'
       );
+    });
+
+    it('blocks submit and explains why while a sibling object is still undecided', async () => {
+      // The queue hides such an alert; this covers a deep link or a stale
+      // tab, and mirrors the server guard on localize-submit (spec:
+      // 2026-08-05 unsure lanes gate the localize queue).
+      const detail = makeTwoLaneAlertDetail();
+      vi.mocked(apiClient.getAlertDetail).mockResolvedValue({
+        ...detail,
+        lanes: [
+          ...detail.lanes,
+          {
+            sequence: makeSequence({ id: 103, alert_api_id: 9003 }),
+            annotation: makeAnnotation({
+              id: 203,
+              sequence_id: 103,
+              is_unsure: true,
+              has_smoke: false,
+              processing_stage: 'seq_annotation_done',
+            }),
+          },
+        ],
+      });
+      mockAllFramesAccepted();
+
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      // Every workable object is boxed, so only the undecided sibling can be
+      // holding submit back.
+      await waitFor(() =>
+        expect(screen.getByText('2 of 2 objects localized')).toBeInTheDocument()
+      );
+      expect(screen.getByTestId('undecided-lanes-banner')).toBeInTheDocument();
+
+      const submit = screen.getByRole('button', { name: /Submit/ });
+      expect(submit).toBeDisabled();
+      fireEvent.click(submit);
+      expect(apiClient.localizeSubmit).not.toHaveBeenCalled();
     });
 
     it('enables once every object is accepted, submits exactly the workable annotation ids, and navigates back to the queue', async () => {
@@ -2402,7 +2446,7 @@ describe('LocalizeAlertPage', () => {
       expect(contextRow.getByRole('button', { name: 'Reclassify Object 2' })).toBeInTheDocument();
     });
 
-    it('withholds Reclassify from false-positive context rows (FP -> smoke is issue #275)', async () => {
+    it('offers Reclassify on a false-positive context row (FP -> smoke, issue #275)', async () => {
       vi.mocked(apiClient.getAlertDetail).mockResolvedValue({
         ...makeTwoLaneAlertDetail(),
         lanes: [
@@ -2427,19 +2471,16 @@ describe('LocalizeAlertPage', () => {
 
       fireEvent.click(screen.getByRole('button', { name: /False positives/ }));
 
-      // Selected, where every other row shows its actions, the false
-      // positive still shows none.
+      // Still no localization action — but the classification is correctable.
       fireEvent.click(await screen.findByTestId('localize-object-row-object-2'));
       const fpRow = within(screen.getByTestId('localize-object-row-object-2'));
-      expect(fpRow.queryByRole('button', { name: /Reclassify/ })).not.toBeInTheDocument();
+      expect(fpRow.queryByRole('button', { name: /Accept/ })).not.toBeInTheDocument();
+      fireEvent.click(fpRow.getByRole('button', { name: 'Reclassify Object 2' }));
 
-      // The smoke row above it still has one.
-      fireEvent.click(screen.getByTestId('localize-object-row-object-1'));
-      expect(
-        within(screen.getByTestId('localize-object-row-object-1')).getByRole('button', {
-          name: 'Reclassify Object 1',
-        })
-      ).toBeInTheDocument();
+      // Same destination contract as smoke rows: the row's OWN lane.
+      const destination = await screen.findByTestId('classify-destination');
+      expect(destination.getAttribute('data-lane-id')).toBe('102');
+      expect(destination.getAttribute('data-return')).toBe('/localize/101');
     });
   });
 

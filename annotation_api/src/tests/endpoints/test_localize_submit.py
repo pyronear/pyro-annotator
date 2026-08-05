@@ -391,3 +391,46 @@ async def test_fp_tracked_lane_parity(
     )
     count_after = len(listing_after.json()["items"])
     assert count_after == count_before
+
+
+@pytest.mark.asyncio
+async def test_unsettled_unsure_sibling_blocks_submit(
+    authenticated_client: AsyncClient, async_session, mock_img
+):
+    """The queue is a listing, not access control — a deep link to a blocked
+    alert must not be completable (spec: 2026-08-05 unsure lanes gate the
+    localize queue)."""
+    seq_a = await _create_sequence(
+        async_session, alert_api_id=2201, platform_alert_id=3200
+    )
+    seq_b = await _create_sequence(
+        async_session, alert_api_id=2202, platform_alert_id=3200
+    )
+    det_a = await _create_detection(authenticated_client, mock_img, seq_a.id, 2201)
+    det_b = await _create_detection(authenticated_client, mock_img, seq_b.id, 2202)
+    ann_a = await _create_sequence_annotation(
+        authenticated_client,
+        seq_a.id,
+        det_a,
+        is_smoke=True,
+        stage="seq_annotation_done",
+    )
+    await _create_sequence_annotation(
+        authenticated_client,
+        seq_b.id,
+        det_b,
+        is_smoke=True,
+        stage="seq_annotation_done",
+        is_unsure=True,
+    )
+    await _annotate_detection(authenticated_client, det_a)
+
+    resp = await authenticated_client.post(
+        "/annotations/sequences/localize-submit",
+        json={"annotation_ids": [ann_a["id"]]},
+    )
+    assert resp.status_code == 422
+    assert "undecided" in resp.json()["detail"].lower()
+
+    get_a = await authenticated_client.get(f"/annotations/sequences/{ann_a['id']}")
+    assert get_a.json()["processing_stage"] == "seq_annotation_done"

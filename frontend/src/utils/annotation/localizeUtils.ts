@@ -1,19 +1,38 @@
 import { LocalizationQueueLane } from '@/types/api';
 
 /**
- * Stage to write at classify submit (spec: smoke-localization entry point).
+ * Stage to write at classify submit (spec: smoke-localization entry point;
+ * amended by 2026-08-05 unsure lanes gate the localize queue).
+ *
  * FP-only lanes (no smoke, no missed smoke, not unsure) exit the pipeline
- * immediately; smoke / missed-smoke / unsure lanes park at
- * seq_annotation_done. An already-annotated lane is never demoted.
+ * immediately. Smoke / missed-smoke lanes park at seq_annotation_done.
+ *
+ * An unsure lane parks at seq_annotation_done — where it withholds its whole
+ * alert from localization — until it is explicitly deferred ("Undecidable for
+ * now"), which settles it at annotated with is_unsure kept true.
+ *
+ * An already-annotated lane is never demoted, with one exception (spec:
+ * fp-promote-relocalize, issue #275): a lane that did NOT need localization
+ * before this edit — an FP exit or a deferred-unsure lane — but does now
+ * re-enters at seq_annotation_done. It never had any localization work to
+ * protect, and without the demotion the correction could never be localized.
  */
 export function determineClassifySubmitStage(args: {
   currentStage: string | undefined;
   isUnsure: boolean;
   hasSmoke: boolean;
   hasMissedSmoke: boolean;
+  /** `laneNeedsLocalization()` over the lane's pre-edit flags. */
+  previouslyNeededLocalization: boolean;
+  deferred?: boolean;
 }): 'annotated' | 'seq_annotation_done' {
-  if (args.currentStage === 'annotated') return 'annotated';
-  if (!args.isUnsure && !args.hasSmoke && !args.hasMissedSmoke) return 'annotated';
+  if (args.isUnsure) return args.deferred ? 'annotated' : 'seq_annotation_done';
+  if (args.currentStage === 'annotated') {
+    return (args.hasSmoke || args.hasMissedSmoke) && !args.previouslyNeededLocalization
+      ? 'seq_annotation_done'
+      : 'annotated';
+  }
+  if (!args.hasSmoke && !args.hasMissedSmoke) return 'annotated';
   return 'seq_annotation_done';
 }
 

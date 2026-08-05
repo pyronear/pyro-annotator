@@ -15,9 +15,15 @@ Single source of truth for the auto-annotate sweep, the localization queue,
 the submit exit guard, and the GET /sequences needs_localization filter. The
 rule exists in two forms because SQL clauses and Python booleans cannot share
 code; keep them in lockstep.
+
+The module also owns the complementary question of whether a lane is SETTLED
+— see `unsettled_unsure_clause`. Needing localization is about one lane's own
+work; being unsettled is about what a lane does to its siblings.
 """
 
 from sqlalchemy import and_, or_
+
+from app.models import SequenceAnnotationProcessingStage
 
 
 def needs_localization(
@@ -32,4 +38,17 @@ def needs_localization_clause(ann):
     return and_(
         or_(ann.has_smoke.is_(True), ann.has_missed_smoke.is_(True)),
         ann.is_unsure.is_(False),
+    )
+
+
+def unsettled_unsure_clause(ann):
+    """A lane still marked unsure and parked awaiting a decision. Such a
+    lane withholds its whole alert from localization (spec: 2026-08-05
+    unsure lanes gate the localize queue) — an alert is not ready to be
+    boxed while one of its objects is undecided. Settling it as undecidable
+    moves it to annotated with is_unsure kept, which this clause excludes.
+    Parameterized over a (possibly aliased) SequenceAnnotation."""
+    return and_(
+        ann.is_unsure.is_(True),
+        ann.processing_stage == SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
     )

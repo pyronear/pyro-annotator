@@ -43,6 +43,8 @@ export interface ObjectRowProps {
     classification: 'smoke' | 'false_positive' | 'unselected'
   ) => void;
   onUnsureChange?: (cardKey: string, unsure: boolean) => void;
+  deferred?: boolean;
+  onDeferredChange?: (cardKey: string, deferred: boolean) => void;
 }
 
 export const ObjectRow: React.FC<ObjectRowProps> = ({
@@ -61,6 +63,8 @@ export const ObjectRow: React.FC<ObjectRowProps> = ({
   onBboxChange,
   onClassificationChange,
   onUnsureChange,
+  deferred,
+  onDeferredChange,
 }) => {
   const status = getObjectRowStatus({ bbox, classification, unsure });
   const expanded = isActive && !locked;
@@ -135,6 +139,8 @@ export const ObjectRow: React.FC<ObjectRowProps> = ({
             onBboxChange={onBboxChange}
             onClassificationChange={onClassificationChange}
             onUnsureChange={onUnsureChange}
+            deferred={deferred}
+            onDeferredChange={onDeferredChange}
           />
         </div>
       )}
