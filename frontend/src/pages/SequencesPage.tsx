@@ -1,5 +1,5 @@
-import { useEffect, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { Check, ListChecks, Search } from 'lucide-react';
 import { apiClient } from '@/services/api';
@@ -46,8 +46,14 @@ export default function SequencesPage({
   isReviewPage = false,
 }: SequencesPageProps = {}) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { startAnnotationWorkflow } = useSequenceStore();
   const { canLocalize } = useAuthStore();
+
+  // Skipped-backlog view (spec: alert-skip-escape-hatch). Deliberately plain
+  // state, not persisted — the backlog is a place to visit, not a mode to
+  // stay in.
+  const [showSkipped, setShowSkipped] = useState(false);
 
   // Annotated-view features apply when the page's stage filter covers 'annotated'
   const isAnnotatedView = stageFilterIncludes(defaultProcessingStage, 'annotated');
@@ -168,9 +174,27 @@ export default function SequencesPage({
     isLoading: classifyQueueLoading,
     error: classifyQueueError,
   } = useQuery({
-    queryKey: ['classify-queue', apiFilters],
-    queryFn: () => apiClient.getClassifyQueue(apiFilters),
+    queryKey: ['classify-queue', apiFilters, showSkipped],
+    queryFn: () => apiClient.getClassifyQueue({ ...apiFilters, skipped: showSkipped }),
     enabled: isQueueMode,
+  });
+
+  // Count for the "Skipped (n)" toggle label, independent of the view shown.
+  const { data: skippedCount } = useQuery({
+    queryKey: ['classify-queue-skipped-count'],
+    queryFn: () => apiClient.getClassifyQueue({ skipped: true, size: 1 }),
+    enabled: isQueueMode,
+    select: data => data.total,
+  });
+
+  const unskipMutation = useMutation({
+    mutationFn: (item: ClassifyQueueItem) =>
+      apiClient.unskipAlert(item.source_api, item.platform_alert_id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['classify-queue'] });
+      queryClient.invalidateQueries({ queryKey: ['classify-queue-skipped-count'] });
+      queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
+    },
   });
 
   const isLoading = isQueueMode ? classifyQueueLoading : classifyDoneLoading;
@@ -220,6 +244,24 @@ export default function SequencesPage({
 
     navigate(classifyDetail(clickedItem.primary_sequence_id));
   };
+
+  // Toggle between the live queue and the skipped backlog (queue mode only).
+  const skippedToggle = isQueueMode ? (
+    <button
+      type="button"
+      aria-pressed={showSkipped}
+      onClick={() => {
+        setShowSkipped(v => !v);
+        setFilters({ ...filters, page: 1 });
+      }}
+      className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 font-body text-sm font-medium ${
+        showSkipped ? 'border-char bg-ash text-char' : 'border-line bg-paper text-haze hover:bg-ash'
+      }`}
+    >
+      Skipped
+      <span className="font-data text-xs">{skippedCount ?? 0}</span>
+    </button>
+  ) : null;
 
   if (isLoading) {
     return (
@@ -277,6 +319,7 @@ export default function SequencesPage({
             </p>
           </div>
           <div className="flex items-center gap-3 flex-wrap justify-end">
+            {skippedToggle}
             <FilterPopover
               filters={filters}
               onFiltersChange={handleFilterChange}
@@ -408,6 +451,7 @@ export default function SequencesPage({
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap justify-end">
+          {skippedToggle}
           <div className="flex items-center space-x-2">
             <label htmlFor="page-size" className="font-body text-sm text-haze">
               Show:
@@ -464,6 +508,8 @@ export default function SequencesPage({
               <ClassifyAlertQueueTable
                 items={classifyQueue.items}
                 onAlertClick={handleAlertClick}
+                skippedView={showSkipped}
+                onUnskip={item => unskipMutation.mutate(item)}
               />
 
               <TablePagination
