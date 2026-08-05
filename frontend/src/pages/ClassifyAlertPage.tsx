@@ -173,6 +173,8 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
   const [activeCardKey, setActiveCardKey] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<'detections' | 'sequence'>('detections');
   const [showKeyboardModal, setShowKeyboardModal] = useState(false);
+  const [skipConfirmOpen, setSkipConfirmOpen] = useState(false);
+  const [skipNote, setSkipNote] = useState('');
   const [groupConflictWarnings, setGroupConflictWarnings] = useState<
     { message: string; groupId: number | null }[]
   >([]);
@@ -865,6 +867,46 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
     },
   });
 
+  // Escape hatch (spec: alert-skip-escape-hatch): park the whole alert when
+  // the current UI cannot express it, then move on. Queue mode only.
+  const skipAlertMutation = useMutation({
+    mutationFn: () => {
+      if (!sequence) throw new Error('Alert not loaded');
+      return apiClient.skipAlert(
+        sequence.source_api,
+        sequence.platform_alert_id,
+        skipNote.trim() || undefined
+      );
+    },
+    onSuccess: async () => {
+      setSkipConfirmOpen(false);
+      setSkipNote('');
+      queryClient.invalidateQueries({ queryKey: ['classify-queue'] });
+      queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });
+      queryClient.invalidateQueries({ queryKey: alertDetailQueryKey });
+      showToastNotification('Alert skipped', 'success');
+      // Same continuous flow as the post-submit advance, but immediate: pull
+      // the next alert from the queue, else fall back to the list.
+      try {
+        const queue = await apiClient.getClassifyQueue({ page: 1, size: 2 });
+        const next = queue.items.find(item => item.primary_sequence_id !== sequenceId);
+        if (next) {
+          clearAnnotationWorkflow();
+          navigate(classifyDetail(next.primary_sequence_id, false));
+          return;
+        }
+      } catch {
+        // Queue lookup failed — fall through to the list.
+      }
+      clearAnnotationWorkflow();
+      navigate(backUrl);
+    },
+    onError: err => {
+      showToastNotification(`Skip failed: ${extractErrorMessage(err)}`, 'error');
+    },
+  });
+
   const handleSubmit = () => {
     // The buttons disable themselves while pending, but the Enter shortcut
     // doesn't — and after a success the 1s auto-advance window would accept
@@ -1144,27 +1186,39 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
                 </button>
               }
               footer={
-                <button
-                  ref={railSubmitRef}
-                  onClick={handleSubmit}
-                  disabled={!canSubmit || submitMutation.isPending}
-                  data-testid="rail-submit"
-                  className="mx-auto flex items-center justify-center rounded-lg bg-pine px-5 py-2.5 font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                  title={submitTitle}
-                >
-                  {submitMutation.isPending ? (
-                    <div className="w-3.5 h-3.5 mr-1.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  ) : (
-                    <Upload className="w-3.5 h-3.5 mr-1.5" />
-                  )}
-                  {submitLabel}
-                  <kbd
-                    aria-hidden="true"
-                    className="ml-2 px-1 py-0.5 rounded bg-white/20 font-data text-[10px] font-medium text-white"
+                <>
+                  <button
+                    ref={railSubmitRef}
+                    onClick={handleSubmit}
+                    disabled={!canSubmit || submitMutation.isPending}
+                    data-testid="rail-submit"
+                    className="mx-auto flex items-center justify-center rounded-lg bg-pine px-5 py-2.5 font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title={submitTitle}
                   >
-                    Enter
-                  </kbd>
-                </button>
+                    {submitMutation.isPending ? (
+                      <div className="w-3.5 h-3.5 mr-1.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    ) : (
+                      <Upload className="w-3.5 h-3.5 mr-1.5" />
+                    )}
+                    {submitLabel}
+                    <kbd
+                      aria-hidden="true"
+                      className="ml-2 px-1 py-0.5 rounded bg-white/20 font-data text-[10px] font-medium text-white"
+                    >
+                      Enter
+                    </kbd>
+                  </button>
+                  {mode !== 'done' && (
+                    <button
+                      type="button"
+                      onClick={() => setSkipConfirmOpen(true)}
+                      data-testid="rail-skip"
+                      className="mx-auto mt-2 flex items-center justify-center rounded-lg border border-line bg-paper px-3 py-1.5 font-body text-xs font-medium text-haze hover:bg-ash"
+                    >
+                      Skip alert
+                    </button>
+                  )}
+                </>
               }
             >
               {renderItems.map((item, i) => {
@@ -1266,6 +1320,50 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
 
         {showKeyboardModal && (
           <ClassifyShortcutsModal onClose={() => setShowKeyboardModal(false)} />
+        )}
+
+        {skipConfirmOpen && (
+          <div
+            data-testid="skip-alert-confirm"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-char/40 px-4"
+          >
+            <div className="w-full max-w-sm rounded-lg border border-line bg-paper p-5">
+              <h2 className="font-body text-sm font-semibold text-char">Skip this alert?</h2>
+              <p className="mt-1 font-body text-xs text-haze">
+                The whole alert leaves the queue for everyone until someone unskips it.
+              </p>
+              <label
+                htmlFor="skip-note"
+                className="mt-3 block font-body text-xs font-medium text-haze"
+              >
+                Why is it hard to annotate? (optional)
+              </label>
+              <textarea
+                id="skip-note"
+                value={skipNote}
+                onChange={e => setSkipNote(e.target.value)}
+                rows={3}
+                className="mt-1 w-full rounded-lg border border-line bg-paper p-2 font-body text-sm text-char"
+              />
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSkipConfirmOpen(false)}
+                  className="inline-flex items-center rounded-lg border border-line bg-paper px-3 py-2 font-body text-sm font-medium text-char hover:bg-ash"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => skipAlertMutation.mutate()}
+                  disabled={skipAlertMutation.isPending}
+                  className="inline-flex items-center rounded-lg bg-pine px-3 py-2 font-body text-sm font-semibold text-white hover:brightness-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Skip alert
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </>

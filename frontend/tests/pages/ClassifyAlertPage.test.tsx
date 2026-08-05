@@ -20,6 +20,7 @@ vi.mock('@/services/api', () => ({
     getSequenceDetections: vi.fn(),
     updateSequenceAnnotation: vi.fn(),
     getClassifyQueue: vi.fn(),
+    skipAlert: vi.fn(),
   },
 }));
 
@@ -1582,6 +1583,80 @@ describe('ClassifyAlertPage done mode', () => {
       fireEvent.click(screen.getByRole('button', { name: /Alerts/ }));
 
       expect(navigateMock).toHaveBeenCalledWith('/classify/done');
+    });
+  });
+
+  describe('skip alert', () => {
+    it('opens the confirm dialog with an optional note field', async () => {
+      await renderAndSettle(<ClassifyAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: /Skip alert/ }));
+
+      expect(screen.getByTestId('skip-alert-confirm')).toBeInTheDocument();
+      expect(screen.getByLabelText(/optional/i)).toBeInTheDocument();
+    });
+
+    it('cancel closes without calling the API', async () => {
+      await renderAndSettle(<ClassifyAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: /Skip alert/ }));
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+      expect(screen.queryByTestId('skip-alert-confirm')).not.toBeInTheDocument();
+      expect(apiClient.skipAlert).not.toHaveBeenCalled();
+    });
+
+    it('confirm sends the trimmed note and advances', async () => {
+      vi.mocked(apiClient.skipAlert).mockResolvedValue({
+        skipped_at: '2026-08-05T10:00:00Z',
+        skipped_by: 'annotator',
+        note: 'hard to split',
+      });
+      await renderAndSettle(<ClassifyAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: /Skip alert/ }));
+      fireEvent.change(screen.getByLabelText(/optional/i), {
+        target: { value: '  hard to split  ' },
+      });
+      fireEvent.click(
+        within(screen.getByTestId('skip-alert-confirm')).getByRole('button', {
+          name: /Skip alert/,
+        })
+      );
+
+      await waitFor(() => {
+        expect(apiClient.skipAlert).toHaveBeenCalledWith('pyronear_french', 500, 'hard to split');
+      });
+      // Default queue mock is empty, so the advance falls back to the queue list.
+      await waitFor(() => {
+        expect(navigateMock).toHaveBeenCalledWith('/classify');
+      });
+    });
+
+    it('shows an error toast and keeps the dialog when the skip fails', async () => {
+      vi.mocked(apiClient.skipAlert).mockRejectedValue({ detail: 'Alert is already skipped' });
+      await renderAndSettle(<ClassifyAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: /Skip alert/ }));
+      fireEvent.click(
+        within(screen.getByTestId('skip-alert-confirm')).getByRole('button', {
+          name: /Skip alert/,
+        })
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(/already skipped/i)).toBeInTheDocument();
+      });
+      expect(screen.getByTestId('skip-alert-confirm')).toBeInTheDocument();
+      expect(navigateMock).not.toHaveBeenCalled();
+    });
+
+    it('does not offer skip in done mode', async () => {
+      await renderAndSettle(<ClassifyAlertPage mode="done" />, {
+        wrapper: makeDoneWrapper(101),
+      });
+
+      expect(screen.queryByRole('button', { name: /Skip alert/ })).not.toBeInTheDocument();
     });
   });
 });
