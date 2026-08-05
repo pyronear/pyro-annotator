@@ -442,15 +442,19 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
 
   // Reproduces a shared/reloaded `?frame=<detectionId>` link: resolves the
   // detection id against every lane's frames (independent of the editor's
-  // `:detectionId` path param — this never opens the modal), then activates
-  // + scrolls + highlights exactly like the segment click that produced the
-  // link, MINUS entering focus mode (a fresh page load reproducing "where
-  // you were looking" shouldn't also silently force crop-on + small cards).
-  // `handledFrameParamRef` guards against reprocessing the same value once
-  // handled (frameModel is rebuilt every render, so this effect re-runs
-  // often as data loads — cheap to no-op once a value's been handled) and
-  // is pre-set by `handleSegmentClick` since that path already does the
-  // scroll+highlight itself.
+  // `:detectionId` path param — this never opens the modal), then scrolls +
+  // highlights exactly like the segment click that produced the link, MINUS
+  // entering focus mode (a fresh page load reproducing "where you were
+  // looking" shouldn't also silently force crop-on + small cards). It only
+  // ACTIVATES the frame's lane on a bare alert URL (where the arrival
+  // effect below defers to it): the path is the selection's source of
+  // truth, so a stale `?frame=` from an earlier moment must not outvote the
+  // object a selection URL names — and must never navigate a deep-loaded
+  // editor URL out of its editor. `handledFrameParamRef` guards against
+  // reprocessing the same value once handled (frameModel is rebuilt every
+  // render, so this effect re-runs often as data loads — cheap to no-op
+  // once a value's been handled) and is pre-set by `handleSegmentClick`
+  // since that path already does the scroll+highlight itself.
   const frameParam = searchParams.get('frame');
   const frameParamNum = frameParam ? parseInt(frameParam, 10) : null;
   const handledFrameParamRef = useRef<number | null>(null);
@@ -463,12 +467,12 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     const target = findFrameByDetectionId(frameModel.frames, frameParamNum);
     if (!target) return; // frames not loaded yet (or an invalid id) — retries once data lands
     handledFrameParamRef.current = frameParamNum;
-    setActiveLane(target.laneSequenceId);
+    if (activeLaneId == null) setActiveLane(target.laneSequenceId);
     highlightFrame(target.recordedAt);
     requestAnimationFrame(() => {
       frameRefs.current[target.recordedAt]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
-  }, [frameParamNum, frameModel.frames, highlightFrame, setActiveLane]);
+  }, [frameParamNum, frameModel.frames, highlightFrame, setActiveLane, activeLaneId]);
 
   // The URL names both the object (`:laneId` — the lane's own sequence id) and
   // the frame (`:detectionId`). Both have to agree for the editor to open: a
@@ -759,8 +763,9 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   // left alone: `modalContext` already refuses invalid ones without
   // navigating, and rewriting an editor URL here would fight the browser's
   // back button. Guarded on `alertDetail` so nothing redirects while the
-  // page is still loading. Each navigation changes which branch runs next,
-  // so this settles in at most two hops with no loop. Deliberately NO
+  // page is still loading, and it yields to a live `?frame=` deep link —
+  // see the auto-select branch. Each navigation changes which branch runs
+  // next, so this settles in at most two hops with no loop. Deliberately NO
   // dependency array: `frameModel` and the rows derived from it are rebuilt
   // every render anyway, and the body is a cheap guarded no-op once
   // settled.
@@ -775,6 +780,18 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       const known = frameModel.objectStatus.some(o => o.laneSequenceId === selectLaneIdNum);
       if (!known) navigate(`${basePath}${location.search}`, { replace: true });
       return;
+    }
+    // A live `?frame=` deep link owns the first selection: it names the
+    // exact object+moment the link meant, and the frame effect above
+    // resolves it WITHOUT entering focus mode. Auto-select must not race it
+    // — on a warm cache both effects fire in the same commit and the last
+    // navigation would win with the wrong object. Bail while the param
+    // resolves to a loaded frame, or still might (lane detections in
+    // flight); only a param no loaded frame owns (stale/bogus id) falls
+    // through to the normal auto-select.
+    if (frameParamNum != null) {
+      const frameTarget = findFrameByDetectionId(frameModel.frames, frameParamNum);
+      if (frameTarget || laneDetectionsQueries.some(q => q.isLoading)) return;
     }
     const target = smokeObjectRows.find(o => o.workable) ?? smokeObjectRows[0];
     if (target) activateFocus(target.laneSequenceId);
@@ -1074,8 +1091,10 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   // `activeLaneId` on a lane the frame model no longer contains: every
   // remaining cell then reads as "not this object's frame", dimming the whole
   // grid and making it unclickable with no way back except clicking a row.
-  // Deselect first. `exitFocus` is a no-op when not focused, so the explicit
-  // `setActiveLaneId(null)` covers that path too.
+  // Clear the selection first — `exitFocus` is a no-op when not focused, so
+  // the explicit `setActiveLane(null)` covers that path too. The bare URL
+  // this lands on re-runs the arrival auto-select, so the cockpit moves on
+  // to the first workable object (focused) rather than to nothing.
   const handleToggleFalsePositives = () => {
     if (showFalsePositives && activeLaneIsFalsePositive) {
       exitFocus();

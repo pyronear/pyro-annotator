@@ -920,6 +920,15 @@ describe('LocalizeAlertPage', () => {
       const img = within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img');
       expect(img).toHaveAttribute('src', 'https://img.example/1002.jpg');
     });
+
+    // The arrival auto-select yielded to the deep link: the frame's own lane
+    // is the one the URL now names, and it is active WITHOUT focus mode — a
+    // reload reproducing "where you were looking" must not force crop-on.
+    expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/102');
+    expect(screen.getByTestId('object-status-row-1')).not.toHaveAttribute('data-selected');
+    expect(
+      within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img').style.transform
+    ).toBe('');
   });
 
   it('object-focus mode (the arrival auto-focus) forces crop-on + small cards without clobbering the persisted card-size preference, and restores both on deselect', async () => {
@@ -2500,6 +2509,71 @@ describe('LocalizeAlertPage', () => {
 
       await waitFor(() =>
         expect(screen.getByTestId('location')).toHaveTextContent('/localize/done/101/object/101')
+      );
+    });
+
+    it('a stale ?frame= param does not outvote the object a selection URL names', async () => {
+      // Detection 1002 belongs to lane 102, but the URL names Object 1.
+      await renderAndSettle(<LocalizeAlertPage />, {
+        wrapper: makeWrapper('/localize/101/object/101?frame=1002'),
+      });
+
+      // The frame still gets its arrival highlight…
+      await waitFor(() =>
+        expect(screen.getByTestId(`alert-frame-cell-${T1}`)).toHaveAttribute(
+          'data-highlighted',
+          'true'
+        )
+      );
+      // …but the path is the selection's source of truth.
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        '/localize/101/object/101?frame=1002'
+      );
+      expect(screen.getByText(/Frames — Object 1/)).toBeInTheDocument();
+    });
+
+    it('a deep-loaded editor URL carrying ?frame= stays in the editor', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, {
+        wrapper: makeWrapper('/localize/101/object/102/1003?frame=1002'),
+      });
+
+      await waitFor(() =>
+        expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1003')
+      );
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        '/localize/101/object/102/1003?frame=1002'
+      );
+    });
+
+    it('a selection URL naming an FP lane (toggle off) falls back to auto-select', async () => {
+      vi.mocked(apiClient.getAlertDetail).mockResolvedValue({
+        ...makeTwoLaneAlertDetail(),
+        lanes: [
+          {
+            sequence: makeSequence({ id: 101, alert_api_id: 9001 }),
+            annotation: makeAnnotation({ id: 201, sequence_id: 101 }),
+          },
+          {
+            sequence: makeSequence({ id: 102, alert_api_id: 9002 }),
+            annotation: makeAnnotation({
+              id: 202,
+              sequence_id: 102,
+              has_smoke: false,
+              smoke_types: [],
+              false_positive_types: '["cloud"]',
+            }),
+          },
+        ],
+      });
+
+      // Lane 102 exists on the alert but is a false positive — with the
+      // toggle off it is not in the frame model, so it is not URL-selectable.
+      await renderAndSettle(<LocalizeAlertPage />, {
+        wrapper: makeWrapper(localizeObjectSelect(101, 102)),
+      });
+
+      await waitFor(() =>
+        expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/101')
       );
     });
   });
