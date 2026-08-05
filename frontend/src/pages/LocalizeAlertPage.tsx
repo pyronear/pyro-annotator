@@ -223,6 +223,9 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   );
 
   const frameRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  // Rail rows by lane, so the Tab cycle can move real DOM focus onto the row
+  // it lands on — see the cycle effect below.
+  const rowRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
   const [cardSize, setCardSize] = usePersistedTabState<CardSize>('detectionAnnotateCardSize', 'md');
   const [cropMode, setCropMode] = useState(false);
@@ -831,6 +834,9 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     return (
       <LocalizeObjectRow
         key={object.laneSequenceId}
+        ref={el => {
+          rowRefs.current[object.laneSequenceId] = el;
+        }}
         label={object.label}
         color={object.color}
         confirmedCount={progress.confirmedCount}
@@ -1182,8 +1188,8 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   useEffect(() => {
     const handleTab = (e: KeyboardEvent) => {
       if (e.key !== 'Tab') return;
-      // Suspended whenever an overlay with its own focusables is up — the
-      // per-frame editor, the add-object smoke-type picker, the
+      // Suspended whenever a surface with its own focusables is up — the
+      // per-frame editor, the (inline) add-object smoke-type picker, the
       // missed-smoke submit dialog — so their controls stay
       // keyboard-reachable (mirrors classify's modal guards).
       if (detectionIdNum != null || addObjectPickerOpen || missedSmokeConfirm) return;
@@ -1195,7 +1201,14 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
         current === -1
           ? 0
           : (current + delta + orderedObjectRows.length) % orderedObjectRows.length;
-      activateFocus(orderedObjectRows[next].laneSequenceId);
+      const landed = orderedObjectRows[next].laneSequenceId;
+      activateFocus(landed);
+      // DOM focus follows the cycle, as in classify. Without this the
+      // element focused by an earlier click keeps focus, and Enter/Space
+      // fires that stale row's own activation — yanking the selection back
+      // to wherever the mouse last was. Following also gives the landed row
+      // its focus ring and screen-reader announcement.
+      rowRefs.current[landed]?.focus();
     };
     document.addEventListener('keydown', handleTab, true);
     return () => document.removeEventListener('keydown', handleTab, true);

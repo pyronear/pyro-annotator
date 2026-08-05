@@ -30,6 +30,10 @@ header or media chrome.
 - **Activation:** each step calls `activateFocus(laneId)` — the same path as
   a rail-row click. The URL replace-navigates to the object's selection route,
   the row shows selected, and the media column crops around the new object.
+- **DOM focus follows the cycle** (as in classify): the landed row receives
+  real focus, giving it the focus ring and screen-reader announcement — and
+  keeping Enter/Space acting on the row the cycle is on, never on an element
+  a previous click left focused.
 - **No active object** (FP-only alert sitting on the bare URL): Tab activates
   the first visible row.
 - **Single object:** stepping re-activates the same lane — a harmless
@@ -37,19 +41,23 @@ header or media chrome.
 
 ## Suspension
 
-The handler is inert whenever an overlay with its own focusables is up, so
+The handler is inert whenever a surface with its own focusables is up, so
 those stay keyboard-reachable (mirrors classify's modal guards):
 
 - the per-frame editor (`detectionIdNum != null`),
-- the "+ Add object" smoke-type picker (`addObjectPickerOpen`),
+- the "+ Add object" smoke-type picker (`addObjectPickerOpen`, inline in the
+  rail),
 - the missed-smoke submit dialog (`missedSmokeConfirm`).
 
 ## Accepted tradeoff
 
-Intercepting Tab makes the active row's inline Accept-boxes / Reclassify
-buttons and the "+ Add object" button unreachable by native Tab; they become
-mouse-only. Deferred to a future dedicated-shortcuts pass rather than
-complicating the cycle with per-row inner stops.
+Intercepting Tab makes everything outside the cycle unreachable by native
+Tab — the active row's inline Accept-boxes / Reclassify buttons, the
+"+ Add object" button, the missed-smoke Yes/No radios, and Submit; they
+become mouse-only. (Classify's cycle includes its missed-smoke row and
+Submit as stops; localize deliberately does not — Submit was excluded by
+design choice, and the rest is deferred to a future dedicated-shortcuts
+pass rather than complicating the cycle with non-object stops.)
 
 ## Testing
 

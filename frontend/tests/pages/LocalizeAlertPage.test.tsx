@@ -2058,6 +2058,12 @@ describe('LocalizeAlertPage', () => {
     it('Tab includes false-positive rows only while the toggle shows them', async () => {
       alertWithFalsePositive();
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      // Arrival barrier: only after the auto-select lands does a Tab prove
+      // self-cycling — fired earlier it would select lane 101 itself and
+      // pass vacuously.
+      await waitFor(() =>
+        expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/101')
+      );
 
       // Toggle off: the lone smoke object cycles onto itself.
       fireEvent.keyDown(document, { key: 'Tab' });
@@ -2638,8 +2644,12 @@ describe('LocalizeAlertPage', () => {
   describe('Tab object cycling', () => {
     it('Tab activates the next object: URL moves to its selection route and focus mode follows', async () => {
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
-      // Arrival auto-focused Object 1 (lane 101).
-      expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/101');
+      // Wait out the arrival auto-focus of Object 1 (lane 101): a Tab fired
+      // before that effect's navigation commits would legitimately select
+      // lane 101 itself (the no-active-object branch), not step off it.
+      await waitFor(() =>
+        expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/101')
+      );
 
       fireEvent.keyDown(document, { key: 'Tab' });
 
@@ -2655,6 +2665,12 @@ describe('LocalizeAlertPage', () => {
 
     it('Tab wraps past the last object; Shift+Tab steps back and wraps past the first', async () => {
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      // Arrival barrier — see the first test; without it the first Tab can
+      // race the auto-select and land on lane 101 as the no-active-object
+      // branch (CI caught exactly that).
+      await waitFor(() =>
+        expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/101')
+      );
 
       // 101 -> 102 -> wrap -> 101.
       fireEvent.keyDown(document, { key: 'Tab' });
@@ -2664,6 +2680,28 @@ describe('LocalizeAlertPage', () => {
 
       // Backward from the first wraps to the last.
       fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+      expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/102');
+    });
+
+    it('moves DOM focus with the cycle, so Enter acts on the landed row — not one left behind', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      await waitFor(() =>
+        expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/101')
+      );
+
+      // As after a real click: the browser focuses the clicked row, and the
+      // rows keep their own Enter/Space activation.
+      const row1 = screen.getByTestId('localize-object-row-object-1');
+      row1.focus();
+
+      fireEvent.keyDown(document, { key: 'Tab' });
+
+      expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/102');
+      const row2 = screen.getByTestId('localize-object-row-object-2');
+      expect(document.activeElement).toBe(row2);
+      // Enter lands on the cycled-to row: without focus following the cycle,
+      // it would fire row 1's own handler and yank the selection back.
+      fireEvent.keyDown(row2, { key: 'Enter' });
       expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/102');
     });
 
