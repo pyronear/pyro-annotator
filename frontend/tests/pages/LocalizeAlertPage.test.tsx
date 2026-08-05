@@ -2613,6 +2613,39 @@ describe('LocalizeAlertPage', () => {
     });
   });
 
+  describe('Tab object cycling', () => {
+    it('Tab activates the next object: URL moves to its selection route and focus mode follows', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      // Arrival auto-focused Object 1 (lane 101).
+      expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/101');
+
+      fireEvent.keyDown(document, { key: 'Tab' });
+
+      expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/102');
+      // Focus mode came along: the rail row shows the selected treatment.
+      await waitFor(() =>
+        expect(screen.getByTestId('localize-object-row-object-2')).toHaveAttribute(
+          'data-active',
+          'true'
+        )
+      );
+    });
+
+    it('Tab wraps past the last object; Shift+Tab steps back and wraps past the first', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      // 101 -> 102 -> wrap -> 101.
+      fireEvent.keyDown(document, { key: 'Tab' });
+      expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/102');
+      fireEvent.keyDown(document, { key: 'Tab' });
+      expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/101');
+
+      // Backward from the first wraps to the last.
+      fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+      expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/102');
+    });
+  });
+
   describe('reclassify', () => {
     it("navigates to the row's OWN lane in classify done mode, carrying a return to this page", async () => {
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });

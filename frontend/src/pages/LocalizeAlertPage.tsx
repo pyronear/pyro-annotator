@@ -1170,6 +1170,32 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [detectionIdNum]);
 
+  // Tab / Shift+Tab step the objects exactly as the rail displays them —
+  // smoke first, false positives only while shown — wrapping at the ends
+  // and activating each step immediately (classify-style one-step cycling;
+  // spec: 2026-08-05 localize tab object cycling). Capture-phase and always
+  // preventDefault: the key strictly cycles objects and never escapes to
+  // the header or media chrome. Deliberately NO dependency array, matching
+  // the arrival effect above: everything the handler closes over
+  // (`orderedObjectRows`, `activateFocus`) is rebuilt every render anyway,
+  // and re-subscribing is a cheap way to never read stale rows.
+  useEffect(() => {
+    const handleTab = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return;
+      if (orderedObjectRows.length === 0) return;
+      e.preventDefault();
+      const current = orderedObjectRows.findIndex(o => o.laneSequenceId === activeLaneId);
+      const delta = e.shiftKey ? -1 : 1;
+      const next =
+        current === -1
+          ? 0
+          : (current + delta + orderedObjectRows.length) % orderedObjectRows.length;
+      activateFocus(orderedObjectRows[next].laneSequenceId);
+    };
+    document.addEventListener('keydown', handleTab, true);
+    return () => document.removeEventListener('keydown', handleTab, true);
+  });
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-96">
