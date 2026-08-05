@@ -532,7 +532,14 @@ describe('LocalizeAlertPage', () => {
   it('clicking a grid cell opens the editor WITHOUT entering focus mode', async () => {
     await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
-    // Auto-select made Object 1 (lane 101) active; T1 shows its detection.
+    // Arrival auto-focused Object 1 — exit focus first (second row click)
+    // so the unfocused-active state this test pins is actually in play.
+    fireEvent.click(screen.getByTestId('localize-object-row-object-1'));
+    await waitFor(() =>
+      expect(screen.getByTestId('object-status-row-0')).not.toHaveAttribute('data-selected')
+    );
+
+    // Object 1 (lane 101) is still active; T1 shows its detection.
     fireEvent.click(screen.getByTestId(`alert-frame-cell-${T1}`));
 
     await waitFor(() => {
@@ -801,10 +808,10 @@ describe('LocalizeAlertPage', () => {
 
     await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
-    // The action lives on the selected row, so reaching it goes through
-    // selecting the object it belongs to. Scoped to the row because the media
-    // column's CTA bar offers the same action for the same object.
-    fireEvent.click(screen.getByTestId('localize-object-row-object-1'));
+    // The action lives on the selected row — and arrival auto-focus already
+    // selected Object 1, so it's reachable directly. Scoped to the row
+    // because the media column's CTA bar offers the same action for the
+    // same object.
     fireEvent.click(
       within(screen.getByTestId('localize-object-row-object-1')).getByRole('button', {
         name: "Accept Object 1's boxes",
@@ -833,8 +840,11 @@ describe('LocalizeAlertPage', () => {
     await waitFor(() => expect(screen.getByTestId('status-segment-0-0')).toBeInTheDocument());
 
     const grid = container.querySelector('.grid') as HTMLElement;
-    expect(grid.style.gridTemplateColumns).toContain('340px'); // default 'md'
+    // Arrival auto-focus forces small cards (the preference stays 'md').
+    expect(grid.style.gridTemplateColumns).toContain('240px');
 
+    // An explicit size click while focused both writes the preference and
+    // takes visible effect immediately.
     fireEvent.click(screen.getByTitle('Large cards'));
 
     expect(grid.style.gridTemplateColumns).toContain('500px');
@@ -844,20 +854,24 @@ describe('LocalizeAlertPage', () => {
   it('crop mode zooms grid cells around the active object\'s boxes (toolbar + "c" shortcut)', async () => {
     await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
-    // Auto-select already made Object 1 active, so the toggle bites
-    // immediately — there is no object-less state to be inert in.
-    fireEvent.click(screen.getByTitle('Crop cells (C)'));
-
+    // Arrival auto-focus already turned crop on around Object 1's boxes.
     await waitFor(() => {
       const img = within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img');
       expect(img.style.transform).toContain('scale(');
     });
 
-    // The 'c' shortcut toggles it back off.
+    // The 'c' shortcut toggles it off…
     fireEvent.keyDown(window, { key: 'c' });
     await waitFor(() => {
       const img = within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img');
       expect(img.style.transform).toBe('');
+    });
+
+    // …and the toolbar button turns it back on.
+    fireEvent.click(screen.getByTitle('Crop cells (C)'));
+    await waitFor(() => {
+      const img = within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img');
+      expect(img.style.transform).toContain('scale(');
     });
   });
 
@@ -908,18 +922,15 @@ describe('LocalizeAlertPage', () => {
     });
   });
 
-  it('object-focus mode (row click) forces crop-on + small cards without clobbering the persisted card-size preference, and restores both on deselect', async () => {
+  it('object-focus mode (the arrival auto-focus) forces crop-on + small cards without clobbering the persisted card-size preference, and restores both on deselect', async () => {
     localStorage.setItem('detectionAnnotateCardSize', 'lg');
 
     const { container } = render(<LocalizeAlertPage />, { wrapper });
     await waitFor(() => expect(screen.getByTestId('status-segment-0-0')).toBeInTheDocument());
 
     const grid = container.querySelector('.grid') as HTMLElement;
-    expect(grid.style.gridTemplateColumns).toContain('500px'); // persisted 'lg'
 
-    fireEvent.click(screen.getByRole('button', { name: 'Go to Object 1' }));
-
-    // Focus mode: the grid is forced to small cards...
+    // Arrival auto-focus: the grid is forced to small cards...
     await waitFor(() => expect(grid.style.gridTemplateColumns).toContain('240px'));
     // ...crop is applied to the now-active object's cell...
     await waitFor(() => {
@@ -945,10 +956,8 @@ describe('LocalizeAlertPage', () => {
 
   it("switching focus to another object (segment click) keeps the ORIGINAL pre-focus settings for restore, not the most recent object's", async () => {
     await renderAndSettle(<LocalizeAlertPage />, { wrapper });
-    // Neither cropMode (default false) nor cardSize (default 'md', no
-    // persisted value) has been touched yet.
-
-    fireEvent.click(screen.getByRole('button', { name: 'Go to Object 1' }));
+    // Arrival auto-focus stashed the true pre-focus state (crop off, card
+    // size 'md' — nothing had been touched before the redirect landed).
     await waitFor(() => {
       const img = within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img');
       expect(img.style.transform).toContain('scale(');
@@ -991,11 +1000,8 @@ describe('LocalizeAlertPage', () => {
   it("the active row's disclosure shows that lane's cropped strip, stays open across a lane switch, and persists after exiting focus", async () => {
     await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
-    expect(screen.queryByTestId('cropped-image-sequence')).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Go to Object 1' }));
-
-    // Selecting alone doesn't unfold it — the row's own control does.
+    // Arrival auto-focus already selected Object 1 — but selection alone
+    // doesn't unfold the strip, the disclosure control does.
     await waitFor(() => {
       expect(screen.getByTestId('localize-object-row-object-1')).toHaveAttribute('data-active');
     });
@@ -1044,7 +1050,7 @@ describe('LocalizeAlertPage', () => {
   it('collapses the loop again on a second click of the disclosure', async () => {
     await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Go to Object 1' }));
+    // Arrival auto-focus already selected Object 1.
     await expandCrop();
     await waitFor(() => {
       expect(screen.getByTestId('cropped-image-sequence')).toBeInTheDocument();
@@ -1064,22 +1070,6 @@ describe('LocalizeAlertPage', () => {
   // the actions beside it — NOT focus mode. Closing the frame editor leaves a
   // lane active without re-entering focus, and that is exactly when someone is
   // most obviously working one object, so the loop stays reachable there.
-  it('offers the disclosure for a lane active without focus (the arrival auto-selection)', async () => {
-    await renderAndSettle(<LocalizeAlertPage />, { wrapper });
-
-    // Auto-select made lane 101 active WITHOUT entering focus mode — and
-    // that is enough for the disclosure to be offered.
-    expect(screen.getByTestId('object-status-row-0')).not.toHaveAttribute('data-selected');
-
-    await expandCrop();
-    await waitFor(() => {
-      expect(screen.getByTestId('cropped-image-sequence')).toHaveAttribute(
-        'data-sequence-id',
-        '101'
-      );
-    });
-  });
-
   // The strip carries the object's overlay colour, the same tie-to-identity
   // classify's media panel makes — with several objects in an alert, an
   // uncoloured crop is ambiguous about whose plume it is.
@@ -1099,7 +1089,7 @@ describe('LocalizeAlertPage', () => {
   it('exiting focus restores the pre-focus crop mode while the object stays active', async () => {
     await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Go to Object 1' }));
+    // Arrival auto-focus selected Object 1; open its cropped loop.
     await expandCrop();
     await waitFor(() => {
       expect(screen.getByTestId('cropped-image-sequence')).toBeInTheDocument();
@@ -1127,8 +1117,8 @@ describe('LocalizeAlertPage', () => {
 
     const grid = container.querySelector('.grid') as HTMLElement;
 
-    fireEvent.click(screen.getByRole('button', { name: 'Go to Object 1' }));
-    await waitFor(() => expect(grid.style.gridTemplateColumns).toContain('240px')); // forced 'sm'
+    // Arrival auto-focus forces 'sm'.
+    await waitFor(() => expect(grid.style.gridTemplateColumns).toContain('240px'));
 
     fireEvent.click(screen.getByTitle('Medium cards'));
 
@@ -2429,13 +2419,20 @@ describe('LocalizeAlertPage', () => {
       expect(screen.getByText(/Frames — Object 2/)).toBeInTheDocument();
     });
 
-    it('a bare alert URL replace-redirects to the first workable object', async () => {
+    it('a bare alert URL replace-redirects to the first workable object, arriving focused', async () => {
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
       await waitFor(() =>
         expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/101')
       );
       expect(screen.getByText(/Frames — Object 1/)).toBeInTheDocument();
+      // The auto-selection is a full focus entry, as if the row was clicked:
+      // row selected, cells cropped around the object's boxes.
+      expect(screen.getByTestId('object-status-row-0')).toHaveAttribute('data-selected', 'true');
+      await waitFor(() => {
+        const img = within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img');
+        expect(img.style.transform).toContain('scale(');
+      });
     });
 
     it('the auto-select redirect replaces history — Back returns to the list, not the bare URL', async () => {

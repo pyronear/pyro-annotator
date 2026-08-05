@@ -28,10 +28,14 @@ Fallbacks, in order:
 3. If there are no smoke lanes at all (FP-only view): stay on the bare URL
    with no selection.
 
-Auto-selection is **active only**: the Frames panel titles itself with the
-object, the action panel and cropped loop become available, but the grid keeps
-showing the whole alert. Focus mode (grid filtered to one object's frames)
-remains a deliberate rail-row click, exactly as today.
+Auto-selection enters **object-focus mode**, exactly as if the annotator had
+clicked the first workable row: the row shows selected, the cells crop-zoom
+around the object's boxes, and the cards drop to small. (Revised 2026-08-05
+after live review — the original design chose "active only", but seeing it,
+arriving already looking at the object is what the workflow wants.)
+Directly-loaded selection URLs and editor-close navigation stay
+non-focusing: a reload reproducing "where you were" shouldn't silently force
+crop-on.
 
 ## Routes
 

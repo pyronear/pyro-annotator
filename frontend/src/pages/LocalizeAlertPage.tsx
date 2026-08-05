@@ -747,17 +747,23 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   // replace-redirects to the first workable smoke object — the thing the
   // annotator will act on — falling back to the first smoke object when all
   // are done, and staying bare (nothing selected) only when the view has no
-  // smoke lanes at all. A selection URL naming a lane the current frame
-  // model doesn't contain (stale link, lane removed by reclassify, or an FP
-  // lane while the toggle is off) falls back to the bare URL, which re-runs
-  // the auto-select. Editor URLs are left alone: `modalContext` already
-  // refuses invalid ones without navigating, and rewriting an editor URL
-  // here would fight the browser's back button. Guarded on `alertDetail` so
-  // nothing redirects while the page is still loading. Each navigation
-  // changes which branch runs next, so this settles in at most two hops
-  // with no loop. Deliberately NO dependency array: `frameModel` and the
-  // rows derived from it are rebuilt every render anyway, and the body is a
-  // cheap guarded no-op once settled.
+  // smoke lanes at all. The auto-selection enters object-focus mode
+  // (`activateFocus`), exactly as if the annotator had clicked that row:
+  // the cockpit opens looking at the first object, row selected and cells
+  // cropped around its boxes. Directly-loaded selection URLs deliberately
+  // do NOT get that treatment — a reload reproducing "where you were"
+  // shouldn't silently force crop-on + small cards. A selection URL naming
+  // a lane the current frame model doesn't contain (stale link, lane
+  // removed by reclassify, or an FP lane while the toggle is off) falls
+  // back to the bare URL, which re-runs the auto-select. Editor URLs are
+  // left alone: `modalContext` already refuses invalid ones without
+  // navigating, and rewriting an editor URL here would fight the browser's
+  // back button. Guarded on `alertDetail` so nothing redirects while the
+  // page is still loading. Each navigation changes which branch runs next,
+  // so this settles in at most two hops with no loop. Deliberately NO
+  // dependency array: `frameModel` and the rows derived from it are rebuilt
+  // every render anyway, and the body is a cheap guarded no-op once
+  // settled.
   useEffect(() => {
     if (!alertDetail || sequenceIdNum == null || laneIdNum != null) return;
     if (selectLaneIdNum != null) {
@@ -771,7 +777,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       return;
     }
     const target = smokeObjectRows.find(o => o.workable) ?? smokeObjectRows[0];
-    if (target) setActiveLane(target.laneSequenceId);
+    if (target) activateFocus(target.laneSequenceId);
   });
 
   const isObjectLocalized = (object: AlertObjectStatus): boolean => {
