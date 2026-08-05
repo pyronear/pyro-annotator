@@ -32,7 +32,7 @@ REPR_BBOX = {"xyxyn": [0.35, 0.35, 0.45, 0.45], "confidence": 0.9}
 
 
 async def _seed_labeled_group_and_sequence(
-    session: AsyncSession, *, sequences_bbox: list
+    session: AsyncSession, *, sequences_bbox: list, is_validated: bool = False
 ) -> int:
     """Seed a labeled group plus one ungrouped sequence (two detections, one
     curated READY_TO_ANNOTATE annotation with `sequences_bbox`). Returns the
@@ -45,6 +45,7 @@ async def _seed_labeled_group_and_sequence(
         smoke_type="wildfire",
         is_unsure=True,
         labeled_at=ts,
+        is_validated=is_validated,
     )
     seq = Sequence(
         source_api="pyronear_french",
@@ -166,6 +167,42 @@ async def test_inheritance_regenerates_when_annotation_empty(
         assert track["smoke_type"] == "wildfire"
     assert (
         anno.processing_stage == SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE
+    )
+
+
+@pytest.mark.asyncio
+async def test_validated_group_never_gains_members(
+    async_session: AsyncSession,
+    test_user: User,
+):
+    """A newcomer matching a validated group spawns a fresh group instead of
+    joining: membership freezes at validation, and no label reaches the
+    newcomer from the frozen group."""
+    seq_id = await _seed_labeled_group_and_sequence(
+        async_session, sequences_bbox=[], is_validated=True
+    )
+
+    result = await assign_ungrouped_sequences(async_session, user_id=test_user.id)
+    assert result.joined_existing == 0
+    assert result.new_groups == 1
+
+    seq = await async_session.get(Sequence, seq_id)
+    await async_session.refresh(seq)
+    validated_group = (
+        (
+            await async_session.execute(
+                select(SequenceGroup).where(SequenceGroup.is_validated.is_(True))
+            )
+        )
+        .scalars()
+        .one()
+    )
+    assert seq.sequence_group_id is not None
+    assert seq.sequence_group_id != validated_group.id
+
+    anno = await _get_annotation(async_session, seq_id)
+    assert (
+        anno.processing_stage == SequenceAnnotationProcessingStage.READY_TO_ANNOTATE
     )
 
 

@@ -205,6 +205,10 @@ async def _run_assignment(session: AsyncSession, user_id: int) -> AssignGroupsRe
         candidates_query = select(SequenceGroup).where(
             SequenceGroup.camera_id == seq.camera_id,
             SequenceGroup.azimuth == seq.azimuth,
+            # Validation freezes membership: the member set a human confirmed
+            # must stay exactly what they confirmed. Later matches for the
+            # same camera/azimuth open a fresh unvalidated group instead.
+            SequenceGroup.is_validated.is_(False),
         )
         candidates = (await session.execute(candidates_query)).scalars().all()
 
