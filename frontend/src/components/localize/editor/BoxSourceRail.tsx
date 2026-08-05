@@ -13,9 +13,21 @@ import { useEffect, useRef } from 'react';
 import { Pencil, Eraser, Check } from 'lucide-react';
 import type { BoxCandidate } from '@/utils/annotation/objectBoxCandidates';
 import { computeSquareCrop } from '@/utils/annotation/squareCropUtils';
-import { SOURCE_COLOR, SOURCE_LABEL, SOURCE_ORDER, SOURCE_WEIGHT } from './sourceIdentity';
+import { SOURCE_COLOR, SOURCE_LABEL, SOURCE_ORDER } from './sourceIdentity';
 
 const CROP_RES = 128;
+/**
+ * One stroke weight for every row, in the crop's own 128px space (it renders
+ * at ~44px, so this lands near 2 display px).
+ *
+ * Deliberately NOT the stage's `SOURCE_WEIGHT` ladder: scaled down by 0.35 its
+ * thinnest rung falls under one display pixel and antialiases into a pale
+ * line, so engine — always the lowest-confidence row — looked like it was
+ * being faded by its confidence. The ladder communicates on the full-size
+ * stage; here it only costs legibility, and the row's label and swatch
+ * already say which source this is.
+ */
+const CROP_STROKE = 5;
 
 export interface BoxSourceRailProps {
   candidates: BoxCandidate[];
@@ -73,14 +85,13 @@ function CandidateCrop({
       const y = toY(candidate.xyxyn[1]);
       const w = toX(candidate.xyxyn[2]) - x;
       const h = toY(candidate.xyxyn[3]) - y;
-      const weight = SOURCE_WEIGHT[candidate.source];
       // Dark halo first, colour over it — the same trick the stage uses, so a
       // bright stroke stays visible against a bright sky.
       ctx.strokeStyle = 'rgba(0,0,0,0.65)';
-      ctx.lineWidth = weight + 2;
+      ctx.lineWidth = CROP_STROKE + 3;
       ctx.strokeRect(x, y, w, h);
       ctx.strokeStyle = SOURCE_COLOR[candidate.source];
-      ctx.lineWidth = weight;
+      ctx.lineWidth = CROP_STROKE;
       ctx.strokeRect(x, y, w, h);
     };
     img.src = imageUrl;
