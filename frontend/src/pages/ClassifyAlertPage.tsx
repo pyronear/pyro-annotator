@@ -34,7 +34,10 @@ import {
 } from '@/types/api';
 import { useSequenceStore } from '@/store/useSequenceStore';
 import { hasUserAnnotations, getInitialMissedSmokeReview } from '@/utils/annotation/sequenceUtils';
-import { determineClassifySubmitStage } from '@/utils/annotation/localizeUtils';
+import {
+  determineClassifySubmitStage,
+  laneNeedsLocalization,
+} from '@/utils/annotation/localizeUtils';
 import { createKeyboardHandler } from '@/utils/annotation/keyboardUtils';
 import { getObjectColor, ObjectOverlay } from '@/utils/annotation/objectColors';
 import { getProcessingStageLabel } from '@/utils/processingStage';
@@ -695,8 +698,6 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
           const bboxes = laneBboxes[lane.sequence.id] ?? [];
           const unsure = laneUnsure[lane.sequence.id] ?? false;
           const deferred = laneDeferred[lane.sequence.id] ?? false;
-          const wasDeferredUnsure =
-            initialSnapshotRef.current?.laneDeferred[lane.sequence.id] ?? false;
           const hasSmokeNow = unsure ? false : bboxes.some(b => b.is_smoke);
           const hasMissedSmokeForLane = isMissedSmokeCarrier && !unsure ? hasMissedSmoke : false;
           const updates: Partial<SequenceAnnotation> = {
@@ -706,8 +707,11 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
               isUnsure: unsure,
               hasSmoke: hasSmokeNow,
               hasMissedSmoke: hasMissedSmokeForLane,
+              // Covers #289's deferred-unsure case too: a lane that loaded
+              // deferred-unsure was is_unsure pre-edit, so it did not need
+              // localization before this edit.
+              previouslyNeededLocalization: laneNeedsLocalization(lane.annotation!),
               deferred,
-              wasDeferredUnsure,
             }),
             has_smoke: hasSmokeNow,
             has_false_positives: unsure
@@ -749,6 +753,7 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
             isUnsure: unsure,
             hasSmoke,
             hasMissedSmoke: hasMissedSmokeForLane,
+            previouslyNeededLocalization: laneNeedsLocalization(lane.annotation),
           }),
         });
       });
@@ -760,6 +765,10 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.SEQUENCE_ANNOTATIONS });
       queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
       queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });
+      // A promoted FP lane's stale detection annotations were deleted
+      // server-side (#275); without this the localize page redraws the lane
+      // against the cached ones and shows every frame as already confirmed.
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.DETECTION_ANNOTATIONS });
 
       const warnings = response.results
         .filter(r => r.group_propagation_warning)
