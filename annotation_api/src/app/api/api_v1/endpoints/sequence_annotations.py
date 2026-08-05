@@ -55,7 +55,10 @@ from app.services.annotation_generation import (
     apply_label_to_sequences_bbox,
     derive_group_label_from_annotation,
 )
-from app.services.localization_rule import needs_localization
+from app.services.localization_rule import (
+    needs_localization,
+    unsettled_unsure_clause,
+)
 
 router = APIRouter()
 logger = logging.getLogger("uvicorn.error")
@@ -1181,6 +1184,30 @@ async def localize_submit(
             detail=(
                 f"Annotation(s) {sorted(wrong_stage_ids)} are not at "
                 "seq_annotation_done; refresh the queue and retry"
+            ),
+        )
+
+    # An alert with an undecided object is not ready for localization (spec:
+    # 2026-08-05 unsure lanes gate the localize queue). The queue already
+    # hides it; this stops a deep link or a stale tab from completing it.
+    alert_source_api, alert_platform_id = next(iter(alert_keys))
+    undecided = (
+        await session.execute(
+            select(func.count(SequenceAnnotation.id))
+            .join(Sequence, Sequence.id == SequenceAnnotation.sequence_id)
+            .where(
+                Sequence.source_api == alert_source_api,
+                Sequence.platform_alert_id == alert_platform_id,
+                unsettled_unsure_clause(SequenceAnnotation),
+            )
+        )
+    ).scalar_one()
+    if undecided > 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"Cannot submit: {undecided} object(s) of this alert are still "
+                "undecided (marked unsure). Settle them in Classify first."
             ),
         )
 
