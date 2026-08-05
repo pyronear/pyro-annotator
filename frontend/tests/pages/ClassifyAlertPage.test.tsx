@@ -1372,6 +1372,31 @@ describe('ClassifyAlertPage done mode', () => {
     await waitFor(() => expect(navigateMock).toHaveBeenCalled(), { timeout: 2000 });
   });
 
+  it('demotes a promoted FP lane to seq_annotation_done in its PATCH (issue #275)', async () => {
+    await renderAndSettle(<ClassifyAlertPage mode="done" />, { wrapper: makeDoneWrapper(101) });
+
+    // Flip the FP lane (102 / annotation 202) to smoke + a smoke type.
+    const cardB = openRow('102:0');
+    fireEvent.click(cardB.getByRole('radio', { name: 'Smoke' }));
+    fireEvent.click(cardB.getByRole('radio', { name: 'Wildfire' }));
+
+    const submitButton = screen.getAllByRole('button', { name: /Save changes/ })[0];
+    expect(submitButton).not.toBeDisabled();
+    fireEvent.click(submitButton);
+
+    await waitFor(() => expect(apiClient.updateSequenceAnnotation).toHaveBeenCalledTimes(1));
+    expect(apiClient.updateSequenceAnnotation).toHaveBeenCalledWith(
+      202,
+      expect.objectContaining({
+        processing_stage: 'seq_annotation_done',
+        has_smoke: true,
+      })
+    );
+
+    // Drain the success path's deferred navigate (see the sibling PATCH test).
+    await waitFor(() => expect(navigateMock).toHaveBeenCalled(), { timeout: 2000 });
+  });
+
   it('an alert-level missed-smoke-only change makes the primary lane "changed" and is saved on its PATCH', async () => {
     await renderAndSettle(<ClassifyAlertPage mode="done" />, { wrapper: makeDoneWrapper(101) });
 

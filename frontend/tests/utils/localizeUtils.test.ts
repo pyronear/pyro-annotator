@@ -20,13 +20,14 @@ const lane = (id: number, over: Partial<LocalizationQueueLane> = {}): Localizati
 });
 
 describe('determineClassifySubmitStage', () => {
-  it('already-finalised stays annotated', () =>
+  it('already-finalised stays annotated (localized smoke lane edited while still smoke)', () =>
     expect(
       determineClassifySubmitStage({
         currentStage: 'annotated',
         isUnsure: false,
         hasSmoke: true,
         hasMissedSmoke: false,
+        previouslyNeededLocalization: true,
       })
     ).toBe('annotated'));
 
@@ -37,6 +38,7 @@ describe('determineClassifySubmitStage', () => {
         isUnsure: false,
         hasSmoke: false,
         hasMissedSmoke: false,
+        previouslyNeededLocalization: false,
       })
     ).toBe('annotated'));
 
@@ -47,6 +49,7 @@ describe('determineClassifySubmitStage', () => {
         isUnsure: false,
         hasSmoke: true,
         hasMissedSmoke: false,
+        previouslyNeededLocalization: false,
       })
     ).toBe('seq_annotation_done'));
 
@@ -57,6 +60,7 @@ describe('determineClassifySubmitStage', () => {
         isUnsure: false,
         hasSmoke: false,
         hasMissedSmoke: true,
+        previouslyNeededLocalization: false,
       })
     ).toBe('seq_annotation_done'));
 
@@ -67,8 +71,53 @@ describe('determineClassifySubmitStage', () => {
         isUnsure: true,
         hasSmoke: false,
         hasMissedSmoke: false,
+        previouslyNeededLocalization: false,
       })
     ).toBe('seq_annotation_done'));
+
+  it('promoted FP lane (annotated, now needs localization) demotes to seq_annotation_done', () =>
+    expect(
+      determineClassifySubmitStage({
+        currentStage: 'annotated',
+        isUnsure: false,
+        hasSmoke: true,
+        hasMissedSmoke: false,
+        previouslyNeededLocalization: false,
+      })
+    ).toBe('seq_annotation_done'));
+
+  it('FP lane corrected to missed smoke also demotes', () =>
+    expect(
+      determineClassifySubmitStage({
+        currentStage: 'annotated',
+        isUnsure: false,
+        hasSmoke: false,
+        hasMissedSmoke: true,
+        previouslyNeededLocalization: false,
+      })
+    ).toBe('seq_annotation_done'));
+
+  it('FP lane staying FP keeps annotated', () =>
+    expect(
+      determineClassifySubmitStage({
+        currentStage: 'annotated',
+        isUnsure: false,
+        hasSmoke: false,
+        hasMissedSmoke: false,
+        previouslyNeededLocalization: false,
+      })
+    ).toBe('annotated'));
+
+  it('FP lane flipped to unsure keeps annotated (unsure does not need localization)', () =>
+    expect(
+      determineClassifySubmitStage({
+        currentStage: 'annotated',
+        isUnsure: true,
+        hasSmoke: false,
+        hasMissedSmoke: false,
+        previouslyNeededLocalization: false,
+      })
+    ).toBe('annotated'));
 });
 
 describe('pickNextLocalizeLane', () => {

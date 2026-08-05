@@ -7,7 +7,10 @@ import { QUERY_KEYS } from '@/utils/constants';
 import { SequenceAnnotation, SequenceBbox } from '@/types/api';
 import { useSequenceStore } from '@/store/useSequenceStore';
 import { getAnnotationProgress, isAnnotationComplete } from '@/utils/annotation/progressUtils';
-import { determineClassifySubmitStage } from '@/utils/annotation/localizeUtils';
+import {
+  determineClassifySubmitStage,
+  laneNeedsLocalization,
+} from '@/utils/annotation/localizeUtils';
 import {
   createBboxChangeHandler,
   createMissedSmokeHandler,
@@ -215,12 +218,14 @@ export default function AnnotationInterface({ mode }: AnnotationInterfaceProps =
           sequences_bbox: updatedBboxes, // Always preserve the actual bbox data
         },
         // FP-only lanes exit the pipeline at classify submit; smoke lanes park
-        // at seq_annotation_done for localization. Never demotes 'annotated'.
+        // at seq_annotation_done for localization. Never demotes 'annotated',
+        // except a promoted FP lane, which re-enters localization (#275).
         processing_stage: determineClassifySubmitStage({
           currentStage: annotation?.processing_stage,
           isUnsure,
           hasSmoke: hasSmokeNow,
           hasMissedSmoke: hasMissedSmokeNow,
+          previouslyNeededLocalization: annotation ? laneNeedsLocalization(annotation) : false,
         }),
         // Update derived fields - all false for unsure sequences
         has_smoke: hasSmokeNow,

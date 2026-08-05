@@ -34,7 +34,10 @@ import {
 } from '@/types/api';
 import { useSequenceStore } from '@/store/useSequenceStore';
 import { hasUserAnnotations, getInitialMissedSmokeReview } from '@/utils/annotation/sequenceUtils';
-import { determineClassifySubmitStage } from '@/utils/annotation/localizeUtils';
+import {
+  determineClassifySubmitStage,
+  laneNeedsLocalization,
+} from '@/utils/annotation/localizeUtils';
 import { createKeyboardHandler } from '@/utils/annotation/keyboardUtils';
 import { getObjectColor, ObjectOverlay } from '@/utils/annotation/objectColors';
 import { getProcessingStageLabel } from '@/utils/processingStage';
@@ -679,6 +682,7 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
               isUnsure: unsure,
               hasSmoke: hasSmokeNow,
               hasMissedSmoke: hasMissedSmokeForLane,
+              previouslyNeededLocalization: laneNeedsLocalization(lane.annotation!),
             }),
             has_smoke: hasSmokeNow,
             has_false_positives: unsure
@@ -720,6 +724,7 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
             isUnsure: unsure,
             hasSmoke,
             hasMissedSmoke: hasMissedSmokeForLane,
+            previouslyNeededLocalization: laneNeedsLocalization(lane.annotation),
           }),
         });
       });

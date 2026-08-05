@@ -4,15 +4,25 @@ import { LocalizationQueueLane } from '@/types/api';
  * Stage to write at classify submit (spec: smoke-localization entry point).
  * FP-only lanes (no smoke, no missed smoke, not unsure) exit the pipeline
  * immediately; smoke / missed-smoke / unsure lanes park at
- * seq_annotation_done. An already-annotated lane is never demoted.
+ * seq_annotation_done. An already-annotated lane is never demoted, with one
+ * exception (spec: fp-promote-relocalize, issue #275): a lane that did NOT
+ * need localization before this edit (an FP exit) but does now re-enters at
+ * seq_annotation_done — it never had any localization work to protect.
  */
 export function determineClassifySubmitStage(args: {
   currentStage: string | undefined;
   isUnsure: boolean;
   hasSmoke: boolean;
   hasMissedSmoke: boolean;
+  /** `laneNeedsLocalization()` over the lane's pre-edit flags. */
+  previouslyNeededLocalization: boolean;
 }): 'annotated' | 'seq_annotation_done' {
-  if (args.currentStage === 'annotated') return 'annotated';
+  const nowNeedsLocalization = (args.hasSmoke || args.hasMissedSmoke) && !args.isUnsure;
+  if (args.currentStage === 'annotated') {
+    return nowNeedsLocalization && !args.previouslyNeededLocalization
+      ? 'seq_annotation_done'
+      : 'annotated';
+  }
   if (!args.isUnsure && !args.hasSmoke && !args.hasMissedSmoke) return 'annotated';
   return 'seq_annotation_done';
 }
