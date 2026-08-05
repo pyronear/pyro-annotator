@@ -666,7 +666,7 @@ export function LocalizeObjectEditor({
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-ash">
-      <div className="flex h-12 flex-none items-center gap-3 border-b border-line bg-paper px-4">
+      <div className="relative flex h-12 flex-none items-center gap-3 border-b border-line bg-paper px-4">
         <span
           data-testid="editor-object-identity"
           className="inline-flex items-center gap-2 border-l-2 pl-2.5 font-body text-sm font-medium text-char"
@@ -703,6 +703,22 @@ export function LocalizeObjectEditor({
           <span className="inline-flex rounded-full bg-signal-soft px-2 py-1 font-body text-xs font-semibold text-signal">
             not part of this object
           </span>
+        )}
+
+        {/* Centred on the bar rather than tucked in the rail: it acts on the
+            whole object, not on the frame the rail is about, and it is the
+            one control here that moves the work forward. Pine and this exact
+            treatment are what the cockpit's own Accept wears — the two are
+            the same motion from two places. */}
+        {acceptRemainingCount > 0 && editable && (
+          <button
+            type="button"
+            data-testid="editor-accept-remaining"
+            onClick={() => setAcceptOpen(true)}
+            className="absolute left-1/2 -translate-x-1/2 inline-flex items-center whitespace-nowrap rounded-lg bg-pine px-3 py-1 font-body text-xs font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Accept the model on {acceptRemainingCount} more
+          </button>
         )}
 
         <span className="ml-auto font-data text-detail text-haze">
@@ -760,8 +776,6 @@ export function LocalizeObjectEditor({
           onCommit={commitCandidate}
           onDraw={() => setIsDrawMode(true)}
           onClear={clear}
-          acceptRemainingCount={acceptRemainingCount}
-          onAcceptRemaining={() => setAcceptOpen(true)}
         />
       </div>
 

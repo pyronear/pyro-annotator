@@ -27,9 +27,6 @@ export interface BoxSourceRailProps {
   onCommit: (candidate: BoxCandidate) => void;
   onDraw: () => void;
   onClear: () => void;
-  /** Frames of this object still without a box; hides the action at 0. */
-  acceptRemainingCount: number;
-  onAcceptRemaining: () => void;
 }
 
 /** The union of every candidate box — one region shared by all rows. */
@@ -109,8 +106,6 @@ export function BoxSourceRail({
   onCommit,
   onDraw,
   onClear,
-  acceptRemainingCount,
-  onAcceptRemaining,
 }: BoxSourceRailProps) {
   const region = unionBox(candidates);
 
@@ -182,24 +177,6 @@ export function BoxSourceRail({
       <p className="mt-3 font-body text-detail leading-relaxed text-haze">
         Drawing replaces the box on this frame. Each object carries one box per frame.
       </p>
-
-      {acceptRemainingCount > 0 && (
-        <>
-          <hr className="my-4 border-0 border-t border-line" />
-          <p className="mb-2 font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
-            Rest of this object
-          </p>
-          <button
-            type="button"
-            data-testid="editor-accept-remaining"
-            disabled={disabled}
-            onClick={onAcceptRemaining}
-            className="inline-flex w-full items-center justify-center rounded-lg border border-line bg-paper px-3 py-2 font-body text-sm font-medium text-char hover:bg-ash focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:opacity-40"
-          >
-            Accept the model on {acceptRemainingCount} more
-          </button>
-        </>
-      )}
     </div>
   );
 }
