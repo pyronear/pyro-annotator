@@ -298,6 +298,65 @@ describe('LocalizeObjectEditor', () => {
     expect(screen.getByTestId('ghost-box-auto-0')).toBeInTheDocument();
   });
 
+  it('releases the preview when the hovered row wins a commit', () => {
+    // Engine is the only candidate, so Enter commits the very row being
+    // hovered — which disables it in place, and a disabled button never
+    // fires mouseleave. The commit itself must release the preview, or the
+    // stage keeps a dashed read-only ghost where the solid committed box
+    // should be. The open detection never changes here (navigation is the
+    // URL's job, mocked away), so no frame-change reset runs either.
+    const engineOnly = {
+      ...firstDetection,
+      auto_predictions: { predictions: [] },
+    } as unknown as Detection;
+    const { rerender } = renderLoadedEditor({
+      detection: engineOnly,
+      laneDetections: [engineOnly, lastDetection],
+    });
+
+    fireEvent.mouseOver(screen.getByTestId('source-row-engine'));
+    fireEvent.keyDown(window, { key: 'Enter' });
+
+    // The save round-trip lands the commit.
+    rerender(
+      editorWith({
+        detection: engineOnly,
+        laneDetections: [engineOnly, lastDetection],
+        existingAnnotation: committedAnnotation(engineOnly.id, 'engine'),
+      })
+    );
+    fireEvent.load(screen.getByAltText(/^Detection /));
+    expect(screen.getByTestId('committed-box')).toBeInTheDocument();
+    expect(screen.queryByTestId('ghost-box-engine-0')).not.toBeInTheDocument();
+  });
+
+  it('drops the preview when peeking out of range, so it is not stale on return', () => {
+    renderLoadedEditor();
+    fireEvent.mouseOver(screen.getByTestId('source-row-engine'));
+    expect(screen.getByTestId('ghost-box-engine-0')).toBeInTheDocument();
+
+    // Peek disables the rail in place — no mouseleave will ever fire — and
+    // does not change detection.id, so the frame-change reset never runs.
+    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+    expect(screen.queryByTestId('ghost-box-engine-0')).not.toBeInTheDocument();
+    expect(screen.getByTestId('ghost-box-auto-0')).toBeInTheDocument();
+  });
+
+  it('leaves Enter to a focused rail row, so it commits what it previews', () => {
+    const onCommit = vi.fn();
+    renderLoadedEditor({ onCommit });
+    const row = screen.getByTestId('source-row-engine');
+    row.focus();
+
+    // Enter pressed ON the row must not reach the global accept-and-next —
+    // the row's focus preview shows engine, and the button's own native
+    // activation is what commits it. (jsdom doesn't run native activation,
+    // so the observable here is the suppressed global commit.)
+    fireEvent.keyDown(row, { key: 'Enter' });
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
   it('Escape closes', () => {
     const onClose = vi.fn();
     renderEditor({ onClose });
@@ -372,6 +431,21 @@ describe('LocalizeObjectEditor canvas', () => {
       expect.objectContaining({ id: firstDetection.id }),
       [expect.objectContaining({ origin: 'human' })]
     );
+  });
+
+  it('suspends a preview while a box is being drawn', () => {
+    renderLoadedEditor();
+    fireEvent.focus(screen.getByTestId('source-row-engine'));
+    expect(screen.getByTestId('ghost-box-engine-0')).toBeInTheDocument();
+
+    // Mid-drag the preview yields: the stage is about the box being drawn,
+    // with the idle pick ghost back as its reference.
+    const image = stubGeometry();
+    fireEvent.mouseDown(image, { button: 0, clientX: 40, clientY: 40 });
+    fireEvent.mouseMove(image, { clientX: 400, clientY: 300 });
+    expect(screen.queryByTestId('ghost-box-engine-0')).not.toBeInTheDocument();
+    expect(screen.getByTestId('ghost-box-auto-0')).toBeInTheDocument();
+    fireEvent.mouseUp(image);
   });
 
   it('treats a press that never moved as a click, not a box', () => {

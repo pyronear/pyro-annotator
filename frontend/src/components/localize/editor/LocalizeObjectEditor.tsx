@@ -241,18 +241,30 @@ export function LocalizeObjectEditor({
 
   // --- Commit -------------------------------------------------------------
 
+  // Every write also drops any live preview. A commit can disable the very
+  // row being hovered (Enter with one candidate), and a disabled button never
+  // fires mouseleave — without this the stage would keep a dashed read-only
+  // ghost where the freshly committed box should be.
   const commitCandidate = useCallback(
-    (candidate: BoxCandidate) => onCommit(detection, [candidateToBbox(candidate, smokeType)]),
+    (candidate: BoxCandidate) => {
+      setPreviewed(null);
+      onCommit(detection, [candidateToBbox(candidate, smokeType)]);
+    },
     [detection, smokeType, onCommit]
   );
 
   const commitDrawn = useCallback(
-    (xyxyn: [number, number, number, number]) =>
-      onCommit(detection, [candidateToBbox({ source: 'manual', index: 0, xyxyn }, smokeType)]),
+    (xyxyn: [number, number, number, number]) => {
+      setPreviewed(null);
+      onCommit(detection, [candidateToBbox({ source: 'manual', index: 0, xyxyn }, smokeType)]);
+    },
     [detection, smokeType, onCommit]
   );
 
-  const clear = useCallback(() => onCommit(detection, []), [detection, onCommit]);
+  const clear = useCallback(() => {
+    setPreviewed(null);
+    onCommit(detection, []);
+  }, [detection, onCommit]);
 
   clearRef.current = clear;
 
@@ -284,6 +296,11 @@ export function LocalizeObjectEditor({
         setPeeked(null);
         onNavigateToDetection(entry.detectionId);
       } else {
+        // Peeking disables the rail in place, so no mouseleave will ever
+        // release a preview — and detection.id doesn't change, so the
+        // frame-change reset won't either. Drop it here or it comes back
+        // stale on return.
+        setPreviewed(null);
         setPeeked(entry);
       }
     },
@@ -883,7 +900,7 @@ export function LocalizeObjectEditor({
             detection={shownDetection}
             committed={editable ? stageCommitted : null}
             ghosts={editable ? ghosts : []}
-            showGhosts={ghosts.length > 0}
+            showGhosts={editable && ghosts.length > 0}
             selected={editable && boxSelected}
             selectedSmokeType={smokeType}
             objectOverlays={showOtherObjects ? objectOverlays : []}

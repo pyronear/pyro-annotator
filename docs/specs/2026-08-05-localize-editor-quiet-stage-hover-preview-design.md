@@ -73,15 +73,32 @@ identity (`sourceIdentity.ts`) all stay exactly as they are.
 
 - `LocalizeObjectEditor` gains `previewedCandidate: BoxCandidate | null`
   state, set by new `onPreview(candidate | null)` callbacks from
-  `BoxSourceRail` rows (mouseenter/mouseleave + focus/blur on the row
-  **wrapper**, not the button — browsers do not fire mouse events on disabled
-  `<button>`s).
+  `BoxSourceRail` rows. The handlers live on the row **button** after all,
+  not a wrapper: previews only ever target enabled rows, so the
+  disabled-button event gap does not apply to *starting* one. What it does
+  threaten is *releasing* one — a row can disable in place while hovered
+  (its candidate wins a commit, or a peek disables the rail) and a disabled
+  button never fires mouseleave. Robustness therefore lives in the editor,
+  not in DOM wiring: every write (`commitCandidate` / `commitDrawn` /
+  `clear`) and every peek start clears the preview, and the rail's
+  leave/blur release is unconditional.
 - The existing `ghostsOverridden: boolean` becomes the three-state cycle
   (`'pick' | 'all' | 'none'`), still reset on `detection.id` change.
 - The committed/ghosts props passed to `DetectionAnnotationCanvas` are derived
   from (cycle state, preview, committed, candidates); the canvas component
   itself needs no new rendering path — a preview renders through the existing
   ghost layer.
+
+## Amendments from review
+
+- **Enter on a focused rail row commits that row.** The focus preview shows
+  the row's own candidate, so the global Enter (accept the priority pick)
+  would commit something other than what the stage is showing. The row
+  button stops Enter's propagation and lets its native activation do the
+  commit. Enter anywhere else keeps its global meaning.
+- The "wrapper, not button" note above originally mandated wrapper-level
+  event wiring; superseded as described (editor-level clears are the
+  robustness layer).
 
 ## Testing
 

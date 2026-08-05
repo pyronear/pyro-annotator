@@ -145,7 +145,7 @@ export function BoxSourceRail({
         const invitesDrawing = source === 'manual' && !candidate;
         // Only rows that could change the stage preview: the committed row is
         // already what's on stage, and disabled/empty rows have nothing to show.
-        const previewable = !disabled && candidate && !isCommitted;
+        const previewable = Boolean(!disabled && candidate && !isCommitted);
         return (
           <Tooltip key={source} tip={SOURCE_EXPLANATION[source]} className="mb-1.5 w-full">
             <button
@@ -153,10 +153,18 @@ export function BoxSourceRail({
               data-testid={`source-row-${source}`}
               aria-pressed={isCommitted}
               disabled={disabled || !candidate || isCommitted}
-              onMouseEnter={() => previewable && onPreview(candidate)}
-              onMouseLeave={() => previewable && onPreview(null)}
-              onFocus={() => previewable && onPreview(candidate)}
-              onBlur={() => previewable && onPreview(null)}
+              onMouseEnter={() => previewable && candidate && onPreview(candidate)}
+              // Releasing is idempotent, so leave/blur are unconditional — a
+              // row that stopped being previewable mid-hover must still let go.
+              onMouseLeave={() => onPreview(null)}
+              onFocus={() => previewable && candidate && onPreview(candidate)}
+              onBlur={() => onPreview(null)}
+              onKeyDown={e => {
+                // A focused row previews ITS candidate, so Enter must commit
+                // that row — the button's own native activation — rather than
+                // bubbling to the editor's global accept-the-priority-pick.
+                if (e.key === 'Enter') e.stopPropagation();
+              }}
               onClick={() => {
                 if (!candidate || isCommitted) return;
                 // Committing disables this row in place, and a disabled button
