@@ -51,6 +51,14 @@ check.
   safety net for a lost defer.
 - **FP → unsure stays `annotated`** (an unsure lane does not need
   localization). Out of scope.
+  *Amended after the 2026-08-05 "unsure lanes gate the localize queue" spec
+  merged: an undeferred unsure lane now always parks at
+  `seq_annotation_done` (it withholds its alert from localization until
+  settled), so FP → unsure re-parks rather than staying `annotated`. That
+  spec's rule takes precedence in `determineClassifySubmitStage`; its
+  `wasDeferredUnsure` argument was absorbed by
+  `previouslyNeededLocalization`, which covers the deferred-unsure case by
+  construction (an unsure lane never needed localization pre-edit).*
 
 ## Design
 

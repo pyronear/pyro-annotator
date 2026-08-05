@@ -49,11 +49,12 @@ vi.mock('@/services/api', () => ({
 vi.mock('@/components/annotation/CroppedImageSequence', () => ({
   // Exposes sequenceId so tests can assert WHICH lane's strip is showing, and
   // accentColor so they can assert it's tied to that object's identity.
-  default: (props: { sequenceId: number; accentColor?: string }) => (
+  default: (props: { sequenceId: number; accentColor?: string; showBoxes?: boolean }) => (
     <div
       data-testid="cropped-image-sequence"
       data-sequence-id={props.sequenceId}
       data-accent-color={props.accentColor}
+      data-show-boxes={props.showBoxes ? 'true' : undefined}
     />
   ),
 }));
@@ -1003,6 +1004,11 @@ describe('LocalizeAlertPage', () => {
         'data-sequence-id',
         '101'
       );
+      // Localize opts in to the winner-box overlay on the loop.
+      expect(screen.getByTestId('cropped-image-sequence')).toHaveAttribute(
+        'data-show-boxes',
+        'true'
+      );
     });
 
     // Switching focus to Object 2 (segment click) carries the open disclosure
@@ -1155,6 +1161,44 @@ describe('LocalizeAlertPage', () => {
       expect(screen.getByRole('tooltip')).toHaveTextContent(
         'Submits every object still awaiting localization'
       );
+    });
+
+    it('blocks submit and explains why while a sibling object is still undecided', async () => {
+      // The queue hides such an alert; this covers a deep link or a stale
+      // tab, and mirrors the server guard on localize-submit (spec:
+      // 2026-08-05 unsure lanes gate the localize queue).
+      const detail = makeTwoLaneAlertDetail();
+      vi.mocked(apiClient.getAlertDetail).mockResolvedValue({
+        ...detail,
+        lanes: [
+          ...detail.lanes,
+          {
+            sequence: makeSequence({ id: 103, alert_api_id: 9003 }),
+            annotation: makeAnnotation({
+              id: 203,
+              sequence_id: 103,
+              is_unsure: true,
+              has_smoke: false,
+              processing_stage: 'seq_annotation_done',
+            }),
+          },
+        ],
+      });
+      mockAllFramesAccepted();
+
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      // Every workable object is boxed, so only the undecided sibling can be
+      // holding submit back.
+      await waitFor(() =>
+        expect(screen.getByText('2 of 2 objects localized')).toBeInTheDocument()
+      );
+      expect(screen.getByTestId('undecided-lanes-banner')).toBeInTheDocument();
+
+      const submit = screen.getByRole('button', { name: /Submit/ });
+      expect(submit).toBeDisabled();
+      fireEvent.click(submit);
+      expect(apiClient.localizeSubmit).not.toHaveBeenCalled();
     });
 
     it('enables once every object is accepted, submits exactly the workable annotation ids, and navigates back to the queue', async () => {

@@ -85,7 +85,26 @@ describe('LocalizeQueueTable', () => {
     render(<LocalizeQueueTable items={[item]} onItemClick={onItemClick} />);
 
     expect(screen.getByTitle('False negative — smoke was missed')).toBeInTheDocument();
-    expect(screen.getByText('+2')).toBeInTheDocument();
+    // +1, not +2: the FP lane is not one of this screen's objects, so it is
+    // outside the rollup — the count now agrees with the Objects column,
+    // which has always counted localizable lanes only.
+    expect(screen.getByText('+1')).toBeInTheDocument();
+  });
+
+  it('an unsure sibling does not take over the row outcome', () => {
+    // Unsure outranks TP in rollupOutcomes' precedence, so before the
+    // localizable-only rollup this row advertised `?` for an object the
+    // localize screen never shows (spec: 2026-08-05 unsure lanes gate the
+    // localize queue).
+    const item = createItem({
+      lanes: [createLane(), createLane({ sequence_id: 12, is_unsure: true })],
+    });
+    render(<LocalizeQueueTable items={[item]} onItemClick={onItemClick} />);
+
+    expect(
+      screen.getByTitle('True positive — model correctly detected smoke')
+    ).toBeInTheDocument();
+    expect(screen.queryByTitle('Unsure — needs review')).not.toBeInTheDocument();
   });
 
   it('renders column tooltips', () => {

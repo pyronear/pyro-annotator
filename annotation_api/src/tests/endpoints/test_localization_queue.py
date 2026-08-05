@@ -282,6 +282,60 @@ async def test_missed_smoke_only_alert_surfaces(
 
 
 @pytest.mark.asyncio
+async def test_unsettled_unsure_sibling_blocks_alert(
+    authenticated_client: AsyncClient, async_session
+):
+    """A ready smoke lane does not pull its alert in while a sibling is
+    still undecided (spec: unsure lanes gate the localize queue)."""
+    await _lane(
+        async_session,
+        alert_api_id=500,
+        platform_alert_id=500,
+        stage=Stage.SEQ_ANNOTATION_DONE,
+        has_smoke=True,
+        auto_annotated=True,
+    )
+    await _lane(
+        async_session,
+        alert_api_id=1_000_500_001,
+        platform_alert_id=500,
+        stage=Stage.SEQ_ANNOTATION_DONE,
+        has_smoke=True,
+        is_unsure=True,
+    )
+    resp = await authenticated_client.get("/sequences/localization-queue")
+    assert resp.json()["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_settled_unsure_sibling_does_not_block(
+    authenticated_client: AsyncClient, async_session
+):
+    """An unsure lane closed as undecidable (annotated + is_unsure) is
+    settled, so its alert is available for localization."""
+    await _lane(
+        async_session,
+        alert_api_id=500,
+        platform_alert_id=500,
+        stage=Stage.SEQ_ANNOTATION_DONE,
+        has_smoke=True,
+        auto_annotated=True,
+    )
+    await _lane(
+        async_session,
+        alert_api_id=1_000_500_001,
+        platform_alert_id=500,
+        stage=Stage.ANNOTATED,
+        has_smoke=True,
+        is_unsure=True,
+    )
+    resp = await authenticated_client.get("/sequences/localization-queue")
+    data = resp.json()
+    assert data["total"] == 1
+    assert len(data["items"][0]["lanes"]) == 2
+
+
+@pytest.mark.asyncio
 async def test_requires_auth(async_client: AsyncClient):
     resp = await async_client.get("/sequences/localization-queue")
     assert resp.status_code in (401, 403)
