@@ -19,6 +19,8 @@ interface CroppedImageSequenceProps {
   sequenceId: number;
   /** Ties the crop to its object: a thin viewport frame in the object's overlay color. */
   accentColor?: string;
+  /** Draw each frame's winner boxes on the crop, in the accent color. */
+  showBoxes?: boolean;
   /**
    * CSS max-width for the square viewport, e.g. `min(100%, 22vh)`. The
    * viewport is always square and always centred; only its ceiling changes.
@@ -43,6 +45,7 @@ export default function CroppedImageSequence({
   bboxes,
   sequenceId,
   accentColor,
+  showBoxes = false,
   maxSize,
   className = '',
 }: CroppedImageSequenceProps) {
@@ -225,7 +228,27 @@ export default function CroppedImageSequence({
     }
     ctx.clearRect(0, 0, CANVAS_RES, CANVAS_RES);
     ctx.drawImage(img, crop.x, crop.y, crop.size, crop.size, 0, 0, CANVAS_RES, CANVAS_RES);
-  }, [bboxes, currentIndex, images, zoomLevel]);
+
+    if (showBoxes) {
+      // ALL of the current detection's boxes, not just bboxes[currentIndex]:
+      // a multi-box detection appears as consecutive identical loop entries
+      // (one image per box), and drawing one box per entry would flicker
+      // between them. 4px at the 840 backing res ≈ 2 CSS px on screen.
+      const detectionId = bboxes[currentIndex]?.detection_id;
+      ctx.strokeStyle = accentColor ?? '#f97316';
+      ctx.lineWidth = 4;
+      for (const box of bboxes) {
+        if (box.detection_id !== detectionId) continue;
+        const [x1, y1, x2, y2] = box.xyxyn;
+        ctx.strokeRect(
+          ((x1 * img.naturalWidth - crop.x) / crop.size) * CANVAS_RES,
+          ((y1 * img.naturalHeight - crop.y) / crop.size) * CANVAS_RES,
+          (((x2 - x1) * img.naturalWidth) / crop.size) * CANVAS_RES,
+          (((y2 - y1) * img.naturalHeight) / crop.size) * CANVAS_RES
+        );
+      }
+    }
+  }, [bboxes, currentIndex, images, zoomLevel, showBoxes, accentColor]);
 
   // Mirrors `zoomLevel` for the wheel handler, which is bound once (see below)
   // and so can't close over the state value.
