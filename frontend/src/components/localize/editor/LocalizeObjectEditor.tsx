@@ -31,6 +31,14 @@ import {
 } from '@/utils/annotation/objectBoxCandidates';
 import { buildFilmstripEntries, type FilmstripEntry } from '@/utils/annotation/objectFilmstrip';
 import { computeCellCrop } from '@/utils/annotation/gridCropUtils';
+
+/**
+ * Framing for the stage's zoom-to-object view. Looser than the grid's own
+ * defaults on both axes: the object should read clearly without the sky and
+ * ridge around it disappearing, since "is this box on the right plume?" is
+ * answered by the surroundings, not by the box.
+ */
+const OBJECT_FRAMING = { targetFill: 0.32, maxScale: 3 };
 import type { AlertFrame } from '@/utils/annotation/alertLocalizeUtils';
 import {
   calculateImageBounds,
@@ -137,7 +145,11 @@ export function LocalizeObjectEditor({
   // someone else's? — is better served by the cockpit grid behind, and
   // becomes primary only when ADDING an object (issue #287's sibling work).
   const [showOtherObjects, setShowOtherObjects] = useState(false);
-  const [cropView, setCropView] = useState(false);
+  // Opens framed on the object rather than on the whole landscape: the frame
+  // is 16:9 of mostly sky and ridge, and judging a box means seeing the plume.
+  // Generously though — see OBJECT_FRAMING — because the context around it is
+  // what tells you the box is on the RIGHT plume. R drops back to full frame.
+  const [cropView, setCropView] = useState(true);
   const [acceptOpen, setAcceptOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const acceptAnchorRef = useRef<HTMLDivElement>(null);
@@ -308,7 +320,7 @@ export function LocalizeObjectEditor({
     }
     const boxes = committed ? [committed] : candidates;
     if (boxes.length === 0) return;
-    const crop = computeCellCrop(boxes);
+    const crop = computeCellCrop(boxes, OBJECT_FRAMING);
     setZoomLevel(crop.scale);
     setPanOffset({ x: 0, y: 0 });
     setTransformOrigin({ x: crop.originX, y: crop.originY });

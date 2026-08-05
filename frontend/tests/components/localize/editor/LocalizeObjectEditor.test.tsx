@@ -535,6 +535,42 @@ describe('LocalizeObjectEditor chrome', () => {
     expect(screen.queryByText(/accept & next/i)).not.toBeInTheDocument();
   });
 
+  it('opens framed on the object, not on the whole landscape', () => {
+    renderLoadedEditor({ existingAnnotation: committedAnnotation(firstDetection.id, 'auto') });
+    // The fixture box spans 0.1 of the frame, so the framing wants 3.2x and
+    // the ceiling holds it at 3.
+    expect(screen.getByAltText(/^Detection /)).toHaveStyle({
+      transform: 'scale(3) translate(0px, 0px)',
+    });
+  });
+
+  it('R drops back to the full frame', () => {
+    renderLoadedEditor({ existingAnnotation: committedAnnotation(firstDetection.id, 'auto') });
+    fireEvent.keyDown(window, { key: 'r' });
+    expect(screen.getByAltText(/^Detection /)).toHaveStyle({
+      transform: 'scale(1) translate(0px, 0px)',
+    });
+  });
+
+  it('Z toggles back to the object framing', () => {
+    renderLoadedEditor({ existingAnnotation: committedAnnotation(firstDetection.id, 'auto') });
+    fireEvent.keyDown(window, { key: 'r' });
+    fireEvent.keyDown(window, { key: 'z' });
+    expect(screen.getByAltText(/^Detection /)).toHaveStyle({
+      transform: 'scale(3) translate(0px, 0px)',
+    });
+  });
+
+  it('stays at the full frame when the object has no box to frame', () => {
+    renderLoadedEditor({
+      detection: detectionWithNoBoxes,
+      laneDetections: [detectionWithNoBoxes, lastDetection],
+    });
+    expect(screen.getByAltText(/^Detection /)).toHaveStyle({
+      transform: 'scale(1) translate(0px, 0px)',
+    });
+  });
+
   it('reports an in-flight save', () => {
     renderEditor({ isSaving: true });
     expect(screen.getByText('Saving…')).toBeInTheDocument();

@@ -41,7 +41,28 @@ export function focusOnMainObject<T extends { xyxyn: number[] }>(
   return focused.length > 0 ? focused : boxes;
 }
 
-export function computeCellCrop(boxes: { xyxyn: number[] }[]): CellCrop {
+/**
+ * Tuning for one caller's idea of "framed".
+ *
+ * The grid's defaults are tight on purpose — a cell is small and the object
+ * has to survive being one of many. The object editor passes a lower fill and
+ * a lower ceiling, because there the object is the only subject and the sky
+ * and ridge around it are what tell you whether the box is on the right
+ * plume.
+ */
+export interface CellCropOptions {
+  /** Fraction of the viewport the boxes' union should occupy. */
+  targetFill?: number;
+  /** Ceiling on the zoom. */
+  maxScale?: number;
+}
+
+export function computeCellCrop(
+  boxes: { xyxyn: number[] }[],
+  options: CellCropOptions = {}
+): CellCrop {
+  const targetFill = options.targetFill ?? TARGET_FILL;
+  const maxScale = options.maxScale ?? MAX_SCALE;
   if (boxes.length === 0) return { scale: 1, originX: 50, originY: 50 };
 
   let x1 = 1,
@@ -56,7 +77,7 @@ export function computeCellCrop(boxes: { xyxyn: number[] }[]): CellCrop {
   }
 
   const span = Math.max(x2 - x1, y2 - y1);
-  const scale = Math.min(MAX_SCALE, Math.max(1, TARGET_FILL / Math.max(span, 1e-6)));
+  const scale = Math.min(maxScale, Math.max(1, targetFill / Math.max(span, 1e-6)));
 
   return {
     scale: round2(scale),
