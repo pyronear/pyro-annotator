@@ -31,6 +31,7 @@ from sqlalchemy import (
     ARRAY,
     String,
 )
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import aliased
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -56,6 +57,7 @@ from app.models import (
     AnnotationType,
 )
 from app.schemas.annotation_validation import SequenceAnnotationData, SequenceBBox
+from app.schemas.detection import DetectionRead
 from app.schemas.sequence import (
     AddObjectRequest,
     AlertDetail,
@@ -66,6 +68,7 @@ from app.schemas.sequence import (
     LocalizationQueueItem,
     LocalizationQueueLane,
     LocalizeDoneQueueItem,
+    MaterializeFrameRequest,
     SequenceCreate,
     SequenceRead,
 )
@@ -834,6 +837,101 @@ async def add_object(
         sequence=SequenceRead(**seq_dict),
         annotation=SequenceAnnotationRead(**annotation_dict),
     )
+
+
+def _detection_read(det: Detection) -> DetectionRead:
+    return DetectionRead(
+        **{c.name: getattr(det, c.name) for c in det.__table__.columns}
+    )
+
+
+@router.post(
+    "/{sequence_id}/frames",
+    status_code=status.HTTP_201_CREATED,
+    summary="Materialize a gap frame into a lane so a human can box it",
+)
+async def materialize_frame(
+    response: Response,
+    sequence_id: int = Path(..., gt=0),
+    payload: MaterializeFrameRequest = Body(...),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> DetectionRead:
+    """Issue #287: a lane holds Detection rows only for the frames its object
+    was detected on, so earlier frames — where the plume was fainter — cannot
+    be annotated. This inserts the one-frame equivalent of add_object's clone:
+    the sibling's photo (shared bucket_key, no S3 traffic) with an empty
+    engine track, because the AI did not detect this object here. Idempotent:
+    posting a frame the lane already has returns it with 200."""
+    lane = await session.get(Sequence, sequence_id)
+    if lane is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Sequence not found"
+        )
+
+    existing = (
+        (
+            await session.execute(
+                select(Detection).where(
+                    Detection.sequence_id == sequence_id,
+                    Detection.recorded_at == payload.recorded_at,
+                )
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if existing is not None:
+        response.status_code = status.HTTP_200_OK
+        return _detection_read(existing)
+
+    if lane.platform_alert_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Sequence has no alert siblings",
+        )
+
+    sibling = (
+        (
+            await session.execute(
+                select(Detection)
+                .join(Sequence, Detection.sequence_id == Sequence.id)
+                .where(
+                    Sequence.source_api == lane.source_api,
+                    Sequence.platform_alert_id == lane.platform_alert_id,
+                    Sequence.id != sequence_id,
+                    Detection.recorded_at == payload.recorded_at,
+                )
+                .order_by(asc(Detection.alert_api_id))
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if sibling is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="No sibling lane has a detection at this recorded_at",
+        )
+
+    detection = Detection(
+        sequence_id=sequence_id,
+        recorded_at=payload.recorded_at,
+        alert_api_id=sibling.alert_api_id,
+        bucket_key=sibling.bucket_key,
+        algo_predictions={"predictions": []},
+    )
+    session.add(detection)
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The sibling frame's alert_api_id is already present in this lane",
+        )
+    await session.refresh(detection)
+    return _detection_read(detection)
 
 
 # NOTE: declared before GET /{sequence_id} — the int path converter would
