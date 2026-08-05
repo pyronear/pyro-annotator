@@ -39,6 +39,12 @@ export interface BoxSourceRailProps {
   disabled: boolean;
   onCommit: (candidate: BoxCandidate) => void;
   onClear: () => void;
+  /**
+   * Solo-preview this candidate on the stage (null to release). Fired on
+   * hover and keyboard focus; never for the committed or empty rows, whose
+   * preview would be a no-op.
+   */
+  onPreview: (candidate: BoxCandidate | null) => void;
 }
 
 /** The union of every candidate box — one region shared by all rows. */
@@ -116,6 +122,7 @@ export function BoxSourceRail({
   disabled,
   onCommit,
   onClear,
+  onPreview,
 }: BoxSourceRailProps) {
   const region = unionBox(candidates);
 
@@ -136,6 +143,9 @@ export function BoxSourceRail({
         // row says how. There is no mode to arm any more, so it points at the
         // canvas rather than being a control of its own.
         const invitesDrawing = source === 'manual' && !candidate;
+        // Only rows that could change the stage preview: the committed row is
+        // already what's on stage, and disabled/empty rows have nothing to show.
+        const previewable = !disabled && candidate && !isCommitted;
         return (
           <Tooltip key={source} tip={SOURCE_EXPLANATION[source]} className="mb-1.5 w-full">
             <button
@@ -143,7 +153,17 @@ export function BoxSourceRail({
               data-testid={`source-row-${source}`}
               aria-pressed={isCommitted}
               disabled={disabled || !candidate || isCommitted}
-              onClick={() => candidate && !isCommitted && onCommit(candidate)}
+              onMouseEnter={() => previewable && onPreview(candidate)}
+              onMouseLeave={() => previewable && onPreview(null)}
+              onFocus={() => previewable && onPreview(candidate)}
+              onBlur={() => previewable && onPreview(null)}
+              onClick={() => {
+                if (!candidate || isCommitted) return;
+                // Committing disables this row in place, and a disabled button
+                // never fires mouseleave — release the preview now.
+                onPreview(null);
+                onCommit(candidate);
+              }}
               className={`flex w-full items-center gap-2.5 rounded-lg border p-2 text-left transition-colors ${
                 isCommitted ? 'border-pine bg-pine-soft' : 'border-transparent'
               } ${candidate && !isCommitted ? 'hover:bg-ash' : ''} ${

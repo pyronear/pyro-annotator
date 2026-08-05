@@ -153,6 +153,8 @@ export function LocalizeObjectEditor({
   // `G` cycles what the idle stage draws: the default pick, every candidate
   // at once, or nothing at all — the bare plume.
   const [boxVisibility, setBoxVisibility] = useState<BoxVisibility>('pick');
+  // A rail row being hovered or focused: the stage shows only that candidate.
+  const [previewed, setPreviewed] = useState<BoxCandidate | null>(null);
   // The OTHER objects' boxes on this frame, off by default. On this screen
   // color means *source* (manual/auto/engine), and the object-identity
   // palette overlaps it closely enough that a blue dashed box would be
@@ -215,10 +217,13 @@ export function LocalizeObjectEditor({
    * comparison with the rest. `G` cycles to "all" (every candidate stacked,
    * on demand) and "none" (the bare plume).
    */
+  // A preview never interrupts an interaction already underway on the canvas.
+  const activePreview = boxEdit || currentDrawing ? null : previewed;
   const pick = priorityPick(candidates);
-  const stageCommitted = boxVisibility === 'none' ? null : shownCommitted;
-  const ghosts =
-    boxVisibility === 'none'
+  const stageCommitted = activePreview || boxVisibility === 'none' ? null : shownCommitted;
+  const ghosts = activePreview
+    ? [activePreview]
+    : boxVisibility === 'none'
       ? []
       : boxVisibility === 'all'
         ? losers
@@ -353,6 +358,7 @@ export function LocalizeObjectEditor({
     setBoxEdit(null);
     setBoxSelected(false);
     setBoxVisibility('pick');
+    setPreviewed(null);
     // `imageInfo` deliberately survives the change. Every frame of an alert
     // comes from one camera at one size and lands in the same box, so the
     // previous geometry stays correct; clearing it unmounted every overlay
@@ -910,6 +916,7 @@ export function LocalizeObjectEditor({
           disabled={!editable}
           onCommit={commitCandidate}
           onClear={clear}
+          onPreview={setPreviewed}
         />
       </div>
 

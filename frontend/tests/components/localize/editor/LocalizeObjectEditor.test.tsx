@@ -252,6 +252,52 @@ describe('LocalizeObjectEditor', () => {
     expect(screen.queryByTestId('ghost-box-engine-0')).not.toBeInTheDocument();
   });
 
+  it('hovering a rail row solos that candidate over the committed box', () => {
+    renderLoadedEditor({ existingAnnotation: committedAnnotation(firstDetection.id, 'auto') });
+    expect(screen.getByTestId('committed-box')).toBeInTheDocument();
+
+    fireEvent.mouseOver(screen.getByTestId('source-row-engine'));
+    expect(screen.getByTestId('ghost-box-engine-0')).toBeInTheDocument();
+    expect(screen.queryByTestId('committed-box')).not.toBeInTheDocument();
+
+    fireEvent.mouseOut(screen.getByTestId('source-row-engine'));
+    expect(screen.getByTestId('committed-box')).toBeInTheDocument();
+    expect(screen.queryByTestId('ghost-box-engine-0')).not.toBeInTheDocument();
+  });
+
+  it('hover preview solos the candidate on an undecided frame too', () => {
+    renderLoadedEditor();
+    expect(screen.getByTestId('ghost-box-auto-0')).toBeInTheDocument();
+
+    fireEvent.mouseOver(screen.getByTestId('source-row-engine'));
+    expect(screen.getByTestId('ghost-box-engine-0')).toBeInTheDocument();
+    expect(screen.queryByTestId('ghost-box-auto-0')).not.toBeInTheDocument();
+  });
+
+  it('a hover preview overrides the none state and releases back to it', () => {
+    renderLoadedEditor();
+    fireEvent.keyDown(window, { key: 'g' }); // all
+    fireEvent.keyDown(window, { key: 'g' }); // none
+
+    fireEvent.mouseOver(screen.getByTestId('source-row-engine'));
+    expect(screen.getByTestId('ghost-box-engine-0')).toBeInTheDocument();
+
+    fireEvent.mouseOut(screen.getByTestId('source-row-engine'));
+    expect(screen.queryByTestId('ghost-box-engine-0')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('ghost-box-auto-0')).not.toBeInTheDocument();
+  });
+
+  it('clears a live preview when the frame changes under it', () => {
+    const { rerender } = renderLoadedEditor();
+    fireEvent.mouseOver(screen.getByTestId('source-row-engine'));
+    expect(screen.getByTestId('ghost-box-engine-0')).toBeInTheDocument();
+
+    rerender(editorWith({ detection: lastDetection }));
+    fireEvent.load(screen.getByAltText(/^Detection /));
+    expect(screen.queryByTestId('ghost-box-engine-0')).not.toBeInTheDocument();
+    expect(screen.getByTestId('ghost-box-auto-0')).toBeInTheDocument();
+  });
+
   it('Escape closes', () => {
     const onClose = vi.fn();
     renderEditor({ onClose });

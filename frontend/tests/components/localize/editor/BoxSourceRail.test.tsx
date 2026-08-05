@@ -35,6 +35,7 @@ const props = {
   disabled: false,
   onCommit: vi.fn(),
   onClear: vi.fn(),
+  onPreview: vi.fn(),
 };
 
 describe('BoxSourceRail', () => {
@@ -112,5 +113,49 @@ describe('BoxSourceRail', () => {
     render(<BoxSourceRail {...props} onClear={onClear} />);
     fireEvent.click(screen.getByTestId('editor-clear'));
     expect(onClear).toHaveBeenCalled();
+  });
+
+  // React delivers onMouseEnter/onMouseLeave via mouseover/mouseout, so
+  // that's what these fire.
+  it('previews a hovered row and releases on leave', () => {
+    const onPreview = vi.fn();
+    render(<BoxSourceRail {...props} onPreview={onPreview} />);
+    fireEvent.mouseOver(screen.getByTestId('source-row-engine'));
+    expect(onPreview).toHaveBeenCalledWith(engine);
+    fireEvent.mouseOut(screen.getByTestId('source-row-engine'));
+    expect(onPreview).toHaveBeenLastCalledWith(null);
+  });
+
+  it('previews on keyboard focus too', () => {
+    const onPreview = vi.fn();
+    render(<BoxSourceRail {...props} onPreview={onPreview} />);
+    fireEvent.focus(screen.getByTestId('source-row-engine'));
+    expect(onPreview).toHaveBeenCalledWith(engine);
+    fireEvent.blur(screen.getByTestId('source-row-engine'));
+    expect(onPreview).toHaveBeenLastCalledWith(null);
+  });
+
+  it('does not preview the committed row — its box is already on stage', () => {
+    const onPreview = vi.fn();
+    render(<BoxSourceRail {...props} onPreview={onPreview} />);
+    fireEvent.mouseOver(screen.getByTestId('source-row-auto'));
+    expect(onPreview).not.toHaveBeenCalled();
+  });
+
+  it('does not preview a row with no candidate', () => {
+    const onPreview = vi.fn();
+    render(<BoxSourceRail {...props} onPreview={onPreview} />);
+    fireEvent.mouseOver(screen.getByTestId('source-row-manual'));
+    expect(onPreview).not.toHaveBeenCalled();
+  });
+
+  it('releases the preview when a hovered row is clicked to commit', () => {
+    const onPreview = vi.fn();
+    const onCommit = vi.fn();
+    render(<BoxSourceRail {...props} onPreview={onPreview} onCommit={onCommit} />);
+    fireEvent.mouseOver(screen.getByTestId('source-row-engine'));
+    fireEvent.click(screen.getByTestId('source-row-engine'));
+    expect(onPreview).toHaveBeenLastCalledWith(null);
+    expect(onCommit).toHaveBeenCalledWith(engine);
   });
 });
