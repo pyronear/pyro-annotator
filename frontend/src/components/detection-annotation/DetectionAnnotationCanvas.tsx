@@ -180,7 +180,11 @@ export function DetectionAnnotationCanvas({
 
       {/* Ghosts: the candidates this frame offers that are NOT committed.
           Read-only — committing one is the rail's job, so they never take
-          pointer events away from drawing or from the committed box. */}
+          pointer events away from drawing or from the committed box.
+          Unlabeled: the rail beside the image is a permanent legend naming
+          every source next to its swatch, and colour, stroke weight and the
+          dashed style already say which is which. Other OBJECTS' boxes do
+          keep their labels — nothing else on screen names them. */}
       {showGhosts && imageInfo && (
         <div
           className="absolute inset-0 pointer-events-none z-20"
@@ -208,14 +212,7 @@ export function DetectionAnnotationCanvas({
                   width: `${box.width}px`,
                   height: `${box.height}px`,
                 }}
-              >
-                <span
-                  className="absolute -top-[18px] left-0 rounded-t px-1.5 font-data text-[10px] font-semibold text-black"
-                  style={{ background: SOURCE_COLOR[ghost.source] }}
-                >
-                  {ghost.source}
-                </span>
-              </div>
+              />
             );
           })}
         </div>
