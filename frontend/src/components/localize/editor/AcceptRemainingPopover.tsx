@@ -2,6 +2,11 @@
  * Confirms accepting the model's boxes on every frame of this object where one
  * is on offer but has not been accepted.
  *
+ * A popover under its button rather than a modal: the decision is small, it is
+ * about the object the screen is already about, and the frame behind it stays
+ * useful context. It closes on an outside click, on a second press of its
+ * button, or on Escape.
+ *
  * The distinction matters in the copy: those frames are not empty — a model
  * found smoke and drew a box, it just has not been committed. "No box" is
  * reserved for the frames in the warning below, where no source found
@@ -23,7 +28,7 @@
 import CroppedImageSequence from '@/components/annotation/CroppedImageSequence';
 import type { BoundingBox } from '@/types/api';
 
-export interface AcceptRemainingDialogProps {
+export interface AcceptRemainingPopoverProps {
   objectLabel: string;
   objectColor: string;
   sequenceId: number;
@@ -38,7 +43,7 @@ export interface AcceptRemainingDialogProps {
   onCancel: () => void;
 }
 
-export function AcceptRemainingDialog({
+export function AcceptRemainingPopover({
   objectLabel,
   objectColor,
   sequenceId,
@@ -48,20 +53,15 @@ export function AcceptRemainingDialog({
   isAccepting,
   onConfirm,
   onCancel,
-}: AcceptRemainingDialogProps) {
+}: AcceptRemainingPopoverProps) {
   return (
     <div
-      className="absolute inset-0 z-10 flex items-center justify-center bg-char/40 p-4"
+      className="absolute left-1/2 top-full z-20 mt-2 w-[22rem] -translate-x-1/2 rounded-card border border-line bg-paper p-5 shadow-[0_8px_24px_rgba(32,38,31,0.12)]"
       role="dialog"
-      aria-modal="true"
       aria-label={`Accept the model's boxes for ${objectLabel}`}
-      data-testid="accept-remaining-dialog"
-      onClick={onCancel}
+      data-testid="accept-remaining-popover"
     >
-      <div
-        className="w-[22rem] rounded-card border border-line bg-paper p-5"
-        onClick={event => event.stopPropagation()}
-      >
+      <div>
         <p className="font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
           Accept the model&apos;s boxes
         </p>

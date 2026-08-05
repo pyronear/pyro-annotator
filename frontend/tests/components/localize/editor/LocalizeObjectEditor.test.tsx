@@ -372,12 +372,42 @@ describe('LocalizeObjectEditor accept remaining', () => {
     renderEditor({ onAcceptRemaining });
 
     fireEvent.click(screen.getByTestId('editor-accept-remaining'));
-    expect(screen.getByTestId('accept-remaining-dialog')).toBeInTheDocument();
+    expect(screen.getByTestId('accept-remaining-popover')).toBeInTheDocument();
     expect(onAcceptRemaining).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByTestId('accept-remaining-cancel'));
-    expect(screen.queryByTestId('accept-remaining-dialog')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
     expect(onAcceptRemaining).not.toHaveBeenCalled();
+  });
+
+  it('closes on a second press of its own button', () => {
+    renderEditor();
+    const trigger = screen.getByTestId('editor-accept-remaining');
+
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+
+    fireEvent.click(trigger);
+    expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('closes on a click outside it', () => {
+    const onAcceptRemaining = vi.fn();
+    renderEditor({ onAcceptRemaining });
+    fireEvent.click(screen.getByTestId('editor-accept-remaining'));
+
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
+    expect(onAcceptRemaining).not.toHaveBeenCalled();
+  });
+
+  it('stays open when clicking inside it', () => {
+    renderEditor();
+    fireEvent.click(screen.getByTestId('editor-accept-remaining'));
+
+    fireEvent.mouseDown(screen.getByTestId('accept-remaining-popover'));
+    expect(screen.getByTestId('accept-remaining-popover')).toBeInTheDocument();
   });
 
   it('writes on confirm and closes the dialog', () => {
@@ -386,7 +416,7 @@ describe('LocalizeObjectEditor accept remaining', () => {
     fireEvent.click(screen.getByTestId('editor-accept-remaining'));
     fireEvent.click(screen.getByTestId('accept-remaining-confirm'));
     expect(onAcceptRemaining).toHaveBeenCalled();
-    expect(screen.queryByTestId('accept-remaining-dialog')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
   });
 
   it('warns about frames no model found smoke on, without blocking', () => {
@@ -415,7 +445,7 @@ describe('LocalizeObjectEditor accept remaining', () => {
     fireEvent.click(screen.getByTestId('editor-accept-remaining'));
 
     fireEvent.keyDown(window, { key: 'Escape' });
-    expect(screen.queryByTestId('accept-remaining-dialog')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
   });
 });

@@ -48,7 +48,7 @@ import { DetectionAnnotationCanvas } from '@/components/detection-annotation';
 import { useDetectionImage } from '@/hooks/useDetectionImage';
 import { formatDateTime } from '@/utils/datetime';
 import { collectLaneBoxes } from '@/utils/annotation/quickSubmitUtils';
-import { AcceptRemainingDialog } from './AcceptRemainingDialog';
+import { AcceptRemainingPopover } from './AcceptRemainingPopover';
 import { BoxSourceRail } from './BoxSourceRail';
 import { ObjectFilmstrip } from './ObjectFilmstrip';
 
@@ -135,6 +135,7 @@ export function LocalizeObjectEditor({
   const [showOtherObjects, setShowOtherObjects] = useState(false);
   const [cropView, setCropView] = useState(false);
   const [acceptOpen, setAcceptOpen] = useState(false);
+  const acceptAnchorRef = useRef<HTMLDivElement>(null);
 
   // The committed box is unselected on arrival: it renders in its own
   // smoke-type color and shows no handles until you click it. Selection is
@@ -521,6 +522,15 @@ export function LocalizeObjectEditor({
     return isDragging ? 'grabbing' : 'grab';
   };
 
+  useEffect(() => {
+    if (!acceptOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (!acceptAnchorRef.current?.contains(event.target as Node)) setAcceptOpen(false);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    return () => document.removeEventListener('mousedown', onPointerDown);
+  }, [acceptOpen]);
+
   // Non-passive so preventDefault works — the page behind must not scroll.
   useEffect(() => {
     const container = containerRef.current;
@@ -711,14 +721,35 @@ export function LocalizeObjectEditor({
             treatment are what the cockpit's own Accept wears — the two are
             the same motion from two places. */}
         {acceptRemainingCount > 0 && editable && (
-          <button
-            type="button"
-            data-testid="editor-accept-remaining"
-            onClick={() => setAcceptOpen(true)}
-            className="absolute left-1/2 -translate-x-1/2 inline-flex items-center whitespace-nowrap rounded-lg bg-pine px-3 py-1 font-body text-xs font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Accept the model on {acceptRemainingCount} more
-          </button>
+          <div ref={acceptAnchorRef} className="absolute left-1/2 -translate-x-1/2">
+            <button
+              type="button"
+              data-testid="editor-accept-remaining"
+              aria-haspopup="dialog"
+              aria-expanded={acceptOpen}
+              onClick={() => setAcceptOpen(open => !open)}
+              className="inline-flex items-center whitespace-nowrap rounded-lg bg-pine px-3 py-1 font-body text-xs font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Accept the model on {acceptRemainingCount} more
+            </button>
+
+            {acceptOpen && (
+              <AcceptRemainingPopover
+                objectLabel={objectLabel}
+                objectColor={objectColor}
+                sequenceId={laneSequenceId}
+                previewBoxes={previewBoxes}
+                acceptCount={acceptRemainingCount}
+                gapCount={gapCount}
+                isAccepting={isAccepting}
+                onConfirm={() => {
+                  onAcceptRemaining();
+                  setAcceptOpen(false);
+                }}
+                onCancel={() => setAcceptOpen(false)}
+              />
+            )}
+          </div>
         )}
 
         <span className="ml-auto font-data text-detail text-haze">
@@ -794,23 +825,6 @@ export function LocalizeObjectEditor({
         currentDetectionId={shownDetection.id}
         onSelect={goToEntry}
       />
-
-      {acceptOpen && (
-        <AcceptRemainingDialog
-          objectLabel={objectLabel}
-          objectColor={objectColor}
-          sequenceId={laneSequenceId}
-          previewBoxes={previewBoxes}
-          acceptCount={acceptRemainingCount}
-          gapCount={gapCount}
-          isAccepting={isAccepting}
-          onConfirm={() => {
-            onAcceptRemaining();
-            setAcceptOpen(false);
-          }}
-          onCancel={() => setAcceptOpen(false)}
-        />
-      )}
 
       <p className="flex-none border-t border-line bg-paper px-4 py-2 font-data text-[11px] text-haze">
         ← → step · Enter accept &amp; next · D draw · Del remove box · G other boxes · O other
