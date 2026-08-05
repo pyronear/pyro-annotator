@@ -160,6 +160,10 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
     Record<string, CardClassification>
   >({});
   const [laneUnsure, setLaneUnsure] = useState<Record<number, boolean>>({});
+  // "Undecidable for now": an unsure lane the annotator has settled, so it
+  // stops withholding its alert from localization (spec: 2026-08-05 unsure
+  // lanes gate the localize queue). Done mode only.
+  const [laneDeferred, setLaneDeferred] = useState<Record<number, boolean>>({});
   const [missedSmokeReview, setMissedSmokeReview] = useState<'yes' | 'no' | null>(null);
   const [hasMissedSmoke, setHasMissedSmoke] = useState<boolean>(false);
 
@@ -194,6 +198,7 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
   const initialSnapshotRef = useRef<{
     laneBboxes: Record<number, SequenceBbox[]>;
     laneUnsure: Record<number, boolean>;
+    laneDeferred: Record<number, boolean>;
     hasMissedSmoke: boolean;
   } | null>(null);
 
@@ -234,6 +239,7 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
     setLaneBboxes({});
     setPrimaryClassification({});
     setLaneUnsure({});
+    setLaneDeferred({});
     setMissedSmokeReview(null);
     setHasMissedSmoke(false);
     setActiveCardKey(null);
@@ -247,6 +253,7 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
     const newLaneBboxes: Record<number, SequenceBbox[]> = {};
     const newPrimaryClassification: Record<string, CardClassification> = {};
     const newLaneUnsure: Record<number, boolean> = {};
+    const newLaneDeferred: Record<number, boolean> = {};
     let newMissedSmokeReview: 'yes' | 'no' | null = null;
     let newHasMissedSmoke = false;
 
@@ -276,6 +283,10 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
       }));
       newLaneBboxes[lane.sequence.id] = bboxes;
       newLaneUnsure[lane.sequence.id] = lane.annotation.is_unsure || false;
+      // An unsure lane already at `annotated` was settled as undecidable —
+      // that pairing is the only thing that records the deferral.
+      newLaneDeferred[lane.sequence.id] =
+        (lane.annotation.is_unsure || false) && lane.annotation.processing_stage === 'annotated';
       bboxes.forEach((bbox, trackIndex) => {
         const cardKey = `${lane.sequence.id}:${trackIndex}`;
         // A track only counts as classified when it has a real smoke_type or
@@ -295,6 +306,7 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
     setLaneBboxes(newLaneBboxes);
     setPrimaryClassification(newPrimaryClassification);
     setLaneUnsure(newLaneUnsure);
+    setLaneDeferred(newLaneDeferred);
     setMissedSmokeReview(newMissedSmokeReview);
     setHasMissedSmoke(newHasMissedSmoke);
 
@@ -303,6 +315,7 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
     initialSnapshotRef.current = {
       laneBboxes: newLaneBboxes,
       laneUnsure: newLaneUnsure,
+      laneDeferred: newLaneDeferred,
       hasMissedSmoke: newHasMissedSmoke,
     };
   };
@@ -559,6 +572,15 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
     const card = cards.find(c => c.cardKey === cardKey);
     if (!card || card.locked) return;
     setLaneUnsure(prev => ({ ...prev, [card.laneSequenceId]: unsure }));
+    // Deferral only means something on an unsure lane — clearing unsure must
+    // clear it too, or a stale deferral rides along into the PATCH.
+    if (!unsure) setLaneDeferred(prev => ({ ...prev, [card.laneSequenceId]: false }));
+  };
+
+  const handleDeferredChangeByCardKey = (cardKey: string, deferred: boolean) => {
+    const card = cards.find(c => c.cardKey === cardKey);
+    if (!card || card.locked) return;
+    setLaneDeferred(prev => ({ ...prev, [card.laneSequenceId]: deferred }));
   };
 
   const handleMissedSmokeReviewChange = (review: 'yes' | 'no') => {
@@ -628,8 +650,10 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
     );
     const unsureChanged =
       (laneUnsure[laneSequenceId] ?? false) !== (snapshot.laneUnsure[laneSequenceId] ?? false);
+    const deferredChanged =
+      (laneDeferred[laneSequenceId] ?? false) !== (snapshot.laneDeferred[laneSequenceId] ?? false);
     const missedSmokeChanged = carriesMissedSmoke && hasMissedSmoke !== snapshot.hasMissedSmoke;
-    return bboxesChanged || unsureChanged || missedSmokeChanged;
+    return bboxesChanged || unsureChanged || missedSmokeChanged || deferredChanged;
   };
   const changedLaneCount =
     mode === 'done' && alertDetail
@@ -670,6 +694,9 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
           const isMissedSmokeCarrier = lane.sequence.id === missedSmokeCarrierLaneId;
           const bboxes = laneBboxes[lane.sequence.id] ?? [];
           const unsure = laneUnsure[lane.sequence.id] ?? false;
+          const deferred = laneDeferred[lane.sequence.id] ?? false;
+          const wasDeferredUnsure =
+            initialSnapshotRef.current?.laneDeferred[lane.sequence.id] ?? false;
           const hasSmokeNow = unsure ? false : bboxes.some(b => b.is_smoke);
           const hasMissedSmokeForLane = isMissedSmokeCarrier && !unsure ? hasMissedSmoke : false;
           const updates: Partial<SequenceAnnotation> = {
@@ -679,6 +706,8 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
               isUnsure: unsure,
               hasSmoke: hasSmokeNow,
               hasMissedSmoke: hasMissedSmokeForLane,
+              deferred,
+              wasDeferredUnsure,
             }),
             has_smoke: hasSmokeNow,
             has_false_positives: unsure
@@ -1154,7 +1183,10 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
                 // (Awaiting localization / Fully annotated) is just noise.
                 const stageBadge =
                   card.locked && mode !== 'done'
-                    ? getProcessingStageLabel(lane.annotation!.processing_stage)
+                    ? getProcessingStageLabel(
+                        lane.annotation!.processing_stage,
+                        lane.annotation!.is_unsure ?? false
+                      )
                     : undefined;
                 const overlay = cardOverlayData.find(o => o.cardKey === card.cardKey);
 
@@ -1186,6 +1218,10 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
                     onBboxChange={handleBboxChangeByCardKey}
                     onClassificationChange={handleClassificationChangeByCardKey}
                     onUnsureChange={card.locked ? undefined : handleUnsureChangeByCardKey}
+                    deferred={laneDeferred[card.laneSequenceId] ?? false}
+                    onDeferredChange={
+                      mode === 'done' && !card.locked ? handleDeferredChangeByCardKey : undefined
+                    }
                   />
                 );
               })}

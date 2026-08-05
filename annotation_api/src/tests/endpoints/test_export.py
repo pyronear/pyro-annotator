@@ -945,3 +945,91 @@ async def test_export_detections_pagination(
     rec_times = [datetime.fromisoformat(r["recorded_at"]) for r in all_rows]
     assert rec_times == sorted(rec_times)
     assert len(all_rows) == 5
+
+
+async def _seed_unsure_annotated_lane(client: AsyncClient) -> int:
+    """One detection on fixture sequence 1 plus an annotated annotation
+    carrying is_unsure — the shape "Undecidable for now" produces."""
+    img = Image.new("RGB", (64, 64), color="blue")
+    img_bytes = io.BytesIO()
+    img.save(img_bytes, format="JPEG")
+    img_bytes.seek(0)
+    det_resp = await client.post(
+        "/detections",
+        data={
+            "sequence_id": "1",
+            "alert_api_id": "8301",
+            "recorded_at": now.isoformat(),
+            "algo_predictions": json.dumps(
+                {
+                    "predictions": [
+                        {
+                            "class_name": "smoke",
+                            "xyxyn": [0.1, 0.1, 0.3, 0.3],
+                            "confidence": 0.95,
+                        }
+                    ]
+                }
+            ),
+        },
+        files={"file": ("test.jpg", img_bytes, "image/jpeg")},
+    )
+    assert det_resp.status_code == 201
+    detection_id = det_resp.json()["id"]
+
+    seq_ann_resp = await client.post(
+        "/annotations/sequences/",
+        json={
+            "sequence_id": 1,
+            "has_missed_smoke": False,
+            "is_unsure": True,
+            "annotation": {"sequences_bbox": []},
+            "processing_stage": (
+                models.SequenceAnnotationProcessingStage.ANNOTATED.value
+            ),
+            "created_at": now.isoformat(),
+        },
+    )
+    assert seq_ann_resp.status_code == 201
+    return detection_id
+
+
+@pytest.mark.asyncio
+async def test_export_excludes_unsure_lanes_by_default(
+    authenticated_client: AsyncClient,
+    sequence_session,
+    detection_session,
+    monkeypatch,
+):
+    """An unsure lane closed as undecidable sits at `annotated`, the export
+    default stage — it must not reach training data unasked (spec:
+    2026-08-05 unsure lanes gate the localize queue)."""
+    monkeypatch.setattr(
+        storage_module.s3_service, "get_bucket", lambda _name: DummyBucket()
+    )
+    detection_id = await _seed_unsure_annotated_lane(authenticated_client)
+
+    resp = await authenticated_client.get("/export/detections")
+    assert resp.status_code == 200
+    assert all(row["detection_id"] != detection_id for row in resp.json())
+
+
+@pytest.mark.asyncio
+async def test_export_returns_unsure_lanes_when_asked(
+    authenticated_client: AsyncClient,
+    sequence_session,
+    detection_session,
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        storage_module.s3_service, "get_bucket", lambda _name: DummyBucket()
+    )
+    detection_id = await _seed_unsure_annotated_lane(authenticated_client)
+
+    resp = await authenticated_client.get(
+        "/export/detections", params={"is_unsure": "true"}
+    )
+    assert resp.status_code == 200
+    rows = resp.json()
+    row = next(r for r in rows if r["detection_id"] == detection_id)
+    assert row["sequence_is_unsure"] is True

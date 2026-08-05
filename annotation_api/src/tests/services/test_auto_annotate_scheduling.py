@@ -272,3 +272,28 @@ async def test_unsure_missed_smoke_lane_is_not_enqueued(async_session):
     )
     await schedule_pending_auto_annotate(async_session)
     assert await _enqueued_ids(async_session) == set()
+
+
+@pytest.mark.asyncio
+async def test_blocked_alert_still_enqueues_its_smoke_lane(async_session):
+    """The localize queue's gate does not reach into the sweep: a smoke lane
+    whose alert is blocked by an undecided sibling still gets its GPU pass,
+    so the alert is available the moment the sibling is settled (spec:
+    2026-08-05 unsure lanes gate the localize queue)."""
+    smoke = await _lane(
+        async_session,
+        alert_api_id=910,
+        platform_alert_id=910,
+        stage=Stage.SEQ_ANNOTATION_DONE,
+        has_smoke=True,
+    )
+    await _lane(
+        async_session,
+        alert_api_id=911,
+        platform_alert_id=910,
+        stage=Stage.SEQ_ANNOTATION_DONE,
+        has_smoke=True,
+        is_unsure=True,
+    )
+    await schedule_pending_auto_annotate(async_session)
+    assert await _enqueued_ids(async_session) == {smoke.id}

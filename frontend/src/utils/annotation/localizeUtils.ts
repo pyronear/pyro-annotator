@@ -1,19 +1,32 @@
 import { LocalizationQueueLane } from '@/types/api';
 
 /**
- * Stage to write at classify submit (spec: smoke-localization entry point).
+ * Stage to write at classify submit (spec: smoke-localization entry point;
+ * amended by 2026-08-05 unsure lanes gate the localize queue).
+ *
  * FP-only lanes (no smoke, no missed smoke, not unsure) exit the pipeline
- * immediately; smoke / missed-smoke / unsure lanes park at
- * seq_annotation_done. An already-annotated lane is never demoted.
+ * immediately. Smoke / missed-smoke lanes park at seq_annotation_done.
+ *
+ * An unsure lane parks at seq_annotation_done — where it withholds its whole
+ * alert from localization — until it is explicitly deferred ("Undecidable for
+ * now"), which settles it at annotated with is_unsure kept true.
+ *
+ * An already-annotated lane is never demoted, with one exception: a lane that
+ * loaded as deferred-unsure may return to seq_annotation_done when it is
+ * re-decided as smoke, otherwise "for now" would be permanent and the object
+ * could never be localized.
  */
 export function determineClassifySubmitStage(args: {
   currentStage: string | undefined;
   isUnsure: boolean;
   hasSmoke: boolean;
   hasMissedSmoke: boolean;
+  deferred?: boolean;
+  wasDeferredUnsure?: boolean;
 }): 'annotated' | 'seq_annotation_done' {
-  if (args.currentStage === 'annotated') return 'annotated';
-  if (!args.isUnsure && !args.hasSmoke && !args.hasMissedSmoke) return 'annotated';
+  if (args.isUnsure) return args.deferred ? 'annotated' : 'seq_annotation_done';
+  if (args.currentStage === 'annotated' && !args.wasDeferredUnsure) return 'annotated';
+  if (!args.hasSmoke && !args.hasMissedSmoke) return 'annotated';
   return 'seq_annotation_done';
 }
 

@@ -27,6 +27,10 @@ export interface ClassificationChipsProps {
   ) => void;
   /** Omit to hide the Unsure chip. */
   onUnsureChange?: (cardKey: string, unsure: boolean) => void;
+  /** Whether this unsure lane is currently settled as undecidable. */
+  deferred?: boolean;
+  /** Omit to hide the "Undecidable for now" chip (queue mode hides it). */
+  onDeferredChange?: (cardKey: string, deferred: boolean) => void;
 }
 
 // Keyboard letter per FP type — mirrors keyboardUtils' bindings (same map
@@ -84,6 +88,8 @@ export const ClassificationChips: React.FC<ClassificationChipsProps> = ({
   onBboxChange,
   onClassificationChange,
   onUnsureChange,
+  deferred,
+  onDeferredChange,
 }) => {
   // Smoke / False positive / Unsure are mutually exclusive: picking either
   // classification clears unsure, and turning unsure on clears the
@@ -170,6 +176,32 @@ export const ClassificationChips: React.FC<ClassificationChipsProps> = ({
           </button>
         )}
       </div>
+
+      {/* An unsure lane holds its whole alert out of the localize queue
+          (spec: 2026-08-05 unsure lanes gate the localize queue). This
+          settles it — still unsure, but no longer blocking — so a wildfire
+          sibling can be boxed even when this object can't be decided. */}
+      {unsure && onDeferredChange && (
+        <div>
+          <button
+            type="button"
+            tabIndex={-1}
+            role="checkbox"
+            aria-checked={!!deferred}
+            aria-label="Undecidable for now"
+            data-testid={`undecidable-chip-${cardKey}`}
+            onClick={() => onDeferredChange(cardKey, !deferred)}
+            className={typeChip(!!deferred, 'bg-signal-soft text-signal')}
+          >
+            Undecidable for now
+          </button>
+          <p className="mt-1 font-body text-detail text-haze">
+            {deferred
+              ? 'Settled — this object no longer holds the alert back from localization.'
+              : 'This object is holding its alert out of the localize queue.'}
+          </p>
+        </div>
+      )}
 
       {smokeSelected && (
         <div>
