@@ -1424,6 +1424,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
           isAccepting={quickAcceptLane.isPending}
           onCommit={handleEditorCommit}
           onAcceptRemaining={() => quickAcceptLane.mutate(modalContext.laneId)}
+          onReclassify={() => handleReclassify(modalContext.laneId)}
           onNavigateToDetection={navigateModalTo}
           onClose={closeModal}
         />

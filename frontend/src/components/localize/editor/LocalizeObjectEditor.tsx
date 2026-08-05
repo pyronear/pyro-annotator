@@ -31,14 +31,6 @@ import {
 } from '@/utils/annotation/objectBoxCandidates';
 import { buildFilmstripEntries, type FilmstripEntry } from '@/utils/annotation/objectFilmstrip';
 import { computeCellCrop } from '@/utils/annotation/gridCropUtils';
-
-/**
- * Framing for the stage's zoom-to-object view. Looser than the grid's own
- * defaults on both axes: the object should read clearly without the sky and
- * ridge around it disappearing, since "is this box on the right plume?" is
- * answered by the surroundings, not by the box.
- */
-const OBJECT_FRAMING = { targetFill: 0.32, maxScale: 3 };
 import type { AlertFrame } from '@/utils/annotation/alertLocalizeUtils';
 import {
   calculateImageBounds,
@@ -63,6 +55,14 @@ import { AcceptRemainingPopover } from './AcceptRemainingPopover';
 import { BoxSourceRail } from './BoxSourceRail';
 import { EditorShortcutsModal } from './EditorShortcutsModal';
 import { ObjectFilmstrip } from './ObjectFilmstrip';
+
+/**
+ * Framing for the stage's zoom-to-object view. Looser than the grid's own
+ * defaults on both axes: the object should read clearly without the sky and
+ * ridge around it disappearing, since "is this box on the right plume?" is
+ * answered by the surroundings, not by the box.
+ */
+const OBJECT_FRAMING = { targetFill: 0.32, maxScale: 3 };
 
 export interface LocalizeObjectEditorProps {
   /** The object being edited. */
@@ -93,6 +93,8 @@ export interface LocalizeObjectEditorProps {
    * none. Never overwrites a frame the annotator already decided.
    */
   onAcceptRemaining: () => void;
+  /** Hand this object's classification back to the classify cockpit. */
+  onReclassify: () => void;
   onClose: () => void;
 }
 
@@ -112,6 +114,7 @@ export function LocalizeObjectEditor({
   onCommit,
   onNavigateToDetection,
   onAcceptRemaining,
+  onReclassify,
   onClose,
 }: LocalizeObjectEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -777,37 +780,55 @@ export function LocalizeObjectEditor({
             one control here that moves the work forward. Pine and this exact
             treatment are what the cockpit's own Accept wears — the two are
             the same motion from two places. */}
-        {acceptRemainingCount > 0 && editable && (
-          <div ref={acceptAnchorRef} className="absolute left-1/2 -translate-x-1/2">
+        {/* The two things you can do to the OBJECT rather than to this frame:
+            take the model's word for the rest of it, or decide it was
+            classified wrong. Centred together, away from the frame-level
+            controls in the rail. */}
+        <div className="absolute left-1/2 flex -translate-x-1/2 items-center gap-2">
+          {editable && (
             <button
               type="button"
-              data-testid="editor-accept-remaining"
-              aria-haspopup="dialog"
-              aria-expanded={acceptOpen}
-              onClick={() => setAcceptOpen(open => !open)}
-              className="inline-flex items-center whitespace-nowrap rounded-lg bg-pine px-3 py-1 font-body text-xs font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              data-testid="editor-reclassify"
+              onClick={onReclassify}
+              title="Change what this object was classified as"
+              className="inline-flex items-center whitespace-nowrap rounded-lg border border-line bg-paper px-3 py-1 font-body text-xs font-medium text-char hover:bg-ash focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2"
             >
-              Accept boxes
+              Reclassify
             </button>
+          )}
 
-            {acceptOpen && (
-              <AcceptRemainingPopover
-                objectLabel={objectLabel}
-                objectColor={objectColor}
-                sequenceId={laneSequenceId}
-                previewBoxes={previewBoxes}
-                acceptCount={acceptRemainingCount}
-                gapCount={gapCount}
-                isAccepting={isAccepting}
-                onConfirm={() => {
-                  onAcceptRemaining();
-                  setAcceptOpen(false);
-                }}
-                onCancel={() => setAcceptOpen(false)}
-              />
-            )}
-          </div>
-        )}
+          {acceptRemainingCount > 0 && editable && (
+            <div ref={acceptAnchorRef} className="relative">
+              <button
+                type="button"
+                data-testid="editor-accept-remaining"
+                aria-haspopup="dialog"
+                aria-expanded={acceptOpen}
+                onClick={() => setAcceptOpen(open => !open)}
+                className="inline-flex items-center whitespace-nowrap rounded-lg bg-pine px-3 py-1 font-body text-xs font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Accept boxes
+              </button>
+
+              {acceptOpen && (
+                <AcceptRemainingPopover
+                  objectLabel={objectLabel}
+                  objectColor={objectColor}
+                  sequenceId={laneSequenceId}
+                  previewBoxes={previewBoxes}
+                  acceptCount={acceptRemainingCount}
+                  gapCount={gapCount}
+                  isAccepting={isAccepting}
+                  onConfirm={() => {
+                    onAcceptRemaining();
+                    setAcceptOpen(false);
+                  }}
+                  onCancel={() => setAcceptOpen(false)}
+                />
+              )}
+            </div>
+          )}
+        </div>
 
         <span className="ml-auto font-data text-detail text-haze">
           {formatDateTime(shownDetection.recorded_at)}

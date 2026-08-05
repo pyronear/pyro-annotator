@@ -93,6 +93,7 @@ const baseProps = (): Props => ({
   isAccepting: false,
   onCommit: vi.fn(),
   onAcceptRemaining: vi.fn(),
+  onReclassify: vi.fn(),
   onNavigateToDetection: vi.fn(),
   onClose: vi.fn(),
 });
@@ -350,6 +351,30 @@ describe('LocalizeObjectEditor box selection', () => {
 });
 
 describe('LocalizeObjectEditor accept remaining', () => {
+  it('offers Reclassify beside it, for the object rather than the frame', () => {
+    const onReclassify = vi.fn();
+    renderEditor({ onReclassify });
+    fireEvent.click(screen.getByTestId('editor-reclassify'));
+    expect(onReclassify).toHaveBeenCalled();
+  });
+
+  it('hides Reclassify on an out-of-range frame', () => {
+    renderEditor();
+    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+    expect(screen.queryByTestId('editor-reclassify')).not.toBeInTheDocument();
+  });
+
+  it('keeps Reclassify once every frame has a box, unlike Accept', () => {
+    renderEditor({
+      laneAnnotations: [
+        committedAnnotation(firstDetection.id, 'auto'),
+        committedAnnotation(lastDetection.id, 'auto'),
+      ],
+    });
+    expect(screen.queryByTestId('editor-accept-remaining')).not.toBeInTheDocument();
+    expect(screen.getByTestId('editor-reclassify')).toBeInTheDocument();
+  });
+
   it('offers the action only while frames are still without a box', () => {
     renderEditor();
     // Same name the cockpit's per-object action carries, so the two read as
