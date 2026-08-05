@@ -569,6 +569,28 @@ describe('LocalizeObjectEditor chrome', () => {
     });
   });
 
+  it('offers a button to leave the object framing, pressed by default', () => {
+    renderLoadedEditor({ existingAnnotation: committedAnnotation(firstDetection.id, 'auto') });
+    const toggle = screen.getByTestId('editor-zoom-toggle');
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.click(toggle);
+    expect(screen.getByAltText(/^Detection /)).toHaveStyle({
+      transform: 'scale(1) translate(0px, 0px)',
+    });
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('the button zooms back to the object', () => {
+    renderLoadedEditor({ existingAnnotation: committedAnnotation(firstDetection.id, 'auto') });
+    const toggle = screen.getByTestId('editor-zoom-toggle');
+    fireEvent.click(toggle);
+    fireEvent.click(toggle);
+    expect(screen.getByAltText(/^Detection /)).toHaveStyle({
+      transform: 'scale(3) translate(0px, 0px)',
+    });
+  });
+
   it('R drops back to the full frame', () => {
     renderLoadedEditor({ existingAnnotation: committedAnnotation(firstDetection.id, 'auto') });
     fireEvent.keyDown(window, { key: 'r' });

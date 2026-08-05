@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { X, ChevronLeft, ChevronRight, Keyboard } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Keyboard, Crop } from 'lucide-react';
 import type {
   Detection,
   DetectionAnnotation,
@@ -349,14 +349,19 @@ export function LocalizeObjectEditor({
   // --- Coordinates --------------------------------------------------------
 
   const handleImageLoad = () => {
-    if (!imgRef.current || !containerRef.current) return;
-    const containerRect = containerRef.current.getBoundingClientRect();
-    const imgRect = imgRef.current.getBoundingClientRect();
+    const img = imgRef.current;
+    if (!img || !containerRef.current) return;
+    // LAYOUT metrics, not getBoundingClientRect(): the rect is already scaled
+    // by the zoom transform, and the overlays position themselves from these
+    // numbers and then get the same transform applied on top. Measuring the
+    // transformed rect while opening zoomed recorded a box three times too
+    // large and pushed every overlay off the image. `constrainPan` avoids the
+    // same trap for the same reason.
     setImageInfo({
-      width: imgRect.width,
-      height: imgRect.height,
-      offsetX: imgRect.left - containerRect.left,
-      offsetY: imgRect.top - containerRect.top,
+      width: img.offsetWidth,
+      height: img.offsetHeight,
+      offsetX: img.offsetLeft,
+      offsetY: img.offsetTop,
     });
   };
 
@@ -768,6 +773,27 @@ export function LocalizeObjectEditor({
         >
           <ChevronRight className="h-4 w-4" />
         </button>
+
+        {/* The cockpit's own crop control, same icon and same pressed
+            language, because it is the same idea: frame the object instead of
+            the landscape. Its name stays put and aria-pressed carries the
+            state, as ViewToolbar does — a name that also flipped would
+            announce the state twice. */}
+        <div className="inline-flex items-center rounded-lg bg-ash p-0.5">
+          <button
+            type="button"
+            data-testid="editor-zoom-toggle"
+            title="Zoom to the object (Z)"
+            aria-label="Zoom to the object"
+            aria-pressed={cropView}
+            onClick={() => setCropView(pressed => !pressed)}
+            className={`rounded p-1.5 transition-colors ${
+              cropView ? 'bg-pine-soft text-pine' : 'text-haze hover:text-char'
+            }`}
+          >
+            <Crop className="w-3.5 h-3.5" />
+          </button>
+        </div>
 
         {peeked && (
           <span className="inline-flex rounded-full bg-signal-soft px-2 py-1 font-body text-xs font-semibold text-signal">
