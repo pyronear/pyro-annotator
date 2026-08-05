@@ -205,17 +205,51 @@ describe('LocalizeObjectEditor', () => {
     expect(screen.queryByTestId('ghost-box-auto-0')).not.toBeInTheDocument();
   });
 
-  it('shows the candidates as ghosts when nothing is committed, and G hides them', () => {
+  it('ghosts only the priority pick when nothing is committed', () => {
     renderLoadedEditor();
 
-    // Nothing committed means no winner to draw, so the frame would otherwise
-    // be blank — the candidates ghost in to show what is on offer.
+    // The idle stage answers "is the box Enter would commit right?" — the
+    // rail's crops carry the auto-vs-engine comparison, so the losing
+    // candidate stacking onto the same plume is noise.
     expect(screen.queryByTestId('committed-box')).not.toBeInTheDocument();
+    expect(screen.getByTestId('ghost-box-auto-0')).toBeInTheDocument();
+    expect(screen.queryByTestId('ghost-box-engine-0')).not.toBeInTheDocument();
+  });
+
+  it('G cycles the stage through pick, every candidate, none, and back', () => {
+    renderLoadedEditor();
+
+    fireEvent.keyDown(window, { key: 'g' });
     expect(screen.getByTestId('ghost-box-auto-0')).toBeInTheDocument();
     expect(screen.getByTestId('ghost-box-engine-0')).toBeInTheDocument();
 
     fireEvent.keyDown(window, { key: 'g' });
     expect(screen.queryByTestId('ghost-box-auto-0')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('ghost-box-engine-0')).not.toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: 'g' });
+    expect(screen.getByTestId('ghost-box-auto-0')).toBeInTheDocument();
+    expect(screen.queryByTestId('ghost-box-engine-0')).not.toBeInTheDocument();
+  });
+
+  it('the none state hides the committed box too, for a bare view of the plume', () => {
+    renderLoadedEditor({ existingAnnotation: committedAnnotation(firstDetection.id, 'auto') });
+
+    fireEvent.keyDown(window, { key: 'g' }); // all
+    fireEvent.keyDown(window, { key: 'g' }); // none
+    expect(screen.queryByTestId('committed-box')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('ghost-box-engine-0')).not.toBeInTheDocument();
+  });
+
+  it('the G cycle resets to the default on frame change', () => {
+    const { rerender } = renderLoadedEditor();
+    fireEvent.keyDown(window, { key: 'g' }); // all
+    fireEvent.keyDown(window, { key: 'g' }); // none
+
+    rerender(editorWith({ detection: lastDetection }));
+    fireEvent.load(screen.getByAltText(/^Detection /));
+    expect(screen.getByTestId('ghost-box-auto-0')).toBeInTheDocument();
+    expect(screen.queryByTestId('ghost-box-engine-0')).not.toBeInTheDocument();
   });
 
   it('Escape closes', () => {

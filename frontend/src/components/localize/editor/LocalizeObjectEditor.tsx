@@ -70,6 +70,9 @@ import { ObjectFilmstrip } from './ObjectFilmstrip';
  */
 const OBJECT_FRAMING = { targetFill: 0.32, maxScale: 3 };
 
+/** What the idle stage draws; `G` cycles it. A rail hover overrides it. */
+type BoxVisibility = 'pick' | 'all' | 'none';
+
 export interface LocalizeObjectEditorProps {
   /** The object being edited. */
   laneSequenceId: number;
@@ -147,8 +150,9 @@ export function LocalizeObjectEditor({
   const [spaceHeld, setSpaceHeld] = useState(false);
   const spaceHeldRef = useRef(false);
 
-  // `G` overrides whatever the default rule below decides.
-  const [ghostsOverridden, setGhostsOverridden] = useState(false);
+  // `G` cycles what the idle stage draws: the default pick, every candidate
+  // at once, or nothing at all — the bare plume.
+  const [boxVisibility, setBoxVisibility] = useState<BoxVisibility>('pick');
   // The OTHER objects' boxes on this frame, off by default. On this screen
   // color means *source* (manual/auto/engine), and the object-identity
   // palette overlaps it closely enough that a blue dashed box would be
@@ -205,15 +209,24 @@ export function LocalizeObjectEditor({
   );
 
   /**
-   * The frame always draws at least the winner, and never more than it needs.
-   * With a box committed, that box alone speaks for the object and the losing
-   * candidates are noise — the rail's crops carry the comparison. With
-   * nothing committed there is no winner to draw, so the candidates ghost in
-   * to show what is on offer. `G` flips whichever state you are in.
+   * The stage draws one box, well. With a box committed, that box alone
+   * speaks for the object; with nothing committed the priority pick ghosts
+   * in — the box Enter would commit — and the rail's crops carry the
+   * comparison with the rest. `G` cycles to "all" (every candidate stacked,
+   * on demand) and "none" (the bare plume).
    */
-  const ghostsShownByDefault = committed === null;
-  const showGhosts = ghostsOverridden ? !ghostsShownByDefault : ghostsShownByDefault;
-  const ghosts = showGhosts ? losers : [];
+  const pick = priorityPick(candidates);
+  const stageCommitted = boxVisibility === 'none' ? null : shownCommitted;
+  const ghosts =
+    boxVisibility === 'none'
+      ? []
+      : boxVisibility === 'all'
+        ? losers
+        : shownCommitted
+          ? []
+          : pick
+            ? [pick]
+            : [];
   committedRef.current = committed;
 
   const entries = useMemo(
@@ -339,7 +352,7 @@ export function LocalizeObjectEditor({
     setCurrentDrawing(null);
     setBoxEdit(null);
     setBoxSelected(false);
-    setGhostsOverridden(false);
+    setBoxVisibility('pick');
     // `imageInfo` deliberately survives the change. Every frame of an alert
     // comes from one camera at one size and lands in the same box, so the
     // previous geometry stays correct; clearing it unmounted every overlay
@@ -651,7 +664,7 @@ export function LocalizeObjectEditor({
           break;
         case 'g':
         case 'G':
-          setGhostsOverridden(v => !v);
+          setBoxVisibility(v => (v === 'pick' ? 'all' : v === 'all' ? 'none' : 'pick'));
           break;
         case 'o':
         case 'O':
@@ -862,9 +875,9 @@ export function LocalizeObjectEditor({
         <div className="flex min-w-0 flex-1 items-center justify-center overflow-hidden bg-ash p-3">
           <DetectionAnnotationCanvas
             detection={shownDetection}
-            committed={editable ? shownCommitted : null}
+            committed={editable ? stageCommitted : null}
             ghosts={editable ? ghosts : []}
-            showGhosts={showGhosts}
+            showGhosts={ghosts.length > 0}
             selected={editable && boxSelected}
             selectedSmokeType={smokeType}
             objectOverlays={showOtherObjects ? objectOverlays : []}

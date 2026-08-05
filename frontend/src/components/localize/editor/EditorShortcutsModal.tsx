@@ -87,7 +87,7 @@ export const EditorShortcutsModal: React.FC<EditorShortcutsModalProps> = ({ onCl
           <Row label="Reset the zoom" keys={['R']} />
         </Section>
         <Section title="What you can see">
-          <Row label="Boxes from the other sources" keys={['G']} />
+          <Row label="Cycle boxes — default, all sources, none" keys={['G']} />
           <Row label="Boxes from the alert's other objects" keys={['O']} />
         </Section>
         <Section title="Leave">
