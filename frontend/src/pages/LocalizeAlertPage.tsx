@@ -339,6 +339,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   const {
     data: alertDetail,
     isLoading: alertLoading,
+    isFetching: alertFetching,
     error: alertError,
   } = useQuery({
     queryKey: alertDetailQueryKey,
@@ -735,6 +736,37 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   const smokeObjectRows = objectStatusRows.filter(o => !o.isFalsePositive);
   const falsePositiveRows = objectStatusRows.filter(o => o.isFalsePositive);
   const orderedObjectRows = [...smokeObjectRows, ...falsePositiveRows];
+
+  // Arrival auto-select + URL-lane validation. A bare alert URL
+  // replace-redirects to the first workable smoke object — the thing the
+  // annotator will act on — falling back to the first smoke object when all
+  // are done, and staying bare (nothing selected) only when the view has no
+  // smoke lanes at all. A selection URL naming a lane the current frame
+  // model doesn't contain (stale link, lane removed by reclassify, or an FP
+  // lane while the toggle is off) falls back to the bare URL, which re-runs
+  // the auto-select. Editor URLs are left alone: `modalContext` already
+  // refuses invalid ones without navigating, and rewriting an editor URL
+  // here would fight the browser's back button. Guarded on `alertDetail` so
+  // nothing redirects while the page is still loading. Each navigation
+  // changes which branch runs next, so this settles in at most two hops
+  // with no loop. Deliberately NO dependency array: `frameModel` and the
+  // rows derived from it are rebuilt every render anyway, and the body is a
+  // cheap guarded no-op once settled.
+  useEffect(() => {
+    if (!alertDetail || sequenceIdNum == null || laneIdNum != null) return;
+    if (selectLaneIdNum != null) {
+      // Not while a refetch is in flight: "+ Add object" activates its new
+      // lane the moment the server confirms it, which is necessarily before
+      // the invalidated alert-detail lands — judging the URL against the
+      // stale lane list would bounce the just-added object off selection.
+      if (alertFetching) return;
+      const known = frameModel.objectStatus.some(o => o.laneSequenceId === selectLaneIdNum);
+      if (!known) navigate(`${basePath}${location.search}`, { replace: true });
+      return;
+    }
+    const target = smokeObjectRows.find(o => o.workable) ?? smokeObjectRows[0];
+    if (target) setActiveLane(target.laneSequenceId);
+  });
 
   const isObjectLocalized = (object: AlertObjectStatus): boolean => {
     const progress = objectProgress.get(object.laneSequenceId);
