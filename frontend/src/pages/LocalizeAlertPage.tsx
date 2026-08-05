@@ -244,6 +244,8 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   // Submit after "Submit anyway" goes straight through instead of re-asking
   // the same question).
   const [missedSmokeConfirm, setMissedSmokeConfirm] = useState(false);
+  const [skipConfirmOpen, setSkipConfirmOpen] = useState(false);
+  const [skipNote, setSkipNote] = useState('');
   const [softConfirmResolved, setSoftConfirmResolved] = useState(false);
   // "+ Add object": lane ids spawned via the picker this session (feeds the
   // soft-confirm gate below) and whether the picker is currently open.
@@ -936,6 +938,33 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     },
   });
 
+  // Escape hatch (spec: alert-skip-escape-hatch): park the whole alert when
+  // the current UI cannot express it, then move on. Queue mode only.
+  const skipAlertMutation = useMutation({
+    mutationFn: () => {
+      if (!sequence) throw new Error('Alert not loaded');
+      return apiClient.skipAlert(
+        sequence.source_api,
+        sequence.platform_alert_id,
+        skipNote.trim() || undefined
+      );
+    },
+    onSuccess: () => {
+      setSkipConfirmOpen(false);
+      setSkipNote('');
+      queryClient.invalidateQueries({ queryKey: ['localization-queue'] });
+      queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });
+      queryClient.invalidateQueries({ queryKey: alertDetailQueryKey });
+      showToastNotification('Alert skipped', 'success');
+      navigate(listPath);
+    },
+    onError: err => {
+      const detail = (err as { detail?: string })?.detail || (err as Error)?.message || '';
+      showToastNotification(detail ? `Skip failed: ${detail}` : 'Skip failed — try again', 'error');
+    },
+  });
+
   // The missed-smoke soft-confirm ("you flagged missed smoke but added no
   // object") is the only gate left in front of submit — the old two-step
   // no-box warning went away with the bulk-accept-on-submit it guarded:
@@ -1510,6 +1539,21 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                       </button>
                     </Tooltip>
                   </div>
+                  {mode !== 'done' && (
+                    <div className="mt-2 flex justify-center">
+                      <button
+                        type="button"
+                        onClick={e => {
+                          e.stopPropagation();
+                          setSkipConfirmOpen(true);
+                        }}
+                        data-testid="rail-skip"
+                        className="inline-flex items-center rounded-lg border border-line bg-paper px-3 py-1.5 font-body text-xs font-medium text-haze hover:bg-ash"
+                      >
+                        Skip alert
+                      </button>
+                    </div>
+                  )}
                 </div>
               )
             }
@@ -1598,6 +1642,50 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                 className="inline-flex items-center justify-center rounded-lg px-4 py-2 font-body text-sm font-medium text-haze hover:text-char"
               >
                 Go back
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {skipConfirmOpen && (
+        <div
+          data-testid="skip-alert-confirm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-char/40 px-4"
+        >
+          <div className="w-full max-w-sm rounded-lg border border-line bg-paper p-5">
+            <h2 className="font-body text-sm font-semibold text-char">Skip this alert?</h2>
+            <p className="mt-1 font-body text-xs text-haze">
+              The whole alert leaves the queue for everyone until someone unskips it.
+            </p>
+            <label
+              htmlFor="skip-note"
+              className="mt-3 block font-body text-xs font-medium text-haze"
+            >
+              Why is it hard to annotate? (optional)
+            </label>
+            <textarea
+              id="skip-note"
+              value={skipNote}
+              onChange={e => setSkipNote(e.target.value)}
+              rows={3}
+              className="mt-1 w-full rounded-lg border border-line bg-paper p-2 font-body text-sm text-char"
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setSkipConfirmOpen(false)}
+                className="inline-flex items-center rounded-lg border border-line bg-paper px-3 py-2 font-body text-sm font-medium text-char hover:bg-ash"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => skipAlertMutation.mutate()}
+                disabled={skipAlertMutation.isPending}
+                className="inline-flex items-center rounded-lg bg-pine px-3 py-2 font-body text-sm font-semibold text-white hover:brightness-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Skip alert
               </button>
             </div>
           </div>

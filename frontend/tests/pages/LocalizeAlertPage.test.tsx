@@ -44,6 +44,7 @@ vi.mock('@/services/api', () => ({
     updateSequenceAnnotation: vi.fn(),
     localizeSubmit: vi.fn(),
     addObject: vi.fn(),
+    skipAlert: vi.fn(),
   },
 }));
 
@@ -2720,4 +2721,73 @@ describe('LocalizeAlertPage', () => {
     });
   });
 
+  describe('skip alert', () => {
+    it('opens the confirm dialog with an optional note field', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: /Skip alert/ }));
+
+      expect(screen.getByTestId('skip-alert-confirm')).toBeInTheDocument();
+      expect(screen.getByLabelText(/optional/i)).toBeInTheDocument();
+    });
+
+    it('cancel closes without calling the API', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: /Skip alert/ }));
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+      expect(screen.queryByTestId('skip-alert-confirm')).not.toBeInTheDocument();
+      expect(apiClient.skipAlert).not.toHaveBeenCalled();
+    });
+
+    it('confirm sends the trimmed note and navigates to the queue list', async () => {
+      vi.mocked(apiClient.skipAlert).mockResolvedValue({
+        skipped_at: '2026-08-05T10:00:00Z',
+        skipped_by: 'annotator',
+        note: 'cannot box this',
+      });
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: /Skip alert/ }));
+      fireEvent.change(screen.getByLabelText(/optional/i), {
+        target: { value: '  cannot box this  ' },
+      });
+      fireEvent.click(
+        within(screen.getByTestId('skip-alert-confirm')).getByRole('button', {
+          name: /Skip alert/,
+        })
+      );
+
+      await waitFor(() => {
+        expect(apiClient.skipAlert).toHaveBeenCalledWith('pyronear_french', 500, 'cannot box this');
+      });
+      await waitFor(() => {
+        expect(screen.getByTestId('localize-queue-landing')).toBeInTheDocument();
+      });
+    });
+
+    it('shows an error toast and keeps the dialog when the skip fails', async () => {
+      vi.mocked(apiClient.skipAlert).mockRejectedValue({ detail: 'Alert is already skipped' });
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: /Skip alert/ }));
+      fireEvent.click(
+        within(screen.getByTestId('skip-alert-confirm')).getByRole('button', {
+          name: /Skip alert/,
+        })
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(/already skipped/i)).toBeInTheDocument();
+      });
+      expect(screen.getByTestId('skip-alert-confirm')).toBeInTheDocument();
+    });
+
+    it('does not offer skip in done mode', async () => {
+      await renderAndSettle(<LocalizeAlertPage mode="done" />, { wrapper: doneWrapper });
+
+      expect(screen.queryByRole('button', { name: /Skip alert/ })).not.toBeInTheDocument();
+    });
+  });
 });
