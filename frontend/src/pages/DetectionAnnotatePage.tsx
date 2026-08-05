@@ -104,7 +104,16 @@ export default function DetectionAnnotatePage() {
         </button>
       </div>
 
-      {items.length === 0 ? (
+      {items.length === 0 && showSkipped ? (
+        <div className="flex items-center justify-center min-h-96">
+          <div className="text-center max-w-md">
+            <h2 className="font-display text-base font-semibold text-char">No skipped alerts</h2>
+            <p className="mt-1.5 font-body text-sm leading-relaxed text-haze">
+              Nothing is parked here — alerts skipped from this queue would show up in this view.
+            </p>
+          </div>
+        </div>
+      ) : items.length === 0 ? (
         <div className="flex items-center justify-center min-h-96">
           <div className="text-center max-w-md">
             <span

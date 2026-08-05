@@ -882,6 +882,7 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
       setSkipConfirmOpen(false);
       setSkipNote('');
       queryClient.invalidateQueries({ queryKey: ['classify-queue'] });
+      queryClient.invalidateQueries({ queryKey: ['classify-queue-skipped-count'] });
       queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
       queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });
       queryClient.invalidateQueries({ queryKey: alertDetailQueryKey });

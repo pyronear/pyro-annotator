@@ -1027,6 +1027,10 @@ async def _propagate_to_group_if_validated(
                 select(Sequence.id).where(
                     Sequence.sequence_group_id == group.id,
                     Sequence.id != seq.id,
+                    # A parked alert's lane state never moves (spec:
+                    # alert-skip-escape-hatch) — skipped members sit this
+                    # fan-out out, like locked-stage members below.
+                    ~alert_skip_exists_clause(Sequence),
                 )
             )
         )

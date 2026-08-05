@@ -355,7 +355,19 @@ export default function SequencesPage({
         {/* Empty state message */}
         <div className="flex items-center justify-center min-h-96">
           <div className="text-center max-w-md">
-            {hasFilters ? (
+            {isQueueMode && showSkipped ? (
+              // Skipped backlog is empty — that's the good outcome, but the
+              // celebration copy belongs to the live queue, not this view.
+              <>
+                <h2 className="font-display text-base font-semibold text-char">
+                  No skipped alerts
+                </h2>
+                <p className="mt-1.5 font-body text-sm leading-relaxed text-haze">
+                  Nothing is parked here — alerts skipped from this queue would show up in this
+                  view.
+                </p>
+              </>
+            ) : hasFilters ? (
               // Filtered results - no matches (shared by queue and done)
               <>
                 <span

@@ -122,6 +122,15 @@ computation exists anywhere.
   moving a lane to a done stage) and the localize submit path reject with
   409 when the lane's alert has a skip row — a stale tab must not race a
   teammate's skip. Non-stage-changing edits are not guarded.
+- **Machine writers respect the park.** Two background paths write
+  `seq_annotation_done` onto lanes without going through the submit guard,
+  and both exclude skipped alerts: the validated-group fan-out skips group
+  members whose alert is skipped (like locked-stage members), and the
+  group-assignment sweep leaves a skipped alert's sequences unassigned so a
+  later sweep picks them up unchanged once unskipped. Without this, a
+  machine write could advance a parked lane — and, by consuming the alert's
+  last `ready_to_annotate` lane, make the skip row invisible in both
+  queues' skipped views.
 - **Auto-annotate sweep: untouched.** A classify-skipped alert has
   unclassified lanes, so the all-siblings-done gate already fails; a
   localize-skipped alert already has its reference layer built (that is the

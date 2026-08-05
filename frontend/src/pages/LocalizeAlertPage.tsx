@@ -959,6 +959,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       setSkipConfirmOpen(false);
       setSkipNote('');
       queryClient.invalidateQueries({ queryKey: ['localization-queue'] });
+      queryClient.invalidateQueries({ queryKey: ['localization-queue-skipped-count'] });
       queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
       queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });
       queryClient.invalidateQueries({ queryKey: alertDetailQueryKey });

@@ -31,6 +31,7 @@ from sqlalchemy import (
     ARRAY,
     String,
 )
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import aliased
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -902,7 +903,17 @@ async def skip_alert(
         note=payload.note,
     )
     session.add(skip)
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError:
+        # Two annotators skipping the same alert can both pass the pre-check;
+        # the unique constraint settles it — surface the loser as the same
+        # 409 the pre-check gives.
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Alert is already skipped",
+        )
     return AlertSkipInfo(
         skipped_at=skip.skipped_at,
         skipped_by=current_user.username,
