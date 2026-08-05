@@ -1,6 +1,11 @@
 /**
- * Confirms accepting the model's boxes on every frame of this object that
- * still has none.
+ * Confirms accepting the model's boxes on every frame of this object where one
+ * is on offer but has not been accepted.
+ *
+ * The distinction matters in the copy: those frames are not empty — a model
+ * found smoke and drew a box, it just has not been committed. "No box" is
+ * reserved for the frames in the warning below, where no source found
+ * anything at all.
  *
  * The preview is the point of the dialog. `collectLaneBoxes` returns the
  * lane's boxes as they WOULD stand after accepting — committed boxes where
@@ -62,15 +67,15 @@ export function AcceptRemainingDialog({
         </p>
         <p className="mt-2 font-body text-sm text-char">
           {acceptCount === 1
-            ? 'One frame of this object has no box yet.'
-            : `${acceptCount} frames of this object have no box yet.`}{' '}
-          Accepting takes the model&apos;s box on each. Frames you have already decided are left
+            ? 'One frame carries a model box you have not accepted yet.'
+            : `${acceptCount} frames carry a model box you have not accepted yet.`}{' '}
+          Accepting commits them exactly as shown below. Frames you have already decided are left
           alone.
         </p>
 
         <div className="mt-4">
           <p className="mb-2 font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
-            How {objectLabel} will look
+            What {objectLabel} ends up with
           </p>
           <CroppedImageSequence
             bboxes={previewBoxes}
