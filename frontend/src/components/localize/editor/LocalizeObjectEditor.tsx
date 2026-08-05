@@ -921,6 +921,7 @@ export function LocalizeObjectEditor({
           onCommit={commitCandidate}
           onDraw={() => setIsDrawMode(true)}
           onClear={clear}
+          isDrawMode={isDrawMode}
         />
       </div>
 

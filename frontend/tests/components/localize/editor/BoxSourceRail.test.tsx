@@ -36,6 +36,7 @@ const props = {
   onCommit: vi.fn(),
   onDraw: vi.fn(),
   onClear: vi.fn(),
+  isDrawMode: false,
 };
 
 describe('BoxSourceRail', () => {
@@ -52,8 +53,30 @@ describe('BoxSourceRail', () => {
     expect(screen.getByTestId('source-row-engine')).toHaveAttribute('aria-pressed', 'false');
   });
 
-  it('disables a row whose source has no box', () => {
-    render(<BoxSourceRail {...props} />);
+  it('disables a model row whose source has no box', () => {
+    render(<BoxSourceRail {...props} candidates={[auto]} committed={auto} />);
+    expect(screen.getByTestId('source-row-engine')).toBeDisabled();
+  });
+
+  it('keeps the Manual row live with no box, as the invitation to draw one', () => {
+    const onDraw = vi.fn();
+    render(<BoxSourceRail {...props} onDraw={onDraw} />);
+    const manual = screen.getByTestId('source-row-manual');
+
+    expect(manual).not.toBeDisabled();
+    expect(manual).toHaveTextContent('draw one');
+
+    fireEvent.click(manual);
+    expect(onDraw).toHaveBeenCalled();
+  });
+
+  it('shows the Manual row as armed while drawing', () => {
+    render(<BoxSourceRail {...props} isDrawMode />);
+    expect(screen.getByTestId('source-row-manual')).toHaveTextContent('click two corners');
+  });
+
+  it('does not offer to draw from the Manual row when it is not editable', () => {
+    render(<BoxSourceRail {...props} disabled />);
     expect(screen.getByTestId('source-row-manual')).toBeDisabled();
   });
 

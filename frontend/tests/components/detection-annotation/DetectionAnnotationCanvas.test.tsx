@@ -152,6 +152,25 @@ describe('DetectionAnnotationCanvas single-box model', () => {
     expect(screen.getByTestId('ghost-box-auto-0')).toBeInTheDocument();
   });
 
+  it('thins the strokes as the zoom grows, so they keep their on-screen weight', () => {
+    const { rerender } = render(
+      <DetectionAnnotationCanvas {...defaultProps} committed={auto} ghosts={[engine]} />
+    );
+    const at1x = screen.getByTestId('ghost-box-engine-0').style.borderWidth;
+
+    rerender(
+      <DetectionAnnotationCanvas
+        {...defaultProps}
+        committed={auto}
+        ghosts={[engine]}
+        zoomLevel={3}
+      />
+    );
+    const at3x = screen.getByTestId('ghost-box-engine-0').style.borderWidth;
+
+    expect(parseFloat(at3x)).toBeCloseTo(parseFloat(at1x) / 3);
+  });
+
   it('suppresses the resize handles while drawing, so a click lands on the canvas', () => {
     render(
       <DetectionAnnotationCanvas {...defaultProps} committed={auto} ghosts={[]} selected isDrawMode />

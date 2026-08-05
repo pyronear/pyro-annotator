@@ -59,8 +59,15 @@ export const SOURCE_WEIGHT: Record<BoxSource, number> = {
 /**
  * A dark ring hugging the stroke on both sides, so a bright box stays visible
  * against a bright sky without dimming the hue itself.
+ *
+ * Divided by the zoom, like every other stroke on the stage: these marks live
+ * inside the scaled layer, so a ring authored in CSS pixels would be drawn
+ * three times as thick at 3x.
  */
-export const HALO_SHADOW = '0 0 0 1px rgba(0,0,0,0.65), inset 0 0 0 1px rgba(0,0,0,0.65)';
+export const haloShadow = (scale = 1): string => {
+  const ring = 1 / scale;
+  return `0 0 0 ${ring}px rgba(0,0,0,0.65), inset 0 0 0 ${ring}px rgba(0,0,0,0.65)`;
+};
 
 /** Accessible counterparts for badges and labels on paper (>= 4.5:1 on white). */
 export const SOURCE_TEXT: Record<BoxSource, string> = {

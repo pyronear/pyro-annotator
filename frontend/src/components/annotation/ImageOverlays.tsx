@@ -18,17 +18,32 @@ import {
   ImageInfo,
 } from '@/utils/annotation/coordinateUtils';
 
-// Position of each resize handle relative to the selected box (8px squares).
-const HANDLE_STYLES: Record<ResizeHandle, React.CSSProperties> = {
-  nw: { left: -4, top: -4 },
-  n: { left: 'calc(50% - 4px)', top: -4 },
-  ne: { right: -4, top: -4 },
-  w: { left: -4, top: 'calc(50% - 4px)' },
-  e: { right: -4, top: 'calc(50% - 4px)' },
-  sw: { left: -4, bottom: -4 },
-  s: { left: 'calc(50% - 4px)', bottom: -4 },
-  se: { right: -4, bottom: -4 },
-};
+// Where each resize handle sits relative to the selected box, for a handle of
+// `size` px. Computed rather than fixed because the size varies with the
+// zoom the overlay is rendered inside.
+function handleStyle(handle: ResizeHandle, size: number): React.CSSProperties {
+  const edge = -size / 2;
+  const mid = `calc(50% - ${size / 2}px)`;
+  const base: React.CSSProperties = { width: `${size}px`, height: `${size}px` };
+  switch (handle) {
+    case 'nw':
+      return { ...base, left: edge, top: edge };
+    case 'n':
+      return { ...base, left: mid, top: edge };
+    case 'ne':
+      return { ...base, right: edge, top: edge };
+    case 'w':
+      return { ...base, left: edge, top: mid };
+    case 'e':
+      return { ...base, right: edge, top: mid };
+    case 'sw':
+      return { ...base, left: edge, bottom: edge };
+    case 's':
+      return { ...base, left: mid, bottom: edge };
+    case 'se':
+      return { ...base, right: edge, bottom: edge };
+  }
+}
 
 /**
  * Component for rendering AI prediction bounding boxes over detection images.
@@ -472,6 +487,12 @@ interface DrawingOverlayProps {
   boxWidth?: number;
   /** Dark ring hugging the stroke so it survives a bright background. */
   boxShadow?: string;
+  /**
+   * The zoom this overlay is rendered inside. Stroke widths and handle sizes
+   * are divided by it, so they stay the same thickness on screen however far
+   * the image is zoomed — otherwise a 4px border is drawn at 12px at 3x.
+   */
+  strokeScale?: number;
 }
 
 export function DrawingOverlay({
@@ -489,7 +510,11 @@ export function DrawingOverlay({
   boxColor,
   boxWidth,
   boxShadow,
+  strokeScale = 1,
 }: DrawingOverlayProps) {
+  // Handles are squares in screen pixels; at 3x an unscaled 10px handle would
+  // cover the box it is meant to grab.
+  const handleSize = 10 / strokeScale;
   const renderRectangle = (
     rect: { xyxyn: [number, number, number, number]; id?: string } | CurrentDrawing,
     type: 'completed' | 'drawing'
@@ -560,7 +585,7 @@ export function DrawingOverlay({
                     borderStyle: 'solid',
                     // Selection thickens the stroke rather than recolouring
                     // it: the colour is carrying the box's source already.
-                    borderWidth: `${(boxWidth ?? 2) + (isSelected ? 2 : 0)}px`,
+                    borderWidth: `${((boxWidth ?? 2) + (isSelected ? 2 : 0)) / strokeScale}px`,
                     boxShadow,
                   }
                 : {}),
@@ -569,13 +594,17 @@ export function DrawingOverlay({
             {/* Resize handles on the selected box */}
             {isSelected &&
               onHandlePointerDown &&
-              (Object.keys(HANDLE_STYLES) as ResizeHandle[]).map(handle => (
+              (Object.keys(HANDLE_CURSOR) as ResizeHandle[]).map(handle => (
                 <div
                   key={handle}
                   data-testid={`resize-handle-${handle}`}
                   onMouseDown={e => onHandlePointerDown(rect.id, handle, e)}
-                  className="absolute w-2.5 h-2.5 bg-paper border-2 border-char pointer-events-auto"
-                  style={{ ...HANDLE_STYLES[handle], cursor: HANDLE_CURSOR[handle] }}
+                  className="absolute bg-paper pointer-events-auto"
+                  style={{
+                    ...handleStyle(handle, handleSize),
+                    border: `${2 / strokeScale}px solid #20261F`,
+                    cursor: HANDLE_CURSOR[handle],
+                  }}
                 />
               ))}
           </div>

@@ -27,7 +27,7 @@ import {
   type ObjectOverlayItem,
 } from '@/components/annotation/ImageOverlays';
 import {
-  HALO_SHADOW,
+  haloShadow,
   SOURCE_COLOR,
   SOURCE_WEIGHT,
 } from '@/components/localize/editor/sourceIdentity';
@@ -205,8 +205,10 @@ export function DetectionAnnotationCanvas({
                 className="absolute border-dashed opacity-90"
                 style={{
                   borderColor: SOURCE_COLOR[ghost.source],
-                  borderWidth: `${SOURCE_WEIGHT[ghost.source]}px`,
-                  boxShadow: HALO_SHADOW,
+                  // Divided by the zoom so the stroke keeps its on-screen
+                  // weight however far the image is scaled.
+                  borderWidth: `${SOURCE_WEIGHT[ghost.source] / zoomLevel}px`,
+                  boxShadow: haloShadow(zoomLevel),
                   left: `${box.left}px`,
                   top: `${box.top}px`,
                   width: `${box.width}px`,
@@ -237,7 +239,8 @@ export function DetectionAnnotationCanvas({
             normalizedToImage={normalizedToImage}
             boxColor={committed ? SOURCE_COLOR[committed.source] : undefined}
             boxWidth={committed ? SOURCE_WEIGHT[committed.source] : undefined}
-            boxShadow={HALO_SHADOW}
+            boxShadow={haloShadow(zoomLevel)}
+            strokeScale={zoomLevel}
             onBoxPointerDown={(_id, e) => onBoxPointerDown(e)}
             onHandlePointerDown={
               isDrawMode ? undefined : (_id, handle, e) => onHandlePointerDown(handle, e)

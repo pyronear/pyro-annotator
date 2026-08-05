@@ -39,6 +39,8 @@ export interface BoxSourceRailProps {
   onCommit: (candidate: BoxCandidate) => void;
   onDraw: () => void;
   onClear: () => void;
+  /** Armed to draw — the Manual row shows it, since the cursor alone is thin feedback. */
+  isDrawMode: boolean;
 }
 
 /** The union of every candidate box — one region shared by all rows. */
@@ -117,6 +119,7 @@ export function BoxSourceRail({
   onCommit,
   onDraw,
   onClear,
+  isDrawMode,
 }: BoxSourceRailProps) {
   const region = unionBox(candidates);
 
@@ -129,17 +132,27 @@ export function BoxSourceRail({
       {SOURCE_ORDER.map(source => {
         const candidate = candidates.find(c => c.source === source);
         const isCommitted = committed?.source === source;
+        // Manual is the one source you can create. With no box drawn yet its
+        // row is not a dead entry — it is the invitation to draw one, so it
+        // stays live and arms the same draw mode the button does.
+        const drawsOnClick = source === 'manual' && !candidate;
+        const armed = drawsOnClick && isDrawMode;
         return (
           <button
             key={source}
             type="button"
             data-testid={`source-row-${source}`}
             aria-pressed={isCommitted}
-            disabled={disabled || !candidate || isCommitted}
-            onClick={() => candidate && !isCommitted && onCommit(candidate)}
+            disabled={disabled || isCommitted || (!candidate && !drawsOnClick)}
+            onClick={() => {
+              if (drawsOnClick) return onDraw();
+              if (candidate && !isCommitted) onCommit(candidate);
+            }}
             className={`mb-1.5 flex w-full items-center gap-2.5 rounded-lg border p-2 text-left transition-colors ${
-              isCommitted ? 'border-pine bg-pine-soft' : 'border-transparent'
-            } ${candidate && !isCommitted ? 'hover:bg-ash' : ''} ${candidate ? '' : 'opacity-40'}`}
+              isCommitted || armed ? 'border-pine bg-pine-soft' : 'border-transparent'
+            } ${(candidate && !isCommitted) || drawsOnClick ? 'hover:bg-ash' : ''} ${
+              candidate || drawsOnClick ? '' : 'opacity-40'
+            }`}
           >
             <CandidateCrop imageUrl={imageUrl} region={region} candidate={candidate} />
             <span className="min-w-0">
@@ -153,11 +166,15 @@ export function BoxSourceRail({
                 {isCommitted && <Check className="h-3.5 w-3.5 text-pine" />}
               </span>
               <span className="block font-data text-detail text-haze">
-                {!candidate
-                  ? 'no box'
-                  : candidate.confidence !== undefined
-                    ? `${(candidate.confidence * 100).toFixed(0)}% confident`
-                    : 'you drew this'}
+                {armed
+                  ? 'click two corners'
+                  : drawsOnClick
+                    ? 'draw one'
+                    : !candidate
+                      ? 'no box'
+                      : candidate.confidence !== undefined
+                        ? `${(candidate.confidence * 100).toFixed(0)}% confident`
+                        : 'you drew this'}
               </span>
             </span>
           </button>
