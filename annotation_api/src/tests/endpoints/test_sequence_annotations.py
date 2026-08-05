@@ -2833,3 +2833,80 @@ async def test_fp_promotion_rejected_when_lane_has_committed_boxes(
     survivor = await _get_detection_annotation(authenticated_client, detection_id)
     assert survivor["annotation"]["annotation"] != []
     assert not deferred
+
+
+@pytest.mark.asyncio
+async def test_fp_promotion_rolls_back_when_payload_fails_validation(
+    authenticated_client: AsyncClient, sequence_session, monkeypatch
+):
+    """The promotion's detection-annotation delete runs before
+    validate_detection_ids in apply_annotation_update; only the uncommitted
+    session protects the rows when validation then rejects the payload. Pin
+    that: a promotion carrying a bad detection_id must leave the stale
+    detection annotations in place, the stage untouched, and no job
+    deferred."""
+    deferred = False
+
+    async def fake_defer(**kwargs):
+        nonlocal deferred
+        deferred = True
+
+    monkeypatch.setattr(ep.auto_annotate_sequence, "defer_async", fake_defer)
+
+    detection_id = await _create_detection(authenticated_client, "3103")
+
+    fp_payload = {
+        "sequence_id": 1,
+        "has_missed_smoke": False,
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": False,
+                    "false_positive_types": ["high_cloud"],
+                    "bboxes": [
+                        {"detection_id": detection_id, "xyxyn": [0.1, 0.1, 0.2, 0.2]}
+                    ],
+                }
+            ]
+        },
+        "processing_stage": "annotated",
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+    response = await authenticated_client.post(
+        "/annotations/sequences/", json=fp_payload
+    )
+    assert response.status_code == 201
+    annotation_id = response.json()["id"]
+
+    promote_payload = {
+        "annotation": {
+            "sequences_bbox": [
+                {
+                    "is_smoke": True,
+                    "smoke_type": "wildfire",
+                    "false_positive_types": [],
+                    # Nonexistent detection: validate_detection_ids rejects
+                    # the payload after the promotion block already ran.
+                    "bboxes": [{"detection_id": 999999, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
+                }
+            ]
+        },
+        "has_missed_smoke": False,
+        "is_unsure": False,
+        "processing_stage": "seq_annotation_done",
+    }
+    response = await authenticated_client.patch(
+        f"/annotations/sequences/{annotation_id}", json=promote_payload
+    )
+    assert response.status_code == 422
+
+    # The delete was rolled back with everything else: the stale empty
+    # detection annotation is still there, the lane still annotated.
+    response = await authenticated_client.get(f"/annotations/sequences/{annotation_id}")
+    assert response.json()["processing_stage"] == "annotated"
+    stale = await _get_detection_annotation(authenticated_client, detection_id)
+    assert stale["annotation"] == {"annotation": []}
+    sequence = await sequence_session.get(models.Sequence, 1)
+    await sequence_session.refresh(sequence)
+    assert sequence.auto_annotate_enqueued_at is None
+    assert not deferred

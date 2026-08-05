@@ -712,6 +712,38 @@ async def apply_annotation_update(
             target_has_smoke, target_has_missed_smoke, target_is_unsure
         )
     )
+
+    # Check if we should auto-generate annotation content
+    if should_trigger_auto_generation(target_processing_stage, target_annotation):
+        logger.info(
+            f"Auto-generating annotation for sequence {existing.sequence_id} during update"
+        )
+        generated_annotation = await auto_generate_annotation(
+            sequence_id=existing.sequence_id,
+            session=session,
+            confidence_threshold=payload.confidence_threshold or 0.0,
+            iou_threshold=payload.iou_threshold or 0.0,
+            min_cluster_size=payload.min_cluster_size or 1,
+        )
+
+        # Use generated annotation if successful
+        if generated_annotation:
+            payload.annotation = generated_annotation
+            logger.info(
+                f"Using auto-generated annotation with {len(generated_annotation.sequences_bbox)} sequences_bbox for sequence {existing.sequence_id}"
+            )
+        else:
+            logger.warning(
+                f"Auto-generation failed for sequence {existing.sequence_id}, proceeding with original annotation"
+            )
+
+    # Validate detection_ids if annotation is being updated
+    if payload.annotation is not None:
+        await validate_detection_ids(payload.annotation, session)
+
+    # The promotion's destructive step runs after every validation above, so
+    # nothing can raise between the delete and the row update — the pending
+    # delete must never be left behind by a later 422.
     if is_fp_promotion:
         committed = (
             await session.execute(
@@ -750,34 +782,6 @@ async def apply_annotation_update(
         if sequence is not None:
             sequence.auto_annotate_enqueued_at = datetime.now(UTC)
             session.add(sequence)
-
-    # Check if we should auto-generate annotation content
-    if should_trigger_auto_generation(target_processing_stage, target_annotation):
-        logger.info(
-            f"Auto-generating annotation for sequence {existing.sequence_id} during update"
-        )
-        generated_annotation = await auto_generate_annotation(
-            sequence_id=existing.sequence_id,
-            session=session,
-            confidence_threshold=payload.confidence_threshold or 0.0,
-            iou_threshold=payload.iou_threshold or 0.0,
-            min_cluster_size=payload.min_cluster_size or 1,
-        )
-
-        # Use generated annotation if successful
-        if generated_annotation:
-            payload.annotation = generated_annotation
-            logger.info(
-                f"Using auto-generated annotation with {len(generated_annotation.sequences_bbox)} sequences_bbox for sequence {existing.sequence_id}"
-            )
-        else:
-            logger.warning(
-                f"Auto-generation failed for sequence {existing.sequence_id}, proceeding with original annotation"
-            )
-
-    # Validate detection_ids if annotation is being updated
-    if payload.annotation is not None:
-        await validate_detection_ids(payload.annotation, session)
 
     # Check if processing_stage is being updated to "annotated" for auto-creation logic
     was_annotated_before = (
