@@ -618,8 +618,11 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   // the drawn box to it. Navigation to the new frame waits for the detections
   // refetch, so the editor never opens an id the loaded data cannot back.
   const materializeAndCommit = useMutation({
-    mutationFn: (params: { laneId: number; recordedAt: string; items: DetectionAnnotationBbox[] }) =>
-      materializeGapFrame(params),
+    mutationFn: (params: {
+      laneId: number;
+      recordedAt: string;
+      items: DetectionAnnotationBbox[];
+    }) => materializeGapFrame(params),
     onSuccess: async ({ detection }, variables) => {
       await Promise.all([
         queryClient.invalidateQueries({
@@ -664,7 +667,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       // The server's guards (model evidence, last frame) refuse with 409;
       // fall back to the ordinary confirmed-empty clear so the annotator's
       // intent still lands.
-      if ((error as ApiError).status === 409) {
+      if ((error as unknown as ApiError).status === 409) {
         saveDetection.mutate({
           laneId: variables.laneId,
           detectionId: variables.detection.id,

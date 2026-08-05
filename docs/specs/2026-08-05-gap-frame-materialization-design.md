@@ -1,7 +1,7 @@
 # Drawing on frames outside an object's detected range
 
 Date: 2026-08-05
-Status: approved, not implemented
+Status: implemented
 Issue: #287
 
 ## Problem
@@ -183,3 +183,14 @@ stack; frontend `npm run quality` clean and full suite green.
 - Backend one-box-per-annotation validator (#286).
 - "Remove added object" and any `is_manual` marker.
 - Auto-advance or bulk operations over gap frames.
+
+## Amendments from implementation
+
+- **After un-materialize the editor lands on the nearest earlier in-object
+  frame** (else the first later one), rather than re-peeking the removed
+  frame's timestamp. The peek holds a filmstrip-entry snapshot; re-peeking
+  mid-refetch would show a stale identity, and stepping back onto the
+  now-gap frame is one keypress.
+- **`ApiError` gained an optional `status`** (set by the axios interceptor)
+  so the page recognizes the DELETE's 409 without string-matching the detail
+  message.
