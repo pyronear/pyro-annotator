@@ -411,3 +411,55 @@ of a workable object to carry a box, so materializing a frame creates an
 obligation — the drawn box must be saved in the same flow or the object becomes
 un-submittable. `buildAlertFrameModel` and the cockpit grid also gain a cell
 that was not there, and an added-then-emptied frame needs a defined fate.
+
+## Amendments from use
+
+Everything above is the design as approved. The following changed while the
+screen was being used, and the shipped behaviour is what this section says.
+
+**The canvas is modeless.** Drawing was a mode entered with `D`, a button, or
+the Manual row. A drag on the image now draws a box; space+drag or a
+middle-drag pans; a press that never moves is a click, which deselects.
+Two-click drawing is gone — always armed, it would let a stray click begin a
+box with nothing on screen to say so. `D` and the Draw button went with it, and
+the Manual row stopped being a control ("drag on the image").
+
+**The stage opens framed on the object**, at `targetFill` 0.32 and at most 3×,
+rather than on the full frame. The spec left this to use; use answered it.
+`computeCellCrop` takes the framing as options, so the grid keeps its own
+tighter defaults.
+
+**Box colour encodes the source, not the smoke type** — an object has one smoke
+type across every frame, so that colour never varied. High-chroma hues
+(magenta / cyan / amber) with a dark halo, chosen because they do not occur in
+a wildfire frame; the manual > auto > engine hierarchy rides on stroke weight,
+which survives a photograph where a lightness ramp does not. Strokes divide by
+the zoom so they hold their on-screen weight.
+
+**Selection is real.** The committed box renders unselected with no handles;
+clicking selects it, Escape or a click away deselects, and a frame change drops
+it. It had been permanently "selected" purely to carry its handles.
+
+**The losing candidates hide once a box is committed** — the committed box
+speaks for the object, and the rail's crops carry the comparison — and ghost in
+when nothing is, where the frame would otherwise be blank. `G` flips either
+state. The alert's other objects are off by default, behind `O`.
+
+**Accepting the model on the rest of the object is offered here**, not only on
+the cockpit rail, through the same mutation. Its confirmation is a popover
+carrying the object's projected track (`collectLaneBoxes` returns exactly the
+post-accept boxes) and a warning naming the frames no model found smoke on,
+which never blocks — those are precisely what keep the alert off the submit
+gate. **Reclassify** sits beside it.
+
+**The filmstrip owns frame position and stepping.** Its cells encode state in
+their border — solid source colour for accepted, dashed for on offer, hatched
+signal for a hole, faint for out-of-object — with no letters, since the rail
+names every colour. The current frame is marked by size and shows its clock
+time.
+
+**Shortcuts moved behind a Keyboard button** (or `?`), matching the classify
+cockpit's sheet, and `Delete` removes the frame's box.
+
+The screen is on DESIGN.md's tokens throughout; it had been the app's only dark
+surface, inherited from `ImageModal` rather than chosen.

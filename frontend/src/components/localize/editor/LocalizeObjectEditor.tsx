@@ -7,10 +7,16 @@
  * one, and autosaves every action. There is no submit button and no dirty
  * state: stepping frames never writes, and everything else writes at once.
  *
- * Bulk accept and alert submit stay on the cockpit's rail; this screen is for
- * fixing individual frames.
+ * Alert submit stays on the cockpit's rail. Accepting the model on the rest of
+ * THIS object is offered here too, routed to the same mutation the rail's own
+ * per-object action uses, so a sweep can finish where it started.
  *
- * See docs/specs/2026-08-05-localize-object-editor-revamp-design.md.
+ * The canvas is modeless: a drag draws, space or a middle-drag pans, a click
+ * selects or deselects.
+ *
+ * See docs/specs/2026-08-05-localize-object-editor-revamp-design.md — the
+ * spec's design, plus the changes that came out of using it (listed in its
+ * "Amendments from use" section).
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -173,12 +179,6 @@ export function LocalizeObjectEditor({
     next: [number, number, number, number];
   } | null>(null);
   const didDragBoxRef = useRef(false);
-  // A press that landed on the box (or a handle) — its trailing click must not
-  // reach the canvas, or the click that SELECTS the box would immediately
-  // deselect it again.
-  const didHitBoxRef = useRef(false);
-  // A pan drag also ends in a click; that click isn't a deselect either.
-  const didPanRef = useRef(false);
 
   const { data: imageData } = useDetectionImage(detection.id);
   const queryClient = useQueryClient();
@@ -443,7 +443,6 @@ export function LocalizeObjectEditor({
   const handleBoxPointerDown = (e: React.MouseEvent) => {
     if (!shownCommitted) return;
     e.stopPropagation();
-    didHitBoxRef.current = true;
     // First click selects; only a selected box can be dragged, so a stray
     // click on it never nudges the annotation.
     if (!boxSelected) {
@@ -462,7 +461,6 @@ export function LocalizeObjectEditor({
   const handleHandlePointerDown = (handle: ResizeHandle, e: React.MouseEvent) => {
     if (!shownCommitted) return;
     e.stopPropagation();
-    didHitBoxRef.current = true;
     didDragBoxRef.current = false;
     setBoxEdit({
       mode: 'resize',
@@ -481,9 +479,6 @@ export function LocalizeObjectEditor({
    */
   const handleMouseDown = (e: React.MouseEvent) => {
     didDragBoxRef.current = false;
-    // Reached only when the press missed the box — the box stops propagation
-    // — so this is where a stale hit flag from an earlier press gets cleared.
-    didHitBoxRef.current = false;
 
     const wantsPan = spaceHeldRef.current || e.button === 1;
     if (wantsPan) {
@@ -528,7 +523,6 @@ export function LocalizeObjectEditor({
         prev ? { ...prev, currentX: coords.x, currentY: coords.y } : null
       );
     } else if (isDragging && zoomLevel > 1) {
-      didPanRef.current = true;
       setPanOffset(constrainPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y }));
     }
   };
@@ -560,8 +554,6 @@ export function LocalizeObjectEditor({
     }
 
     if (isDragging) setIsDragging(false);
-    didPanRef.current = false;
-    didHitBoxRef.current = false;
   };
 
   // Clicks resolve on mouse-up, where the drag's size decides whether it was a

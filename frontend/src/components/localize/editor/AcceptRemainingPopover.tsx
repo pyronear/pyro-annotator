@@ -92,6 +92,11 @@ export function AcceptRemainingPopover({
           bboxes={previewBoxes}
           sequenceId={sequenceId}
           accentColor={objectColor}
+          // The boxes are the whole point of this preview: it answers "will
+          // these track the plume?", and without them it only shows that the
+          // plume is there. `showBoxes` arrived on main while this branch was
+          // in flight.
+          showBoxes
           maxSize="min(100%, 15rem)"
           className="mx-auto"
         />

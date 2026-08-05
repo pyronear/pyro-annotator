@@ -58,6 +58,7 @@ interface DetectionAnnotationCanvasProps {
   // identity. When provided (even an empty array) it replaces the generic
   // `SiblingBoundingBoxOverlay` layer.
   objectOverlays?: ObjectOverlayItem[];
+  /** A box is being dragged out right now; its handles must not eat the drag. */
   isDrawMode: boolean;
   onBoxPointerDown: (e: React.MouseEvent) => void;
   onHandlePointerDown: (handle: ResizeHandle, e: React.MouseEvent) => void;

@@ -3,8 +3,6 @@
  * rows, the box on the stage, the ghost outlines and the filmstrip badges, so
  * one source reads the same everywhere on this screen.
  *
- * TWO palettes, because these marks live on two very different surfaces.
- *
  * `SOURCE_STROKE` draws on the PHOTOGRAPH. Wildfire frames are sky (light
  * grey-blue), smoke (white to mid grey) and terrain (dark green-brown), so
  * anything neutral disappears into one of them — an earlier ordinal ramp in
@@ -12,9 +10,6 @@
  * reason: char vanished into terrain, haze into smoke. These are high-chroma
  * hues chosen because they do NOT occur in the scene, and every box is drawn
  * with `HALO_SHADOW` so the stroke survives even against bright sky.
- *
- * `SOURCE_TEXT` draws on PAPER, where the same hues would fail WCAG. These
- * are darkened counterparts of the same three, each clearing 4.5:1 on white.
  *
  * Deliberately outside DESIGN.md's semantic tokens, on the same reasoning
  * `objectColors.ts` gives: ember/pine/signal mark action, positive state and
@@ -78,18 +73,4 @@ export const SOURCE_EXPLANATION: Record<BoxSource, string> = {
   manual: 'A box you drew or adjusted here yourself. It always wins over the models.',
   auto: 'From the more sensitive model this app runs over the alert after import. Kept only where it agrees with the engine that something is there — usually tighter than the engine box.',
   engine: "From the camera's own detector — the box it raised this alert with.",
-};
-
-/** Accessible counterparts for badges and labels on paper (>= 4.5:1 on white). */
-export const SOURCE_TEXT: Record<BoxSource, string> = {
-  manual: 'text-[#C2185B]',
-  auto: 'text-[#00707F]',
-  engine: 'text-[#8A6100]',
-};
-
-/** Filmstrip badge letter; lowercased when the source is available but uncommitted. */
-export const SOURCE_LETTER: Record<BoxSource, string> = {
-  manual: 'M',
-  auto: 'A',
-  engine: 'E',
 };
