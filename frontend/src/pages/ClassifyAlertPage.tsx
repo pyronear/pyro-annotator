@@ -973,68 +973,72 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
 
   return (
     <>
-      {/* Pinned toolbar-scale header — same idiom as SequenceGroupAnnotatePage:
-          fixed to the viewport past the sidebar so alert identity, progress,
-          and Submit stay reachable while scrolling the object cards below.
-          The root's pt-20 reserves its space. */}
-      <div className="fixed top-0 left-0 md:left-64 right-0 z-30 px-6 pt-3 pb-2.5 bg-paper/85 border-b border-line backdrop-blur-sm">
+      {/* Pinned header, one row deep — same idiom as LocalizeAlertPage: fixed
+          to the viewport past the sidebar so alert identity, progress and the
+          alert-to-alert nav stay reachable while the object cards scroll
+          below. The back link used to sit on a line of its own above the
+          identity row; folding it in gives the cards 32px of viewport back.
+          `h-12` is a fixed height rather than one derived from padding,
+          because everything anchored to the bar below — the root's reserve,
+          the conflict banner, the sticky rail — has to know the number. */}
+      <div className="fixed top-0 left-0 md:left-64 right-0 z-30 flex h-12 items-center gap-3 px-6 bg-paper/85 border-b border-line backdrop-blur-sm">
         <button
           onClick={() => {
             clearAnnotationWorkflow();
             navigate(backUrl);
           }}
-          className="font-body text-detail text-haze hover:text-char inline-flex items-center gap-1"
+          className="font-body text-detail text-haze hover:text-char inline-flex shrink-0 items-center gap-1"
         >
           <ArrowLeft className="w-3.5 h-3.5" /> Alerts
         </button>
+        <span className="h-4 w-px shrink-0 bg-line" />
+        <h1 className="font-display text-heading font-semibold text-char truncate">
+          {alertDetail.organisation_name} · {alertDetail.camera_name}
+        </h1>
+        {/* One row means nothing wraps, so the narrowest viewports have to
+            shed something rather than squeeze the title to nothing and push
+            the badge off a bar that cannot scroll. The timestamp goes first:
+            it is the least load-bearing thing here. */}
+        <span className="hidden sm:inline font-data text-detail text-haze shrink-0">
+          {formatDateTime(alertDetail.recorded_at)}
+        </span>
+        <span
+          className={`flex-none rounded-full px-2.5 py-0.5 font-data text-xs font-semibold ${
+            editableCards.length > 0 && classifiedCount === editableCards.length
+              ? 'bg-pine-soft text-pine'
+              : 'bg-ember-soft text-ember'
+          }`}
+        >
+          {classifiedCount} of {editableCards.length} objects classified
+        </span>
 
-        <div className="mt-1 flex items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-2.5 min-w-0">
-            <h1 className="font-display text-heading font-semibold text-char truncate">
-              {alertDetail.organisation_name} · {alertDetail.camera_name}
-            </h1>
-            <span className="font-data text-detail text-haze">
-              {formatDateTime(alertDetail.recorded_at)}
-            </span>
-            <span
-              className={`flex-none rounded-full px-2.5 py-0.5 font-data text-xs font-semibold ${
-                editableCards.length > 0 && classifiedCount === editableCards.length
-                  ? 'bg-pine-soft text-pine'
-                  : 'bg-ember-soft text-ember'
-              }`}
+        {annotationWorkflow && annotationWorkflow.isActive && (
+          // `ml-auto` rather than a `justify-between` wrapper: with one row
+          // the nav is simply the last thing on the line, pushed right.
+          <div className="ml-auto flex flex-none items-center gap-2">
+            <button
+              onClick={handlePreviousAlert}
+              disabled={!canNavigatePrevious()}
+              className="p-1.5 rounded-lg border border-line bg-paper text-haze hover:bg-ash disabled:opacity-40 disabled:cursor-not-allowed"
+              title={canNavigatePrevious() ? 'Previous alert' : 'Already at first alert'}
             >
-              {classifiedCount} of {editableCards.length} objects classified
-            </span>
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <button
+              onClick={handleNextAlert}
+              disabled={!canNavigateNext()}
+              className="p-1.5 rounded-lg border border-line bg-paper text-haze hover:bg-ash disabled:opacity-40 disabled:cursor-not-allowed"
+              title={canNavigateNext() ? 'Next alert' : 'Already at last alert'}
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
           </div>
-
-          <div className="flex flex-none items-center gap-2">
-            {annotationWorkflow && annotationWorkflow.isActive && (
-              <>
-                <button
-                  onClick={handlePreviousAlert}
-                  disabled={!canNavigatePrevious()}
-                  className="p-1.5 rounded-lg border border-line bg-paper text-haze hover:bg-ash disabled:opacity-40 disabled:cursor-not-allowed"
-                  title={canNavigatePrevious() ? 'Previous alert' : 'Already at first alert'}
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={handleNextAlert}
-                  disabled={!canNavigateNext()}
-                  className="p-1.5 rounded-lg border border-line bg-paper text-haze hover:bg-ash disabled:opacity-40 disabled:cursor-not-allowed"
-                  title={canNavigateNext() ? 'Next alert' : 'Already at last alert'}
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </>
-            )}
-          </div>
-        </div>
+        )}
       </div>
 
-      <div className="space-y-4 pt-20">
+      <div className="space-y-4 pt-8">
         {groupConflictWarnings.length > 0 && (
-          <div className="sticky top-20 z-30 bg-signal-soft border-b-2 border-signal px-4 py-3">
+          <div className="sticky top-12 z-30 bg-signal-soft border-b-2 border-signal px-4 py-3">
             <div className="max-w-7xl mx-auto space-y-2">
               {groupConflictWarnings.map((warning, i) => (
                 <div key={i} className="flex items-start gap-3">
@@ -1084,7 +1088,7 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
               objectOverlays={playerObjectOverlays}
             />
           </div>
-          <div className="lg:flex-1 lg:min-w-0 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
+          <div className="lg:flex-1 lg:min-w-0 lg:sticky lg:top-12 lg:max-h-[calc(100vh-4rem)] lg:overflow-y-auto">
             <DecisionRail
               missedSmokeReview={missedSmokeReview}
               onMissedSmokeReviewChange={handleMissedSmokeReviewChange}
