@@ -37,8 +37,13 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
+  ctx2d.clearRect.mockClear();
   ctx2d.drawImage.mockClear();
   ctx2d.strokeRect.mockClear();
+  // Plain mutable properties, not mocks — clear them too, or a test that
+  // asserts an absent/default stroke would read the previous test's values.
+  ctx2d.strokeStyle = '';
+  ctx2d.lineWidth = 0;
 });
 
 // 128px-wide bbox in a 1280x720 frame, centered — maxSquareZoom is 2.5.
@@ -184,6 +189,29 @@ describe('CroppedImageSequence', () => {
       );
       // No accentColor passed: the overlay falls back to the fixed orange.
       expect(ctx2d.strokeStyle).toBe('#f97316');
+    });
+
+    // Pins that the overlay rides the SAME crop rect as the image under zoom
+    // — a refactor that computed the overlay's rect separately would slip
+    // past the 1x tests, where both derivations coincide.
+    it('keeps the boxes glued to the crop when zoomed', async () => {
+      render(<CroppedImageSequence bboxes={BBOXES} sequenceId={9} showBoxes />);
+      await waitFor(() => expect(ctx2d.strokeRect).toHaveBeenCalled());
+
+      ctx2d.strokeRect.mockClear();
+      fireEvent.click(screen.getByLabelText('Zoom in'));
+
+      // 1.5x shrinks the crop side to 384/1.5=256 → crop x=512, y=232. The
+      // box now maps to x=(576-512)/256*840=210, y=(324-232)/256*840=301.875,
+      // w=128/256*840=420, h=72/256*840=236.25.
+      await waitFor(() =>
+        expect(ctx2d.strokeRect).toHaveBeenCalledWith(
+          expect.closeTo(210, 3),
+          expect.closeTo(301.875, 3),
+          expect.closeTo(420, 3),
+          expect.closeTo(236.25, 3)
+        )
+      );
     });
   });
 });
