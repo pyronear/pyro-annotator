@@ -169,6 +169,8 @@ class LocalizationQueueItem(BaseModel):
     azimuth: Optional[int]
     recorded_at: datetime
     lanes: List[LocalizationQueueLane]
+    # Present only on skipped=true queue rows.
+    skip: Optional[AlertSkipInfo] = None
 
 
 class LocalizeDoneQueueItem(BaseModel):

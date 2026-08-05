@@ -941,6 +941,7 @@ async def unskip_alert(
 # otherwise turn /localization-queue into a 422.
 @router.get("/localization-queue")
 async def localization_queue(
+    skipped: bool = Query(False),
     session: AsyncSession = Depends(get_session),
     params: Params = Depends(),
     current_user: User = Depends(get_current_user),
@@ -950,7 +951,8 @@ async def localization_queue(
     matching the localization rule (see `localization_rule`) at seq_annotation_done
     whose auto reference layer exists (auto_annotated_at set). Lanes leave on
     submit (stage change), so a fully-boxed but unsubmitted lane still counts as
-    ready."""
+    ready. skipped=false excludes skip-overlay alerts; skipped=true lists only
+    them, with skip metadata attached (spec: alert-skip-escape-hatch)."""
     ready_smoke_lane = _ready_smoke_lane(Sequence, SequenceAnnotation)
     # Pre-filter to alerts having at least one ready smoke lane BEFORE the
     # completeness aggregation, so the grouping scans the active working set
@@ -974,7 +976,10 @@ async def localization_queue(
         .where(
             tuple_(Sequence.source_api, Sequence.platform_alert_id).in_(
                 candidate_alerts
-            )
+            ),
+            alert_skip_exists_clause(Sequence)
+            if skipped
+            else ~alert_skip_exists_clause(Sequence),
         )
         .group_by(Sequence.source_api, Sequence.platform_alert_id)
         .having(
@@ -1018,6 +1023,8 @@ async def localization_queue(
     # An alert can lose its sequences between the page query and item build
     # (concurrent delete); drop such rows rather than 500.
     items = [item for item in maybe_items if item is not None]
+    if skipped:
+        await _attach_skip_info(session, items)
     return Page.create(items=items, total=total, params=params)
 
 
