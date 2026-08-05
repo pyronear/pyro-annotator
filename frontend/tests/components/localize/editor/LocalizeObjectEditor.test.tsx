@@ -352,9 +352,9 @@ describe('LocalizeObjectEditor box selection', () => {
 describe('LocalizeObjectEditor accept remaining', () => {
   it('offers the action only while frames are still without a box', () => {
     renderEditor();
-    expect(screen.getByTestId('editor-accept-remaining')).toHaveTextContent(
-      'Accept the model on 2 more'
-    );
+    // Same name the cockpit's per-object action carries, so the two read as
+    // one action met in two places.
+    expect(screen.getByTestId('editor-accept-remaining')).toHaveTextContent('Accept boxes');
   });
 
   it('hides the action once every frame has a box', () => {
@@ -498,6 +498,41 @@ describe('LocalizeObjectEditor chrome', () => {
 
     fireEvent.keyDown(window, { key: 'o' });
     expect(screen.queryByText('Object 1')).not.toBeInTheDocument();
+  });
+
+  it('opens the shortcuts sheet from its button, and closes it', () => {
+    renderEditor();
+    expect(screen.queryByTestId('editor-shortcuts-modal')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('editor-shortcuts'));
+    expect(screen.getByTestId('editor-shortcuts-modal')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('editor-shortcuts-close'));
+    expect(screen.queryByTestId('editor-shortcuts-modal')).not.toBeInTheDocument();
+  });
+
+  it('toggles the shortcuts sheet with ?', () => {
+    renderEditor();
+    fireEvent.keyDown(window, { key: '?' });
+    expect(screen.getByTestId('editor-shortcuts-modal')).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: '?' });
+    expect(screen.queryByTestId('editor-shortcuts-modal')).not.toBeInTheDocument();
+  });
+
+  it('Escape closes the shortcuts sheet before it closes the editor', () => {
+    const onClose = vi.fn();
+    renderEditor({ onClose });
+    fireEvent.keyDown(window, { key: '?' });
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByTestId('editor-shortcuts-modal')).not.toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('no longer prints the shortcut list along the bottom', () => {
+    renderEditor();
+    expect(screen.queryByText(/accept & next/i)).not.toBeInTheDocument();
   });
 
   it('reports an in-flight save', () => {

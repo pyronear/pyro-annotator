@@ -8,6 +8,11 @@
  * Each cell's BORDER carries its state, so the strip reads as a run of
  * colour rather than a line of letters:
  *
+ * The frame you are on grows rather than gaining an outline: colour is fully
+ * spent on state here, and a ring would add a second one competing with the
+ * hole marker. Size is the channel still free. Cells are square because the
+ * thumbnails are square crops of the object.
+ *
  *   solid, source colour    a box is committed, from that source
  *   dashed, source colour   that source offers a box, not yet accepted
  *   hatched, signal         no source found anything — a hole in the track
@@ -113,14 +118,14 @@ export function ObjectFilmstrip({ entries, currentDetectionId, onSelect }: Objec
                   aria-label={cellLabel(entry)}
                   title={cellLabel(entry)}
                   onClick={() => onSelect(entry)}
-                  className={`w-11 flex-none rounded focus:outline-none focus:ring-2 focus:ring-char ${
-                    entry.detectionId === currentDetectionId ? 'ring-2 ring-char ring-offset-1' : ''
+                  className={`flex-none rounded transition-all focus:outline-none focus:ring-2 focus:ring-char ${
+                    entry.detectionId === currentDetectionId ? 'w-16' : 'w-12'
                   }`}
                 >
                   <span
-                    className={`relative block h-9 overflow-hidden rounded border-2 ${
-                      entry.inObject ? '' : 'opacity-60 grayscale'
-                    }`}
+                    className={`relative block overflow-hidden rounded border-2 transition-all ${
+                      entry.detectionId === currentDetectionId ? 'h-16' : 'h-12'
+                    } ${entry.inObject ? '' : 'opacity-60 grayscale'}`}
                     style={borderStyle(entry)}
                   >
                     <FilmstripThumbnail detectionId={entry.detectionId} xyxyn={entry.xyxyn} />

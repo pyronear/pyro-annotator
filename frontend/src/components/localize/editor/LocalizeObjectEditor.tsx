@@ -14,7 +14,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Keyboard } from 'lucide-react';
 import type {
   Detection,
   DetectionAnnotation,
@@ -50,6 +50,7 @@ import { formatDateTime } from '@/utils/datetime';
 import { collectLaneBoxes } from '@/utils/annotation/quickSubmitUtils';
 import { AcceptRemainingPopover } from './AcceptRemainingPopover';
 import { BoxSourceRail } from './BoxSourceRail';
+import { EditorShortcutsModal } from './EditorShortcutsModal';
 import { ObjectFilmstrip } from './ObjectFilmstrip';
 
 export interface LocalizeObjectEditorProps {
@@ -135,6 +136,7 @@ export function LocalizeObjectEditor({
   const [showOtherObjects, setShowOtherObjects] = useState(false);
   const [cropView, setCropView] = useState(false);
   const [acceptOpen, setAcceptOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const acceptAnchorRef = useRef<HTMLDivElement>(null);
 
   // The committed box is unselected on arrival: it renders in its own
@@ -604,10 +606,15 @@ export function LocalizeObjectEditor({
           setCropView(false);
           resetZoom();
           break;
+        case '?':
+          setShortcutsOpen(open => !open);
+          break;
         case 'Escape':
-          // Unwind one layer at a time: cancel a drawing, then drop the
-          // selection, and only then leave the editor.
-          if (acceptOpen) {
+          // Unwind one layer at a time: close what is open, then cancel a
+          // drawing, then drop the selection, and only then leave.
+          if (shortcutsOpen) {
+            setShortcutsOpen(false);
+          } else if (acceptOpen) {
             setAcceptOpen(false);
           } else if (isActivelyDrawing) {
             setCurrentDrawing(null);
@@ -631,6 +638,7 @@ export function LocalizeObjectEditor({
     isActivelyDrawing,
     boxSelected,
     acceptOpen,
+    shortcutsOpen,
     resetZoom,
     onClose,
     editable,
@@ -734,7 +742,7 @@ export function LocalizeObjectEditor({
               onClick={() => setAcceptOpen(open => !open)}
               className="inline-flex items-center whitespace-nowrap rounded-lg bg-pine px-3 py-1 font-body text-xs font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Accept the model on {acceptRemainingCount} more
+              Accept boxes
             </button>
 
             {acceptOpen && (
@@ -760,6 +768,16 @@ export function LocalizeObjectEditor({
           {formatDateTime(shownDetection.recorded_at)}
         </span>
         {isSaving && <span className="font-data text-detail text-haze">Saving…</span>}
+        <button
+          type="button"
+          data-testid="editor-shortcuts"
+          onClick={() => setShortcutsOpen(true)}
+          title="Show keyboard shortcuts (?)"
+          aria-label="Show keyboard shortcuts"
+          className="rounded-lg border border-line bg-paper p-1.5 text-haze hover:bg-ash focus:outline-none focus:ring-2 focus:ring-char"
+        >
+          <Keyboard className="h-4 w-4" />
+        </button>
         <button
           type="button"
           data-testid="editor-close"
@@ -830,10 +848,7 @@ export function LocalizeObjectEditor({
         onSelect={goToEntry}
       />
 
-      <p className="flex-none border-t border-line bg-paper px-4 py-2 font-data text-[11px] text-haze">
-        ← → step · Enter accept &amp; next · D draw · Del remove box · G other boxes · O other
-        objects · Z zoom to object · R reset · Esc close
-      </p>
+      {shortcutsOpen && <EditorShortcutsModal onClose={() => setShortcutsOpen(false)} />}
     </div>
   );
 }
