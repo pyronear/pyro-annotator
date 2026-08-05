@@ -271,6 +271,22 @@ describe('LocalizeObjectEditor chrome', () => {
     expect(screen.getByAltText(/^Detection /).parentElement).toHaveStyle({ cursor: 'crosshair' });
   });
 
+  it('hides the other objects on this frame until O is pressed', () => {
+    const overlays = [{ color: '#2a78d6', label: 'Object 1', boxes: [{ xyxyn: [0.6, 0.6, 0.7, 0.7] }] }];
+    renderLoadedEditor({ objectOverlays: overlays });
+
+    // Off by default: on this screen color means source, and the
+    // object-identity palette overlaps the source palette closely enough
+    // that an always-on overlay would be ambiguous.
+    expect(screen.queryByText('Object 1')).not.toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: 'o' });
+    expect(screen.getByText('Object 1')).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: 'o' });
+    expect(screen.queryByText('Object 1')).not.toBeInTheDocument();
+  });
+
   it('reports an in-flight save', () => {
     renderEditor({ isSaving: true });
     expect(screen.getByText('saving…')).toBeInTheDocument();

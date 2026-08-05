@@ -113,6 +113,14 @@ export function LocalizeObjectEditor({
   const [currentDrawing, setCurrentDrawing] = useState<CurrentDrawing | null>(null);
 
   const [showGhosts, setShowGhosts] = useState(true);
+  // The OTHER objects' boxes on this frame, off by default. On this screen
+  // color means *source* (manual/auto/engine), and the object-identity
+  // palette overlaps it closely enough that a blue dashed box would be
+  // ambiguous between "the engine's proposal for your object" and "Object
+  // 1's committed box". The question they answer — is that plume already
+  // someone else's? — is better served by the cockpit grid behind, and
+  // becomes primary only when ADDING an object (issue #287's sibling work).
+  const [showOtherObjects, setShowOtherObjects] = useState(false);
   const [cropView, setCropView] = useState(false);
 
   const [boxEdit, setBoxEdit] = useState<{
@@ -492,6 +500,10 @@ export function LocalizeObjectEditor({
         case 'G':
           setShowGhosts(v => !v);
           break;
+        case 'o':
+        case 'O':
+          setShowOtherObjects(v => !v);
+          break;
         case 'z':
         case 'Z':
           setCropView(v => !v);
@@ -601,7 +613,7 @@ export function LocalizeObjectEditor({
             ghosts={editable ? ghosts : []}
             showGhosts={showGhosts}
             selectedSmokeType={smokeType}
-            objectOverlays={objectOverlays}
+            objectOverlays={showOtherObjects ? objectOverlays : []}
             isDrawMode={isDrawMode}
             onBoxPointerDown={handleBoxPointerDown}
             onHandlePointerDown={handleHandlePointerDown}
@@ -653,7 +665,8 @@ export function LocalizeObjectEditor({
       />
 
       <p className="flex-none border-t border-white/10 px-3 py-1.5 text-[10px] text-white/40">
-        ← → step · Enter accept &amp; next · D draw · G ghosts · Z crop · R reset · Esc close
+        ← → step · Enter accept &amp; next · D draw · G ghosts · O other objects · Z crop · R reset
+        · Esc close
       </p>
     </div>
   );
