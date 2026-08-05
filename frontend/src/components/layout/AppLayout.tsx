@@ -100,10 +100,10 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
       name: 'Classify',
       children: [
         {
-          name: 'Groups',
+          name: 'Recurring objects',
           href: ROUTES.CLASSIFY_GROUPS,
           badgeCount: groupCount,
-          badgeTitle: `${groupCount} groups need validation`,
+          badgeTitle: `${groupCount} recurring objects need validation`,
         },
         { name: 'Alerts', href: ROUTES.CLASSIFY, badgeCount: sequenceCount },
         { name: 'Done', href: ROUTES.CLASSIFY_DONE },

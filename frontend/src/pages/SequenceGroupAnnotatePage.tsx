@@ -308,7 +308,7 @@ export default function SequenceGroupAnnotatePage() {
           to={ROUTES.CLASSIFY_GROUPS}
           className="font-body text-detail text-haze hover:text-char"
         >
-          ← Sequence groups
+          ← Recurring objects
         </Link>
         <div className="mt-1 flex items-center justify-between gap-4">
           <div className="flex items-center gap-2.5 min-w-0">
@@ -362,7 +362,7 @@ export default function SequenceGroupAnnotatePage() {
             {prevId ? (
               <Link
                 to={classifyGroup(prevId)}
-                title="Previous group"
+                title="Previous object"
                 className="p-1.5 rounded-lg border border-line bg-paper text-haze hover:bg-ash"
               >
                 <ChevronLeft className="w-4 h-4" />
@@ -378,7 +378,7 @@ export default function SequenceGroupAnnotatePage() {
             {nextId ? (
               <Link
                 to={classifyGroup(nextId)}
-                title="Next group"
+                title="Next object"
                 className="p-1.5 rounded-lg border border-line bg-paper text-haze hover:bg-ash"
               >
                 <ChevronRight className="w-4 h-4" />

@@ -275,7 +275,7 @@ export default function SequencesPage({
     return (
       <div className="flex items-center justify-center min-h-96">
         <div className="text-center">
-          <p className="text-red-600 mb-2">Failed to load sequences</p>
+          <p className="text-red-600 mb-2">Failed to load alerts</p>
           <p className="text-gray-500 text-sm">{String(error)}</p>
         </div>
       </div>
@@ -308,11 +308,11 @@ export default function SequencesPage({
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">
-              {isQueueMode ? 'Alerts' : 'Sequences'}
+              {isQueueMode ? 'Alerts' : 'Classified alerts'}
             </h1>
             <p className="text-gray-600">
               {isReviewPage
-                ? 'Browse classified sequences and review past decisions'
+                ? 'Browse classified alerts and review past decisions'
                 : isQueueMode
                   ? 'Classify every object of each alert'
                   : 'Manage and annotate wildfire detection sequences'}
@@ -365,7 +365,7 @@ export default function SequencesPage({
                   <Search className="h-6 w-6 text-haze" />
                 </span>
                 <h2 className="mt-4 font-display text-base font-semibold text-char">
-                  {isQueueMode ? 'No matching alerts' : 'No matching sequences'}
+                  {isQueueMode ? 'No matching alerts' : 'No matching classified alerts'}
                 </h2>
                 <p className="mt-1.5 font-body text-sm leading-relaxed text-haze">
                   Nothing here matches your current filters. Loosen or clear them to see more.
@@ -389,11 +389,11 @@ export default function SequencesPage({
                 <h2 className="mt-4 font-display text-base font-semibold text-char">
                   {/* An array stage is the "All classified" pseudo-stage (see getStageFilterLabel) */}
                   {Array.isArray(defaultProcessingStage)
-                    ? 'No classified sequences yet'
+                    ? 'No classified alerts yet'
                     : `No sequences in "${getStageFilterLabel(defaultProcessingStage)}"`}
                 </h2>
                 <p className="mt-1.5 font-body text-sm leading-relaxed text-haze">
-                  Sequences you classify land here for review.
+                  Alerts you classify land here for review.
                 </p>
                 <Link
                   to={ROUTES.CLASSIFY}
@@ -440,11 +440,11 @@ export default function SequencesPage({
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
-            {isQueueMode ? 'Alerts' : 'Sequences'}
+            {isQueueMode ? 'Alerts' : 'Classified alerts'}
           </h1>
           <p className="text-gray-600">
             {isReviewPage
-              ? 'Browse classified sequences and review past decisions'
+              ? 'Browse classified alerts and review past decisions'
               : isQueueMode
                 ? 'Classify every object of each alert'
                 : 'Manage and annotate wildfire detection sequences'}
