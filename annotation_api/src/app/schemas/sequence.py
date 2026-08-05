@@ -17,6 +17,8 @@ __all__ = [
     "AddObjectRequest",
     "AlertDetail",
     "AlertLane",
+    "AlertSkipInfo",
+    "AlertSkipRequest",
     "Azimuth",
     "ClassifyDoneItem",
     "ClassifyDoneLane",
@@ -239,3 +241,20 @@ class AddObjectRequest(BaseModel):
     source_api: SourceApi
     platform_alert_id: int
     smoke_type: SmokeType
+
+
+class AlertSkipInfo(BaseModel):
+    """Skip metadata carried on skipped queue rows and returned by skip
+    (docs/specs/2026-08-05-alert-skip-escape-hatch-design.md)."""
+
+    skipped_at: datetime
+    skipped_by: Optional[str] = None
+    note: Optional[str] = None
+
+
+class AlertSkipRequest(BaseModel):
+    """Body of POST /sequences/alert/skip."""
+
+    source_api: SourceApi
+    platform_alert_id: int
+    note: Optional[str] = None

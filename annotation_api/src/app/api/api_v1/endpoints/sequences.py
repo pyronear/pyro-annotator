@@ -42,6 +42,7 @@ from app.services.localization_rule import (
     unsettled_unsure_clause,
 )
 from app.models import (
+    AlertSkip,
     Detection,
     DetectionAnnotation,
     DetectionAnnotationProcessingStage,
@@ -60,6 +61,8 @@ from app.schemas.sequence import (
     AddObjectRequest,
     AlertDetail,
     AlertLane,
+    AlertSkipInfo,
+    AlertSkipRequest,
     ClassifyDoneItem,
     ClassifyDoneLane,
     ClassifyQueueItem,
@@ -834,6 +837,103 @@ async def add_object(
         sequence=SequenceRead(**seq_dict),
         annotation=SequenceAnnotationRead(**annotation_dict),
     )
+
+
+# NOTE: declared before GET /{sequence_id} — the int path converter would
+# otherwise turn /alert/skip into a 422.
+@router.post(
+    "/alert/skip",
+    status_code=status.HTTP_201_CREATED,
+    summary="Park a whole alert in the recoverable skipped state",
+)
+async def skip_alert(
+    payload: AlertSkipRequest = Body(...),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> AlertSkipInfo:
+    """Skip overlay (spec: alert-skip-escape-hatch): insert-only, never
+    touches lane state. 409 when already skipped or when the alert has fully
+    exited the pipeline (a skip row would be visible in neither queue)."""
+    stages = (
+        (
+            await session.execute(
+                select(SequenceAnnotation.processing_stage)
+                .select_from(Sequence)
+                .outerjoin(
+                    SequenceAnnotation,
+                    SequenceAnnotation.sequence_id == Sequence.id,
+                )
+                .where(
+                    Sequence.source_api == payload.source_api,
+                    Sequence.platform_alert_id == payload.platform_alert_id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not stages:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Alert not found"
+        )
+    if all(s == SequenceAnnotationProcessingStage.ANNOTATED for s in stages):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Alert is fully annotated — nothing to skip",
+        )
+    existing = (
+        await session.execute(
+            select(AlertSkip).where(
+                AlertSkip.source_api == payload.source_api,
+                AlertSkip.platform_alert_id == payload.platform_alert_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Alert is already skipped",
+        )
+    skip = AlertSkip(
+        source_api=payload.source_api,
+        platform_alert_id=payload.platform_alert_id,
+        skipped_by_user_id=current_user.id,
+        note=payload.note,
+    )
+    session.add(skip)
+    await session.commit()
+    return AlertSkipInfo(
+        skipped_at=skip.skipped_at,
+        skipped_by=current_user.username,
+        note=skip.note,
+    )
+
+
+@router.delete(
+    "/alert/skip",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Unskip an alert — it returns to whichever queue its stages qualify it for",
+)
+async def unskip_alert(
+    source_api: SourceApi = Query(...),
+    platform_alert_id: int = Query(...),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> None:
+    skip = (
+        await session.execute(
+            select(AlertSkip).where(
+                AlertSkip.source_api == source_api,
+                AlertSkip.platform_alert_id == platform_alert_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if skip is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Alert is not skipped"
+        )
+    await session.delete(skip)
+    await session.commit()
 
 
 # NOTE: declared before GET /{sequence_id} — the int path converter would
