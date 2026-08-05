@@ -279,6 +279,29 @@ describe('LocalizeObjectEditor box selection', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it('deselects on a click away from the box', () => {
+    renderLoadedEditor({ existingAnnotation: committed() });
+    fireEvent.mouseDown(screen.getByTestId('drawn-box-committed'));
+    expect(screen.getAllByTestId(/^resize-handle-/).length).toBeGreaterThan(0);
+
+    // A real click is mousedown then click.
+    const image = screen.getByAltText(/^Detection /);
+    fireEvent.mouseDown(image);
+    fireEvent.click(image);
+    expect(screen.queryAllByTestId(/^resize-handle-/)).toHaveLength(0);
+  });
+
+  it('does not deselect on the very click that selected the box', () => {
+    renderLoadedEditor({ existingAnnotation: committed() });
+    const box = screen.getByTestId('drawn-box-committed');
+
+    // A real press on the box fires mousedown then a click that bubbles to
+    // the canvas; the selection must survive it.
+    fireEvent.mouseDown(box);
+    fireEvent.click(box);
+    expect(screen.getAllByTestId(/^resize-handle-/).length).toBeGreaterThan(0);
+  });
+
   it('drops the selection when the frame changes', () => {
     const { rerender } = renderLoadedEditor({ existingAnnotation: committed() });
     fireEvent.mouseDown(screen.getByTestId('drawn-box-committed'));

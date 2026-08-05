@@ -137,6 +137,12 @@ export function LocalizeObjectEditor({
     next: [number, number, number, number];
   } | null>(null);
   const didDragBoxRef = useRef(false);
+  // A press that landed on the box (or a handle) — its trailing click must not
+  // reach the canvas, or the click that SELECTS the box would immediately
+  // deselect it again.
+  const didHitBoxRef = useRef(false);
+  // A pan drag also ends in a click; that click isn't a deselect either.
+  const didPanRef = useRef(false);
 
   const { data: imageData } = useDetectionImage(detection.id);
 
@@ -355,6 +361,7 @@ export function LocalizeObjectEditor({
   const handleBoxPointerDown = (e: React.MouseEvent) => {
     if (!shownCommitted) return;
     e.stopPropagation();
+    didHitBoxRef.current = true;
     // First click selects; only a selected box can be dragged, so a stray
     // click on it never nudges the annotation.
     if (!boxSelected) {
@@ -373,6 +380,7 @@ export function LocalizeObjectEditor({
   const handleHandlePointerDown = (handle: ResizeHandle, e: React.MouseEvent) => {
     if (!shownCommitted) return;
     e.stopPropagation();
+    didHitBoxRef.current = true;
     didDragBoxRef.current = false;
     setBoxEdit({
       mode: 'resize',
@@ -385,6 +393,9 @@ export function LocalizeObjectEditor({
 
   const handleMouseDown = (e: React.MouseEvent) => {
     didDragBoxRef.current = false;
+    // Reached only when the press missed the box — the box stops propagation
+    // — so this is where a stale hit flag from an earlier press gets cleared.
+    didHitBoxRef.current = false;
     if (!isDrawMode && zoomLevel > 1) {
       setIsDragging(true);
       setDragStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
@@ -413,6 +424,7 @@ export function LocalizeObjectEditor({
         prev ? { ...prev, currentX: coords.x, currentY: coords.y } : null
       );
     } else if (isDragging && !isDrawMode && zoomLevel > 1) {
+      didPanRef.current = true;
       setPanOffset(constrainPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y }));
     }
   };
@@ -432,12 +444,27 @@ export function LocalizeObjectEditor({
     e.stopPropagation();
     if (didDragBoxRef.current) {
       didDragBoxRef.current = false;
+      didHitBoxRef.current = false;
+      return;
+    }
+    // The click that selected the box bubbles up here; swallow it so the box
+    // isn't deselected the instant it is selected.
+    if (didHitBoxRef.current) {
+      didHitBoxRef.current = false;
+      return;
+    }
+    if (didPanRef.current) {
+      didPanRef.current = false;
       return;
     }
     // Never draw onto a peeked frame: the image on screen is a sibling
     // lane's, so the box would silently land on the object's own frame
     // instead of the one being looked at.
-    if (!isDrawMode || !editable) return;
+    if (!isDrawMode || !editable) {
+      // A click on the image away from the box drops the selection.
+      if (boxSelected) setBoxSelected(false);
+      return;
+    }
 
     const coords = screenToImageCoords(e.clientX, e.clientY);
     if (!isActivelyDrawing) {
