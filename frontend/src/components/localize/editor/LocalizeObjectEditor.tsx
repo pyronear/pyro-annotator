@@ -676,7 +676,11 @@ export function LocalizeObjectEditor({
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-ash">
-      <div className="relative flex h-12 flex-none items-center gap-3 border-b border-line bg-paper px-4">
+      {/* z-40 gives the bar its own stacking context above the media row, so
+          the accept popover hanging out of it is not painted behind the
+          canvas — whose own box layer sits at z-30 in the same context
+          otherwise. */}
+      <div className="relative z-40 flex h-12 flex-none items-center gap-3 border-b border-line bg-paper px-4">
         <span
           data-testid="editor-object-identity"
           className="inline-flex items-center gap-2 border-l-2 pl-2.5 font-body text-sm font-medium text-char"
