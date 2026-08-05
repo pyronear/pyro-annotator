@@ -37,7 +37,10 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.api.dependencies import get_current_user, get_sequence_crud
 from app.crud import SequenceCRUD
 from app.db import get_session
-from app.services.localization_rule import needs_localization_clause
+from app.services.localization_rule import (
+    needs_localization_clause,
+    unsettled_unsure_clause,
+)
 from app.models import (
     Detection,
     DetectionAnnotation,
@@ -882,6 +885,13 @@ async def localization_queue(
                         else_=0,
                     )
                 ),
+                # An undecided sibling withholds the whole alert (spec:
+                # 2026-08-05 unsure lanes gate the localize queue). The
+                # candidate pre-filter stays valid: this only removes alerts.
+                func.sum(
+                    case((unsettled_unsure_clause(SequenceAnnotation), 1), else_=0)
+                )
+                == 0,
                 func.sum(case((ready_smoke_lane, 1), else_=0)) > 0,
             )
         )
