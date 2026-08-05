@@ -1256,6 +1256,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                 sequenceId={activeLaneId}
                 accentColor={activeObject?.color}
                 maxSize="min(420px, 40vh)"
+                showBoxes
               />
             </div>
           )}
