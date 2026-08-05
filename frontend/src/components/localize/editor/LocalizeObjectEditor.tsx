@@ -1,0 +1,591 @@
+/**
+ * The localize object editor: one object, one frame, one box.
+ *
+ * Replaces `ImageModal`. The screen answers a single question — "is this
+ * object's box on this frame right, and if not, what should it be?" — so it
+ * offers at most three candidates (manual, auto, engine), commits exactly
+ * one, and autosaves every action. There is no submit button and no dirty
+ * state: stepping frames never writes, and everything else writes at once.
+ *
+ * Bulk accept and alert submit stay on the cockpit's rail; this screen is for
+ * fixing individual frames.
+ *
+ * See docs/specs/2026-08-05-localize-object-editor-revamp-design.md.
+ */
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { X, ChevronLeft, ChevronRight } from 'lucide-react';
+import type {
+  Detection,
+  DetectionAnnotation,
+  DetectionAnnotationBbox,
+  SmokeType,
+} from '@/types/api';
+import {
+  boxCandidates,
+  candidateToBbox,
+  committedBox,
+  priorityPick,
+  type BoxCandidate,
+} from '@/utils/annotation/objectBoxCandidates';
+import { buildFilmstripEntries } from '@/utils/annotation/objectFilmstrip';
+import { computeCellCrop } from '@/utils/annotation/gridCropUtils';
+import type { AlertFrame } from '@/utils/annotation/alertLocalizeUtils';
+import {
+  calculateImageBounds,
+  screenToImageCoordinates,
+  imageToNormalizedCoordinates,
+  normalizedToImageCoordinates,
+  moveBox,
+  resizeBox,
+  type CurrentDrawing,
+  type ImageBounds,
+  type Point,
+  type ResizeHandle,
+} from '@/utils/annotation';
+import type { ObjectOverlayItem } from '@/components/annotation/ImageOverlays';
+import { DetectionAnnotationCanvas } from '@/components/detection-annotation';
+import { useDetectionImage } from '@/hooks/useDetectionImage';
+import { formatDateTime } from '@/utils/datetime';
+import { BoxSourceRail } from './BoxSourceRail';
+import { ObjectFilmstrip } from './ObjectFilmstrip';
+
+export interface LocalizeObjectEditorProps {
+  /** The object being edited. */
+  laneSequenceId: number;
+  objectLabel: string;
+  objectColor: string;
+  smokeType: SmokeType;
+  /** The frame currently open. Always one of this lane's detections. */
+  detection: Detection;
+  existingAnnotation: DetectionAnnotation | null;
+  /** This lane's detections, chronological. */
+  laneDetections: Detection[];
+  /** This lane's committed annotations. */
+  laneAnnotations: DetectionAnnotation[];
+  /** Every frame of the alert, across all lanes — the filmstrip's range. */
+  alertFrames: AlertFrame[];
+  /** Other objects' boxes on this frame; rendered as identity overlays. */
+  objectOverlays: ObjectOverlayItem[];
+  isSaving: boolean;
+  /** Commit one box, or none. Autosaves; success is silent. */
+  onCommit: (detection: Detection, items: DetectionAnnotationBbox[]) => void;
+  /** Navigate to another of THIS lane's detections; drives the URL. */
+  onNavigateToDetection: (detectionId: number) => void;
+  onClose: () => void;
+}
+
+export function LocalizeObjectEditor({
+  laneSequenceId,
+  objectLabel,
+  objectColor,
+  smokeType,
+  detection,
+  existingAnnotation,
+  laneDetections,
+  laneAnnotations,
+  alertFrames,
+  objectOverlays,
+  isSaving,
+  onCommit,
+  onNavigateToDetection,
+  onClose,
+}: LocalizeObjectEditorProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  const [imageInfo, setImageInfo] = useState<{
+    width: number;
+    height: number;
+    offsetX: number;
+    offsetY: number;
+  } | null>(null);
+
+  // Zoom / pan — lifted from ImageModal unchanged; that plumbing is sound.
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [panOffset, setPanOffset] = useState<Point>({ x: 0, y: 0 });
+  const [transformOrigin, setTransformOrigin] = useState<Point>({ x: 50, y: 50 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+
+  const [isDrawMode, setIsDrawMode] = useState(false);
+  const [isActivelyDrawing, setIsActivelyDrawing] = useState(false);
+  const [currentDrawing, setCurrentDrawing] = useState<CurrentDrawing | null>(null);
+
+  const [showGhosts, setShowGhosts] = useState(true);
+  const [cropView, setCropView] = useState(false);
+
+  const [boxEdit, setBoxEdit] = useState<{
+    startClient: { x: number; y: number };
+    orig: [number, number, number, number];
+    mode: 'move' | 'resize';
+    handle?: ResizeHandle;
+    next: [number, number, number, number];
+  } | null>(null);
+  const didDragBoxRef = useRef(false);
+
+  const { data: imageData } = useDetectionImage(detection.id);
+
+  // --- The object's box on this frame -------------------------------------
+
+  const candidates = useMemo(
+    () => boxCandidates(detection, existingAnnotation),
+    [detection, existingAnnotation]
+  );
+  const committed = useMemo(() => committedBox(existingAnnotation), [existingAnnotation]);
+  // A live drag renders from `boxEdit.next` so the box tracks the cursor
+  // before the save round-trips.
+  const shownCommitted: BoxCandidate | null = boxEdit
+    ? { source: 'manual', index: 0, xyxyn: boxEdit.next }
+    : committed;
+  const ghosts = candidates.filter(
+    c => !(shownCommitted && c.source === shownCommitted.source && c.index === shownCommitted.index)
+  );
+
+  const entries = useMemo(
+    () => buildFilmstripEntries(alertFrames, laneSequenceId, laneDetections, laneAnnotations),
+    [alertFrames, laneSequenceId, laneDetections, laneAnnotations]
+  );
+
+  // --- Commit -------------------------------------------------------------
+
+  const commitCandidate = useCallback(
+    (candidate: BoxCandidate) => onCommit(detection, [candidateToBbox(candidate, smokeType)]),
+    [detection, smokeType, onCommit]
+  );
+
+  const commitDrawn = useCallback(
+    (xyxyn: [number, number, number, number]) =>
+      onCommit(detection, [candidateToBbox({ source: 'manual', index: 0, xyxyn }, smokeType)]),
+    [detection, smokeType, onCommit]
+  );
+
+  const clear = useCallback(() => onCommit(detection, []), [detection, onCommit]);
+
+  // --- Navigation ---------------------------------------------------------
+
+  const laneIndex = laneDetections.findIndex(d => d.id === detection.id);
+
+  const step = useCallback(
+    (direction: -1 | 1) => {
+      const next = laneDetections[laneIndex + direction];
+      if (next) onNavigateToDetection(next.id);
+    },
+    [laneDetections, laneIndex, onNavigateToDetection]
+  );
+
+  const acceptAndNext = useCallback(() => {
+    const pick = priorityPick(candidates);
+    if (!pick) return;
+    commitCandidate(pick);
+    step(1);
+  }, [candidates, commitCandidate, step]);
+
+  // --- Zoom ---------------------------------------------------------------
+
+  const resetZoom = useCallback(() => {
+    setZoomLevel(1);
+    setPanOffset({ x: 0, y: 0 });
+    setTransformOrigin({ x: 50, y: 50 });
+  }, []);
+
+  const constrainPan = useCallback(
+    (offset: Point): Point => {
+      if (!imgRef.current || zoomLevel <= 1) return offset;
+      // Layout size, not the transformed rect: the pan applies INSIDE the
+      // scale, so the max offset keeping the image covering its box is
+      // baseSize*(z-1)/(2z).
+      const maxPanX = (imgRef.current.offsetWidth * (zoomLevel - 1)) / (2 * zoomLevel);
+      const maxPanY = (imgRef.current.offsetHeight * (zoomLevel - 1)) / (2 * zoomLevel);
+      return {
+        x: Math.max(-maxPanX, Math.min(maxPanX, offset.x)),
+        y: Math.max(-maxPanY, Math.min(maxPanY, offset.y)),
+      };
+    },
+    [zoomLevel]
+  );
+
+  useEffect(() => {
+    setPanOffset(prev => constrainPan(prev));
+  }, [constrainPan]);
+
+  // `Z`: frame the object rather than the landscape. `computeCellCrop` is the
+  // cockpit's own crop-mode math, and its output maps straight onto the
+  // canvas's existing zoom/transform-origin props — no second render path.
+  useEffect(() => {
+    if (!cropView) {
+      resetZoom();
+      return;
+    }
+    const boxes = committed ? [committed] : candidates;
+    if (boxes.length === 0) return;
+    const crop = computeCellCrop(boxes);
+    setZoomLevel(crop.scale);
+    setPanOffset({ x: 0, y: 0 });
+    setTransformOrigin({ x: crop.originX, y: crop.originY });
+    // Re-frames on frame change too, since the object moves between frames.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cropView, detection.id]);
+
+  // Navigating to another frame resets the transient per-frame state.
+  useEffect(() => {
+    setIsDrawMode(false);
+    setIsActivelyDrawing(false);
+    setCurrentDrawing(null);
+    setBoxEdit(null);
+    setImageInfo(null);
+  }, [detection.id]);
+
+  // --- Coordinates --------------------------------------------------------
+
+  const handleImageLoad = () => {
+    if (!imgRef.current || !containerRef.current) return;
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const imgRect = imgRef.current.getBoundingClientRect();
+    setImageInfo({
+      width: imgRect.width,
+      height: imgRect.height,
+      offsetX: imgRect.left - containerRect.left,
+      offsetY: imgRect.top - containerRect.top,
+    });
+  };
+
+  const getImageInfo = (): {
+    containerOffset: Point;
+    imageBounds: ImageBounds;
+    transform: { zoomLevel: number; panOffset: Point; transformOrigin: Point };
+  } | null => {
+    if (!imgRef.current || !containerRef.current) return null;
+    const containerRect = containerRef.current.getBoundingClientRect();
+    return {
+      containerOffset: { x: containerRect.left, y: containerRect.top },
+      imageBounds: calculateImageBounds({
+        containerWidth: containerRect.width,
+        containerHeight: containerRect.height,
+        imageNaturalWidth: imgRef.current.naturalWidth,
+        imageNaturalHeight: imgRef.current.naturalHeight,
+      }),
+      transform: { zoomLevel, panOffset, transformOrigin },
+    };
+  };
+
+  const screenToImageCoords = (screenX: number, screenY: number): Point => {
+    const info = getImageInfo();
+    if (!info) return { x: 0, y: 0 };
+    return screenToImageCoordinates(
+      { x: screenX, y: screenY },
+      info.containerOffset,
+      info.imageBounds,
+      info.transform
+    );
+  };
+
+  const imageToNormalized = (imageX: number, imageY: number): Point => {
+    const info = getImageInfo();
+    if (!info) return { x: 0, y: 0 };
+    return imageToNormalizedCoordinates({ x: imageX, y: imageY }, info.imageBounds);
+  };
+
+  const normalizedToImage = (normX: number, normY: number): Point => {
+    const info = getImageInfo();
+    if (!info) return { x: 0, y: 0 };
+    return normalizedToImageCoordinates({ x: normX, y: normY }, info.imageBounds);
+  };
+
+  // --- Pointer ------------------------------------------------------------
+
+  const handleBoxPointerDown = (e: React.MouseEvent) => {
+    if (!shownCommitted) return;
+    e.stopPropagation();
+    didDragBoxRef.current = false;
+    setBoxEdit({
+      mode: 'move',
+      startClient: { x: e.clientX, y: e.clientY },
+      orig: shownCommitted.xyxyn,
+      next: shownCommitted.xyxyn,
+    });
+  };
+
+  const handleHandlePointerDown = (handle: ResizeHandle, e: React.MouseEvent) => {
+    if (!shownCommitted) return;
+    e.stopPropagation();
+    didDragBoxRef.current = false;
+    setBoxEdit({
+      mode: 'resize',
+      handle,
+      startClient: { x: e.clientX, y: e.clientY },
+      orig: shownCommitted.xyxyn,
+      next: shownCommitted.xyxyn,
+    });
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    didDragBoxRef.current = false;
+    if (!isDrawMode && zoomLevel > 1) {
+      setIsDragging(true);
+      setDragStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (boxEdit && imgRef.current) {
+      // Screen-px delta over the image's on-screen size: pan- and
+      // origin-invariant, so the box tracks the cursor 1:1 at any zoom.
+      const displayW = imgRef.current.offsetWidth * zoomLevel;
+      const displayH = imgRef.current.offsetHeight * zoomLevel;
+      const dx = (e.clientX - boxEdit.startClient.x) / displayW;
+      const dy = (e.clientY - boxEdit.startClient.y) / displayH;
+      const next =
+        boxEdit.mode === 'move'
+          ? moveBox(boxEdit.orig, dx, dy)
+          : resizeBox(boxEdit.orig, boxEdit.handle as ResizeHandle, dx, dy);
+      didDragBoxRef.current = true;
+      setBoxEdit(prev => (prev ? { ...prev, next } : prev));
+      return;
+    }
+    if (isActivelyDrawing && currentDrawing) {
+      const coords = screenToImageCoords(e.clientX, e.clientY);
+      setCurrentDrawing(prev =>
+        prev ? { ...prev, currentX: coords.x, currentY: coords.y } : null
+      );
+    } else if (isDragging && !isDrawMode && zoomLevel > 1) {
+      setPanOffset(constrainPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y }));
+    }
+  };
+
+  const handleMouseUp = () => {
+    if (boxEdit) {
+      // A finished move/resize is a human decision about where the box goes,
+      // so it commits as a manual box.
+      if (didDragBoxRef.current) commitDrawn(boxEdit.next);
+      setBoxEdit(null);
+    }
+    if (isDragging) setIsDragging(false);
+  };
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (didDragBoxRef.current) {
+      didDragBoxRef.current = false;
+      return;
+    }
+    if (!isDrawMode) return;
+
+    const coords = screenToImageCoords(e.clientX, e.clientY);
+    if (!isActivelyDrawing) {
+      setCurrentDrawing({
+        startX: coords.x,
+        startY: coords.y,
+        currentX: coords.x,
+        currentY: coords.y,
+      });
+      setIsActivelyDrawing(true);
+      return;
+    }
+
+    if (currentDrawing) {
+      const start = imageToNormalized(currentDrawing.startX, currentDrawing.startY);
+      const end = imageToNormalized(coords.x, coords.y);
+      const minX = Math.min(start.x, end.x);
+      const maxX = Math.max(start.x, end.x);
+      const minY = Math.min(start.y, end.y);
+      const maxY = Math.max(start.y, end.y);
+      const threshold = 10 / (imgRef.current?.getBoundingClientRect().width || 1000);
+      if (maxX - minX > threshold && maxY - minY > threshold) {
+        commitDrawn([minX, minY, maxX, maxY]);
+      }
+    }
+    setCurrentDrawing(null);
+    setIsActivelyDrawing(false);
+    setIsDrawMode(false);
+  };
+
+  const getCursorStyle = () => {
+    if (isDrawMode) return 'crosshair';
+    if (zoomLevel <= 1) return 'default';
+    return isDragging ? 'grabbing' : 'grab';
+  };
+
+  // Non-passive so preventDefault works — the page behind must not scroll.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      setTransformOrigin({ x: 50, y: 50 });
+      setZoomLevel(z => {
+        const next = Math.max(1, Math.min(4, z + (e.deltaY < 0 ? 0.2 : -0.2)));
+        if (next === 1) setPanOffset({ x: 0, y: 0 });
+        return next;
+      });
+    };
+    container.addEventListener('wheel', onWheel, { passive: false });
+    return () => container.removeEventListener('wheel', onWheel);
+  }, []);
+
+  // --- Keyboard -----------------------------------------------------------
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.contentEditable === 'true')
+      )
+        return;
+
+      switch (e.key) {
+        case 'ArrowLeft':
+          step(-1);
+          break;
+        case 'ArrowRight':
+          step(1);
+          break;
+        case 'Enter':
+          acceptAndNext();
+          break;
+        case 'd':
+        case 'D':
+          setIsDrawMode(v => !v);
+          setIsActivelyDrawing(false);
+          setCurrentDrawing(null);
+          break;
+        case 'g':
+        case 'G':
+          setShowGhosts(v => !v);
+          break;
+        case 'z':
+        case 'Z':
+          setCropView(v => !v);
+          break;
+        case 'r':
+        case 'R':
+          setCropView(false);
+          resetZoom();
+          break;
+        case 'Escape':
+          if (isActivelyDrawing) {
+            setCurrentDrawing(null);
+            setIsActivelyDrawing(false);
+          } else {
+            onClose();
+          }
+          break;
+        default:
+          return;
+      }
+      e.preventDefault();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [step, acceptAndNext, isActivelyDrawing, resetZoom, onClose]);
+
+  // --- Render -------------------------------------------------------------
+
+  const frameNumber = entries.findIndex(en => en.detectionId === detection.id) + 1;
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col bg-black/95">
+      <div className="flex h-10 flex-none items-center gap-3 border-b border-white/10 px-3 text-xs text-white">
+        <span
+          data-testid="editor-object-identity"
+          className="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px]"
+          style={{ borderColor: objectColor, color: objectColor }}
+        >
+          ◆ {objectLabel}
+          <span className="text-white/70">· {smokeType}</span>
+        </span>
+        <span className="rounded-full border border-white/15 px-2 py-0.5 text-[10px] text-white/60">
+          frame {frameNumber} / {entries.length}
+        </span>
+        <button
+          type="button"
+          data-testid="editor-prev"
+          onClick={() => step(-1)}
+          disabled={laneIndex <= 0}
+          className="rounded p-1 hover:bg-white/10 disabled:opacity-30"
+          aria-label="Previous frame"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          data-testid="editor-next"
+          onClick={() => step(1)}
+          disabled={laneIndex < 0 || laneIndex >= laneDetections.length - 1}
+          className="rounded p-1 hover:bg-white/10 disabled:opacity-30"
+          aria-label="Next frame"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+
+        <span className="ml-auto text-white/50">{formatDateTime(detection.recorded_at)}</span>
+        {isSaving && <span className="text-white/50">saving…</span>}
+        <button
+          type="button"
+          data-testid="editor-close"
+          onClick={onClose}
+          className="rounded p-1 hover:bg-white/10"
+          aria-label="Close editor"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="flex min-h-0 flex-1">
+        <div className="flex min-w-0 flex-1 items-center justify-center overflow-hidden p-2">
+          <DetectionAnnotationCanvas
+            detection={detection}
+            committed={shownCommitted}
+            ghosts={ghosts}
+            showGhosts={showGhosts}
+            selectedSmokeType={smokeType}
+            objectOverlays={objectOverlays}
+            isDrawMode={isDrawMode}
+            onBoxPointerDown={handleBoxPointerDown}
+            onHandlePointerDown={handleHandlePointerDown}
+            currentDrawing={currentDrawing}
+            containerRef={containerRef}
+            imgRef={imgRef}
+            imageInfo={imageInfo}
+            zoomLevel={zoomLevel}
+            panOffset={panOffset}
+            transformOrigin={transformOrigin}
+            isDragging={isDragging}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onClick={handleClick}
+            getCursorStyle={getCursorStyle}
+            handleImageLoad={handleImageLoad}
+            normalizedToImage={normalizedToImage}
+            overlaysVisible
+          />
+        </div>
+
+        <BoxSourceRail
+          candidates={candidates}
+          committed={committed}
+          imageUrl={imageData?.url ?? null}
+          disabled={false}
+          onCommit={commitCandidate}
+          onDraw={() => setIsDrawMode(true)}
+          onClear={clear}
+        />
+      </div>
+
+      <ObjectFilmstrip
+        entries={entries}
+        currentDetectionId={detection.id}
+        onSelect={entry => entry.inObject && onNavigateToDetection(entry.detectionId)}
+      />
+
+      <p className="flex-none border-t border-white/10 px-3 py-1.5 text-[10px] text-white/40">
+        ← → step · Enter accept &amp; next · D draw · G ghosts · Z crop · R reset · Esc close
+      </p>
+    </div>
+  );
+}
