@@ -26,7 +26,11 @@ import {
   ObjectIdentityOverlay,
   type ObjectOverlayItem,
 } from '@/components/annotation/ImageOverlays';
-import { SOURCE_COLOR } from '@/components/localize/editor/sourceIdentity';
+import {
+  HALO_SHADOW,
+  SOURCE_COLOR,
+  SOURCE_WEIGHT,
+} from '@/components/localize/editor/sourceIdentity';
 
 interface ImageInfo {
   width: number;
@@ -194,9 +198,11 @@ export function DetectionAnnotationCanvas({
               <div
                 key={`${ghost.source}-${ghost.index}`}
                 data-testid={`ghost-box-${ghost.source}-${ghost.index}`}
-                className="absolute border-2 border-dashed opacity-60"
+                className="absolute border-dashed opacity-90"
                 style={{
                   borderColor: SOURCE_COLOR[ghost.source],
+                  borderWidth: `${SOURCE_WEIGHT[ghost.source]}px`,
+                  boxShadow: HALO_SHADOW,
                   left: `${box.left}px`,
                   top: `${box.top}px`,
                   width: `${box.width}px`,
@@ -204,7 +210,7 @@ export function DetectionAnnotationCanvas({
                 }}
               >
                 <span
-                  className="absolute -top-4 left-0 rounded-t px-1 text-[9px] font-bold text-black"
+                  className="absolute -top-[18px] left-0 rounded-t px-1.5 font-data text-[10px] font-semibold text-black"
                   style={{ background: SOURCE_COLOR[ghost.source] }}
                 >
                   {ghost.source}
@@ -233,6 +239,8 @@ export function DetectionAnnotationCanvas({
             isDragging={isDragging}
             normalizedToImage={normalizedToImage}
             boxColor={committed ? SOURCE_COLOR[committed.source] : undefined}
+            boxWidth={committed ? SOURCE_WEIGHT[committed.source] : undefined}
+            boxShadow={HALO_SHADOW}
             onBoxPointerDown={(_id, e) => onBoxPointerDown(e)}
             onHandlePointerDown={
               isDrawMode ? undefined : (_id, handle, e) => onHandlePointerDown(handle, e)

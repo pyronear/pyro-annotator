@@ -13,7 +13,7 @@ import { useEffect, useRef } from 'react';
 import { Pencil, Eraser, Check } from 'lucide-react';
 import type { BoxCandidate } from '@/utils/annotation/objectBoxCandidates';
 import { computeSquareCrop } from '@/utils/annotation/squareCropUtils';
-import { SOURCE_COLOR, SOURCE_LABEL, SOURCE_ORDER } from './sourceIdentity';
+import { SOURCE_COLOR, SOURCE_LABEL, SOURCE_ORDER, SOURCE_WEIGHT } from './sourceIdentity';
 
 const CROP_RES = 128;
 
@@ -69,14 +69,19 @@ function CandidateCrop({
       // The candidate's box, in the crop's own coordinates.
       const toX = (n: number) => ((n * img.width - crop.x) / crop.size) * CROP_RES;
       const toY = (n: number) => ((n * img.height - crop.y) / crop.size) * CROP_RES;
+      const x = toX(candidate.xyxyn[0]);
+      const y = toY(candidate.xyxyn[1]);
+      const w = toX(candidate.xyxyn[2]) - x;
+      const h = toY(candidate.xyxyn[3]) - y;
+      const weight = SOURCE_WEIGHT[candidate.source];
+      // Dark halo first, colour over it — the same trick the stage uses, so a
+      // bright stroke stays visible against a bright sky.
+      ctx.strokeStyle = 'rgba(0,0,0,0.65)';
+      ctx.lineWidth = weight + 2;
+      ctx.strokeRect(x, y, w, h);
       ctx.strokeStyle = SOURCE_COLOR[candidate.source];
-      ctx.lineWidth = 3;
-      ctx.strokeRect(
-        toX(candidate.xyxyn[0]),
-        toY(candidate.xyxyn[1]),
-        toX(candidate.xyxyn[2]) - toX(candidate.xyxyn[0]),
-        toY(candidate.xyxyn[3]) - toY(candidate.xyxyn[1])
-      );
+      ctx.lineWidth = weight;
+      ctx.strokeRect(x, y, w, h);
     };
     img.src = imageUrl;
   }, [imageUrl, region, candidate]);
@@ -130,7 +135,7 @@ export function BoxSourceRail({
               <span className="flex items-center gap-1.5 font-body text-sm font-medium text-char">
                 <span
                   aria-hidden
-                  className="h-2.5 w-2.5 flex-none rounded-sm"
+                  className="h-3 w-3 flex-none rounded-sm border border-char/25"
                   style={{ backgroundColor: SOURCE_COLOR[source] }}
                 />
                 {SOURCE_LABEL[source]}

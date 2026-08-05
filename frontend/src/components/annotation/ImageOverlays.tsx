@@ -468,6 +468,10 @@ interface DrawingOverlayProps {
    * so smoke type says nothing that varies here, while the source does.
    */
   boxColor?: string;
+  /** Border width in px, when `boxColor` is driving the stroke. */
+  boxWidth?: number;
+  /** Dark ring hugging the stroke so it survives a bright background. */
+  boxShadow?: string;
 }
 
 export function DrawingOverlay({
@@ -483,6 +487,8 @@ export function DrawingOverlay({
   onBoxPointerDown,
   onHandlePointerDown,
   boxColor,
+  boxWidth,
+  boxShadow,
 }: DrawingOverlayProps) {
   const renderRectangle = (
     rect: { xyxyn: [number, number, number, number]; id?: string } | CurrentDrawing,
@@ -541,14 +547,23 @@ export function DrawingOverlay({
             // already, and overriding it to signal a UI state would hide
             // what the box is.
             className={`absolute pointer-events-auto ${boxColor ? '' : colors.border} ${
-              isSelected ? 'border-[3px] cursor-move' : 'border-2 cursor-pointer'
-            }`}
+              boxColor ? '' : isSelected ? 'border-[3px]' : 'border-2'
+            } ${isSelected ? 'cursor-move' : 'cursor-pointer'}`}
             style={{
               left: `${left}px`,
               top: `${top}px`,
               width: `${width}px`,
               height: `${height}px`,
-              ...(boxColor ? { borderColor: boxColor, borderStyle: 'solid' } : {}),
+              ...(boxColor
+                ? {
+                    borderColor: boxColor,
+                    borderStyle: 'solid',
+                    // Selection thickens the stroke rather than recolouring
+                    // it: the colour is carrying the box's source already.
+                    borderWidth: `${(boxWidth ?? 2) + (isSelected ? 2 : 0)}px`,
+                    boxShadow,
+                  }
+                : {}),
             }}
           >
             {/* Resize handles on the selected box */}
@@ -559,7 +574,7 @@ export function DrawingOverlay({
                   key={handle}
                   data-testid={`resize-handle-${handle}`}
                   onMouseDown={e => onHandlePointerDown(rect.id, handle, e)}
-                  className="absolute w-2 h-2 bg-paper border border-char pointer-events-auto"
+                  className="absolute w-2.5 h-2.5 bg-paper border-2 border-char pointer-events-auto"
                   style={{ ...HANDLE_STYLES[handle], cursor: HANDLE_CURSOR[handle] }}
                 />
               ))}
