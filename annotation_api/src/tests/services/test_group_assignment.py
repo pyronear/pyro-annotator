@@ -1,5 +1,6 @@
-"""Tests for the group-assignment service: concurrency guard and label
-inheritance."""
+"""Tests for the group-assignment service: concurrency guard, membership
+freeze at validation, and the membership-only guarantee (the sweep never
+writes labels or annotations)."""
 
 from datetime import datetime, timezone
 
@@ -14,18 +15,15 @@ from app.models import (
     SequenceAnnotation,
     SequenceAnnotationProcessingStage,
     SequenceGroup,
-    User,
 )
 from app.services.group_assignment import (
     ASSIGN_ADVISORY_LOCK_KEY,
     assign_ungrouped_sequences,
 )
 
-# Two boxes with zero overlap: their per-coordinate median is
-# [0.35, 0.35, 0.45, 0.45], which is also the group's representative bbox
-# below (IoU 1.0 → the sequence always joins the group). Because they don't
-# overlap, regenerating from algo_predictions (iou_threshold=0.0) would split
-# them into two tracks — the discriminator for "reuse vs regenerate".
+# Two non-overlapping boxes seeded as one curated track; their per-coordinate
+# median is [0.35, 0.35, 0.45, 0.45], which matches the group's
+# representative bbox below (IoU 1.0 → the sequence always matches the group).
 BOX_A = [0.1, 0.1, 0.2, 0.2]
 BOX_B = [0.6, 0.6, 0.7, 0.7]
 REPR_BBOX = {"xyxyn": [0.35, 0.35, 0.45, 0.45], "confidence": 0.9}
@@ -109,13 +107,12 @@ async def _get_annotation(
 
 
 @pytest.mark.asyncio
-async def test_inheritance_reuses_curated_tracks(
+async def test_join_labeled_group_never_writes_annotation(
     async_session: AsyncSession,
-    test_user: User,
 ):
-    """A curated non-empty annotation joining a labeled group keeps its
-    tracks exactly as imported — only the label, is_unsure and stage change.
-    (Regeneration would split the single fallback track into two.)"""
+    """Joining a labeled (unvalidated) group is membership-only: the curated
+    READY_TO_ANNOTATE annotation keeps its tracks and stage, gains no label,
+    and no contribution is recorded."""
     curated_bboxes = [
         {"detection_id": 1, "xyxyn": BOX_A},
         {"detection_id": 2, "xyxyn": BOX_B},
@@ -131,49 +128,33 @@ async def test_inheritance_reuses_curated_tracks(
         ],
     )
 
-    result = await assign_ungrouped_sequences(async_session, user_id=test_user.id)
+    result = await assign_ungrouped_sequences(async_session)
     assert result.joined_existing == 1
-    assert result.inherited_annotations == 1
 
     anno = await _get_annotation(async_session, seq_id)
     tracks = anno.annotation["sequences_bbox"]
-    assert len(tracks) == 1, "curated track structure must be preserved"
+    assert len(tracks) == 1
     assert tracks[0]["bboxes"] == curated_bboxes
-    assert tracks[0]["is_smoke"] is True
-    assert tracks[0]["smoke_type"] == "wildfire"
-    assert anno.is_unsure is True
+    assert "smoke_type" not in tracks[0]
     assert (
-        anno.processing_stage == SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE
+        anno.processing_stage == SequenceAnnotationProcessingStage.READY_TO_ANNOTATE
     )
-
-
-@pytest.mark.asyncio
-async def test_inheritance_regenerates_when_annotation_empty(
-    async_session: AsyncSession,
-    test_user: User,
-):
-    """An empty placeholder annotation still goes through regeneration from
-    algo_predictions when it inherits a group label."""
-    seq_id = await _seed_labeled_group_and_sequence(async_session, sequences_bbox=[])
-
-    result = await assign_ungrouped_sequences(async_session, user_id=test_user.id)
-    assert result.inherited_annotations == 1
-
-    anno = await _get_annotation(async_session, seq_id)
-    tracks = anno.annotation["sequences_bbox"]
-    assert len(tracks) == 2, "non-overlapping boxes regenerate as two tracks"
-    for track in tracks:
-        assert track["is_smoke"] is True
-        assert track["smoke_type"] == "wildfire"
-    assert (
-        anno.processing_stage == SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE
-    )
+    contributions = (
+        await async_session.exec(
+            text(
+                "SELECT c.user_id FROM sequence_annotation_contributions c "
+                "JOIN sequences_annotations sa "
+                "ON sa.id = c.sequence_annotation_id "
+                "WHERE sa.sequence_id = :sid"
+            ).bindparams(sid=seq_id)
+        )
+    ).all()
+    assert contributions == []
 
 
 @pytest.mark.asyncio
 async def test_validated_group_never_gains_members(
     async_session: AsyncSession,
-    test_user: User,
 ):
     """A newcomer matching a validated group spawns a fresh group instead of
     joining: membership freezes at validation, and no label reaches the
@@ -182,7 +163,7 @@ async def test_validated_group_never_gains_members(
         async_session, sequences_bbox=[], is_validated=True
     )
 
-    result = await assign_ungrouped_sequences(async_session, user_id=test_user.id)
+    result = await assign_ungrouped_sequences(async_session)
     assert result.joined_existing == 0
     assert result.new_groups == 1
 
@@ -209,7 +190,6 @@ async def test_validated_group_never_gains_members(
 @pytest.mark.asyncio
 async def test_assign_returns_already_running_when_lock_held(
     async_session: AsyncSession,
-    test_user: User,
 ):
     """While another connection holds the advisory lock, a run returns
     already_running=True with zero counters instead of interleaving."""
@@ -223,7 +203,7 @@ async def test_assign_returns_already_running_when_lock_held(
         ).scalar_one()
         assert locked is True
 
-        result = await assign_ungrouped_sequences(async_session, user_id=test_user.id)
+        result = await assign_ungrouped_sequences(async_session)
         assert result.already_running is True
         assert result.processed == 0
     finally:
@@ -237,11 +217,10 @@ async def test_assign_returns_already_running_when_lock_held(
 @pytest.mark.asyncio
 async def test_assign_runs_when_lock_free(
     async_session: AsyncSession,
-    test_user: User,
 ):
     """With no lock contention the sweep runs (and re-acquires cleanly on a
     second call — the lock is released between runs)."""
-    first = await assign_ungrouped_sequences(async_session, user_id=test_user.id)
+    first = await assign_ungrouped_sequences(async_session)
     assert first.already_running is False
-    second = await assign_ungrouped_sequences(async_session, user_id=test_user.id)
+    second = await assign_ungrouped_sequences(async_session)
     assert second.already_running is False

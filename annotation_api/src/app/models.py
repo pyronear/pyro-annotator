@@ -253,8 +253,10 @@ class SequenceGroup(SQLModel, table=True):
     representative bbox overlaps the group's reference bbox enough.
 
     A group carries at most one label (smoke OR false positive, never both).
-    Once labeled, future sequences joining the group inherit the label
-    automatically (skip manual annotation).
+    Labels are only ever written by human actions (classify propagation,
+    bulk apply) — the assignment sweep manages membership only. Once a group
+    is validated its membership freezes: later matching sequences open a
+    fresh group instead.
     """
 
     __tablename__ = "sequence_groups"
