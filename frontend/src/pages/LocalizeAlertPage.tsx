@@ -76,6 +76,12 @@
  * reads the child's params with `useMatch`. See
  * docs/specs/2026-08-04-localize-object-editor-route-design.md.
  *
+ * The selected object is itself URL-addressed at `<basePath>/object/:laneId`
+ * (the editor route minus its frame), and a bare alert URL auto-redirects to
+ * the first workable object on arrival; selection navigations replace
+ * history, so Back returns to the list rather than through every selection.
+ * See docs/specs/2026-08-05-localize-object-selection-routes-design.md.
+ *
  * Submit is also gated now: it enables only once every workable object
  * already carries a committed box on every frame it appears on, accepted
  * per object from its own rail row. Submit therefore no longer accepts
