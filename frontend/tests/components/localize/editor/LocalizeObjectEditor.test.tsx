@@ -237,6 +237,59 @@ describe('LocalizeObjectEditor', () => {
   });
 });
 
+// Migrated from the deleted ImageModal test suite: behaviours the new editor
+// keeps and that nothing else covers.
+describe('LocalizeObjectEditor chrome', () => {
+  it('closes from the close button', () => {
+    const onClose = vi.fn();
+    renderEditor({ onClose });
+    fireEvent.click(screen.getByTestId('editor-close'));
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('steps with the prev/next buttons', () => {
+    const onNavigateToDetection = vi.fn();
+    renderEditor({ onNavigateToDetection });
+    fireEvent.click(screen.getByTestId('editor-next'));
+    expect(onNavigateToDetection).toHaveBeenCalledWith(lastDetection.id);
+  });
+
+  it('disables next on the alert’s last frame and prev on its first', () => {
+    renderEditor({ detection: firstDetection });
+    // The object starts on frame 3 of 5, so both directions are open.
+    expect(screen.getByTestId('editor-prev')).not.toBeDisabled();
+    expect(screen.getByTestId('editor-next')).not.toBeDisabled();
+
+    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+    expect(screen.getByTestId('editor-prev')).toBeDisabled();
+  });
+
+  it('arms draw mode on D and shows the crosshair cursor', () => {
+    renderLoadedEditor();
+    fireEvent.keyDown(window, { key: 'd' });
+    expect(screen.getByAltText(/^Detection /).parentElement).toHaveStyle({ cursor: 'crosshair' });
+  });
+
+  it('reports an in-flight save', () => {
+    renderEditor({ isSaving: true });
+    expect(screen.getByText('saving…')).toBeInTheDocument();
+  });
+
+  it('removes its keydown listener on unmount', () => {
+    const onClose = vi.fn();
+    const { unmount } = renderEditor({ onClose });
+    unmount();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('shows the frame position within the alert', () => {
+    renderEditor();
+    expect(screen.getByText('frame 3 / 5')).toBeInTheDocument();
+  });
+});
+
 describe('LocalizeObjectEditor out-of-range frames', () => {
   it('steps into a frame the object is absent from without navigating', () => {
     const onNavigateToDetection = vi.fn();
