@@ -189,17 +189,29 @@ describe('LocalizeObjectEditor', () => {
     expect(onNavigateToDetection).not.toHaveBeenCalled();
   });
 
-  it('G toggles the ghost candidate boxes', () => {
+  it('hides the losing candidates once a box is committed, and G reveals them', () => {
     renderLoadedEditor({ existingAnnotation: committedAnnotation(firstDetection.id, 'auto') });
-    expect(screen.getByTestId('ghost-box-engine-0')).toBeInTheDocument();
-    fireEvent.keyDown(window, { key: 'g' });
+
+    // The committed box speaks for the object; the losers are noise, and the
+    // rail's crops carry the comparison.
+    expect(screen.getByTestId('committed-box')).toBeInTheDocument();
     expect(screen.queryByTestId('ghost-box-engine-0')).not.toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: 'g' });
+    expect(screen.getByTestId('ghost-box-engine-0')).toBeInTheDocument();
+    expect(screen.queryByTestId('ghost-box-auto-0')).not.toBeInTheDocument();
   });
 
-  it('renders the committed box, and the other candidate as a ghost', () => {
-    renderLoadedEditor({ existingAnnotation: committedAnnotation(firstDetection.id, 'auto') });
-    expect(screen.getByTestId('committed-box')).toBeInTheDocument();
+  it('shows the candidates as ghosts when nothing is committed, and G hides them', () => {
+    renderLoadedEditor();
+
+    // Nothing committed means no winner to draw, so the frame would otherwise
+    // be blank — the candidates ghost in to show what is on offer.
+    expect(screen.queryByTestId('committed-box')).not.toBeInTheDocument();
+    expect(screen.getByTestId('ghost-box-auto-0')).toBeInTheDocument();
     expect(screen.getByTestId('ghost-box-engine-0')).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: 'g' });
     expect(screen.queryByTestId('ghost-box-auto-0')).not.toBeInTheDocument();
   });
 
@@ -234,6 +246,52 @@ describe('LocalizeObjectEditor', () => {
     renderEditor({ onNavigateToDetection });
     fireEvent.click(screen.getByTestId(`filmstrip-cell-${lastDetection.id}`));
     expect(onNavigateToDetection).toHaveBeenCalledWith(lastDetection.id);
+  });
+});
+
+describe('LocalizeObjectEditor box selection', () => {
+  const committed = () => committedAnnotation(firstDetection.id, 'human');
+
+  it('leaves the committed box unselected on arrival, so it shows no handles', () => {
+    renderLoadedEditor({ existingAnnotation: committed() });
+    expect(screen.getByTestId('committed-box')).toBeInTheDocument();
+    expect(screen.queryByTestId(/^resize-handle-/)).not.toBeInTheDocument();
+  });
+
+  it('selects the box on click, revealing its handles', () => {
+    renderLoadedEditor({ existingAnnotation: committed() });
+    fireEvent.mouseDown(screen.getByTestId('drawn-box-committed'));
+    expect(screen.getAllByTestId(/^resize-handle-/).length).toBeGreaterThan(0);
+  });
+
+  it('Escape deselects before it closes', () => {
+    const onClose = vi.fn();
+    renderLoadedEditor({ existingAnnotation: committed(), onClose });
+
+    fireEvent.mouseDown(screen.getByTestId('drawn-box-committed'));
+    expect(screen.getAllByTestId(/^resize-handle-/).length).toBeGreaterThan(0);
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByTestId(/^resize-handle-/)).not.toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('drops the selection when the frame changes', () => {
+    const { rerender } = renderLoadedEditor({ existingAnnotation: committed() });
+    fireEvent.mouseDown(screen.getByTestId('drawn-box-committed'));
+    expect(screen.getAllByTestId(/^resize-handle-/).length).toBeGreaterThan(0);
+
+    rerender(
+      editorWith({
+        detection: lastDetection,
+        existingAnnotation: committedAnnotation(lastDetection.id, 'human'),
+      })
+    );
+    fireEvent.load(screen.getByAltText(/^Detection /));
+    expect(screen.queryByTestId(/^resize-handle-/)).not.toBeInTheDocument();
   });
 });
 

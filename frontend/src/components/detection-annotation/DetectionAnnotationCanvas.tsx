@@ -35,7 +35,7 @@ interface ImageInfo {
   offsetY: number;
 }
 
-/** The committed box's id inside `DrawingOverlay`; it is always the selected one. */
+/** The committed box's id inside `DrawingOverlay`. */
 const COMMITTED_ID = 'committed';
 
 interface DetectionAnnotationCanvasProps {
@@ -45,6 +45,8 @@ interface DetectionAnnotationCanvasProps {
   /** Candidates that are NOT committed, drawn dimmed and dashed. */
   ghosts: BoxCandidate[];
   showGhosts: boolean;
+  /** Whether the committed box is selected — only then does it show handles. */
+  selected: boolean;
   selectedSmokeType: SmokeType;
   showSiblingBboxes?: boolean;
   // Collocated localize context: the OTHER contributing objects' boxes on
@@ -81,6 +83,7 @@ export function DetectionAnnotationCanvas({
   committed,
   ghosts,
   showGhosts,
+  selected,
   selectedSmokeType,
   showSiblingBboxes = true,
   objectOverlays,
@@ -107,9 +110,11 @@ export function DetectionAnnotationCanvas({
   const { data: imageData } = useDetectionImage(detection.id);
 
   // `DrawingOverlay` speaks in rectangle arrays; the committed box is a
-  // one-element array that is always the selected one, so it always carries
-  // its move/resize affordances. Drawing suppresses the handles so a
-  // click-to-draw isn't swallowed by the box underneath.
+  // one-element array. Selecting it is what reveals its move/resize
+  // affordances — unselected it renders in its own smoke-type color, so the
+  // box always shows its identity rather than a permanent "selected" yellow.
+  // Drawing suppresses the handles so a click-to-draw isn't swallowed by the
+  // box underneath.
   const drawnRectangles: DrawnRectangle[] = committed
     ? [{ id: COMMITTED_ID, xyxyn: committed.xyxyn, smokeType: selectedSmokeType }]
     : [];
@@ -220,7 +225,7 @@ export function DetectionAnnotationCanvas({
           <DrawingOverlay
             drawnRectangles={drawnRectangles}
             currentDrawing={currentDrawing}
-            selectedRectangleId={COMMITTED_ID}
+            selectedRectangleId={selected ? COMMITTED_ID : null}
             imageInfo={imageInfo}
             zoomLevel={zoomLevel}
             panOffset={panOffset}

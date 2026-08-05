@@ -524,9 +524,11 @@ export function DrawingOverlay({
         return (
           <div
             key={rect.id}
-            onMouseDown={
-              isSelected && onBoxPointerDown ? e => onBoxPointerDown(rect.id, e) : undefined
-            }
+            data-testid={`drawn-box-${rect.id}`}
+            // Always wired, not just when selected: the click that SELECTS a
+            // box has to reach it, and the consumer decides whether a given
+            // press means "select me" or "start dragging me".
+            onMouseDown={onBoxPointerDown ? e => onBoxPointerDown(rect.id, e) : undefined}
             className={`absolute border-2 ${isSelected ? 'border-yellow-400' : colors.border} pointer-events-auto ${
               isSelected ? 'cursor-move' : 'cursor-pointer'
             }`}
@@ -537,19 +539,6 @@ export function DrawingOverlay({
               height: `${height}px`,
             }}
           >
-            {/* Rectangle label */}
-            <div
-              className={`absolute -top-6 left-0 ${
-                isSelected
-                  ? 'bg-yellow-400 text-black'
-                  : `${colors.border.replace('border-', 'bg-')} text-white`
-              } text-xs px-1 py-0.5 rounded whitespace-nowrap pointer-events-none`}
-            >
-              {rect.smokeType === 'wildfire' ? '🔥' : rect.smokeType === 'industrial' ? '🏭' : '💨'}{' '}
-              {rect.smokeType.charAt(0).toUpperCase() + rect.smokeType.slice(1)}
-              {isSelected && ' (selected)'}
-            </div>
-
             {/* Resize handles on the selected box */}
             {isSelected &&
               onHandlePointerDown &&

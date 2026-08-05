@@ -112,7 +112,8 @@ export function LocalizeObjectEditor({
   const [isActivelyDrawing, setIsActivelyDrawing] = useState(false);
   const [currentDrawing, setCurrentDrawing] = useState<CurrentDrawing | null>(null);
 
-  const [showGhosts, setShowGhosts] = useState(true);
+  // `G` overrides whatever the default rule below decides.
+  const [ghostsOverridden, setGhostsOverridden] = useState(false);
   // The OTHER objects' boxes on this frame, off by default. On this screen
   // color means *source* (manual/auto/engine), and the object-identity
   // palette overlaps it closely enough that a blue dashed box would be
@@ -122,6 +123,11 @@ export function LocalizeObjectEditor({
   // becomes primary only when ADDING an object (issue #287's sibling work).
   const [showOtherObjects, setShowOtherObjects] = useState(false);
   const [cropView, setCropView] = useState(false);
+
+  // The committed box is unselected on arrival: it renders in its own
+  // smoke-type color and shows no handles until you click it. Selection is
+  // what reveals the move/resize affordances.
+  const [boxSelected, setBoxSelected] = useState(false);
 
   const [boxEdit, setBoxEdit] = useState<{
     startClient: { x: number; y: number };
@@ -146,9 +152,20 @@ export function LocalizeObjectEditor({
   const shownCommitted: BoxCandidate | null = boxEdit
     ? { source: 'manual', index: 0, xyxyn: boxEdit.next }
     : committed;
-  const ghosts = candidates.filter(
+  const losers = candidates.filter(
     c => !(shownCommitted && c.source === shownCommitted.source && c.index === shownCommitted.index)
   );
+
+  /**
+   * The frame always draws at least the winner, and never more than it needs.
+   * With a box committed, that box alone speaks for the object and the losing
+   * candidates are noise — the rail's crops carry the comparison. With
+   * nothing committed there is no winner to draw, so the candidates ghost in
+   * to show what is on offer. `G` flips whichever state you are in.
+   */
+  const ghostsShownByDefault = committed === null;
+  const showGhosts = ghostsOverridden ? !ghostsShownByDefault : ghostsShownByDefault;
+  const ghosts = showGhosts ? losers : [];
 
   const entries = useMemo(
     () => buildFilmstripEntries(alertFrames, laneSequenceId, laneDetections, laneAnnotations),
@@ -272,6 +289,8 @@ export function LocalizeObjectEditor({
     setIsActivelyDrawing(false);
     setCurrentDrawing(null);
     setBoxEdit(null);
+    setBoxSelected(false);
+    setGhostsOverridden(false);
     setImageInfo(null);
   }, [detection.id]);
 
@@ -336,6 +355,12 @@ export function LocalizeObjectEditor({
   const handleBoxPointerDown = (e: React.MouseEvent) => {
     if (!shownCommitted) return;
     e.stopPropagation();
+    // First click selects; only a selected box can be dragged, so a stray
+    // click on it never nudges the annotation.
+    if (!boxSelected) {
+      setBoxSelected(true);
+      return;
+    }
     didDragBoxRef.current = false;
     setBoxEdit({
       mode: 'move',
@@ -498,7 +523,7 @@ export function LocalizeObjectEditor({
           break;
         case 'g':
         case 'G':
-          setShowGhosts(v => !v);
+          setGhostsOverridden(v => !v);
           break;
         case 'o':
         case 'O':
@@ -514,9 +539,13 @@ export function LocalizeObjectEditor({
           resetZoom();
           break;
         case 'Escape':
+          // Unwind one layer at a time: cancel a drawing, then drop the
+          // selection, and only then leave the editor.
           if (isActivelyDrawing) {
             setCurrentDrawing(null);
             setIsActivelyDrawing(false);
+          } else if (boxSelected) {
+            setBoxSelected(false);
           } else {
             onClose();
           }
@@ -528,7 +557,7 @@ export function LocalizeObjectEditor({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [step, acceptAndNext, isActivelyDrawing, resetZoom, onClose, editable]);
+  }, [step, acceptAndNext, isActivelyDrawing, boxSelected, resetZoom, onClose, editable]);
 
   // --- Render -------------------------------------------------------------
 
@@ -612,6 +641,7 @@ export function LocalizeObjectEditor({
             committed={editable ? shownCommitted : null}
             ghosts={editable ? ghosts : []}
             showGhosts={showGhosts}
+            selected={editable && boxSelected}
             selectedSmokeType={smokeType}
             objectOverlays={showOtherObjects ? objectOverlays : []}
             isDrawMode={isDrawMode}

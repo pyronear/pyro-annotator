@@ -42,6 +42,7 @@ const defaultProps = {
   committed: null as BoxCandidate | null,
   ghosts: [] as BoxCandidate[],
   showGhosts: true,
+  selected: false,
   selectedSmokeType: 'wildfire' as const,
   isDrawMode: false,
   onBoxPointerDown: noop,
@@ -132,8 +133,14 @@ describe('DetectionAnnotationCanvas single-box model', () => {
     expect(screen.getByTestId('committed-box')).toBeInTheDocument();
   });
 
-  it('gives the committed box resize handles', () => {
+  it('shows no resize handles until the committed box is selected', () => {
     render(<DetectionAnnotationCanvas {...defaultProps} committed={auto} ghosts={[]} />);
+
+    expect(screen.queryByTestId(/^resize-handle-/)).not.toBeInTheDocument();
+  });
+
+  it('gives the selected committed box resize handles', () => {
+    render(<DetectionAnnotationCanvas {...defaultProps} committed={auto} ghosts={[]} selected />);
 
     expect(screen.getAllByTestId(/^resize-handle-/).length).toBeGreaterThan(0);
   });
@@ -146,7 +153,9 @@ describe('DetectionAnnotationCanvas single-box model', () => {
   });
 
   it('suppresses the resize handles while drawing, so a click lands on the canvas', () => {
-    render(<DetectionAnnotationCanvas {...defaultProps} committed={auto} ghosts={[]} isDrawMode />);
+    render(
+      <DetectionAnnotationCanvas {...defaultProps} committed={auto} ghosts={[]} selected isDrawMode />
+    );
 
     expect(screen.queryByTestId(/^resize-handle-/)).not.toBeInTheDocument();
   });
