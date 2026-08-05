@@ -30,13 +30,24 @@ export interface TooltipProps {
   placement?: 'below' | 'above';
   /** The control being described. Receives `aria-describedby`. */
   children: React.ReactElement<{ 'aria-describedby'?: string }>;
+  /**
+   * Extra classes for the wrapper. The root is `inline-flex`, which shrinks
+   * to its trigger — a full-width control inside one needs the wrapper to be
+   * told it is full width too, or it collapses to its content.
+   */
+  className?: string;
 }
 
-export const Tooltip: React.FC<TooltipProps> = ({ tip, placement = 'below', children }) => {
+export const Tooltip: React.FC<TooltipProps> = ({
+  tip,
+  placement = 'below',
+  children,
+  className = '',
+}) => {
   const id = React.useId();
 
   return (
-    <span className="group relative inline-flex">
+    <span className={`group relative inline-flex ${className}`}>
       {React.cloneElement(children, {
         // Appended, not assigned: a trigger that already points at its own
         // description keeps it, and gains this one.

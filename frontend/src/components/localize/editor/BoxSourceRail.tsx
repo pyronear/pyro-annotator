@@ -13,7 +13,8 @@ import { useEffect, useRef } from 'react';
 import { Pencil, Eraser, Check } from 'lucide-react';
 import type { BoxCandidate } from '@/utils/annotation/objectBoxCandidates';
 import { computeSquareCrop } from '@/utils/annotation/squareCropUtils';
-import { SOURCE_COLOR, SOURCE_LABEL, SOURCE_ORDER } from './sourceIdentity';
+import { Tooltip } from '@/components/ui/Tooltip';
+import { SOURCE_COLOR, SOURCE_EXPLANATION, SOURCE_LABEL, SOURCE_ORDER } from './sourceIdentity';
 
 const CROP_RES = 128;
 /**
@@ -123,8 +124,12 @@ export function BoxSourceRail({
 }: BoxSourceRailProps) {
   const region = unionBox(candidates);
 
+  // No scroll box on the rail, on purpose: `overflow-y: auto` makes overflow-x
+  // `auto` too, which clipped the row tooltips — they are wider than this rail
+  // and are meant to spill left over the image. The rail holds three rows and
+  // two buttons; it has nothing to scroll.
   return (
-    <div className="w-60 flex-none overflow-y-auto border-l border-line bg-paper p-4">
+    <div className="w-60 flex-none border-l border-line bg-paper p-4">
       <p className="mb-2.5 font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
         Box for this frame
       </p>
@@ -138,46 +143,47 @@ export function BoxSourceRail({
         const drawsOnClick = source === 'manual' && !candidate;
         const armed = drawsOnClick && isDrawMode;
         return (
-          <button
-            key={source}
-            type="button"
-            data-testid={`source-row-${source}`}
-            aria-pressed={isCommitted}
-            disabled={disabled || isCommitted || (!candidate && !drawsOnClick)}
-            onClick={() => {
-              if (drawsOnClick) return onDraw();
-              if (candidate && !isCommitted) onCommit(candidate);
-            }}
-            className={`mb-1.5 flex w-full items-center gap-2.5 rounded-lg border p-2 text-left transition-colors ${
-              isCommitted || armed ? 'border-pine bg-pine-soft' : 'border-transparent'
-            } ${(candidate && !isCommitted) || drawsOnClick ? 'hover:bg-ash' : ''} ${
-              candidate || drawsOnClick ? '' : 'opacity-40'
-            }`}
-          >
-            <CandidateCrop imageUrl={imageUrl} region={region} candidate={candidate} />
-            <span className="min-w-0">
-              <span className="flex items-center gap-1.5 font-body text-sm font-medium text-char">
-                <span
-                  aria-hidden
-                  className="h-3 w-3 flex-none rounded-sm border border-char/25"
-                  style={{ backgroundColor: SOURCE_COLOR[source] }}
-                />
-                {SOURCE_LABEL[source]}
-                {isCommitted && <Check className="h-3.5 w-3.5 text-pine" />}
+          <Tooltip key={source} tip={SOURCE_EXPLANATION[source]} className="mb-1.5 w-full">
+            <button
+              type="button"
+              data-testid={`source-row-${source}`}
+              aria-pressed={isCommitted}
+              disabled={disabled || isCommitted || (!candidate && !drawsOnClick)}
+              onClick={() => {
+                if (drawsOnClick) return onDraw();
+                if (candidate && !isCommitted) onCommit(candidate);
+              }}
+              className={`flex w-full items-center gap-2.5 rounded-lg border p-2 text-left transition-colors ${
+                isCommitted || armed ? 'border-pine bg-pine-soft' : 'border-transparent'
+              } ${(candidate && !isCommitted) || drawsOnClick ? 'hover:bg-ash' : ''} ${
+                candidate || drawsOnClick ? '' : 'opacity-40'
+              }`}
+            >
+              <CandidateCrop imageUrl={imageUrl} region={region} candidate={candidate} />
+              <span className="min-w-0">
+                <span className="flex items-center gap-1.5 font-body text-sm font-medium text-char">
+                  <span
+                    aria-hidden
+                    className="h-3 w-3 flex-none rounded-sm border border-char/25"
+                    style={{ backgroundColor: SOURCE_COLOR[source] }}
+                  />
+                  {SOURCE_LABEL[source]}
+                  {isCommitted && <Check className="h-3.5 w-3.5 text-pine" />}
+                </span>
+                <span className="block font-data text-detail text-haze">
+                  {armed
+                    ? 'click two corners'
+                    : drawsOnClick
+                      ? 'draw one'
+                      : !candidate
+                        ? 'no box'
+                        : candidate.confidence !== undefined
+                          ? `${(candidate.confidence * 100).toFixed(0)}% confident`
+                          : 'you drew this'}
+                </span>
               </span>
-              <span className="block font-data text-detail text-haze">
-                {armed
-                  ? 'click two corners'
-                  : drawsOnClick
-                    ? 'draw one'
-                    : !candidate
-                      ? 'no box'
-                      : candidate.confidence !== undefined
-                        ? `${(candidate.confidence * 100).toFixed(0)}% confident`
-                        : 'you drew this'}
-              </span>
-            </span>
-          </button>
+            </button>
+          </Tooltip>
         );
       })}
 

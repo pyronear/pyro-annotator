@@ -94,6 +94,20 @@ describe('BoxSourceRail', () => {
     expect(onCommit).not.toHaveBeenCalled();
   });
 
+  it('explains what each source is, for a reader who does not know', () => {
+    render(<BoxSourceRail {...props} />);
+    expect(screen.getByText(/camera's own detector/i)).toBeInTheDocument();
+    expect(screen.getByText(/more sensitive model this app runs/i)).toBeInTheDocument();
+    expect(screen.getByText(/drew or adjusted here yourself/i)).toBeInTheDocument();
+  });
+
+  it('ties each explanation to its row for a screen reader', () => {
+    render(<BoxSourceRail {...props} />);
+    const describedBy = screen.getByTestId('source-row-engine').getAttribute('aria-describedby');
+    expect(describedBy).toBeTruthy();
+    expect(document.getElementById(describedBy!)).toHaveTextContent(/camera's own detector/i);
+  });
+
   it('shows the model confidence in plain terms', () => {
     render(<BoxSourceRail {...props} />);
     expect(screen.getByTestId('source-row-auto')).toHaveTextContent('87% confident');

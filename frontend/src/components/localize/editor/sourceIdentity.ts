@@ -69,6 +69,17 @@ export const haloShadow = (scale = 1): string => {
   return `0 0 0 ${ring}px rgba(0,0,0,0.65), inset 0 0 0 ${ring}px rgba(0,0,0,0.65)`;
 };
 
+/**
+ * What each source IS, for the rail's tooltips. Written from the pipeline
+ * rather than from the label: "auto" and "engine" say nothing on their own,
+ * and which one to trust depends entirely on where each came from.
+ */
+export const SOURCE_EXPLANATION: Record<BoxSource, string> = {
+  manual: 'A box you drew or adjusted here yourself. It always wins over the models.',
+  auto: 'From the more sensitive model this app runs over the alert after import. Kept only where it agrees with the engine that something is there — usually tighter than the engine box.',
+  engine: "From the camera's own detector — the box it raised this alert with.",
+};
+
 /** Accessible counterparts for badges and labels on paper (>= 4.5:1 on white). */
 export const SOURCE_TEXT: Record<BoxSource, string> = {
   manual: 'text-[#C2185B]',
