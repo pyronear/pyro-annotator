@@ -28,14 +28,15 @@ export function classifyDetailWithReturn(id: number | string, returnTo: string):
 /**
  * Validates a `return` param before anything navigates to it. Only an
  * internal localize *alert* path is accepted — `/localize/<id>` or its done
- * counterpart `/localize/done/<id>`, either optionally carrying a query
- * string. A protocol-relative `//host` or an absolute URL would leave the
- * app, and other internal paths aren't this param's business; anything else
- * yields null and the caller falls back to its default.
+ * counterpart `/localize/done/<id>`, either optionally carrying an
+ * `/object/<laneId>` selection segment and/or a query string. A
+ * protocol-relative `//host` or an absolute URL would leave the app, and
+ * other internal paths aren't this param's business; anything else yields
+ * null and the caller falls back to its default.
  */
 export function parseLocalizeReturn(value: string | null | undefined): string | null {
   if (!value) return null;
-  return /^\/localize\/(done\/)?\d+(\?[^#]*)?$/.test(value) ? value : null;
+  return /^\/localize\/(done\/)?\d+(\/object\/\d+)?(\?[^#]*)?$/.test(value) ? value : null;
 }
 
 export function classifyGroup(id: number | string): string {
@@ -63,6 +64,32 @@ export function localizeDetail(
   const base = done ? ROUTES.LOCALIZE_DONE : ROUTES.LOCALIZE;
   const detSegment = detectionId !== undefined ? `/${detectionId}` : '';
   return `${base}/${sequenceId}${detSegment}`;
+}
+
+/**
+ * Route pattern for the cockpit's SELECTED object — the editor route minus
+ * its frame segment. Like `localizeObjectRoute` it is declared once and read
+ * by both App.tsx's route and LocalizeAlertPage's `useMatch`, and mounted as
+ * an absolute CHILD path of the alert page's route so selection changes never
+ * remount the page. See
+ * docs/specs/2026-08-05-localize-object-selection-routes-design.md.
+ */
+export function localizeObjectSelectRoute(done = false): string {
+  const base = done ? ROUTES.LOCALIZE_DONE : ROUTES.LOCALIZE;
+  return `${base}/:sequenceId/object/:laneId`;
+}
+
+/**
+ * Concrete selection path: this alert with this object active in the cockpit.
+ * `done` carries provenance exactly as `localizeDetail` does.
+ */
+export function localizeObjectSelect(
+  sequenceId: number | string,
+  laneId: number | string,
+  done = false
+): string {
+  const base = done ? ROUTES.LOCALIZE_DONE : ROUTES.LOCALIZE;
+  return `${base}/${sequenceId}/object/${laneId}`;
 }
 
 /**

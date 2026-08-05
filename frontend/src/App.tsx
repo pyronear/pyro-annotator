@@ -15,7 +15,7 @@ import UserManagementPage from '@/pages/UserManagementPage';
 import GuidePage from '@/pages/GuidePage';
 import LoginPage from '@/pages/LoginPage';
 import { legacyRedirectRoutes } from '@/components/routing/legacyRedirects';
-import { localizeObjectRoute } from '@/utils/routes';
+import { localizeObjectRoute, localizeObjectSelectRoute } from '@/utils/routes';
 import RequireLocalize from '@/components/routing/RequireLocalize';
 import { useAuthStore } from '@/store/useAuthStore';
 
@@ -123,7 +123,10 @@ function App() {
                       crop mode, focus mode and the active object. The child
                       renders nothing — the page reads its params via useMatch
                       and opens the modal itself — so the page renders no
-                      <Outlet />. */}
+                      <Outlet />. The selection route (…/object/:laneId, no
+                      frame) rides along the same way: it names the cockpit's
+                      active object, and the editor pattern is it plus a
+                      frame. */}
                   <Route
                     path="/localize/done/:sequenceId"
                     element={
@@ -132,6 +135,7 @@ function App() {
                       </RequireLocalize>
                     }
                   >
+                    <Route path={localizeObjectSelectRoute(true)} element={null} />
                     <Route path={localizeObjectRoute(true)} element={null} />
                   </Route>
                   <Route
@@ -142,6 +146,7 @@ function App() {
                       </RequireLocalize>
                     }
                   >
+                    <Route path={localizeObjectSelectRoute()} element={null} />
                     <Route path={localizeObjectRoute()} element={null} />
                   </Route>
                   {legacyRedirectRoutes}

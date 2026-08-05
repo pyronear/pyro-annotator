@@ -19,6 +19,7 @@ import {
   Routes,
   Route,
   useLocation,
+  useNavigate,
   useParams,
   useSearchParams,
 } from 'react-router-dom';
@@ -140,13 +141,29 @@ vi.mock('@/components/localize/editor', () => ({
 
 import { apiClient } from '@/services/api';
 import LocalizeAlertPage from '@/pages/LocalizeAlertPage';
-import { ROUTES, localizeObjectRoute } from '@/utils/routes';
+import {
+  ROUTES,
+  localizeObjectRoute,
+  localizeObjectSelect,
+  localizeObjectSelectRoute,
+} from '@/utils/routes';
 
 // Lets tests assert the URL the page navigated to (which object + frame the
 // editor was opened for), not just that a modal appeared.
 function LocationProbe() {
   const location = useLocation();
   return <span data-testid="location">{`${location.pathname}${location.search}`}</span>;
+}
+
+// Lets a test drive history back without window.history (MemoryRouter
+// doesn't bridge it), to prove a navigation was replace, not push.
+function BackProbe() {
+  const navigate = useNavigate();
+  return (
+    <button type="button" onClick={() => navigate(-1)}>
+      history-back-probe
+    </button>
+  );
 }
 
 /**
@@ -173,13 +190,17 @@ function ClassifyDestinationProbe() {
  * so post-submit / back navigation is observable — a mocked useNavigate would
  * also break the modal-close-on-navigate tests elsewhere in this file.
  */
-function makeWrapper(initialPath = '/localize/101') {
+function makeWrapper(initialPath = '/localize/101', priorEntries: string[] = []) {
   return function TestWrapper({ children }: { children: React.ReactNode }) {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     return (
       <QueryClientProvider client={client}>
-        <MemoryRouter initialEntries={[initialPath]}>
+        <MemoryRouter
+          initialEntries={[...priorEntries, initialPath]}
+          initialIndex={priorEntries.length}
+        >
           <LocationProbe />
+          <BackProbe />
           <Routes>
             {/* Mirrors App.tsx: each provenance carries the editor as a CHILD
                 route so the page is never remounted when the editor opens or
@@ -187,9 +208,11 @@ function makeWrapper(initialPath = '/localize/101') {
                 useMatch also reads, so this wrapper can't silently disagree
                 with the real app. */}
             <Route path="/localize/done/:sequenceId" element={children}>
+              <Route path={localizeObjectSelectRoute(true)} element={null} />
               <Route path={localizeObjectRoute(true)} element={null} />
             </Route>
             <Route path="/localize/:sequenceId" element={children}>
+              <Route path={localizeObjectSelectRoute()} element={null} />
               <Route path={localizeObjectRoute()} element={null} />
             </Route>
             {/* Real routes for the landing pages so a post-submit
@@ -433,8 +456,9 @@ describe('LocalizeAlertPage', () => {
     const scroller = screen.getByTestId('frame-grid-scroller');
     expect(scroller).toContainElement(screen.getByTestId(`alert-frame-cell-${T1}`));
 
-    // The controls that act on those cells sit outside it.
-    expect(scroller).not.toContainElement(screen.getByText('Frames'));
+    // The controls that act on those cells sit outside it. (The panel title
+    // names the auto-selected object, so match on the prefix.)
+    expect(scroller).not.toContainElement(screen.getByText(/^Frames/));
     expect(scroller).not.toContainElement(screen.getByTestId('localize-object-row-object-1'));
 
     // The scroller alone proves nothing: an overflow container inside an
@@ -512,33 +536,33 @@ describe('LocalizeAlertPage', () => {
     });
   });
 
-  it("clicking a grid cell with no active object opens the first-present lane's detection and makes it active", async () => {
+  it('clicking a grid cell opens the editor WITHOUT entering focus mode', async () => {
     await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
-    // T2 only has lane 102 (Object 2 / detection 1003) present.
-    fireEvent.click(screen.getByTestId(`alert-frame-cell-${T2}`));
+    // Arrival auto-focused Object 1 — exit focus first (second row click)
+    // so the unfocused-active state this test pins is actually in play.
+    fireEvent.click(screen.getByTestId('localize-object-row-object-1'));
+    await waitFor(() =>
+      expect(screen.getByTestId('object-status-row-0')).not.toHaveAttribute('data-selected')
+    );
+
+    // Object 1 (lane 101) is still active; T1 shows its detection.
+    fireEvent.click(screen.getByTestId(`alert-frame-cell-${T1}`));
 
     await waitFor(() => {
-      expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1003');
+      expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1001');
     });
 
     fireEvent.click(screen.getByText('Mock Close'));
     await waitFor(() => expect(screen.queryByTestId('image-modal')).not.toBeInTheDocument());
 
-    // Lane 102 was made active by the earlier cell click, so T1 (present in
-    // both lanes) now shows its detection without any further row/segment click.
-    await waitFor(() => {
-      const img = within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img');
-      expect(img).toHaveAttribute('src', 'https://img.example/1002.jpg');
-    });
-
-    // Active, but NOT focused: `handleCellClick` uses a plain
-    // `setActiveLaneId` on purpose, because opening the editor shouldn't also
-    // flip the background grid into crop-on + small cards behind the modal.
-    // Nothing else pins that distinction for the click path — the pasted-URL
-    // path has its own test — so unifying the two activation helpers would
+    // Active, but NOT focused: the editor URL carries the lane (no
+    // `activateFocus`), because opening the editor shouldn't also flip the
+    // background grid into crop-on + small cards behind the modal. Nothing
+    // else pins that distinction for the click path — the pasted-URL path
+    // has its own test — so unifying the two activation helpers would
     // otherwise pass CI.
-    expect(screen.getByTestId('object-status-row-1')).not.toHaveAttribute('data-selected');
+    expect(screen.getByTestId('object-status-row-0')).not.toHaveAttribute('data-selected');
     expect(
       within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img').style.transform
     ).toBe('');
@@ -547,7 +571,9 @@ describe('LocalizeAlertPage', () => {
   it('clicking a grid cell navigates to the editor URL naming the object and the frame', async () => {
     await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
-    // T2 is present only in lane 102 (Object 2 / detection 1003).
+    // T2 is present only in lane 102 (Object 2 / detection 1003) — its cell
+    // is only interactive while that object is active, so select it first.
+    fireEvent.click(screen.getByTestId('localize-object-row-object-2'));
     fireEvent.click(screen.getByTestId(`alert-frame-cell-${T2}`));
 
     await waitFor(() => {
@@ -682,17 +708,6 @@ describe('LocalizeAlertPage', () => {
     expect(screen.queryByTestId('image-modal')).not.toBeInTheDocument();
   });
 
-  it('leaves every frame interactive when no object is active', async () => {
-    await renderAndSettle(<LocalizeAlertPage />, { wrapper });
-
-    expect(screen.getByTestId(`alert-frame-cell-${T2}`)).not.toHaveAttribute('data-context');
-
-    fireEvent.click(screen.getByTestId(`alert-frame-cell-${T2}`));
-    await waitFor(() => {
-      expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1003');
-    });
-  });
-
   describe('object-identity overlays in the modal', () => {
     it("opening a frame shared with another contributing lane passes that lane's boxes as a labeled object overlay (not the generic sibling layer)", async () => {
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
@@ -710,7 +725,9 @@ describe('LocalizeAlertPage', () => {
     it('opening a frame with no other contributing lane yields no object overlays', async () => {
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
-      // T2 is present only in lane 102 (Object 2) -> no other lane to overlay.
+      // T2 is present only in lane 102 (Object 2) -> no other lane to
+      // overlay. Its cell needs Object 2 active to be interactive.
+      fireEvent.click(screen.getByTestId('localize-object-row-object-2'));
       fireEvent.click(screen.getByTestId(`alert-frame-cell-${T2}`));
       await waitFor(() => {
         expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1003');
@@ -826,10 +843,10 @@ describe('LocalizeAlertPage', () => {
 
     await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
-    // The action lives on the selected row, so reaching it goes through
-    // selecting the object it belongs to. Scoped to the row because the media
-    // column's CTA bar offers the same action for the same object.
-    fireEvent.click(screen.getByTestId('localize-object-row-object-1'));
+    // The action lives on the selected row — and arrival auto-focus already
+    // selected Object 1, so it's reachable directly. Scoped to the row
+    // because the media column's CTA bar offers the same action for the
+    // same object.
     fireEvent.click(
       within(screen.getByTestId('localize-object-row-object-1')).getByRole('button', {
         name: "Accept Object 1's boxes",
@@ -858,37 +875,38 @@ describe('LocalizeAlertPage', () => {
     await waitFor(() => expect(screen.getByTestId('status-segment-0-0')).toBeInTheDocument());
 
     const grid = container.querySelector('.grid') as HTMLElement;
-    expect(grid.style.gridTemplateColumns).toContain('340px'); // default 'md'
+    // Arrival auto-focus forces small cards (the preference stays 'md').
+    expect(grid.style.gridTemplateColumns).toContain('240px');
 
+    // An explicit size click while focused both writes the preference and
+    // takes visible effect immediately.
     fireEvent.click(screen.getByTitle('Large cards'));
 
     expect(grid.style.gridTemplateColumns).toContain('500px');
     expect(localStorage.getItem('detectionAnnotateCardSize')).toBe('lg');
   });
 
-  it('crop mode zooms grid cells around the active object\'s boxes, and is inert without an active object (toolbar + "c" shortcut)', async () => {
+  it('crop mode zooms grid cells around the active object\'s boxes (toolbar + "c" shortcut)', async () => {
     await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
-    fireEvent.click(screen.getByTitle('Crop cells (C)'));
-
-    // No active object yet -> the cell stays full-frame.
-    await waitFor(() => {
-      const img = within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img');
-      expect(img.style.transform).toBe('');
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Go to Object 1' }));
-
+    // Arrival auto-focus already turned crop on around Object 1's boxes.
     await waitFor(() => {
       const img = within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img');
       expect(img.style.transform).toContain('scale(');
     });
 
-    // The 'c' shortcut toggles it back off.
+    // The 'c' shortcut toggles it off…
     fireEvent.keyDown(window, { key: 'c' });
     await waitFor(() => {
       const img = within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img');
       expect(img.style.transform).toBe('');
+    });
+
+    // …and the toolbar button turns it back on.
+    fireEvent.click(screen.getByTitle('Crop cells (C)'));
+    await waitFor(() => {
+      const img = within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img');
+      expect(img.style.transform).toContain('scale(');
     });
   });
 
@@ -937,20 +955,26 @@ describe('LocalizeAlertPage', () => {
       const img = within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img');
       expect(img).toHaveAttribute('src', 'https://img.example/1002.jpg');
     });
+
+    // The arrival auto-select yielded to the deep link: the frame's own lane
+    // is the one the URL now names, and it is active WITHOUT focus mode — a
+    // reload reproducing "where you were looking" must not force crop-on.
+    expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/102');
+    expect(screen.getByTestId('object-status-row-1')).not.toHaveAttribute('data-selected');
+    expect(
+      within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img').style.transform
+    ).toBe('');
   });
 
-  it('object-focus mode (row click) forces crop-on + small cards without clobbering the persisted card-size preference, and restores both on deselect', async () => {
+  it('object-focus mode (the arrival auto-focus) forces crop-on + small cards without clobbering the persisted card-size preference, and restores both on deselect', async () => {
     localStorage.setItem('detectionAnnotateCardSize', 'lg');
 
     const { container } = render(<LocalizeAlertPage />, { wrapper });
     await waitFor(() => expect(screen.getByTestId('status-segment-0-0')).toBeInTheDocument());
 
     const grid = container.querySelector('.grid') as HTMLElement;
-    expect(grid.style.gridTemplateColumns).toContain('500px'); // persisted 'lg'
 
-    fireEvent.click(screen.getByRole('button', { name: 'Go to Object 1' }));
-
-    // Focus mode: the grid is forced to small cards...
+    // Arrival auto-focus: the grid is forced to small cards...
     await waitFor(() => expect(grid.style.gridTemplateColumns).toContain('240px'));
     // ...crop is applied to the now-active object's cell...
     await waitFor(() => {
@@ -976,10 +1000,8 @@ describe('LocalizeAlertPage', () => {
 
   it("switching focus to another object (segment click) keeps the ORIGINAL pre-focus settings for restore, not the most recent object's", async () => {
     await renderAndSettle(<LocalizeAlertPage />, { wrapper });
-    // Neither cropMode (default false) nor cardSize (default 'md', no
-    // persisted value) has been touched yet.
-
-    fireEvent.click(screen.getByRole('button', { name: 'Go to Object 1' }));
+    // Arrival auto-focus stashed the true pre-focus state (crop off, card
+    // size 'md' — nothing had been touched before the redirect landed).
     await waitFor(() => {
       const img = within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img');
       expect(img.style.transform).toContain('scale(');
@@ -1019,14 +1041,11 @@ describe('LocalizeAlertPage', () => {
     expect(screen.queryByTestId('cropped-image-sequence')).not.toBeInTheDocument();
   });
 
-  it("the active row's disclosure shows that lane's cropped strip, stays open across a lane switch, and hides on deselect", async () => {
+  it("the active row's disclosure shows that lane's cropped strip, stays open across a lane switch, and persists after exiting focus", async () => {
     await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
-    expect(screen.queryByTestId('cropped-image-sequence')).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Go to Object 1' }));
-
-    // Selecting alone doesn't unfold it — the row's own control does.
+    // Arrival auto-focus already selected Object 1 — but selection alone
+    // doesn't unfold the strip, the disclosure control does.
     await waitFor(() => {
       expect(screen.getByTestId('localize-object-row-object-1')).toHaveAttribute('data-active');
     });
@@ -1057,12 +1076,17 @@ describe('LocalizeAlertPage', () => {
       );
     });
 
-    // Deselecting hides it.
+    // A second click on the focused row exits focus but keeps the object
+    // active (selection lives in the URL now), so the strip stays with it.
     fireEvent.click(screen.getByRole('button', { name: 'Go to Object 2' }));
 
     await waitFor(() => {
-      expect(screen.queryByTestId('cropped-image-sequence')).not.toBeInTheDocument();
+      expect(screen.getByTestId('object-status-row-1')).not.toHaveAttribute('data-selected');
     });
+    expect(screen.getByTestId('cropped-image-sequence')).toHaveAttribute(
+      'data-sequence-id',
+      '102'
+    );
   });
 
   // The disclosure is a real toggle, not a one-way reveal: the page holds the
@@ -1070,7 +1094,7 @@ describe('LocalizeAlertPage', () => {
   it('collapses the loop again on a second click of the disclosure', async () => {
     await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Go to Object 1' }));
+    // Arrival auto-focus already selected Object 1.
     await expandCrop();
     await waitFor(() => {
       expect(screen.getByTestId('cropped-image-sequence')).toBeInTheDocument();
@@ -1090,27 +1114,6 @@ describe('LocalizeAlertPage', () => {
   // the actions beside it — NOT focus mode. Closing the frame editor leaves a
   // lane active without re-entering focus, and that is exactly when someone is
   // most obviously working one object, so the loop stays reachable there.
-  it('offers the disclosure for a lane activated without entering focus mode', async () => {
-    await renderAndSettle(<LocalizeAlertPage />, { wrapper });
-
-    expect(screen.queryByRole('button', { name: /cropped view/i })).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByTestId(`alert-frame-cell-${T1}`));
-    await waitFor(() => {
-      expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1001');
-    });
-    fireEvent.click(screen.getByText('Mock Close'));
-    await waitFor(() => expect(screen.queryByTestId('image-modal')).not.toBeInTheDocument());
-
-    await expandCrop();
-    await waitFor(() => {
-      expect(screen.getByTestId('cropped-image-sequence')).toHaveAttribute(
-        'data-sequence-id',
-        '101'
-      );
-    });
-  });
-
   // The strip carries the object's overlay colour, the same tie-to-identity
   // classify's media panel makes — with several objects in an alert, an
   // uncoloured crop is ambiguous about whose plume it is.
@@ -1127,10 +1130,10 @@ describe('LocalizeAlertPage', () => {
     });
   });
 
-  it('deselecting the focused object restores the pre-focus crop mode', async () => {
+  it('exiting focus restores the pre-focus crop mode while the object stays active', async () => {
     await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Go to Object 1' }));
+    // Arrival auto-focus selected Object 1; open its cropped loop.
     await expandCrop();
     await waitFor(() => {
       expect(screen.getByTestId('cropped-image-sequence')).toBeInTheDocument();
@@ -1139,13 +1142,17 @@ describe('LocalizeAlertPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Go to Object 1' }));
 
     await waitFor(() => {
-      expect(screen.queryByTestId('cropped-image-sequence')).not.toBeInTheDocument();
+      expect(screen.getByTestId('object-status-row-0')).not.toHaveAttribute('data-selected');
     });
-    expect(screen.getByTestId('object-status-row-0')).not.toHaveAttribute('data-selected');
     // Crop-mode was off before this focus session, so the cells go back to
-    // untransformed images.
+    // untransformed images…
     const img = within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img');
     expect(img.style.transform).toBe('');
+    // …but the object is still active, so its cropped loop stays available.
+    expect(screen.getByTestId('cropped-image-sequence')).toHaveAttribute(
+      'data-sequence-id',
+      '101'
+    );
   });
 
   it('an explicit S/M/L click while focused clears the small-card override immediately (visible + intentional preference write)', async () => {
@@ -1154,8 +1161,8 @@ describe('LocalizeAlertPage', () => {
 
     const grid = container.querySelector('.grid') as HTMLElement;
 
-    fireEvent.click(screen.getByRole('button', { name: 'Go to Object 1' }));
-    await waitFor(() => expect(grid.style.gridTemplateColumns).toContain('240px')); // forced 'sm'
+    // Arrival auto-focus forces 'sm'.
+    await waitFor(() => expect(grid.style.gridTemplateColumns).toContain('240px'));
 
     fireEvent.click(screen.getByTitle('Medium cards'));
 
@@ -1180,9 +1187,10 @@ describe('LocalizeAlertPage', () => {
       expect(submit).toBeDisabled();
 
       // The explanation lives in the button's tooltip now, and counts the
-      // objects holding submit back rather than restating the rule.
-      const tip = screen.getByRole('tooltip');
-      expect(submit).toHaveAttribute('aria-describedby', tip.id);
+      // objects holding submit back rather than restating the rule. Scoped
+      // through aria-describedby — the auto-selected object's own actions
+      // carry tooltips of their own, so a bare role query is ambiguous.
+      const tip = document.getElementById(submit.getAttribute('aria-describedby')!)!;
       expect(tip).toHaveTextContent('2 objects still have frames without a box');
 
       expect(screen.getByText('0 of 2 objects localized')).toBeInTheDocument();
@@ -1192,10 +1200,10 @@ describe('LocalizeAlertPage', () => {
       mockAllFramesAccepted();
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
-      await waitFor(() => expect(screen.getByRole('button', { name: /Submit/ })).toBeEnabled());
-      expect(screen.getByRole('tooltip')).toHaveTextContent(
-        'Submits every object still awaiting localization'
-      );
+      const submit = screen.getByRole('button', { name: /Submit/ });
+      await waitFor(() => expect(submit).toBeEnabled());
+      const tip = document.getElementById(submit.getAttribute('aria-describedby')!)!;
+      expect(tip).toHaveTextContent('Submits every object still awaiting localization');
     });
 
     it('blocks submit and explains why while a sibling object is still undecided', async () => {
@@ -1621,7 +1629,9 @@ describe('LocalizeAlertPage', () => {
       await renderAndSettle(<LocalizeAlertPage mode="done" />, { wrapper: doneWrapper });
 
       // Opening a frame must not silently move the session onto the queue
-      // route — the whole page is mounted from the path.
+      // route — the whole page is mounted from the path. T2's cell needs
+      // Object 2 active to be interactive (auto-select landed on Object 1).
+      fireEvent.click(screen.getByTestId('localize-object-row-object-2'));
       fireEvent.click(screen.getByTestId(`alert-frame-cell-${T2}`));
       await waitFor(() => {
         expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1003');
@@ -1638,7 +1648,9 @@ describe('LocalizeAlertPage', () => {
     it('opens the editor under the Done prefix, object segment and all', async () => {
       await renderAndSettle(<LocalizeAlertPage mode="done" />, { wrapper: doneWrapper });
 
-      // T2 is present only in lane 102 (Object 2 / detection 1003).
+      // T2 is present only in lane 102 (Object 2 / detection 1003); select
+      // its object first so the cell is interactive.
+      fireEvent.click(screen.getByTestId('localize-object-row-object-2'));
       fireEvent.click(screen.getByTestId(`alert-frame-cell-${T2}`));
 
       await waitFor(() => {
@@ -1669,6 +1681,7 @@ describe('LocalizeAlertPage', () => {
     it('still edits frames — a save routes through saveDetectionReview as in queue mode', async () => {
       await renderAndSettle(<LocalizeAlertPage mode="done" />, { wrapper: doneWrapper });
 
+      fireEvent.click(screen.getByTestId('localize-object-row-object-2'));
       fireEvent.click(screen.getByTestId(`alert-frame-cell-${T2}`));
       await waitFor(() => {
         expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1003');
@@ -2044,18 +2057,24 @@ describe('LocalizeAlertPage', () => {
   });
 
   describe('active object CTA, over the media column', () => {
-    it('appears above the frames only once an object is active', async () => {
+    it('appears above the frames for the active object, following the selection', async () => {
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
-      expect(screen.queryByTestId('localize-active-object-actions')).not.toBeInTheDocument();
-
-      fireEvent.click(screen.getByTestId('localize-object-row-object-1'));
-
+      // Arrival auto-selects Object 1, so its CTA is there from the start.
       const cta = within(screen.getByTestId('localize-active-object-actions'));
       expect(cta.getByRole('button', { name: "Accept Object 1's boxes" })).toBeInTheDocument();
       expect(cta.getByRole('button', { name: 'Reclassify Object 1' })).toBeInTheDocument();
       // The column header still names whose frames these are.
       expect(screen.getByText(/Frames — Object 1/)).toBeInTheDocument();
+
+      // Selecting another object hands the CTA to it.
+      fireEvent.click(screen.getByTestId('localize-object-row-object-2'));
+      expect(
+        within(screen.getByTestId('localize-active-object-actions')).getByRole('button', {
+          name: 'Reclassify Object 2',
+        })
+      ).toBeInTheDocument();
+      expect(screen.getByText(/Frames — Object 2/)).toBeInTheDocument();
     });
 
     it("accepts the active object's boxes from the header, then reports nothing left and drops the action", async () => {
@@ -2382,6 +2401,218 @@ describe('LocalizeAlertPage', () => {
     });
   });
 
+  describe('URL-addressed selection', () => {
+    it("clicking a rail row navigates to that object's selection URL", async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByTestId('localize-object-row-object-2'));
+
+      expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/102');
+      expect(screen.getByText(/Frames — Object 2/)).toBeInTheDocument();
+    });
+
+    it('a second click on the focused row exits focus but keeps the object active (URL unchanged)', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByTestId('localize-object-row-object-2'));
+      await waitFor(() =>
+        expect(screen.getByTestId('object-status-row-1')).toHaveAttribute('data-selected', 'true')
+      );
+
+      fireEvent.click(screen.getByTestId('localize-object-row-object-2'));
+
+      // Focus ended: the row loses the selected treatment and crop restores
+      // to its pre-focus off state…
+      await waitFor(() =>
+        expect(screen.getByTestId('object-status-row-1')).not.toHaveAttribute('data-selected')
+      );
+      await waitFor(() => {
+        const img = within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img');
+        expect(img.style.transform).toBe('');
+      });
+      // …but the object stays active: URL and Frames panel still name it.
+      expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/102');
+      expect(screen.getByText(/Frames — Object 2/)).toBeInTheDocument();
+    });
+
+    it("closing the editor lands on the edited object's selection URL, not the bare alert URL", async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      // Select Object 2 first — T2's cell is only interactive while its
+      // object is active (auto-select landed on Object 1), and closing from
+      // lane 102 also proves the close target is the EDITED object's URL,
+      // not the arrival auto-select's.
+      fireEvent.click(screen.getByTestId('localize-object-row-object-2'));
+      // T2 is present only in lane 102 (Object 2 / detection 1003).
+      fireEvent.click(screen.getByTestId(`alert-frame-cell-${T2}`));
+      await screen.findByTestId('image-modal');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Mock Close' }));
+
+      await waitFor(() =>
+        expect(screen.getByTestId('location')).toHaveTextContent(/\/localize\/101\/object\/102$/)
+      );
+      expect(screen.queryByTestId('image-modal')).not.toBeInTheDocument();
+    });
+
+    it('a directly-loaded selection URL arrives with that object active', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, {
+        wrapper: makeWrapper(localizeObjectSelect(101, 102)),
+      });
+
+      expect(screen.getByText(/Frames — Object 2/)).toBeInTheDocument();
+    });
+
+    it('a bare alert URL replace-redirects to the first workable object, arriving focused', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      await waitFor(() =>
+        expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/101')
+      );
+      expect(screen.getByText(/Frames — Object 1/)).toBeInTheDocument();
+      // The auto-selection is a full focus entry, as if the row was clicked:
+      // row selected, cells cropped around the object's boxes.
+      expect(screen.getByTestId('object-status-row-0')).toHaveAttribute('data-selected', 'true');
+      await waitFor(() => {
+        const img = within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img');
+        expect(img.style.transform).toContain('scale(');
+      });
+    });
+
+    it('the auto-select redirect replaces history — Back returns to the list, not the bare URL', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, {
+        wrapper: makeWrapper('/localize/101', [ROUTES.LOCALIZE]),
+      });
+      await waitFor(() =>
+        expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/101')
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'history-back-probe' }));
+
+      expect(await screen.findByTestId('localize-queue-landing')).toBeInTheDocument();
+    });
+
+    it('falls back to the first smoke object when every object is already localized', async () => {
+      // Both lanes annotated: no workable object left, so the first smoke
+      // object is the arrival selection (the normal done-mode case).
+      const detail = makeTwoLaneAlertDetail();
+      detail.lanes.forEach(lane => {
+        lane.annotation!.processing_stage = 'annotated';
+      });
+      vi.mocked(apiClient.getAlertDetail).mockResolvedValue(detail);
+
+      await renderAndSettle(<LocalizeAlertPage mode="done" />, { wrapper: doneWrapper });
+
+      await waitFor(() =>
+        expect(screen.getByTestId('location')).toHaveTextContent('/localize/done/101/object/101')
+      );
+    });
+
+    it('stays on the bare URL, nothing selected, when the alert has no smoke lanes', async () => {
+      // FP-only alert: with the toggle off the frame model materializes no
+      // objects, so there is nothing to auto-select.
+      const detail = makeTwoLaneAlertDetail();
+      detail.lanes.forEach(lane => {
+        lane.annotation = makeAnnotation({
+          ...lane.annotation,
+          has_smoke: false,
+          smoke_types: [],
+          false_positive_types: '["cloud"]',
+        });
+      });
+      vi.mocked(apiClient.getAlertDetail).mockResolvedValue(detail);
+
+      render(<LocalizeAlertPage />, { wrapper });
+
+      // No smoke rows to settle on; wait for the page shell instead.
+      await screen.findByText(/CAM-1/);
+      expect(screen.getByTestId('location')).toHaveTextContent(/\/localize\/101$/);
+    });
+
+    it('a selection URL naming a lane not in this alert redirects to bare, then re-auto-selects', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, {
+        wrapper: makeWrapper(localizeObjectSelect(101, 999)),
+      });
+
+      await waitFor(() =>
+        expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/101')
+      );
+    });
+
+    it('done provenance auto-selects under its own prefix', async () => {
+      await renderAndSettle(<LocalizeAlertPage mode="done" />, { wrapper: doneWrapper });
+
+      await waitFor(() =>
+        expect(screen.getByTestId('location')).toHaveTextContent('/localize/done/101/object/101')
+      );
+    });
+
+    it('a stale ?frame= param does not outvote the object a selection URL names', async () => {
+      // Detection 1002 belongs to lane 102, but the URL names Object 1.
+      await renderAndSettle(<LocalizeAlertPage />, {
+        wrapper: makeWrapper('/localize/101/object/101?frame=1002'),
+      });
+
+      // The frame still gets its arrival highlight…
+      await waitFor(() =>
+        expect(screen.getByTestId(`alert-frame-cell-${T1}`)).toHaveAttribute(
+          'data-highlighted',
+          'true'
+        )
+      );
+      // …but the path is the selection's source of truth.
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        '/localize/101/object/101?frame=1002'
+      );
+      expect(screen.getByText(/Frames — Object 1/)).toBeInTheDocument();
+    });
+
+    it('a deep-loaded editor URL carrying ?frame= stays in the editor', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, {
+        wrapper: makeWrapper('/localize/101/object/102/1003?frame=1002'),
+      });
+
+      await waitFor(() =>
+        expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1003')
+      );
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        '/localize/101/object/102/1003?frame=1002'
+      );
+    });
+
+    it('a selection URL naming an FP lane (toggle off) falls back to auto-select', async () => {
+      vi.mocked(apiClient.getAlertDetail).mockResolvedValue({
+        ...makeTwoLaneAlertDetail(),
+        lanes: [
+          {
+            sequence: makeSequence({ id: 101, alert_api_id: 9001 }),
+            annotation: makeAnnotation({ id: 201, sequence_id: 101 }),
+          },
+          {
+            sequence: makeSequence({ id: 102, alert_api_id: 9002 }),
+            annotation: makeAnnotation({
+              id: 202,
+              sequence_id: 102,
+              has_smoke: false,
+              smoke_types: [],
+              false_positive_types: '["cloud"]',
+            }),
+          },
+        ],
+      });
+
+      // Lane 102 exists on the alert but is a false positive — with the
+      // toggle off it is not in the frame model, so it is not URL-selectable.
+      await renderAndSettle(<LocalizeAlertPage />, {
+        wrapper: makeWrapper(localizeObjectSelect(101, 102)),
+      });
+
+      await waitFor(() =>
+        expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/101')
+      );
+    });
+  });
+
   describe('reclassify', () => {
     it("navigates to the row's OWN lane in classify done mode, carrying a return to this page", async () => {
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
@@ -2395,9 +2626,11 @@ describe('LocalizeAlertPage', () => {
       );
 
       const destination = await screen.findByTestId('classify-destination');
-      // Object 2 is lane 102 — not 101, the alert's entry sequence.
+      // Object 2 is lane 102 — not 101, the alert's entry sequence. The
+      // return names that object's own selection URL, so the round trip
+      // lands back with it selected.
       expect(destination.getAttribute('data-lane-id')).toBe('102');
-      expect(destination.getAttribute('data-return')).toBe('/localize/101');
+      expect(destination.getAttribute('data-return')).toBe('/localize/101/object/102');
     });
 
     it('returns to the DONE page when the reclassify started from done mode', async () => {
@@ -2416,7 +2649,7 @@ describe('LocalizeAlertPage', () => {
 
       const destination = await screen.findByTestId('classify-destination');
       expect(destination.getAttribute('data-lane-id')).toBe('102');
-      expect(destination.getAttribute('data-return')).toBe('/localize/done/101');
+      expect(destination.getAttribute('data-return')).toBe('/localize/done/101/object/102');
     });
 
     it('offers Reclassify on an already-localized context row', async () => {
@@ -2477,10 +2710,13 @@ describe('LocalizeAlertPage', () => {
       expect(fpRow.queryByRole('button', { name: /Accept/ })).not.toBeInTheDocument();
       fireEvent.click(fpRow.getByRole('button', { name: 'Reclassify Object 2' }));
 
-      // Same destination contract as smoke rows: the row's OWN lane.
+      // Same destination contract as smoke rows: the row's OWN lane, with a
+      // return naming that object's selection URL. If the lane comes back
+      // promoted to smoke it arrives selected; if it stays FP, the arrival
+      // validation bounces the URL to the normal auto-select.
       const destination = await screen.findByTestId('classify-destination');
       expect(destination.getAttribute('data-lane-id')).toBe('102');
-      expect(destination.getAttribute('data-return')).toBe('/localize/101');
+      expect(destination.getAttribute('data-return')).toBe('/localize/101/object/102');
     });
   });
 

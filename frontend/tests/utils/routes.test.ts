@@ -7,6 +7,8 @@ import {
   localizeDetail,
   localizeObject,
   localizeObjectRoute,
+  localizeObjectSelect,
+  localizeObjectSelectRoute,
   parseLocalizeReturn,
 } from '@/utils/routes';
 
@@ -76,6 +78,39 @@ describe('routes', () => {
     expect(localizeObject(5, 7, 9, true)).toBe('/localize/done/5/object/7/9');
     expect(localizeObjectRoute(true)).toBe('/localize/done/:sequenceId/object/:laneId/:detectionId');
   });
+
+  it('localizeObjectSelectRoute yields the selection child-route pattern per provenance', () => {
+    expect(localizeObjectSelectRoute()).toBe('/localize/:sequenceId/object/:laneId');
+    expect(localizeObjectSelectRoute(true)).toBe('/localize/done/:sequenceId/object/:laneId');
+  });
+
+  it('builds a concrete selection path per provenance', () => {
+    expect(localizeObjectSelect(101, 102)).toBe('/localize/101/object/102');
+    expect(localizeObjectSelect(101, 102, true)).toBe('/localize/done/101/object/102');
+  });
+
+  it('accepts selection URLs as return targets, with or without a query', () => {
+    expect(parseLocalizeReturn('/localize/101/object/102')).toBe('/localize/101/object/102');
+    expect(parseLocalizeReturn('/localize/done/101/object/102?frame=1001')).toBe(
+      '/localize/done/101/object/102?frame=1001'
+    );
+  });
+
+  it('still rejects editor URLs and malformed object segments as return targets', () => {
+    expect(parseLocalizeReturn('/localize/101/object/102/1001')).toBeNull();
+    expect(parseLocalizeReturn('/localize/101/object/')).toBeNull();
+    expect(parseLocalizeReturn('/localize/101/object/abc')).toBeNull();
+    expect(parseLocalizeReturn('//evil.example/localize/101/object/102')).toBeNull();
+  });
+
+  it.each([[false], [true]])(
+    'keeps the selection route pattern and its builder in agreement (done=%s)',
+    done => {
+      expect(
+        matchPath(localizeObjectSelectRoute(done), localizeObjectSelect(5, 7, done))?.params
+      ).toEqual({ sequenceId: '5', laneId: '7' });
+    }
+  );
 
   it.each([[false], [true]])(
     'keeps the editor route pattern and its builder in agreement (done=%s)',

@@ -89,6 +89,7 @@ provenance in the path: `/classify/:id` was entered from the queue,
 | `/localize/done`                           | `DetectionReviewPage` (alert-grouped Done list) |
 | `/localize/:sequenceId`                    | `LocalizeAlertPage`               |
 | `/localize/done/:sequenceId`               | `LocalizeAlertPage` (done mode)   |
+| `/localize/:sequenceId/object/:laneId` | `LocalizeAlertPage` with that object selected (child route; bare `/localize/:sequenceId` auto-redirects here for the first workable object; same under the `/localize/done` prefix) |
 | `/localize/:sequenceId/object/:laneId/:detectionId` | `LocalizeAlertPage` + `LocalizeObjectEditor` (child route, so the page is not remounted; same under the `/localize/done` prefix) |
 | `/users`                                   | `UserManagementPage`              |
 | `/guide`                                   | `GuidePage`                       |
