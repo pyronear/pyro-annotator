@@ -814,6 +814,33 @@ describe('LocalizeObjectEditor out-of-range frames', () => {
     expect(screen.getByTestId('out-of-range-banner')).toHaveTextContent(/draw a box/i);
   });
 
+  it('Clear un-materializes a frame with no model evidence', () => {
+    const onCommit = vi.fn();
+    const onUnmaterialize = vi.fn();
+    renderEditor({
+      detection: detectionWithNoBoxes,
+      existingAnnotation: committedAnnotation(detectionWithNoBoxes.id, 'human'),
+      onCommit,
+      onUnmaterialize,
+    });
+    fireEvent.click(screen.getByTestId('editor-clear'));
+    expect(onUnmaterialize).toHaveBeenCalledWith(
+      expect.objectContaining({ id: detectionWithNoBoxes.id })
+    );
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('Delete un-materializes an evidence-free frame with a committed box', () => {
+    const onUnmaterialize = vi.fn();
+    renderLoadedEditor({
+      detection: detectionWithNoBoxes,
+      existingAnnotation: committedAnnotation(detectionWithNoBoxes.id, 'human'),
+      onUnmaterialize,
+    });
+    fireEvent.keyDown(window, { key: 'Delete' });
+    expect(onUnmaterialize).toHaveBeenCalled();
+  });
+
   it('does not step past the very first alert frame', () => {
     renderEditor();
     fireEvent.keyDown(window, { key: 'ArrowLeft' });
