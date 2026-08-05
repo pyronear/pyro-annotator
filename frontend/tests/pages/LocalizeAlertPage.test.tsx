@@ -49,11 +49,12 @@ vi.mock('@/services/api', () => ({
 vi.mock('@/components/annotation/CroppedImageSequence', () => ({
   // Exposes sequenceId so tests can assert WHICH lane's strip is showing, and
   // accentColor so they can assert it's tied to that object's identity.
-  default: (props: { sequenceId: number; accentColor?: string }) => (
+  default: (props: { sequenceId: number; accentColor?: string; showBoxes?: boolean }) => (
     <div
       data-testid="cropped-image-sequence"
       data-sequence-id={props.sequenceId}
       data-accent-color={props.accentColor}
+      data-show-boxes={props.showBoxes ? 'true' : undefined}
     />
   ),
 }));
@@ -1002,6 +1003,11 @@ describe('LocalizeAlertPage', () => {
       expect(screen.getByTestId('cropped-image-sequence')).toHaveAttribute(
         'data-sequence-id',
         '101'
+      );
+      // Localize opts in to the winner-box overlay on the loop.
+      expect(screen.getByTestId('cropped-image-sequence')).toHaveAttribute(
+        'data-show-boxes',
+        'true'
       );
     });
 
