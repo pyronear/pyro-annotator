@@ -749,27 +749,6 @@ export function LocalizeObjectEditor({
           <span className="font-data text-detail text-haze">{smokeType}</span>
         </span>
 
-        {/* The cockpit's own crop control, same icon and same pressed
-            language, because it is the same idea: frame the object instead of
-            the landscape. Its name stays put and aria-pressed carries the
-            state, as ViewToolbar does — a name that also flipped would
-            announce the state twice. */}
-        <div className="inline-flex items-center rounded-lg bg-ash p-0.5">
-          <button
-            type="button"
-            data-testid="editor-zoom-toggle"
-            title="Zoom to the object (Z)"
-            aria-label="Zoom to the object"
-            aria-pressed={cropView}
-            onClick={() => setCropView(pressed => !pressed)}
-            className={`rounded p-1.5 transition-colors ${
-              cropView ? 'bg-pine-soft text-pine' : 'text-haze hover:text-char'
-            }`}
-          >
-            <Crop className="w-3.5 h-3.5" />
-          </button>
-        </div>
-
         {peeked && (
           <span className="inline-flex rounded-full bg-signal-soft px-2 py-1 font-body text-xs font-semibold text-signal">
             not part of this object
@@ -781,23 +760,12 @@ export function LocalizeObjectEditor({
             one control here that moves the work forward. Pine and this exact
             treatment are what the cockpit's own Accept wears — the two are
             the same motion from two places. */}
-        {/* The two things you can do to the OBJECT rather than to this frame:
+        {/* What acts on the OBJECT rather than on the frame in front of you:
             take the model's word for the rest of it, or decide it was
-            classified wrong. Centred together, away from the frame-level
-            controls in the rail. */}
+            classified wrong. Accept leads — it is the one that moves the work
+            on, and it carries the fill to match. Centred together, away from
+            the frame-level controls in the rail. */}
         <div className="absolute left-1/2 flex -translate-x-1/2 items-center gap-2">
-          {editable && (
-            <button
-              type="button"
-              data-testid="editor-reclassify"
-              onClick={onReclassify}
-              title="Change what this object was classified as"
-              className="inline-flex items-center whitespace-nowrap rounded-lg border border-line bg-paper px-3 py-1 font-body text-xs font-medium text-char hover:bg-ash focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2"
-            >
-              Reclassify
-            </button>
-          )}
-
           {acceptRemainingCount > 0 && editable && (
             <div ref={acceptAnchorRef} className="relative">
               <button
@@ -829,6 +797,46 @@ export function LocalizeObjectEditor({
               )}
             </div>
           )}
+
+          {editable && (
+            <button
+              type="button"
+              data-testid="editor-reclassify"
+              onClick={onReclassify}
+              title="Change what this object was classified as"
+              className="inline-flex items-center whitespace-nowrap rounded-lg border border-line bg-paper px-3 py-1 font-body text-xs font-medium text-char hover:bg-ash focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2"
+            >
+              Reclassify
+            </button>
+          )}
+
+          {/* A rule, not a gap: what precedes it acts on the OBJECT and what
+              follows acts on the VIEW, and that is a real boundary rather than
+              spacing. Only drawn when something precedes it — on an
+              out-of-range frame the object actions are gone and the toggle
+              stands alone. */}
+          {editable && <span aria-hidden className="mx-0.5 h-5 w-px self-center bg-line" />}
+
+          {/* The cockpit's own crop control, same icon and same pressed
+              language, because it is the same idea: frame the object instead of
+              the landscape. Its name stays put and aria-pressed carries the
+              state, as ViewToolbar does — a name that also flipped would
+              announce the state twice. */}
+          <div className="inline-flex items-center rounded-lg bg-ash p-0.5">
+            <button
+              type="button"
+              data-testid="editor-zoom-toggle"
+              title="Zoom to the object (Z)"
+              aria-label="Zoom to the object"
+              aria-pressed={cropView}
+              onClick={() => setCropView(pressed => !pressed)}
+              className={`rounded p-1.5 transition-colors ${
+                cropView ? 'bg-pine-soft text-pine' : 'text-haze hover:text-char'
+              }`}
+            >
+              <Crop className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
 
         <span className="ml-auto font-data text-detail text-haze">
