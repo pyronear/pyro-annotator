@@ -146,6 +146,11 @@ export function LocalizeObjectEditor({
 
   const { data: imageData } = useDetectionImage(detection.id);
 
+  // Read by the keyboard handler; kept in refs so a save (which changes the
+  // committed box) doesn't re-bind the window listener.
+  const clearRef = useRef<() => void>(() => undefined);
+  const committedRef = useRef<BoxCandidate | null>(null);
+
   // --- The object's box on this frame -------------------------------------
 
   const candidates = useMemo(
@@ -172,6 +177,7 @@ export function LocalizeObjectEditor({
   const ghostsShownByDefault = committed === null;
   const showGhosts = ghostsOverridden ? !ghostsShownByDefault : ghostsShownByDefault;
   const ghosts = showGhosts ? losers : [];
+  committedRef.current = committed;
 
   const entries = useMemo(
     () => buildFilmstripEntries(alertFrames, laneSequenceId, laneDetections, laneAnnotations),
@@ -192,6 +198,8 @@ export function LocalizeObjectEditor({
   );
 
   const clear = useCallback(() => onCommit(detection, []), [detection, onCommit]);
+
+  clearRef.current = clear;
 
   // --- Navigation ---------------------------------------------------------
 
@@ -548,6 +556,15 @@ export function LocalizeObjectEditor({
           setIsActivelyDrawing(false);
           setCurrentDrawing(null);
           break;
+        case 'Delete':
+        case 'Backspace':
+          // Removes whatever is committed, not only a hand-drawn box — the
+          // same action the Clear button performs, which for a model box is
+          // the review's "reject". A no-op on a frame with nothing committed
+          // or one outside the object's range.
+          if (!editable || !committedRef.current) return;
+          clearRef.current();
+          break;
         case 'g':
         case 'G':
           setGhostsOverridden(v => !v);
@@ -723,8 +740,8 @@ export function LocalizeObjectEditor({
       />
 
       <p className="flex-none border-t border-line bg-paper px-4 py-2 font-data text-[11px] text-haze">
-        ← → step · Enter accept &amp; next · D draw · G other boxes · O other objects · Z zoom to
-        object · R reset · Esc close
+        ← → step · Enter accept &amp; next · D draw · Del remove box · G other boxes · O other
+        objects · Z zoom to object · R reset · Esc close
       </p>
     </div>
   );

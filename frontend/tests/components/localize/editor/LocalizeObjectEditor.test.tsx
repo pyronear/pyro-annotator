@@ -302,6 +302,35 @@ describe('LocalizeObjectEditor box selection', () => {
     expect(screen.getAllByTestId(/^resize-handle-/).length).toBeGreaterThan(0);
   });
 
+  it('removes the committed box with Delete', () => {
+    const onCommit = vi.fn();
+    renderLoadedEditor({ existingAnnotation: committed(), onCommit });
+    fireEvent.keyDown(window, { key: 'Delete' });
+    expect(onCommit).toHaveBeenCalledWith(expect.objectContaining({ id: firstDetection.id }), []);
+  });
+
+  it('removes it with Backspace too — the Mac delete key emits that', () => {
+    const onCommit = vi.fn();
+    renderLoadedEditor({ existingAnnotation: committed(), onCommit });
+    fireEvent.keyDown(window, { key: 'Backspace' });
+    expect(onCommit).toHaveBeenCalledWith(expect.objectContaining({ id: firstDetection.id }), []);
+  });
+
+  it('Delete does nothing on a frame with no committed box', () => {
+    const onCommit = vi.fn();
+    renderLoadedEditor({ onCommit });
+    fireEvent.keyDown(window, { key: 'Delete' });
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('Delete does nothing on an out-of-range frame', () => {
+    const onCommit = vi.fn();
+    renderLoadedEditor({ existingAnnotation: committed(), onCommit });
+    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+    fireEvent.keyDown(window, { key: 'Delete' });
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
   it('drops the selection when the frame changes', () => {
     const { rerender } = renderLoadedEditor({ existingAnnotation: committed() });
     fireEvent.mouseDown(screen.getByTestId('drawn-box-committed'));
