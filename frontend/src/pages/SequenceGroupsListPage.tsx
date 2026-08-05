@@ -148,8 +148,8 @@ export default function SequenceGroupsListPage({
               <span className="font-semibold">What is a recurring object?</span> After each import,
               sequences from the same camera looking in the same direction at the same spot are
               grouped automatically — usually one recurring smoke plume or false-positive source (an
-              antenna, a cloud bank…). Open one, label any of its sequences, and once the group is
-              validated the label propagates to every sequence. Only objects seen in 3+ sequences
+              antenna, a cloud bank…). Open one, validate the grouping, then label any of its
+              sequences — the label propagates to every sequence. Only objects seen in 3+ sequences
               are shown.
             </Popover.Panel>
           </Popover>
@@ -279,7 +279,7 @@ export default function SequenceGroupsListPage({
                   />
                   <ColumnHeader
                     label="Created"
-                    tip="When the object was first grouped"
+                    tip="When this object's sequences were first grouped"
                     sort={{
                       active: orderBy === 'created_at',
                       direction: orderDirection,

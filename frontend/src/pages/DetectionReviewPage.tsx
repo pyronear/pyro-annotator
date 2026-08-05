@@ -137,7 +137,7 @@ export default function DetectionReviewPage() {
     return (
       <div className="flex items-center justify-center min-h-96">
         <div className="text-center">
-          <p className="text-red-600 mb-2">Failed to load sequences</p>
+          <p className="text-red-600 mb-2">Failed to load alerts</p>
           <p className="text-gray-500 text-sm">{String(error)}</p>
         </div>
       </div>

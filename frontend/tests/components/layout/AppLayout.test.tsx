@@ -100,7 +100,7 @@ describe('AppLayout sidebar navigation', () => {
     expect(objectsLink).toHaveAttribute('href', '/classify/groups');
 
     const badge = within(objectsLink).getByText('8');
-    expect(badge).toHaveAttribute('title', '8 objects need validation');
+    expect(badge).toHaveAttribute('title', '8 recurring objects need validation');
   });
 
   it('places Objects first among the Classify sub-items, after the section header', () => {
