@@ -134,9 +134,12 @@ export function LocalizeObjectEditor({
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
-  const [isDrawMode, setIsDrawMode] = useState(false);
-  const [isActivelyDrawing, setIsActivelyDrawing] = useState(false);
   const [currentDrawing, setCurrentDrawing] = useState<CurrentDrawing | null>(null);
+  // Space swaps the drag from drawing to panning, as it does in every other
+  // image tool. Mirrored into a ref because mousedown reads it in the same
+  // tick the keydown may have set it.
+  const [spaceHeld, setSpaceHeld] = useState(false);
+  const spaceHeldRef = useRef(false);
 
   // `G` overrides whatever the default rule below decides.
   const [ghostsOverridden, setGhostsOverridden] = useState(false);
@@ -333,8 +336,6 @@ export function LocalizeObjectEditor({
 
   // Navigating to another frame resets the transient per-frame state.
   useEffect(() => {
-    setIsDrawMode(false);
-    setIsActivelyDrawing(false);
     setCurrentDrawing(null);
     setBoxEdit(null);
     setBoxSelected(false);
@@ -345,6 +346,36 @@ export function LocalizeObjectEditor({
     // until the next image fired onLoad, which read as the boxes blinking out
     // on each arrow press. `handleImageLoad` refreshes it either way.
   }, [detection.id]);
+
+  useEffect(() => {
+    const setHeld = (held: boolean) => {
+      spaceHeldRef.current = held;
+      setSpaceHeld(held);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code !== 'Space') return;
+      // Space activates a focused button; only claim it elsewhere. The target
+      // is only an Element when something is focused — a keydown dispatched at
+      // the window itself has no `closest`.
+      const target = e.target;
+      if (target instanceof Element && target.closest('button, input, textarea')) return;
+      e.preventDefault();
+      setHeld(true);
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') setHeld(false);
+    };
+    // A window that loses focus mid-hold never sees the keyup.
+    const onBlur = () => setHeld(false);
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', onBlur);
+    };
+  }, []);
 
   // --- Coordinates --------------------------------------------------------
 
@@ -442,15 +473,37 @@ export function LocalizeObjectEditor({
     });
   };
 
+  /**
+   * The canvas has no modes. A press that misses the box starts drawing one;
+   * hold space or press the middle button to pan instead. Nothing to arm,
+   * nothing to leave armed, and no state to misread — which is what made a
+   * two-click draw dangerous once it was always available.
+   */
   const handleMouseDown = (e: React.MouseEvent) => {
     didDragBoxRef.current = false;
     // Reached only when the press missed the box — the box stops propagation
     // — so this is where a stale hit flag from an earlier press gets cleared.
     didHitBoxRef.current = false;
-    if (!isDrawMode && zoomLevel > 1) {
-      setIsDragging(true);
-      setDragStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
+
+    const wantsPan = spaceHeldRef.current || e.button === 1;
+    if (wantsPan) {
+      // Middle-press otherwise starts the browser's autoscroll.
+      if (e.button === 1) e.preventDefault();
+      if (zoomLevel > 1) {
+        setIsDragging(true);
+        setDragStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
+      }
+      return;
     }
+
+    if (e.button !== 0 || !editable) return;
+    const coords = screenToImageCoords(e.clientX, e.clientY);
+    setCurrentDrawing({
+      startX: coords.x,
+      startY: coords.y,
+      currentX: coords.x,
+      currentY: coords.y,
+    });
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
@@ -469,12 +522,12 @@ export function LocalizeObjectEditor({
       setBoxEdit(prev => (prev ? { ...prev, next } : prev));
       return;
     }
-    if (isActivelyDrawing && currentDrawing) {
+    if (currentDrawing) {
       const coords = screenToImageCoords(e.clientX, e.clientY);
       setCurrentDrawing(prev =>
         prev ? { ...prev, currentX: coords.x, currentY: coords.y } : null
       );
-    } else if (isDragging && !isDrawMode && zoomLevel > 1) {
+    } else if (isDragging && zoomLevel > 1) {
       didPanRef.current = true;
       setPanOffset(constrainPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y }));
     }
@@ -487,69 +540,38 @@ export function LocalizeObjectEditor({
       if (didDragBoxRef.current) commitDrawn(boxEdit.next);
       setBoxEdit(null);
     }
-    if (isDragging) setIsDragging(false);
-  };
-
-  const handleClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (didDragBoxRef.current) {
-      didDragBoxRef.current = false;
-      didHitBoxRef.current = false;
-      return;
-    }
-    // The click that selected the box bubbles up here; swallow it so the box
-    // isn't deselected the instant it is selected.
-    if (didHitBoxRef.current) {
-      didHitBoxRef.current = false;
-      return;
-    }
-    if (didPanRef.current) {
-      didPanRef.current = false;
-      return;
-    }
-    // Never draw onto a peeked frame: the image on screen is a sibling
-    // lane's, so the box would silently land on the object's own frame
-    // instead of the one being looked at.
-    if (!isDrawMode || !editable) {
-      // A click on the image away from the box drops the selection.
-      if (boxSelected) setBoxSelected(false);
-      return;
-    }
-
-    const coords = screenToImageCoords(e.clientX, e.clientY);
-    if (!isActivelyDrawing) {
-      setCurrentDrawing({
-        startX: coords.x,
-        startY: coords.y,
-        currentX: coords.x,
-        currentY: coords.y,
-      });
-      setIsActivelyDrawing(true);
-      return;
-    }
 
     if (currentDrawing) {
       const start = imageToNormalized(currentDrawing.startX, currentDrawing.startY);
-      const end = imageToNormalized(coords.x, coords.y);
+      const end = imageToNormalized(currentDrawing.currentX, currentDrawing.currentY);
       const minX = Math.min(start.x, end.x);
       const maxX = Math.max(start.x, end.x);
       const minY = Math.min(start.y, end.y);
       const maxY = Math.max(start.y, end.y);
-      const threshold = 10 / (imgRef.current?.getBoundingClientRect().width || 1000);
+      const threshold = 10 / (imgRef.current?.offsetWidth || 1000);
       if (maxX - minX > threshold && maxY - minY > threshold) {
         commitDrawn([minX, minY, maxX, maxY]);
+      } else {
+        // Too small to be a box, so it was a click: drop the selection, which
+        // is what a press on the image away from the box means.
+        setBoxSelected(false);
       }
+      setCurrentDrawing(null);
     }
-    setCurrentDrawing(null);
-    setIsActivelyDrawing(false);
-    setIsDrawMode(false);
+
+    if (isDragging) setIsDragging(false);
+    didPanRef.current = false;
+    didHitBoxRef.current = false;
   };
 
+  // Clicks resolve on mouse-up, where the drag's size decides whether it was a
+  // box or a deselect; this only keeps the press from escaping the editor.
+  const handleClick = (e: React.MouseEvent) => e.stopPropagation();
+
   const getCursorStyle = () => {
-    if (isDrawMode) return 'crosshair';
-    if (zoomLevel <= 1) return 'default';
-    return isDragging ? 'grabbing' : 'grab';
+    if (spaceHeld) return isDragging ? 'grabbing' : 'grab';
+    if (!editable) return 'default';
+    return 'crosshair';
   };
 
   // Warm the frames either side, so an arrow press swaps to a bitmap the
@@ -626,13 +648,6 @@ export function LocalizeObjectEditor({
         case 'Enter':
           acceptAndNext();
           break;
-        case 'd':
-        case 'D':
-          if (!editable) return;
-          setIsDrawMode(v => !v);
-          setIsActivelyDrawing(false);
-          setCurrentDrawing(null);
-          break;
         case 'Delete':
         case 'Backspace':
           // Removes whatever is committed, not only a hand-drawn box — the
@@ -669,9 +684,6 @@ export function LocalizeObjectEditor({
             setShortcutsOpen(false);
           } else if (acceptOpen) {
             setAcceptOpen(false);
-          } else if (isActivelyDrawing) {
-            setCurrentDrawing(null);
-            setIsActivelyDrawing(false);
           } else if (boxSelected) {
             setBoxSelected(false);
           } else {
@@ -685,17 +697,7 @@ export function LocalizeObjectEditor({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [
-    step,
-    acceptAndNext,
-    isActivelyDrawing,
-    boxSelected,
-    acceptOpen,
-    shortcutsOpen,
-    resetZoom,
-    onClose,
-    editable,
-  ]);
+  }, [step, acceptAndNext, boxSelected, acceptOpen, shortcutsOpen, resetZoom, onClose, editable]);
 
   // --- Render -------------------------------------------------------------
 
@@ -874,7 +876,7 @@ export function LocalizeObjectEditor({
             selected={editable && boxSelected}
             selectedSmokeType={smokeType}
             objectOverlays={showOtherObjects ? objectOverlays : []}
-            isDrawMode={isDrawMode}
+            isDrawMode={currentDrawing !== null}
             onBoxPointerDown={handleBoxPointerDown}
             onHandlePointerDown={handleHandlePointerDown}
             currentDrawing={currentDrawing}
@@ -902,9 +904,7 @@ export function LocalizeObjectEditor({
           imageUrl={editable ? (imageData?.url ?? null) : null}
           disabled={!editable}
           onCommit={commitCandidate}
-          onDraw={() => setIsDrawMode(true)}
           onClear={clear}
-          isDrawMode={isDrawMode}
         />
       </div>
 

@@ -34,9 +34,7 @@ const props = {
   imageUrl: 'blob:image',
   disabled: false,
   onCommit: vi.fn(),
-  onDraw: vi.fn(),
   onClear: vi.fn(),
-  isDrawMode: false,
 };
 
 describe('BoxSourceRail', () => {
@@ -58,26 +56,11 @@ describe('BoxSourceRail', () => {
     expect(screen.getByTestId('source-row-engine')).toBeDisabled();
   });
 
-  it('keeps the Manual row live with no box, as the invitation to draw one', () => {
-    const onDraw = vi.fn();
-    render(<BoxSourceRail {...props} onDraw={onDraw} />);
-    const manual = screen.getByTestId('source-row-manual');
-
-    expect(manual).not.toBeDisabled();
-    expect(manual).toHaveTextContent('draw one');
-
-    fireEvent.click(manual);
-    expect(onDraw).toHaveBeenCalled();
-  });
-
-  it('shows the Manual row as armed while drawing', () => {
-    render(<BoxSourceRail {...props} isDrawMode />);
-    expect(screen.getByTestId('source-row-manual')).toHaveTextContent('click two corners');
-  });
-
-  it('does not offer to draw from the Manual row when it is not editable', () => {
-    render(<BoxSourceRail {...props} disabled />);
-    expect(screen.getByTestId('source-row-manual')).toBeDisabled();
+  it('points at the canvas from the Manual row when nothing is drawn', () => {
+    render(<BoxSourceRail {...props} />);
+    // There is no draw mode to arm, so the row says where boxes come from
+    // rather than acting as a control.
+    expect(screen.getByTestId('source-row-manual')).toHaveTextContent('drag on the image');
   });
 
   it('commits the clicked candidate', () => {
@@ -115,20 +98,13 @@ describe('BoxSourceRail', () => {
 
   it('disables every action when the frame is not editable', () => {
     render(<BoxSourceRail {...props} candidates={[]} committed={null} disabled />);
-    expect(screen.getByTestId('editor-draw')).toBeDisabled();
     expect(screen.getByTestId('source-row-auto')).toBeDisabled();
+    expect(screen.getByTestId('editor-clear')).toBeDisabled();
   });
 
   it('disables Clear when nothing is committed', () => {
     render(<BoxSourceRail {...props} committed={null} />);
     expect(screen.getByTestId('editor-clear')).toBeDisabled();
-  });
-
-  it('draws when Draw is pressed', () => {
-    const onDraw = vi.fn();
-    render(<BoxSourceRail {...props} onDraw={onDraw} />);
-    fireEvent.click(screen.getByTestId('editor-draw'));
-    expect(onDraw).toHaveBeenCalled();
   });
 
   it('clears when Clear is pressed', () => {

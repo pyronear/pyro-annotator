@@ -10,7 +10,7 @@
  */
 
 import { useEffect, useRef } from 'react';
-import { Pencil, Eraser, Check } from 'lucide-react';
+import { Eraser, Check } from 'lucide-react';
 import type { BoxCandidate } from '@/utils/annotation/objectBoxCandidates';
 import { computeSquareCrop } from '@/utils/annotation/squareCropUtils';
 import { Tooltip } from '@/components/ui/Tooltip';
@@ -38,10 +38,7 @@ export interface BoxSourceRailProps {
   /** True on a frame outside the object's range: view only. */
   disabled: boolean;
   onCommit: (candidate: BoxCandidate) => void;
-  onDraw: () => void;
   onClear: () => void;
-  /** Armed to draw — the Manual row shows it, since the cursor alone is thin feedback. */
-  isDrawMode: boolean;
 }
 
 /** The union of every candidate box — one region shared by all rows. */
@@ -118,9 +115,7 @@ export function BoxSourceRail({
   imageUrl,
   disabled,
   onCommit,
-  onDraw,
   onClear,
-  isDrawMode,
 }: BoxSourceRailProps) {
   const region = unionBox(candidates);
 
@@ -137,26 +132,22 @@ export function BoxSourceRail({
       {SOURCE_ORDER.map(source => {
         const candidate = candidates.find(c => c.source === source);
         const isCommitted = committed?.source === source;
-        // Manual is the one source you can create. With no box drawn yet its
-        // row is not a dead entry — it is the invitation to draw one, so it
-        // stays live and arms the same draw mode the button does.
-        const drawsOnClick = source === 'manual' && !candidate;
-        const armed = drawsOnClick && isDrawMode;
+        // Manual is the one source you can create, and with nothing drawn its
+        // row says how. There is no mode to arm any more, so it points at the
+        // canvas rather than being a control of its own.
+        const invitesDrawing = source === 'manual' && !candidate;
         return (
           <Tooltip key={source} tip={SOURCE_EXPLANATION[source]} className="mb-1.5 w-full">
             <button
               type="button"
               data-testid={`source-row-${source}`}
               aria-pressed={isCommitted}
-              disabled={disabled || isCommitted || (!candidate && !drawsOnClick)}
-              onClick={() => {
-                if (drawsOnClick) return onDraw();
-                if (candidate && !isCommitted) onCommit(candidate);
-              }}
+              disabled={disabled || !candidate || isCommitted}
+              onClick={() => candidate && !isCommitted && onCommit(candidate)}
               className={`flex w-full items-center gap-2.5 rounded-lg border p-2 text-left transition-colors ${
-                isCommitted || armed ? 'border-pine bg-pine-soft' : 'border-transparent'
-              } ${(candidate && !isCommitted) || drawsOnClick ? 'hover:bg-ash' : ''} ${
-                candidate || drawsOnClick ? '' : 'opacity-40'
+                isCommitted ? 'border-pine bg-pine-soft' : 'border-transparent'
+              } ${candidate && !isCommitted ? 'hover:bg-ash' : ''} ${
+                candidate || invitesDrawing ? '' : 'opacity-40'
               }`}
             >
               <CandidateCrop imageUrl={imageUrl} region={region} candidate={candidate} />
@@ -171,15 +162,13 @@ export function BoxSourceRail({
                   {isCommitted && <Check className="h-3.5 w-3.5 text-pine" />}
                 </span>
                 <span className="block font-data text-detail text-haze">
-                  {armed
-                    ? 'click two corners'
-                    : drawsOnClick
-                      ? 'draw one'
-                      : !candidate
-                        ? 'no box'
-                        : candidate.confidence !== undefined
-                          ? `${(candidate.confidence * 100).toFixed(0)}% confident`
-                          : 'you drew this'}
+                  {invitesDrawing
+                    ? 'drag on the image'
+                    : !candidate
+                      ? 'no box'
+                      : candidate.confidence !== undefined
+                        ? `${(candidate.confidence * 100).toFixed(0)}% confident`
+                        : 'you drew this'}
                 </span>
               </span>
             </button>
@@ -187,16 +176,10 @@ export function BoxSourceRail({
         );
       })}
 
+      {/* No Draw button: the canvas has no modes, so there is nothing to arm.
+          Clear stays, because removing a box is not something a drag can
+          express. */}
       <div className="mt-3 flex gap-2">
-        <button
-          type="button"
-          data-testid="editor-draw"
-          disabled={disabled}
-          onClick={onDraw}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-pine px-3 py-2 font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:opacity-40"
-        >
-          <Pencil className="h-3.5 w-3.5" /> Draw
-        </button>
         <button
           type="button"
           data-testid="editor-clear"
@@ -209,7 +192,8 @@ export function BoxSourceRail({
       </div>
 
       <p className="mt-3 font-body text-detail leading-relaxed text-haze">
-        Drawing replaces the box on this frame. Each object carries one box per frame.
+        Drag on the image to draw. It replaces the box on this frame — each object carries one box
+        per frame.
       </p>
     </div>
   );

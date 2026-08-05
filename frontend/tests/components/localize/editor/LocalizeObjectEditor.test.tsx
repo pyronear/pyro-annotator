@@ -252,6 +252,104 @@ describe('LocalizeObjectEditor', () => {
   });
 });
 
+describe('LocalizeObjectEditor canvas', () => {
+  /**
+   * jsdom lays nothing out, so every rect is zero and the editor's coordinate
+   * maths collapses to a single point. These give the image a plausible
+   * geometry so a drag produces a real box; the numbers are arbitrary but
+   * consistent (an 800x450 element showing a 1600x900 frame).
+   */
+  const stubGeometry = () => {
+    const image = screen.getByAltText(/^Detection /) as HTMLImageElement;
+    const container = image.parentElement as HTMLElement;
+    container.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, right: 800, bottom: 450, width: 800, height: 450, x: 0, y: 0 }) as DOMRect;
+    for (const [prop, value] of [
+      ['naturalWidth', 1600],
+      ['naturalHeight', 900],
+      ['offsetWidth', 800],
+      ['offsetHeight', 450],
+    ] as const) {
+      Object.defineProperty(image, prop, { value, configurable: true });
+    }
+    // Full frame, so the drag maths is not also exercising the zoom transform.
+    fireEvent.keyDown(window, { key: 'r' });
+    return image;
+  };
+
+  const drag = (from: [number, number], to: [number, number], init: object = {}) => {
+    const image = stubGeometry();
+    fireEvent.mouseDown(image, { button: 0, clientX: from[0], clientY: from[1], ...init });
+    fireEvent.mouseMove(image, { clientX: to[0], clientY: to[1] });
+    fireEvent.mouseUp(image);
+  };
+
+  it('draws on a plain drag, with nothing to arm first', () => {
+    const onCommit = vi.fn();
+    renderLoadedEditor({ onCommit });
+    drag([40, 40], [400, 300]);
+    expect(onCommit).toHaveBeenCalledWith(
+      expect.objectContaining({ id: firstDetection.id }),
+      [expect.objectContaining({ origin: 'human' })]
+    );
+  });
+
+  it('treats a press that never moved as a click, not a box', () => {
+    const onCommit = vi.fn();
+    renderLoadedEditor({ onCommit });
+    drag([50, 50], [50, 50]);
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('deselects the box on a press that never moved', () => {
+    renderLoadedEditor({ existingAnnotation: committedAnnotation(firstDetection.id, 'human') });
+    fireEvent.mouseDown(screen.getByTestId('drawn-box-committed'));
+    expect(screen.getAllByTestId(/^resize-handle-/).length).toBeGreaterThan(0);
+
+    drag([50, 50], [50, 50]);
+    expect(screen.queryAllByTestId(/^resize-handle-/)).toHaveLength(0);
+  });
+
+  it('pans instead of drawing while space is held', () => {
+    const onCommit = vi.fn();
+    renderLoadedEditor({ onCommit });
+
+    fireEvent.keyDown(window, { code: 'Space' });
+    drag([40, 40], [400, 300]);
+    expect(onCommit).not.toHaveBeenCalled();
+
+    // Releasing space hands the drag back to drawing.
+    fireEvent.keyUp(window, { code: 'Space' });
+    drag([40, 40], [400, 300]);
+    expect(onCommit).toHaveBeenCalled();
+  });
+
+  it('pans on a middle-button drag, with no keyboard involved', () => {
+    const onCommit = vi.fn();
+    renderLoadedEditor({ onCommit });
+    drag([40, 40], [400, 300], { button: 1 });
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('lets go of space when the window loses focus mid-hold', () => {
+    const onCommit = vi.fn();
+    renderLoadedEditor({ onCommit });
+    fireEvent.keyDown(window, { code: 'Space' });
+    fireEvent.blur(window);
+    drag([40, 40], [400, 300]);
+    expect(onCommit).toHaveBeenCalled();
+  });
+
+  it('leaves space alone when a button has focus, so it still activates it', () => {
+    renderLoadedEditor();
+    const button = screen.getByTestId('editor-zoom-toggle');
+    button.focus();
+    const event = new KeyboardEvent('keydown', { code: 'Space', cancelable: true, bubbles: true });
+    button.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+  });
+});
+
 describe('LocalizeObjectEditor box selection', () => {
   const committed = () => committedAnnotation(firstDetection.id, 'human');
 
@@ -649,7 +747,6 @@ describe('LocalizeObjectEditor out-of-range frames', () => {
   it('disables every editing action on an out-of-range frame', () => {
     renderEditor();
     fireEvent.keyDown(window, { key: 'ArrowLeft' });
-    expect(screen.getByTestId('editor-draw')).toBeDisabled();
     expect(screen.getByTestId('source-row-auto')).toBeDisabled();
     expect(screen.getByTestId('editor-clear')).toBeDisabled();
   });
@@ -697,13 +794,15 @@ describe('LocalizeObjectEditor out-of-range frames', () => {
     expect(screen.getByTestId('out-of-range-banner')).toBeInTheDocument();
   });
 
-  it('refuses to arm draw mode while peeking, so no box lands on the wrong frame', () => {
+  it('refuses to draw while peeking, so no box lands on the wrong frame', () => {
     const onCommit = vi.fn();
-    renderEditor({ onCommit });
+    renderLoadedEditor({ onCommit });
     fireEvent.keyDown(window, { key: 'ArrowLeft' });
-    fireEvent.keyDown(window, { key: 'd' });
-    fireEvent.click(screen.getByAltText(/^Detection /));
-    fireEvent.click(screen.getByAltText(/^Detection /));
+
+    const image = screen.getByAltText(/^Detection /);
+    fireEvent.mouseDown(image, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.mouseMove(image, { clientX: 90, clientY: 90 });
+    fireEvent.mouseUp(image);
     expect(onCommit).not.toHaveBeenCalled();
   });
 

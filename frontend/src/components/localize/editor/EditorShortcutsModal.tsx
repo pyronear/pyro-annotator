@@ -74,15 +74,21 @@ export const EditorShortcutsModal: React.FC<EditorShortcutsModalProps> = ({ onCl
           <Row label="Accept this frame's box and move on" keys={['Enter']} />
         </Section>
         <Section title="The box on this frame">
-          <Row label="Draw a new box" keys={['D']} />
+          <Row label="Draw one — drag on the image" keys={['drag']} />
+          <Row label="Move or resize — click it first, then drag" keys={['click']} />
           <Row label="Remove the box" keys={['Del']} />
           <Row label="Deselect the box" keys={['Esc']} />
+        </Section>
+        <Section title="Move around the image">
+          <Row label="Pan" keys={['Space + drag']} />
+          <Row label="Pan without the keyboard" keys={['middle-drag']} />
+          <Row label="Zoom in and out" keys={['wheel']} />
+          <Row label="Zoom to the object" keys={['Z']} />
+          <Row label="Reset the zoom" keys={['R']} />
         </Section>
         <Section title="What you can see">
           <Row label="Boxes from the other sources" keys={['G']} />
           <Row label="Boxes from the alert's other objects" keys={['O']} />
-          <Row label="Zoom to the object" keys={['Z']} />
-          <Row label="Reset the zoom" keys={['R']} />
         </Section>
         <Section title="Leave">
           <Row label="Close the editor" keys={['Esc']} />
