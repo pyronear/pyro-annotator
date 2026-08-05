@@ -223,6 +223,9 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   );
 
   const frameRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  // Rail rows by lane, so the Tab cycle can move real DOM focus onto the row
+  // it lands on — see the cycle effect below.
+  const rowRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
   const [cardSize, setCardSize] = usePersistedTabState<CardSize>('detectionAnnotateCardSize', 'md');
   const [cropMode, setCropMode] = useState(false);
@@ -831,6 +834,9 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     return (
       <LocalizeObjectRow
         key={object.laneSequenceId}
+        ref={el => {
+          rowRefs.current[object.laneSequenceId] = el;
+        }}
         label={object.label}
         color={object.color}
         confirmedCount={progress.confirmedCount}
@@ -1169,6 +1175,44 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [detectionIdNum]);
+
+  // Tab / Shift+Tab step the objects exactly as the rail displays them —
+  // smoke first, false positives only while shown — wrapping at the ends
+  // and activating each step immediately (classify-style one-step cycling;
+  // spec: 2026-08-05 localize tab object cycling). Capture-phase and always
+  // preventDefault: the key strictly cycles objects and never escapes to
+  // the header or media chrome. Deliberately NO dependency array, matching
+  // the arrival effect above: everything the handler closes over
+  // (`orderedObjectRows`, `activateFocus`) is rebuilt every render anyway,
+  // and re-subscribing is a cheap way to never read stale rows.
+  useEffect(() => {
+    const handleTab = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return;
+      // Suspended whenever a surface with its own focusables is up — the
+      // per-frame editor, the (inline) add-object smoke-type picker, the
+      // missed-smoke submit dialog — so their controls stay
+      // keyboard-reachable (mirrors classify's modal guards).
+      if (detectionIdNum != null || addObjectPickerOpen || missedSmokeConfirm) return;
+      if (orderedObjectRows.length === 0) return;
+      e.preventDefault();
+      const current = orderedObjectRows.findIndex(o => o.laneSequenceId === activeLaneId);
+      const delta = e.shiftKey ? -1 : 1;
+      const next =
+        current === -1
+          ? 0
+          : (current + delta + orderedObjectRows.length) % orderedObjectRows.length;
+      const landed = orderedObjectRows[next].laneSequenceId;
+      activateFocus(landed);
+      // DOM focus follows the cycle, as in classify. Without this the
+      // element focused by an earlier click keeps focus, and Enter/Space
+      // fires that stale row's own activation — yanking the selection back
+      // to wherever the mouse last was. Following also gives the landed row
+      // its focus ring and screen-reader announcement.
+      rowRefs.current[landed]?.focus();
+    };
+    document.addEventListener('keydown', handleTab, true);
+    return () => document.removeEventListener('keydown', handleTab, true);
+  });
 
   if (isLoading) {
     return (
