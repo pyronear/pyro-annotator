@@ -392,7 +392,7 @@ describe('LocalizeObjectEditor accept remaining', () => {
     expect(screen.queryByTestId('editor-accept-remaining')).not.toBeInTheDocument();
   });
 
-  it('confirms before writing, and does not write on cancel', () => {
+  it('confirms before writing, and does not write when dismissed', () => {
     const onAcceptRemaining = vi.fn();
     renderEditor({ onAcceptRemaining });
 
@@ -400,7 +400,7 @@ describe('LocalizeObjectEditor accept remaining', () => {
     expect(screen.getByTestId('accept-remaining-popover')).toBeInTheDocument();
     expect(onAcceptRemaining).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByTestId('accept-remaining-cancel'));
+    fireEvent.click(screen.getByTestId('accept-remaining-close'));
     expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
     expect(onAcceptRemaining).not.toHaveBeenCalled();
   });

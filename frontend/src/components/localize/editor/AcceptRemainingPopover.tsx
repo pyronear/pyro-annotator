@@ -25,6 +25,7 @@
  * rather than after.
  */
 
+import { X } from 'lucide-react';
 import CroppedImageSequence from '@/components/annotation/CroppedImageSequence';
 import type { BoundingBox } from '@/types/api';
 
@@ -61,62 +62,66 @@ export function AcceptRemainingPopover({
       aria-label={`Accept the model's boxes for ${objectLabel}`}
       data-testid="accept-remaining-popover"
     >
-      <div>
+      <div className="flex items-start justify-between gap-3">
         <p className="font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
           Accept the model&apos;s boxes
         </p>
-        <p className="mt-2 font-body text-sm text-char">
-          {acceptCount === 1
-            ? 'One frame has a model box you have not accepted.'
-            : `${acceptCount} frames have a model box you have not accepted.`}{' '}
-          Take them all, exactly as the loop below shows. Boxes you picked or drew yourself stay as
-          they are.
+        <button
+          type="button"
+          data-testid="accept-remaining-close"
+          onClick={onCancel}
+          aria-label="Close"
+          className="-mr-1 -mt-1 rounded-md p-1 text-haze hover:bg-ash focus:outline-none focus:ring-2 focus:ring-char"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+      <p className="mt-2 font-body text-sm text-char">
+        {acceptCount === 1
+          ? 'One frame has a model box you have not accepted.'
+          : `${acceptCount} frames have a model box you have not accepted.`}{' '}
+        Take them all, exactly as the loop below shows. Boxes you picked or drew yourself stay as
+        they are.
+      </p>
+
+      <div className="mt-4">
+        <p className="mb-2 font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
+          What {objectLabel} ends up with
         </p>
+        <CroppedImageSequence
+          bboxes={previewBoxes}
+          sequenceId={sequenceId}
+          accentColor={objectColor}
+          maxSize="min(100%, 15rem)"
+          className="mx-auto"
+        />
+      </div>
 
-        <div className="mt-4">
-          <p className="mb-2 font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
-            What {objectLabel} ends up with
-          </p>
-          <CroppedImageSequence
-            bboxes={previewBoxes}
-            sequenceId={sequenceId}
-            accentColor={objectColor}
-            maxSize="min(100%, 15rem)"
-            className="mx-auto"
-          />
-        </div>
+      {gapCount > 0 && (
+        <p
+          data-testid="accept-remaining-gap-warning"
+          className="mt-4 rounded-lg bg-signal-soft px-3 py-2 font-body text-detail text-signal"
+        >
+          {gapCount === 1
+            ? 'One frame has no box at all — no model found smoke there. Draw on it yourself;'
+            : `${gapCount} frames have no box at all — no model found smoke there. Draw on them yourself;`}{' '}
+          the alert cannot be submitted until every frame has one.
+        </p>
+      )}
 
-        {gapCount > 0 && (
-          <p
-            data-testid="accept-remaining-gap-warning"
-            className="mt-4 rounded-lg bg-signal-soft px-3 py-2 font-body text-detail text-signal"
-          >
-            {gapCount === 1
-              ? 'One frame has no box at all — no model found smoke there. Draw on it yourself;'
-              : `${gapCount} frames have no box at all — no model found smoke there. Draw on them yourself;`}{' '}
-            the alert cannot be submitted until every frame has one.
-          </p>
-        )}
-
-        <div className="mt-5 flex justify-end gap-2">
-          <button
-            type="button"
-            data-testid="accept-remaining-cancel"
-            onClick={onCancel}
-            className="inline-flex items-center rounded-lg border border-line bg-paper px-3 py-2 font-body text-sm font-medium text-char hover:bg-ash focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            data-testid="accept-remaining-confirm"
-            onClick={onConfirm}
-            disabled={isAccepting}
-            className="inline-flex items-center rounded-lg bg-pine px-4 py-2 font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:opacity-40"
-          >
-            {isAccepting ? 'Accepting…' : `Accept ${acceptCount}`}
-          </button>
-        </div>
+      {/* Only the affirmative action here: leaving is what the cross, a
+            click outside, the button itself and Escape already do, and a
+            Cancel button beside Accept gives equal weight to doing nothing. */}
+      <div className="mt-5 flex justify-end">
+        <button
+          type="button"
+          data-testid="accept-remaining-confirm"
+          onClick={onConfirm}
+          disabled={isAccepting}
+          className="inline-flex items-center rounded-lg bg-pine px-4 py-2 font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:opacity-40"
+        >
+          {isAccepting ? 'Accepting…' : `Accept ${acceptCount}`}
+        </button>
       </div>
     </div>
   );
