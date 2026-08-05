@@ -40,7 +40,7 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Classify alerts')).toBeInTheDocument();
     expect(screen.getByText('Localize smoke')).toBeInTheDocument();
     expect(screen.getByText('How annotation works')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Classify by group/ })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /Classify recurring objects/ })).toHaveAttribute(
       'href',
       '/classify/groups'
     );

@@ -266,11 +266,11 @@ export default function SequencesPage({
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">
-              {isQueueMode ? 'Alerts' : 'Sequences'}
+              {isQueueMode ? 'Alerts' : 'Classified alerts'}
             </h1>
             <p className="text-gray-600">
               {isReviewPage
-                ? 'Browse classified sequences and review past decisions'
+                ? 'Browse classified alerts and review past decisions'
                 : isQueueMode
                   ? 'Classify every object of each alert'
                   : 'Manage and annotate wildfire detection sequences'}
@@ -397,11 +397,11 @@ export default function SequencesPage({
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
-            {isQueueMode ? 'Alerts' : 'Sequences'}
+            {isQueueMode ? 'Alerts' : 'Classified alerts'}
           </h1>
           <p className="text-gray-600">
             {isReviewPage
-              ? 'Browse classified sequences and review past decisions'
+              ? 'Browse classified alerts and review past decisions'
               : isQueueMode
                 ? 'Classify every object of each alert'
                 : 'Manage and annotate wildfire detection sequences'}

@@ -74,8 +74,8 @@ describe('SequenceGroupsListPage', () => {
 
   it('To label empty shows all-groups-labeled state, CTA to classify, and no table', async () => {
     renderAt('/classify/groups');
-    await waitFor(() => expect(screen.getByText('All groups labeled')).toBeTruthy());
-    expect(screen.getByText(/every group is labeled/)).toBeTruthy();
+    await waitFor(() => expect(screen.getByText('All objects labeled')).toBeTruthy());
+    expect(screen.getByText(/every object is labeled/)).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Start classifying' }).getAttribute('href')).toBe(
       '/classify'
     );
@@ -84,9 +84,9 @@ describe('SequenceGroupsListPage', () => {
 
   it('Labeled empty shows no-labeled-groups state with CTA to the To label tab', async () => {
     renderAt('/classify/groups/labeled');
-    await waitFor(() => expect(screen.getByText('No labeled groups yet')).toBeTruthy());
-    expect(screen.getByText(/Groups you label land here/)).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Label groups' }).getAttribute('href')).toBe(
+    await waitFor(() => expect(screen.getByText('No labeled objects yet')).toBeTruthy());
+    expect(screen.getByText(/Objects you label land here/)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Label objects' }).getAttribute('href')).toBe(
       '/classify/groups'
     );
     expect(screen.queryByRole('table')).toBeNull();
@@ -94,10 +94,10 @@ describe('SequenceGroupsListPage', () => {
 
   it('All empty shows no-groups state with no action', async () => {
     renderAt('/classify/groups/all');
-    await waitFor(() => expect(screen.getByText('No groups yet')).toBeTruthy());
-    expect(screen.getByText(/only groups of 3 or more sequences/)).toBeTruthy();
+    await waitFor(() => expect(screen.getByText('No objects yet')).toBeTruthy());
+    expect(screen.getByText(/only objects seen in 3 or more sequences/)).toBeTruthy();
     expect(screen.queryByRole('link', { name: 'Start classifying' })).toBeNull();
-    expect(screen.queryByRole('link', { name: 'Label groups' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Label objects' })).toBeNull();
     expect(screen.queryByRole('table')).toBeNull();
   });
 
@@ -125,7 +125,7 @@ describe('SequenceGroupsListPage', () => {
     });
     renderAt('/classify/groups');
     await waitFor(() => expect(screen.getByRole('table')).toBeTruthy());
-    expect(screen.queryByText('All groups labeled')).toBeNull();
+    expect(screen.queryByText('All objects labeled')).toBeNull();
   });
 
   it('uses the fire-lookout row style and canonical column order', async () => {
@@ -194,9 +194,9 @@ describe('SequenceGroupsListPage', () => {
   it('filter tabs carry explanatory tooltips', async () => {
     renderAt('/classify/groups');
     await waitFor(() => expect(screen.getByRole('link', { name: /To label/ })).toBeTruthy());
-    expect(screen.getByText("Groups that don't have a label yet")).toBeTruthy();
-    expect(screen.getByText('Groups that already have a label')).toBeTruthy();
-    expect(screen.getByText('Every group, labeled or not')).toBeTruthy();
+    expect(screen.getByText("Objects that don't have a label yet")).toBeTruthy();
+    expect(screen.getByText('Objects that already have a label')).toBeTruthy();
+    expect(screen.getByText('Every object, labeled or not')).toBeTruthy();
     // Tooltip text must not leak into the tab links' accessible names
     // (exact names: label + mocked zero count).
     expect(screen.getByRole('link', { name: 'To label 0' })).toBeTruthy();
@@ -217,12 +217,12 @@ describe('SequenceGroupsListPage', () => {
     // One tooltip per labeled column (Camera, Azimuth, Sequences, Label,
     // Reviewed, Created) plus one on the row's "to label" badge.
     expect(within(screen.getByRole('table')).getAllByRole('tooltip')).toHaveLength(7);
-    expect(screen.getByText('Number of sequences in the group')).toBeTruthy();
-    expect(screen.getByText(/propagates to every member/)).toBeTruthy();
+    expect(screen.getByText('Number of sequences showing this object')).toBeTruthy();
+    expect(screen.getByText(/propagates to every sequence/)).toBeTruthy();
     expect(screen.getByText('Camera viewing direction, in degrees')).toBeTruthy();
     // Reviewed means the grouping was confirmed, not the label — a group can
     // be validated while still unlabeled.
-    expect(screen.getByText(/confirmed the group's sequences show the same object/)).toBeTruthy();
+    expect(screen.getByText(/confirmed the sequences really show the same object/)).toBeTruthy();
   });
 
   it('the "to label" badge explains how to get the group labeled, per validation state', async () => {
@@ -237,7 +237,7 @@ describe('SequenceGroupsListPage', () => {
     });
     renderAt('/classify/groups');
     await waitFor(() => expect(screen.getAllByText('to label')).toHaveLength(2));
-    expect(screen.getByText(/^Classify any sequence in this group/)).toBeTruthy();
-    expect(screen.getByText(/^Validate the group, then classify any sequence/)).toBeTruthy();
+    expect(screen.getByText(/^Classify any of this object's sequences/)).toBeTruthy();
+    expect(screen.getByText(/^Validate the group first, then classify/)).toBeTruthy();
   });
 });

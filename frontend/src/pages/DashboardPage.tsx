@@ -48,7 +48,7 @@ export default function DashboardPage() {
           reviewTo={ROUTES.CLASSIFY_DONE}
           isLoading={stats.isLoading}
           secondaryLink={{
-            label: 'Classify by group',
+            label: 'Classify recurring objects',
             to: ROUTES.CLASSIFY_GROUPS,
             count: stats.groupsToLabel,
           }}

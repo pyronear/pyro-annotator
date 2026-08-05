@@ -91,9 +91,10 @@ describe('DetectionAnnotatePage (Localize queue)', () => {
     // Smoke type from the classify phase (smoke lanes only), plain text
     expect(screen.getByText(/Wildfire/)).toBeTruthy();
     // Old cell formats are gone (the header tooltip mentions "objects to
-    // localize", so match the old "N objects ..." cell text specifically)
+    // localize" and the page subtitle mentions "boxes", so match the old
+    // "N objects ..." / "N boxes ..." cell text specifically)
     expect(screen.queryByText(/\d+ objects to localize/)).toBeNull();
-    expect(screen.queryByText(/boxes/)).toBeNull();
+    expect(screen.queryByText(/\d+ boxes/)).toBeNull();
   });
 
   it('unions and dedupes smoke types across smoke lanes', async () => {
