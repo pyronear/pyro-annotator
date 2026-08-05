@@ -39,11 +39,15 @@ function smokeFrames(item: LocalizationQueueItem): number {
   return smokeLanes(item).reduce((sum, l) => sum + l.total_detections, 0);
 }
 
-// Alert-level rollup over every lane (not just smoke lanes): dominant
-// outcome + count of the other objects.
+// Outcome rollup over the lanes this screen is actually about — the ones
+// you'll box. Rolling up every lane made an alert advertise `?` for an unsure
+// object the localize screen never shows (spec: 2026-08-05 unsure lanes gate
+// the localize queue), and counted objects the Objects column doesn't.
+// ClassifyDoneTable and LocalizeDoneQueueTable still roll up every lane —
+// there, the other objects genuinely are part of the summary.
 function alertOutcome(item: LocalizationQueueItem) {
   return rollupOutcomes(
-    item.lanes.flatMap(lane => {
+    smokeLanes(item).flatMap(lane => {
       const outcome = deriveSequenceOutcome(lane);
       return outcome ? [outcome] : [];
     })

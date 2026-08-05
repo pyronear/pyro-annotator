@@ -286,8 +286,7 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
       // An unsure lane already at `annotated` was settled as undecidable —
       // that pairing is the only thing that records the deferral.
       newLaneDeferred[lane.sequence.id] =
-        (lane.annotation.is_unsure || false) &&
-        lane.annotation.processing_stage === 'annotated';
+        (lane.annotation.is_unsure || false) && lane.annotation.processing_stage === 'annotated';
       bboxes.forEach((bbox, trackIndex) => {
         const cardKey = `${lane.sequence.id}:${trackIndex}`;
         // A track only counts as classified when it has a real smoke_type or
@@ -1184,7 +1183,10 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
                 // (Awaiting localization / Fully annotated) is just noise.
                 const stageBadge =
                   card.locked && mode !== 'done'
-                    ? getProcessingStageLabel(lane.annotation!.processing_stage)
+                    ? getProcessingStageLabel(
+                        lane.annotation!.processing_stage,
+                        lane.annotation!.is_unsure ?? false
+                      )
                     : undefined;
                 const overlay = cardOverlayData.find(o => o.cardKey === card.cardKey);
 

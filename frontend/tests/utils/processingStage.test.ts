@@ -3,6 +3,7 @@ import {
   ALL_CLASSIFIED_STAGES,
   stageFilterIncludes,
   getStageFilterLabel,
+  getProcessingStageLabel,
 } from '@/utils/processingStage';
 
 describe('ALL_CLASSIFIED_STAGES', () => {
@@ -34,5 +35,19 @@ describe('getStageFilterLabel', () => {
 
   it('falls back to the single-stage label', () => {
     expect(getStageFilterLabel('seq_annotation_done')).toBe('Awaiting localization');
+  });
+});
+
+describe('getProcessingStageLabel', () => {
+  it('labels a parked lane as awaiting localization', () => {
+    expect(getProcessingStageLabel('seq_annotation_done')).toBe('Awaiting localization');
+  });
+
+  it('labels an unsure parked lane as awaiting a decision', () => {
+    expect(getProcessingStageLabel('seq_annotation_done', true)).toBe('Awaiting decision');
+  });
+
+  it('ignores the unsure flag on other stages', () => {
+    expect(getProcessingStageLabel('annotated', true)).toBe('Fully annotated');
   });
 });
