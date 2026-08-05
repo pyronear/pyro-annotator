@@ -1,6 +1,6 @@
 /**
  * Sidebar navigation structure tests for AppLayout.
- * Focuses on the Classify section containing the Groups link with its badge.
+ * Focuses on the Classify section containing the Objects link with its badge.
  */
 
 import React from 'react';
@@ -57,9 +57,9 @@ describe('AppLayout sidebar navigation', () => {
   it('styles the active link with the pine accent and a left bar', () => {
     renderLayoutAt('/classify/groups');
 
-    const groupsLink = screen.getByRole('link', { name: /groups/i });
-    expect(groupsLink).toHaveClass('bg-pine-soft', 'text-pine', 'border-pine', 'border-l-[3px]');
-    expect(groupsLink).not.toHaveClass('bg-primary-50', 'border-r-4', 'rounded-l-md');
+    const objectsLink = screen.getByRole('link', { name: /objects/i });
+    expect(objectsLink).toHaveClass('bg-pine-soft', 'text-pine', 'border-pine', 'border-l-[3px]');
+    expect(objectsLink).not.toHaveClass('bg-primary-50', 'border-r-4', 'rounded-l-md');
   });
 
   it('styles inactive links with haze text, ash hover, and a transparent left bar', () => {
@@ -82,8 +82,8 @@ describe('AppLayout sidebar navigation', () => {
   it('stacks nav links without vertical gaps between them', () => {
     renderLayoutAt('/classify/groups');
 
-    const groupsLink = screen.getByRole('link', { name: /groups/i });
-    expect(groupsLink.parentElement).not.toHaveClass('space-y-1');
+    const objectsLink = screen.getByRole('link', { name: /objects/i });
+    expect(objectsLink.parentElement).not.toHaveClass('space-y-1');
   });
 
   it('lets nav links span the full sidebar width', () => {
@@ -93,21 +93,21 @@ describe('AppLayout sidebar navigation', () => {
     expect(nav).not.toHaveClass('px-2');
   });
 
-  it('renders Groups as a sub-item of the Classify section with its badge count', () => {
+  it('renders Objects as a sub-item of the Classify section with its badge count', () => {
     renderLayout();
 
-    const groupsLink = screen.getByRole('link', { name: /groups/i });
-    expect(groupsLink).toHaveAttribute('href', '/classify/groups');
+    const objectsLink = screen.getByRole('link', { name: /objects/i });
+    expect(objectsLink).toHaveAttribute('href', '/classify/groups');
 
-    const badge = within(groupsLink).getByText('8');
-    expect(badge).toHaveAttribute('title', '8 groups need validation');
+    const badge = within(objectsLink).getByText('8');
+    expect(badge).toHaveAttribute('title', '8 recurring objects need validation');
   });
 
-  it('places Groups first among the Classify sub-items, after the section header', () => {
+  it('places Objects first among the Classify sub-items, after the section header', () => {
     renderLayout();
 
     const classifyHeader = screen.getByText('Classify');
-    const groupsLink = screen.getByRole('link', { name: /groups/i });
+    const objectsLink = screen.getByRole('link', { name: /objects/i });
     const alertsLinks = screen.getAllByRole('link', { name: /alerts/i });
     const classifyAlertsLink = alertsLinks.find(
       link => link.getAttribute('href') === '/classify'
@@ -115,10 +115,10 @@ describe('AppLayout sidebar navigation', () => {
 
     expect(classifyAlertsLink).toBeDefined();
     expect(
-      classifyHeader.compareDocumentPosition(groupsLink) & Node.DOCUMENT_POSITION_FOLLOWING
+      classifyHeader.compareDocumentPosition(objectsLink) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
     expect(
-      groupsLink.compareDocumentPosition(classifyAlertsLink!) & Node.DOCUMENT_POSITION_FOLLOWING
+      objectsLink.compareDocumentPosition(classifyAlertsLink!) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
   });
 

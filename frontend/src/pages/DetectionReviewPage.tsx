@@ -137,7 +137,7 @@ export default function DetectionReviewPage() {
     return (
       <div className="flex items-center justify-center min-h-96">
         <div className="text-center">
-          <p className="text-red-600 mb-2">Failed to load sequences</p>
+          <p className="text-red-600 mb-2">Failed to load alerts</p>
           <p className="text-gray-500 text-sm">{String(error)}</p>
         </div>
       </div>
@@ -166,10 +166,8 @@ export default function DetectionReviewPage() {
         {/* Header */}
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Detections</h1>
-            <p className="text-gray-600">
-              Browse localized smoke detections and review past annotations
-            </p>
+            <h1 className="text-2xl font-bold text-gray-900">Localized alerts</h1>
+            <p className="text-gray-600">Browse localized alerts and review past annotations</p>
           </div>
           <FilterPopover
             filters={filters}
@@ -256,10 +254,8 @@ export default function DetectionReviewPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Detections</h1>
-          <p className="text-gray-600">
-            Browse localized smoke detections and review past annotations
-          </p>
+          <h1 className="text-2xl font-bold text-gray-900">Localized alerts</h1>
+          <p className="text-gray-600">Browse localized alerts and review past annotations</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center space-x-2">
