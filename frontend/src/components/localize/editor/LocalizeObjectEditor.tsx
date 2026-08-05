@@ -32,6 +32,7 @@ import {
   boxCandidates,
   candidateToBbox,
   committedBox,
+  hasModelEvidence,
   priorityPick,
   type BoxCandidate,
 } from '@/utils/annotation/objectBoxCandidates';
@@ -95,6 +96,18 @@ export interface LocalizeObjectEditorProps {
   /** Navigate to another of THIS lane's detections; drives the URL. */
   onNavigateToDetection: (detectionId: number) => void;
   /**
+   * Draw on a gap frame (issue #287): materialize a Detection in this lane at
+   * recordedAt, then commit the drawn box to it. The page owns the two-call
+   * flow and the navigation to the new detection.
+   */
+  onCommitGapFrame: (recordedAt: string, items: DetectionAnnotationBbox[]) => void;
+  /**
+   * Remove a model-evidence-free frame from the lane entirely (issue #287's
+   * un-materialize) — Clear, for a frame whose only reason to exist is a
+   * human's box.
+   */
+  onUnmaterialize: (detection: Detection) => void;
+  /**
    * Commit the winning model box on every frame of this object that has
    * none. Never overwrites a frame the annotator already decided.
    */
@@ -118,6 +131,8 @@ export function LocalizeObjectEditor({
   isSaving,
   isAccepting,
   onCommit,
+  onCommitGapFrame,
+  onUnmaterialize,
   onNavigateToDetection,
   onAcceptRemaining,
   onReclassify,
@@ -221,32 +236,14 @@ export function LocalizeObjectEditor({
     [alertFrames, laneSequenceId, laneDetections, laneAnnotations]
   );
 
-  // --- Commit -------------------------------------------------------------
-
-  const commitCandidate = useCallback(
-    (candidate: BoxCandidate) => onCommit(detection, [candidateToBbox(candidate, smokeType)]),
-    [detection, smokeType, onCommit]
-  );
-
-  const commitDrawn = useCallback(
-    (xyxyn: [number, number, number, number]) =>
-      onCommit(detection, [candidateToBbox({ source: 'manual', index: 0, xyxyn }, smokeType)]),
-    [detection, smokeType, onCommit]
-  );
-
-  const clear = useCallback(() => onCommit(detection, []), [detection, onCommit]);
-
-  clearRef.current = clear;
-
-  // --- Navigation ---------------------------------------------------------
-
   /**
    * A frame outside this object's range, held locally. The route requires
    * `:detectionId` to belong to `:laneId`, and a gap frame has no detection
    * in this lane, so the URL cannot name it without weakening the guard that
    * makes an inconsistent editor link detectable at all. Peeking is therefore
    * component state; the URL keeps naming the last in-object frame. Drawing
-   * on one of these is issue #287.
+   * on one routes through `onCommitGapFrame`, which materializes the frame
+   * (issue #287).
    */
   const [peeked, setPeeked] = useState<FilmstripEntry | null>(null);
 
@@ -255,6 +252,33 @@ export function LocalizeObjectEditor({
   useEffect(() => setPeeked(null), [detection.id]);
 
   const editable = peeked === null;
+
+  // --- Commit -------------------------------------------------------------
+
+  const commitCandidate = useCallback(
+    (candidate: BoxCandidate) => onCommit(detection, [candidateToBbox(candidate, smokeType)]),
+    [detection, smokeType, onCommit]
+  );
+
+  const commitDrawn = useCallback(
+    (xyxyn: [number, number, number, number]) => {
+      const items = [candidateToBbox({ source: 'manual', index: 0, xyxyn }, smokeType)];
+      if (peeked) onCommitGapFrame(peeked.recordedAt, items);
+      else onCommit(detection, items);
+    },
+    [peeked, detection, smokeType, onCommit, onCommitGapFrame]
+  );
+
+  const clear = useCallback(() => {
+    // A frame with no model evidence exists only because a human boxed it;
+    // clearing removes the frame itself (issue #287's un-materialize).
+    if (hasModelEvidence(detection)) onCommit(detection, []);
+    else onUnmaterialize(detection);
+  }, [detection, onCommit, onUnmaterialize]);
+
+  clearRef.current = clear;
+
+  // --- Navigation ---------------------------------------------------------
 
   const currentEntryIndex = peeked
     ? entries.findIndex(en => en.recordedAt === peeked.recordedAt)
@@ -491,7 +515,7 @@ export function LocalizeObjectEditor({
       return;
     }
 
-    if (e.button !== 0 || !editable) return;
+    if (e.button !== 0) return;
     const coords = screenToImageCoords(e.clientX, e.clientY);
     setCurrentDrawing({
       startX: coords.x,
@@ -562,7 +586,6 @@ export function LocalizeObjectEditor({
 
   const getCursorStyle = () => {
     if (spaceHeld) return isDragging ? 'grabbing' : 'grab';
-    if (!editable) return 'default';
     return 'crosshair';
   };
 
@@ -905,7 +928,7 @@ export function LocalizeObjectEditor({
           data-testid="out-of-range-banner"
           className="flex-none border-t border-line bg-signal-soft px-4 py-2 font-body text-detail text-signal"
         >
-          {objectLabel} was never detected on this frame, so there is nothing here to draw on. The
+          {objectLabel} was never detected on this frame — draw a box to add it to the object. The
           image comes from another object in the same alert.
         </div>
       )}
