@@ -2790,6 +2790,38 @@ describe('LocalizeAlertPage', () => {
       expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1001');
     });
 
+    it('shows the frame as boxless in-object when the save fails after the materialize', async () => {
+      const newDet = { ...makeDetection(5001, T2), sequence_id: 101 };
+      let materialized = false;
+      vi.mocked(apiClient.materializeFrame).mockImplementation(async () => {
+        materialized = true;
+        return newDet;
+      });
+      vi.mocked(apiClient.createDetectionAnnotation).mockRejectedValue({
+        detail: 'boom',
+        status: 500,
+      });
+      vi.mocked(apiClient.getSequenceDetections).mockImplementation(async (id: number) => {
+        if (id === 101)
+          return materialized ? [makeDetection(1001, T1), newDet] : [makeDetection(1001, T1)];
+        if (id === 102) return [makeDetection(1002, T1), makeDetection(1003, T2)];
+        return [];
+      });
+
+      await renderAndSettle(<LocalizeAlertPage />, {
+        wrapper: makeWrapper('/localize/101/object/101/1001'),
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Mock Gap Draw' }));
+
+      await waitFor(() => expect(apiClient.materializeFrame).toHaveBeenCalled());
+      // The onError invalidation refetches the lane, so the materialized frame
+      // arrives as a boxless in-object frame; the URL stays on the old one.
+      await waitFor(() =>
+        expect(screen.getByTestId('image-modal-lane-frames')).toHaveTextContent('2')
+      );
+      expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/101/1001');
+    });
+
     it('clearing an evidence-free frame un-materializes it and steps the URL off it', async () => {
       // Lane 102's T2 frame carries no model evidence — the materialized shape.
       const bare = {

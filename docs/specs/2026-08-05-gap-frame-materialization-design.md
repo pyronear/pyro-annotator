@@ -168,7 +168,8 @@ Frontend (Vitest):
 - Drawing on a gap frame issues POST then annotation save, and the URL moves
   to the new detection.
 - POST failure leaves the frame a gap with a toast; save failure leaves a
-  boxless frame and a retry redraws without a second POST.
+  boxless in-object frame, and a retry redraw re-fires the POST, which
+  returns the existing row (idempotent 200) before saving again.
 - Clear on an evidence-free frame calls DELETE and reverts the frame to a
   gap; Clear on an evidence-bearing frame saves an empty annotation as
   today.
@@ -194,3 +195,7 @@ stack; frontend `npm run quality` clean and full suite green.
 - **`ApiError` gained an optional `status`** (set by the axios interceptor)
   so the page recognizes the DELETE's 409 without string-matching the detail
   message.
+- **A concurrent double-POST resolves idempotently**: the losing insert
+  re-selects the winner's row and returns it with 200, so 409 is reserved
+  for a genuine `alert_api_id` collision. The DELETE's last-frame guard
+  stays advisory under concurrency — accepted for a single-annotator tool.

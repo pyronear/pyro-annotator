@@ -885,12 +885,6 @@ async def materialize_frame(
         response.status_code = status.HTTP_200_OK
         return _detection_read(existing)
 
-    if lane.platform_alert_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Sequence has no alert siblings",
-        )
-
     sibling = (
         (
             await session.execute(
@@ -926,6 +920,25 @@ async def materialize_frame(
         await session.commit()
     except IntegrityError:
         await session.rollback()
+        # A concurrent POST for the same frame won the insert: idempotency
+        # applies to it exactly as to a sequential re-POST, so re-select
+        # rather than surfacing a misleading conflict. Anything else holding
+        # the alert_api_id is a genuine collision.
+        raced = (
+            (
+                await session.execute(
+                    select(Detection).where(
+                        Detection.sequence_id == sequence_id,
+                        Detection.recorded_at == payload.recorded_at,
+                    )
+                )
+            )
+            .scalars()
+            .first()
+        )
+        if raced is not None:
+            response.status_code = status.HTTP_200_OK
+            return _detection_read(raced)
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="The sibling frame's alert_api_id is already present in this lane",
@@ -967,6 +980,8 @@ async def unmaterialize_frame(
             status_code=status.HTTP_409_CONFLICT,
             detail="Frame has model evidence and cannot be removed",
         )
+    # Advisory under concurrency: two simultaneous DELETEs in a two-frame
+    # lane can both pass this count. Accepted for a single-annotator tool.
     count = (
         await session.execute(
             select(func.count(Detection.id)).where(Detection.sequence_id == sequence_id)

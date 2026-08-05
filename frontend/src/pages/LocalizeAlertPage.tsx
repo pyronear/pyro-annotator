@@ -648,8 +648,13 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   // The URL names the open detection, so step off it before the refetch drops
   // the row; the frame reverts to a gap in the filmstrip.
   const unmaterializeFrame = useMutation({
-    mutationFn: (params: { laneId: number; detection: Detection }) =>
-      apiClient.unmaterializeFrame(params.laneId, params.detection.id),
+    mutationFn: (params: {
+      laneId: number;
+      detection: Detection;
+      // Captured at press time: by the time the 409 fallback runs, the open
+      // frame (and modalContext) may already be a different detection.
+      existingAnnotation: DetectionAnnotation | null;
+    }) => apiClient.unmaterializeFrame(params.laneId, params.detection.id),
     onSuccess: async (_result, variables) => {
       const remaining = laneDetectionsSorted.filter(d => d.id !== variables.detection.id);
       const target =
@@ -671,7 +676,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
         saveDetection.mutate({
           laneId: variables.laneId,
           detectionId: variables.detection.id,
-          existingAnnotation: modalContext?.existingAnnotation ?? null,
+          existingAnnotation: variables.existingAnnotation,
           items: [],
         });
         return;
@@ -722,7 +727,11 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
 
   const handleEditorUnmaterialize = (detection: Detection) => {
     if (!modalContext) return;
-    unmaterializeFrame.mutate({ laneId: modalContext.laneId, detection });
+    unmaterializeFrame.mutate({
+      laneId: modalContext.laneId,
+      detection,
+      existingAnnotation: modalContext.existingAnnotation,
+    });
   };
 
   // Shared step: accept the winning model boxes for every pending frame of
@@ -1641,7 +1650,11 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
           laneAnnotations={annotationsByLaneId[modalContext.laneId] ?? []}
           alertFrames={frameModel.frames}
           objectOverlays={objectOverlays}
-          isSaving={saveDetection.isPending || materializeAndCommit.isPending}
+          isSaving={
+            saveDetection.isPending ||
+            materializeAndCommit.isPending ||
+            unmaterializeFrame.isPending
+          }
           isAccepting={quickAcceptLane.isPending}
           onCommit={handleEditorCommit}
           onCommitGapFrame={handleEditorCommitGapFrame}
