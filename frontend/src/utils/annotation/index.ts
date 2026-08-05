@@ -157,3 +157,7 @@ export type { AnnotationProgress } from './progressUtils';
 // Per-object color identity (ClassifyAlertPage multi-object overlays)
 export { getObjectColor } from './objectColors';
 export type { ObjectOverlay } from './objectColors';
+
+// Localize object editor: the per-frame box candidates for one object
+export { boxCandidates, committedBox, priorityPick, candidateToBbox } from './objectBoxCandidates';
+export type { BoxSource, BoxCandidate } from './objectBoxCandidates';
