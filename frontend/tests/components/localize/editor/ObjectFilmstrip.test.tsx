@@ -89,24 +89,53 @@ describe('ObjectFilmstrip', () => {
     expect(screen.getAllByTestId(/^filmstrip-cell-/)).toHaveLength(5);
   });
 
-  it('badges a committed box with its source initial', () => {
+  it('marks a committed frame with its source, solid', () => {
     renderStrip();
-    expect(screen.getByTestId('filmstrip-badge-272')).toHaveTextContent('A');
+    const cell = screen.getByTestId('filmstrip-cell-272');
+    expect(cell).toHaveAttribute('data-state', 'committed');
+    expect(cell).toHaveAttribute('data-source', 'auto');
+    expect(cell.firstElementChild).toHaveStyle({ borderStyle: 'solid' });
   });
 
-  it('badges an available-but-uncommitted source in lowercase', () => {
+  it('marks an available-but-unaccepted frame with its source, dashed', () => {
     renderStrip();
-    expect(screen.getByTestId('filmstrip-badge-273')).toHaveTextContent('e');
+    const cell = screen.getByTestId('filmstrip-cell-273');
+    expect(cell).toHaveAttribute('data-state', 'available');
+    expect(cell).toHaveAttribute('data-source', 'engine');
+    expect(cell.firstElementChild).toHaveStyle({ borderStyle: 'dashed' });
   });
 
-  it('badges an in-object frame with no box at all', () => {
+  it('marks a frame no model found smoke on as a hole in the track', () => {
     renderStrip();
-    expect(screen.getByTestId('filmstrip-badge-274')).toHaveTextContent('—');
+    const cell = screen.getByTestId('filmstrip-cell-274');
+    expect(cell).toHaveAttribute('data-state', 'none');
+    expect(cell).toHaveAttribute('data-source', '');
   });
 
-  it('badges an out-of-range frame distinctly', () => {
+  it('marks an out-of-range frame distinctly', () => {
     renderStrip();
-    expect(screen.getByTestId('filmstrip-badge-991')).toHaveTextContent('·');
+    expect(screen.getByTestId('filmstrip-cell-991')).toHaveAttribute('data-state', 'outside');
+  });
+
+  it('renders no source letters — the border carries it', () => {
+    renderStrip();
+    expect(screen.queryAllByTestId(/^filmstrip-badge-/)).toHaveLength(0);
+  });
+
+  it('names each state on the cell, since the strip carries no legend', () => {
+    renderStrip();
+    expect(screen.getByTestId('filmstrip-cell-272')).toHaveAttribute(
+      'aria-label',
+      'auto box accepted'
+    );
+    expect(screen.getByTestId('filmstrip-cell-273')).toHaveAttribute(
+      'aria-label',
+      'engine box, not accepted yet'
+    );
+    expect(screen.getByTestId('filmstrip-cell-274')).toHaveAttribute(
+      'aria-label',
+      'No box — no model found smoke here'
+    );
   });
 
   it('marks the current frame', () => {

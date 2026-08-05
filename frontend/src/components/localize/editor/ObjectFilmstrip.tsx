@@ -4,10 +4,22 @@
  * view-only. On 92.6% of lanes the outer runs are empty and the strip is just
  * the object's own frames, so the run labels only appear when they mean
  * something.
+ *
+ * Each cell's BORDER carries its state, so the strip reads as a run of
+ * colour rather than a line of letters:
+ *
+ *   solid, source colour    a box is committed, from that source
+ *   dashed, source colour   that source offers a box, not yet accepted
+ *   hatched, signal         no source found anything — a hole in the track
+ *   faint, neutral          the object is not on this frame at all
+ *
+ * Solid-versus-dashed matches the stage, where the committed box is solid and
+ * the candidates ghost in dashed. The rail beside it maps each colour to its
+ * source by name, so the strip needs no legend of its own.
  */
 
 import type { FilmstripEntry, FilmstripRun } from '@/utils/annotation/objectFilmstrip';
-import { SOURCE_LETTER, SOURCE_TEXT } from './sourceIdentity';
+import { SOURCE_COLOR } from './sourceIdentity';
 import { FilmstripThumbnail } from './FilmstripThumbnail';
 
 const RUN_LABEL: Record<FilmstripRun, string> = {
@@ -22,43 +34,33 @@ export interface ObjectFilmstripProps {
   onSelect: (entry: FilmstripEntry) => void;
 }
 
-function Badge({ entry }: { entry: FilmstripEntry }) {
-  const testId = `filmstrip-badge-${entry.detectionId}`;
+/** What a cell's border says about the frame. */
+type CellState = 'committed' | 'available' | 'none' | 'outside';
 
-  const base = 'mt-1 block text-center font-data text-[10px]';
+function cellState(entry: FilmstripEntry): CellState {
+  if (!entry.inObject) return 'outside';
+  if (entry.committedSource) return 'committed';
+  if (entry.availableSource) return 'available';
+  return 'none';
+}
 
-  if (!entry.inObject)
-    return (
-      <span data-testid={testId} className={`${base} text-line`}>
-        ·
-      </span>
-    );
+function borderStyle(entry: FilmstripEntry): React.CSSProperties {
+  const state = cellState(entry);
+  if (state === 'committed')
+    return { borderColor: SOURCE_COLOR[entry.committedSource!], borderStyle: 'solid' };
+  if (state === 'available')
+    return { borderColor: SOURCE_COLOR[entry.availableSource!], borderStyle: 'dashed' };
+  if (state === 'none') return { borderColor: '#B3261E', borderStyle: 'solid' };
+  return { borderColor: '#E4E2DC', borderStyle: 'dashed' };
+}
 
-  if (entry.committedSource)
-    return (
-      <span
-        data-testid={testId}
-        className={`${base} font-semibold ${SOURCE_TEXT[entry.committedSource]}`}
-      >
-        {SOURCE_LETTER[entry.committedSource]}
-      </span>
-    );
-
-  if (entry.availableSource)
-    return (
-      <span
-        data-testid={testId}
-        className={`${base} opacity-45 ${SOURCE_TEXT[entry.availableSource]}`}
-      >
-        {SOURCE_LETTER[entry.availableSource].toLowerCase()}
-      </span>
-    );
-
-  return (
-    <span data-testid={testId} className={`${base} font-semibold text-signal`}>
-      —
-    </span>
-  );
+/** The strip has no legend, so each cell names its own state on hover. */
+function cellLabel(entry: FilmstripEntry): string {
+  const state = cellState(entry);
+  if (state === 'committed') return `${entry.committedSource} box accepted`;
+  if (state === 'available') return `${entry.availableSource} box, not accepted yet`;
+  if (state === 'none') return 'No box — no model found smoke here';
+  return 'This object was not detected on this frame';
 }
 
 /** Consecutive entries sharing a run, so each run renders under one label. */
@@ -105,18 +107,38 @@ export function ObjectFilmstrip({ entries, currentDetectionId, onSelect }: Objec
                   key={entry.detectionId}
                   type="button"
                   data-testid={`filmstrip-cell-${entry.detectionId}`}
+                  data-state={cellState(entry)}
+                  data-source={entry.committedSource ?? entry.availableSource ?? ''}
                   aria-current={entry.detectionId === currentDetectionId}
+                  aria-label={cellLabel(entry)}
+                  title={cellLabel(entry)}
                   onClick={() => onSelect(entry)}
-                  className="w-11 flex-none rounded focus:outline-none focus:ring-2 focus:ring-char"
+                  className={`w-11 flex-none rounded focus:outline-none focus:ring-2 focus:ring-char ${
+                    entry.detectionId === currentDetectionId ? 'ring-2 ring-char ring-offset-1' : ''
+                  }`}
                 >
                   <span
-                    className={`block h-9 overflow-hidden rounded border-2 ${
-                      entry.detectionId === currentDetectionId ? 'border-char' : 'border-line'
-                    } ${entry.inObject ? '' : 'opacity-60 grayscale'}`}
+                    className={`relative block h-9 overflow-hidden rounded border-2 ${
+                      entry.inObject ? '' : 'opacity-60 grayscale'
+                    }`}
+                    style={borderStyle(entry)}
                   >
                     <FilmstripThumbnail detectionId={entry.detectionId} xyxyn={entry.xyxyn} />
+                    {cellState(entry) === 'none' && (
+                      // A hole in the object's track. Hatching reads as
+                      // "nothing here" without spending a glyph on it, and
+                      // these are the frames that keep the alert off the
+                      // submit gate.
+                      <span
+                        aria-hidden
+                        className="absolute inset-0"
+                        style={{
+                          background:
+                            'repeating-linear-gradient(45deg, rgba(179,38,30,0.55) 0 3px, rgba(179,38,30,0) 3px 7px)',
+                        }}
+                      />
+                    )}
                   </span>
-                  <Badge entry={entry} />
                 </button>
               ))}
             </div>
