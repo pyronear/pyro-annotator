@@ -302,8 +302,16 @@ async def export_detections(
     if has_missed_smoke is not None:
         conditions.append(SequenceAnnotation.has_missed_smoke == has_missed_smoke)
 
+    # Unsure lanes are not training data. They used to be excluded
+    # incidentally, by the default `annotated` stage filter; settling one as
+    # undecidable now puts it at `annotated` (spec: 2026-08-05 unsure lanes
+    # gate the localize queue), so the exclusion has to be explicit.
+    # `is_not(True)` rather than `== False` so a NULL flag on a legacy row is
+    # exported rather than silently dropped.
     if is_unsure is not None:
         conditions.append(SequenceAnnotation.is_unsure == is_unsure)
+    else:
+        conditions.append(SequenceAnnotation.is_unsure.is_not(True))
 
     # default filter on processing stage annotated unless user overrides
     if sequence_processing_stage is not None:
