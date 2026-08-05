@@ -934,6 +934,53 @@ async def materialize_frame(
     return _detection_read(detection)
 
 
+def _frame_has_model_evidence(det: Detection) -> bool:
+    return bool((det.algo_predictions or {}).get("predictions")) or bool(
+        (det.auto_predictions or {}).get("predictions")
+    )
+
+
+@router.delete(
+    "/{sequence_id}/frames/{detection_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remove a model-evidence-free frame from a lane",
+)
+async def unmaterialize_frame(
+    sequence_id: int = Path(..., gt=0),
+    detection_id: int = Path(..., gt=0),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> None:
+    """The inverse of materialize_frame (issue #287). Only a frame whose
+    existence a human's box alone justifies can be removed — any model
+    evidence makes it part of the import record — and never the lane's last
+    frame. Deletes the row only: bucket_key is shared with the sibling the
+    frame was materialized from, so S3 is untouched (unlike
+    DELETE /detections/{id}). The DetectionAnnotation goes via FK cascade."""
+    detection = await session.get(Detection, detection_id)
+    if detection is None or detection.sequence_id != sequence_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Detection not found"
+        )
+    if _frame_has_model_evidence(detection):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Frame has model evidence and cannot be removed",
+        )
+    count = (
+        await session.execute(
+            select(func.count(Detection.id)).where(Detection.sequence_id == sequence_id)
+        )
+    ).scalar_one()
+    if count <= 1:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot remove the lane's last frame",
+        )
+    await session.delete(detection)
+    await session.commit()
+
+
 # NOTE: declared before GET /{sequence_id} — the int path converter would
 # otherwise turn /localization-queue into a 422.
 @router.get("/localization-queue")

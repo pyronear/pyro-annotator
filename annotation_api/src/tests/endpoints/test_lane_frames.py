@@ -10,6 +10,8 @@ from sqlalchemy import select
 
 from app.models import (
     Detection,
+    DetectionAnnotation,
+    DetectionAnnotationProcessingStage,
     Sequence,
     SourceApi,
 )
@@ -143,3 +145,96 @@ async def test_materialize_without_sibling_frame_is_422(
         f"/sequences/{lane_b.id}/frames", json={"recorded_at": T_NOBODY.isoformat()}
     )
     assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_unmaterialize_deletes_frame_and_cascades_annotation(
+    authenticated_client: AsyncClient, async_session
+):
+    _, dets_a, lane_b, _ = await _alert(async_session)
+    created = await authenticated_client.post(
+        f"/sequences/{lane_b.id}/frames", json={"recorded_at": T1.isoformat()}
+    )
+    det_id = created.json()["id"]
+    async_session.add(
+        DetectionAnnotation(
+            detection_id=det_id,
+            annotation={"annotation": []},
+            processing_stage=DetectionAnnotationProcessingStage.ANNOTATED,
+        )
+    )
+    await async_session.commit()
+
+    resp = await authenticated_client.delete(f"/sequences/{lane_b.id}/frames/{det_id}")
+    assert resp.status_code == 204
+
+    gone = (
+        await async_session.execute(select(Detection).where(Detection.id == det_id))
+    ).scalar_one_or_none()
+    assert gone is None
+    ann_gone = (
+        await async_session.execute(
+            select(DetectionAnnotation).where(
+                DetectionAnnotation.detection_id == det_id
+            )
+        )
+    ).scalar_one_or_none()
+    assert ann_gone is None
+    # The sibling lane's own frame — same photo, same bucket_key — is intact.
+    sibling_row = (
+        await async_session.execute(
+            select(Detection).where(Detection.id == dets_a[0].id)
+        )
+    ).scalar_one()
+    assert sibling_row.bucket_key == "a1.jpg"
+
+
+@pytest.mark.asyncio
+async def test_unmaterialize_refuses_engine_evidence(
+    authenticated_client: AsyncClient, async_session
+):
+    lane_a, dets_a, _, _ = await _alert(async_session)
+    resp = await authenticated_client.delete(
+        f"/sequences/{lane_a.id}/frames/{dets_a[0].id}"
+    )
+    assert resp.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_unmaterialize_refuses_auto_evidence(
+    authenticated_client: AsyncClient, async_session
+):
+    _, _, lane_b, dets_b = await _alert(async_session)
+    # Give the (engine-empty) frame an auto-model box: still model evidence.
+    det = dets_b[0]
+    det.auto_predictions = ALGO_BOX
+    async_session.add(det)
+    await async_session.commit()
+    # Second evidence-free frame so the last-frame guard is not what trips.
+    await authenticated_client.post(
+        f"/sequences/{lane_b.id}/frames", json={"recorded_at": T1.isoformat()}
+    )
+    resp = await authenticated_client.delete(f"/sequences/{lane_b.id}/frames/{det.id}")
+    assert resp.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_unmaterialize_refuses_the_lanes_last_frame(
+    authenticated_client: AsyncClient, async_session
+):
+    _, _, lane_b, dets_b = await _alert(async_session)
+    resp = await authenticated_client.delete(
+        f"/sequences/{lane_b.id}/frames/{dets_b[0].id}"
+    )
+    assert resp.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_unmaterialize_wrong_lane_is_404(
+    authenticated_client: AsyncClient, async_session
+):
+    lane_a, _, _, dets_b = await _alert(async_session)
+    resp = await authenticated_client.delete(
+        f"/sequences/{lane_a.id}/frames/{dets_b[0].id}"
+    )
+    assert resp.status_code == 404
