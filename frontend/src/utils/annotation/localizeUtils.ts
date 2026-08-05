@@ -11,21 +11,27 @@ import { LocalizationQueueLane } from '@/types/api';
  * alert from localization — until it is explicitly deferred ("Undecidable for
  * now"), which settles it at annotated with is_unsure kept true.
  *
- * An already-annotated lane is never demoted, with one exception: a lane that
- * loaded as deferred-unsure may return to seq_annotation_done when it is
- * re-decided as smoke, otherwise "for now" would be permanent and the object
- * could never be localized.
+ * An already-annotated lane is never demoted, with one exception (spec:
+ * fp-promote-relocalize, issue #275): a lane that did NOT need localization
+ * before this edit — an FP exit or a deferred-unsure lane — but does now
+ * re-enters at seq_annotation_done. It never had any localization work to
+ * protect, and without the demotion the correction could never be localized.
  */
 export function determineClassifySubmitStage(args: {
   currentStage: string | undefined;
   isUnsure: boolean;
   hasSmoke: boolean;
   hasMissedSmoke: boolean;
+  /** `laneNeedsLocalization()` over the lane's pre-edit flags. */
+  previouslyNeededLocalization: boolean;
   deferred?: boolean;
-  wasDeferredUnsure?: boolean;
 }): 'annotated' | 'seq_annotation_done' {
   if (args.isUnsure) return args.deferred ? 'annotated' : 'seq_annotation_done';
-  if (args.currentStage === 'annotated' && !args.wasDeferredUnsure) return 'annotated';
+  if (args.currentStage === 'annotated') {
+    return (args.hasSmoke || args.hasMissedSmoke) && !args.previouslyNeededLocalization
+      ? 'seq_annotation_done'
+      : 'annotated';
+  }
   if (!args.hasSmoke && !args.hasMissedSmoke) return 'annotated';
   return 'seq_annotation_done';
 }

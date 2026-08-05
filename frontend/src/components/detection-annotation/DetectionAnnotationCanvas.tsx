@@ -1,26 +1,36 @@
 /**
- * Canvas component for detection annotation.
- * Handles image display, drawing interactions, zoom, and pan.
- * This is a simplified component that renders the exact same UI as the original ImageModal canvas.
+ * Canvas for the localize object editor: image display, zoom, pan, and the
+ * one box this object has on this frame.
+ *
+ * An object has AT MOST ONE box per frame, so this renders exactly one
+ * committed box — always draggable and resizable — plus the candidates that
+ * are NOT committed, as read-only dashed ghosts. The per-model-box review
+ * vocabulary this component used to carry (reject / adjust / select over an
+ * unbounded rectangle array) has nothing left to express: clearing the box
+ * is "reject", editing it in place is "adjust". See
+ * docs/specs/2026-08-05-localize-object-editor-revamp-design.md.
  */
 
 import { Detection, SmokeType } from '@/types/api';
 import { useDetectionImage } from '@/hooks/useDetectionImage';
 import {
-  DrawnRectangle,
   CurrentDrawing,
   Point,
-  ModelLayer,
   ResizeHandle,
+  DrawnRectangle,
+  type BoxCandidate,
 } from '@/utils/annotation';
 import {
-  ReferenceBoxOverlay,
-  ReviewBoxOverlay,
   DrawingOverlay,
   SiblingBoundingBoxOverlay,
   ObjectIdentityOverlay,
   type ObjectOverlayItem,
 } from '@/components/annotation/ImageOverlays';
+import {
+  haloShadow,
+  SOURCE_COLOR,
+  SOURCE_WEIGHT,
+} from '@/components/localize/editor/sourceIdentity';
 
 interface ImageInfo {
   width: number;
@@ -29,35 +39,29 @@ interface ImageInfo {
   offsetY: number;
 }
 
+/** The committed box's id inside `DrawingOverlay`. */
+const COMMITTED_ID = 'committed';
+
 interface DetectionAnnotationCanvasProps {
   detection: Detection;
-  drawnRectangles: DrawnRectangle[];
-  selectedRectangleId: string | null;
-  showPredictions: boolean;
-  // Exactly one model layer is displayed at a time.
-  activeLayer: ModelLayer;
+  /** The single committed box, or null on a frame with none. */
+  committed: BoxCandidate | null;
+  /** Candidates that are NOT committed, drawn dimmed and dashed. */
+  ghosts: BoxCandidate[];
+  showGhosts: boolean;
+  /** Whether the committed box is selected — only then does it show handles. */
+  selected: boolean;
   selectedSmokeType: SmokeType;
   showSiblingBboxes?: boolean;
   // Collocated localize context: the OTHER contributing objects' boxes on
   // this same frame, color-coded and labeled with their own object
-  // identity. Additive and optional — when provided (even an empty array),
-  // it replaces the generic `SiblingBoundingBoxOverlay` layer for this
-  // render; when omitted (legacy per-lane page), behavior is unchanged.
+  // identity. When provided (even an empty array) it replaces the generic
+  // `SiblingBoundingBoxOverlay` layer.
   objectOverlays?: ObjectOverlayItem[];
-  // Seed-at-submit review of the winning model layer
-  winningLayer: ModelLayer;
+  /** A box is being dragged out right now; its handles must not eat the drag. */
   isDrawMode: boolean;
-  // When re-opening a committed annotation, the winning layer is read-only
-  // reference (already reviewed); you edit the committed boxes directly.
-  reviewInteractive: boolean;
-  rejectedBoxes: Set<number>;
-  hiddenBoxes: Set<number>;
-  selectedModelBox: number | null;
-  onSelectModelBox: (index: number) => void;
-  onRejectModelBox: (index: number) => void;
-  onAdjustModelBox: (index: number) => void;
-  onBoxPointerDown: (id: string, e: React.MouseEvent) => void;
-  onHandlePointerDown: (id: string, handle: ResizeHandle, e: React.MouseEvent) => void;
+  onBoxPointerDown: (e: React.MouseEvent) => void;
+  onHandlePointerDown: (handle: ResizeHandle, e: React.MouseEvent) => void;
   currentDrawing: CurrentDrawing | null;
   // Image and container refs passed from parent
   containerRef: React.RefObject<HTMLDivElement>;
@@ -81,22 +85,14 @@ interface DetectionAnnotationCanvasProps {
 
 export function DetectionAnnotationCanvas({
   detection,
-  drawnRectangles,
-  selectedRectangleId,
-  showPredictions,
-  activeLayer,
+  committed,
+  ghosts,
+  showGhosts,
+  selected,
   selectedSmokeType,
   showSiblingBboxes = true,
   objectOverlays,
-  winningLayer,
   isDrawMode,
-  reviewInteractive,
-  rejectedBoxes,
-  hiddenBoxes,
-  selectedModelBox,
-  onSelectModelBox,
-  onRejectModelBox,
-  onAdjustModelBox,
   onBoxPointerDown,
   onHandlePointerDown,
   currentDrawing,
@@ -118,13 +114,27 @@ export function DetectionAnnotationCanvas({
 }: DetectionAnnotationCanvasProps) {
   const { data: imageData } = useDetectionImage(detection.id);
 
-  // The winning model layer is reviewed (interactive) when it is the active
-  // layer; otherwise the active (non-winning) layer is shown read-only.
-  const showWinning = activeLayer === winningLayer;
-  const winningPreds =
-    winningLayer === 'auto'
-      ? detection.auto_predictions?.predictions
-      : detection.algo_predictions?.predictions;
+  // `DrawingOverlay` speaks in rectangle arrays; the committed box is a
+  // one-element array. Selecting it is what reveals its move/resize
+  // affordances — unselected it renders in its own smoke-type color, so the
+  // box always shows its identity rather than a permanent "selected" yellow.
+  // Drawing suppresses the handles so a click-to-draw isn't swallowed by the
+  // box underneath.
+  const drawnRectangles: DrawnRectangle[] = committed
+    ? [{ id: COMMITTED_ID, xyxyn: committed.xyxyn, smokeType: selectedSmokeType }]
+    : [];
+
+  const ghostBox = (ghost: BoxCandidate) => {
+    if (!imageInfo) return null;
+    const topLeft = normalizedToImage(ghost.xyxyn[0], ghost.xyxyn[1]);
+    const bottomRight = normalizedToImage(ghost.xyxyn[2], ghost.xyxyn[3]);
+    return {
+      left: imageInfo.offsetX + topLeft.x,
+      top: imageInfo.offsetY + topLeft.y,
+      width: bottomRight.x - topLeft.x,
+      height: bottomRight.y - topLeft.y,
+    };
+  };
 
   return imageData?.url ? (
     <div
@@ -150,80 +160,35 @@ export function DetectionAnnotationCanvas({
         onLoad={handleImageLoad}
       />
 
-      {/* Bounding Boxes Overlay */}
+      {/* Other objects on this same frame — identity-labeled when the page
+          supplies them, the generic sibling layer otherwise. */}
       <div
         className="absolute inset-0 pointer-events-none z-10 transition-opacity duration-300 ease-in-out"
         style={{
           transform: `scale(${zoomLevel}) translate(${panOffset.x}px, ${panOffset.y}px)`,
           transformOrigin: `${transformOrigin.x}% ${transformOrigin.y}%`,
           transition: isDragging ? 'none' : 'transform 0.1s ease-out, opacity 0.3s ease-in-out',
-          opacity: showPredictions && imageInfo && overlaysVisible ? 1 : 0,
-          pointerEvents: showPredictions && imageInfo && overlaysVisible ? 'none' : 'none',
+          opacity: imageInfo && overlaysVisible ? 1 : 0,
         }}
       >
-        {/* Read-only NON-winning model layer (shown when toggled on to
-            investigate; only one model layer displays at a time) */}
-        {showPredictions && !showWinning && activeLayer === 'engine' && imageInfo && (
-          <ReferenceBoxOverlay
-            predictions={detection.algo_predictions?.predictions}
-            variant="engine"
-            smokeType={selectedSmokeType}
-            imageInfo={imageInfo}
-            detectionId={detection.id}
-          />
-        )}
-        {showPredictions && !showWinning && activeLayer === 'auto' && imageInfo && (
-          <ReferenceBoxOverlay
-            predictions={detection.auto_predictions?.predictions}
-            variant="auto"
-            smokeType={selectedSmokeType}
-            imageInfo={imageInfo}
-            detectionId={detection.id}
-          />
-        )}
-        {/* `objectOverlays` (collocated localize) replaces the generic
-            sibling layer with object-identity-labeled boxes when provided —
-            even an empty array suppresses it, since the wrong vocabulary
-            applies regardless of whether this particular frame has any
-            other objects to show. */}
-        {showPredictions && objectOverlays === undefined && showSiblingBboxes && imageInfo && (
+        {objectOverlays === undefined && showSiblingBboxes && imageInfo && (
           <SiblingBoundingBoxOverlay detection={detection} imageInfo={imageInfo} />
         )}
-        {showPredictions && objectOverlays !== undefined && imageInfo && (
+        {objectOverlays !== undefined && imageInfo && (
           <ObjectIdentityOverlay objects={objectOverlays} imageInfo={imageInfo} />
         )}
       </div>
 
-      {/* Drawing Overlay */}
-      <div
-        className="absolute inset-0 z-20 transition-opacity duration-300 ease-in-out"
-        style={{
-          opacity: imageInfo && overlaysVisible ? 1 : 0,
-        }}
-      >
-        {imageInfo && (
-          <DrawingOverlay
-            drawnRectangles={drawnRectangles}
-            currentDrawing={currentDrawing}
-            selectedRectangleId={selectedRectangleId}
-            imageInfo={imageInfo}
-            zoomLevel={zoomLevel}
-            panOffset={panOffset}
-            transformOrigin={transformOrigin}
-            isDragging={isDragging}
-            normalizedToImage={normalizedToImage}
-            onBoxPointerDown={onBoxPointerDown}
-            onHandlePointerDown={onHandlePointerDown}
-          />
-        )}
-      </div>
-
-      {/* Interactive review layer: the winning model layer, above the drawing
-          layer. The container passes clicks through (pointer-events-none);
-          individual boxes/controls opt back in when interactive (not drawing). */}
-      {showPredictions && showWinning && imageInfo && (
+      {/* Ghosts: the candidates this frame offers that are NOT committed.
+          Read-only — committing one is the rail's job, so they never take
+          pointer events away from drawing or from the committed box.
+          Unlabeled: the rail beside the image is a permanent legend naming
+          every source next to its swatch, and colour, stroke weight and the
+          dashed style already say which is which. Other OBJECTS' boxes do
+          keep their labels — nothing else on screen names them. */}
+      {showGhosts && imageInfo && (
         <div
-          className="absolute inset-0 z-30 pointer-events-none"
+          className="absolute inset-0 pointer-events-none z-20"
           style={{
             transform: `scale(${zoomLevel}) translate(${panOffset.x}px, ${panOffset.y}px)`,
             transformOrigin: `${transformOrigin.x}% ${transformOrigin.y}%`,
@@ -231,26 +196,63 @@ export function DetectionAnnotationCanvas({
             opacity: overlaysVisible ? 1 : 0,
           }}
         >
-          <ReviewBoxOverlay
-            predictions={winningPreds}
-            variant={winningLayer}
-            smokeType={selectedSmokeType}
-            imageInfo={imageInfo}
-            detectionId={detection.id}
-            rejected={rejectedBoxes}
-            hidden={hiddenBoxes}
-            selectedIndex={selectedModelBox}
-            interactive={!isDrawMode && reviewInteractive}
-            onSelect={onSelectModelBox}
-            onReject={onRejectModelBox}
-            onAdjust={onAdjustModelBox}
-          />
+          {ghosts.map(ghost => {
+            const box = ghostBox(ghost);
+            if (!box) return null;
+            return (
+              <div
+                key={`${ghost.source}-${ghost.index}`}
+                data-testid={`ghost-box-${ghost.source}-${ghost.index}`}
+                className="absolute border-dashed opacity-90"
+                style={{
+                  borderColor: SOURCE_COLOR[ghost.source],
+                  // Divided by the zoom so the stroke keeps its on-screen
+                  // weight however far the image is scaled.
+                  borderWidth: `${SOURCE_WEIGHT[ghost.source] / zoomLevel}px`,
+                  boxShadow: haloShadow(zoomLevel),
+                  left: `${box.left}px`,
+                  top: `${box.top}px`,
+                  width: `${box.width}px`,
+                  height: `${box.height}px`,
+                }}
+              />
+            );
+          })}
         </div>
       )}
+
+      {/* The committed box, plus any in-progress drawing. */}
+      <div
+        className="absolute inset-0 z-30 transition-opacity duration-300 ease-in-out"
+        style={{ opacity: imageInfo && overlaysVisible ? 1 : 0 }}
+        data-testid={committed ? 'committed-box' : undefined}
+      >
+        {imageInfo && (
+          <DrawingOverlay
+            drawnRectangles={drawnRectangles}
+            currentDrawing={currentDrawing}
+            selectedRectangleId={selected ? COMMITTED_ID : null}
+            imageInfo={imageInfo}
+            zoomLevel={zoomLevel}
+            panOffset={panOffset}
+            transformOrigin={transformOrigin}
+            isDragging={isDragging}
+            normalizedToImage={normalizedToImage}
+            boxColor={committed ? SOURCE_COLOR[committed.source] : undefined}
+            boxWidth={committed ? SOURCE_WEIGHT[committed.source] : undefined}
+            boxShadow={haloShadow(zoomLevel)}
+            strokeScale={zoomLevel}
+            onBoxPointerDown={(_id, e) => onBoxPointerDown(e)}
+            onHandlePointerDown={
+              isDrawMode ? undefined : (_id, handle, e) => onHandlePointerDown(handle, e)
+            }
+          />
+        )}
+      </div>
     </div>
   ) : (
-    <div className="w-96 h-96 bg-gray-800 flex items-center justify-center rounded-lg">
-      <span className="text-gray-400">No image available</span>
+    <div className="flex h-96 w-96 items-center justify-center rounded-card border border-line bg-ash">
+      <span className="font-body text-sm text-haze">No image available</span>
     </div>
   );
 }
