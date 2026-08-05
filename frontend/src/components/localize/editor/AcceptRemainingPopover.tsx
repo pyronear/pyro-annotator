@@ -109,10 +109,12 @@ export function AcceptRemainingPopover({
         </p>
       )}
 
-      {/* Only the affirmative action here: leaving is what the cross, a
-            click outside, the button itself and Escape already do, and a
-            Cancel button beside Accept gives equal weight to doing nothing. */}
-      <div className="mt-5 flex justify-end">
+      {/* Only the affirmative action here: leaving is what the cross, a click
+          outside, the button itself and Escape already do, and a Cancel button
+          beside Accept gives equal weight to doing nothing. Centred, since it
+          is the only one — an edge-aligned lone button reads as the smaller
+          half of a pair that is not there. */}
+      <div className="mt-5 flex justify-center">
         <button
           type="button"
           data-testid="accept-remaining-confirm"
