@@ -8,6 +8,10 @@
  * Each cell's BORDER carries its state, so the strip reads as a run of
  * colour rather than a line of letters:
  *
+ * The frame you are on shows its clock time underneath — the header has the
+ * full timestamp, and cells can sit anywhere from two seconds to two minutes
+ * apart, so the row alone never says where in the alert you are.
+ *
  * The frame you are on grows rather than gaining an outline: colour is fully
  * spent on state here, and a ring would add a second one competing with the
  * hole marker. Size is the channel still free. Cells are square because the
@@ -24,6 +28,7 @@
  */
 
 import type { FilmstripEntry, FilmstripRun } from '@/utils/annotation/objectFilmstrip';
+import { formatTime } from '@/utils/datetime';
 import { SOURCE_COLOR } from './sourceIdentity';
 import { FilmstripThumbnail } from './FilmstripThumbnail';
 
@@ -109,7 +114,7 @@ export function ObjectFilmstrip({ entries, currentDetectionId, onSelect }: Objec
             {/* Pinned to the tall cell's height. Without it the row tracks its
                 tallest child, so mid-transition — one cell shrinking while
                 another grows — the whole strip dips and springs back. */}
-            <div className="flex h-16 items-end gap-1">
+            <div className="flex h-[5.25rem] items-end gap-1">
               {group.items.map(entry => (
                 <button
                   key={entry.detectionId}
@@ -146,6 +151,13 @@ export function ObjectFilmstrip({ entries, currentDetectionId, onSelect }: Objec
                         }}
                       />
                     )}
+                  </span>
+                  {/* Reserved on every cell, filled only on the current one,
+                      so stepping never changes the row's height. The header
+                      carries the date; two frames can be seconds apart, so
+                      this needs the seconds. */}
+                  <span className="mt-1 block h-4 text-center font-data text-[10px] text-haze">
+                    {entry.detectionId === currentDetectionId ? formatTime(entry.recordedAt) : ''}
                   </span>
                 </button>
               ))}

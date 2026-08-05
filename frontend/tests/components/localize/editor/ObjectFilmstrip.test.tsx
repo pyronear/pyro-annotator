@@ -156,6 +156,16 @@ describe('ObjectFilmstrip', () => {
     expect(screen.queryByText(/^after$/i)).not.toBeInTheDocument();
   });
 
+  it('shows the clock time under the current frame only', () => {
+    renderStrip({
+      entries: entries.map(e => ({ ...e, recordedAt: '2026-07-30T06:53:41' })),
+    });
+    // Every cell reserves the line so the row height never changes; only the
+    // current one fills it.
+    expect(screen.getByTestId('filmstrip-cell-272')).toHaveTextContent('06:53:41');
+    expect(screen.getByTestId('filmstrip-cell-273')).not.toHaveTextContent('06:53:41');
+  });
+
   it('selects the clicked frame', () => {
     const onSelect = vi.fn();
     renderStrip({ onSelect });
