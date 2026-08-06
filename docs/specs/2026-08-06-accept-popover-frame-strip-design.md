@@ -37,8 +37,10 @@ Three additions, all reusing existing components and data:
   eyebrow so the strip embeds cleanly inside the popover. The rail's usage
   (`LocalizeAlertPage`) passes nothing and is untouched.
 - `playhead?: { objectIndex: number; timestamp: string }`. The segment of
-  that object at that timestamp renders highlighted (`ring-1 ring-ember`
-  plus full opacity). Undefined reproduces today's rendering exactly.
+  that object at that timestamp renders highlighted: full opacity plus an
+  inset white marker merged into the segment's `boxShadow` (the track is
+  `overflow-hidden`, so an outer ring would be clipped at this height), and
+  `data-playhead="true"`. Undefined reproduces today's rendering exactly.
 - Interactivity needs no change: `onSegmentClick` / `onObjectClick` are
   already optional; the popover omits them for a static strip.
 
@@ -69,11 +71,12 @@ Three additions, all reusing existing components and data:
 - Tracks the loop's current `detection_id` in local state via
   `onFrameChange`; maps it to an entry to derive both the playhead
   timestamp and the counter index.
-- Counter text "Frame {entryIndex + 1} of {entries.length}" beside the
-  "What {objectLabel} ends up with" label — position among *all* alert
-  frames, the same language as the filmstrip summary. Because the loop only
-  plays frames that have boxes, the counter visibly skips gap frames
-  (…4, 6…) and the outlined gap segment never receives the playhead.
+- Counter text "Frame {entryIndex + 1} of {entries.length}" right-aligned
+  directly above the strip (beside the eyebrow label it forced the label to
+  wrap) — position among *all* alert frames, the same language as the
+  filmstrip summary. Because the loop only plays frames that have boxes,
+  the counter visibly skips gap frames (…4, 6…) and the outlined gap
+  segment never receives the playhead.
 
 ## Edge cases
 
