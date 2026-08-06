@@ -182,14 +182,45 @@ export function LocalizeObjectEditor({
       root.animate([{ opacity: 0 }, { opacity: 1 }], { duration: FADE_MS, easing: 'linear' });
       return;
     }
+    // Input is off for the grow: getImageInfo's containerOffset is the
+    // visual rect, so pointer maths run mid-animation would mix transformed
+    // and layout space. Restored on finish — unless a close already began,
+    // whose own pointer-events lockout must not be undone.
+    root.style.pointerEvents = 'none';
     root.style.transformOrigin = '0 0';
+    // The root's own layout size, not window.innerWidth: a classic
+    // scrollbar makes the viewport wider than the laid-out root.
     const { atCell, full } = zoomKeyframes(rect, {
-      width: window.innerWidth,
-      height: window.innerHeight,
+      width: root.offsetWidth,
+      height: root.offsetHeight,
     });
-    root.animate([atCell, full], { duration: ZOOM_OPEN_MS, easing: ZOOM_OPEN_EASING });
+    const animation = root.animate([atCell, full], {
+      duration: ZOOM_OPEN_MS,
+      easing: ZOOM_OPEN_EASING,
+    });
+    const restore = () => {
+      if (!isClosingRef.current) root.style.pointerEvents = '';
+    };
+    animation.addEventListener('finish', restore);
+    animation.addEventListener('cancel', restore);
     // Mount-only by design; the origin rect is consumed exactly once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // The exit animation runs on the document timeline and survives this
+  // component's removal — after a browser back during the shrink, its finish
+  // listener would navigate AGAIN from the still-mounted page. The unmount
+  // cleanup detaches that path (and cancelling also releases the forwards
+  // fill). The flag is re-armed in the effect body so StrictMode's dev
+  // mount-cleanup-remount cycle doesn't leave it stuck false.
+  const mountedRef = useRef(true);
+  const exitAnimationRef = useRef<Animation | null>(null);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      exitAnimationRef.current?.cancel();
+    };
   }, []);
 
   const [imageInfo, setImageInfo] = useState<{
@@ -746,8 +777,8 @@ export function LocalizeObjectEditor({
     if (target) {
       root.style.transformOrigin = '0 0';
       const { atCell, full } = zoomKeyframes(target, {
-        width: window.innerWidth,
-        height: window.innerHeight,
+        width: root.offsetWidth,
+        height: root.offsetHeight,
       });
       // fill: 'forwards' holds the end pose until React unmounts the node
       // on navigation — without it the editor would snap back full-screen
@@ -764,8 +795,13 @@ export function LocalizeObjectEditor({
         fill: 'forwards',
       });
     }
-    animation.addEventListener('finish', onClose);
-    animation.addEventListener('cancel', onClose);
+    exitAnimationRef.current = animation;
+    // Guarded, not bare onClose: see the unmount cleanup above.
+    const done = () => {
+      if (mountedRef.current) onClose();
+    };
+    animation.addEventListener('finish', done);
+    animation.addEventListener('cancel', done);
   }, [onClose, frameCellRect, peeked, detection]);
 
   // --- Keyboard -----------------------------------------------------------

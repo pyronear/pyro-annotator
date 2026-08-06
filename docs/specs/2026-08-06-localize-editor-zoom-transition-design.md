@@ -45,7 +45,8 @@ nothing — the component stays mounted and only the stage content changes.
 cell's viewport rect — `translate(cell.x, cell.y) scale(cell.w / vw, cell.h /
 vh)` with `transform-origin: 0 0` (non-uniform scale, FLIP-style) — and
 animates to identity. ~340ms, `cubic-bezier(.2, 0, 0, 1)`, with opacity
-ramping ~0.55 → 1 and border-radius rounding off from the cell's radius to 0.
+ramping ~0.55 → 1. (The mockup also rounded off a border radius; the real
+grid cells are unrounded, so the keyframes are transform + opacity only.)
 
 **Close.** The reverse, targeting the **current frame's** cell — not
 necessarily the one that opened the editor, since the annotator steps frames
