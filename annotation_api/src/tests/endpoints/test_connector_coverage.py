@@ -1,6 +1,6 @@
 """Organization toggling stamps enabled_at once; coverage reads are windowed."""
 
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from cryptography.fernet import Fernet
@@ -81,12 +81,24 @@ async def test_unknown_org_returns_404(authenticated_client, connector):
         f"/connectors/{connector.id}/organizations/999", json={"is_enabled": True}
     )
     assert response.status_code == 404
+    assert (
+        response.json()["detail"]
+        == "Organization not found on this connector; run verify first."
+    )
 
 
 async def test_coverage_is_filtered_by_window(
     authenticated_client, connector, async_session
 ):
-    for day in (date(2026, 8, 1), date(2026, 8, 5), date(2026, 8, 9)):
+    # 08-04 and 08-06 sit exactly on the window's bounds — they must be
+    # included, proving the filter is inclusive (>=/<=), not exclusive (>/<).
+    for day in (
+        date(2026, 8, 1),
+        date(2026, 8, 4),
+        date(2026, 8, 5),
+        date(2026, 8, 6),
+        date(2026, 8, 9),
+    ):
         async_session.add(
             AlertApiImportCoverage(
                 connector_id=connector.id,
@@ -104,8 +116,39 @@ async def test_coverage_is_filtered_by_window(
     )
     assert response.status_code == 200
     body = response.json()
-    assert [cell["covered_date"] for cell in body] == ["2026-08-05"]
+    assert [cell["covered_date"] for cell in body] == [
+        "2026-08-04",
+        "2026-08-05",
+        "2026-08-06",
+    ]
     assert body[0]["alerts_imported"] == 2
+
+
+async def test_coverage_defaults_to_the_last_30_days(
+    authenticated_client, connector, async_session
+):
+    # Derive expected bounds the same way the endpoint does (datetime.now(UTC).date())
+    # rather than hardcoding dates, so the test is timezone-independent.
+    today = datetime.now(UTC).date()
+    window_start = today - timedelta(days=29)
+    just_outside_window = today - timedelta(days=30)
+    for day in (just_outside_window, window_start, today):
+        async_session.add(
+            AlertApiImportCoverage(
+                connector_id=connector.id,
+                organization_id=1,
+                covered_date=day,
+                status=ImportCoverageStatus.OK,
+                alerts_imported=1,
+            )
+        )
+    await async_session.commit()
+
+    response = await authenticated_client.get(f"/connectors/{connector.id}/coverage")
+    assert response.status_code == 200
+    covered_dates = [cell["covered_date"] for cell in response.json()]
+    assert covered_dates == [window_start.isoformat(), today.isoformat()]
+    assert just_outside_window.isoformat() not in covered_dates
 
 
 async def test_regular_user_cannot_read_coverage(
