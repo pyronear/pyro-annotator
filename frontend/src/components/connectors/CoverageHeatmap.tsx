@@ -29,11 +29,18 @@ function cellState(
   enabledAt: string | null,
   day: string
 ): CellState {
-  if (enabledAt && day < enabledAt.slice(0, 10)) return 'not-enabled';
-  if (!cell) return 'missing';
+  if (!cell) {
+    if (enabledAt && day < enabledAt.slice(0, 10)) return 'not-enabled';
+    return 'missing';
+  }
   if (cell.status === 'failed') return 'failed';
   if (cell.status === 'partial') return 'partial';
-  return cell.alerts_imported > 0 ? 'imported' : 'empty';
+  // Key on total coverage (alerts_fetched), not fresh imports
+  // (alerts_imported): a re-run inside the trailing window re-fetches the
+  // same alerts and files them as skipped rather than imported (see
+  // runner.py), so alerts_imported alone would flip a fully-covered day back
+  // to "empty" the moment it ages out of the newest run.
+  return cell.alerts_fetched > 0 ? 'imported' : 'empty';
 }
 
 // failed and missing share an appearance: both mean "we do not have this day".

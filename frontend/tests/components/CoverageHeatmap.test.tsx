@@ -48,7 +48,9 @@ describe('CoverageHeatmap', () => {
   });
 
   it('marks a day with imports as imported', () => {
-    renderHeatmap([cell({ covered_date: '2026-08-03', alerts_imported: 5 })]);
+    renderHeatmap([
+      cell({ covered_date: '2026-08-03', alerts_fetched: 5, alerts_imported: 5 }),
+    ]);
     expect(screen.getByTestId('coverage-cell-10-2026-08-03')).toHaveAttribute(
       'data-state',
       'imported'
@@ -65,6 +67,24 @@ describe('CoverageHeatmap', () => {
     expect(screen.getByTestId('coverage-cell-10-2026-08-04')).toHaveAttribute(
       'data-state',
       'missing'
+    );
+  });
+
+  it('marks a re-run day as imported even when the fresh run only skipped', () => {
+    // A re-run inside the trailing window re-fetches alerts already imported
+    // on a previous run and files them as skipped, not imported (see
+    // runner.py). The cell must still read as covered, not revert to empty.
+    renderHeatmap([
+      cell({
+        covered_date: '2026-08-03',
+        alerts_fetched: 5,
+        alerts_skipped: 5,
+        alerts_imported: 0,
+      }),
+    ]);
+    expect(screen.getByTestId('coverage-cell-10-2026-08-03')).toHaveAttribute(
+      'data-state',
+      'imported'
     );
   });
 
@@ -108,6 +128,24 @@ describe('CoverageHeatmap', () => {
     expect(screen.getByTestId('coverage-cell-10-2026-08-01')).toHaveAttribute(
       'data-state',
       'missing'
+    );
+  });
+
+  it('renders a real coverage row before enabled_at instead of not-enabled', () => {
+    // The initial sweep imports the trailing window, which precedes
+    // enabled_at — those days have real coverage rows and must render their
+    // actual state, not be masked by the "not enabled yet" dash.
+    render(
+      <CoverageHeatmap
+        organizations={ORGS}
+        cells={[cell({ covered_date: '2026-07-30', alerts_fetched: 5, alerts_imported: 5 })]}
+        dateFrom="2026-07-30"
+        dateEnd="2026-08-01"
+      />
+    );
+    expect(screen.getByTestId('coverage-cell-10-2026-07-30')).toHaveAttribute(
+      'data-state',
+      'imported'
     );
   });
 
