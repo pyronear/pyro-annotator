@@ -176,7 +176,7 @@ function AlertFrameCellView({
   // or when the crop transform changes the image's rendered rect.
   useEffect(() => {
     if (imgRef.current?.complete) handleImageLoad();
-  }, [activeCell.detectionId, crop.scale, handleImageLoad]);
+  }, [activeCell.detectionId, crop.scale, crop.originX, crop.originY, handleImageLoad]);
 
   useEffect(() => {
     const el = containerRef.current;
