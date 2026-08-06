@@ -7,6 +7,12 @@ on:
       - 'annotation_api/**'
       - '.github/workflows/annotation-api-ci.yml'
 
+# A new push to the same PR makes the in-flight run obsolete. This is the
+# most expensive workflow we have, so superseded runs are worth cancelling.
+concurrency:
+  group: annotation-api-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 defaults:
   run:
     working-directory: annotation_api

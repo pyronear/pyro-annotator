@@ -7,6 +7,11 @@ on:
     branches:
       - '**'
 
+# A new push to the same PR makes the in-flight run obsolete.
+concurrency:
+  group: ruff-check-annotation-api-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   ruff-check:
     name: Run ruff check on annotation_api
