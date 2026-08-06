@@ -213,14 +213,17 @@ describe('ClassifyAlertPage auto-advance', () => {
       () => {
         expect(screen.getByTestId('object-card-301:0')).toBeInTheDocument();
       },
-      { timeout: 5000 }
+      { timeout: 10000 }
     );
 
     // The destination alert's object must be active with its own seeded data —
     // not a skeleton, and not the previous alert's sequence. Same generous
     // timeout as the auto-advance wait above: this is the destination's own
-    // queries resolving, which loaded CI runners serve slowly (seen flaking
-    // at the 1s default).
+    // queries resolving, which loaded CI runners serve slowly. Every await
+    // here is a wall-clock race on CI — the chain itself is mock-instant,
+    // but the coverage run's thread pool can starve a worker for whole
+    // seconds (seen flaking at the 1s default, then again at 5s under
+    // coverage), hence the deliberately extravagant budgets.
     await waitFor(
       () => {
         expect(screen.queryByTestId('media-panel-skeleton')).not.toBeInTheDocument();
@@ -231,7 +234,7 @@ describe('ClassifyAlertPage auto-advance', () => {
           '0'
         );
       },
-      { timeout: 5000 }
+      { timeout: 10000 }
     );
-  }, 15000);
+  }, 30000);
 });

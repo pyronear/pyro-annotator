@@ -1,21 +1,43 @@
 import { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { Check } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { LocalizationQueueItem } from '@/types/api';
 import { LocalizeQueueTable, TablePagination } from '@/components/sequences';
+import { Tooltip } from '@/components/ui/Tooltip';
 import { TABLE_CARD_CLASSES } from '@/components/sequences/tableStyles';
 import { pickNextLocalizeLane } from '@/utils/annotation/localizeUtils';
 import { localizeDetail, ROUTES } from '@/utils/routes';
 
 export default function DetectionAnnotatePage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
+  // Skipped-backlog view (spec: alert-skip-escape-hatch). Plain state, not
+  // persisted — the backlog is a place to visit, not a mode to stay in.
+  const [showSkipped, setShowSkipped] = useState(false);
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['localization-queue', page],
-    queryFn: () => apiClient.getLocalizationQueue({ page, size: 50 }),
+    queryKey: ['localization-queue', page, showSkipped],
+    queryFn: () => apiClient.getLocalizationQueue({ page, size: 50, skipped: showSkipped }),
+  });
+
+  // Count for the "Skipped (n)" toggle label, independent of the view shown.
+  const { data: skippedCount } = useQuery({
+    queryKey: ['localization-queue-skipped-count'],
+    queryFn: () => apiClient.getLocalizationQueue({ skipped: true, size: 1 }),
+    select: queue => queue.total,
+  });
+
+  const unskipMutation = useMutation({
+    mutationFn: (item: LocalizationQueueItem) =>
+      apiClient.unskipAlert(item.source_api, item.platform_alert_id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['localization-queue'] });
+      queryClient.invalidateQueries({ queryKey: ['localization-queue-skipped-count'] });
+      queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
+    },
   });
 
   // Clamp when alerts drain below the current page (e.g. last alert of the
@@ -65,9 +87,36 @@ export default function DetectionAnnotatePage() {
             box around the smoke
           </p>
         </div>
+        <Tooltip tip="Alerts parked as skipped — too hard to annotate with the current tools. Toggle to review and unskip them.">
+          <button
+            type="button"
+            aria-pressed={showSkipped}
+            onClick={() => {
+              setShowSkipped(v => !v);
+              setPage(1);
+            }}
+            className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 font-body text-sm font-medium ${
+              showSkipped
+                ? 'border-char bg-ash text-char'
+                : 'border-line bg-paper text-haze hover:bg-ash'
+            }`}
+          >
+            Skipped
+            <span className="font-data text-xs">{skippedCount ?? 0}</span>
+          </button>
+        </Tooltip>
       </div>
 
-      {items.length === 0 ? (
+      {items.length === 0 && showSkipped ? (
+        <div className="flex items-center justify-center min-h-96">
+          <div className="text-center max-w-md">
+            <h2 className="font-display text-base font-semibold text-char">No skipped alerts</h2>
+            <p className="mt-1.5 font-body text-sm leading-relaxed text-haze">
+              Nothing is parked here — alerts skipped from this queue would show up in this view.
+            </p>
+          </div>
+        </div>
+      ) : items.length === 0 ? (
         <div className="flex items-center justify-center min-h-96">
           <div className="text-center max-w-md">
             <span
@@ -93,7 +142,12 @@ export default function DetectionAnnotatePage() {
         </div>
       ) : (
         <div className={TABLE_CARD_CLASSES}>
-          <LocalizeQueueTable items={items} onItemClick={handleAlertClick} />
+          <LocalizeQueueTable
+            items={items}
+            onItemClick={handleAlertClick}
+            skippedView={showSkipped}
+            onUnskip={item => unskipMutation.mutate(item)}
+          />
           {data && (
             <TablePagination
               page={data.page}

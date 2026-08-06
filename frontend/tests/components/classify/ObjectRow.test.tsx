@@ -112,4 +112,35 @@ describe('ObjectRow', () => {
     renderRow();
     expect(screen.queryByTestId('object-row-changed-101:0')).not.toBeInTheDocument();
   });
+
+  it('renders the frame timeline when timeline data is given', () => {
+    renderRow({
+      color: '#3b82f6',
+      timeline: {
+        frameTimestamps: ['t1', 't2'],
+        statusByTimestamp: { t1: 'confirmed' },
+        onFrameClick: () => {},
+      },
+    });
+    expect(screen.getByTestId('object-timeline-101:0')).toBeInTheDocument();
+    expect(screen.getByTestId('frame-segment-101:0-0')).toHaveStyle({
+      backgroundColor: '#3b82f6',
+    });
+  });
+
+  it('segment clicks reach onFrameClick without re-firing onRowClick', () => {
+    const onFrameClick = vi.fn();
+    const { onRowClick } = renderRow({
+      color: '#3b82f6',
+      timeline: { frameTimestamps: ['t1'], statusByTimestamp: {}, onFrameClick },
+    });
+    fireEvent.click(screen.getByTestId('frame-segment-101:0-0'));
+    expect(onFrameClick).toHaveBeenCalledWith('t1', 0);
+    expect(onRowClick).not.toHaveBeenCalled();
+  });
+
+  it('renders no timeline when timeline data is omitted', () => {
+    renderRow({ color: '#3b82f6' });
+    expect(screen.queryByTestId('object-timeline-101:0')).not.toBeInTheDocument();
+  });
 });

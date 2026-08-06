@@ -195,4 +195,59 @@ describe('LocalizeQueueTable', () => {
     expect(onItemClick).toHaveBeenCalledTimes(1);
     expect(onItemClick).toHaveBeenCalledWith(item);
   });
+
+  describe('skipped view', () => {
+    const onUnskip = vi.fn();
+    const skippedItem = () =>
+      createItem({
+        skip: {
+          skipped_at: '2026-08-05T10:00:00Z',
+          skipped_by: 'annotator',
+          note: 'cannot box this',
+        },
+      });
+
+    it('renders skip metadata columns', () => {
+      render(
+        <LocalizeQueueTable
+          items={[skippedItem()]}
+          onItemClick={onItemClick}
+          skippedView
+          onUnskip={onUnskip}
+        />
+      );
+
+      expect(screen.getByText('Skipped')).toBeInTheDocument();
+      expect(screen.getByText('By')).toBeInTheDocument();
+      expect(screen.getByText('Note')).toBeInTheDocument();
+      expect(screen.getByText('annotator')).toBeInTheDocument();
+      expect(screen.getByText('cannot box this')).toBeInTheDocument();
+      expect(screen.getByText(formatDateTime('2026-08-05T10:00:00Z'))).toBeInTheDocument();
+    });
+
+    it('unskip button fires the callback, rows do not navigate', () => {
+      const item = skippedItem();
+      render(
+        <LocalizeQueueTable
+          items={[item]}
+          onItemClick={onItemClick}
+          skippedView
+          onUnskip={onUnskip}
+        />
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Unskip' }));
+      expect(onUnskip).toHaveBeenCalledWith(item);
+
+      fireEvent.click(screen.getByText('cannot box this'));
+      expect(onItemClick).not.toHaveBeenCalled();
+    });
+
+    it('default view renders no skip columns', () => {
+      render(<LocalizeQueueTable items={[createItem()]} onItemClick={onItemClick} />);
+
+      expect(screen.queryByText('Skipped')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Unskip' })).not.toBeInTheDocument();
+    });
+  });
 });

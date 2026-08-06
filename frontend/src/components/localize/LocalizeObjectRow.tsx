@@ -4,12 +4,13 @@
  * *classification*, this one carries a per-object *localization progress*:
  * how many of the frames the object appears on already have a committed box
  * — and, now that the standalone Timeline card folded in here, WHICH frames:
- * a per-frame segment bar under the header. Each segment reports this
- * object's status at that alert frame: `confirmed` (solid fill), `cleared`
- * (hatched fill — committed with no smoke box, "object not visible here"),
- * `pending` (faded fill — a model box waiting to be accepted), `empty`
- * (outline only — on the frame with nothing on it yet), `absent` (neutral
- * track).
+ * a per-frame segment bar under the header, rendered by the shared
+ * `ObjectRowTimeline` (extracted from here once classify's rail grew the
+ * same strip). Each segment reports this object's status at that alert
+ * frame: `confirmed` (solid fill), `cleared` (hatched fill — committed with
+ * no smoke box, "object not visible here"), `pending` (faded fill — a model
+ * box waiting to be accepted), `empty` (outline only — on the frame with
+ * nothing on it yet), `absent` (neutral track).
  *
  * `empty` is deliberately distinct from `pending`: collapsing the two made a
  * frame with nothing on it look identical to one with a box to accept, which
@@ -37,6 +38,7 @@
 
 import React from 'react';
 import type { ObjectFrameStatus } from '@/utils/annotation/alertLocalizeUtils';
+import { ObjectRowTimeline } from '@/components/annotation/ObjectRowTimeline';
 
 export interface LocalizeObjectRowProps {
   /** e.g. "Object 2" — the object's own label, shared with the grid overlays. */
@@ -74,46 +76,6 @@ export interface LocalizeObjectRowProps {
   /** True when this object drives the media column (focus mode). */
   isActive: boolean;
   onActivate: () => void;
-}
-
-const SEGMENT_BASE_CLASS =
-  'h-full flex-1 rounded-sm p-0 transition-opacity focus:outline-none focus:ring-1 focus:ring-ember';
-
-function segmentAppearance(
-  status: ObjectFrameStatus,
-  color: string
-): { className: string; style?: React.CSSProperties } {
-  if (status === 'confirmed') {
-    return { className: SEGMENT_BASE_CLASS, style: { backgroundColor: color } };
-  }
-  if (status === 'cleared') {
-    // Committed with no smoke box — the annotator's "object not visible
-    // here" (the editor's Clear on an evidence-bearing frame). Hatched
-    // rather than solid: settled like confirmed, but deliberately nothing
-    // on the frame — a solid fill here read as a box the grid then
-    // couldn't show.
-    return {
-      className: SEGMENT_BASE_CLASS,
-      style: {
-        backgroundImage: `repeating-linear-gradient(45deg, ${color} 0px, ${color} 2px, transparent 2px, transparent 4px)`,
-      },
-    };
-  }
-  if (status === 'pending') {
-    return { className: `${SEGMENT_BASE_CLASS} opacity-40`, style: { backgroundColor: color } };
-  }
-  if (status === 'empty') {
-    // Present on this frame, but nothing to show yet — no committed box and
-    // no model prediction to accept. An outline in the object's own color
-    // keeps it legible as "this object's frame" without the fill that would
-    // imply content (a just-added object's whole timeline is this state).
-    return {
-      className: `${SEGMENT_BASE_CLASS} opacity-50`,
-      style: { boxShadow: `inset 0 0 0 1px ${color}` },
-    };
-  }
-  // absent — neutral track, no fill; the strip's track background shows through.
-  return { className: SEGMENT_BASE_CLASS };
 }
 
 // forwardRef so the page's Tab cycle can move real DOM focus onto the header
@@ -228,26 +190,14 @@ export const LocalizeObjectRow = React.forwardRef<HTMLButtonElement, LocalizeObj
           </span>
         </button>
 
-        <div
-          data-testid={`object-timeline-${slug}`}
-          className="mt-2 flex h-1.5 gap-px overflow-hidden rounded-full bg-ash"
-        >
-          {frameTimestamps.map((timestamp, frameIndex) => {
-            const segmentStatus = statusByTimestamp[timestamp] ?? 'absent';
-            const { className, style } = segmentAppearance(segmentStatus, color);
-            return (
-              <button
-                key={timestamp}
-                type="button"
-                data-testid={`frame-segment-${slug}-${frameIndex}`}
-                aria-label={`${label}, frame ${frameIndex + 1}: ${segmentStatus}`}
-                onClick={() => onFrameClick(timestamp)}
-                className={className}
-                style={style}
-              />
-            );
-          })}
-        </div>
+        <ObjectRowTimeline
+          slug={slug}
+          label={label}
+          color={color}
+          frameTimestamps={frameTimestamps}
+          statusByTimestamp={statusByTimestamp}
+          onFrameClick={timestamp => onFrameClick(timestamp)}
+        />
       </div>
     );
   }

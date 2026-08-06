@@ -11,7 +11,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { BoundingBox } from '@/types/api';
 import { ObjectOverlay } from '@/utils/annotation/objectColors';
-import FullImageSequence, { FullImageFrame } from '@/components/annotation/FullImageSequence';
+import FullImageSequence, {
+  FullImageFrame,
+  SeekRequest,
+} from '@/components/annotation/FullImageSequence';
 import CroppedImageSequence from '@/components/annotation/CroppedImageSequence';
 import SequenceReviewer from '@/components/sequence/SequenceReviewer';
 
@@ -38,6 +41,8 @@ export interface ClassifyMediaPanelProps {
   missedSmokeDisabled?: boolean;
   annotationLoading: boolean;
   objectOverlays: ObjectOverlay[];
+  /** A row-timeline segment click's jump-and-hold, forwarded to the full-frame player only. */
+  seekRequest?: SeekRequest | null;
 }
 
 export const ClassifyMediaPanel: React.FC<ClassifyMediaPanelProps> = ({
@@ -50,6 +55,7 @@ export const ClassifyMediaPanel: React.FC<ClassifyMediaPanelProps> = ({
   missedSmokeDisabled = false,
   annotationLoading,
   objectOverlays,
+  seekRequest,
 }) => {
   // Fullscreen for the whole-alert (missed-smoke) view. Tracks the browser
   // state so Esc / browser chrome exits stay in sync with the toggle icon.
@@ -178,6 +184,7 @@ export const ClassifyMediaPanel: React.FC<ClassifyMediaPanelProps> = ({
             color={activeObject.color}
             siblingOverlays={activeObject.siblingOverlays}
             frameRecordedAt={activeObject.frameRecordedAt}
+            seekRequest={seekRequest}
           />
           <CroppedImageSequence
             bboxes={activeObject.croppedBboxes}

@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LocalizeObjectEditor } from '@/components/localize/editor/LocalizeObjectEditor';
@@ -396,6 +396,14 @@ const stubGeometry = () => {
   const container = image.parentElement as HTMLElement;
   container.getBoundingClientRect = () =>
     ({ left: 0, top: 0, right: 800, bottom: 450, width: 800, height: 450, x: 0, y: 0 }) as DOMRect;
+  // Layout metrics match the rect: the container is not mid-animation here,
+  // and the bounds maths reads these rather than the rect.
+  for (const [prop, value] of [
+    ['offsetWidth', 800],
+    ['offsetHeight', 450],
+  ] as const) {
+    Object.defineProperty(container, prop, { value, configurable: true });
+  }
   for (const [prop, value] of [
     ['naturalWidth', 1600],
     ['naturalHeight', 900],
@@ -1012,5 +1020,145 @@ describe('LocalizeObjectEditor out-of-range frames', () => {
     // t003 -> t002 -> t001, then nothing left before it.
     expect(screen.getByTestId('out-of-range-banner')).toBeInTheDocument();
     expect(screen.getByTestId('filmstrip-cell-99001')).toHaveAttribute('aria-current', 'true');
+  });
+});
+
+describe('open/close transition', () => {
+  /** WAAPI stub: records calls, lets the test fire the finish listener. */
+  const makeAnimateMock = () => {
+    const listeners: Record<string, () => void> = {};
+    const cancel = vi.fn();
+    const animate = vi.fn().mockReturnValue({
+      addEventListener: (type: string, cb: () => void) => {
+        listeners[type] = cb;
+      },
+      cancel,
+    });
+    return { animate, cancel, finish: () => listeners.finish?.() };
+  };
+
+  afterEach(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delete (Element.prototype as any).animate;
+    vi.restoreAllMocks();
+  });
+
+  it('grows from the captured origin rect on mount', () => {
+    const { animate } = makeAnimateMock();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (Element.prototype as any).animate = animate;
+    renderEditor({
+      takeOpenOriginRect: () => ({ left: 10, top: 20, width: 100, height: 50 }),
+    });
+    expect(animate).toHaveBeenCalledTimes(1);
+    const [keyframes] = animate.mock.calls[0];
+    expect(keyframes[0].transform).toContain('translate(10px, 20px)');
+    expect(keyframes[1].transform).toBe('none');
+  });
+
+  it('does not animate the entrance without a captured origin rect', () => {
+    const { animate } = makeAnimateMock();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (Element.prototype as any).animate = animate;
+    renderEditor({ takeOpenOriginRect: () => null });
+    expect(animate).not.toHaveBeenCalled();
+  });
+
+  it('shrinks into the current frame cell and calls onClose only after the animation finishes', () => {
+    const { animate, finish } = makeAnimateMock();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (Element.prototype as any).animate = animate;
+    const onClose = vi.fn();
+    const frameCellRect = vi.fn(() => ({ left: 5, top: 6, width: 100, height: 60 }));
+    renderEditor({ onClose, frameCellRect });
+    fireEvent.click(screen.getByTestId('editor-close'));
+    expect(frameCellRect).toHaveBeenCalledWith(firstDetection.recorded_at);
+    expect(onClose).not.toHaveBeenCalled();
+    const closeCall = animate.mock.calls[animate.mock.calls.length - 1];
+    expect(closeCall[0][1].transform).toContain('translate(5px, 6px)');
+    finish();
+    expect(onClose).toHaveBeenCalledTimes(1);
+    // A second close attempt during/after the exit is a no-op.
+    fireEvent.click(screen.getByTestId('editor-close'));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('a late exit-animation finish after unmount does not navigate again', () => {
+    const { animate, cancel, finish } = makeAnimateMock();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (Element.prototype as any).animate = animate;
+    const onClose = vi.fn();
+    const { unmount } = renderEditor({
+      onClose,
+      frameCellRect: () => ({ left: 5, top: 6, width: 100, height: 60 }),
+    });
+    fireEvent.click(screen.getByTestId('editor-close'));
+    // Browser back during the shrink: the route unmounts the editor while
+    // the WAAPI animation (document timeline) is still running.
+    unmount();
+    expect(cancel).toHaveBeenCalled();
+    finish();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('falls back to a fade on close when no target cell rect is available', () => {
+    const { animate, finish } = makeAnimateMock();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (Element.prototype as any).animate = animate;
+    const onClose = vi.fn();
+    renderEditor({ onClose, frameCellRect: () => null });
+    fireEvent.click(screen.getByTestId('editor-close'));
+    const closeCall = animate.mock.calls[animate.mock.calls.length - 1];
+    expect(closeCall[0][0]).toEqual({ opacity: 1 });
+    expect(closeCall[0][1]).toEqual({ opacity: 0 });
+    finish();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes immediately when element.animate is unavailable', () => {
+    const onClose = vi.fn();
+    renderEditor({ onClose, frameCellRect: () => ({ left: 0, top: 0, width: 1, height: 1 }) });
+    fireEvent.click(screen.getByTestId('editor-close'));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('positions overlays from layout metrics, not the animation-scaled rect', () => {
+    renderEditor();
+    const img = screen.getByAltText(/^Detection /) as HTMLImageElement;
+    const container = img.parentElement as HTMLDivElement;
+    Object.defineProperties(img, {
+      naturalWidth: { value: 1280 },
+      naturalHeight: { value: 720 },
+      offsetWidth: { value: 1000 },
+      offsetHeight: { value: 562 },
+      offsetLeft: { value: 0 },
+      offsetTop: { value: 19 },
+    });
+    Object.defineProperties(container, {
+      offsetWidth: { value: 1000 },
+      offsetHeight: { value: 600 },
+    });
+    // Mid-entrance-animation: the visual rect is the layout scaled to ~16%.
+    // Overlay geometry must come from the layout metrics regardless.
+    container.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 160, height: 96 }) as DOMRect;
+    fireEvent.load(img);
+    // bounds fit 1280x720 into 1000x600 -> width 1000; ghost x1=0.2 -> 200px.
+    expect(screen.getByTestId('ghost-box-auto-0').style.left).toBe('200px');
+  });
+
+  it('uses an opacity-only fade under prefers-reduced-motion', () => {
+    const { animate } = makeAnimateMock();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (Element.prototype as any).animate = animate;
+    vi.spyOn(window, 'matchMedia').mockReturnValue({
+      matches: true,
+    } as unknown as MediaQueryList);
+    renderEditor({
+      takeOpenOriginRect: () => ({ left: 10, top: 20, width: 100, height: 50 }),
+    });
+    const [keyframes] = animate.mock.calls[0];
+    expect(keyframes[0]).toEqual({ opacity: 0 });
+    expect(keyframes[1]).toEqual({ opacity: 1 });
   });
 });

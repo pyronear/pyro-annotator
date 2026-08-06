@@ -25,7 +25,7 @@ from httpx import AsyncClient
 from sqlalchemy import text
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.models import Sequence, User
+from app.models import AlertSkip, Sequence, User
 from app.services.group_assignment import assign_ungrouped_sequences
 
 
@@ -656,6 +656,35 @@ async def test_propagation_skips_locked_members(
     assert len(items) == 1
     assert items[0]["processing_stage"] == "annotated"
     assert items[0]["smoke_types"] == ["industrial"]
+
+
+@pytest.mark.asyncio
+async def test_propagation_skips_members_of_skipped_alerts(
+    authenticated_client: AsyncClient,
+    sequence_session: AsyncSession,
+    detection_session: AsyncSession,
+):
+    """Seq 2's alert is skipped; when seq 1 is saved in a validated group,
+    the fan-out must not advance seq 2's lane — a parked alert's lane state
+    never moves (spec: alert-skip-escape-hatch)."""
+    await _seed_two_member_group(sequence_session, [1, 2], is_validated=True)
+    seq2 = await sequence_session.get(Sequence, 2)
+    sequence_session.add(
+        AlertSkip(
+            source_api=seq2.source_api,
+            platform_alert_id=seq2.platform_alert_id,
+        )
+    )
+    await sequence_session.commit()
+
+    trigger = _annotation_payload(stage="seq_annotation_done", smoke_type="wildfire")
+    trigger["sequence_id"] = 1
+    resp = await authenticated_client.post("/annotations/sequences/", json=trigger)
+    assert resp.status_code == 201
+
+    # Seq 2 must not have an annotation propagated onto it.
+    other = await authenticated_client.get("/annotations/sequences/?sequence_id=2")
+    assert other.json()["total"] == 0
 
 
 @pytest.mark.asyncio
