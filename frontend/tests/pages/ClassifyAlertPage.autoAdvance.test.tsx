@@ -217,11 +217,21 @@ describe('ClassifyAlertPage auto-advance', () => {
     );
 
     // The destination alert's object must be active with its own seeded data —
-    // not a skeleton, and not the previous alert's sequence.
-    await waitFor(() => {
-      expect(screen.queryByTestId('media-panel-skeleton')).not.toBeInTheDocument();
-    });
-    expect(screen.getByTestId('full-image-sequence').getAttribute('data-sequence-id')).toBe('301');
-    expect(screen.getByTestId('full-image-sequence').getAttribute('data-bbox-count')).not.toBe('0');
+    // not a skeleton, and not the previous alert's sequence. Same generous
+    // timeout as the auto-advance wait above: this is the destination's own
+    // queries resolving, which loaded CI runners serve slowly (seen flaking
+    // at the 1s default).
+    await waitFor(
+      () => {
+        expect(screen.queryByTestId('media-panel-skeleton')).not.toBeInTheDocument();
+        expect(screen.getByTestId('full-image-sequence').getAttribute('data-sequence-id')).toBe(
+          '301'
+        );
+        expect(screen.getByTestId('full-image-sequence').getAttribute('data-bbox-count')).not.toBe(
+          '0'
+        );
+      },
+      { timeout: 5000 }
+    );
   }, 15000);
 });
