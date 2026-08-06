@@ -1,5 +1,5 @@
 /**
- * Two concerns, both about the rail row.
+ * Three concerns, all about the rail row.
  *
  * Selection treatment: the row's frame styling used to branch on `!workable`
  * FIRST, so a non-workable row (a false positive, or an already-localized
@@ -7,30 +7,44 @@
  * column but the row itself gave no feedback and stayed dimmed while it was
  * the thing being looked at.
  *
- * Actions: `Accept boxes` is covered through the page; `Reclassify` is
- * covered here — which rows get it, and that it doesn't double as a row
- * activation.
+ * Metadata: the header is a read-only summary — progress count and status
+ * chip, selected or not. The actions (Accept boxes / Reclassify) live in the
+ * Frames panel's CTA bar, covered through the page.
  *
- * Action visibility: the actions live behind selection, and they take the
- * right-hand metadata's place rather than adding a line — so the rail reads
- * as one column of quiet rows plus whichever one you're working on.
+ * Inline timeline: the standalone Timeline card folded into the row — a
+ * per-frame segment bar under the header, one segment per ALERT frame (the
+ * shared axis every row receives), each its own button reporting and
+ * navigating to that frame.
  */
 
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { LocalizeObjectRow } from '@/components/localize';
 import { getObjectColor } from '@/utils/annotation/objectColors';
+import type { ObjectFrameStatus } from '@/utils/annotation/alertLocalizeUtils';
+
+const T1 = '2026-01-01T00:00:00Z';
+const T2 = '2026-01-01T00:01:00Z';
+const T3 = '2026-01-01T00:02:00Z';
 
 const baseProps = {
   label: 'Object 2',
   color: getObjectColor(1),
   confirmedCount: 0,
   presentCount: 3,
+  frameTimestamps: [T1, T2, T3],
+  // T3 deliberately missing from the map -> renders as absent.
+  statusByTimestamp: { [T1]: 'confirmed', [T2]: 'pending' } as Record<
+    string,
+    ObjectFrameStatus
+  >,
+  onFrameClick: () => {},
   isActive: false,
   onActivate: () => {},
 };
 
 const row = () => screen.getByTestId('localize-object-row-object-2');
+const header = () => screen.getByRole('button', { name: 'Object 2' });
 
 describe('LocalizeObjectRow selection treatment', () => {
   it('leaves an unselected false-positive row dimmed and unaccented', () => {
@@ -71,139 +85,157 @@ describe('LocalizeObjectRow selection treatment', () => {
   });
 });
 
-// Selected by default: the actions only exist on the selected row, so a
-// suite about the actions has to start there.
-function renderRow(overrides: Partial<React.ComponentProps<typeof LocalizeObjectRow>> = {}) {
-  const onActivate = vi.fn();
-  const onReclassify = vi.fn();
-  render(
-    <LocalizeObjectRow
-      label="Object 1"
-      color="#E4572E"
-      confirmedCount={0}
-      presentCount={2}
-      workable
-      smokeType="wildfire"
-      isActive
-      onActivate={onActivate}
-      onReclassify={onReclassify}
-      {...overrides}
-    />
-  );
-  return { onActivate, onReclassify };
-}
+describe('LocalizeObjectRow metadata', () => {
+  it('activates from its header, a real button named for the object', () => {
+    // The card itself is a container now — it holds the segment buttons, and
+    // nesting interactive controls is invalid HTML. The header carries the
+    // activation; being a NATIVE button, Enter/Space activation and
+    // focusability come from the browser rather than hand-rolled handlers.
+    // The page's Tab cycle focuses this button via the forwarded ref.
+    const onActivate = vi.fn();
+    render(<LocalizeObjectRow {...baseProps} workable onActivate={onActivate} />);
 
-describe('LocalizeObjectRow reclassify action', () => {
-  it('renders Reclassify alongside Accept boxes on a workable row', () => {
-    renderRow({ onAcceptBoxes: vi.fn() });
+    const headerEl = header();
+    expect(headerEl.tagName).toBe('BUTTON');
+    // …and the card stays a plain container: reintroducing role="button" on
+    // it would nest the header and segment buttons inside an interactive
+    // control again.
+    expect(row().tagName).toBe('DIV');
+    expect(row()).not.toHaveAttribute('role');
 
-    expect(screen.getByRole('button', { name: 'Reclassify Object 1' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: "Accept Object 1's boxes" })).toBeInTheDocument();
+    fireEvent.click(headerEl);
+    expect(onActivate).toHaveBeenCalledTimes(1);
   });
 
-  it('calls onReclassify without also activating the row', () => {
-    const { onActivate, onReclassify } = renderRow({ onAcceptBoxes: vi.fn() });
+  it('keeps the progress count and status chip when selected', () => {
+    // The selected row used to swap these for the Accept/Reclassify pair;
+    // those live only in the Frames panel now, so selection changes the
+    // row's accent and nothing else.
+    render(<LocalizeObjectRow {...baseProps} workable isActive />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Reclassify Object 1' }));
+    // Exactly the header + one segment per alert frame — no action buttons.
+    expect(within(row()).getAllByRole('button')).toHaveLength(
+      1 + baseProps.frameTimestamps.length
+    );
+    expect(screen.getByText('0/3')).toBeInTheDocument();
+    expect(screen.getByText('3 left')).toBeInTheDocument();
+  });
 
-    expect(onReclassify).toHaveBeenCalledTimes(1);
+  it('shows the status chip without a progress fraction on a false-positive row', () => {
+    // A false positive has no localization work, so a fraction over its
+    // frames would be meaningless.
+    render(
+      <LocalizeObjectRow
+        {...baseProps}
+        workable={false}
+        isFalsePositive
+        falsePositiveTypes={['cloud']}
+        isActive
+      />
+    );
+
+    expect(screen.getByText('False positive')).toBeInTheDocument();
+    expect(screen.queryByText('0/3')).not.toBeInTheDocument();
+  });
+});
+
+describe('LocalizeObjectRow inline timeline', () => {
+  it('renders one segment per alert frame: confirmed solid, pending faded, unmapped absent', () => {
+    render(<LocalizeObjectRow {...baseProps} workable />);
+
+    const color = baseProps.color;
+    const confirmed = screen.getByTestId('frame-segment-object-2-0');
+    expect(confirmed).toHaveStyle({ backgroundColor: color });
+    expect(confirmed).not.toHaveClass('opacity-40');
+
+    const pending = screen.getByTestId('frame-segment-object-2-1');
+    expect(pending).toHaveStyle({ backgroundColor: color });
+    expect(pending).toHaveClass('opacity-40');
+
+    // T3 has no entry in statusByTimestamp -> neutral track, no inline fill.
+    const absent = screen.getByTestId('frame-segment-object-2-2');
+    expect(absent).not.toHaveAttribute('style');
+  });
+
+  it('renders empty distinctly from pending: outlined in the object color, never filled', () => {
+    // empty = on the frame but nothing on it yet. Collapsing it into pending
+    // painted a just-added object's whole timeline as if already full.
+    render(
+      <LocalizeObjectRow
+        {...baseProps}
+        workable
+        statusByTimestamp={{ [T1]: 'empty' } as Record<string, ObjectFrameStatus>}
+      />
+    );
+
+    const empty = screen.getByTestId('frame-segment-object-2-0');
+    expect(empty).toHaveStyle({ boxShadow: `inset 0 0 0 1px ${baseProps.color}` });
+    expect(empty).not.toHaveStyle({ backgroundColor: baseProps.color });
+  });
+
+  it('renders cleared as a hatch in the object color: settled, but nothing on the frame', () => {
+    render(
+      <LocalizeObjectRow
+        {...baseProps}
+        workable
+        statusByTimestamp={{ [T1]: 'cleared' } as Record<string, ObjectFrameStatus>}
+      />
+    );
+
+    const cleared = screen.getByTestId('frame-segment-object-2-0');
+    expect(cleared.style.backgroundImage).toContain('repeating-linear-gradient');
+    expect(cleared.style.backgroundImage).toContain(baseProps.color);
+    expect(cleared).not.toHaveStyle({ backgroundColor: baseProps.color });
+    expect(cleared).toHaveAttribute('aria-label', 'Object 2, frame 1: cleared');
+  });
+
+  it('reports a segment click with its timestamp, without also activating via the header', () => {
+    const onFrameClick = vi.fn();
+    const onActivate = vi.fn();
+    render(
+      <LocalizeObjectRow
+        {...baseProps}
+        workable
+        onFrameClick={onFrameClick}
+        onActivate={onActivate}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('frame-segment-object-2-1'));
+
+    expect(onFrameClick).toHaveBeenCalledWith(T2);
+    // The page's segment handler owns activation (it needs the timestamp to
+    // ride in the same navigation); a bubbled onActivate would toggle focus
+    // a second time and undo it.
     expect(onActivate).not.toHaveBeenCalled();
   });
 
-  it('renders Reclassify on an already-localized row, which has no Accept boxes', () => {
-    renderRow({ workable: false, onAcceptBoxes: undefined });
+  it('names each segment for assistive tech with its frame number and status', () => {
+    render(<LocalizeObjectRow {...baseProps} workable />);
 
-    expect(screen.getByRole('button', { name: 'Reclassify Object 1' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Accept/ })).not.toBeInTheDocument();
+    expect(screen.getByTestId('frame-segment-object-2-0')).toHaveAttribute(
+      'aria-label',
+      'Object 2, frame 1: confirmed'
+    );
+    expect(screen.getByTestId('frame-segment-object-2-2')).toHaveAttribute(
+      'aria-label',
+      'Object 2, frame 3: absent'
+    );
   });
 
-});
-
-describe('LocalizeObjectRow action visibility', () => {
-  it('is selectable from the keyboard, since selection now gates the actions', () => {
-    // Without this the row is a mouse-only affordance in front of the only
-    // copy of these buttons in the rail — the actions would be unreachable
-    // by keyboard entirely.
-    const { onActivate } = renderRow({ isActive: false, onAcceptBoxes: vi.fn() });
-    const row = screen.getByTestId('localize-object-row-object-1');
-
-    expect(row).toHaveAttribute('tabindex', '0');
-
-    fireEvent.keyDown(row, { key: 'Enter' });
-    expect(onActivate).toHaveBeenCalledTimes(1);
-
-    fireEvent.keyDown(row, { key: ' ' });
-    expect(onActivate).toHaveBeenCalledTimes(2);
-  });
-
-  it('withholds both actions until the row is selected', () => {
-    renderRow({ isActive: false, onAcceptBoxes: vi.fn() });
-
-    expect(screen.queryByRole('button', { name: /Accept/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Reclassify/ })).not.toBeInTheDocument();
-    // What an unselected row says instead: how far along it is.
-    expect(screen.getByText('0/2')).toBeInTheDocument();
-    expect(screen.getByText('2 left')).toBeInTheDocument();
-  });
-
-  it('reveals them in the metadata’s place once selected', () => {
-    renderRow({ onAcceptBoxes: vi.fn() });
-
-    expect(screen.getByRole('button', { name: "Accept Object 1's boxes" })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Reclassify Object 1' })).toBeInTheDocument();
-    // The count and status chip step aside rather than sharing the line —
-    // the rail is too narrow to carry both.
-    expect(screen.queryByText('0/2')).not.toBeInTheDocument();
-    expect(screen.queryByText('2 left')).not.toBeInTheDocument();
-  });
-
-  it('swaps a context row’s Localized chip for its one action when selected', () => {
-    // The rule is the same past localization: the chip is what the row says
-    // at rest, Reclassify is what it offers when you turn to it.
-    const { rerender } = render(
+  it('keeps the strip on a false-positive context row', () => {
+    // Parity with the old Timeline card, which included FP rows so the
+    // "is that plume already accounted for?" question stays answerable.
+    render(
       <LocalizeObjectRow
-        label="Object 1"
-        color="#E4572E"
-        confirmedCount={2}
-        presentCount={2}
+        {...baseProps}
         workable={false}
-        isActive={false}
-        onActivate={() => {}}
-        onReclassify={() => {}}
+        isFalsePositive
+        falsePositiveTypes={['cloud']}
       />
     );
-    expect(screen.getByText('Localized')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Reclassify/ })).not.toBeInTheDocument();
 
-    rerender(
-      <LocalizeObjectRow
-        label="Object 1"
-        color="#E4572E"
-        confirmedCount={2}
-        presentCount={2}
-        workable={false}
-        isActive
-        onActivate={() => {}}
-        onReclassify={() => {}}
-      />
-    );
-    expect(screen.getByRole('button', { name: 'Reclassify Object 1' })).toBeInTheDocument();
-    expect(screen.queryByText('Localized')).not.toBeInTheDocument();
-  });
-
-  it('keeps the status chip on a selected row that has no actions to show', () => {
-    // A false positive gets neither action, so there is nothing to swap in —
-    // blanking its right side would lose the only thing it says.
-    renderRow({
-      isActive: true,
-      isFalsePositive: true,
-      workable: false,
-      smokeType: undefined,
-      falsePositiveTypes: ['cloud'],
-      onAcceptBoxes: undefined,
-      onReclassify: undefined,
-    });
-
-    expect(screen.getByText('False positive')).toBeInTheDocument();
+    expect(screen.getByTestId('object-timeline-object-2')).toBeInTheDocument();
+    expect(screen.getByTestId('frame-segment-object-2-0')).toBeInTheDocument();
   });
 });

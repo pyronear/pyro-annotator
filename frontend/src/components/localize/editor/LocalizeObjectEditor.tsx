@@ -19,7 +19,7 @@
  * "Amendments from use" section).
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { X, Keyboard, Crop } from 'lucide-react';
 import type {
@@ -32,6 +32,7 @@ import {
   boxCandidates,
   candidateToBbox,
   committedBox,
+  hasModelEvidence,
   priorityPick,
   type BoxCandidate,
 } from '@/utils/annotation/objectBoxCandidates';
@@ -50,6 +51,16 @@ import {
   type Point,
   type ResizeHandle,
 } from '@/utils/annotation';
+import {
+  FADE_MS,
+  prefersReducedMotion,
+  zoomKeyframes,
+  ZOOM_CLOSE_EASING,
+  ZOOM_CLOSE_MS,
+  ZOOM_OPEN_EASING,
+  ZOOM_OPEN_MS,
+  type RectLike,
+} from '@/utils/annotation/zoomTransitionUtils';
 import type { ObjectOverlayItem } from '@/components/annotation/ImageOverlays';
 import { DetectionAnnotationCanvas } from '@/components/detection-annotation';
 import { useDetectionImage } from '@/hooks/useDetectionImage';
@@ -69,6 +80,9 @@ import { ObjectFilmstrip } from './ObjectFilmstrip';
  * answered by the surroundings, not by the box.
  */
 const OBJECT_FRAMING = { targetFill: 0.32, maxScale: 3 };
+
+/** What the idle stage draws; `G` cycles it. A rail hover overrides it. */
+type BoxVisibility = 'pick' | 'all' | 'none';
 
 export interface LocalizeObjectEditorProps {
   /** The object being edited. */
@@ -95,6 +109,18 @@ export interface LocalizeObjectEditorProps {
   /** Navigate to another of THIS lane's detections; drives the URL. */
   onNavigateToDetection: (detectionId: number) => void;
   /**
+   * Draw on a gap frame (issue #287): materialize a Detection in this lane at
+   * recordedAt, then commit the drawn box to it. The page owns the two-call
+   * flow and the navigation to the new detection.
+   */
+  onCommitGapFrame: (recordedAt: string, items: DetectionAnnotationBbox[]) => void;
+  /**
+   * Remove a model-evidence-free frame from the lane entirely (issue #287's
+   * un-materialize) — Delete, for a frame whose only reason to exist is a
+   * human's box.
+   */
+  onUnmaterialize: (detection: Detection) => void;
+  /**
    * Commit the winning model box on every frame of this object that has
    * none. Never overwrites a frame the annotator already decided.
    */
@@ -102,6 +128,18 @@ export interface LocalizeObjectEditorProps {
   /** Hand this object's classification back to the classify cockpit. */
   onReclassify: () => void;
   onClose: () => void;
+  /**
+   * Consume-once viewport rect of the grid cell the opening click came
+   * from. Absent or null — deep link, back/forward — means the editor
+   * appears without an entrance animation.
+   */
+  takeOpenOriginRect?: () => RectLike | null;
+  /**
+   * Viewport rect of the grid cell showing `recordedAt`, scrolled into
+   * view by the caller first. Close shrinks the editor into it; null
+   * falls back to a plain fade.
+   */
+  frameCellRect?: (recordedAt: string) => RectLike | null;
 }
 
 export function LocalizeObjectEditor({
@@ -118,13 +156,72 @@ export function LocalizeObjectEditor({
   isSaving,
   isAccepting,
   onCommit,
+  onCommitGapFrame,
+  onUnmaterialize,
   onNavigateToDetection,
   onAcceptRemaining,
   onReclassify,
   onClose,
+  takeOpenOriginRect,
+  frameCellRect,
 }: LocalizeObjectEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
+
+  // Grow out of the clicked grid cell — on mount only: stepping frames
+  // re-renders this same instance and must not re-animate. No captured rect
+  // (deep link, back/forward) or no WAAPI (jsdom) means no animation, and
+  // reduced motion gets a plain fade. Layout effect: the first paint must
+  // already be the shrunk pose, not a full-screen flash.
+  const rootRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    const rect = takeOpenOriginRect?.() ?? null;
+    if (!root || !rect || typeof root.animate !== 'function') return;
+    if (prefersReducedMotion()) {
+      root.animate([{ opacity: 0 }, { opacity: 1 }], { duration: FADE_MS, easing: 'linear' });
+      return;
+    }
+    // Input is off for the grow: getImageInfo's containerOffset is the
+    // visual rect, so pointer maths run mid-animation would mix transformed
+    // and layout space. Restored on finish — unless a close already began,
+    // whose own pointer-events lockout must not be undone.
+    root.style.pointerEvents = 'none';
+    root.style.transformOrigin = '0 0';
+    // The root's own layout size, not window.innerWidth: a classic
+    // scrollbar makes the viewport wider than the laid-out root.
+    const { atCell, full } = zoomKeyframes(rect, {
+      width: root.offsetWidth,
+      height: root.offsetHeight,
+    });
+    const animation = root.animate([atCell, full], {
+      duration: ZOOM_OPEN_MS,
+      easing: ZOOM_OPEN_EASING,
+    });
+    const restore = () => {
+      if (!isClosingRef.current) root.style.pointerEvents = '';
+    };
+    animation.addEventListener('finish', restore);
+    animation.addEventListener('cancel', restore);
+    // Mount-only by design; the origin rect is consumed exactly once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // The exit animation runs on the document timeline and survives this
+  // component's removal — after a browser back during the shrink, its finish
+  // listener would navigate AGAIN from the still-mounted page. The unmount
+  // cleanup detaches that path (and cancelling also releases the forwards
+  // fill). The flag is re-armed in the effect body so StrictMode's dev
+  // mount-cleanup-remount cycle doesn't leave it stuck false.
+  const mountedRef = useRef(true);
+  const exitAnimationRef = useRef<Animation | null>(null);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      exitAnimationRef.current?.cancel();
+    };
+  }, []);
 
   const [imageInfo, setImageInfo] = useState<{
     width: number;
@@ -147,8 +244,11 @@ export function LocalizeObjectEditor({
   const [spaceHeld, setSpaceHeld] = useState(false);
   const spaceHeldRef = useRef(false);
 
-  // `G` overrides whatever the default rule below decides.
-  const [ghostsOverridden, setGhostsOverridden] = useState(false);
+  // `G` cycles what the idle stage draws: the default pick, every candidate
+  // at once, or nothing at all — the bare plume.
+  const [boxVisibility, setBoxVisibility] = useState<BoxVisibility>('pick');
+  // A rail row being hovered or focused: the stage shows only that candidate.
+  const [previewed, setPreviewed] = useState<BoxCandidate | null>(null);
   // The OTHER objects' boxes on this frame, off by default. On this screen
   // color means *source* (manual/auto/engine), and the object-identity
   // palette overlaps it closely enough that a blue dashed box would be
@@ -205,15 +305,27 @@ export function LocalizeObjectEditor({
   );
 
   /**
-   * The frame always draws at least the winner, and never more than it needs.
-   * With a box committed, that box alone speaks for the object and the losing
-   * candidates are noise — the rail's crops carry the comparison. With
-   * nothing committed there is no winner to draw, so the candidates ghost in
-   * to show what is on offer. `G` flips whichever state you are in.
+   * The stage draws one box, well. With a box committed, that box alone
+   * speaks for the object; with nothing committed the priority pick ghosts
+   * in — the box Enter would commit — and the rail's crops carry the
+   * comparison with the rest. `G` cycles to "all" (every candidate stacked,
+   * on demand) and "none" (the bare plume).
    */
-  const ghostsShownByDefault = committed === null;
-  const showGhosts = ghostsOverridden ? !ghostsShownByDefault : ghostsShownByDefault;
-  const ghosts = showGhosts ? losers : [];
+  // A preview never interrupts an interaction already underway on the canvas.
+  const activePreview = boxEdit || currentDrawing ? null : previewed;
+  const pick = priorityPick(candidates);
+  const stageCommitted = activePreview || boxVisibility === 'none' ? null : shownCommitted;
+  const ghosts = activePreview
+    ? [activePreview]
+    : boxVisibility === 'none'
+      ? []
+      : boxVisibility === 'all'
+        ? losers
+        : shownCommitted
+          ? []
+          : pick
+            ? [pick]
+            : [];
   committedRef.current = committed;
 
   const entries = useMemo(
@@ -221,32 +333,14 @@ export function LocalizeObjectEditor({
     [alertFrames, laneSequenceId, laneDetections, laneAnnotations]
   );
 
-  // --- Commit -------------------------------------------------------------
-
-  const commitCandidate = useCallback(
-    (candidate: BoxCandidate) => onCommit(detection, [candidateToBbox(candidate, smokeType)]),
-    [detection, smokeType, onCommit]
-  );
-
-  const commitDrawn = useCallback(
-    (xyxyn: [number, number, number, number]) =>
-      onCommit(detection, [candidateToBbox({ source: 'manual', index: 0, xyxyn }, smokeType)]),
-    [detection, smokeType, onCommit]
-  );
-
-  const clear = useCallback(() => onCommit(detection, []), [detection, onCommit]);
-
-  clearRef.current = clear;
-
-  // --- Navigation ---------------------------------------------------------
-
   /**
    * A frame outside this object's range, held locally. The route requires
    * `:detectionId` to belong to `:laneId`, and a gap frame has no detection
    * in this lane, so the URL cannot name it without weakening the guard that
    * makes an inconsistent editor link detectable at all. Peeking is therefore
    * component state; the URL keeps naming the last in-object frame. Drawing
-   * on one of these is issue #287.
+   * on one routes through `onCommitGapFrame`, which materializes the frame
+   * (issue #287).
    */
   const [peeked, setPeeked] = useState<FilmstripEntry | null>(null);
 
@@ -255,6 +349,42 @@ export function LocalizeObjectEditor({
   useEffect(() => setPeeked(null), [detection.id]);
 
   const editable = peeked === null;
+
+  // --- Commit -------------------------------------------------------------
+
+  // Every write also drops any live preview. A commit can disable the very
+  // row being hovered (Enter with one candidate), and a disabled button never
+  // fires mouseleave — without this the stage would keep a dashed read-only
+  // ghost where the freshly committed box should be.
+  const commitCandidate = useCallback(
+    (candidate: BoxCandidate) => {
+      setPreviewed(null);
+      onCommit(detection, [candidateToBbox(candidate, smokeType)]);
+    },
+    [detection, smokeType, onCommit]
+  );
+
+  const commitDrawn = useCallback(
+    (xyxyn: [number, number, number, number]) => {
+      setPreviewed(null);
+      const items = [candidateToBbox({ source: 'manual', index: 0, xyxyn }, smokeType)];
+      if (peeked) onCommitGapFrame(peeked.recordedAt, items);
+      else onCommit(detection, items);
+    },
+    [peeked, detection, smokeType, onCommit, onCommitGapFrame]
+  );
+
+  const clear = useCallback(() => {
+    setPreviewed(null);
+    // A frame with no model evidence exists only because a human boxed it;
+    // clearing removes the frame itself (issue #287's un-materialize).
+    if (hasModelEvidence(detection)) onCommit(detection, []);
+    else onUnmaterialize(detection);
+  }, [detection, onCommit, onUnmaterialize]);
+
+  clearRef.current = clear;
+
+  // --- Navigation ---------------------------------------------------------
 
   const currentEntryIndex = peeked
     ? entries.findIndex(en => en.recordedAt === peeked.recordedAt)
@@ -266,6 +396,11 @@ export function LocalizeObjectEditor({
         setPeeked(null);
         onNavigateToDetection(entry.detectionId);
       } else {
+        // Peeking disables the rail in place, so no mouseleave will ever
+        // release a preview — and detection.id doesn't change, so the
+        // frame-change reset won't either. Drop it here or it comes back
+        // stale on return.
+        setPreviewed(null);
         setPeeked(entry);
       }
     },
@@ -339,7 +474,8 @@ export function LocalizeObjectEditor({
     setCurrentDrawing(null);
     setBoxEdit(null);
     setBoxSelected(false);
-    setGhostsOverridden(false);
+    setBoxVisibility('pick');
+    setPreviewed(null);
     // `imageInfo` deliberately survives the change. Every frame of an alert
     // comes from one camera at one size and lands in the same box, so the
     // previous geometry stays correct; clearing it unmounted every overlay
@@ -402,12 +538,17 @@ export function LocalizeObjectEditor({
     transform: { zoomLevel: number; panOffset: Point; transformOrigin: Point };
   } | null => {
     if (!imgRef.current || !containerRef.current) return null;
-    const containerRect = containerRef.current.getBoundingClientRect();
+    const container = containerRef.current;
+    const containerRect = container.getBoundingClientRect();
     return {
       containerOffset: { x: containerRect.left, y: containerRect.top },
+      // LAYOUT metrics for the bounds — same trap as handleImageLoad: while
+      // the open/close animation scales the editor root, the rect is the
+      // transformed visual size, and overlays computed from it during that
+      // window keep the garbage geometry after the animation ends.
       imageBounds: calculateImageBounds({
-        containerWidth: containerRect.width,
-        containerHeight: containerRect.height,
+        containerWidth: container.offsetWidth,
+        containerHeight: container.offsetHeight,
         imageNaturalWidth: imgRef.current.naturalWidth,
         imageNaturalHeight: imgRef.current.naturalHeight,
       }),
@@ -491,7 +632,7 @@ export function LocalizeObjectEditor({
       return;
     }
 
-    if (e.button !== 0 || !editable) return;
+    if (e.button !== 0) return;
     const coords = screenToImageCoords(e.clientX, e.clientY);
     setCurrentDrawing({
       startX: coords.x,
@@ -562,7 +703,6 @@ export function LocalizeObjectEditor({
 
   const getCursorStyle = () => {
     if (spaceHeld) return isDragging ? 'grabbing' : 'grab';
-    if (!editable) return 'default';
     return 'crosshair';
   };
 
@@ -617,6 +757,53 @@ export function LocalizeObjectEditor({
     return () => container.removeEventListener('wheel', onWheel);
   }, []);
 
+  // Close = shrink back into the grid, then let onClose navigate (which
+  // unmounts this component). The guard makes a second close attempt a
+  // no-op and pointer-events blankets the editor against input during the
+  // exit. Without WAAPI (jsdom, old browsers) this is exactly onClose.
+  const isClosingRef = useRef(false);
+  const requestClose = useCallback(() => {
+    if (isClosingRef.current) return;
+    const root = rootRef.current;
+    if (!root || typeof root.animate !== 'function') {
+      onClose();
+      return;
+    }
+    isClosingRef.current = true;
+    root.style.pointerEvents = 'none';
+    const shownRecordedAt = peeked?.recordedAt ?? detection.recorded_at;
+    const target = prefersReducedMotion() ? null : (frameCellRect?.(shownRecordedAt) ?? null);
+    let animation: Animation;
+    if (target) {
+      root.style.transformOrigin = '0 0';
+      const { atCell, full } = zoomKeyframes(target, {
+        width: root.offsetWidth,
+        height: root.offsetHeight,
+      });
+      // fill: 'forwards' holds the end pose until React unmounts the node
+      // on navigation — without it the editor would snap back full-screen
+      // for a frame.
+      animation = root.animate([full, atCell], {
+        duration: ZOOM_CLOSE_MS,
+        easing: ZOOM_CLOSE_EASING,
+        fill: 'forwards',
+      });
+    } else {
+      animation = root.animate([{ opacity: 1 }, { opacity: 0 }], {
+        duration: FADE_MS,
+        easing: 'linear',
+        fill: 'forwards',
+      });
+    }
+    exitAnimationRef.current = animation;
+    // Guarded, not bare onClose: see the unmount cleanup above.
+    const done = () => {
+      if (mountedRef.current) onClose();
+    };
+    animation.addEventListener('finish', done);
+    animation.addEventListener('cancel', done);
+  }, [onClose, frameCellRect, peeked, detection]);
+
   // --- Keyboard -----------------------------------------------------------
 
   useEffect(() => {
@@ -638,20 +825,36 @@ export function LocalizeObjectEditor({
           step(1);
           break;
         case 'Enter':
-          acceptAndNext();
+          // The accept dialog owns Enter while it is open — its button says
+          // so — otherwise the frame-level accept would fire behind it. But
+          // a button focused inside the dialog keeps its own Enter: Tab to
+          // the close X must close, not accept out from under the focus.
+          if (acceptOpen) {
+            if (
+              e.target instanceof HTMLElement &&
+              e.target.closest('button') &&
+              e.target.closest('[role="dialog"]')
+            )
+              return;
+            if (!isAccepting) {
+              onAcceptRemaining();
+              setAcceptOpen(false);
+            }
+          } else {
+            acceptAndNext();
+          }
           break;
         case 'Delete':
         case 'Backspace':
-          // Removes whatever is committed, not only a hand-drawn box — the
-          // same action the Clear button performs, which for a model box is
-          // the review's "reject". A no-op on a frame with nothing committed
-          // or one outside the object's range.
+          // Removes whatever is committed, not only a hand-drawn box — for a
+          // model box this is the review's "reject". A no-op on a frame with
+          // nothing committed or one outside the object's range.
           if (!editable || !committedRef.current) return;
           clearRef.current();
           break;
         case 'g':
         case 'G':
-          setGhostsOverridden(v => !v);
+          setBoxVisibility(v => (v === 'pick' ? 'all' : v === 'all' ? 'none' : 'pick'));
           break;
         case 'o':
         case 'O':
@@ -679,7 +882,7 @@ export function LocalizeObjectEditor({
           } else if (boxSelected) {
             setBoxSelected(false);
           } else {
-            onClose();
+            requestClose();
           }
           break;
         default:
@@ -689,7 +892,18 @@ export function LocalizeObjectEditor({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [step, acceptAndNext, boxSelected, acceptOpen, shortcutsOpen, resetZoom, onClose, editable]);
+  }, [
+    step,
+    acceptAndNext,
+    boxSelected,
+    acceptOpen,
+    shortcutsOpen,
+    resetZoom,
+    requestClose,
+    editable,
+    isAccepting,
+    onAcceptRemaining,
+  ]);
 
   // --- Render -------------------------------------------------------------
 
@@ -728,7 +942,7 @@ export function LocalizeObjectEditor({
     : detection;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-ash">
+    <div ref={rootRef} className="fixed inset-0 z-50 flex flex-col bg-ash">
       {/* z-40 gives the bar its own stacking context above the media row, so
           the accept popover hanging out of it is not painted behind the
           canvas — whose own box layer sits at z-30 in the same context
@@ -779,6 +993,7 @@ export function LocalizeObjectEditor({
                   objectColor={objectColor}
                   sequenceId={laneSequenceId}
                   previewBoxes={previewBoxes}
+                  entries={entries}
                   acceptCount={acceptRemainingCount}
                   gapCount={gapCount}
                   isAccepting={isAccepting}
@@ -850,7 +1065,7 @@ export function LocalizeObjectEditor({
         <button
           type="button"
           data-testid="editor-close"
-          onClick={onClose}
+          onClick={requestClose}
           className="rounded-lg border border-line bg-paper p-1.5 text-char hover:bg-ash focus:outline-none focus:ring-2 focus:ring-char"
           aria-label="Close editor"
         >
@@ -859,12 +1074,12 @@ export function LocalizeObjectEditor({
       </div>
 
       <div className="flex min-h-0 flex-1">
-        <div className="flex min-w-0 flex-1 items-center justify-center overflow-hidden bg-ash p-3">
+        <div className="relative flex min-w-0 flex-1 items-center justify-center overflow-hidden bg-ash p-3">
           <DetectionAnnotationCanvas
             detection={shownDetection}
-            committed={editable ? shownCommitted : null}
+            committed={editable ? stageCommitted : null}
             ghosts={editable ? ghosts : []}
-            showGhosts={showGhosts}
+            showGhosts={editable && ghosts.length > 0}
             selected={editable && boxSelected}
             selectedSmokeType={smokeType}
             objectOverlays={showOtherObjects ? objectOverlays : []}
@@ -888,6 +1103,25 @@ export function LocalizeObjectEditor({
             normalizedToImage={normalizedToImage}
             overlaysVisible
           />
+
+          {/* Floated over the stage rather than stacked into the column, so
+              stepping between in-object and gap frames never resizes the
+              photo or shifts the filmstrip. Pine, not signal: this is the
+              Localize lane's own invitation to act, not an error. */}
+          {peeked && (
+            <div
+              data-testid="out-of-range-banner"
+              className="absolute inset-x-0 bottom-0 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 border-t border-line bg-pine-soft px-4 py-2"
+            >
+              <span className="whitespace-nowrap font-data text-eyebrow font-medium uppercase tracking-eyebrow text-pine">
+                Outside object range
+              </span>
+              <span className="font-body text-detail text-pine">
+                {objectLabel} was never detected on this frame. If you can see its smoke, draw a box
+                to add this frame to {objectLabel}.
+              </span>
+            </div>
+          )}
         </div>
 
         <BoxSourceRail
@@ -896,19 +1130,9 @@ export function LocalizeObjectEditor({
           imageUrl={editable ? (imageData?.url ?? null) : null}
           disabled={!editable}
           onCommit={commitCandidate}
-          onClear={clear}
+          onPreview={setPreviewed}
         />
       </div>
-
-      {peeked && (
-        <div
-          data-testid="out-of-range-banner"
-          className="flex-none border-t border-line bg-signal-soft px-4 py-2 font-body text-detail text-signal"
-        >
-          {objectLabel} was never detected on this frame, so there is nothing here to draw on. The
-          image comes from another object in the same alert.
-        </div>
-      )}
 
       <ObjectFilmstrip
         entries={entries}

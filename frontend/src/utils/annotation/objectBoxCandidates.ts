@@ -105,6 +105,17 @@ export function priorityPick(candidates: BoxCandidate[]): BoxCandidate | null {
   return null;
 }
 
+/** Whether any model layer put a box on this frame. A frame without model
+ *  evidence exists in its lane only because a human boxed it (a materialized
+ *  gap frame, or any frame of an added-object lane), so clearing it removes
+ *  the frame itself — issue #287's un-materialize. */
+export function hasModelEvidence(detection: Detection): boolean {
+  return (
+    (detection.algo_predictions?.predictions?.length ?? 0) > 0 ||
+    (detection.auto_predictions?.predictions?.length ?? 0) > 0
+  );
+}
+
 /** The single annotation item this candidate commits to. */
 export function candidateToBbox(
   candidate: BoxCandidate,

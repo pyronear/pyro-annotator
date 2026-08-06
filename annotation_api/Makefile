@@ -21,19 +21,15 @@ help:
 	@echo "  migrate-up           - Apply pending alembic revisions"
 	@echo ""
 	@echo "Other data commands:"
-	@echo "  export-dataset       - Export images + YOLO labels from remote API"
 	@echo "  import-alert-api     - (Admin) Import from alert API into annotation API"
 	@echo ""
 	@echo "Override variables inline, e.g.:"
-	@echo "  make export-dataset LIMIT=500"
+	@echo "  make import-alert-api DATE_FROM=2025-03-04 MAX_SEQUENCES=20"
 
 # ---------- Data workflow defaults (override via env or 'make VAR=value target') ----------
 REMOTE_API       ?= https://annotationapi.pyronear.org
 LOGLEVEL         ?= info
 MAX_WORKERS      ?= 4
-OUTPUT_DIR       ?= outputs/datasets
-LIMIT            ?= 1000
-TIMEOUT          ?= 120
 
 # this target runs checks on all files
 lint:
@@ -96,23 +92,6 @@ migrate-up:
 # itself via python-dotenv (Make does not parse .env, see note at top).
 # =========================================================================
 
-# --- Other data commands ---
-
-# Export images + YOLO labels from a remote API.
-# Usage: make export-dataset [OUTPUT_DIR=outputs/datasets] [LIMIT=1000] [CATEGORY=fp]
-# Requires MAIN_ANNOTATION_LOGIN / MAIN_ANNOTATION_PASSWORD in
-# annotation_api/.env (loaded by the script) or in your shell environment.
-# Authentication will fail with a clear HTTP 401 if creds are missing/wrong.
-export-dataset:
-	uv run python -m scripts.data_transfer.ingestion.alert_api.export_dataset \
-		--api-base $(REMOTE_API)/api/v1 \
-		--verify-ssl \
-		--output-dir $(OUTPUT_DIR) \
-		--limit $(LIMIT) \
-		--timeout $(TIMEOUT) \
-		--loglevel $(LOGLEVEL) \
-		$(if $(CATEGORY),--category $(CATEGORY),)
-
 # --- Admin: alert-api ingestion ---
 
 # Import sequences + detections from the alert API (a.k.a. "platform") into the
@@ -140,4 +119,4 @@ import-alert-api:
 
 .PHONY: help lint fix docker-build start stop clean test test-specific \
 	migrate migrate-up \
-	export-dataset import-alert-api
+	import-alert-api

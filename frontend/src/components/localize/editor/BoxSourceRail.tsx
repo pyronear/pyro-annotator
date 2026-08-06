@@ -10,7 +10,7 @@
  */
 
 import { useEffect, useRef } from 'react';
-import { Eraser, Check } from 'lucide-react';
+import { Check } from 'lucide-react';
 import type { BoxCandidate } from '@/utils/annotation/objectBoxCandidates';
 import { computeSquareCrop } from '@/utils/annotation/squareCropUtils';
 import { Tooltip } from '@/components/ui/Tooltip';
@@ -38,7 +38,12 @@ export interface BoxSourceRailProps {
   /** True on a frame outside the object's range: view only. */
   disabled: boolean;
   onCommit: (candidate: BoxCandidate) => void;
-  onClear: () => void;
+  /**
+   * Solo-preview this candidate on the stage (null to release). Fired on
+   * hover and keyboard focus; never for the committed or empty rows, whose
+   * preview would be a no-op.
+   */
+  onPreview: (candidate: BoxCandidate | null) => void;
 }
 
 /** The union of every candidate box — one region shared by all rows. */
@@ -115,14 +120,14 @@ export function BoxSourceRail({
   imageUrl,
   disabled,
   onCommit,
-  onClear,
+  onPreview,
 }: BoxSourceRailProps) {
   const region = unionBox(candidates);
 
   // No scroll box on the rail, on purpose: `overflow-y: auto` makes overflow-x
   // `auto` too, which clipped the row tooltips — they are wider than this rail
-  // and are meant to spill left over the image. The rail holds three rows and
-  // two buttons; it has nothing to scroll.
+  // and are meant to spill left over the image. The rail holds three rows; it
+  // has nothing to scroll.
   return (
     <div className="w-60 flex-none border-l border-line bg-paper p-4">
       <p className="mb-2.5 font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
@@ -136,6 +141,9 @@ export function BoxSourceRail({
         // row says how. There is no mode to arm any more, so it points at the
         // canvas rather than being a control of its own.
         const invitesDrawing = source === 'manual' && !candidate;
+        // Only rows that could change the stage preview: the committed row is
+        // already what's on stage, and disabled/empty rows have nothing to show.
+        const previewable = Boolean(!disabled && candidate && !isCommitted);
         return (
           <Tooltip key={source} tip={SOURCE_EXPLANATION[source]} className="mb-1.5 w-full">
             <button
@@ -143,7 +151,25 @@ export function BoxSourceRail({
               data-testid={`source-row-${source}`}
               aria-pressed={isCommitted}
               disabled={disabled || !candidate || isCommitted}
-              onClick={() => candidate && !isCommitted && onCommit(candidate)}
+              onMouseEnter={() => previewable && candidate && onPreview(candidate)}
+              // Releasing is idempotent, so leave/blur are unconditional — a
+              // row that stopped being previewable mid-hover must still let go.
+              onMouseLeave={() => onPreview(null)}
+              onFocus={() => previewable && candidate && onPreview(candidate)}
+              onBlur={() => onPreview(null)}
+              onKeyDown={e => {
+                // A focused row previews ITS candidate, so Enter must commit
+                // that row — the button's own native activation — rather than
+                // bubbling to the editor's global accept-the-priority-pick.
+                if (e.key === 'Enter') e.stopPropagation();
+              }}
+              onClick={() => {
+                if (!candidate || isCommitted) return;
+                // Committing disables this row in place, and a disabled button
+                // never fires mouseleave — release the preview now.
+                onPreview(null);
+                onCommit(candidate);
+              }}
               className={`flex w-full items-center gap-2.5 rounded-lg border p-2 text-left transition-colors ${
                 isCommitted ? 'border-pine bg-pine-soft' : 'border-transparent'
               } ${candidate && !isCommitted ? 'hover:bg-ash' : ''} ${
@@ -176,21 +202,8 @@ export function BoxSourceRail({
         );
       })}
 
-      {/* No Draw button: the canvas has no modes, so there is nothing to arm.
-          Clear stays, because removing a box is not something a drag can
-          express. */}
-      <div className="mt-3 flex gap-2">
-        <button
-          type="button"
-          data-testid="editor-clear"
-          disabled={disabled || !committed}
-          onClick={onClear}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-paper px-3 py-2 font-body text-sm font-medium text-char hover:bg-ash focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:opacity-40"
-        >
-          <Eraser className="h-3.5 w-3.5" /> Clear
-        </button>
-      </div>
-
+      {/* No buttons: the canvas has no modes, so there is nothing to arm, and
+          removing a box is Delete's job (see the shortcuts sheet). */}
       <p className="mt-3 font-body text-detail leading-relaxed text-haze">
         Drag on the image to draw. It replaces the box on this frame — each object carries one box
         per frame.

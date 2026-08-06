@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LocalizeObjectEditor } from '@/components/localize/editor/LocalizeObjectEditor';
@@ -32,6 +32,7 @@ const alertFrames: AlertFrame[] = TIMES.map(recordedAt => ({
       laneSequenceId: SIBLING,
       detectionId: 99000 + Number(recordedAt.slice(1)),
       cellState: 'auto' as const,
+      color: '#166A5D',
       boxes: [],
     },
     ...(OBJECT_TIMES.includes(recordedAt)
@@ -40,6 +41,7 @@ const alertFrames: AlertFrame[] = TIMES.map(recordedAt => ({
             laneSequenceId: LANE,
             detectionId: 27000 + Number(recordedAt.slice(1)),
             cellState: 'auto' as const,
+            color: '#166A5D',
             boxes: [],
           },
         ]
@@ -92,6 +94,8 @@ const baseProps = (): Props => ({
   isSaving: false,
   isAccepting: false,
   onCommit: vi.fn(),
+  onCommitGapFrame: vi.fn(),
+  onUnmaterialize: vi.fn(),
   onAcceptRemaining: vi.fn(),
   onReclassify: vi.fn(),
   onNavigateToDetection: vi.fn(),
@@ -138,16 +142,6 @@ describe('LocalizeObjectEditor', () => {
         },
       ]
     );
-  });
-
-  it('commits nothing when Clear is pressed', () => {
-    const onCommit = vi.fn();
-    renderEditor({
-      onCommit,
-      existingAnnotation: committedAnnotation(firstDetection.id, 'auto'),
-    });
-    fireEvent.click(screen.getByTestId('editor-clear'));
-    expect(onCommit).toHaveBeenCalledWith(expect.objectContaining({ id: firstDetection.id }), []);
   });
 
   it('Enter commits the priority pick and advances', () => {
@@ -205,17 +199,156 @@ describe('LocalizeObjectEditor', () => {
     expect(screen.queryByTestId('ghost-box-auto-0')).not.toBeInTheDocument();
   });
 
-  it('shows the candidates as ghosts when nothing is committed, and G hides them', () => {
+  it('ghosts only the priority pick when nothing is committed', () => {
     renderLoadedEditor();
 
-    // Nothing committed means no winner to draw, so the frame would otherwise
-    // be blank — the candidates ghost in to show what is on offer.
+    // The idle stage answers "is the box Enter would commit right?" — the
+    // rail's crops carry the auto-vs-engine comparison, so the losing
+    // candidate stacking onto the same plume is noise.
     expect(screen.queryByTestId('committed-box')).not.toBeInTheDocument();
+    expect(screen.getByTestId('ghost-box-auto-0')).toBeInTheDocument();
+    expect(screen.queryByTestId('ghost-box-engine-0')).not.toBeInTheDocument();
+  });
+
+  it('G cycles the stage through pick, every candidate, none, and back', () => {
+    renderLoadedEditor();
+
+    fireEvent.keyDown(window, { key: 'g' });
     expect(screen.getByTestId('ghost-box-auto-0')).toBeInTheDocument();
     expect(screen.getByTestId('ghost-box-engine-0')).toBeInTheDocument();
 
     fireEvent.keyDown(window, { key: 'g' });
     expect(screen.queryByTestId('ghost-box-auto-0')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('ghost-box-engine-0')).not.toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: 'g' });
+    expect(screen.getByTestId('ghost-box-auto-0')).toBeInTheDocument();
+    expect(screen.queryByTestId('ghost-box-engine-0')).not.toBeInTheDocument();
+  });
+
+  it('the none state hides the committed box too, for a bare view of the plume', () => {
+    renderLoadedEditor({ existingAnnotation: committedAnnotation(firstDetection.id, 'auto') });
+
+    fireEvent.keyDown(window, { key: 'g' }); // all
+    fireEvent.keyDown(window, { key: 'g' }); // none
+    expect(screen.queryByTestId('committed-box')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('ghost-box-engine-0')).not.toBeInTheDocument();
+  });
+
+  it('the G cycle resets to the default on frame change', () => {
+    const { rerender } = renderLoadedEditor();
+    fireEvent.keyDown(window, { key: 'g' }); // all
+    fireEvent.keyDown(window, { key: 'g' }); // none
+
+    rerender(editorWith({ detection: lastDetection }));
+    fireEvent.load(screen.getByAltText(/^Detection /));
+    expect(screen.getByTestId('ghost-box-auto-0')).toBeInTheDocument();
+    expect(screen.queryByTestId('ghost-box-engine-0')).not.toBeInTheDocument();
+  });
+
+  it('hovering a rail row solos that candidate over the committed box', () => {
+    renderLoadedEditor({ existingAnnotation: committedAnnotation(firstDetection.id, 'auto') });
+    expect(screen.getByTestId('committed-box')).toBeInTheDocument();
+
+    fireEvent.mouseOver(screen.getByTestId('source-row-engine'));
+    expect(screen.getByTestId('ghost-box-engine-0')).toBeInTheDocument();
+    expect(screen.queryByTestId('committed-box')).not.toBeInTheDocument();
+
+    fireEvent.mouseOut(screen.getByTestId('source-row-engine'));
+    expect(screen.getByTestId('committed-box')).toBeInTheDocument();
+    expect(screen.queryByTestId('ghost-box-engine-0')).not.toBeInTheDocument();
+  });
+
+  it('hover preview solos the candidate on an undecided frame too', () => {
+    renderLoadedEditor();
+    expect(screen.getByTestId('ghost-box-auto-0')).toBeInTheDocument();
+
+    fireEvent.mouseOver(screen.getByTestId('source-row-engine'));
+    expect(screen.getByTestId('ghost-box-engine-0')).toBeInTheDocument();
+    expect(screen.queryByTestId('ghost-box-auto-0')).not.toBeInTheDocument();
+  });
+
+  it('a hover preview overrides the none state and releases back to it', () => {
+    renderLoadedEditor();
+    fireEvent.keyDown(window, { key: 'g' }); // all
+    fireEvent.keyDown(window, { key: 'g' }); // none
+
+    fireEvent.mouseOver(screen.getByTestId('source-row-engine'));
+    expect(screen.getByTestId('ghost-box-engine-0')).toBeInTheDocument();
+
+    fireEvent.mouseOut(screen.getByTestId('source-row-engine'));
+    expect(screen.queryByTestId('ghost-box-engine-0')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('ghost-box-auto-0')).not.toBeInTheDocument();
+  });
+
+  it('clears a live preview when the frame changes under it', () => {
+    const { rerender } = renderLoadedEditor();
+    fireEvent.mouseOver(screen.getByTestId('source-row-engine'));
+    expect(screen.getByTestId('ghost-box-engine-0')).toBeInTheDocument();
+
+    rerender(editorWith({ detection: lastDetection }));
+    fireEvent.load(screen.getByAltText(/^Detection /));
+    expect(screen.queryByTestId('ghost-box-engine-0')).not.toBeInTheDocument();
+    expect(screen.getByTestId('ghost-box-auto-0')).toBeInTheDocument();
+  });
+
+  it('releases the preview when the hovered row wins a commit', () => {
+    // Engine is the only candidate, so Enter commits the very row being
+    // hovered — which disables it in place, and a disabled button never
+    // fires mouseleave. The commit itself must release the preview, or the
+    // stage keeps a dashed read-only ghost where the solid committed box
+    // should be. The open detection never changes here (navigation is the
+    // URL's job, mocked away), so no frame-change reset runs either.
+    const engineOnly = {
+      ...firstDetection,
+      auto_predictions: { predictions: [] },
+    } as unknown as Detection;
+    const { rerender } = renderLoadedEditor({
+      detection: engineOnly,
+      laneDetections: [engineOnly, lastDetection],
+    });
+
+    fireEvent.mouseOver(screen.getByTestId('source-row-engine'));
+    fireEvent.keyDown(window, { key: 'Enter' });
+
+    // The save round-trip lands the commit.
+    rerender(
+      editorWith({
+        detection: engineOnly,
+        laneDetections: [engineOnly, lastDetection],
+        existingAnnotation: committedAnnotation(engineOnly.id, 'engine'),
+      })
+    );
+    fireEvent.load(screen.getByAltText(/^Detection /));
+    expect(screen.getByTestId('committed-box')).toBeInTheDocument();
+    expect(screen.queryByTestId('ghost-box-engine-0')).not.toBeInTheDocument();
+  });
+
+  it('drops the preview when peeking out of range, so it is not stale on return', () => {
+    renderLoadedEditor();
+    fireEvent.mouseOver(screen.getByTestId('source-row-engine'));
+    expect(screen.getByTestId('ghost-box-engine-0')).toBeInTheDocument();
+
+    // Peek disables the rail in place — no mouseleave will ever fire — and
+    // does not change detection.id, so the frame-change reset never runs.
+    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+    expect(screen.queryByTestId('ghost-box-engine-0')).not.toBeInTheDocument();
+    expect(screen.getByTestId('ghost-box-auto-0')).toBeInTheDocument();
+  });
+
+  it('leaves Enter to a focused rail row, so it commits what it previews', () => {
+    const onCommit = vi.fn();
+    renderLoadedEditor({ onCommit });
+    const row = screen.getByTestId('source-row-engine');
+    row.focus();
+
+    // Enter pressed ON the row must not reach the global accept-and-next —
+    // the row's focus preview shows engine, and the button's own native
+    // activation is what commits it. (jsdom doesn't run native activation,
+    // so the observable here is the suppressed global commit.)
+    fireEvent.keyDown(row, { key: 'Enter' });
+    expect(onCommit).not.toHaveBeenCalled();
   });
 
   it('Escape closes', () => {
@@ -252,38 +385,46 @@ describe('LocalizeObjectEditor', () => {
   });
 });
 
+/**
+ * jsdom lays nothing out, so every rect is zero and the editor's coordinate
+ * maths collapses to a single point. These give the image a plausible
+ * geometry so a drag produces a real box; the numbers are arbitrary but
+ * consistent (an 800x450 element showing a 1600x900 frame).
+ */
+const stubGeometry = () => {
+  const image = screen.getByAltText(/^Detection /) as HTMLImageElement;
+  const container = image.parentElement as HTMLElement;
+  container.getBoundingClientRect = () =>
+    ({ left: 0, top: 0, right: 800, bottom: 450, width: 800, height: 450, x: 0, y: 0 }) as DOMRect;
+  // Layout metrics match the rect: the container is not mid-animation here,
+  // and the bounds maths reads these rather than the rect.
+  for (const [prop, value] of [
+    ['offsetWidth', 800],
+    ['offsetHeight', 450],
+  ] as const) {
+    Object.defineProperty(container, prop, { value, configurable: true });
+  }
+  for (const [prop, value] of [
+    ['naturalWidth', 1600],
+    ['naturalHeight', 900],
+    ['offsetWidth', 800],
+    ['offsetHeight', 450],
+  ] as const) {
+    Object.defineProperty(image, prop, { value, configurable: true });
+  }
+  // Full frame, so the drag maths is not also exercising the zoom transform.
+  fireEvent.keyDown(window, { key: 'r' });
+  return image;
+};
+
+const drag = (from: [number, number], to: [number, number], init: object = {}) => {
+  const image = stubGeometry();
+  fireEvent.mouseDown(image, { button: 0, clientX: from[0], clientY: from[1], ...init });
+  fireEvent.mouseMove(image, { clientX: to[0], clientY: to[1] });
+  fireEvent.mouseUp(image);
+};
+
 describe('LocalizeObjectEditor canvas', () => {
-  /**
-   * jsdom lays nothing out, so every rect is zero and the editor's coordinate
-   * maths collapses to a single point. These give the image a plausible
-   * geometry so a drag produces a real box; the numbers are arbitrary but
-   * consistent (an 800x450 element showing a 1600x900 frame).
-   */
-  const stubGeometry = () => {
-    const image = screen.getByAltText(/^Detection /) as HTMLImageElement;
-    const container = image.parentElement as HTMLElement;
-    container.getBoundingClientRect = () =>
-      ({ left: 0, top: 0, right: 800, bottom: 450, width: 800, height: 450, x: 0, y: 0 }) as DOMRect;
-    for (const [prop, value] of [
-      ['naturalWidth', 1600],
-      ['naturalHeight', 900],
-      ['offsetWidth', 800],
-      ['offsetHeight', 450],
-    ] as const) {
-      Object.defineProperty(image, prop, { value, configurable: true });
-    }
-    // Full frame, so the drag maths is not also exercising the zoom transform.
-    fireEvent.keyDown(window, { key: 'r' });
-    return image;
-  };
-
-  const drag = (from: [number, number], to: [number, number], init: object = {}) => {
-    const image = stubGeometry();
-    fireEvent.mouseDown(image, { button: 0, clientX: from[0], clientY: from[1], ...init });
-    fireEvent.mouseMove(image, { clientX: to[0], clientY: to[1] });
-    fireEvent.mouseUp(image);
-  };
-
   it('draws on a plain drag, with nothing to arm first', () => {
     const onCommit = vi.fn();
     renderLoadedEditor({ onCommit });
@@ -292,6 +433,21 @@ describe('LocalizeObjectEditor canvas', () => {
       expect.objectContaining({ id: firstDetection.id }),
       [expect.objectContaining({ origin: 'human' })]
     );
+  });
+
+  it('suspends a preview while a box is being drawn', () => {
+    renderLoadedEditor();
+    fireEvent.focus(screen.getByTestId('source-row-engine'));
+    expect(screen.getByTestId('ghost-box-engine-0')).toBeInTheDocument();
+
+    // Mid-drag the preview yields: the stage is about the box being drawn,
+    // with the idle pick ghost back as its reference.
+    const image = stubGeometry();
+    fireEvent.mouseDown(image, { button: 0, clientX: 40, clientY: 40 });
+    fireEvent.mouseMove(image, { clientX: 400, clientY: 300 });
+    expect(screen.queryByTestId('ghost-box-engine-0')).not.toBeInTheDocument();
+    expect(screen.getByTestId('ghost-box-auto-0')).toBeInTheDocument();
+    fireEvent.mouseUp(image);
   });
 
   it('treats a press that never moved as a click, not a box', () => {
@@ -542,6 +698,35 @@ describe('LocalizeObjectEditor accept remaining', () => {
     expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
   });
 
+  it('leaves Enter to a focused control inside the dialog instead of accepting', () => {
+    const onAcceptRemaining = vi.fn();
+    renderEditor({ onAcceptRemaining });
+    fireEvent.click(screen.getByTestId('editor-accept-remaining'));
+
+    // Tab put focus on the close X — Enter must activate IT (natively), not
+    // fire the accept out from under it.
+    const close = screen.getByTestId('accept-remaining-close');
+    close.focus();
+    fireEvent.keyDown(close, { key: 'Enter' });
+
+    expect(onAcceptRemaining).not.toHaveBeenCalled();
+    expect(screen.getByTestId('accept-remaining-popover')).toBeInTheDocument();
+  });
+
+  it('Enter confirms while the dialog is open, not the frame-level accept', () => {
+    const onAcceptRemaining = vi.fn();
+    const onCommit = vi.fn();
+    renderEditor({ onAcceptRemaining, onCommit });
+    fireEvent.click(screen.getByTestId('editor-accept-remaining'));
+
+    fireEvent.keyDown(window, { key: 'Enter' });
+
+    expect(onAcceptRemaining).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
+    // The dialog owned that Enter — the frame's own accept must not fire.
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
   it('warns about frames no model found smoke on, without blocking', () => {
     // One frame has candidates, the other has none at all.
     renderEditor({
@@ -748,7 +933,6 @@ describe('LocalizeObjectEditor out-of-range frames', () => {
     renderEditor();
     fireEvent.keyDown(window, { key: 'ArrowLeft' });
     expect(screen.getByTestId('source-row-auto')).toBeDisabled();
-    expect(screen.getByTestId('editor-clear')).toBeDisabled();
   });
 
   it('Enter does nothing on an out-of-range frame', () => {
@@ -794,15 +978,37 @@ describe('LocalizeObjectEditor out-of-range frames', () => {
     expect(screen.getByTestId('out-of-range-banner')).toBeInTheDocument();
   });
 
-  it('refuses to draw while peeking, so no box lands on the wrong frame', () => {
+  it('drawing while peeking routes to onCommitGapFrame with the peeked timestamp', () => {
     const onCommit = vi.fn();
-    renderLoadedEditor({ onCommit });
-    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+    const onCommitGapFrame = vi.fn();
+    renderLoadedEditor({ onCommit, onCommitGapFrame });
+    fireEvent.keyDown(window, { key: 'ArrowLeft' }); // t003 -> t002, a gap frame
+    drag([40, 40], [400, 300]);
+    expect(onCommitGapFrame).toHaveBeenCalledWith('t002', [
+      expect.objectContaining({ origin: 'human', smoke_type: 'wildfire' }),
+    ]);
+    expect(onCommit).not.toHaveBeenCalled();
+  });
 
-    const image = screen.getByAltText(/^Detection /);
-    fireEvent.mouseDown(image, { button: 0, clientX: 10, clientY: 10 });
-    fireEvent.mouseMove(image, { clientX: 90, clientY: 90 });
-    fireEvent.mouseUp(image);
+  it('invites drawing on a gap frame instead of forbidding it', () => {
+    renderEditor();
+    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+    expect(screen.getByTestId('out-of-range-banner')).toHaveTextContent(/draw a box/i);
+  });
+
+  it('Delete un-materializes an evidence-free frame with a committed box', () => {
+    const onCommit = vi.fn();
+    const onUnmaterialize = vi.fn();
+    renderLoadedEditor({
+      detection: detectionWithNoBoxes,
+      existingAnnotation: committedAnnotation(detectionWithNoBoxes.id, 'human'),
+      onCommit,
+      onUnmaterialize,
+    });
+    fireEvent.keyDown(window, { key: 'Delete' });
+    expect(onUnmaterialize).toHaveBeenCalledWith(
+      expect.objectContaining({ id: detectionWithNoBoxes.id })
+    );
     expect(onCommit).not.toHaveBeenCalled();
   });
 
@@ -814,5 +1020,145 @@ describe('LocalizeObjectEditor out-of-range frames', () => {
     // t003 -> t002 -> t001, then nothing left before it.
     expect(screen.getByTestId('out-of-range-banner')).toBeInTheDocument();
     expect(screen.getByTestId('filmstrip-cell-99001')).toHaveAttribute('aria-current', 'true');
+  });
+});
+
+describe('open/close transition', () => {
+  /** WAAPI stub: records calls, lets the test fire the finish listener. */
+  const makeAnimateMock = () => {
+    const listeners: Record<string, () => void> = {};
+    const cancel = vi.fn();
+    const animate = vi.fn().mockReturnValue({
+      addEventListener: (type: string, cb: () => void) => {
+        listeners[type] = cb;
+      },
+      cancel,
+    });
+    return { animate, cancel, finish: () => listeners.finish?.() };
+  };
+
+  afterEach(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delete (Element.prototype as any).animate;
+    vi.restoreAllMocks();
+  });
+
+  it('grows from the captured origin rect on mount', () => {
+    const { animate } = makeAnimateMock();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (Element.prototype as any).animate = animate;
+    renderEditor({
+      takeOpenOriginRect: () => ({ left: 10, top: 20, width: 100, height: 50 }),
+    });
+    expect(animate).toHaveBeenCalledTimes(1);
+    const [keyframes] = animate.mock.calls[0];
+    expect(keyframes[0].transform).toContain('translate(10px, 20px)');
+    expect(keyframes[1].transform).toBe('none');
+  });
+
+  it('does not animate the entrance without a captured origin rect', () => {
+    const { animate } = makeAnimateMock();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (Element.prototype as any).animate = animate;
+    renderEditor({ takeOpenOriginRect: () => null });
+    expect(animate).not.toHaveBeenCalled();
+  });
+
+  it('shrinks into the current frame cell and calls onClose only after the animation finishes', () => {
+    const { animate, finish } = makeAnimateMock();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (Element.prototype as any).animate = animate;
+    const onClose = vi.fn();
+    const frameCellRect = vi.fn(() => ({ left: 5, top: 6, width: 100, height: 60 }));
+    renderEditor({ onClose, frameCellRect });
+    fireEvent.click(screen.getByTestId('editor-close'));
+    expect(frameCellRect).toHaveBeenCalledWith(firstDetection.recorded_at);
+    expect(onClose).not.toHaveBeenCalled();
+    const closeCall = animate.mock.calls[animate.mock.calls.length - 1];
+    expect(closeCall[0][1].transform).toContain('translate(5px, 6px)');
+    finish();
+    expect(onClose).toHaveBeenCalledTimes(1);
+    // A second close attempt during/after the exit is a no-op.
+    fireEvent.click(screen.getByTestId('editor-close'));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('a late exit-animation finish after unmount does not navigate again', () => {
+    const { animate, cancel, finish } = makeAnimateMock();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (Element.prototype as any).animate = animate;
+    const onClose = vi.fn();
+    const { unmount } = renderEditor({
+      onClose,
+      frameCellRect: () => ({ left: 5, top: 6, width: 100, height: 60 }),
+    });
+    fireEvent.click(screen.getByTestId('editor-close'));
+    // Browser back during the shrink: the route unmounts the editor while
+    // the WAAPI animation (document timeline) is still running.
+    unmount();
+    expect(cancel).toHaveBeenCalled();
+    finish();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('falls back to a fade on close when no target cell rect is available', () => {
+    const { animate, finish } = makeAnimateMock();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (Element.prototype as any).animate = animate;
+    const onClose = vi.fn();
+    renderEditor({ onClose, frameCellRect: () => null });
+    fireEvent.click(screen.getByTestId('editor-close'));
+    const closeCall = animate.mock.calls[animate.mock.calls.length - 1];
+    expect(closeCall[0][0]).toEqual({ opacity: 1 });
+    expect(closeCall[0][1]).toEqual({ opacity: 0 });
+    finish();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes immediately when element.animate is unavailable', () => {
+    const onClose = vi.fn();
+    renderEditor({ onClose, frameCellRect: () => ({ left: 0, top: 0, width: 1, height: 1 }) });
+    fireEvent.click(screen.getByTestId('editor-close'));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('positions overlays from layout metrics, not the animation-scaled rect', () => {
+    renderEditor();
+    const img = screen.getByAltText(/^Detection /) as HTMLImageElement;
+    const container = img.parentElement as HTMLDivElement;
+    Object.defineProperties(img, {
+      naturalWidth: { value: 1280 },
+      naturalHeight: { value: 720 },
+      offsetWidth: { value: 1000 },
+      offsetHeight: { value: 562 },
+      offsetLeft: { value: 0 },
+      offsetTop: { value: 19 },
+    });
+    Object.defineProperties(container, {
+      offsetWidth: { value: 1000 },
+      offsetHeight: { value: 600 },
+    });
+    // Mid-entrance-animation: the visual rect is the layout scaled to ~16%.
+    // Overlay geometry must come from the layout metrics regardless.
+    container.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 160, height: 96 }) as DOMRect;
+    fireEvent.load(img);
+    // bounds fit 1280x720 into 1000x600 -> width 1000; ghost x1=0.2 -> 200px.
+    expect(screen.getByTestId('ghost-box-auto-0').style.left).toBe('200px');
+  });
+
+  it('uses an opacity-only fade under prefers-reduced-motion', () => {
+    const { animate } = makeAnimateMock();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (Element.prototype as any).animate = animate;
+    vi.spyOn(window, 'matchMedia').mockReturnValue({
+      matches: true,
+    } as unknown as MediaQueryList);
+    renderEditor({
+      takeOpenOriginRect: () => ({ left: 10, top: 20, width: 100, height: 50 }),
+    });
+    const [keyframes] = animate.mock.calls[0];
+    expect(keyframes[0]).toEqual({ opacity: 0 });
+    expect(keyframes[1]).toEqual({ opacity: 1 });
   });
 });

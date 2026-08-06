@@ -72,6 +72,7 @@ export function LocalizeDoneQueueTable({ items, onItemClick }: LocalizeDoneQueue
               tip="Model outcome — TP correct, FP false alarm, ⚑ FN missed smoke, ? unsure — dominant across the alert's objects; +N counts the others"
               align="right"
             />
+            <ColumnHeader label="Annotators" tip="Who classified or localized this alert" />
           </tr>
         </thead>
         <tbody className={TBODY_CLASSES}>
@@ -102,6 +103,13 @@ export function LocalizeDoneQueueTable({ items, onItemClick }: LocalizeDoneQueue
                 <td className={CELL_CLASSES}>
                   {rollup && (
                     <OutcomeCode outcome={rollup.outcome} extraCount={rollup.extraCount} />
+                  )}
+                </td>
+                <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>
+                  {item.annotators.length > 0 ? (
+                    item.annotators.join(', ')
+                  ) : (
+                    <span className="text-haze">—</span>
                   )}
                 </td>
               </tr>

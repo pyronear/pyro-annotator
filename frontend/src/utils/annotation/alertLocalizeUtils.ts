@@ -7,8 +7,8 @@
  *    chronologically ordered, each carrying one cell per lane present on
  *    that frame (its cell state and the boxes it would display there) —
  *    feeds `AlertFrameGrid`.
- *  - `objectStatus`: one row per contributing lane, in `ObjectStatusStrip`
- *    shape — feeds the page's status strip(s).
+ *  - `objectStatus`: one row per contributing lane — identity plus
+ *    per-frame statuses — feeds the rail's rows and their timeline strips.
  *
  * A lane "contributes" (renders at all, in either the grid or the strip)
  * only when it has an annotation AND `laneNeedsLocalization` is true,
@@ -42,10 +42,6 @@ import { laneNeedsLocalization } from './localizeUtils';
 import { getObjectColor } from './objectColors';
 import { sequenceSmokeType } from './reviewUtils';
 import { parseFalsePositiveTypes } from '@/utils/modelAccuracy';
-import type {
-  ObjectStatusStripObject,
-  ObjectStatusStripStatus,
-} from '@/components/sequence-annotation/ObjectStatusStrip';
 
 export interface AlertFrameBox {
   xyxyn: [number, number, number, number];
@@ -57,6 +53,8 @@ export interface AlertFrameCell {
   laneSequenceId: number;
   detectionId: number;
   cellState: CellState;
+  /** The lane's object color — tints markers that don't ride on a box (the cleared chip). */
+  color: string;
   boxes: AlertFrameBox[];
   /** Read-only false-positive context (opt-in) — visible, never openable in the editor. */
   isFalsePositive?: boolean;
@@ -67,8 +65,44 @@ export interface AlertFrame {
   cells: AlertFrameCell[];
 }
 
-/** `ObjectStatusStripObject` plus the bits `LocalizeAlertPage` needs to route clicks and split rows by workability. */
-export interface AlertObjectStatus extends ObjectStatusStripObject {
+/**
+ * One object's state on one alert frame, as its rail-row strip renders it:
+ * `confirmed` (committed box), `cleared` (committed with no smoke box — the
+ * annotator recorded "object not visible here", e.g. the editor's Clear on
+ * an evidence-bearing frame), `pending` (model box waiting to be accepted),
+ * `empty` (on the frame with nothing on it yet), `absent` (not on this frame).
+ */
+export type ObjectFrameStatus = 'confirmed' | 'cleared' | 'pending' | 'empty' | 'absent';
+
+/** Statuses the rail's shared legend can name — every encoding except the neutral track. */
+export type TimelineLegendStatus = Exclude<ObjectFrameStatus, 'absent'>;
+
+const LEGEND_STATUS_ORDER: TimelineLegendStatus[] = ['confirmed', 'cleared', 'pending', 'empty'];
+
+/**
+ * The union of statuses present across the rail's rows, in the legend's
+ * display order. `absent` is the track showing through rather than an
+ * encoding, so it is never returned — the legend must not explain the
+ * background, and must not name a state no row on screen is in.
+ */
+export function timelineLegendStatuses(
+  statusMaps: Record<string, ObjectFrameStatus>[]
+): TimelineLegendStatus[] {
+  const present = new Set<ObjectFrameStatus>();
+  for (const map of statusMaps) {
+    for (const status of Object.values(map)) present.add(status);
+  }
+  return LEGEND_STATUS_ORDER.filter(status => present.has(status));
+}
+
+/** One rail row: the object's identity, its per-frame statuses, and the bits `LocalizeAlertPage` needs to route clicks and split rows by workability. */
+export interface AlertObjectStatus {
+  /** e.g. "Object 2" — same numbering as the object's rail row and grid overlays. */
+  label: string;
+  /** Stable per-object color (hex) — matches the row's dot, segment fills, and box color. */
+  color: string;
+  /** This object's status per frame timestamp (ISO string); frames absent from the map render as `absent`. */
+  statusByTimestamp: Record<string, ObjectFrameStatus>;
   laneSequenceId: number;
   /** True when the lane is still open for localization (`seq_annotation_done`); false for already-annotated context lanes. */
   workable: boolean;
@@ -130,7 +164,7 @@ export function buildAlertFrameModel(
       (annotationsByLaneId[laneSequenceId] ?? []).map(a => [a.detection_id, a])
     );
 
-    const statusByTimestamp: Record<string, ObjectStatusStripStatus> = {};
+    const statusByTimestamp: Record<string, ObjectFrameStatus> = {};
 
     for (const detection of detections) {
       const annotation = annotationByDetectionId.get(detection.id);
@@ -164,7 +198,12 @@ export function buildAlertFrameModel(
           ? 'confirmed'
           : 'empty'
         : cellState === 'done'
-          ? 'confirmed'
+          ? rawBoxes.length > 0
+            ? 'confirmed'
+            : // Committed with no smoke box: the annotator's "object not
+              // visible here". Settled like confirmed, but the grid has
+              // nothing to draw — the strip must say which kind of settled.
+              'cleared'
           : cellState === 'auto'
             ? 'pending'
             : 'empty';
@@ -182,6 +221,7 @@ export function buildAlertFrameModel(
         laneSequenceId,
         detectionId: detection.id,
         cellState,
+        color,
         boxes,
         isFalsePositive: falsePositive || undefined,
       });
@@ -209,6 +249,24 @@ export function buildAlertFrameModel(
     }));
 
   return { frames, objectStatus };
+}
+
+/**
+ * One object's localization progress over the frames it appears on, as the
+ * rail row's fraction and the page's Done checks consume it. `cleared`
+ * counts as settled alongside `confirmed` — a cleared frame is a recorded
+ * answer ("object not visible here"), not outstanding work — so splitting
+ * the status out of `confirmed` doesn't reopen settled lanes. `absent`
+ * counts toward neither total: an object isn't behind on a frame it never
+ * appeared on.
+ */
+export function objectLocalizeProgress(statusByTimestamp: Record<string, ObjectFrameStatus>): {
+  presentCount: number;
+  confirmedCount: number;
+} {
+  const present = Object.values(statusByTimestamp).filter(status => status !== 'absent');
+  const settled = present.filter(status => status === 'confirmed' || status === 'cleared');
+  return { presentCount: present.length, confirmedCount: settled.length };
 }
 
 /**

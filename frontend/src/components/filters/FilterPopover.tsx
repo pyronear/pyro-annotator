@@ -1,7 +1,7 @@
 import { clsx } from 'clsx';
 import { Popover } from '@headlessui/react';
 import { ChevronDown, SlidersHorizontal, X } from 'lucide-react';
-import { ExtendedSequenceFilters } from '@/types/api';
+import { Contributor, ExtendedSequenceFilters } from '@/types/api';
 import { ModelAccuracyType } from '@/utils/modelAccuracy';
 import { usePersistedTabState } from '@/hooks/usePersistedTabState';
 import { buildFilterPills, FilterPillId } from '@/utils/filterPills';
@@ -54,15 +54,18 @@ interface FilterPopoverProps {
   cameras: Camera[];
   organizations: Organization[];
   sourceApis: SourceApi[];
+  annotators?: Contributor[];
   camerasLoading: boolean;
   organizationsLoading: boolean;
   sourceApisLoading: boolean;
+  annotatorsLoading?: boolean;
 
   // Configuration
   showModelAccuracy?: boolean; // for review pages only
   showFalsePositiveTypes?: boolean; // for review pages only
   showSmokeTypes?: boolean; // for review pages only
   showUnsureFilter?: boolean; // for sequence review page only
+  showAnnotatorFilter?: boolean; // for done pages only
 
   // Reset handler
   onResetFilters?: () => void;
@@ -90,13 +93,16 @@ export default function FilterPopover({
   cameras,
   organizations,
   sourceApis,
+  annotators = [],
   camerasLoading,
   organizationsLoading,
   sourceApisLoading,
+  annotatorsLoading = false,
   showModelAccuracy = false,
   showFalsePositiveTypes = false,
   showSmokeTypes = false,
   showUnsureFilter = false,
+  showAnnotatorFilter = false,
   onResetFilters,
   className = '',
 }: FilterPopoverProps) {
@@ -118,7 +124,9 @@ export default function FilterPopover({
     showFalsePositiveTypes,
     showSmokeTypes,
     showUnsureFilter,
+    showAnnotatorFilter,
     sourceApis,
+    annotators,
   });
 
   const clearPill = (id: FilterPillId) => {
@@ -128,6 +136,9 @@ export default function FilterPopover({
         break;
       case 'organization':
         onFiltersChange({ organisation_name: undefined });
+        break;
+      case 'annotator':
+        onFiltersChange({ annotator_id: undefined });
         break;
       case 'source':
         onFiltersChange({ source_api: undefined });
@@ -230,6 +241,35 @@ export default function FilterPopover({
                 ))}
               </select>
             </div>
+
+            {showAnnotatorFilter && (
+              <div>
+                <label
+                  htmlFor="filter-annotator"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Annotator
+                </label>
+                <select
+                  id="filter-annotator"
+                  value={filters.annotator_id ?? ''}
+                  onChange={e =>
+                    onFiltersChange({
+                      annotator_id: e.target.value === '' ? undefined : Number(e.target.value),
+                    })
+                  }
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
+                  disabled={annotatorsLoading}
+                >
+                  <option value="">All Annotators</option>
+                  {annotators.map(annotator => (
+                    <option key={annotator.id} value={annotator.id}>
+                      {annotator.username}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <DateRangeFilter
               label="Date Range (Recorded)"

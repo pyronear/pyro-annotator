@@ -10,6 +10,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.db import engine
 from app.models import (
+    AlertSkip,
     Detection,
     Sequence,
     SequenceAnnotation,
@@ -179,6 +180,27 @@ async def test_validated_group_never_gains_members(
     assert seq.sequence_group_id is not None
     assert seq.sequence_group_id != validated_group.id
 
+    anno = await _get_annotation(async_session, seq_id)
+    assert anno.processing_stage == SequenceAnnotationProcessingStage.READY_TO_ANNOTATE
+
+
+@pytest.mark.asyncio
+async def test_skipped_alert_sequence_excluded_from_assignment(
+    async_session: AsyncSession,
+):
+    """A sequence whose alert is skipped is left out of the assignment pass
+    entirely — no group join — so a parked alert's lane state never moves
+    (spec: alert-skip-escape-hatch). It stays unassigned and is picked up by
+    a later sweep once unskipped."""
+    seq_id = await _seed_labeled_group_and_sequence(async_session, sequences_bbox=[])
+    async_session.add(AlertSkip(source_api="pyronear_french", platform_alert_id=9001))
+    await async_session.commit()
+
+    result = await assign_ungrouped_sequences(async_session)
+    assert result.joined_existing == 0
+
+    seq = await async_session.get(Sequence, seq_id)
+    assert seq.sequence_group_id is None
     anno = await _get_annotation(async_session, seq_id)
     assert anno.processing_stage == SequenceAnnotationProcessingStage.READY_TO_ANNOTATE
 

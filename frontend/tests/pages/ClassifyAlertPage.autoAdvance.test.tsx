@@ -213,15 +213,28 @@ describe('ClassifyAlertPage auto-advance', () => {
       () => {
         expect(screen.getByTestId('object-card-301:0')).toBeInTheDocument();
       },
-      { timeout: 5000 }
+      { timeout: 10000 }
     );
 
     // The destination alert's object must be active with its own seeded data —
-    // not a skeleton, and not the previous alert's sequence.
-    await waitFor(() => {
-      expect(screen.queryByTestId('media-panel-skeleton')).not.toBeInTheDocument();
-    });
-    expect(screen.getByTestId('full-image-sequence').getAttribute('data-sequence-id')).toBe('301');
-    expect(screen.getByTestId('full-image-sequence').getAttribute('data-bbox-count')).not.toBe('0');
-  }, 15000);
+    // not a skeleton, and not the previous alert's sequence. Same generous
+    // timeout as the auto-advance wait above: this is the destination's own
+    // queries resolving, which loaded CI runners serve slowly. Every await
+    // here is a wall-clock race on CI — the chain itself is mock-instant,
+    // but the coverage run's thread pool can starve a worker for whole
+    // seconds (seen flaking at the 1s default, then again at 5s under
+    // coverage), hence the deliberately extravagant budgets.
+    await waitFor(
+      () => {
+        expect(screen.queryByTestId('media-panel-skeleton')).not.toBeInTheDocument();
+        expect(screen.getByTestId('full-image-sequence').getAttribute('data-sequence-id')).toBe(
+          '301'
+        );
+        expect(screen.getByTestId('full-image-sequence').getAttribute('data-bbox-count')).not.toBe(
+          '0'
+        );
+      },
+      { timeout: 10000 }
+    );
+  }, 30000);
 });

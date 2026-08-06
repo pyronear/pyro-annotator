@@ -46,6 +46,17 @@ export default {
       borderRadius: {
         card: '10px',
       },
+      keyframes: {
+        'skip-glow': {
+          '0%, 100%': { boxShadow: '0 0 0 0 rgba(217, 88, 30, 0)' },
+          '50%': { boxShadow: '0 0 0 5px rgba(217, 88, 30, 0.30)' },
+        },
+      },
+      animation: {
+        // Halo pulse, not `animate-pulse`: opacity flashing would make the
+        // button's own label unreadable.
+        'skip-glow': 'skip-glow 2s ease-in-out infinite',
+      },
     },
   },
   plugins: [],

@@ -22,15 +22,17 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.db import engine
 from app.models import Detection, Sequence, SequenceAnnotation, SequenceGroup
+from app.services.alert_skip import alert_skip_exists_clause
 from app.services.annotation_generation import box_iou
 
 logger = logging.getLogger(__name__)
 
 # Cross-sequence grouping threshold. Stricter than within-sequence clustering
 # (IoU=0) because the precision cost of mis-grouping is much higher: a wrong
-# match auto-applies inherited labels to an unrelated event. R&D on 857
-# real sequences shows 0.3 captures natural smoke drift while filtering
-# accidental tiny overlaps; 0.5 was too strict in practice.
+# match funnels human group labels (propagation, bulk apply) onto an
+# unrelated event. R&D on 857 real sequences shows 0.3 captures natural
+# smoke drift while filtering accidental tiny overlaps; 0.5 was too strict
+# in practice.
 GROUP_IOU_THRESHOLD = 0.3
 
 # Fixed key for the Postgres advisory lock that serializes overlapping
@@ -139,6 +141,10 @@ async def _run_assignment(session: AsyncSession) -> AssignGroupsResult:
             select(SequenceAnnotation.id)
             .where(SequenceAnnotation.sequence_id == Sequence.id)
             .exists(),
+            # A parked alert's lane state never moves (spec:
+            # alert-skip-escape-hatch): leave its sequences unassigned so a
+            # later sweep picks them up unchanged once unskipped.
+            ~alert_skip_exists_clause(Sequence),
         )
         .order_by(Sequence.recorded_at)
     )

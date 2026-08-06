@@ -10,6 +10,7 @@ import { TABLE_CARD_CLASSES } from '@/components/sequences/tableStyles';
 import { useCameras } from '@/hooks/useCameras';
 import { useOrganizations } from '@/hooks/useOrganizations';
 import { useSourceApis } from '@/hooks/useSourceApis';
+import { useAnnotators } from '@/hooks/useAnnotators';
 import { usePersistedFilters, createDefaultFilterState } from '@/hooks/usePersistedFilters';
 import { calculatePresetDateRange } from '@/components/filters/shared/dateRangeUtils';
 import { hasActiveUserFilters } from '@/utils/filterHelpers';
@@ -50,6 +51,7 @@ export default function DetectionReviewPage() {
   const { data: cameras = [], isLoading: camerasLoading } = useCameras();
   const { data: organizations = [], isLoading: organizationsLoading } = useOrganizations();
   const { data: sourceApis = [], isLoading: sourceApisLoading } = useSourceApis();
+  const { data: annotators = [], isLoading: annotatorsLoading } = useAnnotators();
 
   // Date range helper functions
   const setDateRange = (preset: string) => {
@@ -99,6 +101,7 @@ export default function DetectionReviewPage() {
         source_api: filters.source_api,
         recorded_at_gte: filters.recorded_at_gte,
         recorded_at_lte: filters.recorded_at_lte,
+        annotator_id: filters.annotator_id,
       }),
   });
 
@@ -137,7 +140,7 @@ export default function DetectionReviewPage() {
     return (
       <div className="flex items-center justify-center min-h-96">
         <div className="text-center">
-          <p className="text-red-600 mb-2">Failed to load sequences</p>
+          <p className="text-red-600 mb-2">Failed to load alerts</p>
           <p className="text-gray-500 text-sm">{String(error)}</p>
         </div>
       </div>
@@ -166,10 +169,8 @@ export default function DetectionReviewPage() {
         {/* Header */}
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Detections</h1>
-            <p className="text-gray-600">
-              Browse localized smoke detections and review past annotations
-            </p>
+            <h1 className="text-2xl font-bold text-gray-900">Localized alerts</h1>
+            <p className="text-gray-600">Browse localized alerts and review past annotations</p>
           </div>
           <FilterPopover
             filters={filters}
@@ -190,9 +191,12 @@ export default function DetectionReviewPage() {
             cameras={cameras}
             organizations={organizations}
             sourceApis={sourceApis}
+            annotators={annotators}
             camerasLoading={camerasLoading}
             organizationsLoading={organizationsLoading}
             sourceApisLoading={sourceApisLoading}
+            annotatorsLoading={annotatorsLoading}
+            showAnnotatorFilter
           />
         </div>
 
@@ -256,10 +260,8 @@ export default function DetectionReviewPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Detections</h1>
-          <p className="text-gray-600">
-            Browse localized smoke detections and review past annotations
-          </p>
+          <h1 className="text-2xl font-bold text-gray-900">Localized alerts</h1>
+          <p className="text-gray-600">Browse localized alerts and review past annotations</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center space-x-2">
@@ -298,9 +300,12 @@ export default function DetectionReviewPage() {
             cameras={cameras}
             organizations={organizations}
             sourceApis={sourceApis}
+            annotators={annotators}
             camerasLoading={camerasLoading}
             organizationsLoading={organizationsLoading}
             sourceApisLoading={sourceApisLoading}
+            annotatorsLoading={annotatorsLoading}
+            showAnnotatorFilter
           />
         </div>
       </div>

@@ -4,6 +4,7 @@ import pytest
 from httpx import AsyncClient
 
 from app.models import (
+    AlertSkip,
     Sequence,
     SequenceAnnotation,
     SequenceAnnotationProcessingStage as Stage,
@@ -165,3 +166,81 @@ async def test_empty_queue(authenticated_client: AsyncClient, async_session):
     body = resp.json()
     assert body["items"] == []
     assert body["total"] == 0
+
+
+async def _skip(
+    session, platform_alert_id, note=None, source_api=SourceApi.PYRONEAR_FRENCH_API
+):
+    session.add(
+        AlertSkip(
+            source_api=source_api,
+            platform_alert_id=platform_alert_id,
+            note=note,
+        )
+    )
+    await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_skipped_alert_hidden_from_default_view(
+    authenticated_client: AsyncClient, async_session
+):
+    await _lane(
+        async_session,
+        alert_api_id=830,
+        platform_alert_id=830,
+        stage=Stage.READY_TO_ANNOTATE,
+    )
+    await _skip(async_session, 830)
+    resp = await authenticated_client.get("/sequences/classify-queue")
+    assert resp.status_code == 200
+    assert resp.json()["items"] == []
+    assert resp.json()["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_skipped_view_lists_only_skipped_with_metadata(
+    authenticated_client: AsyncClient, async_session
+):
+    await _lane(
+        async_session,
+        alert_api_id=831,
+        platform_alert_id=831,
+        stage=Stage.READY_TO_ANNOTATE,
+    )
+    await _lane(
+        async_session,
+        alert_api_id=832,
+        platform_alert_id=832,
+        stage=Stage.READY_TO_ANNOTATE,
+    )
+    await _skip(async_session, 831, note="overlapping plumes")
+    resp = await authenticated_client.get(
+        "/sequences/classify-queue", params={"skipped": "true"}
+    )
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert len(items) == 1
+    assert items[0]["platform_alert_id"] == 831
+    assert items[0]["skip"]["note"] == "overlapping plumes"
+    assert items[0]["skip"]["skipped_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_unskipped_alert_reappears(
+    authenticated_client: AsyncClient, async_session
+):
+    await _lane(
+        async_session,
+        alert_api_id=833,
+        platform_alert_id=833,
+        stage=Stage.READY_TO_ANNOTATE,
+    )
+    await _skip(async_session, 833)
+    resp = await authenticated_client.delete(
+        "/sequences/alert/skip",
+        params={"source_api": "pyronear_french", "platform_alert_id": 833},
+    )
+    assert resp.status_code == 204
+    resp = await authenticated_client.get("/sequences/classify-queue")
+    assert [i["platform_alert_id"] for i in resp.json()["items"]] == [833]

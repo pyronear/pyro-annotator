@@ -20,7 +20,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ChevronLeft, ChevronRight, Keyboard, Upload } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, Keyboard, Upload, X } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { QUERY_KEYS } from '@/utils/constants';
 import {
@@ -40,8 +40,11 @@ import {
 } from '@/utils/annotation/localizeUtils';
 import { createKeyboardHandler } from '@/utils/annotation/keyboardUtils';
 import { getObjectColor, ObjectOverlay } from '@/utils/annotation/objectColors';
+import type { ObjectFrameStatus } from '@/utils/annotation/alertLocalizeUtils';
 import { getProcessingStageLabel } from '@/utils/processingStage';
-import { CardClassification, ObjectPresenceStrip } from '@/components/sequence-annotation';
+import { CardClassification } from '@/components/sequence-annotation';
+import { TimelineLegend } from '@/components/annotation/TimelineLegend';
+import type { SeekRequest } from '@/components/annotation/FullImageSequence';
 import {
   ClassifyMediaPanel,
   ClassifyShortcutsModal,
@@ -49,6 +52,7 @@ import {
   ObjectRow,
 } from '@/components/classify';
 import { NotificationSystem } from '@/components/ui/NotificationSystem';
+import { Tooltip } from '@/components/ui/Tooltip';
 import { useToastNotifications } from '@/utils/notification/toastUtils';
 import { ROUTES, classifyDetail, classifyGroup, parseLocalizeReturn } from '@/utils/routes';
 import { formatDateTime } from '@/utils/datetime';
@@ -173,6 +177,8 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
   const [activeCardKey, setActiveCardKey] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<'detections' | 'sequence'>('detections');
   const [showKeyboardModal, setShowKeyboardModal] = useState(false);
+  const [skipConfirmOpen, setSkipConfirmOpen] = useState(false);
+  const [skipNote, setSkipNote] = useState('');
   const [groupConflictWarnings, setGroupConflictWarnings] = useState<
     { message: string; groupId: number | null }[]
   >([]);
@@ -180,6 +186,22 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const sequenceReviewerRef = useRef<HTMLDivElement | null>(null);
   const railSubmitRef = useRef<HTMLButtonElement | null>(null);
+
+  // Click-to-seek: the full-frame player's pending jump-and-hold, and the
+  // clicked segment's pulse. Both last the player's 2 s hold window so the
+  // two feedbacks end together.
+  const [seekRequest, setSeekRequest] = useState<SeekRequest | null>(null);
+  const [segmentHighlight, setSegmentHighlight] = useState<{
+    cardKey: string;
+    frameIndex: number;
+  } | null>(null);
+  const highlightTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
+    };
+  }, []);
 
   // Post-submit auto-advance bookkeeping: the deferred navigation must not
   // fire after unmount or an alert switch, and no re-submit may slip into
@@ -247,6 +269,10 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
     setHasMissedSmoke(false);
     setActiveCardKey(null);
     setGroupConflictWarnings([]);
+    // A pending seek/pulse belongs to the previous alert's frame list.
+    setSeekRequest(null);
+    setSegmentHighlight(null);
+    if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
     if (advanceTimerRef.current) clearTimeout(advanceTimerRef.current);
     advanceTimerRef.current = null;
     advancingRef.current = false;
@@ -524,32 +550,51 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
       }
     : null;
 
-  // Presence strip: temporal context + color legend, keyed off the same
-  // per-object color/label identity as the overlays above. Renders nothing
-  // itself for < 2 objects. Timestamps come from the object's *lane's*
-  // detections (every frame the lane was captured on), not from
-  // `boxesByRecordedAt` — a lane can have a detection on a frame with no
-  // track bbox there, and that frame should still show as "present", not a
-  // false gap.
-  const presenceStripObjects = cardOverlayData.map(o => ({
-    label: o.label,
-    color: o.color,
-    timestamps: (detectionsByLaneId[o.laneSequenceId] ?? []).map(d => d.recorded_at),
-  }));
+  // Row timelines: presence of each card's LANE on each union frame —
+  // deliberately lane-level (every frame the lane was captured on), not
+  // track-box-level: a lane can have a detection on a frame with no track
+  // bbox there, and that frame should still read "present", not a false
+  // gap. Presence maps onto the strip's `confirmed` (solid) encoding;
+  // union frames missing from a lane render `absent`.
+  const unionTimestamps = unionFrames.map(f => f.recorded_at);
+  const laneStatusByTimestamp: Record<number, Record<string, ObjectFrameStatus>> = {};
+  laneSequenceIds.forEach(laneSequenceId => {
+    const statuses: Record<string, ObjectFrameStatus> = {};
+    (detectionsByLaneId[laneSequenceId] ?? []).forEach(d => {
+      statuses[d.recorded_at] = 'confirmed';
+    });
+    laneStatusByTimestamp[laneSequenceId] = statuses;
+  });
 
-  // Presence strip rows are clickable: jump to that object's card. The strip
-  // only knows the clicked row's position in `presenceStripObjects`, which is
-  // built 1:1 (same order, same length) from `cardOverlayData` — so that
-  // index resolves straight back to the card's key. Scrolling waits a frame
-  // so it targets the just-updated (possibly newly mounted) active card.
-  const handlePresenceObjectClick = (objectIndex: number) => {
-    const cardKey = cardOverlayData[objectIndex]?.cardKey;
-    if (!cardKey) return;
+  // Legend for the strips, in classify's wording. `absent` is only named
+  // when some card actually misses a union frame.
+  const anyPresent = cards.some(c => (detectionsByLaneId[c.laneSequenceId] ?? []).length > 0);
+  const anyAbsent = cards.some(c => {
+    const statuses = laneStatusByTimestamp[c.laneSequenceId] ?? {};
+    return unionTimestamps.some(ts => !statuses[ts]);
+  });
+  const legendEntries = [
+    ...(anyPresent ? [{ status: 'confirmed' as const, label: 'Detected' }] : []),
+    ...(anyAbsent ? [{ status: 'absent' as const, label: 'Not on this frame' }] : []),
+  ];
+
+  // A segment click activates its card and asks the player to jump-and-hold
+  // on that frame. No scroll: the clicked row is already under the pointer
+  // (the old below-the-rail strip scrolled because its rows weren't the
+  // cards). Strip indexes and the player's frame list are the same union,
+  // so the index carries over as-is.
+  const handleSegmentClick = (cardKey: string) => (_timestamp: string, frameIndex: number) => {
     setActiveCardKey(cardKey);
     setActiveSection('detections');
-    requestAnimationFrame(() => {
-      cardRefs.current[cardKey]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    });
+    setSeekRequest(prev => ({ index: frameIndex, nonce: (prev?.nonce ?? 0) + 1 }));
+    setSegmentHighlight({ cardKey, frameIndex });
+    if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
+    highlightTimeoutRef.current = setTimeout(() => {
+      setSegmentHighlight(null);
+      // The hold window is over — an expired request must not replay when
+      // the full-frame player remounts (section toggle, alert switch).
+      setSeekRequest(null);
+    }, 2000);
   };
 
   const handleBboxChangeByCardKey = (cardKey: string, updatedBbox: SequenceBbox) => {
@@ -769,6 +814,14 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
       // server-side (#275); without this the localize page redraws the lane
       // against the cached ones and shows every frame as already confirmed.
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.DETECTION_ANNOTATIONS });
+      // Classifying a member of a validated group labels the group and fans
+      // out to its other members (#258). With the 5-minute global staleTime,
+      // walking back to the group page would otherwise show the pre-propagation
+      // state. Same keys SequenceGroupAnnotatePage invalidates after its own
+      // mutations.
+      queryClient.invalidateQueries({ queryKey: ['sequenceGroup'] });
+      queryClient.invalidateQueries({ queryKey: ['sequenceGroupsList'] });
+      queryClient.invalidateQueries({ queryKey: ['sequenceGroupStats'] });
 
       const warnings = response.results
         .filter(r => r.group_propagation_warning)
@@ -862,6 +915,47 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
       // the lanes' true current state rather than silently retrying with
       // stale data on the next attempt.
       queryClient.invalidateQueries({ queryKey: alertDetailQueryKey });
+    },
+  });
+
+  // Escape hatch (spec: alert-skip-escape-hatch): park the whole alert when
+  // the current UI cannot express it, then move on. Queue mode only.
+  const skipAlertMutation = useMutation({
+    mutationFn: () => {
+      if (!sequence) throw new Error('Alert not loaded');
+      return apiClient.skipAlert(
+        sequence.source_api,
+        sequence.platform_alert_id,
+        skipNote.trim() || undefined
+      );
+    },
+    onSuccess: async () => {
+      setSkipConfirmOpen(false);
+      setSkipNote('');
+      queryClient.invalidateQueries({ queryKey: ['classify-queue'] });
+      queryClient.invalidateQueries({ queryKey: ['classify-queue-skipped-count'] });
+      queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });
+      queryClient.invalidateQueries({ queryKey: alertDetailQueryKey });
+      showToastNotification('Alert skipped', 'success');
+      // Same continuous flow as the post-submit advance, but immediate: pull
+      // the next alert from the queue, else fall back to the list.
+      try {
+        const queue = await apiClient.getClassifyQueue({ page: 1, size: 2 });
+        const next = queue.items.find(item => item.primary_sequence_id !== sequenceId);
+        if (next) {
+          clearAnnotationWorkflow();
+          navigate(classifyDetail(next.primary_sequence_id, false));
+          return;
+        }
+      } catch {
+        // Queue lookup failed — fall through to the list.
+      }
+      clearAnnotationWorkflow();
+      navigate(backUrl);
+    },
+    onError: err => {
+      showToastNotification(`Skip failed: ${extractErrorMessage(err)}`, 'error');
     },
   });
 
@@ -1124,6 +1218,7 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
               missedSmokeDisabled={missedSmokeCarrierLaneId === undefined}
               annotationLoading={isLoading}
               objectOverlays={playerObjectOverlays}
+              seekRequest={seekRequest}
             />
           </div>
           <div className="lg:flex-1 lg:min-w-0 lg:sticky lg:top-12 lg:max-h-[calc(100vh-4rem)] lg:overflow-y-auto">
@@ -1134,6 +1229,14 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
               onMissedSmokeActivate={() => setActiveSection('sequence')}
               missedSmokeDisabled={missedSmokeCarrierLaneId === undefined}
               missedSmokeRowRef={sequenceReviewerRef}
+              legend={
+                // Gated here, not just inside TimelineLegend: the rail wraps
+                // a passed legend in a spacer div, which must not render for
+                // an empty legend.
+                legendEntries.length > 0 ? (
+                  <TimelineLegend testid="classify-timeline-legend" entries={legendEntries} />
+                ) : undefined
+              }
               headerAction={
                 <button
                   onClick={() => setShowKeyboardModal(true)}
@@ -1144,27 +1247,44 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
                 </button>
               }
               footer={
-                <button
-                  ref={railSubmitRef}
-                  onClick={handleSubmit}
-                  disabled={!canSubmit || submitMutation.isPending}
-                  data-testid="rail-submit"
-                  className="mx-auto flex items-center justify-center rounded-lg bg-pine px-5 py-2.5 font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                  title={submitTitle}
-                >
-                  {submitMutation.isPending ? (
-                    <div className="w-3.5 h-3.5 mr-1.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  ) : (
-                    <Upload className="w-3.5 h-3.5 mr-1.5" />
-                  )}
-                  {submitLabel}
-                  <kbd
-                    aria-hidden="true"
-                    className="ml-2 px-1 py-0.5 rounded bg-white/20 font-data text-[10px] font-medium text-white"
+                <div className="flex items-center gap-2">
+                  <button
+                    ref={railSubmitRef}
+                    onClick={handleSubmit}
+                    disabled={!canSubmit || submitMutation.isPending}
+                    data-testid="rail-submit"
+                    className="flex flex-1 items-center justify-center rounded-lg bg-pine px-5 py-2.5 font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title={submitTitle}
                   >
-                    Enter
-                  </kbd>
-                </button>
+                    {submitMutation.isPending ? (
+                      <div className="w-3.5 h-3.5 mr-1.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    ) : (
+                      <Upload className="w-3.5 h-3.5 mr-1.5" />
+                    )}
+                    {submitLabel}
+                    <kbd
+                      aria-hidden="true"
+                      className="ml-2 px-1 py-0.5 rounded bg-white/20 font-data text-[10px] font-medium text-white"
+                    >
+                      Enter
+                    </kbd>
+                  </button>
+                  {mode !== 'done' && (
+                    <Tooltip
+                      placement="above"
+                      tip="Hard to annotate with the current tools? Park this whole alert — it leaves the queues for everyone until someone unskips it from the Skipped view."
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setSkipConfirmOpen(true)}
+                        data-testid="skip-alert-button"
+                        className="inline-flex items-center rounded-lg border border-ember bg-paper px-3 py-2.5 font-body text-sm font-medium text-ember hover:bg-ember-soft"
+                      >
+                        Skip alert
+                      </button>
+                    </Tooltip>
+                  )}
+                </div>
               }
             >
               {renderItems.map((item, i) => {
@@ -1224,6 +1344,19 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
                       setActiveCardKey(key);
                       setActiveSection('detections');
                     }}
+                    timeline={
+                      unionTimestamps.length > 0
+                        ? {
+                            frameTimestamps: unionTimestamps,
+                            statusByTimestamp: laneStatusByTimestamp[card.laneSequenceId] ?? {},
+                            onFrameClick: handleSegmentClick(card.cardKey),
+                            highlightIndex:
+                              segmentHighlight?.cardKey === card.cardKey
+                                ? segmentHighlight.frameIndex
+                                : null,
+                          }
+                        : undefined
+                    }
                     onBboxChange={handleBboxChangeByCardKey}
                     onClassificationChange={handleClassificationChangeByCardKey}
                     onUnsureChange={card.locked ? undefined : handleUnsureChangeByCardKey}
@@ -1235,24 +1368,6 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
                 );
               })}
             </DecisionRail>
-
-            {/* Temporal context + color legend for the rail's objects
-                (the strip self-hides under 2 objects — the wrapper's margin
-                must go with it). Highlights the active object's row in sync
-                with the rail. */}
-            {presenceStripObjects.length >= 2 && (
-              <div className="mt-4">
-                <ObjectPresenceStrip
-                  objects={presenceStripObjects}
-                  onObjectClick={handlePresenceObjectClick}
-                  activeIndex={
-                    activeSection === 'detections' && activeCard
-                      ? cardOverlayData.findIndex(o => o.cardKey === activeCard.cardKey)
-                      : null
-                  }
-                />
-              </div>
-            )}
           </div>
         </div>
 
@@ -1266,6 +1381,53 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
 
         {showKeyboardModal && (
           <ClassifyShortcutsModal onClose={() => setShowKeyboardModal(false)} />
+        )}
+
+        {skipConfirmOpen && (
+          <div
+            data-testid="skip-alert-confirm"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-char/40 px-4"
+          >
+            <div className="w-full max-w-sm rounded-lg border border-line bg-paper p-5">
+              <div className="flex items-start justify-between">
+                <h2 className="font-body text-sm font-semibold text-char">Skip this alert?</h2>
+                <button
+                  type="button"
+                  onClick={() => setSkipConfirmOpen(false)}
+                  aria-label="Close"
+                  className="-mr-1.5 -mt-1.5 rounded-md p-1.5 hover:bg-ash"
+                >
+                  <X className="h-4 w-4 text-haze" />
+                </button>
+              </div>
+              <p className="mt-1 font-body text-xs text-haze">
+                The whole alert leaves the queue for everyone until someone unskips it.
+              </p>
+              <label
+                htmlFor="skip-note"
+                className="mt-3 block font-body text-xs font-medium text-haze"
+              >
+                Why is it hard to annotate? (optional)
+              </label>
+              <textarea
+                id="skip-note"
+                value={skipNote}
+                onChange={e => setSkipNote(e.target.value)}
+                rows={3}
+                className="mt-1 w-full rounded-lg border border-line bg-paper p-2 font-body text-sm text-char"
+              />
+              <div className="mt-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => skipAlertMutation.mutate()}
+                  disabled={skipAlertMutation.isPending}
+                  className="inline-flex items-center rounded-lg bg-pine px-3 py-2 font-body text-sm font-semibold text-white hover:brightness-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Skip alert
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </>

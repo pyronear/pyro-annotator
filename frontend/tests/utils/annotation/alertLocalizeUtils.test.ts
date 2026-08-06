@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { buildAlertFrameModel } from '@/utils/annotation/alertLocalizeUtils';
+import {
+  buildAlertFrameModel,
+  objectLocalizeProgress,
+  timelineLegendStatuses,
+} from '@/utils/annotation/alertLocalizeUtils';
 import { getObjectColor } from '@/utils/annotation/objectColors';
 import type { AlertLane, Detection, DetectionAnnotation, SequenceAnnotation } from '@/types/api';
 
@@ -82,6 +86,26 @@ describe('buildAlertFrameModel', () => {
     expect(frames.find(f => f.recordedAt === t3)?.cells).toHaveLength(1);
   });
 
+  it('orders same-second fractional timestamps chronologically, not lexicographically', () => {
+    // Real data serializes the same second both as "...:00Z" and
+    // "...:00.500000Z", and "." sorts before "Z" — a string sort would put
+    // the later fractional timestamp ahead of the earlier whole-second one.
+    // This axis feeds the grid AND every rail row's timeline strip, so pin
+    // the numeric sort here, where the ordering now lives. (Guard inherited
+    // from the deleted ObjectStatusStrip, which sorted its own frame union.)
+    const zeroSeconds = '2026-01-01T10:00:00Z';
+    const halfSecond = '2026-01-01T10:00:00.500000Z';
+    const oneSecond = '2026-01-01T10:00:01Z';
+
+    const { frames } = buildAlertFrameModel(
+      [makeLane(1)],
+      { 1: [makeDetection(11, halfSecond), makeDetection(12, oneSecond), makeDetection(13, zeroSeconds)] },
+      { 1: [] }
+    );
+
+    expect(frames.map(f => f.recordedAt)).toEqual([zeroSeconds, halfSecond, oneSecond]);
+  });
+
   it('maps per-frame status: annotated -> confirmed, auto winning boxes -> pending, no-box -> empty', () => {
     const tDone = '2026-01-01T10:00:00Z';
     const tAuto = '2026-01-01T10:00:10Z';
@@ -129,6 +153,56 @@ describe('buildAlertFrameModel', () => {
     const noBoxCell = frames.find(f => f.recordedAt === tNoBox)!.cells[0];
     expect(noBoxCell.cellState).toBe('no-box');
     expect(noBoxCell.boxes).toHaveLength(0);
+  });
+
+  it('maps a committed annotation with zero smoke boxes to cleared, not confirmed', () => {
+    const t1 = '2026-01-01T10:00:00Z';
+    // Evidence-bearing frame (engine box) cleared by the annotator: the
+    // editor's Clear saves an empty annotation ("object not visible here").
+    const detectionsByLaneId = { 1: [makeDetection(1, t1, { engine: [box()], auto: [] })] };
+    const annotationsByLaneId = { 1: [makeDetAnnotation(1, 'annotated', [])] };
+
+    const { objectStatus, frames } = buildAlertFrameModel(
+      [makeLane(1)],
+      detectionsByLaneId,
+      annotationsByLaneId
+    );
+
+    expect(objectStatus[0].statusByTimestamp[t1]).toBe('cleared');
+    const cell = frames[0].cells[0];
+    expect(cell.cellState).toBe('done');
+    expect(cell.boxes).toHaveLength(0);
+  });
+
+  it('maps a committed annotation with only false-positive items to cleared', () => {
+    const t1 = '2026-01-01T10:00:00Z';
+    const detectionsByLaneId = { 1: [makeDetection(1, t1, { engine: [box()], auto: [] })] };
+    const annotationsByLaneId = {
+      1: [
+        makeDetAnnotation(1, 'annotated', [
+          { xyxyn: [0.2, 0.2, 0.4, 0.4], class_name: 'smoke', false_positive_type: 'antenna' },
+        ]),
+      ],
+    };
+
+    const { objectStatus } = buildAlertFrameModel(
+      [makeLane(1)],
+      detectionsByLaneId,
+      annotationsByLaneId
+    );
+
+    expect(objectStatus[0].statusByTimestamp[t1]).toBe('cleared');
+  });
+
+  it('carries the lane color on every cell, boxes or not', () => {
+    const t1 = '2026-01-01T10:00:00Z';
+    const { frames } = buildAlertFrameModel(
+      [makeLane(1)],
+      { 1: [makeDetection(1, t1, { engine: [box()], auto: [] })] },
+      { 1: [makeDetAnnotation(1, 'annotated', [])] }
+    );
+
+    expect(frames[0].cells[0].color).toBe(getObjectColor(0));
   });
 
   it('treats a frame the lane has no detection on as absent (no entry in statusByTimestamp)', () => {
@@ -317,5 +391,46 @@ describe('buildAlertFrameModel', () => {
 
       expect(frames[0].cells[0].boxes.map(b => b.xyxyn)).toEqual([[0.2, 0.2, 0.3, 0.3]]);
     });
+  });
+});
+
+describe('timelineLegendStatuses', () => {
+  it('returns the union of statuses across rows, in display order', () => {
+    expect(
+      timelineLegendStatuses([
+        { t1: 'empty', t2: 'confirmed' },
+        { t1: 'pending', t2: 'absent', t3: 'cleared' },
+      ])
+    ).toEqual(['confirmed', 'cleared', 'pending', 'empty']);
+  });
+
+  it('lists only statuses actually present', () => {
+    expect(timelineLegendStatuses([{ t1: 'confirmed', t2: 'confirmed' }])).toEqual(['confirmed']);
+  });
+
+  it('never lists absent, and returns nothing for no rows or all-absent rows', () => {
+    expect(timelineLegendStatuses([])).toEqual([]);
+    expect(timelineLegendStatuses([{ t1: 'absent' }])).toEqual([]);
+  });
+});
+
+describe('objectLocalizeProgress', () => {
+  it('counts cleared as settled: all confirmed-or-cleared reads complete', () => {
+    expect(objectLocalizeProgress({ t1: 'confirmed', t2: 'cleared' })).toEqual({
+      presentCount: 2,
+      confirmedCount: 2,
+    });
+  });
+
+  it('counts pending and empty as outstanding, absent as neither', () => {
+    expect(
+      objectLocalizeProgress({
+        t1: 'confirmed',
+        t2: 'pending',
+        t3: 'empty',
+        t4: 'cleared',
+        t5: 'absent',
+      })
+    ).toEqual({ presentCount: 4, confirmedCount: 2 });
   });
 });

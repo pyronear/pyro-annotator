@@ -2,11 +2,7 @@
  * The localize cockpit's right-hand column: the whole alert's localization
  * state, mirroring classify's `DecisionRail`. Object rows come in as
  * children (the page owns their ordering and wiring); the rail owns only the
- * frame, the "+ Add object" slot below the rows, and the submit footer.
- *
- * Its own slot is `addObject` rather than classify's fixed missed-smoke row:
- * on the localize side, "the AI missed a plume entirely" is answered by
- * spawning a real sibling lane, not by ticking an alert-level flag.
+ * frame, the missed-smoke slot below the rows, and the submit footer.
  */
 
 import React from 'react';
@@ -14,7 +10,9 @@ import React from 'react';
 export interface LocalizeRailProps {
   /** Rendered top-right of the Objects header. */
   headerAction?: React.ReactNode;
-  /** The missed-smoke question, which carries "+ Add object" inside it — rendered below the rows. */
+  /** The shared timeline legend — rendered below the rows, above the missed-smoke divider. */
+  legend?: React.ReactNode;
+  /** The missed-smoke question — rendered below the rows. */
   missedSmoke?: React.ReactNode;
   /** The page's submit button. */
   footer?: React.ReactNode;
@@ -24,6 +22,7 @@ export interface LocalizeRailProps {
 
 export const LocalizeRail: React.FC<LocalizeRailProps> = ({
   headerAction,
+  legend,
   missedSmoke,
   footer,
   children,
@@ -37,6 +36,8 @@ export const LocalizeRail: React.FC<LocalizeRailProps> = ({
     </div>
 
     <div className="space-y-2">{children}</div>
+
+    {legend && <div className="mt-3">{legend}</div>}
 
     {missedSmoke && (
       <>

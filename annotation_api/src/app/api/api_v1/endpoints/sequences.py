@@ -31,17 +31,21 @@ from sqlalchemy import (
     ARRAY,
     String,
 )
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import aliased
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.dependencies import get_current_user, get_sequence_crud
 from app.crud import SequenceCRUD
 from app.db import get_session
+from app.services.alert_skip import alert_skip_exists_clause
+from app.services.annotators import human_annotators, merge_annotators
 from app.services.localization_rule import (
     needs_localization_clause,
     unsettled_unsure_clause,
 )
 from app.models import (
+    AlertSkip,
     Detection,
     DetectionAnnotation,
     DetectionAnnotationProcessingStage,
@@ -56,16 +60,20 @@ from app.models import (
     AnnotationType,
 )
 from app.schemas.annotation_validation import SequenceAnnotationData, SequenceBBox
+from app.schemas.detection import DetectionRead
 from app.schemas.sequence import (
     AddObjectRequest,
     AlertDetail,
     AlertLane,
+    AlertSkipInfo,
+    AlertSkipRequest,
     ClassifyDoneItem,
     ClassifyDoneLane,
     ClassifyQueueItem,
     LocalizationQueueItem,
     LocalizationQueueLane,
     LocalizeDoneQueueItem,
+    MaterializeFrameRequest,
     SequenceCreate,
     SequenceRead,
 )
@@ -836,10 +844,275 @@ async def add_object(
     )
 
 
+def _detection_read(det: Detection) -> DetectionRead:
+    return DetectionRead(
+        **{c.name: getattr(det, c.name) for c in det.__table__.columns}
+    )
+
+
+@router.post(
+    "/{sequence_id}/frames",
+    status_code=status.HTTP_201_CREATED,
+    summary="Materialize a gap frame into a lane so a human can box it",
+)
+async def materialize_frame(
+    response: Response,
+    sequence_id: int = Path(..., gt=0),
+    payload: MaterializeFrameRequest = Body(...),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> DetectionRead:
+    """Issue #287: a lane holds Detection rows only for the frames its object
+    was detected on, so earlier frames — where the plume was fainter — cannot
+    be annotated. This inserts the one-frame equivalent of add_object's clone:
+    the sibling's photo (shared bucket_key, no S3 traffic) with an empty
+    engine track, because the AI did not detect this object here. Idempotent:
+    posting a frame the lane already has returns it with 200."""
+    lane = await session.get(Sequence, sequence_id)
+    if lane is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Sequence not found"
+        )
+
+    existing = (
+        (
+            await session.execute(
+                select(Detection).where(
+                    Detection.sequence_id == sequence_id,
+                    Detection.recorded_at == payload.recorded_at,
+                )
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if existing is not None:
+        response.status_code = status.HTTP_200_OK
+        return _detection_read(existing)
+
+    sibling = (
+        (
+            await session.execute(
+                select(Detection)
+                .join(Sequence, Detection.sequence_id == Sequence.id)
+                .where(
+                    Sequence.source_api == lane.source_api,
+                    Sequence.platform_alert_id == lane.platform_alert_id,
+                    Sequence.id != sequence_id,
+                    Detection.recorded_at == payload.recorded_at,
+                )
+                .order_by(asc(Detection.alert_api_id))
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if sibling is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="No sibling lane has a detection at this recorded_at",
+        )
+
+    detection = Detection(
+        sequence_id=sequence_id,
+        recorded_at=payload.recorded_at,
+        alert_api_id=sibling.alert_api_id,
+        bucket_key=sibling.bucket_key,
+        algo_predictions={"predictions": []},
+    )
+    session.add(detection)
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        # A concurrent POST for the same frame won the insert: idempotency
+        # applies to it exactly as to a sequential re-POST, so re-select
+        # rather than surfacing a misleading conflict. Anything else holding
+        # the alert_api_id is a genuine collision.
+        raced = (
+            (
+                await session.execute(
+                    select(Detection).where(
+                        Detection.sequence_id == sequence_id,
+                        Detection.recorded_at == payload.recorded_at,
+                    )
+                )
+            )
+            .scalars()
+            .first()
+        )
+        if raced is not None:
+            response.status_code = status.HTTP_200_OK
+            return _detection_read(raced)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The sibling frame's alert_api_id is already present in this lane",
+        )
+    await session.refresh(detection)
+    return _detection_read(detection)
+
+
+def _frame_has_model_evidence(det: Detection) -> bool:
+    return bool((det.algo_predictions or {}).get("predictions")) or bool(
+        (det.auto_predictions or {}).get("predictions")
+    )
+
+
+@router.delete(
+    "/{sequence_id}/frames/{detection_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remove a model-evidence-free frame from a lane",
+)
+async def unmaterialize_frame(
+    sequence_id: int = Path(..., gt=0),
+    detection_id: int = Path(..., gt=0),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> None:
+    """The inverse of materialize_frame (issue #287). Only a frame whose
+    existence a human's box alone justifies can be removed — any model
+    evidence makes it part of the import record — and never the lane's last
+    frame. Deletes the row only: bucket_key is shared with the sibling the
+    frame was materialized from, so S3 is untouched (unlike
+    DELETE /detections/{id}). The DetectionAnnotation goes via FK cascade."""
+    detection = await session.get(Detection, detection_id)
+    if detection is None or detection.sequence_id != sequence_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Detection not found"
+        )
+    if _frame_has_model_evidence(detection):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Frame has model evidence and cannot be removed",
+        )
+    # Advisory under concurrency: two simultaneous DELETEs in a two-frame
+    # lane can both pass this count. Accepted for a single-annotator tool.
+    count = (
+        await session.execute(
+            select(func.count(Detection.id)).where(Detection.sequence_id == sequence_id)
+        )
+    ).scalar_one()
+    if count <= 1:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot remove the lane's last frame",
+        )
+    await session.delete(detection)
+    await session.commit()
+
+
+# NOTE: declared before GET /{sequence_id} — the int path converter would
+# otherwise turn /alert/skip into a 422.
+@router.post(
+    "/alert/skip",
+    status_code=status.HTTP_201_CREATED,
+    summary="Park a whole alert in the recoverable skipped state",
+)
+async def skip_alert(
+    payload: AlertSkipRequest = Body(...),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> AlertSkipInfo:
+    """Skip overlay (spec: alert-skip-escape-hatch): insert-only, never
+    touches lane state. 409 when already skipped or when the alert has fully
+    exited the pipeline (a skip row would be visible in neither queue)."""
+    stages = (
+        (
+            await session.execute(
+                select(SequenceAnnotation.processing_stage)
+                .select_from(Sequence)
+                .outerjoin(
+                    SequenceAnnotation,
+                    SequenceAnnotation.sequence_id == Sequence.id,
+                )
+                .where(
+                    Sequence.source_api == payload.source_api,
+                    Sequence.platform_alert_id == payload.platform_alert_id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not stages:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Alert not found"
+        )
+    if all(s == SequenceAnnotationProcessingStage.ANNOTATED for s in stages):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Alert is fully annotated — nothing to skip",
+        )
+    existing = (
+        await session.execute(
+            select(AlertSkip).where(
+                AlertSkip.source_api == payload.source_api,
+                AlertSkip.platform_alert_id == payload.platform_alert_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Alert is already skipped",
+        )
+    skip = AlertSkip(
+        source_api=payload.source_api,
+        platform_alert_id=payload.platform_alert_id,
+        skipped_by_user_id=current_user.id,
+        note=payload.note,
+    )
+    session.add(skip)
+    try:
+        await session.commit()
+    except IntegrityError:
+        # Two annotators skipping the same alert can both pass the pre-check;
+        # the unique constraint settles it — surface the loser as the same
+        # 409 the pre-check gives.
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Alert is already skipped",
+        )
+    return AlertSkipInfo(
+        skipped_at=skip.skipped_at,
+        skipped_by=current_user.username,
+        note=skip.note,
+    )
+
+
+@router.delete(
+    "/alert/skip",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Unskip an alert — it returns to whichever queue its stages qualify it for",
+)
+async def unskip_alert(
+    source_api: SourceApi = Query(...),
+    platform_alert_id: int = Query(...),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> None:
+    skip = (
+        await session.execute(
+            select(AlertSkip).where(
+                AlertSkip.source_api == source_api,
+                AlertSkip.platform_alert_id == platform_alert_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if skip is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Alert is not skipped"
+        )
+    await session.delete(skip)
+    await session.commit()
+
+
 # NOTE: declared before GET /{sequence_id} — the int path converter would
 # otherwise turn /localization-queue into a 422.
 @router.get("/localization-queue")
 async def localization_queue(
+    skipped: bool = Query(False),
     session: AsyncSession = Depends(get_session),
     params: Params = Depends(),
     current_user: User = Depends(get_current_user),
@@ -849,7 +1122,8 @@ async def localization_queue(
     matching the localization rule (see `localization_rule`) at seq_annotation_done
     whose auto reference layer exists (auto_annotated_at set). Lanes leave on
     submit (stage change), so a fully-boxed but unsubmitted lane still counts as
-    ready."""
+    ready. skipped=false excludes skip-overlay alerts; skipped=true lists only
+    them, with skip metadata attached (spec: alert-skip-escape-hatch)."""
     ready_smoke_lane = _ready_smoke_lane(Sequence, SequenceAnnotation)
     # Pre-filter to alerts having at least one ready smoke lane BEFORE the
     # completeness aggregation, so the grouping scans the active working set
@@ -873,7 +1147,10 @@ async def localization_queue(
         .where(
             tuple_(Sequence.source_api, Sequence.platform_alert_id).in_(
                 candidate_alerts
-            )
+            ),
+            alert_skip_exists_clause(Sequence)
+            if skipped
+            else ~alert_skip_exists_clause(Sequence),
         )
         .group_by(Sequence.source_api, Sequence.platform_alert_id)
         .having(
@@ -917,7 +1194,53 @@ async def localization_queue(
     # An alert can lose its sequences between the page query and item build
     # (concurrent delete); drop such rows rather than 500.
     items = [item for item in maybe_items if item is not None]
+    if skipped:
+        await _attach_skip_info(session, items)
     return Page.create(items=items, total=total, params=params)
+
+
+async def _attach_skip_info(session: AsyncSession, items: list) -> None:
+    """Bulk-attach AlertSkipInfo to queue items (skipped=true views)."""
+    if not items:
+        return
+    keys = [(item.source_api, item.platform_alert_id) for item in items]
+    rows = (
+        await session.execute(
+            select(AlertSkip, User.username)
+            .outerjoin(User, User.id == AlertSkip.skipped_by_user_id)
+            .where(tuple_(AlertSkip.source_api, AlertSkip.platform_alert_id).in_(keys))
+        )
+    ).all()
+    by_key = {
+        (skip.source_api, skip.platform_alert_id): (skip, username)
+        for skip, username in rows
+    }
+    for item in items:
+        entry = by_key.get((item.source_api, item.platform_alert_id))
+        if entry is not None:
+            skip, username = entry
+            item.skip = AlertSkipInfo(
+                skipped_at=skip.skipped_at, skipped_by=username, note=skip.note
+            )
+
+
+def _lane_contributed_by(annotator_id: int):
+    """EXISTS: some contribution by this user on the current (outer)
+    Sequence row's annotation. Correlates on Sequence.id so it composes
+    with the grouped any-lane HAVING pattern."""
+    contrib_ann = aliased(SequenceAnnotation)
+    return (
+        select(SequenceAnnotationContribution.id)
+        .join(
+            contrib_ann,
+            contrib_ann.id == SequenceAnnotationContribution.sequence_annotation_id,
+        )
+        .where(
+            contrib_ann.sequence_id == Sequence.id,
+            SequenceAnnotationContribution.user_id == annotator_id,
+        )
+        .exists()
+    )
 
 
 async def _build_queue_item(
@@ -1005,13 +1328,16 @@ async def classify_queue(
     source_api: Optional[SourceApi] = Query(None),
     recorded_at_gte: Optional[datetime] = Query(None),
     recorded_at_lte: Optional[datetime] = Query(None),
+    skipped: bool = Query(False),
     session: AsyncSession = Depends(get_session),
     params: Params = Depends(),
     current_user: User = Depends(get_current_user),
 ) -> Page[ClassifyQueueItem]:
     """Alerts with at least one object awaiting classification (spec:
     multi-object alert collocation, sub-project 2). Pre-filters candidate
-    alerts before grouping so cost tracks the unclassified backlog (#215)."""
+    alerts before grouping so cost tracks the unclassified backlog (#215).
+    skipped=false excludes skip-overlay alerts; skipped=true lists only them,
+    with skip metadata attached (spec: alert-skip-escape-hatch)."""
     cand_seq = aliased(Sequence)
     cand_ann = aliased(SequenceAnnotation)
     candidates = (
@@ -1046,7 +1372,12 @@ async def classify_queue(
             func.min(Sequence.id).label("any_sequence_id"),
         )
         .outerjoin(SequenceAnnotation, SequenceAnnotation.sequence_id == Sequence.id)
-        .where(tuple_(Sequence.source_api, Sequence.platform_alert_id).in_(candidates))
+        .where(
+            tuple_(Sequence.source_api, Sequence.platform_alert_id).in_(candidates),
+            alert_skip_exists_clause(Sequence)
+            if skipped
+            else ~alert_skip_exists_clause(Sequence),
+        )
         .group_by(Sequence.source_api, Sequence.platform_alert_id)
         .subquery()
     )
@@ -1090,6 +1421,8 @@ async def classify_queue(
                 classified_objects=int(row.classified_objects or 0),
             )
         )
+    if skipped:
+        await _attach_skip_info(session, items)
     return Page.create(items=items, total=total, params=params)
 
 
@@ -1102,6 +1435,9 @@ async def localize_done_queue(
     source_api: Optional[SourceApi] = Query(None),
     recorded_at_gte: Optional[datetime] = Query(None),
     recorded_at_lte: Optional[datetime] = Query(None),
+    annotator_id: Optional[int] = Query(
+        None, description="Alerts with any lane contributed to by this user"
+    ),
     session: AsyncSession = Depends(get_session),
     params: Params = Depends(),
     current_user: User = Depends(get_current_user),
@@ -1135,7 +1471,7 @@ async def localize_done_queue(
     if recorded_at_lte is not None:
         candidates = candidates.where(cand_seq.recorded_at <= recorded_at_lte)
 
-    alerts = (
+    alerts_query = (
         select(
             Sequence.source_api,
             Sequence.platform_alert_id,
@@ -1143,8 +1479,14 @@ async def localize_done_queue(
         )
         .where(tuple_(Sequence.source_api, Sequence.platform_alert_id).in_(candidates))
         .group_by(Sequence.source_api, Sequence.platform_alert_id)
-        .subquery()
     )
+    if annotator_id is not None:
+        # Any-lane semantics via HAVING (a WHERE would drop non-matching
+        # lanes from the group and skew min(recorded_at)).
+        alerts_query = alerts_query.having(
+            func.sum(case((_lane_contributed_by(annotator_id), 1), else_=0)) > 0
+        )
+    alerts = alerts_query.subquery()
     total = (
         await session.execute(select(func.count()).select_from(alerts))
     ).scalar_one()
@@ -1169,6 +1511,13 @@ async def localize_done_queue(
     # An alert can lose its sequences between the page query and item build
     # (concurrent delete); drop such rows rather than 500.
     items = [item for item in maybe_items if item is not None]
+    annotators_by_seq = await human_annotators(
+        session, [lane.sequence_id for item in items for lane in item.lanes]
+    )
+    for item in items:
+        item.annotators = merge_annotators(
+            annotators_by_seq, [lane.sequence_id for lane in item.lanes]
+        )
     return Page.create(items=items, total=total, params=params)
 
 
@@ -1199,6 +1548,9 @@ async def classify_done(
         None,
         description="Alerts with any lane of this derived accuracy "
         "(missed smoke → fn, else smoke → tp, else fp)",
+    ),
+    annotator_id: Optional[int] = Query(
+        None, description="Alerts with any lane contributed to by this user"
     ),
     session: AsyncSession = Depends(get_session),
     params: Params = Depends(),
@@ -1302,6 +1654,8 @@ async def classify_done(
                 )
             )
         )
+    if annotator_id is not None:
+        alerts = alerts.having(any_lane(_lane_contributed_by(annotator_id)))
 
     alerts_sq = alerts.subquery()
     total = (
@@ -1319,7 +1673,7 @@ async def classify_done(
             .limit(params.size)
         )
     ).all()
-    items = []
+    page_lanes = []
     for row in page_rows:
         lane_rows = (
             await session.execute(
@@ -1337,6 +1691,12 @@ async def classify_done(
         ).all()
         if not lane_rows:  # concurrent delete
             continue
+        page_lanes.append((row, lane_rows))
+    annotators_by_seq = await human_annotators(
+        session, [seq.id for _, lane_rows in page_lanes for seq, _ in lane_rows]
+    )
+    items = []
+    for row, lane_rows in page_lanes:
         primary = lane_rows[0][0]
         items.append(
             ClassifyDoneItem(
@@ -1359,6 +1719,9 @@ async def classify_done(
                     )
                     for seq, ann in lane_rows
                 ],
+                annotators=merge_annotators(
+                    annotators_by_seq, [seq.id for seq, _ in lane_rows]
+                ),
             )
         )
     return Page.create(items=items, total=total, params=params)

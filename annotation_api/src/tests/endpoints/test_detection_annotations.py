@@ -1753,3 +1753,96 @@ async def test_detection_annotation_create_directly_in_annotated_stage(
     # Verify contributor recorded immediately
     assert len(annotation_data["contributors"]) == 1
     assert annotation_data["contributors"][0]["username"] == "admin"
+
+
+TWO_SMOKE_BOXES = {
+    "annotation": [
+        {
+            "xyxyn": [0.1, 0.1, 0.2, 0.2],
+            "class_name": "smoke",
+            "smoke_type": "wildfire",
+        },
+        {
+            "xyxyn": [0.5, 0.5, 0.6, 0.6],
+            "class_name": "smoke",
+            "smoke_type": "industrial",
+        },
+    ]
+}
+
+
+async def _create_detection(
+    authenticated_client: AsyncClient, mock_img: bytes, alert_api_id: int
+) -> int:
+    """Create a detection and return its id."""
+    detection_response = await authenticated_client.post(
+        "/detections",
+        data={
+            "sequence_id": "1",
+            "alert_api_id": str(alert_api_id),
+            "recorded_at": (now - timedelta(days=2)).isoformat(),
+            "algo_predictions": json.dumps({"predictions": []}),
+        },
+        files={"file": ("image.jpg", mock_img, "image/jpeg")},
+    )
+    assert detection_response.status_code == 201
+    return detection_response.json()["id"]
+
+
+@pytest.mark.asyncio
+async def test_create_detection_annotation_rejects_two_smoke_boxes(
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+):
+    detection_id = await _create_detection(
+        authenticated_client, mock_img, alert_api_id=9101
+    )
+
+    response = await authenticated_client.post(
+        "/annotations/detections/",
+        data={
+            "detection_id": str(detection_id),
+            "annotation": json.dumps(TWO_SMOKE_BOXES),
+            "processing_stage": "annotated",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "At most one smoke box" in response.text
+
+
+@pytest.mark.asyncio
+async def test_update_detection_annotation_rejects_two_smoke_boxes(
+    authenticated_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+):
+    detection_id = await _create_detection(
+        authenticated_client, mock_img, alert_api_id=9102
+    )
+
+    create_response = await authenticated_client.post(
+        "/annotations/detections/",
+        data={
+            "detection_id": str(detection_id),
+            "annotation": json.dumps(
+                {
+                    "annotation": [
+                        {
+                            "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                            "class_name": "smoke",
+                            "smoke_type": "wildfire",
+                        }
+                    ]
+                }
+            ),
+            "processing_stage": "bbox_annotation",
+        },
+    )
+    assert create_response.status_code == 201
+    annotation_id = create_response.json()["id"]
+
+    response = await authenticated_client.patch(
+        f"/annotations/detections/{annotation_id}",
+        json={"annotation": TWO_SMOKE_BOXES, "processing_stage": "annotated"},
+    )
+
+    assert response.status_code == 422
+    assert "At most one smoke box" in response.text

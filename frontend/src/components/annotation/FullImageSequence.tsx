@@ -20,6 +20,14 @@ export interface FullImageFrame {
   xyxyn: number[] | null;
 }
 
+/** A click-to-seek request from the caller. `nonce` is a monotonic counter so a new click on the same index still re-seeks. */
+export interface SeekRequest {
+  index: number;
+  nonce: number;
+}
+
+const SEEK_HOLD_MS = 2000;
+
 interface FullImageSequenceProps {
   bboxes: FullImageFrame[];
   sequenceId: number;
@@ -30,6 +38,8 @@ interface FullImageSequenceProps {
   frameRecordedAt?: (string | undefined)[];
   /** Other objects' track boxes, rendered dimmed in their own colors — "which plume is mine" context for this card. */
   siblingOverlays?: ObjectOverlay[];
+  /** Jump the loop to this frame, hold it SEEK_HOLD_MS, then resume — keyed on `nonce`. */
+  seekRequest?: SeekRequest | null;
 }
 
 interface ImageData {
@@ -45,6 +55,7 @@ export default function FullImageSequence({
   color,
   frameRecordedAt,
   siblingOverlays,
+  seekRequest,
 }: FullImageSequenceProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [images, setImages] = useState<ImageData[]>([]);
@@ -60,6 +71,8 @@ export default function FullImageSequence({
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [isHolding, setIsHolding] = useState(false);
+  const holdTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Value-based identity for the frame list: callers (the classify cockpit)
   // rebuild the bboxes array every render, so keying the reset/fetch effects
@@ -85,6 +98,9 @@ export default function FullImageSequence({
     setIsLoading(true);
     setError(null);
     setImageInfo(null); // Clear image positioning info
+    // A pending seek-hold belongs to the old frame list.
+    setIsHolding(false);
+    if (holdTimeoutRef.current) clearTimeout(holdTimeoutRef.current);
 
     // No frames yet (the classify cockpit renders an object before its
     // detections resolve). Stay in the loading state rather than falling
@@ -153,11 +169,27 @@ export default function FullImageSequence({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [frameKey]);
 
+  // Jump-and-hold per seek request: show the requested frame with the loop
+  // suspended, then resume. Keyed on the nonce so re-clicking the same
+  // frame re-holds. `bboxes` is read through the closure like the fetch
+  // effect above (see `frameKey`); an index that no longer fits the current
+  // frame list (list changed mid-flight) is ignored.
+  useEffect(() => {
+    if (!seekRequest) return;
+    if (seekRequest.index < 0 || seekRequest.index >= bboxes.length) return;
+    setCurrentIndex(seekRequest.index);
+    setIsHolding(true);
+    if (holdTimeoutRef.current) clearTimeout(holdTimeoutRef.current);
+    holdTimeoutRef.current = setTimeout(() => setIsHolding(false), SEEK_HOLD_MS);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seekRequest?.nonce]);
+
   // Auto-play animation with 200ms interval - only when images are loaded
+  // and no seek-hold is pinning the current frame.
   useEffect(() => {
     const loadedImagesCount = images.filter(img => img.loaded && !img.error).length;
 
-    if (images.length > 1 && loadedImagesCount > 1 && !isLoading) {
+    if (images.length > 1 && loadedImagesCount > 1 && !isLoading && !isHolding) {
       intervalRef.current = setInterval(() => {
         setCurrentIndex(prev => (prev + 1) % images.length);
       }, 200);
@@ -173,13 +205,16 @@ export default function FullImageSequence({
         clearInterval(intervalRef.current);
       }
     };
-  }, [images.length, images, isLoading]);
+  }, [images.length, images, isLoading, isHolding]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
+      }
+      if (holdTimeoutRef.current) {
+        clearTimeout(holdTimeoutRef.current);
       }
     };
   }, []);
