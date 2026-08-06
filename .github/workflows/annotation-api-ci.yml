@@ -40,34 +40,14 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
     
-    - name: Cache Docker images
-      uses: actions/cache@v3
-      with:
-        path: /tmp/docker-images
-        key: docker-images-${{ runner.os }}-${{ hashFiles('annotation_api/docker-compose-dev.yml') }}
-        restore-keys: |
-          docker-images-${{ runner.os }}-
-    
-    - name: Load cached Docker images
-      run: |
-        if [ -d /tmp/docker-images ]; then
-          for img in /tmp/docker-images/*.tar; do
-            [ -f "$img" ] && docker load -i "$img" || true
-          done
-        fi
-    
-    - name: Pull and save base images
-      run: |
-        mkdir -p /tmp/docker-images
-        
-        # Pull images if not already present
-        docker pull postgres:15-alpine || true
-        docker pull localstack/localstack:1.4.0 || true
-        
-        # Save images for next run
-        docker save postgres:15-alpine -o /tmp/docker-images/postgres.tar || true
-        docker save localstack/localstack:1.4.0 -o /tmp/docker-images/localstack.tar || true
-    
+    # postgres and localstack are pulled by `docker compose up` in `make test`.
+    # We used to tarball them into an actions/cache here, but this workflow only
+    # runs on pull_request, so every cache it wrote was scoped to that PR's merge
+    # ref and no other PR could read it - main never populated the key. It cost
+    # ~70s of pull/save/upload on every run and restored only on a repeat run of
+    # the same PR. Measured back-to-back from one base commit: 8m05s with these
+    # steps, 6m38s without.
+
     - name: Run tests using make
       run: |
         # Use the pre-built image by tagging it appropriately
