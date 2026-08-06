@@ -2084,6 +2084,12 @@ describe('LocalizeAlertPage', () => {
   describe('active object CTA, over the media column', () => {
     it('appears above the frames for the active object, following the selection', async () => {
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      // Await the arrival auto-select's navigation: the CTA only exists once
+      // an object is active, and asserting before the navigate commits races
+      // it (seen flaking on CI, where the DOM dump showed the bare URL).
+      await waitFor(() =>
+        expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/101')
+      );
 
       // Arrival auto-selects Object 1, so its CTA is there from the start.
       const cta = within(screen.getByTestId('localize-active-object-actions'));
