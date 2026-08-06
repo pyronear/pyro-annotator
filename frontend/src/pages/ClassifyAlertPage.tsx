@@ -40,8 +40,11 @@ import {
 } from '@/utils/annotation/localizeUtils';
 import { createKeyboardHandler } from '@/utils/annotation/keyboardUtils';
 import { getObjectColor, ObjectOverlay } from '@/utils/annotation/objectColors';
+import type { ObjectFrameStatus } from '@/utils/annotation/alertLocalizeUtils';
 import { getProcessingStageLabel } from '@/utils/processingStage';
-import { CardClassification, ObjectPresenceStrip } from '@/components/sequence-annotation';
+import { CardClassification } from '@/components/sequence-annotation';
+import { TimelineLegend } from '@/components/annotation/TimelineLegend';
+import type { SeekRequest } from '@/components/annotation/FullImageSequence';
 import {
   ClassifyMediaPanel,
   ClassifyShortcutsModal,
@@ -180,6 +183,22 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const sequenceReviewerRef = useRef<HTMLDivElement | null>(null);
   const railSubmitRef = useRef<HTMLButtonElement | null>(null);
+
+  // Click-to-seek: the full-frame player's pending jump-and-hold, and the
+  // clicked segment's pulse. Both last the player's 2 s hold window so the
+  // two feedbacks end together.
+  const [seekRequest, setSeekRequest] = useState<SeekRequest | null>(null);
+  const [segmentHighlight, setSegmentHighlight] = useState<{
+    cardKey: string;
+    frameIndex: number;
+  } | null>(null);
+  const highlightTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
+    };
+  }, []);
 
   // Post-submit auto-advance bookkeeping: the deferred navigation must not
   // fire after unmount or an alert switch, and no re-submit may slip into
@@ -524,32 +543,46 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
       }
     : null;
 
-  // Presence strip: temporal context + color legend, keyed off the same
-  // per-object color/label identity as the overlays above. Renders nothing
-  // itself for < 2 objects. Timestamps come from the object's *lane's*
-  // detections (every frame the lane was captured on), not from
-  // `boxesByRecordedAt` — a lane can have a detection on a frame with no
-  // track bbox there, and that frame should still show as "present", not a
-  // false gap.
-  const presenceStripObjects = cardOverlayData.map(o => ({
-    label: o.label,
-    color: o.color,
-    timestamps: (detectionsByLaneId[o.laneSequenceId] ?? []).map(d => d.recorded_at),
-  }));
+  // Row timelines: presence of each card's LANE on each union frame —
+  // deliberately lane-level (every frame the lane was captured on), not
+  // track-box-level: a lane can have a detection on a frame with no track
+  // bbox there, and that frame should still read "present", not a false
+  // gap. Presence maps onto the strip's `confirmed` (solid) encoding;
+  // union frames missing from a lane render `absent`.
+  const unionTimestamps = unionFrames.map(f => f.recorded_at);
+  const laneStatusByTimestamp: Record<number, Record<string, ObjectFrameStatus>> = {};
+  laneSequenceIds.forEach(laneSequenceId => {
+    const statuses: Record<string, ObjectFrameStatus> = {};
+    (detectionsByLaneId[laneSequenceId] ?? []).forEach(d => {
+      statuses[d.recorded_at] = 'confirmed';
+    });
+    laneStatusByTimestamp[laneSequenceId] = statuses;
+  });
 
-  // Presence strip rows are clickable: jump to that object's card. The strip
-  // only knows the clicked row's position in `presenceStripObjects`, which is
-  // built 1:1 (same order, same length) from `cardOverlayData` — so that
-  // index resolves straight back to the card's key. Scrolling waits a frame
-  // so it targets the just-updated (possibly newly mounted) active card.
-  const handlePresenceObjectClick = (objectIndex: number) => {
-    const cardKey = cardOverlayData[objectIndex]?.cardKey;
-    if (!cardKey) return;
+  // Legend for the strips, in classify's wording. `absent` is only named
+  // when some card actually misses a union frame.
+  const anyPresent = cards.some(c => (detectionsByLaneId[c.laneSequenceId] ?? []).length > 0);
+  const anyAbsent = cards.some(c => {
+    const statuses = laneStatusByTimestamp[c.laneSequenceId] ?? {};
+    return unionTimestamps.some(ts => !statuses[ts]);
+  });
+  const legendEntries = [
+    ...(anyPresent ? [{ status: 'confirmed' as const, label: 'Detected' }] : []),
+    ...(anyAbsent ? [{ status: 'absent' as const, label: 'Not on this frame' }] : []),
+  ];
+
+  // A segment click activates its card and asks the player to jump-and-hold
+  // on that frame. No scroll: the clicked row is already under the pointer
+  // (the old below-the-rail strip scrolled because its rows weren't the
+  // cards). Strip indexes and the player's frame list are the same union,
+  // so the index carries over as-is.
+  const handleSegmentClick = (cardKey: string) => (_timestamp: string, frameIndex: number) => {
     setActiveCardKey(cardKey);
     setActiveSection('detections');
-    requestAnimationFrame(() => {
-      cardRefs.current[cardKey]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    });
+    setSeekRequest(prev => ({ index: frameIndex, nonce: (prev?.nonce ?? 0) + 1 }));
+    setSegmentHighlight({ cardKey, frameIndex });
+    if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
+    highlightTimeoutRef.current = setTimeout(() => setSegmentHighlight(null), 2000);
   };
 
   const handleBboxChangeByCardKey = (cardKey: string, updatedBbox: SequenceBbox) => {
@@ -1124,6 +1157,7 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
               missedSmokeDisabled={missedSmokeCarrierLaneId === undefined}
               annotationLoading={isLoading}
               objectOverlays={playerObjectOverlays}
+              seekRequest={seekRequest}
             />
           </div>
           <div className="lg:flex-1 lg:min-w-0 lg:sticky lg:top-12 lg:max-h-[calc(100vh-4rem)] lg:overflow-y-auto">
@@ -1134,6 +1168,7 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
               onMissedSmokeActivate={() => setActiveSection('sequence')}
               missedSmokeDisabled={missedSmokeCarrierLaneId === undefined}
               missedSmokeRowRef={sequenceReviewerRef}
+              legend={<TimelineLegend testid="classify-timeline-legend" entries={legendEntries} />}
               headerAction={
                 <button
                   onClick={() => setShowKeyboardModal(true)}
@@ -1224,6 +1259,19 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
                       setActiveCardKey(key);
                       setActiveSection('detections');
                     }}
+                    timeline={
+                      unionTimestamps.length > 0
+                        ? {
+                            frameTimestamps: unionTimestamps,
+                            statusByTimestamp: laneStatusByTimestamp[card.laneSequenceId] ?? {},
+                            onFrameClick: handleSegmentClick(card.cardKey),
+                            highlightIndex:
+                              segmentHighlight?.cardKey === card.cardKey
+                                ? segmentHighlight.frameIndex
+                                : null,
+                          }
+                        : undefined
+                    }
                     onBboxChange={handleBboxChangeByCardKey}
                     onClassificationChange={handleClassificationChangeByCardKey}
                     onUnsureChange={card.locked ? undefined : handleUnsureChangeByCardKey}
@@ -1235,24 +1283,6 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
                 );
               })}
             </DecisionRail>
-
-            {/* Temporal context + color legend for the rail's objects
-                (the strip self-hides under 2 objects — the wrapper's margin
-                must go with it). Highlights the active object's row in sync
-                with the rail. */}
-            {presenceStripObjects.length >= 2 && (
-              <div className="mt-4">
-                <ObjectPresenceStrip
-                  objects={presenceStripObjects}
-                  onObjectClick={handlePresenceObjectClick}
-                  activeIndex={
-                    activeSection === 'detections' && activeCard
-                      ? cardOverlayData.findIndex(o => o.cardKey === activeCard.cardKey)
-                      : null
-                  }
-                />
-              </div>
-            )}
           </div>
         </div>
 
