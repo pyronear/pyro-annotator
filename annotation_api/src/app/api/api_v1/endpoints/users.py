@@ -186,6 +186,17 @@ async def update_user_password(
     """Update a user's password (admin only)."""
     user_crud = UserCRUD(session)
 
+    target_user = await user_crud.get_by_id(user_id)
+    if not target_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+    if target_user.username == settings.WORKER_USERNAME:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot modify the system worker user",
+        )
+
     user = await user_crud.update_user_password(user_id, password_update)
     if not user:
         raise HTTPException(

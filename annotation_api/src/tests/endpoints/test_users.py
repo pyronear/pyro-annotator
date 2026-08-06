@@ -445,14 +445,20 @@ class TestWorkerUserProtection:
         assert "Cannot modify the system worker user" in data["detail"]
 
     @pytest.mark.asyncio
-    async def test_update_worker_password_allowed(
+    async def test_update_worker_password_forbidden(
         self, authenticated_client: AsyncClient, worker_user: User
     ):
-        """Test the password endpoint is unaffected (worker cannot log in anyway)."""
+        """Test the worker's password cannot be set. The worker is active (see
+        app/main.py), so its random discarded password is the only thing
+        stopping anyone from logging in as it; setting a known password here
+        would let a superuser log in as an identity excluded from
+        annotator-facing lists by name, laundering their attribution."""
         response = await authenticated_client.patch(
             f"/users/{worker_user.id}/password", json={"password": "newpassword123"}
         )
-        assert response.status_code == 200
+        assert response.status_code == 403
+        data = response.json()
+        assert "Cannot modify the system worker user" in data["detail"]
 
     @pytest.mark.asyncio
     async def test_update_worker_user_empty_payload_allowed(
