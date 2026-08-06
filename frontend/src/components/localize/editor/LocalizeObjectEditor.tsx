@@ -106,7 +106,7 @@ export interface LocalizeObjectEditorProps {
   onCommitGapFrame: (recordedAt: string, items: DetectionAnnotationBbox[]) => void;
   /**
    * Remove a model-evidence-free frame from the lane entirely (issue #287's
-   * un-materialize) — Clear, for a frame whose only reason to exist is a
+   * un-materialize) — Delete, for a frame whose only reason to exist is a
    * human's box.
    */
   onUnmaterialize: (detection: Detection) => void;
@@ -715,10 +715,9 @@ export function LocalizeObjectEditor({
           break;
         case 'Delete':
         case 'Backspace':
-          // Removes whatever is committed, not only a hand-drawn box — the
-          // same action the Clear button performs, which for a model box is
-          // the review's "reject". A no-op on a frame with nothing committed
-          // or one outside the object's range.
+          // Removes whatever is committed, not only a hand-drawn box — for a
+          // model box this is the review's "reject". A no-op on a frame with
+          // nothing committed or one outside the object's range.
           if (!editable || !committedRef.current) return;
           clearRef.current();
           break;
@@ -1000,7 +999,6 @@ export function LocalizeObjectEditor({
           imageUrl={editable ? (imageData?.url ?? null) : null}
           disabled={!editable}
           onCommit={commitCandidate}
-          onClear={clear}
           onPreview={setPreviewed}
         />
       </div>

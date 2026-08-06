@@ -142,16 +142,6 @@ describe('LocalizeObjectEditor', () => {
     );
   });
 
-  it('commits nothing when Clear is pressed', () => {
-    const onCommit = vi.fn();
-    renderEditor({
-      onCommit,
-      existingAnnotation: committedAnnotation(firstDetection.id, 'auto'),
-    });
-    fireEvent.click(screen.getByTestId('editor-clear'));
-    expect(onCommit).toHaveBeenCalledWith(expect.objectContaining({ id: firstDetection.id }), []);
-  });
-
   it('Enter commits the priority pick and advances', () => {
     const onCommit = vi.fn();
     const onNavigateToDetection = vi.fn();
@@ -933,7 +923,6 @@ describe('LocalizeObjectEditor out-of-range frames', () => {
     renderEditor();
     fireEvent.keyDown(window, { key: 'ArrowLeft' });
     expect(screen.getByTestId('source-row-auto')).toBeDisabled();
-    expect(screen.getByTestId('editor-clear')).toBeDisabled();
   });
 
   it('Enter does nothing on an out-of-range frame', () => {
@@ -997,31 +986,20 @@ describe('LocalizeObjectEditor out-of-range frames', () => {
     expect(screen.getByTestId('out-of-range-banner')).toHaveTextContent(/draw a box/i);
   });
 
-  it('Clear un-materializes a frame with no model evidence', () => {
+  it('Delete un-materializes an evidence-free frame with a committed box', () => {
     const onCommit = vi.fn();
     const onUnmaterialize = vi.fn();
-    renderEditor({
+    renderLoadedEditor({
       detection: detectionWithNoBoxes,
       existingAnnotation: committedAnnotation(detectionWithNoBoxes.id, 'human'),
       onCommit,
       onUnmaterialize,
     });
-    fireEvent.click(screen.getByTestId('editor-clear'));
+    fireEvent.keyDown(window, { key: 'Delete' });
     expect(onUnmaterialize).toHaveBeenCalledWith(
       expect.objectContaining({ id: detectionWithNoBoxes.id })
     );
     expect(onCommit).not.toHaveBeenCalled();
-  });
-
-  it('Delete un-materializes an evidence-free frame with a committed box', () => {
-    const onUnmaterialize = vi.fn();
-    renderLoadedEditor({
-      detection: detectionWithNoBoxes,
-      existingAnnotation: committedAnnotation(detectionWithNoBoxes.id, 'human'),
-      onUnmaterialize,
-    });
-    fireEvent.keyDown(window, { key: 'Delete' });
-    expect(onUnmaterialize).toHaveBeenCalled();
   });
 
   it('does not step past the very first alert frame', () => {
