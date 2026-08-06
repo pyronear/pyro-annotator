@@ -864,10 +864,9 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   useEffect(() => {
     if (!alertDetail || sequenceIdNum == null || laneIdNum != null) return;
     if (selectLaneIdNum != null) {
-      // Not while a refetch is in flight: "+ Add object" activates its new
-      // lane the moment the server confirms it, which is necessarily before
-      // the invalidated alert-detail lands — judging the URL against the
-      // stale lane list would bounce the just-added object off selection.
+      // Not while a refetch is in flight: judging the URL against a stale
+      // lane list would bounce a lane that only the incoming alert-detail
+      // knows about off selection.
       if (alertFetching) return;
       const known = frameModel.objectStatus.some(o => o.laneSequenceId === selectLaneIdNum);
       if (!known) navigate(`${basePath}${location.search}`, { replace: true });

@@ -75,8 +75,8 @@ export const LocalizeMissedSmokeRow: React.FC<LocalizeMissedSmokeRowProps> = ({
     {hasMissedSmoke && showSkipNudge && (
       <p className="mt-1.5 font-body text-detail text-haze">
         Adding the missed object isn&apos;t supported yet. Use{' '}
-        <span className="font-semibold text-ember">Skip alert</span> below to park this alert so
-        it can be annotated once it is.
+        <span className="font-semibold text-ember">Skip alert</span> below to park this alert so it
+        can be annotated once it is.
       </p>
     )}
   </div>
