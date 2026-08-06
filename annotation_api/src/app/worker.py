@@ -24,9 +24,10 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.core.config import settings
 from app.crud import UserCRUD
 from app.db import engine
-from app.models import Detection
+from app.models import AlertApiConnector, Detection
 from app.models import Sequence as SequenceModel
 from app.services.auto_annotate_scheduling import schedule_pending_auto_annotate
+from app.services.connector_import import import_connector
 from app.services.group_assignment import assign_ungrouped_sequences
 from app.services.smoke_detector import (
     SmokeDetector,
@@ -195,3 +196,46 @@ async def schedule_auto_annotate(timestamp: int) -> None:
             len(sequence_ids),
             sequence_ids,
         )
+
+
+@app.periodic(cron="0 3 * * *")
+@app.task(name="schedule_connector_imports", queueing_lock="schedule_connector_imports")
+async def schedule_connector_imports(timestamp: int) -> None:
+    """Daily sweep: defer one import job per enabled connector.
+
+    No "already ran today" bookkeeping is needed — procrastinate defers a
+    periodic task once per cron period, and each job's own queueing_lock stops a
+    still-running connector from stacking up a second job.
+
+    Not hourly with a per-connector run hour: that would only buy staggering.
+    What makes the schedule robust is trailing_days — a worker down at 03:00
+    loses nothing, because the next run re-covers that date inside its window.
+    """
+    async with AsyncSession(engine, expire_on_commit=False) as session:
+        connectors = (
+            (
+                await session.execute(
+                    select(AlertApiConnector).where(
+                        AlertApiConnector.is_enabled.is_(True)
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+    for connector in connectors:
+        await run_connector_import.configure(
+            queueing_lock=f"connector-import-{connector.id}"
+        ).defer_async(connector_id=connector.id)
+    logger.info("schedule_connector_imports: deferred %d connector(s)", len(connectors))
+
+
+@app.task(name="run_connector_import")
+async def run_connector_import(connector_id: int) -> None:
+    """Import one connector's trailing window."""
+    async with AsyncSession(engine, expire_on_commit=False) as session:
+        connector = await session.get(AlertApiConnector, connector_id)
+        if connector is None:
+            logger.warning("run_connector_import: connector %s gone", connector_id)
+            return
+        await import_connector(session, connector, today=datetime.now(UTC).date())
