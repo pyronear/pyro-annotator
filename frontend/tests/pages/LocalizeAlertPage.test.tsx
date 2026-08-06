@@ -6,9 +6,9 @@
  * controls. Post-Task-5 feedback round adds the segment-click arrival
  * highlight + shareable `?frame=` deep link, and object-focus mode
  * (crop-on + small cards while an object is the timeline's selected row).
- * Task 9 retires the ⚑ pseudo-object row in favor of "+ Add object" (a new
- * sibling lane, its own object row) and reworks the soft-confirm gate
- * around whether an object was added this session.
+ * Task 9 retires the ⚑ pseudo-object row. The "+ Add object" control that
+ * replaced it is itself retired — drawing a missed object isn't supported
+ * yet, so the missed-smoke Yes answer nudges toward Skip alert instead.
  */
 
 import React from 'react';
@@ -25,7 +25,6 @@ import {
 } from 'react-router-dom';
 import type {
   AlertDetail,
-  AlertLane,
   Sequence,
   SequenceAnnotation,
   Detection,
@@ -342,18 +341,6 @@ function makeTwoLaneAlertDetail(): AlertDetail {
 
 const emptyAnnotationsPage = { items: [], page: 1, pages: 1, size: 100, total: 0 };
 
-/**
- * "+ Add object" is gated behind the rail's missed-smoke question, which
- * starts at No on every alert (deliberately NOT seeded from the flag classify
- * set — adding an object has to be a decision made on this screen). Any test
- * that adds an object has to open that gate first.
- */
-function answerMissedSmokeYes() {
-  fireEvent.click(
-    within(screen.getByTestId('localize-missed-smoke-row')).getByRole('radio', { name: 'Yes' })
-  );
-}
-
 function makeDetectionAnnotation(detectionId: number): DetectionAnnotation {
   return {
     id: 9200 + detectionId,
@@ -557,7 +544,7 @@ describe('LocalizeAlertPage', () => {
     expect(screen.getByText('0 of 1 object localized')).toBeInTheDocument();
   });
 
-  it('no ⚑ flag row renders (retired in favor of "+ Add object")', async () => {
+  it('no ⚑ flag row renders', async () => {
     await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
     expect(screen.queryByText('⚑ Missed')).not.toBeInTheDocument();
@@ -1369,238 +1356,6 @@ describe('LocalizeAlertPage', () => {
       // offering a dead button under "accept every object's boxes".
       await waitFor(() => expect(screen.getByTestId('all-objects-localized')).toBeInTheDocument());
       expect(screen.queryByRole('button', { name: /Submit/ })).not.toBeInTheDocument();
-    });
-  });
-
-  describe('"+ Add object"', () => {
-    // Both lanes seq_annotation_done, primary-first: lane 101 is Object 1,
-    // lane 102 is Object 2. `addObject` spawns a new lane appended after
-    // the existing ones — it becomes Object 3 (row index 2) once
-    // alert-detail refetches, mirroring the backend's real ordering
-    // (next synthetic object index, highest alert_api_id).
-    function mockAddObjectFlow() {
-      let alertLanes: AlertLane[] = makeTwoLaneAlertDetail().lanes;
-      vi.mocked(apiClient.getAlertDetail).mockImplementation(async () => ({
-        ...makeTwoLaneAlertDetail(),
-        lanes: alertLanes,
-      }));
-      vi.mocked(apiClient.getSequenceDetections).mockImplementation(async (id: number) => {
-        if (id === 101) return [makeDetection(1001, T1)];
-        if (id === 102) return [makeDetection(1002, T1), makeDetection(1003, T2)];
-        if (id === 103) return [makeDetection(1004, T1)];
-        if (id === 104) return [makeDetection(1005, T1)];
-        return [];
-      });
-      let nextId = 103;
-      vi.mocked(apiClient.addObject).mockImplementation(
-        async (_sourceApi, _platformAlertId, smokeType) => {
-          const id = nextId;
-          nextId += 1;
-          const newLane: AlertLane = {
-            sequence: makeSequence({ id, alert_api_id: 9000 + id }),
-            annotation: makeAnnotation({ id: id * 10, sequence_id: id, smoke_types: [smokeType] }),
-          };
-          alertLanes = [...alertLanes, newLane];
-          return newLane;
-        }
-      );
-    }
-
-    it('opens a smoke-type picker, and Cancel closes it without adding anything', async () => {
-      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
-
-      answerMissedSmokeYes();
-      fireEvent.click(screen.getByRole('button', { name: 'Add object' }));
-      expect(screen.getByRole('button', { name: 'wildfire' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'industrial' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'other' })).toBeInTheDocument();
-
-      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-
-      expect(screen.queryByRole('button', { name: 'wildfire' })).not.toBeInTheDocument();
-      expect(apiClient.addObject).not.toHaveBeenCalled();
-    });
-
-    it('picking a smoke type calls addObject with the alert identity, refetches, and the new object row appears with focus auto-entered', async () => {
-      mockAddObjectFlow();
-      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
-
-      answerMissedSmokeYes();
-      fireEvent.click(screen.getByRole('button', { name: 'Add object' }));
-      fireEvent.click(screen.getByRole('button', { name: 'industrial' }));
-
-      await waitFor(() => {
-        expect(apiClient.addObject).toHaveBeenCalledWith('pyronear_french', 500, 'industrial');
-      });
-
-      // The picker closes and the new row (Object 3) appears, focused.
-      await waitFor(() => {
-        expect(screen.getByTestId('localize-object-row-object-3')).toBeInTheDocument();
-      });
-      expect(
-        within(screen.getByTestId('localize-object-row-object-3')).getByText('Object 3')
-      ).toBeInTheDocument();
-      expect(screen.getByTestId('localize-object-row-object-3')).toHaveAttribute('data-active', 'true');
-      expect(screen.queryByRole('button', { name: 'industrial' })).not.toBeInTheDocument();
-
-      await expandCrop();
-      await waitFor(() => {
-        expect(screen.getByTestId('cropped-image-sequence')).toHaveAttribute(
-          'data-sequence-id',
-          '103'
-        );
-      });
-      expect(screen.getByText('Object added')).toBeInTheDocument();
-    });
-
-    it('is repeatable: a second add spawns its own further row', async () => {
-      mockAddObjectFlow();
-      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
-
-      answerMissedSmokeYes();
-      fireEvent.click(screen.getByRole('button', { name: 'Add object' }));
-      fireEvent.click(screen.getByRole('button', { name: 'wildfire' }));
-      await waitFor(() => expect(screen.getByTestId('localize-object-row-object-3')).toBeInTheDocument());
-
-      answerMissedSmokeYes();
-      fireEvent.click(screen.getByRole('button', { name: 'Add object' }));
-      fireEvent.click(screen.getByRole('button', { name: 'other' }));
-      await waitFor(() => expect(screen.getByTestId('localize-object-row-object-4')).toBeInTheDocument());
-
-      expect(apiClient.addObject).toHaveBeenCalledTimes(2);
-      expect(
-        within(screen.getByTestId('localize-object-row-object-3')).getByText('Object 3')
-      ).toBeInTheDocument();
-      expect(
-        within(screen.getByTestId('localize-object-row-object-4')).getByText('Object 4')
-      ).toBeInTheDocument();
-    });
-
-    /**
-     * Faithful to the backend's `/alert/add-object`: the spawned lane's
-     * detections are cloned with `algo_predictions: []` and no
-     * auto_predictions (the AI never saw this object), and every frame gets
-     * a DetectionAnnotation at `bbox_annotation` stage — so every cell is
-     * `no-box`, with nothing to accept until the annotator draws.
-     * `mockAddObjectFlow` above is deliberately looser (its lanes carry
-     * model boxes); this is the shape the real endpoint produces.
-     */
-    function mockRealisticAddObjectFlow() {
-      let alertLanes: AlertLane[] = makeTwoLaneAlertDetail().lanes;
-      vi.mocked(apiClient.getAlertDetail).mockImplementation(async () => ({
-        ...makeTwoLaneAlertDetail(),
-        lanes: alertLanes,
-      }));
-      vi.mocked(apiClient.getSequenceDetections).mockImplementation(async (id: number) => {
-        if (id === 101) return [makeDetection(1001, T1)];
-        if (id === 102) return [makeDetection(1002, T1), makeDetection(1003, T2)];
-        if (id === 103) {
-          // Cloned frames: no predictions of any kind.
-          return [
-            {
-              ...makeDetection(1004, T1),
-              algo_predictions: { predictions: [] },
-              auto_predictions: undefined,
-            },
-            {
-              ...makeDetection(1005, T2),
-              algo_predictions: { predictions: [] },
-              auto_predictions: undefined,
-            },
-          ];
-        }
-        return [];
-      });
-      vi.mocked(apiClient.getDetectionAnnotations).mockImplementation(async filters => {
-        if (filters?.sequence_id !== 103) return emptyAnnotationsPage;
-        const items = [1004, 1005].map(detectionId => ({
-          ...makeDetectionAnnotation(detectionId),
-          annotation: { annotation: [] },
-          processing_stage: 'bbox_annotation' as const,
-        }));
-        return { ...emptyAnnotationsPage, items, total: items.length };
-      });
-      vi.mocked(apiClient.addObject).mockImplementation(async () => {
-        const newLane: AlertLane = {
-          sequence: makeSequence({ id: 103, alert_api_id: 9003 }),
-          annotation: makeAnnotation({ id: 203, sequence_id: 103 }),
-        };
-        alertLanes = [...alertLanes, newLane];
-        return newLane;
-      });
-    }
-
-    it('a just-added object reads as empty across its timeline — no fill implying boxes it does not have', async () => {
-      mockRealisticAddObjectFlow();
-      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
-
-      answerMissedSmokeYes();
-      fireEvent.click(screen.getByRole('button', { name: 'Add object' }));
-      fireEvent.click(screen.getByRole('button', { name: 'wildfire' }));
-      await waitFor(() => expect(screen.getByTestId('localize-object-row-object-3')).toBeInTheDocument());
-
-      // Both of its frames are 'empty' (present, nothing on them), NOT
-      // 'pending' — which used to paint a filled bar across the whole row.
-      await waitFor(() => {
-        expect(screen.getByTestId('frame-segment-object-3-0')).toHaveAttribute(
-          'aria-label',
-          'Object 3, frame 1: empty'
-        );
-      });
-      expect(screen.getByTestId('frame-segment-object-3-1')).toHaveAttribute(
-        'aria-label',
-        'Object 3, frame 2: empty'
-      );
-
-      // And its rail row says 0 of 2 done rather than implying progress.
-      // Adding an object activates it, and a selected row shows its actions
-      // in the fraction's place — so deselect to read the progress off it.
-      fireEvent.click(screen.getByRole('button', { name: 'Object 3' }));
-      expect(
-        within(screen.getByTestId('localize-object-row-object-3')).getByText('0/2')
-      ).toBeInTheDocument();
-    });
-
-    it('clicking a just-added object activates it without hanging (no boxes to focus on)', async () => {
-      mockRealisticAddObjectFlow();
-      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
-
-      answerMissedSmokeYes();
-      fireEvent.click(screen.getByRole('button', { name: 'Add object' }));
-      fireEvent.click(screen.getByRole('button', { name: 'wildfire' }));
-      await waitFor(() => expect(screen.getByTestId('localize-object-row-object-3')).toBeInTheDocument());
-
-      // Row click toggles focus off (add already focused it), then on again.
-      fireEvent.click(screen.getByRole('button', { name: 'Object 3' }));
-      fireEvent.click(screen.getByRole('button', { name: 'Object 3' }));
-
-      await waitFor(() => {
-        expect(screen.getByTestId('localize-object-row-object-3')).toHaveAttribute(
-          'data-active',
-          'true'
-        );
-      });
-      // A freshly added lane has no boxes yet, so the row must not even offer
-      // the disclosure — a chevron that opens onto an empty spinning square is
-      // worse than no chevron. Asserting on the CONTROL, not on the loop: the
-      // loop is collapsed by default, so its absence would prove nothing.
-      expect(screen.queryByRole('button', { name: /cropped view/i })).not.toBeInTheDocument();
-      expect(screen.queryByTestId('cropped-image-sequence')).not.toBeInTheDocument();
-    });
-
-    it('toasts on a failed add and keeps the picker usable for a retry', async () => {
-      vi.mocked(apiClient.addObject).mockRejectedValueOnce(new Error('Network error'));
-
-      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
-
-      answerMissedSmokeYes();
-      fireEvent.click(screen.getByRole('button', { name: 'Add object' }));
-      fireEvent.click(screen.getByRole('button', { name: 'wildfire' }));
-
-      await waitFor(() => {
-        expect(screen.getByText('Failed to add object — try again')).toBeInTheDocument();
-      });
-      expect(screen.queryByTestId('localize-object-row-object-3')).not.toBeInTheDocument();
     });
   });
 
@@ -2427,17 +2182,6 @@ describe('LocalizeAlertPage', () => {
       expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
     });
 
-    it('Enter is inert while the add-object picker is open', async () => {
-      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
-      await awaitAutoSelect();
-
-      answerMissedSmokeYes();
-      fireEvent.click(screen.getByRole('button', { name: 'Add object' }));
-      fireEvent.keyDown(window, { key: 'Enter' });
-
-      expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
-    });
-
     it('Enter does nothing when the active object has nothing acceptable', async () => {
       vi.mocked(apiClient.getSequenceDetections).mockImplementation(async (id: number) => {
         if (id === 101)
@@ -2486,38 +2230,6 @@ describe('LocalizeAlertPage', () => {
         'aria-checked',
         'true'
       );
-      // And so the inherited flag alone never pre-authorizes adding.
-      expect(screen.queryByRole('button', { name: 'Add object' })).not.toBeInTheDocument();
-    });
-
-    it('gates "+ Add object" until answered Yes, and re-locks it on No', async () => {
-      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
-
-      // The control does not exist at all until the question is answered Yes.
-      expect(screen.queryByRole('button', { name: 'Add object' })).not.toBeInTheDocument();
-
-      answerMissedSmokeYes();
-      expect(screen.getByRole('button', { name: 'Add object' })).toBeEnabled();
-      // It lives inside the question it answers, not beside it.
-      expect(
-        within(screen.getByTestId('localize-missed-smoke-row')).getByRole('button', {
-          name: 'Add object',
-        })
-      ).toBeInTheDocument();
-      expect(
-        within(screen.getByTestId('localize-missed-smoke-row')).getByText(
-          /Add the object the AI missed/
-        )
-      ).toBeInTheDocument();
-
-      // Both radios disable while the PATCH is in flight (no double-writes),
-      // so wait for it to settle before answering the other way.
-      const noRadio = within(screen.getByTestId('localize-missed-smoke-row')).getByRole('radio', {
-        name: 'No',
-      });
-      await waitFor(() => expect(noRadio).toBeEnabled());
-      fireEvent.click(noRadio);
-      expect(screen.queryByRole('button', { name: 'Add object' })).not.toBeInTheDocument();
     });
 
     it('answering Yes PATCHes the flag onto the first annotated lane', async () => {
@@ -2549,23 +2261,6 @@ describe('LocalizeAlertPage', () => {
       });
     });
 
-    it('answering Yes is what records the flag — the add itself no longer needs to', async () => {
-      vi.mocked(apiClient.addObject).mockResolvedValue({
-        sequence: makeSequence({ id: 103, alert_api_id: 9003 }),
-        annotation: makeAnnotation({ id: 203, sequence_id: 103 }),
-      });
-      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
-
-      answerMissedSmokeYes();
-      fireEvent.click(screen.getByRole('button', { name: 'Add object' }));
-      fireEvent.click(screen.getByRole('button', { name: 'wildfire' }));
-
-      await waitFor(() => {
-        expect(apiClient.updateSequenceAnnotation).toHaveBeenCalledWith(201, {
-          has_missed_smoke: true,
-        });
-      });
-    });
   });
 
   describe('soft-confirm on submit (flagged, no object added this session)', () => {
@@ -2603,57 +2298,6 @@ describe('LocalizeAlertPage', () => {
         ).toBeInTheDocument();
       });
       expect(apiClient.localizeSubmit).not.toHaveBeenCalled();
-    });
-
-    it('adding an object this session satisfies the gate — no soft-confirm on submit', async () => {
-      let alertLanes: AlertLane[] = [
-        {
-          sequence: makeSequence({ id: 101, alert_api_id: 9001 }),
-          annotation: makeAnnotation({ id: 201, sequence_id: 101, has_missed_smoke: true }),
-        },
-        {
-          sequence: makeSequence({ id: 102, alert_api_id: 9002 }),
-          annotation: makeAnnotation({ id: 202, sequence_id: 102 }),
-        },
-      ];
-      vi.mocked(apiClient.getAlertDetail).mockImplementation(async () => ({
-        ...makeTwoLaneAlertDetail(),
-        lanes: alertLanes,
-      }));
-      vi.mocked(apiClient.getSequenceDetections).mockImplementation(async (id: number) => {
-        if (id === 101) return [makeDetection(1001, T1)];
-        if (id === 102) return [makeDetection(1002, T1), makeDetection(1003, T2)];
-        if (id === 103) return [makeDetection(1004, T1)];
-        return [];
-      });
-      // The spawned lane's own frame must be accepted too, or the submit
-      // gate (not the soft-confirm) would be what blocks the click.
-      vi.mocked(apiClient.getDetectionAnnotations).mockImplementation(async filters => {
-        const byLane: Record<number, number[]> = { 101: [1001], 102: [1002, 1003], 103: [1004] };
-        const items = (byLane[filters?.sequence_id ?? 0] ?? []).map(makeDetectionAnnotation);
-        return { ...emptyAnnotationsPage, items, total: items.length };
-      });
-      vi.mocked(apiClient.addObject).mockImplementation(async () => {
-        const newLane: AlertLane = {
-          sequence: makeSequence({ id: 103, alert_api_id: 9003 }),
-          annotation: makeAnnotation({ id: 203, sequence_id: 103 }),
-        };
-        alertLanes = [...alertLanes, newLane];
-        return newLane;
-      });
-
-      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
-
-      answerMissedSmokeYes();
-      fireEvent.click(screen.getByRole('button', { name: 'Add object' }));
-      fireEvent.click(screen.getByRole('button', { name: 'wildfire' }));
-      await waitFor(() => expect(screen.getByTestId('localize-object-row-object-3')).toBeInTheDocument());
-
-      fireEvent.click(screen.getByRole('button', { name: /Submit/ }));
-
-      expect(
-        screen.queryByText('You flagged missed smoke but added no object — submit anyway?')
-      ).not.toBeInTheDocument();
     });
 
     it('"Go back" cancels — nothing is submitted or patched', async () => {
@@ -3152,14 +2796,6 @@ describe('LocalizeAlertPage', () => {
       expect(screen.queryByRole('button', { name: 'Cropped view' })).not.toBeInTheDocument();
       fireEvent.keyDown(window, { key: 'p' });
       expect(screen.queryByTestId('cropped-image-sequence')).not.toBeInTheDocument();
-    });
-
-    it('size keys are inert while the add-object picker is open', async () => {
-      await arrive();
-      answerMissedSmokeYes();
-      fireEvent.click(screen.getByRole('button', { name: 'Add object' }));
-      fireEvent.keyDown(window, { key: 'l' });
-      expect(screen.getByTitle('Large cards')).toHaveAttribute('aria-pressed', 'false');
     });
 
     it('size keys are inert while the shortcuts sheet is open', async () => {

@@ -40,16 +40,17 @@
  * longer carry a hover preview popover (dropped — the selected rail row's
  * cropped loop replaces it).
  *
- * Task 9 retires the earlier ⚑ pseudo-object row (a carrier-lane box that
- * stood in for missed smoke) in favor of "+ Add object": a footer action
- * that spawns a brand-new sibling lane for a plume the AI missed entirely,
- * so it gets its own real object row like any other.
+ * Task 9 retired the earlier ⚑ pseudo-object row (a carrier-lane box that
+ * stood in for missed smoke). The "+ Add object" control that replaced it is
+ * itself retired for now — drawing a missed object isn't supported yet, so
+ * the missed-smoke Yes answer nudges toward the Skip alert escape hatch
+ * instead (see docs/specs/2026-08-06-missed-smoke-skip-nudge-design.md).
  *
  * Cockpit round: the page adopts ClassifyAlertPage's two-column shape —
  * a media column (the active object's frame grid) beside a sticky
  * `LocalizeRail` carrying the whole alert's
  * localization state. That collapses the three blocks the body used to
- * stack (workable timeline -> standalone "+ Add object" card -> a separate
+ * stack (workable timeline -> standalone add-object card -> a separate
  * dimmed "Already localized" timeline) into one rail: every object gets a
  * row in lane order, with already-localized lanes dimmed in place rather
  * than exiled to their own strip, and each row carries its own per-frame
@@ -92,11 +93,11 @@
  * no-box frame left at submit time. The missed-smoke soft-confirm is the
  * only gate left in front of it.
  *
- * The rail also owns the missed-smoke question, which guards "+ Add object":
- * it starts at No on every alert — deliberately NOT seeded from the lanes'
- * inherited `has_missed_smoke`, so arriving on an alert classify already
- * flagged never pre-authorizes adding — and answering writes the flag
- * through to the carrying lane.
+ * The rail also owns the missed-smoke question: it starts at No on every
+ * alert — deliberately NOT seeded from the lanes' inherited
+ * `has_missed_smoke`, so arriving on an alert classify already flagged never
+ * pre-answers it — and answering writes the flag through to the carrying
+ * lane.
  *
  * False-positive objects are hidden by default (the queue's own rule, via
  * `laneNeedsLocalization`) behind a rail toggle that surfaces them as a
@@ -113,7 +114,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate, useLocation, useSearchParams, useMatch } from 'react-router-dom';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Keyboard, PlayCircle, Plus, Upload, X } from 'lucide-react';
+import { ArrowLeft, Keyboard, PlayCircle, Upload, X } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { QUERY_KEYS } from '@/utils/constants';
 import {
@@ -259,18 +260,13 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   const [selectedSmokeType, setSelectedSmokeType] = useState<SmokeType>('wildfire');
   const smokeTypeInitFor = useRef<number | null>(null);
 
-  // The three-way "you flagged missed smoke but added no object" dialog and
-  // whether it's already been answered this submit round (so re-clicking
-  // Submit after "Submit anyway" goes straight through instead of re-asking
-  // the same question).
+  // The "you flagged missed smoke" dialog and whether it's already been
+  // answered this submit round (so re-clicking Submit after "Submit anyway"
+  // goes straight through instead of re-asking the same question).
   const [missedSmokeConfirm, setMissedSmokeConfirm] = useState(false);
   const [skipConfirmOpen, setSkipConfirmOpen] = useState(false);
   const [skipNote, setSkipNote] = useState('');
   const [softConfirmResolved, setSoftConfirmResolved] = useState(false);
-  // "+ Add object": lane ids spawned via the picker this session (feeds the
-  // soft-confirm gate below) and whether the picker is currently open.
-  const [sessionAddedObjects, setSessionAddedObjects] = useState<number[]>([]);
-  const [addObjectPickerOpen, setAddObjectPickerOpen] = useState(false);
 
   // The Accept boxes confirm popover — the editor's AcceptRemainingPopover,
   // anchored under the header button. Open/dismiss wiring mirrors the
@@ -279,11 +275,10 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   const [acceptPopoverOpen, setAcceptPopoverOpen] = useState(false);
   const acceptAnchorRef = useRef<HTMLDivElement | null>(null);
 
-  // The rail's missed-smoke answer, and the gate in front of "+ Add object".
-  // Deliberately NOT seeded from the lanes' inherited `has_missed_smoke`:
-  // adding an object has to be a decision made here, so arriving on an alert
-  // classify already flagged must not pre-authorize it. Answering writes the
-  // flag through to the carrier lane.
+  // The rail's missed-smoke answer. Deliberately NOT seeded from the lanes'
+  // inherited `has_missed_smoke`: flagging has to be a decision made here, so
+  // arriving on an alert classify already flagged must not pre-answer it.
+  // Answering writes the flag through to the carrier lane.
   const [missedSmoke, setMissedSmoke] = useState(false);
 
   // Object-focus mode: entering it (row/segment click activating an object)
@@ -351,8 +346,6 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     setHighlightedFrame(null);
     setMissedSmokeConfirm(false);
     setSoftConfirmResolved(false);
-    setSessionAddedObjects([]);
-    setAddObjectPickerOpen(false);
     setMissedSmoke(false);
     frameRefs.current = {};
   }, [sequenceIdNum]);
@@ -448,13 +441,10 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       })
     : { frames: [], objectStatus: [] };
 
-  // Soft-confirm gate for submit: `has_missed_smoke` is set on some lane,
-  // but no object was added this session to address it (`sessionAddedObjects`
-  // — see the "+ Add object" mutation below), and the question hasn't
-  // already been answered this submit round.
+  // Soft-confirm gate for submit: `has_missed_smoke` is set on some lane and
+  // the question hasn't already been answered this submit round.
   const anyLaneFlagged = alertDetail?.lanes.some(l => l.annotation?.has_missed_smoke) ?? false;
-  const softConfirmNeeded =
-    anyLaneFlagged && sessionAddedObjects.length === 0 && !softConfirmResolved;
+  const softConfirmNeeded = anyLaneFlagged && !softConfirmResolved;
 
   // The alert-level missed-smoke flag lives on ONE lane's annotation.
   // Whichever lane
@@ -722,9 +712,6 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
 
   const handleMissedSmokeChange = (value: boolean) => {
     setMissedSmoke(value);
-    // Answering No also closes a picker opened under a previous Yes, so the
-    // gate can't be walked around by leaving it open.
-    if (!value) setAddObjectPickerOpen(false);
     if (missedSmokeAnnotationId == null) return;
     setMissedSmokeFlag.mutate({ annotationId: missedSmokeAnnotationId, value });
   };
@@ -1312,34 +1299,6 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     });
   };
 
-  // "+ Add object": the ⚑ row's replacement for missed smoke — spawns a
-  // brand-new sibling lane server-side (empty algo_predictions, one-track
-  // smoke annotation born at seq_annotation_done; see the backend's
-  // `/alert/add-object`) rather than drawing an anonymous box on an
-  // existing lane. On success: invalidate alert-detail so the new Object
-  // N+1 row appears (its index/color fall out of its position in
-  // `alertDetail.lanes`, same as any other lane), record its lane id in
-  // `sessionAddedObjects` (feeds the soft-confirm gate above), close the
-  // picker, and auto-enter focus mode on it — a lens for immediately
-  // drawing its boxes. Repeatable: each success re-closes the picker so a
-  // further click reopens it for another add.
-  const addObject = useMutation({
-    mutationFn: (smokeType: SmokeType) => {
-      if (!sequence) throw new Error('Alert not loaded');
-      return apiClient.addObject(sequence.source_api, sequence.platform_alert_id, smokeType);
-    },
-    onSuccess: newLane => {
-      queryClient.invalidateQueries({ queryKey: alertDetailQueryKey });
-      setSessionAddedObjects(prev => [...prev, newLane.sequence.id]);
-      setAddObjectPickerOpen(false);
-      activateFocus(newLane.sequence.id);
-      showToastNotification('Object added', 'success');
-    },
-    onError: () => {
-      showToastNotification('Failed to add object — try again', 'error');
-    },
-  });
-
   const handleCellRef = (recordedAt: string, el: HTMLDivElement | null) => {
     frameRefs.current[recordedAt] = el;
   };
@@ -1406,11 +1365,10 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     const handleTab = (e: KeyboardEvent) => {
       if (e.key !== 'Tab') return;
       // Suspended whenever a surface with its own focusables is up — the
-      // per-frame editor, the (inline) add-object smoke-type picker, the
-      // missed-smoke submit dialog, the shortcuts sheet, the accept popover
-      // — so their controls stay keyboard-reachable (mirrors classify's
-      // modal guards).
-      if (detectionIdNum != null || addObjectPickerOpen || missedSmokeConfirm) return;
+      // per-frame editor, the missed-smoke submit dialog, the shortcuts
+      // sheet, the accept popover — so their controls stay
+      // keyboard-reachable (mirrors classify's modal guards).
+      if (detectionIdNum != null || missedSmokeConfirm) return;
       if (showShortcutsModal || acceptPopoverOpen) return;
       if (orderedObjectRows.length === 0) return;
       e.preventDefault();
@@ -1441,7 +1399,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   // above: re-subscribing every render keeps the closure fresh.
   useEffect(() => {
     const handleShortcutKeys = (e: KeyboardEvent) => {
-      if (detectionIdNum != null || addObjectPickerOpen || missedSmokeConfirm) return;
+      if (detectionIdNum != null || missedSmokeConfirm) return;
       // Shift stays allowed: `?` requires it.
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const target = e.target;
@@ -1804,46 +1762,6 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                 onChange={handleMissedSmokeChange}
                 isSaving={setMissedSmokeFlag.isPending}
                 disabled={missedSmokeAnnotationId == null}
-                addObject={
-                  /* "+ Add object" lives inside the question it answers, and
-                     only exists once that answer is Yes — a control that
-                     appears with the reason for it, rather than a dead button
-                     waiting on something above it. */
-                  addObjectPickerOpen ? (
-                    <>
-                      <span className="font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
-                        Smoke type
-                      </span>
-                      {(['wildfire', 'industrial', 'other'] as SmokeType[]).map(type => (
-                        <button
-                          key={type}
-                          type="button"
-                          onClick={() => addObject.mutate(type)}
-                          disabled={addObject.isPending}
-                          className="inline-flex items-center rounded-full bg-ash px-3 py-1 font-body text-xs font-medium capitalize text-haze transition-colors hover:bg-pine-soft hover:text-pine disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {type}
-                        </button>
-                      ))}
-                      <button
-                        type="button"
-                        onClick={() => setAddObjectPickerOpen(false)}
-                        className="font-body text-detail text-haze hover:text-char"
-                      >
-                        Cancel
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setAddObjectPickerOpen(true)}
-                      title="Add an object the AI missed entirely"
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-paper px-3 py-2 font-body text-sm font-medium text-char hover:bg-ash"
-                    >
-                      <Plus className="w-3.5 h-3.5" /> Add object
-                    </button>
-                  )
-                }
               />
             }
             footer={

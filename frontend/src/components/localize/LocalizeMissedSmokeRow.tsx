@@ -1,21 +1,18 @@
 /**
  * The localize rail's missed-smoke question — the counterpart of classify's
- * `DecisionRail` row, and the context for "+ Add object" sitting directly
- * below it.
+ * `DecisionRail` row.
  *
  * Localize used to READ `has_missed_smoke` without ever showing it: the flag
- * classify set only surfaced at submit time, in the "you flagged missed smoke
- * but added no object" dialog. Here it is visible up front and answerable in
- * place, so the reason to add an object is on screen before you need it.
+ * classify set only surfaced at submit time, in the "you flagged missed smoke"
+ * dialog. Here it is visible up front and answerable in place.
  *
  * Binary rather than classify's tri-state: classify's own submit already
  * requires the question to be answered, so by the time an alert reaches
  * localize `has_missed_smoke` is a real answer, not "not asked yet".
  *
- * The answer gates adding an object, and the control lives INSIDE this row
- * rather than beside it: "+ Add object" only exists once the answer is Yes,
- * so the question and the only action it authorizes read as one unit instead
- * of a button that is mysteriously dead until something above it is answered.
+ * A Yes answer records the flag — it no longer gates an add control. Drawing
+ * the missed object isn't supported yet, so the page points the annotator at
+ * its Skip alert escape hatch instead (the nudge rendered under the question).
  */
 
 import React from 'react';
@@ -28,8 +25,6 @@ export interface LocalizeMissedSmokeRowProps {
   isSaving?: boolean;
   /** No lane can carry the flag (nothing annotated yet) — render read-only. */
   disabled?: boolean;
-  /** The "+ Add object" control, rendered inside the row and only while the answer is Yes. */
-  addObject?: React.ReactNode;
 }
 
 const chip = (selected: boolean, selectedClasses: string, disabled: boolean) =>
@@ -42,7 +37,6 @@ export const LocalizeMissedSmokeRow: React.FC<LocalizeMissedSmokeRowProps> = ({
   onChange,
   isSaving = false,
   disabled = false,
-  addObject,
 }) => (
   <div
     data-testid="localize-missed-smoke-row"
@@ -75,13 +69,5 @@ export const LocalizeMissedSmokeRow: React.FC<LocalizeMissedSmokeRowProps> = ({
         </button>
       </span>
     </div>
-    {hasMissedSmoke && (
-      <>
-        <p className="mt-1.5 font-body text-detail text-haze">
-          Add the object the AI missed, so it gets its own row to localize.
-        </p>
-        {addObject && <div className="mt-2 flex flex-wrap items-center gap-2">{addObject}</div>}
-      </>
-    )}
   </div>
 );
