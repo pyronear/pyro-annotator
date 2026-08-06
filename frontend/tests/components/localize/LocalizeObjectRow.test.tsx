@@ -173,6 +173,22 @@ describe('LocalizeObjectRow inline timeline', () => {
     expect(empty).not.toHaveStyle({ backgroundColor: baseProps.color });
   });
 
+  it('renders cleared as a hatch in the object color: settled, but nothing on the frame', () => {
+    render(
+      <LocalizeObjectRow
+        {...baseProps}
+        workable
+        statusByTimestamp={{ [T1]: 'cleared' } as Record<string, ObjectFrameStatus>}
+      />
+    );
+
+    const cleared = screen.getByTestId('frame-segment-object-2-0');
+    expect(cleared.style.backgroundImage).toContain('repeating-linear-gradient');
+    expect(cleared.style.backgroundImage).toContain(baseProps.color);
+    expect(cleared).not.toHaveStyle({ backgroundColor: baseProps.color });
+    expect(cleared).toHaveAttribute('aria-label', 'Object 2, frame 1: cleared');
+  });
+
   it('reports a segment click with its timestamp, without also activating via the header', () => {
     const onFrameClick = vi.fn();
     const onActivate = vi.fn();

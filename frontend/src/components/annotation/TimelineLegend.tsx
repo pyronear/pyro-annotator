@@ -12,16 +12,27 @@
  * An empty list renders nothing.
  */
 
+import type { CSSProperties } from 'react';
 import type { ObjectFrameStatus } from '@/utils/annotation/alertLocalizeUtils';
 
 const SWATCH_CLASS: Record<ObjectFrameStatus, string> = {
   confirmed: 'bg-pine',
+  cleared: '',
   pending: 'bg-pine opacity-40',
   empty: 'ring-1 ring-inset ring-pine',
   // The bare track: classify's rows can be absent on union frames and its
   // legend names that; localize treats absent as background and never
   // passes it.
   absent: 'bg-ash ring-1 ring-inset ring-line',
+};
+
+// The cleared swatch hatches in pine exactly as the row segment hatches in
+// the object color — Tailwind has no hatch utility, so inline style.
+const SWATCH_STYLE: Partial<Record<ObjectFrameStatus, CSSProperties>> = {
+  cleared: {
+    backgroundImage:
+      'repeating-linear-gradient(45deg, #166A5D 0px, #166A5D 2px, transparent 2px, transparent 4px)',
+  },
 };
 
 export interface TimelineLegendEntry {
@@ -46,7 +57,11 @@ export function TimelineLegend({ entries, testid }: TimelineLegendProps) {
           data-testid={`legend-chip-${status}`}
           className="flex items-center gap-1.5 font-data text-detail text-haze"
         >
-          <span aria-hidden className={`h-1.5 w-4 rounded-full ${SWATCH_CLASS[status]}`} />
+          <span
+            aria-hidden
+            className={`h-1.5 w-4 rounded-full ${SWATCH_CLASS[status]}`}
+            style={SWATCH_STYLE[status]}
+          />
           {label}
         </span>
       ))}

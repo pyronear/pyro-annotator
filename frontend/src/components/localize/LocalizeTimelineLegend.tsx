@@ -13,6 +13,7 @@ import { TimelineLegend } from '@/components/annotation/TimelineLegend';
 
 const CHIP_LABELS: Record<TimelineLegendStatus, string> = {
   confirmed: 'committed',
+  cleared: 'cleared',
   pending: 'model box to accept',
   empty: 'no box',
 };

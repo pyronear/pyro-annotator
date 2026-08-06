@@ -7,8 +7,9 @@
  * a per-frame segment bar under the header, rendered by the shared
  * `ObjectRowTimeline` (extracted from here once classify's rail grew the
  * same strip). Each segment reports this object's status at that alert
- * frame: `confirmed` (solid fill), `pending` (faded fill — a model box
- * waiting to be accepted), `empty` (outline only — on the frame with
+ * frame: `confirmed` (solid fill), `cleared` (hatched fill — committed with
+ * no smoke box, "object not visible here"), `pending` (faded fill — a model
+ * box waiting to be accepted), `empty` (outline only — on the frame with
  * nothing on it yet), `absent` (neutral track).
  *
  * `empty` is deliberately distinct from `pending`: collapsing the two made a
@@ -44,9 +45,9 @@ export interface LocalizeObjectRowProps {
   label: string;
   /** Stable per-object color (hex) — matches the segment fills and the grid's box color. */
   color: string;
-  /** Frames this object appears on that already carry a committed box. */
+  /** Frames this object appears on that are settled — a committed box, or committed empty (cleared). */
   confirmedCount: number;
-  /** Frames this object appears on at all (confirmed + pending). */
+  /** Frames this object appears on at all (settled + pending + empty). */
   presentCount: number;
   /** False for lanes already past localization — read-only context. */
   workable: boolean;

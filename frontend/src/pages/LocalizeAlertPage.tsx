@@ -126,6 +126,7 @@ import {
 import {
   buildAlertFrameModel,
   findFrameByDetectionId,
+  objectLocalizeProgress,
   timelineLegendStatuses,
   AlertObjectStatus,
 } from '@/utils/annotation/alertLocalizeUtils';
@@ -822,22 +823,10 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   // `statusByTimestamp` the timeline segments render. Keyed by lane rather
   // than positional, so grouping the rail's rows (smoke first, false
   // positives last) can't desynchronize a row from its numbers.
-  // 'absent' frames count toward neither total — an object isn't behind on a
-  // frame it never appeared on.
   const objectProgress = new Map(
-    objectStatusRows.map(object => {
-      const present = Object.entries(object.statusByTimestamp).filter(
-        ([, status]) => status !== 'absent'
-      );
-      // Anything not yet confirmed still needs handling — both a frame with
-      // a model box waiting ('pending') and one with nothing on it at all
-      // ('empty', e.g. every frame of a just-added object).
-      const outstanding = present.filter(([, status]) => status !== 'confirmed');
-      return [
-        object.laneSequenceId,
-        { presentCount: present.length, confirmedCount: present.length - outstanding.length },
-      ] as const;
-    })
+    objectStatusRows.map(
+      object => [object.laneSequenceId, objectLocalizeProgress(object.statusByTimestamp)] as const
+    )
   );
 
   // The rail groups false positives after the real objects, so the

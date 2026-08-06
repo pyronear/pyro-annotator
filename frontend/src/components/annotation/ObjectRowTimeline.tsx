@@ -2,8 +2,9 @@
  * The per-frame timeline strip shared by the rails' object rows (localize's
  * `LocalizeObjectRow`, classify's `ObjectRow`): one clickable segment button
  * per alert frame, shaped by that frame's `ObjectFrameStatus` — `confirmed`
- * (solid fill in the object's color), `pending` (faded fill), `empty`
- * (outline only), `absent` (neutral track showing through). Extracted from
+ * (solid fill in the object's color), `cleared` (hatched fill — committed
+ * with no smoke box, "object not visible here"), `pending` (faded fill),
+ * `empty` (outline only), `absent` (neutral track showing through). Extracted from
  * `LocalizeObjectRow`, which owned the markup first; the testids are
  * unchanged so no test had to move.
  *
@@ -29,6 +30,19 @@ function segmentAppearance(
 ): { className: string; style?: React.CSSProperties } {
   if (status === 'confirmed') {
     return { className: SEGMENT_BASE_CLASS, style: { backgroundColor: color } };
+  }
+  if (status === 'cleared') {
+    // Committed with no smoke box — the annotator's "object not visible
+    // here" (the editor's Clear on an evidence-bearing frame). Hatched
+    // rather than solid: settled like confirmed, but deliberately nothing
+    // on the frame — a solid fill here read as a box the grid then
+    // couldn't show.
+    return {
+      className: SEGMENT_BASE_CLASS,
+      style: {
+        backgroundImage: `repeating-linear-gradient(45deg, ${color} 0px, ${color} 2px, transparent 2px, transparent 4px)`,
+      },
+    };
   }
   if (status === 'pending') {
     return { className: `${SEGMENT_BASE_CLASS} opacity-40`, style: { backgroundColor: color } };
