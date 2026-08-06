@@ -1331,6 +1331,9 @@ async def localize_done_queue(
     source_api: Optional[SourceApi] = Query(None),
     recorded_at_gte: Optional[datetime] = Query(None),
     recorded_at_lte: Optional[datetime] = Query(None),
+    annotator_id: Optional[int] = Query(
+        None, description="Alerts with any lane contributed to by this user"
+    ),
     session: AsyncSession = Depends(get_session),
     params: Params = Depends(),
     current_user: User = Depends(get_current_user),
@@ -1364,7 +1367,7 @@ async def localize_done_queue(
     if recorded_at_lte is not None:
         candidates = candidates.where(cand_seq.recorded_at <= recorded_at_lte)
 
-    alerts = (
+    alerts_query = (
         select(
             Sequence.source_api,
             Sequence.platform_alert_id,
@@ -1372,8 +1375,14 @@ async def localize_done_queue(
         )
         .where(tuple_(Sequence.source_api, Sequence.platform_alert_id).in_(candidates))
         .group_by(Sequence.source_api, Sequence.platform_alert_id)
-        .subquery()
     )
+    if annotator_id is not None:
+        # Any-lane semantics via HAVING (a WHERE would drop non-matching
+        # lanes from the group and skew min(recorded_at)).
+        alerts_query = alerts_query.having(
+            func.sum(case((_lane_contributed_by(annotator_id), 1), else_=0)) > 0
+        )
+    alerts = alerts_query.subquery()
     total = (
         await session.execute(select(func.count()).select_from(alerts))
     ).scalar_one()
@@ -1398,6 +1407,13 @@ async def localize_done_queue(
     # An alert can lose its sequences between the page query and item build
     # (concurrent delete); drop such rows rather than 500.
     items = [item for item in maybe_items if item is not None]
+    annotators_by_seq = await _human_annotators(
+        session, [lane.sequence_id for item in items for lane in item.lanes]
+    )
+    for item in items:
+        item.annotators = _merge_annotators(
+            annotators_by_seq, [lane.sequence_id for lane in item.lanes]
+        )
     return Page.create(items=items, total=total, params=params)
 
 

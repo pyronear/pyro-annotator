@@ -172,6 +172,7 @@ class LocalizeDoneQueueItem(BaseModel):
     azimuth: Optional[int]
     recorded_at: datetime
     lanes: List[LocalizationQueueLane]
+    annotators: List[str] = []
 
 
 class ClassifyQueueItem(BaseModel):

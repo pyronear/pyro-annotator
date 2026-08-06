@@ -2,10 +2,12 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from httpx import AsyncClient
+from sqlmodel import select
 
 from app.models import (
     Sequence,
     SequenceAnnotation,
+    SequenceAnnotationContribution,
     SequenceAnnotationProcessingStage as Stage,
     SourceApi,
 )
@@ -61,6 +63,79 @@ async def _lane(
         )
     await session.commit()
     return seq
+
+
+async def _contribute(session, seq, user_id, at):
+    annotation_id = (
+        await session.execute(
+            select(SequenceAnnotation.id).where(
+                SequenceAnnotation.sequence_id == seq.id
+            )
+        )
+    ).scalar_one()
+    session.add(
+        SequenceAnnotationContribution(
+            sequence_annotation_id=annotation_id, user_id=user_id, contributed_at=at
+        )
+    )
+    await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_annotators_listed_and_worker_excluded(
+    authenticated_client: AsyncClient,
+    async_session,
+    test_user,
+    regular_user,
+    worker_user,
+):
+    seq = await _lane(
+        async_session,
+        alert_api_id=800,
+        platform_alert_id=800,
+        stage=Stage.ANNOTATED,
+        has_smoke=True,
+        smoke_types=["wildfire"],
+    )
+    await _contribute(async_session, seq, worker_user.id, NOW)
+    await _contribute(async_session, seq, test_user.id, NOW + timedelta(minutes=1))
+    await _contribute(async_session, seq, regular_user.id, NOW + timedelta(minutes=2))
+
+    resp = await authenticated_client.get("/sequences/localize-done-queue")
+    item = resp.json()["items"][0]
+    assert item["annotators"] == [test_user.username, regular_user.username]
+
+
+@pytest.mark.asyncio
+async def test_annotator_id_filters_alerts(
+    authenticated_client: AsyncClient, async_session, test_user, regular_user
+):
+    mine = await _lane(
+        async_session,
+        alert_api_id=810,
+        platform_alert_id=810,
+        stage=Stage.ANNOTATED,
+        has_smoke=True,
+    )
+    theirs = await _lane(
+        async_session,
+        alert_api_id=820,
+        platform_alert_id=820,
+        stage=Stage.ANNOTATED,
+        has_smoke=True,
+    )
+    await _contribute(async_session, mine, test_user.id, NOW)
+    await _contribute(async_session, theirs, regular_user.id, NOW)
+
+    resp = await authenticated_client.get(
+        f"/sequences/localize-done-queue?annotator_id={test_user.id}"
+    )
+    data = resp.json()
+    assert data["total"] == 1
+    assert data["items"][0]["platform_alert_id"] == 810
+
+    unfiltered = await authenticated_client.get("/sequences/localize-done-queue")
+    assert unfiltered.json()["total"] == 2
 
 
 @pytest.mark.asyncio
