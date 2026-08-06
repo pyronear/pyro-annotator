@@ -6,7 +6,9 @@ export type Bbox = [number, number, number, number];
 // detection image is reused and magnified with a CSS transform — no second
 // fetch, no canvas — so small objects are legible next to the full frame.
 export function BboxCrop({ url, box, loading }: { url: string; box: Bbox; loading?: 'lazy' }) {
-  const [failed, setFailed] = useState(false);
+  // Track WHICH url failed, not a boolean: presigned urls rotate on refetch,
+  // and a fresh url must clear a stale failure on the same mounted instance.
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const [x1, y1, x2, y2] = box;
   const cx = (x1 + x2) / 2;
   const cy = (y1 + y2) / 2;
@@ -16,13 +18,13 @@ export function BboxCrop({ url, box, loading }: { url: string; box: Bbox; loadin
   const regionH = Math.min(1, Math.max(y2 - y1, 0.001) * 3);
   const zoom = Math.min(1 / regionW, 1 / regionH, 8);
 
-  if (failed) return null;
+  if (failedUrl === url) return null;
   return (
     <img
       src={url}
       alt=""
       loading={loading}
-      onError={() => setFailed(true)}
+      onError={() => setFailedUrl(url)}
       className="absolute inset-0 w-full h-full object-cover"
       style={{
         transformOrigin: `${cx * 100}% ${cy * 100}%`,
