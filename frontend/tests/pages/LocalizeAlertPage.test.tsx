@@ -2145,6 +2145,8 @@ describe('LocalizeAlertPage', () => {
           name: "Accept Object 1's boxes",
         })
       );
+      // The trigger opens the confirm popover; its Accept runs the mutation.
+      fireEvent.click(await screen.findByTestId('accept-remaining-confirm'));
 
       // Object 1's lane is detection 1001 only — the CTA acts on the active
       // object, not on the alert. Object 2's frames (1002, 1003) must never
@@ -2177,6 +2179,92 @@ describe('LocalizeAlertPage', () => {
         expect(cta.queryByRole('button', { name: /Accept/ })).not.toBeInTheDocument();
         expect(cta.getByRole('button', { name: 'Reclassify Object 1' })).toBeInTheDocument();
       });
+    });
+  });
+
+  describe('accept popover', () => {
+    // The header's Accept boxes no longer fires the mutation itself — it
+    // opens the editor's confirm popover (the same AcceptRemainingPopover),
+    // and the popover's own Accept does. Arrival auto-selects Object 1, so
+    // its trigger is there without clicking a row first.
+    const openPopover = async () => {
+      fireEvent.click(await screen.findByRole('button', { name: "Accept Object 1's boxes" }));
+      return await screen.findByTestId('accept-remaining-popover');
+    };
+
+    it('opens the popover instead of accepting immediately, previewing the active lane', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      const popover = await openPopover();
+
+      // The preview loop is wired to the ACTIVE lane, boxes on.
+      const loop = within(popover).getByTestId('cropped-image-sequence');
+      expect(loop).toHaveAttribute('data-sequence-id', '101');
+      expect(loop).toHaveAttribute('data-show-boxes', 'true');
+      // Nothing was written by the click.
+      expect(apiClient.createDetectionAnnotation).not.toHaveBeenCalled();
+      expect(apiClient.updateDetectionAnnotation).not.toHaveBeenCalled();
+    });
+
+    it("confirm accepts exactly the active object's lane and closes the popover", async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      await openPopover();
+      fireEvent.click(screen.getByTestId('accept-remaining-confirm'));
+
+      // Object 1's lane is detection 1001 only — the popover acts on the
+      // active object, never on Object 2's frames.
+      await waitFor(() => {
+        expect(apiClient.createDetectionAnnotation).toHaveBeenCalledWith(
+          expect.objectContaining({ detection_id: 1001 })
+        );
+      });
+      expect(apiClient.createDetectionAnnotation).not.toHaveBeenCalledWith(
+        expect.objectContaining({ detection_id: 1002 })
+      );
+      await waitFor(() => {
+        expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
+      });
+    });
+
+    it('the X and an outside click both close it without accepting', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      await openPopover();
+      fireEvent.click(screen.getByTestId('accept-remaining-close'));
+      expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
+
+      await openPopover();
+      fireEvent.mouseDown(document.body);
+      expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
+
+      expect(apiClient.createDetectionAnnotation).not.toHaveBeenCalled();
+    });
+
+    it('offers no Accept button when the lane has nothing acceptable, even though it is not localized', async () => {
+      // Lane 101's only frame carries no model box from any source — the
+      // editor's rule (acceptRemainingCount > 0) governs the page button
+      // too, replacing "not yet localized". A dead trigger would open a
+      // popover promising "0 frames have a model box".
+      vi.mocked(apiClient.getSequenceDetections).mockImplementation(async (id: number) => {
+        if (id === 101)
+          return [
+            {
+              ...makeDetection(1001, T1),
+              algo_predictions: { predictions: [] },
+              auto_predictions: undefined,
+            },
+          ];
+        if (id === 102) return [makeDetection(1002, T1), makeDetection(1003, T2)];
+        return [];
+      });
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      const cta = within(screen.getByTestId('localize-active-object-actions'));
+      await waitFor(() => {
+        expect(cta.getByRole('button', { name: 'Reclassify Object 1' })).toBeInTheDocument();
+      });
+      expect(cta.queryByRole('button', { name: /Accept/ })).not.toBeInTheDocument();
     });
   });
 

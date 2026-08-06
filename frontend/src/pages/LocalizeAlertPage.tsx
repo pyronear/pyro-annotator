@@ -128,6 +128,7 @@ import {
   findFrameByDetectionId,
   AlertObjectStatus,
 } from '@/utils/annotation/alertLocalizeUtils';
+import { buildFilmstripEntries } from '@/utils/annotation/objectFilmstrip';
 import { materializeGapFrame } from '@/utils/annotation/gapFrameMaterialize';
 import { laneNeedsLocalization } from '@/utils/annotation/localizeUtils';
 import {
@@ -146,6 +147,9 @@ import {
 } from '@/components/localize';
 import { AlertFrameGrid, ViewToolbar } from '@/components/detection-sequence';
 import { LocalizeObjectEditor } from '@/components/localize/editor';
+// Imported from its file rather than the editor barrel: the page tests stub
+// the barrel down to LocalizeObjectEditor, and the popover must stay real.
+import { AcceptRemainingPopover } from '@/components/localize/editor/AcceptRemainingPopover';
 import type { CardSize } from '@/components/detection-sequence/ViewToolbar';
 import CroppedImageSequence from '@/components/annotation/CroppedImageSequence';
 import { usePersistedTabState } from '@/hooks/usePersistedTabState';
@@ -263,6 +267,13 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   // soft-confirm gate below) and whether the picker is currently open.
   const [sessionAddedObjects, setSessionAddedObjects] = useState<number[]>([]);
   const [addObjectPickerOpen, setAddObjectPickerOpen] = useState(false);
+
+  // The Accept boxes confirm popover — the editor's AcceptRemainingPopover,
+  // anchored under the header button. Open/dismiss wiring mirrors the
+  // editor's rather than being extracted from it (spec: not worth the
+  // regression risk days after PR #301 merged).
+  const [acceptPopoverOpen, setAcceptPopoverOpen] = useState(false);
+  const acceptAnchorRef = useRef<HTMLDivElement | null>(null);
 
   // The rail's missed-smoke answer, and the gate in front of "+ Add object".
   // Deliberately NOT seeded from the lanes' inherited `has_missed_smoke`:
@@ -908,12 +919,14 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   // summaries; giving the selected row the same pair showed every button
   // twice on one screen.
   const objectActionProps = (object: AlertObjectStatus) => ({
-    // Withheld once the lane has nothing pending: re-accepting would fire a
-    // mutation with an empty payload and toast success for a no-op. It is
-    // also the only way the bar can show that the accept landed.
+    // Withheld once no frame has an uncommitted model box on offer — the
+    // editor's rule for the same button, and the only way the bar can show
+    // that the accept landed. Clicking toggles the confirm popover; the
+    // popover's own Accept runs the mutation. Only ever called with the
+    // active object, so the active lane's acceptRemainingCount applies.
     onAcceptBoxes:
-      object.workable && !isObjectLocalized(object)
-        ? () => quickAcceptLane.mutate(object.laneSequenceId)
+      object.workable && acceptRemainingCount > 0
+        ? () => setAcceptPopoverOpen(open => !open)
         : undefined,
     isAccepting: quickAcceptLane.isPending && quickAcceptLane.variables === object.laneSequenceId,
     // Offered on false-positive rows too: promoting one back to smoke
@@ -1095,6 +1108,42 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       { falsePositive: activeLaneIsFalsePositive }
     );
   }, [activeLaneId, detectionsByLaneId, annotationsByLaneId, activeLaneIsFalsePositive]);
+
+  // Frames of the active object a bulk accept would fill, and frames no
+  // source can fill. Also the button's visibility rule: acceptRemainingCount
+  // is what the editor gates its own Accept boxes on, and a popover for a
+  // lane with nothing acceptable would render "0 frames have a model box".
+  const acceptEntries = useMemo(() => {
+    if (activeLaneId == null) return [];
+    return buildFilmstripEntries(
+      frameModel.frames,
+      activeLaneId,
+      detectionsByLaneId[activeLaneId] ?? [],
+      annotationsByLaneId[activeLaneId] ?? []
+    );
+  }, [frameModel.frames, activeLaneId, detectionsByLaneId, annotationsByLaneId]);
+  const acceptRemainingCount = acceptEntries.filter(
+    e => e.inObject && !e.committedSource && e.availableSource
+  ).length;
+  const acceptGapCount = acceptEntries.filter(
+    e => e.inObject && !e.committedSource && !e.availableSource
+  ).length;
+
+  // A popover left open while the selection moves would preview the wrong
+  // lane; the editor never needs this because its whole surface is one lane.
+  useEffect(() => {
+    setAcceptPopoverOpen(false);
+  }, [activeLaneId]);
+
+  // Outside mousedown closes — same listener the editor hangs off its anchor.
+  useEffect(() => {
+    if (!acceptPopoverOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (!acceptAnchorRef.current?.contains(event.target as Node)) setAcceptPopoverOpen(false);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    return () => document.removeEventListener('mousedown', onPointerDown);
+  }, [acceptPopoverOpen]);
 
   // Keyed on `activeLaneId` alone rather than on focus mode, matching the
   // panel's actions beside it: closing the frame editor leaves an object
@@ -1457,6 +1506,31 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                 <LocalizeObjectActions
                   label={activeObject.label}
                   {...objectActionProps(activeObject)}
+                  acceptAnchorRef={acceptAnchorRef}
+                  acceptPopover={
+                    acceptPopoverOpen && activeLaneId != null ? (
+                      <AcceptRemainingPopover
+                        objectLabel={activeObject.label}
+                        objectColor={activeObject.color}
+                        sequenceId={activeLaneId}
+                        // Already what the cropped flipbook computes for this
+                        // lane: the post-accept track (committed boxes where
+                        // decided, winning model boxes elsewhere). The popover
+                        // only opens on workable smoke lanes, so the memo's
+                        // falsePositive branch never applies here.
+                        previewBoxes={activeLaneBoxes}
+                        entries={acceptEntries}
+                        acceptCount={acceptRemainingCount}
+                        gapCount={acceptGapCount}
+                        isAccepting={quickAcceptLane.isPending}
+                        onConfirm={() => {
+                          quickAcceptLane.mutate(activeLaneId);
+                          setAcceptPopoverOpen(false);
+                        }}
+                        onCancel={() => setAcceptPopoverOpen(false)}
+                      />
+                    ) : undefined
+                  }
                 />
               )
             }
