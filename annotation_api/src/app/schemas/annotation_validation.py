@@ -175,3 +175,22 @@ class DetectionAnnotationItem(BaseModel):
 
 class DetectionAnnotationData(BaseModel):
     annotation: List[DetectionAnnotationItem]
+
+    @model_validator(mode="after")
+    def validate_at_most_one_smoke_box(self) -> "DetectionAnnotationData":
+        """One object, one box per frame.
+
+        A plume that visually forks into two strands and rejoins is still one
+        fire's smoke, boxed once. A persistent split is a second fire, so a
+        second object. False-positive items are kept for traceability and are
+        not capped.
+        """
+        smoke_count = sum(1 for item in self.annotation if item.smoke_type is not None)
+        if smoke_count > 1:
+            raise ValueError(
+                f"At most one smoke box is allowed per detection annotation "
+                f"(got {smoke_count}). A plume that forks into two strands and "
+                "rejoins is one object — box it once. A persistent second plume "
+                "is a separate object, with its own annotation track."
+            )
+        return self
