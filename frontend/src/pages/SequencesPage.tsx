@@ -26,6 +26,7 @@ import { useCameras } from '@/hooks/useCameras';
 import { useOrganizations } from '@/hooks/useOrganizations';
 import { useSourceApis } from '@/hooks/useSourceApis';
 import { useAnnotators } from '@/hooks/useAnnotators';
+import { QUEUE_COUNTS_KEY } from '@/hooks/useQueueTotals';
 import { usePersistedFilters, createDefaultFilterState } from '@/hooks/usePersistedFilters';
 import { calculatePresetDateRange } from '@/components/filters/shared/dateRangeUtils';
 import { hasActiveUserFilters } from '@/utils/filterHelpers';
@@ -197,9 +198,9 @@ export default function SequencesPage({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['classify-queue'] });
       queryClient.invalidateQueries({ queryKey: ['classify-queue-skipped-count'] });
-      queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
-      // The dashboard's Classify count is the same skip-excluding queue total
-      // as the badge, so it has to follow an unskip too.
+      // Carries the shared classify-queue total behind both the sidebar badge
+      // and the dashboard card, so both follow an unskip.
+      queryClient.invalidateQueries({ queryKey: [QUEUE_COUNTS_KEY] });
       queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });
     },
   });

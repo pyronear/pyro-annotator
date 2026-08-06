@@ -9,6 +9,7 @@ import { Tooltip } from '@/components/ui/Tooltip';
 import { TABLE_CARD_CLASSES } from '@/components/sequences/tableStyles';
 import { pickNextLocalizeLane } from '@/utils/annotation/localizeUtils';
 import { localizeDetail, ROUTES } from '@/utils/routes';
+import { QUEUE_COUNTS_KEY } from '@/hooks/useQueueTotals';
 
 export default function DetectionAnnotatePage() {
   const navigate = useNavigate();
@@ -36,9 +37,9 @@ export default function DetectionAnnotatePage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['localization-queue'] });
       queryClient.invalidateQueries({ queryKey: ['localization-queue-skipped-count'] });
-      queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
-      // Same reasoning as the classify unskip: the dashboard's Localize count
-      // is the skip-excluding queue total.
+      // Carries the shared localize-queue total behind both the sidebar badge
+      // and the dashboard card, so both follow an unskip.
+      queryClient.invalidateQueries({ queryKey: [QUEUE_COUNTS_KEY] });
       queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });
     },
   });

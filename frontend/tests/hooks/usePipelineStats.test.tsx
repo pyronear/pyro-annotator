@@ -17,6 +17,8 @@ import { apiClient } from '@/services/api';
 import { usePipelineStats } from '@/hooks/usePipelineStats';
 
 const stageTotals: Record<string, number> = {
+  // Unreachable post-fix (STAGES no longer queries it); kept so a regression
+  // reports the bug's own number — 57 lanes instead of 31 alerts.
   ready_to_annotate: 57,
   seq_annotation_done: 22,
   annotated: 427,

@@ -59,10 +59,14 @@ vi.mock('@/hooks/usePersistedFilters', async importOriginal => {
 
 import { apiClient } from '@/services/api';
 import SequencesPage from '@/pages/SequencesPage';
+import { QUEUE_COUNTS_KEY } from '@/hooks/useQueueTotals';
+import type { ClassifyQueueItem } from '@/types/api';
 
 const emptyPage = { items: [], page: 1, pages: 0, size: 50, total: 0 };
 
-const skippedItem = {
+// Annotated on purpose: `tests/` is outside the tsconfig `include`, so an
+// untyped fixture can drift from the real payload without tsc noticing.
+const skippedItem: ClassifyQueueItem = {
   source_api: 'pyronear_french',
   platform_alert_id: 170000,
   camera_name: 'CAM_01',
@@ -82,7 +86,6 @@ const skippedItem = {
 
 describe('SequencesPage unskip', () => {
   let client: QueryClient;
-  let invalidateSpy: ReturnType<typeof vi.fn>;
 
   function wrapper({ children }: { children: React.ReactNode }) {
     return (
@@ -94,8 +97,6 @@ describe('SequencesPage unskip', () => {
 
   beforeEach(() => {
     client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    invalidateSpy = vi.fn();
-    client.invalidateQueries = invalidateSpy;
     vi.mocked(apiClient.getClassifyDone).mockResolvedValue(emptyPage);
     vi.mocked(apiClient.getClassifyQueue).mockImplementation(async params =>
       params?.skipped
@@ -105,12 +106,17 @@ describe('SequencesPage unskip', () => {
     vi.mocked(apiClient.unskipAlert).mockResolvedValue(undefined as never);
   });
 
-  // Regression guard: Classify · to do on the dashboard reads the same
-  // skip-excluding classify-queue total as the sidebar badge, so un-skipping
-  // an alert must refresh the dashboard too. Without this invalidation the two
-  // numbers disagree for the full 5-minute staleTime — the exact symptom the
-  // alert-grouped count was introduced to fix.
-  it('invalidates pipeline-stats so the dashboard count follows the unskip', async () => {
+  // Regression guard: the classify-queue total behind both the sidebar badge
+  // and the dashboard's Classify card is skip-excluding, so un-skipping an
+  // alert has to refresh both. Miss the invalidation and they disagree for the
+  // full 5-minute staleTime — the exact symptom this branch set out to fix.
+  // QUEUE_COUNTS_KEY is imported rather than spelled out so renaming the hook's
+  // key without updating the invalidator fails here instead of silently
+  // regressing.
+  it('invalidates the queue-count and dashboard keys so both counts follow the unskip', async () => {
+    // spyOn, not a bare stub: real invalidation still runs, so a throwing or
+    // refetch-looping invalidation would surface instead of being swallowed.
+    const invalidateSpy = vi.spyOn(client, 'invalidateQueries');
     render(<SequencesPage />, { wrapper });
 
     fireEvent.click(await screen.findByRole('button', { name: /Skipped/ }));
@@ -121,8 +127,14 @@ describe('SequencesPage unskip', () => {
       expect(apiClient.unskipAlert).toHaveBeenCalledWith('pyronear_french', 170000)
     );
 
-    const keys = invalidateSpy.mock.calls.map(([arg]) => String(arg?.queryKey?.[0]));
-    expect(keys).toContain('annotation-counts');
-    expect(keys).toContain('pipeline-stats');
+    await waitFor(() => {
+      const keys = invalidateSpy.mock.calls.map(([arg]) => String(arg?.queryKey?.[0]));
+      // The unskip handler's whole contract: the list, the skipped-count pill,
+      // the shared queue totals, and the dashboard's stage counts.
+      expect(keys).toContain('classify-queue');
+      expect(keys).toContain('classify-queue-skipped-count');
+      expect(keys).toContain(QUEUE_COUNTS_KEY);
+      expect(keys).toContain('pipeline-stats');
+    });
   });
 });
