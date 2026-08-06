@@ -657,7 +657,7 @@ async def test_bulk_annotate_fp_label_exits_at_annotated(
     rule the group fan-out uses (`_labeled_member_stage`)."""
     await _set_seq_metadata(sequence_session, 1, camera_id=42, azimuth=90)
     await _create_placeholder_annotation(authenticated_client, 1)
-    await assign_ungrouped_sequences(sequence_session, user_id=test_user.id)
+    await assign_ungrouped_sequences(sequence_session)
 
     group_id = (await authenticated_client.get("/sequences/1")).json()[
         "sequence_group_id"
