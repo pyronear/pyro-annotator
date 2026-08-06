@@ -503,3 +503,62 @@ async def test_is_wildfire_alertapi_filter(
     null_data = null_response.json()
     assert null_data["total"] == 1
     assert null_data["items"][0]["platform_alert_id"] == 1120
+
+
+@pytest.mark.asyncio
+async def test_annotator_id_filters_to_contributed_alerts(
+    authenticated_client: AsyncClient, async_session, test_user, regular_user
+):
+    mine = await _lane(
+        async_session,
+        alert_api_id=960,
+        platform_alert_id=960,
+        stage=Stage.ANNOTATED,
+        has_smoke=True,
+    )
+    theirs = await _lane(
+        async_session,
+        alert_api_id=970,
+        platform_alert_id=970,
+        stage=Stage.ANNOTATED,
+        has_smoke=True,
+    )
+    await _contribute(async_session, mine, test_user.id, NOW)
+    await _contribute(async_session, theirs, regular_user.id, NOW)
+
+    response = await authenticated_client.get(
+        f"/sequences/classify-done?annotator_id={test_user.id}"
+    )
+    data = response.json()
+    assert data["total"] == 1
+    assert data["items"][0]["platform_alert_id"] == 960
+
+    unfiltered = await authenticated_client.get("/sequences/classify-done")
+    assert unfiltered.json()["total"] == 2
+
+
+@pytest.mark.asyncio
+async def test_annotator_id_matches_any_lane(
+    authenticated_client: AsyncClient, async_session, test_user
+):
+    primary = await _lane(
+        async_session,
+        alert_api_id=980,
+        platform_alert_id=980,
+        stage=Stage.ANNOTATED,
+        has_smoke=True,
+    )
+    await _lane(
+        async_session,
+        alert_api_id=981,
+        platform_alert_id=980,
+        stage=Stage.ANNOTATED,
+        false_positive_types=["antenna"],
+    )
+    await _contribute(async_session, primary, test_user.id, NOW)
+
+    response = await authenticated_client.get(
+        f"/sequences/classify-done?annotator_id={test_user.id}"
+    )
+    assert response.json()["total"] == 1
+    assert response.json()["items"][0]["platform_alert_id"] == 980

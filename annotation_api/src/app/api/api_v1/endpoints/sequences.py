@@ -1115,6 +1115,25 @@ async def _human_annotators(
     return by_seq
 
 
+def _lane_contributed_by(annotator_id: int):
+    """EXISTS: some contribution by this user on the current (outer)
+    Sequence row's annotation. Correlates on Sequence.id so it composes
+    with the grouped any-lane HAVING pattern."""
+    contrib_ann = aliased(SequenceAnnotation)
+    return (
+        select(SequenceAnnotationContribution.id)
+        .join(
+            contrib_ann,
+            contrib_ann.id == SequenceAnnotationContribution.sequence_annotation_id,
+        )
+        .where(
+            contrib_ann.sequence_id == Sequence.id,
+            SequenceAnnotationContribution.user_id == annotator_id,
+        )
+        .exists()
+    )
+
+
 def _merge_annotators(
     by_seq: dict[int, list[tuple[datetime, str]]], sequence_ids: list[int]
 ) -> list[str]:
@@ -1410,6 +1429,9 @@ async def classify_done(
         description="Alerts with any lane of this derived accuracy "
         "(missed smoke → fn, else smoke → tp, else fp)",
     ),
+    annotator_id: Optional[int] = Query(
+        None, description="Alerts with any lane contributed to by this user"
+    ),
     session: AsyncSession = Depends(get_session),
     params: Params = Depends(),
     current_user: User = Depends(get_current_user),
@@ -1512,6 +1534,8 @@ async def classify_done(
                 )
             )
         )
+    if annotator_id is not None:
+        alerts = alerts.having(any_lane(_lane_contributed_by(annotator_id)))
 
     alerts_sq = alerts.subquery()
     total = (
