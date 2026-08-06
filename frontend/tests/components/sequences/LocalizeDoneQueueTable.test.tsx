@@ -39,6 +39,7 @@ const createItem = (
   azimuth: 180,
   recorded_at: '2024-01-01T10:00:00Z',
   lanes: [createLane()],
+  annotators: [],
   ...overrides,
 });
 
@@ -60,9 +61,27 @@ describe('LocalizeDoneQueueTable', () => {
       'Azimuth',
       'Objects',
       'Result',
+      'Annotators',
     ]) {
       expect(screen.getByText(header)).toBeInTheDocument();
     }
+  });
+
+  it('renders comma-separated annotators in the last column', () => {
+    render(
+      <LocalizeDoneQueueTable
+        items={[createItem({ annotators: ['alice', 'bob'] })]}
+        onItemClick={onItemClick}
+      />
+    );
+    expect(screen.getByText('alice, bob')).toBeInTheDocument();
+  });
+
+  it('renders a muted dash when the alert has no human annotators', () => {
+    render(
+      <LocalizeDoneQueueTable items={[createItem({ annotators: [] })]} onItemClick={onItemClick} />
+    );
+    expect(screen.getByText('—')).toBeInTheDocument();
   });
 
   it('shows "N objects" with no localized suffix once every smoke object is localized', () => {

@@ -36,6 +36,7 @@ from sqlalchemy.orm import aliased
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.dependencies import get_current_user, get_sequence_crud
+from app.core.config import settings
 from app.crud import SequenceCRUD
 from app.db import get_session
 from app.services.localization_rule import (
@@ -1080,6 +1081,74 @@ async def localization_queue(
     return Page.create(items=items, total=total, params=params)
 
 
+async def _human_annotators(
+    session: AsyncSession, sequence_ids: list[int]
+) -> dict[int, list[tuple[datetime, str]]]:
+    """Per-sequence (contributed_at, username) pairs of human contributors,
+    earliest first. Machine writes are attributed to the seeded worker user
+    and excluded — they are not annotators."""
+    if not sequence_ids:
+        return {}
+    rows = (
+        await session.execute(
+            select(
+                SequenceAnnotation.sequence_id,
+                SequenceAnnotationContribution.contributed_at,
+                User.username,
+            )
+            .join(
+                SequenceAnnotationContribution,
+                SequenceAnnotationContribution.sequence_annotation_id
+                == SequenceAnnotation.id,
+            )
+            .join(User, SequenceAnnotationContribution.user_id == User.id)
+            .where(
+                SequenceAnnotation.sequence_id.in_(sequence_ids),
+                User.username != settings.WORKER_USERNAME,
+            )
+            .order_by(asc(SequenceAnnotationContribution.contributed_at))
+        )
+    ).all()
+    by_seq: dict[int, list[tuple[datetime, str]]] = {}
+    for sequence_id, contributed_at, username in rows:
+        by_seq.setdefault(sequence_id, []).append((contributed_at, username))
+    return by_seq
+
+
+def _lane_contributed_by(annotator_id: int):
+    """EXISTS: some contribution by this user on the current (outer)
+    Sequence row's annotation. Correlates on Sequence.id so it composes
+    with the grouped any-lane HAVING pattern."""
+    contrib_ann = aliased(SequenceAnnotation)
+    return (
+        select(SequenceAnnotationContribution.id)
+        .join(
+            contrib_ann,
+            contrib_ann.id == SequenceAnnotationContribution.sequence_annotation_id,
+        )
+        .where(
+            contrib_ann.sequence_id == Sequence.id,
+            SequenceAnnotationContribution.user_id == annotator_id,
+        )
+        .exists()
+    )
+
+
+def _merge_annotators(
+    by_seq: dict[int, list[tuple[datetime, str]]], sequence_ids: list[int]
+) -> list[str]:
+    """Distinct usernames across an alert's lanes, ordered by first contribution."""
+    seen: set[str] = set()
+    merged: list[str] = []
+    for _, username in sorted(
+        pair for sequence_id in sequence_ids for pair in by_seq.get(sequence_id, [])
+    ):
+        if username not in seen:
+            seen.add(username)
+            merged.append(username)
+    return merged
+
+
 async def _build_queue_item(
     session: AsyncSession,
     source_api: SourceApi,
@@ -1262,6 +1331,9 @@ async def localize_done_queue(
     source_api: Optional[SourceApi] = Query(None),
     recorded_at_gte: Optional[datetime] = Query(None),
     recorded_at_lte: Optional[datetime] = Query(None),
+    annotator_id: Optional[int] = Query(
+        None, description="Alerts with any lane contributed to by this user"
+    ),
     session: AsyncSession = Depends(get_session),
     params: Params = Depends(),
     current_user: User = Depends(get_current_user),
@@ -1295,7 +1367,7 @@ async def localize_done_queue(
     if recorded_at_lte is not None:
         candidates = candidates.where(cand_seq.recorded_at <= recorded_at_lte)
 
-    alerts = (
+    alerts_query = (
         select(
             Sequence.source_api,
             Sequence.platform_alert_id,
@@ -1303,8 +1375,14 @@ async def localize_done_queue(
         )
         .where(tuple_(Sequence.source_api, Sequence.platform_alert_id).in_(candidates))
         .group_by(Sequence.source_api, Sequence.platform_alert_id)
-        .subquery()
     )
+    if annotator_id is not None:
+        # Any-lane semantics via HAVING (a WHERE would drop non-matching
+        # lanes from the group and skew min(recorded_at)).
+        alerts_query = alerts_query.having(
+            func.sum(case((_lane_contributed_by(annotator_id), 1), else_=0)) > 0
+        )
+    alerts = alerts_query.subquery()
     total = (
         await session.execute(select(func.count()).select_from(alerts))
     ).scalar_one()
@@ -1329,6 +1407,13 @@ async def localize_done_queue(
     # An alert can lose its sequences between the page query and item build
     # (concurrent delete); drop such rows rather than 500.
     items = [item for item in maybe_items if item is not None]
+    annotators_by_seq = await _human_annotators(
+        session, [lane.sequence_id for item in items for lane in item.lanes]
+    )
+    for item in items:
+        item.annotators = _merge_annotators(
+            annotators_by_seq, [lane.sequence_id for lane in item.lanes]
+        )
     return Page.create(items=items, total=total, params=params)
 
 
@@ -1359,6 +1444,9 @@ async def classify_done(
         None,
         description="Alerts with any lane of this derived accuracy "
         "(missed smoke → fn, else smoke → tp, else fp)",
+    ),
+    annotator_id: Optional[int] = Query(
+        None, description="Alerts with any lane contributed to by this user"
     ),
     session: AsyncSession = Depends(get_session),
     params: Params = Depends(),
@@ -1462,6 +1550,8 @@ async def classify_done(
                 )
             )
         )
+    if annotator_id is not None:
+        alerts = alerts.having(any_lane(_lane_contributed_by(annotator_id)))
 
     alerts_sq = alerts.subquery()
     total = (
@@ -1479,7 +1569,7 @@ async def classify_done(
             .limit(params.size)
         )
     ).all()
-    items = []
+    page_lanes = []
     for row in page_rows:
         lane_rows = (
             await session.execute(
@@ -1497,6 +1587,12 @@ async def classify_done(
         ).all()
         if not lane_rows:  # concurrent delete
             continue
+        page_lanes.append((row, lane_rows))
+    annotators_by_seq = await _human_annotators(
+        session, [seq.id for _, lane_rows in page_lanes for seq, _ in lane_rows]
+    )
+    items = []
+    for row, lane_rows in page_lanes:
         primary = lane_rows[0][0]
         items.append(
             ClassifyDoneItem(
@@ -1519,6 +1615,9 @@ async def classify_done(
                     )
                     for seq, ann in lane_rows
                 ],
+                annotators=_merge_annotators(
+                    annotators_by_seq, [seq.id for seq, _ in lane_rows]
+                ),
             )
         )
     return Page.create(items=items, total=total, params=params)

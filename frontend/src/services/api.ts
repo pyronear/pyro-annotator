@@ -6,6 +6,7 @@ import {
   DetectionAnnotation,
   Detection,
   Camera,
+  Contributor,
   Organization,
   SourceApi,
   User,
@@ -254,6 +255,7 @@ class ApiClient {
       source_api?: string;
       recorded_at_gte?: string;
       recorded_at_lte?: string;
+      annotator_id?: number;
     } = {}
   ): Promise<PaginatedResponse<LocalizeDoneQueueItem>> {
     const response: AxiosResponse<PaginatedResponse<LocalizeDoneQueueItem>> = await this.client.get(
@@ -278,6 +280,7 @@ class ApiClient {
       smoke_types?: string[];
       is_unsure?: boolean;
       model_accuracy?: 'tp' | 'fp' | 'fn';
+      annotator_id?: number;
     } = {}
   ): Promise<PaginatedResponse<ClassifyDoneItem>> {
     const response: AxiosResponse<PaginatedResponse<ClassifyDoneItem>> = await this.client.get(
@@ -530,6 +533,14 @@ class ApiClient {
 
   async getUser(id: number): Promise<User> {
     const response: AxiosResponse<User> = await this.client.get(`/users/${id}`);
+    return response.data;
+  }
+
+  // Active human users for the done-pages annotator filter (any authenticated user)
+  async getAnnotators(): Promise<Contributor[]> {
+    const response: AxiosResponse<Contributor[]> = await this.client.get(
+      `${API_ENDPOINTS.USERS}annotators`
+    );
     return response.data;
   }
 
