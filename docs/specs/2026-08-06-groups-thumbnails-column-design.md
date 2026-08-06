@@ -55,8 +55,9 @@ paginated query resolves the page's group IDs (≤ page size):
 3. `bbox_xyxyn` = union of the first detection's *valid* algo-prediction boxes
    (same math as the detail page's `cropBox`); `None` when the frame has no
    valid prediction boxes.
-4. Presign each `bucket_key` via `bucket.get_public_url` and attach the
-   thumbnail lists to the page items in member-`recorded_at` order.
+4. Presign each `bucket_key` via `bucket.generate_presigned_url` (offline,
+   bulk-safe — `get_public_url` HEAD-checks S3 per key and raises 404) and
+   attach the thumbnail lists to the page items in member-`recorded_at` order.
 
 ### Tests
 
@@ -68,7 +69,7 @@ paginated query resolves the page's group IDs (≤ page size):
 
 ## Frontend
 
-- Extract the private `ZoomedCrop` component from
+- Extract the private `BboxCrop` component from
   `SequenceGroupAnnotatePage.tsx` (~25 lines: 3× bbox region, 8× zoom cap)
   into a shared component and reuse it in both places — pure move, no behavior
   change.
