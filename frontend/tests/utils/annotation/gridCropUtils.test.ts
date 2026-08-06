@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { computeCellCrop, focusOnMainObject } from '@/utils/annotation/gridCropUtils';
+import {
+  computeCellCrop,
+  computeFallbackCrops,
+  focusOnMainObject,
+} from '@/utils/annotation/gridCropUtils';
 import type { Detection } from '@/types/api';
 
 const box = (x1: number, y1: number, x2: number, y2: number) => ({ xyxyn: [x1, y1, x2, y2] });
@@ -55,5 +59,81 @@ describe('computeCellCrop', () => {
   it('never zooms out for large boxes', () => {
     const crop = computeCellCrop([box(0.05, 0.05, 0.95, 0.95)]);
     expect(crop.scale).toBe(1);
+  });
+});
+
+describe('computeFallbackCrops', () => {
+  const frameAt = (recordedAt: string, cells: { lane: number; boxes: number[][] }[]) => ({
+    recordedAt,
+    cells: cells.map(c => ({
+      laneSequenceId: c.lane,
+      boxes: c.boxes.map(xyxyn => ({ xyxyn })),
+    })),
+  });
+  const boxA = [0.1, 0.1, 0.2, 0.2];
+  const boxB = [0.5, 0.3, 0.7, 0.4];
+
+  it('crops a mid-gap frame to the union of its nearest boxed neighbors', () => {
+    const frames = [
+      frameAt('t1', [{ lane: 1, boxes: [boxA] }]),
+      frameAt('t2', [{ lane: 1, boxes: [] }]),
+      frameAt('t3', [{ lane: 1, boxes: [boxB] }]),
+    ];
+    const crops = computeFallbackCrops(frames, 1);
+    expect(crops.get('t2')).toEqual(computeCellCrop([{ xyxyn: boxA }, { xyxyn: boxB }]));
+  });
+
+  it('never emits entries for boxed frames', () => {
+    const frames = [
+      frameAt('t1', [{ lane: 1, boxes: [boxA] }]),
+      frameAt('t2', [{ lane: 1, boxes: [] }]),
+      frameAt('t3', [{ lane: 1, boxes: [boxB] }]),
+    ];
+    const crops = computeFallbackCrops(frames, 1);
+    expect(crops.has('t1')).toBe(false);
+    expect(crops.has('t3')).toBe(false);
+  });
+
+  it('a frame before the first boxed frame borrows that frame alone (lane absent there)', () => {
+    const frames = [
+      frameAt('t1', [{ lane: 2, boxes: [boxB] }]),
+      frameAt('t2', [{ lane: 1, boxes: [boxA] }]),
+    ];
+    const crops = computeFallbackCrops(frames, 1);
+    expect(crops.get('t1')).toEqual(computeCellCrop([{ xyxyn: boxA }]));
+  });
+
+  it('a frame after the last boxed frame borrows that frame alone', () => {
+    const frames = [
+      frameAt('t1', [{ lane: 1, boxes: [boxA] }]),
+      frameAt('t2', [{ lane: 1, boxes: [] }]),
+    ];
+    const crops = computeFallbackCrops(frames, 1);
+    expect(crops.get('t2')).toEqual(computeCellCrop([{ xyxyn: boxA }]));
+  });
+
+  it("ignores other lanes' boxes when deriving the region", () => {
+    const frames = [
+      frameAt('t1', [
+        { lane: 1, boxes: [boxA] },
+        { lane: 2, boxes: [boxB] },
+      ]),
+      frameAt('t2', [{ lane: 2, boxes: [boxB] }]),
+    ];
+    const crops = computeFallbackCrops(frames, 1);
+    expect(crops.get('t2')).toEqual(computeCellCrop([{ xyxyn: boxA }]));
+  });
+
+  it('returns an empty map when the active lane has no boxed frame anywhere', () => {
+    const frames = [
+      frameAt('t1', [{ lane: 1, boxes: [] }]),
+      frameAt('t2', [{ lane: 2, boxes: [boxB] }]),
+    ];
+    expect(computeFallbackCrops(frames, 1).size).toBe(0);
+  });
+
+  it('returns an empty map with no active lane', () => {
+    const frames = [frameAt('t1', [{ lane: 1, boxes: [boxA] }])];
+    expect(computeFallbackCrops(frames, null).size).toBe(0);
   });
 });
