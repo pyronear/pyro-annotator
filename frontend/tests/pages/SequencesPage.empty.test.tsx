@@ -116,7 +116,7 @@ describe('SequencesPage empty states', () => {
     render(<SequencesPage defaultProcessingStage={ALL_CLASSIFIED_STAGES} isReviewPage />, {
       wrapper,
     });
-    await waitFor(() => expect(screen.getByText('No classified sequences yet')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('No classified alerts yet')).toBeTruthy());
     expect(screen.getByText(/land here for review/)).toBeTruthy();
     const cta = screen.getByRole('link', { name: 'Start classifying' });
     expect(cta.getAttribute('href')).toBe('/classify');
@@ -127,8 +127,8 @@ describe('SequencesPage empty states', () => {
     render(<SequencesPage defaultProcessingStage={ALL_CLASSIFIED_STAGES} isReviewPage />, {
       wrapper,
     });
-    await waitFor(() => expect(screen.getByText('No matching sequences')).toBeTruthy());
-    expect(screen.queryByText('No classified sequences yet')).toBeNull();
+    await waitFor(() => expect(screen.getByText('No matching classified alerts')).toBeTruthy());
+    expect(screen.queryByText('No classified alerts yet')).toBeNull();
     expect(screen.getByRole('button', { name: 'Clear filters' })).toBeTruthy();
   });
 

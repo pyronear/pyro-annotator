@@ -59,10 +59,10 @@ export default function DetectionAnnotatePage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Smoke Localization</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Alerts to localize</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Alerts whose objects are classified and auto-annotated — draw a tight box around the
-            smoke in every image
+            Smoke alerts with model-proposed boxes — accept or fix them so every frame has a tight
+            box around the smoke
           </p>
         </div>
       </div>
