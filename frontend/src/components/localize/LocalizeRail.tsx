@@ -14,6 +14,8 @@ import React from 'react';
 export interface LocalizeRailProps {
   /** Rendered top-right of the Objects header. */
   headerAction?: React.ReactNode;
+  /** The shared timeline legend — rendered below the rows, above the missed-smoke divider. */
+  legend?: React.ReactNode;
   /** The missed-smoke question, which carries "+ Add object" inside it — rendered below the rows. */
   missedSmoke?: React.ReactNode;
   /** The page's submit button. */
@@ -24,6 +26,7 @@ export interface LocalizeRailProps {
 
 export const LocalizeRail: React.FC<LocalizeRailProps> = ({
   headerAction,
+  legend,
   missedSmoke,
   footer,
   children,
@@ -37,6 +40,8 @@ export const LocalizeRail: React.FC<LocalizeRailProps> = ({
     </div>
 
     <div className="space-y-2">{children}</div>
+
+    {legend && <div className="mt-3">{legend}</div>}
 
     {missedSmoke && (
       <>

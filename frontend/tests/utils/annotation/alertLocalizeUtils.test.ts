@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { buildAlertFrameModel } from '@/utils/annotation/alertLocalizeUtils';
+import {
+  buildAlertFrameModel,
+  timelineLegendStatuses,
+} from '@/utils/annotation/alertLocalizeUtils';
 import { getObjectColor } from '@/utils/annotation/objectColors';
 import type { AlertLane, Detection, DetectionAnnotation, SequenceAnnotation } from '@/types/api';
 
@@ -80,6 +83,26 @@ describe('buildAlertFrameModel', () => {
     // t1 is lane A only, t3 is lane B only.
     expect(frames.find(f => f.recordedAt === t1)?.cells).toHaveLength(1);
     expect(frames.find(f => f.recordedAt === t3)?.cells).toHaveLength(1);
+  });
+
+  it('orders same-second fractional timestamps chronologically, not lexicographically', () => {
+    // Real data serializes the same second both as "...:00Z" and
+    // "...:00.500000Z", and "." sorts before "Z" — a string sort would put
+    // the later fractional timestamp ahead of the earlier whole-second one.
+    // This axis feeds the grid AND every rail row's timeline strip, so pin
+    // the numeric sort here, where the ordering now lives. (Guard inherited
+    // from the deleted ObjectStatusStrip, which sorted its own frame union.)
+    const zeroSeconds = '2026-01-01T10:00:00Z';
+    const halfSecond = '2026-01-01T10:00:00.500000Z';
+    const oneSecond = '2026-01-01T10:00:01Z';
+
+    const { frames } = buildAlertFrameModel(
+      [makeLane(1)],
+      { 1: [makeDetection(11, halfSecond), makeDetection(12, oneSecond), makeDetection(13, zeroSeconds)] },
+      { 1: [] }
+    );
+
+    expect(frames.map(f => f.recordedAt)).toEqual([zeroSeconds, halfSecond, oneSecond]);
   });
 
   it('maps per-frame status: annotated -> confirmed, auto winning boxes -> pending, no-box -> empty', () => {
@@ -317,5 +340,25 @@ describe('buildAlertFrameModel', () => {
 
       expect(frames[0].cells[0].boxes.map(b => b.xyxyn)).toEqual([[0.2, 0.2, 0.3, 0.3]]);
     });
+  });
+});
+
+describe('timelineLegendStatuses', () => {
+  it('returns the union of statuses across rows, in display order', () => {
+    expect(
+      timelineLegendStatuses([
+        { t1: 'empty', t2: 'confirmed' },
+        { t1: 'pending', t2: 'absent' },
+      ])
+    ).toEqual(['confirmed', 'pending', 'empty']);
+  });
+
+  it('lists only statuses actually present', () => {
+    expect(timelineLegendStatuses([{ t1: 'confirmed', t2: 'confirmed' }])).toEqual(['confirmed']);
+  });
+
+  it('never lists absent, and returns nothing for no rows or all-absent rows', () => {
+    expect(timelineLegendStatuses([])).toEqual([]);
+    expect(timelineLegendStatuses([{ t1: 'absent' }])).toEqual([]);
   });
 });

@@ -1,9 +1,11 @@
 /**
- * Keyboard shortcuts help for the localize object editor, opened from the
- * Keyboard button in its top bar or with `?`.
+ * Keyboard shortcuts help for the localize cockpit, opened from the Keyboard
+ * button in the Objects rail header or with `?`.
  *
- * Static copy — the bindings live in `LocalizeObjectEditor`'s key handler;
- * keep this list in sync with it.
+ * Static copy — the bindings live in LocalizeAlertPage's key handlers (the
+ * page-level S/M/L/P/? effect, which also answers Enter/Escape for the
+ * accept popover, the `c` crop effect, the Tab cycle) and
+ * LocalizeObjectRow's Enter/Space activation; keep this list in sync.
  *
  * The Key/Row/Section primitives mirror `ClassifyShortcutsModal`'s so the two
  * help sheets look like one product. They are duplicated rather than shared:
@@ -40,16 +42,12 @@ const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title
   </div>
 );
 
-export interface EditorShortcutsModalProps {
+export interface LocalizeShortcutsModalProps {
   onClose: () => void;
 }
 
-export const EditorShortcutsModal: React.FC<EditorShortcutsModalProps> = ({ onClose }) => (
-  <div
-    className="fixed inset-0 bg-char/50 flex items-center justify-center z-50"
-    onClick={onClose}
-    data-testid="editor-shortcuts-modal"
-  >
+export const LocalizeShortcutsModal: React.FC<LocalizeShortcutsModalProps> = ({ onClose }) => (
+  <div className="fixed inset-0 bg-char/50 flex items-center justify-center z-50" onClick={onClose}>
     <div
       role="dialog"
       aria-modal="true"
@@ -59,39 +57,25 @@ export const EditorShortcutsModal: React.FC<EditorShortcutsModalProps> = ({ onCl
     >
       <div className="flex items-center justify-between px-6 py-4 border-b border-line">
         <h2 className="font-display text-heading font-semibold text-char">Keyboard shortcuts</h2>
-        <button
-          onClick={onClose}
-          aria-label="Close"
-          data-testid="editor-shortcuts-close"
-          className="p-2 hover:bg-ash rounded-md"
-        >
+        <button onClick={onClose} aria-label="Close" className="p-2 hover:bg-ash rounded-md">
           <X className="w-5 h-5 text-haze" />
         </button>
       </div>
       <div className="px-6 py-5 space-y-5">
-        <Section title="Move through the object">
-          <Row label="Previous / next frame" keys={['←', '→']} />
-          <Row label="Accept this frame's box and move on" keys={['Enter']} />
+        <Section title="Navigate">
+          <Row label="Cycle objects" keys={['Tab', 'Shift + Tab']} />
+          <Row label="Open the focused object" keys={['Enter', 'Space']} />
         </Section>
-        <Section title="The box on this frame">
-          <Row label="Draw one — drag on the image" keys={['drag']} />
-          <Row label="Move or resize — click it first, then drag" keys={['click']} />
-          <Row label="Remove the box" keys={['Del']} />
-          <Row label="Deselect the box" keys={['Esc']} />
+        <Section title="Act">
+          <Row label="Accept the model's boxes" keys={['Enter']} />
+          <Row label="Reclassify the object" keys={['R']} />
         </Section>
-        <Section title="Move around the image">
-          <Row label="Pan" keys={['Space + drag']} />
-          <Row label="Pan without the keyboard" keys={['middle-drag']} />
-          <Row label="Zoom in and out" keys={['wheel']} />
-          <Row label="Zoom to the object" keys={['Z']} />
-          <Row label="Reset the zoom" keys={['R']} />
+        <Section title="View">
+          <Row label="Frame card size" keys={['S', 'M', 'L']} />
+          <Row label="Crop cells" keys={['C']} />
+          <Row label="Cropped view — loop the object's crops" keys={['P']} />
         </Section>
-        <Section title="What you can see">
-          <Row label="Cycle boxes — default, all sources, none" keys={['G']} />
-          <Row label="Boxes from the alert's other objects" keys={['O']} />
-        </Section>
-        <Section title="Leave">
-          <Row label="Close the editor" keys={['Esc']} />
+        <Section title="Help">
           <Row label="Toggle this help" keys={['?']} />
         </Section>
       </div>

@@ -319,4 +319,88 @@ describe('ObjectStatusStrip', () => {
     expect(selectedRow).toHaveClass('bg-pine-soft');
     expect(selectedRow).toHaveClass('border-l-pine');
   });
+
+  it('renders undetected as a neutral outline, distinct from empty and absent', () => {
+    render(
+      <ObjectStatusStrip
+        objects={[
+          {
+            label: 'Object 1',
+            color: '#3b82f6',
+            statusByTimestamp: { [t1]: 'undetected', [t2]: 'empty', [t3]: 'absent' },
+          },
+        ]}
+      />
+    );
+
+    const undetected = screen.getByTestId('status-segment-0-0');
+    expect(undetected).toHaveAttribute('aria-label', 'Object 1, frame 1: undetected');
+    // Haze outline, not the object's color — nothing of the object is here.
+    expect(undetected).toHaveStyle({ boxShadow: 'inset 0 0 0 1px #767B72' });
+
+    // empty keeps the object-color outline; absent stays blank.
+    expect(screen.getByTestId('status-segment-0-1')).toHaveStyle({
+      boxShadow: 'inset 0 0 0 1px #3b82f6',
+    });
+    expect(screen.getByTestId('status-segment-0-2')).not.toHaveAttribute('style');
+  });
+
+  describe('bare variant', () => {
+    it('drops the card chrome, title, and label cluster, keeping the segments', () => {
+      const { container } = render(
+        <ObjectStatusStrip
+          variant="bare"
+          objects={[
+            {
+              label: 'Object 1',
+              color: '#3b82f6',
+              statusByTimestamp: { [t1]: 'confirmed', [t2]: 'pending' },
+            },
+          ]}
+        />
+      );
+
+      expect(screen.queryByText('Object timeline')).not.toBeInTheDocument();
+      const root = container.firstElementChild as HTMLElement;
+      expect(root.className).not.toContain('border');
+      expect(root.className).not.toContain('bg-paper');
+      // The embedding surface names the object — no swatch/label cluster.
+      expect(screen.queryByText('Object 1')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Go to Object 1' })).not.toBeInTheDocument();
+      expect(screen.getByTestId('status-segment-0-0')).toBeInTheDocument();
+      expect(screen.getByTestId('status-segment-0-1')).toBeInTheDocument();
+    });
+  });
+
+  describe('playhead', () => {
+    const objects = [
+      {
+        label: 'Object 1',
+        color: '#3b82f6',
+        statusByTimestamp: { [t1]: 'confirmed', [t2]: 'pending', [t3]: 'empty' },
+      } as const,
+    ];
+
+    it('marks exactly the matching segment, at full opacity with an inset highlight', () => {
+      render(<ObjectStatusStrip objects={objects} playhead={{ objectIndex: 0, timestamp: t2 }} />);
+
+      const hit = screen.getByTestId('status-segment-0-1');
+      expect(hit).toHaveAttribute('data-playhead', 'true');
+      // pending normally fades to opacity-40 — the playhead frame must not.
+      expect(hit.className).not.toContain('opacity-40');
+      expect(hit.style.boxShadow).toContain('inset');
+      // fill keeps the object color under the highlight
+      expect(hit.style.backgroundColor).toBe('rgb(59, 130, 246)');
+
+      expect(screen.getByTestId('status-segment-0-0')).not.toHaveAttribute('data-playhead');
+      expect(screen.getByTestId('status-segment-0-2')).not.toHaveAttribute('data-playhead');
+    });
+
+    it('renders exactly as before when no playhead is given', () => {
+      render(<ObjectStatusStrip objects={objects} />);
+
+      expect(screen.getByTestId('status-segment-0-1').className).toContain('opacity-40');
+      expect(screen.getByTestId('status-segment-0-1')).not.toHaveAttribute('data-playhead');
+    });
+  });
 });
