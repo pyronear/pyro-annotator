@@ -568,6 +568,12 @@ async def test_export_alerts_cursor_pagination(
     assert [i["platform_alert_id"] for i in body2["items"]] == [7403]
     assert body2["next_cursor"] is None
 
+    # Re-sending the same cursor is idempotent: same page again
+    r2b = await authenticated_client.get(
+        "/export/alerts", params={"limit": 2, "cursor": body1["next_cursor"]}
+    )
+    assert [i["platform_alert_id"] for i in r2b.json()["items"]] == [7403]
+
 
 @pytest.mark.asyncio
 async def test_export_alerts_full_last_page_then_empty(
@@ -855,3 +861,9 @@ async def test_export_alerts_requires_auth(async_client: AsyncClient):
         "/export/alerts", headers={"Authorization": "Bearer not-a-token"}
     )
     assert resp.status_code in (401, 403)
+
+
+@pytest.mark.asyncio
+async def test_old_export_detections_removed(authenticated_client: AsyncClient):
+    resp = await authenticated_client.get("/export/detections")
+    assert resp.status_code == 404

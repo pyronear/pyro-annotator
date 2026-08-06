@@ -106,7 +106,11 @@ def _fp_lane_bboxes_by_detection(
     seq_ann: SequenceAnnotation,
 ) -> Dict[int, List[List[float]]]:
     """FP lanes have no detection-annotation boxes; the importer's tracked
-    object in the sequence annotation is the box source."""
+    object in the sequence annotation is the box source.
+
+    Merges all tracks: today an FP lane holds exactly one track by import
+    construction, but multi-object collocation may change that.
+    """
     by_detection: Dict[int, List[List[float]]] = {}
     for track in (seq_ann.annotation or {}).get("sequences_bbox", []):
         for bbox in track.get("bboxes", []):
@@ -168,22 +172,25 @@ async def export_alerts(
     # Per-lane "last annotated" moment: sequence annotation write or any
     # detection annotation write, whichever is later. updated_at is only set
     # on updates, so fall back to created_at for never-updated annotations.
-    det_ann_max = (
+    # Pre-aggregated join rather than a correlated subquery: watermark-filtered
+    # (incremental) pulls aggregate every candidate group, so per-lane-row
+    # subquery execution would dominate on large tables.
+    det_ann_agg = (
         select(
+            Detection.sequence_id.label("sequence_id"),
             func.max(
                 func.coalesce(
                     DetectionAnnotation.updated_at, DetectionAnnotation.created_at
                 )
-            )
+            ).label("last_written_at"),
         )
-        .join(Detection, Detection.id == DetectionAnnotation.detection_id)
-        .where(Detection.sequence_id == Sequence.id)
-        .correlate(Sequence)
-        .scalar_subquery()
+        .join(DetectionAnnotation, DetectionAnnotation.detection_id == Detection.id)
+        .group_by(Detection.sequence_id)
+        .subquery()
     )
     lane_annotated_at = func.greatest(
         func.coalesce(SequenceAnnotation.updated_at, SequenceAnnotation.created_at),
-        det_ann_max,
+        det_ann_agg.c.last_written_at,
     )
     exported_lane = SequenceAnnotation.is_unsure.is_not(True)
 
@@ -194,6 +201,8 @@ async def export_alerts(
     )
     exported_lanes = func.count(Sequence.id).filter(exported_lane)
     last_annotated_at = func.max(lane_annotated_at).filter(exported_lane)
+    # Alert start deliberately spans ALL lanes, unsure ones included — the
+    # alert began when its first object appeared, exported or not.
     alert_recorded_at = func.min(Sequence.recorded_at)
 
     stmt = (
@@ -205,6 +214,7 @@ async def export_alerts(
         )
         .select_from(Sequence)
         .outerjoin(SequenceAnnotation, SequenceAnnotation.sequence_id == Sequence.id)
+        .outerjoin(det_ann_agg, det_ann_agg.c.sequence_id == Sequence.id)
         .group_by(Sequence.source_api, Sequence.platform_alert_id)
         .having(annotated_lanes == total_lanes)
         .having(exported_lanes > 0)
@@ -224,6 +234,9 @@ async def export_alerts(
             )
         )
 
+    # Lane-row WHERE is equivalent to alert-level filtering only because all
+    # lanes of an alert share camera/org/source by import construction; it
+    # must never shrink a group unevenly or the completeness gate would lie.
     if source_api is not None:
         stmt = stmt.where(Sequence.source_api == source_api)
     if organisation_id is not None:
@@ -379,9 +392,12 @@ async def export_alerts(
             )
         )
 
+    # Advance the cursor from the page query, not the hydrated items: a row
+    # whose lanes vanished between the two statements is skipped from items
+    # but must still move the cursor forward.
     next_cursor = None
-    if len(page_rows) == limit and items:
-        last = items[-1]
-        next_cursor = f"{last.source_api.value}:{last.platform_alert_id}"
+    if len(page_rows) == limit:
+        last_row = page_rows[-1]
+        next_cursor = f"{last_row.source_api.value}:{last_row.platform_alert_id}"
 
     return AlertExportPage(items=items, next_cursor=next_cursor)
