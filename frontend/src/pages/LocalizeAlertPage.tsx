@@ -40,16 +40,17 @@
  * longer carry a hover preview popover (dropped — the selected rail row's
  * cropped loop replaces it).
  *
- * Task 9 retires the earlier ⚑ pseudo-object row (a carrier-lane box that
- * stood in for missed smoke) in favor of "+ Add object": a footer action
- * that spawns a brand-new sibling lane for a plume the AI missed entirely,
- * so it gets its own real object row like any other.
+ * Task 9 retired the earlier ⚑ pseudo-object row (a carrier-lane box that
+ * stood in for missed smoke). The "+ Add object" control that replaced it is
+ * itself retired for now — drawing a missed object isn't supported yet, so
+ * the missed-smoke Yes answer nudges toward the Skip alert escape hatch
+ * instead (see docs/specs/2026-08-06-missed-smoke-skip-nudge-design.md).
  *
  * Cockpit round: the page adopts ClassifyAlertPage's two-column shape —
  * a media column (the active object's frame grid) beside a sticky
  * `LocalizeRail` carrying the whole alert's
  * localization state. That collapses the three blocks the body used to
- * stack (workable timeline -> standalone "+ Add object" card -> a separate
+ * stack (workable timeline -> standalone add-object card -> a separate
  * dimmed "Already localized" timeline) into one rail: every object gets a
  * row in lane order, with already-localized lanes dimmed in place rather
  * than exiled to their own strip, and each row carries its own per-frame
@@ -92,11 +93,11 @@
  * no-box frame left at submit time. The missed-smoke soft-confirm is the
  * only gate left in front of it.
  *
- * The rail also owns the missed-smoke question, which guards "+ Add object":
- * it starts at No on every alert — deliberately NOT seeded from the lanes'
- * inherited `has_missed_smoke`, so arriving on an alert classify already
- * flagged never pre-authorizes adding — and answering writes the flag
- * through to the carrying lane.
+ * The rail also owns the missed-smoke question: it starts at No on every
+ * alert — deliberately NOT seeded from the lanes' inherited
+ * `has_missed_smoke`, so arriving on an alert classify already flagged never
+ * pre-answers it — and answering writes the flag through to the carrying
+ * lane.
  *
  * False-positive objects are hidden by default (the queue's own rule, via
  * `laneNeedsLocalization`) behind a rail toggle that surfaces them as a
@@ -113,7 +114,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate, useLocation, useSearchParams, useMatch } from 'react-router-dom';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Keyboard, PlayCircle, Plus, Upload } from 'lucide-react';
+import { ArrowLeft, Keyboard, PlayCircle, Upload, X } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { QUERY_KEYS } from '@/utils/constants';
 import {
@@ -126,9 +127,11 @@ import {
 import {
   buildAlertFrameModel,
   findFrameByDetectionId,
+  objectLocalizeProgress,
   timelineLegendStatuses,
   AlertObjectStatus,
 } from '@/utils/annotation/alertLocalizeUtils';
+import { buildFilmstripEntries } from '@/utils/annotation/objectFilmstrip';
 import { materializeGapFrame } from '@/utils/annotation/gapFrameMaterialize';
 import { laneNeedsLocalization } from '@/utils/annotation/localizeUtils';
 import {
@@ -148,6 +151,9 @@ import {
 } from '@/components/localize';
 import { AlertFrameGrid, ViewToolbar } from '@/components/detection-sequence';
 import { LocalizeObjectEditor } from '@/components/localize/editor';
+// Imported from its file rather than the editor barrel: the page tests stub
+// the barrel down to LocalizeObjectEditor, and the popover must stay real.
+import { AcceptRemainingPopover } from '@/components/localize/editor/AcceptRemainingPopover';
 import type { CardSize } from '@/components/detection-sequence/ViewToolbar';
 import CroppedImageSequence from '@/components/annotation/CroppedImageSequence';
 import { usePersistedTabState } from '@/hooks/usePersistedTabState';
@@ -255,22 +261,25 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   const [selectedSmokeType, setSelectedSmokeType] = useState<SmokeType>('wildfire');
   const smokeTypeInitFor = useRef<number | null>(null);
 
-  // The three-way "you flagged missed smoke but added no object" dialog and
-  // whether it's already been answered this submit round (so re-clicking
-  // Submit after "Submit anyway" goes straight through instead of re-asking
-  // the same question).
+  // The "you flagged missed smoke" dialog and whether it's already been
+  // answered this submit round (so re-clicking Submit after "Submit anyway"
+  // goes straight through instead of re-asking the same question).
   const [missedSmokeConfirm, setMissedSmokeConfirm] = useState(false);
+  const [skipConfirmOpen, setSkipConfirmOpen] = useState(false);
+  const [skipNote, setSkipNote] = useState('');
   const [softConfirmResolved, setSoftConfirmResolved] = useState(false);
-  // "+ Add object": lane ids spawned via the picker this session (feeds the
-  // soft-confirm gate below) and whether the picker is currently open.
-  const [sessionAddedObjects, setSessionAddedObjects] = useState<number[]>([]);
-  const [addObjectPickerOpen, setAddObjectPickerOpen] = useState(false);
 
-  // The rail's missed-smoke answer, and the gate in front of "+ Add object".
-  // Deliberately NOT seeded from the lanes' inherited `has_missed_smoke`:
-  // adding an object has to be a decision made here, so arriving on an alert
-  // classify already flagged must not pre-authorize it. Answering writes the
-  // flag through to the carrier lane.
+  // The Accept boxes confirm popover — the editor's AcceptRemainingPopover,
+  // anchored under the header button. Open/dismiss wiring mirrors the
+  // editor's rather than being extracted from it (spec: not worth the
+  // regression risk days after PR #301 merged).
+  const [acceptPopoverOpen, setAcceptPopoverOpen] = useState(false);
+  const acceptAnchorRef = useRef<HTMLDivElement | null>(null);
+
+  // The rail's missed-smoke answer. Deliberately NOT seeded from the lanes'
+  // inherited `has_missed_smoke`: flagging has to be a decision made here, so
+  // arriving on an alert classify already flagged must not pre-answer it.
+  // Answering writes the flag through to the carrier lane.
   const [missedSmoke, setMissedSmoke] = useState(false);
 
   // Object-focus mode: entering it (row/segment click activating an object)
@@ -338,8 +347,6 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     setHighlightedFrame(null);
     setMissedSmokeConfirm(false);
     setSoftConfirmResolved(false);
-    setSessionAddedObjects([]);
-    setAddObjectPickerOpen(false);
     setMissedSmoke(false);
     frameRefs.current = {};
   }, [sequenceIdNum]);
@@ -435,13 +442,10 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       })
     : { frames: [], objectStatus: [] };
 
-  // Soft-confirm gate for submit: `has_missed_smoke` is set on some lane,
-  // but no object was added this session to address it (`sessionAddedObjects`
-  // — see the "+ Add object" mutation below), and the question hasn't
-  // already been answered this submit round.
+  // Soft-confirm gate for submit: `has_missed_smoke` is set on some lane and
+  // the question hasn't already been answered this submit round.
   const anyLaneFlagged = alertDetail?.lanes.some(l => l.annotation?.has_missed_smoke) ?? false;
-  const softConfirmNeeded =
-    anyLaneFlagged && sessionAddedObjects.length === 0 && !softConfirmResolved;
+  const softConfirmNeeded = anyLaneFlagged && !softConfirmResolved;
 
   // The alert-level missed-smoke flag lives on ONE lane's annotation.
   // Whichever lane
@@ -709,9 +713,6 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
 
   const handleMissedSmokeChange = (value: boolean) => {
     setMissedSmoke(value);
-    // Answering No also closes a picker opened under a previous Yes, so the
-    // gate can't be walked around by leaving it open.
-    if (!value) setAddObjectPickerOpen(false);
     if (missedSmokeAnnotationId == null) return;
     setMissedSmokeFlag.mutate({ annotationId: missedSmokeAnnotationId, value });
   };
@@ -809,22 +810,10 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   // `statusByTimestamp` the timeline segments render. Keyed by lane rather
   // than positional, so grouping the rail's rows (smoke first, false
   // positives last) can't desynchronize a row from its numbers.
-  // 'absent' frames count toward neither total — an object isn't behind on a
-  // frame it never appeared on.
   const objectProgress = new Map(
-    objectStatusRows.map(object => {
-      const present = Object.entries(object.statusByTimestamp).filter(
-        ([, status]) => status !== 'absent'
-      );
-      // Anything not yet confirmed still needs handling — both a frame with
-      // a model box waiting ('pending') and one with nothing on it at all
-      // ('empty', e.g. every frame of a just-added object).
-      const outstanding = present.filter(([, status]) => status !== 'confirmed');
-      return [
-        object.laneSequenceId,
-        { presentCount: present.length, confirmedCount: present.length - outstanding.length },
-      ] as const;
-    })
+    objectStatusRows.map(
+      object => [object.laneSequenceId, objectLocalizeProgress(object.statusByTimestamp)] as const
+    )
   );
 
   // The rail groups false positives after the real objects, so the
@@ -864,10 +853,9 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   useEffect(() => {
     if (!alertDetail || sequenceIdNum == null || laneIdNum != null) return;
     if (selectLaneIdNum != null) {
-      // Not while a refetch is in flight: "+ Add object" activates its new
-      // lane the moment the server confirms it, which is necessarily before
-      // the invalidated alert-detail lands — judging the URL against the
-      // stale lane list would bounce the just-added object off selection.
+      // Not while a refetch is in flight: judging the URL against a stale
+      // lane list would bounce a lane that only the incoming alert-detail
+      // knows about off selection.
       if (alertFetching) return;
       const known = frameModel.objectStatus.some(o => o.laneSequenceId === selectLaneIdNum);
       if (!known) navigate(`${basePath}${location.search}`, { replace: true });
@@ -915,12 +903,14 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   // summaries; giving the selected row the same pair showed every button
   // twice on one screen.
   const objectActionProps = (object: AlertObjectStatus) => ({
-    // Withheld once the lane has nothing pending: re-accepting would fire a
-    // mutation with an empty payload and toast success for a no-op. It is
-    // also the only way the bar can show that the accept landed.
+    // Withheld once no frame has an uncommitted model box on offer — the
+    // editor's rule for the same button, and the only way the bar can show
+    // that the accept landed. Clicking toggles the confirm popover; the
+    // popover's own Accept runs the mutation. Only ever called with the
+    // active object, so the active lane's acceptRemainingCount applies.
     onAcceptBoxes:
-      object.workable && !isObjectLocalized(object)
-        ? () => quickAcceptLane.mutate(object.laneSequenceId)
+      object.workable && acceptRemainingCount > 0
+        ? () => setAcceptPopoverOpen(open => !open)
         : undefined,
     isAccepting: quickAcceptLane.isPending && quickAcceptLane.variables === object.laneSequenceId,
     // Offered on false-positive rows too: promoting one back to smoke
@@ -1048,11 +1038,40 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     },
   });
 
-  // The missed-smoke soft-confirm ("you flagged missed smoke but added no
-  // object") is the only gate left in front of submit — the old two-step
-  // no-box warning went away with the bulk-accept-on-submit it guarded:
-  // submit now requires every frame to already carry a committed box, so
-  // there is never a pending no-box frame left to warn about.
+  // Escape hatch (spec: alert-skip-escape-hatch): park the whole alert when
+  // the current UI cannot express it, then move on. Queue mode only.
+  const skipAlertMutation = useMutation({
+    mutationFn: () => {
+      if (!sequence) throw new Error('Alert not loaded');
+      return apiClient.skipAlert(
+        sequence.source_api,
+        sequence.platform_alert_id,
+        skipNote.trim() || undefined
+      );
+    },
+    onSuccess: () => {
+      setSkipConfirmOpen(false);
+      setSkipNote('');
+      queryClient.invalidateQueries({ queryKey: ['localization-queue'] });
+      queryClient.invalidateQueries({ queryKey: ['localization-queue-skipped-count'] });
+      queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });
+      queryClient.invalidateQueries({ queryKey: alertDetailQueryKey });
+      showToastNotification('Alert skipped', 'success');
+      navigate(listPath);
+    },
+    onError: err => {
+      const detail = (err as { detail?: string })?.detail || (err as Error)?.message || '';
+      showToastNotification(detail ? `Skip failed: ${detail}` : 'Skip failed — try again', 'error');
+    },
+  });
+
+  // The missed-smoke soft-confirm is the only gate left in front of submit:
+  // flagged missed smoke can't be annotated yet, so it leads with Skip alert
+  // before offering to submit anyway. The old two-step no-box warning went
+  // away with the bulk-accept-on-submit it guarded: submit now requires
+  // every frame to already carry a committed box, so there is never a
+  // pending no-box frame left to warn about.
   const handleSubmitClick = () => {
     if (submitBlocked || submitAlert.isPending) return;
     if (softConfirmNeeded) {
@@ -1102,6 +1121,50 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       { falsePositive: activeLaneIsFalsePositive }
     );
   }, [activeLaneId, detectionsByLaneId, annotationsByLaneId, activeLaneIsFalsePositive]);
+
+  // Frames of the active object a bulk accept would fill, and frames no
+  // source can fill. Also the button's visibility rule: acceptRemainingCount
+  // is what the editor gates its own Accept boxes on, and a popover for a
+  // lane with nothing acceptable would render "0 frames have a model box".
+  const acceptEntries = useMemo(() => {
+    if (activeLaneId == null) return [];
+    return buildFilmstripEntries(
+      frameModel.frames,
+      activeLaneId,
+      detectionsByLaneId[activeLaneId] ?? [],
+      annotationsByLaneId[activeLaneId] ?? []
+    );
+  }, [frameModel.frames, activeLaneId, detectionsByLaneId, annotationsByLaneId]);
+  const acceptRemainingCount = acceptEntries.filter(
+    e => e.inObject && !e.committedSource && e.availableSource
+  ).length;
+  const acceptGapCount = acceptEntries.filter(
+    e => e.inObject && !e.committedSource && !e.availableSource
+  ).length;
+
+  // A popover left open while the selection moves would preview the wrong
+  // lane; the editor never needs this because its whole surface is one lane.
+  useEffect(() => {
+    setAcceptPopoverOpen(false);
+  }, [activeLaneId]);
+
+  // And one left "open" after a refetch empties the lane's pending count
+  // (a concurrent session accepted it, or our own accept landed) has no
+  // anchor on screen any more — without this, Enter would still fire an
+  // invisible empty-payload accept.
+  useEffect(() => {
+    if (acceptRemainingCount === 0) setAcceptPopoverOpen(false);
+  }, [acceptRemainingCount]);
+
+  // Outside mousedown closes — same listener the editor hangs off its anchor.
+  useEffect(() => {
+    if (!acceptPopoverOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (!acceptAnchorRef.current?.contains(event.target as Node)) setAcceptPopoverOpen(false);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    return () => document.removeEventListener('mousedown', onPointerDown);
+  }, [acceptPopoverOpen]);
 
   // Keyed on `activeLaneId` alone rather than on focus mode, matching the
   // panel's actions beside it: closing the frame editor leaves an object
@@ -1225,48 +1288,43 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     });
   };
 
-  // "+ Add object": the ⚑ row's replacement for missed smoke — spawns a
-  // brand-new sibling lane server-side (empty algo_predictions, one-track
-  // smoke annotation born at seq_annotation_done; see the backend's
-  // `/alert/add-object`) rather than drawing an anonymous box on an
-  // existing lane. On success: invalidate alert-detail so the new Object
-  // N+1 row appears (its index/color fall out of its position in
-  // `alertDetail.lanes`, same as any other lane), record its lane id in
-  // `sessionAddedObjects` (feeds the soft-confirm gate above), close the
-  // picker, and auto-enter focus mode on it — a lens for immediately
-  // drawing its boxes. Repeatable: each success re-closes the picker so a
-  // further click reopens it for another add.
-  const addObject = useMutation({
-    mutationFn: (smokeType: SmokeType) => {
-      if (!sequence) throw new Error('Alert not loaded');
-      return apiClient.addObject(sequence.source_api, sequence.platform_alert_id, smokeType);
-    },
-    onSuccess: newLane => {
-      queryClient.invalidateQueries({ queryKey: alertDetailQueryKey });
-      setSessionAddedObjects(prev => [...prev, newLane.sequence.id]);
-      setAddObjectPickerOpen(false);
-      activateFocus(newLane.sequence.id);
-      showToastNotification('Object added', 'success');
-    },
-    onError: () => {
-      showToastNotification('Failed to add object — try again', 'error');
-    },
-  });
-
   const handleCellRef = (recordedAt: string, el: HTMLDivElement | null) => {
     frameRefs.current[recordedAt] = el;
   };
+
+  // The editor's entrance animation origin: measured at click time, when the
+  // clicked cell is guaranteed laid out, and consumed exactly once by the
+  // editor on mount. Deep links and back/forward never set it, so those
+  // opens are (deliberately) not animated.
+  const pendingEditorOriginRef = useRef<DOMRect | null>(null);
+  const takeEditorOpenRect = useCallback(() => {
+    const rect = pendingEditorOriginRef.current;
+    pendingEditorOriginRef.current = null;
+    return rect;
+  }, []);
+
+  // Close-target lookup for the editor's shrink: the cell showing
+  // `recordedAt`, brought into view instantly first so the exit lands on
+  // something visible. Instant (not smooth): the rect must be final when
+  // measured.
+  const editorFrameCellRect = useCallback((recordedAt: string) => {
+    const el = frameRefs.current[recordedAt];
+    if (!el) return null;
+    el.scrollIntoView?.({ behavior: 'auto', block: 'nearest' });
+    return el.getBoundingClientRect();
+  }, []);
 
   // Opens the shown (active, or first-present-fallback) object's detection
   // in the editor. The editor URL itself carries the lane, so opening it
   // selects the object — deliberately without `activateFocus`, so opening
   // the editor doesn't also silently flip the background grid into focus
   // mode.
-  const handleCellClick = (_recordedAt: string, laneSequenceId: number, detId: number) => {
-    if (sequenceIdNum != null)
-      navigate(
-        `${localizeObject(sequenceIdNum, laneSequenceId, detId, mode === 'done')}${location.search}`
-      );
+  const handleCellClick = (recordedAt: string, laneSequenceId: number, detId: number) => {
+    if (sequenceIdNum == null) return;
+    pendingEditorOriginRef.current = frameRefs.current[recordedAt]?.getBoundingClientRect() ?? null;
+    navigate(
+      `${localizeObject(sequenceIdNum, laneSequenceId, detId, mode === 'done')}${location.search}`
+    );
   };
 
   // 'c' toggles crop mode, matching the legacy grid — inert while the modal
@@ -1296,11 +1354,11 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     const handleTab = (e: KeyboardEvent) => {
       if (e.key !== 'Tab') return;
       // Suspended whenever a surface with its own focusables is up — the
-      // per-frame editor, the (inline) add-object smoke-type picker, the
-      // missed-smoke submit dialog, the shortcuts sheet — so their controls
-      // stay keyboard-reachable (mirrors classify's modal guards).
-      if (detectionIdNum != null || addObjectPickerOpen || missedSmokeConfirm) return;
-      if (showShortcutsModal) return;
+      // per-frame editor, the missed-smoke submit dialog, the skip confirm,
+      // the shortcuts sheet, the accept popover — so their controls stay
+      // keyboard-reachable (mirrors classify's modal guards).
+      if (detectionIdNum != null || missedSmokeConfirm || skipConfirmOpen) return;
+      if (showShortcutsModal || acceptPopoverOpen) return;
       if (orderedObjectRows.length === 0) return;
       e.preventDefault();
       const current = orderedObjectRows.findIndex(o => o.laneSequenceId === activeLaneId);
@@ -1323,13 +1381,14 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   });
 
   // `?` toggles the shortcuts sheet and Escape closes it — the same pair
-  // classify's createKeyboardHandler answers. Suspended under the same
-  // surfaces as the Tab cycle, and while typing in a field. Same
-  // deliberately-absent dependency array as the Tab handler above:
-  // re-subscribing every render keeps the closure fresh.
+  // classify's createKeyboardHandler answers — and, one layer under the
+  // sheet, Enter opens/confirms the accept popover and Escape closes it.
+  // Suspended under the same surfaces as the Tab cycle, and while typing in
+  // a field. Same deliberately-absent dependency array as the Tab handler
+  // above: re-subscribing every render keeps the closure fresh.
   useEffect(() => {
     const handleShortcutKeys = (e: KeyboardEvent) => {
-      if (detectionIdNum != null || addObjectPickerOpen || missedSmokeConfirm) return;
+      if (detectionIdNum != null || missedSmokeConfirm || skipConfirmOpen) return;
       // Shift stays allowed: `?` requires it.
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const target = e.target;
@@ -1351,7 +1410,50 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       // The sheet is a surface of its own, like the overlays above: while it
       // is up, only `?` and Escape act.
       if (showShortcutsModal) return;
+      // The accept popover's keys, next layer under the sheet.
+      if (e.key === 'Escape' && acceptPopoverOpen) {
+        setAcceptPopoverOpen(false);
+        e.preventDefault();
+        return;
+      }
+      if (e.key === 'Enter') {
+        if (acceptPopoverOpen) {
+          // The open dialog owns Enter — its button says so — with the
+          // editor's carve-out: only a button INSIDE the dialog keeps its
+          // own Enter (Tab to the close X must close, not accept). The
+          // trigger button is outside the dialog, so Enter on it confirms
+          // rather than letting the native click toggle the popover shut.
+          if (
+            target instanceof HTMLElement &&
+            target.closest('button') &&
+            target.closest('[role="dialog"]')
+          )
+            return;
+          if (!quickAcceptLane.isPending && activeLaneId != null && acceptRemainingCount > 0) {
+            quickAcceptLane.mutate(activeLaneId);
+            setAcceptPopoverOpen(false);
+          }
+          e.preventDefault();
+          return;
+        }
+        // Closed: never steal Enter from a focused control — a rail row
+        // opens its object, any other button clicks itself.
+        if (target instanceof HTMLElement && target.closest('button, a, [role="button"]')) return;
+        if (activeObject?.workable && acceptRemainingCount > 0) {
+          setAcceptPopoverOpen(true);
+          e.preventDefault();
+        }
+        return;
+      }
       const key = e.key.toLowerCase();
+      // Same action the CTA bar's Reclassify button carries (its chip
+      // advertises this key). Any active object qualifies — false-positive
+      // rows keep Reclassify too.
+      if (key === 'r' && activeLaneId != null) {
+        handleReclassify(activeLaneId);
+        e.preventDefault();
+        return;
+      }
       if (key === 's' || key === 'm' || key === 'l') {
         handleCardSizeChange(key === 's' ? 'sm' : key === 'm' ? 'md' : 'lg');
         e.preventDefault();
@@ -1464,6 +1566,31 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                 <LocalizeObjectActions
                   label={activeObject.label}
                   {...objectActionProps(activeObject)}
+                  acceptAnchorRef={acceptAnchorRef}
+                  acceptPopover={
+                    acceptPopoverOpen && activeLaneId != null ? (
+                      <AcceptRemainingPopover
+                        objectLabel={activeObject.label}
+                        objectColor={activeObject.color}
+                        sequenceId={activeLaneId}
+                        // Already what the cropped flipbook computes for this
+                        // lane: the post-accept track (committed boxes where
+                        // decided, winning model boxes elsewhere). The popover
+                        // only opens on workable smoke lanes, so the memo's
+                        // falsePositive branch never applies here.
+                        previewBoxes={activeLaneBoxes}
+                        entries={acceptEntries}
+                        acceptCount={acceptRemainingCount}
+                        gapCount={acceptGapCount}
+                        isAccepting={quickAcceptLane.isPending}
+                        onConfirm={() => {
+                          quickAcceptLane.mutate(activeLaneId);
+                          setAcceptPopoverOpen(false);
+                        }}
+                        onCancel={() => setAcceptPopoverOpen(false)}
+                      />
+                    ) : undefined
+                  }
                 />
               )
             }
@@ -1624,46 +1751,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                 onChange={handleMissedSmokeChange}
                 isSaving={setMissedSmokeFlag.isPending}
                 disabled={missedSmokeAnnotationId == null}
-                addObject={
-                  /* "+ Add object" lives inside the question it answers, and
-                     only exists once that answer is Yes — a control that
-                     appears with the reason for it, rather than a dead button
-                     waiting on something above it. */
-                  addObjectPickerOpen ? (
-                    <>
-                      <span className="font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
-                        Smoke type
-                      </span>
-                      {(['wildfire', 'industrial', 'other'] as SmokeType[]).map(type => (
-                        <button
-                          key={type}
-                          type="button"
-                          onClick={() => addObject.mutate(type)}
-                          disabled={addObject.isPending}
-                          className="inline-flex items-center rounded-full bg-ash px-3 py-1 font-body text-xs font-medium capitalize text-haze transition-colors hover:bg-pine-soft hover:text-pine disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {type}
-                        </button>
-                      ))}
-                      <button
-                        type="button"
-                        onClick={() => setAddObjectPickerOpen(false)}
-                        className="font-body text-detail text-haze hover:text-char"
-                      >
-                        Cancel
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setAddObjectPickerOpen(true)}
-                      title="Add an object the AI missed entirely"
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-paper px-3 py-2 font-body text-sm font-medium text-char hover:bg-ash"
-                    >
-                      <Plus className="w-3.5 h-3.5" /> Add object
-                    </button>
-                  )
-                }
+                showSkipNudge={mode !== 'done'}
               />
             }
             footer={
@@ -1702,7 +1790,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                       to unlock submit.
                     </div>
                   )}
-                  <div className="flex justify-center">
+                  <div className="flex items-center gap-2">
                     {/* The tooltip carries the gate's explanation, which used to
                       be a line of copy under the button. Hovering the thing
                       you can't click is where the question gets asked, and it
@@ -1711,7 +1799,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                       bug once every row looks handled but one still has a
                       pending frame. Above, because the footer is the last
                       thing in a rail that scrolls. */}
-                    <Tooltip placement="above" tip={submitTooltip}>
+                    <Tooltip placement="above" className="flex-1" tip={submitTooltip}>
                       <button
                         type="button"
                         onClick={e => {
@@ -1719,7 +1807,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                           handleSubmitClick();
                         }}
                         disabled={submitBlocked || submitAlert.isPending}
-                        className="flex items-center justify-center rounded-lg bg-pine px-5 py-2.5 text-center font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="flex w-full items-center justify-center rounded-lg bg-pine px-5 py-2.5 text-center font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {submitAlert.isPending ? (
                           <div className="w-3.5 h-3.5 mr-1.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -1729,6 +1817,26 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                         Submit
                       </button>
                     </Tooltip>
+                    {mode !== 'done' && (
+                      <Tooltip
+                        placement="above"
+                        tip="Hard to annotate with the current tools? Park this whole alert — it leaves the queues for everyone until someone unskips it from the Skipped view."
+                      >
+                        <button
+                          type="button"
+                          onClick={e => {
+                            e.stopPropagation();
+                            setSkipConfirmOpen(true);
+                          }}
+                          data-testid="skip-alert-button"
+                          className={`inline-flex items-center rounded-lg border border-ember bg-paper px-3 py-2.5 font-body text-sm font-medium text-ember hover:bg-ember-soft${
+                            missedSmoke ? ' animate-skip-glow motion-reduce:animate-none' : ''
+                          }`}
+                        >
+                          Skip alert
+                        </button>
+                      </Tooltip>
+                    )}
                   </div>
                 </div>
               )
@@ -1776,6 +1884,8 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
           onReclassify={() => handleReclassify(modalContext.laneId)}
           onNavigateToDetection={navigateModalTo}
           onClose={closeModal}
+          takeOpenOriginRect={takeEditorOpenRect}
+          frameCellRect={editorFrameCellRect}
         />
       )}
 
@@ -1786,20 +1896,30 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
         >
           <div className="w-full max-w-sm rounded-lg border border-line bg-paper p-5">
             <p className="font-body text-sm text-char mb-4">
-              You flagged missed smoke but added no object — submit anyway?
+              You flagged missed smoke, but adding the missed object isn&apos;t supported yet.
             </p>
             <div className="flex flex-col gap-2">
               <button
                 type="button"
-                onClick={handleSubmitAndClearFlag}
+                onClick={() => {
+                  setMissedSmokeConfirm(false);
+                  setSkipConfirmOpen(true);
+                }}
                 className="inline-flex items-center justify-center rounded-lg bg-ember px-4 py-2 font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2"
+              >
+                Skip alert
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmitAndClearFlag}
+                className="inline-flex items-center justify-center rounded-lg border border-line bg-paper px-4 py-2 font-body text-sm font-medium text-char hover:bg-ash"
               >
                 Submit & clear flag
               </button>
               <button
                 type="button"
                 onClick={handleSubmitAnyway}
-                className="inline-flex items-center justify-center rounded-lg border border-line bg-paper px-4 py-2 font-body text-sm font-medium text-char hover:bg-ash"
+                className="inline-flex items-center justify-center rounded-lg px-4 py-2 font-body text-sm font-medium text-char hover:bg-ash"
               >
                 Submit anyway
               </button>
@@ -1809,6 +1929,53 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                 className="inline-flex items-center justify-center rounded-lg px-4 py-2 font-body text-sm font-medium text-haze hover:text-char"
               >
                 Go back
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {skipConfirmOpen && (
+        <div
+          data-testid="skip-alert-confirm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-char/40 px-4"
+        >
+          <div className="w-full max-w-sm rounded-lg border border-line bg-paper p-5">
+            <div className="flex items-start justify-between">
+              <h2 className="font-body text-sm font-semibold text-char">Skip this alert?</h2>
+              <button
+                type="button"
+                onClick={() => setSkipConfirmOpen(false)}
+                aria-label="Close"
+                className="-mr-1.5 -mt-1.5 rounded-md p-1.5 hover:bg-ash"
+              >
+                <X className="h-4 w-4 text-haze" />
+              </button>
+            </div>
+            <p className="mt-1 font-body text-xs text-haze">
+              The whole alert leaves the queue for everyone until someone unskips it.
+            </p>
+            <label
+              htmlFor="skip-note"
+              className="mt-3 block font-body text-xs font-medium text-haze"
+            >
+              Why is it hard to annotate? (optional)
+            </label>
+            <textarea
+              id="skip-note"
+              value={skipNote}
+              onChange={e => setSkipNote(e.target.value)}
+              rows={3}
+              className="mt-1 w-full rounded-lg border border-line bg-paper p-2 font-body text-sm text-char"
+            />
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={() => skipAlertMutation.mutate()}
+                disabled={skipAlertMutation.isPending}
+                className="inline-flex items-center rounded-lg bg-pine px-3 py-2 font-body text-sm font-semibold text-white hover:brightness-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Skip alert
               </button>
             </div>
           </div>

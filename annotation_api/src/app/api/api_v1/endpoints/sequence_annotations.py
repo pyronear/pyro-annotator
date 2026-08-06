@@ -55,6 +55,7 @@ from app.services.annotation_generation import (
     apply_label_to_sequences_bbox,
     derive_group_label_from_annotation,
 )
+from app.services.alert_skip import alert_skip_exists_clause
 from app.services.localization_rule import (
     needs_localization,
     unsettled_unsure_clause,
@@ -646,6 +647,34 @@ async def apply_annotation_update(
         payload.annotation if payload.annotation is not None else existing.annotation
     )
 
+    # Skip guard (spec: alert-skip-escape-hatch): a stage change into a done
+    # stage on a lane whose alert is skipped means a stale tab is racing a
+    # teammate's skip — reject it. Non-stage-changing edits stay allowed.
+    if (
+        payload.processing_stage is not None
+        and payload.processing_stage != existing.processing_stage
+        and payload.processing_stage
+        in (
+            SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
+            SequenceAnnotationProcessingStage.ANNOTATED,
+        )
+    ):
+        alert_is_skipped = (
+            await session.execute(
+                select(func.count())
+                .select_from(Sequence)
+                .where(
+                    Sequence.id == existing.sequence_id,
+                    alert_skip_exists_clause(Sequence),
+                )
+            )
+        ).scalar_one()
+        if alert_is_skipped:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Alert is skipped — unskip it before submitting",
+            )
+
     # Smoke-localization exit guard (spec: smoke-localization entry point): a
     # lane matching the localization rule (see `localization_rule`; unsure lanes
     # are exempt — they resolve through sequence review) may only be submitted
@@ -998,6 +1027,10 @@ async def _propagate_to_group_if_validated(
                 select(Sequence.id).where(
                     Sequence.sequence_group_id == group.id,
                     Sequence.id != seq.id,
+                    # A parked alert's lane state never moves (spec:
+                    # alert-skip-escape-hatch) — skipped members sit this
+                    # fan-out out, like locked-stage members below.
+                    ~alert_skip_exists_clause(Sequence),
                 )
             )
         )

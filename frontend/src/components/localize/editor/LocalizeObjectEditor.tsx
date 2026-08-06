@@ -19,7 +19,7 @@
  * "Amendments from use" section).
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { X, Keyboard, Crop } from 'lucide-react';
 import type {
@@ -51,6 +51,16 @@ import {
   type Point,
   type ResizeHandle,
 } from '@/utils/annotation';
+import {
+  FADE_MS,
+  prefersReducedMotion,
+  zoomKeyframes,
+  ZOOM_CLOSE_EASING,
+  ZOOM_CLOSE_MS,
+  ZOOM_OPEN_EASING,
+  ZOOM_OPEN_MS,
+  type RectLike,
+} from '@/utils/annotation/zoomTransitionUtils';
 import type { ObjectOverlayItem } from '@/components/annotation/ImageOverlays';
 import { DetectionAnnotationCanvas } from '@/components/detection-annotation';
 import { useDetectionImage } from '@/hooks/useDetectionImage';
@@ -118,6 +128,18 @@ export interface LocalizeObjectEditorProps {
   /** Hand this object's classification back to the classify cockpit. */
   onReclassify: () => void;
   onClose: () => void;
+  /**
+   * Consume-once viewport rect of the grid cell the opening click came
+   * from. Absent or null — deep link, back/forward — means the editor
+   * appears without an entrance animation.
+   */
+  takeOpenOriginRect?: () => RectLike | null;
+  /**
+   * Viewport rect of the grid cell showing `recordedAt`, scrolled into
+   * view by the caller first. Close shrinks the editor into it; null
+   * falls back to a plain fade.
+   */
+  frameCellRect?: (recordedAt: string) => RectLike | null;
 }
 
 export function LocalizeObjectEditor({
@@ -140,9 +162,66 @@ export function LocalizeObjectEditor({
   onAcceptRemaining,
   onReclassify,
   onClose,
+  takeOpenOriginRect,
+  frameCellRect,
 }: LocalizeObjectEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
+
+  // Grow out of the clicked grid cell — on mount only: stepping frames
+  // re-renders this same instance and must not re-animate. No captured rect
+  // (deep link, back/forward) or no WAAPI (jsdom) means no animation, and
+  // reduced motion gets a plain fade. Layout effect: the first paint must
+  // already be the shrunk pose, not a full-screen flash.
+  const rootRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    const rect = takeOpenOriginRect?.() ?? null;
+    if (!root || !rect || typeof root.animate !== 'function') return;
+    if (prefersReducedMotion()) {
+      root.animate([{ opacity: 0 }, { opacity: 1 }], { duration: FADE_MS, easing: 'linear' });
+      return;
+    }
+    // Input is off for the grow: getImageInfo's containerOffset is the
+    // visual rect, so pointer maths run mid-animation would mix transformed
+    // and layout space. Restored on finish — unless a close already began,
+    // whose own pointer-events lockout must not be undone.
+    root.style.pointerEvents = 'none';
+    root.style.transformOrigin = '0 0';
+    // The root's own layout size, not window.innerWidth: a classic
+    // scrollbar makes the viewport wider than the laid-out root.
+    const { atCell, full } = zoomKeyframes(rect, {
+      width: root.offsetWidth,
+      height: root.offsetHeight,
+    });
+    const animation = root.animate([atCell, full], {
+      duration: ZOOM_OPEN_MS,
+      easing: ZOOM_OPEN_EASING,
+    });
+    const restore = () => {
+      if (!isClosingRef.current) root.style.pointerEvents = '';
+    };
+    animation.addEventListener('finish', restore);
+    animation.addEventListener('cancel', restore);
+    // Mount-only by design; the origin rect is consumed exactly once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // The exit animation runs on the document timeline and survives this
+  // component's removal — after a browser back during the shrink, its finish
+  // listener would navigate AGAIN from the still-mounted page. The unmount
+  // cleanup detaches that path (and cancelling also releases the forwards
+  // fill). The flag is re-armed in the effect body so StrictMode's dev
+  // mount-cleanup-remount cycle doesn't leave it stuck false.
+  const mountedRef = useRef(true);
+  const exitAnimationRef = useRef<Animation | null>(null);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      exitAnimationRef.current?.cancel();
+    };
+  }, []);
 
   const [imageInfo, setImageInfo] = useState<{
     width: number;
@@ -459,12 +538,17 @@ export function LocalizeObjectEditor({
     transform: { zoomLevel: number; panOffset: Point; transformOrigin: Point };
   } | null => {
     if (!imgRef.current || !containerRef.current) return null;
-    const containerRect = containerRef.current.getBoundingClientRect();
+    const container = containerRef.current;
+    const containerRect = container.getBoundingClientRect();
     return {
       containerOffset: { x: containerRect.left, y: containerRect.top },
+      // LAYOUT metrics for the bounds — same trap as handleImageLoad: while
+      // the open/close animation scales the editor root, the rect is the
+      // transformed visual size, and overlays computed from it during that
+      // window keep the garbage geometry after the animation ends.
       imageBounds: calculateImageBounds({
-        containerWidth: containerRect.width,
-        containerHeight: containerRect.height,
+        containerWidth: container.offsetWidth,
+        containerHeight: container.offsetHeight,
         imageNaturalWidth: imgRef.current.naturalWidth,
         imageNaturalHeight: imgRef.current.naturalHeight,
       }),
@@ -673,6 +757,53 @@ export function LocalizeObjectEditor({
     return () => container.removeEventListener('wheel', onWheel);
   }, []);
 
+  // Close = shrink back into the grid, then let onClose navigate (which
+  // unmounts this component). The guard makes a second close attempt a
+  // no-op and pointer-events blankets the editor against input during the
+  // exit. Without WAAPI (jsdom, old browsers) this is exactly onClose.
+  const isClosingRef = useRef(false);
+  const requestClose = useCallback(() => {
+    if (isClosingRef.current) return;
+    const root = rootRef.current;
+    if (!root || typeof root.animate !== 'function') {
+      onClose();
+      return;
+    }
+    isClosingRef.current = true;
+    root.style.pointerEvents = 'none';
+    const shownRecordedAt = peeked?.recordedAt ?? detection.recorded_at;
+    const target = prefersReducedMotion() ? null : (frameCellRect?.(shownRecordedAt) ?? null);
+    let animation: Animation;
+    if (target) {
+      root.style.transformOrigin = '0 0';
+      const { atCell, full } = zoomKeyframes(target, {
+        width: root.offsetWidth,
+        height: root.offsetHeight,
+      });
+      // fill: 'forwards' holds the end pose until React unmounts the node
+      // on navigation — without it the editor would snap back full-screen
+      // for a frame.
+      animation = root.animate([full, atCell], {
+        duration: ZOOM_CLOSE_MS,
+        easing: ZOOM_CLOSE_EASING,
+        fill: 'forwards',
+      });
+    } else {
+      animation = root.animate([{ opacity: 1 }, { opacity: 0 }], {
+        duration: FADE_MS,
+        easing: 'linear',
+        fill: 'forwards',
+      });
+    }
+    exitAnimationRef.current = animation;
+    // Guarded, not bare onClose: see the unmount cleanup above.
+    const done = () => {
+      if (mountedRef.current) onClose();
+    };
+    animation.addEventListener('finish', done);
+    animation.addEventListener('cancel', done);
+  }, [onClose, frameCellRect, peeked, detection]);
+
   // --- Keyboard -----------------------------------------------------------
 
   useEffect(() => {
@@ -751,7 +882,7 @@ export function LocalizeObjectEditor({
           } else if (boxSelected) {
             setBoxSelected(false);
           } else {
-            onClose();
+            requestClose();
           }
           break;
         default:
@@ -768,7 +899,7 @@ export function LocalizeObjectEditor({
     acceptOpen,
     shortcutsOpen,
     resetZoom,
-    onClose,
+    requestClose,
     editable,
     isAccepting,
     onAcceptRemaining,
@@ -811,7 +942,7 @@ export function LocalizeObjectEditor({
     : detection;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-ash">
+    <div ref={rootRef} className="fixed inset-0 z-50 flex flex-col bg-ash">
       {/* z-40 gives the bar its own stacking context above the media row, so
           the accept popover hanging out of it is not painted behind the
           canvas — whose own box layer sits at z-30 in the same context
@@ -934,7 +1065,7 @@ export function LocalizeObjectEditor({
         <button
           type="button"
           data-testid="editor-close"
-          onClick={onClose}
+          onClick={requestClose}
           className="rounded-lg border border-line bg-paper p-1.5 text-char hover:bg-ash focus:outline-none focus:ring-2 focus:ring-char"
           aria-label="Close editor"
         >

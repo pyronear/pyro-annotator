@@ -166,4 +166,59 @@ describe('ClassifyAlertQueueTable', () => {
     expect(onAlertClick).toHaveBeenCalledTimes(1);
     expect(onAlertClick).toHaveBeenCalledWith(item);
   });
+
+  describe('skipped view', () => {
+    const onUnskip = vi.fn();
+    const skippedItem = () =>
+      createItem({
+        skip: {
+          skipped_at: '2026-08-05T10:00:00Z',
+          skipped_by: 'annotator',
+          note: 'two plumes overlap',
+        },
+      });
+
+    it('renders skip metadata columns', () => {
+      render(
+        <ClassifyAlertQueueTable
+          items={[skippedItem()]}
+          onAlertClick={onAlertClick}
+          skippedView
+          onUnskip={onUnskip}
+        />
+      );
+
+      expect(screen.getByText('Skipped')).toBeInTheDocument();
+      expect(screen.getByText('By')).toBeInTheDocument();
+      expect(screen.getByText('Note')).toBeInTheDocument();
+      expect(screen.getByText('annotator')).toBeInTheDocument();
+      expect(screen.getByText('two plumes overlap')).toBeInTheDocument();
+      expect(screen.getByText(formatDateTime('2026-08-05T10:00:00Z'))).toBeInTheDocument();
+    });
+
+    it('unskip button fires the callback, rows do not navigate', () => {
+      const item = skippedItem();
+      render(
+        <ClassifyAlertQueueTable
+          items={[item]}
+          onAlertClick={onAlertClick}
+          skippedView
+          onUnskip={onUnskip}
+        />
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Unskip' }));
+      expect(onUnskip).toHaveBeenCalledWith(item);
+
+      fireEvent.click(screen.getByText('two plumes overlap'));
+      expect(onAlertClick).not.toHaveBeenCalled();
+    });
+
+    it('default view renders no skip columns', () => {
+      render(<ClassifyAlertQueueTable items={[createItem()]} onAlertClick={onAlertClick} />);
+
+      expect(screen.queryByText('Skipped')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Unskip' })).not.toBeInTheDocument();
+    });
+  });
 });

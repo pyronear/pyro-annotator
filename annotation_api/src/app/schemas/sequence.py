@@ -17,6 +17,8 @@ __all__ = [
     "AddObjectRequest",
     "AlertDetail",
     "AlertLane",
+    "AlertSkipInfo",
+    "AlertSkipRequest",
     "Azimuth",
     "ClassifyDoneItem",
     "ClassifyDoneLane",
@@ -134,6 +136,15 @@ class SequenceUpdateBboxVerified(BaseModel):
     algo_prediction: Optional[SequenceAnnotationData] = Field(default=None)
 
 
+class AlertSkipInfo(BaseModel):
+    """Skip metadata carried on skipped queue rows and returned by skip
+    (docs/specs/2026-08-05-alert-skip-escape-hatch-design.md)."""
+
+    skipped_at: datetime
+    skipped_by: Optional[str] = None
+    note: Optional[str] = None
+
+
 class LocalizationQueueLane(BaseModel):
     """One object-sequence of an alert, as shown in the Localize queue."""
 
@@ -159,6 +170,8 @@ class LocalizationQueueItem(BaseModel):
     azimuth: Optional[int]
     recorded_at: datetime
     lanes: List[LocalizationQueueLane]
+    # Present only on skipped=true queue rows.
+    skip: Optional[AlertSkipInfo] = None
 
 
 class LocalizeDoneQueueItem(BaseModel):
@@ -172,6 +185,7 @@ class LocalizeDoneQueueItem(BaseModel):
     azimuth: Optional[int]
     recorded_at: datetime
     lanes: List[LocalizationQueueLane]
+    annotators: List[str] = []
 
 
 class ClassifyQueueItem(BaseModel):
@@ -187,6 +201,8 @@ class ClassifyQueueItem(BaseModel):
     primary_sequence_id: int
     total_objects: int
     classified_objects: int
+    # Present only on skipped=true queue rows.
+    skip: Optional[AlertSkipInfo] = None
 
 
 class ClassifyDoneLane(BaseModel):
@@ -212,6 +228,7 @@ class ClassifyDoneItem(BaseModel):
     is_wildfire_alertapi: Optional[AnnotationType] = None
     primary_sequence_id: int
     lanes: List[ClassifyDoneLane]
+    annotators: List[str] = []
 
 
 class AlertLane(BaseModel):
@@ -240,6 +257,14 @@ class AddObjectRequest(BaseModel):
     source_api: SourceApi
     platform_alert_id: int
     smoke_type: SmokeType
+
+
+class AlertSkipRequest(BaseModel):
+    """Body of POST /sequences/alert/skip."""
+
+    source_api: SourceApi
+    platform_alert_id: int
+    note: Optional[str] = None
 
 
 class MaterializeFrameRequest(BaseModel):

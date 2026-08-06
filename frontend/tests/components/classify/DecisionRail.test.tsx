@@ -81,6 +81,19 @@ describe('DecisionRail', () => {
     expect(within(row).getByRole('radio', { name: 'No' })).toHaveAttribute('tabindex', '-1');
   });
 
+  it('renders the legend slot below the object rows', () => {
+    renderRail({ legend: <div data-testid="rail-legend-probe" /> });
+    const probe = screen.getByTestId('rail-legend-probe');
+    expect(
+      screen.getByTestId('row-child').compareDocumentPosition(probe) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      probe.compareDocumentPosition(screen.getByTestId('missed-smoke-row')) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+
   it('disables the chips when missedSmokeDisabled', () => {
     const { onMissedSmokeReviewChange } = renderRail({ missedSmokeDisabled: true });
     const row = within(screen.getByTestId('missed-smoke-row'));

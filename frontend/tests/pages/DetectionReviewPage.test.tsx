@@ -7,6 +7,7 @@ import React from 'react';
 vi.mock('@/services/api', () => ({
   apiClient: {
     getLocalizeDoneQueue: vi.fn(),
+    getAnnotators: vi.fn(),
   },
 }));
 
@@ -100,12 +101,14 @@ const queueItem = {
       auto_annotated_at: null,
     },
   ],
+  annotators: [],
 };
 
 describe('DetectionReviewPage (/localize/done)', () => {
   beforeEach(() => {
     navigateMock.mockClear();
     mockedFilters = {};
+    vi.mocked(apiClient.getAnnotators).mockResolvedValue([]);
     vi.mocked(apiClient.getLocalizeDoneQueue).mockResolvedValue({
       items: [queueItem],
       page: 1,

@@ -22,6 +22,15 @@ describe('LocalizeTimelineLegend', () => {
     expect(container.firstChild).toBeNull();
   });
 
+  it('renders the cleared chip with a hatched pine swatch', () => {
+    render(<LocalizeTimelineLegend statuses={['cleared']} />);
+
+    const chip = screen.getByTestId('legend-chip-cleared');
+    expect(chip).toHaveTextContent('cleared');
+    const swatch = chip.querySelector('span[aria-hidden]') as HTMLElement;
+    expect(swatch.style.backgroundImage).toContain('repeating-linear-gradient');
+  });
+
   it('gives each status its own swatch treatment: solid, faded, outline', () => {
     render(<LocalizeTimelineLegend statuses={['confirmed', 'pending', 'empty']} />);
     const swatch = (status: string) =>

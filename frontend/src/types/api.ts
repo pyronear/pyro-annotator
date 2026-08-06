@@ -43,6 +43,13 @@ export interface LocalizationQueueLane {
   auto_annotated_at: string | null;
 }
 
+// Skip metadata carried on skipped=true queue rows and returned by skipAlert.
+export interface AlertSkipInfo {
+  skipped_at: string;
+  skipped_by: string | null;
+  note: string | null;
+}
+
 // One alert ready for smoke localization (queue row).
 export interface LocalizationQueueItem {
   source_api: string;
@@ -52,6 +59,7 @@ export interface LocalizationQueueItem {
   azimuth: number | null;
   recorded_at: string;
   lanes: LocalizationQueueLane[];
+  skip?: AlertSkipInfo | null;
 }
 
 // One alert with at least one localized (ANNOTATED, rule-matching) smoke
@@ -64,6 +72,7 @@ export interface LocalizeDoneQueueItem {
   azimuth: number | null;
   recorded_at: string;
   lanes: LocalizationQueueLane[];
+  annotators: string[];
 }
 
 // One object-sequence of an alert with annotation, as returned by the alert-detail endpoint.
@@ -94,6 +103,7 @@ export interface ClassifyQueueItem {
   primary_sequence_id: number;
   total_objects: number;
   classified_objects: number;
+  skip?: AlertSkipInfo | null;
 }
 
 // One classified object-sequence of a done alert (outcome-relevant fields only).
@@ -117,6 +127,7 @@ export interface ClassifyDoneItem {
   is_wildfire_alertapi: AnnotationType | null;
   primary_sequence_id: number;
   lanes: ClassifyDoneLane[];
+  annotators: string[];
 }
 
 // Submission payload for bulk classification of all objects in an alert.
@@ -431,6 +442,7 @@ export interface ExtendedSequenceFilters extends SequenceFilters {
   smoke_types?: string[]; // Array of smoke types for OR filtering
   is_unsure?: boolean;
   include_annotation?: boolean;
+  annotator_id?: number; // filter done pages by contributing user
 }
 
 // Sequence with complete annotation information

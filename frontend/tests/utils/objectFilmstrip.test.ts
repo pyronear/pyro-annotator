@@ -12,6 +12,7 @@ const frame = (recordedAt: string, laneIds: number[]): AlertFrame => ({
     laneSequenceId,
     detectionId: laneSequenceId * 1000 + Number(recordedAt.slice(-4, -1)),
     cellState: 'auto' as const,
+    color: '#166A5D',
     boxes: [],
   })),
 });

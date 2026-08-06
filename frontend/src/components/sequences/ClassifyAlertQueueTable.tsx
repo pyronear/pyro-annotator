@@ -18,6 +18,9 @@ import { formatDateTime } from '@/utils/datetime';
 interface ClassifyAlertQueueTableProps {
   items: ClassifyQueueItem[];
   onAlertClick: (item: ClassifyQueueItem) => void;
+  /** Skipped-backlog mode: rows carry skip metadata + an Unskip action and are not clickable. */
+  skippedView?: boolean;
+  onUnskip?: (item: ClassifyQueueItem) => void;
 }
 
 // "3 · 1 classified"; drops the classified suffix when nothing is
@@ -28,7 +31,12 @@ function formatObjectsCell(totalObjects: number, classifiedObjects: number): str
     : `${totalObjects}`;
 }
 
-export function ClassifyAlertQueueTable({ items, onAlertClick }: ClassifyAlertQueueTableProps) {
+export function ClassifyAlertQueueTable({
+  items,
+  onAlertClick,
+  skippedView = false,
+  onUnskip,
+}: ClassifyAlertQueueTableProps) {
   return (
     <div className="overflow-x-auto">
       <table className={TABLE_CLASSES}>
@@ -48,14 +56,24 @@ export function ClassifyAlertQueueTable({ items, onAlertClick }: ClassifyAlertQu
               tip="Annotation reported by the alert platform"
               align="right"
             />
+            {skippedView && (
+              <>
+                <ColumnHeader label="Skipped" tip="When the alert was skipped" />
+                <ColumnHeader label="By" tip="Who skipped the alert" />
+                <ColumnHeader label="Note" tip="Why the alert was skipped" />
+                <th className={HEADER_CELL_CLASSES}>
+                  <span className="sr-only">Actions</span>
+                </th>
+              </>
+            )}
           </tr>
         </thead>
         <tbody className={TBODY_CLASSES}>
           {items.map(item => (
             <tr
               key={`${item.source_api}-${item.platform_alert_id}`}
-              onClick={() => onAlertClick(item)}
-              className={ROW_CLASSES}
+              onClick={skippedView ? undefined : () => onAlertClick(item)}
+              className={skippedView ? undefined : ROW_CLASSES}
             >
               <td className="px-4 py-2">
                 <DetectionImageThumbnail
@@ -78,6 +96,27 @@ export function ClassifyAlertQueueTable({ items, onAlertClick }: ClassifyAlertQu
               <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>
                 <PlatformAnnotationLabel value={item.is_wildfire_alertapi} />
               </td>
+              {skippedView && (
+                <>
+                  <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
+                    {item.skip ? formatDateTime(item.skip.skipped_at) : '—'}
+                  </td>
+                  <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>{item.skip?.skipped_by ?? '—'}</td>
+                  <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>{item.skip?.note ?? '—'}</td>
+                  <td className={CELL_CLASSES}>
+                    <button
+                      type="button"
+                      onClick={e => {
+                        e.stopPropagation();
+                        onUnskip?.(item);
+                      }}
+                      className="whitespace-nowrap rounded-lg border border-line bg-paper px-2 py-1 font-body text-xs font-medium text-char hover:bg-ash"
+                    >
+                      Unskip
+                    </button>
+                  </td>
+                </>
+              )}
             </tr>
           ))}
         </tbody>

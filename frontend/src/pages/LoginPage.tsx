@@ -67,6 +67,7 @@ export default function LoginPage({ onLogin, isLoading = false, error }: LoginPa
                   name="username"
                   type="text"
                   autoComplete="username"
+                  autoFocus
                   required
                   value={username}
                   onChange={e => setUsername(e.target.value)}

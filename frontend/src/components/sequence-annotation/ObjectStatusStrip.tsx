@@ -16,8 +16,8 @@
  * frame with nothing on it look identical to one with a box to accept, which
  * painted a just-added object's whole timeline as if it were already full.
  *
- * Renders for `objects.length >= 1` — unlike ObjectPresenceStrip's ≥2 gate,
- * a single-object alert still benefits from seeing its own frame statuses.
+ * Renders for `objects.length >= 1` — a single-object alert still benefits
+ * from seeing its own frame statuses.
  *
  * The row wrapper is a `div`, not a `button`: since frame segments are
  * themselves buttons, nesting the whole row in a button would nest
@@ -36,8 +36,7 @@
  * marker, since the overflow-hidden track clips outer rings.
  *
  * No frame axis here (dropped — the strip's segments read fine without tick
- * labels at this scale); `ObjectPresenceStrip` (classify) is unaffected and
- * keeps its own axis.
+ * labels at this scale).
  *
  * Pure presentational — the union is computed from props, no data fetching
  * or app state; clicking calls back to the caller rather than navigating

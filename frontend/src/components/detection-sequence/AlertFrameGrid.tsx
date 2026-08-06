@@ -6,7 +6,9 @@
  * on that frame in its own accent color (solid for a committed box, dashed
  * for anything not committed — a winning model box awaiting acceptance, or
  * a false-positive lane's engine track, which is read-only context and
- * never gets committed at all), and a small status chip.
+ * never gets committed at all), and a small status chip. A lane committed
+ * on a frame with zero smoke boxes — a cleared frame, "object not visible
+ * here" — shows an eye-off corner chip in the lane's color instead of a box.
  *
  * Clicking a cell reports the frame's timestamp plus the shown (active, or
  * first-present-fallback) object's lane and detection id via `onCellClick`
@@ -28,6 +30,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { EyeOff } from 'lucide-react';
 import { useDetectionImage } from '@/hooks/useDetectionImage';
 import { normalizedToPixelBox, ImageInfo } from '@/utils/annotation/coordinateUtils';
 import { CellCrop, computeCellCrop, computeFallbackCrops } from '@/utils/annotation/gridCropUtils';
@@ -199,6 +202,10 @@ function AlertFrameCellView({
   // on one would offer to re-box something classify already rejected.
   const isReadOnly = isContextFrame || activeCell.isFalsePositive === true;
 
+  const clearedCells = frame.cells.filter(
+    c => c.cellState === 'done' && !c.isFalsePositive && c.boxes.length === 0
+  );
+
   return (
     <div
       ref={el => {
@@ -257,6 +264,28 @@ function AlertFrameCellView({
             );
           })
         )}
+
+      {/* Cleared markers: a lane committed on this frame with zero smoke
+          boxes — the annotator's "object not visible here". Without the
+          chip, a cleared cell is indistinguishable from one whose box
+          simply isn't drawn, while the timeline calls it committed. FP
+          context lanes are exempt: their committed annotation is empty by
+          construction, so the chip would say nothing. */}
+      {clearedCells.length > 0 && (
+        <div className="absolute bottom-1 right-1 flex gap-1 pointer-events-none">
+          {clearedCells.map(c => (
+            <span
+              key={c.laneSequenceId}
+              data-testid={`alert-frame-cleared-${frame.recordedAt}-${c.laneSequenceId}`}
+              title="Cleared — object not visible on this frame"
+              className="rounded bg-char/60 p-0.5"
+            >
+              <EyeOff size={12} style={{ color: c.color }} aria-hidden />
+              <span className="sr-only">Cleared — object not visible on this frame</span>
+            </span>
+          ))}
+        </div>
+      )}
 
       <div className="absolute bottom-0 left-0 bg-char/60 text-white text-[10px] px-1 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
         {formatDateTime(frame.recordedAt)}

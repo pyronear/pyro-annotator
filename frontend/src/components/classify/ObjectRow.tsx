@@ -1,7 +1,11 @@
 /**
  * One object's row in the classify cockpit's decision rail. Collapsed rows
  * are a one-line summary (color dot + name + optional stage badge + status
- * chip); the active, unlocked row expands to the classification chips.
+ * chip); when `timeline` is given, a per-frame presence strip (the shared
+ * `ObjectRowTimeline`) sits under the header — segment clicks seek the
+ * media panel's player (see `ClassifyAlertPage`) and deliberately don't
+ * re-fire row activation. The active, unlocked row expands to the
+ * classification chips.
  * Locked rows stay activatable (click shows their media in the panel) but
  * never render chips — the page's mutation handlers guard `card.locked`
  * independently. The status chip is always computed from the object's data
@@ -14,6 +18,8 @@
 import React from 'react';
 import { SequenceBbox } from '@/types/api';
 import { CardClassification } from '@/components/sequence-annotation';
+import { ObjectRowTimeline } from '@/components/annotation/ObjectRowTimeline';
+import type { ObjectFrameStatus } from '@/utils/annotation/alertLocalizeUtils';
 import { ClassificationChips } from './ClassificationChips';
 import { getObjectRowStatus, ObjectRowStatus } from './status';
 
@@ -23,6 +29,14 @@ const TONE_CLASSES: Record<ObjectRowStatus['tone'], string> = {
   neutral: 'bg-ash text-haze',
   unsure: 'bg-signal-soft text-signal',
 };
+
+/** Per-frame presence timeline for the row (alert frame union). */
+export interface ObjectRowTimelineData {
+  frameTimestamps: string[];
+  statusByTimestamp: Record<string, ObjectFrameStatus>;
+  onFrameClick: (timestamp: string, frameIndex: number) => void;
+  highlightIndex?: number | null;
+}
 
 export interface ObjectRowProps {
   objectNumber: number;
@@ -45,6 +59,8 @@ export interface ObjectRowProps {
   onUnsureChange?: (cardKey: string, unsure: boolean) => void;
   deferred?: boolean;
   onDeferredChange?: (cardKey: string, deferred: boolean) => void;
+  /** Omit to render no strip; requires `color` (the strip is drawn in the object's hue). */
+  timeline?: ObjectRowTimelineData;
 }
 
 export const ObjectRow: React.FC<ObjectRowProps> = ({
@@ -65,6 +81,7 @@ export const ObjectRow: React.FC<ObjectRowProps> = ({
   onUnsureChange,
   deferred,
   onDeferredChange,
+  timeline,
 }) => {
   const status = getObjectRowStatus({ bbox, classification, unsure });
   const expanded = isActive && !locked;
@@ -127,6 +144,18 @@ export const ObjectRow: React.FC<ObjectRowProps> = ({
           </span>
         </span>
       </div>
+
+      {timeline && color && (
+        <ObjectRowTimeline
+          slug={cardKey}
+          label={`Object ${objectNumber}`}
+          color={color}
+          frameTimestamps={timeline.frameTimestamps}
+          statusByTimestamp={timeline.statusByTimestamp}
+          onFrameClick={timeline.onFrameClick}
+          highlightIndex={timeline.highlightIndex}
+        />
+      )}
 
       {expanded && (
         <div className="mt-2.5">
