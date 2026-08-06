@@ -1,1035 +1,905 @@
-from datetime import datetime, timedelta, UTC
+import hashlib
 import io
 import json
-import hashlib
-from io import BytesIO
-from typing import Dict
+from datetime import UTC, datetime, timedelta
+from typing import Dict, List, Optional
+from typing import Sequence as Seq
+
 import pytest
 from httpx import AsyncClient
 from PIL import Image
+from sqlalchemy import delete, update
 
 from app import models
 from app.services import storage as storage_module
 
 now = datetime.now(UTC)
 
-class DummyBucket:
-    """
-    Very small in memory S3 like bucket used in tests.
 
-    It stores file contents in a dict keyed by the S3 key
-    and exposes the minimal API that app.services.storage.upload_file
-    and the export endpoints expect.
-    """
+class DummyBucket:
+    """In-memory stand-in for S3Bucket: upload + presign, no network."""
 
     def __init__(self) -> None:
         self._files: Dict[str, bytes] = {}
-        # Map S3 keys to fake public URLs, used by tests
-        self.public_urls: Dict[str, str] = {}
 
     def upload_file(self, key: str, file_obj) -> bool:
-        """
-        Mimic S3Bucket.upload_file
-
-        Read bytes from the file like object and store them in memory
-        Return True to indicate success.
-        """
         pos = file_obj.tell()
         data = file_obj.read()
         file_obj.seek(pos)
         self._files[key] = data
-
-        # Also register a deterministic public URL
-        self.public_urls[key] = f"https://dummy-bucket.local/{key}"
         return True
 
     def get_file_metadata(self, key: str) -> dict:
-        """
-        Mimic the subset of metadata used in upload_file
-
-        Compute MD5 and expose it under ETag with quotes
-        so the MD5 integrity check passes.
-        """
-        data = self._files[key]
-        md5_hash = hashlib.md5(data).hexdigest()  # noqa: S324
+        md5_hash = hashlib.md5(self._files[key]).hexdigest()  # noqa: S324
         return {"ETag": f'"{md5_hash}"'}
 
     def get_public_url(self, key: str) -> str:
-        """
-        Return the same URL that tests expect in public_urls.
-        """
-        if key not in self.public_urls:
-            self.public_urls[key] = f"https://dummy-bucket.local/{key}"
-        return self.public_urls[key]
+        return f"https://dummy-bucket.local/{key}"
 
     def generate_presigned_url(self, key: str, url_expiration: int = 3600) -> str:
-        """
-        Fast presigned URL generation without existence check (used by export).
-        """
-        return self.get_public_url(key)
-
-    def get_file(self, key: str) -> BytesIO:
-        """
-        Optional helper if export code ever wants to read back the file.
-        """
-        return BytesIO(self._files[key])
+        return f"https://dummy-bucket.local/{key}"
 
 
-@pytest.mark.asyncio
-async def test_export_detections_empty_without_annotated_sequence(
-    authenticated_client: AsyncClient,
-    sequence_session,
-    detection_session,
-    monkeypatch,
-):
-    """
-    Default filter is sequence_processing_stage=annotated,
-    so sequences without an annotated sequence annotation should not be exported.
-    """
-    # Monkeypatch S3 bucket lookup to avoid real S3 usage
-    dummy_bucket = DummyBucket()
+@pytest.fixture
+def dummy_bucket(monkeypatch) -> DummyBucket:
+    bucket = DummyBucket()
+    monkeypatch.setattr(storage_module.s3_service, "get_bucket", lambda _name: bucket)
+    return bucket
 
-    def fake_get_bucket(_bucket_name: str) -> DummyBucket:
-        return dummy_bucket
 
-    monkeypatch.setattr(storage_module.s3_service, "get_bucket", fake_get_bucket)
-
-    # Create a sequence without annotation
-    seq_payload = {
-        "source_api": "pyronear_french",
-        "alert_api_id": "8000",
-        "camera_name": "Export Test Camera",
-        "camera_id": "800",
-        "organisation_name": "Test Org No Annotation",
-        "organisation_id": "80",
+async def create_lane(
+    client: AsyncClient,
+    *,
+    platform_alert_id: int,
+    alert_api_id: int,
+    source_api: str = "pyronear_french",
+    camera_name: str = "Export Cam",
+    camera_id: int = 700,
+    organisation_name: str = "Export Org",
+    organisation_id: int = 70,
+    recorded_at: Optional[datetime] = None,
+) -> int:
+    """Create one sequence (lane) of an alert, returns sequence id."""
+    payload = {
+        "source_api": source_api,
+        "alert_api_id": str(alert_api_id),
+        "platform_alert_id": str(platform_alert_id),
+        "camera_name": camera_name,
+        "camera_id": str(camera_id),
+        "organisation_name": organisation_name,
+        "organisation_id": str(organisation_id),
         "lat": "43.0",
         "lon": "1.0",
-        "recorded_at": now.isoformat(),
-        "last_seen_at": now.isoformat(),
+        "recorded_at": (recorded_at or now).isoformat(),
+        "last_seen_at": (recorded_at or now).isoformat(),
     }
-    seq_resp = await authenticated_client.post("/sequences", data=seq_payload)
-    assert seq_resp.status_code == 201
-    seq_id = seq_resp.json()["id"]
+    resp = await client.post("/sequences", data=payload)
+    assert resp.status_code == 201, resp.text
+    return resp.json()["id"]
 
-    # Create a detection for that sequence
+
+async def create_frame(
+    client: AsyncClient,
+    *,
+    sequence_id: int,
+    alert_api_id: int,
+    recorded_at: Optional[datetime] = None,
+) -> int:
+    """Create one detection (frame) in a lane, returns detection id."""
     det_payload = {
-        "sequence_id": str(seq_id),
-        "alert_api_id": "8001",
-        "recorded_at": now.isoformat(),
-        "algo_predictions": json.dumps(
-            {
-                "predictions": [
-                    {
-                        "class_name": "smoke",
-                        "xyxyn": [0.1, 0.1, 0.2, 0.2],
-                        "confidence": 0.9,
-                    }
-                ]
-            }
-        ),
+        "sequence_id": str(sequence_id),
+        "alert_api_id": str(alert_api_id),
+        "recorded_at": (recorded_at or now).isoformat(),
+        "algo_predictions": json.dumps({"predictions": []}),
     }
-
     img = Image.new("RGB", (64, 64), color="red")
-    img_bytes = io.BytesIO()
-    img.save(img_bytes, format="JPEG")
-    img_bytes.seek(0)
-    files = {"file": ("test.jpg", img_bytes, "image/jpeg")}
-
-    det_resp = await authenticated_client.post(
-        "/detections", data=det_payload, files=files
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG")
+    buf.seek(0)
+    resp = await client.post(
+        "/detections", data=det_payload, files={"file": ("t.jpg", buf, "image/jpeg")}
     )
-    assert det_resp.status_code == 201
+    assert resp.status_code == 201, resp.text
+    return resp.json()["id"]
 
-    # No sequence annotation created, default sequence_processing_stage=annotated must exclude this sequence
-    resp = await authenticated_client.get("/export/detections")
-    assert resp.status_code == 200
-    data = resp.json()
-    assert isinstance(data, list)
-    assert data == []
+
+async def annotate_lane(
+    client: AsyncClient,
+    *,
+    sequence_id: int,
+    detection_ids: Seq[int],
+    is_smoke: bool,
+    smoke_type: Optional[str] = None,
+    false_positive_types: Seq[str] = (),
+    is_unsure: bool = False,
+    stage: str = "annotated",
+) -> None:
+    """Create the lane's sequence annotation with one tracked object."""
+    track: dict = {
+        "is_smoke": is_smoke,
+        "false_positive_types": list(false_positive_types),
+        "bboxes": [
+            {"detection_id": det_id, "xyxyn": [0.1, 0.1, 0.2, 0.2]}
+            for det_id in detection_ids
+        ],
+    }
+    if smoke_type is not None:
+        track["smoke_type"] = smoke_type
+    payload = {
+        "sequence_id": sequence_id,
+        "has_missed_smoke": False,
+        "is_unsure": is_unsure,
+        "annotation": {"sequences_bbox": [track]},
+        "processing_stage": stage,
+    }
+    resp = await client.post("/annotations/sequences/", json=payload)
+    assert resp.status_code == 201, resp.text
+
+
+async def annotate_frame(
+    client: AsyncClient,
+    *,
+    detection_id: int,
+    items: List[dict],
+    stage: str = "annotated",
+) -> int:
+    """Fill the frame's detection annotation, returns annotation id.
+
+    Creating the lane's sequence annotation fans out an empty detection
+    annotation per frame, so this PATCHes the existing row — same shape the
+    localize flow produces.
+    """
+    list_resp = await client.get(
+        "/annotations/detections/", params={"detection_id": detection_id}
+    )
+    assert list_resp.status_code == 200, list_resp.text
+    existing = list_resp.json()["items"]
+    assert existing, f"no auto-created detection annotation for {detection_id}"
+    ann_id = existing[0]["id"]
+    resp = await client.patch(
+        f"/annotations/detections/{ann_id}",
+        json={"annotation": {"annotation": items}, "processing_stage": stage},
+    )
+    assert resp.status_code == 200, resp.text
+    return ann_id
 
 
 @pytest.mark.asyncio
-async def test_export_detections_basic_row_and_image_url(
+async def test_export_alerts_empty(
     authenticated_client: AsyncClient,
     sequence_session,
     detection_session,
-    monkeypatch,
+    dummy_bucket,
 ):
-    """
-    When a sequence has an annotated sequence annotation,
-    export_detections should return detection rows with image_url
-    resolved through s3_service.get_bucket().get_public_url().
-    """
-    dummy_bucket = DummyBucket()
+    resp = await authenticated_client.get("/export/alerts")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["items"] == []
+    assert body["next_cursor"] is None
 
-    def fake_get_bucket(_bucket_name: str) -> DummyBucket:
-        return dummy_bucket
 
-    monkeypatch.setattr(storage_module.s3_service, "get_bucket", fake_get_bucket)
-
-    # Use existing sequence 1 from fixtures, create a detection on it
-    det_payload = {
-        "sequence_id": "1",
-        "alert_api_id": "8101",
-        "recorded_at": now.isoformat(),
-        "algo_predictions": json.dumps(
+@pytest.mark.asyncio
+async def test_export_alerts_smoke_lane_shape(
+    authenticated_client: AsyncClient,
+    sequence_session,
+    detection_session,
+    dummy_bucket,
+):
+    """One finished smoke alert exports with full nested shape: metadata,
+    frames in recorded_at order, boxes from the detection annotation
+    (including an FP-flagged distractor), and a gap frame with no boxes."""
+    seq_id = await create_lane(
+        authenticated_client, platform_alert_id=7001, alert_api_id=7001
+    )
+    det_1 = await create_frame(
+        authenticated_client,
+        sequence_id=seq_id,
+        alert_api_id=1,
+        recorded_at=now - timedelta(minutes=2),
+    )
+    det_2 = await create_frame(
+        authenticated_client, sequence_id=seq_id, alert_api_id=2, recorded_at=now
+    )
+    await annotate_lane(
+        authenticated_client,
+        sequence_id=seq_id,
+        detection_ids=[det_1, det_2],
+        is_smoke=True,
+        smoke_type="wildfire",
+    )
+    # Frame 1: one human smoke box + one auto FP distractor. Frame 2: gap.
+    await annotate_frame(
+        authenticated_client,
+        detection_id=det_1,
+        items=[
             {
-                "predictions": [
-                    {
-                        "class_name": "smoke",
-                        "xyxyn": [0.1, 0.1, 0.3, 0.3],
-                        "confidence": 0.95,
-                    }
-                ]
+                "xyxyn": [0.4, 0.3, 0.5, 0.4],
+                "class_name": "smoke",
+                "smoke_type": "wildfire",
+                "origin": "human",
+            },
+            {
+                "xyxyn": [0.6, 0.5, 0.65, 0.58],
+                "class_name": "antenna",
+                "false_positive_type": "antenna",
+                "origin": "auto",
+            },
+        ],
+    )
+
+    resp = await authenticated_client.get("/export/alerts")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body["items"]) == 1
+    assert body["next_cursor"] is None
+
+    alert = body["items"][0]
+    assert alert["source_api"] == "pyronear_french"
+    assert alert["platform_alert_id"] == 7001
+    assert alert["camera_id"] == 700
+    assert alert["camera_name"] == "Export Cam"
+    assert alert["organisation_id"] == 70
+    assert alert["organisation_name"] == "Export Org"
+    assert alert["lat"] == 43.0
+    assert alert["lon"] == 1.0
+    assert alert["last_annotated_at"] is not None
+    assert alert["recorded_at"] is not None
+
+    assert len(alert["objects"]) == 1
+    obj = alert["objects"][0]
+    assert obj["sequence_id"] == seq_id
+    assert obj["record_kind"] == "smoke"
+    assert obj["smoke_types"] == ["wildfire"]
+    assert obj["false_positive_types"] == []
+
+    frames = obj["frames"]
+    assert [f["detection_id"] for f in frames] == [det_1, det_2]
+    for frame in frames:
+        assert frame["bucket_key"]
+        assert frame["image_url"] == f"https://dummy-bucket.local/{frame['bucket_key']}"
+
+    boxes = frames[0]["boxes"]
+    assert len(boxes) == 2
+    smoke_box = next(b for b in boxes if b["smoke_type"] == "wildfire")
+    assert smoke_box["xyxyn"] == [0.4, 0.3, 0.5, 0.4]
+    assert smoke_box["false_positive_types"] is None
+    assert smoke_box["origin"] == "human"
+    fp_box = next(b for b in boxes if b["smoke_type"] is None)
+    assert fp_box["false_positive_types"] == ["antenna"]
+    assert fp_box["origin"] == "auto"
+
+    # Gap frame: exported, no boxes
+    assert frames[1]["boxes"] == []
+
+
+@pytest.mark.asyncio
+async def test_export_alerts_fp_lane_boxes_from_track(
+    authenticated_client: AsyncClient,
+    sequence_session,
+    detection_session,
+    dummy_bucket,
+):
+    """FP lane: boxes come from the sequence-annotation track, carry the
+    lane's whole FP-type list, origin engine."""
+    seq_id = await create_lane(
+        authenticated_client, platform_alert_id=7101, alert_api_id=7101
+    )
+    det_1 = await create_frame(authenticated_client, sequence_id=seq_id, alert_api_id=1)
+    det_2 = await create_frame(authenticated_client, sequence_id=seq_id, alert_api_id=2)
+    # Track covers only det_1; det_2 is a gap frame.
+    await annotate_lane(
+        authenticated_client,
+        sequence_id=seq_id,
+        detection_ids=[det_1],
+        is_smoke=False,
+        false_positive_types=["high_cloud", "lens_flare"],
+    )
+
+    resp = await authenticated_client.get("/export/alerts")
+    assert resp.status_code == 200, resp.text
+    items = resp.json()["items"]
+    assert len(items) == 1
+    obj = items[0]["objects"][0]
+    assert obj["record_kind"] == "false_positive"
+    assert obj["smoke_types"] == []
+    assert sorted(obj["false_positive_types"]) == ["high_cloud", "lens_flare"]
+
+    frames = {f["detection_id"]: f for f in obj["frames"]}
+    assert set(frames) == {det_1, det_2}
+    boxes = frames[det_1]["boxes"]
+    assert len(boxes) == 1
+    assert boxes[0]["xyxyn"] == [0.1, 0.1, 0.2, 0.2]
+    assert boxes[0]["smoke_type"] is None
+    assert sorted(boxes[0]["false_positive_types"]) == ["high_cloud", "lens_flare"]
+    assert boxes[0]["origin"] == "engine"
+    assert frames[det_2]["boxes"] == []
+
+
+@pytest.mark.asyncio
+async def test_export_alerts_sibling_lanes_share_bucket_key(
+    authenticated_client: AsyncClient,
+    sequence_session,
+    detection_session,
+    dummy_bucket,
+    async_session,
+):
+    """One alert, two lanes (smoke + FP). Sibling frames point at the same
+    image: same bucket_key, distinct detection_ids."""
+    smoke_seq = await create_lane(
+        authenticated_client, platform_alert_id=7201, alert_api_id=7201
+    )
+    fp_seq = await create_lane(
+        authenticated_client, platform_alert_id=7201, alert_api_id=1000007201001
+    )
+    smoke_det = await create_frame(
+        authenticated_client, sequence_id=smoke_seq, alert_api_id=1
+    )
+    fp_det = await create_frame(
+        authenticated_client, sequence_id=fp_seq, alert_api_id=1
+    )
+
+    # The importer points sibling detections at the same S3 object; tests
+    # can't reach the platform-bucket copy path, so align bucket_key directly.
+    smoke_resp = await authenticated_client.get(f"/detections/{smoke_det}")
+    shared_key = smoke_resp.json()["bucket_key"]
+    await async_session.execute(
+        update(models.Detection)
+        .where(models.Detection.id == fp_det)
+        .values(bucket_key=shared_key)
+    )
+    await async_session.commit()
+
+    await annotate_lane(
+        authenticated_client,
+        sequence_id=smoke_seq,
+        detection_ids=[smoke_det],
+        is_smoke=True,
+        smoke_type="wildfire",
+    )
+    await annotate_frame(
+        authenticated_client,
+        detection_id=smoke_det,
+        items=[
+            {
+                "xyxyn": [0.4, 0.3, 0.5, 0.4],
+                "class_name": "smoke",
+                "smoke_type": "wildfire",
+                "origin": "human",
             }
-        ),
-    }
-
-    img = Image.new("RGB", (64, 64), color="blue")
-    img_bytes = io.BytesIO()
-    img.save(img_bytes, format="JPEG")
-    img_bytes.seek(0)
-    files = {"file": ("test.jpg", img_bytes, "image/jpeg")}
-
-    det_resp = await authenticated_client.post(
-        "/detections", data=det_payload, files=files
+        ],
     )
-    assert det_resp.status_code == 201
-    detection = det_resp.json()
-    detection_id = detection["id"]
-
-    # Create a sequence annotation in annotated stage so export route sees it
-    seq_ann_payload = {
-        "sequence_id": 1,
-        "has_missed_smoke": False,
-        "annotation": {
-            "sequences_bbox": [
-                {
-                    "is_smoke": True,
-                    "smoke_type": "wildfire",
-                    "false_positive_types": [],
-                    "bboxes": [
-                        {"detection_id": detection_id, "xyxyn": [0.1, 0.1, 0.2, 0.2]}
-                    ],
-                }
-            ]
-        },
-        "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
-        "created_at": now.isoformat(),
-    }
-    seq_ann_resp = await authenticated_client.post(
-        "/annotations/sequences/", json=seq_ann_payload
+    await annotate_lane(
+        authenticated_client,
+        sequence_id=fp_seq,
+        detection_ids=[fp_det],
+        is_smoke=False,
+        false_positive_types=["antenna"],
     )
-    assert seq_ann_resp.status_code == 201
 
-    # Call export endpoint
-    resp = await authenticated_client.get("/export/detections")
+    resp = await authenticated_client.get("/export/alerts")
     assert resp.status_code == 200
-    rows = resp.json()
-    assert isinstance(rows, list)
-    assert len(rows) >= 1
+    items = resp.json()["items"]
+    assert len(items) == 1
+    alert = items[0]
+    assert len(alert["objects"]) == 2
+    kinds = {o["record_kind"] for o in alert["objects"]}
+    assert kinds == {"smoke", "false_positive"}
 
-    # Look for our detection id
-    row = next(r for r in rows if r["detection_id"] == detection_id)
-
-    # Basic structure
-    for key in [
-        "detection_id",
-        "sequence_id",
-        "alert_api_id",
-        "source_api",
-        "recorded_at",
-        "created_at",
-        "camera_name",
-        "organisation_name",
-        "lat",
-        "lon",
-        "bucket_key",
-    ]:
-        assert key in row
-
-    # image_url must be non null and built through dummy bucket
-    assert row["image_url"] is not None
-    assert row["bucket_key"] in dummy_bucket.public_urls
-    assert row["image_url"] == dummy_bucket.public_urls[row["bucket_key"]]
-
-    # Sequence annotation metadata must be present
-    assert row["sequence_has_smoke"] is True
-    assert row["sequence_processing_stage"] == "annotated"
-    assert row["sequence_annotation"] is not None
-    assert row["sequence_annotation_created_at"] is not None
+    frame_keys = {
+        o["record_kind"]: o["frames"][0]["bucket_key"] for o in alert["objects"]
+    }
+    assert frame_keys["smoke"] == frame_keys["false_positive"] == shared_key
+    frame_ids = {
+        o["record_kind"]: o["frames"][0]["detection_id"] for o in alert["objects"]
+    }
+    assert frame_ids["smoke"] != frame_ids["false_positive"]
 
 
 @pytest.mark.asyncio
-async def test_export_detections_filters_by_organisation_and_source(
+async def test_export_alerts_excludes_unfinished_alerts(
     authenticated_client: AsyncClient,
     sequence_session,
     detection_session,
-    monkeypatch,
+    dummy_bucket,
 ):
-    """
-    Filters organisation_name and source_api should restrict results to matching sequences.
-    """
-    dummy_bucket = DummyBucket()
-
-    def fake_get_bucket(_bucket_name: str) -> DummyBucket:
-        return dummy_bucket
-
-    monkeypatch.setattr(storage_module.s3_service, "get_bucket", fake_get_bucket)
-
-    # Create two sequences with different organisation and source api
-    seq_specs = [
-        {
-            "source_api": "pyronear_french",
-            "alert_api_id": "8201",
-            "camera_name": "Export Cam A",
-            "camera_id": "821",
-            "organisation_name": "Org A",
-            "organisation_id": "821",
-        },
-        {
-            "source_api": "alert_wildfire",
-            "alert_api_id": "8202",
-            "camera_name": "Export Cam B",
-            "camera_id": "822",
-            "organisation_name": "Org B",
-            "organisation_id": "822",
-        },
-    ]
-
-    seq_ids = []
-    for spec in seq_specs:
-        payload = {
-            **spec,
-            "lat": "43.0",
-            "lon": "1.0",
-            "recorded_at": (now - timedelta(minutes=5)).isoformat(),
-            "last_seen_at": now.isoformat(),
-        }
-        resp = await authenticated_client.post("/sequences", data=payload)
-        assert resp.status_code == 201
-        seq_ids.append(resp.json()["id"])
-
-    # Create one detection and annotation per sequence in annotated stage
-    created = []
-    for seq_id, spec in zip(seq_ids, seq_specs):
-        det_payload = {
-            "sequence_id": str(seq_id),
-            "alert_api_id": f"83{seq_id}",
-            "recorded_at": now.isoformat(),
-            "algo_predictions": json.dumps(
-                {
-                    "predictions": [
-                        {
-                            "class_name": "smoke",
-                            "xyxyn": [0.1, 0.1, 0.2, 0.2],
-                            "confidence": 0.9,
-                        }
-                    ]
-                }
-            ),
-        }
-        img = Image.new("RGB", (64, 64), color="green")
-        img_bytes = io.BytesIO()
-        img.save(img_bytes, format="JPEG")
-        img_bytes.seek(0)
-        files = {"file": ("test.jpg", img_bytes, "image/jpeg")}
-        det_resp = await authenticated_client.post(
-            "/detections", data=det_payload, files=files
-        )
-        assert det_resp.status_code == 201
-        det_id = det_resp.json()["id"]
-
-        seq_ann_payload = {
-            "sequence_id": seq_id,
-            "has_missed_smoke": False,
-            "annotation": {
-                "sequences_bbox": [
-                    {
-                        "is_smoke": True,
-                        "smoke_type": "wildfire",
-                        "false_positive_types": [],
-                        "bboxes": [
-                            {"detection_id": det_id, "xyxyn": [0.1, 0.1, 0.2, 0.2]}
-                        ],
-                    }
-                ]
-            },
-            "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
-            "created_at": now.isoformat(),
-        }
-        ann_resp = await authenticated_client.post(
-            "/annotations/sequences/", json=seq_ann_payload
-        )
-        assert ann_resp.status_code == 201
-        created.append((seq_id, det_id, spec))
-
-    # Filter for Org A and pyronear_french only
-    resp = await authenticated_client.get(
-        "/export/detections",
-        params={
-            "organisation_name": "Org A",
-            "source_api": "pyronear_french",
-        },
+    """An alert exports only once EVERY lane reaches stage annotated."""
+    done_seq = await create_lane(
+        authenticated_client, platform_alert_id=7301, alert_api_id=7301
     )
-    assert resp.status_code == 200
-    rows = resp.json()
-    assert len(rows) >= 1
-    # All rows must match the filter
-    for row in rows:
-        assert row["organisation_name"] == "Org A"
-        assert row["source_api"] == "pyronear_french"
-
-    # Filtering on Org B and alert_wildfire returns only that one
-    resp_b = await authenticated_client.get(
-        "/export/detections",
-        params={
-            "organisation_name": "Org B",
-            "source_api": "alert_wildfire",
-        },
+    pending_seq = await create_lane(
+        authenticated_client, platform_alert_id=7301, alert_api_id=1000007301001
     )
-    assert resp_b.status_code == 200
-    rows_b = resp_b.json()
-    assert len(rows_b) >= 1
-    for row in rows_b:
-        assert row["organisation_name"] == "Org B"
-        assert row["source_api"] == "alert_wildfire"
+    done_det = await create_frame(
+        authenticated_client, sequence_id=done_seq, alert_api_id=1
+    )
+    pending_det = await create_frame(
+        authenticated_client, sequence_id=pending_seq, alert_api_id=1
+    )
+    await annotate_lane(
+        authenticated_client,
+        sequence_id=done_seq,
+        detection_ids=[done_det],
+        is_smoke=False,
+        false_positive_types=["antenna"],
+    )
+    await annotate_lane(
+        authenticated_client,
+        sequence_id=pending_seq,
+        detection_ids=[pending_det],
+        is_smoke=True,
+        smoke_type="wildfire",
+        stage="seq_annotation_done",
+    )
+
+    resp = await authenticated_client.get("/export/alerts")
+    assert resp.json()["items"] == []
 
 
 @pytest.mark.asyncio
-async def test_export_detections_filters_by_sequence_annotation_created_window(
+async def test_export_alerts_excludes_annotationless_lanes(
     authenticated_client: AsyncClient,
     sequence_session,
     detection_session,
-    monkeypatch,
+    dummy_bucket,
 ):
-    """
-    sequence_annotation_created_gte and sequence_annotation_created_lte
-    should filter detections based on the underlying sequence annotation dates.
-    """
-    dummy_bucket = DummyBucket()
-
-    def fake_get_bucket(_bucket_name: str) -> DummyBucket:
-        return dummy_bucket
-
-    monkeypatch.setattr(storage_module.s3_service, "get_bucket", fake_get_bucket)
-
-    # Use sequence 1 from fixtures, create two detections to share same sequence
-    base_time = now - timedelta(days=10)
-
-    detection_ids = []
-    created_times = [base_time, base_time + timedelta(days=5)]
-
-    for idx, created_at in enumerate(created_times, start=1):
-        det_payload = {
-            "sequence_id": "1",
-            "alert_api_id": f"840{idx}",
-            "recorded_at": created_at.isoformat(),
-            "algo_predictions": json.dumps(
-                {
-                    "predictions": [
-                        {
-                            "class_name": "smoke",
-                            "xyxyn": [0.1, 0.1, 0.2, 0.2],
-                            "confidence": 0.9,
-                        }
-                    ]
-                }
-            ),
-        }
-        img = Image.new("RGB", (64, 64), color="yellow")
-        img_bytes = io.BytesIO()
-        img.save(img_bytes, format="JPEG")
-        img_bytes.seek(0)
-        files = {"file": ("test.jpg", img_bytes, "image/jpeg")}
-        det_resp = await authenticated_client.post(
-            "/detections", data=det_payload, files=files
-        )
-        assert det_resp.status_code == 201
-        detection_ids.append(det_resp.json()["id"])
-
-        # One sequence annotation older, one newer, we overwrite since there is unique constraint
-    # So instead we rely on whatever created_at the backend actually stores
-    seq_ann_payload = {
-        "sequence_id": 1,
-        "has_missed_smoke": False,
-        "annotation": {
-            "sequences_bbox": [
-                {
-                    "is_smoke": True,
-                    "smoke_type": "wildfire",
-                    "false_positive_types": [],
-                    "bboxes": [
-                        {
-                            "detection_id": detection_ids[0],
-                            "xyxyn": [0.1, 0.1, 0.2, 0.2],
-                        },
-                        {
-                            "detection_id": detection_ids[1],
-                            "xyxyn": [0.3, 0.3, 0.4, 0.4],
-                        },
-                    ],
-                }
-            ]
-        },
-        "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
-        # created_at is controlled by the backend, the field in payload is ignored
-    }
-
-    seq_ann_resp = await authenticated_client.post(
-        "/annotations/sequences/", json=seq_ann_payload
+    """A lane with no sequence annotation at all blocks its alert."""
+    annotated_seq = await create_lane(
+        authenticated_client, platform_alert_id=7302, alert_api_id=7302
     )
-    assert seq_ann_resp.status_code == 201
-
-    # Fetch export once to discover the actual annotation_created_at stored
-    resp_all = await authenticated_client.get("/export/detections")
-    assert resp_all.status_code == 200
-    rows_all = resp_all.json()
-    # We expect our two detections for sequence 1 to be present
-    assert len(rows_all) >= 2
-
-    # All rows for this sequence share the same annotation metadata
-    # Use the first one to get the authoritative created_at
-    ann_created_str = rows_all[0]["sequence_annotation_created_at"]
-    # Handle the trailing Z if present
-    if ann_created_str.endswith("Z"):
-        annotation_created_at = datetime.fromisoformat(
-            ann_created_str.replace("Z", "+00:00")
-        )
-    else:
-        annotation_created_at = datetime.fromisoformat(ann_created_str)
-
-    # Window that includes annotation_created_at should return both detections
-    resp = await authenticated_client.get(
-        "/export/detections",
-        params={
-            "sequence_annotation_created_gte": (
-                annotation_created_at - timedelta(hours=1)
-            ).isoformat(),
-            "sequence_annotation_created_lte": (
-                annotation_created_at + timedelta(hours=1)
-            ).isoformat(),
-        },
+    await create_lane(
+        authenticated_client, platform_alert_id=7302, alert_api_id=1000007302001
     )
-    assert resp.status_code == 200
-    rows = resp.json()
-    ids = {row["detection_id"] for row in rows}
-    assert detection_ids[0] in ids
-    assert detection_ids[1] in ids
-
-    # Window that is strictly before annotation_created_at should return no rows
-    resp_before = await authenticated_client.get(
-        "/export/detections",
-        params={
-            "sequence_annotation_created_gte": (
-                annotation_created_at - timedelta(days=5)
-            ).isoformat(),
-            "sequence_annotation_created_lte": (
-                annotation_created_at - timedelta(days=1)
-            ).isoformat(),
-        },
+    det = await create_frame(
+        authenticated_client, sequence_id=annotated_seq, alert_api_id=1
     )
-    assert resp_before.status_code == 200
-    assert resp_before.json() == []
+    await annotate_lane(
+        authenticated_client,
+        sequence_id=annotated_seq,
+        detection_ids=[det],
+        is_smoke=False,
+        false_positive_types=["antenna"],
+    )
 
+    resp = await authenticated_client.get("/export/alerts")
+    assert resp.json()["items"] == []
 
 
 @pytest.mark.asyncio
-async def test_export_detections_ordering_and_limit(
+async def test_export_alerts_omits_unsure_lanes(
     authenticated_client: AsyncClient,
     sequence_session,
     detection_session,
-    monkeypatch,
+    dummy_bucket,
 ):
-    """
-    order_by and order_desc, combined with limit,
-    should control which detections are returned and in which order.
-    """
-    dummy_bucket = DummyBucket()
-
-    def fake_get_bucket(_bucket_name: str) -> DummyBucket:
-        return dummy_bucket
-
-    monkeypatch.setattr(storage_module.s3_service, "get_bucket", fake_get_bucket)
-
-    # Create a sequence annotation for sequence 1 so exports are allowed
-    seq_ann_payload = {
-        "sequence_id": 1,
-        "has_missed_smoke": False,
-        "annotation": {
-            "sequences_bbox": [
-                {
-                    "is_smoke": True,
-                    "smoke_type": "wildfire",
-                    "false_positive_types": [],
-                    "bboxes": [],
-                }
-            ]
-        },
-        "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
-        "created_at": now.isoformat(),
-    }
-    seq_ann_resp = await authenticated_client.post(
-        "/annotations/sequences/", json=seq_ann_payload
+    """Unsure lanes are silently omitted; an all-unsure alert disappears."""
+    # Alert A: one sure FP lane + one unsure lane -> exports with 1 object
+    sure_seq = await create_lane(
+        authenticated_client, platform_alert_id=7303, alert_api_id=7303
     )
-    assert seq_ann_resp.status_code == 201
-
-    # Create three detections with distinct recorded_at timestamps
-    detection_ids = []
-    recorded_times = [
-        now - timedelta(minutes=30),
-        now - timedelta(minutes=20),
-        now - timedelta(minutes=10),
-    ]
-
-    for idx, rec in enumerate(recorded_times, start=1):
-        det_payload = {
-            "sequence_id": "1",
-            "alert_api_id": f"850{idx}",
-            "recorded_at": rec.isoformat(),
-            "algo_predictions": json.dumps(
-                {
-                    "predictions": [
-                        {
-                            "class_name": "smoke",
-                            "xyxyn": [0.1, 0.1, 0.2, 0.2],
-                            "confidence": 0.8,
-                        }
-                    ]
-                }
-            ),
-        }
-        img = Image.new("RGB", (64, 64), color="pink")
-        img_bytes = io.BytesIO()
-        img.save(img_bytes, format="JPEG")
-        img_bytes.seek(0)
-        files = {"file": ("test.jpg", img_bytes, "image/jpeg")}
-        det_resp = await authenticated_client.post(
-            "/detections", data=det_payload, files=files
-        )
-        assert det_resp.status_code == 201
-        detection_ids.append(det_resp.json()["id"])
-
-    # Export with order_by=recorded_at, desc, limit=2
-    resp = await authenticated_client.get(
-        "/export/detections",
-        params={
-            "order_by": "recorded_at",
-            "order_desc": "true",
-            "limit": 2,
-        },
+    unsure_seq = await create_lane(
+        authenticated_client, platform_alert_id=7303, alert_api_id=1000007303001
     )
-    assert resp.status_code == 200
-    rows = resp.json()
-    assert len(rows) == 2
-
-    # Recorded_at must be descending
-    rec0 = datetime.fromisoformat(rows[0]["recorded_at"])
-    rec1 = datetime.fromisoformat(rows[1]["recorded_at"])
-    assert rec0 >= rec1
-
-    # When ordering ascending, restrict to the window of detections we just created
-    oldest_rec = min(recorded_times)
-    newest_rec = max(recorded_times)
-
-    resp_asc = await authenticated_client.get(
-        "/export/detections",
-        params={
-            "order_by": "recorded_at",
-            "order_desc": "false",
-            "limit": 1,
-            # Restrict to our three detections
-            "recorded_at_gte": oldest_rec.isoformat(),
-            "recorded_at_lte": newest_rec.isoformat(),
-        },
+    sure_det = await create_frame(
+        authenticated_client, sequence_id=sure_seq, alert_api_id=1
     )
-    assert resp_asc.status_code == 200
-    rows_asc = resp_asc.json()
-    assert len(rows_asc) == 1
-    assert datetime.fromisoformat(rows_asc[0]["recorded_at"]) == oldest_rec
+    unsure_det = await create_frame(
+        authenticated_client, sequence_id=unsure_seq, alert_api_id=1
+    )
+    await annotate_lane(
+        authenticated_client,
+        sequence_id=sure_seq,
+        detection_ids=[sure_det],
+        is_smoke=False,
+        false_positive_types=["antenna"],
+    )
+    await annotate_lane(
+        authenticated_client,
+        sequence_id=unsure_seq,
+        detection_ids=[unsure_det],
+        is_smoke=True,
+        smoke_type="wildfire",
+        is_unsure=True,
+    )
 
+    # Alert B: only an unsure lane -> absent entirely
+    only_unsure_seq = await create_lane(
+        authenticated_client, platform_alert_id=7304, alert_api_id=7304
+    )
+    only_unsure_det = await create_frame(
+        authenticated_client, sequence_id=only_unsure_seq, alert_api_id=1
+    )
+    await annotate_lane(
+        authenticated_client,
+        sequence_id=only_unsure_seq,
+        detection_ids=[only_unsure_det],
+        is_smoke=True,
+        smoke_type="wildfire",
+        is_unsure=True,
+    )
+
+    resp = await authenticated_client.get("/export/alerts")
+    items = resp.json()["items"]
+    assert [i["platform_alert_id"] for i in items] == [7303]
+    assert [o["sequence_id"] for o in items[0]["objects"]] == [sure_seq]
+
+
+async def seed_minimal_fp_alert(client: AsyncClient, *, platform_alert_id: int) -> int:
+    """Smallest finished alert: one FP lane, one frame. Returns sequence id."""
+    seq_id = await create_lane(
+        client, platform_alert_id=platform_alert_id, alert_api_id=platform_alert_id
+    )
+    det_id = await create_frame(client, sequence_id=seq_id, alert_api_id=1)
+    await annotate_lane(
+        client,
+        sequence_id=seq_id,
+        detection_ids=[det_id],
+        is_smoke=False,
+        false_positive_types=["antenna"],
+    )
+    return seq_id
 
 
 @pytest.mark.asyncio
-async def test_export_detections_filters_by_false_positive_and_smoke_types(
+async def test_export_alerts_cursor_pagination(
     authenticated_client: AsyncClient,
     sequence_session,
     detection_session,
-    monkeypatch,
+    dummy_bucket,
 ):
-    """
-    false_positive_types and smoke_types filters should use OR logic on sequence level
-    and restrict exported detections accordingly.
-    """
-    dummy_bucket = DummyBucket()
-
-    def fake_get_bucket(_bucket_name: str) -> DummyBucket:
-        return dummy_bucket
-
-    monkeypatch.setattr(storage_module.s3_service, "get_bucket", fake_get_bucket)
-
-    # Create three sequences for different type configurations
-    seq_payloads = [
-        {
-            "source_api": "pyronear_french",
-            "alert_api_id": "8601",
-            "camera_name": "FP Smoke Cam 1",
-            "camera_id": "861",
-            "organisation_name": "Org Types",
-            "organisation_id": "861",
-        },
-        {
-            "source_api": "pyronear_french",
-            "alert_api_id": "8602",
-            "camera_name": "FP Smoke Cam 2",
-            "camera_id": "862",
-            "organisation_name": "Org Types",
-            "organisation_id": "861",
-        },
-        {
-            "source_api": "pyronear_french",
-            "alert_api_id": "8603",
-            "camera_name": "FP Smoke Cam 3",
-            "camera_id": "863",
-            "organisation_name": "Org Types",
-            "organisation_id": "861",
-        },
-    ]
-
-    seq_ids = []
-    for payload in seq_payloads:
-        data = {
-            **payload,
-            "lat": "43.0",
-            "lon": "1.0",
-            "recorded_at": now.isoformat(),
-            "last_seen_at": now.isoformat(),
-        }
-        resp = await authenticated_client.post("/sequences", data=data)
-        assert resp.status_code == 201
-        seq_ids.append(resp.json()["id"])
-
-    # Create detections for each sequence
-    det_ids = []
-    for idx, seq_id in enumerate(seq_ids, start=1):
-        det_payload = {
-            "sequence_id": str(seq_id),
-            "alert_api_id": f"869{idx}",
-            "recorded_at": now.isoformat(),
-            "algo_predictions": json.dumps(
-                {
-                    "predictions": [
-                        {
-                            "class_name": "smoke",
-                            "xyxyn": [0.1, 0.1, 0.2, 0.2],
-                            "confidence": 0.9,
-                        }
-                    ]
-                }
-            ),
-        }
-        img = Image.new("RGB", (64, 64), color="cyan")
-        img_bytes = io.BytesIO()
-        img.save(img_bytes, format="JPEG")
-        img_bytes.seek(0)
-        files = {"file": ("test.jpg", img_bytes, "image/jpeg")}
-        det_resp = await authenticated_client.post(
-            "/detections", data=det_payload, files=files
-        )
-        assert det_resp.status_code == 201
-        det_ids.append(det_resp.json()["id"])
-
-    # Create sequence annotations with different smoke and false positive types
-    annotations = [
-        {
-            "sequence_id": seq_ids[0],
-            "annotation": {
-                "sequences_bbox": [
-                    {
-                        "is_smoke": False,
-                        "false_positive_types": ["antenna", "building"],
-                        "bboxes": [
-                            {"detection_id": det_ids[0], "xyxyn": [0.1, 0.1, 0.2, 0.2]}
-                        ],
-                    }
-                ]
-            },
-        },
-        {
-            "sequence_id": seq_ids[1],
-            "annotation": {
-                "sequences_bbox": [
-                    {
-                        "is_smoke": True,
-                        "smoke_type": "wildfire",
-                        "false_positive_types": [],
-                        "bboxes": [
-                            {"detection_id": det_ids[1], "xyxyn": [0.1, 0.1, 0.2, 0.2]}
-                        ],
-                    }
-                ]
-            },
-        },
-        {
-            "sequence_id": seq_ids[2],
-            "annotation": {
-                "sequences_bbox": [
-                    {
-                        "is_smoke": True,
-                        "smoke_type": "industrial",
-                        "false_positive_types": ["high_cloud"],
-                        "bboxes": [
-                            {"detection_id": det_ids[2], "xyxyn": [0.1, 0.1, 0.2, 0.2]}
-                        ],
-                    }
-                ]
-            },
-        },
-    ]
-
-    for ann in annotations:
-        payload = {
-            "sequence_id": ann["sequence_id"],
-            "has_missed_smoke": False,
-            "annotation": ann["annotation"],
-            "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
-            "created_at": now.isoformat(),
-        }
-        resp = await authenticated_client.post(
-            "/annotations/sequences/", json=payload
-        )
-        assert resp.status_code == 201
-
-    # Filter by false_positive_types=antenna, should match only first sequence
-    resp_fp = await authenticated_client.get(
-        "/export/detections",
-        params={"false_positive_types": models.FalsePositiveType.ANTENNA.value},
-    )
-    assert resp_fp.status_code == 200
-    rows_fp = resp_fp.json()
-    assert len(rows_fp) >= 1
-    seq_ids_fp = {row["sequence_id"] for row in rows_fp}
-    assert seq_ids[0] in seq_ids_fp
-    assert seq_ids[1] not in seq_ids_fp
-    assert seq_ids[2] not in seq_ids_fp
-
-    # Filter by smoke_types=wildfire, should match second sequence
-    resp_smoke = await authenticated_client.get(
-        "/export/detections",
-        params={"smoke_types": models.SmokeType.WILDFIRE.value},
-    )
-    assert resp_smoke.status_code == 200
-    rows_smoke = resp_smoke.json()
-    seq_ids_smoke = {row["sequence_id"] for row in rows_smoke}
-    assert seq_ids[1] in seq_ids_smoke
-    assert seq_ids[0] not in seq_ids_smoke
-
-    # Filter by smoke_types=industrial and false_positive_types=high_cloud,
-    # should match third sequence
-    resp_mixed = await authenticated_client.get(
-        "/export/detections",
-        params={
-            "smoke_types": models.SmokeType.INDUSTRIAL.value,
-            "false_positive_types": models.FalsePositiveType.HIGH_CLOUD.value,
-        },
-    )
-    assert resp_mixed.status_code == 200
-    rows_mixed = resp_mixed.json()
-    seq_ids_mixed = {row["sequence_id"] for row in rows_mixed}
-    assert seq_ids[2] in seq_ids_mixed
-
-@pytest.mark.asyncio
-async def test_export_detections_pagination(
-    authenticated_client: AsyncClient,
-    sequence_session,
-    detection_session,
-    monkeypatch,
-):
-    """
-    limit and offset should allow pagination through multiple pages
-    while maintaining ordering, when scoped to a dedicated sequence.
-    """
-    dummy_bucket = DummyBucket()
-
-    def fake_get_bucket(_bucket_name: str) -> DummyBucket:
-        return dummy_bucket
-
-    monkeypatch.setattr(storage_module.s3_service, "get_bucket", fake_get_bucket)
-
-    # Create a dedicated sequence for this test
-    seq_payload = {
-        "source_api": "pyronear_french",  # must be a valid enum value
-        "alert_api_id": "9000",
-        "camera_name": "Pagination Camera",
-        "camera_id": "900",
-        "organisation_name": "Org Pagination",
-        "organisation_id": "900",
-        "lat": "43.0",
-        "lon": "1.0",
-        "recorded_at": now.isoformat(),
-        "last_seen_at": now.isoformat(),
-    }
-    seq_resp = await authenticated_client.post("/sequences", data=seq_payload)
-    assert seq_resp.status_code == 201
-    seq_id = seq_resp.json()["id"]
-
-    # Annotate this sequence so export works
-    seq_ann_payload = {
-        "sequence_id": seq_id,
-        "has_missed_smoke": False,
-        "annotation": {"sequences_bbox": []},
-        "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
-        "created_at": now.isoformat(),
-    }
-    seq_ann_resp = await authenticated_client.post(
-        "/annotations/sequences/", json=seq_ann_payload
-    )
-    assert seq_ann_resp.status_code == 201
-
-    # Create 5 detections with increasing recorded_at
-    detection_ids = []
-    for i in range(5):
-        det_payload = {
-            "sequence_id": str(seq_id),
-            "alert_api_id": f"900{i}",
-            "recorded_at": (now - timedelta(minutes=5 - i)).isoformat(),
-            "algo_predictions": json.dumps({"predictions": []}),
-        }
-        img = Image.new("RGB", (64, 64), color="white")
-        img_b = io.BytesIO()
-        img.save(img_b, format="JPEG")
-        img_b.seek(0)
-        files = {"file": ("t.jpg", img_b, "image/jpeg")}
-
-        resp = await authenticated_client.post(
-            "/detections", data=det_payload, files=files
-        )
-        assert resp.status_code == 201
-        detection_ids.append(resp.json()["id"])
-
-    # Filters that scope export exactly to our dedicated sequence
-    base_params = {
-        "source_api": "pyronear_french",
-        "organisation_name": "Org Pagination",
-        "camera_name": "Pagination Camera",
-        "order_by": "recorded_at",
-        "order_desc": "false",
-    }
+    for pid in (7401, 7402, 7403):
+        await seed_minimal_fp_alert(authenticated_client, platform_alert_id=pid)
 
     # Page 1
-    r1 = await authenticated_client.get(
-        "/export/detections", params={**base_params, "limit": 2, "offset": 0}
-    )
+    r1 = await authenticated_client.get("/export/alerts", params={"limit": 2})
     assert r1.status_code == 200
-    rows1 = r1.json()
-    assert len(rows1) == 2
+    body1 = r1.json()
+    assert [i["platform_alert_id"] for i in body1["items"]] == [7401, 7402]
+    assert body1["next_cursor"] == "pyronear_french:7402"
 
-    # Page 2
+    # Idempotency: same request, same page
+    r1b = await authenticated_client.get("/export/alerts", params={"limit": 2})
+    assert [i["platform_alert_id"] for i in r1b.json()["items"]] == [7401, 7402]
+
+    # Page 2: strictly after the cursor, short page -> null cursor
     r2 = await authenticated_client.get(
-        "/export/detections", params={**base_params, "limit": 2, "offset": 2}
+        "/export/alerts", params={"limit": 2, "cursor": body1["next_cursor"]}
     )
-    assert r2.status_code == 200
-    rows2 = r2.json()
-    assert len(rows2) == 2
+    body2 = r2.json()
+    assert [i["platform_alert_id"] for i in body2["items"]] == [7403]
+    assert body2["next_cursor"] is None
 
-    # Page 3, remaining one
-    r3 = await authenticated_client.get(
-        "/export/detections", params={**base_params, "limit": 2, "offset": 4}
+    # Re-sending the same cursor is idempotent: same page again
+    r2b = await authenticated_client.get(
+        "/export/alerts", params={"limit": 2, "cursor": body1["next_cursor"]}
     )
-    assert r3.status_code == 200
-    rows3 = r3.json()
-    assert len(rows3) == 1
-
-    # Check global ordering and count
-    all_rows = rows1 + rows2 + rows3
-    rec_times = [datetime.fromisoformat(r["recorded_at"]) for r in all_rows]
-    assert rec_times == sorted(rec_times)
-    assert len(all_rows) == 5
-
-
-async def _seed_unsure_annotated_lane(client: AsyncClient) -> int:
-    """One detection on fixture sequence 1 plus an annotated annotation
-    carrying is_unsure — the shape "Undecidable for now" produces."""
-    img = Image.new("RGB", (64, 64), color="blue")
-    img_bytes = io.BytesIO()
-    img.save(img_bytes, format="JPEG")
-    img_bytes.seek(0)
-    det_resp = await client.post(
-        "/detections",
-        data={
-            "sequence_id": "1",
-            "alert_api_id": "8301",
-            "recorded_at": now.isoformat(),
-            "algo_predictions": json.dumps(
-                {
-                    "predictions": [
-                        {
-                            "class_name": "smoke",
-                            "xyxyn": [0.1, 0.1, 0.3, 0.3],
-                            "confidence": 0.95,
-                        }
-                    ]
-                }
-            ),
-        },
-        files={"file": ("test.jpg", img_bytes, "image/jpeg")},
-    )
-    assert det_resp.status_code == 201
-    detection_id = det_resp.json()["id"]
-
-    seq_ann_resp = await client.post(
-        "/annotations/sequences/",
-        json={
-            "sequence_id": 1,
-            "has_missed_smoke": False,
-            "is_unsure": True,
-            "annotation": {"sequences_bbox": []},
-            "processing_stage": (
-                models.SequenceAnnotationProcessingStage.ANNOTATED.value
-            ),
-            "created_at": now.isoformat(),
-        },
-    )
-    assert seq_ann_resp.status_code == 201
-    return detection_id
+    assert [i["platform_alert_id"] for i in r2b.json()["items"]] == [7403]
 
 
 @pytest.mark.asyncio
-async def test_export_excludes_unsure_lanes_by_default(
+async def test_export_alerts_full_last_page_then_empty(
     authenticated_client: AsyncClient,
     sequence_session,
     detection_session,
-    monkeypatch,
+    dummy_bucket,
 ):
-    """An unsure lane closed as undecidable sits at `annotated`, the export
-    default stage — it must not reach training data unasked (spec:
-    2026-08-05 unsure lanes gate the localize queue)."""
-    monkeypatch.setattr(
-        storage_module.s3_service, "get_bucket", lambda _name: DummyBucket()
-    )
-    detection_id = await _seed_unsure_annotated_lane(authenticated_client)
+    """A page that is exactly `limit` long returns a cursor; the follow-up
+    page is empty with a null cursor."""
+    for pid in (7411, 7412):
+        await seed_minimal_fp_alert(authenticated_client, platform_alert_id=pid)
 
-    resp = await authenticated_client.get("/export/detections")
-    assert resp.status_code == 200
-    assert all(row["detection_id"] != detection_id for row in resp.json())
+    r1 = await authenticated_client.get("/export/alerts", params={"limit": 2})
+    body1 = r1.json()
+    assert len(body1["items"]) == 2
+    assert body1["next_cursor"] == "pyronear_french:7412"
+
+    r2 = await authenticated_client.get(
+        "/export/alerts", params={"limit": 2, "cursor": body1["next_cursor"]}
+    )
+    body2 = r2.json()
+    assert body2["items"] == []
+    assert body2["next_cursor"] is None
 
 
 @pytest.mark.asyncio
-async def test_export_returns_unsure_lanes_when_asked(
+async def test_export_alerts_malformed_cursor_422(
     authenticated_client: AsyncClient,
     sequence_session,
     detection_session,
-    monkeypatch,
+    dummy_bucket,
 ):
-    monkeypatch.setattr(
-        storage_module.s3_service, "get_bucket", lambda _name: DummyBucket()
+    for bad in ("nonsense", "pyronear_french", "pyronear_french:abc", "mars_api:12"):
+        resp = await authenticated_client.get("/export/alerts", params={"cursor": bad})
+        assert resp.status_code == 422, bad
+
+
+@pytest.mark.asyncio
+async def test_export_alerts_metadata_filters(
+    authenticated_client: AsyncClient,
+    sequence_session,
+    detection_session,
+    dummy_bucket,
+):
+    seq_a = await create_lane(
+        authenticated_client,
+        platform_alert_id=7501,
+        alert_api_id=7501,
+        camera_id=751,
+        camera_name="Cam A",
+        organisation_id=75,
+        organisation_name="Org A",
     )
-    detection_id = await _seed_unsure_annotated_lane(authenticated_client)
+    det_a = await create_frame(authenticated_client, sequence_id=seq_a, alert_api_id=1)
+    await annotate_lane(
+        authenticated_client,
+        sequence_id=seq_a,
+        detection_ids=[det_a],
+        is_smoke=False,
+        false_positive_types=["antenna"],
+    )
+    seq_b = await create_lane(
+        authenticated_client,
+        platform_alert_id=7502,
+        alert_api_id=7502,
+        camera_id=752,
+        camera_name="Cam B",
+        organisation_id=76,
+        organisation_name="Org B",
+    )
+    det_b = await create_frame(authenticated_client, sequence_id=seq_b, alert_api_id=1)
+    await annotate_lane(
+        authenticated_client,
+        sequence_id=seq_b,
+        detection_ids=[det_b],
+        is_smoke=False,
+        false_positive_types=["antenna"],
+    )
+
+    for params, expected in [
+        ({"organisation_name": "Org A"}, [7501]),
+        ({"organisation_id": 76}, [7502]),
+        ({"camera_name": "Cam A"}, [7501]),
+        ({"camera_id": 752}, [7502]),
+        ({"source_api": "pyronear_french"}, [7501, 7502]),
+        ({"source_api": "alert_wildfire"}, []),
+    ]:
+        resp = await authenticated_client.get("/export/alerts", params=params)
+        assert resp.status_code == 200, params
+        got = [i["platform_alert_id"] for i in resp.json()["items"]]
+        assert got == expected, params
+
+
+@pytest.mark.asyncio
+async def test_export_alerts_recorded_at_window(
+    authenticated_client: AsyncClient,
+    sequence_session,
+    detection_session,
+    dummy_bucket,
+):
+    old_time = now - timedelta(days=10)
+    seq_old = await create_lane(
+        authenticated_client,
+        platform_alert_id=7511,
+        alert_api_id=7511,
+        recorded_at=old_time,
+    )
+    det_old = await create_frame(
+        authenticated_client, sequence_id=seq_old, alert_api_id=1, recorded_at=old_time
+    )
+    await annotate_lane(
+        authenticated_client,
+        sequence_id=seq_old,
+        detection_ids=[det_old],
+        is_smoke=False,
+        false_positive_types=["antenna"],
+    )
+    await seed_minimal_fp_alert(authenticated_client, platform_alert_id=7512)
 
     resp = await authenticated_client.get(
-        "/export/detections", params={"is_unsure": "true"}
+        "/export/alerts",
+        params={"recorded_at_gte": (now - timedelta(days=1)).isoformat()},
     )
-    assert resp.status_code == 200
-    rows = resp.json()
-    row = next(r for r in rows if r["detection_id"] == detection_id)
-    assert row["sequence_is_unsure"] is True
+    assert [i["platform_alert_id"] for i in resp.json()["items"]] == [7512]
+
+    resp = await authenticated_client.get(
+        "/export/alerts",
+        params={"recorded_at_lte": (now - timedelta(days=1)).isoformat()},
+    )
+    assert [i["platform_alert_id"] for i in resp.json()["items"]] == [7511]
+
+
+@pytest.mark.asyncio
+async def test_export_alerts_type_filters(
+    authenticated_client: AsyncClient,
+    sequence_session,
+    detection_session,
+    dummy_bucket,
+):
+    # Alert 7521: FP lane (high_cloud). Alert 7522: smoke lane (wildfire).
+    fp_seq = await create_lane(
+        authenticated_client, platform_alert_id=7521, alert_api_id=7521
+    )
+    fp_det = await create_frame(
+        authenticated_client, sequence_id=fp_seq, alert_api_id=1
+    )
+    await annotate_lane(
+        authenticated_client,
+        sequence_id=fp_seq,
+        detection_ids=[fp_det],
+        is_smoke=False,
+        false_positive_types=["high_cloud"],
+    )
+    smoke_seq = await create_lane(
+        authenticated_client, platform_alert_id=7522, alert_api_id=7522
+    )
+    smoke_det = await create_frame(
+        authenticated_client, sequence_id=smoke_seq, alert_api_id=1
+    )
+    await annotate_lane(
+        authenticated_client,
+        sequence_id=smoke_seq,
+        detection_ids=[smoke_det],
+        is_smoke=True,
+        smoke_type="wildfire",
+    )
+    await annotate_frame(
+        authenticated_client,
+        detection_id=smoke_det,
+        items=[
+            {
+                "xyxyn": [0.4, 0.3, 0.5, 0.4],
+                "class_name": "smoke",
+                "smoke_type": "wildfire",
+                "origin": "human",
+            }
+        ],
+    )
+
+    resp = await authenticated_client.get(
+        "/export/alerts", params={"false_positive_types": "high_cloud"}
+    )
+    assert [i["platform_alert_id"] for i in resp.json()["items"]] == [7521]
+
+    resp = await authenticated_client.get(
+        "/export/alerts", params={"smoke_types": "wildfire"}
+    )
+    assert [i["platform_alert_id"] for i in resp.json()["items"]] == [7522]
+
+    resp = await authenticated_client.get(
+        "/export/alerts", params={"smoke_types": "industrial"}
+    )
+    assert resp.json()["items"] == []
+
+    # Invalid enum value -> FastAPI 422, not a silent unfiltered dump
+    resp = await authenticated_client.get(
+        "/export/alerts", params={"smoke_types": "not_a_type"}
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_export_alerts_annotation_updated_watermark(
+    authenticated_client: AsyncClient,
+    sequence_session,
+    detection_session,
+    dummy_bucket,
+):
+    """annotation_updated_gte compares against last_annotated_at, which
+    tracks BOTH sequence- and detection-annotation updates."""
+    await seed_minimal_fp_alert(authenticated_client, platform_alert_id=7601)
+
+    smoke_seq = await create_lane(
+        authenticated_client, platform_alert_id=7602, alert_api_id=7602
+    )
+    smoke_det = await create_frame(
+        authenticated_client, sequence_id=smoke_seq, alert_api_id=1
+    )
+    await annotate_lane(
+        authenticated_client,
+        sequence_id=smoke_seq,
+        detection_ids=[smoke_det],
+        is_smoke=True,
+        smoke_type="wildfire",
+    )
+    det_ann_id = await annotate_frame(
+        authenticated_client,
+        detection_id=smoke_det,
+        items=[
+            {
+                "xyxyn": [0.4, 0.3, 0.5, 0.4],
+                "class_name": "smoke",
+                "smoke_type": "wildfire",
+                "origin": "human",
+            }
+        ],
+    )
+
+    # Watermark strictly after everything seeded so far -> nothing exports.
+    resp_all = await authenticated_client.get("/export/alerts")
+    high_watermark = max(i["last_annotated_at"] for i in resp_all.json()["items"])
+    watermark_param = (
+        datetime.fromisoformat(high_watermark.replace("Z", "+00:00"))
+        + timedelta(microseconds=1)
+    ).isoformat()
+    resp = await authenticated_client.get(
+        "/export/alerts", params={"annotation_updated_gte": watermark_param}
+    )
+    assert resp.json()["items"] == []
+
+    # Touch only the DETECTION annotation of alert 7602 (a real change —
+    # a same-value PATCH is a no-op and leaves updated_at alone); its
+    # updated_at moves past the watermark and the alert re-exports.
+    patch_resp = await authenticated_client.patch(
+        f"/annotations/detections/{det_ann_id}",
+        json={
+            "annotation": {
+                "annotation": [
+                    {
+                        "xyxyn": [0.41, 0.31, 0.51, 0.41],
+                        "class_name": "smoke",
+                        "smoke_type": "wildfire",
+                        "origin": "human",
+                    }
+                ]
+            }
+        },
+    )
+    assert patch_resp.status_code == 200, patch_resp.text
+
+    resp = await authenticated_client.get(
+        "/export/alerts", params={"annotation_updated_gte": watermark_param}
+    )
+    items = resp.json()["items"]
+    assert [i["platform_alert_id"] for i in items] == [7602]
+
+
+@pytest.mark.asyncio
+async def test_export_alerts_requires_auth(async_client: AsyncClient):
+    resp = await async_client.get("/export/alerts")
+    assert resp.status_code in (401, 403)
+
+    resp = await async_client.get(
+        "/export/alerts", headers={"Authorization": "Bearer not-a-token"}
+    )
+    assert resp.status_code in (401, 403)
+
+
+@pytest.mark.asyncio
+async def test_old_export_detections_removed(authenticated_client: AsyncClient):
+    resp = await authenticated_client.get("/export/detections")
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_export_alerts_excludes_skipped_alerts(
+    authenticated_client: AsyncClient,
+    sequence_session,
+    detection_session,
+    dummy_bucket,
+    async_session,
+):
+    """A skip-overlay row excludes the alert even when its lanes are fully
+    annotated. The skip API refuses to skip finished alerts and submit guards
+    block advancing skipped ones, but the export must not depend on those
+    guards holding — the row is inserted directly to simulate the breach."""
+    await seed_minimal_fp_alert(authenticated_client, platform_alert_id=7701)
+    await seed_minimal_fp_alert(authenticated_client, platform_alert_id=7702)
+
+    async_session.add(
+        models.AlertSkip(
+            source_api=models.SourceApi("pyronear_french"),
+            platform_alert_id=7701,
+        )
+    )
+    await async_session.commit()
+
+    resp = await authenticated_client.get("/export/alerts")
+    assert [i["platform_alert_id"] for i in resp.json()["items"]] == [7702]
+
+    # Unskip (delete the overlay row) restores the alert untouched.
+    await async_session.execute(
+        delete(models.AlertSkip).where(models.AlertSkip.platform_alert_id == 7701)
+    )
+    await async_session.commit()
+
+    resp = await authenticated_client.get("/export/alerts")
+    assert [i["platform_alert_id"] for i in resp.json()["items"]] == [7701, 7702]
