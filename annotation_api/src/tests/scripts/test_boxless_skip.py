@@ -19,6 +19,8 @@ from factories import make_record
 
 GOOD_BOX = [0.10, 0.10, 0.20, 0.20, 0.9]
 ZERO_BOX = [0.0, 0.0, 0.0, 0.0, 0.0]
+POINT_BOX = [0.5, 0.5, 0.5, 0.5, 0.9]  # non-zero but zero-area
+INVERTED_BOX = [0.6, 0.6, 0.4, 0.4, 0.9]  # x1 > x2, y1 > y2
 
 
 def alert_records(platform_alert_id, bboxes_per_record):
@@ -57,6 +59,19 @@ class TestBoxlessPlatformAlertIds:
             2222, [None, []]
         )
         assert boxless_platform_alert_ids(records) == {2222}
+
+    def test_degenerate_boxes_flag_alert(self):
+        # Non-zero but zero-area/inverted boxes are dropped by
+        # build_single_track_annotation, so the lane would have no tracks.
+        records = alert_records(56861, [[POINT_BOX], [INVERTED_BOX]])
+        assert boxless_platform_alert_ids(records) == {56861}
+
+    def test_records_without_platform_alert_id_are_ignored(self):
+        # The object-split exception fallback emits records without the key;
+        # they cannot be alert-skipped and must not crash the decision.
+        records = alert_records(2222, [None])
+        no_pid = make_record(1, "2026-08-04T13:00:00", None, sid=999)
+        assert boxless_platform_alert_ids([no_pid] + records) == {2222}
 
     def test_no_records(self):
         assert boxless_platform_alert_ids([]) == set()

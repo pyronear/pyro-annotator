@@ -11,7 +11,7 @@ import logging
 import os
 import time
 from collections import defaultdict
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Set
 from urllib.parse import urlparse
 
 import requests
@@ -309,22 +309,27 @@ def transform_detection_data(record: dict, annotation_sequence_id: int) -> dict:
 AUTO_SKIP_BOXLESS_NOTE = "auto-skip at import: boxless alert (no engine boxes)"
 
 
-def boxless_platform_alert_ids(records: List[dict]) -> set:
+def boxless_platform_alert_ids(records: List[dict]) -> Set[int]:
     """
     Platform alert ids whose records carry no usable engine box.
 
-    "Usable" mirrors `transform_detection_data` (parse + sanitize), so this
-    flags exactly the alerts that would import as zero-object lanes the
-    classify page cannot act on (#333).
+    "Usable" means the box survives `transform_detection_data`'s parse +
+    sanitize AND `build_single_track_annotation`'s zero-area filter
+    (x1 < x2, y1 < y2) — i.e. it could become an annotation track. This flags
+    exactly the alerts that would import as zero-object lanes the classify
+    page cannot act on (#333). Records without a `platform_alert_id` (the
+    object-split exception fallback emits those) cannot be alert-skipped and
+    are ignored.
     """
     has_usable_box: Dict[int, bool] = {}
     for record in records:
-        platform_alert_id = record["platform_alert_id"]
-        if has_usable_box.get(platform_alert_id):
+        platform_alert_id = record.get("platform_alert_id")
+        if platform_alert_id is None or has_usable_box.get(platform_alert_id):
             continue
         parsed = parse_alert_api_bboxes(record["detection_bboxes"])
-        has_usable_box[platform_alert_id] = bool(
-            _sanitize_predictions(parsed.get("predictions", []))
+        has_usable_box[platform_alert_id] = any(
+            pred["xyxyn"][0] < pred["xyxyn"][2] and pred["xyxyn"][1] < pred["xyxyn"][3]
+            for pred in _sanitize_predictions(parsed.get("predictions", []))
         )
     return {pid for pid, usable in has_usable_box.items() if not usable}
 
@@ -355,6 +360,8 @@ def skip_boxless_alerts(
             counts["skipped"] += 1
         except AnnotationAPIError as exc:
             if exc.status_code == 409:
+                # Covers both endpoint 409 flavors — "already skipped" and
+                # "fully annotated, nothing to skip" — each a benign no-op.
                 counts["already_skipped"] += 1
             else:
                 logging.warning(

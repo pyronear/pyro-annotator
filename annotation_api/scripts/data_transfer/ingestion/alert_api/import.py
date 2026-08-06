@@ -264,6 +264,44 @@ def test_annotation_credentials(
         return False
 
 
+def auto_skip_boxless(
+    annotation_api_url: str,
+    login: str,
+    password: str,
+    source_api: str,
+    boxless_alert_ids: List[int],
+    console: Console,
+    error_collector: ErrorCollector,
+) -> dict:
+    """
+    Best-effort auto-skip of boxless alerts (#333): park their zero-object
+    lanes via the skip overlay. Never raises — a skip failure must not fail
+    an otherwise successful import.
+    """
+    counts = {"skipped": 0, "already_skipped": 0, "failed": 0}
+    try:
+        auth_token = annotation_api.get_auth_token(
+            annotation_api_url, username=login, password=password
+        )
+        counts = shared.skip_boxless_alerts(
+            annotation_api_url, auth_token, source_api, boxless_alert_ids
+        )
+    except Exception as exc:
+        counts["failed"] = len(boxless_alert_ids)
+        logging.warning("boxless auto-skip aborted: %s", exc)
+    console.print(
+        f"[blue]⏭️  Auto-skipped {counts['skipped']} boxless alert(s) "
+        f"({counts['already_skipped']} already skipped, "
+        f"{counts['failed']} failed): {boxless_alert_ids}[/]"
+    )
+    if counts["failed"] > 0:
+        error_collector.add_warning(
+            f"{counts['failed']} boxless alert(s) could not be auto-skipped; "
+            "their zero-object lanes remain in the queue."
+        )
+    return counts
+
+
 def parse_sequence_selection(sequence_arg: str) -> List[int]:
     """
     Parse a comma/whitespace-separated sequence list from CLI or a file.
@@ -415,7 +453,9 @@ def main() -> None:
     )
 
     if args.loglevel == "debug":
-        console.print(f"[blue]ℹ️  Date range: {args.date_from} to {args.date_end}[/]")
+        console.print(
+            f"[blue]ℹ️  Date range: {args.date_from} to {args.date_end}[/]"
+        )
         console.print(
             f"[blue]ℹ️  Alert API: {args.alert_api_url} (source_api: {source_api})[/]"
         )
@@ -525,7 +565,7 @@ def main() -> None:
 
         # Boxless alerts import as zero-object lanes the classify page cannot
         # act on (#333); they are auto-skipped after annotation creation below.
-        boxless_alert_ids = shared.boxless_platform_alert_ids(records)
+        boxless_alert_ids = sorted(shared.boxless_platform_alert_ids(records))
 
         if not records and not args.dry_run:
             step_manager.complete_step(False, "No records fetched from alert API")
@@ -614,6 +654,20 @@ def main() -> None:
         if not sequence_ids:
             step_message = "No sequences successfully imported - nothing to process for annotation generation"
             step_manager.complete_step(True, step_message)
+
+            # Boxless alerts from a previous run over this range may still
+            # need parking (an earlier skip failed, or the range predates the
+            # auto-skip feature); their lanes already exist, so skip works.
+            if boxless_alert_ids and not args.dry_run:
+                auto_skip_boxless(
+                    args.annotation_api_url,
+                    target_login,
+                    target_password,
+                    source_api,
+                    boxless_alert_ids,
+                    console,
+                    error_collector,
+                )
 
             # Show final summary with zero processing and exit gracefully
             console.print()
@@ -735,27 +789,15 @@ def main() -> None:
         # instead of leaving dead lanes in the classify queue.
         skip_counts = {"skipped": 0, "already_skipped": 0, "failed": 0}
         if boxless_alert_ids and not args.dry_run:
-            skip_counts = shared.skip_boxless_alerts(
+            skip_counts = auto_skip_boxless(
                 args.annotation_api_url,
-                annotation_api.get_auth_token(
-                    args.annotation_api_url,
-                    username=target_login,
-                    password=target_password,
-                ),
+                target_login,
+                target_password,
                 source_api,
-                sorted(boxless_alert_ids),
+                boxless_alert_ids,
+                console,
+                error_collector,
             )
-            console.print(
-                f"[blue]⏭️  Auto-skipped {skip_counts['skipped']} boxless alert(s) "
-                f"({skip_counts['already_skipped']} already skipped, "
-                f"{skip_counts['failed']} failed): "
-                f"{sorted(boxless_alert_ids)}[/]"
-            )
-            if skip_counts["failed"] > 0:
-                error_collector.add_warning(
-                    f"{skip_counts['failed']} boxless alert(s) could not be "
-                    "auto-skipped; their zero-object lanes remain in the queue."
-                )
 
         # Show any accumulated errors/warnings
         if error_collector.has_issues():
@@ -798,7 +840,7 @@ def main() -> None:
             annotation_section += (
                 f"\n• Boxless alerts auto-skipped: {skip_counts['skipped']} "
                 f"(+{skip_counts['already_skipped']} already skipped, "
-                f"{skip_counts['failed']} failed): {sorted(boxless_alert_ids)}"
+                f"{skip_counts['failed']} failed): {boxless_alert_ids}"
             )
         summary_parts.append(annotation_section)
 
