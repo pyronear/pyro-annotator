@@ -2,16 +2,30 @@
  * One object's row in the localize cockpit's rail — the localize counterpart
  * of classify's `ObjectRow`. Where classify's row carries a per-object
  * *classification*, this one carries a per-object *localization progress*:
- * how many of the frames the object appears on already have a committed box.
+ * how many of the frames the object appears on already have a committed box
+ * — and, now that the standalone Timeline card folded in here, WHICH frames:
+ * a per-frame segment bar under the header. Each segment reports this
+ * object's status at that alert frame: `confirmed` (solid fill), `pending`
+ * (faded fill — a model box waiting to be accepted), `empty` (outline only —
+ * on the frame with nothing on it yet), `absent` (neutral track).
  *
- * The row is a summary and a selector, nothing more: its right side always
- * says where the object stands (progress count and status chip), whether or
- * not the row is selected. What you can DO to the selected object — accept
- * its boxes, send it back to classify — lives in one place, the bar above
- * the media column where its frames are (see `LocalizeObjectActions` in
- * `LocalizeAlertPage`). The rail used to swap the selected row's metadata
- * for that same pair of buttons, which showed them twice on one screen and
- * cost the row the one thing it says about itself.
+ * `empty` is deliberately distinct from `pending`: collapsing the two made a
+ * frame with nothing on it look identical to one with a box to accept, which
+ * painted a just-added object's whole timeline as if it were already full.
+ *
+ * Every row receives the same alert-wide `frameTimestamps`, so frame N sits
+ * at the same x in every row — the cross-object comparison the standalone
+ * card used to provide survives the move.
+ *
+ * The card is a container, not a control: a row that holds the segment
+ * buttons cannot itself be a button (nesting interactive controls is invalid
+ * HTML — the same rule that moved the row's actions out to the Frames bar).
+ * The header line is the activate button; the page's Tab cycle moves real
+ * DOM focus onto it via the forwarded ref, and native button semantics give
+ * Enter/Space activation for anything else that focuses it. What you can DO
+ * to the selected object — accept its boxes, send it back to classify —
+ * still lives in one place, the bar above the media column (see
+ * `LocalizeObjectActions` in `LocalizeAlertPage`).
  *
  * Rows past localization stay clickable: activating one points the media
  * column at its frames, which is the whole reason they're on screen. Whether
@@ -20,11 +34,12 @@
  */
 
 import React from 'react';
+import type { ObjectFrameStatus } from '@/utils/annotation/alertLocalizeUtils';
 
 export interface LocalizeObjectRowProps {
-  /** e.g. "Object 2" — the object's own label, shared with the timeline and grid overlays. */
+  /** e.g. "Object 2" — the object's own label, shared with the grid overlays. */
   label: string;
-  /** Stable per-object color (hex) — matches the timeline swatch and the grid's box color. */
+  /** Stable per-object color (hex) — matches the segment fills and the grid's box color. */
   color: string;
   /** Frames this object appears on that already carry a committed box. */
   confirmedCount: number;
@@ -32,6 +47,15 @@ export interface LocalizeObjectRowProps {
   presentCount: number;
   /** False for lanes already past localization — read-only context. */
   workable: boolean;
+  /**
+   * The alert-wide ordered frame axis — identical for every row, so frame N
+   * sits at the same x across objects and their strips compare vertically.
+   */
+  frameTimestamps: string[];
+  /** This object's status per frame timestamp; frames missing from the map render as `absent`. */
+  statusByTimestamp: Record<string, ObjectFrameStatus>;
+  /** A segment was clicked — the page activates this object and scrolls the grid to `timestamp`. */
+  onFrameClick: (timestamp: string) => void;
   /** What classify decided this is (wildfire / industrial / other) — omitted on false-positive rows. */
   smokeType?: string;
   /** Read-only false-positive context, surfaced by the opt-in toggle. */
@@ -50,9 +74,36 @@ export interface LocalizeObjectRowProps {
   onActivate: () => void;
 }
 
-// forwardRef so the page's Tab cycle can move real DOM focus onto the row it
-// lands on — see the cycle effect in `LocalizeAlertPage`.
-export const LocalizeObjectRow = React.forwardRef<HTMLDivElement, LocalizeObjectRowProps>(
+const SEGMENT_BASE_CLASS =
+  'h-full flex-1 rounded-sm p-0 transition-opacity focus:outline-none focus:ring-1 focus:ring-ember';
+
+function segmentAppearance(
+  status: ObjectFrameStatus,
+  color: string
+): { className: string; style?: React.CSSProperties } {
+  if (status === 'confirmed') {
+    return { className: SEGMENT_BASE_CLASS, style: { backgroundColor: color } };
+  }
+  if (status === 'pending') {
+    return { className: `${SEGMENT_BASE_CLASS} opacity-40`, style: { backgroundColor: color } };
+  }
+  if (status === 'empty') {
+    // Present on this frame, but nothing to show yet — no committed box and
+    // no model prediction to accept. An outline in the object's own color
+    // keeps it legible as "this object's frame" without the fill that would
+    // imply content (a just-added object's whole timeline is this state).
+    return {
+      className: `${SEGMENT_BASE_CLASS} opacity-50`,
+      style: { boxShadow: `inset 0 0 0 1px ${color}` },
+    };
+  }
+  // absent — neutral track, no fill; the strip's track background shows through.
+  return { className: SEGMENT_BASE_CLASS };
+}
+
+// forwardRef so the page's Tab cycle can move real DOM focus onto the header
+// button of the row it lands on — see the cycle effect in `LocalizeAlertPage`.
+export const LocalizeObjectRow = React.forwardRef<HTMLButtonElement, LocalizeObjectRowProps>(
   function LocalizeObjectRow(
     {
       label,
@@ -60,6 +111,9 @@ export const LocalizeObjectRow = React.forwardRef<HTMLDivElement, LocalizeObject
       confirmedCount,
       presentCount,
       workable,
+      frameTimestamps,
+      statusByTimestamp,
+      onFrameClick,
       smokeType,
       isFalsePositive = false,
       falsePositiveTypes,
@@ -70,6 +124,7 @@ export const LocalizeObjectRow = React.forwardRef<HTMLDivElement, LocalizeObject
     ref
   ) {
     const pendingCount = presentCount - confirmedCount;
+    const slug = label.replace(/\s+/g, '-').toLowerCase();
 
     const status = isFalsePositive
       ? { label: 'False positive', tone: 'bg-ash text-haze' }
@@ -102,41 +157,27 @@ export const LocalizeObjectRow = React.forwardRef<HTMLDivElement, LocalizeObject
 
     return (
       <div
-        ref={ref}
-        data-testid={`localize-object-row-${label.replace(/\s+/g, '-').toLowerCase()}`}
+        data-testid={`localize-object-row-${slug}`}
         data-active={isActive ? 'true' : undefined}
         data-dimmed={dimmed ? 'true' : undefined}
-        // A div with role="button" rather than a <button>, because the page's
-        // Tab cycle needs to move real DOM focus here via the forwarded ref
-        // and manage the rail's focus order itself — but role "button" now,
-        // not the old "group": that role existed only because the row used to
-        // contain its own action buttons, and nesting interactive controls is
-        // invalid HTML. The hand-rolled Enter/Space keeps the button contract
-        // for anything else that focuses the row (a click, assistive tech),
-        // where Enter must act on THIS row rather than whichever one the
-        // cycle last left.
-        role="button"
-        aria-label={label}
-        tabIndex={0}
-        onKeyDown={e => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            onActivate();
-          }
-        }}
-        className={`cursor-pointer rounded-lg px-3.5 py-2.5 transition-colors focus:outline-none focus:ring-2 focus:ring-pine ${frame}`}
-        onClick={onActivate}
+        className={`rounded-lg px-3.5 py-2.5 transition-colors ${frame}`}
       >
-        <div className="flex items-center justify-between gap-2">
+        <button
+          ref={ref}
+          type="button"
+          aria-label={label}
+          onClick={onActivate}
+          className="flex w-full items-center justify-between gap-2 rounded text-left focus:outline-none focus:ring-2 focus:ring-pine"
+        >
           <span className="flex min-w-0 items-center gap-2">
             <span
               className="inline-block h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-char/10"
               style={{ backgroundColor: color }}
               aria-hidden="true"
             />
-            {/* Name and what-it-is on one line: the row is a one-line summary,
-              and stacking them made it two lines tall for a word. Both
-              truncate rather than push: at the narrow end of the rail
+            {/* Name and what-it-is on one line: the header is a one-line
+              summary, and stacking them made it two lines tall for a word.
+              Both truncate rather than push: at the narrow end of the rail
               something has to give — better a clipped word than a row that
               overflows into a horizontal scrollbar. */}
             <span className="flex min-w-0 items-baseline gap-1.5">
@@ -170,6 +211,27 @@ export const LocalizeObjectRow = React.forwardRef<HTMLDivElement, LocalizeObject
               {status.label}
             </span>
           </span>
+        </button>
+
+        <div
+          data-testid={`object-timeline-${slug}`}
+          className="mt-2 flex h-1.5 gap-px overflow-hidden rounded-full bg-ash"
+        >
+          {frameTimestamps.map((timestamp, frameIndex) => {
+            const segmentStatus = statusByTimestamp[timestamp] ?? 'absent';
+            const { className, style } = segmentAppearance(segmentStatus, color);
+            return (
+              <button
+                key={timestamp}
+                type="button"
+                data-testid={`frame-segment-${slug}-${frameIndex}`}
+                aria-label={`${label}, frame ${frameIndex + 1}: ${segmentStatus}`}
+                onClick={() => onFrameClick(timestamp)}
+                className={className}
+                style={style}
+              />
+            );
+          })}
         </div>
       </div>
     );

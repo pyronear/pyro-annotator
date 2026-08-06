@@ -1,5 +1,8 @@
 /**
- * Clickable-segment object timeline for the collocated localize screens. One
+ * Clickable-segment object timeline. Its one live consumer is the accept
+ * popover's frame-context strip (`AcceptRemainingPopover`, `variant="bare"`);
+ * the cockpit rail that used to render the default card variant now inlines
+ * a per-frame strip in each `LocalizeObjectRow` instead. One
  * row per object — a color swatch + label button ("Go to Object N") plus a
  * per-frame status bar across the union of the alert's frame timestamps,
  * where each frame is its own button reporting that object's status at that
@@ -23,8 +26,8 @@
  * buttons (per-frame navigation).
  *
  * `selected` gives a row an unmistakable accent treatment (fill + left
- * border) — LocalizeAlertPage's object-focus mode uses it to mark whichever
- * object is currently focused.
+ * border) — the cockpit's object-focus mode used it to mark the focused
+ * object while the rail still rendered this strip.
  *
  * `variant="bare"` drops the card chrome, title, and per-row label cluster
  * so the strip can embed inside another surface (the accept popover) that
