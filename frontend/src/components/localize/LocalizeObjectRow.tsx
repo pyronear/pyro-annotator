@@ -34,7 +34,7 @@
  */
 
 import React from 'react';
-import type { ObjectStatusStripStatus } from '@/components/sequence-annotation';
+import type { ObjectFrameStatus } from '@/utils/annotation/alertLocalizeUtils';
 
 export interface LocalizeObjectRowProps {
   /** e.g. "Object 2" — the object's own label, shared with the grid overlays. */
@@ -53,7 +53,7 @@ export interface LocalizeObjectRowProps {
    */
   frameTimestamps: string[];
   /** This object's status per frame timestamp; frames missing from the map render as `absent`. */
-  statusByTimestamp: Record<string, ObjectStatusStripStatus>;
+  statusByTimestamp: Record<string, ObjectFrameStatus>;
   /** A segment was clicked — the page activates this object and scrolls the grid to `timestamp`. */
   onFrameClick: (timestamp: string) => void;
   /** What classify decided this is (wildfire / industrial / other) — omitted on false-positive rows. */
@@ -78,7 +78,7 @@ const SEGMENT_BASE_CLASS =
   'h-full flex-1 rounded-sm p-0 transition-opacity focus:outline-none focus:ring-1 focus:ring-ember';
 
 function segmentAppearance(
-  status: ObjectStatusStripStatus,
+  status: ObjectFrameStatus,
   color: string
 ): { className: string; style?: React.CSSProperties } {
   if (status === 'confirmed') {

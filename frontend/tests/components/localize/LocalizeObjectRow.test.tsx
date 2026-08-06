@@ -21,7 +21,7 @@ import React from 'react';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { LocalizeObjectRow } from '@/components/localize';
 import { getObjectColor } from '@/utils/annotation/objectColors';
-import type { ObjectStatusStripStatus } from '@/components/sequence-annotation';
+import type { ObjectFrameStatus } from '@/utils/annotation/alertLocalizeUtils';
 
 const T1 = '2026-01-01T00:00:00Z';
 const T2 = '2026-01-01T00:01:00Z';
@@ -36,7 +36,7 @@ const baseProps = {
   // T3 deliberately missing from the map -> renders as absent.
   statusByTimestamp: { [T1]: 'confirmed', [T2]: 'pending' } as Record<
     string,
-    ObjectStatusStripStatus
+    ObjectFrameStatus
   >,
   onFrameClick: () => {},
   isActive: false,
@@ -159,7 +159,7 @@ describe('LocalizeObjectRow inline timeline', () => {
       <LocalizeObjectRow
         {...baseProps}
         workable
-        statusByTimestamp={{ [T1]: 'empty' } as Record<string, ObjectStatusStripStatus>}
+        statusByTimestamp={{ [T1]: 'empty' } as Record<string, ObjectFrameStatus>}
       />
     );
 
