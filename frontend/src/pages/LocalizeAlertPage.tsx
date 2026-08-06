@@ -102,10 +102,10 @@
  * accounted for?" before someone adds a duplicate object for it. Unsure
  * lanes stay excluded either way.
  *
- * Each smoke object's row also carries a "Reclassify" action — workable and
- * already-localized rows alike — routing to `/classify/done/<lane>` with a
- * `return` param back to this page. False-positive rows deliberately don't
- * get it (see issue #275).
+ * The active object also carries a "Reclassify" action in the CTA bar above
+ * its frames — workable, already-localized and false-positive objects alike
+ * (promoting an FP back to smoke re-runs its auto-review pass, issue #275) —
+ * routing to `/classify/done/<lane>` with a `return` param back to this page.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';

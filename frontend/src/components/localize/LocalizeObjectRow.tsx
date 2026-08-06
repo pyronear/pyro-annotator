@@ -106,14 +106,16 @@ export const LocalizeObjectRow = React.forwardRef<HTMLDivElement, LocalizeObject
         data-testid={`localize-object-row-${label.replace(/\s+/g, '-').toLowerCase()}`}
         data-active={isActive ? 'true' : undefined}
         data-dimmed={dimmed ? 'true' : undefined}
-        // role="group" with hand-rolled Enter/Space rather than a native
-        // button: keyboard reach comes from the page's Tab cycle, which
-        // activates each row it lands on and moves real DOM focus here (via
-        // the forwarded ref) — focus, selection and the media column stay one
-        // thing. The Enter/Space handling remains for anything else that
-        // focuses the row (a click, assistive tech), where Enter must act on
-        // THIS row rather than whichever one the cycle last left.
-        role="group"
+        // A div with role="button" rather than a <button>, because the page's
+        // Tab cycle needs to move real DOM focus here via the forwarded ref
+        // and manage the rail's focus order itself — but role "button" now,
+        // not the old "group": that role existed only because the row used to
+        // contain its own action buttons, and nesting interactive controls is
+        // invalid HTML. The hand-rolled Enter/Space keeps the button contract
+        // for anything else that focuses the row (a click, assistive tech),
+        // where Enter must act on THIS row rather than whichever one the
+        // cycle last left.
+        role="button"
         aria-label={label}
         tabIndex={0}
         onKeyDown={e => {

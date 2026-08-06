@@ -14,7 +14,7 @@
  */
 
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { LocalizeObjectRow } from '@/components/localize';
 import { getObjectColor } from '@/utils/annotation/objectColors';
 
@@ -69,18 +69,22 @@ describe('LocalizeObjectRow selection treatment', () => {
 });
 
 describe('LocalizeObjectRow metadata', () => {
-  it('is selectable from the keyboard', () => {
-    // The page's Tab cycle moves real focus here; Enter/Space must activate
-    // the row for anything else that focuses it (a click, assistive tech).
+  it('is a button to assistive tech, selectable from the keyboard', () => {
+    // With the nested action buttons gone the row is a plain activate
+    // control, so it can finally say so — the old role="group" existed only
+    // because nesting interactive controls is invalid HTML. The page's Tab
+    // cycle moves real focus here; Enter/Space must activate the row for
+    // anything else that focuses it (a click, assistive tech).
     const onActivate = vi.fn();
     render(<LocalizeObjectRow {...baseProps} workable onActivate={onActivate} />);
 
-    expect(row()).toHaveAttribute('tabindex', '0');
+    const rowEl = screen.getByRole('button', { name: 'Object 2' });
+    expect(rowEl).toHaveAttribute('tabindex', '0');
 
-    fireEvent.keyDown(row(), { key: 'Enter' });
+    fireEvent.keyDown(rowEl, { key: 'Enter' });
     expect(onActivate).toHaveBeenCalledTimes(1);
 
-    fireEvent.keyDown(row(), { key: ' ' });
+    fireEvent.keyDown(rowEl, { key: ' ' });
     expect(onActivate).toHaveBeenCalledTimes(2);
   });
 
@@ -90,7 +94,8 @@ describe('LocalizeObjectRow metadata', () => {
     // row's accent and nothing else.
     render(<LocalizeObjectRow {...baseProps} workable isActive />);
 
-    expect(screen.queryAllByRole('button')).toHaveLength(0);
+    // Scoped inside the row: the row itself is a button, its content is not.
+    expect(within(row()).queryAllByRole('button')).toHaveLength(0);
     expect(screen.getByText('0/3')).toBeInTheDocument();
     expect(screen.getByText('3 left')).toBeInTheDocument();
   });
