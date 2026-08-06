@@ -12,10 +12,8 @@ Covers:
     * validated, conflicting label → warning returned, group untouched
     * validated, member locked at SEQ_ANNOTATION_DONE+ → skipped
 
-Assign-time inheritance is exercised in-suite by detaching a grouped
-sequence and re-running the sweep against its own (labeled) group; the
-two seeded sequences have non-overlapping bboxes, so they never share a
-group organically.
+The two seeded sequences have non-overlapping bboxes, so they never share
+a group organically.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -563,14 +561,13 @@ async def test_assign_groups_creates_group_for_unmatched_sequence(
     authenticated_client: AsyncClient,
     sequence_session: AsyncSession,
     detection_session: AsyncSession,
-    test_user: User,
 ):
     """Sequence 1 has detections with bbox in the [0.12-0.5, 0.13-0.55] region;
     no group exists yet → assign should create one and link it."""
     await _set_seq_metadata(sequence_session, 1, camera_id=42, azimuth=90)
     await _create_placeholder_annotation(authenticated_client, 1)
 
-    result = await assign_ungrouped_sequences(sequence_session, user_id=test_user.id)
+    result = await assign_ungrouped_sequences(sequence_session)
     assert result.new_groups >= 1
 
     # The created group should now own sequence 1.
@@ -585,72 +582,22 @@ async def test_assign_skips_sequences_still_importing(
     authenticated_client: AsyncClient,
     sequence_session: AsyncSession,
     detection_session: AsyncSession,
-    test_user: User,
 ):
     """A sequence with no SequenceAnnotation row is mid-import (imports
     create the annotation only after all detections are posted) — assign
     must leave it alone until the annotation appears."""
     await _set_seq_metadata(sequence_session, 1, camera_id=42, azimuth=90)
 
-    result = await assign_ungrouped_sequences(sequence_session, user_id=test_user.id)
+    result = await assign_ungrouped_sequences(sequence_session)
     assert result.processed == 0
     seq_payload = (await authenticated_client.get("/sequences/1")).json()
     assert seq_payload["sequence_group_id"] is None
 
     await _create_placeholder_annotation(authenticated_client, 1)
-    result = await assign_ungrouped_sequences(sequence_session, user_id=test_user.id)
+    result = await assign_ungrouped_sequences(sequence_session)
     assert result.new_groups >= 1
     seq_payload = (await authenticated_client.get("/sequences/1")).json()
     assert seq_payload["sequence_group_id"] is not None
-
-
-@pytest.mark.asyncio
-async def test_assign_inheritance_records_contribution(
-    authenticated_client: AsyncClient,
-    sequence_session: AsyncSession,
-    detection_session: AsyncSession,
-    test_user: User,
-):
-    """A sequence that joins an already-labeled group inherits the label AND
-    gets a contribution row attributing the machine-written annotation to
-    the user the assignment ran as (the worker user in the periodic sweep;
-    here, the test user)."""
-    await _set_seq_metadata(sequence_session, 1, camera_id=42, azimuth=90)
-    await _create_placeholder_annotation(authenticated_client, 1)
-    await assign_ungrouped_sequences(sequence_session, user_id=test_user.id)
-
-    seq_payload = (await authenticated_client.get("/sequences/1")).json()
-    group_id = seq_payload["sequence_group_id"]
-    bulk = await authenticated_client.post(
-        "/annotations/sequences/bulk",
-        json={
-            "sequence_ids": [1],
-            "group_id": group_id,
-            "smoke_type": "wildfire",
-            "is_unsure": False,
-        },
-    )
-    assert bulk.status_code == 200  # records contribution #1 (bulk path)
-
-    # Detach the sequence and reset its annotation to the placeholder stage
-    # so re-assignment triggers inheritance from the now-labeled group.
-    await sequence_session.exec(
-        text("UPDATE sequences SET sequence_group_id = NULL WHERE id = 1")
-    )
-    await sequence_session.exec(
-        text(
-            "UPDATE sequences_annotations SET processing_stage = 'READY_TO_ANNOTATE' "
-            "WHERE sequence_id = 1"
-        )
-    )
-    await sequence_session.commit()
-
-    result = await assign_ungrouped_sequences(sequence_session, user_id=test_user.id)
-    assert result.inherited_annotations == 1
-
-    # contribution #2 comes from the inheritance write.
-    contributors = await _annotation_contributor_ids(sequence_session, 1)
-    assert contributors == [test_user.id, test_user.id]
 
 
 @pytest.mark.asyncio
@@ -665,7 +612,7 @@ async def test_bulk_annotate_writes_label_on_group_and_seqs(
     write the label onto the group itself."""
     await _set_seq_metadata(sequence_session, 1, camera_id=42, azimuth=90)
     await _create_placeholder_annotation(authenticated_client, 1)
-    await assign_ungrouped_sequences(sequence_session, user_id=test_user.id)
+    await assign_ungrouped_sequences(sequence_session)
 
     # Discover the group_id from the sequence.
     seq_payload = (await authenticated_client.get("/sequences/1")).json()
@@ -749,13 +696,12 @@ async def test_bulk_annotate_rejects_conflicting_label_without_force(
     authenticated_client: AsyncClient,
     sequence_session: AsyncSession,
     detection_session: AsyncSession,
-    test_user: User,
 ):
     """A group already labeled `wildfire` must reject a request to relabel
     it as `antenna` unless the caller passes force=True."""
     await _set_seq_metadata(sequence_session, 1, camera_id=42, azimuth=90)
     await _create_placeholder_annotation(authenticated_client, 1)
-    await assign_ungrouped_sequences(sequence_session, user_id=test_user.id)
+    await assign_ungrouped_sequences(sequence_session)
 
     seq_payload = (await authenticated_client.get("/sequences/1")).json()
     group_id = seq_payload["sequence_group_id"]
