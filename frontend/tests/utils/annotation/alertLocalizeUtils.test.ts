@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { buildAlertFrameModel } from '@/utils/annotation/alertLocalizeUtils';
+import {
+  buildAlertFrameModel,
+  timelineLegendStatuses,
+} from '@/utils/annotation/alertLocalizeUtils';
 import { getObjectColor } from '@/utils/annotation/objectColors';
 import type { AlertLane, Detection, DetectionAnnotation, SequenceAnnotation } from '@/types/api';
 
@@ -337,5 +340,25 @@ describe('buildAlertFrameModel', () => {
 
       expect(frames[0].cells[0].boxes.map(b => b.xyxyn)).toEqual([[0.2, 0.2, 0.3, 0.3]]);
     });
+  });
+});
+
+describe('timelineLegendStatuses', () => {
+  it('returns the union of statuses across rows, in display order', () => {
+    expect(
+      timelineLegendStatuses([
+        { t1: 'empty', t2: 'confirmed' },
+        { t1: 'pending', t2: 'absent' },
+      ])
+    ).toEqual(['confirmed', 'pending', 'empty']);
+  });
+
+  it('lists only statuses actually present', () => {
+    expect(timelineLegendStatuses([{ t1: 'confirmed', t2: 'confirmed' }])).toEqual(['confirmed']);
+  });
+
+  it('never lists absent, and returns nothing for no rows or all-absent rows', () => {
+    expect(timelineLegendStatuses([])).toEqual([]);
+    expect(timelineLegendStatuses([{ t1: 'absent' }])).toEqual([]);
   });
 });

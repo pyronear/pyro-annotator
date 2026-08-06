@@ -70,6 +70,27 @@ export interface AlertFrame {
  */
 export type ObjectFrameStatus = 'confirmed' | 'pending' | 'empty' | 'absent';
 
+/** Statuses the rail's shared legend can name — every encoding except the neutral track. */
+export type TimelineLegendStatus = Exclude<ObjectFrameStatus, 'absent'>;
+
+const LEGEND_STATUS_ORDER: TimelineLegendStatus[] = ['confirmed', 'pending', 'empty'];
+
+/**
+ * The union of statuses present across the rail's rows, in the legend's
+ * display order. `absent` is the track showing through rather than an
+ * encoding, so it is never returned — the legend must not explain the
+ * background, and must not name a state no row on screen is in.
+ */
+export function timelineLegendStatuses(
+  statusMaps: Record<string, ObjectFrameStatus>[]
+): TimelineLegendStatus[] {
+  const present = new Set<ObjectFrameStatus>();
+  for (const map of statusMaps) {
+    for (const status of Object.values(map)) present.add(status);
+  }
+  return LEGEND_STATUS_ORDER.filter(status => present.has(status));
+}
+
 /** One rail row: the object's identity, its per-frame statuses, and the bits `LocalizeAlertPage` needs to route clicks and split rows by workability. */
 export interface AlertObjectStatus {
   /** e.g. "Object 2" — same numbering as the object's rail row and grid overlays. */
