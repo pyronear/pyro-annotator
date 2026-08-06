@@ -1,6 +1,7 @@
 """Verify: authenticate, discover organizations idempotently, and probe whether
 the credential actually sees more than one organization's sequences."""
 
+import time
 from datetime import date, datetime
 
 import pytest
@@ -192,6 +193,30 @@ async def test_malformed_probe_response_does_not_raise(
 
     assert result.ok is False
     assert result.error
+    await async_session.refresh(connector)
+    assert connector.last_verify_error
+    assert connector.last_verified_at is None
+
+
+async def test_probe_timeout_records_error_and_does_not_raise(
+    async_session, alert_api, secret_key, monkeypatch
+):
+    """A host that black-holes packets must not hang verify forever: the probe
+    is wrapped in asyncio.wait_for, and the resulting TimeoutError must be
+    caught by the same `except Exception` as any other verify failure rather
+    than propagating out of verify_connector."""
+    monkeypatch.setattr(connector_verify, "_PROBE_TIMEOUT_SECONDS", 0.05)
+
+    def slow(**kw):
+        time.sleep(0.2)
+        return CAMERAS
+
+    monkeypatch.setattr(connector_verify.alert_api_client, "list_cameras", slow)
+    connector = await _connector(async_session)
+    result = await verify_connector(async_session, connector, today=date(2026, 8, 6))
+
+    assert result.ok is False
+    assert "Timeout" in (result.error or "")
     await async_session.refresh(connector)
     assert connector.last_verify_error
     assert connector.last_verified_at is None

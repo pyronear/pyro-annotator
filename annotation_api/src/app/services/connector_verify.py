@@ -29,6 +29,15 @@ logger = logging.getLogger(__name__)
 
 _PROBE_LIMIT = 200
 
+# _probe makes 4 sequential HTTP calls: the token exchange (client.py's own
+# 5s timeout) plus three list endpoints, each bounded at 30s by api_get's
+# timeout. 95s covers that worst-case sum with a small buffer, so a probe
+# where every call is legitimately slow-but-working still completes; a probe
+# against a host that black-holes packets was previously unbounded (the
+# asyncio default-executor thread it occupies would never return) and is now
+# bounded here too.
+_PROBE_TIMEOUT_SECONDS = 100
+
 __all__ = ["verify_connector"]
 
 
@@ -73,8 +82,11 @@ async def verify_connector(
     sample_date = today - timedelta(days=1)
     try:
         password = decrypt_secret(connector.password_encrypted)
-        organizations, cameras, sequences = await asyncio.to_thread(
-            _probe, connector.base_url, connector.login, password, sample_date
+        organizations, cameras, sequences = await asyncio.wait_for(
+            asyncio.to_thread(
+                _probe, connector.base_url, connector.login, password, sample_date
+            ),
+            timeout=_PROBE_TIMEOUT_SECONDS,
         )
         # `api_get` (used for every call except the token exchange) only raises
         # when the response body fails to parse as JSON — a non-2xx response
