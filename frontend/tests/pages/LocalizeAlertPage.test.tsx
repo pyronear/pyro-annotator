@@ -2309,7 +2309,7 @@ describe('LocalizeAlertPage', () => {
 
   });
 
-  describe('soft-confirm on submit (flagged, no object added this session)', () => {
+  describe('soft-confirm on submit (missed smoke flagged)', () => {
     // Every case here has to actually reach submit, which is gated on all
     // objects already being accepted.
     beforeEach(() => {
@@ -2332,7 +2332,7 @@ describe('LocalizeAlertPage', () => {
       });
     }
 
-    it('fires when a lane is flagged and no object was added this session', async () => {
+    it('fires when a lane is flagged', async () => {
       mockFlaggedAlert();
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
@@ -2340,9 +2340,29 @@ describe('LocalizeAlertPage', () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText('You flagged missed smoke but added no object — submit anyway?')
+          screen.getByText(/You flagged missed smoke, but adding the missed object isn/)
         ).toBeInTheDocument();
       });
+      expect(apiClient.localizeSubmit).not.toHaveBeenCalled();
+    });
+
+    it('Skip alert is the primary way out — it opens the skip confirm instead of submitting', async () => {
+      mockFlaggedAlert();
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: /Submit/ }));
+      await waitFor(() => {
+        expect(screen.getByTestId('missed-smoke-confirm')).toBeInTheDocument();
+      });
+
+      fireEvent.click(
+        within(screen.getByTestId('missed-smoke-confirm')).getByRole('button', {
+          name: 'Skip alert',
+        })
+      );
+
+      expect(screen.queryByTestId('missed-smoke-confirm')).not.toBeInTheDocument();
+      expect(screen.getByTestId('skip-alert-confirm')).toBeInTheDocument();
       expect(apiClient.localizeSubmit).not.toHaveBeenCalled();
     });
 
@@ -2354,14 +2374,14 @@ describe('LocalizeAlertPage', () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText('You flagged missed smoke but added no object — submit anyway?')
+          screen.getByText(/You flagged missed smoke, but adding the missed object isn/)
         ).toBeInTheDocument();
       });
 
       fireEvent.click(screen.getByRole('button', { name: 'Go back' }));
 
       expect(
-        screen.queryByText('You flagged missed smoke but added no object — submit anyway?')
+        screen.queryByText(/You flagged missed smoke, but adding the missed object isn/)
       ).not.toBeInTheDocument();
       expect(apiClient.localizeSubmit).not.toHaveBeenCalled();
       expect(apiClient.updateSequenceAnnotation).not.toHaveBeenCalled();

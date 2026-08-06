@@ -1078,11 +1078,12 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     },
   });
 
-  // The missed-smoke soft-confirm ("you flagged missed smoke but added no
-  // object") is the only gate left in front of submit — the old two-step
-  // no-box warning went away with the bulk-accept-on-submit it guarded:
-  // submit now requires every frame to already carry a committed box, so
-  // there is never a pending no-box frame left to warn about.
+  // The missed-smoke soft-confirm is the only gate left in front of submit:
+  // flagged missed smoke can't be annotated yet, so it leads with Skip alert
+  // before offering to submit anyway. The old two-step no-box warning went
+  // away with the bulk-accept-on-submit it guarded: submit now requires
+  // every frame to already carry a committed box, so there is never a
+  // pending no-box frame left to warn about.
   const handleSubmitClick = () => {
     if (submitBlocked || submitAlert.isPending) return;
     if (softConfirmNeeded) {
@@ -1907,20 +1908,30 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
         >
           <div className="w-full max-w-sm rounded-lg border border-line bg-paper p-5">
             <p className="font-body text-sm text-char mb-4">
-              You flagged missed smoke but added no object — submit anyway?
+              You flagged missed smoke, but adding the missed object isn&apos;t supported yet.
             </p>
             <div className="flex flex-col gap-2">
               <button
                 type="button"
-                onClick={handleSubmitAndClearFlag}
+                onClick={() => {
+                  setMissedSmokeConfirm(false);
+                  setSkipConfirmOpen(true);
+                }}
                 className="inline-flex items-center justify-center rounded-lg bg-ember px-4 py-2 font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2"
+              >
+                Skip alert
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmitAndClearFlag}
+                className="inline-flex items-center justify-center rounded-lg border border-line bg-paper px-4 py-2 font-body text-sm font-medium text-char hover:bg-ash"
               >
                 Submit & clear flag
               </button>
               <button
                 type="button"
                 onClick={handleSubmitAnyway}
-                className="inline-flex items-center justify-center rounded-lg border border-line bg-paper px-4 py-2 font-body text-sm font-medium text-char hover:bg-ash"
+                className="inline-flex items-center justify-center rounded-lg px-4 py-2 font-body text-sm font-medium text-char hover:bg-ash"
               >
                 Submit anyway
               </button>
