@@ -165,16 +165,26 @@ async def export_alerts(
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> AlertExportPage:
-    # Per-lane "last annotated" moment: sequence annotation update or any
-    # detection annotation update, whichever is later.
+    # Per-lane "last annotated" moment: sequence annotation write or any
+    # detection annotation write, whichever is later. updated_at is only set
+    # on updates, so fall back to created_at for never-updated annotations.
     det_ann_max = (
-        select(func.max(DetectionAnnotation.updated_at))
+        select(
+            func.max(
+                func.coalesce(
+                    DetectionAnnotation.updated_at, DetectionAnnotation.created_at
+                )
+            )
+        )
         .join(Detection, Detection.id == DetectionAnnotation.detection_id)
         .where(Detection.sequence_id == Sequence.id)
         .correlate(Sequence)
         .scalar_subquery()
     )
-    lane_annotated_at = func.greatest(SequenceAnnotation.updated_at, det_ann_max)
+    lane_annotated_at = func.greatest(
+        func.coalesce(SequenceAnnotation.updated_at, SequenceAnnotation.created_at),
+        det_ann_max,
+    )
     exported_lane = SequenceAnnotation.is_unsure.is_not(True)
 
     total_lanes = func.count(Sequence.id)

@@ -8,7 +8,9 @@ from typing import Sequence as Seq
 import pytest
 from httpx import AsyncClient
 from PIL import Image
+from sqlalchemy import update
 
+from app import models
 from app.services import storage as storage_module
 
 now = datetime.now(UTC)
@@ -268,3 +270,126 @@ async def test_export_alerts_smoke_lane_shape(
 
     # Gap frame: exported, no boxes
     assert frames[1]["boxes"] == []
+
+
+@pytest.mark.asyncio
+async def test_export_alerts_fp_lane_boxes_from_track(
+    authenticated_client: AsyncClient,
+    sequence_session,
+    detection_session,
+    dummy_bucket,
+):
+    """FP lane: boxes come from the sequence-annotation track, carry the
+    lane's whole FP-type list, origin engine."""
+    seq_id = await create_lane(
+        authenticated_client, platform_alert_id=7101, alert_api_id=7101
+    )
+    det_1 = await create_frame(authenticated_client, sequence_id=seq_id, alert_api_id=1)
+    det_2 = await create_frame(authenticated_client, sequence_id=seq_id, alert_api_id=2)
+    # Track covers only det_1; det_2 is a gap frame.
+    await annotate_lane(
+        authenticated_client,
+        sequence_id=seq_id,
+        detection_ids=[det_1],
+        is_smoke=False,
+        false_positive_types=["high_cloud", "lens_flare"],
+    )
+
+    resp = await authenticated_client.get("/export/alerts")
+    assert resp.status_code == 200, resp.text
+    items = resp.json()["items"]
+    assert len(items) == 1
+    obj = items[0]["objects"][0]
+    assert obj["record_kind"] == "false_positive"
+    assert obj["smoke_types"] == []
+    assert sorted(obj["false_positive_types"]) == ["high_cloud", "lens_flare"]
+
+    frames = {f["detection_id"]: f for f in obj["frames"]}
+    assert set(frames) == {det_1, det_2}
+    boxes = frames[det_1]["boxes"]
+    assert len(boxes) == 1
+    assert boxes[0]["xyxyn"] == [0.1, 0.1, 0.2, 0.2]
+    assert boxes[0]["smoke_type"] is None
+    assert sorted(boxes[0]["false_positive_types"]) == ["high_cloud", "lens_flare"]
+    assert boxes[0]["origin"] == "engine"
+    assert frames[det_2]["boxes"] == []
+
+
+@pytest.mark.asyncio
+async def test_export_alerts_sibling_lanes_share_bucket_key(
+    authenticated_client: AsyncClient,
+    sequence_session,
+    detection_session,
+    dummy_bucket,
+    async_session,
+):
+    """One alert, two lanes (smoke + FP). Sibling frames point at the same
+    image: same bucket_key, distinct detection_ids."""
+    smoke_seq = await create_lane(
+        authenticated_client, platform_alert_id=7201, alert_api_id=7201
+    )
+    fp_seq = await create_lane(
+        authenticated_client, platform_alert_id=7201, alert_api_id=1000007201001
+    )
+    smoke_det = await create_frame(
+        authenticated_client, sequence_id=smoke_seq, alert_api_id=1
+    )
+    fp_det = await create_frame(
+        authenticated_client, sequence_id=fp_seq, alert_api_id=1
+    )
+
+    # The importer points sibling detections at the same S3 object; tests
+    # can't reach the platform-bucket copy path, so align bucket_key directly.
+    smoke_resp = await authenticated_client.get(f"/detections/{smoke_det}")
+    shared_key = smoke_resp.json()["bucket_key"]
+    await async_session.execute(
+        update(models.Detection)
+        .where(models.Detection.id == fp_det)
+        .values(bucket_key=shared_key)
+    )
+    await async_session.commit()
+
+    await annotate_lane(
+        authenticated_client,
+        sequence_id=smoke_seq,
+        detection_ids=[smoke_det],
+        is_smoke=True,
+        smoke_type="wildfire",
+    )
+    await annotate_frame(
+        authenticated_client,
+        detection_id=smoke_det,
+        items=[
+            {
+                "xyxyn": [0.4, 0.3, 0.5, 0.4],
+                "class_name": "smoke",
+                "smoke_type": "wildfire",
+                "origin": "human",
+            }
+        ],
+    )
+    await annotate_lane(
+        authenticated_client,
+        sequence_id=fp_seq,
+        detection_ids=[fp_det],
+        is_smoke=False,
+        false_positive_types=["antenna"],
+    )
+
+    resp = await authenticated_client.get("/export/alerts")
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert len(items) == 1
+    alert = items[0]
+    assert len(alert["objects"]) == 2
+    kinds = {o["record_kind"] for o in alert["objects"]}
+    assert kinds == {"smoke", "false_positive"}
+
+    frame_keys = {
+        o["record_kind"]: o["frames"][0]["bucket_key"] for o in alert["objects"]
+    }
+    assert frame_keys["smoke"] == frame_keys["false_positive"] == shared_key
+    frame_ids = {
+        o["record_kind"]: o["frames"][0]["detection_id"] for o in alert["objects"]
+    }
+    assert frame_ids["smoke"] != frame_ids["false_positive"]
