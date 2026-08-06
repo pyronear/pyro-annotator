@@ -1439,6 +1439,14 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
         return;
       }
       const key = e.key.toLowerCase();
+      // Same action the CTA bar's Reclassify button carries (its chip
+      // advertises this key). Any active object qualifies — false-positive
+      // rows keep Reclassify too.
+      if (key === 'r' && activeLaneId != null) {
+        handleReclassify(activeLaneId);
+        e.preventDefault();
+        return;
+      }
       if (key === 's' || key === 'm' || key === 'l') {
         handleCardSizeChange(key === 's' ? 'sm' : key === 'm' ? 'md' : 'lg');
         e.preventDefault();

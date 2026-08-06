@@ -68,6 +68,7 @@ export const LocalizeShortcutsModal: React.FC<LocalizeShortcutsModalProps> = ({ 
         </Section>
         <Section title="Act">
           <Row label="Accept the model's boxes" keys={['Enter']} />
+          <Row label="Reclassify the object" keys={['R']} />
         </Section>
         <Section title="View">
           <Row label="Frame card size" keys={['S', 'M', 'L']} />

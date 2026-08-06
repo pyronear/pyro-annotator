@@ -49,7 +49,19 @@ object; while open, Enter confirms. Guards:
   dialog clicks that button (the editor's carve-out).
 
 Escape closes the popover before any other Escape layer. The shortcuts sheet
-(`LocalizeShortcutsModal`) gains a row: "Accept the model's boxes — Enter".
+(`LocalizeShortcutsModal`) gains an "Act" section: "Accept the model's boxes
+— Enter" and "Reclassify the object — R".
+
+**Addendum (same day):** both CTA buttons advertise their key on a kbd chip —
+Accept boxes wears the popover confirm's `Enter` chip (white-on-pine), and
+Reclassify wears an `R` chip (ash-on-paper, the sheet's key styling). `R`
+fires the same `handleReclassify` as the click, for any active object
+(false-positive rows keep Reclassify), under the same suspension guards as
+the other page keys. While the popover is open, the page's Tab cycle
+suspends (its X/Accept stay keyboard-reachable), Enter is owned by the
+dialog with the editor's carve-out (only a button inside `[role="dialog"]`
+keeps its own Enter), and the popover closes itself if a refetch empties the
+lane's pending count.
 
 ## Data
 

@@ -44,9 +44,9 @@ export interface LocalizeObjectActionsProps {
 // same motion, one object at a time. Ember would read as the alert's headline
 // action and compete with Submit for it.
 const PRIMARY =
-  'inline-flex items-center whitespace-nowrap rounded-lg bg-pine px-3 py-1 font-body text-xs font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50';
+  'inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-pine px-3 py-1 font-body text-xs font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50';
 const SECONDARY =
-  'inline-flex items-center whitespace-nowrap rounded-lg border border-line bg-paper px-3 py-1 font-body text-xs font-medium text-char hover:bg-ash';
+  'inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-line bg-paper px-3 py-1 font-body text-xs font-medium text-char hover:bg-ash';
 
 export const LocalizeObjectActions: React.FC<LocalizeObjectActionsProps> = ({
   label,
@@ -73,7 +73,18 @@ export const LocalizeObjectActions: React.FC<LocalizeObjectActionsProps> = ({
           disabled={isAccepting}
           className={PRIMARY}
         >
-          {isAccepting ? 'Accepting…' : 'Accept boxes'}
+          {isAccepting ? (
+            'Accepting…'
+          ) : (
+            <>
+              Accept boxes
+              {/* Same chip the popover's confirm wears — the two are one
+                  motion, and Enter drives both ends of it. */}
+              <kbd className="rounded border border-white/40 px-1 py-0.5 font-data text-[11px] font-medium leading-none">
+                Enter
+              </kbd>
+            </>
+          )}
         </button>
         {acceptPopover}
       </div>
@@ -92,6 +103,9 @@ export const LocalizeObjectActions: React.FC<LocalizeObjectActionsProps> = ({
           className={SECONDARY}
         >
           Reclassify
+          <kbd className="rounded border border-line bg-ash px-1 py-0.5 font-data text-[11px] font-medium leading-none">
+            R
+          </kbd>
         </button>
       </Tooltip>
     )}

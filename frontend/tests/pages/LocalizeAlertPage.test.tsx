@@ -2099,6 +2099,13 @@ describe('LocalizeAlertPage', () => {
       const cta = within(screen.getByTestId('localize-active-object-actions'));
       expect(cta.getByRole('button', { name: "Accept Object 1's boxes" })).toBeInTheDocument();
       expect(cta.getByRole('button', { name: 'Reclassify Object 1' })).toBeInTheDocument();
+      // Each button advertises its page shortcut on a kbd chip.
+      expect(
+        within(cta.getByRole('button', { name: "Accept Object 1's boxes" })).getByText('Enter')
+      ).toBeInTheDocument();
+      expect(
+        within(cta.getByRole('button', { name: 'Reclassify Object 1' })).getByText('R')
+      ).toBeInTheDocument();
       // The column header still names whose frames these are.
       expect(screen.getByText(/Frames — Object 1/)).toBeInTheDocument();
 
@@ -3003,6 +3010,8 @@ describe('LocalizeAlertPage', () => {
       expect(dialog).toHaveTextContent('Cycle objects');
       expect(dialog).toHaveTextContent('Crop cells');
       expect(dialog).toHaveTextContent('Toggle this help');
+      expect(dialog).toHaveTextContent("Accept the model's boxes");
+      expect(dialog).toHaveTextContent('Reclassify the object');
     });
 
     it("'?' is inert while the per-frame editor is open", async () => {
@@ -3146,6 +3155,17 @@ describe('LocalizeAlertPage', () => {
       const destination = await screen.findByTestId('classify-destination');
       expect(destination.getAttribute('data-lane-id')).toBe('102');
       expect(destination.getAttribute('data-return')).toBe('/localize/done/101/object/102');
+    });
+
+    it("'R' reclassifies the active object from the keyboard", async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Object 2' }));
+      fireEvent.keyDown(window, { key: 'r' });
+
+      const destination = await screen.findByTestId('classify-destination');
+      expect(destination.getAttribute('data-lane-id')).toBe('102');
+      expect(destination.getAttribute('data-return')).toBe('/localize/101/object/102');
     });
 
     it('offers Reclassify on an already-localized context row', async () => {
