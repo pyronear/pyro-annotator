@@ -1885,7 +1885,7 @@ describe('LocalizeAlertPage', () => {
       const toggle = screen.getByRole('button', { name: /False positives/ });
       expect(toggle).toBeDisabled();
       // No count badge when there is nothing to reveal.
-      expect(toggle).toHaveTextContent(/^False positives$/);
+      expect(toggle).toHaveTextContent(/^FP$/);
     });
 
     it('shows how many false-positive objects the alert has', async () => {
@@ -1894,7 +1894,19 @@ describe('LocalizeAlertPage', () => {
 
       const toggle = screen.getByRole('button', { name: /False positives/ });
       expect(toggle).toBeEnabled();
-      expect(toggle).toHaveTextContent('False positives1');
+      expect(toggle).toHaveTextContent('FP1');
+    });
+
+    it('the FP toggle keeps its full name for screen readers and explains itself in a tooltip', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      // Default fixture has no FP lanes, so the disabled-state copy shows.
+      const toggle = screen.getByRole('button', { name: 'False positives' });
+      const tipId = toggle.getAttribute('aria-describedby');
+      expect(tipId).toBeTruthy();
+      expect(document.getElementById(tipId!)).toHaveTextContent(
+        'This alert has no false-positive objects'
+      );
+      expect(toggle).not.toHaveAttribute('title');
     });
 
     it('keeps false-positive frames read-only — visible, never openable in the editor', async () => {

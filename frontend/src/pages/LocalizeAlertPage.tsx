@@ -1467,29 +1467,37 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
             // Objects rather than with the frame grid's view controls.
             headerAction={
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  aria-pressed={showFalsePositives}
-                  disabled={falsePositiveLaneCount === 0}
-                  onClick={handleToggleFalsePositives}
-                  title={
+                {/* "FP" to keep the header row tight; the aria-label keeps the
+                    full accessible name and the styled tooltip carries the
+                    explanation the old `title` held. */}
+                <Tooltip
+                  placement="below"
+                  tip={
                     falsePositiveLaneCount === 0
                       ? 'This alert has no false-positive objects'
                       : 'Show objects classify settled as false positives, as read-only context'
                   }
-                  className={`inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 font-body text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                    showFalsePositives
-                      ? 'border-char bg-ash text-char'
-                      : 'border-line bg-paper text-haze hover:text-char'
-                  }`}
                 >
-                  False positives
-                  {falsePositiveLaneCount > 0 && (
-                    <span className="font-data text-[10px] font-semibold">
-                      {falsePositiveLaneCount}
-                    </span>
-                  )}
-                </button>
+                  <button
+                    type="button"
+                    aria-pressed={showFalsePositives}
+                    aria-label="False positives"
+                    disabled={falsePositiveLaneCount === 0}
+                    onClick={handleToggleFalsePositives}
+                    className={`inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 font-body text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                      showFalsePositives
+                        ? 'border-char bg-ash text-char'
+                        : 'border-line bg-paper text-haze hover:text-char'
+                    }`}
+                  >
+                    FP
+                    {falsePositiveLaneCount > 0 && (
+                      <span className="font-data text-[10px] font-semibold">
+                        {falsePositiveLaneCount}
+                      </span>
+                    )}
+                  </button>
+                </Tooltip>
                 <button
                   type="button"
                   onClick={() => setShowShortcutsModal(true)}
