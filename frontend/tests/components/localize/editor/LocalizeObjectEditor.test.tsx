@@ -1025,12 +1025,14 @@ describe('open/close transition', () => {
   /** WAAPI stub: records calls, lets the test fire the finish listener. */
   const makeAnimateMock = () => {
     const listeners: Record<string, () => void> = {};
+    const cancel = vi.fn();
     const animate = vi.fn().mockReturnValue({
       addEventListener: (type: string, cb: () => void) => {
         listeners[type] = cb;
       },
+      cancel,
     });
-    return { animate, finish: () => listeners.finish?.() };
+    return { animate, cancel, finish: () => listeners.finish?.() };
   };
 
   afterEach(() => {
@@ -1076,6 +1078,38 @@ describe('open/close transition', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
     // A second close attempt during/after the exit is a no-op.
     fireEvent.click(screen.getByTestId('editor-close'));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('a late exit-animation finish after unmount does not navigate again', () => {
+    const { animate, cancel, finish } = makeAnimateMock();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (Element.prototype as any).animate = animate;
+    const onClose = vi.fn();
+    const { unmount } = renderEditor({
+      onClose,
+      frameCellRect: () => ({ left: 5, top: 6, width: 100, height: 60 }),
+    });
+    fireEvent.click(screen.getByTestId('editor-close'));
+    // Browser back during the shrink: the route unmounts the editor while
+    // the WAAPI animation (document timeline) is still running.
+    unmount();
+    expect(cancel).toHaveBeenCalled();
+    finish();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('falls back to a fade on close when no target cell rect is available', () => {
+    const { animate, finish } = makeAnimateMock();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (Element.prototype as any).animate = animate;
+    const onClose = vi.fn();
+    renderEditor({ onClose, frameCellRect: () => null });
+    fireEvent.click(screen.getByTestId('editor-close'));
+    const closeCall = animate.mock.calls[animate.mock.calls.length - 1];
+    expect(closeCall[0][0]).toEqual({ opacity: 1 });
+    expect(closeCall[0][1]).toEqual({ opacity: 0 });
+    finish();
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
