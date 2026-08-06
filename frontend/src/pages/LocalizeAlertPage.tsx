@@ -835,8 +835,8 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   const orderedObjectRows = [...smokeObjectRows, ...falsePositiveRows];
 
   // The rail's shared legend explains only encodings some visible row uses —
-  // `orderedObjectRows` is exactly the visible set, since the alert-detail
-  // query already refetches without FP lanes when the toggle is off.
+  // `orderedObjectRows` is exactly the visible set, since
+  // `buildAlertFrameModel` already drops FP lanes when the toggle is off.
   const legendStatuses = timelineLegendStatuses(orderedObjectRows.map(o => o.statusByTimestamp));
 
   // Arrival auto-select + URL-lane validation. A bare alert URL
