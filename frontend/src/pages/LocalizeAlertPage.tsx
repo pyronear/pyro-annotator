@@ -1328,18 +1328,24 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   };
 
   // 'c' toggles crop mode, matching the legacy grid — inert while the modal
-  // is open (mirrors the legacy page's showModal guard) and while the
-  // shortcuts sheet is up (only `?`/Escape act there).
+  // is open (mirrors the legacy page's showModal guard), while the shortcuts
+  // sheet is up (only `?`/Escape act there), and while the skip confirm is
+  // up (its note is a free text field, so a typed "c" is a letter).
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.key === 'c' || e.key === 'C') && detectionIdNum == null && !showShortcutsModal) {
+      if (
+        (e.key === 'c' || e.key === 'C') &&
+        detectionIdNum == null &&
+        !showShortcutsModal &&
+        !skipConfirmOpen
+      ) {
         setCropMode(prev => !prev);
         e.preventDefault();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [detectionIdNum, showShortcutsModal]);
+  }, [detectionIdNum, showShortcutsModal, skipConfirmOpen]);
 
   // Tab / Shift+Tab step the objects exactly as the rail displays them —
   // smoke first, false positives only while shown — wrapping at the ends

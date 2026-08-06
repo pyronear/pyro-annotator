@@ -1018,8 +1018,17 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
       },
     });
 
-    document.addEventListener('keydown', handleKeyDown, true);
-    return () => document.removeEventListener('keydown', handleKeyDown, true);
+    // The skip confirm owns the keyboard while it is up. Its note is a free
+    // text field, and these shortcuts are registered capture-phase on
+    // document: unguarded, every letter typed there classifies the object
+    // behind the dialog and Enter submits the whole alert.
+    const handleGuarded = (e: KeyboardEvent) => {
+      if (skipConfirmOpen) return;
+      handleKeyDown(e);
+    };
+
+    document.addEventListener('keydown', handleGuarded, true);
+    return () => document.removeEventListener('keydown', handleGuarded, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     activeIndex,
@@ -1031,6 +1040,7 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
     missedSmokeReview,
     primaryClassification,
     canSubmit,
+    skipConfirmOpen,
   ]);
 
   // Focus cycle: Tab / Shift+Tab move strictly between the rail's stops —
@@ -1040,11 +1050,17 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
   // shortcuts modal is open so its close button stays reachable.
   useEffect(() => {
     const handleTab = (e: KeyboardEvent) => {
-      // Suspended while the shortcuts modal or the group-propagation
-      // warning banner is up — both carry focusables (close button, "Open
-      // group" link, Dismiss) that the trap would otherwise make
-      // keyboard-unreachable.
-      if (e.key !== 'Tab' || showKeyboardModal || groupConflictWarnings.length > 0) return;
+      // Suspended while the shortcuts modal, the group-propagation warning
+      // banner or the skip confirm is up — each carries focusables (close
+      // button, "Open group" link, Dismiss, the skip note and its confirm)
+      // that the trap would otherwise make keyboard-unreachable.
+      if (
+        e.key !== 'Tab' ||
+        showKeyboardModal ||
+        skipConfirmOpen ||
+        groupConflictWarnings.length > 0
+      )
+        return;
       const stops = (
         [
           ...cards.map(c => cardRefs.current[c.cardKey]),
@@ -1061,7 +1077,7 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
     };
     document.addEventListener('keydown', handleTab, true);
     return () => document.removeEventListener('keydown', handleTab, true);
-  }, [cards, showKeyboardModal, groupConflictWarnings]);
+  }, [cards, showKeyboardModal, skipConfirmOpen, groupConflictWarnings]);
 
   const handlePreviousAlert = () => {
     const prev = navigateToPreviousInWorkflow();
