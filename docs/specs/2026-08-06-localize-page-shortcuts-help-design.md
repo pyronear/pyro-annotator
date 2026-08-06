@@ -15,7 +15,8 @@ are only documented, not changed.
 ## New bindings
 
 One new `window` keydown effect in `LocalizeAlertPage.tsx`, alongside the
-existing `C` effect (the `C` and Tab handlers are untouched):
+existing `C` effect. The `C` and Tab handlers keep their behavior, gaining
+only a sheet-open suspension (below):
 
 | Key | Action |
 | --- | --- |
@@ -38,8 +39,11 @@ These are the same suspension conditions as the Tab cycle handler, plus the
 typing guard. Matched keys call `preventDefault()`. Letter keys match
 case-insensitively (`s` and `S`), like the existing `C` handler.
 
-While the shortcuts modal is open, only `?` and `Escape` act; `S`/`M`/`L`/`P`
-are inert (the modal is a surface of its own, like the other overlays).
+While the shortcuts modal is open, only `?` and `Escape` act: `S`/`M`/`L`/`P`
+are inert, and the pre-existing `C` and Tab handlers are suspended too (the
+modal is a surface of its own, like the other overlays — and without the Tab
+suspension its close button would be keyboard-unreachable, the trap classify
+guards against on its own sheet).
 
 ## Help modal
 

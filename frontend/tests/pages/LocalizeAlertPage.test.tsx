@@ -2755,6 +2755,29 @@ describe('LocalizeAlertPage', () => {
 
       expect(screen.queryByRole('dialog', { name: 'Keyboard shortcuts' })).not.toBeInTheDocument();
     });
+
+    it('Tab is inert while the sheet is open, so its close button stays reachable', async () => {
+      await arrive();
+      fireEvent.keyDown(window, { key: '?' });
+
+      fireEvent.keyDown(document, { key: 'Tab' });
+
+      // No cycling happened behind the dialog: the URL still names the
+      // arrival object, and the sheet is still up.
+      expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/101');
+      expect(screen.getByRole('dialog', { name: 'Keyboard shortcuts' })).toBeInTheDocument();
+    });
+
+    it("'c' is inert while the sheet is open", async () => {
+      await arrive();
+      fireEvent.keyDown(window, { key: '?' });
+
+      const crop = screen.getByTitle('Crop cells (C)');
+      const before = crop.getAttribute('aria-pressed');
+      fireEvent.keyDown(window, { key: 'c' });
+
+      expect(crop).toHaveAttribute('aria-pressed', before!);
+    });
   });
 
   describe('page view keys', () => {

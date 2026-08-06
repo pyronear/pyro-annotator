@@ -1167,17 +1167,18 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   };
 
   // 'c' toggles crop mode, matching the legacy grid — inert while the modal
-  // is open (mirrors the legacy page's showModal guard).
+  // is open (mirrors the legacy page's showModal guard) and while the
+  // shortcuts sheet is up (only `?`/Escape act there).
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.key === 'c' || e.key === 'C') && detectionIdNum == null) {
+      if ((e.key === 'c' || e.key === 'C') && detectionIdNum == null && !showShortcutsModal) {
         setCropMode(prev => !prev);
         e.preventDefault();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [detectionIdNum]);
+  }, [detectionIdNum, showShortcutsModal]);
 
   // Tab / Shift+Tab step the objects exactly as the rail displays them —
   // smoke first, false positives only while shown — wrapping at the ends
@@ -1193,9 +1194,10 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       if (e.key !== 'Tab') return;
       // Suspended whenever a surface with its own focusables is up — the
       // per-frame editor, the (inline) add-object smoke-type picker, the
-      // missed-smoke submit dialog — so their controls stay
-      // keyboard-reachable (mirrors classify's modal guards).
+      // missed-smoke submit dialog, the shortcuts sheet — so their controls
+      // stay keyboard-reachable (mirrors classify's modal guards).
       if (detectionIdNum != null || addObjectPickerOpen || missedSmokeConfirm) return;
+      if (showShortcutsModal) return;
       if (orderedObjectRows.length === 0) return;
       e.preventDefault();
       const current = orderedObjectRows.findIndex(o => o.laneSequenceId === activeLaneId);
