@@ -929,25 +929,52 @@ _BULK_LOCKED_STAGES = {
 }
 
 
+def _is_classification_exit(annotation: SequenceAnnotation) -> bool:
+    """Whether this save is the point where the lane's *classification*
+    finishes — the one moment group propagation should fire.
+
+    A classification lands on one of two stages (spec: smoke-localization
+    entry point): a lane needing localization parks at SEQ_ANNOTATION_DONE
+    and finishes classifying there, while an FP-only or deferred-unsure lane
+    exits straight to ANNOTATED without ever visiting that stage.
+
+    Keying propagation on SEQ_ANNOTATION_DONE alone made every FP-only
+    classification a silent no-op (#258). Since
+    `derive_group_label_from_annotation` lets smoke outrank FP, a lane can
+    only derive an FP label when it has no smoke — precisely the lanes that
+    exit at ANNOTATED — so group FP labelling was unreachable end to end.
+
+    A lane that reaches ANNOTATED *after* localization is excluded: it
+    already propagated on the way through SEQ_ANNOTATION_DONE, and firing
+    again at the localization exit would re-derive the group label from work
+    that changed nothing about the classification."""
+    stage = annotation.processing_stage
+    if stage == SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE:
+        return True
+    if stage != SequenceAnnotationProcessingStage.ANNOTATED:
+        return False
+    return not needs_localization(
+        annotation.has_smoke, annotation.has_missed_smoke, annotation.is_unsure
+    )
+
+
 async def _propagate_to_group_if_validated(
     sequence_annotation: SequenceAnnotation,
     annotations: SequenceAnnotationCRUD,
     session: AsyncSession,
     current_user_id: int,
 ) -> Optional[str]:
-    """If the source annotation has just reached SEQ_ANNOTATION_DONE and
-    the underlying sequence belongs to a validated group, derive a single
-    label from the annotation and fan it out to other group members that
-    aren't locked. Group's own label is updated accordingly.
+    """If the source annotation has just finished classifying (see
+    `_is_classification_exit`) and the underlying sequence belongs to a
+    validated group, derive a single label from the annotation and fan it out to
+    other group members that aren't locked. Group's own label is updated
+    accordingly.
 
     Returns a warning string when propagation was *attempted but skipped*
     so the caller can surface it back to the annotator. Returns None when
     propagation either succeeded or was simply not applicable (no group,
     group not validated, no label to derive)."""
-    if (
-        sequence_annotation.processing_stage
-        != SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE
-    ):
+    if not _is_classification_exit(sequence_annotation):
         return None
 
     seq = await session.get(Sequence, sequence_annotation.sequence_id)
@@ -1045,6 +1072,19 @@ async def _propagate_to_group_if_validated(
         min_cluster_size=1,
     )
 
+    # Members exit on the same two lanes a human classification does (mirrors
+    # `determineClassifySubmitStage` on the frontend): a smoke label still owes
+    # localization work, and an unsure fan-out still gates its alert, so both
+    # park at SEQ_ANNOTATION_DONE. An FP-only label owes nothing and goes
+    # straight out — `schedule_pending_auto_annotate` only advances lanes
+    # matching the localization rule, so parking an FP member at
+    # SEQ_ANNOTATION_DONE would strand it in no queue at all.
+    member_stage = (
+        SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE
+        if smoke_type is not None or group.is_unsure
+        else SequenceAnnotationProcessingStage.ANNOTATED
+    )
+
     for member_id in other_member_ids:
         existing = (
             await session.execute(
@@ -1070,7 +1110,7 @@ async def _propagate_to_group_if_validated(
                     has_missed_smoke=False,
                     is_unsure=group.is_unsure,
                     annotation=generated,
-                    processing_stage=SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
+                    processing_stage=member_stage,
                 ),
                 current_user_id,
             )
@@ -1081,7 +1121,7 @@ async def _propagate_to_group_if_validated(
                 SequenceAnnotationUpdate(
                     is_unsure=group.is_unsure,
                     annotation=generated,
-                    processing_stage=SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
+                    processing_stage=member_stage,
                 ),
                 current_user_id,
             )
@@ -1090,6 +1130,22 @@ async def _propagate_to_group_if_validated(
         # members; create/update only auto-record contributions at
         # ANNOTATED, so attribute the write to them explicitly.
         await annotations.record_contribution(fanned_anno_id, current_user_id)
+
+        # A member landing at ANNOTATED is finished, exactly as a hand-classified
+        # FP lane is — give it the same detection annotations the classify
+        # endpoints create on that transition. Smoke members don't need this:
+        # they get theirs from `auto_annotate_sequence` once their alert
+        # completes. The flags are known by construction here: member_stage is
+        # ANNOTATED only for an FP-only, not-unsure fan-out.
+        if member_stage == SequenceAnnotationProcessingStage.ANNOTATED:
+            await auto_create_detection_annotations(
+                sequence_id=member_id,
+                has_smoke=False,
+                has_missed_smoke=False,
+                has_false_positives=True,
+                session=session,
+                user_id=current_user_id,
+            )
 
     # The fan-out is the human's one gesture writing the whole group — credit
     # the source annotation too, so the sequence they actually annotated isn't
