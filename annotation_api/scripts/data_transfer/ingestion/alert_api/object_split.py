@@ -119,6 +119,22 @@ def synthetic_alert_api_id(
     return alert_id_base + alert_api_sequence_id * 1000 + object_index
 
 
+def union_boxes(boxes: List[List[float]]) -> List[float]:
+    """Enclosing box of several same-frame boxes of one object.
+
+    Carries the group's highest confidence. A third of real engine boxes have
+    confidence 0.0, so any confidence-weighted rule is degenerate on a large
+    slice of the data; max is the best-evidence reading and is stable.
+    """
+    return [
+        min(b[0] for b in boxes),
+        min(b[1] for b in boxes),
+        max(b[2] for b in boxes),
+        max(b[3] for b in boxes),
+        max(b[4] for b in boxes),
+    ]
+
+
 @dataclass
 class ObjectGroup:
     """One detected object, as rewritten alert-api records ready for posting."""

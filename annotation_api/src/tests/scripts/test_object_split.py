@@ -11,6 +11,7 @@ from scripts.data_transfer.ingestion.alert_api.object_split import (
     split_all_records,
     split_sequence_records,
     synthetic_alert_api_id,
+    union_boxes,
 )
 
 # No __init__.py convention in src/tests/ — pytest inserts the test dir on
@@ -79,6 +80,31 @@ class TestSyntheticAlertApiId:
         assert (
             synthetic_alert_api_id(5, 2, alert_id_base=2_000_000_000) == 2_000_005_002
         )
+
+
+class TestUnionBoxes:
+    def test_single_box_passes_through(self):
+        assert union_boxes([[0.1, 0.2, 0.3, 0.4, 0.7]]) == [0.1, 0.2, 0.3, 0.4, 0.7]
+
+    def test_two_overlapping_boxes_yield_enclosing_box(self):
+        merged = union_boxes(
+            [[0.102, 0.565, 0.113, 0.586, 0.0], [0.107, 0.564, 0.119, 0.584, 0.0]]
+        )
+        assert merged == [0.102, 0.564, 0.119, 0.586, 0.0]
+
+    def test_confidence_is_the_group_max(self):
+        merged = union_boxes([[0.1, 0.1, 0.2, 0.2, 0.3], [0.15, 0.15, 0.25, 0.25, 0.8]])
+        assert merged[4] == 0.8
+
+    def test_three_boxes_enclose_all_three(self):
+        merged = union_boxes(
+            [
+                [0.30, 0.30, 0.40, 0.40, 0.1],
+                [0.10, 0.35, 0.20, 0.45, 0.2],
+                [0.25, 0.05, 0.50, 0.15, 0.3],
+            ]
+        )
+        assert merged == [0.10, 0.05, 0.50, 0.45, 0.3]
 
 
 class TestSplitSequenceRecords:
