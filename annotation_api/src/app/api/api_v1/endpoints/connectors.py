@@ -3,7 +3,7 @@
 # This program is licensed under the Apache License 2.0.
 # See LICENSE or go to <https://www.apache.org/licenses/LICENSE-2.0> for full license details.
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
@@ -12,11 +12,19 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.auth.dependencies import get_current_superuser
 from app.db import get_session
-from app.models import AlertApiConnector, AlertApiConnectorOrganization, User
+from app.models import (
+    AlertApiConnector,
+    AlertApiConnectorOrganization,
+    AlertApiImportCoverage,
+    User,
+)
 from app.schemas.connector import (
     ConnectorCreate,
+    ConnectorOrganizationRead,
+    ConnectorOrganizationUpdate,
     ConnectorRead,
     ConnectorUpdate,
+    CoverageCellRead,
     VerifyResult,
 )
 from app.services.connector_verify import verify_connector
@@ -173,3 +181,85 @@ async def verify(
     actually appear in a one-day sample listing."""
     connector = await _get_or_404(session, connector_id)
     return await verify_connector(session, connector, today=datetime.now(UTC).date())
+
+
+@router.get(
+    "/{connector_id}/organizations", response_model=list[ConnectorOrganizationRead]
+)
+async def list_connector_organizations(
+    connector_id: int,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_superuser),
+) -> list[AlertApiConnectorOrganization]:
+    """Organizations discovered on this connector, in name order."""
+    await _get_or_404(session, connector_id)
+    result = await session.execute(
+        select(AlertApiConnectorOrganization)
+        .where(AlertApiConnectorOrganization.connector_id == connector_id)
+        .order_by(AlertApiConnectorOrganization.name)
+    )
+    return list(result.scalars().all())
+
+
+@router.patch(
+    "/{connector_id}/organizations/{organization_id}",
+    response_model=ConnectorOrganizationRead,
+)
+async def update_connector_organization(
+    connector_id: int,
+    organization_id: int,
+    payload: ConnectorOrganizationUpdate,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_superuser),
+) -> AlertApiConnectorOrganization:
+    """Include or exclude one organization from the daily import."""
+    await _get_or_404(session, connector_id)
+    row = (
+        await session.execute(
+            select(AlertApiConnectorOrganization).where(
+                AlertApiConnectorOrganization.connector_id == connector_id,
+                AlertApiConnectorOrganization.organization_id == organization_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Organization not found on this connector; run verify first.",
+        )
+    row.is_enabled = payload.is_enabled
+    # enabled_at marks when this organization FIRST entered ingestion. The
+    # heatmap greys out days before it, so it must never be moved once set.
+    if payload.is_enabled and row.enabled_at is None:
+        row.enabled_at = datetime.now(UTC)
+    session.add(row)
+    await session.commit()
+    await session.refresh(row)
+    return row
+
+
+@router.get("/{connector_id}/coverage", response_model=list[CoverageCellRead])
+async def read_coverage(
+    connector_id: int,
+    date_from: date | None = None,
+    date_end: date | None = None,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_superuser),
+) -> list[AlertApiImportCoverage]:
+    """Coverage cells for the heatmap. Defaults to the last 30 days."""
+    await _get_or_404(session, connector_id)
+    today = datetime.now(UTC).date()
+    date_end = date_end or today
+    date_from = date_from or (date_end - timedelta(days=29))
+    result = await session.execute(
+        select(AlertApiImportCoverage)
+        .where(
+            AlertApiImportCoverage.connector_id == connector_id,
+            AlertApiImportCoverage.covered_date >= date_from,
+            AlertApiImportCoverage.covered_date <= date_end,
+        )
+        .order_by(
+            AlertApiImportCoverage.organization_id, AlertApiImportCoverage.covered_date
+        )
+    )
+    return list(result.scalars().all())
