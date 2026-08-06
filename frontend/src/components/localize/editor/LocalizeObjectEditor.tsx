@@ -674,7 +674,16 @@ export function LocalizeObjectEditor({
           step(1);
           break;
         case 'Enter':
-          acceptAndNext();
+          // The accept dialog owns Enter while it is open — its button says
+          // so — otherwise the frame-level accept would fire behind it.
+          if (acceptOpen) {
+            if (!isAccepting) {
+              onAcceptRemaining();
+              setAcceptOpen(false);
+            }
+          } else {
+            acceptAndNext();
+          }
           break;
         case 'Delete':
         case 'Backspace':
@@ -725,7 +734,18 @@ export function LocalizeObjectEditor({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [step, acceptAndNext, boxSelected, acceptOpen, shortcutsOpen, resetZoom, onClose, editable]);
+  }, [
+    step,
+    acceptAndNext,
+    boxSelected,
+    acceptOpen,
+    shortcutsOpen,
+    resetZoom,
+    onClose,
+    editable,
+    isAccepting,
+    onAcceptRemaining,
+  ]);
 
   // --- Render -------------------------------------------------------------
 

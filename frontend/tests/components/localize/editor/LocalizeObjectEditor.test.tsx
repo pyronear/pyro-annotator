@@ -696,6 +696,20 @@ describe('LocalizeObjectEditor accept remaining', () => {
     expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
   });
 
+  it('Enter confirms while the dialog is open, not the frame-level accept', () => {
+    const onAcceptRemaining = vi.fn();
+    const onCommit = vi.fn();
+    renderEditor({ onAcceptRemaining, onCommit });
+    fireEvent.click(screen.getByTestId('editor-accept-remaining'));
+
+    fireEvent.keyDown(window, { key: 'Enter' });
+
+    expect(onAcceptRemaining).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
+    // The dialog owned that Enter — the frame's own accept must not fire.
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
   it('warns about frames no model found smoke on, without blocking', () => {
     // One frame has candidates, the other has none at all.
     renderEditor({

@@ -141,6 +141,15 @@ describe('AcceptRemainingPopover frame context', () => {
     expect(screen.getByTestId('status-segment-0-1')).not.toHaveAttribute('data-playhead');
   });
 
+  it('advertises the Enter shortcut on the confirm button', () => {
+    renderPopover();
+
+    const confirm = screen.getByTestId('accept-remaining-confirm');
+    // Just "Accept" — the sentence above already carries the count.
+    expect(confirm).toHaveTextContent(/^Accept\s*Enter$/);
+    expect(confirm.querySelector('kbd')).toHaveTextContent('Enter');
+  });
+
   it('shows a legend naming the segment styles that are actually on the strip', () => {
     renderPopover();
 

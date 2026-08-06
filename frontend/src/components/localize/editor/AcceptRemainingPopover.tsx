@@ -132,17 +132,11 @@ export function AcceptRemainingPopover({
           <X className="h-4 w-4" />
         </button>
       </div>
-      <p className="mt-2 font-body text-sm text-char">
-        {acceptCount === 1
-          ? 'One frame has a model box you have not accepted.'
-          : `${acceptCount} frames have a model box you have not accepted.`}{' '}
-        Take them all, exactly as the loop below shows. Boxes you picked or drew yourself stay as
-        they are.
-      </p>
-
-      <div className="mt-4">
+      {/* The preview leads: it is the point of the dialog — the reader sees
+          the finished track first and the sentence then explains the deal. */}
+      <div className="mt-3">
         <p className="mb-2 font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
-          What {objectLabel} ends up with
+          After accepting
         </p>
         <CroppedImageSequence
           bboxes={previewBoxes}
@@ -194,6 +188,14 @@ export function AcceptRemainingPopover({
         </div>
       </div>
 
+      <p className="mt-4 font-body text-sm text-char">
+        {acceptCount === 1
+          ? 'One frame has a model box you have not accepted.'
+          : `${acceptCount} frames have a model box you have not accepted.`}{' '}
+        Take them all, exactly as the loop above shows. Boxes you picked or drew yourself stay as
+        they are.
+      </p>
+
       {gapCount > 0 && (
         <p
           data-testid="accept-remaining-gap-warning"
@@ -217,9 +219,18 @@ export function AcceptRemainingPopover({
           data-testid="accept-remaining-confirm"
           onClick={onConfirm}
           disabled={isAccepting}
-          className="inline-flex items-center rounded-lg bg-pine px-4 py-2 font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:opacity-40"
+          className="inline-flex items-center gap-2 rounded-lg bg-pine px-4 py-2 font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:opacity-40"
         >
-          {isAccepting ? 'Accepting…' : `Accept ${acceptCount}`}
+          {isAccepting ? (
+            'Accepting…'
+          ) : (
+            <>
+              Accept
+              <kbd className="rounded border border-white/40 px-1 py-0.5 font-data text-[11px] font-medium leading-none">
+                Enter
+              </kbd>
+            </>
+          )}
         </button>
       </div>
     </div>
