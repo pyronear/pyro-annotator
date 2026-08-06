@@ -16,13 +16,16 @@ import os
 import subprocess
 import sys
 
+import pytest
+
 # Run in a clean interpreter: the pytest session has already imported
 # `app.services` itself, so an in-process check could never observe the
 # boundary holding.
 PROBE = """
+import importlib
 import sys
 
-import scripts.data_transfer.ingestion.alert_api.object_split  # noqa: F401
+importlib.import_module({module!r})
 
 print(
     "\\n".join(
@@ -31,19 +34,28 @@ print(
 )
 """
 
+# The entry point is what `make import-alert-api` runs, so it is the boundary
+# that actually breaks users; `object_split` is pinned separately to keep the
+# failure precise when the regression comes back through that module.
+IMPORTER_MODULES = [
+    "scripts.data_transfer.ingestion.alert_api.import",
+    "scripts.data_transfer.ingestion.alert_api.object_split",
+]
 
-def test_object_split_does_not_import_app_services() -> None:
+
+@pytest.mark.parametrize("module", IMPORTER_MODULES)
+def test_importer_does_not_import_app_services(module: str) -> None:
     env = dict(os.environ, PYTHONPATH=os.pathsep.join(p for p in sys.path if p))
 
     result = subprocess.run(
-        [sys.executable, "-c", PROBE],
+        [sys.executable, "-c", PROBE.format(module=module)],
         capture_output=True,
         text=True,
         env=env,
     )
 
-    assert result.returncode == 0, f"importing object_split failed:\n{result.stderr}"
+    assert result.returncode == 0, f"importing {module} failed:\n{result.stderr}"
     assert result.stdout.strip() == "", (
-        "object_split reached app.services, which does live S3 I/O at import time: "
+        f"{module} reached app.services, which does live S3 I/O at import time: "
         f"{result.stdout.split()}"
     )
