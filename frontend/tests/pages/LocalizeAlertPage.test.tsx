@@ -3132,4 +3132,49 @@ describe('LocalizeAlertPage', () => {
       );
     });
   });
+
+  it('shows a shared timeline legend listing only the statuses on screen', async () => {
+    // Default fixture: every present frame carries an unaccepted model box.
+    await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+    const legend = screen.getByTestId('localize-timeline-legend');
+    expect(within(legend).getByText('model box to accept')).toBeInTheDocument();
+    expect(within(legend).queryByText('committed')).not.toBeInTheDocument();
+    expect(within(legend).queryByText('no box')).not.toBeInTheDocument();
+  });
+
+  it('collapses the legend to just "committed" once every frame is accepted', async () => {
+    mockAllFramesAccepted();
+    await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+    const legend = screen.getByTestId('localize-timeline-legend');
+    expect(within(legend).getByText('committed')).toBeInTheDocument();
+    expect(within(legend).queryByText('model box to accept')).not.toBeInTheDocument();
+    expect(within(legend).queryByText('no box')).not.toBeInTheDocument();
+  });
+
+  it('shows all three chips when the alert mixes committed, pending and boxless frames', async () => {
+    // Lane 101's frame is committed (annotated-stage annotation), lane 102's
+    // T1 keeps its default pending model box, and its T2 detection offers no
+    // box at all — the `empty` outline state.
+    vi.mocked(apiClient.getSequenceDetections).mockImplementation(async (id: number) => {
+      if (id === 101) return [makeDetection(1001, T1)];
+      if (id === 102)
+        return [
+          makeDetection(1002, T1),
+          { ...makeDetection(1003, T2), auto_predictions: { predictions: [] } },
+        ];
+      return [];
+    });
+    vi.mocked(apiClient.getDetectionAnnotations).mockImplementation(async filters => {
+      const items = filters?.sequence_id === 101 ? [makeDetectionAnnotation(1001)] : [];
+      return { ...emptyAnnotationsPage, items, total: items.length };
+    });
+    await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+    const legend = screen.getByTestId('localize-timeline-legend');
+    expect(within(legend).getByText('committed')).toBeInTheDocument();
+    expect(within(legend).getByText('model box to accept')).toBeInTheDocument();
+    expect(within(legend).getByText('no box')).toBeInTheDocument();
+  });
 });
