@@ -1135,6 +1135,14 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     setAcceptPopoverOpen(false);
   }, [activeLaneId]);
 
+  // And one left "open" after a refetch empties the lane's pending count
+  // (a concurrent session accepted it, or our own accept landed) has no
+  // anchor on screen any more — without this, Enter would still fire an
+  // invisible empty-payload accept.
+  useEffect(() => {
+    if (acceptRemainingCount === 0) setAcceptPopoverOpen(false);
+  }, [acceptRemainingCount]);
+
   // Outside mousedown closes — same listener the editor hangs off its anchor.
   useEffect(() => {
     if (!acceptPopoverOpen) return;
@@ -1339,10 +1347,11 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       if (e.key !== 'Tab') return;
       // Suspended whenever a surface with its own focusables is up — the
       // per-frame editor, the (inline) add-object smoke-type picker, the
-      // missed-smoke submit dialog, the shortcuts sheet — so their controls
-      // stay keyboard-reachable (mirrors classify's modal guards).
+      // missed-smoke submit dialog, the shortcuts sheet, the accept popover
+      // — so their controls stay keyboard-reachable (mirrors classify's
+      // modal guards).
       if (detectionIdNum != null || addObjectPickerOpen || missedSmokeConfirm) return;
-      if (showShortcutsModal) return;
+      if (showShortcutsModal || acceptPopoverOpen) return;
       if (orderedObjectRows.length === 0) return;
       e.preventDefault();
       const current = orderedObjectRows.findIndex(o => o.laneSequenceId === activeLaneId);
@@ -1394,24 +1403,35 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       // The sheet is a surface of its own, like the overlays above: while it
       // is up, only `?` and Escape act.
       if (showShortcutsModal) return;
-      // The accept popover's keys, next layer under the sheet. Enter is
-      // never stolen from a focused control: a rail row opens its object, a
-      // button inside the popover clicks itself.
+      // The accept popover's keys, next layer under the sheet.
       if (e.key === 'Escape' && acceptPopoverOpen) {
         setAcceptPopoverOpen(false);
         e.preventDefault();
         return;
       }
       if (e.key === 'Enter') {
-        if (target instanceof HTMLElement && target.closest('button, a, [role="button"]')) return;
         if (acceptPopoverOpen) {
-          if (!quickAcceptLane.isPending && activeLaneId != null) {
+          // The open dialog owns Enter — its button says so — with the
+          // editor's carve-out: only a button INSIDE the dialog keeps its
+          // own Enter (Tab to the close X must close, not accept). The
+          // trigger button is outside the dialog, so Enter on it confirms
+          // rather than letting the native click toggle the popover shut.
+          if (
+            target instanceof HTMLElement &&
+            target.closest('button') &&
+            target.closest('[role="dialog"]')
+          )
+            return;
+          if (!quickAcceptLane.isPending && activeLaneId != null && acceptRemainingCount > 0) {
             quickAcceptLane.mutate(activeLaneId);
             setAcceptPopoverOpen(false);
           }
           e.preventDefault();
           return;
         }
+        // Closed: never steal Enter from a focused control — a rail row
+        // opens its object, any other button clicks itself.
+        if (target instanceof HTMLElement && target.closest('button, a, [role="button"]')) return;
         if (activeObject?.workable && acceptRemainingCount > 0) {
           setAcceptPopoverOpen(true);
           e.preventDefault();

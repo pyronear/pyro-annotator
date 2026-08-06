@@ -2321,6 +2321,63 @@ describe('LocalizeAlertPage', () => {
       expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
     });
 
+    it('Enter confirms even when focus sits on the trigger button itself', async () => {
+      // The natural mouse flow: click "Accept boxes" (focus lands on the
+      // trigger), read the dialog, press the advertised Enter. Only buttons
+      // INSIDE the dialog keep their own Enter — the editor's carve-out.
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      const trigger = await screen.findByRole('button', { name: "Accept Object 1's boxes" });
+      fireEvent.click(trigger);
+      await screen.findByTestId('accept-remaining-popover');
+
+      trigger.focus();
+      fireEvent.keyDown(trigger, { key: 'Enter' });
+
+      await waitFor(() => {
+        expect(apiClient.createDetectionAnnotation).toHaveBeenCalledWith(
+          expect.objectContaining({ detection_id: 1001 })
+        );
+      });
+      await waitFor(() => {
+        expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
+      });
+    });
+
+    it('closes when the selection moves to another object', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      await openPopover();
+      fireEvent.click(screen.getByRole('button', { name: 'Object 2' }));
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
+      });
+      expect(apiClient.createDetectionAnnotation).not.toHaveBeenCalled();
+    });
+
+    it('Enter is inert while the shortcuts sheet is up', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      await awaitAutoSelect();
+
+      fireEvent.keyDown(window, { key: '?' });
+      await screen.findByRole('dialog', { name: 'Keyboard shortcuts' });
+      fireEvent.keyDown(window, { key: 'Enter' });
+
+      expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
+    });
+
+    it('Enter is inert while the add-object picker is open', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      await awaitAutoSelect();
+
+      answerMissedSmokeYes();
+      fireEvent.click(screen.getByRole('button', { name: 'Add object' }));
+      fireEvent.keyDown(window, { key: 'Enter' });
+
+      expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
+    });
+
     it('Enter does nothing when the active object has nothing acceptable', async () => {
       vi.mocked(apiClient.getSequenceDetections).mockImplementation(async (id: number) => {
         if (id === 101)
