@@ -44,7 +44,9 @@ describe('AlertFrameGrid cleared markers', () => {
 
     render(<AlertFrameGrid frames={frames} activeLaneId={1} onCellClick={() => {}} />);
 
-    expect(screen.getByTestId(`alert-frame-cleared-${T1}-1`)).toBeInTheDocument();
+    const chip = screen.getByTestId(`alert-frame-cleared-${T1}-1`);
+    expect(chip).toBeInTheDocument();
+    expect(chip.querySelector('svg')).toHaveStyle({ color: '#166A5D' });
     expect(screen.queryByTestId(`alert-frame-cleared-${T2}-1`)).toBeNull();
   });
 

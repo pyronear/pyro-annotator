@@ -202,6 +202,10 @@ function AlertFrameCellView({
   // on one would offer to re-box something classify already rejected.
   const isReadOnly = isContextFrame || activeCell.isFalsePositive === true;
 
+  const clearedCells = frame.cells.filter(
+    c => c.cellState === 'done' && !c.isFalsePositive && c.boxes.length === 0
+  );
+
   return (
     <div
       ref={el => {
@@ -267,10 +271,9 @@ function AlertFrameCellView({
           simply isn't drawn, while the timeline calls it committed. FP
           context lanes are exempt: their committed annotation is empty by
           construction, so the chip would say nothing. */}
-      <div className="absolute bottom-1 right-1 flex gap-1 pointer-events-none">
-        {frame.cells
-          .filter(c => c.cellState === 'done' && !c.isFalsePositive && c.boxes.length === 0)
-          .map(c => (
+      {clearedCells.length > 0 && (
+        <div className="absolute bottom-1 right-1 flex gap-1 pointer-events-none">
+          {clearedCells.map(c => (
             <span
               key={c.laneSequenceId}
               data-testid={`alert-frame-cleared-${frame.recordedAt}-${c.laneSequenceId}`}
@@ -278,9 +281,11 @@ function AlertFrameCellView({
               className="rounded bg-char/60 p-0.5"
             >
               <EyeOff size={12} style={{ color: c.color }} aria-hidden />
+              <span className="sr-only">Cleared — object not visible on this frame</span>
             </span>
           ))}
-      </div>
+        </div>
+      )}
 
       <div className="absolute bottom-0 left-0 bg-char/60 text-white text-[10px] px-1 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
         {formatDateTime(frame.recordedAt)}

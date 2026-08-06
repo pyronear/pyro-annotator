@@ -45,9 +45,9 @@ export interface LocalizeObjectRowProps {
   label: string;
   /** Stable per-object color (hex) — matches the segment fills and the grid's box color. */
   color: string;
-  /** Frames this object appears on that already carry a committed box. */
+  /** Frames this object appears on that are settled — a committed box, or committed empty (cleared). */
   confirmedCount: number;
-  /** Frames this object appears on at all (confirmed + pending). */
+  /** Frames this object appears on at all (settled + pending + empty). */
   presentCount: number;
   /** False for lanes already past localization — read-only context. */
   workable: boolean;
