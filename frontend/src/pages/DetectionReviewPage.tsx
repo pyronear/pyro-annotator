@@ -10,6 +10,7 @@ import { TABLE_CARD_CLASSES } from '@/components/sequences/tableStyles';
 import { useCameras } from '@/hooks/useCameras';
 import { useOrganizations } from '@/hooks/useOrganizations';
 import { useSourceApis } from '@/hooks/useSourceApis';
+import { useAnnotators } from '@/hooks/useAnnotators';
 import { usePersistedFilters, createDefaultFilterState } from '@/hooks/usePersistedFilters';
 import { calculatePresetDateRange } from '@/components/filters/shared/dateRangeUtils';
 import { hasActiveUserFilters } from '@/utils/filterHelpers';
@@ -50,6 +51,7 @@ export default function DetectionReviewPage() {
   const { data: cameras = [], isLoading: camerasLoading } = useCameras();
   const { data: organizations = [], isLoading: organizationsLoading } = useOrganizations();
   const { data: sourceApis = [], isLoading: sourceApisLoading } = useSourceApis();
+  const { data: annotators = [], isLoading: annotatorsLoading } = useAnnotators();
 
   // Date range helper functions
   const setDateRange = (preset: string) => {
@@ -99,6 +101,7 @@ export default function DetectionReviewPage() {
         source_api: filters.source_api,
         recorded_at_gte: filters.recorded_at_gte,
         recorded_at_lte: filters.recorded_at_lte,
+        annotator_id: filters.annotator_id,
       }),
   });
 
@@ -188,9 +191,12 @@ export default function DetectionReviewPage() {
             cameras={cameras}
             organizations={organizations}
             sourceApis={sourceApis}
+            annotators={annotators}
             camerasLoading={camerasLoading}
             organizationsLoading={organizationsLoading}
             sourceApisLoading={sourceApisLoading}
+            annotatorsLoading={annotatorsLoading}
+            showAnnotatorFilter
           />
         </div>
 
@@ -294,9 +300,12 @@ export default function DetectionReviewPage() {
             cameras={cameras}
             organizations={organizations}
             sourceApis={sourceApis}
+            annotators={annotators}
             camerasLoading={camerasLoading}
             organizationsLoading={organizationsLoading}
             sourceApisLoading={sourceApisLoading}
+            annotatorsLoading={annotatorsLoading}
+            showAnnotatorFilter
           />
         </div>
       </div>

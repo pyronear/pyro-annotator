@@ -35,6 +35,7 @@ const createItem = (overrides: Partial<ClassifyDoneItem> = {}): ClassifyDoneItem
   is_wildfire_alertapi: 'wildfire_smoke',
   primary_sequence_id: 1,
   lanes: [createLane()],
+  annotators: [],
   ...overrides,
 });
 
@@ -56,6 +57,7 @@ describe('ClassifyDoneTable', () => {
       'Azimuth',
       'Alert API annotation',
       'Result',
+      'Annotators',
     ];
     const positions = labels.map(l => {
       const el = screen.getByText(l);
@@ -63,6 +65,21 @@ describe('ClassifyDoneTable', () => {
     });
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
     expect(positions.every(p => p > 0)).toBe(true);
+  });
+
+  it('renders comma-separated annotators in the last column', () => {
+    render(
+      <ClassifyDoneTable
+        items={[createItem({ annotators: ['alice', 'bob'] })]}
+        onItemClick={onItemClick}
+      />
+    );
+    expect(screen.getByText('alice, bob')).toBeInTheDocument();
+  });
+
+  it('renders a muted dash when the alert has no human annotators', () => {
+    render(<ClassifyDoneTable items={[createItem({ annotators: [] })]} onItemClick={onItemClick} />);
+    expect(screen.getByText('—')).toBeInTheDocument();
   });
 
   it('uses the primary sequence for the thumbnail', () => {

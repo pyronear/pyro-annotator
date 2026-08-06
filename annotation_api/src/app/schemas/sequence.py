@@ -185,6 +185,7 @@ class LocalizeDoneQueueItem(BaseModel):
     azimuth: Optional[int]
     recorded_at: datetime
     lanes: List[LocalizationQueueLane]
+    annotators: List[str] = []
 
 
 class ClassifyQueueItem(BaseModel):
@@ -227,6 +228,7 @@ class ClassifyDoneItem(BaseModel):
     is_wildfire_alertapi: Optional[AnnotationType] = None
     primary_sequence_id: int
     lanes: List[ClassifyDoneLane]
+    annotators: List[str] = []
 
 
 class AlertLane(BaseModel):
