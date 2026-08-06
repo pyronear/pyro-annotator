@@ -149,5 +149,10 @@ describe('ConnectorDetailPage', () => {
     // Aveyron is disabled, so it gets no heatmap row — but it still appears in
     // the organization checkbox list above.
     expect(screen.getAllByText('Ardeche').length).toBeGreaterThan(0);
+    // CoverageHeatmap tags each cell data-testid="coverage-cell-{organization_id}-{date}"
+    // (organization_id 20 is Aveyron). Scoped to that prefix, not to the name
+    // "Aveyron" itself, since Aveyron legitimately still appears in the
+    // checkbox list above.
+    expect(screen.queryAllByTestId(/^coverage-cell-20-/)).toHaveLength(0);
   });
 });

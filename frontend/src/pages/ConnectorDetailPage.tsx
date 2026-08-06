@@ -340,7 +340,11 @@ export default function ConnectorDetailPage() {
                 </span>{' '}
                 organizations on{' '}
                 <span className="font-data">
-                  {verifyResult.sample_date ? formatDate(verifyResult.sample_date) : '—'}
+                  {/* sample_date is a bare UTC date string ('2026-08-05'), not a
+                      timestamp — formatDate would re-parse it as UTC midnight and
+                      render it a day early for negative-offset viewers. Render it
+                      raw, same treatment as dateFrom/dateEnd below. */}
+                  {verifyResult.sample_date ?? '—'}
                 </span>
                 .
               </p>
@@ -420,6 +424,13 @@ export default function ConnectorDetailPage() {
           <span className="flex items-center gap-1.5">
             <span aria-hidden className="h-3 w-3 rounded-sm bg-pine" />
             Imported
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span
+              aria-hidden
+              className="h-3 w-3 rounded-sm bg-pine ring-2 ring-inset ring-signal"
+            />
+            Partially failed
           </span>
           <span className="flex items-center gap-1.5">
             <span aria-hidden className="h-3 w-3 rounded-sm bg-ash ring-1 ring-inset ring-line" />
