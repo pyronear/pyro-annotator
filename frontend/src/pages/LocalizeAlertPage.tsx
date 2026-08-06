@@ -126,6 +126,7 @@ import {
 import {
   buildAlertFrameModel,
   findFrameByDetectionId,
+  timelineLegendStatuses,
   AlertObjectStatus,
 } from '@/utils/annotation/alertLocalizeUtils';
 import { materializeGapFrame } from '@/utils/annotation/gapFrameMaterialize';
@@ -143,6 +144,7 @@ import {
   LocalizeObjectRow,
   LocalizeRail,
   LocalizeShortcutsModal,
+  LocalizeTimelineLegend,
 } from '@/components/localize';
 import { AlertFrameGrid, ViewToolbar } from '@/components/detection-sequence';
 import { LocalizeObjectEditor } from '@/components/localize/editor';
@@ -831,6 +833,11 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   const smokeObjectRows = objectStatusRows.filter(o => !o.isFalsePositive);
   const falsePositiveRows = objectStatusRows.filter(o => o.isFalsePositive);
   const orderedObjectRows = [...smokeObjectRows, ...falsePositiveRows];
+
+  // The rail's shared legend explains only encodings some visible row uses —
+  // `orderedObjectRows` is exactly the visible set, since
+  // `buildAlertFrameModel` already drops FP lanes when the toggle is off.
+  const legendStatuses = timelineLegendStatuses(orderedObjectRows.map(o => o.statusByTimestamp));
 
   // Arrival auto-select + URL-lane validation. A bare alert URL
   // replace-redirects to the first workable smoke object — the thing the
@@ -1605,6 +1612,11 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                   <Keyboard className="w-4 h-4" />
                 </button>
               </div>
+            }
+            legend={
+              legendStatuses.length > 0 ? (
+                <LocalizeTimelineLegend statuses={legendStatuses} />
+              ) : undefined
             }
             missedSmoke={
               <LocalizeMissedSmokeRow
