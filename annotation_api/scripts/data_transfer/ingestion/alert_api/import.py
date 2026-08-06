@@ -521,7 +521,8 @@ def main() -> None:
             f"{split_stats['objects']} object sequence(s) "
             f"({split_stats['sibling_objects']} sibling(s), "
             f"{split_stats['fallback_sequences']} fallback, "
-            f"{split_stats['cross_deduped_siblings']} cross-deduped)[/]"
+            f"{split_stats['cross_deduped_siblings']} cross-deduped, "
+            f"{split_stats['same_frame_merges']} same-frame merge(s))[/]"
         )
 
         if not records and not args.dry_run:

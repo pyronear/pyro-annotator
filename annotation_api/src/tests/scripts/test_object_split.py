@@ -11,6 +11,7 @@ from scripts.data_transfer.ingestion.alert_api.object_split import (
     split_all_records,
     split_sequence_records,
     synthetic_alert_api_id,
+    union_boxes,
 )
 
 # No __init__.py convention in src/tests/ — pytest inserts the test dir on
@@ -27,6 +28,23 @@ def two_object_records():
         make_record(1, "2026-07-01T10:00:00", [BOX_A], others=[BOX_B]),
         make_record(2, "2026-07-01T10:01:00", [BOX_A], others=[BOX_B]),
         make_record(3, "2026-07-01T10:02:00", [BOX_A], others=[BOX_B]),
+    ]
+
+
+# Detection 19167 (alert 41386, camera brison-01, 2026-05-11): the detector
+# split one small plume into two overlapping boxes on a single frame, and
+# cluster_objects attached both to the same object. Both carry confidence 0.0,
+# as a third of real engine boxes do.
+SPLIT_PLUME_A = [0.102, 0.565, 0.113, 0.586, 0.0]
+SPLIT_PLUME_B = [0.107, 0.564, 0.119, 0.584, 0.0]
+
+
+def forked_plume_records():
+    """One object whose middle frame carries two overlapping boxes."""
+    return [
+        make_record(1, "2026-05-11T05:09:47", [SPLIT_PLUME_A]),
+        make_record(2, "2026-05-11T05:09:57", [SPLIT_PLUME_A, SPLIT_PLUME_B]),
+        make_record(3, "2026-05-11T05:10:07", [SPLIT_PLUME_A]),
     ]
 
 
@@ -81,7 +99,50 @@ class TestSyntheticAlertApiId:
         )
 
 
+class TestUnionBoxes:
+    def test_single_box_passes_through(self):
+        assert union_boxes([[0.1, 0.2, 0.3, 0.4, 0.7]]) == [0.1, 0.2, 0.3, 0.4, 0.7]
+
+    def test_two_overlapping_boxes_yield_enclosing_box(self):
+        merged = union_boxes(
+            [[0.102, 0.565, 0.113, 0.586, 0.0], [0.107, 0.564, 0.119, 0.584, 0.0]]
+        )
+        assert merged == [0.102, 0.564, 0.119, 0.586, 0.0]
+
+    def test_confidence_is_the_group_max(self):
+        merged = union_boxes([[0.1, 0.1, 0.2, 0.2, 0.3], [0.15, 0.15, 0.25, 0.25, 0.8]])
+        assert merged[4] == 0.8
+
+    def test_three_boxes_enclose_all_three(self):
+        merged = union_boxes(
+            [
+                [0.30, 0.30, 0.40, 0.40, 0.1],
+                [0.10, 0.35, 0.20, 0.45, 0.2],
+                [0.25, 0.05, 0.50, 0.15, 0.3],
+            ]
+        )
+        assert merged == [0.10, 0.05, 0.50, 0.45, 0.3]
+
+
 class TestSplitSequenceRecords:
+    def test_same_frame_boxes_of_one_object_collapse_to_their_union(self):
+        groups = split_sequence_records(forked_plume_records())
+        assert len(groups) == 1
+        for record in groups[0].records:
+            assert len(record["detection_bboxes"]) == 1
+        merged = groups[0].records[1]["detection_bboxes"][0]
+        assert merged == [0.102, 0.564, 0.119, 0.586, 0.0]
+
+    def test_single_box_frames_are_left_untouched(self):
+        groups = split_sequence_records(forked_plume_records())
+        assert groups[0].records[0]["detection_bboxes"] == [SPLIT_PLUME_A]
+        assert groups[0].records[2]["detection_bboxes"] == [SPLIT_PLUME_A]
+
+    def test_group_reports_its_same_frame_merge_count(self):
+        groups = split_sequence_records(forked_plume_records())
+        assert groups[0].same_frame_merges == 1
+        assert split_sequence_records(two_object_records())[0].same_frame_merges == 0
+
     def test_two_objects_yield_two_groups_primary_first(self):
         groups = split_sequence_records(two_object_records())
         assert len(groups) == 2
@@ -161,12 +222,17 @@ class TestSplitAllRecords:
             "sibling_objects": 1,
             "fallback_sequences": 0,
             "cross_deduped_siblings": 0,
+            "same_frame_merges": 0,
         }
         assert {r["sequence_id"] for r in out} == {
             47105,
             DEFAULT_ALERT_ID_BASE + 47105 * 1000 + 1,
             200,
         }
+
+    def test_same_frame_merges_are_counted(self):
+        _out, stats = split_all_records(forked_plume_records())
+        assert stats["same_frame_merges"] == 1
 
     def test_broken_sequence_falls_back_others_still_split(self):
         # detection_created_at=None can't be parsed, so split_sequence_records

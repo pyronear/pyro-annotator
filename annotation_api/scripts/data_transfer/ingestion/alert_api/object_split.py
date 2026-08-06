@@ -119,6 +119,22 @@ def synthetic_alert_api_id(
     return alert_id_base + alert_api_sequence_id * 1000 + object_index
 
 
+def union_boxes(boxes: List[List[float]]) -> List[float]:
+    """Enclosing box of several same-frame boxes of one object.
+
+    Carries the group's highest confidence. A third of real engine boxes have
+    confidence 0.0, so any confidence-weighted rule is degenerate on a large
+    slice of the data; max is the best-evidence reading and is stable.
+    """
+    return [
+        min(b[0] for b in boxes),
+        min(b[1] for b in boxes),
+        max(b[2] for b in boxes),
+        max(b[3] for b in boxes),
+        max(b[4] for b in boxes),
+    ]
+
+
 @dataclass
 class ObjectGroup:
     """One detected object, as rewritten alert-api records ready for posting."""
@@ -128,6 +144,8 @@ class ObjectGroup:
     is_primary: bool
     is_fallback: bool
     records: List[dict]
+    # Frames on which this object's boxes were collapsed into one union box.
+    same_frame_merges: int = 0
 
 
 def split_sequence_records(
@@ -179,6 +197,20 @@ def split_sequence_records(
         for member in obj.members:
             own_by_frame.setdefault(member.image_filename, []).append(member.box)
 
+        # One object, one box per frame. cluster_objects can attach two
+        # same-frame boxes to one object (it flattens to one item per box and
+        # never compares image_filename), but a plume the detector split into
+        # two overlapping boxes is still one plume — boxed as the box enclosing
+        # both, per the #286 modelling note. Deliberately here rather than in
+        # cluster_objects: select_primary_index has already run above and
+        # matches members by exact coordinates, so merging earlier would change
+        # which lane keeps the alert's real alert_api_id.
+        same_frame_merges = 0
+        for frame_key, frame_boxes in own_by_frame.items():
+            if len(frame_boxes) > 1:
+                own_by_frame[frame_key] = [union_boxes(frame_boxes)]
+                same_frame_merges += 1
+
         alert_id = (
             alert_api_sid
             if pos == 0
@@ -224,6 +256,7 @@ def split_sequence_records(
                 is_primary=(pos == 0),
                 is_fallback=False,
                 records=member_records,
+                same_frame_merges=same_frame_merges,
             )
         )
     return groups
@@ -274,6 +307,7 @@ def split_all_records(
         "sibling_objects": 0,
         "fallback_sequences": 0,
         "cross_deduped_siblings": 0,
+        "same_frame_merges": 0,
     }
 
     grouped = group_records_by_sequence(records)
@@ -309,6 +343,7 @@ def split_all_records(
             ]
         stats["alert_api_sequences"] += 1
         stats["fallback_sequences"] += sum(1 for g in groups if g.is_fallback)
+        stats["same_frame_merges"] += sum(g.same_frame_merges for g in groups)
         for group in groups:
             if not group.is_primary:
                 matched_sid = None
