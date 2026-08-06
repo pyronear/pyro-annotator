@@ -120,19 +120,9 @@ export function AcceptRemainingPopover({
       </p>
 
       <div className="mt-4">
-        <div className="mb-2 flex items-baseline justify-between gap-2">
-          <p className="font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
-            What {objectLabel} ends up with
-          </p>
-          {currentEntry && (
-            <span
-              data-testid="accept-remaining-frame-counter"
-              className="whitespace-nowrap font-data text-detail tabular-nums text-haze"
-            >
-              Frame {currentEntryIndex + 1} of {entries.length}
-            </span>
-          )}
-        </div>
+        <p className="mb-2 font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
+          What {objectLabel} ends up with
+        </p>
         <CroppedImageSequence
           bboxes={previewBoxes}
           sequenceId={sequenceId}
@@ -146,7 +136,20 @@ export function AcceptRemainingPopover({
           className="mx-auto"
           onFrameChange={(_index, detectionId) => setLoopDetectionId(detectionId ?? null)}
         />
+        {/* Counter above the strip, not beside the eyebrow: it counts the
+            same frames the strip draws, and up there it squeezed the label
+            into wrapping. */}
         <div className="mt-3">
+          {currentEntry && (
+            <div className="mb-1 text-right">
+              <span
+                data-testid="accept-remaining-frame-counter"
+                className="whitespace-nowrap font-data text-detail tabular-nums text-haze"
+              >
+                Frame {currentEntryIndex + 1} of {entries.length}
+              </span>
+            </div>
+          )}
           <ObjectStatusStrip
             variant="bare"
             objects={[{ label: objectLabel, color: objectColor, statusByTimestamp }]}
