@@ -27,6 +27,10 @@ GET /api/v1/export/alerts
   mechanism, no scopes, no API keys.
 - **Replaces:** `GET /api/v1/export/detections` is deleted (endpoint, row schema, and
   its tests). The `/export` router keeps its prefix and tag.
+- **Consumer removal:** the old endpoint's only consumer,
+  `scripts/data_transfer/ingestion/alert_api/export_dataset.py` (and its
+  `export-dataset` Makefile target), is deleted in the same change. The future
+  collocated pull script against `/export/alerts` supersedes it.
 
 ## Export unit and completeness rule
 
@@ -271,6 +275,7 @@ Rewrite `src/tests/endpoints/test_export.py` against the new endpoint:
 
 ## Out of scope
 
-- The collocated pull script (image download + packaging) — later session.
+- The collocated pull script (image download + packaging) — later session; it
+  replaces the deleted `export_dataset.py`.
 - Trainer-format conversion (YOLO/COCO) — downstream of the script.
 - API keys / scoped service accounts.
