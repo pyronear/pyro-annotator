@@ -138,6 +138,11 @@ class TestSplitSequenceRecords:
         assert groups[0].records[0]["detection_bboxes"] == [SPLIT_PLUME_A]
         assert groups[0].records[2]["detection_bboxes"] == [SPLIT_PLUME_A]
 
+    def test_group_reports_its_same_frame_merge_count(self):
+        groups = split_sequence_records(forked_plume_records())
+        assert groups[0].same_frame_merges == 1
+        assert split_sequence_records(two_object_records())[0].same_frame_merges == 0
+
     def test_two_objects_yield_two_groups_primary_first(self):
         groups = split_sequence_records(two_object_records())
         assert len(groups) == 2
@@ -217,12 +222,17 @@ class TestSplitAllRecords:
             "sibling_objects": 1,
             "fallback_sequences": 0,
             "cross_deduped_siblings": 0,
+            "same_frame_merges": 0,
         }
         assert {r["sequence_id"] for r in out} == {
             47105,
             DEFAULT_ALERT_ID_BASE + 47105 * 1000 + 1,
             200,
         }
+
+    def test_same_frame_merges_are_counted(self):
+        _out, stats = split_all_records(forked_plume_records())
+        assert stats["same_frame_merges"] == 1
 
     def test_broken_sequence_falls_back_others_still_split(self):
         # detection_created_at=None can't be parsed, so split_sequence_records

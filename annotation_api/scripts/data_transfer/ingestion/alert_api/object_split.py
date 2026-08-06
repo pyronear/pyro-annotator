@@ -144,6 +144,8 @@ class ObjectGroup:
     is_primary: bool
     is_fallback: bool
     records: List[dict]
+    # Frames on which this object's boxes were collapsed into one union box.
+    same_frame_merges: int = 0
 
 
 def split_sequence_records(
@@ -254,6 +256,7 @@ def split_sequence_records(
                 is_primary=(pos == 0),
                 is_fallback=False,
                 records=member_records,
+                same_frame_merges=same_frame_merges,
             )
         )
     return groups
@@ -304,6 +307,7 @@ def split_all_records(
         "sibling_objects": 0,
         "fallback_sequences": 0,
         "cross_deduped_siblings": 0,
+        "same_frame_merges": 0,
     }
 
     grouped = group_records_by_sequence(records)
@@ -339,6 +343,7 @@ def split_all_records(
             ]
         stats["alert_api_sequences"] += 1
         stats["fallback_sequences"] += sum(1 for g in groups if g.is_fallback)
+        stats["same_frame_merges"] += sum(g.same_frame_merges for g in groups)
         for group in groups:
             if not group.is_primary:
                 matched_sid = None
