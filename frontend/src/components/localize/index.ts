@@ -2,6 +2,8 @@ export { LocalizeObjectRow } from './LocalizeObjectRow';
 export type { LocalizeObjectRowProps } from './LocalizeObjectRow';
 export { LocalizeRail } from './LocalizeRail';
 export type { LocalizeRailProps } from './LocalizeRail';
+export { LocalizeTimelineLegend } from './LocalizeTimelineLegend';
+export type { LocalizeTimelineLegendProps } from './LocalizeTimelineLegend';
 export { LocalizeActionPanel } from './LocalizeActionPanel';
 export type { LocalizeActionPanelProps } from './LocalizeActionPanel';
 export { LocalizeObjectActions } from './LocalizeObjectActions';
