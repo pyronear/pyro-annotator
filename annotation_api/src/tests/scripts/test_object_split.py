@@ -279,7 +279,10 @@ class TestBuildSingleTrackAnnotation:
         assert track.false_positive_types == []
         assert [b.detection_id for b in track.bboxes] == [11, 12]
 
-    def test_multiple_boxes_on_one_detection_become_multiple_track_entries(self):
+    def test_multiple_boxes_on_one_detection_become_one_union_box(self):
+        # One object, one box per frame (#315). Reachable via the fallback
+        # path, which passes records through without split_sequence_records'
+        # same-frame union.
         results = [
             {
                 "annotation_detection_id": 11,
@@ -288,7 +291,8 @@ class TestBuildSingleTrackAnnotation:
             }
         ]
         data = build_single_track_annotation(results)
-        assert len(data.sequences_bbox[0].bboxes) == 2
+        assert len(data.sequences_bbox[0].bboxes) == 1
+        assert data.sequences_bbox[0].bboxes[0].xyxyn == [0.1, 0.1, 0.4, 0.4]
 
     def test_zero_area_and_empty_results_yield_empty_sequences_bbox(self):
         # zero-area boxes would fail BoundingBox validation -> must be filtered

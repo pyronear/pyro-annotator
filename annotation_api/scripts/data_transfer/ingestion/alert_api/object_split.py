@@ -378,13 +378,24 @@ def build_single_track_annotation(
     auto-generation then runs as a harmless no-op on empty predictions).
     """
     ordered = sorted(detection_results, key=lambda r: _parse_dt(r["recorded_at"]))
+    # One object, one box per frame. split_sequence_records already unions an
+    # object's same-frame boxes, but its fallback path passes records through
+    # untouched, so a frame can still arrive with several boxes. This is one
+    # conservative track either way, so those boxes are already declared to be
+    # one object here — box them once.
+    by_detection: Dict[int, List[List[float]]] = {}
+    for r in ordered:
+        for xy in r.get("xyxyns", []):
+            if xy[0] < xy[2] and xy[1] < xy[3]:  # BoundingBox rejects zero-area boxes
+                by_detection.setdefault(r["annotation_detection_id"], []).append(
+                    [float(c) for c in xy[:4]]
+                )
     bboxes = [
         BoundingBox(
-            detection_id=r["annotation_detection_id"], xyxyn=[float(c) for c in xy[:4]]
+            detection_id=detection_id,
+            xyxyn=union_xyxyn(coords) if len(coords) > 1 else coords[0],
         )
-        for r in ordered
-        for xy in r.get("xyxyns", [])
-        if xy[0] < xy[2] and xy[1] < xy[3]  # BoundingBox rejects zero-area boxes
+        for detection_id, coords in by_detection.items()
     ]
     if not bboxes:
         return SequenceAnnotationData(sequences_bbox=[])

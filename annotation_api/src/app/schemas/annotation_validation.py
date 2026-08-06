@@ -3,6 +3,7 @@
 # This program is licensed under the Apache License 2.0.
 # See LICENSE or go to <https://www.apache.org/licenses/LICENSE-2.0> for full license details.
 
+from collections import Counter
 from enum import Enum
 from typing import List, Optional
 
@@ -63,6 +64,27 @@ class SequenceBBox(BaseModel):
     smoke_type: Optional[SmokeType] = Field(default=None)
     false_positive_types: List[FalsePositiveType] = Field(default_factory=list)
     bboxes: List[BoundingBox]
+
+    @model_validator(mode="after")
+    def validate_one_box_per_detection(self) -> "SequenceBBox":
+        """One object, one box per frame.
+
+        A plume that visually forks into two strands and rejoins is still one
+        fire's smoke, boxed once — the same rule #286 enforces on detection
+        annotations. A persistent split is a second fire, so a second object
+        with its own annotation track.
+        """
+        counts = Counter(b.detection_id for b in self.bboxes)
+        repeated = sorted(d for d, n in counts.items() if n > 1)
+        if repeated:
+            raise ValueError(
+                f"At most one box is allowed per detection within a sequence "
+                f"bbox (detection_id repeated: {repeated}). A plume that forks "
+                "into two strands and rejoins is one object — box it once. A "
+                "persistent second plume is a separate object, with its own "
+                "annotation track."
+            )
+        return self
 
 
 class SequenceAnnotationData(BaseModel):
