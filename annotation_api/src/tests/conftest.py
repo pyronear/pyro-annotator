@@ -270,12 +270,13 @@ async def inactive_user(async_session: AsyncSession) -> User:
 
 @pytest_asyncio.fixture(scope="function")
 async def worker_user(async_session: AsyncSession) -> User:
-    """Create the seeded system worker user (login-disabled attribution account)."""
+    """Create the seeded system worker user (password-disabled attribution
+    account; active so it can call the API — see app/main.py)."""
     user_crud = UserCRUD(async_session)
     user_create = UserCreate(
         username=settings.WORKER_USERNAME,
         password="workerpassword123",
-        is_active=False,
+        is_active=True,
         is_superuser=False,
     )
     user = await user_crud.create_user(user_create)

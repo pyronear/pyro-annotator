@@ -429,7 +429,7 @@ class TestWorkerUserProtection:
             {"username": "renamedworker"},
             {"is_active": True},
             {"is_superuser": True},
-            {"is_active": False},  # same value as seeded — still rejected
+            {"is_active": False},  # opposite of seeded value — still rejected
         ],
     )
     async def test_update_worker_user_forbidden(
