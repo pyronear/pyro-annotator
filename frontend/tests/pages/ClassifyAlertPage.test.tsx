@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import type { AlertDetail, Sequence, SequenceAnnotation, ClassifySubmitRequest } from '@/types/api';
@@ -1140,6 +1140,96 @@ describe('ClassifyAlertPage', () => {
     const row = within(screen.getByTestId('object-card-101:0'));
     expect(row.getByRole('radio', { name: 'False positive' })).not.toBeChecked();
     expect(row.getByText('Pending')).toBeInTheDocument();
+  });
+
+  describe('skip confirm keyboard guards', () => {
+    it('page shortcuts are inert while the confirm is open, so the note is typable', async () => {
+      await renderAndSettle(<ClassifyAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: /Skip alert/ }));
+      const note = screen.getByLabelText(/optional/i);
+
+      // Letters a note actually contains: 's' and 'u' classify the active
+      // object, 'a' toggles a false-positive type, '?' opens the shortcuts
+      // sheet on top of the dialog.
+      fireEvent.keyDown(note, { key: 's' });
+      fireEvent.keyDown(note, { key: 'u' });
+      fireEvent.keyDown(note, { key: 'a' });
+      fireEvent.keyDown(note, { key: '?' });
+
+      expect(screen.queryByRole('dialog', { name: 'Keyboard shortcuts' })).not.toBeInTheDocument();
+      expect(screen.getByTestId('skip-alert-confirm')).toBeInTheDocument();
+
+      fireEvent.click(
+        within(screen.getByTestId('skip-alert-confirm')).getByRole('button', { name: 'Close' })
+      );
+      const row = within(screen.getByTestId('object-card-101:0'));
+      expect(row.getByRole('radio', { name: 'Smoke' })).not.toBeChecked();
+      expect(row.getByRole('radio', { name: 'Unsure' })).not.toBeChecked();
+      expect(row.getByText('Pending')).toBeInTheDocument();
+    });
+
+    it('Enter in the note does not submit the alert behind the confirm', async () => {
+      await renderAndSettle(<ClassifyAlertPage />, { wrapper });
+
+      // Make the alert submittable, so only the guard can stop Enter.
+      const cardA = openRow('101:0');
+      fireEvent.click(cardA.getByRole('radio', { name: 'Smoke' }));
+      fireEvent.click(cardA.getByRole('radio', { name: 'Wildfire' }));
+      const cardB = openRow('102:0');
+      fireEvent.click(cardB.getByRole('radio', { name: 'False positive' }));
+      fireEvent.click(cardB.getByRole('checkbox', { name: 'Antenna' }));
+      fireEvent.click(missedSmokeChip('No'));
+
+      fireEvent.click(screen.getByRole('button', { name: /Skip alert/ }));
+      fireEvent.keyDown(screen.getByLabelText(/optional/i), { key: 'Enter' });
+      // The submit runs through a mutation: without a flush the negative
+      // assertion below would pass even when the shortcut did fire.
+      await act(async () => {});
+
+      expect(apiClient.classifySubmit).not.toHaveBeenCalled();
+      expect(screen.getByTestId('skip-alert-confirm')).toBeInTheDocument();
+    });
+
+    it('Ctrl+Z in the note does not discard the work on the alert', async () => {
+      await renderAndSettle(<ClassifyAlertPage />, { wrapper });
+
+      const card = openRow('101:0');
+      fireEvent.click(card.getByRole('radio', { name: 'Smoke' }));
+      fireEvent.click(card.getByRole('radio', { name: 'Wildfire' }));
+
+      fireEvent.click(screen.getByRole('button', { name: /Skip alert/ }));
+      fireEvent.keyDown(screen.getByLabelText(/optional/i), { key: 'z', ctrlKey: true });
+
+      // Ctrl+Z used to reach handleReset, re-initializing every lane from the
+      // server and throwing away the classification above.
+      const row = within(screen.getByTestId('object-card-101:0'));
+      expect(row.getByRole('radio', { name: 'Smoke' })).toBeChecked();
+      expect(row.getByRole('radio', { name: 'Wildfire' })).toBeChecked();
+    });
+
+    it('opening the confirm puts the caret in the note', async () => {
+      await renderAndSettle(<ClassifyAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: /Skip alert/ }));
+
+      // Without this the caret stays on the trigger button, so a user who
+      // clicks and types straight away types into nothing.
+      expect(document.activeElement).toBe(screen.getByLabelText(/optional/i));
+    });
+
+    it('Tab is inert while the confirm is open, so its controls stay reachable', async () => {
+      await renderAndSettle(<ClassifyAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: /Skip alert/ }));
+      const note = screen.getByLabelText(/optional/i);
+      note.focus();
+
+      fireEvent.keyDown(note, { key: 'Tab' });
+
+      // The rail's focus trap did not yank focus back to an object row.
+      expect(document.activeElement).toBe(note);
+    });
   });
 
   it('blocks re-submission during the post-submit window and invalidates the cached alert detail', async () => {
