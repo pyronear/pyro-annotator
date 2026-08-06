@@ -106,21 +106,39 @@ and emit one box per id:
 
 ```python
 for cluster in bbox_clusters:
-    by_detection: Dict[int, List[List[float]]] = {}
+    valid: Dict[int, List[List[float]]] = {}
     for bbox_coords, detection_id in cluster:
-        by_detection.setdefault(detection_id, []).append(bbox_coords)
-
-    bboxes = []
-    for detection_id, coords_list in by_detection.items():
-        merged = union_xyxyn(coords_list) if len(coords_list) > 1 else coords_list[0]
         try:
-            bboxes.append(BoundingBox(detection_id=detection_id, xyxyn=merged))
+            box = BoundingBox(detection_id=detection_id, xyxyn=bbox_coords)
         except Exception as e:
             self.logger.debug(
                 f"Skipping invalid coordinates for detection {detection_id}: {e}"
             )
             continue
+        valid.setdefault(box.detection_id, []).append(box.xyxyn)
+
+    bboxes = [
+        BoundingBox(
+            detection_id=detection_id,
+            xyxyn=union_xyxyn(coords) if len(coords) > 1 else coords[0],
+        )
+        for detection_id, coords in valid.items()
+    ]
 ```
+
+**Validate before unioning, not after.** The obvious shape — group raw
+coordinates, union, then construct — is wrong: a frame carrying a valid box and
+a `[0, 0, 0, 0]` null box would union to a box anchored at the origin, silently
+inventing a huge plume out of a detection failure. Constructing each raw box
+first keeps the existing per-box rejection, and only survivors reach the union.
+
+The second construction cannot raise: a union of valid boxes lies within
+`[0, 1]`, has `x1 <= x2` and `y1 <= y2`, and encloses a non-zero-area box, so it
+is non-zero-area itself.
+
+Insertion order of `valid` preserves each `detection_id`'s first appearance, so
+clusters with no duplicates emit exactly the boxes they emit today, in the same
+order.
 
 **Placement.** After clustering, not inside it. `cluster_boxes_by_iou` stays a
 pure geometric utility with its documented contract and doctests intact, and
@@ -184,8 +202,15 @@ the same terms, guarded by the pre-merge count below.
   returns the container.
 - `_create_sequence_bboxes`: a cluster holding two boxes with the same
   `detection_id` yields one `BoundingBox` whose `xyxyn` is the union; a cluster
-  with distinct ids is unchanged; the invalid-coordinate skip still applies to a
-  merged box.
+  with distinct ids is unchanged; a null `[0, 0, 0, 0]` box sharing a
+  `detection_id` with a valid box is dropped before the union rather than
+  dragging it to the origin.
+
+  The six existing `_create_sequence_bboxes` tests
+  (`src/tests/services/test_annotation_generation.py:116-289`) all use distinct
+  `detection_id`s per cluster and must stay green unmodified — including their
+  exact `mock_logger.debug.call_count` assertions, which the validate-first
+  ordering preserves.
 - `SequenceBBox` validator: a duplicate `detection_id` raises; distinct ids
   pass; an empty `bboxes` list passes.
 - End-to-end: POST a sequence annotation with an empty `sequences_bbox` for a
