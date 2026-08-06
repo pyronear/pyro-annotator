@@ -2,8 +2,9 @@
  * The rail's shared key to the object timelines: one wrap-capable line of
  * swatch+label chips explaining the segment encodings the rows above use.
  * Shared rather than per-row because every row speaks the same vocabulary —
- * only the hue changes per object — so the swatches are neutral ink and the
- * legend explains the treatment (solid / faded / outline), not the color.
+ * only the hue changes per object — so the swatches are a single pine and
+ * the legend explains the treatment (solid / faded / outline), not the
+ * color.
  *
  * The caller passes only the statuses actually on screen (see
  * `timelineLegendStatuses`), so the legend never names a state no row is in
@@ -21,12 +22,12 @@ const CHIP_LABELS: Record<TimelineLegendStatus, string> = {
   empty: 'no box',
 };
 
-// Mirrors `segmentAppearance` in LocalizeObjectRow, in neutral ink: solid
-// fill, 40% fill, inset 1px outline.
+// Mirrors `segmentAppearance` in LocalizeObjectRow, in pine: solid fill,
+// 40% fill, inset 1px outline.
 const SWATCH_CLASS: Record<TimelineLegendStatus, string> = {
-  confirmed: 'bg-char',
-  pending: 'bg-char opacity-40',
-  empty: 'ring-1 ring-inset ring-char',
+  confirmed: 'bg-pine',
+  pending: 'bg-pine opacity-40',
+  empty: 'ring-1 ring-inset ring-pine',
 };
 
 export interface LocalizeTimelineLegendProps {

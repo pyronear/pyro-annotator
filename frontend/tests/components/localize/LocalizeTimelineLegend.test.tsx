@@ -26,9 +26,9 @@ describe('LocalizeTimelineLegend', () => {
     render(<LocalizeTimelineLegend statuses={['confirmed', 'pending', 'empty']} />);
     const swatch = (status: string) =>
       screen.getByTestId(`legend-chip-${status}`).querySelector('span[aria-hidden]');
-    expect(swatch('confirmed')).toHaveClass('bg-char');
+    expect(swatch('confirmed')).toHaveClass('bg-pine');
     expect(swatch('confirmed')).not.toHaveClass('opacity-40');
-    expect(swatch('pending')).toHaveClass('bg-char', 'opacity-40');
-    expect(swatch('empty')).toHaveClass('ring-1', 'ring-inset', 'ring-char');
+    expect(swatch('pending')).toHaveClass('bg-pine', 'opacity-40');
+    expect(swatch('empty')).toHaveClass('ring-1', 'ring-inset', 'ring-pine');
   });
 });

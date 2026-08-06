@@ -53,7 +53,7 @@ teach the same words:
 `absent` is never listed — it is the neutral track showing through, and
 explaining the background is noise (the popover legend skips it too).
 
-Because hue varies per object, swatches are drawn in a neutral ink (`char`):
+Because hue varies per object, swatches are drawn in a single teal (`pine`):
 the legend explains the *treatment* (solid vs faded vs outline), not the
 color.
 
