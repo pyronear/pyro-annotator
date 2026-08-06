@@ -914,14 +914,20 @@ export function LocalizeObjectEditor({
 
           {/* Floated over the stage rather than stacked into the column, so
               stepping between in-object and gap frames never resizes the
-              photo or shifts the filmstrip. */}
+              photo or shifts the filmstrip. Pine, not signal: this is the
+              Localize lane's own invitation to act, not an error. */}
           {peeked && (
             <div
               data-testid="out-of-range-banner"
-              className="absolute inset-x-0 bottom-0 border-t border-line bg-signal-soft px-4 py-2 font-body text-detail text-signal"
+              className="absolute inset-x-0 bottom-0 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 border-t border-line bg-pine-soft px-4 py-2"
             >
-              {objectLabel} was never detected on this frame. If you can see its smoke, draw a box
-              to add this frame to {objectLabel}.
+              <span className="whitespace-nowrap font-data text-eyebrow font-medium uppercase tracking-eyebrow text-pine">
+                Outside object range
+              </span>
+              <span className="font-body text-detail text-pine">
+                {objectLabel} was never detected on this frame. If you can see its smoke, draw a box
+                to add this frame to {objectLabel}.
+              </span>
             </div>
           )}
         </div>
