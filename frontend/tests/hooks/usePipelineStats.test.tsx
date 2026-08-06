@@ -9,6 +9,7 @@ vi.mock('@/services/api', () => ({
     getSequenceAnnotations: vi.fn(),
     getSequenceGroupStats: vi.fn(),
     getLocalizationQueue: vi.fn(),
+    getClassifyQueue: vi.fn(),
   },
 }));
 
@@ -50,12 +51,16 @@ describe('usePipelineStats', () => {
       unlabeled: 12,
     });
     vi.mocked(apiClient.getLocalizationQueue).mockResolvedValue(page(9));
+    vi.mocked(apiClient.getClassifyQueue).mockResolvedValue(page(31));
   });
 
   it('derives pipeline stats from the six count queries', async () => {
     const { result } = renderHook(() => usePipelineStats(), { wrapper });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
-    expect(result.current.classifyTodo).toBe(57);
+    // Classify · to do is the alert-grouped queue total (what /classify and
+    // the sidebar badge show), not the per-lane ready_to_annotate count (57).
+    expect(result.current.classifyTodo).toBe(31);
+    expect(apiClient.getClassifyQueue).toHaveBeenCalledWith({ size: 1 });
     // Localize · to do is the gated queue total (alerts ready), not the
     // seq_annotation_done proxy.
     expect(result.current.localizeTodo).toBe(9);

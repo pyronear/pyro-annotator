@@ -10,13 +10,17 @@
 
 export interface RawPipelineCounts {
   total: number;
-  readyToAnnotate: number;
   seqAnnotationDone: number;
   annotatedStage: number;
   detectionComplete: number;
   // Total of the gated localization queue (alerts ready for smoke
   // localization) — matches exactly what /localize shows.
   localizeQueueTotal: number;
+  // Total of the classify queue (alerts with at least one lane awaiting
+  // classification, skips excluded) — matches exactly what /classify shows.
+  // Deliberately not the `ready_to_annotate` annotation count: that counts
+  // per-object lanes, so multi-object alerts inflate it.
+  classifyQueueTotal: number;
 }
 
 export interface PipelineStats {
@@ -31,7 +35,7 @@ export interface PipelineStats {
 export function derivePipelineStats(raw: RawPipelineCounts): PipelineStats {
   return {
     total: raw.total,
-    classifyTodo: raw.readyToAnnotate,
+    classifyTodo: raw.classifyQueueTotal,
     classifyDone: raw.seqAnnotationDone + raw.annotatedStage,
     localizeTodo: raw.localizeQueueTotal,
     complete: raw.detectionComplete,
