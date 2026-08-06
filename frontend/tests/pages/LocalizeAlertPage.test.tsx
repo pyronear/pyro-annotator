@@ -1913,7 +1913,7 @@ describe('LocalizeAlertPage', () => {
       const toggle = screen.getByRole('button', { name: /False positives/ });
       expect(toggle).toBeDisabled();
       // No count badge when there is nothing to reveal.
-      expect(toggle).toHaveTextContent(/^False positives$/);
+      expect(toggle).toHaveTextContent(/^FP$/);
     });
 
     it('shows how many false-positive objects the alert has', async () => {
@@ -1922,7 +1922,19 @@ describe('LocalizeAlertPage', () => {
 
       const toggle = screen.getByRole('button', { name: /False positives/ });
       expect(toggle).toBeEnabled();
-      expect(toggle).toHaveTextContent('False positives1');
+      expect(toggle).toHaveTextContent('FP1');
+    });
+
+    it('the FP toggle keeps its full name for screen readers and explains itself in a tooltip', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      // Default fixture has no FP lanes, so the disabled-state copy shows.
+      const toggle = screen.getByRole('button', { name: 'False positives' });
+      const tipId = toggle.getAttribute('aria-describedby');
+      expect(tipId).toBeTruthy();
+      expect(document.getElementById(tipId!)).toHaveTextContent(
+        'This alert has no false-positive objects'
+      );
+      expect(toggle).not.toHaveAttribute('title');
     });
 
     it('keeps false-positive frames read-only — visible, never openable in the editor', async () => {
@@ -2076,6 +2088,12 @@ describe('LocalizeAlertPage', () => {
   describe('active object CTA, over the media column', () => {
     it('appears above the frames for the active object, following the selection', async () => {
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      // Await the arrival auto-select's navigation: the CTA only exists once
+      // an object is active, and asserting before the navigate commits races
+      // it (seen flaking on CI, where the DOM dump showed the bare URL).
+      await waitFor(() =>
+        expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/101')
+      );
 
       // Arrival auto-selects Object 1, so its CTA is there from the start.
       const cta = within(screen.getByTestId('localize-active-object-actions'));
@@ -2731,6 +2749,142 @@ describe('LocalizeAlertPage', () => {
       // No cycling happened: the URL still names the open editor.
       expect(screen.getByTestId('location')).toHaveTextContent(editorUrl!);
       expect(screen.getByTestId('image-modal')).toBeInTheDocument();
+    });
+  });
+
+  describe('keyboard shortcuts help', () => {
+    const arrive = async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      // Wait out the arrival auto-select, as every keyboard test here does.
+      await waitFor(() =>
+        expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/101')
+      );
+    };
+
+    it("'?' opens the shortcuts sheet and Escape closes it", async () => {
+      await arrive();
+      fireEvent.keyDown(window, { key: '?' });
+      expect(screen.getByRole('dialog', { name: 'Keyboard shortcuts' })).toBeInTheDocument();
+      fireEvent.keyDown(window, { key: 'Escape' });
+      expect(screen.queryByRole('dialog', { name: 'Keyboard shortcuts' })).not.toBeInTheDocument();
+    });
+
+    it("'?' pressed again closes the sheet", async () => {
+      await arrive();
+      fireEvent.keyDown(window, { key: '?' });
+      fireEvent.keyDown(window, { key: '?' });
+      expect(screen.queryByRole('dialog', { name: 'Keyboard shortcuts' })).not.toBeInTheDocument();
+    });
+
+    it('the rail button opens the sheet, which lists the page keys', async () => {
+      await arrive();
+      fireEvent.click(screen.getByTitle('Show keyboard shortcuts (?)'));
+      const dialog = screen.getByRole('dialog', { name: 'Keyboard shortcuts' });
+      expect(dialog).toHaveTextContent('Cycle objects');
+      expect(dialog).toHaveTextContent('Crop cells');
+      expect(dialog).toHaveTextContent('Toggle this help');
+    });
+
+    it("'?' is inert while the per-frame editor is open", async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      fireEvent.click(screen.getByTestId(`alert-frame-cell-${T1}`));
+      await screen.findByTestId('image-modal');
+
+      fireEvent.keyDown(window, { key: '?' });
+
+      expect(screen.queryByRole('dialog', { name: 'Keyboard shortcuts' })).not.toBeInTheDocument();
+    });
+
+    it('Tab is inert while the sheet is open, so its close button stays reachable', async () => {
+      await arrive();
+      fireEvent.keyDown(window, { key: '?' });
+
+      fireEvent.keyDown(document, { key: 'Tab' });
+
+      // No cycling happened behind the dialog: the URL still names the
+      // arrival object, and the sheet is still up.
+      expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/101');
+      expect(screen.getByRole('dialog', { name: 'Keyboard shortcuts' })).toBeInTheDocument();
+    });
+
+    it("'c' is inert while the sheet is open", async () => {
+      await arrive();
+      fireEvent.keyDown(window, { key: '?' });
+
+      const crop = screen.getByTitle('Crop cells (C)');
+      const before = crop.getAttribute('aria-pressed');
+      fireEvent.keyDown(window, { key: 'c' });
+
+      expect(crop).toHaveAttribute('aria-pressed', before!);
+    });
+  });
+
+  describe('page view keys', () => {
+    const arrive = async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      await waitFor(() =>
+        expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/101')
+      );
+    };
+
+    it("'l' switches to large cards", async () => {
+      await arrive();
+      fireEvent.keyDown(window, { key: 'l' });
+      expect(screen.getByTitle('Large cards')).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it("'M' (uppercase) switches to medium cards", async () => {
+      // NOT 'S': the arrival focus-mode override already presses Small, so an
+      // 'S' assertion would pass before the key exists. Medium starts
+      // unpressed under the override, so this genuinely fails first.
+      await arrive();
+      fireEvent.keyDown(window, { key: 'M' });
+      expect(screen.getByTitle('Medium cards')).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it("'p' opens and closes the cropped loop", async () => {
+      await arrive();
+      fireEvent.keyDown(window, { key: 'p' });
+      expect(screen.getByTestId('cropped-image-sequence')).toBeInTheDocument();
+      fireEvent.keyDown(window, { key: 'p' });
+      expect(screen.queryByTestId('cropped-image-sequence')).not.toBeInTheDocument();
+    });
+
+    it("'p' is inert when the active object has no boxes", async () => {
+      // Boxless variants of BOTH lanes, so wherever arrival lands, canShowCrop
+      // stays false (mirrors the button's own withheld state).
+      vi.mocked(apiClient.getSequenceDetections).mockImplementation(async (id: number) => {
+        if (id === 101)
+          return [{ ...makeDetection(1001, T1), auto_predictions: { predictions: [] } }];
+        if (id === 102)
+          return [
+            { ...makeDetection(1002, T1), auto_predictions: { predictions: [] } },
+            { ...makeDetection(1003, T2), auto_predictions: { predictions: [] } },
+          ];
+        return [];
+      });
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      await waitFor(() =>
+        expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/')
+      );
+      expect(screen.queryByRole('button', { name: 'Cropped view' })).not.toBeInTheDocument();
+      fireEvent.keyDown(window, { key: 'p' });
+      expect(screen.queryByTestId('cropped-image-sequence')).not.toBeInTheDocument();
+    });
+
+    it('size keys are inert while the add-object picker is open', async () => {
+      await arrive();
+      answerMissedSmokeYes();
+      fireEvent.click(screen.getByRole('button', { name: 'Add object' }));
+      fireEvent.keyDown(window, { key: 'l' });
+      expect(screen.getByTitle('Large cards')).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('size keys are inert while the shortcuts sheet is open', async () => {
+      await arrive();
+      fireEvent.keyDown(window, { key: '?' });
+      fireEvent.keyDown(window, { key: 'l' });
+      expect(screen.getByTitle('Large cards')).toHaveAttribute('aria-pressed', 'false');
     });
   });
 
