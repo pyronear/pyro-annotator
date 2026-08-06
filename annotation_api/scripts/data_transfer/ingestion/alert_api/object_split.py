@@ -33,8 +33,8 @@ from app.schemas.annotation_validation import (
     BoundingBox,
     SequenceAnnotationData,
     SequenceBBox,
+    union_xyxyn,
 )
-from app.services.annotation_generation import union_xyxyn
 from .object_clustering import TrackedObject, cluster_objects, object_cone_azimuth
 from .shared import group_records_by_sequence
 

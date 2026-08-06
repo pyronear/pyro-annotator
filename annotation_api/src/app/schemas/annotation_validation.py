@@ -20,7 +20,39 @@ __all__ = [
     "AnnotationOrigin",
     "DetectionAnnotationItem",
     "DetectionAnnotationData",
+    "union_xyxyn",
 ]
+
+
+def union_xyxyn(boxes: List[List[float]]) -> List[float]:
+    """
+    Enclosing box of several bounding boxes, in normalized coordinates.
+
+    One object, one box per frame: a plume that visually forks into two strands
+    and rejoins is still one plume, boxed once (see #286).
+
+    Lives here rather than beside its callers in ``app.services`` so the
+    importer can share it: importing anything under ``app.services`` pulls
+    ``storage``, which probes S3 at module scope (see #336).
+
+    Args:
+        boxes: Non-empty list of [x1, y1, x2, y2] in normalized coordinates (0-1).
+               Extra elements past index 3 are ignored, so the importer's
+               [x1, y1, x2, y2, confidence] boxes can be passed directly.
+
+    Returns:
+        The smallest box enclosing all of them, as [x1, y1, x2, y2]
+
+    Example:
+        >>> union_xyxyn([[0.1, 0.2, 0.3, 0.4], [0.2, 0.1, 0.5, 0.35]])
+        [0.1, 0.1, 0.5, 0.4]
+    """
+    return [
+        min(b[0] for b in boxes),
+        min(b[1] for b in boxes),
+        max(b[2] for b in boxes),
+        max(b[3] for b in boxes),
+    ]
 
 
 class BoundingBox(BaseModel):
