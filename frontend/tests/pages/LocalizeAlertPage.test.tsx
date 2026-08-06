@@ -2701,6 +2701,50 @@ describe('LocalizeAlertPage', () => {
     });
   });
 
+  describe('keyboard shortcuts help', () => {
+    const arrive = async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      // Wait out the arrival auto-select, as every keyboard test here does.
+      await waitFor(() =>
+        expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/101')
+      );
+    };
+
+    it("'?' opens the shortcuts sheet and Escape closes it", async () => {
+      await arrive();
+      fireEvent.keyDown(window, { key: '?' });
+      expect(screen.getByRole('dialog', { name: 'Keyboard shortcuts' })).toBeInTheDocument();
+      fireEvent.keyDown(window, { key: 'Escape' });
+      expect(screen.queryByRole('dialog', { name: 'Keyboard shortcuts' })).not.toBeInTheDocument();
+    });
+
+    it("'?' pressed again closes the sheet", async () => {
+      await arrive();
+      fireEvent.keyDown(window, { key: '?' });
+      fireEvent.keyDown(window, { key: '?' });
+      expect(screen.queryByRole('dialog', { name: 'Keyboard shortcuts' })).not.toBeInTheDocument();
+    });
+
+    it('the rail button opens the sheet, which lists the page keys', async () => {
+      await arrive();
+      fireEvent.click(screen.getByTitle('Show keyboard shortcuts (?)'));
+      const dialog = screen.getByRole('dialog', { name: 'Keyboard shortcuts' });
+      expect(dialog).toHaveTextContent('Cycle objects');
+      expect(dialog).toHaveTextContent('Crop cells');
+      expect(dialog).toHaveTextContent('Toggle this help');
+    });
+
+    it("'?' is inert while the per-frame editor is open", async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      fireEvent.click(screen.getByTestId(`alert-frame-cell-${T1}`));
+      await screen.findByTestId('image-modal');
+
+      fireEvent.keyDown(window, { key: '?' });
+
+      expect(screen.queryByRole('dialog', { name: 'Keyboard shortcuts' })).not.toBeInTheDocument();
+    });
+  });
+
   describe('reclassify', () => {
     it("navigates to the row's OWN lane in classify done mode, carrying a return to this page", async () => {
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });

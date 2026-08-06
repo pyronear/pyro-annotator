@@ -111,7 +111,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate, useLocation, useSearchParams, useMatch } from 'react-router-dom';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, PlayCircle, Plus, Upload } from 'lucide-react';
+import { ArrowLeft, Keyboard, PlayCircle, Plus, Upload } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { QUERY_KEYS } from '@/utils/constants';
 import { Detection, DetectionAnnotation, DetectionAnnotationBbox, SmokeType } from '@/types/api';
@@ -134,6 +134,7 @@ import {
   LocalizeObjectActions,
   LocalizeObjectRow,
   LocalizeRail,
+  LocalizeShortcutsModal,
 } from '@/components/localize';
 import { AlertFrameGrid, ViewToolbar } from '@/components/detection-sequence';
 import { LocalizeObjectEditor } from '@/components/localize/editor';
@@ -234,6 +235,8 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   // so the choice follows them from object to object instead of resetting on
   // every selection.
   const [cropExpanded, setCropExpanded] = useState(false);
+  // The keyboard-shortcuts help sheet, opened from the rail button or `?`.
+  const [showShortcutsModal, setShowShortcutsModal] = useState(false);
   // Opt-in read-only context: objects classify settled as false positives.
   // Off by default so the default view matches the queue's own rule; on, it
   // answers "is that plume already accounted for?" before someone adds a
@@ -1214,6 +1217,36 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     return () => document.removeEventListener('keydown', handleTab, true);
   });
 
+  // `?` toggles the shortcuts sheet and Escape closes it — the same pair
+  // classify's createKeyboardHandler answers. Suspended under the same
+  // surfaces as the Tab cycle, and while typing in a field. Same
+  // deliberately-absent dependency array as the Tab handler above:
+  // re-subscribing every render keeps the closure fresh.
+  useEffect(() => {
+    const handleShortcutKeys = (e: KeyboardEvent) => {
+      if (detectionIdNum != null || addObjectPickerOpen || missedSmokeConfirm) return;
+      // Shift stays allowed: `?` requires it.
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const target = e.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+      )
+        return;
+      if (e.key === '?') {
+        setShowShortcutsModal(prev => !prev);
+        e.preventDefault();
+        return;
+      }
+      if (e.key === 'Escape' && showShortcutsModal) {
+        setShowShortcutsModal(false);
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('keydown', handleShortcutKeys);
+    return () => window.removeEventListener('keydown', handleShortcutKeys);
+  });
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-96">
@@ -1417,29 +1450,39 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
             // The toggle governs which object ROWS exist, so it belongs with
             // Objects rather than with the frame grid's view controls.
             headerAction={
-              <button
-                type="button"
-                aria-pressed={showFalsePositives}
-                disabled={falsePositiveLaneCount === 0}
-                onClick={handleToggleFalsePositives}
-                title={
-                  falsePositiveLaneCount === 0
-                    ? 'This alert has no false-positive objects'
-                    : 'Show objects classify settled as false positives, as read-only context'
-                }
-                className={`inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 font-body text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                  showFalsePositives
-                    ? 'border-char bg-ash text-char'
-                    : 'border-line bg-paper text-haze hover:text-char'
-                }`}
-              >
-                False positives
-                {falsePositiveLaneCount > 0 && (
-                  <span className="font-data text-[10px] font-semibold">
-                    {falsePositiveLaneCount}
-                  </span>
-                )}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  aria-pressed={showFalsePositives}
+                  disabled={falsePositiveLaneCount === 0}
+                  onClick={handleToggleFalsePositives}
+                  title={
+                    falsePositiveLaneCount === 0
+                      ? 'This alert has no false-positive objects'
+                      : 'Show objects classify settled as false positives, as read-only context'
+                  }
+                  className={`inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 font-body text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                    showFalsePositives
+                      ? 'border-char bg-ash text-char'
+                      : 'border-line bg-paper text-haze hover:text-char'
+                  }`}
+                >
+                  False positives
+                  {falsePositiveLaneCount > 0 && (
+                    <span className="font-data text-[10px] font-semibold">
+                      {falsePositiveLaneCount}
+                    </span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowShortcutsModal(true)}
+                  className="p-1.5 rounded-lg border border-line bg-paper text-haze hover:bg-ash"
+                  title="Show keyboard shortcuts (?)"
+                >
+                  <Keyboard className="w-4 h-4" />
+                </button>
+              </div>
             }
             missedSmoke={
               <LocalizeMissedSmokeRow
@@ -1653,6 +1696,10 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
         toastType={toastType}
         onDismiss={dismissToast}
       />
+
+      {showShortcutsModal && (
+        <LocalizeShortcutsModal onClose={() => setShowShortcutsModal(false)} />
+      )}
     </>
   );
 }

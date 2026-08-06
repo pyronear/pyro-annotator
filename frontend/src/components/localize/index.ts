@@ -8,3 +8,5 @@ export { LocalizeObjectActions } from './LocalizeObjectActions';
 export type { LocalizeObjectActionsProps } from './LocalizeObjectActions';
 export { LocalizeMissedSmokeRow } from './LocalizeMissedSmokeRow';
 export type { LocalizeMissedSmokeRowProps } from './LocalizeMissedSmokeRow';
+export { LocalizeShortcutsModal } from './LocalizeShortcutsModal';
+export type { LocalizeShortcutsModalProps } from './LocalizeShortcutsModal';
