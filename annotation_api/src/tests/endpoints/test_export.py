@@ -521,3 +521,86 @@ async def test_export_alerts_omits_unsure_lanes(
     items = resp.json()["items"]
     assert [i["platform_alert_id"] for i in items] == [7303]
     assert [o["sequence_id"] for o in items[0]["objects"]] == [sure_seq]
+
+
+async def seed_minimal_fp_alert(client: AsyncClient, *, platform_alert_id: int) -> int:
+    """Smallest finished alert: one FP lane, one frame. Returns sequence id."""
+    seq_id = await create_lane(
+        client, platform_alert_id=platform_alert_id, alert_api_id=platform_alert_id
+    )
+    det_id = await create_frame(client, sequence_id=seq_id, alert_api_id=1)
+    await annotate_lane(
+        client,
+        sequence_id=seq_id,
+        detection_ids=[det_id],
+        is_smoke=False,
+        false_positive_types=["antenna"],
+    )
+    return seq_id
+
+
+@pytest.mark.asyncio
+async def test_export_alerts_cursor_pagination(
+    authenticated_client: AsyncClient,
+    sequence_session,
+    detection_session,
+    dummy_bucket,
+):
+    for pid in (7401, 7402, 7403):
+        await seed_minimal_fp_alert(authenticated_client, platform_alert_id=pid)
+
+    # Page 1
+    r1 = await authenticated_client.get("/export/alerts", params={"limit": 2})
+    assert r1.status_code == 200
+    body1 = r1.json()
+    assert [i["platform_alert_id"] for i in body1["items"]] == [7401, 7402]
+    assert body1["next_cursor"] == "pyronear_french:7402"
+
+    # Idempotency: same request, same page
+    r1b = await authenticated_client.get("/export/alerts", params={"limit": 2})
+    assert [i["platform_alert_id"] for i in r1b.json()["items"]] == [7401, 7402]
+
+    # Page 2: strictly after the cursor, short page -> null cursor
+    r2 = await authenticated_client.get(
+        "/export/alerts", params={"limit": 2, "cursor": body1["next_cursor"]}
+    )
+    body2 = r2.json()
+    assert [i["platform_alert_id"] for i in body2["items"]] == [7403]
+    assert body2["next_cursor"] is None
+
+
+@pytest.mark.asyncio
+async def test_export_alerts_full_last_page_then_empty(
+    authenticated_client: AsyncClient,
+    sequence_session,
+    detection_session,
+    dummy_bucket,
+):
+    """A page that is exactly `limit` long returns a cursor; the follow-up
+    page is empty with a null cursor."""
+    for pid in (7411, 7412):
+        await seed_minimal_fp_alert(authenticated_client, platform_alert_id=pid)
+
+    r1 = await authenticated_client.get("/export/alerts", params={"limit": 2})
+    body1 = r1.json()
+    assert len(body1["items"]) == 2
+    assert body1["next_cursor"] == "pyronear_french:7412"
+
+    r2 = await authenticated_client.get(
+        "/export/alerts", params={"limit": 2, "cursor": body1["next_cursor"]}
+    )
+    body2 = r2.json()
+    assert body2["items"] == []
+    assert body2["next_cursor"] is None
+
+
+@pytest.mark.asyncio
+async def test_export_alerts_malformed_cursor_422(
+    authenticated_client: AsyncClient,
+    sequence_session,
+    detection_session,
+    dummy_bucket,
+):
+    for bad in ("nonsense", "pyronear_french", "pyronear_french:abc", "mars_api:12"):
+        resp = await authenticated_client.get("/export/alerts", params={"cursor": bad})
+        assert resp.status_code == 422, bad
