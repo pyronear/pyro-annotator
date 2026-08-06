@@ -342,7 +342,7 @@ export default function SequenceGroupsListPage({
                           return (
                             <div
                               key={i}
-                              className="relative w-14 shrink-0 aspect-video overflow-hidden rounded bg-ash"
+                              className="relative w-14 shrink-0 aspect-video overflow-hidden bg-ash"
                             >
                               {t && (
                                 <BboxCrop
