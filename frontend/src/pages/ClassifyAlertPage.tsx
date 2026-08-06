@@ -1188,13 +1188,13 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
                 </button>
               }
               footer={
-                <div className="flex items-center justify-center gap-2">
+                <div className="flex items-center gap-2">
                   <button
                     ref={railSubmitRef}
                     onClick={handleSubmit}
                     disabled={!canSubmit || submitMutation.isPending}
                     data-testid="rail-submit"
-                    className="flex items-center justify-center rounded-lg bg-pine px-5 py-2.5 font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex flex-1 items-center justify-center rounded-lg bg-pine px-5 py-2.5 font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     title={submitTitle}
                   >
                     {submitMutation.isPending ? (

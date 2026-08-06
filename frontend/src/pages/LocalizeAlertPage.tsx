@@ -1556,7 +1556,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                       to unlock submit.
                     </div>
                   )}
-                  <div className="flex items-center justify-center gap-2">
+                  <div className="flex items-center gap-2">
                     {/* The tooltip carries the gate's explanation, which used to
                       be a line of copy under the button. Hovering the thing
                       you can't click is where the question gets asked, and it
@@ -1565,7 +1565,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                       bug once every row looks handled but one still has a
                       pending frame. Above, because the footer is the last
                       thing in a rail that scrolls. */}
-                    <Tooltip placement="above" tip={submitTooltip}>
+                    <Tooltip placement="above" className="flex-1" tip={submitTooltip}>
                       <button
                         type="button"
                         onClick={e => {
@@ -1573,7 +1573,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                           handleSubmitClick();
                         }}
                         disabled={submitBlocked || submitAlert.isPending}
-                        className="flex items-center justify-center rounded-lg bg-pine px-5 py-2.5 text-center font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="flex w-full items-center justify-center rounded-lg bg-pine px-5 py-2.5 text-center font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {submitAlert.isPending ? (
                           <div className="w-3.5 h-3.5 mr-1.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
