@@ -3,6 +3,8 @@
 # This program is licensed under the Apache License 2.0.
 # See LICENSE or go to <https://www.apache.org/licenses/LICENSE-2.0> for full license details.
 
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -11,7 +13,13 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.auth.dependencies import get_current_superuser
 from app.db import get_session
 from app.models import AlertApiConnector, AlertApiConnectorOrganization, User
-from app.schemas.connector import ConnectorCreate, ConnectorRead, ConnectorUpdate
+from app.schemas.connector import (
+    ConnectorCreate,
+    ConnectorRead,
+    ConnectorUpdate,
+    VerifyResult,
+)
+from app.services.connector_verify import verify_connector
 from app.services.secrets import SecretKeyMissingError, encrypt_secret
 
 router = APIRouter()
@@ -153,3 +161,15 @@ async def delete_connector(
     connector = await _get_or_404(session, connector_id)
     await session.delete(connector)
     await session.commit()
+
+
+@router.post("/{connector_id}/verify", response_model=VerifyResult)
+async def verify(
+    connector_id: int,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_superuser),
+) -> VerifyResult:
+    """Test the credential, discover organizations, and report how many of them
+    actually appear in a one-day sample listing."""
+    connector = await _get_or_404(session, connector_id)
+    return await verify_connector(session, connector, today=datetime.now(UTC).date())
