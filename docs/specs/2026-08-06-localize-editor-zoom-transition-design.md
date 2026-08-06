@@ -1,7 +1,18 @@
 # Localize editor zoom transition
 
 Date: 2026-08-06
-Status: approved, not implemented
+Status: implemented
+
+## Amendments from use
+
+- Overlay geometry inside the editor must be computed from LAYOUT metrics
+  (`offsetWidth`/`offsetHeight`), never `getBoundingClientRect()`. The cached
+  frame image loads and renders its box overlays while the entrance animation
+  is still scaling the root, so the rect is the transformed visual size at
+  that moment — boxes measured from it came out ~6× too small and stuck that
+  way, since nothing re-renders after the animation ends. `getImageInfo` was
+  the one measurement on the rect path; `handleImageLoad` already knew this
+  trap.
 
 ## Problem
 

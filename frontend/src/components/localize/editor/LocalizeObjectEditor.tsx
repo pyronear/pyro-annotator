@@ -507,12 +507,17 @@ export function LocalizeObjectEditor({
     transform: { zoomLevel: number; panOffset: Point; transformOrigin: Point };
   } | null => {
     if (!imgRef.current || !containerRef.current) return null;
-    const containerRect = containerRef.current.getBoundingClientRect();
+    const container = containerRef.current;
+    const containerRect = container.getBoundingClientRect();
     return {
       containerOffset: { x: containerRect.left, y: containerRect.top },
+      // LAYOUT metrics for the bounds — same trap as handleImageLoad: while
+      // the open/close animation scales the editor root, the rect is the
+      // transformed visual size, and overlays computed from it during that
+      // window keep the garbage geometry after the animation ends.
       imageBounds: calculateImageBounds({
-        containerWidth: containerRect.width,
-        containerHeight: containerRect.height,
+        containerWidth: container.offsetWidth,
+        containerHeight: container.offsetHeight,
         imageNaturalWidth: imgRef.current.naturalWidth,
         imageNaturalHeight: imgRef.current.naturalHeight,
       }),
