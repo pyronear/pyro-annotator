@@ -114,12 +114,19 @@ import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/rea
 import { ArrowLeft, Keyboard, PlayCircle, Plus, Upload } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { QUERY_KEYS } from '@/utils/constants';
-import { Detection, DetectionAnnotation, DetectionAnnotationBbox, SmokeType } from '@/types/api';
+import {
+  ApiError,
+  Detection,
+  DetectionAnnotation,
+  DetectionAnnotationBbox,
+  SmokeType,
+} from '@/types/api';
 import {
   buildAlertFrameModel,
   findFrameByDetectionId,
   AlertObjectStatus,
 } from '@/utils/annotation/alertLocalizeUtils';
+import { materializeGapFrame } from '@/utils/annotation/gapFrameMaterialize';
 import { laneNeedsLocalization } from '@/utils/annotation/localizeUtils';
 import {
   buildQuickSubmitPlan,
@@ -613,6 +620,77 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     },
   });
 
+  // Draw on a gap frame (issue #287): materialize the Detection, then save
+  // the drawn box to it. Navigation to the new frame waits for the detections
+  // refetch, so the editor never opens an id the loaded data cannot back.
+  const materializeAndCommit = useMutation({
+    mutationFn: (params: {
+      laneId: number;
+      recordedAt: string;
+      items: DetectionAnnotationBbox[];
+    }) => materializeGapFrame(params),
+    onSuccess: async ({ detection }, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: QUERY_KEYS.SEQUENCE_DETECTIONS(variables.laneId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: [...QUERY_KEYS.DETECTION_ANNOTATIONS, 'by-sequence', variables.laneId],
+        }),
+      ]);
+      navigateModalTo(detection.id);
+    },
+    onError: (_error, variables) => {
+      // The materialize may have landed with only the save failing; refetch
+      // so a now-real frame renders as a boxless in-object frame, not a gap.
+      queryClient.invalidateQueries({
+        queryKey: QUERY_KEYS.SEQUENCE_DETECTIONS(variables.laneId),
+      });
+      showToastNotification('Failed to save frame — try again', 'error');
+    },
+  });
+
+  // Un-materialize (issue #287): remove an evidence-free frame from the lane.
+  // The URL names the open detection, so step off it before the refetch drops
+  // the row; the frame reverts to a gap in the filmstrip.
+  const unmaterializeFrame = useMutation({
+    mutationFn: (params: {
+      laneId: number;
+      detection: Detection;
+      // Captured at press time: by the time the 409 fallback runs, the open
+      // frame (and modalContext) may already be a different detection.
+      existingAnnotation: DetectionAnnotation | null;
+    }) => apiClient.unmaterializeFrame(params.laneId, params.detection.id),
+    onSuccess: async (_result, variables) => {
+      const remaining = laneDetectionsSorted.filter(d => d.id !== variables.detection.id);
+      const target =
+        [...remaining].reverse().find(d => d.recorded_at < variables.detection.recorded_at) ??
+        remaining[0];
+      if (target) navigateModalTo(target.id);
+      await queryClient.invalidateQueries({
+        queryKey: QUERY_KEYS.SEQUENCE_DETECTIONS(variables.laneId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: [...QUERY_KEYS.DETECTION_ANNOTATIONS, 'by-sequence', variables.laneId],
+      });
+    },
+    onError: (error, variables) => {
+      // The server's guards (model evidence, last frame) refuse with 409;
+      // fall back to the ordinary confirmed-empty clear so the annotator's
+      // intent still lands.
+      if ((error as unknown as ApiError).status === 409) {
+        saveDetection.mutate({
+          laneId: variables.laneId,
+          detectionId: variables.detection.id,
+          existingAnnotation: variables.existingAnnotation,
+          items: [],
+        });
+        return;
+      }
+      showToastNotification('Failed to remove frame — try again', 'error');
+    },
+  });
+
   // The alert-level missed-smoke flag. Written from two places: the rail's
   // own Yes/No row, and the soft-confirm's "Submit & clear flag" path.
   const setMissedSmokeFlag = useMutation({
@@ -645,6 +723,20 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       detectionId: detection.id,
       existingAnnotation: modalContext.existingAnnotation,
       items,
+    });
+  };
+
+  const handleEditorCommitGapFrame = (recordedAt: string, items: DetectionAnnotationBbox[]) => {
+    if (!modalContext) return;
+    materializeAndCommit.mutate({ laneId: modalContext.laneId, recordedAt, items });
+  };
+
+  const handleEditorUnmaterialize = (detection: Detection) => {
+    if (!modalContext) return;
+    unmaterializeFrame.mutate({
+      laneId: modalContext.laneId,
+      detection,
+      existingAnnotation: modalContext.existingAnnotation,
     });
   };
 
@@ -1670,9 +1762,15 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
           laneAnnotations={annotationsByLaneId[modalContext.laneId] ?? []}
           alertFrames={frameModel.frames}
           objectOverlays={objectOverlays}
-          isSaving={saveDetection.isPending}
+          isSaving={
+            saveDetection.isPending ||
+            materializeAndCommit.isPending ||
+            unmaterializeFrame.isPending
+          }
           isAccepting={quickAcceptLane.isPending}
           onCommit={handleEditorCommit}
+          onCommitGapFrame={handleEditorCommitGapFrame}
+          onUnmaterialize={handleEditorUnmaterialize}
           onAcceptRemaining={() => quickAcceptLane.mutate(modalContext.laneId)}
           onReclassify={() => handleReclassify(modalContext.laneId)}
           onNavigateToDetection={navigateModalTo}
