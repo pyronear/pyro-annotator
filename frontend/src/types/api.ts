@@ -43,6 +43,13 @@ export interface LocalizationQueueLane {
   auto_annotated_at: string | null;
 }
 
+// Skip metadata carried on skipped=true queue rows and returned by skipAlert.
+export interface AlertSkipInfo {
+  skipped_at: string;
+  skipped_by: string | null;
+  note: string | null;
+}
+
 // One alert ready for smoke localization (queue row).
 export interface LocalizationQueueItem {
   source_api: string;
@@ -52,6 +59,7 @@ export interface LocalizationQueueItem {
   azimuth: number | null;
   recorded_at: string;
   lanes: LocalizationQueueLane[];
+  skip?: AlertSkipInfo | null;
 }
 
 // One alert with at least one localized (ANNOTATED, rule-matching) smoke
@@ -95,6 +103,7 @@ export interface ClassifyQueueItem {
   primary_sequence_id: number;
   total_objects: number;
   classified_objects: number;
+  skip?: AlertSkipInfo | null;
 }
 
 // One classified object-sequence of a done alert (outcome-relevant fields only).

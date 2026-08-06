@@ -113,7 +113,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate, useLocation, useSearchParams, useMatch } from 'react-router-dom';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Keyboard, PlayCircle, Plus, Upload } from 'lucide-react';
+import { ArrowLeft, Keyboard, PlayCircle, Plus, Upload, X } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { QUERY_KEYS } from '@/utils/constants';
 import {
@@ -264,6 +264,8 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   // Submit after "Submit anyway" goes straight through instead of re-asking
   // the same question).
   const [missedSmokeConfirm, setMissedSmokeConfirm] = useState(false);
+  const [skipConfirmOpen, setSkipConfirmOpen] = useState(false);
+  const [skipNote, setSkipNote] = useState('');
   const [softConfirmResolved, setSoftConfirmResolved] = useState(false);
   // "+ Add object": lane ids spawned via the picker this session (feeds the
   // soft-confirm gate below) and whether the picker is currently open.
@@ -1061,6 +1063,34 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     },
   });
 
+  // Escape hatch (spec: alert-skip-escape-hatch): park the whole alert when
+  // the current UI cannot express it, then move on. Queue mode only.
+  const skipAlertMutation = useMutation({
+    mutationFn: () => {
+      if (!sequence) throw new Error('Alert not loaded');
+      return apiClient.skipAlert(
+        sequence.source_api,
+        sequence.platform_alert_id,
+        skipNote.trim() || undefined
+      );
+    },
+    onSuccess: () => {
+      setSkipConfirmOpen(false);
+      setSkipNote('');
+      queryClient.invalidateQueries({ queryKey: ['localization-queue'] });
+      queryClient.invalidateQueries({ queryKey: ['localization-queue-skipped-count'] });
+      queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });
+      queryClient.invalidateQueries({ queryKey: alertDetailQueryKey });
+      showToastNotification('Alert skipped', 'success');
+      navigate(listPath);
+    },
+    onError: err => {
+      const detail = (err as { detail?: string })?.detail || (err as Error)?.message || '';
+      showToastNotification(detail ? `Skip failed: ${detail}` : 'Skip failed — try again', 'error');
+    },
+  });
+
   // The missed-smoke soft-confirm ("you flagged missed smoke but added no
   // object") is the only gate left in front of submit — the old two-step
   // no-box warning went away with the bulk-accept-on-submit it guarded:
@@ -1852,7 +1882,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                       to unlock submit.
                     </div>
                   )}
-                  <div className="flex justify-center">
+                  <div className="flex items-center gap-2">
                     {/* The tooltip carries the gate's explanation, which used to
                       be a line of copy under the button. Hovering the thing
                       you can't click is where the question gets asked, and it
@@ -1861,7 +1891,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                       bug once every row looks handled but one still has a
                       pending frame. Above, because the footer is the last
                       thing in a rail that scrolls. */}
-                    <Tooltip placement="above" tip={submitTooltip}>
+                    <Tooltip placement="above" className="flex-1" tip={submitTooltip}>
                       <button
                         type="button"
                         onClick={e => {
@@ -1869,7 +1899,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                           handleSubmitClick();
                         }}
                         disabled={submitBlocked || submitAlert.isPending}
-                        className="flex items-center justify-center rounded-lg bg-pine px-5 py-2.5 text-center font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="flex w-full items-center justify-center rounded-lg bg-pine px-5 py-2.5 text-center font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {submitAlert.isPending ? (
                           <div className="w-3.5 h-3.5 mr-1.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -1879,6 +1909,24 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                         Submit
                       </button>
                     </Tooltip>
+                    {mode !== 'done' && (
+                      <Tooltip
+                        placement="above"
+                        tip="Hard to annotate with the current tools? Park this whole alert — it leaves the queues for everyone until someone unskips it from the Skipped view."
+                      >
+                        <button
+                          type="button"
+                          onClick={e => {
+                            e.stopPropagation();
+                            setSkipConfirmOpen(true);
+                          }}
+                          data-testid="skip-alert-button"
+                          className="inline-flex items-center rounded-lg border border-ember bg-paper px-3 py-2.5 font-body text-sm font-medium text-ember hover:bg-ember-soft"
+                        >
+                          Skip alert
+                        </button>
+                      </Tooltip>
+                    )}
                   </div>
                 </div>
               )
@@ -1961,6 +2009,53 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                 className="inline-flex items-center justify-center rounded-lg px-4 py-2 font-body text-sm font-medium text-haze hover:text-char"
               >
                 Go back
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {skipConfirmOpen && (
+        <div
+          data-testid="skip-alert-confirm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-char/40 px-4"
+        >
+          <div className="w-full max-w-sm rounded-lg border border-line bg-paper p-5">
+            <div className="flex items-start justify-between">
+              <h2 className="font-body text-sm font-semibold text-char">Skip this alert?</h2>
+              <button
+                type="button"
+                onClick={() => setSkipConfirmOpen(false)}
+                aria-label="Close"
+                className="-mr-1.5 -mt-1.5 rounded-md p-1.5 hover:bg-ash"
+              >
+                <X className="h-4 w-4 text-haze" />
+              </button>
+            </div>
+            <p className="mt-1 font-body text-xs text-haze">
+              The whole alert leaves the queue for everyone until someone unskips it.
+            </p>
+            <label
+              htmlFor="skip-note"
+              className="mt-3 block font-body text-xs font-medium text-haze"
+            >
+              Why is it hard to annotate? (optional)
+            </label>
+            <textarea
+              id="skip-note"
+              value={skipNote}
+              onChange={e => setSkipNote(e.target.value)}
+              rows={3}
+              className="mt-1 w-full rounded-lg border border-line bg-paper p-2 font-body text-sm text-char"
+            />
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={() => skipAlertMutation.mutate()}
+                disabled={skipAlertMutation.isPending}
+                className="inline-flex items-center rounded-lg bg-pine px-3 py-2 font-body text-sm font-semibold text-white hover:brightness-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Skip alert
               </button>
             </div>
           </div>

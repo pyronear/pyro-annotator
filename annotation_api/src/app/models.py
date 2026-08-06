@@ -16,6 +16,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
 __all__ = [
+    "AlertSkip",
     "Detection",
     "DetectionAnnotation",
     "Sequence",
@@ -472,6 +473,35 @@ class SequenceAnnotationContribution(SQLModel, table=True):
         default_factory=lambda: datetime.now(UTC),
         sa_column=Column(DateTime(timezone=True)),
     )
+
+
+class AlertSkip(SQLModel, table=True):
+    """Overlay marking a whole alert (source_api, platform_alert_id) as skipped.
+
+    Skip = insert a row, unskip = delete it; lane state is never touched, so
+    unskip returns the alert to exactly where it was
+    (docs/specs/2026-08-05-alert-skip-escape-hatch-design.md).
+    """
+
+    __tablename__ = "alert_skips"
+    __table_args__ = (
+        UniqueConstraint("source_api", "platform_alert_id", name="uq_alert_skip_alert"),
+    )
+
+    id: int = Field(
+        default=None, primary_key=True, sa_column_kwargs={"autoincrement": True}
+    )
+    source_api: SourceApi
+    platform_alert_id: int = Field(sa_type=BigInteger)
+    skipped_by_user_id: Optional[int] = Field(
+        default=None,
+        sa_column=Column(ForeignKey("users.id", ondelete="SET NULL")),
+    )
+    skipped_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        sa_column=Column(DateTime(timezone=True)),
+    )
+    note: Optional[str] = Field(default=None)
 
 
 class DetectionAnnotationContribution(SQLModel, table=True):

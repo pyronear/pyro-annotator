@@ -27,6 +27,7 @@ import {
   LocalizeDoneQueueItem,
   AlertDetail,
   AlertLane,
+  AlertSkipInfo,
   SmokeType,
   AnnotationType,
   ClassifyQueueItem,
@@ -172,7 +173,7 @@ class ApiClient {
 
   // Alerts ready for smoke localization (alert-grouped Localize queue)
   async getLocalizationQueue(
-    params: { page?: number; size?: number } = {}
+    params: { page?: number; size?: number; skipped?: boolean } = {}
   ): Promise<PaginatedResponse<LocalizationQueueItem>> {
     const response: AxiosResponse<PaginatedResponse<LocalizationQueueItem>> = await this.client.get(
       `${API_ENDPOINTS.SEQUENCES}localization-queue`,
@@ -209,6 +210,27 @@ class ApiClient {
     return response.data;
   }
 
+  // Park a whole alert in the recoverable skipped state (escape hatch for
+  // alerts the current UI cannot express).
+  async skipAlert(
+    sourceApi: string,
+    platformAlertId: number,
+    note?: string
+  ): Promise<AlertSkipInfo> {
+    const response: AxiosResponse<AlertSkipInfo> = await this.client.post(
+      `${API_ENDPOINTS.SEQUENCES}alert/skip`,
+      { source_api: sourceApi, platform_alert_id: platformAlertId, note: note ?? null }
+    );
+    return response.data;
+  }
+
+  // Unskip — the alert reappears in whichever queue its stages qualify it for.
+  async unskipAlert(sourceApi: string, platformAlertId: number): Promise<void> {
+    await this.client.delete(`${API_ENDPOINTS.SEQUENCES}alert/skip`, {
+      params: { source_api: sourceApi, platform_alert_id: platformAlertId },
+    });
+  }
+
   // Issue #287: materialize a gap frame into a lane so a human can box it.
   // Idempotent — returns the existing detection when the lane already has one
   // at this recorded_at.
@@ -236,6 +258,7 @@ class ApiClient {
       source_api?: string;
       recorded_at_gte?: string;
       recorded_at_lte?: string;
+      skipped?: boolean;
     } = {}
   ): Promise<PaginatedResponse<ClassifyQueueItem>> {
     const response: AxiosResponse<PaginatedResponse<ClassifyQueueItem>> = await this.client.get(
