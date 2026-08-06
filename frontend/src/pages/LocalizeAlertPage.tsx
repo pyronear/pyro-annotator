@@ -1241,6 +1241,22 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       if (e.key === 'Escape' && showShortcutsModal) {
         setShowShortcutsModal(false);
         e.preventDefault();
+        return;
+      }
+      // The sheet is a surface of its own, like the overlays above: while it
+      // is up, only `?` and Escape act.
+      if (showShortcutsModal) return;
+      const key = e.key.toLowerCase();
+      if (key === 's' || key === 'm' || key === 'l') {
+        handleCardSizeChange(key === 's' ? 'sm' : key === 'm' ? 'md' : 'lg');
+        e.preventDefault();
+        return;
+      }
+      // Same gate as the PlayCircle button's render condition: no target
+      // object, nothing to loop.
+      if (key === 'p' && canShowCrop) {
+        setCropExpanded(prev => !prev);
+        e.preventDefault();
       }
     };
     window.addEventListener('keydown', handleShortcutKeys);

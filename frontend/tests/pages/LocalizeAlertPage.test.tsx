@@ -2745,6 +2745,75 @@ describe('LocalizeAlertPage', () => {
     });
   });
 
+  describe('page view keys', () => {
+    const arrive = async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      await waitFor(() =>
+        expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/101')
+      );
+    };
+
+    it("'l' switches to large cards", async () => {
+      await arrive();
+      fireEvent.keyDown(window, { key: 'l' });
+      expect(screen.getByTitle('Large cards')).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it("'M' (uppercase) switches to medium cards", async () => {
+      // NOT 'S': the arrival focus-mode override already presses Small, so an
+      // 'S' assertion would pass before the key exists. Medium starts
+      // unpressed under the override, so this genuinely fails first.
+      await arrive();
+      fireEvent.keyDown(window, { key: 'M' });
+      expect(screen.getByTitle('Medium cards')).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it("'p' opens and closes the cropped loop", async () => {
+      await arrive();
+      fireEvent.keyDown(window, { key: 'p' });
+      expect(screen.getByTestId('cropped-image-sequence')).toBeInTheDocument();
+      fireEvent.keyDown(window, { key: 'p' });
+      expect(screen.queryByTestId('cropped-image-sequence')).not.toBeInTheDocument();
+    });
+
+    it("'p' is inert when the active object has no boxes", async () => {
+      // Boxless variants of BOTH lanes, so wherever arrival lands, canShowCrop
+      // stays false (mirrors the button's own withheld state).
+      vi.mocked(apiClient.getSequenceDetections).mockImplementation(async (id: number) => {
+        if (id === 101)
+          return [{ ...makeDetection(1001, T1), auto_predictions: { predictions: [] } }];
+        if (id === 102)
+          return [
+            { ...makeDetection(1002, T1), auto_predictions: { predictions: [] } },
+            { ...makeDetection(1003, T2), auto_predictions: { predictions: [] } },
+          ];
+        return [];
+      });
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      await waitFor(() =>
+        expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/')
+      );
+      expect(screen.queryByRole('button', { name: 'Cropped view' })).not.toBeInTheDocument();
+      fireEvent.keyDown(window, { key: 'p' });
+      expect(screen.queryByTestId('cropped-image-sequence')).not.toBeInTheDocument();
+    });
+
+    it('size keys are inert while the add-object picker is open', async () => {
+      await arrive();
+      answerMissedSmokeYes();
+      fireEvent.click(screen.getByRole('button', { name: 'Add object' }));
+      fireEvent.keyDown(window, { key: 'l' });
+      expect(screen.getByTitle('Large cards')).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('size keys are inert while the shortcuts sheet is open', async () => {
+      await arrive();
+      fireEvent.keyDown(window, { key: '?' });
+      fireEvent.keyDown(window, { key: 'l' });
+      expect(screen.getByTitle('Large cards')).toHaveAttribute('aria-pressed', 'false');
+    });
+  });
+
   describe('reclassify', () => {
     it("navigates to the row's OWN lane in classify done mode, carrying a return to this page", async () => {
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
