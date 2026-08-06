@@ -16,6 +16,7 @@ __all__ = [
     "SequenceGroupRead",
     "SequenceGroupListItem",
     "SequenceGroupMember",
+    "SequenceGroupThumbnail",
     "SequenceGroupReadWithMembers",
     "SequenceGroupUpdate",
 ]
@@ -75,6 +76,17 @@ class SequenceGroupMember(BaseModel):
     first_detection_algo_predictions: Optional[dict] = None
 
 
+class SequenceGroupThumbnail(BaseModel):
+    """One member-sequence preview for the groups list: the member's first
+    detection, presigned for direct <img> use, plus the union of that
+    frame's valid prediction boxes as a crop target (None when the frame
+    has no valid boxes — the UI falls back to representative_bbox)."""
+
+    detection_id: int
+    url: str
+    bbox_xyxyn: Optional[List[float]] = None
+
+
 class SequenceGroupListItem(BaseModel):
     """Lightweight row for the groups list page; includes member_count to
     avoid an N+1 in the UI."""
@@ -99,6 +111,9 @@ class SequenceGroupListItem(BaseModel):
     # Distinct humans who contributed to any member sequence's annotation,
     # ordered by first contribution. Hydrated after pagination, not in SQL.
     annotators: List[str] = []
+    # Up to 3 member previews (first/middle/last member by recorded_at,
+    # among members that have a detection).
+    thumbnails: List[SequenceGroupThumbnail] = []
 
 
 class SequenceGroupStats(BaseModel):

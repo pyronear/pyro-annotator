@@ -288,6 +288,14 @@ export interface SequenceGroupMember {
   first_detection_algo_predictions: AlgoPredictions | null;
 }
 
+export interface SequenceGroupThumbnail {
+  detection_id: number;
+  url: string;
+  // Crop box for the thumbnail; null when the frame has no valid
+  // prediction boxes — fall back to the group's representative_bbox.
+  bbox_xyxyn: [number, number, number, number] | null;
+}
+
 export interface SequenceGroupListItem {
   id: number;
   camera_id: number;
@@ -309,6 +317,8 @@ export interface SequenceGroupListItem {
   // Distinct humans who annotated any of the object's sightings, ordered by
   // first contribution. The worker's machine writes never appear.
   annotators: string[];
+  // Up to 3 member previews (first/middle/last member by recorded_at).
+  thumbnails: SequenceGroupThumbnail[];
 }
 
 export interface SequenceGroupStats {

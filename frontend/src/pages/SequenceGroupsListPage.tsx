@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Popover } from '@headlessui/react';
 import { Loader2, AlertCircle, Check, Info, Layers, ChevronRight } from 'lucide-react';
 import { apiClient } from '@/services/api';
+import { BboxCrop } from '@/components/annotation/BboxCrop';
 import { SequenceGroupStats } from '@/types/api';
 import { classifyGroup, classifyGroups, ROUTES, SequenceGroupsFilter } from '@/utils/routes';
 import { ColumnHeader } from '@/components/sequences/ColumnHeader';
@@ -269,6 +270,10 @@ export default function SequenceGroupsListPage({
               <thead className={THEAD_CLASSES}>
                 <tr>
                   <ColumnHeader
+                    label="Preview"
+                    tip="Crops of the object from three of its sightings — first, middle, and last"
+                  />
+                  <ColumnHeader
                     label="Camera"
                     tip="Camera that recorded the object's sightings"
                     sort={{
@@ -327,6 +332,27 @@ export default function SequenceGroupsListPage({
                     }}
                     className={ROW_CLASSES}
                   >
+                    <td className={CELL_CLASSES}>
+                      <div className="flex gap-1">
+                        {[0, 1, 2].map(i => {
+                          const t = g.thumbnails[i];
+                          return (
+                            <div
+                              key={i}
+                              className="relative w-14 shrink-0 aspect-video overflow-hidden bg-ash"
+                            >
+                              {t && (
+                                <BboxCrop
+                                  url={t.url}
+                                  box={t.bbox_xyxyn ?? g.representative_bbox.xyxyn}
+                                  loading="lazy"
+                                />
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </td>
                     <td className={CELL_CLASSES}>
                       <Link
                         to={classifyGroup(g.id)}
