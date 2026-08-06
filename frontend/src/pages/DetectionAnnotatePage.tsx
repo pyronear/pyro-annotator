@@ -5,6 +5,7 @@ import { Check } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { LocalizationQueueItem } from '@/types/api';
 import { LocalizeQueueTable, TablePagination } from '@/components/sequences';
+import { Tooltip } from '@/components/ui/Tooltip';
 import { TABLE_CARD_CLASSES } from '@/components/sequences/tableStyles';
 import { pickNextLocalizeLane } from '@/utils/annotation/localizeUtils';
 import { localizeDetail, ROUTES } from '@/utils/routes';
@@ -86,22 +87,24 @@ export default function DetectionAnnotatePage() {
             box around the smoke
           </p>
         </div>
-        <button
-          type="button"
-          aria-pressed={showSkipped}
-          onClick={() => {
-            setShowSkipped(v => !v);
-            setPage(1);
-          }}
-          className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 font-body text-sm font-medium ${
-            showSkipped
-              ? 'border-char bg-ash text-char'
-              : 'border-line bg-paper text-haze hover:bg-ash'
-          }`}
-        >
-          Skipped
-          <span className="font-data text-xs">{skippedCount ?? 0}</span>
-        </button>
+        <Tooltip tip="Alerts parked as skipped — too hard to annotate with the current tools. Toggle to review and unskip them.">
+          <button
+            type="button"
+            aria-pressed={showSkipped}
+            onClick={() => {
+              setShowSkipped(v => !v);
+              setPage(1);
+            }}
+            className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 font-body text-sm font-medium ${
+              showSkipped
+                ? 'border-char bg-ash text-char'
+                : 'border-line bg-paper text-haze hover:bg-ash'
+            }`}
+          >
+            Skipped
+            <span className="font-data text-xs">{skippedCount ?? 0}</span>
+          </button>
+        </Tooltip>
       </div>
 
       {items.length === 0 && showSkipped ? (

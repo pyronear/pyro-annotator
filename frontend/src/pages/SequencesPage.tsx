@@ -13,6 +13,7 @@ import {
 import { PAGINATION_OPTIONS } from '@/utils/constants';
 import { getStageFilterLabel, stageFilterIncludes } from '@/utils/processingStage';
 import FilterPopover from '@/components/filters/FilterPopover';
+import { Tooltip } from '@/components/ui/Tooltip';
 import {
   ClassifyAlertQueueTable,
   ClassifyDoneTable,
@@ -247,20 +248,24 @@ export default function SequencesPage({
 
   // Toggle between the live queue and the skipped backlog (queue mode only).
   const skippedToggle = isQueueMode ? (
-    <button
-      type="button"
-      aria-pressed={showSkipped}
-      onClick={() => {
-        setShowSkipped(v => !v);
-        setFilters({ ...filters, page: 1 });
-      }}
-      className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 font-body text-sm font-medium ${
-        showSkipped ? 'border-char bg-ash text-char' : 'border-line bg-paper text-haze hover:bg-ash'
-      }`}
-    >
-      Skipped
-      <span className="font-data text-xs">{skippedCount ?? 0}</span>
-    </button>
+    <Tooltip tip="Alerts parked as skipped — too hard to annotate with the current tools. Toggle to review and unskip them.">
+      <button
+        type="button"
+        aria-pressed={showSkipped}
+        onClick={() => {
+          setShowSkipped(v => !v);
+          setFilters({ ...filters, page: 1 });
+        }}
+        className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 font-body text-sm font-medium ${
+          showSkipped
+            ? 'border-char bg-ash text-char'
+            : 'border-line bg-paper text-haze hover:bg-ash'
+        }`}
+      >
+        Skipped
+        <span className="font-data text-xs">{skippedCount ?? 0}</span>
+      </button>
+    </Tooltip>
   ) : null;
 
   if (isLoading) {

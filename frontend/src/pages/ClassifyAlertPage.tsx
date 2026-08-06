@@ -49,6 +49,7 @@ import {
   ObjectRow,
 } from '@/components/classify';
 import { NotificationSystem } from '@/components/ui/NotificationSystem';
+import { Tooltip } from '@/components/ui/Tooltip';
 import { useToastNotifications } from '@/utils/notification/toastUtils';
 import { ROUTES, classifyDetail, classifyGroup, parseLocalizeReturn } from '@/utils/routes';
 import { formatDateTime } from '@/utils/datetime';
@@ -1187,13 +1188,13 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
                 </button>
               }
               footer={
-                <>
+                <div className="flex items-center justify-center gap-2">
                   <button
                     ref={railSubmitRef}
                     onClick={handleSubmit}
                     disabled={!canSubmit || submitMutation.isPending}
                     data-testid="rail-submit"
-                    className="mx-auto flex items-center justify-center rounded-lg bg-pine px-5 py-2.5 font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex items-center justify-center rounded-lg bg-pine px-5 py-2.5 font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     title={submitTitle}
                   >
                     {submitMutation.isPending ? (
@@ -1210,16 +1211,21 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
                     </kbd>
                   </button>
                   {mode !== 'done' && (
-                    <button
-                      type="button"
-                      onClick={() => setSkipConfirmOpen(true)}
-                      data-testid="rail-skip"
-                      className="mx-auto mt-2 flex items-center justify-center rounded-lg border border-line bg-paper px-3 py-1.5 font-body text-xs font-medium text-haze hover:bg-ash"
+                    <Tooltip
+                      placement="above"
+                      tip="Hard to annotate with the current tools? Park this whole alert — it leaves the queues for everyone until someone unskips it from the Skipped view."
                     >
-                      Skip alert
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => setSkipConfirmOpen(true)}
+                        data-testid="skip-alert-button"
+                        className="inline-flex items-center rounded-lg border border-ember bg-paper px-3 py-2.5 font-body text-sm font-medium text-ember hover:bg-ember-soft"
+                      >
+                        Skip alert
+                      </button>
+                    </Tooltip>
                   )}
-                </>
+                </div>
               }
             >
               {renderItems.map((item, i) => {

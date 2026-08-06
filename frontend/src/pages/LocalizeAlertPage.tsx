@@ -1556,7 +1556,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                       to unlock submit.
                     </div>
                   )}
-                  <div className="flex justify-center">
+                  <div className="flex items-center justify-center gap-2">
                     {/* The tooltip carries the gate's explanation, which used to
                       be a line of copy under the button. Hovering the thing
                       you can't click is where the question gets asked, and it
@@ -1583,22 +1583,25 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                         Submit
                       </button>
                     </Tooltip>
-                  </div>
-                  {mode !== 'done' && (
-                    <div className="mt-2 flex justify-center">
-                      <button
-                        type="button"
-                        onClick={e => {
-                          e.stopPropagation();
-                          setSkipConfirmOpen(true);
-                        }}
-                        data-testid="rail-skip"
-                        className="inline-flex items-center rounded-lg border border-line bg-paper px-3 py-1.5 font-body text-xs font-medium text-haze hover:bg-ash"
+                    {mode !== 'done' && (
+                      <Tooltip
+                        placement="above"
+                        tip="Hard to annotate with the current tools? Park this whole alert — it leaves the queues for everyone until someone unskips it from the Skipped view."
                       >
-                        Skip alert
-                      </button>
-                    </div>
-                  )}
+                        <button
+                          type="button"
+                          onClick={e => {
+                            e.stopPropagation();
+                            setSkipConfirmOpen(true);
+                          }}
+                          data-testid="skip-alert-button"
+                          className="inline-flex items-center rounded-lg border border-ember bg-paper px-3 py-2.5 font-body text-sm font-medium text-ember hover:bg-ember-soft"
+                        >
+                          Skip alert
+                        </button>
+                      </Tooltip>
+                    )}
+                  </div>
                 </div>
               )
             }
