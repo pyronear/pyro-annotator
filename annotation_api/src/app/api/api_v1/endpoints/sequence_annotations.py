@@ -929,6 +929,24 @@ _BULK_LOCKED_STAGES = {
 }
 
 
+def _labeled_member_stage(
+    smoke_type: Optional[SmokeType], is_unsure: bool
+) -> SequenceAnnotationProcessingStage:
+    """Stage a machine-written member annotation exits on when one label is
+    stamped across many sequences — the group fan-out and bulk-annotate.
+
+    Mirrors the two-lane exit a human classification takes (frontend:
+    `determineClassifySubmitStage`): a smoke label still owes localization
+    work, and an unsure write still gates its alert, so both park at
+    SEQ_ANNOTATION_DONE. An FP-only label owes nothing and exits at
+    ANNOTATED — `schedule_pending_auto_annotate` only advances lanes
+    matching the localization rule, so parking an FP member at
+    SEQ_ANNOTATION_DONE would strand it in no queue at all."""
+    if smoke_type is not None or is_unsure:
+        return SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE
+    return SequenceAnnotationProcessingStage.ANNOTATED
+
+
 def _is_classification_exit(annotation: SequenceAnnotation) -> bool:
     """Whether this save is the point where the lane's *classification*
     finishes — the one moment group propagation should fire.
@@ -1072,18 +1090,7 @@ async def _propagate_to_group_if_validated(
         min_cluster_size=1,
     )
 
-    # Members exit on the same two lanes a human classification does (mirrors
-    # `determineClassifySubmitStage` on the frontend): a smoke label still owes
-    # localization work, and an unsure fan-out still gates its alert, so both
-    # park at SEQ_ANNOTATION_DONE. An FP-only label owes nothing and goes
-    # straight out — `schedule_pending_auto_annotate` only advances lanes
-    # matching the localization rule, so parking an FP member at
-    # SEQ_ANNOTATION_DONE would strand it in no queue at all.
-    member_stage = (
-        SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE
-        if smoke_type is not None or group.is_unsure
-        else SequenceAnnotationProcessingStage.ANNOTATED
-    )
+    member_stage = _labeled_member_stage(smoke_type, group.is_unsure)
 
     for member_id in other_member_ids:
         existing = (
@@ -1128,8 +1135,11 @@ async def _propagate_to_group_if_validated(
             fanned_anno_id = existing.id
         # Fan-out carries the saving user's judgment onto the sibling
         # members; create/update only auto-record contributions at
-        # ANNOTATED, so attribute the write to them explicitly.
-        await annotations.record_contribution(fanned_anno_id, current_user_id)
+        # ANNOTATED, so attribute the write to them explicitly — but only
+        # when they didn't, or the member ends up with two rows for one
+        # gesture.
+        if member_stage != SequenceAnnotationProcessingStage.ANNOTATED:
+            await annotations.record_contribution(fanned_anno_id, current_user_id)
 
         # A member landing at ANNOTATED is finished, exactly as a hand-classified
         # FP lane is — give it the same detection annotations the classify
@@ -1511,6 +1521,8 @@ async def bulk_annotate_sequences(
     applied: List[SequenceAnnotationBulkResult] = []
     skipped: List[SequenceAnnotationBulkResult] = []
 
+    member_stage = _labeled_member_stage(payload.smoke_type, payload.is_unsure)
+
     for sid in payload.sequence_ids:
         seq = await session.get(Sequence, sid)
         if seq is None:
@@ -1560,12 +1572,13 @@ async def bulk_annotate_sequences(
                 has_missed_smoke=False,
                 is_unsure=payload.is_unsure,
                 annotation=generated,
-                processing_stage=SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
+                processing_stage=member_stage,
             )
             sequence_annotation = await annotations.create(create_data, current_user.id)
-            await annotations.record_contribution(
-                sequence_annotation.id, current_user.id
-            )
+            if member_stage != SequenceAnnotationProcessingStage.ANNOTATED:
+                await annotations.record_contribution(
+                    sequence_annotation.id, current_user.id
+                )
             applied.append(
                 SequenceAnnotationBulkResult(
                     sequence_id=sid,
@@ -1577,20 +1590,36 @@ async def bulk_annotate_sequences(
             update_data = SequenceAnnotationUpdate(
                 is_unsure=payload.is_unsure,
                 annotation=generated,
-                processing_stage=SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
+                processing_stage=member_stage,
             )
             sequence_annotation = await annotations.update(
                 existing.id, update_data, current_user.id
             )
-            await annotations.record_contribution(
-                sequence_annotation.id, current_user.id
-            )
+            if member_stage != SequenceAnnotationProcessingStage.ANNOTATED:
+                await annotations.record_contribution(
+                    sequence_annotation.id, current_user.id
+                )
             applied.append(
                 SequenceAnnotationBulkResult(
                     sequence_id=sid,
                     status="applied",
                     annotation_id=sequence_annotation.id,
                 )
+            )
+
+        # A sequence landing at ANNOTATED is finished, exactly as a
+        # hand-classified FP lane is — give it the same detection annotations
+        # the classify endpoints create on that transition. The flags are
+        # known by construction: member_stage is ANNOTATED only for an
+        # FP-only, not-unsure label.
+        if member_stage == SequenceAnnotationProcessingStage.ANNOTATED:
+            await auto_create_detection_annotations(
+                sequence_id=sid,
+                has_smoke=False,
+                has_missed_smoke=False,
+                has_false_positives=True,
+                session=session,
+                user_id=current_user.id,
             )
 
     # Write the label onto the group so future joiners inherit it. Only do
