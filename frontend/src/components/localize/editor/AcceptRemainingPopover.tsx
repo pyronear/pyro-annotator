@@ -23,10 +23,23 @@
  * accepting cannot invent a box for them, and they are what will keep the
  * alert off the submit gate afterwards, so the annotator should know before
  * rather than after.
+ *
+ * Below the loop, a bare single-object status strip shows the object's frames
+ * as they stand NOW — committed solid, acceptable faded, gaps outlined — so
+ * the faded segments are exactly what the button will fill. The frame counter
+ * and the strip's playhead follow the loop's reported position; the loop only
+ * plays frames that have boxes, so the counter visibly skips gap frames and
+ * the playhead never lands on an outlined segment.
  */
 
+import { useState } from 'react';
 import { X } from 'lucide-react';
 import CroppedImageSequence from '@/components/annotation/CroppedImageSequence';
+import {
+  ObjectStatusStrip,
+  type ObjectStatusStripStatus,
+} from '@/components/sequence-annotation/ObjectStatusStrip';
+import type { FilmstripEntry } from '@/utils/annotation/objectFilmstrip';
 import type { BoundingBox } from '@/types/api';
 
 export interface AcceptRemainingPopoverProps {
@@ -35,6 +48,8 @@ export interface AcceptRemainingPopoverProps {
   sequenceId: number;
   /** The lane's boxes as they would stand after accepting. */
   previewBoxes: BoundingBox[];
+  /** One entry per alert frame (chronological) — drives the status strip, the frame counter and the playhead. */
+  entries: FilmstripEntry[];
   /** Frames that will gain a box. */
   acceptCount: number;
   /** Frames that will still have none, because no source offers one. */
@@ -44,17 +59,37 @@ export interface AcceptRemainingPopoverProps {
   onCancel: () => void;
 }
 
+/** Pre-accept status of one alert frame, in ObjectStatusStrip's vocabulary. */
+function entryStatus(entry: FilmstripEntry): ObjectStatusStripStatus {
+  if (!entry.inObject) return 'absent';
+  if (entry.committedSource) return 'confirmed';
+  if (entry.availableSource) return 'pending';
+  return 'empty';
+}
+
 export function AcceptRemainingPopover({
   objectLabel,
   objectColor,
   sequenceId,
   previewBoxes,
+  entries,
   acceptCount,
   gapCount,
   isAccepting,
   onConfirm,
   onCancel,
 }: AcceptRemainingPopoverProps) {
+  // The frame the crop loop is showing, as reported by onFrameChange. Held
+  // as the detection id (not the loop index): the loop iterates only frames
+  // that have boxes, while the strip and counter span every alert frame.
+  const [loopDetectionId, setLoopDetectionId] = useState<number | null>(null);
+
+  const currentEntryIndex = entries.findIndex(e => e.inObject && e.detectionId === loopDetectionId);
+  const currentEntry = currentEntryIndex >= 0 ? entries[currentEntryIndex] : null;
+
+  const statusByTimestamp: Record<string, ObjectStatusStripStatus> = {};
+  for (const entry of entries) statusByTimestamp[entry.recordedAt] = entryStatus(entry);
+
   return (
     <div
       className="absolute left-1/2 top-full z-20 mt-2 w-[22rem] -translate-x-1/2 rounded-card border border-line bg-paper p-5 shadow-[0_8px_24px_rgba(32,38,31,0.12)]"
@@ -85,9 +120,19 @@ export function AcceptRemainingPopover({
       </p>
 
       <div className="mt-4">
-        <p className="mb-2 font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
-          What {objectLabel} ends up with
-        </p>
+        <div className="mb-2 flex items-baseline justify-between gap-2">
+          <p className="font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
+            What {objectLabel} ends up with
+          </p>
+          {currentEntry && (
+            <span
+              data-testid="accept-remaining-frame-counter"
+              className="whitespace-nowrap font-data text-detail tabular-nums text-haze"
+            >
+              Frame {currentEntryIndex + 1} of {entries.length}
+            </span>
+          )}
+        </div>
         <CroppedImageSequence
           bboxes={previewBoxes}
           sequenceId={sequenceId}
@@ -99,7 +144,17 @@ export function AcceptRemainingPopover({
           showBoxes
           maxSize="min(100%, 15rem)"
           className="mx-auto"
+          onFrameChange={(_index, detectionId) => setLoopDetectionId(detectionId ?? null)}
         />
+        <div className="mt-3">
+          <ObjectStatusStrip
+            variant="bare"
+            objects={[{ label: objectLabel, color: objectColor, statusByTimestamp }]}
+            playhead={
+              currentEntry ? { objectIndex: 0, timestamp: currentEntry.recordedAt } : undefined
+            }
+          />
+        </div>
       </div>
 
       {gapCount > 0 && (

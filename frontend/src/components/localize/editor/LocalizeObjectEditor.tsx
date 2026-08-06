@@ -815,6 +815,7 @@ export function LocalizeObjectEditor({
                   objectColor={objectColor}
                   sequenceId={laneSequenceId}
                   previewBoxes={previewBoxes}
+                  entries={entries}
                   acceptCount={acceptRemainingCount}
                   gapCount={gapCount}
                   isAccepting={isAccepting}
