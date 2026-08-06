@@ -604,3 +604,167 @@ async def test_export_alerts_malformed_cursor_422(
     for bad in ("nonsense", "pyronear_french", "pyronear_french:abc", "mars_api:12"):
         resp = await authenticated_client.get("/export/alerts", params={"cursor": bad})
         assert resp.status_code == 422, bad
+
+
+@pytest.mark.asyncio
+async def test_export_alerts_metadata_filters(
+    authenticated_client: AsyncClient,
+    sequence_session,
+    detection_session,
+    dummy_bucket,
+):
+    seq_a = await create_lane(
+        authenticated_client,
+        platform_alert_id=7501,
+        alert_api_id=7501,
+        camera_id=751,
+        camera_name="Cam A",
+        organisation_id=75,
+        organisation_name="Org A",
+    )
+    det_a = await create_frame(authenticated_client, sequence_id=seq_a, alert_api_id=1)
+    await annotate_lane(
+        authenticated_client,
+        sequence_id=seq_a,
+        detection_ids=[det_a],
+        is_smoke=False,
+        false_positive_types=["antenna"],
+    )
+    seq_b = await create_lane(
+        authenticated_client,
+        platform_alert_id=7502,
+        alert_api_id=7502,
+        camera_id=752,
+        camera_name="Cam B",
+        organisation_id=76,
+        organisation_name="Org B",
+    )
+    det_b = await create_frame(authenticated_client, sequence_id=seq_b, alert_api_id=1)
+    await annotate_lane(
+        authenticated_client,
+        sequence_id=seq_b,
+        detection_ids=[det_b],
+        is_smoke=False,
+        false_positive_types=["antenna"],
+    )
+
+    for params, expected in [
+        ({"organisation_name": "Org A"}, [7501]),
+        ({"organisation_id": 76}, [7502]),
+        ({"camera_name": "Cam A"}, [7501]),
+        ({"camera_id": 752}, [7502]),
+        ({"source_api": "pyronear_french"}, [7501, 7502]),
+        ({"source_api": "alert_wildfire"}, []),
+    ]:
+        resp = await authenticated_client.get("/export/alerts", params=params)
+        assert resp.status_code == 200, params
+        got = [i["platform_alert_id"] for i in resp.json()["items"]]
+        assert got == expected, params
+
+
+@pytest.mark.asyncio
+async def test_export_alerts_recorded_at_window(
+    authenticated_client: AsyncClient,
+    sequence_session,
+    detection_session,
+    dummy_bucket,
+):
+    old_time = now - timedelta(days=10)
+    seq_old = await create_lane(
+        authenticated_client,
+        platform_alert_id=7511,
+        alert_api_id=7511,
+        recorded_at=old_time,
+    )
+    det_old = await create_frame(
+        authenticated_client, sequence_id=seq_old, alert_api_id=1, recorded_at=old_time
+    )
+    await annotate_lane(
+        authenticated_client,
+        sequence_id=seq_old,
+        detection_ids=[det_old],
+        is_smoke=False,
+        false_positive_types=["antenna"],
+    )
+    await seed_minimal_fp_alert(authenticated_client, platform_alert_id=7512)
+
+    resp = await authenticated_client.get(
+        "/export/alerts",
+        params={"recorded_at_gte": (now - timedelta(days=1)).isoformat()},
+    )
+    assert [i["platform_alert_id"] for i in resp.json()["items"]] == [7512]
+
+    resp = await authenticated_client.get(
+        "/export/alerts",
+        params={"recorded_at_lte": (now - timedelta(days=1)).isoformat()},
+    )
+    assert [i["platform_alert_id"] for i in resp.json()["items"]] == [7511]
+
+
+@pytest.mark.asyncio
+async def test_export_alerts_type_filters(
+    authenticated_client: AsyncClient,
+    sequence_session,
+    detection_session,
+    dummy_bucket,
+):
+    # Alert 7521: FP lane (high_cloud). Alert 7522: smoke lane (wildfire).
+    fp_seq = await create_lane(
+        authenticated_client, platform_alert_id=7521, alert_api_id=7521
+    )
+    fp_det = await create_frame(
+        authenticated_client, sequence_id=fp_seq, alert_api_id=1
+    )
+    await annotate_lane(
+        authenticated_client,
+        sequence_id=fp_seq,
+        detection_ids=[fp_det],
+        is_smoke=False,
+        false_positive_types=["high_cloud"],
+    )
+    smoke_seq = await create_lane(
+        authenticated_client, platform_alert_id=7522, alert_api_id=7522
+    )
+    smoke_det = await create_frame(
+        authenticated_client, sequence_id=smoke_seq, alert_api_id=1
+    )
+    await annotate_lane(
+        authenticated_client,
+        sequence_id=smoke_seq,
+        detection_ids=[smoke_det],
+        is_smoke=True,
+        smoke_type="wildfire",
+    )
+    await annotate_frame(
+        authenticated_client,
+        detection_id=smoke_det,
+        items=[
+            {
+                "xyxyn": [0.4, 0.3, 0.5, 0.4],
+                "class_name": "smoke",
+                "smoke_type": "wildfire",
+                "origin": "human",
+            }
+        ],
+    )
+
+    resp = await authenticated_client.get(
+        "/export/alerts", params={"false_positive_types": "high_cloud"}
+    )
+    assert [i["platform_alert_id"] for i in resp.json()["items"]] == [7521]
+
+    resp = await authenticated_client.get(
+        "/export/alerts", params={"smoke_types": "wildfire"}
+    )
+    assert [i["platform_alert_id"] for i in resp.json()["items"]] == [7522]
+
+    resp = await authenticated_client.get(
+        "/export/alerts", params={"smoke_types": "industrial"}
+    )
+    assert resp.json()["items"] == []
+
+    # Invalid enum value -> FastAPI 422, not a silent unfiltered dump
+    resp = await authenticated_client.get(
+        "/export/alerts", params={"smoke_types": "not_a_type"}
+    )
+    assert resp.status_code == 422
