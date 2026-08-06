@@ -583,3 +583,32 @@ class TestWorkerUserCanLocalizeGuard:
         )
         assert response.status_code == 403
         assert "Cannot modify the system worker user" in response.json()["detail"]
+
+
+class TestListAnnotators:
+    @pytest.mark.asyncio
+    async def test_requires_auth(self, async_client: AsyncClient):
+        response = await async_client.get("/users/annotators")
+        assert response.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_regular_user_gets_active_humans_sorted(
+        self,
+        async_client: AsyncClient,
+        regular_user_token: str,
+        test_user: User,
+        regular_user: User,
+        inactive_user: User,
+        worker_user: User,
+    ):
+        headers = {"Authorization": f"Bearer {regular_user_token}"}
+        response = await async_client.get("/users/annotators", headers=headers)
+        assert response.status_code == 200
+        users = response.json()
+        usernames = [u["username"] for u in users]
+        assert test_user.username in usernames
+        assert regular_user.username in usernames
+        assert inactive_user.username not in usernames
+        assert worker_user.username not in usernames
+        assert usernames == sorted(usernames)
+        assert set(users[0].keys()) == {"id", "username"}
