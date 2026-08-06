@@ -698,6 +698,53 @@ async def test_bulk_annotate_writes_label_on_group_and_seqs(
 
 
 @pytest.mark.asyncio
+async def test_bulk_annotate_fp_label_exits_at_annotated(
+    authenticated_client: AsyncClient,
+    sequence_session: AsyncSession,
+    detection_session: AsyncSession,
+    test_user: User,
+):
+    """An FP-only bulk label has no localization work left, so its sequences
+    exit at ANNOTATED rather than parking at SEQ_ANNOTATION_DONE, where
+    `schedule_pending_auto_annotate` would never pick them up. Same two-lane
+    rule the group fan-out uses (`_labeled_member_stage`)."""
+    await _set_seq_metadata(sequence_session, 1, camera_id=42, azimuth=90)
+    await _create_placeholder_annotation(authenticated_client, 1)
+    await assign_ungrouped_sequences(sequence_session, user_id=test_user.id)
+
+    group_id = (await authenticated_client.get("/sequences/1")).json()[
+        "sequence_group_id"
+    ]
+
+    bulk_resp = await authenticated_client.post(
+        "/annotations/sequences/bulk",
+        json={
+            "sequence_ids": [1],
+            "group_id": group_id,
+            "false_positive_type": "antenna",
+            "is_unsure": False,
+        },
+    )
+    assert bulk_resp.status_code == 200
+    assert len(bulk_resp.json()["applied"]) == 1
+
+    items = (
+        await authenticated_client.get("/annotations/sequences/?sequence_id=1")
+    ).json()["items"]
+    assert items[0]["processing_stage"] == "annotated"
+    assert items[0]["false_positive_types"] == ["antenna"]
+
+    group_payload = (
+        await authenticated_client.get(f"/sequence_groups/{group_id}")
+    ).json()
+    assert group_payload["false_positive_type"] == "antenna"
+    assert group_payload["smoke_type"] is None
+
+    # One row, not two: the CRUD already auto-records at ANNOTATED.
+    assert await _annotation_contributor_ids(sequence_session, 1) == [test_user.id]
+
+
+@pytest.mark.asyncio
 async def test_bulk_annotate_rejects_conflicting_label_without_force(
     authenticated_client: AsyncClient,
     sequence_session: AsyncSession,
@@ -818,6 +865,7 @@ async def test_propagation_fires_for_fp_only_lane_at_annotated(
     authenticated_client: AsyncClient,
     sequence_session: AsyncSession,
     detection_session: AsyncSession,
+    test_user: User,
 ):
     """Validated group, FP-only classification (issue #258). The lane exits
     straight to `annotated` — never visiting seq_annotation_done — so the
@@ -848,6 +896,10 @@ async def test_propagation_fires_for_fp_only_lane_at_annotated(
     assert items[0]["processing_stage"] == "annotated"
     assert items[0]["false_positive_types"] == ["antenna"]
     assert items[0]["has_smoke"] is False
+
+    # One gesture, one contribution row: the CRUD already auto-records at
+    # ANNOTATED, so the fan-out must not also record explicitly.
+    assert await _annotation_contributor_ids(sequence_session, 2) == [test_user.id]
 
 
 @pytest.mark.asyncio
