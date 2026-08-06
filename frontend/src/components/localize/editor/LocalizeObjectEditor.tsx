@@ -928,8 +928,8 @@ export function LocalizeObjectEditor({
           data-testid="out-of-range-banner"
           className="flex-none border-t border-line bg-signal-soft px-4 py-2 font-body text-detail text-signal"
         >
-          {objectLabel} was never detected on this frame — draw a box to add it to the object. The
-          image comes from another object in the same alert.
+          {objectLabel} was never detected on this frame. If you can see its smoke, draw a box to
+          add this frame to {objectLabel}.
         </div>
       )}
 
