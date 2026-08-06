@@ -141,7 +141,7 @@ describe('CroppedImageSequence', () => {
     const onFrameChange = vi.fn();
     render(<CroppedImageSequence bboxes={BBOXES} sequenceId={9} onFrameChange={onFrameChange} />);
 
-    // Fires for the starting frame once images resolve.
+    // Reports the starting frame immediately on mount (before images load).
     await waitFor(() => expect(onFrameChange).toHaveBeenCalledWith(0, 1));
     // The 200ms interval advances the loop; BBOXES[1] is detection 2.
     await waitFor(() => expect(onFrameChange).toHaveBeenCalledWith(1, 2), { timeout: 2000 });

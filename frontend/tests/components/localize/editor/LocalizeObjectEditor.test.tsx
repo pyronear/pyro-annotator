@@ -696,6 +696,21 @@ describe('LocalizeObjectEditor accept remaining', () => {
     expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
   });
 
+  it('leaves Enter to a focused control inside the dialog instead of accepting', () => {
+    const onAcceptRemaining = vi.fn();
+    renderEditor({ onAcceptRemaining });
+    fireEvent.click(screen.getByTestId('editor-accept-remaining'));
+
+    // Tab put focus on the close X — Enter must activate IT (natively), not
+    // fire the accept out from under it.
+    const close = screen.getByTestId('accept-remaining-close');
+    close.focus();
+    fireEvent.keyDown(close, { key: 'Enter' });
+
+    expect(onAcceptRemaining).not.toHaveBeenCalled();
+    expect(screen.getByTestId('accept-remaining-popover')).toBeInTheDocument();
+  });
+
   it('Enter confirms while the dialog is open, not the frame-level accept', () => {
     const onAcceptRemaining = vi.fn();
     const onCommit = vi.fn();

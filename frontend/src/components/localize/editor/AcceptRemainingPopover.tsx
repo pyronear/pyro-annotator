@@ -139,7 +139,7 @@ export function AcceptRemainingPopover({
 
   return (
     <div
-      className="absolute left-1/2 top-full z-20 mt-2 w-[38rem] -translate-x-1/2 rounded-card border border-line bg-paper p-5 shadow-[0_8px_24px_rgba(32,38,31,0.12)]"
+      className="absolute left-1/2 top-full z-20 mt-2 w-[38rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-card border border-line bg-paper p-5 shadow-[0_8px_24px_rgba(32,38,31,0.12)]"
       role="dialog"
       aria-label={`Accept the model's boxes for ${objectLabel}`}
       data-testid="accept-remaining-popover"

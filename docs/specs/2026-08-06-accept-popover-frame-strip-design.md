@@ -80,8 +80,9 @@ Three additions, all reusing existing components and data:
 
 ## Edge cases
 
-- Loop still loading or errored: `onFrameChange` has not fired, so no
-  counter and no playhead — the strip renders static.
+- Loop still loading or errored: `onFrameChange` reports the starting
+  frame on mount, so the counter and playhead show the first boxed frame
+  immediately (accurately) while the crop still shows its spinner.
 - Reported `detection_id` not found in `entries` (should not happen —
   `previewBoxes` and `entries` derive from the same lane): counter hidden,
   strip static.

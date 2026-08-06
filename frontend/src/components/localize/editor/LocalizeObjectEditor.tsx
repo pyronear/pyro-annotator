@@ -675,8 +675,16 @@ export function LocalizeObjectEditor({
           break;
         case 'Enter':
           // The accept dialog owns Enter while it is open — its button says
-          // so — otherwise the frame-level accept would fire behind it.
+          // so — otherwise the frame-level accept would fire behind it. But
+          // a button focused inside the dialog keeps its own Enter: Tab to
+          // the close X must close, not accept out from under the focus.
           if (acceptOpen) {
+            if (
+              e.target instanceof HTMLElement &&
+              e.target.closest('button') &&
+              e.target.closest('[role="dialog"]')
+            )
+              return;
             if (!isAccepting) {
               onAcceptRemaining();
               setAcceptOpen(false);
