@@ -93,7 +93,8 @@ export default function SequencesPage({
   const { data: cameras = [], isLoading: camerasLoading } = useCameras();
   const { data: organizations = [], isLoading: organizationsLoading } = useOrganizations();
   const { data: sourceApis = [], isLoading: sourceApisLoading } = useSourceApis();
-  const { data: annotators = [], isLoading: annotatorsLoading } = useAnnotators();
+  // Only the done page shows the annotator filter — don't fetch on the queue
+  const { data: annotators = [], isLoading: annotatorsLoading } = useAnnotators(isReviewPage);
 
   // Date range helper functions
   const setDateRange = (preset: string) => {

@@ -139,6 +139,43 @@ async def test_annotator_id_filters_alerts(
 
 
 @pytest.mark.asyncio
+async def test_annotator_id_matches_any_lane_and_keeps_min_recorded_at(
+    authenticated_client: AsyncClient, async_session, test_user
+):
+    # Two-lane alert where only the LATER-recorded sibling has the
+    # contribution: the alert must still match (any-lane), keep both lanes,
+    # and keep min(recorded_at) from the uncontributed lane (HAVING, not
+    # WHERE — a WHERE would drop that lane from the group).
+    await _lane(
+        async_session,
+        alert_api_id=830,
+        platform_alert_id=830,
+        stage=Stage.ANNOTATED,
+        has_smoke=True,
+        recorded_at=NOW - timedelta(hours=1),
+    )
+    contributed = await _lane(
+        async_session,
+        alert_api_id=831,
+        platform_alert_id=830,
+        stage=Stage.ANNOTATED,
+        has_smoke=True,
+        recorded_at=NOW,
+    )
+    await _contribute(async_session, contributed, test_user.id, NOW)
+
+    resp = await authenticated_client.get(
+        f"/sequences/localize-done-queue?annotator_id={test_user.id}"
+    )
+    data = resp.json()
+    assert data["total"] == 1
+    item = data["items"][0]
+    assert item["platform_alert_id"] == 830
+    assert len(item["lanes"]) == 2
+    assert item["recorded_at"].startswith("2026-07-28T11:00")
+
+
+@pytest.mark.asyncio
 async def test_alert_with_annotated_smoke_lane_appears(
     authenticated_client: AsyncClient, async_session
 ):
