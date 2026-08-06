@@ -2151,6 +2151,13 @@ describe('LocalizeAlertPage', () => {
       const cta = within(screen.getByTestId('localize-active-object-actions'));
       expect(cta.getByRole('button', { name: "Accept Object 1's boxes" })).toBeInTheDocument();
       expect(cta.getByRole('button', { name: 'Reclassify Object 1' })).toBeInTheDocument();
+      // Each button advertises its page shortcut on a kbd chip.
+      expect(
+        within(cta.getByRole('button', { name: "Accept Object 1's boxes" })).getByText('Enter')
+      ).toBeInTheDocument();
+      expect(
+        within(cta.getByRole('button', { name: 'Reclassify Object 1' })).getByText('R')
+      ).toBeInTheDocument();
       // The column header still names whose frames these are.
       expect(screen.getByText(/Frames — Object 1/)).toBeInTheDocument();
 
@@ -2197,6 +2204,8 @@ describe('LocalizeAlertPage', () => {
           name: "Accept Object 1's boxes",
         })
       );
+      // The trigger opens the confirm popover; its Accept runs the mutation.
+      fireEvent.click(await screen.findByTestId('accept-remaining-confirm'));
 
       // Object 1's lane is detection 1001 only — the CTA acts on the active
       // object, not on the alert. Object 2's frames (1002, 1003) must never
@@ -2229,6 +2238,224 @@ describe('LocalizeAlertPage', () => {
         expect(cta.queryByRole('button', { name: /Accept/ })).not.toBeInTheDocument();
         expect(cta.getByRole('button', { name: 'Reclassify Object 1' })).toBeInTheDocument();
       });
+    });
+  });
+
+  describe('accept popover', () => {
+    // The header's Accept boxes no longer fires the mutation itself — it
+    // opens the editor's confirm popover (the same AcceptRemainingPopover),
+    // and the popover's own Accept does. Arrival auto-selects Object 1, so
+    // its trigger is there without clicking a row first.
+    const openPopover = async () => {
+      fireEvent.click(await screen.findByRole('button', { name: "Accept Object 1's boxes" }));
+      return await screen.findByTestId('accept-remaining-popover');
+    };
+
+    it('opens the popover instead of accepting immediately, previewing the active lane', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      const popover = await openPopover();
+
+      // The preview loop is wired to the ACTIVE lane, boxes on.
+      const loop = within(popover).getByTestId('cropped-image-sequence');
+      expect(loop).toHaveAttribute('data-sequence-id', '101');
+      expect(loop).toHaveAttribute('data-show-boxes', 'true');
+      // Nothing was written by the click.
+      expect(apiClient.createDetectionAnnotation).not.toHaveBeenCalled();
+      expect(apiClient.updateDetectionAnnotation).not.toHaveBeenCalled();
+    });
+
+    it("confirm accepts exactly the active object's lane and closes the popover", async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      await openPopover();
+      fireEvent.click(screen.getByTestId('accept-remaining-confirm'));
+
+      // Object 1's lane is detection 1001 only — the popover acts on the
+      // active object, never on Object 2's frames.
+      await waitFor(() => {
+        expect(apiClient.createDetectionAnnotation).toHaveBeenCalledWith(
+          expect.objectContaining({ detection_id: 1001 })
+        );
+      });
+      expect(apiClient.createDetectionAnnotation).not.toHaveBeenCalledWith(
+        expect.objectContaining({ detection_id: 1002 })
+      );
+      await waitFor(() => {
+        expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
+      });
+    });
+
+    it('the X and an outside click both close it without accepting', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      await openPopover();
+      fireEvent.click(screen.getByTestId('accept-remaining-close'));
+      expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
+
+      await openPopover();
+      fireEvent.mouseDown(document.body);
+      expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
+
+      expect(apiClient.createDetectionAnnotation).not.toHaveBeenCalled();
+    });
+
+    it('offers no Accept button when the lane has nothing acceptable, even though it is not localized', async () => {
+      // Lane 101's only frame carries no model box from any source — the
+      // editor's rule (acceptRemainingCount > 0) governs the page button
+      // too, replacing "not yet localized". A dead trigger would open a
+      // popover promising "0 frames have a model box".
+      vi.mocked(apiClient.getSequenceDetections).mockImplementation(async (id: number) => {
+        if (id === 101)
+          return [
+            {
+              ...makeDetection(1001, T1),
+              algo_predictions: { predictions: [] },
+              auto_predictions: undefined,
+            },
+          ];
+        if (id === 102) return [makeDetection(1002, T1), makeDetection(1003, T2)];
+        return [];
+      });
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      const cta = within(screen.getByTestId('localize-active-object-actions'));
+      await waitFor(() => {
+        expect(cta.getByRole('button', { name: 'Reclassify Object 1' })).toBeInTheDocument();
+      });
+      expect(cta.queryByRole('button', { name: /Accept/ })).not.toBeInTheDocument();
+    });
+
+    // Key presses need the arrival auto-select to have landed first — the
+    // bare URL replace-redirects to the first workable object, and Enter
+    // before that has no active object to accept for.
+    const awaitAutoSelect = async () => {
+      await waitFor(() => {
+        expect(screen.getByTestId('localize-object-row-object-1')).toHaveAttribute(
+          'data-active',
+          'true'
+        );
+      });
+    };
+
+    it('Enter opens the popover for the active object; a second Enter confirms', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      await awaitAutoSelect();
+
+      fireEvent.keyDown(window, { key: 'Enter' });
+      expect(await screen.findByTestId('accept-remaining-popover')).toBeInTheDocument();
+      expect(apiClient.createDetectionAnnotation).not.toHaveBeenCalled();
+
+      fireEvent.keyDown(window, { key: 'Enter' });
+      await waitFor(() => {
+        expect(apiClient.createDetectionAnnotation).toHaveBeenCalledWith(
+          expect.objectContaining({ detection_id: 1001 })
+        );
+      });
+      await waitFor(() => {
+        expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
+      });
+    });
+
+    it('Escape closes the popover without accepting', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      await awaitAutoSelect();
+
+      fireEvent.keyDown(window, { key: 'Enter' });
+      await screen.findByTestId('accept-remaining-popover');
+      fireEvent.keyDown(window, { key: 'Escape' });
+
+      expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
+      expect(apiClient.createDetectionAnnotation).not.toHaveBeenCalled();
+    });
+
+    it('Enter on a focused control is left to the control — a rail row keeps its own Enter', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      await awaitAutoSelect();
+
+      const row = screen.getByRole('button', { name: 'Object 2' });
+      row.focus();
+      fireEvent.keyDown(row, { key: 'Enter' });
+
+      expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
+    });
+
+    it('Enter confirms even when focus sits on the trigger button itself', async () => {
+      // The natural mouse flow: click "Accept boxes" (focus lands on the
+      // trigger), read the dialog, press the advertised Enter. Only buttons
+      // INSIDE the dialog keep their own Enter — the editor's carve-out.
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      const trigger = await screen.findByRole('button', { name: "Accept Object 1's boxes" });
+      fireEvent.click(trigger);
+      await screen.findByTestId('accept-remaining-popover');
+
+      trigger.focus();
+      fireEvent.keyDown(trigger, { key: 'Enter' });
+
+      await waitFor(() => {
+        expect(apiClient.createDetectionAnnotation).toHaveBeenCalledWith(
+          expect.objectContaining({ detection_id: 1001 })
+        );
+      });
+      await waitFor(() => {
+        expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
+      });
+    });
+
+    it('closes when the selection moves to another object', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      await openPopover();
+      fireEvent.click(screen.getByRole('button', { name: 'Object 2' }));
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
+      });
+      expect(apiClient.createDetectionAnnotation).not.toHaveBeenCalled();
+    });
+
+    it('Enter is inert while the shortcuts sheet is up', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      await awaitAutoSelect();
+
+      fireEvent.keyDown(window, { key: '?' });
+      await screen.findByRole('dialog', { name: 'Keyboard shortcuts' });
+      fireEvent.keyDown(window, { key: 'Enter' });
+
+      expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
+    });
+
+    it('Enter is inert while the add-object picker is open', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      await awaitAutoSelect();
+
+      answerMissedSmokeYes();
+      fireEvent.click(screen.getByRole('button', { name: 'Add object' }));
+      fireEvent.keyDown(window, { key: 'Enter' });
+
+      expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
+    });
+
+    it('Enter does nothing when the active object has nothing acceptable', async () => {
+      vi.mocked(apiClient.getSequenceDetections).mockImplementation(async (id: number) => {
+        if (id === 101)
+          return [
+            {
+              ...makeDetection(1001, T1),
+              algo_predictions: { predictions: [] },
+              auto_predictions: undefined,
+            },
+          ];
+        if (id === 102) return [makeDetection(1002, T1), makeDetection(1003, T2)];
+        return [];
+      });
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      await awaitAutoSelect();
+
+      fireEvent.keyDown(window, { key: 'Enter' });
+
+      expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
     });
   });
 
@@ -2835,6 +3062,8 @@ describe('LocalizeAlertPage', () => {
       expect(dialog).toHaveTextContent('Cycle objects');
       expect(dialog).toHaveTextContent('Crop cells');
       expect(dialog).toHaveTextContent('Toggle this help');
+      expect(dialog).toHaveTextContent("Accept the model's boxes");
+      expect(dialog).toHaveTextContent('Reclassify the object');
     });
 
     it("'?' is inert while the per-frame editor is open", async () => {
@@ -2978,6 +3207,17 @@ describe('LocalizeAlertPage', () => {
       const destination = await screen.findByTestId('classify-destination');
       expect(destination.getAttribute('data-lane-id')).toBe('102');
       expect(destination.getAttribute('data-return')).toBe('/localize/done/101/object/102');
+    });
+
+    it("'R' reclassifies the active object from the keyboard", async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Object 2' }));
+      fireEvent.keyDown(window, { key: 'r' });
+
+      const destination = await screen.findByTestId('classify-destination');
+      expect(destination.getAttribute('data-lane-id')).toBe('102');
+      expect(destination.getAttribute('data-return')).toBe('/localize/101/object/102');
     });
 
     it('offers Reclassify on an already-localized context row', async () => {

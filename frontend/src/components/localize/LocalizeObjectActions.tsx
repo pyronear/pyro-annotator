@@ -1,10 +1,13 @@
 /**
  * The two things you can do to one localize object: bulk-accept the model's
  * boxes, or send it back to classify. They live in one place — the bar above
- * the media column, on the active object — so there is exactly one copy of
- * the tooltip copy, which is where the explanation of what each one does
- * actually lives. (They used to also sit on the selected rail row, which
- * showed every button twice on one screen.)
+ * the media column, on the active object. (They used to also sit on the
+ * selected rail row, which showed every button twice on one screen.)
+ *
+ * Accept no longer explains itself in a tooltip: it opens the editor's
+ * confirm popover (`acceptPopover`), which shows what accepting will do —
+ * and a hover tooltip would paint over the open dialog. Reclassify keeps its
+ * tooltip; it is still a one-click action.
  *
  * Either action can be withheld by omitting its handler: false positives get
  * neither, and a lane past localization (or one with nothing left pending)
@@ -17,13 +20,17 @@ import { Tooltip } from '@/components/ui/Tooltip';
 export interface LocalizeObjectActionsProps {
   /** e.g. "Object 2" — names both buttons, so a screen reader hears which object it acts on. */
   label: string;
-  /** Bulk-accepts the winning model boxes for this lane's pending frames. */
+  /** Toggles the accept-remaining popover; the popover itself arrives via `acceptPopover`. */
   onAcceptBoxes?: () => void;
   isAccepting?: boolean;
   /** Opens this object's classification for correction (classify's done mode). */
   onReclassify?: () => void;
   /** Passed through to the tooltips — `above` where the panel edge is below the buttons. */
   tooltipPlacement?: 'below' | 'above';
+  /** Anchor for the popover's outside-click detection — wraps the Accept button. */
+  acceptAnchorRef?: React.Ref<HTMLDivElement>;
+  /** The page-configured AcceptRemainingPopover, present only while open. */
+  acceptPopover?: React.ReactNode;
 }
 
 // Prominence comes from fill and placement, not from size: these sit on the
@@ -37,9 +44,9 @@ export interface LocalizeObjectActionsProps {
 // same motion, one object at a time. Ember would read as the alert's headline
 // action and compete with Submit for it.
 const PRIMARY =
-  'inline-flex items-center whitespace-nowrap rounded-lg bg-pine px-3 py-1 font-body text-xs font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50';
+  'inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-pine px-3 py-1 font-body text-xs font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50';
 const SECONDARY =
-  'inline-flex items-center whitespace-nowrap rounded-lg border border-line bg-paper px-3 py-1 font-body text-xs font-medium text-char hover:bg-ash';
+  'inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-line bg-paper px-3 py-1 font-body text-xs font-medium text-char hover:bg-ash';
 
 export const LocalizeObjectActions: React.FC<LocalizeObjectActionsProps> = ({
   label,
@@ -47,15 +54,12 @@ export const LocalizeObjectActions: React.FC<LocalizeObjectActionsProps> = ({
   isAccepting = false,
   onReclassify,
   tooltipPlacement = 'below',
+  acceptAnchorRef,
+  acceptPopover,
 }) => (
   <>
     {onAcceptBoxes && (
-      // Says what it commits and what it leaves alone: the action is bulk,
-      // and the object it belongs to is the only thing it touches.
-      <Tooltip
-        placement={tooltipPlacement}
-        tip={`Commits the model's predicted box on every frame of ${label} that still needs one. No other object is affected.`}
-      >
+      <div ref={acceptAnchorRef} className="relative">
         <button
           type="button"
           // The visible label stays short; the accessible name keeps naming
@@ -63,13 +67,27 @@ export const LocalizeObjectActions: React.FC<LocalizeObjectActionsProps> = ({
           // screen reader (and to the page tests, which address the actions
           // by object).
           aria-label={`Accept ${label}'s boxes`}
+          aria-haspopup="dialog"
+          aria-expanded={acceptPopover != null}
           onClick={onAcceptBoxes}
           disabled={isAccepting}
           className={PRIMARY}
         >
-          {isAccepting ? 'Accepting…' : 'Accept boxes'}
+          {isAccepting ? (
+            'Accepting…'
+          ) : (
+            <>
+              Accept boxes
+              {/* Same chip the popover's confirm wears — the two are one
+                  motion, and Enter drives both ends of it. */}
+              <kbd className="rounded border border-white/40 px-1 py-0.5 font-data text-[11px] font-medium leading-none">
+                Enter
+              </kbd>
+            </>
+          )}
         </button>
-      </Tooltip>
+        {acceptPopover}
+      </div>
     )}
     {onReclassify && (
       // Warns that it leaves the page — and that you come back, which is the
@@ -85,6 +103,9 @@ export const LocalizeObjectActions: React.FC<LocalizeObjectActionsProps> = ({
           className={SECONDARY}
         >
           Reclassify
+          <kbd className="rounded border border-line bg-ash px-1 py-0.5 font-data text-[11px] font-medium leading-none">
+            R
+          </kbd>
         </button>
       </Tooltip>
     )}
