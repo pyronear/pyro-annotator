@@ -45,6 +45,8 @@ const group = {
   false_positive_type: null,
   is_validated: false,
   created_at: '2026-08-01T10:00:00Z',
+  representative_bbox: { xyxyn: [0.1, 0.1, 0.4, 0.4], confidence: 0.9 },
+  thumbnails: [],
 };
 
 describe('SequenceGroupsListPage', () => {
@@ -143,7 +145,15 @@ describe('SequenceGroupsListPage', () => {
     expect(row?.className).toContain('hover:bg-ash');
     expect(row?.className).not.toContain('hover:bg-blue-50');
 
-    const headerLabels = ['Camera', 'Created', 'Azimuth', 'Sequences', 'Label', 'Reviewed'];
+    const headerLabels = [
+      'Preview',
+      'Camera',
+      'Created',
+      'Azimuth',
+      'Sequences',
+      'Label',
+      'Reviewed',
+    ];
     const positions = headerLabels.map(l => {
       const el = screen.getByText(l);
       return Array.from(document.querySelectorAll('th')).findIndex(th => th.contains(el));
@@ -214,9 +224,9 @@ describe('SequenceGroupsListPage', () => {
     });
     renderAt('/classify/groups');
     await waitFor(() => expect(screen.getByText('CAM_07')).toBeTruthy());
-    // One tooltip per labeled column (Camera, Azimuth, Sequences, Label,
-    // Reviewed, Created) plus one on the row's "to label" badge.
-    expect(within(screen.getByRole('table')).getAllByRole('tooltip')).toHaveLength(7);
+    // One tooltip per labeled column (Preview, Camera, Azimuth, Sequences,
+    // Label, Reviewed, Created) plus one on the row's "to label" badge.
+    expect(within(screen.getByRole('table')).getAllByRole('tooltip')).toHaveLength(8);
     expect(screen.getByText('Number of sequences showing this object')).toBeTruthy();
     expect(screen.getByText(/propagates to every sequence/)).toBeTruthy();
     expect(screen.getByText('Camera viewing direction, in degrees')).toBeTruthy();
@@ -239,5 +249,74 @@ describe('SequenceGroupsListPage', () => {
     await waitFor(() => expect(screen.getAllByText('to label')).toHaveLength(2));
     expect(screen.getByText(/^Classify any of this object's sequences/)).toBeTruthy();
     expect(screen.getByText(/^Validate the group first, then classify/)).toBeTruthy();
+  });
+
+  it('renders one crop img per thumbnail, zoomed to its own bbox', async () => {
+    vi.mocked(apiClient.getSequenceGroups).mockResolvedValue({
+      items: [
+        {
+          ...group,
+          thumbnails: [
+            { detection_id: 11, url: 'http://s3/a.jpg', bbox_xyxyn: [0.5, 0.5, 0.9, 0.9] },
+            { detection_id: 12, url: 'http://s3/b.jpg', bbox_xyxyn: [0.2, 0.2, 0.4, 0.4] },
+            { detection_id: 13, url: 'http://s3/c.jpg', bbox_xyxyn: [0.1, 0.1, 0.2, 0.2] },
+          ],
+        },
+      ],
+      page: 1,
+      pages: 1,
+      size: 50,
+      total: 1,
+    });
+    renderAt('/classify/groups');
+    await waitFor(() => expect(screen.getByText('CAM_07')).toBeTruthy());
+
+    const imgs = Array.from(document.querySelectorAll('tbody img'));
+    expect(imgs.map(img => img.getAttribute('src'))).toEqual([
+      'http://s3/a.jpg',
+      'http://s3/b.jpg',
+      'http://s3/c.jpg',
+    ]);
+    // Lazy so only visible rows download images.
+    expect(imgs.every(img => img.getAttribute('loading') === 'lazy')).toBe(true);
+    // Zoom centers on the thumbnail's own bbox center (70% for [0.5,...,0.9]).
+    expect((imgs[0] as HTMLElement).style.transformOrigin).toBe('70% 70%');
+  });
+
+  it('falls back to the representative bbox when a thumbnail has no bbox', async () => {
+    vi.mocked(apiClient.getSequenceGroups).mockResolvedValue({
+      items: [
+        {
+          ...group,
+          thumbnails: [{ detection_id: 11, url: 'http://s3/a.jpg', bbox_xyxyn: null }],
+        },
+      ],
+      page: 1,
+      pages: 1,
+      size: 50,
+      total: 1,
+    });
+    renderAt('/classify/groups');
+    await waitFor(() => expect(screen.getByText('CAM_07')).toBeTruthy());
+
+    // representative_bbox [0.1,0.1,0.4,0.4] centers at 25%.
+    const img = document.querySelector('tbody img') as HTMLElement;
+    expect(img.style.transformOrigin).toBe('25% 25%');
+  });
+
+  it('renders three empty placeholders when a group has no thumbnails', async () => {
+    vi.mocked(apiClient.getSequenceGroups).mockResolvedValue({
+      items: [group],
+      page: 1,
+      pages: 1,
+      size: 50,
+      total: 1,
+    });
+    renderAt('/classify/groups');
+    await waitFor(() => expect(screen.getByText('CAM_07')).toBeTruthy());
+
+    expect(document.querySelectorAll('tbody img')).toHaveLength(0);
+    const row = screen.getByText('CAM_07').closest('tr')!;
+    expect(row.querySelectorAll('td:first-child .bg-ash')).toHaveLength(3);
   });
 });
