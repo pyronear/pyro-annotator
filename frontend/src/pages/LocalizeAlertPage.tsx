@@ -1762,6 +1762,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                 onChange={handleMissedSmokeChange}
                 isSaving={setMissedSmokeFlag.isPending}
                 disabled={missedSmokeAnnotationId == null}
+                showSkipNudge={mode !== 'done'}
               />
             }
             footer={

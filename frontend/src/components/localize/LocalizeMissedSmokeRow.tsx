@@ -25,6 +25,8 @@ export interface LocalizeMissedSmokeRowProps {
   isSaving?: boolean;
   /** No lane can carry the flag (nothing annotated yet) — render read-only. */
   disabled?: boolean;
+  /** Queue mode: the Yes answer points at the footer's Skip alert button. */
+  showSkipNudge?: boolean;
 }
 
 const chip = (selected: boolean, selectedClasses: string, disabled: boolean) =>
@@ -37,6 +39,7 @@ export const LocalizeMissedSmokeRow: React.FC<LocalizeMissedSmokeRowProps> = ({
   onChange,
   isSaving = false,
   disabled = false,
+  showSkipNudge = false,
 }) => (
   <div
     data-testid="localize-missed-smoke-row"
@@ -69,5 +72,12 @@ export const LocalizeMissedSmokeRow: React.FC<LocalizeMissedSmokeRowProps> = ({
         </button>
       </span>
     </div>
+    {hasMissedSmoke && showSkipNudge && (
+      <p className="mt-1.5 font-body text-detail text-haze">
+        Adding the missed object isn&apos;t supported yet. Use{' '}
+        <span className="font-semibold text-ember">Skip alert</span> below to park this alert so
+        it can be annotated once it is.
+      </p>
+    )}
   </div>
 );

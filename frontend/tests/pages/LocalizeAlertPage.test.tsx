@@ -341,6 +341,18 @@ function makeTwoLaneAlertDetail(): AlertDetail {
 
 const emptyAnnotationsPage = { items: [], page: 1, pages: 1, size: 100, total: 0 };
 
+/**
+ * The rail's missed-smoke question starts at No on every alert (deliberately
+ * NOT seeded from the flag classify set — flagging has to be a decision made
+ * on this screen). Answering Yes is what records `has_missed_smoke` and what
+ * reveals the skip-alert nudge — there is no add control behind it anymore.
+ */
+function answerMissedSmokeYes() {
+  fireEvent.click(
+    within(screen.getByTestId('localize-missed-smoke-row')).getByRole('radio', { name: 'Yes' })
+  );
+}
+
 function makeDetectionAnnotation(detectionId: number): DetectionAnnotation {
   return {
     id: 9200 + detectionId,
@@ -2230,6 +2242,40 @@ describe('LocalizeAlertPage', () => {
         'aria-checked',
         'true'
       );
+    });
+
+    it('answering Yes shows the skip-alert nudge — there is no add control anymore', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      answerMissedSmokeYes();
+
+      const row = screen.getByTestId('localize-missed-smoke-row');
+      expect(within(row).getByText(/Adding the missed object isn/)).toBeInTheDocument();
+      expect(within(row).getByText('Skip alert')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Add object' })).not.toBeInTheDocument();
+    });
+
+    it('answering No hides the nudge again', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      answerMissedSmokeYes();
+      const noRadio = within(screen.getByTestId('localize-missed-smoke-row')).getByRole('radio', {
+        name: 'No',
+      });
+      await waitFor(() => expect(noRadio).toBeEnabled());
+      fireEvent.click(noRadio);
+
+      expect(screen.queryByText(/Adding the missed object isn/)).not.toBeInTheDocument();
+    });
+
+    it('done mode: Yes shows no nudge — there is no Skip button to point at', async () => {
+      await renderAndSettle(<LocalizeAlertPage mode="done" />, { wrapper: doneWrapper });
+
+      fireEvent.click(
+        within(screen.getByTestId('localize-missed-smoke-row')).getByRole('radio', { name: 'Yes' })
+      );
+
+      expect(screen.queryByText(/Adding the missed object isn/)).not.toBeInTheDocument();
     });
 
     it('answering Yes PATCHes the flag onto the first annotated lane', async () => {
