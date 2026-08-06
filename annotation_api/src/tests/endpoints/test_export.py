@@ -393,3 +393,131 @@ async def test_export_alerts_sibling_lanes_share_bucket_key(
         o["record_kind"]: o["frames"][0]["detection_id"] for o in alert["objects"]
     }
     assert frame_ids["smoke"] != frame_ids["false_positive"]
+
+
+@pytest.mark.asyncio
+async def test_export_alerts_excludes_unfinished_alerts(
+    authenticated_client: AsyncClient,
+    sequence_session,
+    detection_session,
+    dummy_bucket,
+):
+    """An alert exports only once EVERY lane reaches stage annotated."""
+    done_seq = await create_lane(
+        authenticated_client, platform_alert_id=7301, alert_api_id=7301
+    )
+    pending_seq = await create_lane(
+        authenticated_client, platform_alert_id=7301, alert_api_id=1000007301001
+    )
+    done_det = await create_frame(
+        authenticated_client, sequence_id=done_seq, alert_api_id=1
+    )
+    pending_det = await create_frame(
+        authenticated_client, sequence_id=pending_seq, alert_api_id=1
+    )
+    await annotate_lane(
+        authenticated_client,
+        sequence_id=done_seq,
+        detection_ids=[done_det],
+        is_smoke=False,
+        false_positive_types=["antenna"],
+    )
+    await annotate_lane(
+        authenticated_client,
+        sequence_id=pending_seq,
+        detection_ids=[pending_det],
+        is_smoke=True,
+        smoke_type="wildfire",
+        stage="seq_annotation_done",
+    )
+
+    resp = await authenticated_client.get("/export/alerts")
+    assert resp.json()["items"] == []
+
+
+@pytest.mark.asyncio
+async def test_export_alerts_excludes_annotationless_lanes(
+    authenticated_client: AsyncClient,
+    sequence_session,
+    detection_session,
+    dummy_bucket,
+):
+    """A lane with no sequence annotation at all blocks its alert."""
+    annotated_seq = await create_lane(
+        authenticated_client, platform_alert_id=7302, alert_api_id=7302
+    )
+    await create_lane(
+        authenticated_client, platform_alert_id=7302, alert_api_id=1000007302001
+    )
+    det = await create_frame(
+        authenticated_client, sequence_id=annotated_seq, alert_api_id=1
+    )
+    await annotate_lane(
+        authenticated_client,
+        sequence_id=annotated_seq,
+        detection_ids=[det],
+        is_smoke=False,
+        false_positive_types=["antenna"],
+    )
+
+    resp = await authenticated_client.get("/export/alerts")
+    assert resp.json()["items"] == []
+
+
+@pytest.mark.asyncio
+async def test_export_alerts_omits_unsure_lanes(
+    authenticated_client: AsyncClient,
+    sequence_session,
+    detection_session,
+    dummy_bucket,
+):
+    """Unsure lanes are silently omitted; an all-unsure alert disappears."""
+    # Alert A: one sure FP lane + one unsure lane -> exports with 1 object
+    sure_seq = await create_lane(
+        authenticated_client, platform_alert_id=7303, alert_api_id=7303
+    )
+    unsure_seq = await create_lane(
+        authenticated_client, platform_alert_id=7303, alert_api_id=1000007303001
+    )
+    sure_det = await create_frame(
+        authenticated_client, sequence_id=sure_seq, alert_api_id=1
+    )
+    unsure_det = await create_frame(
+        authenticated_client, sequence_id=unsure_seq, alert_api_id=1
+    )
+    await annotate_lane(
+        authenticated_client,
+        sequence_id=sure_seq,
+        detection_ids=[sure_det],
+        is_smoke=False,
+        false_positive_types=["antenna"],
+    )
+    await annotate_lane(
+        authenticated_client,
+        sequence_id=unsure_seq,
+        detection_ids=[unsure_det],
+        is_smoke=True,
+        smoke_type="wildfire",
+        is_unsure=True,
+    )
+
+    # Alert B: only an unsure lane -> absent entirely
+    only_unsure_seq = await create_lane(
+        authenticated_client, platform_alert_id=7304, alert_api_id=7304
+    )
+    only_unsure_det = await create_frame(
+        authenticated_client, sequence_id=only_unsure_seq, alert_api_id=1
+    )
+    await annotate_lane(
+        authenticated_client,
+        sequence_id=only_unsure_seq,
+        detection_ids=[only_unsure_det],
+        is_smoke=True,
+        smoke_type="wildfire",
+        is_unsure=True,
+    )
+
+    resp = await authenticated_client.get("/export/alerts")
+    items = resp.json()["items"]
+    assert [i["platform_alert_id"] for i in items] == [7303]
+    assert [o["sequence_id"] for o in items[0]["objects"]] == [sure_seq]
