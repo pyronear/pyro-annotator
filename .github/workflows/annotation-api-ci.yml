@@ -1,5 +1,9 @@
 name: Annotation API CI
 
+# BENCHMARK CONTROL - do not merge. Paired with the docker-cache-removed
+# branch to measure whether the image save/load cache steps pay for
+# themselves. This comment exists only to trigger a run.
+
 on:
   pull_request:
     branches: [ main ]
