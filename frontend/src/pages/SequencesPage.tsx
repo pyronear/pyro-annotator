@@ -24,6 +24,7 @@ import { useAuthStore } from '@/store/useAuthStore';
 import { useCameras } from '@/hooks/useCameras';
 import { useOrganizations } from '@/hooks/useOrganizations';
 import { useSourceApis } from '@/hooks/useSourceApis';
+import { useAnnotators } from '@/hooks/useAnnotators';
 import { usePersistedFilters, createDefaultFilterState } from '@/hooks/usePersistedFilters';
 import { calculatePresetDateRange } from '@/components/filters/shared/dateRangeUtils';
 import { hasActiveUserFilters } from '@/utils/filterHelpers';
@@ -92,6 +93,7 @@ export default function SequencesPage({
   const { data: cameras = [], isLoading: camerasLoading } = useCameras();
   const { data: organizations = [], isLoading: organizationsLoading } = useOrganizations();
   const { data: sourceApis = [], isLoading: sourceApisLoading } = useSourceApis();
+  const { data: annotators = [], isLoading: annotatorsLoading } = useAnnotators();
 
   // Date range helper functions
   const setDateRange = (preset: string) => {
@@ -298,13 +300,16 @@ export default function SequencesPage({
               cameras={cameras}
               organizations={organizations}
               sourceApis={sourceApis}
+              annotators={annotators}
               camerasLoading={camerasLoading}
               organizationsLoading={organizationsLoading}
               sourceApisLoading={sourceApisLoading}
+              annotatorsLoading={annotatorsLoading}
               showModelAccuracy={defaultProcessingStage === 'annotated'}
               showFalsePositiveTypes={defaultProcessingStage === 'annotated'}
               showSmokeTypes={defaultProcessingStage === 'annotated'}
               showUnsureFilter={defaultProcessingStage === 'annotated'}
+              showAnnotatorFilter={isReviewPage}
             />
           </div>
         </div>
@@ -446,13 +451,16 @@ export default function SequencesPage({
             cameras={cameras}
             organizations={organizations}
             sourceApis={sourceApis}
+            annotators={annotators}
             camerasLoading={camerasLoading}
             organizationsLoading={organizationsLoading}
             sourceApisLoading={sourceApisLoading}
+            annotatorsLoading={annotatorsLoading}
             showModelAccuracy={isAnnotatedView}
             showFalsePositiveTypes={isAnnotatedView}
             showSmokeTypes={isAnnotatedView}
             showUnsureFilter={isAnnotatedView}
+            showAnnotatorFilter={isReviewPage}
           />
         </div>
       </div>

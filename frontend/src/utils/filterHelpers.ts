@@ -37,7 +37,7 @@ export function hasActiveUserFilters(
   }
 
   // Check basic filters
-  if (filters.camera_name || filters.organisation_name) {
+  if (filters.camera_name || filters.organisation_name || filters.annotator_id) {
     return true;
   }
 

@@ -334,4 +334,5 @@ export const QUERY_KEYS = {
   DETECTION_ANNOTATION: (id: number) => ['detection-annotations', id],
   USERS: ['users'],
   USER: (id: number) => ['users', id],
+  ANNOTATORS: ['annotators'],
 } as const;

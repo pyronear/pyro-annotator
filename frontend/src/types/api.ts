@@ -433,6 +433,7 @@ export interface ExtendedSequenceFilters extends SequenceFilters {
   smoke_types?: string[]; // Array of smoke types for OR filtering
   is_unsure?: boolean;
   include_annotation?: boolean;
+  annotator_id?: number; // filter done pages by contributing user
 }
 
 // Sequence with complete annotation information
