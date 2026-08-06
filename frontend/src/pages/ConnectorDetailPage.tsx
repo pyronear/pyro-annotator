@@ -39,7 +39,9 @@ function defaultCoverageWindow(): { dateFrom: string; dateEnd: string } {
   const end = new Date();
   const dateEnd = end.toISOString().slice(0, 10);
   const start = new Date(end);
-  start.setUTCDate(start.getUTCDate() - 30);
+  // 29, not 30: matches the server default (date_end - 29 days), which makes
+  // a 30-day *inclusive* window (date_from..date_end spans 30 calendar days).
+  start.setUTCDate(start.getUTCDate() - 29);
   const dateFrom = start.toISOString().slice(0, 10);
   return { dateFrom, dateEnd };
 }
