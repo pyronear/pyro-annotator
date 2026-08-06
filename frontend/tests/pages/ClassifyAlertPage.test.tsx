@@ -1191,6 +1191,33 @@ describe('ClassifyAlertPage', () => {
       expect(screen.getByTestId('skip-alert-confirm')).toBeInTheDocument();
     });
 
+    it('Ctrl+Z in the note does not discard the work on the alert', async () => {
+      await renderAndSettle(<ClassifyAlertPage />, { wrapper });
+
+      const card = openRow('101:0');
+      fireEvent.click(card.getByRole('radio', { name: 'Smoke' }));
+      fireEvent.click(card.getByRole('radio', { name: 'Wildfire' }));
+
+      fireEvent.click(screen.getByRole('button', { name: /Skip alert/ }));
+      fireEvent.keyDown(screen.getByLabelText(/optional/i), { key: 'z', ctrlKey: true });
+
+      // Ctrl+Z used to reach handleReset, re-initializing every lane from the
+      // server and throwing away the classification above.
+      const row = within(screen.getByTestId('object-card-101:0'));
+      expect(row.getByRole('radio', { name: 'Smoke' })).toBeChecked();
+      expect(row.getByRole('radio', { name: 'Wildfire' })).toBeChecked();
+    });
+
+    it('opening the confirm puts the caret in the note', async () => {
+      await renderAndSettle(<ClassifyAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: /Skip alert/ }));
+
+      // Without this the caret stays on the trigger button, so a user who
+      // clicks and types straight away types into nothing.
+      expect(document.activeElement).toBe(screen.getByLabelText(/optional/i));
+    });
+
     it('Tab is inert while the confirm is open, so its controls stay reachable', async () => {
       await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 

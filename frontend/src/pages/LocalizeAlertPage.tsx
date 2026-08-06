@@ -1969,6 +1969,10 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
             </label>
             <textarea
               id="skip-note"
+              // Without this the caret stays on whatever opened the dialog —
+              // the rail's Skip trigger or the missed-smoke nudge — so a user
+              // who types straight away types into nothing.
+              autoFocus
               value={skipNote}
               onChange={e => setSkipNote(e.target.value)}
               rows={3}

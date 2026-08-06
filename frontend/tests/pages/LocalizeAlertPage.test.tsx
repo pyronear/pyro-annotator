@@ -3091,6 +3091,14 @@ describe('LocalizeAlertPage', () => {
       expect(screen.getByTestId('skip-alert-confirm')).toBeInTheDocument();
     });
 
+    it('opening the confirm puts the caret in the note', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole('button', { name: /Skip alert/ }));
+
+      expect(document.activeElement).toBe(screen.getByLabelText(/optional/i));
+    });
+
     it("'c' is inert while the skip confirm is open, so the note is typable", async () => {
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
       // Arrival auto-focus turns crop on; typing a "c" must not toggle it.

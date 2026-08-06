@@ -1427,6 +1427,11 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
               </label>
               <textarea
                 id="skip-note"
+                // Without this the caret stays on the rail's Skip trigger, so
+                // a user who clicks and types straight away types into
+                // nothing — the page shortcuts are suspended, but the
+                // characters have nowhere to land either.
+                autoFocus
                 value={skipNote}
                 onChange={e => setSkipNote(e.target.value)}
                 rows={3}
