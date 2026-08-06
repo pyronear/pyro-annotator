@@ -131,6 +131,22 @@ remaining leak is `boxes_by_frame`, which feeds `others_bboxes` — a duplicate
 member means another object's sibling list carries both boxes, a read-only
 display artifact.
 
+### The fallback path is deliberately exempt
+
+When `split_sequence_records` raises, `split_all_records` imports the sequence
+whole (`records=[dict(r) for r in seq_records]`), bypassing the merge. That is
+correct, not an oversight: a fallback sequence was never split into objects, so
+the several boxes on one of its frames may belong to *different* plumes. Unioning
+them there would merge distinct objects into one box — strictly worse than
+leaving them alone.
+
+So the guarantee this design establishes is scoped: **every successfully split
+object holds at most one box per frame**. A fallback sequence can still carry a
+frame with several boxes, and downstream that still means a detection with
+several `algo_predictions`. Fallbacks are already counted in
+`split_stats['fallback_sequences']` and were 0 across the 352-sequence
+verification window.
+
 ### Box shape
 
 `build_frames` filters boxes at `len(b) >= 5`, so a box is at least
