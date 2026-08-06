@@ -64,6 +64,7 @@ export interface LocalizeDoneQueueItem {
   azimuth: number | null;
   recorded_at: string;
   lanes: LocalizationQueueLane[];
+  annotators: string[];
 }
 
 // One object-sequence of an alert with annotation, as returned by the alert-detail endpoint.
