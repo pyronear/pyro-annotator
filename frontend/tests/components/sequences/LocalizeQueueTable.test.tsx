@@ -7,6 +7,7 @@ import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { LocalizeQueueTable } from '@/components/sequences/LocalizeQueueTable';
 import type { LocalizationQueueItem, LocalizationQueueLane } from '@/types/api';
+import { formatDateTime } from '@/utils/datetime';
 
 vi.mock('@/components/DetectionImageThumbnail', () => ({
   default: ({ sequenceId, className }: { sequenceId: number; className?: string }) => (
@@ -84,7 +85,26 @@ describe('LocalizeQueueTable', () => {
     render(<LocalizeQueueTable items={[item]} onItemClick={onItemClick} />);
 
     expect(screen.getByTitle('False negative — smoke was missed')).toBeInTheDocument();
-    expect(screen.getByText('+2')).toBeInTheDocument();
+    // +1, not +2: the FP lane is not one of this screen's objects, so it is
+    // outside the rollup — the count now agrees with the Objects column,
+    // which has always counted localizable lanes only.
+    expect(screen.getByText('+1')).toBeInTheDocument();
+  });
+
+  it('an unsure sibling does not take over the row outcome', () => {
+    // Unsure outranks TP in rollupOutcomes' precedence, so before the
+    // localizable-only rollup this row advertised `?` for an object the
+    // localize screen never shows (spec: 2026-08-05 unsure lanes gate the
+    // localize queue).
+    const item = createItem({
+      lanes: [createLane(), createLane({ sequence_id: 12, is_unsure: true })],
+    });
+    render(<LocalizeQueueTable items={[item]} onItemClick={onItemClick} />);
+
+    expect(
+      screen.getByTitle('True positive — model correctly detected smoke')
+    ).toBeInTheDocument();
+    expect(screen.queryByTitle('Unsure — needs review')).not.toBeInTheDocument();
   });
 
   it('renders column tooltips', () => {
@@ -99,7 +119,7 @@ describe('LocalizeQueueTable', () => {
 
     expect(screen.getByText('test-api')).toBeInTheDocument();
     expect(screen.getByText('180°')).toBeInTheDocument();
-    expect(screen.getByText(new Date('2024-01-01T10:00:00Z').toLocaleString())).toBeInTheDocument();
+    expect(screen.getByText(formatDateTime('2024-01-01T10:00:00Z'))).toBeInTheDocument();
   });
 
   it('renders 0° when azimuth is zero', () => {
@@ -174,5 +194,60 @@ describe('LocalizeQueueTable', () => {
 
     expect(onItemClick).toHaveBeenCalledTimes(1);
     expect(onItemClick).toHaveBeenCalledWith(item);
+  });
+
+  describe('skipped view', () => {
+    const onUnskip = vi.fn();
+    const skippedItem = () =>
+      createItem({
+        skip: {
+          skipped_at: '2026-08-05T10:00:00Z',
+          skipped_by: 'annotator',
+          note: 'cannot box this',
+        },
+      });
+
+    it('renders skip metadata columns', () => {
+      render(
+        <LocalizeQueueTable
+          items={[skippedItem()]}
+          onItemClick={onItemClick}
+          skippedView
+          onUnskip={onUnskip}
+        />
+      );
+
+      expect(screen.getByText('Skipped')).toBeInTheDocument();
+      expect(screen.getByText('By')).toBeInTheDocument();
+      expect(screen.getByText('Note')).toBeInTheDocument();
+      expect(screen.getByText('annotator')).toBeInTheDocument();
+      expect(screen.getByText('cannot box this')).toBeInTheDocument();
+      expect(screen.getByText(formatDateTime('2026-08-05T10:00:00Z'))).toBeInTheDocument();
+    });
+
+    it('unskip button fires the callback, rows do not navigate', () => {
+      const item = skippedItem();
+      render(
+        <LocalizeQueueTable
+          items={[item]}
+          onItemClick={onItemClick}
+          skippedView
+          onUnskip={onUnskip}
+        />
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Unskip' }));
+      expect(onUnskip).toHaveBeenCalledWith(item);
+
+      fireEvent.click(screen.getByText('cannot box this'));
+      expect(onItemClick).not.toHaveBeenCalled();
+    });
+
+    it('default view renders no skip columns', () => {
+      render(<LocalizeQueueTable items={[createItem()]} onItemClick={onItemClick} />);
+
+      expect(screen.queryByText('Skipped')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Unskip' })).not.toBeInTheDocument();
+    });
   });
 });

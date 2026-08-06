@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Popover } from '@headlessui/react';
-import { Loader2, AlertCircle, Check, Info, Layers, ShieldCheck, ChevronRight } from 'lucide-react';
+import { Loader2, AlertCircle, Check, Info, Layers, ChevronRight } from 'lucide-react';
 import { apiClient } from '@/services/api';
-import { formatRelativeTime } from '@/utils/relativeTime';
+import { BboxCrop } from '@/components/annotation/BboxCrop';
 import { SequenceGroupStats } from '@/types/api';
 import { classifyGroup, classifyGroups, ROUTES, SequenceGroupsFilter } from '@/utils/routes';
 import { ColumnHeader } from '@/components/sequences/ColumnHeader';
@@ -21,6 +21,7 @@ import {
   TBODY_CLASSES,
   THEAD_CLASSES,
 } from '@/components/sequences/tableStyles';
+import { formatDateTime } from '@/utils/datetime';
 type OrderBy = 'member_count' | 'camera_name' | 'azimuth' | 'created_at';
 type OrderDirection = 'asc' | 'desc';
 
@@ -42,15 +43,15 @@ const FILTERS: {
     value: 'unlabeled',
     label: 'To label',
     countOf: 'unlabeled',
-    tip: "Groups that don't have a label yet",
+    tip: "Objects that don't have a label yet",
   },
   {
     value: 'labeled',
     label: 'Labeled',
     countOf: 'labeled',
-    tip: 'Groups that already have a label',
+    tip: 'Objects that already have a label',
   },
-  { value: 'all', label: 'All', countOf: 'total', tip: 'Every group, labeled or not' },
+  { value: 'all', label: 'All', countOf: 'total', tip: 'Every object, labeled or not' },
 ];
 
 // Same hover-tooltip bubble as components/sequences/ColumnHeader.tsx, used by
@@ -116,7 +117,7 @@ export default function SequenceGroupsListPage({
   if (isLoading && !data) {
     return (
       <div className="flex items-center justify-center h-96 text-gray-500">
-        <Loader2 className="animate-spin w-6 h-6 mr-2" /> Loading groups…
+        <Loader2 className="animate-spin w-6 h-6 mr-2" /> Loading objects…
       </div>
     );
   }
@@ -124,7 +125,7 @@ export default function SequenceGroupsListPage({
     return (
       <div className="flex items-center justify-center h-96 text-red-600">
         <AlertCircle className="w-6 h-6 mr-2" />
-        Failed to load groups
+        Failed to load objects
       </div>
     );
   }
@@ -136,25 +137,25 @@ export default function SequenceGroupsListPage({
     <div className="space-y-6">
       <div>
         <div className="flex items-center gap-2">
-          <h1 className="text-2xl font-bold text-gray-900">Sequence groups</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Recurring objects</h1>
           <Popover className="relative flex">
             <Popover.Button
               className="text-gray-400 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-full"
-              aria-label="What is a sequence group?"
+              aria-label="What is a recurring object?"
             >
               <Info className="w-4 h-4" />
             </Popover.Button>
             <Popover.Panel className="absolute left-0 top-full z-20 mt-2 w-96 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 shadow-lg">
-              <span className="font-semibold">What is a sequence group?</span> After each import,
-              sequences from the same camera looking in the same direction at the same spot are
+              <span className="font-semibold">What is a recurring object?</span> After each import,
+              sightings from the same camera looking in the same direction at the same spot are
               grouped automatically — usually one recurring smoke plume or false-positive source (an
-              antenna, a cloud bank…). Open a group, label one of its sequences, and once the group
-              is validated the label propagates to every member. Only groups with 3+ sequences are
+              antenna, a cloud bank…). Open one, validate the grouping, then label any of its
+              sightings — the label propagates to every sighting. Only objects seen 3+ times are
               shown.
             </Popover.Panel>
           </Popover>
         </div>
-        <p className="text-gray-600">Label many related sequences at once.</p>
+        <p className="text-gray-600">Label an object once to label every sighting of it.</p>
       </div>
 
       <div className="flex justify-center">
@@ -207,11 +208,11 @@ export default function SequenceGroupsListPage({
                   <Check className="h-7 w-7 text-pine" />
                 </span>
                 <h2 className="mt-4 font-display text-base font-semibold text-char">
-                  All groups labeled
+                  All objects labeled
                 </h2>
                 <p className="mt-1.5 font-body text-sm leading-relaxed text-haze">
-                  Nice work — every group is labeled. New groups form automatically a few minutes
-                  after each import.
+                  Nice work — every object is labeled. New objects appear automatically a few
+                  minutes after each import.
                 </p>
                 <Link
                   to={ROUTES.CLASSIFY}
@@ -230,16 +231,16 @@ export default function SequenceGroupsListPage({
                   <Layers className="h-6 w-6 text-ember" />
                 </span>
                 <h2 className="mt-4 font-display text-base font-semibold text-char">
-                  No labeled groups yet
+                  No labeled objects yet
                 </h2>
                 <p className="mt-1.5 font-body text-sm leading-relaxed text-haze">
-                  Groups you label land here.
+                  Objects you label land here.
                 </p>
                 <Link
                   to={classifyGroups('unlabeled')}
                   className="mt-5 inline-block rounded-lg bg-ember px-7 py-2.5 font-body text-[13.5px] font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2"
                 >
-                  Label groups
+                  Label objects
                 </Link>
               </>
             ) : (
@@ -252,11 +253,11 @@ export default function SequenceGroupsListPage({
                   <Layers className="h-6 w-6 text-haze" />
                 </span>
                 <h2 className="mt-4 font-display text-base font-semibold text-char">
-                  No groups yet
+                  No objects yet
                 </h2>
                 <p className="mt-1.5 font-body text-sm leading-relaxed text-haze">
-                  Groups form automatically after imports — only groups of 3 or more sequences
-                  appear here.
+                  Objects appear automatically after imports — only objects seen 3 or more times are
+                  shown here.
                 </p>
               </>
             )}
@@ -269,17 +270,22 @@ export default function SequenceGroupsListPage({
               <thead className={THEAD_CLASSES}>
                 <tr>
                   <ColumnHeader
+                    label="Preview"
+                    tip="Crops of the object from three of its sightings — first, middle, and last"
+                  />
+                  <ColumnHeader
                     label="Camera"
-                    tip="Camera that recorded the group's sequences"
+                    tip="Camera that recorded the object's sightings"
                     sort={{
                       active: orderBy === 'camera_name',
                       direction: orderDirection,
                       onSort: () => handleSort('camera_name'),
                     }}
                   />
+                  <ColumnHeader label="Organisation" tip="Organisation operating the camera" />
                   <ColumnHeader
                     label="Created"
-                    tip="When the group was created"
+                    tip="When this object's sightings were first grouped"
                     sort={{
                       active: orderBy === 'created_at',
                       direction: orderDirection,
@@ -296,8 +302,8 @@ export default function SequenceGroupsListPage({
                     }}
                   />
                   <ColumnHeader
-                    label="Sequences"
-                    tip="Number of sequences in the group"
+                    label="Sightings"
+                    tip="Times this object was seen"
                     sort={{
                       active: orderBy === 'member_count',
                       direction: orderDirection,
@@ -306,13 +312,9 @@ export default function SequenceGroupsListPage({
                   />
                   <ColumnHeader
                     label="Label"
-                    tip="Group label — propagates to every member once the group is validated"
+                    tip="Object label — propagates to every sighting once the group is validated"
                   />
-                  <ColumnHeader
-                    label="Reviewed"
-                    tip="Whether a human confirmed the group's sequences show the same object — the label propagates once confirmed"
-                    align="right"
-                  />
+                  <ColumnHeader label="Annotators" tip="Who annotated this object's sightings" />
                   <th className={HEADER_CELL_CLASSES}>
                     <span className="sr-only">Open</span>
                   </th>
@@ -331,6 +333,27 @@ export default function SequenceGroupsListPage({
                     className={ROW_CLASSES}
                   >
                     <td className={CELL_CLASSES}>
+                      <div className="flex gap-1">
+                        {[0, 1, 2].map(i => {
+                          const t = g.thumbnails[i];
+                          return (
+                            <div
+                              key={i}
+                              className="relative w-14 shrink-0 aspect-video overflow-hidden bg-ash"
+                            >
+                              {t && (
+                                <BboxCrop
+                                  url={t.url}
+                                  box={t.bbox_xyxyn ?? g.representative_bbox.xyxyn}
+                                  loading="lazy"
+                                />
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </td>
+                    <td className={CELL_CLASSES}>
                       <Link
                         to={classifyGroup(g.id)}
                         onClick={e => e.stopPropagation()}
@@ -339,11 +362,9 @@ export default function SequenceGroupsListPage({
                         {g.camera_name}
                       </Link>
                     </td>
-                    <td
-                      className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}
-                      title={new Date(g.created_at).toLocaleString()}
-                    >
-                      {formatRelativeTime(g.created_at)}
+                    <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>{g.organisation_name}</td>
+                    <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
+                      {formatDateTime(g.created_at)}
                     </td>
                     <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>{g.azimuth}°</td>
                     <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>{g.member_count}</td>
@@ -361,29 +382,15 @@ export default function SequenceGroupsListPage({
                               tell unvalidated ones to validate first. */}
                           {headerTip(
                             g.is_validated
-                              ? 'Classify any sequence in this group — its label will propagate to all members'
-                              : 'Validate the group, then classify any sequence — its label will propagate to all members'
+                              ? "Classify any of this object's sightings — the label will propagate to all of them"
+                              : "Validate the group first, then classify any of this object's sightings — the label will propagate to all of them"
                           )}
                         </span>
                       )}
                     </td>
-                    <td className={CELL_CLASSES}>
-                      {g.is_validated ? (
-                        <span
-                          className="inline-flex items-center gap-1 font-body text-xs font-semibold text-pine"
-                          title={
-                            g.validated_at
-                              ? `Validated ${new Date(g.validated_at).toLocaleString()}`
-                              : undefined
-                          }
-                        >
-                          <ShieldCheck className="w-3.5 h-3.5" /> validated
-                          {/* Legacy validations (pre-attribution) have no user —
-                              the badge alone is the whole cell for those. */}
-                          {g.validated_by_username && (
-                            <span className="font-normal">· {g.validated_by_username}</span>
-                          )}
-                        </span>
+                    <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>
+                      {g.annotators.length > 0 ? (
+                        g.annotators.join(', ')
                       ) : (
                         <span className="text-haze">—</span>
                       )}
@@ -400,7 +407,7 @@ export default function SequenceGroupsListPage({
             page={page}
             pages={totalPages}
             total={data?.total}
-            itemsLabel="groups"
+            itemsLabel="objects"
             onPageChange={setPage}
           />
         </div>

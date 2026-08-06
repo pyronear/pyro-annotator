@@ -34,6 +34,7 @@ from app.schemas.sequence_annotations import (
     SequenceAnnotationCreate,
     SequenceAnnotationUpdate,
 )
+from app.services.alert_skip import alert_skip_exists_clause
 from app.services.annotation_generation import (
     AnnotationGenerationService,
     apply_label_to_sequences_bbox,
@@ -165,6 +166,10 @@ async def _run_assignment(session: AsyncSession, user_id: int) -> AssignGroupsRe
             select(SequenceAnnotation.id)
             .where(SequenceAnnotation.sequence_id == Sequence.id)
             .exists(),
+            # A parked alert's lane state never moves (spec:
+            # alert-skip-escape-hatch): leave its sequences unassigned so a
+            # later sweep picks them up unchanged once unskipped.
+            ~alert_skip_exists_clause(Sequence),
         )
         .order_by(Sequence.recorded_at)
     )

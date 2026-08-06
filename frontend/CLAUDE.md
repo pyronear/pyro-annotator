@@ -25,16 +25,18 @@ frontend/src/
 ├── components/
 │   ├── annotation/              # Sequence annotation pieces (CroppedImageSequence, FullImageSequence, ImageOverlays, SmokeTypeSelector)
 │   ├── dashboard/               # PipelineStrip, PhaseCard, HowItWorks
-│   ├── detection-annotation/    # Detection-level bbox annotation (canvas, toolbar, shortcuts modal, image card, progress header, submission)
-│   ├── detection-sequence/      # DetectionGrid, DetectionHeader, ImageModal
+│   ├── detection-annotation/    # Detection-level bbox annotation (canvas, image card, progress header)
+│   ├── detection-sequence/      # AlertFrameGrid, ViewToolbar
 │   ├── filters/                 # FalsePositiveFilter, ModelAccuracyFilter, SmokeTypeFilter, TabbedFilters, shared/
 │   ├── layout/                  # AppLayout
 │   ├── sequence/                # SequencePlayer, SequenceReviewer, MediaControls, PlayerControls, MissedSmokePanel, MissedSmokeInstructionsModal
-│   ├── sequence-annotation/     # AnnotationHeader, MissedSmokePanel, ProcessingStageMessages, SequenceAnnotationGrid
+│   ├── localize/                # LocalizeRail, LocalizeObjectRow, LocalizeMissedSmokeRow
+│   ├── localize/editor/         # LocalizeObjectEditor, BoxSourceRail, ObjectFilmstrip, FilmstripThumbnail, AcceptRemainingPopover, EditorShortcutsModal, sourceIdentity
+│   ├── sequence-annotation/     # AnnotationHeader, MissedSmokePanel, ObjectStatusStrip (accept popover's frame strip), ProcessingStageMessages
 │   ├── sequences/               # Table headers/rows + pagination for annotate / review queues, plus SequencesLegend
 │   └── ui/                      # NotificationBadge, NotificationSystem, PasswordField, ProgressIndicator
 ├── hooks/
-│   ├── annotation/              # useDrawingCanvas, useKeyboardShortcuts
+│   ├── annotation/              # useDrawingCanvas
 │   └── *.ts                     # useAnnotationCounts, usePipelineStats, useCameras, useOrganizations, useSourceApis, useSequenceDetections, useDetectionImage, useImagePreloader, usePersistedFilters, usePersistedTabState
 ├── pages/
 │   ├── LoginPage.tsx
@@ -44,9 +46,9 @@ frontend/src/
 │   ├── SequencesPage.tsx              # Annotate queue
 │   ├── SequencesPageWrapper.tsx       # Stage-parameterized list (annotated, etc.)
 │   ├── AnnotationInterface.tsx        # Annotate one sequence
-│   ├── DetectionAnnotatePage.tsx
-│   ├── DetectionReviewPage.tsx
-│   ├── DetectionSequenceAnnotatePage.tsx
+│   ├── DetectionAnnotatePage.tsx      # Localize queue (alert-grouped)
+│   ├── DetectionReviewPage.tsx        # Localize done list (alert-grouped)
+│   ├── LocalizeAlertPage.tsx          # Localize one alert (queue + done modes)
 │   └── UserManagementPage.tsx
 ├── services/api.ts              # Axios client (interceptors, JWT)
 ├── store/
@@ -84,9 +86,11 @@ provenance in the path: `/classify/:id` was entered from the queue,
 | `/classify/groups`                         | `SequenceGroupsListPage`          |
 | `/classify/groups/:id`                     | `SequenceGroupAnnotatePage`       |
 | `/localize`                                | `DetectionAnnotatePage` (alert-grouped Localize queue) |
-| `/localize/done`                           | `DetectionReviewPage` (verification, smoke lanes only) |
-| `/localize/:sequenceId/:detectionId?`      | `DetectionSequenceAnnotatePage`   |
-| `/localize/done/:sequenceId/:detectionId?` | `DetectionSequenceAnnotatePage` (done mode) |
+| `/localize/done`                           | `DetectionReviewPage` (alert-grouped Done list) |
+| `/localize/:sequenceId`                    | `LocalizeAlertPage`               |
+| `/localize/done/:sequenceId`               | `LocalizeAlertPage` (done mode)   |
+| `/localize/:sequenceId/object/:laneId` | `LocalizeAlertPage` with that object selected (child route; bare `/localize/:sequenceId` auto-redirects here for the first workable object; same under the `/localize/done` prefix) |
+| `/localize/:sequenceId/object/:laneId/:detectionId` | `LocalizeAlertPage` + `LocalizeObjectEditor` (child route, so the page is not remounted; same under the `/localize/done` prefix) |
 | `/users`                                   | `UserManagementPage`              |
 | `/guide`                                   | `GuidePage`                       |
 
@@ -142,6 +146,7 @@ Endpoints used: `/api/v1/sequences`, `/api/v1/detections`, `/api/v1/annotations/
 - TypeScript strict mode; `noUnusedLocals` / `noUnusedParameters` enabled — don't leave unused imports.
 - Annotation logic lives in `src/utils/annotation/` and `src/hooks/annotation/`. Prefer extending those modules over inlining canvas/keyboard/coordinate logic into components.
 - Notifications: use `src/utils/notification/toastUtils.ts` and the `NotificationSystem` UI — don't roll your own.
+- Dates: render every user-facing date through `src/utils/datetime.ts` — `formatDateTime` (`YYYY-MM-DD HH:mm`) or `formatDate` (`YYYY-MM-DD`), both viewer-local. Don't call `toLocaleString` / `toLocaleDateString` on a date; they render differently per browser locale.
 - Filter state: persisted via `usePersistedFilters` / `usePersistedTabState`.
 
 ## Common Issues

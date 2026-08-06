@@ -150,6 +150,8 @@ export function filterSequencesByProcessingStage(
  * across all components that show processing stage information.
  *
  * @param {ProcessingStageStatus | ProcessingStage} status - The status to get a label for
+ * @param {boolean} isUnsure - The lane's unsure flag, which changes what
+ *   `seq_annotation_done` means (see below). Omit when unknown.
  * @returns {string} Human-readable label for the processing stage
  *
  * @example
@@ -162,9 +164,21 @@ export function filterSequencesByProcessingStage(
  *
  * const label3 = getProcessingStageLabel('annotated');
  * // Returns: 'Fully annotated'
+ *
+ * const label4 = getProcessingStageLabel('seq_annotation_done', true);
+ * // Returns: 'Awaiting decision'
  * ```
  */
-export function getProcessingStageLabel(status: ProcessingStageStatus | ProcessingStage): string {
+export function getProcessingStageLabel(
+  status: ProcessingStageStatus | ProcessingStage,
+  isUnsure = false
+): string {
+  // An unsure lane parked at seq_annotation_done awaits a DECISION, not
+  // localization — and that stage is exactly what withholds its alert from
+  // the localize queue (spec: 2026-08-05 unsure lanes gate the localize
+  // queue), so calling it "Awaiting localization" points at the wrong queue.
+  if (isUnsure && status === 'seq_annotation_done') return 'Awaiting decision';
+
   const labels: Record<ProcessingStageStatus, string> = {
     no_annotation: 'No annotation',
     imported: 'Imported',

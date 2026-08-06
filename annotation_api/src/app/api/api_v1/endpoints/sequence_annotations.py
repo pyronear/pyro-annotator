@@ -16,7 +16,7 @@ from fastapi import (
 )
 from fastapi_pagination import Page, Params, create_page
 from fastapi_pagination.ext.sqlalchemy import apaginate
-from sqlalchemy import and_, asc, desc, func, select, text, or_
+from sqlalchemy import and_, asc, delete, desc, func, select, text, or_
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.dependencies import get_current_user, get_sequence_annotation_crud
@@ -40,6 +40,9 @@ from app.schemas.sequence_annotations import (
     ClassifySubmitRequest,
     ClassifySubmitResponse,
     ClassifySubmitResult,
+    LocalizeSubmitRequest,
+    LocalizeSubmitResponse,
+    LocalizeSubmitResult,
     SequenceAnnotationBulkRequest,
     SequenceAnnotationBulkResponse,
     SequenceAnnotationBulkResult,
@@ -52,7 +55,12 @@ from app.services.annotation_generation import (
     apply_label_to_sequences_bbox,
     derive_group_label_from_annotation,
 )
-from app.services.localization_rule import needs_localization
+from app.services.alert_skip import alert_skip_exists_clause
+from app.services.localization_rule import (
+    needs_localization,
+    unsettled_unsure_clause,
+)
+from app.worker import auto_annotate_sequence
 
 router = APIRouter()
 logger = logging.getLogger("uvicorn.error")
@@ -602,18 +610,23 @@ async def apply_annotation_update(
     user: User,
     *,
     commit: bool = True,
-) -> Tuple[SequenceAnnotation, bool]:
+) -> Tuple[SequenceAnnotation, bool, bool]:
     """Apply a single-lane sequence annotation update.
 
     Extracted from `update_sequence_annotation` (the PATCH endpoint) so a
     multi-lane classify-submit endpoint can apply several lane updates and
     commit once. Covers: get existing (strict) -> target computation -> exit
-    guard -> auto-generation trigger -> validate_detection_ids -> was/will-be
-    -annotated computation -> CRUD update.
+    guard -> FP-promotion demotion -> auto-generation trigger ->
+    validate_detection_ids -> was/will-be-annotated computation -> CRUD
+    update.
 
     Post-commit effects (`auto_create_detection_annotations`,
-    `_propagate_to_group_if_validated`) are NOT run here — the caller decides
-    whether to run them, using the returned `run_auto_create` flag.
+    `_propagate_to_group_if_validated`, deferring `auto_annotate_sequence`)
+    are NOT run here — the caller decides whether to run them, using the
+    returned `run_auto_create` and `run_promote_auto_annotate` flags. The
+    latter is True when an FP→smoke promotion was applied; the caller must
+    then defer `auto_annotate_sequence` for the lane's sequence after its
+    commit.
 
     With commit=False, the update is flushed but not committed; the caller
     owns the transaction (commit/rollback).
@@ -633,6 +646,34 @@ async def apply_annotation_update(
     target_annotation = (
         payload.annotation if payload.annotation is not None else existing.annotation
     )
+
+    # Skip guard (spec: alert-skip-escape-hatch): a stage change into a done
+    # stage on a lane whose alert is skipped means a stale tab is racing a
+    # teammate's skip — reject it. Non-stage-changing edits stay allowed.
+    if (
+        payload.processing_stage is not None
+        and payload.processing_stage != existing.processing_stage
+        and payload.processing_stage
+        in (
+            SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
+            SequenceAnnotationProcessingStage.ANNOTATED,
+        )
+    ):
+        alert_is_skipped = (
+            await session.execute(
+                select(func.count())
+                .select_from(Sequence)
+                .where(
+                    Sequence.id == existing.sequence_id,
+                    alert_skip_exists_clause(Sequence),
+                )
+            )
+        ).scalar_one()
+        if alert_is_skipped:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Alert is skipped — unskip it before submitting",
+            )
 
     # Smoke-localization exit guard (spec: smoke-localization entry point): a
     # lane matching the localization rule (see `localization_rule`; unsure lanes
@@ -687,6 +728,23 @@ async def apply_annotation_update(
                 ),
             )
 
+    # FP→smoke promotion (issue #275, spec: fp-promote-relocalize): an
+    # annotated lane whose new flags need localization re-enters the
+    # pipeline at seq_annotation_done — but only when it carries no
+    # committed localization work. The FP exit auto-created empty
+    # annotated-stage detection annotations; left in place they would make
+    # every frame read as localized and let the exit guard above pass with
+    # zero boxes, so the promotion deletes them (contributions cascade) and
+    # re-arms the auto-annotate reference pass.
+    is_fp_promotion = (
+        existing.processing_stage == SequenceAnnotationProcessingStage.ANNOTATED
+        and target_processing_stage
+        == SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE
+        and needs_localization(
+            target_has_smoke, target_has_missed_smoke, target_is_unsure
+        )
+    )
+
     # Check if we should auto-generate annotation content
     if should_trigger_auto_generation(target_processing_stage, target_annotation):
         logger.info(
@@ -714,6 +772,48 @@ async def apply_annotation_update(
     # Validate detection_ids if annotation is being updated
     if payload.annotation is not None:
         await validate_detection_ids(payload.annotation, session)
+
+    # The promotion's destructive step runs after every validation above, so
+    # nothing can raise between the delete and the row update — the pending
+    # delete must never be left behind by a later 422.
+    if is_fp_promotion:
+        committed = (
+            await session.execute(
+                select(func.count(DetectionAnnotation.id))
+                .join(Detection, Detection.id == DetectionAnnotation.detection_id)
+                .where(
+                    Detection.sequence_id == existing.sequence_id,
+                    func.jsonb_array_length(
+                        DetectionAnnotation.annotation["annotation"]
+                    )
+                    > 0,
+                )
+            )
+        ).scalar_one()
+        if committed > 0:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"Cannot demote: sequence {existing.sequence_id} carries "
+                    f"{committed} committed detection annotation(s); "
+                    "re-localizing finished work is not supported"
+                ),
+            )
+        await session.execute(
+            delete(DetectionAnnotation)
+            .where(
+                DetectionAnnotation.detection_id.in_(
+                    select(Detection.id).where(
+                        Detection.sequence_id == existing.sequence_id
+                    )
+                )
+            )
+            .execution_options(synchronize_session=False)
+        )
+        sequence = await session.get(Sequence, existing.sequence_id)
+        if sequence is not None:
+            sequence.auto_annotate_enqueued_at = datetime.now(UTC)
+            session.add(sequence)
 
     # Check if processing_stage is being updated to "annotated" for auto-creation logic
     was_annotated_before = (
@@ -745,7 +845,7 @@ async def apply_annotation_update(
         and not updated_annotation.is_unsure
     )
 
-    return updated_annotation, run_auto_create
+    return updated_annotation, run_auto_create, is_fp_promotion
 
 
 @router.patch("/{annotation_id}")
@@ -755,7 +855,11 @@ async def update_sequence_annotation(
     annotations: SequenceAnnotationCRUD = Depends(get_sequence_annotation_crud),
     current_user: User = Depends(get_current_user),
 ) -> SequenceAnnotationRead:
-    updated_annotation, run_auto_create = await apply_annotation_update(
+    (
+        updated_annotation,
+        run_auto_create,
+        run_promote_auto_annotate,
+    ) = await apply_annotation_update(
         annotation_id,
         payload,
         annotations,
@@ -777,6 +881,13 @@ async def update_sequence_annotation(
         )
         # Commit the detection annotations
         await annotations.session.commit()
+
+    if run_promote_auto_annotate:
+        # Post-commit so a lost defer can't strand the transaction; the
+        # periodic schedule_auto_annotate sweep re-enqueues stale lanes.
+        await auto_annotate_sequence.defer_async(
+            sequence_id=updated_annotation.sequence_id
+        )
 
     # Same propagation hook as create_sequence_annotation: when the
     # annotation has just reached SEQ_ANNOTATION_DONE and the seq is in a
@@ -916,6 +1027,10 @@ async def _propagate_to_group_if_validated(
                 select(Sequence.id).where(
                     Sequence.sequence_group_id == group.id,
                     Sequence.id != seq.id,
+                    # A parked alert's lane state never moves (spec:
+                    # alert-skip-escape-hatch) — skipped members sit this
+                    # fan-out out, like locked-stage members below.
+                    ~alert_skip_exists_clause(Sequence),
                 )
             )
         )
@@ -1064,7 +1179,7 @@ async def classify_submit(
             ),
         )
 
-    lane_results: List[Tuple[SequenceAnnotation, bool]] = []
+    lane_results: List[Tuple[SequenceAnnotation, bool, bool]] = []
     try:
         for item in payload.items:
             update_payload = SequenceAnnotationUpdate(
@@ -1073,7 +1188,11 @@ async def classify_submit(
                 is_unsure=item.is_unsure,
                 processing_stage=item.processing_stage,
             )
-            updated_annotation, run_auto_create = await apply_annotation_update(
+            (
+                updated_annotation,
+                run_auto_create,
+                run_promote_auto_annotate,
+            ) = await apply_annotation_update(
                 item.annotation_id,
                 update_payload,
                 annotations,
@@ -1081,7 +1200,9 @@ async def classify_submit(
                 current_user,
                 commit=False,
             )
-            lane_results.append((updated_annotation, run_auto_create))
+            lane_results.append(
+                (updated_annotation, run_auto_create, run_promote_auto_annotate)
+            )
     except HTTPException:
         await session.rollback()
         raise
@@ -1090,7 +1211,7 @@ async def classify_submit(
     await session.commit()
 
     results: List[ClassifySubmitResult] = []
-    for updated_annotation, run_auto_create in lane_results:
+    for updated_annotation, run_auto_create, run_promote_auto_annotate in lane_results:
         if run_auto_create:
             await auto_create_detection_annotations(
                 sequence_id=updated_annotation.sequence_id,
@@ -1101,6 +1222,14 @@ async def classify_submit(
                 user_id=current_user.id,
             )
             await session.commit()
+
+        # Queue mode 409s annotated lanes before applying, so this flag is
+        # always False here today — handled anyway to stay symmetric with
+        # the PATCH path should the locked-stage rule ever change.
+        if run_promote_auto_annotate:
+            await auto_annotate_sequence.defer_async(
+                sequence_id=updated_annotation.sequence_id
+            )
 
         propagation_warning = await _propagate_to_group_if_validated(
             updated_annotation, annotations, session, current_user.id
@@ -1116,6 +1245,141 @@ async def classify_submit(
         )
 
     return ClassifySubmitResponse(results=results)
+
+
+@router.post(
+    "/localize-submit",
+    status_code=status.HTTP_200_OK,
+    response_model=LocalizeSubmitResponse,
+    summary="Atomically submit all localized lanes of one alert",
+)
+async def localize_submit(
+    payload: LocalizeSubmitRequest = Body(...),
+    annotations: SequenceAnnotationCRUD = Depends(get_sequence_annotation_crud),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> LocalizeSubmitResponse:
+    """Atomically move every lane of one alert from seq_annotation_done to
+    annotated (spec: smoke-localization entry point). Either every lane
+    lands or none does — apply_annotation_update's localization exit guard
+    (`:637-688`), which fires per lane inside the loop, rolls back the whole
+    batch when any lane is missing an annotated-stage detection annotation.
+
+    Post-commit effects (auto-create detection annotations) run afterwards,
+    per lane in submit order, each with its own commit — exactly as the
+    PATCH path does for a single lane. Group fan-out is not invoked here: it
+    only acts on lanes newly reaching SEQ_ANNOTATION_DONE
+    (`_propagate_to_group_if_validated`), and every lane here targets
+    ANNOTATED.
+    """
+    annotation_ids = payload.annotation_ids
+    rows = (
+        await session.execute(
+            select(SequenceAnnotation, Sequence)
+            .join(Sequence, Sequence.id == SequenceAnnotation.sequence_id)
+            .where(SequenceAnnotation.id.in_(annotation_ids))
+        )
+    ).all()
+    by_id = {ann.id: (ann, seq) for ann, seq in rows}
+
+    missing_ids = [aid for aid in annotation_ids if aid not in by_id]
+    if missing_ids:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Sequence annotation(s) {missing_ids} not found",
+        )
+
+    alert_keys = {(seq.source_api, seq.platform_alert_id) for _, seq in by_id.values()}
+    if len(alert_keys) > 1:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="All annotations must belong to sequences of the same alert",
+        )
+
+    wrong_stage_ids = [
+        aid
+        for aid, (ann, _seq) in by_id.items()
+        if ann.processing_stage != SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE
+    ]
+    if wrong_stage_ids:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Annotation(s) {sorted(wrong_stage_ids)} are not at "
+                "seq_annotation_done; refresh the queue and retry"
+            ),
+        )
+
+    # An alert with an undecided object is not ready for localization (spec:
+    # 2026-08-05 unsure lanes gate the localize queue). The queue already
+    # hides it; this stops a deep link or a stale tab from completing it.
+    alert_source_api, alert_platform_id = next(iter(alert_keys))
+    undecided = (
+        await session.execute(
+            select(func.count(SequenceAnnotation.id))
+            .join(Sequence, Sequence.id == SequenceAnnotation.sequence_id)
+            .where(
+                Sequence.source_api == alert_source_api,
+                Sequence.platform_alert_id == alert_platform_id,
+                unsettled_unsure_clause(SequenceAnnotation),
+            )
+        )
+    ).scalar_one()
+    if undecided > 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"Cannot submit: {undecided} object(s) of this alert are still "
+                "undecided (marked unsure). Settle them in Classify first."
+            ),
+        )
+
+    lane_results: List[Tuple[SequenceAnnotation, bool]] = []
+    try:
+        for annotation_id in annotation_ids:
+            update_payload = SequenceAnnotationUpdate(
+                processing_stage=SequenceAnnotationProcessingStage.ANNOTATED
+            )
+            # Third flag (FP promotion) ignored: every lane here targets
+            # ANNOTATED, so it can never be set.
+            updated_annotation, run_auto_create, _ = await apply_annotation_update(
+                annotation_id,
+                update_payload,
+                annotations,
+                session,
+                current_user,
+                commit=False,
+            )
+            lane_results.append((updated_annotation, run_auto_create))
+    except HTTPException:
+        await session.rollback()
+        raise
+
+    # The one atomic point: every lane's write lands together.
+    await session.commit()
+
+    results: List[LocalizeSubmitResult] = []
+    for updated_annotation, run_auto_create in lane_results:
+        if run_auto_create:
+            await auto_create_detection_annotations(
+                sequence_id=updated_annotation.sequence_id,
+                has_smoke=updated_annotation.has_smoke,
+                has_missed_smoke=updated_annotation.has_missed_smoke,
+                has_false_positives=updated_annotation.has_false_positives,
+                session=session,
+                user_id=current_user.id,
+            )
+            await session.commit()
+
+        results.append(
+            LocalizeSubmitResult(
+                annotation_id=updated_annotation.id,
+                sequence_id=updated_annotation.sequence_id,
+                processing_stage=updated_annotation.processing_stage,
+            )
+        )
+
+    return LocalizeSubmitResponse(results=results)
 
 
 @router.post(

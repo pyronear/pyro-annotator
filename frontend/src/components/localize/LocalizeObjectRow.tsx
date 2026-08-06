@@ -1,0 +1,204 @@
+/**
+ * One object's row in the localize cockpit's rail — the localize counterpart
+ * of classify's `ObjectRow`. Where classify's row carries a per-object
+ * *classification*, this one carries a per-object *localization progress*:
+ * how many of the frames the object appears on already have a committed box
+ * — and, now that the standalone Timeline card folded in here, WHICH frames:
+ * a per-frame segment bar under the header, rendered by the shared
+ * `ObjectRowTimeline` (extracted from here once classify's rail grew the
+ * same strip). Each segment reports this object's status at that alert
+ * frame: `confirmed` (solid fill), `cleared` (hatched fill — committed with
+ * no smoke box, "object not visible here"), `pending` (faded fill — a model
+ * box waiting to be accepted), `empty` (outline only — on the frame with
+ * nothing on it yet), `absent` (neutral track).
+ *
+ * `empty` is deliberately distinct from `pending`: collapsing the two made a
+ * frame with nothing on it look identical to one with a box to accept, which
+ * painted a just-added object's whole timeline as if it were already full.
+ *
+ * Every row receives the same alert-wide `frameTimestamps`, so frame N sits
+ * at the same x in every row — the cross-object comparison the standalone
+ * card used to provide survives the move.
+ *
+ * The card is a container, not a control: a row that holds the segment
+ * buttons cannot itself be a button (nesting interactive controls is invalid
+ * HTML — the same rule that moved the row's actions out to the Frames bar).
+ * The header line is the activate button; the page's Tab cycle moves real
+ * DOM focus onto it via the forwarded ref, and native button semantics give
+ * Enter/Space activation for anything else that focuses it. What you can DO
+ * to the selected object — accept its boxes, send it back to classify —
+ * still lives in one place, the bar above the media column (see
+ * `LocalizeObjectActions` in `LocalizeAlertPage`).
+ *
+ * Rows past localization stay clickable: activating one points the media
+ * column at its frames, which is the whole reason they're on screen. Whether
+ * they also fade back is the caller's call (`dimmed`) — that only reads as
+ * "context" when there is live work beside them.
+ */
+
+import React from 'react';
+import type { ObjectFrameStatus } from '@/utils/annotation/alertLocalizeUtils';
+import { ObjectRowTimeline } from '@/components/annotation/ObjectRowTimeline';
+
+export interface LocalizeObjectRowProps {
+  /** e.g. "Object 2" — the object's own label, shared with the grid overlays. */
+  label: string;
+  /** Stable per-object color (hex) — matches the segment fills and the grid's box color. */
+  color: string;
+  /** Frames this object appears on that are settled — a committed box, or committed empty (cleared). */
+  confirmedCount: number;
+  /** Frames this object appears on at all (settled + pending + empty). */
+  presentCount: number;
+  /** False for lanes already past localization — read-only context. */
+  workable: boolean;
+  /**
+   * The alert-wide ordered frame axis — identical for every row, so frame N
+   * sits at the same x across objects and their strips compare vertically.
+   */
+  frameTimestamps: string[];
+  /** This object's status per frame timestamp; frames missing from the map render as `absent`. */
+  statusByTimestamp: Record<string, ObjectFrameStatus>;
+  /** A segment was clicked — the page activates this object and scrolls the grid to `timestamp`. */
+  onFrameClick: (timestamp: string) => void;
+  /** What classify decided this is (wildfire / industrial / other) — omitted on false-positive rows. */
+  smokeType?: string;
+  /** Read-only false-positive context, surfaced by the opt-in toggle. */
+  isFalsePositive?: boolean;
+  /**
+   * Fade the row back as context. The caller decides, because "already
+   * localized" only reads as context when there is live work beside it — on
+   * a fully localized alert those rows ARE the subject, and dimming every
+   * one of them just made the page look disabled.
+   */
+  dimmed?: boolean;
+  /** The false-positive types classify recorded, shown in place of a smoke type. */
+  falsePositiveTypes?: string[];
+  /** True when this object drives the media column (focus mode). */
+  isActive: boolean;
+  onActivate: () => void;
+}
+
+// forwardRef so the page's Tab cycle can move real DOM focus onto the header
+// button of the row it lands on — see the cycle effect in `LocalizeAlertPage`.
+export const LocalizeObjectRow = React.forwardRef<HTMLButtonElement, LocalizeObjectRowProps>(
+  function LocalizeObjectRow(
+    {
+      label,
+      color,
+      confirmedCount,
+      presentCount,
+      workable,
+      frameTimestamps,
+      statusByTimestamp,
+      onFrameClick,
+      smokeType,
+      isFalsePositive = false,
+      falsePositiveTypes,
+      dimmed = false,
+      isActive,
+      onActivate,
+    },
+    ref
+  ) {
+    const pendingCount = presentCount - confirmedCount;
+    const slug = label.replace(/\s+/g, '-').toLowerCase();
+
+    const status = isFalsePositive
+      ? { label: 'False positive', tone: 'bg-ash text-haze' }
+      : !workable
+        ? // Past localization: say what it is rather than "Context", which
+          // described its role beside live work rather than its own state.
+          { label: 'Localized', tone: 'bg-pine-soft text-pine' }
+        : pendingCount === 0
+          ? { label: 'Done', tone: 'bg-pine-soft text-pine' }
+          : { label: `${pendingCount} left`, tone: 'bg-ember-soft text-ember' };
+
+    // What this object is, under its name: the smoke type classify chose, or
+    // the false-positive types it was rejected as.
+    const subtitle = isFalsePositive
+      ? (falsePositiveTypes ?? []).map(t => t.replace(/_/g, ' ')).join(', ') || null
+      : (smokeType ?? null);
+
+    // Selection is checked BEFORE dimming. A non-workable row (a false
+    // positive, or an already-localized context lane) is still clickable and
+    // still drives the media column, so it needs the same "this is what
+    // you're looking at" feedback — and leaving it dimmed while it is the
+    // active object contradicts the selection. Its accent is neutral rather
+    // than pine, which on this page means workable / positive / in progress —
+    // a claim a settled object shouldn't make.
+    const frame = isActive
+      ? `border border-line border-l-[3px] bg-paper ${workable ? 'border-l-pine' : 'border-l-char'}`
+      : dimmed
+        ? 'border border-line bg-paper opacity-60'
+        : 'border border-line bg-paper hover:bg-ash';
+
+    return (
+      <div
+        data-testid={`localize-object-row-${slug}`}
+        data-active={isActive ? 'true' : undefined}
+        data-dimmed={dimmed ? 'true' : undefined}
+        className={`rounded-lg px-3.5 py-2.5 transition-colors ${frame}`}
+      >
+        <button
+          ref={ref}
+          type="button"
+          aria-label={label}
+          onClick={onActivate}
+          className="flex w-full items-center justify-between gap-2 rounded text-left focus:outline-none focus:ring-2 focus:ring-pine"
+        >
+          <span className="flex min-w-0 items-center gap-2">
+            <span
+              className="inline-block h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-char/10"
+              style={{ backgroundColor: color }}
+              aria-hidden="true"
+            />
+            {/* Name and what-it-is on one line: the header is a one-line
+              summary, and stacking them made it two lines tall for a word.
+              Both truncate rather than push: at the narrow end of the rail
+              something has to give — better a clipped word than a row that
+              overflows into a horizontal scrollbar. */}
+            <span className="flex min-w-0 items-baseline gap-1.5">
+              <span className="truncate font-body text-sm font-semibold text-char">{label}</span>
+              {subtitle && (
+                <>
+                  {/* Same separator the alert header uses between organisation
+                    and camera. Hidden from screen readers, which get the two
+                    spans as separate phrases already. */}
+                  <span className="shrink-0 font-body text-detail text-haze" aria-hidden="true">
+                    ·
+                  </span>
+                  <span className="truncate font-body text-detail capitalize text-haze">
+                    {subtitle}
+                  </span>
+                </>
+              )}
+            </span>
+          </span>
+          <span className="flex shrink-0 items-center gap-1.5">
+            {/* A false positive has no localization work, so a progress
+              fraction over its frames would be meaningless. */}
+            {!isFalsePositive && (
+              <span className="font-data text-detail text-haze">
+                {confirmedCount}/{presentCount}
+              </span>
+            )}
+            <span
+              className={`whitespace-nowrap rounded-full px-2 py-0.5 font-body text-xs font-semibold ${status.tone}`}
+            >
+              {status.label}
+            </span>
+          </span>
+        </button>
+
+        <ObjectRowTimeline
+          slug={slug}
+          label={label}
+          color={color}
+          frameTimestamps={frameTimestamps}
+          statusByTimestamp={statusByTimestamp}
+          onFrameClick={timestamp => onFrameClick(timestamp)}
+        />
+      </div>
+    );
+  }
+);

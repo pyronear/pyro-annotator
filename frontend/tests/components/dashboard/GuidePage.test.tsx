@@ -19,4 +19,17 @@ describe('GuidePage', () => {
     expect(screen.getByText('objects')).toBeInTheDocument();
     expect(screen.getByText('frames')).toBeInTheDocument();
   });
+
+  it('describes the collocated Pass 02 flow: timeline, focus, accept-all, and the skip escape hatch', () => {
+    render(<GuidePage />, { wrapper: MemoryRouter });
+    expect(screen.getByText(/object timeline/i)).toBeInTheDocument();
+    expect(screen.getByText(/focus that object/i)).toBeInTheDocument();
+    expect(screen.getByText(/use “Skip alert” to park the whole alert/)).toBeInTheDocument();
+    expect(screen.getByText(/“Accept all & submit alert”/)).toBeInTheDocument();
+  });
+
+  it('notes the per-object editor is deep-link-only', () => {
+    render(<GuidePage />, { wrapper: MemoryRouter });
+    expect(screen.getByText(/no longer part of the normal queue flow/i)).toBeInTheDocument();
+  });
 });

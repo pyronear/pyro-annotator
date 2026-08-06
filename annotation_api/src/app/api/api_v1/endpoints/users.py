@@ -3,7 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi_pagination import Page, Params
 from fastapi_pagination.ext.sqlalchemy import apaginate
-from sqlalchemy import desc
+from sqlalchemy import desc, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.auth.dependencies import get_current_active_user, get_current_superuser
@@ -11,7 +11,13 @@ from app.core.config import settings
 from app.crud import UserCRUD
 from app.db import get_session
 from app.models import User
-from app.schemas.user import UserCreate, UserRead, UserUpdate, UserPasswordUpdate
+from app.schemas.user import (
+    ContributorRead,
+    UserCreate,
+    UserPasswordUpdate,
+    UserRead,
+    UserUpdate,
+)
 
 router = APIRouter()
 
@@ -22,6 +28,27 @@ async def read_current_user(
 ) -> User:
     """Get current user information."""
     return current_user
+
+
+# NOTE: declared before GET /{user_id} — the int path converter would
+# otherwise turn /users/annotators into a 422.
+@router.get("/annotators", response_model=list[ContributorRead])
+async def list_annotators(
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_active_user),
+) -> list[User]:
+    """Active human users, for the done-pages annotator filter dropdown.
+
+    Open to every authenticated user (unlike the superuser-only user list):
+    it exposes only id + username, which annotators already see elsewhere
+    (e.g. group review attribution). The seeded worker user is machine
+    attribution, not an annotator."""
+    result = await session.execute(
+        select(User)
+        .where(User.is_active.is_(True), User.username != settings.WORKER_USERNAME)
+        .order_by(User.username)
+    )
+    return list(result.scalars().all())
 
 
 @router.get("/", response_model=Page[UserRead])
@@ -119,7 +146,8 @@ async def update_user(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
     if target_user.username == settings.WORKER_USERNAME and (
-        user_update.model_fields_set & {"username", "is_active", "is_superuser"}
+        user_update.model_fields_set
+        & {"username", "is_active", "is_superuser", "can_localize"}
     ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

@@ -1,6 +1,18 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+
+let canLocalizeValue = true;
+
+vi.mock('@/store/useAuthStore', () => ({
+  useAuthStore: () => ({
+    canLocalize: () => canLocalizeValue,
+  }),
+}));
+
+beforeEach(() => {
+  canLocalizeValue = true;
+});
 
 vi.mock('@/hooks/usePipelineStats', () => ({
   usePipelineStats: () => ({
@@ -28,9 +40,22 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Classify alerts')).toBeInTheDocument();
     expect(screen.getByText('Localize smoke')).toBeInTheDocument();
     expect(screen.getByText('How annotation works')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Classify by group/ })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /Classify recurring objects/ })).toHaveAttribute(
       'href',
       '/classify/groups'
     );
+  });
+
+  it('hides the Localize phase card for classify-only users', () => {
+    canLocalizeValue = false;
+    render(<DashboardPage />, { wrapper: MemoryRouter });
+    expect(screen.queryByText('Localize smoke')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Start localizing' })).not.toBeInTheDocument();
+    expect(screen.getByText('Classify alerts')).toBeInTheDocument();
+  });
+
+  it('shows the Localize phase card when the user can localize', () => {
+    render(<DashboardPage />, { wrapper: MemoryRouter });
+    expect(screen.getByText('Localize smoke')).toBeInTheDocument();
   });
 });

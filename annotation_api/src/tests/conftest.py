@@ -33,16 +33,6 @@ def _alembic_config() -> Config:
     return cfg
 
 
-async def _run_alembic_upgrade() -> None:
-    """Run ``alembic upgrade head`` from inside a running event loop.
-
-    ``env.py`` calls ``asyncio.run`` which cannot nest, so we offload the
-    command to a worker thread that owns its own event loop.
-    """
-    cfg = _alembic_config()
-    await asyncio.to_thread(command.upgrade, cfg, "head")
-
-
 dt_format = "%Y-%m-%dT%H:%M:%S.%f"
 now = datetime.now(UTC)
 
@@ -165,18 +155,26 @@ async def async_client(
     app.dependency_overrides.clear()
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _schema() -> None:
+    # Build the schema ONCE per session using Alembic so tests still exercise
+    # the same migration path as production startup. Replaying the migration
+    # chain per test costs ~1.1s and dominates the suite runtime; the
+    # per-test DELETE loop below is enough to isolate tests from each other.
+    # Sync fixture on purpose: pytest-asyncio's event_loop is function-scoped,
+    # so this owns a throwaway loop rather than requesting one.
+    async def _reset() -> None:
+        async with engine.begin() as conn:
+            await conn.run_sync(SQLModel.metadata.drop_all)
+            await conn.exec_driver_sql("DROP TABLE IF EXISTS alembic_version")
+        await engine.dispose()
+
+    asyncio.run(_reset())
+    command.upgrade(_alembic_config(), "head")
+
+
 @pytest_asyncio.fixture(scope="function")
 async def async_session() -> AsyncSession:
-    # Reset schema using Alembic so tests exercise the same migration path
-    # as production startup. We drop everything first to guarantee a clean
-    # slate (including the alembic_version table) and then upgrade to head.
-    async with engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.drop_all)
-        await conn.exec_driver_sql("DROP TABLE IF EXISTS alembic_version")
-    await engine.dispose()
-
-    await _run_alembic_upgrade()
-
     async_session_maker = sessionmaker(
         engine, class_=AsyncSession, expire_on_commit=False
     )
@@ -240,6 +238,21 @@ async def regular_user(async_session: AsyncSession) -> User:
 
 
 @pytest_asyncio.fixture(scope="function")
+async def localizer_user(async_session: AsyncSession) -> User:
+    """Create a non-admin user with localization access."""
+    user_crud = UserCRUD(async_session)
+    user_create = UserCreate(
+        username="localizeruser",
+        password="testpassword123",
+        is_active=True,
+        is_superuser=False,
+        can_localize=True,
+    )
+    user = await user_crud.create_user(user_create)
+    return user
+
+
+@pytest_asyncio.fixture(scope="function")
 async def inactive_user(async_session: AsyncSession) -> User:
     """Create an inactive user for status testing."""
     user_crud = UserCRUD(async_session)
@@ -280,6 +293,14 @@ async def regular_user_token(regular_user: User) -> str:
     """Generate an authentication token for regular user."""
     return create_access_token(
         data={"sub": regular_user.username, "user_id": regular_user.id}
+    )
+
+
+@pytest_asyncio.fixture(scope="function")
+async def localizer_user_token(localizer_user: User) -> str:
+    """Generate an authentication token for the localizer user."""
+    return create_access_token(
+        data={"sub": localizer_user.username, "user_id": localizer_user.id}
     )
 
 

@@ -43,6 +43,13 @@ export interface LocalizationQueueLane {
   auto_annotated_at: string | null;
 }
 
+// Skip metadata carried on skipped=true queue rows and returned by skipAlert.
+export interface AlertSkipInfo {
+  skipped_at: string;
+  skipped_by: string | null;
+  note: string | null;
+}
+
 // One alert ready for smoke localization (queue row).
 export interface LocalizationQueueItem {
   source_api: string;
@@ -52,6 +59,20 @@ export interface LocalizationQueueItem {
   azimuth: number | null;
   recorded_at: string;
   lanes: LocalizationQueueLane[];
+  skip?: AlertSkipInfo | null;
+}
+
+// One alert with at least one localized (ANNOTATED, rule-matching) smoke
+// lane (localize-done queue row). Mirrors LocalizationQueueItem.
+export interface LocalizeDoneQueueItem {
+  source_api: string;
+  platform_alert_id: number;
+  camera_name: string;
+  organisation_name: string;
+  azimuth: number | null;
+  recorded_at: string;
+  lanes: LocalizationQueueLane[];
+  annotators: string[];
 }
 
 // One object-sequence of an alert with annotation, as returned by the alert-detail endpoint.
@@ -82,6 +103,31 @@ export interface ClassifyQueueItem {
   primary_sequence_id: number;
   total_objects: number;
   classified_objects: number;
+  skip?: AlertSkipInfo | null;
+}
+
+// One classified object-sequence of a done alert (outcome-relevant fields only).
+export interface ClassifyDoneLane {
+  sequence_id: number;
+  has_smoke: boolean;
+  has_missed_smoke: boolean;
+  is_unsure: boolean;
+  smoke_types: string[];
+  false_positive_types: string[];
+}
+
+// One fully classified alert (done-list row).
+export interface ClassifyDoneItem {
+  source_api: string;
+  platform_alert_id: number;
+  camera_name: string;
+  organisation_name: string;
+  azimuth: number | null;
+  recorded_at: string;
+  is_wildfire_alertapi: AnnotationType | null;
+  primary_sequence_id: number;
+  lanes: ClassifyDoneLane[];
+  annotators: string[];
 }
 
 // Submission payload for bulk classification of all objects in an alert.
@@ -106,6 +152,23 @@ export interface ClassifySubmitResult {
 
 export interface ClassifySubmitResponse {
   results: ClassifySubmitResult[];
+}
+
+// Atomic submit of every localized lane of one alert (spec:
+// smoke-localization entry point): each moves seq_annotation_done ->
+// annotated together, or none does.
+export interface LocalizeSubmitRequest {
+  annotation_ids: number[];
+}
+
+export interface LocalizeSubmitResult {
+  annotation_id: number;
+  sequence_id: number;
+  processing_stage: ProcessingStage;
+}
+
+export interface LocalizeSubmitResponse {
+  results: LocalizeSubmitResult[];
 }
 
 export interface Detection {
@@ -225,10 +288,19 @@ export interface SequenceGroupMember {
   first_detection_algo_predictions: AlgoPredictions | null;
 }
 
+export interface SequenceGroupThumbnail {
+  detection_id: number;
+  url: string;
+  // Crop box for the thumbnail; null when the frame has no valid
+  // prediction boxes — fall back to the group's representative_bbox.
+  bbox_xyxyn: [number, number, number, number] | null;
+}
+
 export interface SequenceGroupListItem {
   id: number;
   camera_id: number;
   camera_name: string;
+  organisation_name: string;
   azimuth: number;
   representative_bbox: SequenceGroupRepresentativeBbox;
   smoke_type: SmokeType | null;
@@ -242,6 +314,11 @@ export interface SequenceGroupListItem {
   labeled_at: string | null;
   created_at: string;
   member_count: number;
+  // Distinct humans who annotated any of the object's sightings, ordered by
+  // first contribution. The worker's machine writes never appear.
+  annotators: string[];
+  // Up to 3 member previews (first/middle/last member by recorded_at).
+  thumbnails: SequenceGroupThumbnail[];
 }
 
 export interface SequenceGroupStats {
@@ -379,6 +456,7 @@ export interface ExtendedSequenceFilters extends SequenceFilters {
   smoke_types?: string[]; // Array of smoke types for OR filtering
   is_unsure?: boolean;
   include_annotation?: boolean;
+  annotator_id?: number; // filter done pages by contributing user
 }
 
 // Sequence with complete annotation information
@@ -427,6 +505,7 @@ export interface User {
   username: string;
   is_active: boolean;
   is_superuser: boolean;
+  can_localize: boolean;
   is_system: boolean;
   created_at: string;
   updated_at?: string;
@@ -437,12 +516,14 @@ export interface UserCreate {
   password: string;
   is_active?: boolean;
   is_superuser?: boolean;
+  can_localize?: boolean;
 }
 
 export interface UserUpdate {
   username?: string;
   is_active?: boolean;
   is_superuser?: boolean;
+  can_localize?: boolean;
 }
 
 export interface UserPasswordUpdate {
@@ -470,4 +551,6 @@ export interface UserFilters {
 // API Error Response
 export interface ApiError {
   detail: string | Record<string, string[]>;
+  /** HTTP status of the failed response, when one was received. */
+  status?: number;
 }

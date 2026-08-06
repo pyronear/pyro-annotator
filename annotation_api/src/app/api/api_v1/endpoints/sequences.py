@@ -7,6 +7,7 @@ from typing import List, Literal, Optional
 
 from fastapi import (
     APIRouter,
+    Body,
     Depends,
     Form,
     HTTPException,
@@ -30,16 +31,24 @@ from sqlalchemy import (
     ARRAY,
     String,
 )
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import aliased
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.dependencies import get_current_user, get_sequence_crud
 from app.crud import SequenceCRUD
 from app.db import get_session
-from app.services.localization_rule import needs_localization_clause
+from app.services.alert_skip import alert_skip_exists_clause
+from app.services.annotators import human_annotators, merge_annotators
+from app.services.localization_rule import (
+    needs_localization_clause,
+    unsettled_unsure_clause,
+)
 from app.models import (
+    AlertSkip,
     Detection,
     DetectionAnnotation,
+    DetectionAnnotationProcessingStage,
     FalsePositiveType,
     SmokeType,
     Sequence,
@@ -50,16 +59,25 @@ from app.models import (
     User,
     AnnotationType,
 )
+from app.schemas.annotation_validation import SequenceAnnotationData, SequenceBBox
+from app.schemas.detection import DetectionRead
 from app.schemas.sequence import (
+    AddObjectRequest,
     AlertDetail,
     AlertLane,
+    AlertSkipInfo,
+    AlertSkipRequest,
+    ClassifyDoneItem,
+    ClassifyDoneLane,
     ClassifyQueueItem,
     LocalizationQueueItem,
     LocalizationQueueLane,
+    LocalizeDoneQueueItem,
+    MaterializeFrameRequest,
     SequenceCreate,
     SequenceRead,
 )
-from app.services.alert_identity import resolve_platform_alert_id
+from app.services.alert_identity import ALERT_ID_BASE, resolve_platform_alert_id
 from app.services.auto_annotate_scheduling import DONE_STAGES
 from app.schemas.sequence_annotations import SequenceAnnotationRead
 from app.schemas.combined import SequenceWithAnnotationRead
@@ -656,10 +674,445 @@ async def get_alert_detail(
     )
 
 
+def _object_index(seq: Sequence, platform_alert_id: int) -> int:
+    """Decode a lane's object index from its alert_api_id (primary = raw
+    platform_alert_id = index 0; synthetic siblings per `alert_identity`)."""
+    if seq.alert_api_id == platform_alert_id:
+        return 0
+    return seq.alert_api_id - ALERT_ID_BASE - platform_alert_id * 1000
+
+
+# NOTE: declared before GET /{sequence_id} — the int path converter would
+# otherwise turn /alert/add-object into a 422.
+@router.post(
+    "/alert/add-object",
+    status_code=status.HTTP_201_CREATED,
+    summary="Spawn a new sibling lane for a missed smoke plume",
+)
+async def add_object(
+    payload: AddObjectRequest = Body(...),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> AlertLane:
+    """Missed smoke: add a real object (spec: multi-object alert
+    collocation, supersedes the ⚑ carrier-lane/pseudo-object design). Spawns
+    a new sibling lane — next synthetic object index — with detections
+    cloned from the alert's richest lane (empty algo_predictions: the AI did
+    not detect this object) and a one-track smoke annotation born at
+    seq_annotation_done, with auto_annotated_at/auto_annotate_enqueued_at
+    stamped so the sweep never GPU-processes it and the sibling gate is
+    never re-blocked. All writes land in one transaction.
+    """
+    lanes = (
+        (
+            await session.execute(
+                select(Sequence)
+                .where(
+                    Sequence.source_api == payload.source_api,
+                    Sequence.platform_alert_id == payload.platform_alert_id,
+                )
+                .order_by(asc(Sequence.alert_api_id))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not lanes:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Alert not found"
+        )
+    primary = lanes[0]
+
+    next_index = (
+        max(_object_index(lane, payload.platform_alert_id) for lane in lanes) + 1
+    )
+    new_alert_api_id = ALERT_ID_BASE + payload.platform_alert_id * 1000 + next_index
+
+    # Richest lane: the sibling with the most detections is the frame source
+    # (the missed object is presumably visible wherever the tracked object
+    # is, and this maximizes frame coverage).
+    lane_ids = [lane.id for lane in lanes]
+    counts = (
+        await session.execute(
+            select(Detection.sequence_id, func.count(Detection.id))
+            .where(Detection.sequence_id.in_(lane_ids))
+            .group_by(Detection.sequence_id)
+        )
+    ).all()
+    counts_by_id = dict(counts)
+    richest_id = max(lane_ids, key=lambda sid: counts_by_id.get(sid, 0))
+    source_detections = (
+        (
+            await session.execute(
+                select(Detection)
+                .where(Detection.sequence_id == richest_id)
+                .order_by(asc(Detection.recorded_at))
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    now = datetime.now(UTC)
+    new_seq = Sequence(
+        source_api=primary.source_api,
+        alert_api_id=new_alert_api_id,
+        platform_alert_id=payload.platform_alert_id,
+        recorded_at=primary.recorded_at,
+        last_seen_at=primary.last_seen_at,
+        camera_name=primary.camera_name,
+        camera_id=primary.camera_id,
+        lat=primary.lat,
+        lon=primary.lon,
+        azimuth=primary.azimuth,
+        is_wildfire_alertapi=primary.is_wildfire_alertapi,
+        organisation_name=primary.organisation_name,
+        organisation_id=primary.organisation_id,
+        auto_annotate_enqueued_at=now,
+        auto_annotated_at=now,
+    )
+    session.add(new_seq)
+    await session.flush()
+
+    new_detections = [
+        Detection(
+            recorded_at=det.recorded_at,
+            alert_api_id=det.alert_api_id,
+            sequence_id=new_seq.id,
+            bucket_key=det.bucket_key,
+            algo_predictions={"predictions": []},
+        )
+        for det in source_detections
+    ]
+    session.add_all(new_detections)
+    await session.flush()
+
+    annotation_data = SequenceAnnotationData(
+        sequences_bbox=[
+            SequenceBBox(
+                is_smoke=True,
+                smoke_type=payload.smoke_type,
+                false_positive_types=[],
+                bboxes=[],
+            )
+        ]
+    )
+    annotation = SequenceAnnotation(
+        sequence_id=new_seq.id,
+        has_smoke=True,
+        has_false_positives=False,
+        false_positive_types=[],
+        smoke_types=[payload.smoke_type.value],
+        has_missed_smoke=False,
+        is_unsure=False,
+        annotation=annotation_data.model_dump(),
+        processing_stage=SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
+    )
+    session.add(annotation)
+    await session.flush()
+
+    session.add(
+        SequenceAnnotationContribution(
+            sequence_annotation_id=annotation.id, user_id=current_user.id
+        )
+    )
+
+    # Every frame starts pending bbox annotation — unlike a classify-time
+    # smoke lane (auto_create_detection_annotations' VISUAL_CHECK shortcut),
+    # this object has no AI-proposed box to confirm; the annotator draws it.
+    session.add_all(
+        DetectionAnnotation(
+            detection_id=det.id,
+            annotation={"annotation": []},
+            processing_stage=DetectionAnnotationProcessingStage.BBOX_ANNOTATION,
+        )
+        for det in new_detections
+    )
+
+    await session.commit()
+
+    seq_dict = {c.name: getattr(new_seq, c.name) for c in new_seq.__table__.columns}
+    annotation_dict = {
+        c.name: getattr(annotation, c.name) for c in annotation.__table__.columns
+    }
+    annotation_dict["contributors"] = [
+        {"id": current_user.id, "username": current_user.username}
+    ]
+    return AlertLane(
+        sequence=SequenceRead(**seq_dict),
+        annotation=SequenceAnnotationRead(**annotation_dict),
+    )
+
+
+def _detection_read(det: Detection) -> DetectionRead:
+    return DetectionRead(
+        **{c.name: getattr(det, c.name) for c in det.__table__.columns}
+    )
+
+
+@router.post(
+    "/{sequence_id}/frames",
+    status_code=status.HTTP_201_CREATED,
+    summary="Materialize a gap frame into a lane so a human can box it",
+)
+async def materialize_frame(
+    response: Response,
+    sequence_id: int = Path(..., gt=0),
+    payload: MaterializeFrameRequest = Body(...),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> DetectionRead:
+    """Issue #287: a lane holds Detection rows only for the frames its object
+    was detected on, so earlier frames — where the plume was fainter — cannot
+    be annotated. This inserts the one-frame equivalent of add_object's clone:
+    the sibling's photo (shared bucket_key, no S3 traffic) with an empty
+    engine track, because the AI did not detect this object here. Idempotent:
+    posting a frame the lane already has returns it with 200."""
+    lane = await session.get(Sequence, sequence_id)
+    if lane is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Sequence not found"
+        )
+
+    existing = (
+        (
+            await session.execute(
+                select(Detection).where(
+                    Detection.sequence_id == sequence_id,
+                    Detection.recorded_at == payload.recorded_at,
+                )
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if existing is not None:
+        response.status_code = status.HTTP_200_OK
+        return _detection_read(existing)
+
+    sibling = (
+        (
+            await session.execute(
+                select(Detection)
+                .join(Sequence, Detection.sequence_id == Sequence.id)
+                .where(
+                    Sequence.source_api == lane.source_api,
+                    Sequence.platform_alert_id == lane.platform_alert_id,
+                    Sequence.id != sequence_id,
+                    Detection.recorded_at == payload.recorded_at,
+                )
+                .order_by(asc(Detection.alert_api_id))
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if sibling is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="No sibling lane has a detection at this recorded_at",
+        )
+
+    detection = Detection(
+        sequence_id=sequence_id,
+        recorded_at=payload.recorded_at,
+        alert_api_id=sibling.alert_api_id,
+        bucket_key=sibling.bucket_key,
+        algo_predictions={"predictions": []},
+    )
+    session.add(detection)
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        # A concurrent POST for the same frame won the insert: idempotency
+        # applies to it exactly as to a sequential re-POST, so re-select
+        # rather than surfacing a misleading conflict. Anything else holding
+        # the alert_api_id is a genuine collision.
+        raced = (
+            (
+                await session.execute(
+                    select(Detection).where(
+                        Detection.sequence_id == sequence_id,
+                        Detection.recorded_at == payload.recorded_at,
+                    )
+                )
+            )
+            .scalars()
+            .first()
+        )
+        if raced is not None:
+            response.status_code = status.HTTP_200_OK
+            return _detection_read(raced)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The sibling frame's alert_api_id is already present in this lane",
+        )
+    await session.refresh(detection)
+    return _detection_read(detection)
+
+
+def _frame_has_model_evidence(det: Detection) -> bool:
+    return bool((det.algo_predictions or {}).get("predictions")) or bool(
+        (det.auto_predictions or {}).get("predictions")
+    )
+
+
+@router.delete(
+    "/{sequence_id}/frames/{detection_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remove a model-evidence-free frame from a lane",
+)
+async def unmaterialize_frame(
+    sequence_id: int = Path(..., gt=0),
+    detection_id: int = Path(..., gt=0),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> None:
+    """The inverse of materialize_frame (issue #287). Only a frame whose
+    existence a human's box alone justifies can be removed — any model
+    evidence makes it part of the import record — and never the lane's last
+    frame. Deletes the row only: bucket_key is shared with the sibling the
+    frame was materialized from, so S3 is untouched (unlike
+    DELETE /detections/{id}). The DetectionAnnotation goes via FK cascade."""
+    detection = await session.get(Detection, detection_id)
+    if detection is None or detection.sequence_id != sequence_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Detection not found"
+        )
+    if _frame_has_model_evidence(detection):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Frame has model evidence and cannot be removed",
+        )
+    # Advisory under concurrency: two simultaneous DELETEs in a two-frame
+    # lane can both pass this count. Accepted for a single-annotator tool.
+    count = (
+        await session.execute(
+            select(func.count(Detection.id)).where(Detection.sequence_id == sequence_id)
+        )
+    ).scalar_one()
+    if count <= 1:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot remove the lane's last frame",
+        )
+    await session.delete(detection)
+    await session.commit()
+
+
+# NOTE: declared before GET /{sequence_id} — the int path converter would
+# otherwise turn /alert/skip into a 422.
+@router.post(
+    "/alert/skip",
+    status_code=status.HTTP_201_CREATED,
+    summary="Park a whole alert in the recoverable skipped state",
+)
+async def skip_alert(
+    payload: AlertSkipRequest = Body(...),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> AlertSkipInfo:
+    """Skip overlay (spec: alert-skip-escape-hatch): insert-only, never
+    touches lane state. 409 when already skipped or when the alert has fully
+    exited the pipeline (a skip row would be visible in neither queue)."""
+    stages = (
+        (
+            await session.execute(
+                select(SequenceAnnotation.processing_stage)
+                .select_from(Sequence)
+                .outerjoin(
+                    SequenceAnnotation,
+                    SequenceAnnotation.sequence_id == Sequence.id,
+                )
+                .where(
+                    Sequence.source_api == payload.source_api,
+                    Sequence.platform_alert_id == payload.platform_alert_id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not stages:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Alert not found"
+        )
+    if all(s == SequenceAnnotationProcessingStage.ANNOTATED for s in stages):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Alert is fully annotated — nothing to skip",
+        )
+    existing = (
+        await session.execute(
+            select(AlertSkip).where(
+                AlertSkip.source_api == payload.source_api,
+                AlertSkip.platform_alert_id == payload.platform_alert_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Alert is already skipped",
+        )
+    skip = AlertSkip(
+        source_api=payload.source_api,
+        platform_alert_id=payload.platform_alert_id,
+        skipped_by_user_id=current_user.id,
+        note=payload.note,
+    )
+    session.add(skip)
+    try:
+        await session.commit()
+    except IntegrityError:
+        # Two annotators skipping the same alert can both pass the pre-check;
+        # the unique constraint settles it — surface the loser as the same
+        # 409 the pre-check gives.
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Alert is already skipped",
+        )
+    return AlertSkipInfo(
+        skipped_at=skip.skipped_at,
+        skipped_by=current_user.username,
+        note=skip.note,
+    )
+
+
+@router.delete(
+    "/alert/skip",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Unskip an alert — it returns to whichever queue its stages qualify it for",
+)
+async def unskip_alert(
+    source_api: SourceApi = Query(...),
+    platform_alert_id: int = Query(...),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> None:
+    skip = (
+        await session.execute(
+            select(AlertSkip).where(
+                AlertSkip.source_api == source_api,
+                AlertSkip.platform_alert_id == platform_alert_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if skip is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Alert is not skipped"
+        )
+    await session.delete(skip)
+    await session.commit()
+
+
 # NOTE: declared before GET /{sequence_id} — the int path converter would
 # otherwise turn /localization-queue into a 422.
 @router.get("/localization-queue")
 async def localization_queue(
+    skipped: bool = Query(False),
     session: AsyncSession = Depends(get_session),
     params: Params = Depends(),
     current_user: User = Depends(get_current_user),
@@ -669,7 +1122,8 @@ async def localization_queue(
     matching the localization rule (see `localization_rule`) at seq_annotation_done
     whose auto reference layer exists (auto_annotated_at set). Lanes leave on
     submit (stage change), so a fully-boxed but unsubmitted lane still counts as
-    ready."""
+    ready. skipped=false excludes skip-overlay alerts; skipped=true lists only
+    them, with skip metadata attached (spec: alert-skip-escape-hatch)."""
     ready_smoke_lane = _ready_smoke_lane(Sequence, SequenceAnnotation)
     # Pre-filter to alerts having at least one ready smoke lane BEFORE the
     # completeness aggregation, so the grouping scans the active working set
@@ -693,7 +1147,10 @@ async def localization_queue(
         .where(
             tuple_(Sequence.source_api, Sequence.platform_alert_id).in_(
                 candidate_alerts
-            )
+            ),
+            alert_skip_exists_clause(Sequence)
+            if skipped
+            else ~alert_skip_exists_clause(Sequence),
         )
         .group_by(Sequence.source_api, Sequence.platform_alert_id)
         .having(
@@ -705,6 +1162,13 @@ async def localization_queue(
                         else_=0,
                     )
                 ),
+                # An undecided sibling withholds the whole alert (spec:
+                # 2026-08-05 unsure lanes gate the localize queue). The
+                # candidate pre-filter stays valid: this only removes alerts.
+                func.sum(
+                    case((unsettled_unsure_clause(SequenceAnnotation), 1), else_=0)
+                )
+                == 0,
                 func.sum(case((ready_smoke_lane, 1), else_=0)) > 0,
             )
         )
@@ -730,7 +1194,53 @@ async def localization_queue(
     # An alert can lose its sequences between the page query and item build
     # (concurrent delete); drop such rows rather than 500.
     items = [item for item in maybe_items if item is not None]
+    if skipped:
+        await _attach_skip_info(session, items)
     return Page.create(items=items, total=total, params=params)
+
+
+async def _attach_skip_info(session: AsyncSession, items: list) -> None:
+    """Bulk-attach AlertSkipInfo to queue items (skipped=true views)."""
+    if not items:
+        return
+    keys = [(item.source_api, item.platform_alert_id) for item in items]
+    rows = (
+        await session.execute(
+            select(AlertSkip, User.username)
+            .outerjoin(User, User.id == AlertSkip.skipped_by_user_id)
+            .where(tuple_(AlertSkip.source_api, AlertSkip.platform_alert_id).in_(keys))
+        )
+    ).all()
+    by_key = {
+        (skip.source_api, skip.platform_alert_id): (skip, username)
+        for skip, username in rows
+    }
+    for item in items:
+        entry = by_key.get((item.source_api, item.platform_alert_id))
+        if entry is not None:
+            skip, username = entry
+            item.skip = AlertSkipInfo(
+                skipped_at=skip.skipped_at, skipped_by=username, note=skip.note
+            )
+
+
+def _lane_contributed_by(annotator_id: int):
+    """EXISTS: some contribution by this user on the current (outer)
+    Sequence row's annotation. Correlates on Sequence.id so it composes
+    with the grouped any-lane HAVING pattern."""
+    contrib_ann = aliased(SequenceAnnotation)
+    return (
+        select(SequenceAnnotationContribution.id)
+        .join(
+            contrib_ann,
+            contrib_ann.id == SequenceAnnotationContribution.sequence_annotation_id,
+        )
+        .where(
+            contrib_ann.sequence_id == Sequence.id,
+            SequenceAnnotationContribution.user_id == annotator_id,
+        )
+        .exists()
+    )
 
 
 async def _build_queue_item(
@@ -738,7 +1248,9 @@ async def _build_queue_item(
     source_api: SourceApi,
     platform_alert_id: int,
     recorded_at: datetime,
-) -> Optional[LocalizationQueueItem]:
+    item_cls: type[LocalizationQueueItem]
+    | type[LocalizeDoneQueueItem] = LocalizationQueueItem,
+) -> Optional[LocalizationQueueItem | LocalizeDoneQueueItem]:
     rows = (
         await session.execute(
             select(Sequence, SequenceAnnotation)
@@ -778,7 +1290,7 @@ async def _build_queue_item(
         r.sequence_id: (r.total_detections, r.completed_annotations) for r in stats_rows
     }
     first_seq = rows[0][0]
-    return LocalizationQueueItem(
+    return item_cls(
         source_api=source_api,
         platform_alert_id=platform_alert_id,
         camera_name=first_seq.camera_name,
@@ -816,13 +1328,16 @@ async def classify_queue(
     source_api: Optional[SourceApi] = Query(None),
     recorded_at_gte: Optional[datetime] = Query(None),
     recorded_at_lte: Optional[datetime] = Query(None),
+    skipped: bool = Query(False),
     session: AsyncSession = Depends(get_session),
     params: Params = Depends(),
     current_user: User = Depends(get_current_user),
 ) -> Page[ClassifyQueueItem]:
     """Alerts with at least one object awaiting classification (spec:
     multi-object alert collocation, sub-project 2). Pre-filters candidate
-    alerts before grouping so cost tracks the unclassified backlog (#215)."""
+    alerts before grouping so cost tracks the unclassified backlog (#215).
+    skipped=false excludes skip-overlay alerts; skipped=true lists only them,
+    with skip metadata attached (spec: alert-skip-escape-hatch)."""
     cand_seq = aliased(Sequence)
     cand_ann = aliased(SequenceAnnotation)
     candidates = (
@@ -857,7 +1372,12 @@ async def classify_queue(
             func.min(Sequence.id).label("any_sequence_id"),
         )
         .outerjoin(SequenceAnnotation, SequenceAnnotation.sequence_id == Sequence.id)
-        .where(tuple_(Sequence.source_api, Sequence.platform_alert_id).in_(candidates))
+        .where(
+            tuple_(Sequence.source_api, Sequence.platform_alert_id).in_(candidates),
+            alert_skip_exists_clause(Sequence)
+            if skipped
+            else ~alert_skip_exists_clause(Sequence),
+        )
         .group_by(Sequence.source_api, Sequence.platform_alert_id)
         .subquery()
     )
@@ -899,6 +1419,309 @@ async def classify_queue(
                 primary_sequence_id=primary.id,
                 total_objects=row.total_objects,
                 classified_objects=int(row.classified_objects or 0),
+            )
+        )
+    if skipped:
+        await _attach_skip_info(session, items)
+    return Page.create(items=items, total=total, params=params)
+
+
+# NOTE: declared before GET /{sequence_id} — the int path converter would
+# otherwise turn /localize-done-queue into a 422.
+@router.get("/localize-done-queue")
+async def localize_done_queue(
+    camera_name: Optional[str] = Query(None),
+    organisation_name: Optional[str] = Query(None),
+    source_api: Optional[SourceApi] = Query(None),
+    recorded_at_gte: Optional[datetime] = Query(None),
+    recorded_at_lte: Optional[datetime] = Query(None),
+    annotator_id: Optional[int] = Query(
+        None, description="Alerts with any lane contributed to by this user"
+    ),
+    session: AsyncSession = Depends(get_session),
+    params: Params = Depends(),
+    current_user: User = Depends(get_current_user),
+) -> Page[LocalizeDoneQueueItem]:
+    """Alerts with at least one localized smoke lane (spec: multi-object
+    alert collocation, sub-project 3): a lane whose annotation is ANNOTATED
+    AND matches the localization rule (see `localization_rule`). Unlike the
+    localization queue, membership doesn't require every sibling to be done
+    — an alert surfaces as soon as one qualifying lane exists, with all its
+    sibling lanes rolled up in the item (classify-queue candidate-pre-filter
+    pattern, #215)."""
+    cand_seq = aliased(Sequence)
+    cand_ann = aliased(SequenceAnnotation)
+    candidates = (
+        select(cand_seq.source_api, cand_seq.platform_alert_id)
+        .join(cand_ann, cand_ann.sequence_id == cand_seq.id)
+        .where(
+            cand_ann.processing_stage == SequenceAnnotationProcessingStage.ANNOTATED,
+            needs_localization_clause(cand_ann),
+        )
+    )
+    for col, val in (
+        (cand_seq.camera_name, camera_name),
+        (cand_seq.organisation_name, organisation_name),
+        (cand_seq.source_api, source_api),
+    ):
+        if val is not None:
+            candidates = candidates.where(col == val)
+    if recorded_at_gte is not None:
+        candidates = candidates.where(cand_seq.recorded_at >= recorded_at_gte)
+    if recorded_at_lte is not None:
+        candidates = candidates.where(cand_seq.recorded_at <= recorded_at_lte)
+
+    alerts_query = (
+        select(
+            Sequence.source_api,
+            Sequence.platform_alert_id,
+            func.min(Sequence.recorded_at).label("recorded_at"),
+        )
+        .where(tuple_(Sequence.source_api, Sequence.platform_alert_id).in_(candidates))
+        .group_by(Sequence.source_api, Sequence.platform_alert_id)
+    )
+    if annotator_id is not None:
+        # Any-lane semantics via HAVING (a WHERE would drop non-matching
+        # lanes from the group and skew min(recorded_at)).
+        alerts_query = alerts_query.having(
+            func.sum(case((_lane_contributed_by(annotator_id), 1), else_=0)) > 0
+        )
+    alerts = alerts_query.subquery()
+    total = (
+        await session.execute(select(func.count()).select_from(alerts))
+    ).scalar_one()
+    page_rows = (
+        await session.execute(
+            select(alerts)
+            .order_by(desc(alerts.c.recorded_at))
+            .offset((params.page - 1) * params.size)
+            .limit(params.size)
+        )
+    ).all()
+    maybe_items = [
+        await _build_queue_item(
+            session,
+            row.source_api,
+            row.platform_alert_id,
+            row.recorded_at,
+            item_cls=LocalizeDoneQueueItem,
+        )
+        for row in page_rows
+    ]
+    # An alert can lose its sequences between the page query and item build
+    # (concurrent delete); drop such rows rather than 500.
+    items = [item for item in maybe_items if item is not None]
+    annotators_by_seq = await human_annotators(
+        session, [lane.sequence_id for item in items for lane in item.lanes]
+    )
+    for item in items:
+        item.annotators = merge_annotators(
+            annotators_by_seq, [lane.sequence_id for lane in item.lanes]
+        )
+    return Page.create(items=items, total=total, params=params)
+
+
+# NOTE: declared before GET /{sequence_id} — the int path converter would
+# otherwise turn /classify-done into a 422.
+@router.get("/classify-done")
+async def classify_done(
+    camera_name: Optional[str] = Query(None),
+    organisation_name: Optional[str] = Query(None),
+    source_api: Optional[SourceApi] = Query(None),
+    recorded_at_gte: Optional[datetime] = Query(None),
+    recorded_at_lte: Optional[datetime] = Query(None),
+    is_wildfire_alertapi: Optional[str] = Query(
+        None,
+        description="Filter by the alert platform's annotation: "
+        "'wildfire_smoke', 'other_smoke', 'other', or 'null' for unclassified",
+    ),
+    false_positive_types: Optional[List[FalsePositiveType]] = Query(
+        None, description="Alerts with any lane matching one of these FP types"
+    ),
+    smoke_types: Optional[List[SmokeType]] = Query(
+        None, description="Alerts with any lane matching one of these smoke types"
+    ),
+    is_unsure: Optional[bool] = Query(
+        None, description="Alerts with any lane whose unsure flag equals this"
+    ),
+    model_accuracy: Optional[Literal["tp", "fp", "fn"]] = Query(
+        None,
+        description="Alerts with any lane of this derived accuracy "
+        "(missed smoke → fn, else smoke → tp, else fp)",
+    ),
+    annotator_id: Optional[int] = Query(
+        None, description="Alerts with any lane contributed to by this user"
+    ),
+    session: AsyncSession = Depends(get_session),
+    params: Params = Depends(),
+    current_user: User = Depends(get_current_user),
+) -> Page[ClassifyDoneItem]:
+    """Fully classified alerts — every lane has an annotation past
+    READY_TO_ANNOTATE — one row per alert with per-lane outcome data
+    (spec: 2026-08-04 classify-done alert rows)."""
+    # Sequence-level filters pre-select candidate alerts on an alias, so the
+    # membership predicate and any-lane filters below always aggregate over
+    # ALL lanes of an alert. Filtering lanes directly would evaluate "every
+    # lane classified" on the in-window subset only — sibling lanes don't
+    # share recorded_at, so a date range could surface partial alerts.
+    cand_seq = aliased(Sequence)
+    candidates = select(cand_seq.source_api, cand_seq.platform_alert_id).distinct()
+    for col, val in (
+        (cand_seq.camera_name, camera_name),
+        (cand_seq.organisation_name, organisation_name),
+        (cand_seq.source_api, source_api),
+    ):
+        if val is not None:
+            candidates = candidates.where(col == val)
+    if recorded_at_gte is not None:
+        candidates = candidates.where(cand_seq.recorded_at >= recorded_at_gte)
+    if recorded_at_lte is not None:
+        candidates = candidates.where(cand_seq.recorded_at <= recorded_at_lte)
+    if is_wildfire_alertapi is not None:
+        # "null" selects unclassified alerts; invalid values disable the
+        # filter (same contract as the list-sequences endpoint).
+        if is_wildfire_alertapi == "null":
+            candidates = candidates.where(cand_seq.is_wildfire_alertapi.is_(None))
+        else:
+            try:
+                enum_value = AnnotationType(is_wildfire_alertapi)
+                candidates = candidates.where(
+                    cand_seq.is_wildfire_alertapi == enum_value
+                )
+            except ValueError:
+                pass
+
+    lane_done = case((SequenceAnnotation.processing_stage.in_(DONE_STAGES), 1), else_=0)
+    alerts = (
+        select(
+            Sequence.source_api,
+            Sequence.platform_alert_id,
+            func.min(Sequence.recorded_at).label("recorded_at"),
+        )
+        .outerjoin(SequenceAnnotation, SequenceAnnotation.sequence_id == Sequence.id)
+        .where(tuple_(Sequence.source_api, Sequence.platform_alert_id).in_(candidates))
+        .group_by(Sequence.source_api, Sequence.platform_alert_id)
+        # every lane classified: an unannotated lane contributes 0 to the sum
+        .having(func.count() == func.sum(lane_done))
+    )
+
+    def any_lane(condition):
+        # HAVING-level "at least one lane matches" over the grouped join.
+        return func.sum(case((condition, 1), else_=0)) > 0
+
+    if false_positive_types:
+        alerts = alerts.having(
+            any_lane(
+                SequenceAnnotation.false_positive_types.op("?|")(
+                    cast(
+                        [fp_type.value for fp_type in false_positive_types],
+                        ARRAY(String),
+                    )
+                )
+            )
+        )
+    if smoke_types:
+        alerts = alerts.having(
+            any_lane(
+                SequenceAnnotation.smoke_types.op("?|")(
+                    cast(
+                        [smoke_type.value for smoke_type in smoke_types], ARRAY(String)
+                    )
+                )
+            )
+        )
+    if is_unsure is not None:
+        alerts = alerts.having(
+            any_lane(func.coalesce(SequenceAnnotation.is_unsure, False).is_(is_unsure))
+        )
+    if model_accuracy == "fn":
+        alerts = alerts.having(any_lane(SequenceAnnotation.has_missed_smoke.is_(True)))
+    elif model_accuracy == "tp":
+        alerts = alerts.having(
+            any_lane(
+                and_(
+                    SequenceAnnotation.has_missed_smoke.is_(False),
+                    SequenceAnnotation.has_smoke.is_(True),
+                )
+            )
+        )
+    elif model_accuracy == "fp":
+        alerts = alerts.having(
+            any_lane(
+                and_(
+                    SequenceAnnotation.has_missed_smoke.is_(False),
+                    SequenceAnnotation.has_smoke.is_(False),
+                )
+            )
+        )
+    if annotator_id is not None:
+        alerts = alerts.having(any_lane(_lane_contributed_by(annotator_id)))
+
+    alerts_sq = alerts.subquery()
+    total = (
+        await session.execute(select(func.count()).select_from(alerts_sq))
+    ).scalar_one()
+    page_rows = (
+        await session.execute(
+            select(alerts_sq)
+            # platform_alert_id tie-break keeps page boundaries stable when
+            # alerts share a recorded_at
+            .order_by(
+                desc(alerts_sq.c.recorded_at), desc(alerts_sq.c.platform_alert_id)
+            )
+            .offset((params.page - 1) * params.size)
+            .limit(params.size)
+        )
+    ).all()
+    page_lanes = []
+    for row in page_rows:
+        lane_rows = (
+            await session.execute(
+                select(Sequence, SequenceAnnotation)
+                .join(
+                    SequenceAnnotation,
+                    SequenceAnnotation.sequence_id == Sequence.id,
+                )
+                .where(
+                    Sequence.source_api == row.source_api,
+                    Sequence.platform_alert_id == row.platform_alert_id,
+                )
+                .order_by(Sequence.alert_api_id.asc())
+            )
+        ).all()
+        if not lane_rows:  # concurrent delete
+            continue
+        page_lanes.append((row, lane_rows))
+    annotators_by_seq = await human_annotators(
+        session, [seq.id for _, lane_rows in page_lanes for seq, _ in lane_rows]
+    )
+    items = []
+    for row, lane_rows in page_lanes:
+        primary = lane_rows[0][0]
+        items.append(
+            ClassifyDoneItem(
+                source_api=row.source_api,
+                platform_alert_id=row.platform_alert_id,
+                camera_name=primary.camera_name,
+                organisation_name=primary.organisation_name,
+                azimuth=primary.azimuth,
+                recorded_at=row.recorded_at,
+                is_wildfire_alertapi=primary.is_wildfire_alertapi,
+                primary_sequence_id=primary.id,
+                lanes=[
+                    ClassifyDoneLane(
+                        sequence_id=seq.id,
+                        has_smoke=ann.has_smoke,
+                        has_missed_smoke=ann.has_missed_smoke,
+                        is_unsure=bool(ann.is_unsure),
+                        smoke_types=ann.smoke_types or [],
+                        false_positive_types=ann.false_positive_types or [],
+                    )
+                    for seq, ann in lane_rows
+                ],
+                annotators=merge_annotators(
+                    annotators_by_seq, [seq.id for seq, _ in lane_rows]
+                ),
             )
         )
     return Page.create(items=items, total=total, params=params)

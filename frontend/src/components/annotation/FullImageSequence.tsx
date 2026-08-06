@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
 import { Loader2, AlertCircle } from 'lucide-react';
-import { BoundingBox } from '@/types/api';
 import { apiClient } from '@/services/api';
 import { ObjectOverlay } from '@/utils/annotation/objectColors';
 
@@ -9,8 +8,28 @@ import { ObjectOverlay } from '@/utils/annotation/objectColors';
 // SequenceAnnotationGrid, where there's no per-object identity to color by).
 const DEFAULT_OWN_BOX_COLOR = '#ef4444'; // Tailwind red-500
 
+/**
+ * One frame of the sequence: which detection image to show, and (optionally)
+ * the object's own box on it. `xyxyn: null` shows the frame with no own box
+ * drawn — the classify cockpit plays the whole alert's frame union so an
+ * object's absence on a frame is visible instead of the frame being skipped.
+ * `BoundingBox` from the API types is assignable (its `xyxyn` is always set).
+ */
+export interface FullImageFrame {
+  detection_id: number;
+  xyxyn: number[] | null;
+}
+
+/** A click-to-seek request from the caller. `nonce` is a monotonic counter so a new click on the same index still re-seeks. */
+export interface SeekRequest {
+  index: number;
+  nonce: number;
+}
+
+const SEEK_HOLD_MS = 2000;
+
 interface FullImageSequenceProps {
-  bboxes: BoundingBox[];
+  bboxes: FullImageFrame[];
   sequenceId: number;
   className?: string;
   /** This object's accent color for its own box. Defaults to red (legacy look) when omitted. */
@@ -19,6 +38,8 @@ interface FullImageSequenceProps {
   frameRecordedAt?: (string | undefined)[];
   /** Other objects' track boxes, rendered dimmed in their own colors — "which plume is mine" context for this card. */
   siblingOverlays?: ObjectOverlay[];
+  /** Jump the loop to this frame, hold it SEEK_HOLD_MS, then resume — keyed on `nonce`. */
+  seekRequest?: SeekRequest | null;
 }
 
 interface ImageData {
@@ -34,6 +55,7 @@ export default function FullImageSequence({
   color,
   frameRecordedAt,
   siblingOverlays,
+  seekRequest,
 }: FullImageSequenceProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [images, setImages] = useState<ImageData[]>([]);
@@ -49,24 +71,44 @@ export default function FullImageSequence({
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [isHolding, setIsHolding] = useState(false);
+  const holdTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Clear state immediately when props change to prevent stale data
+  // Value-based identity for the frame list: callers (the classify cockpit)
+  // rebuild the bboxes array every render, so keying the reset/fetch effects
+  // on the array reference would loop them forever. Box coordinates aren't
+  // part of the key on purpose — they only affect drawing, not which images
+  // to fetch. Nor is sequenceId: detection ids are globally unique, and in
+  // the cockpit every object of an alert shares the same union frame list —
+  // keying on ids alone means switching objects doesn't reload the images.
+  const frameKey = bboxes.map(b => b.detection_id).join(',');
+
+  // Reset + fetch in ONE effect keyed on the frame list, with the in-flight
+  // fetch cancelled on change. Splitting them (reset here, fetch in a second
+  // effect gated on `images.length === 0`) raced: switching alerts while the
+  // previous alert's URL fetch was still in flight let that stale fetch
+  // commit its results afterwards, and the length guard then permanently
+  // blocked a fetch for the current frame list — the player stayed on the
+  // previous alert's images until a page reload.
   useEffect(() => {
+    let cancelled = false;
+
     setImages([]);
     setCurrentIndex(0);
     setIsLoading(true);
     setError(null);
     setImageInfo(null); // Clear image positioning info
-  }, [bboxes, sequenceId]);
+    // A pending seek-hold belongs to the old frame list.
+    setIsHolding(false);
+    if (holdTimeoutRef.current) clearTimeout(holdTimeoutRef.current);
 
-  // Fetch detection image URLs
-  useEffect(() => {
+    // No frames yet (the classify cockpit renders an object before its
+    // detections resolve). Stay in the loading state rather than falling
+    // through to the "Failed to load" branch — an empty list isn't a failure,
+    // and the effect re-runs with real frames the moment they arrive.
+    if (!bboxes.length || !sequenceId) return;
+
     const fetchImages = async () => {
-      if (!bboxes.length || !sequenceId) {
-        setIsLoading(false);
-        return;
-      }
-
       try {
         // Fetch all detection image URLs
         const imagePromises = bboxes.map(async bbox => {
@@ -88,6 +130,7 @@ export default function FullImageSequence({
         });
 
         const imageResults = await Promise.all(imagePromises);
+        if (cancelled) return;
         setImages(imageResults);
 
         // Start preloading images
@@ -95,11 +138,13 @@ export default function FullImageSequence({
           if (!image.error && image.url) {
             const img = new Image();
             img.onload = () => {
+              if (cancelled) return;
               setImages(prev =>
                 prev.map((item, i) => (i === index ? { ...item, loaded: true } : item))
               );
             };
             img.onerror = () => {
+              if (cancelled) return;
               setImages(prev =>
                 prev.map((item, i) => (i === index ? { ...item, error: true } : item))
               );
@@ -108,24 +153,43 @@ export default function FullImageSequence({
           }
         });
       } catch (err) {
-        setError('Failed to fetch detection images');
+        if (!cancelled) setError('Failed to fetch detection images');
         // Error fetching images
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     };
 
-    // Only fetch if we have cleared state (prevents duplicate fetching)
-    if (bboxes.length > 0 && sequenceId && images.length === 0) {
-      fetchImages();
-    }
-  }, [bboxes, sequenceId, images.length]);
+    fetchImages();
+    return () => {
+      cancelled = true;
+    };
+    // `bboxes`/`sequenceId` are read through the closure on purpose — see
+    // `frameKey` above for why neither belongs in the dependency list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [frameKey]);
+
+  // Jump-and-hold per seek request: show the requested frame with the loop
+  // suspended, then resume. Keyed on the nonce so re-clicking the same
+  // frame re-holds. `bboxes` is read through the closure like the fetch
+  // effect above (see `frameKey`); an index that no longer fits the current
+  // frame list (list changed mid-flight) is ignored.
+  useEffect(() => {
+    if (!seekRequest) return;
+    if (seekRequest.index < 0 || seekRequest.index >= bboxes.length) return;
+    setCurrentIndex(seekRequest.index);
+    setIsHolding(true);
+    if (holdTimeoutRef.current) clearTimeout(holdTimeoutRef.current);
+    holdTimeoutRef.current = setTimeout(() => setIsHolding(false), SEEK_HOLD_MS);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seekRequest?.nonce]);
 
   // Auto-play animation with 200ms interval - only when images are loaded
+  // and no seek-hold is pinning the current frame.
   useEffect(() => {
     const loadedImagesCount = images.filter(img => img.loaded && !img.error).length;
 
-    if (images.length > 1 && loadedImagesCount > 1 && !isLoading) {
+    if (images.length > 1 && loadedImagesCount > 1 && !isLoading && !isHolding) {
       intervalRef.current = setInterval(() => {
         setCurrentIndex(prev => (prev + 1) % images.length);
       }, 200);
@@ -141,13 +205,16 @@ export default function FullImageSequence({
         clearInterval(intervalRef.current);
       }
     };
-  }, [images.length, images, isLoading]);
+  }, [images.length, images, isLoading, isHolding]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
+      }
+      if (holdTimeoutRef.current) {
+        clearTimeout(holdTimeoutRef.current);
       }
     };
   }, []);
@@ -177,6 +244,8 @@ export default function FullImageSequence({
     if (!imageInfo || currentIndex >= bboxes.length) return null;
 
     const currentBbox = bboxes[currentIndex];
+    // A frame the object has no box on renders box-less rather than being skipped.
+    if (!currentBbox.xyxyn) return null;
     const [x1, y1, x2, y2] = currentBbox.xyxyn;
 
     // Ensure valid bbox

@@ -15,10 +15,14 @@ import {
   TBODY_CLASSES,
   THEAD_CLASSES,
 } from './tableStyles';
+import { formatDateTime } from '@/utils/datetime';
 
 interface LocalizeQueueTableProps {
   items: LocalizationQueueItem[];
   onItemClick: (item: LocalizationQueueItem) => void;
+  /** Skipped-backlog mode: rows carry skip metadata + an Unskip action and are not clickable. */
+  skippedView?: boolean;
+  onUnskip?: (item: LocalizationQueueItem) => void;
 }
 
 // Objects the annotator will draw boxes on (smoke or missed smoke, not unsure).
@@ -38,18 +42,27 @@ function smokeFrames(item: LocalizationQueueItem): number {
   return smokeLanes(item).reduce((sum, l) => sum + l.total_detections, 0);
 }
 
-// Alert-level rollup over every lane (not just smoke lanes): dominant
-// outcome + count of the other objects.
+// Outcome rollup over the lanes this screen is actually about — the ones
+// you'll box. Rolling up every lane made an alert advertise `?` for an unsure
+// object the localize screen never shows (spec: 2026-08-05 unsure lanes gate
+// the localize queue), and counted objects the Objects column doesn't.
+// ClassifyDoneTable and LocalizeDoneQueueTable still roll up every lane —
+// there, the other objects genuinely are part of the summary.
 function alertOutcome(item: LocalizationQueueItem) {
   return rollupOutcomes(
-    item.lanes.flatMap(lane => {
+    smokeLanes(item).flatMap(lane => {
       const outcome = deriveSequenceOutcome(lane);
       return outcome ? [outcome] : [];
     })
   );
 }
 
-export function LocalizeQueueTable({ items, onItemClick }: LocalizeQueueTableProps) {
+export function LocalizeQueueTable({
+  items,
+  onItemClick,
+  skippedView = false,
+  onUnskip,
+}: LocalizeQueueTableProps) {
   return (
     <div className="overflow-x-auto">
       <table className={TABLE_CLASSES}>
@@ -79,6 +92,16 @@ export function LocalizeQueueTable({ items, onItemClick }: LocalizeQueueTablePro
               tip="Model outcome — TP correct, FP false alarm, ⚑ FN missed smoke, ? unsure — dominant across the alert's objects; +N counts the others"
               align="right"
             />
+            {skippedView && (
+              <>
+                <ColumnHeader label="Skipped" tip="When the alert was skipped" />
+                <ColumnHeader label="By" tip="Who skipped the alert" />
+                <ColumnHeader label="Note" tip="Why the alert was skipped" />
+                <th className={HEADER_CELL_CLASSES}>
+                  <span className="sr-only">Actions</span>
+                </th>
+              </>
+            )}
           </tr>
         </thead>
         <tbody className={TBODY_CLASSES}>
@@ -87,8 +110,8 @@ export function LocalizeQueueTable({ items, onItemClick }: LocalizeQueueTablePro
             return (
               <tr
                 key={`${item.source_api}-${item.platform_alert_id}`}
-                onClick={() => onItemClick(item)}
-                className={ROW_CLASSES}
+                onClick={skippedView ? undefined : () => onItemClick(item)}
+                className={skippedView ? undefined : ROW_CLASSES}
               >
                 <td className="px-4 py-2">
                   <DetectionImageThumbnail
@@ -99,7 +122,7 @@ export function LocalizeQueueTable({ items, onItemClick }: LocalizeQueueTablePro
                 <td className={`${CELL_CLASSES} ${PRIMARY_CELL_TEXT}`}>{item.camera_name}</td>
                 <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>{item.organisation_name}</td>
                 <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
-                  {new Date(item.recorded_at).toLocaleString()}
+                  {formatDateTime(item.recorded_at)}
                 </td>
                 <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>{item.source_api}</td>
                 <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
@@ -115,6 +138,29 @@ export function LocalizeQueueTable({ items, onItemClick }: LocalizeQueueTablePro
                     <OutcomeCode outcome={rollup.outcome} extraCount={rollup.extraCount} />
                   )}
                 </td>
+                {skippedView && (
+                  <>
+                    <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
+                      {item.skip ? formatDateTime(item.skip.skipped_at) : '—'}
+                    </td>
+                    <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>
+                      {item.skip?.skipped_by ?? '—'}
+                    </td>
+                    <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>{item.skip?.note ?? '—'}</td>
+                    <td className={CELL_CLASSES}>
+                      <button
+                        type="button"
+                        onClick={e => {
+                          e.stopPropagation();
+                          onUnskip?.(item);
+                        }}
+                        className="whitespace-nowrap rounded-lg border border-line bg-paper px-2 py-1 font-body text-xs font-medium text-char hover:bg-ash"
+                      >
+                        Unskip
+                      </button>
+                    </td>
+                  </>
+                )}
               </tr>
             );
           })}

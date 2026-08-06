@@ -21,6 +21,7 @@ interface AuthStore {
 
   // Computed properties
   isSuperuser: () => boolean;
+  canLocalize: () => boolean;
 }
 
 export const useAuthStore = create<AuthStore>()(
@@ -145,6 +146,11 @@ export const useAuthStore = create<AuthStore>()(
         isSuperuser: () => {
           const { user } = get();
           return user?.is_superuser || false;
+        },
+
+        canLocalize: () => {
+          const { user } = get();
+          return user?.is_superuser || user?.can_localize || false;
         },
       }),
       {

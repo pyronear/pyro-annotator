@@ -20,13 +20,14 @@ const lane = (id: number, over: Partial<LocalizationQueueLane> = {}): Localizati
 });
 
 describe('determineClassifySubmitStage', () => {
-  it('already-finalised stays annotated', () =>
+  it('already-finalised stays annotated (localized smoke lane edited while still smoke)', () =>
     expect(
       determineClassifySubmitStage({
         currentStage: 'annotated',
         isUnsure: false,
         hasSmoke: true,
         hasMissedSmoke: false,
+        previouslyNeededLocalization: true,
       })
     ).toBe('annotated'));
 
@@ -37,6 +38,7 @@ describe('determineClassifySubmitStage', () => {
         isUnsure: false,
         hasSmoke: false,
         hasMissedSmoke: false,
+        previouslyNeededLocalization: false,
       })
     ).toBe('annotated'));
 
@@ -47,6 +49,7 @@ describe('determineClassifySubmitStage', () => {
         isUnsure: false,
         hasSmoke: true,
         hasMissedSmoke: false,
+        previouslyNeededLocalization: false,
       })
     ).toBe('seq_annotation_done'));
 
@@ -57,6 +60,7 @@ describe('determineClassifySubmitStage', () => {
         isUnsure: false,
         hasSmoke: false,
         hasMissedSmoke: true,
+        previouslyNeededLocalization: false,
       })
     ).toBe('seq_annotation_done'));
 
@@ -67,8 +71,102 @@ describe('determineClassifySubmitStage', () => {
         isUnsure: true,
         hasSmoke: false,
         hasMissedSmoke: false,
+        previouslyNeededLocalization: false,
       })
     ).toBe('seq_annotation_done'));
+
+  it('deferred unsure settles at annotated', () =>
+    expect(
+      determineClassifySubmitStage({
+        currentStage: 'seq_annotation_done',
+        isUnsure: true,
+        hasSmoke: false,
+        hasMissedSmoke: false,
+        previouslyNeededLocalization: false,
+        deferred: true,
+      })
+    ).toBe('annotated'));
+
+  it('undeferred unsure still parks at seq_annotation_done', () =>
+    expect(
+      determineClassifySubmitStage({
+        currentStage: 'seq_annotation_done',
+        isUnsure: true,
+        hasSmoke: false,
+        hasMissedSmoke: false,
+        previouslyNeededLocalization: false,
+        deferred: false,
+      })
+    ).toBe('seq_annotation_done'));
+
+  it('promoted FP lane (annotated, now needs localization) demotes to seq_annotation_done', () =>
+    expect(
+      determineClassifySubmitStage({
+        currentStage: 'annotated',
+        isUnsure: false,
+        hasSmoke: true,
+        hasMissedSmoke: false,
+        previouslyNeededLocalization: false,
+      })
+    ).toBe('seq_annotation_done'));
+
+  it('FP lane corrected to missed smoke also demotes', () =>
+    expect(
+      determineClassifySubmitStage({
+        currentStage: 'annotated',
+        isUnsure: false,
+        hasSmoke: false,
+        hasMissedSmoke: true,
+        previouslyNeededLocalization: false,
+      })
+    ).toBe('seq_annotation_done'));
+
+  it('FP lane staying FP keeps annotated', () =>
+    expect(
+      determineClassifySubmitStage({
+        currentStage: 'annotated',
+        isUnsure: false,
+        hasSmoke: false,
+        hasMissedSmoke: false,
+        previouslyNeededLocalization: false,
+      })
+    ).toBe('annotated'));
+
+  it('FP lane flipped to unsure re-parks as undecided at seq_annotation_done', () =>
+    expect(
+      determineClassifySubmitStage({
+        currentStage: 'annotated',
+        isUnsure: true,
+        hasSmoke: false,
+        hasMissedSmoke: false,
+        previouslyNeededLocalization: false,
+      })
+    ).toBe('seq_annotation_done'));
+
+  it('a deferred-unsure lane re-decided as smoke returns to seq_annotation_done', () =>
+    // A deferred-unsure lane was is_unsure pre-edit, so its
+    // previouslyNeededLocalization is false — same promotion rule as an
+    // FP exit re-decided as smoke.
+    expect(
+      determineClassifySubmitStage({
+        currentStage: 'annotated',
+        isUnsure: false,
+        hasSmoke: true,
+        hasMissedSmoke: false,
+        previouslyNeededLocalization: false,
+      })
+    ).toBe('seq_annotation_done'));
+
+  it('a deferred-unsure lane re-decided as FP stays annotated', () =>
+    expect(
+      determineClassifySubmitStage({
+        currentStage: 'annotated',
+        isUnsure: false,
+        hasSmoke: false,
+        hasMissedSmoke: false,
+        previouslyNeededLocalization: false,
+      })
+    ).toBe('annotated'));
 });
 
 describe('pickNextLocalizeLane', () => {

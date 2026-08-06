@@ -13,12 +13,13 @@ import {
   X,
 } from 'lucide-react';
 import { apiClient } from '@/services/api';
+import { Bbox, BboxCrop } from '@/components/annotation/BboxCrop';
 import { useDetectionImage } from '@/hooks/useDetectionImage';
 import { usePersistedTabState } from '@/hooks/usePersistedTabState';
-import { formatRelativeTime } from '@/utils/relativeTime';
 import { useState } from 'react';
 import { AlgoPrediction, SequenceGroup, SequenceGroupMember } from '@/types/api';
 import { ROUTES, classifyDetail, classifyGroup } from '@/utils/routes';
+import { formatDateTime } from '@/utils/datetime';
 
 // Minimum card width per size step; the auto-fill grid derives the column
 // count from it, so bigger cards automatically flow into more rows.
@@ -43,36 +44,8 @@ function memberIsAnnotated(m: SequenceGroupMember): boolean {
   );
 }
 
-type Bbox = [number, number, number, number];
-
 function isValidBox([x1, y1, x2, y2]: Bbox): boolean {
   return x2 > x1 && y2 > y1;
-}
-
-// Zoomed view of a single image centered on `box`. The same (already cached)
-// detection image is reused and magnified with a CSS transform — no second
-// fetch, no canvas — so small objects are legible next to the full frame.
-function BboxCrop({ url, box }: { url: string; box: Bbox }) {
-  const [x1, y1, x2, y2] = box;
-  const cx = (x1 + x2) / 2;
-  const cy = (y1 + y2) / 2;
-  // Show the box plus a margin of one box-size on each side (region ≈ 3×),
-  // then zoom so the whole region fits the cell; cap at 8× for tiny boxes.
-  const regionW = Math.min(1, Math.max(x2 - x1, 0.001) * 3);
-  const regionH = Math.min(1, Math.max(y2 - y1, 0.001) * 3);
-  const zoom = Math.min(1 / regionW, 1 / regionH, 8);
-
-  return (
-    <img
-      src={url}
-      alt=""
-      className="absolute inset-0 w-full h-full object-cover"
-      style={{
-        transformOrigin: `${cx * 100}% ${cy * 100}%`,
-        transform: `translate(${(0.5 - cx) * 100}%, ${(0.5 - cy) * 100}%) scale(${zoom})`,
-      }}
-    />
-  );
 }
 
 function MemberCard({
@@ -218,10 +191,8 @@ function MemberCard({
         </div>
         <div className="px-2 py-1 font-data text-detail text-haze flex items-center justify-between">
           {/* Full timestamp like the queue tables — the sequence id means
-              nothing to annotators; relative time lives in the tooltip. */}
-          <span title={formatRelativeTime(member.recorded_at)}>
-            {new Date(member.recorded_at).toLocaleString()}
-          </span>
+              nothing to annotators. */}
+          <span>{formatDateTime(member.recorded_at)}</span>
           {memberIsAnnotated(member) ? (
             <CheckCircle className="w-3 h-3 text-pine" aria-label="annotated" />
           ) : (
@@ -310,7 +281,7 @@ export default function SequenceGroupAnnotatePage() {
           to={ROUTES.CLASSIFY_GROUPS}
           className="font-body text-detail text-haze hover:text-char"
         >
-          ← Sequence groups
+          ← Recurring objects
         </Link>
         <div className="mt-1 flex items-center justify-between gap-4">
           <div className="flex items-center gap-2.5 min-w-0">
@@ -364,7 +335,7 @@ export default function SequenceGroupAnnotatePage() {
             {prevId ? (
               <Link
                 to={classifyGroup(prevId)}
-                title="Previous group"
+                title="Previous object"
                 className="p-1.5 rounded-lg border border-line bg-paper text-haze hover:bg-ash"
               >
                 <ChevronLeft className="w-4 h-4" />
@@ -380,7 +351,7 @@ export default function SequenceGroupAnnotatePage() {
             {nextId ? (
               <Link
                 to={classifyGroup(nextId)}
-                title="Next group"
+                title="Next object"
                 className="p-1.5 rounded-lg border border-line bg-paper text-haze hover:bg-ash"
               >
                 <ChevronRight className="w-4 h-4" />

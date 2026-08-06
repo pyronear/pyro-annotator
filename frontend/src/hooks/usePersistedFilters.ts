@@ -66,6 +66,7 @@ export function usePersistedFilters(storageKey: string, defaultState: PersistedF
         if (cleanedFilters.organisation_name === '') delete cleanedFilters.organisation_name;
         // source_api is an enum type, so we check differently
         if (!cleanedFilters.source_api) delete cleanedFilters.source_api;
+        if (!cleanedFilters.annotator_id) delete cleanedFilters.annotator_id;
 
         // Merge with defaults to handle missing properties in stored data
         // Always preserve the processing_stage from defaultState as it's a system filter

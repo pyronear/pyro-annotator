@@ -1,12 +1,43 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Loader2, AlertCircle, Minus, Plus, RotateCcw } from 'lucide-react';
+import { Loader2, AlertCircle, Minus, Plus } from 'lucide-react';
 import { BoundingBox } from '@/types/api';
 import { apiClient } from '@/services/api';
+import { computeSquareCrop, MAX_ZOOM, MIN_ZOOM } from '@/utils/annotation/squareCropUtils';
+
+/** Constant canvas backing resolution — CSS scales it; zoom never resizes the element. */
+const CANVAS_RES = 840;
+
+/**
+ * Sized for the classify cockpit's media column, where the crop shares space
+ * with the full-frame player. Consumers with a different budget — localize
+ * discloses it inside a rail row, which is narrower — pass their own.
+ */
+const DEFAULT_MAX_SIZE = 'min(380px, 33vh)';
 
 interface CroppedImageSequenceProps {
   bboxes: BoundingBox[];
   sequenceId: number;
+  /** Ties the crop to its object: a thin viewport frame in the object's overlay color. */
+  accentColor?: string;
+  /** Draw each frame's winner boxes on the crop, in the accent color. */
+  showBoxes?: boolean;
+  /**
+   * CSS max-width for the square viewport, e.g. `min(100%, 22vh)`. The
+   * viewport is always square and always centred; only its ceiling changes.
+   * Defaults to the classify sizing.
+   *
+   * Keep the resolved size at or under `CANVAS_RES / 2` (420 CSS px) — the
+   * backing canvas is fixed, and past that the loop goes soft on a hiDPI
+   * screen. Raising the ceiling means raising `CANVAS_RES` with it.
+   */
+  maxSize?: string;
   className?: string;
+  /**
+   * Reports the loop's position: fired when the loop (re)starts at index 0
+   * and on every animation advance, with that entry's detection id. Lets a
+   * host render a counter or playhead in sync with the animation.
+   */
+  onFrameChange?: (index: number, detectionId?: number) => void;
 }
 
 interface ImageData {
@@ -19,17 +50,31 @@ interface ImageData {
 export default function CroppedImageSequence({
   bboxes,
   sequenceId,
+  accentColor,
+  showBoxes = false,
+  maxSize,
   className = '',
+  onFrameChange,
 }: CroppedImageSequenceProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [images, setImages] = useState<ImageData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [zoomLevel, setZoomLevel] = useState(4); // Default 4x zoom
+  const [zoomLevel, setZoomLevel] = useState(MIN_ZOOM); // 1x = wide default framing
 
-  const containerRef = useRef<HTMLDivElement>(null);
+  // Callback-ref state, not a plain ref: the viewport doesn't exist during
+  // the loading/error branches, so the wheel listener must (re)bind when
+  // the element actually mounts, not on component mount.
+  const [viewportEl, setViewportEl] = useState<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Latest-callback ref: the position-report effect below must fire on index
+  // changes only, not every time the caller re-creates the callback.
+  const onFrameChangeRef = useRef(onFrameChange);
+  useEffect(() => {
+    onFrameChangeRef.current = onFrameChange;
+  });
 
   // Calculate average bounding box from all xyxyn coordinates (port from backend)
   const calculateAverageBbox = (bboxes: BoundingBox[]): [number, number, number, number] => {
@@ -44,23 +89,39 @@ export default function CroppedImageSequence({
     return [avgX1, avgY1, avgX2, avgY2];
   };
 
-  // Clear state immediately when props change to prevent stale data
+  // Value-based identity for the frame list, mirroring FullImageSequence:
+  // which images to fetch depends only on the detection ids, never on the box
+  // coordinates (those drive the crop, and `drawToCanvas` keys on them
+  // separately). Keying the effect below on the `bboxes` array *reference*
+  // instead would make it hostage to caller memoization — and now that the
+  // effect cancels its in-flight fetch, a caller that rebuilt the array each
+  // render would leave this stuck on a permanent spinner rather than merely
+  // flickering.
+  const frameKey = bboxes.map(b => b.detection_id).join(',');
+
+  // Reset + fetch in ONE effect keyed on that frame list, with the in-flight
+  // fetch cancelled on change. Splitting them (reset here, fetch in a second
+  // effect gated on `images.length === 0`) raced: switching alerts while the
+  // previous alert's URL fetch was still in flight let that stale fetch
+  // commit its results afterwards, and the length guard then permanently
+  // blocked a fetch for the current props — the loop stayed on the previous
+  // alert's images until a page reload.
   useEffect(() => {
+    let cancelled = false;
+
     setImages([]);
     setCurrentIndex(0);
     setIsLoading(true);
     setError(null);
-    setZoomLevel(4); // Reset zoom to default
-  }, [bboxes, sequenceId]);
+    setZoomLevel(MIN_ZOOM); // Reset zoom to default
 
-  // Fetch detection image URLs
-  useEffect(() => {
+    // No frames yet (the classify cockpit renders an object before its
+    // detections resolve). Stay in the loading state rather than falling
+    // through to the "Failed to load" branch — an empty list isn't a failure,
+    // and the effect re-runs with real frames the moment they arrive.
+    if (!bboxes.length || !sequenceId) return;
+
     const fetchImages = async () => {
-      if (!bboxes.length || !sequenceId) {
-        setIsLoading(false);
-        return;
-      }
-
       try {
         // Fetch all detection image URLs
         const imagePromises = bboxes.map(async bbox => {
@@ -82,6 +143,7 @@ export default function CroppedImageSequence({
         });
 
         const imageResults = await Promise.all(imagePromises);
+        if (cancelled) return;
         setImages(imageResults);
 
         // Start preloading images
@@ -90,6 +152,7 @@ export default function CroppedImageSequence({
             const img = new Image();
             // Note: Not setting crossOrigin to avoid CORS issues with local S3
             img.onload = () => {
+              if (cancelled) return;
               setImages(prev =>
                 prev.map((item, i) =>
                   i === index ? { ...item, loaded: true, imageElement: img } : item
@@ -97,6 +160,7 @@ export default function CroppedImageSequence({
               );
             };
             img.onerror = () => {
+              if (cancelled) return;
               setImages(prev =>
                 prev.map((item, i) => (i === index ? { ...item, error: true } : item))
               );
@@ -105,18 +169,29 @@ export default function CroppedImageSequence({
           }
         });
       } catch (err) {
-        setError('Failed to fetch detection images');
+        if (!cancelled) setError('Failed to fetch detection images');
         // Error fetching images
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     };
 
-    // Only fetch if we have cleared state (prevents duplicate fetching)
-    if (bboxes.length > 0 && sequenceId && images.length === 0) {
-      fetchImages();
-    }
-  }, [bboxes, sequenceId, images.length]);
+    fetchImages();
+    return () => {
+      cancelled = true;
+    };
+    // `bboxes` is read through the closure on purpose — see `frameKey` above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [frameKey, sequenceId]);
+
+  // `frameKey` in the deps re-reports index 0 when the frame list changes
+  // (the reset effect sets the index to 0, which alone would not re-fire if
+  // it was already 0). `bboxes` is read through the closure, like the fetch
+  // effect above.
+  useEffect(() => {
+    onFrameChangeRef.current?.(currentIndex, bboxes[currentIndex]?.detection_id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentIndex, frameKey]);
 
   // Auto-play animation with 200ms interval - only when images are loaded
   useEffect(() => {
@@ -162,58 +237,69 @@ export default function CroppedImageSequence({
 
     const img = currentImage.imageElement;
 
-    // Calculate crop coordinates
-    const avgBbox = calculateAverageBbox(bboxes);
-    const [avgX1, avgY1, avgX2, avgY2] = avgBbox;
-
-    // 20% padding around the bbox to show surrounding context.
-    const padding = 0.2;
-    const padX = (avgX2 - avgX1) * padding;
-    const padY = (avgY2 - avgY1) * padding;
-
-    const cropX1 = Math.max(0, avgX1 - padX);
-    const cropY1 = Math.max(0, avgY1 - padY);
-    const cropX2 = Math.min(1, avgX2 + padX);
-    const cropY2 = Math.min(1, avgY2 + padY);
-
-    // Convert normalized coordinates to pixels
-    const imgWidth = img.naturalWidth;
-    const imgHeight = img.naturalHeight;
-
-    const sourceX = cropX1 * imgWidth;
-    const sourceY = cropY1 * imgHeight;
-    const sourceWidth = (cropX2 - cropX1) * imgWidth;
-    const sourceHeight = (cropY2 - cropY1) * imgHeight;
-
-    // Calculate maximum allowed zoom based on original image dimensions
-    const maxZoomX = imgWidth / sourceWidth;
-    const maxZoomY = imgHeight / sourceHeight;
-    const maxAllowedZoom = Math.min(maxZoomX, maxZoomY, 8); // Cap at 8x
-
-    // Use effective zoom (user's choice or maximum allowed)
-    const effectiveZoom = Math.min(zoomLevel, maxAllowedZoom);
-
-    // Set canvas size to cropped area × effective zoom
-    const canvasWidth = Math.round(sourceWidth * effectiveZoom);
-    const canvasHeight = Math.round(sourceHeight * effectiveZoom);
-
-    canvas.width = canvasWidth;
-    canvas.height = canvasHeight;
-
-    // Clear canvas and draw cropped image
-    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-    ctx.drawImage(
-      img,
-      sourceX,
-      sourceY,
-      sourceWidth,
-      sourceHeight, // source rectangle
-      0,
-      0,
-      canvasWidth,
-      canvasHeight // destination rectangle
+    const crop = computeSquareCrop(
+      calculateAverageBbox(bboxes),
+      img.naturalWidth,
+      img.naturalHeight,
+      zoomLevel
     );
-  }, [bboxes, currentIndex, images, zoomLevel]);
+
+    // Size once — reassigning width/height reallocates the buffer per draw.
+    if (canvas.width !== CANVAS_RES) {
+      canvas.width = CANVAS_RES;
+      canvas.height = CANVAS_RES;
+    }
+    ctx.clearRect(0, 0, CANVAS_RES, CANVAS_RES);
+    ctx.drawImage(img, crop.x, crop.y, crop.size, crop.size, 0, 0, CANVAS_RES, CANVAS_RES);
+
+    if (showBoxes) {
+      // ALL of the current detection's boxes, not just bboxes[currentIndex]:
+      // a multi-box detection appears as consecutive identical loop entries
+      // (one image per box), and drawing one box per entry would flicker
+      // between them. 4px at the 840 backing res ≈ 2 CSS px on screen.
+      const detectionId = bboxes[currentIndex]?.detection_id;
+      ctx.strokeStyle = accentColor ?? '#f97316';
+      ctx.lineWidth = 4;
+      for (const box of bboxes) {
+        if (box.detection_id !== detectionId) continue;
+        const [x1, y1, x2, y2] = box.xyxyn;
+        ctx.strokeRect(
+          ((x1 * img.naturalWidth - crop.x) / crop.size) * CANVAS_RES,
+          ((y1 * img.naturalHeight - crop.y) / crop.size) * CANVAS_RES,
+          (((x2 - x1) * img.naturalWidth) / crop.size) * CANVAS_RES,
+          (((y2 - y1) * img.naturalHeight) / crop.size) * CANVAS_RES
+        );
+      }
+    }
+  }, [bboxes, currentIndex, images, zoomLevel, showBoxes, accentColor]);
+
+  // Mirrors `zoomLevel` for the wheel handler, which is bound once (see below)
+  // and so can't close over the state value.
+  const zoomRef = useRef(zoomLevel);
+  useEffect(() => {
+    zoomRef.current = zoomLevel;
+  }, [zoomLevel]);
+
+  // Wheel-zoom must preventDefault so the page doesn't scroll instead — but
+  // ONLY when the wheel actually moved the zoom. At either clamp a blanket
+  // preventDefault traps the pointer: the localize rail puts this loop inside
+  // a fixed-height scroller, so wheeling down at 8x would stop the rail
+  // scrolling with no visible reason. Falling through at the clamps lets the
+  // container scroll normally once there's no zoom left to give.
+  // React's onWheel is passive, so the listener is attached manually.
+  useEffect(() => {
+    if (!viewportEl) return;
+    const onWheel = (e: WheelEvent) => {
+      const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+      const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoomRef.current * factor));
+      if (next === zoomRef.current) return;
+      e.preventDefault();
+      zoomRef.current = next;
+      setZoomLevel(next);
+    };
+    viewportEl.addEventListener('wheel', onWheel, { passive: false });
+    return () => viewportEl.removeEventListener('wheel', onWheel);
+  }, [viewportEl]);
 
   // Redraw canvas when current index or zoom level changes
   useEffect(() => {
@@ -244,20 +330,27 @@ export default function CroppedImageSequence({
   const showLoadingState = !currentImage?.loaded && !currentImage?.error;
 
   return (
-    <div className={className}>
-      {/* Cropped Image Container */}
+    // `w-full` is load-bearing, not decoration: the viewport below sizes
+    // itself with `w-full max-w-…`, so it needs a parent with a real width.
+    // Without this, a caller that makes this root a flex item (e.g. wrapping
+    // it in `flex justify-center` to centre it) gives it shrink-to-fit width
+    // — and since every child of the viewport is absolutely positioned, that
+    // resolves to zero and the square collapses to a few pixels. Centring is
+    // this component's job via `mx-auto`; callers only supply the width.
+    <div className={`w-full ${className}`}>
+      {/* Fixed square viewport — the element never resizes; zoom changes the
+          drawn source rect instead (see squareCropUtils). */}
       <div
-        ref={containerRef}
-        className="relative mx-auto overflow-hidden"
+        ref={setViewportEl}
+        data-testid="cropped-viewport"
+        className={`relative mx-auto w-full aspect-square overflow-hidden bg-gray-900 ${
+          accentColor ? 'border-2' : ''
+        }`}
         style={{
-          width: '900px',
-          maxWidth: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
+          maxWidth: maxSize ?? DEFAULT_MAX_SIZE,
+          ...(accentColor ? { borderColor: accentColor } : {}),
         }}
       >
-        {/* Loading State */}
         {showLoadingState && (
           <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-10">
             <div className="flex flex-col items-center space-y-3">
@@ -267,7 +360,6 @@ export default function CroppedImageSequence({
           </div>
         )}
 
-        {/* Error State */}
         {currentImage?.error && (
           <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-10">
             <div className="flex flex-col items-center space-y-2">
@@ -277,64 +369,35 @@ export default function CroppedImageSequence({
           </div>
         )}
 
-        {/* Cropped Canvas */}
         {currentImage?.loaded && currentImage.imageElement && (
-          <canvas
-            ref={canvasRef}
-            className="max-w-full h-auto"
-            style={{
-              display: 'block',
-              margin: '0 auto',
-            }}
-          />
+          <>
+            <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
+            <div className="absolute bottom-2 right-2 z-20 flex items-center gap-1.5 rounded-full bg-black/55 px-2.5 py-1 text-white">
+              <button
+                onClick={() => setZoomLevel(prev => Math.max(MIN_ZOOM, prev - 0.5))}
+                disabled={zoomLevel <= MIN_ZOOM}
+                title="Zoom out"
+                aria-label="Zoom out"
+                className="p-0.5 hover:text-gray-300 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Minus className="w-3.5 h-3.5" />
+              </button>
+              <span className="font-data text-[11px] font-medium w-8 text-center">
+                {zoomLevel.toFixed(1)}x
+              </span>
+              <button
+                onClick={() => setZoomLevel(prev => Math.min(MAX_ZOOM, prev + 0.5))}
+                disabled={zoomLevel >= MAX_ZOOM}
+                title="Zoom in"
+                aria-label="Zoom in"
+                className="p-0.5 hover:text-gray-300 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </>
         )}
       </div>
-
-      {/* Zoom controls — compact strip matching the grid's ViewToolbar */}
-      {currentImage?.loaded && currentImage.imageElement && (
-        <div className="mt-2 flex items-center justify-center">
-          <div className="inline-flex items-center rounded-md bg-gray-200 p-0.5 gap-1">
-            <button
-              onClick={() => setZoomLevel(prev => Math.max(1, prev - 0.5))}
-              disabled={zoomLevel <= 1}
-              title="Zoom out"
-              aria-label="Zoom out"
-              className="px-1.5 py-0.5 rounded text-xs font-semibold text-gray-600 hover:text-gray-900 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <Minus className="w-3.5 h-3.5" />
-            </button>
-            <input
-              type="range"
-              min="1"
-              max="8"
-              step="0.5"
-              value={zoomLevel}
-              onChange={e => setZoomLevel(parseFloat(e.target.value))}
-              className="w-24 h-1.5 bg-gray-300 rounded-lg appearance-none cursor-pointer"
-            />
-            <button
-              onClick={() => setZoomLevel(prev => Math.min(8, prev + 0.5))}
-              disabled={zoomLevel >= 8}
-              title="Zoom in"
-              aria-label="Zoom in"
-              className="px-1.5 py-0.5 rounded text-xs font-semibold text-gray-600 hover:text-gray-900 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <Plus className="w-3.5 h-3.5" />
-            </button>
-            <span className="text-xs font-medium text-gray-700 w-8 text-center">
-              {zoomLevel.toFixed(1)}x
-            </span>
-            <button
-              onClick={() => setZoomLevel(4)}
-              title="Reset zoom"
-              aria-label="Reset zoom"
-              className="px-1.5 py-0.5 rounded text-xs text-gray-600 hover:text-gray-900 hover:bg-white"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

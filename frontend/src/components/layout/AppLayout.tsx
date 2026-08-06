@@ -92,6 +92,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
 function SidebarContent({ currentPath }: { currentPath: string }) {
   // Get annotation counts for badges
   const { sequenceCount, detectionCount, groupCount } = useAnnotationCounts();
+  const { canLocalize } = useAuthStore();
 
   // Create dynamic navigation with badge counts
   const navigationWithBadges: NavigationItem[] = [
@@ -99,22 +100,26 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
       name: 'Classify',
       children: [
         {
-          name: 'Groups',
+          name: 'Recurring objects',
           href: ROUTES.CLASSIFY_GROUPS,
           badgeCount: groupCount,
-          badgeTitle: `${groupCount} groups need validation`,
+          badgeTitle: `${groupCount} recurring objects need validation`,
         },
         { name: 'Alerts', href: ROUTES.CLASSIFY, badgeCount: sequenceCount },
         { name: 'Done', href: ROUTES.CLASSIFY_DONE },
       ],
     },
-    {
-      name: 'Localize',
-      children: [
-        { name: 'Smoke', href: ROUTES.LOCALIZE, badgeCount: detectionCount },
-        { name: 'Done', href: ROUTES.LOCALIZE_DONE },
-      ],
-    },
+    ...(canLocalize()
+      ? [
+          {
+            name: 'Localize',
+            children: [
+              { name: 'Smoke', href: ROUTES.LOCALIZE, badgeCount: detectionCount },
+              { name: 'Done', href: ROUTES.LOCALIZE_DONE },
+            ],
+          },
+        ]
+      : []),
   ];
 
   const isPathActive = (href: string) => {

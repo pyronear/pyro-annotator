@@ -1,0 +1,1997 @@
+/**
+ * Collocated localize screen: renders every workable object (lane) of one
+ * alert as a rail row (with its per-frame timeline strip) plus a frame grid,
+ * mirroring ClassifyAlertPage's alert-level shape for the localize task.
+ * Mounted at
+ * `/localize/:sequenceId` (queue provenance) and
+ * `/localize/done/:sequenceId` (`mode="done"`, entered from
+ * the Done list) — the same component either side, exactly as classify does
+ * it. `mode` is pure provenance: the list to go back to, and the prefix this
+ * page's own URLs are built from. It gates no behavior, because a "done"
+ * alert isn't necessarily finished — the localize-done queue surfaces an
+ * alert as soon as ONE lane is annotated and returns all its lanes, so the
+ * mix of annotated and still-workable objects the rail already models turns
+ * up on both routes.
+ *
+ * Done mode replaced `DetectionSequenceAnnotatePage`, which rendered only the
+ * alert's FIRST lane (siblings invisible) and switched off crop mode, the
+ * cropped-view flipbook and per-frame cell states via `isLocalize = mode !==
+ * 'done'`. That page, its `DetectionGrid`/`DetectionHeader`, and the
+ * `/localize/lane` route are gone.
+ *
+ * Task 3 built the data loading, status/frame model, strip, and grid. Task 4
+ * wires per-frame editing: clicking a grid cell opens the shown object's
+ * detection in `ImageModal` (URL-driven, so the back button closes the
+ * editor), a per-object "Accept boxes" quick action on each workable strip
+ * row, and the S/M/L card-size + crop-zoom view controls. Task 5 wires
+ * submitting the whole alert atomically via the bulk `localize-submit`
+ * endpoint.
+ *
+ * Post-Task-5 feedback round: a segment click gives its target cell a fading
+ * ring highlight and encodes the shown detection in a `?frame=` query param
+ * (independent of the editor's `:detectionId` path param — the two coexist),
+ * so reloading or sharing the link reproduces the scroll+highlight without
+ * opening the editor. Activating an object via the timeline (row or segment
+ * click) also enters "object focus mode" — crop-on + small cards, a lens for
+ * looking closely at just that object — stashing the prior crop/size so
+ * clicking the selected row again restores them. An explicit S/M/L click
+ * while focused clears the small-card override immediately (visible feedback
+ * for what's otherwise a silent preference write); the timeline rows no
+ * longer carry a hover preview popover (dropped — the selected rail row's
+ * cropped loop replaces it).
+ *
+ * Task 9 retired the earlier ⚑ pseudo-object row (a carrier-lane box that
+ * stood in for missed smoke). The "+ Add object" control that replaced it is
+ * itself retired for now — drawing a missed object isn't supported yet, so
+ * the missed-smoke Yes answer nudges toward the Skip alert escape hatch
+ * instead (see docs/specs/2026-08-06-missed-smoke-skip-nudge-design.md).
+ *
+ * Cockpit round: the page adopts ClassifyAlertPage's two-column shape —
+ * a media column (the active object's frame grid) beside a sticky
+ * `LocalizeRail` carrying the whole alert's
+ * localization state. That collapses the three blocks the body used to
+ * stack (workable timeline -> standalone add-object card -> a separate
+ * dimmed "Already localized" timeline) into one rail: every object gets a
+ * row in lane order, with already-localized lanes dimmed in place rather
+ * than exiled to their own strip, and each row carries its own per-frame
+ * timeline strip (the standalone Timeline card that used to sit below the
+ * rail is gone — one object list, not two). Submit moves out of
+ * the header into the rail footer and turns pine per DESIGN.md's
+ * "primary is pine in Localize contexts"; the header keeps identity, the
+ * view toolbar, and a progress badge that now reports how many objects are
+ * fully localized rather than a bare object count.
+ *
+ * Fixed-pane round: from lg up the cockpit is a viewport-height shell and
+ * the frame cells are the page's only scroller, so everything that acts on
+ * them — the Frames panel and the cropped loop above, the Objects rail
+ * beside — never leaves the screen. The header compacted to a
+ * single 48px row to pay for it. See
+ * docs/specs/2026-08-04-localize-fixed-panes-scrolling-grid-design.md.
+ *
+ * The per-frame editor is URL-driven from a CHILD route under whichever
+ * provenance prefix the page is mounted at —
+ * `<basePath>/object/:laneId/:detectionId` — which names the object
+ * (the lane's own sequence id) as well as the frame — so a shared or pasted
+ * editor link is unambiguous, and a detection that belongs to some other lane
+ * is refused rather than silently editing that lane. A child route rather
+ * than a sibling because a sibling would remount this page on every open and
+ * close, losing scroll, crop mode, focus mode and the active object; the page
+ * reads the child's params with `useMatch`. See
+ * docs/specs/2026-08-04-localize-object-editor-route-design.md.
+ *
+ * The selected object is itself URL-addressed at `<basePath>/object/:laneId`
+ * (the editor route minus its frame), and a bare alert URL auto-redirects to
+ * the first workable object on arrival; selection navigations replace
+ * history, so Back returns to the list rather than through every selection.
+ * See docs/specs/2026-08-05-localize-object-selection-routes-design.md.
+ *
+ * Submit is also gated now: it enables only once every workable object
+ * already carries a committed box on every frame it appears on, accepted
+ * per object from the bar above its frames. Submit therefore no longer accepts
+ * anything itself, and the old per-frame "N frames with no box — submit
+ * anyway?" two-step went with that: under the gate there is never a pending
+ * no-box frame left at submit time. The missed-smoke soft-confirm is the
+ * only gate left in front of it.
+ *
+ * The rail also owns the missed-smoke question: it starts at No on every
+ * alert — deliberately NOT seeded from the lanes' inherited
+ * `has_missed_smoke`, so arriving on an alert classify already flagged never
+ * pre-answers it — and answering writes the flag through to the carrying
+ * lane.
+ *
+ * False-positive objects are hidden by default (the queue's own rule, via
+ * `laneNeedsLocalization`) behind a rail toggle that surfaces them as a
+ * separated, read-only group — enough to answer "is that plume already
+ * accounted for?" before someone adds a duplicate object for it. Unsure
+ * lanes stay excluded either way.
+ *
+ * The active object also carries a "Reclassify" action in the CTA bar above
+ * its frames — workable, already-localized and false-positive objects alike
+ * (promoting an FP back to smoke re-runs its auto-review pass, issue #275) —
+ * routing to `/classify/done/<lane>` with a `return` param back to this page.
+ */
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useParams, useNavigate, useLocation, useSearchParams, useMatch } from 'react-router-dom';
+import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
+import { ArrowLeft, Keyboard, PlayCircle, Upload, X } from 'lucide-react';
+import { apiClient } from '@/services/api';
+import { QUERY_KEYS } from '@/utils/constants';
+import {
+  ApiError,
+  Detection,
+  DetectionAnnotation,
+  DetectionAnnotationBbox,
+  SmokeType,
+} from '@/types/api';
+import {
+  buildAlertFrameModel,
+  findFrameByDetectionId,
+  objectLocalizeProgress,
+  timelineLegendStatuses,
+  AlertObjectStatus,
+} from '@/utils/annotation/alertLocalizeUtils';
+import { buildFilmstripEntries } from '@/utils/annotation/objectFilmstrip';
+import { materializeGapFrame } from '@/utils/annotation/gapFrameMaterialize';
+import { laneNeedsLocalization } from '@/utils/annotation/localizeUtils';
+import {
+  buildQuickSubmitPlan,
+  collectLaneBoxes,
+  saveDetectionReview,
+  sequenceSmokeType,
+} from '@/utils/annotation';
+import {
+  LocalizeActionPanel,
+  LocalizeMissedSmokeRow,
+  LocalizeObjectActions,
+  LocalizeObjectRow,
+  LocalizeRail,
+  LocalizeShortcutsModal,
+  LocalizeTimelineLegend,
+} from '@/components/localize';
+import { AlertFrameGrid, ViewToolbar } from '@/components/detection-sequence';
+import { LocalizeObjectEditor } from '@/components/localize/editor';
+// Imported from its file rather than the editor barrel: the page tests stub
+// the barrel down to LocalizeObjectEditor, and the popover must stay real.
+import { AcceptRemainingPopover } from '@/components/localize/editor/AcceptRemainingPopover';
+import type { CardSize } from '@/components/detection-sequence/ViewToolbar';
+import CroppedImageSequence from '@/components/annotation/CroppedImageSequence';
+import { usePersistedTabState } from '@/hooks/usePersistedTabState';
+import { useToastNotifications } from '@/utils/notification/toastUtils';
+import { NotificationSystem } from '@/components/ui/NotificationSystem';
+import { Tooltip } from '@/components/ui/Tooltip';
+import {
+  ROUTES,
+  classifyDetailWithReturn,
+  localizeObject,
+  localizeObjectRoute,
+  localizeObjectSelect,
+  localizeObjectSelectRoute,
+} from '@/utils/routes';
+import { formatDateTime } from '@/utils/datetime';
+
+const CARD_MIN_WIDTH: Record<CardSize, number> = { sm: 240, md: 340, lg: 500 };
+
+interface LocalizeAlertPageProps {
+  /**
+   * 'done' when mounted under /localize/done/… — entered from the Done list.
+   *
+   * Provenance only: it picks the list to return to and the prefix this
+   * page's own URLs are built from, nothing else. A "done" alert is not
+   * necessarily finished — the localize-done queue surfaces an alert as soon
+   * as ONE lane is annotated and returns all of its lanes, so the same mix of
+   * annotated and still-workable objects the queue view already models can
+   * (and does) show up here.
+   */
+  mode?: 'done';
+}
+
+export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {}) {
+  const { sequenceId } = useParams<{ sequenceId: string }>();
+  // The editor's object + frame live on a CHILD route of whichever provenance
+  // prefix this page is mounted under (see App.tsx), and a parent's useParams
+  // cannot see a child route's params — hence useMatch.
+  const editorMatch = useMatch(localizeObjectRoute(mode === 'done'));
+  const selectMatch = useMatch(localizeObjectSelectRoute(mode === 'done'));
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const queryClient = useQueryClient();
+  const sequenceIdNum = sequenceId ? parseInt(sequenceId, 10) : null;
+  const laneIdNum = editorMatch?.params.laneId ? parseInt(editorMatch.params.laneId, 10) : null;
+  const detectionIdNum = editorMatch?.params.detectionId
+    ? parseInt(editorMatch.params.detectionId, 10)
+    : null;
+
+  // Back target and the prefix every in-page URL is built from, both driven
+  // by which list you came in through. `basePath` matters because opening,
+  // stepping through and closing the frame editor all navigate — without it
+  // the first cell click would silently move you onto the queue route.
+  const listPath = mode === 'done' ? ROUTES.LOCALIZE_DONE : ROUTES.LOCALIZE;
+  const basePath = `${listPath}/${sequenceIdNum}`;
+
+  // The active object IS the URL: the selection child route names it
+  // directly, and while the editor is open the editor's own route carries
+  // the lane. No state to sync, so a pasted/reloaded/back-button URL can't
+  // disagree with the cockpit. See
+  // docs/specs/2026-08-05-localize-object-selection-routes-design.md.
+  const selectLaneIdNum = selectMatch?.params.laneId
+    ? parseInt(selectMatch.params.laneId, 10)
+    : null;
+  const activeLaneId = laneIdNum ?? selectLaneIdNum;
+
+  // "Make this lane active" is a navigation. Always `replace`: stepping
+  // through objects is one workspace, not a trail — Back returns to the
+  // list, not through every selection made. The query string rides along so
+  // the `?frame=` deep-link param survives selection changes; a caller that
+  // wants to CHANGE the query in the same step passes `search` explicitly
+  // (a second navigation to set it separately would race this one and win
+  // with the stale pathname).
+  const setActiveLane = useCallback(
+    (laneSequenceId: number | null, search: string = location.search) => {
+      if (sequenceIdNum == null) return;
+      const path =
+        laneSequenceId == null
+          ? basePath
+          : localizeObjectSelect(sequenceIdNum, laneSequenceId, mode === 'done');
+      navigate(`${path}${search}`, { replace: true });
+    },
+    [sequenceIdNum, basePath, mode, location.search, navigate]
+  );
+
+  const frameRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  // Rail rows by lane, so the Tab cycle can move real DOM focus onto the row
+  // it lands on — see the cycle effect below.
+  const rowRefs = useRef<Record<number, HTMLButtonElement | null>>({});
+
+  const [cardSize, setCardSize] = usePersistedTabState<CardSize>('detectionAnnotateCardSize', 'md');
+  const [cropMode, setCropMode] = useState(false);
+  // Whether the active row's cropped loop is unfolded. Deliberately NOT
+  // per-lane: an annotator either wants to watch the plume evolve or doesn't,
+  // so the choice follows them from object to object instead of resetting on
+  // every selection.
+  const [cropExpanded, setCropExpanded] = useState(false);
+  // The keyboard-shortcuts help sheet, opened from the rail button or `?`.
+  const [showShortcutsModal, setShowShortcutsModal] = useState(false);
+  // Opt-in read-only context: objects classify settled as false positives.
+  // Off by default so the default view matches the queue's own rule; on, it
+  // answers "is that plume already accounted for?" before someone adds a
+  // duplicate object for something already rejected.
+  const [showFalsePositives, setShowFalsePositives] = useState(false);
+  const [selectedSmokeType, setSelectedSmokeType] = useState<SmokeType>('wildfire');
+  const smokeTypeInitFor = useRef<number | null>(null);
+
+  // The "you flagged missed smoke" dialog and whether it's already been
+  // answered this submit round (so re-clicking Submit after "Submit anyway"
+  // goes straight through instead of re-asking the same question).
+  const [missedSmokeConfirm, setMissedSmokeConfirm] = useState(false);
+  const [skipConfirmOpen, setSkipConfirmOpen] = useState(false);
+  const [skipNote, setSkipNote] = useState('');
+  const [softConfirmResolved, setSoftConfirmResolved] = useState(false);
+
+  // The Accept boxes confirm popover — the editor's AcceptRemainingPopover,
+  // anchored under the header button. Open/dismiss wiring mirrors the
+  // editor's rather than being extracted from it (spec: not worth the
+  // regression risk days after PR #301 merged).
+  const [acceptPopoverOpen, setAcceptPopoverOpen] = useState(false);
+  const acceptAnchorRef = useRef<HTMLDivElement | null>(null);
+
+  // The rail's missed-smoke answer. Deliberately NOT seeded from the lanes'
+  // inherited `has_missed_smoke`: flagging has to be a decision made here, so
+  // arriving on an alert classify already flagged must not pre-answer it.
+  // Answering writes the flag through to the carrier lane.
+  const [missedSmoke, setMissedSmoke] = useState(false);
+
+  // Object-focus mode: entering it (row/segment click activating an object)
+  // stashes the pre-focus crop-mode so the selected row's second click can
+  // restore it. Card size is handled differently (see `effectiveCardSize`
+  // below) — its persisted value is never written to while focused (unless
+  // explicitly overridden — see `sizeOverrideCleared`), so there's nothing
+  // to stash for it.
+  const [preFocusCropMode, setPreFocusCropMode] = useState<boolean | null>(null);
+  const isFocused = preFocusCropMode !== null;
+  // Card size while focused is a purely DERIVED override to 'sm' — the real
+  // `usePersistedTabState` setter is never called with 'sm', so the
+  // shared-with-the-legacy-page localStorage preference can never be
+  // clobbered by entering/leaving focus mode (chosen over "call the real
+  // setter but suspend its localStorage write", which would need reaching
+  // into the hook's internals).
+  //
+  // Re-review fix: the S/M/L buttons stayed live but invisible while
+  // focused — a click wrote the real preference (via `handleCardSizeChange`
+  // below) while the grid's displayed size stayed pinned at the derived
+  // 'sm'. `sizeOverrideCleared` lets an EXPLICIT size click cancel the
+  // override for the rest of THIS focus session, so the click has visible
+  // effect the moment it happens (the write was already intentional; now
+  // the display honors it too). It resets to `false` on a fresh focus
+  // entry, but — mirroring the crop-mode stash's "don't chain" rule — is
+  // deliberately left alone when focus merely *switches* to another object,
+  // so an explicit choice made earlier in the session keeps applying.
+  const [sizeOverrideCleared, setSizeOverrideCleared] = useState(false);
+  const effectiveCardSize: CardSize = isFocused && !sizeOverrideCleared ? 'sm' : cardSize;
+  const cardMinWidth = CARD_MIN_WIDTH[effectiveCardSize] ?? CARD_MIN_WIDTH.md;
+
+  // Arrival highlight for a segment click / `?frame=` deep link: a ~2s fade
+  // (via the ring's own `transition-shadow` plus a timed clear) rather than
+  // "persistent until next click" — simpler state (no need to track what
+  // counts as "the next interaction that should clear it": another segment
+  // click, a cell click opening the editor, deselecting focus mode, etc.)
+  // and it reads clearly as "you arrived here" without lingering as a
+  // permanent UI fixture.
+  const [highlightedFrame, setHighlightedFrame] = useState<string | null>(null);
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const highlightFrame = useCallback((recordedAt: string) => {
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    setHighlightedFrame(recordedAt);
+    highlightTimerRef.current = setTimeout(() => setHighlightedFrame(null), 2000);
+  }, []);
+  useEffect(
+    () => () => {
+      if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    },
+    []
+  );
+
+  const { showToast, toastMessage, toastType, showToastNotification, dismissToast } =
+    useToastNotifications();
+
+  // Clear focus-mode and per-alert session state immediately when the alert
+  // changes so nothing from a previous alert can linger — including a hard
+  // reset of crop-mode (not just the focus stash), so a switch mid-focus can
+  // never leave the new alert stuck in crop mode. The active object needs no
+  // clearing here: it lives in the URL, which changed with the alert.
+  useEffect(() => {
+    setPreFocusCropMode(null);
+    setCropMode(false);
+    setSizeOverrideCleared(false);
+    setHighlightedFrame(null);
+    setMissedSmokeConfirm(false);
+    setSoftConfirmResolved(false);
+    setMissedSmoke(false);
+    frameRefs.current = {};
+  }, [sequenceIdNum]);
+
+  // Resolve the alert (source_api, platform_alert_id) from the entry sequence id.
+  const {
+    data: sequence,
+    isLoading: sequenceLoading,
+    error: sequenceError,
+  } = useQuery({
+    queryKey: QUERY_KEYS.SEQUENCE(sequenceIdNum!),
+    queryFn: () => apiClient.getSequence(sequenceIdNum!),
+    enabled: !!sequenceIdNum,
+  });
+
+  const alertDetailQueryKey = ['alert-detail', sequence?.source_api, sequence?.platform_alert_id];
+  const {
+    data: alertDetail,
+    isLoading: alertLoading,
+    isFetching: alertFetching,
+    error: alertError,
+  } = useQuery({
+    queryKey: alertDetailQueryKey,
+    queryFn: () => apiClient.getAlertDetail(sequence!.source_api, sequence!.platform_alert_id),
+    enabled: !!sequence,
+  });
+
+  const isLoading = sequenceLoading || (!!sequence && alertLoading);
+  const error = sequenceError || alertError;
+
+  const laneSequenceIds = useMemo(
+    () => (alertDetail ? alertDetail.lanes.map(lane => lane.sequence.id) : []),
+    [alertDetail]
+  );
+
+  // Each lane's detections (frame identity: recorded_at) and detection
+  // annotations (committed boxes), fetched the same way ClassifyAlertPage
+  // fetches per-lane detections — one query per lane, paginated for
+  // annotations since a lane can have more than one page of frames.
+  const laneDetectionsQueries = useQueries({
+    queries: laneSequenceIds.map(laneSequenceId => ({
+      queryKey: QUERY_KEYS.SEQUENCE_DETECTIONS(laneSequenceId),
+      queryFn: () => apiClient.getSequenceDetections(laneSequenceId),
+      staleTime: 1000 * 60 * 5,
+    })),
+  });
+
+  const laneAnnotationsQueries = useQueries({
+    queries: laneSequenceIds.map(laneSequenceId => ({
+      queryKey: [...QUERY_KEYS.DETECTION_ANNOTATIONS, 'by-sequence', laneSequenceId],
+      queryFn: async () => {
+        const all: DetectionAnnotation[] = [];
+        let page = 1;
+        let pages = 1;
+        while (page <= pages) {
+          const response = await apiClient.getDetectionAnnotations({
+            sequence_id: laneSequenceId,
+            size: 100,
+            page,
+          });
+          all.push(...response.items);
+          pages = response.pages || 1;
+          page += 1;
+        }
+        return all;
+      },
+      staleTime: 30 * 1000,
+    })),
+  });
+
+  // Memoized (not just plain locals) so the useMemo hooks below that key off
+  // these maps (modalContext, laneDetectionsSorted, activeLaneBoxes) don't
+  // recompute on every render regardless of whether the query data changed.
+  const detectionsByLaneId: Record<number, Detection[]> = useMemo(() => {
+    const map: Record<number, Detection[]> = {};
+    laneSequenceIds.forEach((laneSequenceId, i) => {
+      map[laneSequenceId] = laneDetectionsQueries[i]?.data ?? [];
+    });
+    return map;
+  }, [laneSequenceIds, laneDetectionsQueries]);
+
+  const annotationsByLaneId: Record<number, DetectionAnnotation[]> = useMemo(() => {
+    const map: Record<number, DetectionAnnotation[]> = {};
+    laneSequenceIds.forEach((laneSequenceId, i) => {
+      map[laneSequenceId] = laneAnnotationsQueries[i]?.data ?? [];
+    });
+    return map;
+  }, [laneSequenceIds, laneAnnotationsQueries]);
+
+  const frameModel = alertDetail
+    ? buildAlertFrameModel(alertDetail.lanes, detectionsByLaneId, annotationsByLaneId, {
+        includeFalsePositives: showFalsePositives,
+      })
+    : { frames: [], objectStatus: [] };
+
+  // Soft-confirm gate for submit: `has_missed_smoke` is set on some lane and
+  // the question hasn't already been answered this submit round.
+  const anyLaneFlagged = alertDetail?.lanes.some(l => l.annotation?.has_missed_smoke) ?? false;
+  const softConfirmNeeded = anyLaneFlagged && !softConfirmResolved;
+
+  // The alert-level missed-smoke flag lives on ONE lane's annotation.
+  // Whichever lane
+  // already carries it stays the carrier (so toggling edits that row rather
+  // than stranding a stale flag on another lane); otherwise it goes on the
+  // first lane that has an annotation at all. Undefined only when no lane is
+  // annotated yet, which renders the row read-only.
+  const missedSmokeAnnotationId = (
+    alertDetail?.lanes.find(l => l.annotation?.has_missed_smoke) ??
+    alertDetail?.lanes.find(l => !!l.annotation)
+  )?.annotation?.id;
+
+  // Reproduces a shared/reloaded `?frame=<detectionId>` link: resolves the
+  // detection id against every lane's frames (independent of the editor's
+  // `:detectionId` path param — this never opens the modal), then scrolls +
+  // highlights exactly like the segment click that produced the link, MINUS
+  // entering focus mode (a fresh page load reproducing "where you were
+  // looking" shouldn't also silently force crop-on + small cards). It only
+  // ACTIVATES the frame's lane on a bare alert URL (where the arrival
+  // effect below defers to it): the path is the selection's source of
+  // truth, so a stale `?frame=` from an earlier moment must not outvote the
+  // object a selection URL names — and must never navigate a deep-loaded
+  // editor URL out of its editor. `handledFrameParamRef` guards against
+  // reprocessing the same value once handled (frameModel is rebuilt every
+  // render, so this effect re-runs often as data loads — cheap to no-op
+  // once a value's been handled) and is pre-set by `handleSegmentClick`
+  // since that path already does the scroll+highlight itself.
+  const frameParam = searchParams.get('frame');
+  const frameParamNum = frameParam ? parseInt(frameParam, 10) : null;
+  const handledFrameParamRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (frameParamNum == null) {
+      handledFrameParamRef.current = null;
+      return;
+    }
+    if (handledFrameParamRef.current === frameParamNum) return;
+    const target = findFrameByDetectionId(frameModel.frames, frameParamNum);
+    if (!target) return; // frames not loaded yet (or an invalid id) — retries once data lands
+    handledFrameParamRef.current = frameParamNum;
+    if (activeLaneId == null) setActiveLane(target.laneSequenceId);
+    highlightFrame(target.recordedAt);
+    requestAnimationFrame(() => {
+      frameRefs.current[target.recordedAt]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }, [frameParamNum, frameModel.frames, highlightFrame, setActiveLane, activeLaneId]);
+
+  // The URL names both the object (`:laneId` — the lane's own sequence id) and
+  // the frame (`:detectionId`). Both have to agree for the editor to open: a
+  // lane that isn't part of this alert, a lane that doesn't need localization
+  // (false positive / unsure — the grid already refuses to open those, and
+  // this closes the pasted/back-button route in as well), or a detection that
+  // belongs to some OTHER lane all leave the editor closed and the cockpit
+  // rendering normally. That last case was undetectable under the old
+  // frame-only route, where any valid detection id resolved to whichever lane
+  // happened to own it.
+  const modalContext = useMemo(() => {
+    if (laneIdNum == null || detectionIdNum == null || !alertDetail) return null;
+    const lane = alertDetail.lanes.find(l => l.sequence.id === laneIdNum);
+    if (!lane?.annotation || !laneNeedsLocalization(lane.annotation)) return null;
+    const detection = (detectionsByLaneId[laneIdNum] ?? []).find(d => d.id === detectionIdNum);
+    if (!detection) return null;
+    const existingAnnotation =
+      (annotationsByLaneId[laneIdNum] ?? []).find(a => a.detection_id === detectionIdNum) ?? null;
+    return {
+      laneId: laneIdNum,
+      detection,
+      existingAnnotation,
+      smokeType: sequenceSmokeType(lane.annotation),
+    };
+  }, [laneIdNum, detectionIdNum, alertDetail, detectionsByLaneId, annotationsByLaneId]);
+
+  // Object-identity overlays for the open detection's OTHER contributing
+  // lanes on this same frame (`recorded_at`) — passed to `ImageModal` so it
+  // renders those boxes color-coded and labeled with their own object
+  // identity ("Object N") instead of the generic, identity-less "sibling"
+  // others_bboxes layer. Sourced from the frame model's own per-cell boxes
+  // (committed for done cells, winning for auto cells — the same boxes
+  // AlertFrameGrid's mini-boxes already render) and `objectStatus`'s
+  // label/color, so it stays consistent with what's on screen elsewhere.
+  // A plain derivation (not useMemo) — `frameModel` itself is recomputed
+  // every render, same as the other values (objectStatusRows, etc.) derived
+  // from it below.
+  const modalFrame = modalContext
+    ? frameModel.frames.find(f => f.recordedAt === modalContext.detection.recorded_at)
+    : undefined;
+  const objectOverlays = modalContext
+    ? (modalFrame?.cells ?? [])
+        .filter(cell => cell.laneSequenceId !== modalContext.laneId && cell.boxes.length > 0)
+        .map(cell => {
+          const object = frameModel.objectStatus.find(
+            o => o.laneSequenceId === cell.laneSequenceId
+          );
+          return {
+            color: object?.color ?? cell.boxes[0].color,
+            label: object?.label ?? 'Object',
+            boxes: cell.boxes.map(b => ({ xyxyn: b.xyxyn })),
+          };
+        })
+    : [];
+
+  // The open object's identity (label + color), as the rail and grid show it.
+  const modalObject = modalContext
+    ? frameModel.objectStatus.find(o => o.laneSequenceId === modalContext.laneId)
+    : undefined;
+
+  // Reset the modal's smoke-type default to the lane's classified type only
+  // when the lane changes — not on every render/refetch, which would clobber
+  // a manual in-modal change.
+  useEffect(() => {
+    if (!modalContext) return;
+    if (smokeTypeInitFor.current === modalContext.laneId) return;
+    smokeTypeInitFor.current = modalContext.laneId;
+    setSelectedSmokeType(modalContext.smokeType);
+  }, [modalContext]);
+
+  // Modal prev/next navigates within the open detection's own lane,
+  // chronologically — the same "step through this object's frames" model
+  // the legacy per-lane page uses.
+  const laneDetectionsSorted = useMemo(() => {
+    if (!modalContext) return [];
+    return [...(detectionsByLaneId[modalContext.laneId] ?? [])].sort(
+      (a, b) => new Date(a.recorded_at).getTime() - new Date(b.recorded_at).getTime()
+    );
+  }, [modalContext, detectionsByLaneId]);
+
+  // Closing the editor keeps its object selected: the editor URL names the
+  // lane, so the close target is that lane's selection URL (bare alert URL
+  // only if the lane is somehow absent). Path-only navigation within this
+  // page always appends the current query string, so the `?frame=`
+  // deep-link param (owned by the highlight feature, entirely separate from
+  // the editor's `:detectionId` path param) survives opening/closing/
+  // stepping through the editor — the two coexist rather than one
+  // clobbering the other.
+  const closeModal = useCallback(() => {
+    if (sequenceIdNum == null) return;
+    const target =
+      laneIdNum != null
+        ? localizeObjectSelect(sequenceIdNum, laneIdNum, mode === 'done')
+        : basePath;
+    navigate(`${target}${location.search}`);
+  }, [sequenceIdNum, laneIdNum, mode, basePath, location.search, navigate]);
+
+  // The editor asks for a frame by id; which frame is its own business (it
+  // steps the alert's whole range, and holds out-of-range frames locally
+  // rather than in the URL — see the spec). The page's job is only to keep
+  // the URL naming whichever of THIS lane's detections is open.
+  const navigateModalTo = useCallback(
+    (detectionId: number) => {
+      if (!modalContext || sequenceIdNum == null) return;
+      navigate(
+        `${localizeObject(sequenceIdNum, modalContext.laneId, detectionId, mode === 'done')}${location.search}`
+      );
+    },
+    [modalContext, sequenceIdNum, mode, location.search, navigate]
+  );
+
+  // Per-frame save: create-or-update with FP preservation (shared util),
+  // then invalidate only that lane's detection-annotations query so the
+  // strip/grid statuses redraw.
+  const saveDetection = useMutation({
+    mutationFn: (params: {
+      laneId: number;
+      detectionId: number;
+      existingAnnotation: DetectionAnnotation | null;
+      items: DetectionAnnotationBbox[];
+    }) =>
+      saveDetectionReview({
+        detectionId: params.detectionId,
+        existingAnnotation: params.existingAnnotation,
+        items: params.items,
+      }),
+    onSuccess: (_result, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: [...QUERY_KEYS.DETECTION_ANNOTATIONS, 'by-sequence', variables.laneId],
+      });
+    },
+    onError: () => {
+      showToastNotification('Failed to save frame — try again', 'error');
+    },
+  });
+
+  // Draw on a gap frame (issue #287): materialize the Detection, then save
+  // the drawn box to it. Navigation to the new frame waits for the detections
+  // refetch, so the editor never opens an id the loaded data cannot back.
+  const materializeAndCommit = useMutation({
+    mutationFn: (params: {
+      laneId: number;
+      recordedAt: string;
+      items: DetectionAnnotationBbox[];
+    }) => materializeGapFrame(params),
+    onSuccess: async ({ detection }, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: QUERY_KEYS.SEQUENCE_DETECTIONS(variables.laneId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: [...QUERY_KEYS.DETECTION_ANNOTATIONS, 'by-sequence', variables.laneId],
+        }),
+      ]);
+      navigateModalTo(detection.id);
+    },
+    onError: (_error, variables) => {
+      // The materialize may have landed with only the save failing; refetch
+      // so a now-real frame renders as a boxless in-object frame, not a gap.
+      queryClient.invalidateQueries({
+        queryKey: QUERY_KEYS.SEQUENCE_DETECTIONS(variables.laneId),
+      });
+      showToastNotification('Failed to save frame — try again', 'error');
+    },
+  });
+
+  // Un-materialize (issue #287): remove an evidence-free frame from the lane.
+  // The URL names the open detection, so step off it before the refetch drops
+  // the row; the frame reverts to a gap in the filmstrip.
+  const unmaterializeFrame = useMutation({
+    mutationFn: (params: {
+      laneId: number;
+      detection: Detection;
+      // Captured at press time: by the time the 409 fallback runs, the open
+      // frame (and modalContext) may already be a different detection.
+      existingAnnotation: DetectionAnnotation | null;
+    }) => apiClient.unmaterializeFrame(params.laneId, params.detection.id),
+    onSuccess: async (_result, variables) => {
+      const remaining = laneDetectionsSorted.filter(d => d.id !== variables.detection.id);
+      const target =
+        [...remaining].reverse().find(d => d.recorded_at < variables.detection.recorded_at) ??
+        remaining[0];
+      if (target) navigateModalTo(target.id);
+      await queryClient.invalidateQueries({
+        queryKey: QUERY_KEYS.SEQUENCE_DETECTIONS(variables.laneId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: [...QUERY_KEYS.DETECTION_ANNOTATIONS, 'by-sequence', variables.laneId],
+      });
+    },
+    onError: (error, variables) => {
+      // The server's guards (model evidence, last frame) refuse with 409;
+      // fall back to the ordinary confirmed-empty clear so the annotator's
+      // intent still lands.
+      if ((error as unknown as ApiError).status === 409) {
+        saveDetection.mutate({
+          laneId: variables.laneId,
+          detectionId: variables.detection.id,
+          existingAnnotation: variables.existingAnnotation,
+          items: [],
+        });
+        return;
+      }
+      showToastNotification('Failed to remove frame — try again', 'error');
+    },
+  });
+
+  // The alert-level missed-smoke flag. Written from two places: the rail's
+  // own Yes/No row, and the soft-confirm's "Submit & clear flag" path.
+  const setMissedSmokeFlag = useMutation({
+    mutationFn: ({ annotationId, value }: { annotationId: number; value: boolean }) =>
+      apiClient.updateSequenceAnnotation(annotationId, { has_missed_smoke: value }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: alertDetailQueryKey });
+    },
+    onError: () => {
+      showToastNotification('Failed to update missed smoke — try again', 'error');
+    },
+  });
+
+  const handleMissedSmokeChange = (value: boolean) => {
+    setMissedSmoke(value);
+    if (missedSmokeAnnotationId == null) return;
+    setMissedSmokeFlag.mutate({ annotationId: missedSmokeAnnotationId, value });
+  };
+
+  // Every editor action autosaves, so a save is silent and leaves the editor
+  // open — there is no submit-and-close step left to toast about. Failure
+  // still surfaces through `saveDetection`'s own onError.
+  const handleEditorCommit = (detection: Detection, items: DetectionAnnotationBbox[]) => {
+    if (!modalContext) return;
+    saveDetection.mutate({
+      laneId: modalContext.laneId,
+      detectionId: detection.id,
+      existingAnnotation: modalContext.existingAnnotation,
+      items,
+    });
+  };
+
+  const handleEditorCommitGapFrame = (recordedAt: string, items: DetectionAnnotationBbox[]) => {
+    if (!modalContext) return;
+    materializeAndCommit.mutate({ laneId: modalContext.laneId, recordedAt, items });
+  };
+
+  const handleEditorUnmaterialize = (detection: Detection) => {
+    if (!modalContext) return;
+    unmaterializeFrame.mutate({
+      laneId: modalContext.laneId,
+      detection,
+      existingAnnotation: modalContext.existingAnnotation,
+    });
+  };
+
+  // Shared step: accept the winning model boxes for every pending frame of
+  // one lane (create-or-update, sequential — fail-fast on the first
+  // rejection). Does not submit the lane. Used both by the per-object
+  // quick-accept button and by "Accept all & submit alert", which runs this
+  // for every workable lane before the atomic localize-submit call.
+  const runLaneQuickAccept = useCallback(
+    async (laneSequenceId: number) => {
+      const lane = alertDetail?.lanes.find(l => l.sequence.id === laneSequenceId);
+      if (!lane) throw new Error('Lane not found');
+      const detections = detectionsByLaneId[laneSequenceId] ?? [];
+      const annotations = new Map(
+        (annotationsByLaneId[laneSequenceId] ?? []).map(a => [a.detection_id, a])
+      );
+      const plan = buildQuickSubmitPlan(
+        detections,
+        annotations,
+        sequenceSmokeType(lane.annotation)
+      );
+      for (const payload of plan.payloads) {
+        if (payload.existingAnnotationId !== null) {
+          await apiClient.updateDetectionAnnotation(payload.existingAnnotationId, payload.body);
+        } else {
+          await apiClient.createDetectionAnnotation({
+            detection_id: payload.detection.id,
+            ...payload.body,
+          });
+        }
+      }
+    },
+    [alertDetail, detectionsByLaneId, annotationsByLaneId]
+  );
+
+  // Per-object quick-accept: runs the lane's plan, then redraws just that
+  // lane's strip/grid status.
+  const quickAcceptLane = useMutation({
+    mutationFn: async (laneSequenceId: number) => {
+      await runLaneQuickAccept(laneSequenceId);
+      return laneSequenceId;
+    },
+    onSuccess: laneSequenceId => {
+      queryClient.invalidateQueries({
+        queryKey: [...QUERY_KEYS.DETECTION_ANNOTATIONS, 'by-sequence', laneSequenceId],
+      });
+      queryClient.invalidateQueries({ queryKey: alertDetailQueryKey });
+      showToastNotification("Object's boxes accepted", 'success');
+    },
+    onError: () => {
+      showToastNotification('Failed to accept boxes — try again', 'error');
+    },
+  });
+
+  // One row per object: identity + per-frame statuses. The rail row's
+  // `isActive` carries the focus accent; `selected` died with the
+  // standalone Timeline card.
+  const objectStatusRows: AlertObjectStatus[] = frameModel.objectStatus;
+
+  const workableObjects = objectStatusRows.filter(o => o.workable);
+
+  // The one frame axis every rail row renders, so segments align vertically
+  // across objects. Already chronological — `buildAlertFrameModel` sorts.
+  const frameTimestamps = frameModel.frames.map(f => f.recordedAt);
+
+  // Per-object localization progress, derived from the same
+  // `statusByTimestamp` the timeline segments render. Keyed by lane rather
+  // than positional, so grouping the rail's rows (smoke first, false
+  // positives last) can't desynchronize a row from its numbers.
+  const objectProgress = new Map(
+    objectStatusRows.map(
+      object => [object.laneSequenceId, objectLocalizeProgress(object.statusByTimestamp)] as const
+    )
+  );
+
+  // The rail groups false positives after the real objects, so the
+  // read-only context can't be mistaken for work. The Tab cycle walks the
+  // same order (`orderedObjectRows`), so keyboard and visual order agree.
+  const smokeObjectRows = objectStatusRows.filter(o => !o.isFalsePositive);
+  const falsePositiveRows = objectStatusRows.filter(o => o.isFalsePositive);
+  const orderedObjectRows = [...smokeObjectRows, ...falsePositiveRows];
+
+  // The rail's shared legend explains only encodings some visible row uses —
+  // `orderedObjectRows` is exactly the visible set, since
+  // `buildAlertFrameModel` already drops FP lanes when the toggle is off.
+  const legendStatuses = timelineLegendStatuses(orderedObjectRows.map(o => o.statusByTimestamp));
+
+  // Arrival auto-select + URL-lane validation. A bare alert URL
+  // replace-redirects to the first workable smoke object — the thing the
+  // annotator will act on — falling back to the first smoke object when all
+  // are done, and staying bare (nothing selected) only when the view has no
+  // smoke lanes at all. The auto-selection enters object-focus mode
+  // (`activateFocus`), exactly as if the annotator had clicked that row:
+  // the cockpit opens looking at the first object, row selected and cells
+  // cropped around its boxes. Directly-loaded selection URLs deliberately
+  // do NOT get that treatment — a reload reproducing "where you were"
+  // shouldn't silently force crop-on + small cards. A selection URL naming
+  // a lane the current frame model doesn't contain (stale link, lane
+  // removed by reclassify, or an FP lane while the toggle is off) falls
+  // back to the bare URL, which re-runs the auto-select. Editor URLs are
+  // left alone: `modalContext` already refuses invalid ones without
+  // navigating, and rewriting an editor URL here would fight the browser's
+  // back button. Guarded on `alertDetail` so nothing redirects while the
+  // page is still loading, and it yields to a live `?frame=` deep link —
+  // see the auto-select branch. Each navigation changes which branch runs
+  // next, so this settles in at most two hops with no loop. Deliberately NO
+  // dependency array: `frameModel` and the rows derived from it are rebuilt
+  // every render anyway, and the body is a cheap guarded no-op once
+  // settled.
+  useEffect(() => {
+    if (!alertDetail || sequenceIdNum == null || laneIdNum != null) return;
+    if (selectLaneIdNum != null) {
+      // Not while a refetch is in flight: judging the URL against a stale
+      // lane list would bounce a lane that only the incoming alert-detail
+      // knows about off selection.
+      if (alertFetching) return;
+      const known = frameModel.objectStatus.some(o => o.laneSequenceId === selectLaneIdNum);
+      if (!known) navigate(`${basePath}${location.search}`, { replace: true });
+      return;
+    }
+    // A live `?frame=` deep link owns the first selection: it names the
+    // exact object+moment the link meant, and the frame effect above
+    // resolves it WITHOUT entering focus mode. Auto-select must not race it
+    // — on a warm cache both effects fire in the same commit and the last
+    // navigation would win with the wrong object. Bail while the param
+    // resolves to a loaded frame, or still might (lane detections in
+    // flight); only a param no loaded frame owns (stale/bogus id) falls
+    // through to the normal auto-select.
+    if (frameParamNum != null) {
+      const frameTarget = findFrameByDetectionId(frameModel.frames, frameParamNum);
+      if (frameTarget || laneDetectionsQueries.some(q => q.isLoading)) return;
+    }
+    const target = smokeObjectRows.find(o => o.workable) ?? smokeObjectRows[0];
+    if (target) activateFocus(target.laneSequenceId);
+  });
+
+  const isObjectLocalized = (object: AlertObjectStatus): boolean => {
+    const progress = objectProgress.get(object.laneSequenceId);
+    return !!progress && progress.confirmedCount === progress.presentCount;
+  };
+
+  // Header progress badge, counted over EVERY object that needs localizing —
+  // not just the workable ones. Counting workable-only made a fully localized
+  // alert read "0 of 0 objects localized", since a finished lane leaves the
+  // workable set entirely; an already-annotated lane is localized, so it
+  // belongs in both halves of the fraction.
+  const localizedObjectCount = smokeObjectRows.filter(isObjectLocalized).length;
+
+  // Counted straight off the lanes, not off `frameModel` — the model only
+  // materializes false-positive lanes while the toggle is ON, so the toggle
+  // needs its own source to know whether it has anything to reveal.
+  const falsePositiveLaneCount =
+    alertDetail?.lanes.filter(
+      lane =>
+        !!lane.annotation && !laneNeedsLocalization(lane.annotation) && !lane.annotation.is_unsure
+    ).length ?? 0;
+
+  // Which actions the active object gets, and what they do — feeds the media
+  // column's CTA bar, the actions' one home. The rail rows stay read-only
+  // summaries; giving the selected row the same pair showed every button
+  // twice on one screen.
+  const objectActionProps = (object: AlertObjectStatus) => ({
+    // Withheld once no frame has an uncommitted model box on offer — the
+    // editor's rule for the same button, and the only way the bar can show
+    // that the accept landed. Clicking toggles the confirm popover; the
+    // popover's own Accept runs the mutation. Only ever called with the
+    // active object, so the active lane's acceptRemainingCount applies.
+    onAcceptBoxes:
+      object.workable && acceptRemainingCount > 0
+        ? () => setAcceptPopoverOpen(open => !open)
+        : undefined,
+    isAccepting: quickAcceptLane.isPending && quickAcceptLane.variables === object.laneSequenceId,
+    // Offered on false-positive rows too: promoting one back to smoke
+    // demotes the lane server-side and re-runs its auto-review pass
+    // (spec: fp-promote-relocalize, issue #275).
+    onReclassify: () => handleReclassify(object.laneSequenceId),
+  });
+
+  const renderObjectRow = (object: AlertObjectStatus) => {
+    const progress = objectProgress.get(object.laneSequenceId) ?? {
+      presentCount: 0,
+      confirmedCount: 0,
+    };
+    const isActive = isFocused && activeLaneId === object.laneSequenceId;
+    return (
+      <LocalizeObjectRow
+        key={object.laneSequenceId}
+        ref={el => {
+          rowRefs.current[object.laneSequenceId] = el;
+        }}
+        label={object.label}
+        color={object.color}
+        confirmedCount={progress.confirmedCount}
+        presentCount={progress.presentCount}
+        frameTimestamps={frameTimestamps}
+        statusByTimestamp={object.statusByTimestamp}
+        onFrameClick={ts => handleSegmentClick(object.laneSequenceId, ts)}
+        workable={object.workable}
+        smokeType={object.smokeType}
+        isFalsePositive={object.isFalsePositive}
+        falsePositiveTypes={object.falsePositiveTypes}
+        // False positives are always context. An already-localized object is
+        // only context when there's still live work beside it — on a fully
+        // localized alert those rows are the page's subject.
+        dimmed={object.isFalsePositive || (!object.workable && workableObjects.length > 0)}
+        isActive={isActive}
+        onActivate={() => handleObjectClick(object.laneSequenceId)}
+      />
+    );
+  };
+
+  // Names the media column: with an object active the grid shows that
+  // object's detections, so the column header should say whose they are.
+  // The color also outlines the frames it actually appears on.
+  const activeObject = objectStatusRows.find(o => o.laneSequenceId === activeLaneId);
+  const activeObjectLabel = activeObject?.label ?? null;
+
+  // Submit gate: every workable object must already have a committed box on
+  // every frame it appears on. An object is "accepted" either via the CTA
+  // bar's Accept-boxes action or by drawing its frames in the editor — submitting
+  // is the last step, not a shortcut past the per-object review.
+  // Deliberately NOT the badge's count: submit only ships workable lanes, so
+  // already-annotated objects must not satisfy (or block) the gate.
+  const allObjectsAccepted = workableObjects.length > 0 && workableObjects.every(isObjectLocalized);
+
+  // An alert with an undecided object is not ready for localization (spec:
+  // 2026-08-05 unsure lanes gate the localize queue). The queue hides it;
+  // this covers deep links and stale tabs, and matches the server guard on
+  // localize-submit — better to say so up front than to let a 422 explain it
+  // after every box is drawn.
+  const undecidedLanes = (alertDetail?.lanes ?? []).filter(
+    lane => lane.annotation?.is_unsure && lane.annotation.processing_stage === 'seq_annotation_done'
+  );
+  const undecidedLaneCount = undecidedLanes.length;
+  const submitBlocked = !allObjectsAccepted || undecidedLaneCount > 0;
+
+  // What the submit button's tooltip says. The blocked case counts the
+  // objects rather than restating the rule: "2 objects still have frames
+  // without a box" tells you how much is left, where "accept every object's
+  // boxes" only tells you what you already tried to do.
+  const objectsAwaitingBoxes = workableObjects.filter(o => !isObjectLocalized(o)).length;
+  const submitTooltip =
+    undecidedLaneCount > 0
+      ? `${undecidedLaneCount} object${undecidedLaneCount === 1 ? '' : 's'} in this alert ${
+          undecidedLaneCount === 1 ? 'is' : 'are'
+        } still marked unsure. Settle ${
+          undecidedLaneCount === 1 ? 'it' : 'them'
+        } in Classify to unlock submit.`
+      : allObjectsAccepted
+        ? 'Submits every object still awaiting localization, then returns you to the list.'
+        : `${objectsAwaitingBoxes} object${objectsAwaitingBoxes === 1 ? '' : 's'} still ${
+            objectsAwaitingBoxes === 1 ? 'has' : 'have'
+          } frames without a box. Accept or draw them to enable submit.`;
+
+  // Every workable lane's sequence-annotation id — the payload
+  // `localizeSubmit` takes, and the set both bulk actions iterate.
+  const workableLanes: { laneSequenceId: number; annotationId: number }[] = useMemo(
+    () =>
+      workableObjects.flatMap(object => {
+        const lane = alertDetail?.lanes.find(l => l.sequence.id === object.laneSequenceId);
+        if (!lane?.annotation) return [];
+        return [{ laneSequenceId: object.laneSequenceId, annotationId: lane.annotation.id }];
+      }),
+    [workableObjects, alertDetail]
+  );
+
+  // Submit: atomically ships the whole alert. No accept step of its own —
+  // `allObjectsAccepted` gates the button, so every frame already carries a
+  // committed box by the time this can fire.
+  const submitAlert = useMutation({
+    mutationFn: async () => apiClient.localizeSubmit(workableLanes.map(l => l.annotationId)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['localization-queue'] });
+      queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.SEQUENCE_ANNOTATIONS });
+      showToastNotification('Objects submitted', 'success');
+      setTimeout(() => navigate(listPath), 1000);
+    },
+    onError: err => {
+      const detail = (err as { detail?: string })?.detail || (err as Error)?.message || '';
+      // A rejected submit means the page's view of "everything is accepted"
+      // disagreed with the server — refetch each lane so the rows redraw
+      // with their true pending counts rather than staying falsely complete.
+      workableLanes.forEach(({ laneSequenceId }) => {
+        queryClient.invalidateQueries({
+          queryKey: [...QUERY_KEYS.DETECTION_ANNOTATIONS, 'by-sequence', laneSequenceId],
+        });
+      });
+      if (detail.includes('localization incomplete')) {
+        showToastNotification('Submit rejected — some frames are not yet annotated', 'error');
+        return;
+      }
+      showToastNotification(`Submit failed: ${detail || 'unknown error'}`, 'error');
+    },
+  });
+
+  // Escape hatch (spec: alert-skip-escape-hatch): park the whole alert when
+  // the current UI cannot express it, then move on. Queue mode only.
+  const skipAlertMutation = useMutation({
+    mutationFn: () => {
+      if (!sequence) throw new Error('Alert not loaded');
+      return apiClient.skipAlert(
+        sequence.source_api,
+        sequence.platform_alert_id,
+        skipNote.trim() || undefined
+      );
+    },
+    onSuccess: () => {
+      setSkipConfirmOpen(false);
+      setSkipNote('');
+      queryClient.invalidateQueries({ queryKey: ['localization-queue'] });
+      queryClient.invalidateQueries({ queryKey: ['localization-queue-skipped-count'] });
+      queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });
+      queryClient.invalidateQueries({ queryKey: alertDetailQueryKey });
+      showToastNotification('Alert skipped', 'success');
+      navigate(listPath);
+    },
+    onError: err => {
+      const detail = (err as { detail?: string })?.detail || (err as Error)?.message || '';
+      showToastNotification(detail ? `Skip failed: ${detail}` : 'Skip failed — try again', 'error');
+    },
+  });
+
+  // The missed-smoke soft-confirm is the only gate left in front of submit:
+  // flagged missed smoke can't be annotated yet, so it leads with Skip alert
+  // before offering to submit anyway. The old two-step no-box warning went
+  // away with the bulk-accept-on-submit it guarded: submit now requires
+  // every frame to already carry a committed box, so there is never a
+  // pending no-box frame left to warn about.
+  const handleSubmitClick = () => {
+    if (submitBlocked || submitAlert.isPending) return;
+    if (softConfirmNeeded) {
+      setMissedSmokeConfirm(true);
+      return;
+    }
+    submitAlert.mutate();
+  };
+
+  // Continues past the soft-confirm dialog into the submit — shared by both
+  // of its "proceed" options ("Submit anyway" and "Submit & clear flag").
+  const proceedPastSoftConfirm = () => {
+    setMissedSmokeConfirm(false);
+    setSoftConfirmResolved(true);
+    submitAlert.mutate();
+  };
+
+  const handleSubmitAnyway = () => proceedPastSoftConfirm();
+
+  const handleSubmitAndClearFlag = async () => {
+    const flaggedLane = alertDetail?.lanes.find(l => l.annotation?.has_missed_smoke);
+    if (flaggedLane?.annotation) {
+      await setMissedSmokeFlag.mutateAsync({
+        annotationId: flaggedLane.annotation.id,
+        value: false,
+      });
+    }
+    proceedPastSoftConfirm();
+  };
+
+  // Cropped flipbook: the active object's boxes across all its frames, fed to
+  // the loop the selected rail row discloses. It used to hide behind a `Film`
+  // toggle in the frame grid's toolbar — a control in one column for
+  // something that appeared in another, which is why nobody found it. It now
+  // hangs off the row whose object it shows. Selecting nothing shows nothing:
+  // there is no "the object" to crop around.
+  // A false-positive lane's committed annotation is empty by construction,
+  // so the flipbook has to read its engine track instead — otherwise
+  // activating an FP object shows no strip at all, and looking closely at
+  // the rejected plume is the whole reason the row is on screen.
+  const activeLaneIsFalsePositive = activeObject?.isFalsePositive === true;
+  const activeLaneBoxes = useMemo(() => {
+    if (activeLaneId == null) return [];
+    return collectLaneBoxes(
+      detectionsByLaneId[activeLaneId] ?? [],
+      new Map((annotationsByLaneId[activeLaneId] ?? []).map(a => [a.detection_id, a])),
+      { falsePositive: activeLaneIsFalsePositive }
+    );
+  }, [activeLaneId, detectionsByLaneId, annotationsByLaneId, activeLaneIsFalsePositive]);
+
+  // Frames of the active object a bulk accept would fill, and frames no
+  // source can fill. Also the button's visibility rule: acceptRemainingCount
+  // is what the editor gates its own Accept boxes on, and a popover for a
+  // lane with nothing acceptable would render "0 frames have a model box".
+  const acceptEntries = useMemo(() => {
+    if (activeLaneId == null) return [];
+    return buildFilmstripEntries(
+      frameModel.frames,
+      activeLaneId,
+      detectionsByLaneId[activeLaneId] ?? [],
+      annotationsByLaneId[activeLaneId] ?? []
+    );
+  }, [frameModel.frames, activeLaneId, detectionsByLaneId, annotationsByLaneId]);
+  const acceptRemainingCount = acceptEntries.filter(
+    e => e.inObject && !e.committedSource && e.availableSource
+  ).length;
+  const acceptGapCount = acceptEntries.filter(
+    e => e.inObject && !e.committedSource && !e.availableSource
+  ).length;
+
+  // A popover left open while the selection moves would preview the wrong
+  // lane; the editor never needs this because its whole surface is one lane.
+  useEffect(() => {
+    setAcceptPopoverOpen(false);
+  }, [activeLaneId]);
+
+  // And one left "open" after a refetch empties the lane's pending count
+  // (a concurrent session accepted it, or our own accept landed) has no
+  // anchor on screen any more — without this, Enter would still fire an
+  // invisible empty-payload accept.
+  useEffect(() => {
+    if (acceptRemainingCount === 0) setAcceptPopoverOpen(false);
+  }, [acceptRemainingCount]);
+
+  // Outside mousedown closes — same listener the editor hangs off its anchor.
+  useEffect(() => {
+    if (!acceptPopoverOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (!acceptAnchorRef.current?.contains(event.target as Node)) setAcceptPopoverOpen(false);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    return () => document.removeEventListener('mousedown', onPointerDown);
+  }, [acceptPopoverOpen]);
+
+  // Keyed on `activeLaneId` alone rather than on focus mode, matching the
+  // panel's actions beside it: closing the frame editor leaves an object
+  // active without re-entering focus, and that is exactly when someone is
+  // most obviously working one object.
+  const canShowCrop = activeLaneId != null && activeLaneBoxes.length > 0;
+
+  // Enters (or switches) object-focus mode: crop-on + small cards, a lens
+  // for looking closely at just this object, and the selection its rail row
+  // needs before it will offer the cropped loop. The pre-focus crop-mode is
+  // stashed only the FIRST time focus is entered (`prev => prev ?? cropMode`
+  // — a functional update so it reads `cropMode` as of THIS click, before
+  // this same call's `setCropMode(true)` below applies) — switching to a
+  // different object while already focused (another row, or a segment of a
+  // different object) reuses that same stash rather than overwriting it
+  // with the just-focused object's now-true crop-mode, so deselecting
+  // always restores the settings from *before the first selection*, not
+  // from whichever object was focused most recently. `sizeOverrideCleared`
+  // only resets on a genuinely fresh entry (see its declaration).
+  const activateFocus = (laneSequenceId: number, search?: string) => {
+    setActiveLane(laneSequenceId, search);
+    setPreFocusCropMode(prev => prev ?? cropMode);
+    setCropMode(true);
+    if (!isFocused) setSizeOverrideCleared(false);
+  };
+
+  // Exits focus: restores the stashed pre-focus crop-mode (and, since
+  // `effectiveCardSize` is a derived override, the card size falls back to
+  // the untouched persisted preference automatically). The object stays
+  // active — and its cropped loop stays available — because clearing it
+  // would bounce the URL through the bare alert path and re-select the
+  // first object, a jump that would feel broken. A no-op when not focused.
+  const exitFocus = () => {
+    if (!isFocused) return;
+    setCropMode(preFocusCropMode as boolean);
+    setPreFocusCropMode(null);
+    setSizeOverrideCleared(false);
+  };
+
+  // Row click: activates (or switches focus to) the clicked object, UNLESS
+  // it's already the focused one — a second click on the selected row
+  // deselects.
+  const handleObjectClick = (laneSequenceId: number) => {
+    if (isFocused && activeLaneId === laneSequenceId) {
+      exitFocus();
+      return;
+    }
+    activateFocus(laneSequenceId);
+  };
+
+  // Reclassify: hands this object's classification to the classify cockpit's
+  // done mode, which makes an annotated lane editable at any stage and
+  // auto-activates the lane named in the URL — so the annotator lands on the
+  // object they clicked. The `return` param names the reclassified object's
+  // own selection URL, so the round trip — classify's back button or its
+  // post-save navigation — lands back here with that object selected (and
+  // `?frame=` intact, so a deep-linked moment survives it). Built with the
+  // page's provenance, so a reclassify started from done mode returns to
+  // `/localize/done/…` rather than dumping the annotator on the queue-mode
+  // page for the same alert.
+  const handleReclassify = (laneSequenceId: number) => {
+    if (sequenceIdNum == null) return;
+    navigate(
+      classifyDetailWithReturn(
+        laneSequenceId,
+        `${localizeObjectSelect(sequenceIdNum, laneSequenceId, mode === 'done')}${location.search}`
+      )
+    );
+  };
+
+  // Re-review fix: an explicit S/M/L click always writes the real
+  // preference (unchanged); while focused, it ALSO cancels the 'sm'
+  // override for the rest of this session so the click has immediate
+  // visible effect instead of silently writing a preference the grid
+  // doesn't yet honor. Focus (crop-mode, active lane, the cropped strip)
+  // continues unaffected.
+  const handleCardSizeChange = (size: CardSize) => {
+    setCardSize(size);
+    if (isFocused) setSizeOverrideCleared(true);
+  };
+
+  // Hiding false positives again while one is the ACTIVE object would strand
+  // `activeLaneId` on a lane the frame model no longer contains: every
+  // remaining cell then reads as "not this object's frame", dimming the whole
+  // grid and making it unclickable with no way back except clicking a row.
+  // Clear the selection first — `exitFocus` is a no-op when not focused, so
+  // the explicit `setActiveLane(null)` covers that path too. The bare URL
+  // this lands on re-runs the arrival auto-select, so the cockpit moves on
+  // to the first workable object (focused) rather than to nothing.
+  const handleToggleFalsePositives = () => {
+    if (showFalsePositives && activeLaneIsFalsePositive) {
+      exitFocus();
+      setActiveLane(null);
+    }
+    setShowFalsePositives(prev => !prev);
+  };
+
+  // Segment click: activates/switches focus (same re-stash semantics as
+  // `activateFocus`), scrolls to the frame, gives it a fading arrival
+  // highlight, and encodes the shown detection in `?frame=` so the moment
+  // is shareable/reloadable (read back by the deep-link effect below). The
+  // frame param travels INSIDE the activation navigation — selection is a
+  // path change now, and a separate setSearchParams call would race it and
+  // win with the stale pathname.
+  const handleSegmentClick = (laneSequenceId: number, timestamp: string) => {
+    const cellDetectionId = frameModel.frames
+      .find(f => f.recordedAt === timestamp)
+      ?.cells.find(c => c.laneSequenceId === laneSequenceId)?.detectionId;
+    if (cellDetectionId != null) {
+      handledFrameParamRef.current = cellDetectionId;
+      const next = new URLSearchParams(location.search);
+      next.set('frame', String(cellDetectionId));
+      activateFocus(laneSequenceId, `?${next}`);
+    } else {
+      activateFocus(laneSequenceId);
+    }
+    highlightFrame(timestamp);
+
+    requestAnimationFrame(() => {
+      frameRefs.current[timestamp]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  };
+
+  const handleCellRef = (recordedAt: string, el: HTMLDivElement | null) => {
+    frameRefs.current[recordedAt] = el;
+  };
+
+  // The editor's entrance animation origin: measured at click time, when the
+  // clicked cell is guaranteed laid out, and consumed exactly once by the
+  // editor on mount. Deep links and back/forward never set it, so those
+  // opens are (deliberately) not animated.
+  const pendingEditorOriginRef = useRef<DOMRect | null>(null);
+  const takeEditorOpenRect = useCallback(() => {
+    const rect = pendingEditorOriginRef.current;
+    pendingEditorOriginRef.current = null;
+    return rect;
+  }, []);
+
+  // Close-target lookup for the editor's shrink: the cell showing
+  // `recordedAt`, brought into view instantly first so the exit lands on
+  // something visible. Instant (not smooth): the rect must be final when
+  // measured.
+  const editorFrameCellRect = useCallback((recordedAt: string) => {
+    const el = frameRefs.current[recordedAt];
+    if (!el) return null;
+    el.scrollIntoView?.({ behavior: 'auto', block: 'nearest' });
+    return el.getBoundingClientRect();
+  }, []);
+
+  // Opens the shown (active, or first-present-fallback) object's detection
+  // in the editor. The editor URL itself carries the lane, so opening it
+  // selects the object — deliberately without `activateFocus`, so opening
+  // the editor doesn't also silently flip the background grid into focus
+  // mode.
+  const handleCellClick = (recordedAt: string, laneSequenceId: number, detId: number) => {
+    if (sequenceIdNum == null) return;
+    pendingEditorOriginRef.current = frameRefs.current[recordedAt]?.getBoundingClientRect() ?? null;
+    navigate(
+      `${localizeObject(sequenceIdNum, laneSequenceId, detId, mode === 'done')}${location.search}`
+    );
+  };
+
+  // 'c' toggles crop mode, matching the legacy grid — inert while the modal
+  // is open (mirrors the legacy page's showModal guard) and while the
+  // shortcuts sheet is up (only `?`/Escape act there).
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.key === 'c' || e.key === 'C') && detectionIdNum == null && !showShortcutsModal) {
+        setCropMode(prev => !prev);
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [detectionIdNum, showShortcutsModal]);
+
+  // Tab / Shift+Tab step the objects exactly as the rail displays them —
+  // smoke first, false positives only while shown — wrapping at the ends
+  // and activating each step immediately (classify-style one-step cycling;
+  // spec: 2026-08-05 localize tab object cycling). Capture-phase and always
+  // preventDefault: the key strictly cycles objects and never escapes to
+  // the header or media chrome. Deliberately NO dependency array, matching
+  // the arrival effect above: everything the handler closes over
+  // (`orderedObjectRows`, `activateFocus`) is rebuilt every render anyway,
+  // and re-subscribing is a cheap way to never read stale rows.
+  useEffect(() => {
+    const handleTab = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return;
+      // Suspended whenever a surface with its own focusables is up — the
+      // per-frame editor, the missed-smoke submit dialog, the skip confirm,
+      // the shortcuts sheet, the accept popover — so their controls stay
+      // keyboard-reachable (mirrors classify's modal guards).
+      if (detectionIdNum != null || missedSmokeConfirm || skipConfirmOpen) return;
+      if (showShortcutsModal || acceptPopoverOpen) return;
+      if (orderedObjectRows.length === 0) return;
+      e.preventDefault();
+      const current = orderedObjectRows.findIndex(o => o.laneSequenceId === activeLaneId);
+      const delta = e.shiftKey ? -1 : 1;
+      const next =
+        current === -1
+          ? 0
+          : (current + delta + orderedObjectRows.length) % orderedObjectRows.length;
+      const landed = orderedObjectRows[next].laneSequenceId;
+      activateFocus(landed);
+      // DOM focus follows the cycle, as in classify. Without this the
+      // element focused by an earlier click keeps focus, and Enter/Space
+      // fires that stale row's own activation — yanking the selection back
+      // to wherever the mouse last was. Following also gives the landed row
+      // its focus ring and screen-reader announcement.
+      rowRefs.current[landed]?.focus();
+    };
+    document.addEventListener('keydown', handleTab, true);
+    return () => document.removeEventListener('keydown', handleTab, true);
+  });
+
+  // `?` toggles the shortcuts sheet and Escape closes it — the same pair
+  // classify's createKeyboardHandler answers — and, one layer under the
+  // sheet, Enter opens/confirms the accept popover and Escape closes it.
+  // Suspended under the same surfaces as the Tab cycle, and while typing in
+  // a field. Same deliberately-absent dependency array as the Tab handler
+  // above: re-subscribing every render keeps the closure fresh.
+  useEffect(() => {
+    const handleShortcutKeys = (e: KeyboardEvent) => {
+      if (detectionIdNum != null || missedSmokeConfirm || skipConfirmOpen) return;
+      // Shift stays allowed: `?` requires it.
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const target = e.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+      )
+        return;
+      if (e.key === '?') {
+        setShowShortcutsModal(prev => !prev);
+        e.preventDefault();
+        return;
+      }
+      if (e.key === 'Escape' && showShortcutsModal) {
+        setShowShortcutsModal(false);
+        e.preventDefault();
+        return;
+      }
+      // The sheet is a surface of its own, like the overlays above: while it
+      // is up, only `?` and Escape act.
+      if (showShortcutsModal) return;
+      // The accept popover's keys, next layer under the sheet.
+      if (e.key === 'Escape' && acceptPopoverOpen) {
+        setAcceptPopoverOpen(false);
+        e.preventDefault();
+        return;
+      }
+      if (e.key === 'Enter') {
+        if (acceptPopoverOpen) {
+          // The open dialog owns Enter — its button says so — with the
+          // editor's carve-out: only a button INSIDE the dialog keeps its
+          // own Enter (Tab to the close X must close, not accept). The
+          // trigger button is outside the dialog, so Enter on it confirms
+          // rather than letting the native click toggle the popover shut.
+          if (
+            target instanceof HTMLElement &&
+            target.closest('button') &&
+            target.closest('[role="dialog"]')
+          )
+            return;
+          if (!quickAcceptLane.isPending && activeLaneId != null && acceptRemainingCount > 0) {
+            quickAcceptLane.mutate(activeLaneId);
+            setAcceptPopoverOpen(false);
+          }
+          e.preventDefault();
+          return;
+        }
+        // Closed: never steal Enter from a focused control — a rail row
+        // opens its object, any other button clicks itself.
+        if (target instanceof HTMLElement && target.closest('button, a, [role="button"]')) return;
+        if (activeObject?.workable && acceptRemainingCount > 0) {
+          setAcceptPopoverOpen(true);
+          e.preventDefault();
+        }
+        return;
+      }
+      const key = e.key.toLowerCase();
+      // Same action the CTA bar's Reclassify button carries (its chip
+      // advertises this key). Any active object qualifies — false-positive
+      // rows keep Reclassify too.
+      if (key === 'r' && activeLaneId != null) {
+        handleReclassify(activeLaneId);
+        e.preventDefault();
+        return;
+      }
+      if (key === 's' || key === 'm' || key === 'l') {
+        handleCardSizeChange(key === 's' ? 'sm' : key === 'm' ? 'md' : 'lg');
+        e.preventDefault();
+        return;
+      }
+      // Same gate as the PlayCircle button's render condition: no target
+      // object, nothing to loop.
+      if (key === 'p' && canShowCrop) {
+        setCropExpanded(prev => !prev);
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('keydown', handleShortcutKeys);
+    return () => window.removeEventListener('keydown', handleShortcutKeys);
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-96">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-ember"></div>
+      </div>
+    );
+  }
+
+  if (error || !alertDetail) {
+    return (
+      <div className="flex items-center justify-center min-h-96">
+        <div className="text-center">
+          <p className="font-body text-sm text-signal mb-2">Failed to load alert</p>
+          <p className="font-body text-detail text-haze">{String(error)}</p>
+          <button
+            onClick={() => navigate(listPath)}
+            className="mt-4 font-body text-detail text-haze hover:text-char"
+          >
+            Back to Alerts
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {/* Pinned header, one row deep: the back link used to sit on a line of
+          its own above the identity row, and that second line was 32px of
+          the viewport the frame grid below now keeps. `h-12` is a fixed
+          height rather than one derived from padding, because the root's
+          reserve below has to be an exact number, not a guess. */}
+      <div className="fixed top-0 left-0 md:left-64 right-0 z-30 flex h-12 items-center gap-3 px-6 bg-paper/85 border-b border-line backdrop-blur-sm">
+        <button
+          onClick={() => navigate(listPath)}
+          className="font-body text-detail text-haze hover:text-char inline-flex shrink-0 items-center gap-1"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" /> Alerts
+        </button>
+        <span className="h-4 w-px shrink-0 bg-line" />
+        <h1 className="font-display text-heading font-semibold text-char truncate">
+          {alertDetail.organisation_name} · {alertDetail.camera_name}
+        </h1>
+        {/* One row means nothing wraps, so the narrowest viewports have to
+            shed something rather than squeeze the title to nothing and push
+            the badge off a bar that cannot scroll. The timestamp goes first:
+            every frame cell below carries its own. */}
+        <span className="hidden sm:inline font-data text-detail text-haze shrink-0">
+          {formatDateTime(alertDetail.recorded_at)}
+        </span>
+        <span
+          className={`flex-none rounded-full px-2.5 py-0.5 font-data text-xs font-semibold ${
+            smokeObjectRows.length > 0 && localizedObjectCount === smokeObjectRows.length
+              ? 'bg-pine-soft text-pine'
+              : 'bg-ember-soft text-ember'
+          }`}
+        >
+          {localizedObjectCount} of {smokeObjectRows.length} object
+          {smokeObjectRows.length === 1 ? '' : 's'} localized
+        </span>
+      </div>
+
+      {/* Cockpit: media column (the active object's frames) + the rail (the
+          whole alert's localization state), mirroring ClassifyAlertPage.
+          From lg up the whole thing is a viewport-height shell that never
+          scrolls: the frame cells are the only scroller on the page, so the
+          controls that act on them — the Frames panel and the cropped loop
+          above, the Objects rail beside — stay on screen no
+          matter how deep into the grid you are. `calc(100vh-3rem)` is the
+          viewport less AppLayout's `p-6` top and bottom; `pt-8` clears the
+          48px header, 24px of which the same padding already covers. Below
+          lg the columns stack and the page scrolls normally, which is the
+          only thing that works on a narrow viewport. */}
+      <div className="flex flex-col gap-4 pt-8 lg:h-[calc(100vh-3rem)] lg:flex-row lg:overflow-hidden">
+        {/* min-h-0 on every flex-column ancestor of a scroller: the default
+            `min-height: auto` would let the cells push the column past the
+            viewport, and the page would scroll instead of the grid. */}
+        <div className="lg:flex lg:min-h-0 lg:flex-[1.5] lg:min-w-0 lg:flex-col">
+          {/* Everything that acts on the frames, in one bar above the card
+              that holds them: which object they belong to, what to do about
+              it, and how to render them. The actions are driven by
+              `activeLaneId` alone, not by focus mode — closing the frame
+              editor leaves an object active without re-entering focus, and
+              that is exactly when the annotator is most obviously working one
+              object. */}
+          <LocalizeActionPanel
+            // Which object's images the cells are showing — invisible before
+            // the cockpit split, and the grid's cells only make sense once
+            // you know whose frames they are.
+            title={`Frames${activeObjectLabel ? ` — ${activeObjectLabel}` : ''}`}
+            color={activeObject?.color}
+            actions={
+              activeObject && (
+                <LocalizeObjectActions
+                  label={activeObject.label}
+                  {...objectActionProps(activeObject)}
+                  acceptAnchorRef={acceptAnchorRef}
+                  acceptPopover={
+                    acceptPopoverOpen && activeLaneId != null ? (
+                      <AcceptRemainingPopover
+                        objectLabel={activeObject.label}
+                        objectColor={activeObject.color}
+                        sequenceId={activeLaneId}
+                        // Already what the cropped flipbook computes for this
+                        // lane: the post-accept track (committed boxes where
+                        // decided, winning model boxes elsewhere). The popover
+                        // only opens on workable smoke lanes, so the memo's
+                        // falsePositive branch never applies here.
+                        previewBoxes={activeLaneBoxes}
+                        entries={acceptEntries}
+                        acceptCount={acceptRemainingCount}
+                        gapCount={acceptGapCount}
+                        isAccepting={quickAcceptLane.isPending}
+                        onConfirm={() => {
+                          quickAcceptLane.mutate(activeLaneId);
+                          setAcceptPopoverOpen(false);
+                        }}
+                        onCancel={() => setAcceptPopoverOpen(false)}
+                      />
+                    ) : undefined
+                  }
+                />
+              )
+            }
+            controls={
+              <>
+                <span className="font-data text-detail text-haze">
+                  {frameModel.frames.length} frame{frameModel.frames.length === 1 ? '' : 's'}
+                </span>
+                {/* Sits with the panel's other view controls because that is
+                    where its effect lands — the loop opens directly below,
+                    above the frames it is cropped from. Withheld until a lane
+                    with boxes is active, so it never opens onto an empty
+                    square. Its own pill rather than a slot inside ViewToolbar:
+                    that toolbar is about how the CELLS render, and this opens
+                    a different view entirely — but it borrows the toolbar's
+                    pressed language so the two read as peers.
+                    The name stays put and `aria-expanded` carries the state;
+                    a name that also flipped Show/Hide would announce the state
+                    twice, in two directions. */}
+                {canShowCrop && (
+                  <div className="inline-flex items-center rounded-lg bg-ash p-0.5">
+                    <button
+                      type="button"
+                      title="Cropped view — loop this object's crops across its frames"
+                      aria-label="Cropped view"
+                      aria-expanded={cropExpanded}
+                      onClick={() => setCropExpanded(prev => !prev)}
+                      className={`rounded p-1.5 transition-colors ${
+                        cropExpanded ? 'bg-pine-soft text-pine' : 'text-haze hover:text-char'
+                      }`}
+                    >
+                      <PlayCircle className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+                <ViewToolbar
+                  cardSize={effectiveCardSize}
+                  onCardSizeChange={handleCardSizeChange}
+                  cropMode={cropMode}
+                  onToggleCropMode={setCropMode}
+                />
+              </>
+            }
+          />
+
+          {/* Between the panel and the frames: the loop is what the frames
+              look like close up, so it reads as a lead-in to the grid rather
+              than as a separate widget. Capped by viewport height so a tall
+              loop can't push every frame below the fold. */}
+          {/* A block wrapper, NOT `flex justify-center`: the loop's own root
+              is `w-full max-w-…` and centres itself with `mx-auto`. Make that
+              root a flex item and it gets shrink-to-fit width, whose only
+              content is an absolutely-positioned canvas — so `w-full`
+              resolves against ~zero and the square collapses to a few pixels.
+              Centring is the component's job; the wrapper just gives it a
+              width to fill. */}
+          {/* `shrink-0`, because it is pinned above the scroller: the loop
+              keeps its full height and the grid takes what is left, rather
+              than the loop squashing as the cells grow. */}
+          {canShowCrop && cropExpanded && activeLaneId != null && (
+            <div className="mb-4 shrink-0">
+              <CroppedImageSequence
+                bboxes={activeLaneBoxes}
+                sequenceId={activeLaneId}
+                accentColor={activeObject?.color}
+                maxSize="min(420px, 40vh)"
+                showBoxes
+              />
+            </div>
+          )}
+
+          {/* The cells sit straight on the page, with no card of their own:
+              everything that frames them — the object, the actions, the view
+              controls — moved up into the panel above, so a second border
+              around the images was drawing a box around a box. The images
+              carry their own edges.
+
+              This wrapper is the page's only scroller. `scrollIntoView` on
+              the cell refs (the `?frame=` deep link, timeline segment
+              clicks) resolves against the nearest scrollable ancestor, so it
+              now scrolls this container rather than the window — same
+              behavior, smaller box. */}
+          <div
+            data-testid="frame-grid-scroller"
+            className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto"
+          >
+            <AlertFrameGrid
+              frames={frameModel.frames}
+              activeLaneId={activeLaneId}
+              onCellClick={handleCellClick}
+              cellRef={handleCellRef}
+              cardMinWidth={cardMinWidth}
+              cropMode={cropMode}
+              highlightedFrame={highlightedFrame}
+            />
+          </div>
+        </div>
+
+        {/* The rail no longer sticks: it is a full-height column of the
+            shell, so its ceiling is structural rather than a max-height
+            guess. The rows (each with its own timeline strip) scroll inside
+            it when the alert has more objects than fit. */}
+        <div className="lg:flex lg:min-h-0 lg:flex-1 lg:min-w-0 lg:flex-col lg:overflow-y-auto">
+          <LocalizeRail
+            // The toggle governs which object ROWS exist, so it belongs with
+            // Objects rather than with the frame grid's view controls.
+            headerAction={
+              <div className="flex items-center gap-2">
+                {/* "FP" to keep the header row tight; the aria-label keeps the
+                    full accessible name and the styled tooltip carries the
+                    explanation the old `title` held. */}
+                <Tooltip
+                  placement="below"
+                  tip={
+                    falsePositiveLaneCount === 0
+                      ? 'This alert has no false-positive objects'
+                      : 'Show objects classify settled as false positives, as read-only context'
+                  }
+                >
+                  <button
+                    type="button"
+                    aria-pressed={showFalsePositives}
+                    aria-label="False positives"
+                    disabled={falsePositiveLaneCount === 0}
+                    onClick={handleToggleFalsePositives}
+                    className={`inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 font-body text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                      showFalsePositives
+                        ? 'border-char bg-ash text-char'
+                        : 'border-line bg-paper text-haze hover:text-char'
+                    }`}
+                  >
+                    FP
+                    {falsePositiveLaneCount > 0 && (
+                      <span className="font-data text-[10px] font-semibold">
+                        {falsePositiveLaneCount}
+                      </span>
+                    )}
+                  </button>
+                </Tooltip>
+                <button
+                  type="button"
+                  onClick={() => setShowShortcutsModal(true)}
+                  className="p-1.5 rounded-lg border border-line bg-paper text-haze hover:bg-ash"
+                  title="Show keyboard shortcuts (?)"
+                >
+                  <Keyboard className="w-4 h-4" />
+                </button>
+              </div>
+            }
+            legend={
+              legendStatuses.length > 0 ? (
+                <LocalizeTimelineLegend statuses={legendStatuses} />
+              ) : undefined
+            }
+            missedSmoke={
+              <LocalizeMissedSmokeRow
+                hasMissedSmoke={missedSmoke}
+                onChange={handleMissedSmokeChange}
+                isSaving={setMissedSmokeFlag.isPending}
+                disabled={missedSmokeAnnotationId == null}
+                showSkipNudge={mode !== 'done'}
+              />
+            }
+            footer={
+              workableObjects.length === 0 ? (
+                <p
+                  data-testid="all-objects-localized"
+                  className="text-center font-body text-detail text-haze"
+                >
+                  All objects localized
+                </p>
+              ) : (
+                <div>
+                  {/* An undecided object holds the whole alert back. Say so
+                      here rather than letting the server's 422 explain it
+                      after every box is drawn — and offer the one action
+                      that clears it, which round-trips back to this page. */}
+                  {undecidedLaneCount > 0 && (
+                    <div
+                      data-testid="undecided-lanes-banner"
+                      className="mb-2.5 rounded-lg border border-signal bg-signal-soft px-3 py-2 font-body text-detail text-signal"
+                    >
+                      {undecidedLaneCount === 1
+                        ? '1 object is'
+                        : `${undecidedLaneCount} objects are`}{' '}
+                      still undecided.{' '}
+                      <button
+                        type="button"
+                        onClick={e => {
+                          e.stopPropagation();
+                          handleReclassify(undecidedLanes[0].sequence.id);
+                        }}
+                        className="font-semibold underline underline-offset-2 hover:no-underline"
+                      >
+                        Settle in Classify
+                      </button>{' '}
+                      to unlock submit.
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    {/* The tooltip carries the gate's explanation, which used to
+                      be a line of copy under the button. Hovering the thing
+                      you can't click is where the question gets asked, and it
+                      names HOW MANY objects are holding submit back rather
+                      than restating the rule — otherwise the gate reads as a
+                      bug once every row looks handled but one still has a
+                      pending frame. Above, because the footer is the last
+                      thing in a rail that scrolls. */}
+                    <Tooltip placement="above" className="flex-1" tip={submitTooltip}>
+                      <button
+                        type="button"
+                        onClick={e => {
+                          e.stopPropagation();
+                          handleSubmitClick();
+                        }}
+                        disabled={submitBlocked || submitAlert.isPending}
+                        className="flex w-full items-center justify-center rounded-lg bg-pine px-5 py-2.5 text-center font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {submitAlert.isPending ? (
+                          <div className="w-3.5 h-3.5 mr-1.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <Upload className="w-3.5 h-3.5 mr-1.5 shrink-0" />
+                        )}
+                        Submit
+                      </button>
+                    </Tooltip>
+                    {mode !== 'done' && (
+                      <Tooltip
+                        placement="above"
+                        tip="Hard to annotate with the current tools? Park this whole alert — it leaves the queues for everyone until someone unskips it from the Skipped view."
+                      >
+                        <button
+                          type="button"
+                          onClick={e => {
+                            e.stopPropagation();
+                            setSkipConfirmOpen(true);
+                          }}
+                          data-testid="skip-alert-button"
+                          className={`inline-flex items-center rounded-lg border border-ember bg-paper px-3 py-2.5 font-body text-sm font-medium text-ember hover:bg-ember-soft${
+                            missedSmoke ? ' animate-skip-glow motion-reduce:animate-none' : ''
+                          }`}
+                        >
+                          Skip alert
+                        </button>
+                      </Tooltip>
+                    )}
+                  </div>
+                </div>
+              )
+            }
+          >
+            {smokeObjectRows.map(renderObjectRow)}
+
+            {/* False positives are read-only context, not work — a labeled
+                break keeps them from reading as more objects to localize. */}
+            {falsePositiveRows.length > 0 && (
+              <div data-testid="false-positive-divider" className="flex items-center gap-2 pt-2.5">
+                <span className="font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
+                  False positives
+                </span>
+                <span className="h-px flex-1 bg-line" />
+              </div>
+            )}
+            {falsePositiveRows.map(renderObjectRow)}
+          </LocalizeRail>
+        </div>
+      </div>
+
+      {modalContext && (
+        <LocalizeObjectEditor
+          laneSequenceId={modalContext.laneId}
+          objectLabel={modalObject?.label ?? 'Object'}
+          objectColor={modalObject?.color ?? '#2a78d6'}
+          smokeType={selectedSmokeType}
+          detection={modalContext.detection}
+          existingAnnotation={modalContext.existingAnnotation}
+          laneDetections={laneDetectionsSorted}
+          laneAnnotations={annotationsByLaneId[modalContext.laneId] ?? []}
+          alertFrames={frameModel.frames}
+          objectOverlays={objectOverlays}
+          isSaving={
+            saveDetection.isPending ||
+            materializeAndCommit.isPending ||
+            unmaterializeFrame.isPending
+          }
+          isAccepting={quickAcceptLane.isPending}
+          onCommit={handleEditorCommit}
+          onCommitGapFrame={handleEditorCommitGapFrame}
+          onUnmaterialize={handleEditorUnmaterialize}
+          onAcceptRemaining={() => quickAcceptLane.mutate(modalContext.laneId)}
+          onReclassify={() => handleReclassify(modalContext.laneId)}
+          onNavigateToDetection={navigateModalTo}
+          onClose={closeModal}
+          takeOpenOriginRect={takeEditorOpenRect}
+          frameCellRect={editorFrameCellRect}
+        />
+      )}
+
+      {missedSmokeConfirm && (
+        <div
+          data-testid="missed-smoke-confirm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-char/40 px-4"
+        >
+          <div className="w-full max-w-sm rounded-lg border border-line bg-paper p-5">
+            <p className="font-body text-sm text-char mb-4">
+              You flagged missed smoke, but adding the missed object isn&apos;t supported yet.
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setMissedSmokeConfirm(false);
+                  setSkipConfirmOpen(true);
+                }}
+                className="inline-flex items-center justify-center rounded-lg bg-ember px-4 py-2 font-body text-sm font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2"
+              >
+                Skip alert
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmitAndClearFlag}
+                className="inline-flex items-center justify-center rounded-lg border border-line bg-paper px-4 py-2 font-body text-sm font-medium text-char hover:bg-ash"
+              >
+                Submit & clear flag
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmitAnyway}
+                className="inline-flex items-center justify-center rounded-lg px-4 py-2 font-body text-sm font-medium text-char hover:bg-ash"
+              >
+                Submit anyway
+              </button>
+              <button
+                type="button"
+                onClick={() => setMissedSmokeConfirm(false)}
+                className="inline-flex items-center justify-center rounded-lg px-4 py-2 font-body text-sm font-medium text-haze hover:text-char"
+              >
+                Go back
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {skipConfirmOpen && (
+        <div
+          data-testid="skip-alert-confirm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-char/40 px-4"
+        >
+          <div className="w-full max-w-sm rounded-lg border border-line bg-paper p-5">
+            <div className="flex items-start justify-between">
+              <h2 className="font-body text-sm font-semibold text-char">Skip this alert?</h2>
+              <button
+                type="button"
+                onClick={() => setSkipConfirmOpen(false)}
+                aria-label="Close"
+                className="-mr-1.5 -mt-1.5 rounded-md p-1.5 hover:bg-ash"
+              >
+                <X className="h-4 w-4 text-haze" />
+              </button>
+            </div>
+            <p className="mt-1 font-body text-xs text-haze">
+              The whole alert leaves the queue for everyone until someone unskips it.
+            </p>
+            <label
+              htmlFor="skip-note"
+              className="mt-3 block font-body text-xs font-medium text-haze"
+            >
+              Why is it hard to annotate? (optional)
+            </label>
+            <textarea
+              id="skip-note"
+              value={skipNote}
+              onChange={e => setSkipNote(e.target.value)}
+              rows={3}
+              className="mt-1 w-full rounded-lg border border-line bg-paper p-2 font-body text-sm text-char"
+            />
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={() => skipAlertMutation.mutate()}
+                disabled={skipAlertMutation.isPending}
+                className="inline-flex items-center rounded-lg bg-pine px-3 py-2 font-body text-sm font-semibold text-white hover:brightness-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Skip alert
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <NotificationSystem
+        showToast={showToast}
+        toastMessage={toastMessage}
+        toastType={toastType}
+        onDismiss={dismissToast}
+      />
+
+      {showShortcutsModal && (
+        <LocalizeShortcutsModal onClose={() => setShowShortcutsModal(false)} />
+      )}
+    </>
+  );
+}

@@ -1,47 +1,61 @@
-import { ReactNode, useEffect, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { Check, ListChecks, Search } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import {
+  ClassifyDoneItem,
   ClassifyQueueItem,
   ExtendedSequenceFilters,
   ProcessingStageFilter,
   SequenceWithAnnotation,
 } from '@/types/api';
-import { PAGINATION_OPTIONS, QUERY_KEYS } from '@/utils/constants';
-import { analyzeSequenceAccuracy } from '@/utils/modelAccuracy';
+import { PAGINATION_OPTIONS } from '@/utils/constants';
 import { getStageFilterLabel, stageFilterIncludes } from '@/utils/processingStage';
 import FilterPopover from '@/components/filters/FilterPopover';
+import { Tooltip } from '@/components/ui/Tooltip';
 import {
   ClassifyAlertQueueTable,
-  ClassifyQueueTable,
   ClassifyDoneTable,
   TablePagination,
 } from '@/components/sequences';
 import { TABLE_CARD_CLASSES } from '@/components/sequences/tableStyles';
 import { useSequenceStore } from '@/store/useSequenceStore';
+import { useAuthStore } from '@/store/useAuthStore';
 import { useCameras } from '@/hooks/useCameras';
 import { useOrganizations } from '@/hooks/useOrganizations';
 import { useSourceApis } from '@/hooks/useSourceApis';
+import { useAnnotators } from '@/hooks/useAnnotators';
 import { usePersistedFilters, createDefaultFilterState } from '@/hooks/usePersistedFilters';
 import { calculatePresetDateRange } from '@/components/filters/shared/dateRangeUtils';
 import { hasActiveUserFilters } from '@/utils/filterHelpers';
 import { classifyDetail, ROUTES } from '@/utils/routes';
 
+// UI accuracy filter value → classify-done query param.
+const MODEL_ACCURACY_PARAM: Partial<Record<string, 'tp' | 'fp' | 'fn'>> = {
+  true_positive: 'tp',
+  false_positive: 'fp',
+  false_negative: 'fn',
+};
+
 interface SequencesPageProps {
   defaultProcessingStage?: ProcessingStageFilter;
   isReviewPage?: boolean;
-  stageSelector?: ReactNode;
 }
 
 export default function SequencesPage({
   defaultProcessingStage = 'ready_to_annotate',
   isReviewPage = false,
-  stageSelector,
 }: SequencesPageProps = {}) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { startAnnotationWorkflow } = useSequenceStore();
+  const { canLocalize } = useAuthStore();
+
+  // Skipped-backlog view (spec: alert-skip-escape-hatch). Deliberately plain
+  // state, not persisted — the backlog is a place to visit, not a mode to
+  // stay in.
+  const [showSkipped, setShowSkipped] = useState(false);
 
   // Annotated-view features apply when the page's stage filter covers 'annotated'
   const isAnnotatedView = stageFilterIncludes(defaultProcessingStage, 'annotated');
@@ -72,8 +86,8 @@ export default function SequencesPage({
     resetFilters,
   } = usePersistedFilters(storageKey, createDefaultFilterState(defaultProcessingStage));
 
-  // Keep filters.processing_stage in sync with the parent-controlled stage prop
-  // (used by the review page stage selector). Reset to page 1 on stage change.
+  // Keep filters.processing_stage in sync with the parent-controlled stage prop.
+  // Reset to page 1 on stage change.
   // Value-compare: stage OR-lists are arrays, so identity comparison would loop.
   useEffect(() => {
     if (JSON.stringify(filters.processing_stage) !== JSON.stringify(defaultProcessingStage)) {
@@ -86,6 +100,8 @@ export default function SequencesPage({
   const { data: cameras = [], isLoading: camerasLoading } = useCameras();
   const { data: organizations = [], isLoading: organizationsLoading } = useOrganizations();
   const { data: sourceApis = [], isLoading: sourceApisLoading } = useSourceApis();
+  // Only the done page shows the annotator filter — don't fetch on the queue
+  const { data: annotators = [], isLoading: annotatorsLoading } = useAnnotators(isReviewPage);
 
   // Date range helper functions
   const setDateRange = (preset: string) => {
@@ -135,14 +151,23 @@ export default function SequencesPage({
     return stripped;
   }, [filters, isAnnotatedView]);
 
-  // Fetch sequences with annotations in a single efficient call (review mode)
+  // Fetch the alert-grouped done list — one row per fully classified alert
   const {
-    data: sequences,
-    isLoading: sequencesLoading,
-    error: sequencesError,
+    data: classifyDone,
+    isLoading: classifyDoneLoading,
+    error: classifyDoneError,
   } = useQuery({
-    queryKey: [...QUERY_KEYS.SEQUENCES, 'with-annotations', apiFilters],
-    queryFn: () => apiClient.getSequencesWithAnnotations(apiFilters),
+    queryKey: ['classify-done', apiFilters, selectedModelAccuracy],
+    queryFn: () => {
+      // processing_stage is a sequences-endpoint concept; classify-done's
+      // membership (fully classified) replaces it.
+      const rest = { ...apiFilters };
+      delete rest.processing_stage;
+      return apiClient.getClassifyDone({
+        ...rest,
+        model_accuracy: MODEL_ACCURACY_PARAM[selectedModelAccuracy],
+      });
+    },
     enabled: !isQueueMode,
   });
 
@@ -153,36 +178,31 @@ export default function SequencesPage({
     isLoading: classifyQueueLoading,
     error: classifyQueueError,
   } = useQuery({
-    queryKey: ['classify-queue', apiFilters],
-    queryFn: () => apiClient.getClassifyQueue(apiFilters),
+    queryKey: ['classify-queue', apiFilters, showSkipped],
+    queryFn: () => apiClient.getClassifyQueue({ ...apiFilters, skipped: showSkipped }),
     enabled: isQueueMode,
   });
 
-  const isLoading = isQueueMode ? classifyQueueLoading : sequencesLoading;
-  const error = isQueueMode ? classifyQueueError : sequencesError;
+  // Count for the "Skipped (n)" toggle label, independent of the view shown.
+  const { data: skippedCount } = useQuery({
+    queryKey: ['classify-queue-skipped-count'],
+    queryFn: () => apiClient.getClassifyQueue({ skipped: true, size: 1 }),
+    enabled: isQueueMode,
+    select: data => data.total,
+  });
 
-  // Filter sequences by model accuracy (only for review page)
-  const filteredSequences = useMemo(() => {
-    if (!sequences || selectedModelAccuracy === 'all' || !isAnnotatedView) {
-      return sequences;
-    }
+  const unskipMutation = useMutation({
+    mutationFn: (item: ClassifyQueueItem) =>
+      apiClient.unskipAlert(item.source_api, item.platform_alert_id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['classify-queue'] });
+      queryClient.invalidateQueries({ queryKey: ['classify-queue-skipped-count'] });
+      queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
+    },
+  });
 
-    const filtered = sequences.items.filter(sequence => {
-      if (!sequence.annotation) {
-        return selectedModelAccuracy === 'unknown';
-      }
-
-      const accuracy = analyzeSequenceAccuracy(sequence);
-      return accuracy.type === selectedModelAccuracy;
-    });
-
-    return {
-      ...sequences,
-      items: filtered,
-      total: filtered.length,
-      pages: Math.ceil(filtered.length / sequences.size),
-    };
-  }, [sequences, selectedModelAccuracy, isAnnotatedView]);
+  const isLoading = isQueueMode ? classifyQueueLoading : classifyDoneLoading;
+  const error = isQueueMode ? classifyQueueError : classifyDoneError;
 
   const handleFilterChange = (newFilters: Partial<ExtendedSequenceFilters>) => {
     setFilters({ ...filters, ...newFilters, page: 1 });
@@ -196,14 +216,19 @@ export default function SequencesPage({
     setFilters({ ...filters, page });
   };
 
-  const handleSequenceClick = (clickedSequence: SequenceWithAnnotation) => {
-    // Initialize annotation workflow if we have sequences data
-    if (sequences?.items) {
-      startAnnotationWorkflow(sequences.items, clickedSequence.id, apiFilters);
+  const handleDoneClick = (item: ClassifyDoneItem) => {
+    // Workflow navigation only reads `.id` off each entry, so primary-lane
+    // id stubs are sufficient here (same trick as handleAlertClick).
+    if (classifyDone?.items) {
+      startAnnotationWorkflow(
+        classifyDone.items.map(
+          done => ({ id: done.primary_sequence_id }) as SequenceWithAnnotation
+        ),
+        item.primary_sequence_id,
+        apiFilters
+      );
     }
-
-    // Navigate to the annotation interface; provenance is in the path
-    navigate(classifyDetail(clickedSequence.id, isReviewPage));
+    navigate(classifyDetail(item.primary_sequence_id, true));
   };
 
   const handleAlertClick = (clickedItem: ClassifyQueueItem) => {
@@ -224,6 +249,28 @@ export default function SequencesPage({
     navigate(classifyDetail(clickedItem.primary_sequence_id));
   };
 
+  // Toggle between the live queue and the skipped backlog (queue mode only).
+  const skippedToggle = isQueueMode ? (
+    <Tooltip tip="Alerts parked as skipped — too hard to annotate with the current tools. Toggle to review and unskip them.">
+      <button
+        type="button"
+        aria-pressed={showSkipped}
+        onClick={() => {
+          setShowSkipped(v => !v);
+          setFilters({ ...filters, page: 1 });
+        }}
+        className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 font-body text-sm font-medium ${
+          showSkipped
+            ? 'border-char bg-ash text-char'
+            : 'border-line bg-paper text-haze hover:bg-ash'
+        }`}
+      >
+        Skipped
+        <span className="font-data text-xs">{skippedCount ?? 0}</span>
+      </button>
+    </Tooltip>
+  ) : null;
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-96">
@@ -236,20 +283,17 @@ export default function SequencesPage({
     return (
       <div className="flex items-center justify-center min-h-96">
         <div className="text-center">
-          <p className="text-red-600 mb-2">Failed to load sequences</p>
+          <p className="text-red-600 mb-2">Failed to load alerts</p>
           <p className="text-gray-500 text-sm">{String(error)}</p>
         </div>
       </div>
     );
   }
 
-  // Empty state when nothing survives the server page + client-side filters
-  // (gate reviewEmpty on filteredSequences: the accuracy filter can empty a
-  // non-empty page). Queue mode has no client-side filter, so gate on the
-  // classify-queue fetch directly.
+  // Empty state when the server page comes back empty (all filters,
+  // including model accuracy, are applied server-side).
   const queueEmpty = isQueueMode && classifyQueue && classifyQueue.items.length === 0;
-  const reviewEmpty =
-    !isQueueMode && sequences && filteredSequences && filteredSequences.items.length === 0;
+  const reviewEmpty = !isQueueMode && classifyDone && classifyDone.items.length === 0;
   if (queueEmpty || reviewEmpty) {
     // Check if user has applied filters
     const hasFilters = hasActiveUserFilters(
@@ -272,18 +316,18 @@ export default function SequencesPage({
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">
-              {isQueueMode ? 'Alerts' : 'Sequences'}
+              {isQueueMode ? 'Alerts' : 'Classified alerts'}
             </h1>
             <p className="text-gray-600">
               {isReviewPage
-                ? 'Browse classified sequences and review past decisions'
+                ? 'Browse classified alerts and review past decisions'
                 : isQueueMode
                   ? 'Classify every object of each alert'
                   : 'Manage and annotate wildfire detection sequences'}
             </p>
           </div>
           <div className="flex items-center gap-3 flex-wrap justify-end">
-            {stageSelector}
+            {skippedToggle}
             <FilterPopover
               filters={filters}
               onFiltersChange={handleFilterChange}
@@ -305,13 +349,16 @@ export default function SequencesPage({
               cameras={cameras}
               organizations={organizations}
               sourceApis={sourceApis}
+              annotators={annotators}
               camerasLoading={camerasLoading}
               organizationsLoading={organizationsLoading}
               sourceApisLoading={sourceApisLoading}
+              annotatorsLoading={annotatorsLoading}
               showModelAccuracy={defaultProcessingStage === 'annotated'}
               showFalsePositiveTypes={defaultProcessingStage === 'annotated'}
               showSmokeTypes={defaultProcessingStage === 'annotated'}
               showUnsureFilter={defaultProcessingStage === 'annotated'}
+              showAnnotatorFilter={isReviewPage}
             />
           </div>
         </div>
@@ -319,7 +366,19 @@ export default function SequencesPage({
         {/* Empty state message */}
         <div className="flex items-center justify-center min-h-96">
           <div className="text-center max-w-md">
-            {hasFilters ? (
+            {isQueueMode && showSkipped ? (
+              // Skipped backlog is empty — that's the good outcome, but the
+              // celebration copy belongs to the live queue, not this view.
+              <>
+                <h2 className="font-display text-base font-semibold text-char">
+                  No skipped alerts
+                </h2>
+                <p className="mt-1.5 font-body text-sm leading-relaxed text-haze">
+                  Nothing is parked here — alerts skipped from this queue would show up in this
+                  view.
+                </p>
+              </>
+            ) : hasFilters ? (
               // Filtered results - no matches (shared by queue and done)
               <>
                 <span
@@ -329,7 +388,7 @@ export default function SequencesPage({
                   <Search className="h-6 w-6 text-haze" />
                 </span>
                 <h2 className="mt-4 font-display text-base font-semibold text-char">
-                  {isQueueMode ? 'No matching alerts' : 'No matching sequences'}
+                  {isQueueMode ? 'No matching alerts' : 'No matching classified alerts'}
                 </h2>
                 <p className="mt-1.5 font-body text-sm leading-relaxed text-haze">
                   Nothing here matches your current filters. Loosen or clear them to see more.
@@ -353,11 +412,11 @@ export default function SequencesPage({
                 <h2 className="mt-4 font-display text-base font-semibold text-char">
                   {/* An array stage is the "All classified" pseudo-stage (see getStageFilterLabel) */}
                   {Array.isArray(defaultProcessingStage)
-                    ? 'No classified sequences yet'
+                    ? 'No classified alerts yet'
                     : `No sequences in "${getStageFilterLabel(defaultProcessingStage)}"`}
                 </h2>
                 <p className="mt-1.5 font-body text-sm leading-relaxed text-haze">
-                  Sequences you classify land here for review.
+                  Alerts you classify land here for review.
                 </p>
                 <Link
                   to={ROUTES.CLASSIFY}
@@ -382,12 +441,14 @@ export default function SequencesPage({
                   Nice work — every alert has been classified. New ones appear here as imports come
                   in.
                 </p>
-                <Link
-                  to={ROUTES.LOCALIZE}
-                  className="mt-5 inline-block rounded-lg bg-pine px-7 py-2.5 font-body text-[13.5px] font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2"
-                >
-                  Start localizing
-                </Link>
+                {canLocalize() && (
+                  <Link
+                    to={ROUTES.LOCALIZE}
+                    className="mt-5 inline-block rounded-lg bg-pine px-7 py-2.5 font-body text-[13.5px] font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2"
+                  >
+                    Start localizing
+                  </Link>
+                )}
               </>
             )}
           </div>
@@ -402,18 +463,18 @@ export default function SequencesPage({
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
-            {isQueueMode ? 'Alerts' : 'Sequences'}
+            {isQueueMode ? 'Alerts' : 'Classified alerts'}
           </h1>
           <p className="text-gray-600">
             {isReviewPage
-              ? 'Browse classified sequences and review past decisions'
+              ? 'Browse classified alerts and review past decisions'
               : isQueueMode
                 ? 'Classify every object of each alert'
                 : 'Manage and annotate wildfire detection sequences'}
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap justify-end">
-          {stageSelector}
+          {skippedToggle}
           <div className="flex items-center space-x-2">
             <label htmlFor="page-size" className="font-body text-sm text-haze">
               Show:
@@ -452,13 +513,16 @@ export default function SequencesPage({
             cameras={cameras}
             organizations={organizations}
             sourceApis={sourceApis}
+            annotators={annotators}
             camerasLoading={camerasLoading}
             organizationsLoading={organizationsLoading}
             sourceApisLoading={sourceApisLoading}
+            annotatorsLoading={annotatorsLoading}
             showModelAccuracy={isAnnotatedView}
             showFalsePositiveTypes={isAnnotatedView}
             showSmokeTypes={isAnnotatedView}
             showUnsureFilter={isAnnotatedView}
+            showAnnotatorFilter={isReviewPage}
           />
         </div>
       </div>
@@ -470,6 +534,8 @@ export default function SequencesPage({
               <ClassifyAlertQueueTable
                 items={classifyQueue.items}
                 onAlertClick={handleAlertClick}
+                skippedView={showSkipped}
+                onUnskip={item => unskipMutation.mutate(item)}
               />
 
               <TablePagination
@@ -481,31 +547,15 @@ export default function SequencesPage({
               />
             </div>
           )
-        : filteredSequences && (
+        : classifyDone && (
             <div className={TABLE_CARD_CLASSES}>
-              {isReviewPage ? (
-                <ClassifyDoneTable
-                  sequences={filteredSequences.items}
-                  onSequenceClick={handleSequenceClick}
-                />
-              ) : (
-                <ClassifyQueueTable
-                  sequences={filteredSequences.items}
-                  onSequenceClick={handleSequenceClick}
-                />
-              )}
+              <ClassifyDoneTable items={classifyDone.items} onItemClick={handleDoneClick} />
 
               <TablePagination
-                page={filteredSequences.page}
-                pages={filteredSequences.pages}
-                total={filteredSequences.total}
-                itemsLabel={
-                  selectedModelAccuracy !== 'all' &&
-                  stageFilterIncludes(defaultProcessingStage, 'annotated') &&
-                  sequences
-                    ? `sequences (filtered from ${sequences.total} total)`
-                    : 'sequences'
-                }
+                page={classifyDone.page}
+                pages={classifyDone.pages}
+                total={classifyDone.total}
+                itemsLabel="alerts"
                 onPageChange={handlePageChange}
               />
             </div>

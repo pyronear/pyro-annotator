@@ -44,10 +44,10 @@ export interface KeyboardHandlerDependencies {
   handleReset: () => void;
   /** Function to save current annotation */
   handleSave: () => void;
-  /** Function to navigate to previous detection */
-  navigateToPreviousDetection: () => void;
-  /** Function to navigate to next detection */
-  navigateToNextDetection: () => void;
+  /** Unused — Arrow Up/Down navigation was removed (Tab owns navigation); kept optional so legacy AnnotationInterface still type-checks until its removal. */
+  navigateToPreviousDetection?: () => void;
+  /** Unused — see navigateToPreviousDetection. */
+  navigateToNextDetection?: () => void;
   /** Function to handle missed smoke review changes */
   handleMissedSmokeReviewChange: MissedSmokeHandler;
   /** Function to handle bbox changes */
@@ -56,6 +56,8 @@ export interface KeyboardHandlerDependencies {
   onPrimaryClassificationChange: (
     updates: Record<number, 'unselected' | 'smoke' | 'false_positive'>
   ) => void;
+  /** Optional: toggle the active detection's Unsure state (U key) — wired only by the classify cockpit. */
+  onUnsureToggle?: (detectionIndex: number) => void;
 }
 
 /**
@@ -88,7 +90,6 @@ export interface KeyboardHandlerDependencies {
  * - Escape: Close modal
  * - Ctrl+Z: Reset annotation
  * - Enter: Save annotation
- * - Arrow Up/Down: Navigate between detections
  * - Y/N: Missed smoke review
  * - S: Mark as smoke
  * - F: Mark as false positive
@@ -106,11 +107,10 @@ export const createKeyboardHandler = (deps: KeyboardHandlerDependencies) => {
       setShowKeyboardModal,
       handleReset,
       handleSave,
-      navigateToPreviousDetection,
-      navigateToNextDetection,
       handleMissedSmokeReviewChange,
       handleBboxChange,
       onPrimaryClassificationChange,
+      onUnsureToggle,
     } = deps;
 
     // Handle help modal first (works regardless of focus)
@@ -143,19 +143,6 @@ export const createKeyboardHandler = (deps: KeyboardHandlerDependencies) => {
       } else {
         handleSave(); // Use the same error logic as handleSave
       }
-      e.preventDefault();
-      return;
-    }
-
-    // Navigation shortcuts (Arrow Up/Down)
-    if (e.key === 'ArrowUp' && !showKeyboardModal) {
-      navigateToPreviousDetection();
-      e.preventDefault();
-      return;
-    }
-
-    if (e.key === 'ArrowDown' && !showKeyboardModal) {
-      navigateToNextDetection();
       e.preventDefault();
       return;
     }
@@ -212,6 +199,15 @@ export const createKeyboardHandler = (deps: KeyboardHandlerDependencies) => {
         updatedBbox.smoke_type = undefined; // Clear smoke type
         handleBboxChange(activeDetectionIndex, updatedBbox);
       }
+      e.preventDefault();
+      return;
+    }
+
+    // Unsure toggle (U key) — optional, classify cockpit only. Handled
+    // before the FP-type letters so it works in every classification mode
+    // (Dust moved to J to free the mnemonic).
+    if ((e.key === 'u' || e.key === 'U') && onUnsureToggle) {
+      onUnsureToggle(activeDetectionIndex);
       e.preventDefault();
       return;
     }

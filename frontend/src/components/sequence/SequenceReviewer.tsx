@@ -13,6 +13,11 @@ interface SequenceReviewerProps {
   className?: string;
   /** Every classified object's track boxes, color-coded per object — see SequencePlayer. */
   objectOverlays?: ObjectOverlay[];
+  /** Hide the player's embedded "Did the model miss any smoke?" overlay — used by the classify cockpit, where the decision rail owns the yes/no controls. */
+  hideReviewControls?: boolean;
+  /** Forwarded to the player's control strip — see SequencePlayer. */
+  onToggleFullscreen?: () => void;
+  isFullscreen?: boolean;
 }
 
 export default function SequenceReviewer({
@@ -22,6 +27,9 @@ export default function SequenceReviewer({
   annotationLoading = false,
   className = '',
   objectOverlays,
+  hideReviewControls,
+  onToggleFullscreen,
+  isFullscreen,
 }: SequenceReviewerProps) {
   // Playback state
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -112,11 +120,6 @@ export default function SequenceReviewer({
     setPlaybackSpeed(speed);
   };
 
-  const handleReset = () => {
-    setIsPlaying(false);
-    setCurrentIndex(0);
-  };
-
   if (isLoading || annotationLoading) {
     return (
       <div className={`bg-white border border-gray-200 rounded-lg p-8 ${className}`}>
@@ -180,8 +183,10 @@ export default function SequenceReviewer({
         onPause={handlePause}
         onSeek={handleSeek}
         onSpeedChange={handleSpeedChange}
-        onReset={handleReset}
         objectOverlays={objectOverlays}
+        hideReviewControls={hideReviewControls}
+        onToggleFullscreen={onToggleFullscreen}
+        isFullscreen={isFullscreen}
       />
     </div>
   );

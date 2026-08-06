@@ -4,6 +4,7 @@ import pytest
 from httpx import AsyncClient
 
 from app.models import (
+    AlertSkip,
     Detection,
     DetectionAnnotation,
     DetectionAnnotationProcessingStage,
@@ -282,6 +283,143 @@ async def test_missed_smoke_only_alert_surfaces(
 
 
 @pytest.mark.asyncio
+async def test_unsettled_unsure_sibling_blocks_alert(
+    authenticated_client: AsyncClient, async_session
+):
+    """A ready smoke lane does not pull its alert in while a sibling is
+    still undecided (spec: unsure lanes gate the localize queue)."""
+    await _lane(
+        async_session,
+        alert_api_id=500,
+        platform_alert_id=500,
+        stage=Stage.SEQ_ANNOTATION_DONE,
+        has_smoke=True,
+        auto_annotated=True,
+    )
+    await _lane(
+        async_session,
+        alert_api_id=1_000_500_001,
+        platform_alert_id=500,
+        stage=Stage.SEQ_ANNOTATION_DONE,
+        has_smoke=True,
+        is_unsure=True,
+    )
+    resp = await authenticated_client.get("/sequences/localization-queue")
+    assert resp.json()["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_settled_unsure_sibling_does_not_block(
+    authenticated_client: AsyncClient, async_session
+):
+    """An unsure lane closed as undecidable (annotated + is_unsure) is
+    settled, so its alert is available for localization."""
+    await _lane(
+        async_session,
+        alert_api_id=500,
+        platform_alert_id=500,
+        stage=Stage.SEQ_ANNOTATION_DONE,
+        has_smoke=True,
+        auto_annotated=True,
+    )
+    await _lane(
+        async_session,
+        alert_api_id=1_000_500_001,
+        platform_alert_id=500,
+        stage=Stage.ANNOTATED,
+        has_smoke=True,
+        is_unsure=True,
+    )
+    resp = await authenticated_client.get("/sequences/localization-queue")
+    data = resp.json()
+    assert data["total"] == 1
+    assert len(data["items"][0]["lanes"]) == 2
+
+
+@pytest.mark.asyncio
 async def test_requires_auth(async_client: AsyncClient):
     resp = await async_client.get("/sequences/localization-queue")
     assert resp.status_code in (401, 403)
+
+
+async def _skip(
+    session, platform_alert_id, note=None, source_api=SourceApi.PYRONEAR_FRENCH_API
+):
+    session.add(
+        AlertSkip(
+            source_api=source_api,
+            platform_alert_id=platform_alert_id,
+            note=note,
+        )
+    )
+    await session.commit()
+
+
+async def _qualifying_alert(session, platform_alert_id):
+    # Same shape as test_alert_appears_with_lane_stats' alert: one ready smoke
+    # lane (auto-annotated, at seq_annotation_done) + one done FP sibling.
+    await _lane(
+        session,
+        alert_api_id=platform_alert_id,
+        platform_alert_id=platform_alert_id,
+        stage=Stage.SEQ_ANNOTATION_DONE,
+        has_smoke=True,
+        auto_annotated=True,
+        n_detections=1,
+    )
+    await _lane(
+        session,
+        alert_api_id=1_000_000_000 + platform_alert_id * 1000 + 1,
+        platform_alert_id=platform_alert_id,
+        stage=Stage.SEQ_ANNOTATION_DONE,
+        has_smoke=False,
+    )
+
+
+@pytest.mark.asyncio
+async def test_skipped_alert_hidden_from_localization_queue(
+    authenticated_client: AsyncClient, async_session
+):
+    await _qualifying_alert(async_session, 910)
+    await _skip(async_session, 910)
+    resp = await authenticated_client.get("/sequences/localization-queue")
+    assert resp.status_code == 200
+    assert resp.json()["items"] == []
+    assert resp.json()["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_localization_skipped_view_lists_with_metadata(
+    authenticated_client: AsyncClient, async_session
+):
+    await _qualifying_alert(async_session, 911)
+    await _qualifying_alert(async_session, 912)
+    await _skip(async_session, 911, note="cannot box this")
+    resp = await authenticated_client.get(
+        "/sequences/localization-queue", params={"skipped": "true"}
+    )
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert [i["platform_alert_id"] for i in items] == [911]
+    assert items[0]["skip"]["note"] == "cannot box this"
+    assert items[0]["skip"]["skipped_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_classify_skip_not_in_localization_skipped_view(
+    authenticated_client: AsyncClient, async_session
+):
+    # An alert still in classify (lane at ready_to_annotate) skipped there
+    # must NOT appear in localization's skipped view — each queue's own gate
+    # determines membership.
+    await _lane(
+        async_session,
+        alert_api_id=913,
+        platform_alert_id=913,
+        stage=Stage.READY_TO_ANNOTATE,
+    )
+    await _skip(async_session, 913)
+    resp = await authenticated_client.get(
+        "/sequences/localization-queue", params={"skipped": "true"}
+    )
+    assert resp.json()["items"] == []

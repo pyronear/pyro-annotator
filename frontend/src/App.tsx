@@ -8,13 +8,15 @@ import SequencesPageWrapper from '@/pages/SequencesPageWrapper';
 import ClassifyAlertPage from '@/pages/ClassifyAlertPage';
 import DetectionAnnotatePage from '@/pages/DetectionAnnotatePage';
 import DetectionReviewPage from '@/pages/DetectionReviewPage';
-import DetectionSequenceAnnotatePage from '@/pages/DetectionSequenceAnnotatePage';
+import LocalizeAlertPage from '@/pages/LocalizeAlertPage';
 import SequenceGroupAnnotatePage from '@/pages/SequenceGroupAnnotatePage';
 import SequenceGroupsListPage from '@/pages/SequenceGroupsListPage';
 import UserManagementPage from '@/pages/UserManagementPage';
 import GuidePage from '@/pages/GuidePage';
 import LoginPage from '@/pages/LoginPage';
 import { legacyRedirectRoutes } from '@/components/routing/legacyRedirects';
+import { localizeObjectRoute, localizeObjectSelectRoute } from '@/utils/routes';
+import RequireLocalize from '@/components/routing/RequireLocalize';
 import { useAuthStore } from '@/store/useAuthStore';
 
 // Create a client
@@ -94,16 +96,59 @@ function App() {
                   <Route path="/classify/groups/:id" element={<SequenceGroupAnnotatePage />} />
                   <Route path="/classify/done/:id" element={<ClassifyAlertPage mode="done" />} />
                   <Route path="/classify/:id" element={<ClassifyAlertPage />} />
-                  <Route path="/localize" element={<DetectionAnnotatePage />} />
-                  <Route path="/localize/done" element={<DetectionReviewPage />} />
                   <Route
-                    path="/localize/done/:sequenceId/:detectionId?"
-                    element={<DetectionSequenceAnnotatePage mode="done" />}
+                    path="/localize"
+                    element={
+                      <RequireLocalize>
+                        <DetectionAnnotatePage />
+                      </RequireLocalize>
+                    }
                   />
                   <Route
-                    path="/localize/:sequenceId/:detectionId?"
-                    element={<DetectionSequenceAnnotatePage />}
+                    path="/localize/done"
+                    element={
+                      <RequireLocalize>
+                        <DetectionReviewPage />
+                      </RequireLocalize>
+                    }
                   />
+                  {/* Same component either side, provenance from the path —
+                      the /localize/done route must precede the dynamic
+                      /localize/:sequenceId below so "done" isn't swallowed
+                      as a sequence id. */}
+                  {/* Both provenances carry the per-frame editor as a CHILD
+                      route, not a sibling: a sibling would sit at a different
+                      position in the element tree and remount
+                      LocalizeAlertPage on every open/close, losing scroll,
+                      crop mode, focus mode and the active object. The child
+                      renders nothing — the page reads its params via useMatch
+                      and opens the modal itself — so the page renders no
+                      <Outlet />. The selection route (…/object/:laneId, no
+                      frame) rides along the same way: it names the cockpit's
+                      active object, and the editor pattern is it plus a
+                      frame. */}
+                  <Route
+                    path="/localize/done/:sequenceId"
+                    element={
+                      <RequireLocalize>
+                        <LocalizeAlertPage mode="done" />
+                      </RequireLocalize>
+                    }
+                  >
+                    <Route path={localizeObjectSelectRoute(true)} element={null} />
+                    <Route path={localizeObjectRoute(true)} element={null} />
+                  </Route>
+                  <Route
+                    path="/localize/:sequenceId"
+                    element={
+                      <RequireLocalize>
+                        <LocalizeAlertPage />
+                      </RequireLocalize>
+                    }
+                  >
+                    <Route path={localizeObjectSelectRoute()} element={null} />
+                    <Route path={localizeObjectRoute()} element={null} />
+                  </Route>
                   {legacyRedirectRoutes}
                   <Route path="/users" element={<UserManagementPage />} />
                   <Route path="/guide" element={<GuidePage />} />

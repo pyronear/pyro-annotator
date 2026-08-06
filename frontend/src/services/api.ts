@@ -6,6 +6,7 @@ import {
   DetectionAnnotation,
   Detection,
   Camera,
+  Contributor,
   Organization,
   SourceApi,
   User,
@@ -23,10 +24,17 @@ import {
   DetectionAnnotationFilters,
   ApiError,
   LocalizationQueueItem,
+  LocalizeDoneQueueItem,
   AlertDetail,
+  AlertLane,
+  AlertSkipInfo,
+  SmokeType,
+  AnnotationType,
   ClassifyQueueItem,
+  ClassifyDoneItem,
   ClassifySubmitRequest,
   ClassifySubmitResponse,
+  LocalizeSubmitResponse,
   SequenceGroup,
   SequenceGroupListItem,
   SequenceGroupStats,
@@ -85,6 +93,7 @@ class ApiClient {
 
         const apiError: ApiError = {
           detail: error.response?.data?.detail || error.message || 'Unknown error occurred',
+          status: error.response?.status,
         };
         return Promise.reject(apiError);
       }
@@ -164,7 +173,7 @@ class ApiClient {
 
   // Alerts ready for smoke localization (alert-grouped Localize queue)
   async getLocalizationQueue(
-    params: { page?: number; size?: number } = {}
+    params: { page?: number; size?: number; skipped?: boolean } = {}
   ): Promise<PaginatedResponse<LocalizationQueueItem>> {
     const response: AxiosResponse<PaginatedResponse<LocalizationQueueItem>> = await this.client.get(
       `${API_ENDPOINTS.SEQUENCES}localization-queue`,
@@ -187,6 +196,58 @@ class ApiClient {
     return response.data;
   }
 
+  // Missed smoke: spawn a new sibling lane (Object N+1) for a plume the AI
+  // missed entirely — replaces the retired ⚑ carrier-lane flow.
+  async addObject(
+    sourceApi: string,
+    platformAlertId: number,
+    smokeType: SmokeType
+  ): Promise<AlertLane> {
+    const response: AxiosResponse<AlertLane> = await this.client.post(
+      `${API_ENDPOINTS.SEQUENCES}alert/add-object`,
+      { source_api: sourceApi, platform_alert_id: platformAlertId, smoke_type: smokeType }
+    );
+    return response.data;
+  }
+
+  // Park a whole alert in the recoverable skipped state (escape hatch for
+  // alerts the current UI cannot express).
+  async skipAlert(
+    sourceApi: string,
+    platformAlertId: number,
+    note?: string
+  ): Promise<AlertSkipInfo> {
+    const response: AxiosResponse<AlertSkipInfo> = await this.client.post(
+      `${API_ENDPOINTS.SEQUENCES}alert/skip`,
+      { source_api: sourceApi, platform_alert_id: platformAlertId, note: note ?? null }
+    );
+    return response.data;
+  }
+
+  // Unskip — the alert reappears in whichever queue its stages qualify it for.
+  async unskipAlert(sourceApi: string, platformAlertId: number): Promise<void> {
+    await this.client.delete(`${API_ENDPOINTS.SEQUENCES}alert/skip`, {
+      params: { source_api: sourceApi, platform_alert_id: platformAlertId },
+    });
+  }
+
+  // Issue #287: materialize a gap frame into a lane so a human can box it.
+  // Idempotent — returns the existing detection when the lane already has one
+  // at this recorded_at.
+  async materializeFrame(sequenceId: number, recordedAt: string): Promise<Detection> {
+    const response: AxiosResponse<Detection> = await this.client.post(
+      `${API_ENDPOINTS.SEQUENCES}${sequenceId}/frames`,
+      { recorded_at: recordedAt }
+    );
+    return response.data;
+  }
+
+  // Un-materialize: remove a model-evidence-free frame from a lane. 409 when
+  // the frame carries model evidence or is the lane's last.
+  async unmaterializeFrame(sequenceId: number, detectionId: number): Promise<void> {
+    await this.client.delete(`${API_ENDPOINTS.SEQUENCES}${sequenceId}/frames/${detectionId}`);
+  }
+
   // Alerts ready for classification (alert-grouped Classify queue)
   async getClassifyQueue(
     params: {
@@ -197,10 +258,56 @@ class ApiClient {
       source_api?: string;
       recorded_at_gte?: string;
       recorded_at_lte?: string;
+      skipped?: boolean;
     } = {}
   ): Promise<PaginatedResponse<ClassifyQueueItem>> {
     const response: AxiosResponse<PaginatedResponse<ClassifyQueueItem>> = await this.client.get(
       `${API_ENDPOINTS.SEQUENCES}classify-queue`,
+      { params }
+    );
+    return response.data;
+  }
+
+  // Alerts with at least one localized smoke lane (alert-grouped Localize done queue)
+  async getLocalizeDoneQueue(
+    params: {
+      page?: number;
+      size?: number;
+      camera_name?: string;
+      organisation_name?: string;
+      source_api?: string;
+      recorded_at_gte?: string;
+      recorded_at_lte?: string;
+      annotator_id?: number;
+    } = {}
+  ): Promise<PaginatedResponse<LocalizeDoneQueueItem>> {
+    const response: AxiosResponse<PaginatedResponse<LocalizeDoneQueueItem>> = await this.client.get(
+      `${API_ENDPOINTS.SEQUENCES}localize-done-queue`,
+      { params }
+    );
+    return response.data;
+  }
+
+  // Fully classified alerts for the Done list (alert-grouped)
+  async getClassifyDone(
+    params: {
+      page?: number;
+      size?: number;
+      camera_name?: string;
+      organisation_name?: string;
+      source_api?: string;
+      recorded_at_gte?: string;
+      recorded_at_lte?: string;
+      is_wildfire_alertapi?: AnnotationType | 'null' | null;
+      false_positive_types?: string[];
+      smoke_types?: string[];
+      is_unsure?: boolean;
+      model_accuracy?: 'tp' | 'fp' | 'fn';
+      annotator_id?: number;
+    } = {}
+  ): Promise<PaginatedResponse<ClassifyDoneItem>> {
+    const response: AxiosResponse<PaginatedResponse<ClassifyDoneItem>> = await this.client.get(
+      `${API_ENDPOINTS.SEQUENCES}classify-done`,
       { params }
     );
     return response.data;
@@ -211,6 +318,15 @@ class ApiClient {
     const response: AxiosResponse<ClassifySubmitResponse> = await this.client.post(
       `${API_ENDPOINTS.SEQUENCE_ANNOTATIONS}classify-submit`,
       payload
+    );
+    return response.data;
+  }
+
+  // Atomic submit of every localized lane of one alert
+  async localizeSubmit(annotationIds: number[]): Promise<LocalizeSubmitResponse> {
+    const response: AxiosResponse<LocalizeSubmitResponse> = await this.client.post(
+      `${API_ENDPOINTS.SEQUENCE_ANNOTATIONS}localize-submit`,
+      { annotation_ids: annotationIds }
     );
     return response.data;
   }
@@ -440,6 +556,14 @@ class ApiClient {
 
   async getUser(id: number): Promise<User> {
     const response: AxiosResponse<User> = await this.client.get(`/users/${id}`);
+    return response.data;
+  }
+
+  // Active human users for the done-pages annotator filter (any authenticated user)
+  async getAnnotators(): Promise<Contributor[]> {
+    const response: AxiosResponse<Contributor[]> = await this.client.get(
+      `${API_ENDPOINTS.USERS}annotators`
+    );
     return response.data;
   }
 

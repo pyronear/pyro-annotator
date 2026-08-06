@@ -46,6 +46,10 @@ export type { ModelLayer } from './referenceLayerUtils';
 // Seed-at-submit review utilities
 export { materializeReviewAnnotation, sequenceSmokeType } from './reviewUtils';
 
+// Create-or-update detection annotation save (FP-item preservation)
+export { saveDetectionReview } from './laneAnnotationSave';
+export type { SaveDetectionReviewParams } from './laneAnnotationSave';
+
 // Localize quick submit
 export {
   getCellState,
@@ -53,6 +57,7 @@ export {
   buildQuickSubmitPlan,
   getIsAnnotated,
   collectLaneBoxes,
+  falsePositiveContextBoxes,
 } from './quickSubmitUtils';
 export type { CellState, QuickSubmitPlan, QuickSubmitPayload } from './quickSubmitUtils';
 export { computeCellCrop, focusOnMainObject } from './gridCropUtils';
@@ -152,3 +157,11 @@ export type { AnnotationProgress } from './progressUtils';
 // Per-object color identity (ClassifyAlertPage multi-object overlays)
 export { getObjectColor } from './objectColors';
 export type { ObjectOverlay } from './objectColors';
+
+// Localize object editor: the per-frame box candidates for one object
+export { boxCandidates, committedBox, priorityPick, candidateToBbox } from './objectBoxCandidates';
+export type { BoxSource, BoxCandidate } from './objectBoxCandidates';
+
+// Localize object editor: the filmstrip over the alert's whole frame range
+export { buildFilmstripEntries } from './objectFilmstrip';
+export type { FilmstripEntry, FilmstripRun } from './objectFilmstrip';

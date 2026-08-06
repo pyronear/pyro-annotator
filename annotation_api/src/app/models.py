@@ -16,6 +16,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
 __all__ = [
+    "AlertSkip",
     "Detection",
     "DetectionAnnotation",
     "Sequence",
@@ -359,8 +360,10 @@ class SequenceAnnotation(SQLModel, table=True):
         default_factory=lambda: datetime.now(UTC),
         sa_column=Column(DateTime(timezone=True)),
     )
+    # Server-owned: stamped on every UPDATE, never supplied by clients (#216).
     updated_at: Optional[datetime] = Field(
-        default=None, sa_column=Column(DateTime(timezone=True))
+        default=None,
+        sa_column=Column(DateTime(timezone=True), onupdate=lambda: datetime.now(UTC)),
     )
     processing_stage: SequenceAnnotationProcessingStage
 
@@ -420,8 +423,10 @@ class DetectionAnnotation(SQLModel, table=True):
         default_factory=lambda: datetime.now(UTC),
         sa_column=Column(DateTime(timezone=True)),
     )
+    # Server-owned: stamped on every UPDATE, never supplied by clients (#216).
     updated_at: Optional[datetime] = Field(
-        default=None, sa_column=Column(DateTime(timezone=True))
+        default=None,
+        sa_column=Column(DateTime(timezone=True), onupdate=lambda: datetime.now(UTC)),
     )
 
 
@@ -440,6 +445,7 @@ class User(SQLModel, table=True):
     hashed_password: str
     is_active: bool = Field(default=True)
     is_superuser: bool = Field(default=False)
+    can_localize: bool = Field(default=False)
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),
         sa_column=Column(DateTime(timezone=True)),
@@ -467,6 +473,35 @@ class SequenceAnnotationContribution(SQLModel, table=True):
         default_factory=lambda: datetime.now(UTC),
         sa_column=Column(DateTime(timezone=True)),
     )
+
+
+class AlertSkip(SQLModel, table=True):
+    """Overlay marking a whole alert (source_api, platform_alert_id) as skipped.
+
+    Skip = insert a row, unskip = delete it; lane state is never touched, so
+    unskip returns the alert to exactly where it was
+    (docs/specs/2026-08-05-alert-skip-escape-hatch-design.md).
+    """
+
+    __tablename__ = "alert_skips"
+    __table_args__ = (
+        UniqueConstraint("source_api", "platform_alert_id", name="uq_alert_skip_alert"),
+    )
+
+    id: int = Field(
+        default=None, primary_key=True, sa_column_kwargs={"autoincrement": True}
+    )
+    source_api: SourceApi
+    platform_alert_id: int = Field(sa_type=BigInteger)
+    skipped_by_user_id: Optional[int] = Field(
+        default=None,
+        sa_column=Column(ForeignKey("users.id", ondelete="SET NULL")),
+    )
+    skipped_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        sa_column=Column(DateTime(timezone=True)),
+    )
+    note: Optional[str] = Field(default=None)
 
 
 class DetectionAnnotationContribution(SQLModel, table=True):

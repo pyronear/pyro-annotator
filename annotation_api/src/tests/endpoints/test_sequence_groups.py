@@ -18,14 +18,23 @@ two seeded sequences have non-overlapping bboxes, so they never share a
 group organically.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import text
+from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.models import Sequence, User
+from app.models import (
+    AlertSkip,
+    Detection,
+    Sequence,
+    SequenceAnnotation,
+    SequenceAnnotationContribution,
+    SequenceAnnotationProcessingStage,
+    User,
+)
 from app.services.group_assignment import assign_ungrouped_sequences
 
 
@@ -94,6 +103,7 @@ async def _seed_group_with_members(
     created_at: datetime,
     alert_api_id_start: int,
     camera_name: str = "cam",
+    organisation_name: str = "org",
     azimuth: int = 0,
     smoke_type: str | None = None,
 ) -> int:
@@ -134,7 +144,7 @@ async def _seed_group_with_members(
                 camera_name=camera_name,
                 camera_id=1,
                 is_wildfire_alertapi="wildfire_smoke",
-                organisation_name="org",
+                organisation_name=organisation_name,
                 lat=0.0,
                 lon=0.0,
                 organisation_id=1,
@@ -143,6 +153,57 @@ async def _seed_group_with_members(
         )
     await session.commit()
     return group_id
+
+
+async def _contribute(
+    session: AsyncSession,
+    group_id: int,
+    member_index: int,
+    user_id: int,
+    at: datetime,
+) -> None:
+    """Attribute a contribution to the group's member at `member_index`,
+    creating that member's annotation row on first use."""
+    sequence_ids = (
+        (
+            await session.execute(
+                select(Sequence.id)
+                .where(Sequence.sequence_group_id == group_id)
+                .order_by(Sequence.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    sequence_id = sequence_ids[member_index]
+    annotation_id = (
+        await session.execute(
+            select(SequenceAnnotation.id).where(
+                SequenceAnnotation.sequence_id == sequence_id
+            )
+        )
+    ).scalar_one_or_none()
+    if annotation_id is None:
+        annotation = SequenceAnnotation(
+            sequence_id=sequence_id,
+            has_smoke=False,
+            has_false_positives=False,
+            false_positive_types=[],
+            smoke_types=[],
+            has_missed_smoke=False,
+            is_unsure=False,
+            annotation={"sequences_bbox": []},
+            processing_stage=SequenceAnnotationProcessingStage.ANNOTATED,
+        )
+        session.add(annotation)
+        await session.flush()
+        annotation_id = annotation.id
+    session.add(
+        SequenceAnnotationContribution(
+            sequence_annotation_id=annotation_id, user_id=user_id, contributed_at=at
+        )
+    )
+    await session.commit()
 
 
 async def _create_placeholder_annotation(client: AsyncClient, sequence_id: int) -> None:
@@ -231,6 +292,108 @@ async def test_list_groups_includes_camera_name(
     assert resp.status_code == 200
     row = next(i for i in resp.json()["items"] if i["id"] == gid)
     assert row["camera_name"] == "Serre de Barre"
+
+
+@pytest.mark.asyncio
+async def test_list_groups_includes_organisation_name(
+    authenticated_client: AsyncClient,
+    async_session: AsyncSession,
+):
+    """List items carry the organisation of their member sequences."""
+    gid = await _seed_group_with_members(
+        async_session,
+        n_members=3,
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        alert_api_id_start=450,
+        organisation_name="SDIS 07",
+    )
+
+    resp = await authenticated_client.get("/sequence_groups/")
+    assert resp.status_code == 200
+    row = next(i for i in resp.json()["items"] if i["id"] == gid)
+    assert row["organisation_name"] == "SDIS 07"
+
+
+@pytest.mark.asyncio
+async def test_list_groups_lists_annotators_excluding_worker(
+    authenticated_client: AsyncClient,
+    async_session: AsyncSession,
+    test_user: User,
+    regular_user: User,
+    worker_user: User,
+):
+    """Annotators are the distinct humans who touched any member sequence,
+    ordered by first contribution; the worker's machine writes never show."""
+    gid = await _seed_group_with_members(
+        async_session,
+        n_members=3,
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        alert_api_id_start=460,
+    )
+    at = datetime(2026, 1, 2, tzinfo=timezone.utc)
+    await _contribute(async_session, gid, 0, worker_user.id, at)
+    await _contribute(async_session, gid, 1, regular_user.id, at + timedelta(minutes=1))
+    await _contribute(async_session, gid, 0, test_user.id, at + timedelta(minutes=2))
+    # Duplicate contribution by an already-listed human collapses.
+    await _contribute(async_session, gid, 2, regular_user.id, at + timedelta(minutes=3))
+
+    resp = await authenticated_client.get("/sequence_groups/")
+    assert resp.status_code == 200
+    row = next(i for i in resp.json()["items"] if i["id"] == gid)
+    assert row["annotators"] == [regular_user.username, test_user.username]
+
+
+@pytest.mark.asyncio
+async def test_list_groups_annotators_do_not_bleed_across_groups(
+    authenticated_client: AsyncClient,
+    async_session: AsyncSession,
+    test_user: User,
+    regular_user: User,
+):
+    """Each row lists only the humans who touched its own members."""
+    first = await _seed_group_with_members(
+        async_session,
+        n_members=3,
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        alert_api_id_start=480,
+    )
+    second = await _seed_group_with_members(
+        async_session,
+        n_members=3,
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        alert_api_id_start=490,
+    )
+    at = datetime(2026, 1, 2, tzinfo=timezone.utc)
+    await _contribute(async_session, first, 0, test_user.id, at)
+    await _contribute(async_session, second, 0, regular_user.id, at)
+
+    resp = await authenticated_client.get("/sequence_groups/")
+    assert resp.status_code == 200
+    rows = {i["id"]: i["annotators"] for i in resp.json()["items"]}
+    assert rows[first] == [test_user.username]
+    assert rows[second] == [regular_user.username]
+
+
+@pytest.mark.asyncio
+async def test_list_groups_annotators_empty_without_human_contributions(
+    authenticated_client: AsyncClient,
+    async_session: AsyncSession,
+    worker_user: User,
+):
+    gid = await _seed_group_with_members(
+        async_session,
+        n_members=3,
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        alert_api_id_start=470,
+    )
+    await _contribute(
+        async_session, gid, 0, worker_user.id, datetime(2026, 1, 2, tzinfo=timezone.utc)
+    )
+
+    resp = await authenticated_client.get("/sequence_groups/")
+    assert resp.status_code == 200
+    row = next(i for i in resp.json()["items"] if i["id"] == gid)
+    assert row["annotators"] == []
 
 
 @pytest.mark.asyncio
@@ -659,6 +822,35 @@ async def test_propagation_skips_locked_members(
 
 
 @pytest.mark.asyncio
+async def test_propagation_skips_members_of_skipped_alerts(
+    authenticated_client: AsyncClient,
+    sequence_session: AsyncSession,
+    detection_session: AsyncSession,
+):
+    """Seq 2's alert is skipped; when seq 1 is saved in a validated group,
+    the fan-out must not advance seq 2's lane — a parked alert's lane state
+    never moves (spec: alert-skip-escape-hatch)."""
+    await _seed_two_member_group(sequence_session, [1, 2], is_validated=True)
+    seq2 = await sequence_session.get(Sequence, 2)
+    sequence_session.add(
+        AlertSkip(
+            source_api=seq2.source_api,
+            platform_alert_id=seq2.platform_alert_id,
+        )
+    )
+    await sequence_session.commit()
+
+    trigger = _annotation_payload(stage="seq_annotation_done", smoke_type="wildfire")
+    trigger["sequence_id"] = 1
+    resp = await authenticated_client.post("/annotations/sequences/", json=trigger)
+    assert resp.status_code == 201
+
+    # Seq 2 must not have an annotation propagated onto it.
+    other = await authenticated_client.get("/annotations/sequences/?sequence_id=2")
+    assert other.json()["total"] == 0
+
+
+@pytest.mark.asyncio
 async def test_propagation_fans_out_unsure_flag(
     authenticated_client: AsyncClient,
     sequence_session: AsyncSession,
@@ -923,3 +1115,224 @@ async def test_list_legacy_validated_group_has_null_reviewer(
     assert row["is_validated"] is True
     assert row["validated_by_username"] is None
     assert row["validated_at"] is None
+
+
+# ---------------------------------------------------------------------------
+# Thumbnails on the list endpoint
+# ---------------------------------------------------------------------------
+
+
+async def _group_member_ids(session: AsyncSession, group_id: int) -> list[int]:
+    """Member sequence ids ordered by (recorded_at, id) — the thumbnail
+    picking order."""
+    result = await session.exec(
+        text(
+            "SELECT id FROM sequences WHERE sequence_group_id = :gid "
+            "ORDER BY recorded_at, id"
+        ).bindparams(gid=group_id)
+    )
+    return [row[0] for row in result.all()]
+
+
+async def _add_first_detection(
+    session: AsyncSession,
+    sequence_id: int,
+    *,
+    bucket_key: str,
+    algo_predictions: dict | None = None,
+) -> int:
+    """Give a member sequence one detection (its 'first detection')."""
+    det = Detection(
+        alert_api_id=1,
+        sequence_id=sequence_id,
+        recorded_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        bucket_key=bucket_key,
+        algo_predictions=algo_predictions,
+    )
+    session.add(det)
+    await session.commit()
+    await session.refresh(det)
+    return det.id
+
+
+async def _stagger_member_recorded_at(session: AsyncSession, group_id: int) -> None:
+    """_seed_group_with_members gives every member the same recorded_at;
+    spread them one day apart so first/middle/last picking is deterministic."""
+    member_ids = await _group_member_ids(session, group_id)
+    for i, sid in enumerate(member_ids):
+        await session.exec(
+            text("UPDATE sequences SET recorded_at = :ts WHERE id = :sid").bindparams(
+                ts=datetime(2026, 1, 1 + i, tzinfo=timezone.utc), sid=sid
+            )
+        )
+    await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_list_thumbnails_pick_first_middle_last_members(
+    authenticated_client: AsyncClient,
+    async_session: AsyncSession,
+):
+    gid = await _seed_group_with_members(
+        async_session,
+        n_members=5,
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        alert_api_id_start=500,
+    )
+    await _stagger_member_recorded_at(async_session, gid)
+    member_ids = await _group_member_ids(async_session, gid)
+    det_ids = {}
+    for i, sid in enumerate(member_ids):
+        det_ids[sid] = await _add_first_detection(
+            async_session, sid, bucket_key=f"thumb-key-{i}.jpg"
+        )
+
+    resp = await authenticated_client.get("/sequence_groups/")
+    assert resp.status_code == 200
+    row = next(i for i in resp.json()["items"] if i["id"] == gid)
+    thumbs = row["thumbnails"]
+    # 5 members → picks index 0, 2 (middle), 4 (last), in timeline order.
+    assert [t["detection_id"] for t in thumbs] == [
+        det_ids[member_ids[0]],
+        det_ids[member_ids[2]],
+        det_ids[member_ids[4]],
+    ]
+    assert "thumb-key-0.jpg" in thumbs[0]["url"]
+    assert "thumb-key-2.jpg" in thumbs[1]["url"]
+    assert "thumb-key-4.jpg" in thumbs[2]["url"]
+
+
+@pytest.mark.asyncio
+async def test_list_thumbnails_three_members_no_duplicates(
+    authenticated_client: AsyncClient,
+    async_session: AsyncSession,
+):
+    gid = await _seed_group_with_members(
+        async_session,
+        n_members=3,
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        alert_api_id_start=600,
+    )
+    await _stagger_member_recorded_at(async_session, gid)
+    member_ids = await _group_member_ids(async_session, gid)
+    for i, sid in enumerate(member_ids):
+        await _add_first_detection(async_session, sid, bucket_key=f"trio-{i}.jpg")
+
+    resp = await authenticated_client.get("/sequence_groups/")
+    row = next(i for i in resp.json()["items"] if i["id"] == gid)
+    det_ids = [t["detection_id"] for t in row["thumbnails"]]
+    assert len(det_ids) == 3
+    assert len(set(det_ids)) == 3
+
+
+@pytest.mark.asyncio
+async def test_list_thumbnails_skip_detectionless_members(
+    authenticated_client: AsyncClient,
+    async_session: AsyncSession,
+):
+    gid = await _seed_group_with_members(
+        async_session,
+        n_members=4,
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        alert_api_id_start=700,
+    )
+    await _stagger_member_recorded_at(async_session, gid)
+    member_ids = await _group_member_ids(async_session, gid)
+    # Member at index 1 gets no detection → ineligible; picks come from
+    # the remaining 3 (indices 0, 2, 3).
+    expected = []
+    for i, sid in enumerate(member_ids):
+        if i == 1:
+            continue
+        expected.append(
+            await _add_first_detection(async_session, sid, bucket_key=f"skip-{i}.jpg")
+        )
+
+    resp = await authenticated_client.get("/sequence_groups/")
+    row = next(i for i in resp.json()["items"] if i["id"] == gid)
+    assert [t["detection_id"] for t in row["thumbnails"]] == expected
+
+
+@pytest.mark.asyncio
+async def test_list_thumbnails_bbox_union_and_null(
+    authenticated_client: AsyncClient,
+    async_session: AsyncSession,
+):
+    gid = await _seed_group_with_members(
+        async_session,
+        n_members=3,
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        alert_api_id_start=800,
+    )
+    await _stagger_member_recorded_at(async_session, gid)
+    member_ids = await _group_member_ids(async_session, gid)
+    await _add_first_detection(
+        async_session,
+        member_ids[0],
+        bucket_key="bbox-0.jpg",
+        algo_predictions={
+            "predictions": [
+                {
+                    "xyxyn": [0.1, 0.2, 0.2, 0.3],
+                    "confidence": 0.8,
+                    "class_name": "smoke",
+                },
+                {
+                    "xyxyn": [0.15, 0.1, 0.3, 0.25],
+                    "confidence": 0.7,
+                    "class_name": "smoke",
+                },
+            ]
+        },
+    )
+    # No predictions at all → bbox_xyxyn null.
+    await _add_first_detection(async_session, member_ids[1], bucket_key="bbox-1.jpg")
+    await _add_first_detection(
+        async_session,
+        member_ids[2],
+        bucket_key="bbox-2.jpg",
+        algo_predictions={"predictions": []},
+    )
+
+    resp = await authenticated_client.get("/sequence_groups/")
+    row = next(i for i in resp.json()["items"] if i["id"] == gid)
+    thumbs = row["thumbnails"]
+    assert thumbs[0]["bbox_xyxyn"] == [0.1, 0.1, 0.3, 0.3]
+    assert thumbs[1]["bbox_xyxyn"] is None
+    assert thumbs[2]["bbox_xyxyn"] is None
+
+
+def test_crop_bbox_unions_valid_prediction_boxes():
+    from app.api.api_v1.endpoints.sequence_groups import _crop_bbox
+
+    algo = {
+        "predictions": [
+            {"xyxyn": [0.1, 0.2, 0.2, 0.3], "confidence": 0.8, "class_name": "smoke"},
+            {"xyxyn": [0.15, 0.1, 0.3, 0.25], "confidence": 0.7, "class_name": "smoke"},
+        ]
+    }
+    assert _crop_bbox(algo) == [0.1, 0.1, 0.3, 0.3]
+
+
+def test_crop_bbox_none_when_no_valid_boxes():
+    from app.api.api_v1.endpoints.sequence_groups import _crop_bbox
+
+    assert _crop_bbox(None) is None
+    assert _crop_bbox({}) is None
+    assert _crop_bbox({"predictions": []}) is None
+    # Degenerate box (zero width) is not a valid crop target.
+    assert (
+        _crop_bbox(
+            {
+                "predictions": [
+                    {
+                        "xyxyn": [0.5, 0.5, 0.5, 0.9],
+                        "confidence": 0.9,
+                        "class_name": "smoke",
+                    }
+                ]
+            }
+        )
+        is None
+    )

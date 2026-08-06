@@ -10,6 +10,7 @@ import { detectActivePreset } from '@/components/filters/shared/dateRangeUtils';
 export type FilterPillId =
   | 'camera'
   | 'organization'
+  | 'annotator'
   | 'source'
   | 'wildfire'
   | 'accuracy'
@@ -35,7 +36,9 @@ export interface FilterPillInput {
   showFalsePositiveTypes: boolean;
   showSmokeTypes: boolean;
   showUnsureFilter: boolean;
+  showAnnotatorFilter?: boolean;
   sourceApis: { id: string; name: string }[];
+  annotators?: { id: number; username: string }[];
 }
 
 const PRESET_LABELS: Record<string, string> = {
@@ -72,6 +75,13 @@ export function buildFilterPills(input: FilterPillInput): FilterPill[] {
   if (filters.organisation_name) {
     pills.push({ id: 'organization', label: `Org: ${filters.organisation_name}` });
   }
+  if (input.showAnnotatorFilter && filters.annotator_id !== undefined) {
+    const annotator = (input.annotators ?? []).find(a => a.id === filters.annotator_id);
+    pills.push({
+      id: 'annotator',
+      label: `Annotator: ${annotator ? annotator.username : filters.annotator_id}`,
+    });
+  }
   if (filters.source_api) {
     const source = input.sourceApis.find(s => s.id === filters.source_api);
     pills.push({ id: 'source', label: `Source: ${source ? source.name : filters.source_api}` });
@@ -86,7 +96,7 @@ export function buildFilterPills(input: FilterPillInput): FilterPill[] {
   if (input.showModelAccuracy && input.selectedModelAccuracy !== 'all') {
     pills.push({
       id: 'accuracy',
-      label: `Accuracy: ${getModelAccuracyResult(input.selectedModelAccuracy).label}`,
+      label: `Result: ${getModelAccuracyResult(input.selectedModelAccuracy).label}`,
     });
   }
   if (input.showUnsureFilter && input.selectedUnsure !== 'all') {

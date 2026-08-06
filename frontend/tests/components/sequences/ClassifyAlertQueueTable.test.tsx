@@ -1,12 +1,13 @@
 /**
  * Tests for ClassifyAlertQueueTable: column rendering, objects-cell copy,
- * and row click handling. Mirrors ClassifyQueueTable.test.tsx.
+ * and row click handling.
  */
 
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ClassifyAlertQueueTable } from '@/components/sequences/ClassifyAlertQueueTable';
 import type { ClassifyQueueItem } from '@/types/api';
+import { formatDateTime } from '@/utils/datetime';
 
 vi.mock('@/components/DetectionImageThumbnail', () => ({
   default: ({ sequenceId, className }: { sequenceId: number; className?: string }) => (
@@ -81,7 +82,7 @@ describe('ClassifyAlertQueueTable', () => {
   it('shows the absolute recorded timestamp', () => {
     render(<ClassifyAlertQueueTable items={[createItem()]} onAlertClick={onAlertClick} />);
 
-    expect(screen.getByText(new Date('2024-01-01T10:00:00Z').toLocaleString())).toBeInTheDocument();
+    expect(screen.getByText(formatDateTime('2024-01-01T10:00:00Z'))).toBeInTheDocument();
   });
 
   it('renders the platform annotation label per value', () => {
@@ -164,5 +165,60 @@ describe('ClassifyAlertQueueTable', () => {
 
     expect(onAlertClick).toHaveBeenCalledTimes(1);
     expect(onAlertClick).toHaveBeenCalledWith(item);
+  });
+
+  describe('skipped view', () => {
+    const onUnskip = vi.fn();
+    const skippedItem = () =>
+      createItem({
+        skip: {
+          skipped_at: '2026-08-05T10:00:00Z',
+          skipped_by: 'annotator',
+          note: 'two plumes overlap',
+        },
+      });
+
+    it('renders skip metadata columns', () => {
+      render(
+        <ClassifyAlertQueueTable
+          items={[skippedItem()]}
+          onAlertClick={onAlertClick}
+          skippedView
+          onUnskip={onUnskip}
+        />
+      );
+
+      expect(screen.getByText('Skipped')).toBeInTheDocument();
+      expect(screen.getByText('By')).toBeInTheDocument();
+      expect(screen.getByText('Note')).toBeInTheDocument();
+      expect(screen.getByText('annotator')).toBeInTheDocument();
+      expect(screen.getByText('two plumes overlap')).toBeInTheDocument();
+      expect(screen.getByText(formatDateTime('2026-08-05T10:00:00Z'))).toBeInTheDocument();
+    });
+
+    it('unskip button fires the callback, rows do not navigate', () => {
+      const item = skippedItem();
+      render(
+        <ClassifyAlertQueueTable
+          items={[item]}
+          onAlertClick={onAlertClick}
+          skippedView
+          onUnskip={onUnskip}
+        />
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Unskip' }));
+      expect(onUnskip).toHaveBeenCalledWith(item);
+
+      fireEvent.click(screen.getByText('two plumes overlap'));
+      expect(onAlertClick).not.toHaveBeenCalled();
+    });
+
+    it('default view renders no skip columns', () => {
+      render(<ClassifyAlertQueueTable items={[createItem()]} onAlertClick={onAlertClick} />);
+
+      expect(screen.queryByText('Skipped')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Unskip' })).not.toBeInTheDocument();
+    });
   });
 });

@@ -57,7 +57,7 @@ describe('FilterPopover', () => {
     fireEvent.click(screen.getByRole('button', { name: /more filters \(3\)/i }));
     expect(screen.getByLabelText('Source API')).toBeInTheDocument();
     expect(screen.getByLabelText('Alert API annotation')).toBeInTheDocument();
-    expect(screen.getByText('Model Accuracy')).toBeInTheDocument();
+    expect(screen.getByRole('radiogroup', { name: 'Result' })).toBeInTheDocument();
     // Not enabled for this page:
     expect(screen.queryByLabelText('Certainty')).not.toBeInTheDocument();
   });
@@ -120,5 +120,38 @@ describe('FilterPopover', () => {
     fireEvent.click(screen.getByRole('button', { name: /filters/i }));
     fireEvent.click(screen.getByRole('button', { name: /more filters/i }));
     expect(localStorage.getItem('filter-popover-more-expanded')).toBe('expanded');
+  });
+
+  it('hides the Annotator filter unless showAnnotatorFilter is set', () => {
+    render(<FilterPopover {...makeProps()} />);
+    fireEvent.click(screen.getByRole('button', { name: /filters/i }));
+    expect(screen.queryByLabelText('Annotator')).not.toBeInTheDocument();
+  });
+
+  it('renders the Annotator select and reports a numeric annotator_id', () => {
+    const props = makeProps({
+      showAnnotatorFilter: true,
+      annotators: [
+        { id: 3, username: 'alice' },
+        { id: 5, username: 'bob' },
+      ],
+      annotatorsLoading: false,
+    });
+    render(<FilterPopover {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: /filters/i }));
+    fireEvent.change(screen.getByLabelText('Annotator'), { target: { value: '5' } });
+    expect(props.onFiltersChange).toHaveBeenCalledWith({ annotator_id: 5 });
+  });
+
+  it('shows an annotator pill and clears it on ✕ click', () => {
+    const props = makeProps({
+      showAnnotatorFilter: true,
+      annotators: [{ id: 3, username: 'alice' }],
+      filters: { annotator_id: 3 } as ExtendedSequenceFilters,
+    });
+    render(<FilterPopover {...props} />);
+    expect(screen.getByText('Annotator: alice')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /clear annotator: alice/i }));
+    expect(props.onFiltersChange).toHaveBeenCalledWith({ annotator_id: undefined });
   });
 });
