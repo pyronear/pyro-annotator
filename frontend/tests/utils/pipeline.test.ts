@@ -4,16 +4,18 @@ import { derivePipelineStats } from '@/utils/pipeline';
 describe('derivePipelineStats', () => {
   const raw = {
     total: 522,
-    readyToAnnotate: 57,
     seqAnnotationDone: 22,
     annotatedStage: 427,
     detectionComplete: 418,
     localizeQueueTotal: 9,
+    classifyQueueTotal: 31,
   };
 
   it('maps raw stage counts to presented pipeline states', () => {
     const s = derivePipelineStats(raw);
-    expect(s.classifyTodo).toBe(57);
+    // Classify · to do reads the alert-grouped queue total, not the
+    // per-lane ready_to_annotate count.
+    expect(s.classifyTodo).toBe(31);
     expect(s.classifyDone).toBe(22 + 427);
     // Localize · to do reads the gated queue total, not the stage proxy.
     expect(s.localizeTodo).toBe(9);
@@ -25,11 +27,11 @@ describe('derivePipelineStats', () => {
   it('is zero-safe when there are no sequences', () => {
     const s = derivePipelineStats({
       total: 0,
-      readyToAnnotate: 0,
       seqAnnotationDone: 0,
       annotatedStage: 0,
       detectionComplete: 0,
       localizeQueueTotal: 0,
+      classifyQueueTotal: 0,
     });
     expect(s.completePct).toBe(0);
     expect(s.classifyDone).toBe(0);
