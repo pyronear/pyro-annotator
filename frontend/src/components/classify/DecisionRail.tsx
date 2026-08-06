@@ -23,6 +23,8 @@ export interface DecisionRailProps {
   headerAction?: React.ReactNode;
   /** Rendered after the missed-smoke row — the page passes its rail-level Submit button here. */
   footer?: React.ReactNode;
+  /** Rendered after the object rows, before the divider — the page passes the shared timeline legend here. */
+  legend?: React.ReactNode;
   /** Object rows / placeholders, already ordered. */
   children: React.ReactNode;
 }
@@ -41,6 +43,7 @@ export const DecisionRail: React.FC<DecisionRailProps> = ({
   missedSmokeRowRef,
   headerAction,
   footer,
+  legend,
   children,
 }) => (
   <div className="rounded-card border border-line bg-paper px-[22px] py-5">
@@ -51,6 +54,8 @@ export const DecisionRail: React.FC<DecisionRailProps> = ({
       {headerAction}
     </div>
     <div className="space-y-2">{children}</div>
+
+    {legend && <div className="mt-3">{legend}</div>}
 
     <hr className="border-0 border-t border-line my-4" />
 

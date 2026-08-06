@@ -32,10 +32,23 @@ vi.mock('react-router-dom', async importOriginal => {
 
 // The media panel's full-frame player stand-in exposes the bbox count it
 // was handed — renderAndSettle keys on it as the "seeded state has
-// committed" signal (see its comment).
+// committed" signal (see its comment) — and the seek request, so the
+// segment-click → player plumbing is observable (React drops the
+// attributes entirely while the request is null/undefined).
 vi.mock('@/components/annotation/FullImageSequence', () => ({
-  default: ({ bboxes }: { bboxes?: unknown[] }) => (
-    <div data-testid="full-image-sequence" data-bbox-count={bboxes?.length ?? 0} />
+  default: ({
+    bboxes,
+    seekRequest,
+  }: {
+    bboxes?: unknown[];
+    seekRequest?: { index: number; nonce: number } | null;
+  }) => (
+    <div
+      data-testid="full-image-sequence"
+      data-bbox-count={bboxes?.length ?? 0}
+      data-seek-index={seekRequest?.index}
+      data-seek-nonce={seekRequest?.nonce}
+    />
   ),
 }));
 vi.mock('@/components/annotation/CroppedImageSequence', () => ({
@@ -237,8 +250,8 @@ describe('ClassifyAlertPage', () => {
     // Clears call counts (not just implementations) so per-test assertions
     // like `toHaveBeenCalledTimes` aren't polluted by earlier tests' calls.
     vi.clearAllMocks();
-    // jsdom doesn't implement scrollIntoView; the presence-strip click
-    // handler calls it on the target row, so stub it as a no-op.
+    // jsdom doesn't implement scrollIntoView; done-mode's entry-row
+    // activation calls it on the target row, so stub it as a no-op.
     Element.prototype.scrollIntoView = vi.fn();
     vi.mocked(apiClient.getSequence).mockResolvedValue(makeSequence());
     vi.mocked(apiClient.getAlertDetail).mockResolvedValue(makeAlertDetail());
@@ -802,15 +815,14 @@ describe('ClassifyAlertPage', () => {
     expect(lastOverlays[2].boxesByRecordedAt).not.toHaveProperty('2026-01-01T10:00:00Z');
   });
 
-  it('presence strip fills a frame where the lane has a detection but the object has no track bbox on it', async () => {
-    // Lane A (101) is captured on two frames (t1, t2), but its track's
-    // annotation bbox only references detection_id 1 (t1) — detection_id 4
-    // at t2 has no corresponding bbox. The lane still *has a detection* at
-    // t2, so the presence strip (unlike the track-box overlay) must render
-    // that frame filled, not a gap.
+  /**
+   * Detections fixture shared by the row-timeline tests: lane 101 captured
+   * on t1+t2, lanes 102/103 on t1 only — union [t1, t2], with lane 101's
+   * track bbox only referencing t1's detection.
+   */
+  function mockRowTimelineDetections() {
     const t1 = '2026-01-01T10:00:00Z';
     const t2 = '2026-01-01T10:00:05Z';
-
     vi.mocked(apiClient.getSequenceDetections).mockImplementation(async (sequenceId: number) => {
       const bySequence: Record<number, { id: number; recorded_at: string }[]> = {
         101: [
@@ -830,14 +842,22 @@ describe('ClassifyAlertPage', () => {
         last_modified_at: null,
       }));
     });
+  }
+
+  it('row timeline fills a frame where the lane has a detection but the object has no track bbox on it', async () => {
+    // Lane A (101) is captured on two frames (t1, t2), but its track's
+    // annotation bbox only references detection_id 1 (t1). The lane still
+    // *has a detection* at t2, so the row's strip (unlike the track-box
+    // overlay) must render that frame filled, not a gap.
+    mockRowTimelineDetections();
 
     await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 
     // Frame union across all 3 objects sorts to [t1, t2] -> segment index 0
-    // = t1, index 1 = t2. Object 1 (index 0) has no bbox at t2, but its
-    // lane does have a detection there, so it must render filled.
+    // = t1, index 1 = t2. Object 1's lane has a detection at t2, so its
+    // second segment renders filled even without a track bbox there.
     await waitFor(() =>
-      expect(screen.getByTestId('presence-segment-0-1')).toHaveStyle({
+      expect(screen.getByTestId('frame-segment-101:0-1')).toHaveStyle({
         backgroundColor: getObjectColor(0),
       })
     );
@@ -878,29 +898,30 @@ describe('ClassifyAlertPage', () => {
     );
   });
 
-  it('renders the presence strip in the rail column, below the objects and missed-smoke row — not in the media panel', async () => {
+  it('renders the timeline legend in the rail with classify wording', async () => {
+    mockRowTimelineDetections();
+
     await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 
-    const strip = screen.getByTestId('object-presence-swatch-0');
-    expect(screen.getByTestId('classify-media-panel').contains(strip)).toBe(false);
-
-    // DOCUMENT_POSITION_FOLLOWING: the compared node comes *after* the
-    // receiver in document order — the strip follows the whole rail.
-    const missedSmokeRow = screen.getByTestId('missed-smoke-row');
-    expect(
-      missedSmokeRow.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
+    const legend = await screen.findByTestId('classify-timeline-legend');
+    expect(screen.getByTestId('classify-media-panel').contains(legend)).toBe(false);
+    expect(within(legend).getByTestId('legend-chip-confirmed')).toHaveTextContent('Detected');
+    // Lanes 102/103 miss the union frame t2, so the bare-track state is named.
+    expect(within(legend).getByTestId('legend-chip-absent')).toHaveTextContent('Not on this frame');
   });
 
-  it("clicking a presence-strip row scrolls to and activates that object's rail row", async () => {
+  it('clicking a timeline segment on another row activates that card', async () => {
+    mockRowTimelineDetections();
+
     await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 
     // Lane B (sequence 102) is "Object 2" — see makeAlertDetail's laneB.
-    fireEvent.click(screen.getByRole('button', { name: 'Go to Object 2' }));
+    fireEvent.click(await screen.findByTestId('frame-segment-102:0-0'));
 
-    // The page owns turning the strip's click into "activate that row":
+    // The page owns turning the segment click into "activate that row":
     // Object 2's row expands its chips exactly as a direct row click would,
-    // and no other row is expanded.
+    // and no other row is expanded. (No scroll: the clicked row is already
+    // under the pointer — unlike the old below-the-rail strip rows.)
     await waitFor(() =>
       expect(
         within(screen.getByTestId('object-card-102:0')).getByRole('radio', { name: 'Smoke' })
@@ -912,16 +933,66 @@ describe('ClassifyAlertPage', () => {
     expect(
       within(screen.getByTestId('object-card-103:0')).queryByRole('radio', { name: 'Smoke' })
     ).not.toBeInTheDocument();
+  });
 
-    // And it scrolled the row into view — the handler defers the actual
-    // scroll a frame (requestAnimationFrame), so wait for it (jsdom stub —
-    // see beforeEach).
-    await waitFor(() =>
-      expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({
-        behavior: 'smooth',
-        block: 'center',
-      })
+  it('clicking a segment seeks the player to that frame, and a repeat click re-seeks', async () => {
+    mockRowTimelineDetections();
+
+    await renderAndSettle(<ClassifyAlertPage />, { wrapper });
+
+    fireEvent.click(await screen.findByTestId('frame-segment-101:0-1'));
+    const player = () => screen.getByTestId('full-image-sequence');
+    expect(player().getAttribute('data-seek-index')).toBe('1');
+    expect(player().getAttribute('data-seek-nonce')).toBe('1');
+
+    // Same segment again: the nonce bumps so the player re-seeks.
+    fireEvent.click(screen.getByTestId('frame-segment-101:0-1'));
+    expect(player().getAttribute('data-seek-nonce')).toBe('2');
+  });
+
+  it('an expired seek request does not replay when the player remounts', async () => {
+    mockRowTimelineDetections();
+
+    await renderAndSettle(<ClassifyAlertPage />, { wrapper });
+
+    fireEvent.click(await screen.findByTestId('frame-segment-101:0-0'));
+    expect(screen.getByTestId('full-image-sequence').getAttribute('data-seek-nonce')).toBe('1');
+
+    // Swap the media panel to the whole-alert player (unmounts the
+    // full-frame player), let the 2 s hold window lapse, and swap back:
+    // the remounted player must receive no seek request — otherwise it
+    // would replay the stale jump-and-hold.
+    fireEvent.click(screen.getByTestId('missed-smoke-row'));
+    await waitFor(
+      () => {
+        fireEvent.click(screen.getByTestId('object-card-101:0'));
+        expect(
+          screen.getByTestId('full-image-sequence').getAttribute('data-seek-nonce')
+        ).toBeNull();
+      },
+      { timeout: 4000 }
     );
+  });
+
+  it('a single-object alert still shows its row timeline', async () => {
+    // The old presence strip hid itself under 2 objects; the inline strips don't.
+    const detail = makeAlertDetail();
+    vi.mocked(apiClient.getAlertDetail).mockResolvedValue({ ...detail, lanes: [detail.lanes[0]] });
+    mockRowTimelineDetections();
+
+    await renderAndSettle(<ClassifyAlertPage />, { wrapper });
+
+    expect(await screen.findByTestId('object-timeline-101:0')).toBeInTheDocument();
+  });
+
+  it('a locked row still shows its timeline', async () => {
+    // Lane C (103) is 'annotated' -> locked in queue mode; its strip is
+    // informational and renders anyway.
+    mockRowTimelineDetections();
+
+    await renderAndSettle(<ClassifyAlertPage />, { wrapper });
+
+    expect(await screen.findByTestId('object-timeline-103:0')).toBeInTheDocument();
   });
 
   it('auto-activates the first editable object on load', async () => {
@@ -960,25 +1031,6 @@ describe('ClassifyAlertPage', () => {
     fireEvent.click(screen.getByTestId('object-card-101:0'));
     expect(screen.queryByTestId('sequence-reviewer')).not.toBeInTheDocument();
     expect(screen.getByTestId('cropped-image-sequence')).toBeInTheDocument();
-  });
-
-  it("keeps the timeline's highlighted row in sync with the active rail row", async () => {
-    await renderAndSettle(<ClassifyAlertPage />, { wrapper });
-
-    // Object 1 auto-activates -> its timeline row is highlighted.
-    expect(screen.getByRole('button', { name: 'Go to Object 1' })).toHaveAttribute(
-      'aria-current',
-      'true'
-    );
-
-    fireEvent.click(screen.getByTestId('object-card-102:0'));
-    expect(screen.getByRole('button', { name: 'Go to Object 2' })).toHaveAttribute(
-      'aria-current',
-      'true'
-    );
-    expect(screen.getByRole('button', { name: 'Go to Object 1' })).not.toHaveAttribute(
-      'aria-current'
-    );
   });
 
   it('mirrors Submit in the rail below the missed-smoke row, tracking the same enablement, and submits from there', async () => {
