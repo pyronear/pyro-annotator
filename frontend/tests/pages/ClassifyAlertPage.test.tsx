@@ -1596,11 +1596,13 @@ describe('ClassifyAlertPage done mode', () => {
       expect(screen.getByLabelText(/optional/i)).toBeInTheDocument();
     });
 
-    it('cancel closes without calling the API', async () => {
+    it('the close cross dismisses without calling the API', async () => {
       await renderAndSettle(<ClassifyAlertPage />, { wrapper });
 
       fireEvent.click(screen.getByRole('button', { name: /Skip alert/ }));
-      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      fireEvent.click(
+        within(screen.getByTestId('skip-alert-confirm')).getByRole('button', { name: 'Close' })
+      );
 
       expect(screen.queryByTestId('skip-alert-confirm')).not.toBeInTheDocument();
       expect(apiClient.skipAlert).not.toHaveBeenCalled();

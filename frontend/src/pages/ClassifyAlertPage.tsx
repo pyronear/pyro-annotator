@@ -20,7 +20,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ChevronLeft, ChevronRight, Keyboard, Upload } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, Keyboard, Upload, X } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { QUERY_KEYS } from '@/utils/constants';
 import {
@@ -1329,7 +1329,17 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
             className="fixed inset-0 z-50 flex items-center justify-center bg-char/40 px-4"
           >
             <div className="w-full max-w-sm rounded-lg border border-line bg-paper p-5">
-              <h2 className="font-body text-sm font-semibold text-char">Skip this alert?</h2>
+              <div className="flex items-start justify-between">
+                <h2 className="font-body text-sm font-semibold text-char">Skip this alert?</h2>
+                <button
+                  type="button"
+                  onClick={() => setSkipConfirmOpen(false)}
+                  aria-label="Close"
+                  className="-mr-1.5 -mt-1.5 rounded-md p-1.5 hover:bg-ash"
+                >
+                  <X className="h-4 w-4 text-haze" />
+                </button>
+              </div>
               <p className="mt-1 font-body text-xs text-haze">
                 The whole alert leaves the queue for everyone until someone unskips it.
               </p>
@@ -1346,14 +1356,7 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
                 rows={3}
                 className="mt-1 w-full rounded-lg border border-line bg-paper p-2 font-body text-sm text-char"
               />
-              <div className="mt-4 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setSkipConfirmOpen(false)}
-                  className="inline-flex items-center rounded-lg border border-line bg-paper px-3 py-2 font-body text-sm font-medium text-char hover:bg-ash"
-                >
-                  Cancel
-                </button>
+              <div className="mt-4 flex justify-end">
                 <button
                   type="button"
                   onClick={() => skipAlertMutation.mutate()}
