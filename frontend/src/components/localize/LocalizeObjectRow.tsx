@@ -5,9 +5,11 @@
  * how many of the frames the object appears on already have a committed box
  * — and, now that the standalone Timeline card folded in here, WHICH frames:
  * a per-frame segment bar under the header. Each segment reports this
- * object's status at that alert frame: `confirmed` (solid fill), `pending`
- * (faded fill — a model box waiting to be accepted), `empty` (outline only —
- * on the frame with nothing on it yet), `absent` (neutral track).
+ * object's status at that alert frame: `confirmed` (solid fill), `cleared`
+ * (hatched fill — committed with no smoke box, "object not visible here"),
+ * `pending` (faded fill — a model box waiting to be accepted), `empty`
+ * (outline only — on the frame with nothing on it yet), `absent` (neutral
+ * track).
  *
  * `empty` is deliberately distinct from `pending`: collapsing the two made a
  * frame with nothing on it look identical to one with a box to accept, which
@@ -83,6 +85,19 @@ function segmentAppearance(
 ): { className: string; style?: React.CSSProperties } {
   if (status === 'confirmed') {
     return { className: SEGMENT_BASE_CLASS, style: { backgroundColor: color } };
+  }
+  if (status === 'cleared') {
+    // Committed with no smoke box — the annotator's "object not visible
+    // here" (the editor's Clear on an evidence-bearing frame). Hatched
+    // rather than solid: settled like confirmed, but deliberately nothing
+    // on the frame — a solid fill here read as a box the grid then
+    // couldn't show.
+    return {
+      className: SEGMENT_BASE_CLASS,
+      style: {
+        backgroundImage: `repeating-linear-gradient(45deg, ${color} 0px, ${color} 2px, transparent 2px, transparent 4px)`,
+      },
+    };
   }
   if (status === 'pending') {
     return { className: `${SEGMENT_BASE_CLASS} opacity-40`, style: { backgroundColor: color } };
