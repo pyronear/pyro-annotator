@@ -298,7 +298,25 @@ class TestDetectionAnnotationData:
         data = DetectionAnnotationData(annotation=[])
         assert len(data.annotation) == 0
 
-    def test_multiple_annotation_items(self):
+    def test_rejects_two_smoke_boxes(self):
+        with pytest.raises(ValidationError) as exc_info:
+            DetectionAnnotationData(
+                annotation=[
+                    DetectionAnnotationItem(
+                        xyxyn=[0.1, 0.2, 0.3, 0.4],
+                        class_name="smoke",
+                        smoke_type=SmokeType.WILDFIRE,
+                    ),
+                    DetectionAnnotationItem(
+                        xyxyn=[0.5, 0.6, 0.7, 0.8],
+                        class_name="smoke",
+                        smoke_type=SmokeType.INDUSTRIAL,
+                    ),
+                ]
+            )
+        assert "At most one smoke box" in str(exc_info.value)
+
+    def test_allows_one_smoke_box_with_false_positive_items(self):
         data = DetectionAnnotationData(
             annotation=[
                 DetectionAnnotationItem(
@@ -308,8 +326,30 @@ class TestDetectionAnnotationData:
                 ),
                 DetectionAnnotationItem(
                     xyxyn=[0.5, 0.6, 0.7, 0.8],
-                    class_name="smoke",
-                    smoke_type=SmokeType.INDUSTRIAL,
+                    class_name="cloud",
+                    false_positive_type=FalsePositiveType.HIGH_CLOUD,
+                ),
+                DetectionAnnotationItem(
+                    xyxyn=[0.2, 0.3, 0.4, 0.5],
+                    class_name="antenna",
+                    false_positive_type=FalsePositiveType.ANTENNA,
+                ),
+            ]
+        )
+        assert len(data.annotation) == 3
+
+    def test_allows_many_false_positive_items_with_no_smoke_box(self):
+        data = DetectionAnnotationData(
+            annotation=[
+                DetectionAnnotationItem(
+                    xyxyn=[0.1, 0.2, 0.3, 0.4],
+                    class_name="cloud",
+                    false_positive_type=FalsePositiveType.HIGH_CLOUD,
+                ),
+                DetectionAnnotationItem(
+                    xyxyn=[0.5, 0.6, 0.7, 0.8],
+                    class_name="cloud",
+                    false_positive_type=FalsePositiveType.LOW_CLOUD,
                 ),
             ]
         )
