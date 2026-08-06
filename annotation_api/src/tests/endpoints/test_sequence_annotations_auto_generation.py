@@ -6,10 +6,11 @@ endpoints when processing_stage=READY_TO_ANNOTATE and annotation is empty.
 """
 
 import pytest
+from datetime import UTC, datetime
 from unittest.mock import patch
 from httpx import AsyncClient
 
-from app.models import SequenceAnnotationProcessingStage
+from app.models import Detection, SequenceAnnotationProcessingStage
 from app.schemas.annotation_validation import (
     SequenceAnnotationData,
     SequenceBBox,
@@ -265,3 +266,71 @@ async def test_should_trigger_auto_generation_logic():
         )
         is True
     )
+
+
+@pytest.mark.asyncio
+async def test_auto_generation_merges_same_frame_overlaps(
+    authenticated_client: AsyncClient, sequence_session, detection_session
+):
+    """Two overlapping predictions on one frame must not 422 the request.
+
+    cluster_boxes_by_iou puts them in one cluster because it never consults
+    detection_id; _create_sequence_bboxes collapses them to their union so the
+    SequenceBBox validator accepts the result. Detection 19167's real
+    coordinates (#324).
+    """
+    detection_session.add(
+        Detection(
+            id=4,
+            created_at=datetime.now(UTC),
+            sequence_id=2,
+            alert_api_id=99,
+            recorded_at=datetime.now(UTC),
+            bucket_key="seq2_img2.jpg",
+            algo_predictions={
+                "predictions": [
+                    {
+                        "xyxyn": [0.102, 0.565, 0.113, 0.586],
+                        "confidence": 0.5,
+                        "class_name": "smoke",
+                    },
+                    {
+                        "xyxyn": [0.107, 0.564, 0.119, 0.584],
+                        "confidence": 0.6,
+                        "class_name": "smoke",
+                    },
+                ]
+            },
+        )
+    )
+    await detection_session.commit()
+
+    response = await authenticated_client.post(
+        "/annotations/sequences/",
+        json={
+            "sequence_id": 2,
+            "has_missed_smoke": False,
+            "is_unsure": False,
+            "annotation": {"sequences_bbox": []},
+            "processing_stage": "ready_to_annotate",
+            "confidence_threshold": 0.0,
+            "iou_threshold": 0.0,
+            "min_cluster_size": 1,
+        },
+    )
+
+    assert response.status_code == 201, response.text
+
+    sequences_bbox = response.json()["annotation"]["sequences_bbox"]
+    for seq_bbox in sequences_bbox:
+        ids = [b["detection_id"] for b in seq_bbox["bboxes"]]
+        assert len(ids) == len(set(ids)), f"duplicate detection_id in {ids}"
+
+    merged = [
+        b
+        for seq_bbox in sequences_bbox
+        for b in seq_bbox["bboxes"]
+        if b["detection_id"] == 4
+    ]
+    assert len(merged) == 1
+    assert merged[0]["xyxyn"] == pytest.approx([0.102, 0.564, 0.119, 0.586])
