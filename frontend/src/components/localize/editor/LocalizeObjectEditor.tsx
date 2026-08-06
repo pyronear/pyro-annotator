@@ -694,7 +694,24 @@ export function LocalizeObjectEditor({
           step(1);
           break;
         case 'Enter':
-          acceptAndNext();
+          // The accept dialog owns Enter while it is open — its button says
+          // so — otherwise the frame-level accept would fire behind it. But
+          // a button focused inside the dialog keeps its own Enter: Tab to
+          // the close X must close, not accept out from under the focus.
+          if (acceptOpen) {
+            if (
+              e.target instanceof HTMLElement &&
+              e.target.closest('button') &&
+              e.target.closest('[role="dialog"]')
+            )
+              return;
+            if (!isAccepting) {
+              onAcceptRemaining();
+              setAcceptOpen(false);
+            }
+          } else {
+            acceptAndNext();
+          }
           break;
         case 'Delete':
         case 'Backspace':
@@ -745,7 +762,18 @@ export function LocalizeObjectEditor({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [step, acceptAndNext, boxSelected, acceptOpen, shortcutsOpen, resetZoom, onClose, editable]);
+  }, [
+    step,
+    acceptAndNext,
+    boxSelected,
+    acceptOpen,
+    shortcutsOpen,
+    resetZoom,
+    onClose,
+    editable,
+    isAccepting,
+    onAcceptRemaining,
+  ]);
 
   // --- Render -------------------------------------------------------------
 
@@ -835,6 +863,7 @@ export function LocalizeObjectEditor({
                   objectColor={objectColor}
                   sequenceId={laneSequenceId}
                   previewBoxes={previewBoxes}
+                  entries={entries}
                   acceptCount={acceptRemainingCount}
                   gapCount={gapCount}
                   isAccepting={isAccepting}
