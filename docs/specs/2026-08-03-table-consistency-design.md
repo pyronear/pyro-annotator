@@ -55,7 +55,7 @@ Shared identity prefix, then phase-specific columns, Result last:
 | `/localize/done` | Thumb · Camera · Organisation · Recorded · Source · Azimuth · Smoke types · Frames · Result |
 | `/classify` | Thumb · Camera · Organisation · Recorded · Source · Azimuth · Alert API annotation |
 | `/classify/done` | Thumb · Camera · Organisation · Recorded · Source · Azimuth · Alert API annotation · Result |
-| `/classify/groups` | Camera · Created · Azimuth · Sequences · Label · Reviewed · › |
+| `/classify/groups` | Camera · Organisation · Created · Azimuth · Sightings · Label · Annotators · › |
 
 The classify tables move "Alert API annotation" from between Recorded and
 Source to after Azimuth. Groups reorders its overlapping columns to match

@@ -29,8 +29,11 @@ from app.schemas.sequence_group import (
     SequenceGroupRead,
     SequenceGroupReadWithMembers,
     SequenceGroupStats,
+    SequenceGroupThumbnail,
     SequenceGroupUpdate,
 )
+from app.services.annotators import human_annotators, merge_annotators
+from app.services.storage import s3_service
 
 router = APIRouter()
 
@@ -49,6 +52,121 @@ class OrderDirection(str, Enum):
 
     asc = "asc"
     desc = "desc"
+
+
+def _crop_bbox(algo_predictions: Optional[dict]) -> Optional[list[float]]:
+    """Union of a frame's valid prediction boxes, as a crop target for the
+    list page's thumbnails. Mirrors the frontend's cropBox math on the
+    group annotate page (union of valid boxes, else fall back)."""
+    predictions = (algo_predictions or {}).get("predictions") or []
+    boxes = [
+        p["xyxyn"]
+        for p in predictions
+        if isinstance(p.get("xyxyn"), list)
+        and len(p["xyxyn"]) == 4
+        and p["xyxyn"][2] > p["xyxyn"][0]
+        and p["xyxyn"][3] > p["xyxyn"][1]
+    ]
+    if not boxes:
+        return None
+    return [
+        min(b[0] for b in boxes),
+        min(b[1] for b in boxes),
+        max(b[2] for b in boxes),
+        max(b[3] for b in boxes),
+    ]
+
+
+async def _thumbnails_for_groups(
+    session: AsyncSession, group_ids: list[int]
+) -> dict[int, list[SequenceGroupThumbnail]]:
+    """Up to 3 member previews per group: first / middle / last member by
+    (recorded_at, id), among members that have at least one detection.
+    One query for the whole page; presigning is a local computation."""
+    if not group_ids:
+        return {}
+
+    # First detection per member sequence (lowest recorded_at, id as
+    # tie-breaker) — same definition as the group detail endpoint.
+    detection_rownum = (
+        select(
+            Detection.id.label("det_id"),
+            Detection.sequence_id.label("seq_id"),
+            Detection.bucket_key.label("bucket_key"),
+            Detection.algo_predictions.label("det_algo"),
+            func.row_number()
+            .over(
+                partition_by=Detection.sequence_id,
+                order_by=(Detection.recorded_at.asc(), Detection.id.asc()),
+            )
+            .label("rn"),
+        )
+        .join(Sequence, Sequence.id == Detection.sequence_id)
+        .where(Sequence.sequence_group_id.in_(group_ids))
+        .subquery()
+    )
+    first_det = (
+        select(
+            detection_rownum.c.seq_id,
+            detection_rownum.c.det_id,
+            detection_rownum.c.bucket_key,
+            detection_rownum.c.det_algo,
+        )
+        .where(detection_rownum.c.rn == 1)
+        .subquery()
+    )
+
+    # Rank eligible members (inner join drops detection-less ones) per
+    # group along the timeline.
+    member_rank = (
+        select(
+            Sequence.sequence_group_id.label("group_id"),
+            first_det.c.det_id,
+            first_det.c.bucket_key,
+            first_det.c.det_algo,
+            func.row_number()
+            .over(
+                partition_by=Sequence.sequence_group_id,
+                order_by=(Sequence.recorded_at.asc(), Sequence.id.asc()),
+            )
+            .label("rn"),
+            func.count().over(partition_by=Sequence.sequence_group_id).label("cnt"),
+        )
+        .join(first_det, first_det.c.seq_id == Sequence.id)
+        .where(Sequence.sequence_group_id.in_(group_ids))
+        .subquery()
+    )
+    # First / middle / last ranks. `//` is floor division (SQLAlchemy 2.0
+    # renders `/` on integers as TRUE division): cnt=5 → middle rank 3.
+    # Overlapping ranks (cnt < 3) match a single row once — no duplicates.
+    rows = await session.execute(
+        select(
+            member_rank.c.group_id,
+            member_rank.c.det_id,
+            member_rank.c.bucket_key,
+            member_rank.c.det_algo,
+        )
+        .where(
+            (member_rank.c.rn == 1)
+            | (member_rank.c.rn == member_rank.c.cnt // 2 + 1)
+            | (member_rank.c.rn == member_rank.c.cnt)
+        )
+        .order_by(member_rank.c.group_id, member_rank.c.rn)
+    )
+
+    bucket = s3_service.get_bucket(s3_service.resolve_bucket_name())
+    thumbnails: dict[int, list[SequenceGroupThumbnail]] = {}
+    for group_id, det_id, bucket_key, det_algo in rows.all():
+        thumbnails.setdefault(group_id, []).append(
+            SequenceGroupThumbnail(
+                detection_id=det_id,
+                # generate_presigned_url, not get_public_url: presigning is
+                # offline; get_public_url HEAD-checks S3 per key and 404s.
+                url=bucket.generate_presigned_url(bucket_key),
+                bbox_xyxyn=_crop_bbox(det_algo),
+            )
+        )
+    return thumbnails
 
 
 @router.get(
@@ -82,6 +200,7 @@ async def list_sequence_groups(
             func.count(Sequence.id).label("member_count"),
             # All members share one camera; min() just picks that value.
             func.min(Sequence.camera_name).label("camera_name"),
+            func.min(Sequence.organisation_name).label("organisation_name"),
         )
         .where(Sequence.sequence_group_id.is_not(None))
         .group_by(Sequence.sequence_group_id)
@@ -112,6 +231,7 @@ async def list_sequence_groups(
             SequenceGroup.created_at,
             member_count_subq.c.member_count,
             member_count_subq.c.camera_name,
+            member_count_subq.c.organisation_name,
         )
         # Inner-join so small groups (no row in the subquery) drop out.
         .join(member_count_subq, member_count_subq.c.group_id == SequenceGroup.id)
@@ -137,9 +257,38 @@ async def list_sequence_groups(
             & SequenceGroup.false_positive_type.is_(None)
         )
 
+    async def _hydrate(rows: list) -> list[SequenceGroupListItem]:
+        group_ids = [r.id for r in rows]
+        thumbnails = await _thumbnails_for_groups(session, group_ids)
+        # Attribution is per member sequence, so it can't ride the grouped
+        # list query — resolve it for the page's groups only.
+        members = (
+            await session.execute(
+                select(Sequence.sequence_group_id, Sequence.id).where(
+                    Sequence.sequence_group_id.in_(group_ids)
+                )
+            )
+        ).all()
+        members_by_group: dict[int, list[int]] = {}
+        for group_id, sequence_id in members:
+            members_by_group.setdefault(group_id, []).append(sequence_id)
+        annotators_by_seq = await human_annotators(
+            session, [sequence_id for _, sequence_id in members]
+        )
+        return [
+            SequenceGroupListItem(
+                **dict(r._mapping),
+                thumbnails=thumbnails.get(r.id, []),
+                annotators=merge_annotators(
+                    annotators_by_seq, members_by_group.get(r.id, [])
+                ),
+            )
+            for r in rows
+        ]
+
     # `unique=False` is required because the row tuple includes the JSONB
     # `representative_bbox`, which is a dict and therefore not hashable.
-    return await apaginate(session, query, params, unique=False)
+    return await apaginate(session, query, params, unique=False, transformer=_hydrate)
 
 
 @router.get(

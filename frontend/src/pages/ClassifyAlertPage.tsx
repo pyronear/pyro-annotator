@@ -814,6 +814,14 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
       // server-side (#275); without this the localize page redraws the lane
       // against the cached ones and shows every frame as already confirmed.
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.DETECTION_ANNOTATIONS });
+      // Classifying a member of a validated group labels the group and fans
+      // out to its other members (#258). With the 5-minute global staleTime,
+      // walking back to the group page would otherwise show the pre-propagation
+      // state. Same keys SequenceGroupAnnotatePage invalidates after its own
+      // mutations.
+      queryClient.invalidateQueries({ queryKey: ['sequenceGroup'] });
+      queryClient.invalidateQueries({ queryKey: ['sequenceGroupsList'] });
+      queryClient.invalidateQueries({ queryKey: ['sequenceGroupStats'] });
 
       const warnings = response.results
         .filter(r => r.group_propagation_warning)

@@ -7,7 +7,9 @@
 
 Called by the periodic worker task (``assign_sequence_groups`` in
 ``app.worker``), the sole trigger since the manual endpoint was removed
-(#181): it calls ``assign_ungrouped_sequences``.
+(#181): it calls ``assign_ungrouped_sequences``. Membership only — the
+sweep never writes labels or annotations; labels enter exclusively through
+human actions (classify propagation, bulk group apply).
 """
 
 import logging
@@ -18,36 +20,19 @@ from pydantic import BaseModel
 from sqlalchemy import select, text
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.crud import SequenceAnnotationCRUD
 from app.db import engine
-from app.models import (
-    Detection,
-    FalsePositiveType,
-    Sequence,
-    SequenceAnnotation,
-    SequenceAnnotationProcessingStage,
-    SequenceGroup,
-    SmokeType,
-)
-from app.schemas.annotation_validation import SequenceAnnotationData
-from app.schemas.sequence_annotations import (
-    SequenceAnnotationCreate,
-    SequenceAnnotationUpdate,
-)
+from app.models import Detection, Sequence, SequenceAnnotation, SequenceGroup
 from app.services.alert_skip import alert_skip_exists_clause
-from app.services.annotation_generation import (
-    AnnotationGenerationService,
-    apply_label_to_sequences_bbox,
-    box_iou,
-)
+from app.services.annotation_generation import box_iou
 
 logger = logging.getLogger(__name__)
 
 # Cross-sequence grouping threshold. Stricter than within-sequence clustering
 # (IoU=0) because the precision cost of mis-grouping is much higher: a wrong
-# match auto-applies inherited labels to an unrelated event. R&D on 857
-# real sequences shows 0.3 captures natural smoke drift while filtering
-# accidental tiny overlaps; 0.5 was too strict in practice.
+# match funnels human group labels (propagation, bulk apply) onto an
+# unrelated event. R&D on 857 real sequences shows 0.3 captures natural
+# smoke drift while filtering accidental tiny overlaps; 0.5 was too strict
+# in practice.
 GROUP_IOU_THRESHOLD = 0.3
 
 # Fixed key for the Postgres advisory lock that serializes overlapping
@@ -61,7 +46,6 @@ class AssignGroupsResult(BaseModel):
     processed: int = 0
     new_groups: int = 0
     joined_existing: int = 0
-    inherited_annotations: int = 0
     skipped_no_bbox: int = 0
     already_running: bool = False
 
@@ -102,15 +86,12 @@ def compute_representative_bbox(detections: List[Detection]) -> Optional[dict]:
     }
 
 
-async def assign_ungrouped_sequences(
-    session: AsyncSession, user_id: int
-) -> AssignGroupsResult:
+async def assign_ungrouped_sequences(session: AsyncSession) -> AssignGroupsResult:
     """Assign every ungrouped, fully-imported sequence to a group (idempotent).
 
     Serialized via a Postgres session-level advisory lock held on a dedicated
-    connection for the whole run (the CRUD helpers commit mid-run, so a
-    transaction-scoped lock would release too early). A run that finds the
-    lock taken returns immediately with ``already_running=True``.
+    connection for the whole run. A run that finds the lock taken returns
+    immediately with ``already_running=True``.
     """
     lock_conn = await engine.connect()
     try:
@@ -129,7 +110,7 @@ async def assign_ungrouped_sequences(
             logger.info("group assignment already running; skipping this run")
             return AssignGroupsResult(already_running=True)
         try:
-            return await _run_assignment(session, user_id)
+            return await _run_assignment(session)
         finally:
             await lock_conn.execute(
                 text("SELECT pg_advisory_unlock(:key)"),
@@ -139,19 +120,13 @@ async def assign_ungrouped_sequences(
         await lock_conn.close()
 
 
-async def _run_assignment(session: AsyncSession, user_id: int) -> AssignGroupsResult:
+async def _run_assignment(session: AsyncSession) -> AssignGroupsResult:
     """Single assignment pass — callers must hold the advisory lock.
 
-    Greedy best-IoU match on the
-    (camera_id, azimuth) key, threshold > 0.3. Label inheritance is
-    conditional — when the matched group already has a label, the joining
-    sequence gets a SequenceAnnotation in SEQ_ANNOTATION_DONE with that
-    label, attributed to ``user_id``. The importers' curated
-    READY_TO_ANNOTATE annotation is upgraded in place (its tracks reused
-    verbatim); any later stage is left untouched.
-    """
-    sa_crud = SequenceAnnotationCRUD(session=session)
-
+    Greedy best-IoU match on the (camera_id, azimuth) key, threshold > 0.3,
+    against unvalidated groups only (validation freezes membership).
+    Membership is all this writes: the joining sequence's annotation is
+    never touched, whatever the group's label."""
     unassigned_query = (
         select(Sequence)
         .where(
@@ -162,7 +137,7 @@ async def _run_assignment(session: AsyncSession, user_id: int) -> AssignGroupsRe
             # SequenceAnnotation row strictly after all detections are
             # posted, so its absence means "still importing" (or a failed
             # import) — grouping such a sequence would freeze a bbox from
-            # partial data and could inherit a label onto it.
+            # partial data.
             select(SequenceAnnotation.id)
             .where(SequenceAnnotation.sequence_id == Sequence.id)
             .exists(),
@@ -178,16 +153,8 @@ async def _run_assignment(session: AsyncSession, user_id: int) -> AssignGroupsRe
     if not unassigned:
         return AssignGroupsResult()
 
-    gen_service = AnnotationGenerationService(
-        session=session,
-        confidence_threshold=0.0,
-        iou_threshold=0.0,
-        min_cluster_size=1,
-    )
-
     new_groups = 0
     joined_existing = 0
-    inherited = 0
     skipped_no_bbox = 0
 
     for seq in unassigned:
@@ -210,6 +177,10 @@ async def _run_assignment(session: AsyncSession, user_id: int) -> AssignGroupsRe
         candidates_query = select(SequenceGroup).where(
             SequenceGroup.camera_id == seq.camera_id,
             SequenceGroup.azimuth == seq.azimuth,
+            # Validation freezes membership: the member set a human confirmed
+            # must stay exactly what they confirmed. Later matches for the
+            # same camera/azimuth open a fresh unvalidated group instead.
+            SequenceGroup.is_validated.is_(False),
         )
         candidates = (await session.execute(candidates_query)).scalars().all()
 
@@ -239,84 +210,11 @@ async def _run_assignment(session: AsyncSession, user_id: int) -> AssignGroupsRe
         seq.sequence_group_id = best_group.id
         joined_existing += 1
 
-        if best_group.smoke_type is None and best_group.false_positive_type is None:
-            continue
-
-        # Inherit the group's label. The importers write a curated
-        # READY_TO_ANNOTATE annotation (one track per split object) for
-        # every imported sequence — stamp the label onto those tracks as-is.
-        # Regenerating from algo_predictions would restructure them (e.g.
-        # re-cluster a below-spawn-threshold fallback sequence into several
-        # tracks), so regeneration is reserved for annotations with no
-        # tracks at all. Skip any stage past READY_TO_ANNOTATE (the human /
-        # review pipeline has touched it).
-        existing_anno = (
-            await session.execute(
-                select(SequenceAnnotation).where(
-                    SequenceAnnotation.sequence_id == seq.id
-                )
-            )
-        ).scalar_one_or_none()
-        if existing_anno is not None and existing_anno.processing_stage != (
-            SequenceAnnotationProcessingStage.READY_TO_ANNOTATE
-        ):
-            continue
-
-        if existing_anno is not None and (existing_anno.annotation or {}).get(
-            "sequences_bbox"
-        ):
-            generated = SequenceAnnotationData.model_validate(existing_anno.annotation)
-        else:
-            generated = await gen_service.generate_annotation_for_sequence(seq.id)
-            if generated is None:
-                continue
-
-        smoke_enum = SmokeType(best_group.smoke_type) if best_group.smoke_type else None
-        fp_enum = (
-            FalsePositiveType(best_group.false_positive_type)
-            if best_group.false_positive_type
-            else None
-        )
-        apply_label_to_sequences_bbox(
-            generated, smoke_type=smoke_enum, false_positive_type=fp_enum
-        )
-
-        # The annotation-exists gate means existing_anno is normally set;
-        # the create branch only guards a concurrent-delete race.
-        if existing_anno is None:
-            created_anno = await sa_crud.create(
-                SequenceAnnotationCreate(
-                    sequence_id=seq.id,
-                    has_missed_smoke=False,
-                    is_unsure=best_group.is_unsure,
-                    annotation=generated,
-                    processing_stage=SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
-                ),
-                user_id,
-            )
-            inherited_anno_id = created_anno.id
-        else:
-            await sa_crud.update(
-                existing_anno.id,
-                SequenceAnnotationUpdate(
-                    is_unsure=best_group.is_unsure,
-                    annotation=generated,
-                    processing_stage=SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE,
-                ),
-                user_id,
-            )
-            inherited_anno_id = existing_anno.id
-        # create/update only auto-record contributions at ANNOTATED; this is
-        # a machine-written annotation, so attribute the write explicitly.
-        await sa_crud.record_contribution(inherited_anno_id, user_id)
-        inherited += 1
-
     await session.commit()
 
     return AssignGroupsResult(
         processed=len(unassigned),
         new_groups=new_groups,
         joined_existing=joined_existing,
-        inherited_annotations=inherited,
         skipped_no_bbox=skipped_no_bbox,
     )

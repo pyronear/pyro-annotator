@@ -7,6 +7,11 @@ on:
       - 'frontend/**'
       - '.github/workflows/frontend-ci.yml'
 
+# A new push to the same PR makes the in-flight run obsolete.
+concurrency:
+  group: frontend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 defaults:
   run:
     working-directory: frontend
@@ -27,9 +32,19 @@ jobs:
         cache: 'npm'
         cache-dependency-path: 'frontend/package-lock.json'
     
+    # setup-node's `cache: npm` only caches the download tarballs; npm ci still
+    # rebuilds node_modules from scratch (~70s). Cache the tree itself.
+    - name: Cache node_modules
+      id: node-modules
+      uses: actions/cache@v4
+      with:
+        path: frontend/node_modules
+        key: node-modules-${{ runner.os }}-node18-${{ hashFiles('frontend/package-lock.json') }}
+
     - name: Install dependencies
+      if: steps.node-modules.outputs.cache-hit != 'true'
       run: npm ci
-    
+
     - name: Build application
       run: npm run build
 
@@ -48,28 +63,28 @@ jobs:
         cache: 'npm'
         cache-dependency-path: 'frontend/package-lock.json'
     
+    - name: Cache node_modules
+      id: node-modules
+      uses: actions/cache@v4
+      with:
+        path: frontend/node_modules
+        key: node-modules-${{ runner.os }}-node18-${{ hashFiles('frontend/package-lock.json') }}
+
     - name: Install dependencies
+      if: steps.node-modules.outputs.cache-hit != 'true'
       run: npm ci
-    
-    - name: Run tests
-      run: npm test
-    
-    - name: Generate coverage report
+
+    # Runs the whole suite and fails the job on any test failure, so a
+    # separate `npm test` step would just run all 1260 tests a second time.
+    - name: Run tests with coverage
       run: npm run test:coverage
-      
+
     - name: Upload coverage reports
       uses: actions/upload-artifact@v4
       with:
         name: coverage-report
         path: frontend/coverage/
         retention-days: 30
-    
-    - name: Display coverage summary
-      run: |
-        echo "## Test Coverage Summary"
-        echo "```"
-        npx vitest run --coverage --reporter=text-summary
-        echo "```"
 
   quality:
     name: Code Quality Checks
@@ -89,8 +104,16 @@ jobs:
         cache: 'npm'
         cache-dependency-path: 'frontend/package-lock.json'
     
+    - name: Cache node_modules
+      id: node-modules
+      uses: actions/cache@v4
+      with:
+        path: frontend/node_modules
+        key: node-modules-${{ runner.os }}-node18-${{ hashFiles('frontend/package-lock.json') }}
+
     - name: Install dependencies
+      if: steps.node-modules.outputs.cache-hit != 'true'
       run: npm ci
-    
+
     - name: Run quality checks
       run: npm run quality:ci

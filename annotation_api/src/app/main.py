@@ -34,8 +34,10 @@ logger = logging.getLogger("uvicorn.error")
 
 async def seed_default_users(session: AsyncSession) -> None:
     """Idempotent startup seeding: the human admin (AUTH_USERNAME) and the
-    password-disabled worker user (WORKER_USERNAME) that the group-assignment
-    sweep attributes inherited annotations to."""
+    password-disabled worker user (WORKER_USERNAME). The worker no longer writes
+    annotations (the sweep is membership-only) but stays seeded for two reasons:
+    existing machine-written annotations are attributed to it, and it is the
+    identity the connector import mints its API token for (app/services/worker_auth.py)."""
     user_crud = UserCRUD(session)
 
     admin_user = await user_crud.get_by_username(settings.AUTH_USERNAME)

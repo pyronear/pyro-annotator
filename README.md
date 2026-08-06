@@ -42,7 +42,7 @@ cp .env.example .env
 # then edit .env and set MAIN_ANNOTATION_LOGIN / MAIN_ANNOTATION_PASSWORD
 ```
 
-All make targets accept variable overrides inline, e.g. `make export-dataset LIMIT=500`. Common variables: `REMOTE_API`, `MAX_SEQUENCES`, `LOGLEVEL`. See `make help` for the full list.
+All make targets accept variable overrides inline, e.g. `make import-alert-api DATE_FROM=2025-03-04 MAX_SEQUENCES=20`. Common variables: `REMOTE_API`, `MAX_SEQUENCES`, `LOGLEVEL`. See `make help` for the full list.
 
 ### 1. Annotations
 
@@ -62,13 +62,7 @@ Annotations stay on the API you annotated against; the file-based local→remote
 
 #### B. Other commands
 
-**Export images + YOLO labels from the remote API** (use smaller pages and a longer timeout for large datasets):
-
-```bash
-make export-dataset OUTPUT_DIR=outputs/datasets LIMIT=1000 TIMEOUT=120
-```
-- Filter by category: `make export-dataset CATEGORY=fp` (also `wildfire`, `other_smoke`). Omit to export all.
-- Object-split sequences are merged on export: sequences from the same camera less than 2h apart (`--merge-gap-hours`) share one view-group folder, frames are exported once with the union of all objects' boxes, and mixed groups land in the highest-priority category (`wildfire` > `other_smoke` > `fp`).
+**Export annotated alerts for ML training**: `GET /api/v1/export/alerts` returns finished alerts (false positives and localized smoke) as nested alert → objects → frames → boxes JSON with presigned image URLs, keyset-paginated via `cursor` and incrementally syncable via `annotation_updated_gte`. See `docs/specs/2026-08-06-export-alerts-endpoint-design.md`. The old `make export-dataset` YOLO exporter was removed with the `/export/detections` endpoint it consumed; a pull script against the new endpoint is planned.
 
 ## Admin Workflow — Populate the main API from the alert API
 
