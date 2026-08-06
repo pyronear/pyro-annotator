@@ -6,8 +6,9 @@
  * (object_split.py:198), so an object that the detector picked up late has
  * earlier frames it is simply absent from — 35 of 475 lanes in the
  * development database, missing 12.6 frames on average. Those frames are
- * exactly where fainter smoke hides, so the strip surfaces them; they are
- * viewable but not editable until the endpoint in issue #287 exists.
+ * exactly where fainter smoke hides, so the strip surfaces them; drawing on
+ * one materializes a Detection row in the lane (issue #287 — see
+ * docs/specs/2026-08-05-gap-frame-materialization-design.md).
  */
 
 import type { Detection, DetectionAnnotation } from '@/types/api';

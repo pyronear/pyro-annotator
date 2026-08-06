@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   boxCandidates,
   committedBox,
+  hasModelEvidence,
   priorityPick,
   candidateToBbox,
 } from '@/utils/annotation/objectBoxCandidates';
@@ -183,5 +184,38 @@ describe('candidateToBbox', () => {
     expect(candidateToBbox({ source: 'manual', index: 0, xyxyn: [0, 0, 1, 1] }, 'other').origin).toBe(
       'human'
     );
+  });
+});
+
+describe('hasModelEvidence', () => {
+  it('is true when the engine track has a box', () => {
+    expect(
+      hasModelEvidence({
+        algo_predictions: {
+          predictions: [{ xyxyn: [0, 0, 1, 1], confidence: 1, class_name: 'smoke' }],
+        },
+        auto_predictions: null,
+      } as unknown as Detection)
+    ).toBe(true);
+  });
+
+  it('is true when only the auto track has a box', () => {
+    expect(
+      hasModelEvidence({
+        algo_predictions: { predictions: [] },
+        auto_predictions: {
+          predictions: [{ xyxyn: [0, 0, 1, 1], confidence: 1, class_name: 'smoke' }],
+        },
+      } as unknown as Detection)
+    ).toBe(true);
+  });
+
+  it('is false when both tracks are empty or absent', () => {
+    expect(
+      hasModelEvidence({
+        algo_predictions: { predictions: [] },
+        auto_predictions: null,
+      } as unknown as Detection)
+    ).toBe(false);
   });
 });

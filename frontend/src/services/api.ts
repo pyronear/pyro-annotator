@@ -91,6 +91,7 @@ class ApiClient {
 
         const apiError: ApiError = {
           detail: error.response?.data?.detail || error.message || 'Unknown error occurred',
+          status: error.response?.status,
         };
         return Promise.reject(apiError);
       }
@@ -205,6 +206,23 @@ class ApiClient {
       { source_api: sourceApi, platform_alert_id: platformAlertId, smoke_type: smokeType }
     );
     return response.data;
+  }
+
+  // Issue #287: materialize a gap frame into a lane so a human can box it.
+  // Idempotent — returns the existing detection when the lane already has one
+  // at this recorded_at.
+  async materializeFrame(sequenceId: number, recordedAt: string): Promise<Detection> {
+    const response: AxiosResponse<Detection> = await this.client.post(
+      `${API_ENDPOINTS.SEQUENCES}${sequenceId}/frames`,
+      { recorded_at: recordedAt }
+    );
+    return response.data;
+  }
+
+  // Un-materialize: remove a model-evidence-free frame from a lane. 409 when
+  // the frame carries model evidence or is the lane's last.
+  async unmaterializeFrame(sequenceId: number, detectionId: number): Promise<void> {
+    await this.client.delete(`${API_ENDPOINTS.SEQUENCES}${sequenceId}/frames/${detectionId}`);
   }
 
   // Alerts ready for classification (alert-grouped Classify queue)

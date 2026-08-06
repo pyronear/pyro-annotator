@@ -32,6 +32,7 @@ import {
   boxCandidates,
   candidateToBbox,
   committedBox,
+  hasModelEvidence,
   priorityPick,
   type BoxCandidate,
 } from '@/utils/annotation/objectBoxCandidates';
@@ -98,6 +99,18 @@ export interface LocalizeObjectEditorProps {
   /** Navigate to another of THIS lane's detections; drives the URL. */
   onNavigateToDetection: (detectionId: number) => void;
   /**
+   * Draw on a gap frame (issue #287): materialize a Detection in this lane at
+   * recordedAt, then commit the drawn box to it. The page owns the two-call
+   * flow and the navigation to the new detection.
+   */
+  onCommitGapFrame: (recordedAt: string, items: DetectionAnnotationBbox[]) => void;
+  /**
+   * Remove a model-evidence-free frame from the lane entirely (issue #287's
+   * un-materialize) — Clear, for a frame whose only reason to exist is a
+   * human's box.
+   */
+  onUnmaterialize: (detection: Detection) => void;
+  /**
    * Commit the winning model box on every frame of this object that has
    * none. Never overwrites a frame the annotator already decided.
    */
@@ -121,6 +134,8 @@ export function LocalizeObjectEditor({
   isSaving,
   isAccepting,
   onCommit,
+  onCommitGapFrame,
+  onUnmaterialize,
   onNavigateToDetection,
   onAcceptRemaining,
   onReclassify,
@@ -239,6 +254,23 @@ export function LocalizeObjectEditor({
     [alertFrames, laneSequenceId, laneDetections, laneAnnotations]
   );
 
+  /**
+   * A frame outside this object's range, held locally. The route requires
+   * `:detectionId` to belong to `:laneId`, and a gap frame has no detection
+   * in this lane, so the URL cannot name it without weakening the guard that
+   * makes an inconsistent editor link detectable at all. Peeking is therefore
+   * component state; the URL keeps naming the last in-object frame. Drawing
+   * on one routes through `onCommitGapFrame`, which materializes the frame
+   * (issue #287).
+   */
+  const [peeked, setPeeked] = useState<FilmstripEntry | null>(null);
+
+  // The URL owns in-range frames, so a change to it means the user navigated
+  // for real and any peek is stale.
+  useEffect(() => setPeeked(null), [detection.id]);
+
+  const editable = peeked === null;
+
   // --- Commit -------------------------------------------------------------
 
   // Every write also drops any live preview. A commit can disable the very
@@ -256,35 +288,24 @@ export function LocalizeObjectEditor({
   const commitDrawn = useCallback(
     (xyxyn: [number, number, number, number]) => {
       setPreviewed(null);
-      onCommit(detection, [candidateToBbox({ source: 'manual', index: 0, xyxyn }, smokeType)]);
+      const items = [candidateToBbox({ source: 'manual', index: 0, xyxyn }, smokeType)];
+      if (peeked) onCommitGapFrame(peeked.recordedAt, items);
+      else onCommit(detection, items);
     },
-    [detection, smokeType, onCommit]
+    [peeked, detection, smokeType, onCommit, onCommitGapFrame]
   );
 
   const clear = useCallback(() => {
     setPreviewed(null);
-    onCommit(detection, []);
-  }, [detection, onCommit]);
+    // A frame with no model evidence exists only because a human boxed it;
+    // clearing removes the frame itself (issue #287's un-materialize).
+    if (hasModelEvidence(detection)) onCommit(detection, []);
+    else onUnmaterialize(detection);
+  }, [detection, onCommit, onUnmaterialize]);
 
   clearRef.current = clear;
 
   // --- Navigation ---------------------------------------------------------
-
-  /**
-   * A frame outside this object's range, held locally. The route requires
-   * `:detectionId` to belong to `:laneId`, and a gap frame has no detection
-   * in this lane, so the URL cannot name it without weakening the guard that
-   * makes an inconsistent editor link detectable at all. Peeking is therefore
-   * component state; the URL keeps naming the last in-object frame. Drawing
-   * on one of these is issue #287.
-   */
-  const [peeked, setPeeked] = useState<FilmstripEntry | null>(null);
-
-  // The URL owns in-range frames, so a change to it means the user navigated
-  // for real and any peek is stale.
-  useEffect(() => setPeeked(null), [detection.id]);
-
-  const editable = peeked === null;
 
   const currentEntryIndex = peeked
     ? entries.findIndex(en => en.recordedAt === peeked.recordedAt)
@@ -527,7 +548,7 @@ export function LocalizeObjectEditor({
       return;
     }
 
-    if (e.button !== 0 || !editable) return;
+    if (e.button !== 0) return;
     const coords = screenToImageCoords(e.clientX, e.clientY);
     setCurrentDrawing({
       startX: coords.x,
@@ -598,7 +619,6 @@ export function LocalizeObjectEditor({
 
   const getCursorStyle = () => {
     if (spaceHeld) return isDragging ? 'grabbing' : 'grab';
-    if (!editable) return 'default';
     return 'crosshair';
   };
 
@@ -674,7 +694,24 @@ export function LocalizeObjectEditor({
           step(1);
           break;
         case 'Enter':
-          acceptAndNext();
+          // The accept dialog owns Enter while it is open — its button says
+          // so — otherwise the frame-level accept would fire behind it. But
+          // a button focused inside the dialog keeps its own Enter: Tab to
+          // the close X must close, not accept out from under the focus.
+          if (acceptOpen) {
+            if (
+              e.target instanceof HTMLElement &&
+              e.target.closest('button') &&
+              e.target.closest('[role="dialog"]')
+            )
+              return;
+            if (!isAccepting) {
+              onAcceptRemaining();
+              setAcceptOpen(false);
+            }
+          } else {
+            acceptAndNext();
+          }
           break;
         case 'Delete':
         case 'Backspace':
@@ -725,7 +762,18 @@ export function LocalizeObjectEditor({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [step, acceptAndNext, boxSelected, acceptOpen, shortcutsOpen, resetZoom, onClose, editable]);
+  }, [
+    step,
+    acceptAndNext,
+    boxSelected,
+    acceptOpen,
+    shortcutsOpen,
+    resetZoom,
+    onClose,
+    editable,
+    isAccepting,
+    onAcceptRemaining,
+  ]);
 
   // --- Render -------------------------------------------------------------
 
@@ -815,6 +863,7 @@ export function LocalizeObjectEditor({
                   objectColor={objectColor}
                   sequenceId={laneSequenceId}
                   previewBoxes={previewBoxes}
+                  entries={entries}
                   acceptCount={acceptRemainingCount}
                   gapCount={gapCount}
                   isAccepting={isAccepting}
@@ -895,7 +944,7 @@ export function LocalizeObjectEditor({
       </div>
 
       <div className="flex min-h-0 flex-1">
-        <div className="flex min-w-0 flex-1 items-center justify-center overflow-hidden bg-ash p-3">
+        <div className="relative flex min-w-0 flex-1 items-center justify-center overflow-hidden bg-ash p-3">
           <DetectionAnnotationCanvas
             detection={shownDetection}
             committed={editable ? stageCommitted : null}
@@ -924,6 +973,25 @@ export function LocalizeObjectEditor({
             normalizedToImage={normalizedToImage}
             overlaysVisible
           />
+
+          {/* Floated over the stage rather than stacked into the column, so
+              stepping between in-object and gap frames never resizes the
+              photo or shifts the filmstrip. Pine, not signal: this is the
+              Localize lane's own invitation to act, not an error. */}
+          {peeked && (
+            <div
+              data-testid="out-of-range-banner"
+              className="absolute inset-x-0 bottom-0 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 border-t border-line bg-pine-soft px-4 py-2"
+            >
+              <span className="whitespace-nowrap font-data text-eyebrow font-medium uppercase tracking-eyebrow text-pine">
+                Outside object range
+              </span>
+              <span className="font-body text-detail text-pine">
+                {objectLabel} was never detected on this frame. If you can see its smoke, draw a box
+                to add this frame to {objectLabel}.
+              </span>
+            </div>
+          )}
         </div>
 
         <BoxSourceRail
@@ -936,16 +1004,6 @@ export function LocalizeObjectEditor({
           onPreview={setPreviewed}
         />
       </div>
-
-      {peeked && (
-        <div
-          data-testid="out-of-range-banner"
-          className="flex-none border-t border-line bg-signal-soft px-4 py-2 font-body text-detail text-signal"
-        >
-          {objectLabel} was never detected on this frame, so there is nothing here to draw on. The
-          image comes from another object in the same alert.
-        </div>
-      )}
 
       <ObjectFilmstrip
         entries={entries}

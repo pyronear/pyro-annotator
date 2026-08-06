@@ -92,6 +92,8 @@ const baseProps = (): Props => ({
   isSaving: false,
   isAccepting: false,
   onCommit: vi.fn(),
+  onCommitGapFrame: vi.fn(),
+  onUnmaterialize: vi.fn(),
   onAcceptRemaining: vi.fn(),
   onReclassify: vi.fn(),
   onNavigateToDetection: vi.fn(),
@@ -391,38 +393,38 @@ describe('LocalizeObjectEditor', () => {
   });
 });
 
+/**
+ * jsdom lays nothing out, so every rect is zero and the editor's coordinate
+ * maths collapses to a single point. These give the image a plausible
+ * geometry so a drag produces a real box; the numbers are arbitrary but
+ * consistent (an 800x450 element showing a 1600x900 frame).
+ */
+const stubGeometry = () => {
+  const image = screen.getByAltText(/^Detection /) as HTMLImageElement;
+  const container = image.parentElement as HTMLElement;
+  container.getBoundingClientRect = () =>
+    ({ left: 0, top: 0, right: 800, bottom: 450, width: 800, height: 450, x: 0, y: 0 }) as DOMRect;
+  for (const [prop, value] of [
+    ['naturalWidth', 1600],
+    ['naturalHeight', 900],
+    ['offsetWidth', 800],
+    ['offsetHeight', 450],
+  ] as const) {
+    Object.defineProperty(image, prop, { value, configurable: true });
+  }
+  // Full frame, so the drag maths is not also exercising the zoom transform.
+  fireEvent.keyDown(window, { key: 'r' });
+  return image;
+};
+
+const drag = (from: [number, number], to: [number, number], init: object = {}) => {
+  const image = stubGeometry();
+  fireEvent.mouseDown(image, { button: 0, clientX: from[0], clientY: from[1], ...init });
+  fireEvent.mouseMove(image, { clientX: to[0], clientY: to[1] });
+  fireEvent.mouseUp(image);
+};
+
 describe('LocalizeObjectEditor canvas', () => {
-  /**
-   * jsdom lays nothing out, so every rect is zero and the editor's coordinate
-   * maths collapses to a single point. These give the image a plausible
-   * geometry so a drag produces a real box; the numbers are arbitrary but
-   * consistent (an 800x450 element showing a 1600x900 frame).
-   */
-  const stubGeometry = () => {
-    const image = screen.getByAltText(/^Detection /) as HTMLImageElement;
-    const container = image.parentElement as HTMLElement;
-    container.getBoundingClientRect = () =>
-      ({ left: 0, top: 0, right: 800, bottom: 450, width: 800, height: 450, x: 0, y: 0 }) as DOMRect;
-    for (const [prop, value] of [
-      ['naturalWidth', 1600],
-      ['naturalHeight', 900],
-      ['offsetWidth', 800],
-      ['offsetHeight', 450],
-    ] as const) {
-      Object.defineProperty(image, prop, { value, configurable: true });
-    }
-    // Full frame, so the drag maths is not also exercising the zoom transform.
-    fireEvent.keyDown(window, { key: 'r' });
-    return image;
-  };
-
-  const drag = (from: [number, number], to: [number, number], init: object = {}) => {
-    const image = stubGeometry();
-    fireEvent.mouseDown(image, { button: 0, clientX: from[0], clientY: from[1], ...init });
-    fireEvent.mouseMove(image, { clientX: to[0], clientY: to[1] });
-    fireEvent.mouseUp(image);
-  };
-
   it('draws on a plain drag, with nothing to arm first', () => {
     const onCommit = vi.fn();
     renderLoadedEditor({ onCommit });
@@ -696,6 +698,35 @@ describe('LocalizeObjectEditor accept remaining', () => {
     expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
   });
 
+  it('leaves Enter to a focused control inside the dialog instead of accepting', () => {
+    const onAcceptRemaining = vi.fn();
+    renderEditor({ onAcceptRemaining });
+    fireEvent.click(screen.getByTestId('editor-accept-remaining'));
+
+    // Tab put focus on the close X — Enter must activate IT (natively), not
+    // fire the accept out from under it.
+    const close = screen.getByTestId('accept-remaining-close');
+    close.focus();
+    fireEvent.keyDown(close, { key: 'Enter' });
+
+    expect(onAcceptRemaining).not.toHaveBeenCalled();
+    expect(screen.getByTestId('accept-remaining-popover')).toBeInTheDocument();
+  });
+
+  it('Enter confirms while the dialog is open, not the frame-level accept', () => {
+    const onAcceptRemaining = vi.fn();
+    const onCommit = vi.fn();
+    renderEditor({ onAcceptRemaining, onCommit });
+    fireEvent.click(screen.getByTestId('editor-accept-remaining'));
+
+    fireEvent.keyDown(window, { key: 'Enter' });
+
+    expect(onAcceptRemaining).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
+    // The dialog owned that Enter — the frame's own accept must not fire.
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
   it('warns about frames no model found smoke on, without blocking', () => {
     // One frame has candidates, the other has none at all.
     renderEditor({
@@ -948,16 +979,49 @@ describe('LocalizeObjectEditor out-of-range frames', () => {
     expect(screen.getByTestId('out-of-range-banner')).toBeInTheDocument();
   });
 
-  it('refuses to draw while peeking, so no box lands on the wrong frame', () => {
+  it('drawing while peeking routes to onCommitGapFrame with the peeked timestamp', () => {
     const onCommit = vi.fn();
-    renderLoadedEditor({ onCommit });
-    fireEvent.keyDown(window, { key: 'ArrowLeft' });
-
-    const image = screen.getByAltText(/^Detection /);
-    fireEvent.mouseDown(image, { button: 0, clientX: 10, clientY: 10 });
-    fireEvent.mouseMove(image, { clientX: 90, clientY: 90 });
-    fireEvent.mouseUp(image);
+    const onCommitGapFrame = vi.fn();
+    renderLoadedEditor({ onCommit, onCommitGapFrame });
+    fireEvent.keyDown(window, { key: 'ArrowLeft' }); // t003 -> t002, a gap frame
+    drag([40, 40], [400, 300]);
+    expect(onCommitGapFrame).toHaveBeenCalledWith('t002', [
+      expect.objectContaining({ origin: 'human', smoke_type: 'wildfire' }),
+    ]);
     expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('invites drawing on a gap frame instead of forbidding it', () => {
+    renderEditor();
+    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+    expect(screen.getByTestId('out-of-range-banner')).toHaveTextContent(/draw a box/i);
+  });
+
+  it('Clear un-materializes a frame with no model evidence', () => {
+    const onCommit = vi.fn();
+    const onUnmaterialize = vi.fn();
+    renderEditor({
+      detection: detectionWithNoBoxes,
+      existingAnnotation: committedAnnotation(detectionWithNoBoxes.id, 'human'),
+      onCommit,
+      onUnmaterialize,
+    });
+    fireEvent.click(screen.getByTestId('editor-clear'));
+    expect(onUnmaterialize).toHaveBeenCalledWith(
+      expect.objectContaining({ id: detectionWithNoBoxes.id })
+    );
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('Delete un-materializes an evidence-free frame with a committed box', () => {
+    const onUnmaterialize = vi.fn();
+    renderLoadedEditor({
+      detection: detectionWithNoBoxes,
+      existingAnnotation: committedAnnotation(detectionWithNoBoxes.id, 'human'),
+      onUnmaterialize,
+    });
+    fireEvent.keyDown(window, { key: 'Delete' });
+    expect(onUnmaterialize).toHaveBeenCalled();
   });
 
   it('does not step past the very first alert frame', () => {

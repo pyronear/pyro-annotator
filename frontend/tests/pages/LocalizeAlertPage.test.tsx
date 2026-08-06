@@ -44,6 +44,8 @@ vi.mock('@/services/api', () => ({
     updateSequenceAnnotation: vi.fn(),
     localizeSubmit: vi.fn(),
     addObject: vi.fn(),
+    materializeFrame: vi.fn(),
+    unmaterializeFrame: vi.fn(),
   },
 }));
 
@@ -90,6 +92,8 @@ vi.mock('@/components/localize/editor', () => ({
     onClose: () => void;
     onNavigateToDetection: (detectionId: number) => void;
     onCommit: (detection: Detection, items: unknown[]) => void;
+    onCommitGapFrame?: (recordedAt: string, items: unknown[]) => void;
+    onUnmaterialize?: (detection: Detection) => void;
     objectOverlays?: Array<{ color: string; label: string; boxes: unknown[] }>;
   }) => (
     <div data-testid="image-modal">
@@ -131,6 +135,26 @@ vi.mock('@/components/localize/editor', () => ({
         }}
       >
         Mock Next
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          // The alert's second frame (T2's literal value — the factory is
+          // hoisted, so it cannot read the T2 const below).
+          props.onCommitGapFrame?.('2026-01-01T10:05:00Z', [
+            {
+              xyxyn: [0.1, 0.1, 0.2, 0.2],
+              class_name: 'smoke',
+              smoke_type: 'wildfire',
+              origin: 'human',
+            },
+          ])
+        }
+      >
+        Mock Gap Draw
+      </button>
+      <button type="button" onClick={() => props.onUnmaterialize?.(props.detection)}>
+        Mock Unmaterialize
       </button>
       <button type="button" onClick={props.onClose}>
         Mock Close
@@ -2818,4 +2842,140 @@ describe('LocalizeAlertPage', () => {
     });
   });
 
+  describe('gap frames (issue #287)', () => {
+    it('drawing on a gap frame materializes it, saves the box, and moves the URL', async () => {
+      const newDet = { ...makeDetection(5001, T2), sequence_id: 101 };
+      let materialized = false;
+      vi.mocked(apiClient.materializeFrame).mockImplementation(async () => {
+        materialized = true;
+        return newDet;
+      });
+      vi.mocked(apiClient.getSequenceDetections).mockImplementation(async (id: number) => {
+        if (id === 101)
+          return materialized ? [makeDetection(1001, T1), newDet] : [makeDetection(1001, T1)];
+        if (id === 102) return [makeDetection(1002, T1), makeDetection(1003, T2)];
+        return [];
+      });
+
+      await renderAndSettle(<LocalizeAlertPage />, {
+        wrapper: makeWrapper('/localize/101/object/101/1001'),
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Mock Gap Draw' }));
+
+      await waitFor(() => expect(apiClient.materializeFrame).toHaveBeenCalledWith(101, T2));
+      await waitFor(() =>
+        expect(apiClient.createDetectionAnnotation).toHaveBeenCalledWith(
+          expect.objectContaining({ detection_id: 5001, processing_stage: 'annotated' })
+        )
+      );
+      await waitFor(() =>
+        expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/101/5001')
+      );
+    });
+
+    it('leaves the frame a gap when the materialize call fails', async () => {
+      vi.mocked(apiClient.materializeFrame).mockRejectedValue({ detail: 'boom', status: 500 });
+
+      await renderAndSettle(<LocalizeAlertPage />, {
+        wrapper: makeWrapper('/localize/101/object/101/1001'),
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Mock Gap Draw' }));
+
+      await waitFor(() => expect(apiClient.materializeFrame).toHaveBeenCalled());
+      expect(apiClient.createDetectionAnnotation).not.toHaveBeenCalled();
+      // URL never moved: the frame is still a gap, the editor still open on 1001.
+      expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/101/1001');
+      expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1001');
+    });
+
+    it('shows the frame as boxless in-object when the save fails after the materialize', async () => {
+      const newDet = { ...makeDetection(5001, T2), sequence_id: 101 };
+      let materialized = false;
+      vi.mocked(apiClient.materializeFrame).mockImplementation(async () => {
+        materialized = true;
+        return newDet;
+      });
+      vi.mocked(apiClient.createDetectionAnnotation).mockRejectedValue({
+        detail: 'boom',
+        status: 500,
+      });
+      vi.mocked(apiClient.getSequenceDetections).mockImplementation(async (id: number) => {
+        if (id === 101)
+          return materialized ? [makeDetection(1001, T1), newDet] : [makeDetection(1001, T1)];
+        if (id === 102) return [makeDetection(1002, T1), makeDetection(1003, T2)];
+        return [];
+      });
+
+      await renderAndSettle(<LocalizeAlertPage />, {
+        wrapper: makeWrapper('/localize/101/object/101/1001'),
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Mock Gap Draw' }));
+
+      await waitFor(() => expect(apiClient.materializeFrame).toHaveBeenCalled());
+      // The onError invalidation refetches the lane, so the materialized frame
+      // arrives as a boxless in-object frame; the URL stays on the old one.
+      await waitFor(() =>
+        expect(screen.getByTestId('image-modal-lane-frames')).toHaveTextContent('2')
+      );
+      expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/101/1001');
+    });
+
+    it('clearing an evidence-free frame un-materializes it and steps the URL off it', async () => {
+      // Lane 102's T2 frame carries no model evidence — the materialized shape.
+      const bare = {
+        ...makeDetection(1003, T2),
+        auto_predictions: null,
+      };
+      let deleted = false;
+      vi.mocked(apiClient.unmaterializeFrame).mockImplementation(async () => {
+        deleted = true;
+      });
+      vi.mocked(apiClient.getSequenceDetections).mockImplementation(async (id: number) => {
+        if (id === 101) return [makeDetection(1001, T1)];
+        if (id === 102) return deleted ? [makeDetection(1002, T1)] : [makeDetection(1002, T1), bare];
+        return [];
+      });
+
+      await renderAndSettle(<LocalizeAlertPage />, {
+        wrapper: makeWrapper('/localize/101/object/102/1003'),
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Mock Unmaterialize' }));
+
+      await waitFor(() => expect(apiClient.unmaterializeFrame).toHaveBeenCalledWith(102, 1003));
+      await waitFor(() =>
+        expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/102/1002')
+      );
+    });
+
+    it('falls back to a confirmed-empty clear when the un-materialize is refused', async () => {
+      const bare = {
+        ...makeDetection(1003, T2),
+        auto_predictions: null,
+      };
+      vi.mocked(apiClient.getSequenceDetections).mockImplementation(async (id: number) => {
+        if (id === 101) return [makeDetection(1001, T1)];
+        if (id === 102) return [bare]; // last frame -> the server would 409
+        return [];
+      });
+      vi.mocked(apiClient.unmaterializeFrame).mockRejectedValue({
+        detail: "Cannot remove the lane's last frame",
+        status: 409,
+      });
+
+      await renderAndSettle(<LocalizeAlertPage />, {
+        wrapper: makeWrapper('/localize/101/object/102/1003'),
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Mock Unmaterialize' }));
+
+      await waitFor(() =>
+        expect(apiClient.createDetectionAnnotation).toHaveBeenCalledWith(
+          expect.objectContaining({
+            detection_id: 1003,
+            annotation: { annotation: [] },
+            processing_stage: 'annotated',
+          })
+        )
+      );
+    });
+  });
 });

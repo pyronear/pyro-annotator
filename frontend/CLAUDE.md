@@ -32,7 +32,7 @@ frontend/src/
 │   ├── sequence/                # SequencePlayer, SequenceReviewer, MediaControls, PlayerControls, MissedSmokePanel, MissedSmokeInstructionsModal
 │   ├── localize/                # LocalizeRail, LocalizeObjectRow, LocalizeMissedSmokeRow
 │   ├── localize/editor/         # LocalizeObjectEditor, BoxSourceRail, ObjectFilmstrip, FilmstripThumbnail, AcceptRemainingPopover, EditorShortcutsModal, sourceIdentity
-│   ├── sequence-annotation/     # AnnotationHeader, MissedSmokePanel, ProcessingStageMessages
+│   ├── sequence-annotation/     # AnnotationHeader, MissedSmokePanel, ObjectStatusStrip (accept popover's frame strip), ProcessingStageMessages
 │   ├── sequences/               # Table headers/rows + pagination for annotate / review queues, plus SequencesLegend
 │   └── ui/                      # NotificationBadge, NotificationSystem, PasswordField, ProgressIndicator
 ├── hooks/

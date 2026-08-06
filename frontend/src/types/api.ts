@@ -525,4 +525,6 @@ export interface UserFilters {
 // API Error Response
 export interface ApiError {
   detail: string | Record<string, string[]>;
+  /** HTTP status of the failed response, when one was received. */
+  status?: number;
 }

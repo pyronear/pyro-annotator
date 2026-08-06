@@ -32,6 +32,12 @@ interface CroppedImageSequenceProps {
    */
   maxSize?: string;
   className?: string;
+  /**
+   * Reports the loop's position: fired when the loop (re)starts at index 0
+   * and on every animation advance, with that entry's detection id. Lets a
+   * host render a counter or playhead in sync with the animation.
+   */
+  onFrameChange?: (index: number, detectionId?: number) => void;
 }
 
 interface ImageData {
@@ -48,6 +54,7 @@ export default function CroppedImageSequence({
   showBoxes = false,
   maxSize,
   className = '',
+  onFrameChange,
 }: CroppedImageSequenceProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [images, setImages] = useState<ImageData[]>([]);
@@ -61,6 +68,13 @@ export default function CroppedImageSequence({
   const [viewportEl, setViewportEl] = useState<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Latest-callback ref: the position-report effect below must fire on index
+  // changes only, not every time the caller re-creates the callback.
+  const onFrameChangeRef = useRef(onFrameChange);
+  useEffect(() => {
+    onFrameChangeRef.current = onFrameChange;
+  });
 
   // Calculate average bounding box from all xyxyn coordinates (port from backend)
   const calculateAverageBbox = (bboxes: BoundingBox[]): [number, number, number, number] => {
@@ -169,6 +183,15 @@ export default function CroppedImageSequence({
     // `bboxes` is read through the closure on purpose — see `frameKey` above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [frameKey, sequenceId]);
+
+  // `frameKey` in the deps re-reports index 0 when the frame list changes
+  // (the reset effect sets the index to 0, which alone would not re-fire if
+  // it was already 0). `bboxes` is read through the closure, like the fetch
+  // effect above.
+  useEffect(() => {
+    onFrameChangeRef.current?.(currentIndex, bboxes[currentIndex]?.detection_id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentIndex, frameKey]);
 
   // Auto-play animation with 200ms interval - only when images are loaded
   useEffect(() => {

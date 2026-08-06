@@ -31,6 +31,7 @@ from sqlalchemy import (
     ARRAY,
     String,
 )
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import aliased
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -56,6 +57,7 @@ from app.models import (
     AnnotationType,
 )
 from app.schemas.annotation_validation import SequenceAnnotationData, SequenceBBox
+from app.schemas.detection import DetectionRead
 from app.schemas.sequence import (
     AddObjectRequest,
     AlertDetail,
@@ -66,6 +68,7 @@ from app.schemas.sequence import (
     LocalizationQueueItem,
     LocalizationQueueLane,
     LocalizeDoneQueueItem,
+    MaterializeFrameRequest,
     SequenceCreate,
     SequenceRead,
 )
@@ -834,6 +837,163 @@ async def add_object(
         sequence=SequenceRead(**seq_dict),
         annotation=SequenceAnnotationRead(**annotation_dict),
     )
+
+
+def _detection_read(det: Detection) -> DetectionRead:
+    return DetectionRead(
+        **{c.name: getattr(det, c.name) for c in det.__table__.columns}
+    )
+
+
+@router.post(
+    "/{sequence_id}/frames",
+    status_code=status.HTTP_201_CREATED,
+    summary="Materialize a gap frame into a lane so a human can box it",
+)
+async def materialize_frame(
+    response: Response,
+    sequence_id: int = Path(..., gt=0),
+    payload: MaterializeFrameRequest = Body(...),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> DetectionRead:
+    """Issue #287: a lane holds Detection rows only for the frames its object
+    was detected on, so earlier frames — where the plume was fainter — cannot
+    be annotated. This inserts the one-frame equivalent of add_object's clone:
+    the sibling's photo (shared bucket_key, no S3 traffic) with an empty
+    engine track, because the AI did not detect this object here. Idempotent:
+    posting a frame the lane already has returns it with 200."""
+    lane = await session.get(Sequence, sequence_id)
+    if lane is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Sequence not found"
+        )
+
+    existing = (
+        (
+            await session.execute(
+                select(Detection).where(
+                    Detection.sequence_id == sequence_id,
+                    Detection.recorded_at == payload.recorded_at,
+                )
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if existing is not None:
+        response.status_code = status.HTTP_200_OK
+        return _detection_read(existing)
+
+    sibling = (
+        (
+            await session.execute(
+                select(Detection)
+                .join(Sequence, Detection.sequence_id == Sequence.id)
+                .where(
+                    Sequence.source_api == lane.source_api,
+                    Sequence.platform_alert_id == lane.platform_alert_id,
+                    Sequence.id != sequence_id,
+                    Detection.recorded_at == payload.recorded_at,
+                )
+                .order_by(asc(Detection.alert_api_id))
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if sibling is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="No sibling lane has a detection at this recorded_at",
+        )
+
+    detection = Detection(
+        sequence_id=sequence_id,
+        recorded_at=payload.recorded_at,
+        alert_api_id=sibling.alert_api_id,
+        bucket_key=sibling.bucket_key,
+        algo_predictions={"predictions": []},
+    )
+    session.add(detection)
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        # A concurrent POST for the same frame won the insert: idempotency
+        # applies to it exactly as to a sequential re-POST, so re-select
+        # rather than surfacing a misleading conflict. Anything else holding
+        # the alert_api_id is a genuine collision.
+        raced = (
+            (
+                await session.execute(
+                    select(Detection).where(
+                        Detection.sequence_id == sequence_id,
+                        Detection.recorded_at == payload.recorded_at,
+                    )
+                )
+            )
+            .scalars()
+            .first()
+        )
+        if raced is not None:
+            response.status_code = status.HTTP_200_OK
+            return _detection_read(raced)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The sibling frame's alert_api_id is already present in this lane",
+        )
+    await session.refresh(detection)
+    return _detection_read(detection)
+
+
+def _frame_has_model_evidence(det: Detection) -> bool:
+    return bool((det.algo_predictions or {}).get("predictions")) or bool(
+        (det.auto_predictions or {}).get("predictions")
+    )
+
+
+@router.delete(
+    "/{sequence_id}/frames/{detection_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remove a model-evidence-free frame from a lane",
+)
+async def unmaterialize_frame(
+    sequence_id: int = Path(..., gt=0),
+    detection_id: int = Path(..., gt=0),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> None:
+    """The inverse of materialize_frame (issue #287). Only a frame whose
+    existence a human's box alone justifies can be removed — any model
+    evidence makes it part of the import record — and never the lane's last
+    frame. Deletes the row only: bucket_key is shared with the sibling the
+    frame was materialized from, so S3 is untouched (unlike
+    DELETE /detections/{id}). The DetectionAnnotation goes via FK cascade."""
+    detection = await session.get(Detection, detection_id)
+    if detection is None or detection.sequence_id != sequence_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Detection not found"
+        )
+    if _frame_has_model_evidence(detection):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Frame has model evidence and cannot be removed",
+        )
+    # Advisory under concurrency: two simultaneous DELETEs in a two-frame
+    # lane can both pass this count. Accepted for a single-annotator tool.
+    count = (
+        await session.execute(
+            select(func.count(Detection.id)).where(Detection.sequence_id == sequence_id)
+        )
+    ).scalar_one()
+    if count <= 1:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot remove the lane's last frame",
+        )
+    await session.delete(detection)
+    await session.commit()
 
 
 # NOTE: declared before GET /{sequence_id} — the int path converter would

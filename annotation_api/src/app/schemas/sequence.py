@@ -23,6 +23,7 @@ __all__ = [
     "ClassifyQueueItem",
     "LocalizationQueueItem",
     "LocalizationQueueLane",
+    "MaterializeFrameRequest",
     "SequenceCreate",
     "SequenceRead",
     "SequenceUpdateBboxAuto",
@@ -239,3 +240,10 @@ class AddObjectRequest(BaseModel):
     source_api: SourceApi
     platform_alert_id: int
     smoke_type: SmokeType
+
+
+class MaterializeFrameRequest(BaseModel):
+    """Issue #287: materialize one gap frame into a lane, so a human can box
+    the object on a frame the detector missed it on."""
+
+    recorded_at: datetime
