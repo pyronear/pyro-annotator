@@ -32,6 +32,7 @@ const alertFrames: AlertFrame[] = TIMES.map(recordedAt => ({
       laneSequenceId: SIBLING,
       detectionId: 99000 + Number(recordedAt.slice(1)),
       cellState: 'auto' as const,
+      color: '#166A5D',
       boxes: [],
     },
     ...(OBJECT_TIMES.includes(recordedAt)
@@ -40,6 +41,7 @@ const alertFrames: AlertFrame[] = TIMES.map(recordedAt => ({
             laneSequenceId: LANE,
             detectionId: 27000 + Number(recordedAt.slice(1)),
             cellState: 'auto' as const,
+            color: '#166A5D',
             boxes: [],
           },
         ]

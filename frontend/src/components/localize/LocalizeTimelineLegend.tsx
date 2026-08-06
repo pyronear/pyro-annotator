@@ -14,20 +14,32 @@
  * through, and explaining the background is noise.
  */
 
+import type { CSSProperties } from 'react';
 import type { TimelineLegendStatus } from '@/utils/annotation/alertLocalizeUtils';
 
 const CHIP_LABELS: Record<TimelineLegendStatus, string> = {
   confirmed: 'committed',
+  cleared: 'cleared',
   pending: 'model box to accept',
   empty: 'no box',
 };
 
 // Mirrors `segmentAppearance` in LocalizeObjectRow, in pine: solid fill,
-// 40% fill, inset 1px outline.
+// hatch, 40% fill, inset 1px outline.
 const SWATCH_CLASS: Record<TimelineLegendStatus, string> = {
   confirmed: 'bg-pine',
+  cleared: '',
   pending: 'bg-pine opacity-40',
   empty: 'ring-1 ring-inset ring-pine',
+};
+
+// The cleared swatch hatches in pine exactly as the row segment hatches in
+// the object color — Tailwind has no hatch utility, so inline style.
+const SWATCH_STYLE: Partial<Record<TimelineLegendStatus, CSSProperties>> = {
+  cleared: {
+    backgroundImage:
+      'repeating-linear-gradient(45deg, #166A5D 0px, #166A5D 2px, transparent 2px, transparent 4px)',
+  },
 };
 
 export interface LocalizeTimelineLegendProps {
@@ -48,7 +60,11 @@ export function LocalizeTimelineLegend({ statuses }: LocalizeTimelineLegendProps
           data-testid={`legend-chip-${status}`}
           className="flex items-center gap-1.5 font-data text-detail text-haze"
         >
-          <span aria-hidden className={`h-1.5 w-4 rounded-full ${SWATCH_CLASS[status]}`} />
+          <span
+            aria-hidden
+            className={`h-1.5 w-4 rounded-full ${SWATCH_CLASS[status]}`}
+            style={SWATCH_STYLE[status]}
+          />
           {CHIP_LABELS[status]}
         </span>
       ))}
