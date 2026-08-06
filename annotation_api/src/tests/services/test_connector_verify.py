@@ -173,3 +173,42 @@ async def test_error_message_never_contains_the_password(
     connector = await _connector(async_session, password="bad")
     result = await verify_connector(async_session, connector, today=date(2026, 8, 6))
     assert "bad" not in (result.error or "")
+
+
+async def test_malformed_probe_response_does_not_raise(
+    async_session, alert_api, secret_key, monkeypatch
+):
+    """`api_get` only raises on unparsable JSON, so a non-2xx response with a
+    valid JSON error body (e.g. an expired-token 401) comes back as a dict
+    where a list is expected. That must fail like any other verify error, not
+    raise a TypeError out of the org-upsert loop."""
+    monkeypatch.setattr(
+        connector_verify.alert_api_client,
+        "list_organizations",
+        lambda **kw: {"detail": "Not authenticated"},
+    )
+    connector = await _connector(async_session)
+    result = await verify_connector(async_session, connector, today=date(2026, 8, 6))
+
+    assert result.ok is False
+    assert result.error
+    await async_session.refresh(connector)
+    assert connector.last_verify_error
+    assert connector.last_verified_at is None
+
+
+async def test_connection_error_during_probe_does_not_raise(
+    async_session, alert_api, secret_key, monkeypatch
+):
+    def boom(**kw):
+        raise ConnectionError("network unreachable")
+
+    monkeypatch.setattr(connector_verify.alert_api_client, "list_cameras", boom)
+    connector = await _connector(async_session)
+    result = await verify_connector(async_session, connector, today=date(2026, 8, 6))
+
+    assert result.ok is False
+    assert result.error
+    await async_session.refresh(connector)
+    assert connector.last_verify_error
+    assert connector.last_verified_at is None

@@ -76,51 +76,64 @@ async def verify_connector(
         organizations, cameras, sequences = await asyncio.to_thread(
             _probe, connector.base_url, connector.login, password, sample_date
         )
+        # `api_get` (used for every call except the token exchange) only raises
+        # when the response body fails to parse as JSON — a non-2xx response
+        # with a valid JSON error body (e.g. {"detail": "..."}) comes back as a
+        # dict where a list is expected. Validate the shape explicitly so that
+        # case fails the same way an auth failure does, instead of raising a
+        # TypeError out of the loop below.
+        if (
+            not isinstance(organizations, list)
+            or not isinstance(cameras, list)
+            or not isinstance(sequences, list)
+        ):
+            raise ValueError("alert API returned an unexpected response shape")
+
+        existing = {
+            row.organization_id: row
+            for row in (
+                (
+                    await session.execute(
+                        select(AlertApiConnectorOrganization).where(
+                            AlertApiConnectorOrganization.connector_id == connector.id
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        }
+        for org in organizations:
+            row = existing.get(org["id"])
+            if row is None:
+                # New organizations start disabled: discovery must never
+                # silently widen what gets ingested.
+                row = AlertApiConnectorOrganization(
+                    connector_id=connector.id,
+                    organization_id=org["id"],
+                    name=org.get("name") or str(org["id"]),
+                    is_enabled=False,
+                )
+            else:
+                row.name = org.get("name") or row.name
+            session.add(row)
+
+        camera_org = {c["id"]: c.get("organization_id") for c in cameras}
+        seen = {
+            camera_org.get(seq.get("camera_id"))
+            for seq in sequences
+            if camera_org.get(seq.get("camera_id")) is not None
+        }
     except Exception as exc:  # noqa: BLE001 - surfaced to the operator verbatim
         # str(exc) is safe: the client raises on status codes and never embeds
         # the request body, so the password cannot leak into this message.
+        await session.rollback()
         message = f"{type(exc).__name__}: {exc}"
         connector.last_verify_error = message
         session.add(connector)
         await session.commit()
         logger.warning("connector %s verification failed: %s", connector.id, message)
         return VerifyResult(ok=False, error=message)
-
-    existing = {
-        row.organization_id: row
-        for row in (
-            (
-                await session.execute(
-                    select(AlertApiConnectorOrganization).where(
-                        AlertApiConnectorOrganization.connector_id == connector.id
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-    }
-    for org in organizations:
-        row = existing.get(org["id"])
-        if row is None:
-            # New organizations start disabled: discovery must never silently
-            # widen what gets ingested.
-            row = AlertApiConnectorOrganization(
-                connector_id=connector.id,
-                organization_id=org["id"],
-                name=org.get("name") or str(org["id"]),
-                is_enabled=False,
-            )
-        else:
-            row.name = org.get("name") or row.name
-        session.add(row)
-
-    camera_org = {c["id"]: c.get("organization_id") for c in cameras}
-    seen = {
-        camera_org.get(seq.get("camera_id"))
-        for seq in sequences
-        if camera_org.get(seq.get("camera_id")) is not None
-    }
 
     connector.last_verified_at = datetime.now(UTC)
     connector.last_verify_error = None
