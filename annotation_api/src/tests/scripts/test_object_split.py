@@ -31,6 +31,23 @@ def two_object_records():
     ]
 
 
+# Detection 19167 (alert 41386, camera brison-01, 2026-05-11): the detector
+# split one small plume into two overlapping boxes on a single frame, and
+# cluster_objects attached both to the same object. Both carry confidence 0.0,
+# as a third of real engine boxes do.
+SPLIT_PLUME_A = [0.102, 0.565, 0.113, 0.586, 0.0]
+SPLIT_PLUME_B = [0.107, 0.564, 0.119, 0.584, 0.0]
+
+
+def forked_plume_records():
+    """One object whose middle frame carries two overlapping boxes."""
+    return [
+        make_record(1, "2026-05-11T05:09:47", [SPLIT_PLUME_A]),
+        make_record(2, "2026-05-11T05:09:57", [SPLIT_PLUME_A, SPLIT_PLUME_B]),
+        make_record(3, "2026-05-11T05:10:07", [SPLIT_PLUME_A]),
+    ]
+
+
 class TestBuildFrames:
     def test_frames_merge_own_and_others_boxes(self):
         frames, primary_keys = build_frames(two_object_records())
@@ -108,6 +125,19 @@ class TestUnionBoxes:
 
 
 class TestSplitSequenceRecords:
+    def test_same_frame_boxes_of_one_object_collapse_to_their_union(self):
+        groups = split_sequence_records(forked_plume_records())
+        assert len(groups) == 1
+        for record in groups[0].records:
+            assert len(record["detection_bboxes"]) == 1
+        merged = groups[0].records[1]["detection_bboxes"][0]
+        assert merged == [0.102, 0.564, 0.119, 0.586, 0.0]
+
+    def test_single_box_frames_are_left_untouched(self):
+        groups = split_sequence_records(forked_plume_records())
+        assert groups[0].records[0]["detection_bboxes"] == [SPLIT_PLUME_A]
+        assert groups[0].records[2]["detection_bboxes"] == [SPLIT_PLUME_A]
+
     def test_two_objects_yield_two_groups_primary_first(self):
         groups = split_sequence_records(two_object_records())
         assert len(groups) == 2

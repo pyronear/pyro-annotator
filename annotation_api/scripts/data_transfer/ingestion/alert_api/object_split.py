@@ -195,6 +195,20 @@ def split_sequence_records(
         for member in obj.members:
             own_by_frame.setdefault(member.image_filename, []).append(member.box)
 
+        # One object, one box per frame. cluster_objects can attach two
+        # same-frame boxes to one object (it flattens to one item per box and
+        # never compares image_filename), but a plume the detector split into
+        # two overlapping boxes is still one plume — boxed as the box enclosing
+        # both, per the #286 modelling note. Deliberately here rather than in
+        # cluster_objects: select_primary_index has already run above and
+        # matches members by exact coordinates, so merging earlier would change
+        # which lane keeps the alert's real alert_api_id.
+        same_frame_merges = 0
+        for frame_key, frame_boxes in own_by_frame.items():
+            if len(frame_boxes) > 1:
+                own_by_frame[frame_key] = [union_boxes(frame_boxes)]
+                same_frame_merges += 1
+
         alert_id = (
             alert_api_sid
             if pos == 0
