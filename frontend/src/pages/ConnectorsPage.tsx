@@ -330,7 +330,8 @@ function CreateConnectorModal({
               onChange={e =>
                 setFormData(prev => ({
                   ...prev,
-                  image_transfer: (e.target.value || null) as ConnectorCreatePayload['image_transfer'],
+                  image_transfer: (e.target.value ||
+                    null) as ConnectorCreatePayload['image_transfer'],
                 }))
               }
               className={inputClass}

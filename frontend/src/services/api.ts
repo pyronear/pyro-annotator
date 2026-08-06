@@ -602,10 +602,7 @@ class ApiClient {
   }
 
   async createConnector(payload: ConnectorCreatePayload): Promise<Connector> {
-    const response: AxiosResponse<Connector> = await this.client.post(
-      '/connectors/',
-      payload
-    );
+    const response: AxiosResponse<Connector> = await this.client.post('/connectors/', payload);
     return response.data;
   }
 

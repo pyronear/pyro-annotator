@@ -604,6 +604,4 @@ export interface ConnectorCreatePayload {
   image_transfer?: 'url' | 'bucket-copy' | null;
 }
 
-export type ConnectorUpdatePayload = Partial<
-  Omit<ConnectorCreatePayload, 'source_api'>
->;
+export type ConnectorUpdatePayload = Partial<Omit<ConnectorCreatePayload, 'source_api'>>;

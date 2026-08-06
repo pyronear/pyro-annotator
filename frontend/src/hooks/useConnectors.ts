@@ -29,8 +29,7 @@ export function useCreateConnector() {
 export function useUpdateConnector(id: number) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: ConnectorUpdatePayload) =>
-      apiClient.updateConnector(id, payload),
+    mutationFn: (payload: ConnectorUpdatePayload) => apiClient.updateConnector(id, payload),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CONNECTORS }),
   });
 }
@@ -68,13 +67,8 @@ export function useVerifyConnector(id: number) {
 export function useToggleConnectorOrganization(id: number) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      organizationId,
-      isEnabled,
-    }: {
-      organizationId: number;
-      isEnabled: boolean;
-    }) => apiClient.toggleConnectorOrganization(id, organizationId, isEnabled),
+    mutationFn: ({ organizationId, isEnabled }: { organizationId: number; isEnabled: boolean }) =>
+      apiClient.toggleConnectorOrganization(id, organizationId, isEnabled),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: QUERY_KEYS.CONNECTOR_ORGANIZATIONS(id),

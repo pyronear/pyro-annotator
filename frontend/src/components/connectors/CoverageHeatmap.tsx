@@ -62,12 +62,7 @@ const STATE_CLASS: Record<CellState, string> = {
   'not-enabled': 'border border-dashed border-line',
 };
 
-function tooltip(
-  state: CellState,
-  day: string,
-  orgName: string,
-  cell?: CoverageCell
-): string {
+function tooltip(state: CellState, day: string, orgName: string, cell?: CoverageCell): string {
   const head = `${orgName} — ${day}`;
   if (state === 'not-enabled') return `${head}: organization not enabled yet`;
   if (state === 'missing') return `${head}: never attempted`;
