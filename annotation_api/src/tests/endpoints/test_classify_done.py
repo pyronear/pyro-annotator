@@ -2,10 +2,12 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from httpx import AsyncClient
+from sqlmodel import select
 
 from app.models import (
     Sequence,
     SequenceAnnotation,
+    SequenceAnnotationContribution,
     SequenceAnnotationProcessingStage as Stage,
     SourceApi,
 )
@@ -60,6 +62,79 @@ async def _lane(
         )
     await session.commit()
     return seq
+
+
+async def _contribute(session, seq, user_id, at):
+    annotation_id = (
+        await session.execute(
+            select(SequenceAnnotation.id).where(
+                SequenceAnnotation.sequence_id == seq.id
+            )
+        )
+    ).scalar_one()
+    session.add(
+        SequenceAnnotationContribution(
+            sequence_annotation_id=annotation_id, user_id=user_id, contributed_at=at
+        )
+    )
+    await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_annotators_lists_distinct_humans_by_first_contribution(
+    authenticated_client: AsyncClient,
+    async_session,
+    test_user,
+    regular_user,
+    worker_user,
+):
+    primary = await _lane(
+        async_session,
+        alert_api_id=940,
+        platform_alert_id=940,
+        stage=Stage.ANNOTATED,
+        has_smoke=True,
+        smoke_types=["wildfire"],
+    )
+    sibling = await _lane(
+        async_session,
+        alert_api_id=941,
+        platform_alert_id=940,
+        stage=Stage.ANNOTATED,
+        false_positive_types=["antenna"],
+    )
+    # regular_user touched the sibling first, test_user the primary later,
+    # then regular_user again (duplicate collapses); the worker row is
+    # machine attribution and must not appear at all.
+    await _contribute(async_session, primary, worker_user.id, NOW)
+    await _contribute(
+        async_session, sibling, regular_user.id, NOW + timedelta(minutes=1)
+    )
+    await _contribute(async_session, primary, test_user.id, NOW + timedelta(minutes=2))
+    await _contribute(
+        async_session, primary, regular_user.id, NOW + timedelta(minutes=3)
+    )
+
+    response = await authenticated_client.get("/sequences/classify-done")
+    item = response.json()["items"][0]
+    assert item["annotators"] == [regular_user.username, test_user.username]
+
+
+@pytest.mark.asyncio
+async def test_annotators_empty_without_human_contributions(
+    authenticated_client: AsyncClient, async_session, worker_user
+):
+    seq = await _lane(
+        async_session,
+        alert_api_id=950,
+        platform_alert_id=950,
+        stage=Stage.ANNOTATED,
+        has_smoke=True,
+    )
+    await _contribute(async_session, seq, worker_user.id, NOW)
+
+    response = await authenticated_client.get("/sequences/classify-done")
+    assert response.json()["items"][0]["annotators"] == []
 
 
 @pytest.mark.asyncio

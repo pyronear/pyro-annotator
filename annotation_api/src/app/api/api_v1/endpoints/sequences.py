@@ -36,6 +36,7 @@ from sqlalchemy.orm import aliased
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.dependencies import get_current_user, get_sequence_crud
+from app.core.config import settings
 from app.crud import SequenceCRUD
 from app.db import get_session
 from app.services.localization_rule import (
@@ -1080,6 +1081,55 @@ async def localization_queue(
     return Page.create(items=items, total=total, params=params)
 
 
+async def _human_annotators(
+    session: AsyncSession, sequence_ids: list[int]
+) -> dict[int, list[tuple[datetime, str]]]:
+    """Per-sequence (contributed_at, username) pairs of human contributors,
+    earliest first. Machine writes are attributed to the seeded worker user
+    and excluded — they are not annotators."""
+    if not sequence_ids:
+        return {}
+    rows = (
+        await session.execute(
+            select(
+                SequenceAnnotation.sequence_id,
+                SequenceAnnotationContribution.contributed_at,
+                User.username,
+            )
+            .join(
+                SequenceAnnotationContribution,
+                SequenceAnnotationContribution.sequence_annotation_id
+                == SequenceAnnotation.id,
+            )
+            .join(User, SequenceAnnotationContribution.user_id == User.id)
+            .where(
+                SequenceAnnotation.sequence_id.in_(sequence_ids),
+                User.username != settings.WORKER_USERNAME,
+            )
+            .order_by(asc(SequenceAnnotationContribution.contributed_at))
+        )
+    ).all()
+    by_seq: dict[int, list[tuple[datetime, str]]] = {}
+    for sequence_id, contributed_at, username in rows:
+        by_seq.setdefault(sequence_id, []).append((contributed_at, username))
+    return by_seq
+
+
+def _merge_annotators(
+    by_seq: dict[int, list[tuple[datetime, str]]], sequence_ids: list[int]
+) -> list[str]:
+    """Distinct usernames across an alert's lanes, ordered by first contribution."""
+    seen: set[str] = set()
+    merged: list[str] = []
+    for _, username in sorted(
+        pair for sequence_id in sequence_ids for pair in by_seq.get(sequence_id, [])
+    ):
+        if username not in seen:
+            seen.add(username)
+            merged.append(username)
+    return merged
+
+
 async def _build_queue_item(
     session: AsyncSession,
     source_api: SourceApi,
@@ -1479,7 +1529,7 @@ async def classify_done(
             .limit(params.size)
         )
     ).all()
-    items = []
+    page_lanes = []
     for row in page_rows:
         lane_rows = (
             await session.execute(
@@ -1497,6 +1547,12 @@ async def classify_done(
         ).all()
         if not lane_rows:  # concurrent delete
             continue
+        page_lanes.append((row, lane_rows))
+    annotators_by_seq = await _human_annotators(
+        session, [seq.id for _, lane_rows in page_lanes for seq, _ in lane_rows]
+    )
+    items = []
+    for row, lane_rows in page_lanes:
         primary = lane_rows[0][0]
         items.append(
             ClassifyDoneItem(
@@ -1519,6 +1575,9 @@ async def classify_done(
                     )
                     for seq, ann in lane_rows
                 ],
+                annotators=_merge_annotators(
+                    annotators_by_seq, [seq.id for seq, _ in lane_rows]
+                ),
             )
         )
     return Page.create(items=items, total=total, params=params)

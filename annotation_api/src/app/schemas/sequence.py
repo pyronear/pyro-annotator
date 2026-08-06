@@ -212,6 +212,7 @@ class ClassifyDoneItem(BaseModel):
     is_wildfire_alertapi: Optional[AnnotationType] = None
     primary_sequence_id: int
     lanes: List[ClassifyDoneLane]
+    annotators: List[str] = []
 
 
 class AlertLane(BaseModel):
