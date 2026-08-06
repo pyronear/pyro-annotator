@@ -1257,16 +1257,39 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     frameRefs.current[recordedAt] = el;
   };
 
+  // The editor's entrance animation origin: measured at click time, when the
+  // clicked cell is guaranteed laid out, and consumed exactly once by the
+  // editor on mount. Deep links and back/forward never set it, so those
+  // opens are (deliberately) not animated.
+  const pendingEditorOriginRef = useRef<DOMRect | null>(null);
+  const takeEditorOpenRect = useCallback(() => {
+    const rect = pendingEditorOriginRef.current;
+    pendingEditorOriginRef.current = null;
+    return rect;
+  }, []);
+
+  // Close-target lookup for the editor's shrink: the cell showing
+  // `recordedAt`, brought into view instantly first so the exit lands on
+  // something visible. Instant (not smooth): the rect must be final when
+  // measured.
+  const editorFrameCellRect = useCallback((recordedAt: string) => {
+    const el = frameRefs.current[recordedAt];
+    if (!el) return null;
+    el.scrollIntoView?.({ behavior: 'auto', block: 'nearest' });
+    return el.getBoundingClientRect();
+  }, []);
+
   // Opens the shown (active, or first-present-fallback) object's detection
   // in the editor. The editor URL itself carries the lane, so opening it
   // selects the object — deliberately without `activateFocus`, so opening
   // the editor doesn't also silently flip the background grid into focus
   // mode.
-  const handleCellClick = (_recordedAt: string, laneSequenceId: number, detId: number) => {
-    if (sequenceIdNum != null)
-      navigate(
-        `${localizeObject(sequenceIdNum, laneSequenceId, detId, mode === 'done')}${location.search}`
-      );
+  const handleCellClick = (recordedAt: string, laneSequenceId: number, detId: number) => {
+    if (sequenceIdNum == null) return;
+    pendingEditorOriginRef.current = frameRefs.current[recordedAt]?.getBoundingClientRect() ?? null;
+    navigate(
+      `${localizeObject(sequenceIdNum, laneSequenceId, detId, mode === 'done')}${location.search}`
+    );
   };
 
   // 'c' toggles crop mode, matching the legacy grid — inert while the modal
@@ -1776,6 +1799,8 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
           onReclassify={() => handleReclassify(modalContext.laneId)}
           onNavigateToDetection={navigateModalTo}
           onClose={closeModal}
+          takeOpenOriginRect={takeEditorOpenRect}
+          frameCellRect={editorFrameCellRect}
         />
       )}
 
