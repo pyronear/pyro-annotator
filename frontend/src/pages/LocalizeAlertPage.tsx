@@ -1840,7 +1840,9 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                             setSkipConfirmOpen(true);
                           }}
                           data-testid="skip-alert-button"
-                          className="inline-flex items-center rounded-lg border border-ember bg-paper px-3 py-2.5 font-body text-sm font-medium text-ember hover:bg-ember-soft"
+                          className={`inline-flex items-center rounded-lg border border-ember bg-paper px-3 py-2.5 font-body text-sm font-medium text-ember hover:bg-ember-soft${
+                            missedSmoke ? ' animate-skip-glow' : ''
+                          }`}
                         >
                           Skip alert
                         </button>

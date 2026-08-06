@@ -3041,6 +3041,17 @@ describe('LocalizeAlertPage', () => {
 
       expect(screen.queryByRole('button', { name: /Skip alert/ })).not.toBeInTheDocument();
     });
+
+    it('the Skip alert button glows while missed smoke is Yes', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      const skipButton = screen.getByTestId('skip-alert-button');
+      expect(skipButton.className).not.toContain('animate-skip-glow');
+
+      answerMissedSmokeYes();
+
+      expect(skipButton.className).toContain('animate-skip-glow');
+    });
   });
 
   describe('gap frames (issue #287)', () => {
