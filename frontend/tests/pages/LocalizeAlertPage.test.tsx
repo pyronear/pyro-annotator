@@ -2266,6 +2266,81 @@ describe('LocalizeAlertPage', () => {
       });
       expect(cta.queryByRole('button', { name: /Accept/ })).not.toBeInTheDocument();
     });
+
+    // Key presses need the arrival auto-select to have landed first — the
+    // bare URL replace-redirects to the first workable object, and Enter
+    // before that has no active object to accept for.
+    const awaitAutoSelect = async () => {
+      await waitFor(() => {
+        expect(screen.getByTestId('localize-object-row-object-1')).toHaveAttribute(
+          'data-active',
+          'true'
+        );
+      });
+    };
+
+    it('Enter opens the popover for the active object; a second Enter confirms', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      await awaitAutoSelect();
+
+      fireEvent.keyDown(window, { key: 'Enter' });
+      expect(await screen.findByTestId('accept-remaining-popover')).toBeInTheDocument();
+      expect(apiClient.createDetectionAnnotation).not.toHaveBeenCalled();
+
+      fireEvent.keyDown(window, { key: 'Enter' });
+      await waitFor(() => {
+        expect(apiClient.createDetectionAnnotation).toHaveBeenCalledWith(
+          expect.objectContaining({ detection_id: 1001 })
+        );
+      });
+      await waitFor(() => {
+        expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
+      });
+    });
+
+    it('Escape closes the popover without accepting', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      await awaitAutoSelect();
+
+      fireEvent.keyDown(window, { key: 'Enter' });
+      await screen.findByTestId('accept-remaining-popover');
+      fireEvent.keyDown(window, { key: 'Escape' });
+
+      expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
+      expect(apiClient.createDetectionAnnotation).not.toHaveBeenCalled();
+    });
+
+    it('Enter on a focused control is left to the control — a rail row keeps its own Enter', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      await awaitAutoSelect();
+
+      const row = screen.getByRole('button', { name: 'Object 2' });
+      row.focus();
+      fireEvent.keyDown(row, { key: 'Enter' });
+
+      expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
+    });
+
+    it('Enter does nothing when the active object has nothing acceptable', async () => {
+      vi.mocked(apiClient.getSequenceDetections).mockImplementation(async (id: number) => {
+        if (id === 101)
+          return [
+            {
+              ...makeDetection(1001, T1),
+              algo_predictions: { predictions: [] },
+              auto_predictions: undefined,
+            },
+          ];
+        if (id === 102) return [makeDetection(1002, T1), makeDetection(1003, T2)];
+        return [];
+      });
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      await awaitAutoSelect();
+
+      fireEvent.keyDown(window, { key: 'Enter' });
+
+      expect(screen.queryByTestId('accept-remaining-popover')).not.toBeInTheDocument();
+    });
   });
 
   describe('missed-smoke row', () => {

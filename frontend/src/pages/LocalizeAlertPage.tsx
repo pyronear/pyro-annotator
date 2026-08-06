@@ -1365,10 +1365,11 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   });
 
   // `?` toggles the shortcuts sheet and Escape closes it — the same pair
-  // classify's createKeyboardHandler answers. Suspended under the same
-  // surfaces as the Tab cycle, and while typing in a field. Same
-  // deliberately-absent dependency array as the Tab handler above:
-  // re-subscribing every render keeps the closure fresh.
+  // classify's createKeyboardHandler answers — and, one layer under the
+  // sheet, Enter opens/confirms the accept popover and Escape closes it.
+  // Suspended under the same surfaces as the Tab cycle, and while typing in
+  // a field. Same deliberately-absent dependency array as the Tab handler
+  // above: re-subscribing every render keeps the closure fresh.
   useEffect(() => {
     const handleShortcutKeys = (e: KeyboardEvent) => {
       if (detectionIdNum != null || addObjectPickerOpen || missedSmokeConfirm) return;
@@ -1393,6 +1394,30 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       // The sheet is a surface of its own, like the overlays above: while it
       // is up, only `?` and Escape act.
       if (showShortcutsModal) return;
+      // The accept popover's keys, next layer under the sheet. Enter is
+      // never stolen from a focused control: a rail row opens its object, a
+      // button inside the popover clicks itself.
+      if (e.key === 'Escape' && acceptPopoverOpen) {
+        setAcceptPopoverOpen(false);
+        e.preventDefault();
+        return;
+      }
+      if (e.key === 'Enter') {
+        if (target instanceof HTMLElement && target.closest('button, a, [role="button"]')) return;
+        if (acceptPopoverOpen) {
+          if (!quickAcceptLane.isPending && activeLaneId != null) {
+            quickAcceptLane.mutate(activeLaneId);
+            setAcceptPopoverOpen(false);
+          }
+          e.preventDefault();
+          return;
+        }
+        if (activeObject?.workable && acceptRemainingCount > 0) {
+          setAcceptPopoverOpen(true);
+          e.preventDefault();
+        }
+        return;
+      }
       const key = e.key.toLowerCase();
       if (key === 's' || key === 'm' || key === 'l') {
         handleCardSizeChange(key === 's' ? 'sm' : key === 'm' ? 'md' : 'lg');

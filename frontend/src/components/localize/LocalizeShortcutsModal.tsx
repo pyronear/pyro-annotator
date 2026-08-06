@@ -3,7 +3,8 @@
  * button in the Objects rail header or with `?`.
  *
  * Static copy — the bindings live in LocalizeAlertPage's key handlers (the
- * page-level S/M/L/P/? effect, the `c` crop effect, the Tab cycle) and
+ * page-level S/M/L/P/? effect, which also answers Enter/Escape for the
+ * accept popover, the `c` crop effect, the Tab cycle) and
  * LocalizeObjectRow's Enter/Space activation; keep this list in sync.
  *
  * The Key/Row/Section primitives mirror `ClassifyShortcutsModal`'s so the two
@@ -64,6 +65,9 @@ export const LocalizeShortcutsModal: React.FC<LocalizeShortcutsModalProps> = ({ 
         <Section title="Navigate">
           <Row label="Cycle objects" keys={['Tab', 'Shift + Tab']} />
           <Row label="Open the focused object" keys={['Enter', 'Space']} />
+        </Section>
+        <Section title="Act">
+          <Row label="Accept the object's boxes" keys={['Enter']} />
         </Section>
         <Section title="View">
           <Row label="Frame card size" keys={['S', 'M', 'L']} />
