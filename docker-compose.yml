@@ -111,7 +111,7 @@ services:
       # Auto-annotate model (baked into the image)
       - AUTOANNOTATE_MODEL_PATH=/app/models
       - CONNECTOR_SECRET_KEY=${CONNECTOR_SECRET_KEY:-}
-      - ANNOTATION_API_INTERNAL_URL=${ANNOTATION_API_INTERNAL_URL:-http://api:5050}
+      - ANNOTATION_API_INTERNAL_URL=${ANNOTATION_API_INTERNAL_URL:-http://annotation_api:5050}
     restart: unless-stopped
     command: "procrastinate --app=app.worker.app worker"
     healthcheck:

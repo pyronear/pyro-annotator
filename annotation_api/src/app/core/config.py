@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     # Where the worker reaches the annotation API to POST imported records.
     # Not a secret.
     ANNOTATION_API_INTERNAL_URL: str = os.environ.get(
-        "ANNOTATION_API_INTERNAL_URL", "http://api:5050"
+        "ANNOTATION_API_INTERNAL_URL", "http://annotation_api:5050"
     )
 
     # DB

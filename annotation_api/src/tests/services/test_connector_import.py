@@ -210,3 +210,45 @@ async def test_connector_with_no_enabled_orgs_does_nothing(
 
     await import_connector(async_session, connector, today=date(2026, 8, 6))
     assert captured == []
+
+
+async def test_missing_worker_token_skips_without_importing(
+    async_session, connector, monkeypatch
+):
+    """The worker user not existing yet (e.g. a cold-boot race with the API's
+    seeding) must stop before any alert-API call — never fall back to a
+    plaintext credential."""
+    calls = []
+
+    async def no_token(session):
+        return None
+
+    def fake_run_import(config):
+        calls.append(config)
+        return ImportResult(per_organization={})
+
+    monkeypatch.setattr(connector_import, "mint_worker_token", no_token)
+    monkeypatch.setattr(connector_import, "run_import", fake_run_import)
+
+    await import_connector(async_session, connector, today=date(2026, 8, 6))
+
+    assert calls == []
+    rows = (await async_session.execute(select(AlertApiImportCoverage))).scalars().all()
+    assert rows == []
+
+
+async def test_db_failure_mid_loop_does_not_propagate(
+    async_session, connector, captured, monkeypatch
+):
+    """A DB-layer failure (here: the coverage commit) anywhere in the
+    function — not just around run_import — must be swallowed, not raised."""
+
+    async def boom_commit():
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(async_session, "commit", boom_commit)
+
+    await import_connector(async_session, connector, today=date(2026, 8, 6))
+
+    # The first day's run_import call happened before the commit failed.
+    assert len(captured) == 1

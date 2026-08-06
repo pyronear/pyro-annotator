@@ -104,21 +104,34 @@ async def import_connector(
     enabled organization per day.
 
     Never raises: a connector that cannot run must not take down the sweep for
-    the others. Failures are recorded as coverage rows, which is where an
-    operator will look.
+    the others. Failures are recorded as coverage rows where that is
+    meaningful; a DB-layer failure that leaves us without enough information to
+    attribute a row correctly is logged and swallowed instead, mirroring the
+    missing-CONNECTOR_SECRET_KEY case below. The whole function is guarded, not
+    just the outbound `run_import` call, so a database hiccup anywhere in here
+    (listing organizations, minting the worker token, reading/writing the skip
+    set or coverage rows) can never propagate out to the caller.
     """
-    organizations = (
-        (
-            await session.execute(
-                select(AlertApiConnectorOrganization).where(
-                    AlertApiConnectorOrganization.connector_id == connector.id,
-                    AlertApiConnectorOrganization.is_enabled.is_(True),
+    try:
+        organizations = (
+            (
+                await session.execute(
+                    select(AlertApiConnectorOrganization).where(
+                        AlertApiConnectorOrganization.connector_id == connector.id,
+                        AlertApiConnectorOrganization.is_enabled.is_(True),
+                    )
                 )
             )
+            .scalars()
+            .all()
         )
-        .scalars()
-        .all()
-    )
+    except Exception:  # noqa: BLE001 - logged, not raised
+        logger.exception(
+            "connector %s: failed to load organizations; skipping", connector.id
+        )
+        await session.rollback()
+        return
+
     if not organizations:
         logger.info("connector %s has no enabled organizations; skipping", connector.id)
         return
@@ -131,13 +144,28 @@ async def import_connector(
         logger.error("connector %s cannot be decrypted: %s", connector.id, exc)
         return
 
-    token = await mint_worker_token(session)
+    try:
+        token = await mint_worker_token(session)
+    except Exception:  # noqa: BLE001 - logged, not raised
+        logger.exception(
+            "connector %s: failed to mint a worker token; skipping", connector.id
+        )
+        await session.rollback()
+        return
     if token is None:
         logger.error("connector %s: no worker token available; skipping", connector.id)
         return
 
     org_ids = {org.organization_id for org in organizations}
-    skip_ids = await build_skip_ids(session, connector.source_api)
+    try:
+        skip_ids = await build_skip_ids(session, connector.source_api)
+    except Exception:  # noqa: BLE001 - logged, not raised
+        logger.exception(
+            "connector %s: failed to load the skip set; skipping", connector.id
+        )
+        await session.rollback()
+        return
+
     # today is excluded: the day is still in progress on the alert API.
     days = [
         today - timedelta(days=offset)
@@ -170,20 +198,32 @@ async def import_connector(
             logger.exception("connector %s import failed for %s", connector.id, day)
             error = f"{type(exc).__name__}: {exc}"
 
-        for org in organizations:
-            stats = per_org.get(org.organization_id, OrganizationStats())
-            status = ImportCoverageStatus.FAILED if error else _status(stats)
-            await _upsert_coverage(
-                session,
-                connector_id=connector.id,
-                organization_id=org.organization_id,
-                covered_date=day,
-                status=status,
-                stats=stats,
-                error=error,
-            )
-        await session.commit()
+        # Coverage bookkeeping for this day: writing the rows, committing, and
+        # re-deriving the skip set for the next day are one unit — if any part
+        # of it fails, roll back and stop the sweep for this connector rather
+        # than risk the next day's write landing on top of an aborted
+        # transaction.
+        try:
+            for org in organizations:
+                stats = per_org.get(org.organization_id, OrganizationStats())
+                status = ImportCoverageStatus.FAILED if error else _status(stats)
+                await _upsert_coverage(
+                    session,
+                    connector_id=connector.id,
+                    organization_id=org.organization_id,
+                    covered_date=day,
+                    status=status,
+                    stats=stats,
+                    error=error,
+                )
+            await session.commit()
 
-        # Alerts imported for this day must not be re-fetched on the next day in
-        # the window.
-        skip_ids = await build_skip_ids(session, connector.source_api)
+            # Alerts imported for this day must not be re-fetched on the next
+            # day in the window.
+            skip_ids = await build_skip_ids(session, connector.source_api)
+        except Exception:  # noqa: BLE001 - logged, not raised
+            logger.exception(
+                "connector %s: coverage bookkeeping failed for %s", connector.id, day
+            )
+            await session.rollback()
+            return
