@@ -76,6 +76,11 @@ export function ClassifyDoneTable({ items, onItemClick }: ClassifyDoneTableProps
               tip="Model outcome — TP correct, FP false alarm, ⚑ FN missed smoke, ? unsure — and the classification detail"
               align="right"
             />
+            <ColumnHeader
+              label="Annotators"
+              tip="Who classified or localized this alert"
+              align="right"
+            />
           </tr>
         </thead>
         <tbody className={TBODY_CLASSES}>
@@ -114,6 +119,13 @@ export function ClassifyDoneTable({ items, onItemClick }: ClassifyDoneTableProps
                         <span className="ml-2.5 font-body text-detail text-haze">{detail}</span>
                       )}
                     </>
+                  )}
+                </td>
+                <td className={`${CELL_CLASSES} ${CELL_TEXT} text-right`}>
+                  {item.annotators.length > 0 ? (
+                    item.annotators.join(', ')
+                  ) : (
+                    <span className="text-haze">—</span>
                   )}
                 </td>
               </tr>

@@ -117,6 +117,7 @@ export interface ClassifyDoneItem {
   is_wildfire_alertapi: AnnotationType | null;
   primary_sequence_id: number;
   lanes: ClassifyDoneLane[];
+  annotators: string[];
 }
 
 // Submission payload for bulk classification of all objects in an alert.
