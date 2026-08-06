@@ -32,6 +32,7 @@ from app.clients.annotation_api import (
     create_detection_from_bucket_key,
     create_detection_from_url,
     list_detections,
+    skip_alert,
     AnnotationAPIError,
     ValidationError,
 )
@@ -303,6 +304,67 @@ def transform_detection_data(record: dict, annotation_sequence_id: int) -> dict:
     if others_payload is not None:
         payload["others_bboxes"] = others_payload
     return payload
+
+
+AUTO_SKIP_BOXLESS_NOTE = "auto-skip at import: boxless alert (no engine boxes)"
+
+
+def boxless_platform_alert_ids(records: List[dict]) -> set:
+    """
+    Platform alert ids whose records carry no usable engine box.
+
+    "Usable" mirrors `transform_detection_data` (parse + sanitize), so this
+    flags exactly the alerts that would import as zero-object lanes the
+    classify page cannot act on (#333).
+    """
+    has_usable_box: Dict[int, bool] = {}
+    for record in records:
+        platform_alert_id = record["platform_alert_id"]
+        if has_usable_box.get(platform_alert_id):
+            continue
+        parsed = parse_alert_api_bboxes(record["detection_bboxes"])
+        has_usable_box[platform_alert_id] = bool(
+            _sanitize_predictions(parsed.get("predictions", []))
+        )
+    return {pid for pid, usable in has_usable_box.items() if not usable}
+
+
+def skip_boxless_alerts(
+    base_url: str,
+    auth_token: str,
+    source_api: str,
+    platform_alert_ids: List[int],
+) -> Dict[str, int]:
+    """
+    Park each boxless alert via the alert-skip overlay.
+
+    409 (already skipped) counts separately so re-imports stay idempotent;
+    other errors are logged and counted but never raised — auto-skip is
+    best-effort queue hygiene, not import-critical.
+    """
+    counts = {"skipped": 0, "already_skipped": 0, "failed": 0}
+    for platform_alert_id in platform_alert_ids:
+        try:
+            skip_alert(
+                base_url,
+                auth_token,
+                source_api,
+                platform_alert_id,
+                note=AUTO_SKIP_BOXLESS_NOTE,
+            )
+            counts["skipped"] += 1
+        except AnnotationAPIError as exc:
+            if exc.status_code == 409:
+                counts["already_skipped"] += 1
+            else:
+                logging.warning(
+                    "auto-skip failed for alert %s/%s: %s",
+                    source_api,
+                    platform_alert_id,
+                    exc,
+                )
+                counts["failed"] += 1
+    return counts
 
 
 def download_image(url: str, timeout: int = 30) -> bytes:

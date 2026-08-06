@@ -415,9 +415,7 @@ def main() -> None:
     )
 
     if args.loglevel == "debug":
-        console.print(
-            f"[blue]ℹ️  Date range: {args.date_from} to {args.date_end}[/]"
-        )
+        console.print(f"[blue]ℹ️  Date range: {args.date_from} to {args.date_end}[/]")
         console.print(
             f"[blue]ℹ️  Alert API: {args.alert_api_url} (source_api: {source_api})[/]"
         )
@@ -524,6 +522,10 @@ def main() -> None:
             f"{split_stats['cross_deduped_siblings']} cross-deduped, "
             f"{split_stats['same_frame_merges']} same-frame merge(s))[/]"
         )
+
+        # Boxless alerts import as zero-object lanes the classify page cannot
+        # act on (#333); they are auto-skipped after annotation creation below.
+        boxless_alert_ids = shared.boxless_platform_alert_ids(records)
 
         if not records and not args.dry_run:
             step_manager.complete_step(False, "No records fetched from alert API")
@@ -728,6 +730,33 @@ def main() -> None:
 
         step_manager.complete_step(step_3_success, step_3_message, final_stats)
 
+        # Auto-skip boxless alerts (#333): their lanes exist now (sequence +
+        # annotation) but have zero objects, so park them via the skip overlay
+        # instead of leaving dead lanes in the classify queue.
+        skip_counts = {"skipped": 0, "already_skipped": 0, "failed": 0}
+        if boxless_alert_ids and not args.dry_run:
+            skip_counts = shared.skip_boxless_alerts(
+                args.annotation_api_url,
+                annotation_api.get_auth_token(
+                    args.annotation_api_url,
+                    username=target_login,
+                    password=target_password,
+                ),
+                source_api,
+                sorted(boxless_alert_ids),
+            )
+            console.print(
+                f"[blue]⏭️  Auto-skipped {skip_counts['skipped']} boxless alert(s) "
+                f"({skip_counts['already_skipped']} already skipped, "
+                f"{skip_counts['failed']} failed): "
+                f"{sorted(boxless_alert_ids)}[/]"
+            )
+            if skip_counts["failed"] > 0:
+                error_collector.add_warning(
+                    f"{skip_counts['failed']} boxless alert(s) could not be "
+                    "auto-skipped; their zero-object lanes remain in the queue."
+                )
+
         # Show any accumulated errors/warnings
         if error_collector.has_issues():
             error_collector.print_summary(console, "Processing Summary")
@@ -765,6 +794,12 @@ def main() -> None:
 • Annotations successful: {stats['annotations_successful']}
 • Annotations failed: {stats['annotations_failed']}
 • Annotations created: {stats['annotations_created']}"""
+        if boxless_alert_ids:
+            annotation_section += (
+                f"\n• Boxless alerts auto-skipped: {skip_counts['skipped']} "
+                f"(+{skip_counts['already_skipped']} already skipped, "
+                f"{skip_counts['failed']} failed): {sorted(boxless_alert_ids)}"
+            )
         summary_parts.append(annotation_section)
 
         # Join sections
