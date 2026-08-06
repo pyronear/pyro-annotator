@@ -51,8 +51,9 @@
  * stack (workable timeline -> standalone "+ Add object" card -> a separate
  * dimmed "Already localized" timeline) into one rail: every object gets a
  * row in lane order, with already-localized lanes dimmed in place rather
- * than exiled to their own strip, and the timeline moves below the rail
- * into the slot classify gives `ObjectPresenceStrip`. Submit moves out of
+ * than exiled to their own strip, and each row carries its own per-frame
+ * timeline strip (the standalone Timeline card that used to sit below the
+ * rail is gone — one object list, not two). Submit moves out of
  * the header into the rail footer and turns pine per DESIGN.md's
  * "primary is pine in Localize contexts"; the header keeps identity, the
  * view toolbar, and a progress badge that now reports how many objects are
@@ -60,8 +61,8 @@
  *
  * Fixed-pane round: from lg up the cockpit is a viewport-height shell and
  * the frame cells are the page's only scroller, so everything that acts on
- * them — the Frames panel and the cropped loop above, the Objects rail and
- * Timeline beside — never leaves the screen. The header compacted to a
+ * them — the Frames panel and the cropped loop above, the Objects rail
+ * beside — never leaves the screen. The header compacted to a
  * single 48px row to pay for it. See
  * docs/specs/2026-08-04-localize-fixed-panes-scrolling-grid-design.md.
  *
@@ -127,7 +128,6 @@ import {
   saveDetectionReview,
   sequenceSmokeType,
 } from '@/utils/annotation';
-import { ObjectStatusStrip } from '@/components/sequence-annotation';
 import {
   LocalizeActionPanel,
   LocalizeMissedSmokeRow,
@@ -696,14 +696,10 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     },
   });
 
-  // The timeline's rows: identity + per-frame statuses + the "selected"
-  // accent for whichever object is currently focused. The quick-accept
-  // action no longer rides along here — it lives above the media column, on
-  // the active object.
-  const objectStatusRows: AlertObjectStatus[] = frameModel.objectStatus.map(object => ({
-    ...object,
-    selected: isFocused && activeLaneId === object.laneSequenceId,
-  }));
+  // One row per object: identity + per-frame statuses. The rail row's
+  // `isActive` carries the focus accent; `selected` died with the
+  // standalone Timeline card.
+  const objectStatusRows: AlertObjectStatus[] = frameModel.objectStatus;
 
   const workableObjects = objectStatusRows.filter(o => o.workable);
 
@@ -1288,7 +1284,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
           From lg up the whole thing is a viewport-height shell that never
           scrolls: the frame cells are the only scroller on the page, so the
           controls that act on them — the Frames panel and the cropped loop
-          above, the Objects rail and Timeline beside — stay on screen no
+          above, the Objects rail beside — stay on screen no
           matter how deep into the grid you are. `calc(100vh-3rem)` is the
           viewport less AppLayout's `p-6` top and bottom; `pt-8` clears the
           48px header, 24px of which the same padding already covers. Below
@@ -1417,8 +1413,8 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
 
         {/* The rail no longer sticks: it is a full-height column of the
             shell, so its ceiling is structural rather than a max-height
-            guess. Objects and Timeline scroll together inside it when the
-            alert has more objects than fit. */}
+            guess. The rows (each with its own timeline strip) scroll inside
+            it when the alert has more objects than fit. */}
         <div className="lg:flex lg:min-h-0 lg:flex-1 lg:min-w-0 lg:flex-col lg:overflow-y-auto">
           <LocalizeRail
             // The toggle governs which object ROWS exist, so it belongs with
@@ -1578,21 +1574,6 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
             )}
             {falsePositiveRows.map(renderObjectRow)}
           </LocalizeRail>
-
-          {/* Per-frame temporal context + color legend for the rail's
-              objects, in the same slot classify gives ObjectPresenceStrip.
-              Context (already-localized) objects render here too, so the
-              row indices line up 1:1 with the rail above. */}
-          <div className="mt-4">
-            <ObjectStatusStrip
-              objects={orderedObjectRows}
-              onObjectClick={i => handleObjectClick(orderedObjectRows[i].laneSequenceId)}
-              onSegmentClick={(i, ts) =>
-                handleSegmentClick(orderedObjectRows[i].laneSequenceId, ts)
-              }
-              title="Timeline"
-            />
-          </div>
         </div>
       </div>
 
