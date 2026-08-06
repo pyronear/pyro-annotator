@@ -540,3 +540,70 @@ export interface ApiError {
   /** HTTP status of the failed response, when one was received. */
   status?: number;
 }
+
+// Alert API Connector Types
+export interface Connector {
+  id: number;
+  name: string;
+  base_url: string;
+  source_api: string;
+  login: string;
+  has_password: boolean;
+  is_enabled: boolean;
+  trailing_days: number;
+  image_transfer: 'url' | 'bucket-copy' | null;
+  last_verified_at: string | null;
+  last_verify_error: string | null;
+  organizations_total: number;
+  organizations_enabled: number;
+}
+
+export interface ConnectorOrganization {
+  id: number;
+  organization_id: number;
+  name: string;
+  is_enabled: boolean;
+  enabled_at: string | null;
+}
+
+export type CoverageStatus = 'ok' | 'partial' | 'failed';
+
+export interface CoverageCell {
+  organization_id: number;
+  covered_date: string;
+  status: CoverageStatus;
+  alerts_fetched: number;
+  alerts_imported: number;
+  alerts_skipped: number;
+  alerts_failed: number;
+  lanes_created: number;
+  error: string | null;
+}
+
+// organizations_seen_in_sample / organizations_total are counts, not a
+// boolean: the connector design assumes one admin account can list sequences
+// across every organization, and verify proves it by sampling how many
+// distinct organizations actually showed up.
+export interface VerifyResult {
+  ok: boolean;
+  error: string | null;
+  organizations: ConnectorOrganization[];
+  organizations_seen_in_sample: number;
+  organizations_total: number;
+  sample_date: string | null;
+}
+
+export interface ConnectorCreatePayload {
+  name: string;
+  base_url: string;
+  source_api: string;
+  login: string;
+  password: string;
+  is_enabled?: boolean;
+  trailing_days?: number;
+  image_transfer?: 'url' | 'bucket-copy' | null;
+}
+
+export type ConnectorUpdatePayload = Partial<
+  Omit<ConnectorCreatePayload, 'source_api'>
+>;
