@@ -882,7 +882,7 @@ export function LocalizeObjectEditor({
       </div>
 
       <div className="flex min-h-0 flex-1">
-        <div className="flex min-w-0 flex-1 items-center justify-center overflow-hidden bg-ash p-3">
+        <div className="relative flex min-w-0 flex-1 items-center justify-center overflow-hidden bg-ash p-3">
           <DetectionAnnotationCanvas
             detection={shownDetection}
             committed={editable ? shownCommitted : null}
@@ -911,6 +911,19 @@ export function LocalizeObjectEditor({
             normalizedToImage={normalizedToImage}
             overlaysVisible
           />
+
+          {/* Floated over the stage rather than stacked into the column, so
+              stepping between in-object and gap frames never resizes the
+              photo or shifts the filmstrip. */}
+          {peeked && (
+            <div
+              data-testid="out-of-range-banner"
+              className="absolute inset-x-0 bottom-0 border-t border-line bg-signal-soft px-4 py-2 font-body text-detail text-signal"
+            >
+              {objectLabel} was never detected on this frame. If you can see its smoke, draw a box
+              to add this frame to {objectLabel}.
+            </div>
+          )}
         </div>
 
         <BoxSourceRail
@@ -922,16 +935,6 @@ export function LocalizeObjectEditor({
           onClear={clear}
         />
       </div>
-
-      {peeked && (
-        <div
-          data-testid="out-of-range-banner"
-          className="flex-none border-t border-line bg-signal-soft px-4 py-2 font-body text-detail text-signal"
-        >
-          {objectLabel} was never detected on this frame. If you can see its smoke, draw a box to
-          add this frame to {objectLabel}.
-        </div>
-      )}
 
       <ObjectFilmstrip
         entries={entries}
