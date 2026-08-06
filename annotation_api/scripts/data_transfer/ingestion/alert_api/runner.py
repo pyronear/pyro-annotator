@@ -75,6 +75,9 @@ class ImportConfig:
 class OrganizationStats:
     alerts_fetched: int = 0
     alerts_imported: int = 0
+    # Both causes of "we did not import this, and that is fine": dropped by the
+    # pre-fetch filter as already present, AND reported by the annotation API as
+    # already existing at POST time. The two populations are disjoint.
     alerts_skipped: int = 0
     alerts_failed: int = 0
     lanes_created: int = 0
@@ -323,6 +326,7 @@ def run_import(config: ImportConfig) -> ImportResult:
                     suppress_logs=suppress_logs,
                     source_api=config.source_api,
                     force_url=(config.image_transfer == "url"),
+                    auth_token=config.annotation_api_token,
                 )
 
                 # Capture import statistics in main stats and get successfully imported sequence IDs
@@ -336,8 +340,6 @@ def run_import(config: ImportConfig) -> ImportResult:
                 stats["sequences_skipped"] = result.get("skipped_sequences", 0)
                 stats["detections_skipped"] = result.get("skipped_detections", 0)
                 successfully_imported_sequence_ids = result["successful_sequence_ids"]
-
-                _accumulate_post_stats(records, result, org_stats)
 
                 # Prepare step completion stats for display
                 step_stats = {
@@ -375,6 +377,11 @@ def run_import(config: ImportConfig) -> ImportResult:
                     per_organization=org_stats,
                     error=f"Failed to post data to annotation API: {e}",
                 )
+
+            # Bookkeeping only, and deliberately outside the try above: a bug in
+            # here must never be reported as "failed to post" on a run whose
+            # transfer actually succeeded.
+            _accumulate_post_stats(records, result, org_stats)
         else:
             # For dry run, capture what would have been imported but don't set sequence IDs
             stats["records_fetched"] = len(records)
@@ -440,6 +447,7 @@ def run_import(config: ImportConfig) -> ImportResult:
                     seq_result=seq_result,
                     annotation_api_url=config.annotation_api_url,
                     dry_run=config.dry_run,
+                    auth_token=config.annotation_api_token,
                 ): seq_result["sequence_id"]
                 for seq_result in alert_api_seq_results
             }

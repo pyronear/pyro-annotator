@@ -141,6 +141,70 @@ class TestSkippedSequenceStats:
         assert result["successful_sequences"] == 0
 
 
+class TestSuppliedAuthToken:
+    """A caller-supplied token must be used verbatim, with no login round-trip.
+
+    The worker self-mints its JWT so that no plaintext annotation-API password
+    has to exist in its environment; a token that got silently replaced by an
+    env-credential login would defeat that without failing anything.
+    """
+
+    def test_supplied_token_is_used_and_no_login_happens(self, monkeypatch):
+        def fail_login(*args, **kwargs):
+            raise AssertionError("must not log in when a token was supplied")
+
+        monkeypatch.setattr(shared, "get_auth_token", fail_login)
+
+        tokens = []
+        monkeypatch.setattr(
+            shared,
+            "create_sequence",
+            lambda url, token, data: tokens.append(token) or {"id": 99},
+        )
+        monkeypatch.setattr(
+            shared,
+            "create_detection_from_bucket_key",
+            lambda url, token, detection_data, source_key: tokens.append(token)
+            or {"id": 501},
+        )
+
+        records = [make_record(1, "2026-07-01T10:00:00", [BOX])]
+        result = shared.post_records_to_annotation_api(
+            "http://annotation.test",
+            records,
+            max_workers=1,
+            max_detection_workers=1,
+            auth_token="worker-jwt",
+        )
+        assert result["successful_sequences"] == 1
+        assert tokens == ["worker-jwt", "worker-jwt"]
+
+    def test_without_a_token_it_still_logs_in(self, monkeypatch):
+        monkeypatch.setattr(
+            shared, "get_annotation_credentials", lambda url: ("u", "p")
+        )
+        monkeypatch.setattr(
+            shared, "get_auth_token", lambda url, username, password: "env-token"
+        )
+        tokens = []
+        monkeypatch.setattr(
+            shared,
+            "create_sequence",
+            lambda url, token, data: tokens.append(token) or {"id": 99},
+        )
+        monkeypatch.setattr(
+            shared,
+            "create_detection_from_bucket_key",
+            lambda url, token, detection_data, source_key: {"id": 501},
+        )
+
+        records = [make_record(1, "2026-07-01T10:00:00", [BOX])]
+        shared.post_records_to_annotation_api(
+            "http://annotation.test", records, max_workers=1, max_detection_workers=1
+        )
+        assert tokens == ["env-token"]
+
+
 class TestTransformSequenceData:
     def test_platform_alert_id_passed_through(self):
         record = make_record(1, "2026-07-01T10:00:00", [BOX])

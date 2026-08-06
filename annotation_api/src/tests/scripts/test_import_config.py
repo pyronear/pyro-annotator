@@ -124,8 +124,15 @@ POST_RESULT = {
 }
 
 
-def _stub_pipeline(monkeypatch, fetched):
-    """Replace every network-touching stage of run_import with a canned result."""
+def _stub_pipeline(monkeypatch) -> dict:
+    """Replace every network-touching stage of run_import with a canned result.
+
+    Returns what the stubs observed: the sequences the detection fetch was asked
+    for, and the tokens the posting and annotation stages were handed.
+    """
+    captured: dict = {"fetched": [], "post_token": None, "annotate_tokens": []}
+    fetched = captured["fetched"]
+    annotate_tokens = captured["annotate_tokens"]
     monkeypatch.setattr(
         runner.alert_api_client, "get_api_access_token", lambda **kwargs: "token"
     )
@@ -155,22 +162,25 @@ def _stub_pipeline(monkeypatch, fetched):
             },
         ),
     )
-    monkeypatch.setattr(
-        runner.shared,
-        "post_records_to_annotation_api",
-        lambda *args, **kwargs: POST_RESULT,
-    )
-    monkeypatch.setattr(
-        runner,
-        "annotate_split_sequence",
-        lambda *, seq_result, annotation_api_url, dry_run: {
+
+    def fake_post(*args, **kwargs):
+        captured["post_token"] = kwargs.get("auth_token")
+        return POST_RESULT
+
+    monkeypatch.setattr(runner.shared, "post_records_to_annotation_api", fake_post)
+
+    def fake_annotate(*, seq_result, annotation_api_url, dry_run, auth_token):
+        annotate_tokens.append(auth_token)
+        return {
             "sequence_id": seq_result["sequence_id"],
             "annotation_created": True,
             "annotation_id": 1,
             "errors": [],
             "final_stage": "ready_to_annotate",
-        },
-    )
+        }
+
+    monkeypatch.setattr(runner, "annotate_split_sequence", fake_annotate)
+    return captured
 
 
 def _config(**overrides) -> ImportConfig:
@@ -191,8 +201,7 @@ def _config(**overrides) -> ImportConfig:
 
 
 def test_run_import_filters_before_fetching_detections(monkeypatch):
-    fetched: list = []
-    _stub_pipeline(monkeypatch, fetched)
+    captured = _stub_pipeline(monkeypatch)
 
     result = run_import(
         _config(organization_ids={1}, skip_platform_alert_ids=frozenset({102}))
@@ -201,11 +210,23 @@ def test_run_import_filters_before_fetching_detections(monkeypatch):
     assert result.ok
     # The whole point: the disabled org and the already-imported alert never
     # reach the per-sequence detection fetch.
-    assert [s["id"] for s in fetched] == [100]
+    assert [s["id"] for s in captured["fetched"]] == [100]
+
+
+def test_run_import_passes_the_configured_token_to_every_stage(monkeypatch):
+    # The worker self-mints a JWT precisely so no plaintext annotation-API
+    # password has to exist in its environment; a config token that never
+    # reaches the annotation API calls would silently defeat that.
+    captured = _stub_pipeline(monkeypatch)
+
+    run_import(_config(annotation_api_token="worker-jwt", organization_ids={1}))
+
+    assert captured["post_token"] == "worker-jwt"
+    assert captured["annotate_tokens"] == ["worker-jwt"]
 
 
 def test_run_import_reports_per_organization_stats(monkeypatch):
-    _stub_pipeline(monkeypatch, [])
+    _stub_pipeline(monkeypatch)
 
     result = run_import(
         _config(organization_ids={1}, skip_platform_alert_ids=frozenset({102}))
@@ -227,7 +248,7 @@ def test_run_import_reports_per_organization_stats(monkeypatch):
 def test_run_import_counts_unreported_lanes_as_failures(monkeypatch):
     # post_records_to_annotation_api only reports lanes it created or skipped,
     # so a lane missing from sequence_results is one that failed.
-    _stub_pipeline(monkeypatch, [])
+    _stub_pipeline(monkeypatch)
     monkeypatch.setattr(
         runner.shared,
         "post_records_to_annotation_api",
