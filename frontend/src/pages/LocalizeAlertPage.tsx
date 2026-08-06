@@ -225,7 +225,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   const frameRefs = useRef<Record<string, HTMLDivElement | null>>({});
   // Rail rows by lane, so the Tab cycle can move real DOM focus onto the row
   // it lands on — see the cycle effect below.
-  const rowRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const rowRefs = useRef<Record<number, HTMLButtonElement | null>>({});
 
   const [cardSize, setCardSize] = usePersistedTabState<CardSize>('detectionAnnotateCardSize', 'md');
   const [cropMode, setCropMode] = useState(false);
@@ -707,6 +707,10 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
 
   const workableObjects = objectStatusRows.filter(o => o.workable);
 
+  // The one frame axis every rail row renders, so segments align vertically
+  // across objects. Already chronological — `buildAlertFrameModel` sorts.
+  const frameTimestamps = frameModel.frames.map(f => f.recordedAt);
+
   // Per-object localization progress, derived from the same
   // `statusByTimestamp` the timeline segments render. Keyed by lane rather
   // than positional, so grouping the rail's rows (smoke first, false
@@ -842,6 +846,9 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
         color={object.color}
         confirmedCount={progress.confirmedCount}
         presentCount={progress.presentCount}
+        frameTimestamps={frameTimestamps}
+        statusByTimestamp={object.statusByTimestamp}
+        onFrameClick={ts => handleSegmentClick(object.laneSequenceId, ts)}
         workable={object.workable}
         smokeType={object.smokeType}
         isFalsePositive={object.isFalsePositive}

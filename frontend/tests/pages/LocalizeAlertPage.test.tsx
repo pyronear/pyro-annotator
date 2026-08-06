@@ -541,7 +541,7 @@ describe('LocalizeAlertPage', () => {
 
     // Arrival auto-focused Object 1 — exit focus first (second row click)
     // so the unfocused-active state this test pins is actually in play.
-    fireEvent.click(screen.getByTestId('localize-object-row-object-1'));
+    fireEvent.click(screen.getByRole('button', { name: 'Object 1' }));
     await waitFor(() =>
       expect(screen.getByTestId('object-status-row-0')).not.toHaveAttribute('data-selected')
     );
@@ -573,7 +573,7 @@ describe('LocalizeAlertPage', () => {
 
     // T2 is present only in lane 102 (Object 2 / detection 1003) — its cell
     // is only interactive while that object is active, so select it first.
-    fireEvent.click(screen.getByTestId('localize-object-row-object-2'));
+    fireEvent.click(screen.getByRole('button', { name: 'Object 2' }));
     fireEvent.click(screen.getByTestId(`alert-frame-cell-${T2}`));
 
     await waitFor(() => {
@@ -727,7 +727,7 @@ describe('LocalizeAlertPage', () => {
 
       // T2 is present only in lane 102 (Object 2) -> no other lane to
       // overlay. Its cell needs Object 2 active to be interactive.
-      fireEvent.click(screen.getByTestId('localize-object-row-object-2'));
+      fireEvent.click(screen.getByRole('button', { name: 'Object 2' }));
       fireEvent.click(screen.getByTestId(`alert-frame-cell-${T2}`));
       await waitFor(() => {
         expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1003');
@@ -1473,7 +1473,7 @@ describe('LocalizeAlertPage', () => {
       // And its rail row says 0 of 2 done rather than implying progress.
       // Adding an object activates it, and a selected row shows its actions
       // in the fraction's place — so deselect to read the progress off it.
-      fireEvent.click(screen.getByTestId('localize-object-row-object-3'));
+      fireEvent.click(screen.getByRole('button', { name: 'Object 3' }));
       expect(
         within(screen.getByTestId('localize-object-row-object-3')).getByText('0/2')
       ).toBeInTheDocument();
@@ -1489,8 +1489,8 @@ describe('LocalizeAlertPage', () => {
       await waitFor(() => expect(screen.getByTestId('object-status-row-2')).toBeInTheDocument());
 
       // Row click toggles focus off (add already focused it), then on again.
-      fireEvent.click(screen.getByTestId('localize-object-row-object-3'));
-      fireEvent.click(screen.getByTestId('localize-object-row-object-3'));
+      fireEvent.click(screen.getByRole('button', { name: 'Object 3' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Object 3' }));
 
       await waitFor(() => {
         expect(screen.getByTestId('localize-object-row-object-3')).toHaveAttribute(
@@ -1592,7 +1592,7 @@ describe('LocalizeAlertPage', () => {
       // Opening a frame must not silently move the session onto the queue
       // route — the whole page is mounted from the path. T2's cell needs
       // Object 2 active to be interactive (auto-select landed on Object 1).
-      fireEvent.click(screen.getByTestId('localize-object-row-object-2'));
+      fireEvent.click(screen.getByRole('button', { name: 'Object 2' }));
       fireEvent.click(screen.getByTestId(`alert-frame-cell-${T2}`));
       await waitFor(() => {
         expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1003');
@@ -1611,7 +1611,7 @@ describe('LocalizeAlertPage', () => {
 
       // T2 is present only in lane 102 (Object 2 / detection 1003); select
       // its object first so the cell is interactive.
-      fireEvent.click(screen.getByTestId('localize-object-row-object-2'));
+      fireEvent.click(screen.getByRole('button', { name: 'Object 2' }));
       fireEvent.click(screen.getByTestId(`alert-frame-cell-${T2}`));
 
       await waitFor(() => {
@@ -1642,7 +1642,7 @@ describe('LocalizeAlertPage', () => {
     it('still edits frames — a save routes through saveDetectionReview as in queue mode', async () => {
       await renderAndSettle(<LocalizeAlertPage mode="done" />, { wrapper: doneWrapper });
 
-      fireEvent.click(screen.getByTestId('localize-object-row-object-2'));
+      fireEvent.click(screen.getByRole('button', { name: 'Object 2' }));
       fireEvent.click(screen.getByTestId(`alert-frame-cell-${T2}`));
       await waitFor(() => {
         expect(screen.getByTestId('image-modal-detection-id')).toHaveTextContent('1003');
@@ -2057,7 +2057,7 @@ describe('LocalizeAlertPage', () => {
       expect(screen.getByText(/Frames — Object 1/)).toBeInTheDocument();
 
       // Selecting another object hands the CTA to it.
-      fireEvent.click(screen.getByTestId('localize-object-row-object-2'));
+      fireEvent.click(screen.getByRole('button', { name: 'Object 2' }));
       expect(
         within(screen.getByTestId('localize-active-object-actions')).getByRole('button', {
           name: 'Reclassify Object 2',
@@ -2075,7 +2075,9 @@ describe('LocalizeAlertPage', () => {
       // Arrival auto-selects Object 1 — previously the trigger for the row's
       // button swap.
       const row = within(screen.getByTestId('localize-object-row-object-1'));
-      expect(row.queryAllByRole('button')).toHaveLength(0);
+      // The row's own buttons are its header and its frame segments — never
+      // the Accept/Reclassify pair.
+      expect(row.queryByRole('button', { name: /Accept|Reclassify/ })).not.toBeInTheDocument();
       expect(row.getByText('0/1')).toBeInTheDocument();
       expect(row.getByText('1 left')).toBeInTheDocument();
     });
@@ -2091,7 +2093,7 @@ describe('LocalizeAlertPage', () => {
       }));
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
-      fireEvent.click(screen.getByTestId('localize-object-row-object-1'));
+      fireEvent.click(screen.getByRole('button', { name: 'Object 1' }));
       fireEvent.click(
         within(screen.getByTestId('localize-active-object-actions')).getByRole('button', {
           name: "Accept Object 1's boxes",
@@ -2122,7 +2124,7 @@ describe('LocalizeAlertPage', () => {
       mockAllFramesAccepted();
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
-      fireEvent.click(screen.getByTestId('localize-object-row-object-1'));
+      fireEvent.click(screen.getByRole('button', { name: 'Object 1' }));
 
       await waitFor(() => {
         const cta = within(screen.getByTestId('localize-active-object-actions'));
@@ -2412,7 +2414,7 @@ describe('LocalizeAlertPage', () => {
     it("clicking a rail row navigates to that object's selection URL", async () => {
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
-      fireEvent.click(screen.getByTestId('localize-object-row-object-2'));
+      fireEvent.click(screen.getByRole('button', { name: 'Object 2' }));
 
       expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/102');
       expect(screen.getByText(/Frames — Object 2/)).toBeInTheDocument();
@@ -2421,12 +2423,12 @@ describe('LocalizeAlertPage', () => {
     it('a second click on the focused row exits focus but keeps the object active (URL unchanged)', async () => {
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
-      fireEvent.click(screen.getByTestId('localize-object-row-object-2'));
+      fireEvent.click(screen.getByRole('button', { name: 'Object 2' }));
       await waitFor(() =>
         expect(screen.getByTestId('object-status-row-1')).toHaveAttribute('data-selected', 'true')
       );
 
-      fireEvent.click(screen.getByTestId('localize-object-row-object-2'));
+      fireEvent.click(screen.getByRole('button', { name: 'Object 2' }));
 
       // Focus ended: the row loses the selected treatment and crop restores
       // to its pre-focus off state…
@@ -2449,7 +2451,7 @@ describe('LocalizeAlertPage', () => {
       // object is active (auto-select landed on Object 1), and closing from
       // lane 102 also proves the close target is the EDITED object's URL,
       // not the arrival auto-select's.
-      fireEvent.click(screen.getByTestId('localize-object-row-object-2'));
+      fireEvent.click(screen.getByRole('button', { name: 'Object 2' }));
       // T2 is present only in lane 102 (Object 2 / detection 1003).
       fireEvent.click(screen.getByTestId(`alert-frame-cell-${T2}`));
       await screen.findByTestId('image-modal');
@@ -2668,19 +2670,22 @@ describe('LocalizeAlertPage', () => {
         expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/101')
       );
 
-      // As after a real click: the browser focuses the clicked row, and the
-      // rows keep their own Enter/Space activation.
-      const row1 = screen.getByTestId('localize-object-row-object-1');
+      // As after a real click: the browser focuses the clicked row's header,
+      // and a native button keeps its own Enter/Space activation.
+      const row1 = screen.getByRole('button', { name: 'Object 1' });
       row1.focus();
 
       fireEvent.keyDown(document, { key: 'Tab' });
 
       expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/102');
-      const row2 = screen.getByTestId('localize-object-row-object-2');
+      const row2 = screen.getByRole('button', { name: 'Object 2' });
       expect(document.activeElement).toBe(row2);
-      // Enter lands on the cycled-to row: without focus following the cycle,
-      // it would fire row 1's own handler and yank the selection back.
-      fireEvent.keyDown(row2, { key: 'Enter' });
+      // Activation lands on the cycled-to row: without focus following the
+      // cycle, the browser would fire row 1's handler and yank the
+      // selection back. (Native Enter->click is browser behavior jsdom
+      // doesn't synthesize, so the claim is made with a click on the
+      // focused element.)
+      fireEvent.click(row2);
       expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/102');
     });
 
@@ -2707,7 +2712,7 @@ describe('LocalizeAlertPage', () => {
 
       // Reclassify sits in the CTA bar for the active object, so select
       // Object 2 first.
-      fireEvent.click(screen.getByTestId('localize-object-row-object-2'));
+      fireEvent.click(screen.getByRole('button', { name: 'Object 2' }));
       fireEvent.click(
         within(screen.getByTestId('localize-active-object-actions')).getByRole('button', {
           name: 'Reclassify Object 2',
@@ -2729,7 +2734,7 @@ describe('LocalizeAlertPage', () => {
       // from.
       await renderAndSettle(<LocalizeAlertPage mode="done" />, { wrapper: doneWrapper });
 
-      fireEvent.click(screen.getByTestId('localize-object-row-object-2'));
+      fireEvent.click(screen.getByRole('button', { name: 'Object 2' }));
       fireEvent.click(
         within(screen.getByTestId('localize-active-object-actions')).getByRole('button', {
           name: 'Reclassify Object 2',
@@ -2761,7 +2766,7 @@ describe('LocalizeAlertPage', () => {
       });
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
-      fireEvent.click(screen.getByTestId('localize-object-row-object-2'));
+      fireEvent.click(screen.getByRole('button', { name: 'Object 2' }));
       const cta = within(screen.getByTestId('localize-active-object-actions'));
       // Context objects carry no Accept boxes action, but stay correctable.
       expect(cta.queryByRole('button', { name: /Accept/ })).not.toBeInTheDocument();
@@ -2794,7 +2799,7 @@ describe('LocalizeAlertPage', () => {
       fireEvent.click(screen.getByRole('button', { name: /False positives/ }));
 
       // Still no localization action — but the classification is correctable.
-      fireEvent.click(await screen.findByTestId('localize-object-row-object-2'));
+      fireEvent.click(await screen.findByRole('button', { name: 'Object 2' }));
       const cta = within(screen.getByTestId('localize-active-object-actions'));
       expect(cta.queryByRole('button', { name: /Accept/ })).not.toBeInTheDocument();
       fireEvent.click(cta.getByRole('button', { name: 'Reclassify Object 2' }));
