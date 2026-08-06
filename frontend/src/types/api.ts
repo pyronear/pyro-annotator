@@ -292,6 +292,7 @@ export interface SequenceGroupListItem {
   id: number;
   camera_id: number;
   camera_name: string;
+  organisation_name: string;
   azimuth: number;
   representative_bbox: SequenceGroupRepresentativeBbox;
   smoke_type: SmokeType | null;
@@ -305,6 +306,9 @@ export interface SequenceGroupListItem {
   labeled_at: string | null;
   created_at: string;
   member_count: number;
+  // Distinct humans who annotated any of the object's sightings, ordered by
+  // first contribution. The worker's machine writes never appear.
+  annotators: string[];
 }
 
 export interface SequenceGroupStats {

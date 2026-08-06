@@ -39,12 +39,14 @@ const emptyPage = { items: [], page: 1, pages: 0, size: 50, total: 0 };
 const group = {
   id: 7,
   camera_name: 'CAM_07',
+  organisation_name: 'SDIS 07',
   azimuth: 120,
   member_count: 5,
   smoke_type: null,
   false_positive_type: null,
   is_validated: false,
   created_at: '2026-08-01T10:00:00Z',
+  annotators: ['alice', 'bob'],
 };
 
 describe('SequenceGroupsListPage', () => {
@@ -143,7 +145,15 @@ describe('SequenceGroupsListPage', () => {
     expect(row?.className).toContain('hover:bg-ash');
     expect(row?.className).not.toContain('hover:bg-blue-50');
 
-    const headerLabels = ['Camera', 'Created', 'Azimuth', 'Sequences', 'Label', 'Reviewed'];
+    const headerLabels = [
+      'Camera',
+      'Organisation',
+      'Created',
+      'Azimuth',
+      'Sightings',
+      'Label',
+      'Annotators',
+    ];
     const positions = headerLabels.map(l => {
       const el = screen.getByText(l);
       return Array.from(document.querySelectorAll('th')).findIndex(th => th.contains(el));
@@ -214,15 +224,39 @@ describe('SequenceGroupsListPage', () => {
     });
     renderAt('/classify/groups');
     await waitFor(() => expect(screen.getByText('CAM_07')).toBeTruthy());
-    // One tooltip per labeled column (Camera, Azimuth, Sequences, Label,
-    // Reviewed, Created) plus one on the row's "to label" badge.
-    expect(within(screen.getByRole('table')).getAllByRole('tooltip')).toHaveLength(7);
-    expect(screen.getByText('Number of sequences showing this object')).toBeTruthy();
+    // One tooltip per labeled column (Camera, Organisation, Created, Azimuth,
+    // Sightings, Label, Annotators) plus one on the row's "to label" badge.
+    expect(within(screen.getByRole('table')).getAllByRole('tooltip')).toHaveLength(8);
+    expect(screen.getByText('Times this object was seen')).toBeTruthy();
     expect(screen.getByText(/propagates to every sequence/)).toBeTruthy();
     expect(screen.getByText('Camera viewing direction, in degrees')).toBeTruthy();
-    // Reviewed means the grouping was confirmed, not the label — a group can
-    // be validated while still unlabeled.
-    expect(screen.getByText(/confirmed the sequences really show the same object/)).toBeTruthy();
+    expect(screen.getByText('Organisation operating the camera')).toBeTruthy();
+    expect(screen.getByText("Who annotated this object's sightings")).toBeTruthy();
+  });
+
+  it('renders the organisation and the annotators of each object', async () => {
+    vi.mocked(apiClient.getSequenceGroups).mockResolvedValue({
+      items: [group, { ...group, id: 8, camera_name: 'CAM_08', annotators: [] }],
+      page: 1,
+      pages: 1,
+      size: 50,
+      total: 2,
+    });
+    renderAt('/classify/groups');
+    await waitFor(() => expect(screen.getByText('CAM_07')).toBeTruthy());
+
+    const row = screen.getByText('CAM_07').closest('tr')!;
+    expect(within(row).getByText('SDIS 07')).toBeTruthy();
+    expect(within(row).getByText('alice, bob')).toBeTruthy();
+    // Nobody has annotated the second object yet.
+    const untouched = screen.getByText('CAM_08').closest('tr')!;
+    expect(within(untouched).getByText('—')).toBeTruthy();
+  });
+
+  it('the subtitle describes propagation in terms of sightings', async () => {
+    renderAt('/classify/groups');
+    await waitFor(() => expect(screen.getByText('Recurring objects')).toBeTruthy());
+    expect(screen.getByText('Label an object once to label every sighting of it.')).toBeTruthy();
   });
 
   it('the "to label" badge explains how to get the group labeled, per validation state', async () => {

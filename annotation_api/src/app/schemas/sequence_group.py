@@ -82,6 +82,7 @@ class SequenceGroupListItem(BaseModel):
     id: int
     camera_id: int
     camera_name: str
+    organisation_name: str
     azimuth: int
     representative_bbox: RepresentativeBbox
     smoke_type: Optional[SmokeType]
@@ -95,6 +96,9 @@ class SequenceGroupListItem(BaseModel):
     labeled_at: Optional[datetime]
     created_at: datetime
     member_count: int
+    # Distinct humans who contributed to any member sequence's annotation,
+    # ordered by first contribution. Hydrated after pagination, not in SQL.
+    annotators: List[str] = []
 
 
 class SequenceGroupStats(BaseModel):

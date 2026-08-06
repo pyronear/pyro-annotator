@@ -18,14 +18,22 @@ two seeded sequences have non-overlapping bboxes, so they never share a
 group organically.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import text
+from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.models import AlertSkip, Sequence, User
+from app.models import (
+    AlertSkip,
+    Sequence,
+    SequenceAnnotation,
+    SequenceAnnotationContribution,
+    SequenceAnnotationProcessingStage,
+    User,
+)
 from app.services.group_assignment import assign_ungrouped_sequences
 
 
@@ -94,6 +102,7 @@ async def _seed_group_with_members(
     created_at: datetime,
     alert_api_id_start: int,
     camera_name: str = "cam",
+    organisation_name: str = "org",
     azimuth: int = 0,
     smoke_type: str | None = None,
 ) -> int:
@@ -134,7 +143,7 @@ async def _seed_group_with_members(
                 camera_name=camera_name,
                 camera_id=1,
                 is_wildfire_alertapi="wildfire_smoke",
-                organisation_name="org",
+                organisation_name=organisation_name,
                 lat=0.0,
                 lon=0.0,
                 organisation_id=1,
@@ -143,6 +152,57 @@ async def _seed_group_with_members(
         )
     await session.commit()
     return group_id
+
+
+async def _contribute(
+    session: AsyncSession,
+    group_id: int,
+    member_index: int,
+    user_id: int,
+    at: datetime,
+) -> None:
+    """Attribute a contribution to the group's member at `member_index`,
+    creating that member's annotation row on first use."""
+    sequence_ids = (
+        (
+            await session.execute(
+                select(Sequence.id)
+                .where(Sequence.sequence_group_id == group_id)
+                .order_by(Sequence.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    sequence_id = sequence_ids[member_index]
+    annotation_id = (
+        await session.execute(
+            select(SequenceAnnotation.id).where(
+                SequenceAnnotation.sequence_id == sequence_id
+            )
+        )
+    ).scalar_one_or_none()
+    if annotation_id is None:
+        annotation = SequenceAnnotation(
+            sequence_id=sequence_id,
+            has_smoke=False,
+            has_false_positives=False,
+            false_positive_types=[],
+            smoke_types=[],
+            has_missed_smoke=False,
+            is_unsure=False,
+            annotation={"sequences_bbox": []},
+            processing_stage=SequenceAnnotationProcessingStage.ANNOTATED,
+        )
+        session.add(annotation)
+        await session.flush()
+        annotation_id = annotation.id
+    session.add(
+        SequenceAnnotationContribution(
+            sequence_annotation_id=annotation_id, user_id=user_id, contributed_at=at
+        )
+    )
+    await session.commit()
 
 
 async def _create_placeholder_annotation(client: AsyncClient, sequence_id: int) -> None:
@@ -231,6 +291,77 @@ async def test_list_groups_includes_camera_name(
     assert resp.status_code == 200
     row = next(i for i in resp.json()["items"] if i["id"] == gid)
     assert row["camera_name"] == "Serre de Barre"
+
+
+@pytest.mark.asyncio
+async def test_list_groups_includes_organisation_name(
+    authenticated_client: AsyncClient,
+    async_session: AsyncSession,
+):
+    """List items carry the organisation of their member sequences."""
+    gid = await _seed_group_with_members(
+        async_session,
+        n_members=3,
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        alert_api_id_start=450,
+        organisation_name="SDIS 07",
+    )
+
+    resp = await authenticated_client.get("/sequence_groups/")
+    assert resp.status_code == 200
+    row = next(i for i in resp.json()["items"] if i["id"] == gid)
+    assert row["organisation_name"] == "SDIS 07"
+
+
+@pytest.mark.asyncio
+async def test_list_groups_lists_annotators_excluding_worker(
+    authenticated_client: AsyncClient,
+    async_session: AsyncSession,
+    test_user: User,
+    regular_user: User,
+    worker_user: User,
+):
+    """Annotators are the distinct humans who touched any member sequence,
+    ordered by first contribution; the worker's machine writes never show."""
+    gid = await _seed_group_with_members(
+        async_session,
+        n_members=3,
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        alert_api_id_start=460,
+    )
+    at = datetime(2026, 1, 2, tzinfo=timezone.utc)
+    await _contribute(async_session, gid, 0, worker_user.id, at)
+    await _contribute(async_session, gid, 1, regular_user.id, at + timedelta(minutes=1))
+    await _contribute(async_session, gid, 0, test_user.id, at + timedelta(minutes=2))
+    # Duplicate contribution by an already-listed human collapses.
+    await _contribute(async_session, gid, 2, regular_user.id, at + timedelta(minutes=3))
+
+    resp = await authenticated_client.get("/sequence_groups/")
+    assert resp.status_code == 200
+    row = next(i for i in resp.json()["items"] if i["id"] == gid)
+    assert row["annotators"] == [regular_user.username, test_user.username]
+
+
+@pytest.mark.asyncio
+async def test_list_groups_annotators_empty_without_human_contributions(
+    authenticated_client: AsyncClient,
+    async_session: AsyncSession,
+    worker_user: User,
+):
+    gid = await _seed_group_with_members(
+        async_session,
+        n_members=3,
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        alert_api_id_start=470,
+    )
+    await _contribute(
+        async_session, gid, 0, worker_user.id, datetime(2026, 1, 2, tzinfo=timezone.utc)
+    )
+
+    resp = await authenticated_client.get("/sequence_groups/")
+    assert resp.status_code == 200
+    row = next(i for i in resp.json()["items"] if i["id"] == gid)
+    assert row["annotators"] == []
 
 
 @pytest.mark.asyncio

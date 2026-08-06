@@ -31,6 +31,7 @@ from app.schemas.sequence_group import (
     SequenceGroupStats,
     SequenceGroupUpdate,
 )
+from app.services.annotators import human_annotators, merge_annotators
 
 router = APIRouter()
 
@@ -82,6 +83,7 @@ async def list_sequence_groups(
             func.count(Sequence.id).label("member_count"),
             # All members share one camera; min() just picks that value.
             func.min(Sequence.camera_name).label("camera_name"),
+            func.min(Sequence.organisation_name).label("organisation_name"),
         )
         .where(Sequence.sequence_group_id.is_not(None))
         .group_by(Sequence.sequence_group_id)
@@ -112,6 +114,7 @@ async def list_sequence_groups(
             SequenceGroup.created_at,
             member_count_subq.c.member_count,
             member_count_subq.c.camera_name,
+            member_count_subq.c.organisation_name,
         )
         # Inner-join so small groups (no row in the subquery) drop out.
         .join(member_count_subq, member_count_subq.c.group_id == SequenceGroup.id)
@@ -139,7 +142,28 @@ async def list_sequence_groups(
 
     # `unique=False` is required because the row tuple includes the JSONB
     # `representative_bbox`, which is a dict and therefore not hashable.
-    return await apaginate(session, query, params, unique=False)
+    page = await apaginate(session, query, params, unique=False)
+
+    # Attribution is per member sequence, so it can't ride the grouped list
+    # query — hydrate it for the current page only.
+    members = (
+        await session.execute(
+            select(Sequence.sequence_group_id, Sequence.id).where(
+                Sequence.sequence_group_id.in_([item.id for item in page.items])
+            )
+        )
+    ).all()
+    members_by_group: dict[int, list[int]] = {}
+    for group_id, sequence_id in members:
+        members_by_group.setdefault(group_id, []).append(sequence_id)
+    annotators_by_seq = await human_annotators(
+        session, [sequence_id for _, sequence_id in members]
+    )
+    for item in page.items:
+        item.annotators = merge_annotators(
+            annotators_by_seq, members_by_group.get(item.id, [])
+        )
+    return page
 
 
 @router.get(

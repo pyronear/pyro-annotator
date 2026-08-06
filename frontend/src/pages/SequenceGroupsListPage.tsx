@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Popover } from '@headlessui/react';
-import { Loader2, AlertCircle, Check, Info, Layers, ShieldCheck, ChevronRight } from 'lucide-react';
+import { Loader2, AlertCircle, Check, Info, Layers, ChevronRight } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { SequenceGroupStats } from '@/types/api';
 import { classifyGroup, classifyGroups, ROUTES, SequenceGroupsFilter } from '@/utils/routes';
@@ -154,7 +154,7 @@ export default function SequenceGroupsListPage({
             </Popover.Panel>
           </Popover>
         </div>
-        <p className="text-gray-600">Label an object once to label every sequence it appears in.</p>
+        <p className="text-gray-600">Label an object once to label every sighting of it.</p>
       </div>
 
       <div className="flex justify-center">
@@ -277,6 +277,7 @@ export default function SequenceGroupsListPage({
                       onSort: () => handleSort('camera_name'),
                     }}
                   />
+                  <ColumnHeader label="Organisation" tip="Organisation operating the camera" />
                   <ColumnHeader
                     label="Created"
                     tip="When this object's sequences were first grouped"
@@ -296,8 +297,8 @@ export default function SequenceGroupsListPage({
                     }}
                   />
                   <ColumnHeader
-                    label="Sequences"
-                    tip="Number of sequences showing this object"
+                    label="Sightings"
+                    tip="Times this object was seen"
                     sort={{
                       active: orderBy === 'member_count',
                       direction: orderDirection,
@@ -308,11 +309,7 @@ export default function SequenceGroupsListPage({
                     label="Label"
                     tip="Object label — propagates to every sequence once the group is validated"
                   />
-                  <ColumnHeader
-                    label="Reviewed"
-                    tip="Whether a human confirmed the sequences really show the same object — the label propagates once confirmed"
-                    align="right"
-                  />
+                  <ColumnHeader label="Annotators" tip="Who annotated this object's sightings" />
                   <th className={HEADER_CELL_CLASSES}>
                     <span className="sr-only">Open</span>
                   </th>
@@ -339,6 +336,7 @@ export default function SequenceGroupsListPage({
                         {g.camera_name}
                       </Link>
                     </td>
+                    <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>{g.organisation_name}</td>
                     <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
                       {formatDateTime(g.created_at)}
                     </td>
@@ -364,23 +362,9 @@ export default function SequenceGroupsListPage({
                         </span>
                       )}
                     </td>
-                    <td className={CELL_CLASSES}>
-                      {g.is_validated ? (
-                        <span
-                          className="inline-flex items-center gap-1 font-body text-xs font-semibold text-pine"
-                          title={
-                            g.validated_at
-                              ? `Validated ${formatDateTime(g.validated_at)}`
-                              : undefined
-                          }
-                        >
-                          <ShieldCheck className="w-3.5 h-3.5" /> validated
-                          {/* Legacy validations (pre-attribution) have no user —
-                              the badge alone is the whole cell for those. */}
-                          {g.validated_by_username && (
-                            <span className="font-normal">· {g.validated_by_username}</span>
-                          )}
-                        </span>
+                    <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>
+                      {g.annotators.length > 0 ? (
+                        g.annotators.join(', ')
                       ) : (
                         <span className="text-haze">—</span>
                       )}
