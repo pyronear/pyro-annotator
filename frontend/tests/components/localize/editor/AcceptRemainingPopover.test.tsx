@@ -63,6 +63,22 @@ const ENTRIES: FilmstripEntry[] = [
   },
 ];
 
+// Committed, then a mid-run frame the object was never detected on (the
+// importer only creates lane detections above threshold), then acceptable.
+const ENTRIES_WITH_HOLE: FilmstripEntry[] = [
+  ENTRIES[0],
+  {
+    recordedAt: t(1),
+    detectionId: 998,
+    inObject: false,
+    run: 'object',
+    committedSource: null,
+    availableSource: null,
+    xyxyn: null,
+  },
+  { ...ENTRIES[1], recordedAt: t(2) },
+];
+
 function renderPopover(entries: FilmstripEntry[] = ENTRIES) {
   return render(
     <AcceptRemainingPopover
@@ -167,6 +183,35 @@ describe('AcceptRemainingPopover frame context', () => {
     expect(legend).toHaveTextContent('committed');
     expect(legend).toHaveTextContent('model box to accept');
     expect(legend).not.toHaveTextContent('no box');
+  });
+
+  it('flags mid-run frames the object was never detected on as potential gaps', () => {
+    renderPopover(ENTRIES_WITH_HOLE);
+
+    expect(screen.getByTestId('status-segment-0-1')).toHaveAttribute(
+      'aria-label',
+      'Object 2, frame 2: undetected'
+    );
+    expect(screen.getByTestId('accept-remaining-legend')).toHaveTextContent('potential gap');
+    expect(screen.getByTestId('accept-remaining-coverage-warning')).toHaveTextContent(
+      '1 inside its run it was never detected on'
+    );
+  });
+
+  it('nudges to check the frames before and after the object as well', () => {
+    // ENTRIES ends with one frame after the object's run and none before.
+    renderPopover();
+
+    const warning = screen.getByTestId('accept-remaining-coverage-warning');
+    expect(warning).toHaveTextContent('1 after it last appears');
+    expect(warning).not.toHaveTextContent('before');
+  });
+
+  it('shows no coverage nudge when the object spans every alert frame', () => {
+    renderPopover(ENTRIES.slice(0, 3));
+
+    expect(screen.queryByTestId('accept-remaining-coverage-warning')).not.toBeInTheDocument();
+    expect(screen.getByTestId('accept-remaining-legend')).not.toHaveTextContent('potential gap');
   });
 
   it('never puts the playhead on a gap frame via a sibling detection id', () => {

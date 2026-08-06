@@ -320,6 +320,31 @@ describe('ObjectStatusStrip', () => {
     expect(selectedRow).toHaveClass('border-l-pine');
   });
 
+  it('renders undetected as a neutral outline, distinct from empty and absent', () => {
+    render(
+      <ObjectStatusStrip
+        objects={[
+          {
+            label: 'Object 1',
+            color: '#3b82f6',
+            statusByTimestamp: { [t1]: 'undetected', [t2]: 'empty', [t3]: 'absent' },
+          },
+        ]}
+      />
+    );
+
+    const undetected = screen.getByTestId('status-segment-0-0');
+    expect(undetected).toHaveAttribute('aria-label', 'Object 1, frame 1: undetected');
+    // Haze outline, not the object's color — nothing of the object is here.
+    expect(undetected).toHaveStyle({ boxShadow: 'inset 0 0 0 1px #767B72' });
+
+    // empty keeps the object-color outline; absent stays blank.
+    expect(screen.getByTestId('status-segment-0-1')).toHaveStyle({
+      boxShadow: 'inset 0 0 0 1px #3b82f6',
+    });
+    expect(screen.getByTestId('status-segment-0-2')).not.toHaveAttribute('style');
+  });
+
   describe('bare variant', () => {
     it('drops the card chrome, title, and label cluster, keeping the segments', () => {
       const { container } = render(

@@ -33,10 +33,11 @@
  */
 
 import { useState, type CSSProperties } from 'react';
-import { X } from 'lucide-react';
+import { AlertCircle, X } from 'lucide-react';
 import CroppedImageSequence from '@/components/annotation/CroppedImageSequence';
 import {
   ObjectStatusStrip,
+  UNDETECTED_OUTLINE,
   type ObjectStatusStripStatus,
 } from '@/components/sequence-annotation/ObjectStatusStrip';
 import type { FilmstripEntry } from '@/utils/annotation/objectFilmstrip';
@@ -59,9 +60,15 @@ export interface AcceptRemainingPopoverProps {
   onCancel: () => void;
 }
 
-/** Pre-accept status of one alert frame, in ObjectStatusStrip's vocabulary. */
+/**
+ * Pre-accept status of one alert frame, in ObjectStatusStrip's vocabulary.
+ * A frame inside the object's run that the object was never detected on is
+ * `undetected` — a potential hole in the track (the importer only creates
+ * lane detections above threshold, and fainter smoke hides exactly there) —
+ * while frames before/after the run are plain `absent`.
+ */
 function entryStatus(entry: FilmstripEntry): ObjectStatusStripStatus {
-  if (!entry.inObject) return 'absent';
+  if (!entry.inObject) return entry.run === 'object' ? 'undetected' : 'absent';
   if (entry.committedSource) return 'confirmed';
   if (entry.availableSource) return 'pending';
   return 'empty';
@@ -110,10 +117,29 @@ export function AcceptRemainingPopover({
       swatchStyle: { boxShadow: `inset 0 0 0 1px ${objectColor}` },
     });
   }
+  if (present.has('undetected')) {
+    legendItems.push({
+      label: 'potential gap',
+      swatchStyle: { boxShadow: `inset 0 0 0 1px ${UNDETECTED_OUTLINE}` },
+    });
+  }
+
+  // Frames of the alert this object has no box on — before it first appears,
+  // holes inside its run, after it last appears. None of them block, but all
+  // of them are where missed smoke lives, so the nudge lists each stretch.
+  const beforeCount = entries.filter(e => !e.inObject && e.run === 'before').length;
+  const holeCount = entries.filter(e => !e.inObject && e.run === 'object').length;
+  const afterCount = entries.filter(e => !e.inObject && e.run === 'after').length;
+  const unboxedParts = [
+    beforeCount > 0 ? `${beforeCount} before it first appears` : null,
+    holeCount > 0 ? `${holeCount} inside its run it was never detected on` : null,
+    afterCount > 0 ? `${afterCount} after it last appears` : null,
+  ].filter((part): part is string => part !== null);
+  const unboxedTotal = beforeCount + holeCount + afterCount;
 
   return (
     <div
-      className="absolute left-1/2 top-full z-20 mt-2 w-[22rem] -translate-x-1/2 rounded-card border border-line bg-paper p-5 shadow-[0_8px_24px_rgba(32,38,31,0.12)]"
+      className="absolute left-1/2 top-full z-20 mt-2 w-[32rem] -translate-x-1/2 rounded-card border border-line bg-paper p-5 shadow-[0_8px_24px_rgba(32,38,31,0.12)]"
       role="dialog"
       aria-label={`Accept the model's boxes for ${objectLabel}`}
       data-testid="accept-remaining-popover"
@@ -134,57 +160,56 @@ export function AcceptRemainingPopover({
       </div>
       {/* The preview leads: it is the point of the dialog — the reader sees
           the finished track first and the sentence then explains the deal. */}
-      <div className="mt-3">
-        <p className="mb-2 font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze">
-          After accepting
-        </p>
-        <CroppedImageSequence
-          bboxes={previewBoxes}
-          sequenceId={sequenceId}
-          accentColor={objectColor}
-          // The boxes are the whole point of this preview: it answers "will
-          // these track the plume?", and without them it only shows that the
-          // plume is there. `showBoxes` arrived on main while this branch was
-          // in flight.
-          showBoxes
-          maxSize="min(100%, 15rem)"
-          className="mx-auto"
-          onFrameChange={(_index, detectionId) => setLoopDetectionId(detectionId ?? null)}
-        />
-        {/* Counter above the strip, not beside the eyebrow: it counts the
-            same frames the strip draws, and up there it squeezed the label
-            into wrapping. */}
-        <div className="mt-3">
-          {currentEntry && (
-            <div className="mb-1 text-right">
-              <span
-                data-testid="accept-remaining-frame-counter"
-                className="whitespace-nowrap font-data text-detail tabular-nums text-haze"
-              >
-                Frame {currentEntryIndex + 1} of {entries.length}
-              </span>
-            </div>
-          )}
-          <ObjectStatusStrip
-            variant="bare"
-            objects={[{ label: objectLabel, color: objectColor, statusByTimestamp }]}
-            playhead={
-              currentEntry ? { objectIndex: 0, timestamp: currentEntry.recordedAt } : undefined
-            }
+      {/* The loop and its timeline sit side by side: a grid with a definite
+          15rem track for the crop (never a flex row — the loop's root
+          shrink-fits to zero there), the counter/strip/legend column filling
+          the rest, anchored to the crop's bottom edge. */}
+      <div className="mt-4">
+        <div className="grid grid-cols-[15rem,1fr] items-end gap-4">
+          <CroppedImageSequence
+            bboxes={previewBoxes}
+            sequenceId={sequenceId}
+            accentColor={objectColor}
+            // The boxes are the whole point of this preview: it answers "will
+            // these track the plume?", and without them it only shows that the
+            // plume is there. `showBoxes` arrived on main while this branch was
+            // in flight.
+            showBoxes
+            maxSize="min(100%, 15rem)"
+            onFrameChange={(_index, detectionId) => setLoopDetectionId(detectionId ?? null)}
           />
-          {legendItems.length > 0 && (
-            <div data-testid="accept-remaining-legend" className="mt-2 space-y-1">
-              {legendItems.map(item => (
-                <div
-                  key={item.label}
-                  className="flex items-center gap-1.5 font-data text-detail text-haze"
+          <div>
+            {currentEntry && (
+              <div className="mb-1 text-right">
+                <span
+                  data-testid="accept-remaining-frame-counter"
+                  className="whitespace-nowrap font-data text-detail tabular-nums text-haze"
                 >
-                  <span aria-hidden className="h-1.5 w-4 rounded-full" style={item.swatchStyle} />
-                  {item.label}
-                </div>
-              ))}
-            </div>
-          )}
+                  Frame {currentEntryIndex + 1} of {entries.length}
+                </span>
+              </div>
+            )}
+            <ObjectStatusStrip
+              variant="bare"
+              objects={[{ label: objectLabel, color: objectColor, statusByTimestamp }]}
+              playhead={
+                currentEntry ? { objectIndex: 0, timestamp: currentEntry.recordedAt } : undefined
+              }
+            />
+            {legendItems.length > 0 && (
+              <div data-testid="accept-remaining-legend" className="mt-2 space-y-1">
+                {legendItems.map(item => (
+                  <div
+                    key={item.label}
+                    className="flex items-center gap-1.5 font-data text-detail text-haze"
+                  >
+                    <span aria-hidden className="h-1.5 w-4 rounded-full" style={item.swatchStyle} />
+                    {item.label}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -195,6 +220,20 @@ export function AcceptRemainingPopover({
         Take them all, exactly as the loop above shows. Boxes you picked or drew yourself stay as
         they are.
       </p>
+
+      {unboxedTotal > 0 && (
+        <div
+          data-testid="accept-remaining-coverage-warning"
+          className="mt-4 flex items-start gap-2 rounded-lg bg-ash px-3 py-2 font-body text-detail text-char"
+        >
+          <AlertCircle aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-haze" />
+          <p>
+            {objectLabel} has no box on{' '}
+            {unboxedTotal === 1 ? 'one other frame' : `${unboxedTotal} other frames`} of the alert:{' '}
+            {unboxedParts.join(', ')}. Check them, smoke may be visible there too.
+          </p>
+        </div>
+      )}
 
       {gapCount > 0 && (
         <p

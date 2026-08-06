@@ -5,8 +5,9 @@
  * where each frame is its own button reporting that object's status at that
  * timestamp: `confirmed` (solid fill), `pending` (reduced-opacity fill — a
  * model box waiting to be accepted), `empty` (outline only — on this frame
- * but with nothing on it yet), or `absent` (neutral track, no fill — not on
- * this frame at all).
+ * but with nothing on it yet), `undetected` (haze outline — inside the
+ * object's span but never detected there, a potential hole in the track),
+ * or `absent` (neutral track, no fill — not on this frame at all).
  *
  * `empty` is deliberately distinct from `pending`: collapsing the two made a
  * frame with nothing on it look identical to one with a box to accept, which
@@ -42,7 +43,14 @@
 
 import React from 'react';
 
-export type ObjectStatusStripStatus = 'confirmed' | 'pending' | 'empty' | 'absent';
+export type ObjectStatusStripStatus = 'confirmed' | 'pending' | 'empty' | 'undetected' | 'absent';
+
+/**
+ * Outline for `undetected` segments — the haze token, hard-coded because
+ * inline styles cannot reach Tailwind's palette. Exported so a host's legend
+ * can draw a matching swatch.
+ */
+export const UNDETECTED_OUTLINE = '#767B72';
 
 export interface ObjectStatusStripObject {
   /** e.g. "Object 2" — same numbering as the object's card. */
@@ -134,6 +142,20 @@ function segmentAppearance(
         boxShadow: playhead
           ? `inset 0 0 0 1px ${color}, ${PLAYHEAD_SHADOW}`
           : `inset 0 0 0 1px ${color}`,
+      },
+    };
+  }
+  if (status === 'undetected') {
+    // Inside the object's detected span but never detected on this frame —
+    // a potential hole in the track. Haze outline, not the object's color:
+    // nothing of the object is here to show, but the frame is not blank
+    // context either.
+    return {
+      className: `${SEGMENT_BASE_CLASS} opacity-50`,
+      style: {
+        boxShadow: playhead
+          ? `inset 0 0 0 1px ${UNDETECTED_OUTLINE}, ${PLAYHEAD_SHADOW}`
+          : `inset 0 0 0 1px ${UNDETECTED_OUTLINE}`,
       },
     };
   }
