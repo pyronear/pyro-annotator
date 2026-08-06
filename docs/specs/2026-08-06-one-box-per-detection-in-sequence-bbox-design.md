@@ -69,7 +69,8 @@ a third of the data.
 
 ## Design
 
-Three files. No new modules.
+Four files. No new modules. (The fourth, section 2b, was found during
+implementation — the original design said three.)
 
 ### 1. Shared union geometry
 
@@ -150,6 +151,32 @@ exact-coordinate matching.
 
 The existing per-box `try/except` that skips invalid coordinates is preserved,
 now wrapping the merged box.
+
+### 2b. The importer's annotation writer
+
+Found during implementation, not in the original design. `build_single_track_annotation`
+(`object_split.py:367`) is a **third** `SequenceBBox` producer — the importer's
+client-side annotation writer. It flattens each detection's `xyxyns` into one
+`BoundingBox` per box, so several boxes on one frame become several entries
+sharing a `detection_id`.
+
+Post-#331 the split path cannot feed it duplicates, but **#331 deliberately
+exempted the fallback path**: when `split_sequence_records` raises or finds no
+objects (`object_split.py:168,335`), records pass through untouched
+(`dict(r)`), so a raw multi-box frame reaches the writer. With the validator in
+place, that import raises rather than degrading.
+
+The same union applies here, grouping by `detection_id` before constructing.
+#331's reason for exempting fallback — that unioning could merge distinct
+plumes — does not carry over: `build_single_track_annotation` already places
+every box from every detection into a *single* `sequences_bbox` track, so it has
+already declared those boxes to be one object. Unioning them merges nothing the
+function kept apart.
+
+The existing test asserting the old flattening
+(`test_multiple_boxes_on_one_detection_become_multiple_track_entries`) is
+renamed and re-pointed at the union, since it encodes exactly the shape this
+issue outlaws.
 
 ### 3. The validator
 
@@ -233,6 +260,13 @@ kind that misled #324 at 10,268 detections.
 
 If it comes back non-zero, this branch does not merge as-is: repairing existing
 rows is its own ticket, not scope here.
+
+**A zero is only meaningful if the sample is non-empty.** Report the box,
+object and annotation counts alongside it. Run against the local dev stack on
+2026-08-06 the query returned zero rows — but that database held 518 sequences
+and 10,902 detections with **zero sequence annotations**, so the result proves
+nothing. The gate is therefore still outstanding and must run wherever this
+deploys.
 
 ## Out of scope
 
