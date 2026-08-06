@@ -8,7 +8,7 @@ from typing import Sequence as Seq
 import pytest
 from httpx import AsyncClient
 from PIL import Image
-from sqlalchemy import update
+from sqlalchemy import delete, update
 
 from app import models
 from app.services import storage as storage_module
@@ -867,3 +867,39 @@ async def test_export_alerts_requires_auth(async_client: AsyncClient):
 async def test_old_export_detections_removed(authenticated_client: AsyncClient):
     resp = await authenticated_client.get("/export/detections")
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_export_alerts_excludes_skipped_alerts(
+    authenticated_client: AsyncClient,
+    sequence_session,
+    detection_session,
+    dummy_bucket,
+    async_session,
+):
+    """A skip-overlay row excludes the alert even when its lanes are fully
+    annotated. The skip API refuses to skip finished alerts and submit guards
+    block advancing skipped ones, but the export must not depend on those
+    guards holding — the row is inserted directly to simulate the breach."""
+    await seed_minimal_fp_alert(authenticated_client, platform_alert_id=7701)
+    await seed_minimal_fp_alert(authenticated_client, platform_alert_id=7702)
+
+    async_session.add(
+        models.AlertSkip(
+            source_api=models.SourceApi("pyronear_french"),
+            platform_alert_id=7701,
+        )
+    )
+    await async_session.commit()
+
+    resp = await authenticated_client.get("/export/alerts")
+    assert [i["platform_alert_id"] for i in resp.json()["items"]] == [7702]
+
+    # Unskip (delete the overlay row) restores the alert untouched.
+    await async_session.execute(
+        delete(models.AlertSkip).where(models.AlertSkip.platform_alert_id == 7701)
+    )
+    await async_session.commit()
+
+    resp = await authenticated_client.get("/export/alerts")
+    assert [i["platform_alert_id"] for i in resp.json()["items"]] == [7701, 7702]

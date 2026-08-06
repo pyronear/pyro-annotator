@@ -46,7 +46,11 @@ An alert is exported **only when finished**:
   exporter: unsure lanes are not training data.)
 - No parameter loosens this rule.
 
-Skipped alerts never reach `annotated`, so they are excluded by construction.
+Skipped alerts (a row in the `alert_skips` overlay,
+`docs/specs/2026-08-05-alert-skip-escape-hatch-design.md`) are excluded by an
+explicit anti-join on alert identity — not by relying on the submit guards
+that normally keep a skipped alert from finishing. Unskipping (deleting the
+overlay row) restores the alert to the export untouched.
 
 ## Response shape
 

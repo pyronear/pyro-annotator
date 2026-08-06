@@ -10,6 +10,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.dependencies import get_current_user
 from app.db import get_session
+from app.services.alert_skip import alert_skip_exists_clause
 from app.models import (
     Detection,
     DetectionAnnotation,
@@ -215,6 +216,11 @@ async def export_alerts(
         .select_from(Sequence)
         .outerjoin(SequenceAnnotation, SequenceAnnotation.sequence_id == Sequence.id)
         .outerjoin(det_ann_agg, det_ann_agg.c.sequence_id == Sequence.id)
+        # Skipped alerts never export. The skip overlay is alert-level, so
+        # this WHERE removes whole groups only. Submit guards should keep a
+        # skipped alert from ever finishing, but the export doesn't bet
+        # training data on that invariant.
+        .where(~alert_skip_exists_clause(Sequence))
         .group_by(Sequence.source_api, Sequence.platform_alert_id)
         .having(annotated_lanes == total_lanes)
         .having(exported_lanes > 0)
