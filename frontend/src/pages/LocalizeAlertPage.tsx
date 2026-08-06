@@ -1,7 +1,8 @@
 /**
  * Collocated localize screen: renders every workable object (lane) of one
- * alert as a status strip plus a frame grid, mirroring ClassifyAlertPage's
- * alert-level shape for the localize task. Mounted at
+ * alert as a rail row (with its per-frame timeline strip) plus a frame grid,
+ * mirroring ClassifyAlertPage's alert-level shape for the localize task.
+ * Mounted at
  * `/localize/:sequenceId` (queue provenance) and
  * `/localize/done/:sequenceId` (`mode="done"`, entered from
  * the Done list) — the same component either side, exactly as classify does
@@ -729,9 +730,9 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     })
   );
 
-  // The rail (and the timeline below it) group false positives after the
-  // real objects, so the read-only context can't be mistaken for work.
-  // Both consume this same order, keeping their row indices aligned.
+  // The rail groups false positives after the real objects, so the
+  // read-only context can't be mistaken for work. The Tab cycle walks the
+  // same order (`orderedObjectRows`), so keyboard and visual order agree.
   const smokeObjectRows = objectStatusRows.filter(o => !o.isFalsePositive);
   const falsePositiveRows = objectStatusRows.filter(o => o.isFalsePositive);
   const orderedObjectRows = [...smokeObjectRows, ...falsePositiveRows];

@@ -97,6 +97,11 @@ describe('LocalizeObjectRow metadata', () => {
 
     const headerEl = header();
     expect(headerEl.tagName).toBe('BUTTON');
+    // …and the card stays a plain container: reintroducing role="button" on
+    // it would nest the header and segment buttons inside an interactive
+    // control again.
+    expect(row().tagName).toBe('DIV');
+    expect(row()).not.toHaveAttribute('role');
 
     fireEvent.click(headerEl);
     expect(onActivate).toHaveBeenCalledTimes(1);

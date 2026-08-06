@@ -82,6 +82,26 @@ describe('buildAlertFrameModel', () => {
     expect(frames.find(f => f.recordedAt === t3)?.cells).toHaveLength(1);
   });
 
+  it('orders same-second fractional timestamps chronologically, not lexicographically', () => {
+    // Real data serializes the same second both as "...:00Z" and
+    // "...:00.500000Z", and "." sorts before "Z" — a string sort would put
+    // the later fractional timestamp ahead of the earlier whole-second one.
+    // This axis feeds the grid AND every rail row's timeline strip, so pin
+    // the numeric sort here, where the ordering now lives. (Guard inherited
+    // from the deleted ObjectStatusStrip, which sorted its own frame union.)
+    const zeroSeconds = '2026-01-01T10:00:00Z';
+    const halfSecond = '2026-01-01T10:00:00.500000Z';
+    const oneSecond = '2026-01-01T10:00:01Z';
+
+    const { frames } = buildAlertFrameModel(
+      [makeLane(1)],
+      { 1: [makeDetection(11, halfSecond), makeDetection(12, oneSecond), makeDetection(13, zeroSeconds)] },
+      { 1: [] }
+    );
+
+    expect(frames.map(f => f.recordedAt)).toEqual([zeroSeconds, halfSecond, oneSecond]);
+  });
+
   it('maps per-frame status: annotated -> confirmed, auto winning boxes -> pending, no-box -> empty', () => {
     const tDone = '2026-01-01T10:00:00Z';
     const tAuto = '2026-01-01T10:00:10Z';
