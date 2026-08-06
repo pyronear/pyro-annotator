@@ -93,6 +93,8 @@ The import object-splits each alert sequence from the alert API's own boxes and 
 
 **Backend data flow**: Alert API → ingestion scripts → annotation_api DB → frontend UI → human annotations
 
+**Ingestion**: Daily ingestion is connector-driven (worker sweep at 03:00 UTC, configured at `/connectors`); the CLI import script is retained for backfilling arbitrary date ranges.
+
 **Processing stages** (sequence): `IMPORTED` → `READY_TO_ANNOTATE` → `SEQ_ANNOTATION_DONE` → `ANNOTATED`. Two-lane exit: FP-only lanes jump straight to `ANNOTATED` at classify submit; smoke lanes park at `SEQ_ANNOTATION_DONE`, get auto-annotated per alert once every sibling (shared `platform_alert_id`) is classified, and reach `ANNOTATED` via the Smoke Localization submit (see `docs/specs/2026-07-28-smoke-localization-entry-point-design.md`).
 
 **Backend patterns**: CRUD modules per entity, Pydantic schemas separate from SQLModel, dependency injection, fastapi-pagination, IoU-based annotation generation service.

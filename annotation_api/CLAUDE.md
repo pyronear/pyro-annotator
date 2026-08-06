@@ -453,6 +453,38 @@ uv run python -m scripts.data_transfer.ingestion.alert_api.import \
 - **Logging support** - Configurable log levels for debugging
 - **Stage management** - Automatic transitions from alert API data to READY_TO_ANNOTATE stage
 
+### Alert API Connectors
+
+Ongoing daily ingestion runs through connectors instead of the CLI. A connector is
+one alert API credential (base URL, login, password) plus the set of remote
+organizations it should import from.
+
+- **Configuration**: Connectors are managed in the frontend at `/connectors`,
+  superuser only. Creating one stores the credential, discovers the alert API's
+  organizations, and lets the superuser enable individual organizations for import.
+- **Schedule**: The worker sweeps all enabled connectors daily at 03:00 UTC
+  (`schedule_connector_imports` in `src/app/worker.py`) and imports each one's
+  trailing window (`run_connector_import`). `trailing_days` (default 3, configurable
+  per connector) is both the re-check window and the catch-up mechanism — a worker
+  that missed a run recovers the lost date inside the next run's window, so no
+  "already ran today" bookkeeping is needed.
+- **`CONNECTOR_SECRET_KEY`**: Required for connectors to work. Alert-API passwords
+  can't be hashed (the worker needs the plaintext to log in), so they're Fernet-
+  encrypted at rest with this key. Generate one with:
+  ```bash
+  python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+  ```
+  If unset, connector create/update returns `400` and the worker skips connector
+  imports — existing deployments that never set it keep working untouched. Losing
+  the key means re-entering credentials through the UI.
+- **Backfill**: The UI has no backfill and enabling a new organization does not
+  retroactively import its history. `make import-alert-api DATE_FROM=… DATE_END=…`
+  remains the way to import an arbitrary date range by hand.
+- **Coverage**: Each (connector, organization, day) import attempt is recorded as a
+  coverage row, rendered as a heatmap on the connector detail page. A day with zero
+  alerts is recorded as `ok` with zero counts — deliberately distinct from a day
+  that was never attempted, so a dashed cell always means "we never got there."
+
 ## Troubleshooting
 
 ### Common Issues
