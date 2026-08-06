@@ -32,6 +32,7 @@ from app.schemas.sequence_group import (
     SequenceGroupThumbnail,
     SequenceGroupUpdate,
 )
+from app.services.annotators import human_annotators, merge_annotators
 from app.services.storage import s3_service
 
 router = APIRouter()
@@ -199,6 +200,7 @@ async def list_sequence_groups(
             func.count(Sequence.id).label("member_count"),
             # All members share one camera; min() just picks that value.
             func.min(Sequence.camera_name).label("camera_name"),
+            func.min(Sequence.organisation_name).label("organisation_name"),
         )
         .where(Sequence.sequence_group_id.is_not(None))
         .group_by(Sequence.sequence_group_id)
@@ -229,6 +231,7 @@ async def list_sequence_groups(
             SequenceGroup.created_at,
             member_count_subq.c.member_count,
             member_count_subq.c.camera_name,
+            member_count_subq.c.organisation_name,
         )
         # Inner-join so small groups (no row in the subquery) drop out.
         .join(member_count_subq, member_count_subq.c.group_id == SequenceGroup.id)
@@ -254,20 +257,38 @@ async def list_sequence_groups(
             & SequenceGroup.false_positive_type.is_(None)
         )
 
-    async def _attach_thumbnails(rows: list) -> list[SequenceGroupListItem]:
-        thumbnails = await _thumbnails_for_groups(session, [r.id for r in rows])
+    async def _hydrate(rows: list) -> list[SequenceGroupListItem]:
+        group_ids = [r.id for r in rows]
+        thumbnails = await _thumbnails_for_groups(session, group_ids)
+        # Attribution is per member sequence, so it can't ride the grouped
+        # list query — resolve it for the page's groups only.
+        members = (
+            await session.execute(
+                select(Sequence.sequence_group_id, Sequence.id).where(
+                    Sequence.sequence_group_id.in_(group_ids)
+                )
+            )
+        ).all()
+        members_by_group: dict[int, list[int]] = {}
+        for group_id, sequence_id in members:
+            members_by_group.setdefault(group_id, []).append(sequence_id)
+        annotators_by_seq = await human_annotators(
+            session, [sequence_id for _, sequence_id in members]
+        )
         return [
             SequenceGroupListItem(
-                **dict(r._mapping), thumbnails=thumbnails.get(r.id, [])
+                **dict(r._mapping),
+                thumbnails=thumbnails.get(r.id, []),
+                annotators=merge_annotators(
+                    annotators_by_seq, members_by_group.get(r.id, [])
+                ),
             )
             for r in rows
         ]
 
     # `unique=False` is required because the row tuple includes the JSONB
     # `representative_bbox`, which is a dict and therefore not hashable.
-    return await apaginate(
-        session, query, params, unique=False, transformer=_attach_thumbnails
-    )
+    return await apaginate(session, query, params, unique=False, transformer=_hydrate)
 
 
 @router.get(
