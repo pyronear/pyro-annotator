@@ -67,7 +67,6 @@ One row per alert API.
 | `login` | str | alert API account (expected to be an admin) |
 | `password_encrypted` | str | Fernet token; never returned by the API |
 | `is_enabled` | bool | pause without deleting |
-| `run_at_hour_utc` | int 0–23 | when the daily job fires |
 | `trailing_days` | int, default 3 | size of the re-imported window |
 | `image_transfer` | str \| null | `url` / `bucket-copy` / null = importer's auto-detect |
 | `last_verified_at` | datetime \| null | set by the verify action |
@@ -234,20 +233,26 @@ main dependencies, so nothing else changes.
 
 Two tasks in `app/worker.py`, following the existing periodic-sweep pattern.
 
-### `schedule_connector_imports` — `@app.periodic(cron="0 * * * *")`
+### `schedule_connector_imports` — `@app.periodic(cron="0 3 * * *")`
 
-Wakes hourly. Selects enabled connectors where:
+Fires once a day. Defers one `run_connector_import` job for every enabled
+connector that has at least one enabled organization, each with
+`queueing_lock=f"connector-import-{id}"` so a still-running connector cannot
+have a second job queued behind it.
 
-- `run_at_hour_utc` equals the current UTC hour, **and**
-- the connector has no coverage row with
-  `last_attempt_at >= today 00:00 UTC` (for any organization or date) —
-  this is the "already ran today" guard.
+No "already ran today" bookkeeping is needed: procrastinate defers a periodic
+task once per cron period, and the `queueing_lock` covers the overlap case.
 
-Defers one `run_connector_import` job each with
-`queueing_lock=f"connector-import-{id}"`, so a slow run can never double up.
+**Why not an hourly sweep with a per-connector run hour?** That only buys the
+ability to stagger connectors across the night, and it is not what makes the
+schedule robust — `trailing_days` is. A worker that is down at 03:00 loses
+nothing, because the next day's run re-covers that date inside its window. If
+staggering is ever needed (several heavy connectors competing for the same
+hour), it is a small change: add `run_at_hour_utc`, move the cron to `0 * * * *`,
+and match on the current hour.
 
-A connector with no enabled organizations is skipped, since it would produce no
-coverage rows and therefore never satisfy its own already-ran guard.
+The run hour is fixed at deploy time, since `@app.periodic` takes a static cron
+expression.
 
 ### `run_connector_import(connector_id)`
 
@@ -275,7 +280,7 @@ All endpoints under `/api/v1/connectors/`, gated by the existing
 
 | endpoint | purpose |
 | --- | --- |
-| `GET /` | list connectors with `has_password`, next run, org counts |
+| `GET /` | list connectors with `has_password`, last import, org counts |
 | `POST /` | create |
 | `PATCH /{id}` | update; `password` optional |
 | `DELETE /{id}` | delete (cascades to orgs and coverage) |
@@ -308,7 +313,10 @@ Route `/connectors`, superuser-gated and nav-linked exactly like
 Query; no Zustand needed.
 
 **List page:** name, base URL, `source_api` badge, enabled toggle, last
-verified, next run, and "3 of 7 organizations enabled".
+verified, most recent covered date, and "3 of 7 organizations enabled".
+
+The schedule form carries only `trailing_days`; the daily run hour is deployment
+configuration, not per-connector state.
 
 **Detail page**, top to bottom:
 
@@ -345,8 +353,8 @@ counts.
   credentials.
 - Coverage: upsert idempotency; a zero-alert day writes `ok`; a connector
   failure writes `failed` for every enabled organization.
-- Sweep: picks connectors matching the current hour, skips disabled ones, and
-  never runs a connector twice in a day.
+- Sweep: defers a job per enabled connector, and skips both disabled connectors
+  and connectors with no enabled organizations.
 - **Pinning test:** a worker-minted token can POST a sequence (guards the
   inactive-worker-user coupling).
 - **Short-circuit test:** `skip_platform_alert_ids` causes **zero** detection
