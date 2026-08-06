@@ -25,7 +25,10 @@ export function useAnnotationCounts(): AnnotationCounts {
     error: detectionError,
   } = useLocalizeQueueTotal();
 
-  // Query for sequence groups awaiting validation
+  // Recurring objects still needing a label. Not `unvalidated`: the badge opens
+  // the recurring-objects list on its "To label" tab, which counts `unlabeled`,
+  // and label propagation is gated on is_validated — so a validated-but-
+  // unlabeled backlog always exists and the two numbers never converge.
   const {
     data: groupData,
     isLoading: groupLoading,
@@ -34,7 +37,7 @@ export function useAnnotationCounts(): AnnotationCounts {
     queryKey: ['annotation-counts', 'sequence-groups'],
     queryFn: async () => {
       const stats = await apiClient.getSequenceGroupStats();
-      return stats.unvalidated;
+      return stats.unlabeled;
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes

@@ -49,10 +49,14 @@ describe('useAnnotationCounts', () => {
     expect(result.current.detectionCount).toBe(9);
   });
 
-  it('counts unvalidated groups', async () => {
+  // The badge opens the recurring-objects list, which lands on its "To label"
+  // tab counting `unlabeled`. Counting `unvalidated` (15) here made the badge
+  // disagree with the page it opens — permanently, since label propagation is
+  // gated on is_validated, so validated-but-unlabeled groups always exist.
+  it('counts unlabeled groups, matching the page the badge opens', async () => {
     const { result } = renderHook(() => useAnnotationCounts(), { wrapper });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
-    expect(result.current.groupCount).toBe(15);
+    expect(result.current.groupCount).toBe(12);
   });
 
   it('surfaces an error string when a count query fails', async () => {
