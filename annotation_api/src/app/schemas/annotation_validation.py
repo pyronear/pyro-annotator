@@ -189,8 +189,8 @@ class DetectionAnnotationData(BaseModel):
         if smoke_count > 1:
             raise ValueError(
                 f"At most one smoke box is allowed per detection annotation "
-                f"(got {smoke_count}). A plume that forks and rejoins is one "
-                f"object — box it once. A persistent second plume is a second "
-                f"object; use '+ Add object'."
+                f"(got {smoke_count}). A plume that forks into two strands and "
+                "rejoins is one object — box it once. A persistent second plume "
+                "is a separate object, with its own annotation track."
             )
         return self

@@ -52,9 +52,9 @@ class DetectionAnnotationData(BaseModel):
         if smoke_count > 1:
             raise ValueError(
                 f"At most one smoke box is allowed per detection annotation "
-                f"(got {smoke_count}). A plume that forks and rejoins is one "
-                f"object — box it once. A persistent second plume is a second "
-                f"object; use '+ Add object'."
+                f"(got {smoke_count}). A plume that forks into two strands and "
+                "rejoins is one object — box it once. A persistent second plume "
+                "is a separate object, with its own annotation track."
             )
         return self
 ```
@@ -81,9 +81,9 @@ without a caller.
 The consequence is that `DetectionAnnotationRead(**row)` validates on the way
 out too, so a violating row would turn GET, list, and the paginated endpoints
 into 500s. Accepted: nothing writes such a row today, and 0 of 231 existing rows
-violate the rule. `GET /export/detections` types its `detection_annotation`
-field as a raw `Dict[str, Any]` and never constructs the schema, so exports are
-unaffected either way.
+violate the rule. `GET /export/alerts` reads `det_ann.annotation` as a raw dict
+(`_smoke_lane_boxes`, `export.py:93`) and never constructs the schema, so
+exports are unaffected either way.
 
 ## Error surface
 
