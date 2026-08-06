@@ -20,6 +20,9 @@ vi.mock('@/hooks/usePipelineStats', () => ({
     classifyTodo: 57,
     classifyDone: 453,
     localizeTodo: 31,
+    // Distinct from `complete` on purpose: the Localize card shows alerts
+    // localized, while the Complete strip segment shows objects.
+    localizeDone: 402,
     complete: 418,
     completePct: 80,
     groupsToLabel: 12,
@@ -57,5 +60,14 @@ describe('DashboardPage', () => {
   it('shows the Localize phase card when the user can localize', () => {
     render(<DashboardPage />, { wrapper: MemoryRouter });
     expect(screen.getByText('Localize smoke')).toBeInTheDocument();
+  });
+
+  // The card's two halves have to be the same unit for its progress bar to
+  // mean anything: "localized so far" is alerts (localizeDone), not the
+  // object-grained `complete` the Complete strip segment shows.
+  it('counts the Localize card done half in alerts, not objects', () => {
+    render(<DashboardPage />, { wrapper: MemoryRouter });
+    expect(screen.getByText(/402 localized so far/)).toBeInTheDocument();
+    expect(screen.queryByText(/418 localized so far/)).not.toBeInTheDocument();
   });
 });
