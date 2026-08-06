@@ -210,6 +210,56 @@ class TestAnnotationGenerationService:
         assert all(seq_bbox.is_smoke is True for seq_bbox in result)
         assert all(len(seq_bbox.false_positive_types) == 0 for seq_bbox in result)
 
+    def test_create_sequence_bboxes_merges_same_detection_boxes(self):
+        """Two boxes from one frame collapse into the box enclosing both.
+
+        Detection 19167's real coordinates — the one same-frame overlap across
+        19,205 imported detections (#324).
+        """
+        bbox_clusters = [
+            [
+                ([0.102, 0.565, 0.113, 0.586], 19167),
+                ([0.107, 0.564, 0.119, 0.584], 19167),
+            ],
+        ]
+
+        result = self.service._create_sequence_bboxes(bbox_clusters)
+
+        assert len(result) == 1
+        assert len(result[0].bboxes) == 1
+        assert result[0].bboxes[0].detection_id == 19167
+        assert result[0].bboxes[0].xyxyn == pytest.approx([0.102, 0.564, 0.119, 0.586])
+
+    def test_create_sequence_bboxes_keeps_distinct_detections_apart(self):
+        """Boxes from different frames are not merged, and keep their order."""
+        bbox_clusters = [
+            [
+                ([0.1, 0.2, 0.3, 0.4], 123),
+                ([0.15, 0.25, 0.35, 0.45], 124),
+            ],
+        ]
+
+        result = self.service._create_sequence_bboxes(bbox_clusters)
+
+        assert len(result[0].bboxes) == 2
+        assert [b.detection_id for b in result[0].bboxes] == [123, 124]
+
+    def test_create_sequence_bboxes_null_box_does_not_poison_the_union(self):
+        """An invalid box is dropped before the union, not merged into it."""
+        bbox_clusters = [
+            [
+                ([0, 0, 0, 0], 200),
+                ([0.5, 0.5, 0.6, 0.6], 200),
+            ],
+        ]
+
+        with patch.object(self.service, "logger"):
+            result = self.service._create_sequence_bboxes(bbox_clusters)
+
+        assert len(result) == 1
+        assert len(result[0].bboxes) == 1
+        assert result[0].bboxes[0].xyxyn == [0.5, 0.5, 0.6, 0.6]
+
     def test_create_sequence_bboxes_mixed_valid_invalid(self):
         """Test sequence bbox creation with mixed valid/invalid coordinates in clusters."""
         bbox_clusters = [
