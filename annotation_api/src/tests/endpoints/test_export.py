@@ -844,3 +844,14 @@ async def test_export_alerts_annotation_updated_watermark(
     )
     items = resp.json()["items"]
     assert [i["platform_alert_id"] for i in items] == [7602]
+
+
+@pytest.mark.asyncio
+async def test_export_alerts_requires_auth(async_client: AsyncClient):
+    resp = await async_client.get("/export/alerts")
+    assert resp.status_code in (401, 403)
+
+    resp = await async_client.get(
+        "/export/alerts", headers={"Authorization": "Bearer not-a-token"}
+    )
+    assert resp.status_code in (401, 403)
