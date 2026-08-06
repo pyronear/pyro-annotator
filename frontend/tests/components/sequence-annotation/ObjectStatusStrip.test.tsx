@@ -4,8 +4,7 @@
  * swatch + label (as a button, "Go to Object N") plus a per-frame status
  * bar across the union of the alert's frame timestamps, where each frame
  * segment is itself a button (confirmed/pending/empty/absent fill) firing
- * `onSegmentClick`. Unlike ObjectPresenceStrip, this renders from a single
- * object up.
+ * `onSegmentClick`. Renders from a single object up.
  */
 
 import React from 'react';

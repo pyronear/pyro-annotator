@@ -31,10 +31,23 @@ vi.mock('react-router-dom', async importOriginal => {
 
 // The media panel's full-frame player stand-in exposes the bbox count it
 // was handed — renderAndSettle keys on it as the "seeded state has
-// committed" signal (see its comment).
+// committed" signal (see its comment) — and the seek request, so the
+// segment-click → player plumbing is observable (React drops the
+// attributes entirely while the request is null/undefined).
 vi.mock('@/components/annotation/FullImageSequence', () => ({
-  default: ({ bboxes }: { bboxes?: unknown[] }) => (
-    <div data-testid="full-image-sequence" data-bbox-count={bboxes?.length ?? 0} />
+  default: ({
+    bboxes,
+    seekRequest,
+  }: {
+    bboxes?: unknown[];
+    seekRequest?: { index: number; nonce: number } | null;
+  }) => (
+    <div
+      data-testid="full-image-sequence"
+      data-bbox-count={bboxes?.length ?? 0}
+      data-seek-index={seekRequest?.index}
+      data-seek-nonce={seekRequest?.nonce}
+    />
   ),
 }));
 vi.mock('@/components/annotation/CroppedImageSequence', () => ({
@@ -919,6 +932,45 @@ describe('ClassifyAlertPage', () => {
     expect(
       within(screen.getByTestId('object-card-103:0')).queryByRole('radio', { name: 'Smoke' })
     ).not.toBeInTheDocument();
+  });
+
+  it('clicking a segment seeks the player to that frame, and a repeat click re-seeks', async () => {
+    mockRowTimelineDetections();
+
+    await renderAndSettle(<ClassifyAlertPage />, { wrapper });
+
+    fireEvent.click(await screen.findByTestId('frame-segment-101:0-1'));
+    const player = () => screen.getByTestId('full-image-sequence');
+    expect(player().getAttribute('data-seek-index')).toBe('1');
+    expect(player().getAttribute('data-seek-nonce')).toBe('1');
+
+    // Same segment again: the nonce bumps so the player re-seeks.
+    fireEvent.click(screen.getByTestId('frame-segment-101:0-1'));
+    expect(player().getAttribute('data-seek-nonce')).toBe('2');
+  });
+
+  it('an expired seek request does not replay when the player remounts', async () => {
+    mockRowTimelineDetections();
+
+    await renderAndSettle(<ClassifyAlertPage />, { wrapper });
+
+    fireEvent.click(await screen.findByTestId('frame-segment-101:0-0'));
+    expect(screen.getByTestId('full-image-sequence').getAttribute('data-seek-nonce')).toBe('1');
+
+    // Swap the media panel to the whole-alert player (unmounts the
+    // full-frame player), let the 2 s hold window lapse, and swap back:
+    // the remounted player must receive no seek request — otherwise it
+    // would replay the stale jump-and-hold.
+    fireEvent.click(screen.getByTestId('missed-smoke-row'));
+    await waitFor(
+      () => {
+        fireEvent.click(screen.getByTestId('object-card-101:0'));
+        expect(
+          screen.getByTestId('full-image-sequence').getAttribute('data-seek-nonce')
+        ).toBeNull();
+      },
+      { timeout: 4000 }
+    );
   });
 
   it('a single-object alert still shows its row timeline', async () => {

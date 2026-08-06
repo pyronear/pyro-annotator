@@ -266,6 +266,10 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
     setHasMissedSmoke(false);
     setActiveCardKey(null);
     setGroupConflictWarnings([]);
+    // A pending seek/pulse belongs to the previous alert's frame list.
+    setSeekRequest(null);
+    setSegmentHighlight(null);
+    if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
     if (advanceTimerRef.current) clearTimeout(advanceTimerRef.current);
     advanceTimerRef.current = null;
     advancingRef.current = false;
@@ -582,7 +586,12 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
     setSeekRequest(prev => ({ index: frameIndex, nonce: (prev?.nonce ?? 0) + 1 }));
     setSegmentHighlight({ cardKey, frameIndex });
     if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
-    highlightTimeoutRef.current = setTimeout(() => setSegmentHighlight(null), 2000);
+    highlightTimeoutRef.current = setTimeout(() => {
+      setSegmentHighlight(null);
+      // The hold window is over — an expired request must not replay when
+      // the full-frame player remounts (section toggle, alert switch).
+      setSeekRequest(null);
+    }, 2000);
   };
 
   const handleBboxChangeByCardKey = (cardKey: string, updatedBbox: SequenceBbox) => {
@@ -1168,7 +1177,14 @@ export default function ClassifyAlertPage({ mode }: ClassifyAlertPageProps = {})
               onMissedSmokeActivate={() => setActiveSection('sequence')}
               missedSmokeDisabled={missedSmokeCarrierLaneId === undefined}
               missedSmokeRowRef={sequenceReviewerRef}
-              legend={<TimelineLegend testid="classify-timeline-legend" entries={legendEntries} />}
+              legend={
+                // Gated here, not just inside TimelineLegend: the rail wraps
+                // a passed legend in a spacer div, which must not render for
+                // an empty legend.
+                legendEntries.length > 0 ? (
+                  <TimelineLegend testid="classify-timeline-legend" entries={legendEntries} />
+                ) : undefined
+              }
               headerAction={
                 <button
                   onClick={() => setShowKeyboardModal(true)}
