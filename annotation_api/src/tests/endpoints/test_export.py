@@ -768,3 +768,79 @@ async def test_export_alerts_type_filters(
         "/export/alerts", params={"smoke_types": "not_a_type"}
     )
     assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_export_alerts_annotation_updated_watermark(
+    authenticated_client: AsyncClient,
+    sequence_session,
+    detection_session,
+    dummy_bucket,
+):
+    """annotation_updated_gte compares against last_annotated_at, which
+    tracks BOTH sequence- and detection-annotation updates."""
+    await seed_minimal_fp_alert(authenticated_client, platform_alert_id=7601)
+
+    smoke_seq = await create_lane(
+        authenticated_client, platform_alert_id=7602, alert_api_id=7602
+    )
+    smoke_det = await create_frame(
+        authenticated_client, sequence_id=smoke_seq, alert_api_id=1
+    )
+    await annotate_lane(
+        authenticated_client,
+        sequence_id=smoke_seq,
+        detection_ids=[smoke_det],
+        is_smoke=True,
+        smoke_type="wildfire",
+    )
+    det_ann_id = await annotate_frame(
+        authenticated_client,
+        detection_id=smoke_det,
+        items=[
+            {
+                "xyxyn": [0.4, 0.3, 0.5, 0.4],
+                "class_name": "smoke",
+                "smoke_type": "wildfire",
+                "origin": "human",
+            }
+        ],
+    )
+
+    # Watermark strictly after everything seeded so far -> nothing exports.
+    resp_all = await authenticated_client.get("/export/alerts")
+    high_watermark = max(i["last_annotated_at"] for i in resp_all.json()["items"])
+    watermark_param = (
+        datetime.fromisoformat(high_watermark.replace("Z", "+00:00"))
+        + timedelta(microseconds=1)
+    ).isoformat()
+    resp = await authenticated_client.get(
+        "/export/alerts", params={"annotation_updated_gte": watermark_param}
+    )
+    assert resp.json()["items"] == []
+
+    # Touch only the DETECTION annotation of alert 7602 (a real change —
+    # a same-value PATCH is a no-op and leaves updated_at alone); its
+    # updated_at moves past the watermark and the alert re-exports.
+    patch_resp = await authenticated_client.patch(
+        f"/annotations/detections/{det_ann_id}",
+        json={
+            "annotation": {
+                "annotation": [
+                    {
+                        "xyxyn": [0.41, 0.31, 0.51, 0.41],
+                        "class_name": "smoke",
+                        "smoke_type": "wildfire",
+                        "origin": "human",
+                    }
+                ]
+            }
+        },
+    )
+    assert patch_resp.status_code == 200, patch_resp.text
+
+    resp = await authenticated_client.get(
+        "/export/alerts", params={"annotation_updated_gte": watermark_param}
+    )
+    items = resp.json()["items"]
+    assert [i["platform_alert_id"] for i in items] == [7602]
