@@ -484,11 +484,6 @@ async def test_detection_annotation_update_workflow(
                     "class_name": "smoke",
                     "smoke_type": "wildfire",
                 },
-                {
-                    "xyxyn": [0.45, 0.45, 0.65, 0.65],
-                    "class_name": "smoke",
-                    "smoke_type": "industrial",
-                },
             ]
         },
         "processing_stage": "annotated",
@@ -509,19 +504,14 @@ async def test_detection_annotation_update_workflow(
     annotation_data = updated_annotation["annotation"]
     assert "annotation" in annotation_data
     annotation_items = annotation_data["annotation"]
-    assert len(annotation_items) == 2, "Should have 2 bbox annotations"
+    # One object, one box per frame — see the one-smoke-box validator on
+    # DetectionAnnotationData.
+    assert len(annotation_items) == 1, "Should have 1 bbox annotation"
 
-    # Verify first bbox
     bbox1 = annotation_items[0]
     assert bbox1["xyxyn"] == [0.15, 0.15, 0.35, 0.35]
     assert bbox1["class_name"] == "smoke"
     assert bbox1["smoke_type"] == "wildfire"
-
-    # Verify second bbox
-    bbox2 = annotation_items[1]
-    assert bbox2["xyxyn"] == [0.45, 0.45, 0.65, 0.65]
-    assert bbox2["class_name"] == "smoke"
-    assert bbox2["smoke_type"] == "industrial"
 
     # Step 5: Verify we can retrieve the updated annotation
     get_response = await authenticated_client.get(
