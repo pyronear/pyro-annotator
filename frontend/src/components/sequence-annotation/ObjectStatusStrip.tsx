@@ -25,6 +25,11 @@
  * border) — LocalizeAlertPage's object-focus mode uses it to mark whichever
  * object is currently focused.
  *
+ * `variant="bare"` drops the card chrome and title so the strip can embed
+ * inside another surface (the accept popover). `playhead` highlights the
+ * frame an external animation is currently showing — full-strength fill
+ * with an inset marker, since the overflow-hidden track clips outer rings.
+ *
  * No frame axis here (dropped — the strip's segments read fine without tick
  * labels at this scale); `ObjectPresenceStrip` (classify) is unaffected and
  * keeps its own axis.
@@ -56,6 +61,10 @@ interface ObjectStatusStripProps {
   /** Called with an object's position in `objects` when its label is clicked — the caller owns turning that into "scroll to and activate that object's card." Omit to render labels non-interactively. */
   onObjectClick?: (objectIndex: number) => void;
   title?: string;
+  /** `bare` drops the card chrome and title so the strip can embed inside another surface (the accept popover). */
+  variant?: 'card' | 'bare';
+  /** Highlights one object's segment at one timestamp — the frame an external animation is currently showing. */
+  playhead?: { objectIndex: number; timestamp: string };
 }
 
 function ObjectLabelButton({
@@ -89,15 +98,29 @@ function ObjectLabelButton({
 const SEGMENT_BASE_CLASS =
   'h-full flex-1 rounded-sm p-0 transition-opacity focus:outline-none focus:ring-1 focus:ring-ember';
 
+// The playhead marker lives INSIDE the segment (inset, merged into the same
+// boxShadow as the status styling): the track is `overflow-hidden`, so an
+// outer ring or outline would be clipped away at this 6px height.
+const PLAYHEAD_SHADOW = 'inset 0 0 0 1px rgba(255,255,255,0.85)';
+
 function segmentAppearance(
   status: ObjectStatusStripStatus,
-  color: string
+  color: string,
+  playhead: boolean
 ): { className: string; style?: React.CSSProperties } {
   if (status === 'confirmed') {
-    return { className: SEGMENT_BASE_CLASS, style: { backgroundColor: color } };
+    return {
+      className: SEGMENT_BASE_CLASS,
+      style: { backgroundColor: color, ...(playhead ? { boxShadow: PLAYHEAD_SHADOW } : {}) },
+    };
   }
   if (status === 'pending') {
-    return { className: `${SEGMENT_BASE_CLASS} opacity-40`, style: { backgroundColor: color } };
+    // The playhead frame is the one an external animation is showing right
+    // now — it reads at full strength even though its box is still pending.
+    return {
+      className: playhead ? SEGMENT_BASE_CLASS : `${SEGMENT_BASE_CLASS} opacity-40`,
+      style: { backgroundColor: color, ...(playhead ? { boxShadow: PLAYHEAD_SHADOW } : {}) },
+    };
   }
   if (status === 'empty') {
     // Present on this frame, but nothing to show yet — no committed box and
@@ -106,11 +129,18 @@ function segmentAppearance(
     // imply content (a just-added object's whole timeline is this state).
     return {
       className: `${SEGMENT_BASE_CLASS} opacity-50`,
-      style: { boxShadow: `inset 0 0 0 1px ${color}` },
+      style: {
+        boxShadow: playhead
+          ? `inset 0 0 0 1px ${color}, ${PLAYHEAD_SHADOW}`
+          : `inset 0 0 0 1px ${color}`,
+      },
     };
   }
   // absent — neutral track, no fill; the row's track background shows through.
-  return { className: SEGMENT_BASE_CLASS };
+  return {
+    className: SEGMENT_BASE_CLASS,
+    style: playhead ? { boxShadow: PLAYHEAD_SHADOW } : undefined,
+  };
 }
 
 export const ObjectStatusStrip: React.FC<ObjectStatusStripProps> = ({
@@ -118,6 +148,8 @@ export const ObjectStatusStrip: React.FC<ObjectStatusStripProps> = ({
   onSegmentClick,
   onObjectClick,
   title = 'Object timeline',
+  variant = 'card',
+  playhead,
 }) => {
   if (objects.length < 1) return null;
 
@@ -130,10 +162,18 @@ export const ObjectStatusStrip: React.FC<ObjectStatusStripProps> = ({
   ).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
 
   return (
-    <div className="space-y-2.5 rounded-lg border border-line bg-paper p-4">
-      <div className="font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze mb-2">
-        {title}
-      </div>
+    <div
+      className={
+        variant === 'card'
+          ? 'space-y-2.5 rounded-lg border border-line bg-paper p-4'
+          : 'space-y-2.5'
+      }
+    >
+      {variant === 'card' && (
+        <div className="font-data text-eyebrow font-medium uppercase tracking-eyebrow text-haze mb-2">
+          {title}
+        </div>
+      )}
 
       {objects.map((object, objectIndex) => {
         const selected = object.selected ?? false;
@@ -155,12 +195,15 @@ export const ObjectStatusStrip: React.FC<ObjectStatusStripProps> = ({
             <div className="flex h-1.5 flex-1 gap-px overflow-hidden rounded-full bg-ash">
               {frameUnion.map((timestamp, frameIndex) => {
                 const status = object.statusByTimestamp[timestamp] ?? 'absent';
-                const { className, style } = segmentAppearance(status, object.color);
+                const isPlayhead =
+                  playhead?.objectIndex === objectIndex && playhead.timestamp === timestamp;
+                const { className, style } = segmentAppearance(status, object.color, isPlayhead);
                 return (
                   <button
                     key={timestamp}
                     type="button"
                     data-testid={`status-segment-${objectIndex}-${frameIndex}`}
+                    data-playhead={isPlayhead ? 'true' : undefined}
                     aria-label={`${object.label}, frame ${frameIndex + 1}: ${status}`}
                     onClick={() => onSegmentClick?.(objectIndex, timestamp)}
                     className={className}
