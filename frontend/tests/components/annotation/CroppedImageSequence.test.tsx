@@ -137,6 +137,16 @@ describe('CroppedImageSequence', () => {
     expect(screen.getByText('1.1x')).toBeInTheDocument();
   });
 
+  it('reports the loop position through onFrameChange as the animation advances', async () => {
+    const onFrameChange = vi.fn();
+    render(<CroppedImageSequence bboxes={BBOXES} sequenceId={9} onFrameChange={onFrameChange} />);
+
+    // Fires for the starting frame once images resolve.
+    await waitFor(() => expect(onFrameChange).toHaveBeenCalledWith(0, 1));
+    // The 200ms interval advances the loop; BBOXES[1] is detection 2.
+    await waitFor(() => expect(onFrameChange).toHaveBeenCalledWith(1, 2), { timeout: 2000 });
+  });
+
   describe('winner box overlay', () => {
     // Geometry pinned by hand: bbox 0.45–0.55 of 1280x720 → 576,324–704,396
     // in image px (side 128). Default crop side = 128 * CONTEXT_FACTOR(3) =
