@@ -97,7 +97,7 @@ describe('SequenceGroupsListPage', () => {
   it('All empty shows no-groups state with no action', async () => {
     renderAt('/classify/groups/all');
     await waitFor(() => expect(screen.getByText('No objects yet')).toBeTruthy());
-    expect(screen.getByText(/only objects seen in 3 or more sequences/)).toBeTruthy();
+    expect(screen.getByText(/only objects seen 3 or more times/)).toBeTruthy();
     expect(screen.queryByRole('link', { name: 'Start classifying' })).toBeNull();
     expect(screen.queryByRole('link', { name: 'Label objects' })).toBeNull();
     expect(screen.queryByRole('table')).toBeNull();
@@ -228,7 +228,7 @@ describe('SequenceGroupsListPage', () => {
     // Sightings, Label, Annotators) plus one on the row's "to label" badge.
     expect(within(screen.getByRole('table')).getAllByRole('tooltip')).toHaveLength(8);
     expect(screen.getByText('Times this object was seen')).toBeTruthy();
-    expect(screen.getByText(/propagates to every sequence/)).toBeTruthy();
+    expect(screen.getByText(/propagates to every sighting/)).toBeTruthy();
     expect(screen.getByText('Camera viewing direction, in degrees')).toBeTruthy();
     expect(screen.getByText('Organisation operating the camera')).toBeTruthy();
     expect(screen.getByText("Who annotated this object's sightings")).toBeTruthy();
@@ -245,9 +245,13 @@ describe('SequenceGroupsListPage', () => {
     renderAt('/classify/groups');
     await waitFor(() => expect(screen.getByText('CAM_07')).toBeTruthy());
 
+    // Cell indices, not just presence: a header inserted without its matching
+    // <td> (or vice versa) renders the whole row shifted under the wrong
+    // headers while every getByText still passes.
     const row = screen.getByText('CAM_07').closest('tr')!;
-    expect(within(row).getByText('SDIS 07')).toBeTruthy();
-    expect(within(row).getByText('alice, bob')).toBeTruthy();
+    expect(row.cells[1].textContent).toBe('SDIS 07');
+    expect(row.cells[4].textContent).toBe('5');
+    expect(row.cells[6].textContent).toBe('alice, bob');
     // Nobody has annotated the second object yet.
     const untouched = screen.getByText('CAM_08').closest('tr')!;
     expect(within(untouched).getByText('—')).toBeTruthy();
@@ -271,7 +275,7 @@ describe('SequenceGroupsListPage', () => {
     });
     renderAt('/classify/groups');
     await waitFor(() => expect(screen.getAllByText('to label')).toHaveLength(2));
-    expect(screen.getByText(/^Classify any of this object's sequences/)).toBeTruthy();
+    expect(screen.getByText(/^Classify any of this object's sightings/)).toBeTruthy();
     expect(screen.getByText(/^Validate the group first, then classify/)).toBeTruthy();
   });
 });

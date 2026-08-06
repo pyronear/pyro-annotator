@@ -146,11 +146,11 @@ export default function SequenceGroupsListPage({
             </Popover.Button>
             <Popover.Panel className="absolute left-0 top-full z-20 mt-2 w-96 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 shadow-lg">
               <span className="font-semibold">What is a recurring object?</span> After each import,
-              sequences from the same camera looking in the same direction at the same spot are
+              sightings from the same camera looking in the same direction at the same spot are
               grouped automatically — usually one recurring smoke plume or false-positive source (an
               antenna, a cloud bank…). Open one, validate the grouping, then label any of its
-              sequences — the label propagates to every sequence. Only objects seen in 3+ sequences
-              are shown.
+              sightings — the label propagates to every sighting. Only objects seen 3+ times are
+              shown.
             </Popover.Panel>
           </Popover>
         </div>
@@ -255,8 +255,8 @@ export default function SequenceGroupsListPage({
                   No objects yet
                 </h2>
                 <p className="mt-1.5 font-body text-sm leading-relaxed text-haze">
-                  Objects appear automatically after imports — only objects seen in 3 or more
-                  sequences are shown here.
+                  Objects appear automatically after imports — only objects seen 3 or more times are
+                  shown here.
                 </p>
               </>
             )}
@@ -270,7 +270,7 @@ export default function SequenceGroupsListPage({
                 <tr>
                   <ColumnHeader
                     label="Camera"
-                    tip="Camera that recorded the object's sequences"
+                    tip="Camera that recorded the object's sightings"
                     sort={{
                       active: orderBy === 'camera_name',
                       direction: orderDirection,
@@ -280,7 +280,7 @@ export default function SequenceGroupsListPage({
                   <ColumnHeader label="Organisation" tip="Organisation operating the camera" />
                   <ColumnHeader
                     label="Created"
-                    tip="When this object's sequences were first grouped"
+                    tip="When this object's sightings were first grouped"
                     sort={{
                       active: orderBy === 'created_at',
                       direction: orderDirection,
@@ -307,7 +307,7 @@ export default function SequenceGroupsListPage({
                   />
                   <ColumnHeader
                     label="Label"
-                    tip="Object label — propagates to every sequence once the group is validated"
+                    tip="Object label — propagates to every sighting once the group is validated"
                   />
                   <ColumnHeader label="Annotators" tip="Who annotated this object's sightings" />
                   <th className={HEADER_CELL_CLASSES}>
@@ -356,8 +356,8 @@ export default function SequenceGroupsListPage({
                               tell unvalidated ones to validate first. */}
                           {headerTip(
                             g.is_validated
-                              ? "Classify any of this object's sequences — the label will propagate to all of them"
-                              : "Validate the group first, then classify any of this object's sequences — the label will propagate to all of them"
+                              ? "Classify any of this object's sightings — the label will propagate to all of them"
+                              : "Validate the group first, then classify any of this object's sightings — the label will propagate to all of them"
                           )}
                         </span>
                       )}

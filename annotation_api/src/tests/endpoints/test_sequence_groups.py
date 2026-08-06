@@ -343,6 +343,37 @@ async def test_list_groups_lists_annotators_excluding_worker(
 
 
 @pytest.mark.asyncio
+async def test_list_groups_annotators_do_not_bleed_across_groups(
+    authenticated_client: AsyncClient,
+    async_session: AsyncSession,
+    test_user: User,
+    regular_user: User,
+):
+    """Each row lists only the humans who touched its own members."""
+    first = await _seed_group_with_members(
+        async_session,
+        n_members=3,
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        alert_api_id_start=480,
+    )
+    second = await _seed_group_with_members(
+        async_session,
+        n_members=3,
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        alert_api_id_start=490,
+    )
+    at = datetime(2026, 1, 2, tzinfo=timezone.utc)
+    await _contribute(async_session, first, 0, test_user.id, at)
+    await _contribute(async_session, second, 0, regular_user.id, at)
+
+    resp = await authenticated_client.get("/sequence_groups/")
+    assert resp.status_code == 200
+    rows = {i["id"]: i["annotators"] for i in resp.json()["items"]}
+    assert rows[first] == [test_user.username]
+    assert rows[second] == [regular_user.username]
+
+
+@pytest.mark.asyncio
 async def test_list_groups_annotators_empty_without_human_contributions(
     authenticated_client: AsyncClient,
     async_session: AsyncSession,

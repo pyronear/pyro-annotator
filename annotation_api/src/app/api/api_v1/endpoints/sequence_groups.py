@@ -145,7 +145,9 @@ async def list_sequence_groups(
     page = await apaginate(session, query, params, unique=False)
 
     # Attribution is per member sequence, so it can't ride the grouped list
-    # query — hydrate it for the current page only.
+    # query — hydrate it for the current page only. `page.items` are already
+    # SequenceGroupListItem instances (fastapi-pagination validates against
+    # the route's response_model), hence the in-place assignment below.
     members = (
         await session.execute(
             select(Sequence.sequence_group_id, Sequence.id).where(
