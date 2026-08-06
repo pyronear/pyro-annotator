@@ -86,6 +86,33 @@ def box_iou(box1: List[float], box2: List[float]) -> float:
     return intersection / union
 
 
+def union_xyxyn(boxes: List[List[float]]) -> List[float]:
+    """
+    Enclosing box of several bounding boxes, in normalized coordinates.
+
+    One object, one box per frame: a plume that visually forks into two strands
+    and rejoins is still one plume, boxed once (see #286).
+
+    Args:
+        boxes: Non-empty list of [x1, y1, x2, y2] in normalized coordinates (0-1).
+               Extra elements past index 3 are ignored, so the importer's
+               [x1, y1, x2, y2, confidence] boxes can be passed directly.
+
+    Returns:
+        The smallest box enclosing all of them, as [x1, y1, x2, y2]
+
+    Example:
+        >>> union_xyxyn([[0.1, 0.2, 0.3, 0.4], [0.2, 0.1, 0.5, 0.35]])
+        [0.1, 0.1, 0.5, 0.4]
+    """
+    return [
+        min(b[0] for b in boxes),
+        min(b[1] for b in boxes),
+        max(b[2] for b in boxes),
+        max(b[3] for b in boxes),
+    ]
+
+
 def filter_predictions_by_confidence(
     predictions: List[Dict[str, Any]], confidence_threshold: float
 ) -> List[Dict[str, Any]]:
@@ -482,17 +509,31 @@ class AnnotationGenerationService:
         sequences_bbox = []
 
         for cluster in bbox_clusters:
-            bboxes = []
+            # One object, one box per frame. cluster_boxes_by_iou never consults
+            # detection_id, so two overlapping predictions on the same frame land
+            # in one cluster — a plume that forks and rejoins is still one plume,
+            # boxed once (#286). Validate before unioning: merging a null
+            # [0,0,0,0] box with a real one would anchor the result at the origin.
+            valid: Dict[int, List[List[float]]] = {}
 
             for bbox_coords, detection_id in cluster:
                 try:
                     bbox = BoundingBox(detection_id=detection_id, xyxyn=bbox_coords)
-                    bboxes.append(bbox)
                 except Exception as e:
                     self.logger.debug(
                         f"Skipping invalid coordinates for detection {detection_id}: {e}"
                     )
                     continue
+                valid.setdefault(bbox.detection_id, []).append(bbox.xyxyn)
+
+            # A union of valid boxes is itself valid, so this cannot raise.
+            bboxes = [
+                BoundingBox(
+                    detection_id=detection_id,
+                    xyxyn=union_xyxyn(coords) if len(coords) > 1 else coords[0],
+                )
+                for detection_id, coords in valid.items()
+            ]
 
             # Only create SequenceBBox if we have valid bboxes
             if not bboxes:

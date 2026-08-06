@@ -127,6 +127,23 @@ class TestSequenceBBox:
         )
         assert len(bbox.bboxes) == 2
 
+    def test_rejects_duplicate_detection_id(self):
+        """One object, one box per frame."""
+        with pytest.raises(ValidationError) as exc_info:
+            SequenceBBox(
+                is_smoke=True,
+                bboxes=[
+                    BoundingBox(detection_id=19167, xyxyn=[0.102, 0.565, 0.113, 0.586]),
+                    BoundingBox(detection_id=19167, xyxyn=[0.107, 0.564, 0.119, 0.584]),
+                ],
+            )
+        assert "At most one box is allowed per detection" in str(exc_info.value)
+
+    def test_allows_empty_bboxes(self):
+        """A track with no boxes on any frame is still a valid object."""
+        bbox = SequenceBBox(is_smoke=False, bboxes=[])
+        assert bbox.bboxes == []
+
 
 class TestSequenceAnnotationData:
     def test_valid_sequence_annotation_data(self):

@@ -172,6 +172,11 @@ def _stub_pipeline(monkeypatch) -> dict:
         return POST_RESULT
 
     monkeypatch.setattr(runner.shared, "post_records_to_annotation_api", fake_post)
+    # SPLIT_RECORDS carries no "detection_bboxes" (these tests aren't about
+    # boxless alerts), so stub the classifier out rather than let it KeyError.
+    monkeypatch.setattr(
+        runner.shared, "boxless_platform_alert_ids", lambda records: set()
+    )
 
     def fake_annotate(*, seq_result, annotation_api_url, dry_run, auth_token):
         annotate_tokens.append(auth_token)
@@ -227,6 +232,36 @@ def test_run_import_passes_the_configured_token_to_every_stage(monkeypatch):
 
     assert captured["post_token"] == "worker-jwt"
     assert captured["annotate_tokens"] == ["worker-jwt"]
+
+
+def test_run_import_auto_skips_boxless_alerts_using_the_configured_token(monkeypatch):
+    # #333 auto-skip must reuse the already-resolved token (ImportConfig.
+    # annotation_api_token) rather than mint one from login/password: the
+    # worker has no ANNOTATOR_LOGIN/ANNOTATOR_PASSWORD in its environment, so
+    # a get_auth_token(login, password) call here would fail in that caller.
+    _stub_pipeline(monkeypatch)
+    monkeypatch.setattr(
+        runner.shared, "boxless_platform_alert_ids", lambda records: {100}
+    )
+    skip_calls = []
+
+    def fake_skip_boxless_alerts(base_url, auth_token, source_api, platform_alert_ids):
+        skip_calls.append((base_url, auth_token, source_api, list(platform_alert_ids)))
+        return {"skipped": 1, "already_skipped": 0, "failed": 0}
+
+    monkeypatch.setattr(runner.shared, "skip_boxless_alerts", fake_skip_boxless_alerts)
+
+    result = run_import(
+        _config(annotation_api_token="worker-jwt", organization_ids={1})
+    )
+
+    assert result.ok
+    # No login/password auth call was made: skip_boxless_alerts was reached
+    # with the configured token directly, and only once.
+    assert len(skip_calls) == 1
+    base_url, auth_token, source_api, alert_ids = skip_calls[0]
+    assert auth_token == "worker-jwt"
+    assert alert_ids == [100]
 
 
 def test_run_import_reports_per_organization_stats(monkeypatch):

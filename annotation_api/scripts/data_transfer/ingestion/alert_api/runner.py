@@ -103,6 +103,45 @@ def _debug_logging_enabled() -> bool:
     return logging.getLogger().isEnabledFor(logging.DEBUG)
 
 
+def auto_skip_boxless(
+    annotation_api_url: str,
+    auth_token: str,
+    source_api: str,
+    boxless_alert_ids: List[int],
+    console: Console,
+    error_collector: ErrorCollector,
+) -> dict:
+    """
+    Best-effort auto-skip of boxless alerts (#333): park their zero-object
+    lanes via the skip overlay. Never raises — a skip failure must not fail
+    an otherwise successful import.
+
+    Takes the already-resolved annotation-API token (`ImportConfig.annotation_api_token`)
+    rather than minting one from login/password: the worker self-mints a JWT and
+    has no ANNOTATOR_LOGIN/ANNOTATOR_PASSWORD in its environment, so a
+    get_auth_token call here would fail in that caller.
+    """
+    counts = {"skipped": 0, "already_skipped": 0, "failed": 0}
+    try:
+        counts = shared.skip_boxless_alerts(
+            annotation_api_url, auth_token, source_api, boxless_alert_ids
+        )
+    except Exception as exc:
+        counts["failed"] = len(boxless_alert_ids)
+        logging.warning("boxless auto-skip aborted: %s", exc)
+    console.print(
+        f"[blue]⏭️  Auto-skipped {counts['skipped']} boxless alert(s) "
+        f"({counts['already_skipped']} already skipped, "
+        f"{counts['failed']} failed): {boxless_alert_ids}[/]"
+    )
+    if counts["failed"] > 0:
+        error_collector.add_warning(
+            f"{counts['failed']} boxless alert(s) could not be auto-skipped; "
+            "their zero-object lanes remain in the queue."
+        )
+    return counts
+
+
 def run_import(config: ImportConfig) -> ImportResult:
     """Run the full alert-API import pipeline.
 
@@ -308,6 +347,10 @@ def run_import(config: ImportConfig) -> ImportResult:
             f"{split_stats['same_frame_merges']} same-frame merge(s))[/]"
         )
 
+        # Boxless alerts import as zero-object lanes the classify page cannot
+        # act on (#333); they are auto-skipped after annotation creation below.
+        boxless_alert_ids = sorted(shared.boxless_platform_alert_ids(records))
+
         if not records and not config.dry_run:
             step_manager.complete_step(False, "No records fetched from alert API")
             return ImportResult(per_organization=org_stats)
@@ -404,6 +447,19 @@ def run_import(config: ImportConfig) -> ImportResult:
         if not sequence_ids:
             step_message = "No sequences successfully imported - nothing to process for annotation generation"
             step_manager.complete_step(True, step_message)
+
+            # Boxless alerts from a previous run over this range may still
+            # need parking (an earlier skip failed, or the range predates the
+            # auto-skip feature); their lanes already exist, so skip works.
+            if boxless_alert_ids and not config.dry_run:
+                auto_skip_boxless(
+                    config.annotation_api_url,
+                    config.annotation_api_token,
+                    config.source_api,
+                    boxless_alert_ids,
+                    console,
+                    error_collector,
+                )
 
             # Show final summary with zero processing and exit gracefully
             console.print()
@@ -521,6 +577,20 @@ def run_import(config: ImportConfig) -> ImportResult:
 
         step_manager.complete_step(step_3_success, step_3_message, final_stats)
 
+        # Auto-skip boxless alerts (#333): their lanes exist now (sequence +
+        # annotation) but have zero objects, so park them via the skip overlay
+        # instead of leaving dead lanes in the classify queue.
+        skip_counts = {"skipped": 0, "already_skipped": 0, "failed": 0}
+        if boxless_alert_ids and not config.dry_run:
+            skip_counts = auto_skip_boxless(
+                config.annotation_api_url,
+                config.annotation_api_token,
+                config.source_api,
+                boxless_alert_ids,
+                console,
+                error_collector,
+            )
+
         # Show any accumulated errors/warnings
         if error_collector.has_issues():
             error_collector.print_summary(console, "Processing Summary")
@@ -558,6 +628,12 @@ def run_import(config: ImportConfig) -> ImportResult:
 • Annotations successful: {stats['annotations_successful']}
 • Annotations failed: {stats['annotations_failed']}
 • Annotations created: {stats['annotations_created']}"""
+        if boxless_alert_ids:
+            annotation_section += (
+                f"\n• Boxless alerts auto-skipped: {skip_counts['skipped']} "
+                f"(+{skip_counts['already_skipped']} already skipped, "
+                f"{skip_counts['failed']} failed): {boxless_alert_ids}"
+            )
         summary_parts.append(annotation_section)
 
         # Join sections

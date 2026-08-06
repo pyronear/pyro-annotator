@@ -71,6 +71,7 @@ __all__ = [
     "get_sequence",
     "list_sequences",
     "delete_sequence",
+    "skip_alert",
     "create_detection",
     "get_detection",
     "list_detections",
@@ -367,6 +368,46 @@ def delete_sequence(base_url: str, auth_token: str, sequence_id: int) -> None:
     operation = f"delete sequence {sequence_id}"
     response = _make_request("DELETE", url, auth_token, operation=operation)
     _handle_response(response, operation=operation)
+
+
+def skip_alert(
+    base_url: str,
+    auth_token: str,
+    source_api: str,
+    platform_alert_id: int,
+    note: Optional[str] = None,
+) -> Dict:
+    """
+    Park a whole alert in the recoverable skipped state (alert-skip overlay).
+
+    Args:
+        base_url: Base URL of the annotation API
+        auth_token: JWT authentication token
+        source_api: Source API of the alert (e.g., "pyronear_french")
+        platform_alert_id: Platform alert grouping id
+        note: Optional free-text reason shown in the skipped list
+
+    Returns:
+        Dictionary containing the created skip info
+
+    Raises:
+        AnnotationAPIError: For API errors; status_code 409 when the alert
+            is already skipped or has fully exited the pipeline
+    """
+    url = f"{base_url.rstrip('/')}/api/v1/sequences/alert/skip"
+    operation = f"skip alert {source_api}/{platform_alert_id}"
+    response = _make_request(
+        "POST",
+        url,
+        auth_token,
+        operation=operation,
+        json={
+            "source_api": source_api,
+            "platform_alert_id": platform_alert_id,
+            "note": note,
+        },
+    )
+    return _handle_response(response, operation=operation)
 
 
 # -------------------- DETECTION OPERATIONS --------------------
