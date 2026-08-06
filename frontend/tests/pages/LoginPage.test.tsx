@@ -11,6 +11,11 @@ describe('LoginPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('focuses the username field on load', () => {
+    render(<LoginPage onLogin={vi.fn()} />);
+    expect(screen.getByLabelText('Username')).toHaveFocus();
+  });
+
   it('shows the error message when provided', () => {
     render(<LoginPage onLogin={vi.fn()} error="Invalid username or password" />);
     expect(screen.getByText('Invalid username or password')).toBeInTheDocument();
