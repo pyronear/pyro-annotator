@@ -389,7 +389,7 @@ Each is out of scope here and tracked separately.
 | | needs backend |
 |---|---|
 | Draw missed smoke as a new object | No — `add_object` (`sequences.py:766`) already copies the richest sibling's full frame set into the new lane, so a fresh object arrives drawable. Frontend-only follow-up. |
-| Draw on a frame outside an object's range (#287) | Yes — one additive endpoint (below). |
+| Draw on a frame outside an object's range (#287) | Yes — one additive endpoint (below). Shipped: see `2026-08-05-gap-frame-materialization-design.md`. |
 | Enforce ≤1 smoke box per detection annotation (#286) | Yes — a validator in `annotation_validation.py`. All 191 existing rows already comply. |
 
 The gap-frame endpoint, sketched so the follow-up starts from a known shape:
