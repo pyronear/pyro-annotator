@@ -14,6 +14,7 @@ from app.services.annotation_generation import (
     box_iou,
     filter_predictions_by_confidence,
     cluster_boxes_by_iou,
+    union_xyxyn,
 )
 from app.schemas.annotation_validation import (
     BoundingBox,
@@ -425,6 +426,26 @@ class TestUtilityFunctions:
         iou = box_iou(box1, box2)
         expected_iou = 0.0625 / 0.4375
         assert abs(iou - expected_iou) < 1e-6
+
+    def test_union_xyxyn_single_box(self):
+        """A single box is its own union."""
+        assert union_xyxyn([[0.1, 0.2, 0.3, 0.4]]) == [0.1, 0.2, 0.3, 0.4]
+
+    def test_union_xyxyn_two_overlapping_boxes(self):
+        """The union encloses both boxes.
+
+        These are detection 19167's real coordinates, the one same-frame
+        overlap found across 19,205 imported detections (#324).
+        """
+        merged = union_xyxyn(
+            [[0.102, 0.565, 0.113, 0.586], [0.107, 0.564, 0.119, 0.584]]
+        )
+        assert merged == pytest.approx([0.102, 0.564, 0.119, 0.586])
+
+    def test_union_xyxyn_contained_box(self):
+        """A box fully inside another leaves the container unchanged."""
+        merged = union_xyxyn([[0.1, 0.1, 0.9, 0.9], [0.3, 0.3, 0.4, 0.4]])
+        assert merged == [0.1, 0.1, 0.9, 0.9]
 
     def test_filter_predictions_by_confidence(self):
         """Test prediction filtering by confidence threshold."""

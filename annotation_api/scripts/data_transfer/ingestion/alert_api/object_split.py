@@ -34,6 +34,7 @@ from app.schemas.annotation_validation import (
     SequenceAnnotationData,
     SequenceBBox,
 )
+from app.services.annotation_generation import union_xyxyn
 from .object_clustering import TrackedObject, cluster_objects, object_cone_azimuth
 from .shared import group_records_by_sequence
 
@@ -126,13 +127,7 @@ def union_boxes(boxes: List[List[float]]) -> List[float]:
     confidence 0.0, so any confidence-weighted rule is degenerate on a large
     slice of the data; max is the best-evidence reading and is stable.
     """
-    return [
-        min(b[0] for b in boxes),
-        min(b[1] for b in boxes),
-        max(b[2] for b in boxes),
-        max(b[3] for b in boxes),
-        max(b[4] for b in boxes),
-    ]
+    return [*union_xyxyn(boxes), max(b[4] for b in boxes)]
 
 
 @dataclass
