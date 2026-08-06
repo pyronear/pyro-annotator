@@ -958,14 +958,19 @@ describe('LocalizeObjectEditor out-of-range frames', () => {
   });
 
   it('Delete un-materializes an evidence-free frame with a committed box', () => {
+    const onCommit = vi.fn();
     const onUnmaterialize = vi.fn();
     renderLoadedEditor({
       detection: detectionWithNoBoxes,
       existingAnnotation: committedAnnotation(detectionWithNoBoxes.id, 'human'),
+      onCommit,
       onUnmaterialize,
     });
     fireEvent.keyDown(window, { key: 'Delete' });
-    expect(onUnmaterialize).toHaveBeenCalled();
+    expect(onUnmaterialize).toHaveBeenCalledWith(
+      expect.objectContaining({ id: detectionWithNoBoxes.id })
+    );
+    expect(onCommit).not.toHaveBeenCalled();
   });
 
   it('does not step past the very first alert frame', () => {
