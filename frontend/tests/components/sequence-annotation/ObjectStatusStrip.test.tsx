@@ -321,7 +321,7 @@ describe('ObjectStatusStrip', () => {
   });
 
   describe('bare variant', () => {
-    it('drops the card chrome and title, keeping rows and segments', () => {
+    it('drops the card chrome, title, and label cluster, keeping the segments', () => {
       const { container } = render(
         <ObjectStatusStrip
           variant="bare"
@@ -339,6 +339,9 @@ describe('ObjectStatusStrip', () => {
       const root = container.firstElementChild as HTMLElement;
       expect(root.className).not.toContain('border');
       expect(root.className).not.toContain('bg-paper');
+      // The embedding surface names the object — no swatch/label cluster.
+      expect(screen.queryByText('Object 1')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Go to Object 1' })).not.toBeInTheDocument();
       expect(screen.getByTestId('status-segment-0-0')).toBeInTheDocument();
       expect(screen.getByTestId('status-segment-0-1')).toBeInTheDocument();
     });

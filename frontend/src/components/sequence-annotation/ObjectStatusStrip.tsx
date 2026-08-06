@@ -25,10 +25,11 @@
  * border) — LocalizeAlertPage's object-focus mode uses it to mark whichever
  * object is currently focused.
  *
- * `variant="bare"` drops the card chrome and title so the strip can embed
- * inside another surface (the accept popover). `playhead` highlights the
- * frame an external animation is currently showing — full-strength fill
- * with an inset marker, since the overflow-hidden track clips outer rings.
+ * `variant="bare"` drops the card chrome, title, and per-row label cluster
+ * so the strip can embed inside another surface (the accept popover) that
+ * already names the object. `playhead` highlights the frame an external
+ * animation is currently showing — full-strength fill with an inset
+ * marker, since the overflow-hidden track clips outer rings.
  *
  * No frame axis here (dropped — the strip's segments read fine without tick
  * labels at this scale); `ObjectPresenceStrip` (classify) is unaffected and
@@ -61,7 +62,7 @@ interface ObjectStatusStripProps {
   /** Called with an object's position in `objects` when its label is clicked — the caller owns turning that into "scroll to and activate that object's card." Omit to render labels non-interactively. */
   onObjectClick?: (objectIndex: number) => void;
   title?: string;
-  /** `bare` drops the card chrome and title so the strip can embed inside another surface (the accept popover). */
+  /** `bare` drops the card chrome, title, and per-row label cluster so the strip can embed inside another surface (the accept popover) that already names the object. */
   variant?: 'card' | 'bare';
   /** Highlights one object's segment at one timestamp — the frame an external animation is currently showing. */
   playhead?: { objectIndex: number; timestamp: string };
@@ -186,12 +187,14 @@ export const ObjectStatusStrip: React.FC<ObjectStatusStripProps> = ({
               selected ? 'border-l-pine bg-pine-soft' : 'border-l-transparent'
             }`}
           >
-            <ObjectLabelButton
-              objectIndex={objectIndex}
-              label={object.label}
-              color={object.color}
-              onClick={() => onObjectClick?.(objectIndex)}
-            />
+            {variant === 'card' && (
+              <ObjectLabelButton
+                objectIndex={objectIndex}
+                label={object.label}
+                color={object.color}
+                onClick={() => onObjectClick?.(objectIndex)}
+              />
+            )}
             <div className="flex h-1.5 flex-1 gap-px overflow-hidden rounded-full bg-ash">
               {frameUnion.map((timestamp, frameIndex) => {
                 const status = object.statusByTimestamp[timestamp] ?? 'absent';

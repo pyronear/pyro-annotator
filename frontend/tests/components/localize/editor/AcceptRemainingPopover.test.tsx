@@ -63,7 +63,7 @@ const ENTRIES: FilmstripEntry[] = [
   },
 ];
 
-function renderPopover() {
+function renderPopover(entries: FilmstripEntry[] = ENTRIES) {
   return render(
     <AcceptRemainingPopover
       objectLabel="Object 2"
@@ -73,7 +73,7 @@ function renderPopover() {
         { detection_id: 101, xyxyn: [0.1, 0.1, 0.2, 0.2] },
         { detection_id: 102, xyxyn: [0.1, 0.1, 0.2, 0.2] },
       ]}
-      entries={ENTRIES}
+      entries={entries}
       acceptCount={1}
       gapCount={1}
       isAccepting={false}
@@ -91,9 +91,10 @@ describe('AcceptRemainingPopover frame context', () => {
   it('renders a bare single-object strip with pre-accept statuses per frame', () => {
     renderPopover();
 
-    // No card chrome/title inside the popover — just the row.
+    // No card chrome/title/label cluster inside the popover — the popover
+    // already names the object; just the segments.
     expect(screen.queryByText('Object timeline')).not.toBeInTheDocument();
-    expect(screen.getByText('Object 2')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Go to Object 2' })).not.toBeInTheDocument();
 
     expect(screen.getByTestId('status-segment-0-0')).toHaveAttribute(
       'aria-label',
@@ -138,6 +139,25 @@ describe('AcceptRemainingPopover frame context', () => {
 
     expect(screen.queryByTestId('accept-remaining-frame-counter')).not.toBeInTheDocument();
     expect(screen.getByTestId('status-segment-0-1')).not.toHaveAttribute('data-playhead');
+  });
+
+  it('shows a legend naming the segment styles that are actually on the strip', () => {
+    renderPopover();
+
+    const legend = screen.getByTestId('accept-remaining-legend');
+    expect(legend).toHaveTextContent('committed');
+    expect(legend).toHaveTextContent('model box to accept');
+    expect(legend).toHaveTextContent('no box');
+  });
+
+  it('omits legend entries for statuses no frame has', () => {
+    // Only the committed and acceptable frames — no gap.
+    renderPopover([ENTRIES[0], ENTRIES[1]]);
+
+    const legend = screen.getByTestId('accept-remaining-legend');
+    expect(legend).toHaveTextContent('committed');
+    expect(legend).toHaveTextContent('model box to accept');
+    expect(legend).not.toHaveTextContent('no box');
   });
 
   it('never puts the playhead on a gap frame via a sibling detection id', () => {

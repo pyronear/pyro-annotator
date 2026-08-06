@@ -32,7 +32,7 @@
  * the playhead never lands on an outlined segment.
  */
 
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { X } from 'lucide-react';
 import CroppedImageSequence from '@/components/annotation/CroppedImageSequence';
 import {
@@ -89,6 +89,27 @@ export function AcceptRemainingPopover({
 
   const statusByTimestamp: Record<string, ObjectStatusStripStatus> = {};
   for (const entry of entries) statusByTimestamp[entry.recordedAt] = entryStatus(entry);
+
+  // Legend under the strip, mirroring each status's segment styling — but
+  // only for statuses actually on the strip: a "no box" chip over a gapless
+  // track would name a problem the object does not have.
+  const present = new Set(Object.values(statusByTimestamp));
+  const legendItems: { label: string; swatchStyle: CSSProperties }[] = [];
+  if (present.has('confirmed')) {
+    legendItems.push({ label: 'committed', swatchStyle: { backgroundColor: objectColor } });
+  }
+  if (present.has('pending')) {
+    legendItems.push({
+      label: 'model box to accept',
+      swatchStyle: { backgroundColor: objectColor, opacity: 0.4 },
+    });
+  }
+  if (present.has('empty')) {
+    legendItems.push({
+      label: 'no box',
+      swatchStyle: { boxShadow: `inset 0 0 0 1px ${objectColor}` },
+    });
+  }
 
   return (
     <div
@@ -157,6 +178,19 @@ export function AcceptRemainingPopover({
               currentEntry ? { objectIndex: 0, timestamp: currentEntry.recordedAt } : undefined
             }
           />
+          {legendItems.length > 0 && (
+            <div data-testid="accept-remaining-legend" className="mt-2 space-y-1">
+              {legendItems.map(item => (
+                <div
+                  key={item.label}
+                  className="flex items-center gap-1.5 font-data text-detail text-haze"
+                >
+                  <span aria-hidden className="h-1.5 w-4 rounded-full" style={item.swatchStyle} />
+                  {item.label}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
