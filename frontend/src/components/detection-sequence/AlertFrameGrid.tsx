@@ -15,18 +15,22 @@
  *
  * Crop mode (`cropMode`, active only when an object is active) zooms each
  * cell around that object's boxes on that frame, mirroring the legacy
- * grid's crop-mode zoom (`gridCropUtils.computeCellCrop`) — a frame where
- * the active lane isn't present stays full-frame (no object to focus on).
+ * grid's crop-mode zoom (`gridCropUtils.computeCellCrop`). A boxless frame
+ * — a gap in the object's track, or a before/after context frame where the
+ * lane is absent — zooms to the union of the nearest boxed neighbors
+ * instead (`computeFallbackCrops`), so the eye stays on one region across
+ * the whole sequence; while cropped, context cells swap their heavy fade
+ * for a lighter dim so faint smoke in that region stays judgeable.
  *
  * `highlightedFrame` (a `recordedAt`) gives that one cell a temporary accent
  * ring — the page sets it on a segment click or a `?frame=` deep-link
  * arrival, then clears it after a couple of seconds.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDetectionImage } from '@/hooks/useDetectionImage';
 import { normalizedToPixelBox, ImageInfo } from '@/utils/annotation/coordinateUtils';
-import { computeCellCrop } from '@/utils/annotation/gridCropUtils';
+import { CellCrop, computeCellCrop, computeFallbackCrops } from '@/utils/annotation/gridCropUtils';
 import { AlertFrame, AlertFrameCell } from '@/utils/annotation/alertLocalizeUtils';
 import { formatDateTime } from '@/utils/datetime';
 
@@ -54,6 +58,16 @@ export function AlertFrameGrid({
   cropMode = false,
   highlightedFrame = null,
 }: AlertFrameGridProps) {
+  // Inferred zoom for boxless cells (gap frames, before/after context): the
+  // union of the nearest boxed frames on each side, so the eye stays on one
+  // region across the whole sequence instead of jumping between tight crops
+  // and full frames. Computed before the empty-frames early return — hooks
+  // must run unconditionally.
+  const fallbackCrops = useMemo(
+    () => (cropMode ? computeFallbackCrops(frames, activeLaneId) : new Map<string, CellCrop>()),
+    [frames, activeLaneId, cropMode]
+  );
+
   if (frames.length === 0) return null;
 
   return (
@@ -69,6 +83,7 @@ export function AlertFrameGrid({
           frame={frame}
           activeLaneId={activeLaneId}
           cropMode={cropMode}
+          fallbackCrop={fallbackCrops.get(frame.recordedAt)}
           highlighted={highlightedFrame === frame.recordedAt}
           onClick={activeCell =>
             onCellClick(frame.recordedAt, activeCell.laneSequenceId, activeCell.detectionId)
@@ -84,6 +99,8 @@ interface AlertFrameCellViewProps {
   frame: AlertFrame;
   activeLaneId: number | null;
   cropMode: boolean;
+  /** Borrowed crop for a frame where the active lane has no boxes (gap / context). */
+  fallbackCrop?: CellCrop;
   highlighted: boolean;
   onClick: (activeCell: AlertFrameCell) => void;
   cellRef?: (el: HTMLDivElement | null) => void;
@@ -93,6 +110,7 @@ function AlertFrameCellView({
   frame,
   activeLaneId,
   cropMode,
+  fallbackCrop,
   highlighted,
   onClick,
   cellRef,
@@ -104,14 +122,18 @@ function AlertFrameCellView({
     frame.cells.find(c => c.laneSequenceId === activeLaneId) ??
     frame.cells.find(c => !c.isFalsePositive) ??
     frame.cells[0];
-  // Crop only applies when the active lane is actually present on this
-  // frame — a fallback cell (active lane absent here) has no "the object"
-  // box to focus on, so it stays full-frame.
   const isActiveLaneCell = activeLaneId !== null && activeCell.laneSequenceId === activeLaneId;
-  const crop =
-    cropMode && isActiveLaneCell
+  // A cell with the active object's boxes crops around them. A boxless cell
+  // — gap frame (lane present, nothing drawn) or context frame (lane
+  // absent) — borrows the grid-level fallback crop inferred from its
+  // nearest boxed neighbors, so "did smoke appear here?" is judged at the
+  // same zoom as the frames around it.
+  const identityCrop: CellCrop = { scale: 1, originX: 50, originY: 50 };
+  const crop = !cropMode
+    ? identityCrop
+    : isActiveLaneCell && activeCell.boxes.length > 0
       ? computeCellCrop(activeCell.boxes)
-      : { scale: 1, originX: 50, originY: 50 };
+      : (fallbackCrop ?? identityCrop);
   const cropStyle =
     crop.scale > 1
       ? { transform: `scale(${crop.scale})`, transformOrigin: `${crop.originX}% ${crop.originY}%` }
@@ -188,7 +210,7 @@ function AlertFrameCellView({
       data-context={isContextFrame ? 'true' : undefined}
       data-readonly={isReadOnly ? 'true' : undefined}
       className={`group aspect-video relative overflow-hidden bg-ash transition-shadow duration-700 ${
-        isContextFrame ? 'opacity-40 saturate-50' : ''
+        isContextFrame ? (cropMode ? 'opacity-75' : 'opacity-40 saturate-50') : ''
       } ${isReadOnly ? 'cursor-default' : 'cursor-pointer'} ${
         highlighted ? 'ring-2 ring-pine ring-offset-2' : ''
       }`}

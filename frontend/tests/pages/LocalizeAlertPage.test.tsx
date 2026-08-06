@@ -895,6 +895,58 @@ describe('LocalizeAlertPage', () => {
     });
   });
 
+  it('crop mode zooms a gap frame (active lane present, no boxes) to the nearest boxed neighbors', async () => {
+    // Lane 101 gains a boxless detection at T2 (no predictions -> 'empty'
+    // cell state), making T2 a gap frame for Object 1.
+    vi.mocked(apiClient.getSequenceDetections).mockImplementation(async (id: number) => {
+      if (id === 101)
+        return [
+          makeDetection(1001, T1),
+          { ...makeDetection(1004, T2), auto_predictions: { predictions: [] } },
+        ];
+      if (id === 102) return [makeDetection(1002, T1), makeDetection(1003, T2)];
+      return [];
+    });
+
+    await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+    // Arrival auto-focus: Object 1 active, crop on. T2 has none of its boxes,
+    // so it borrows T1's box region (0.1–0.3 -> scale 4 about 20% 20%).
+    await waitFor(() => {
+      const img = within(screen.getByTestId(`alert-frame-cell-${T2}`)).getByRole('img');
+      expect(img.style.transform).toContain('scale(');
+      expect(img.style.transformOrigin).toBe('20% 20%');
+    });
+    // A gap frame is the object's own (clickable) cell, not context.
+    expect(screen.getByTestId(`alert-frame-cell-${T2}`)).not.toHaveAttribute('data-context');
+  });
+
+  it('crop mode zooms context frames to the borrowed region and lightens their fade', async () => {
+    await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+    // Arrival auto-focus: Object 1 (lane 101, present only at T1) active,
+    // crop on. T2 is context — zoomed to T1's borrowed region, not full-frame.
+    await waitFor(() => {
+      const img = within(screen.getByTestId(`alert-frame-cell-${T2}`)).getByRole('img');
+      expect(img.style.transform).toContain('scale(');
+    });
+    const cell = screen.getByTestId(`alert-frame-cell-${T2}`);
+    expect(cell).toHaveAttribute('data-context', 'true');
+    // The heavy fade would bury faint smoke in the zoomed region: crop mode
+    // swaps it for a subtle dim.
+    expect(cell.className).toContain('opacity-75');
+    expect(cell.className).not.toContain('opacity-40');
+
+    // Crop off: back to full-frame and the strong fade.
+    fireEvent.keyDown(window, { key: 'c' });
+    await waitFor(() => {
+      const img = within(screen.getByTestId(`alert-frame-cell-${T2}`)).getByRole('img');
+      expect(img.style.transform).toBe('');
+    });
+    expect(cell.className).toContain('opacity-40');
+    expect(cell.className).toContain('saturate-50');
+  });
+
   it('a segment click gives its target cell an arrival highlight that fades after ~2s', async () => {
     await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
