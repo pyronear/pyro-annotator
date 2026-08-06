@@ -1365,10 +1365,10 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     const handleTab = (e: KeyboardEvent) => {
       if (e.key !== 'Tab') return;
       // Suspended whenever a surface with its own focusables is up — the
-      // per-frame editor, the missed-smoke submit dialog, the shortcuts
-      // sheet, the accept popover — so their controls stay
+      // per-frame editor, the missed-smoke submit dialog, the skip confirm,
+      // the shortcuts sheet, the accept popover — so their controls stay
       // keyboard-reachable (mirrors classify's modal guards).
-      if (detectionIdNum != null || missedSmokeConfirm) return;
+      if (detectionIdNum != null || missedSmokeConfirm || skipConfirmOpen) return;
       if (showShortcutsModal || acceptPopoverOpen) return;
       if (orderedObjectRows.length === 0) return;
       e.preventDefault();
@@ -1399,7 +1399,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   // above: re-subscribing every render keeps the closure fresh.
   useEffect(() => {
     const handleShortcutKeys = (e: KeyboardEvent) => {
-      if (detectionIdNum != null || missedSmokeConfirm) return;
+      if (detectionIdNum != null || missedSmokeConfirm || skipConfirmOpen) return;
       // Shift stays allowed: `?` requires it.
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const target = e.target;
@@ -1841,7 +1841,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                           }}
                           data-testid="skip-alert-button"
                           className={`inline-flex items-center rounded-lg border border-ember bg-paper px-3 py-2.5 font-body text-sm font-medium text-ember hover:bg-ember-soft${
-                            missedSmoke ? ' animate-skip-glow' : ''
+                            missedSmoke ? ' animate-skip-glow motion-reduce:animate-none' : ''
                           }`}
                         >
                           Skip alert

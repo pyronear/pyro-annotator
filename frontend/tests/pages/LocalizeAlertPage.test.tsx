@@ -2233,7 +2233,7 @@ describe('LocalizeAlertPage', () => {
       });
     }
 
-    it('starts at No even on an alert classify already flagged — adding an object is a decision made here', async () => {
+    it('starts at No even on an alert classify already flagged — flagging is a decision made here', async () => {
       flaggedAlert();
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
@@ -2266,6 +2266,7 @@ describe('LocalizeAlertPage', () => {
       fireEvent.click(noRadio);
 
       expect(screen.queryByText(/Adding the missed object isn/)).not.toBeInTheDocument();
+      expect(screen.getByTestId('skip-alert-button').className).not.toContain('animate-skip-glow');
     });
 
     it('done mode: Yes shows no nudge — there is no Skip button to point at', async () => {
@@ -3071,6 +3072,32 @@ describe('LocalizeAlertPage', () => {
       answerMissedSmokeYes();
 
       expect(skipButton.className).toContain('animate-skip-glow');
+    });
+
+    it('Tab is inert while the skip confirm is open, so its controls stay reachable', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      // Arrival barrier: a Tab fired before the auto-select commits would
+      // itself land on lane 101 and pass vacuously.
+      await waitFor(() =>
+        expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/101')
+      );
+      fireEvent.click(screen.getByRole('button', { name: /Skip alert/ }));
+
+      fireEvent.keyDown(document, { key: 'Tab' });
+
+      // No cycling happened behind the dialog: the URL still names the
+      // arrival object, and the dialog is still up.
+      expect(screen.getByTestId('location')).toHaveTextContent('/localize/101/object/101');
+      expect(screen.getByTestId('skip-alert-confirm')).toBeInTheDocument();
+    });
+
+    it("'?' is inert while the skip confirm is open", async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+      fireEvent.click(screen.getByRole('button', { name: /Skip alert/ }));
+
+      fireEvent.keyDown(window, { key: '?' });
+
+      expect(screen.queryByRole('dialog', { name: 'Keyboard shortcuts' })).not.toBeInTheDocument();
     });
   });
 
