@@ -198,6 +198,9 @@ export default function SequencesPage({
       queryClient.invalidateQueries({ queryKey: ['classify-queue'] });
       queryClient.invalidateQueries({ queryKey: ['classify-queue-skipped-count'] });
       queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
+      // The dashboard's Classify count is the same skip-excluding queue total
+      // as the badge, so it has to follow an unskip too.
+      queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });
     },
   });
 

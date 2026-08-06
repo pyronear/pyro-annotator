@@ -23,8 +23,11 @@ import { apiClient } from '@/services/api';
 import DetectionAnnotatePage from '@/pages/DetectionAnnotatePage';
 import { formatDateTime } from '@/utils/datetime';
 
+// Hoisted so a test can spy on the client's invalidations; still a fresh
+// client per test (assigned in beforeEach).
+let client: QueryClient;
+
 function wrapper({ children }: { children: React.ReactNode }) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return (
     <QueryClientProvider client={client}>
       <MemoryRouter>{children}</MemoryRouter>
@@ -65,6 +68,7 @@ const queueItem = {
 
 describe('DetectionAnnotatePage (Localize queue)', () => {
   beforeEach(() => {
+    client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     navigateMock.mockClear();
     vi.mocked(apiClient.getLocalizationQueue).mockReset();
     // Skipped-aware default: the page also fires a skipped-count query on
@@ -209,9 +213,16 @@ describe('DetectionAnnotatePage (Localize queue)', () => {
       'aria-pressed',
       'true'
     );
+    const invalidateSpy = vi.spyOn(client, 'invalidateQueries');
     fireEvent.click(screen.getByRole('button', { name: 'Unskip' }));
     await waitFor(() => {
       expect(apiClient.unskipAlert).toHaveBeenCalledWith('pyronear_french', 170000);
+    });
+    // Localize · to do on the dashboard is the same skip-excluding queue total
+    // the sidebar badge reads, so it has to follow an unskip too.
+    await waitFor(() => {
+      const keys = invalidateSpy.mock.calls.map(([arg]) => String(arg?.queryKey?.[0]));
+      expect(keys).toContain('pipeline-stats');
     });
   });
 });

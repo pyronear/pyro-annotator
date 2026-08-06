@@ -37,6 +37,9 @@ export default function DetectionAnnotatePage() {
       queryClient.invalidateQueries({ queryKey: ['localization-queue'] });
       queryClient.invalidateQueries({ queryKey: ['localization-queue-skipped-count'] });
       queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
+      // Same reasoning as the classify unskip: the dashboard's Localize count
+      // is the skip-excluding queue total.
+      queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });
     },
   });
 
