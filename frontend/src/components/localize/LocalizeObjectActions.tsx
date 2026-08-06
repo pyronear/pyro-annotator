@@ -1,9 +1,10 @@
 /**
  * The two things you can do to one localize object: bulk-accept the model's
- * boxes, or send it back to classify. Shared, because they appear in two
- * places at once — the object's rail row and the media column's CTA bar —
- * and a second copy of the buttons would mean a second copy of the tooltip
- * copy, which is where the explanation of what each one does actually lives.
+ * boxes, or send it back to classify. They live in one place — the bar above
+ * the media column, on the active object — so there is exactly one copy of
+ * the tooltip copy, which is where the explanation of what each one does
+ * actually lives. (They used to also sit on the selected rail row, which
+ * showed every button twice on one screen.)
  *
  * Either action can be withheld by omitting its handler: false positives get
  * neither, and a lane past localization (or one with nothing left pending)
@@ -23,18 +24,8 @@ export interface LocalizeObjectActionsProps {
   onReclassify?: () => void;
   /** Passed through to the tooltips — `above` where the panel edge is below the buttons. */
   tooltipPlacement?: 'below' | 'above';
-  /**
-   * `compact` fits the rail row's line, where these are one of several things
-   * competing for a narrow strip. `prominent` is the media column's call to
-   * action: the same height, so the control panel doesn't grow when an object
-   * is selected, but Accept carries the primary fill since it is the one that
-   * moves the work on.
-   */
-  size?: 'compact' | 'prominent';
 }
 
-const COMPACT =
-  'whitespace-nowrap rounded-lg border border-line bg-paper px-2 py-1 font-body text-xs font-medium text-char hover:bg-ash disabled:cursor-not-allowed disabled:opacity-50';
 // Prominence comes from fill and placement, not from size: these sit on the
 // control panel's line, and anything taller than the view toolbar beside them
 // would grow the panel the moment an object is selected — the page would
@@ -45,9 +36,9 @@ const COMPACT =
 // forward — it is what Submit wears — and accepting an object's boxes is the
 // same motion, one object at a time. Ember would read as the alert's headline
 // action and compete with Submit for it.
-const PROMINENT_PRIMARY =
+const PRIMARY =
   'inline-flex items-center whitespace-nowrap rounded-lg bg-pine px-3 py-1 font-body text-xs font-semibold text-white hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-char focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50';
-const PROMINENT_SECONDARY =
+const SECONDARY =
   'inline-flex items-center whitespace-nowrap rounded-lg border border-line bg-paper px-3 py-1 font-body text-xs font-medium text-char hover:bg-ash';
 
 export const LocalizeObjectActions: React.FC<LocalizeObjectActionsProps> = ({
@@ -56,7 +47,6 @@ export const LocalizeObjectActions: React.FC<LocalizeObjectActionsProps> = ({
   isAccepting = false,
   onReclassify,
   tooltipPlacement = 'below',
-  size = 'compact',
 }) => (
   <>
     {onAcceptBoxes && (
@@ -68,17 +58,14 @@ export const LocalizeObjectActions: React.FC<LocalizeObjectActionsProps> = ({
       >
         <button
           type="button"
-          // The visible label stays short for the rail's width; the accessible
-          // name keeps naming the object, so "accept THIS object's boxes" is
-          // unambiguous to a screen reader (and to the page tests, which
-          // address rows by object).
+          // The visible label stays short; the accessible name keeps naming
+          // the object, so "accept THIS object's boxes" is unambiguous to a
+          // screen reader (and to the page tests, which address the actions
+          // by object).
           aria-label={`Accept ${label}'s boxes`}
-          onClick={e => {
-            e.stopPropagation();
-            onAcceptBoxes();
-          }}
+          onClick={onAcceptBoxes}
           disabled={isAccepting}
-          className={size === 'prominent' ? PROMINENT_PRIMARY : COMPACT}
+          className={PRIMARY}
         >
           {isAccepting ? 'Accepting…' : 'Accept boxes'}
         </button>
@@ -94,11 +81,8 @@ export const LocalizeObjectActions: React.FC<LocalizeObjectActionsProps> = ({
         <button
           type="button"
           aria-label={`Reclassify ${label}`}
-          onClick={e => {
-            e.stopPropagation();
-            onReclassify();
-          }}
-          className={size === 'prominent' ? PROMINENT_SECONDARY : COMPACT}
+          onClick={onReclassify}
+          className={SECONDARY}
         >
           Reclassify
         </button>

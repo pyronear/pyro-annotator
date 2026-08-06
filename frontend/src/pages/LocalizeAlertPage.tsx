@@ -84,7 +84,7 @@
  *
  * Submit is also gated now: it enables only once every workable object
  * already carries a committed box on every frame it appears on, accepted
- * per object from its own rail row. Submit therefore no longer accepts
+ * per object from the bar above its frames. Submit therefore no longer accepts
  * anything itself, and the old per-frame "N frames with no box — submit
  * anyway?" two-step went with that: under the gate there is never a pending
  * no-box frame left at submit time. The missed-smoke soft-confirm is the
@@ -102,10 +102,10 @@
  * accounted for?" before someone adds a duplicate object for it. Unsure
  * lanes stay excluded either way.
  *
- * Each smoke object's row also carries a "Reclassify" action — workable and
- * already-localized rows alike — routing to `/classify/done/<lane>` with a
- * `return` param back to this page. False-positive rows deliberately don't
- * get it (see issue #275).
+ * The active object also carries a "Reclassify" action in the CTA bar above
+ * its frames — workable, already-localized and false-positive objects alike
+ * (promoting an FP back to smoke re-runs its auto-review pass, issue #275) —
+ * routing to `/classify/done/<lane>` with a `return` param back to this page.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -698,8 +698,8 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
 
   // The timeline's rows: identity + per-frame statuses + the "selected"
   // accent for whichever object is currently focused. The quick-accept
-  // action no longer rides along here — it lives on the selected object's
-  // rail row and above the media column, on the active object.
+  // action no longer rides along here — it lives above the media column, on
+  // the active object.
   const objectStatusRows: AlertObjectStatus[] = frameModel.objectStatus.map(object => ({
     ...object,
     selected: isFocused && activeLaneId === object.laneSequenceId,
@@ -807,13 +807,14 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
         !!lane.annotation && !laneNeedsLocalization(lane.annotation) && !lane.annotation.is_unsure
     ).length ?? 0;
 
-  // Which actions an object gets, and what they do — shared by the rail row
-  // and the media column's CTA bar so the two can't disagree about whether an
-  // object is acceptable or correctable.
+  // Which actions the active object gets, and what they do — feeds the media
+  // column's CTA bar, the actions' one home. The rail rows stay read-only
+  // summaries; giving the selected row the same pair showed every button
+  // twice on one screen.
   const objectActionProps = (object: AlertObjectStatus) => ({
     // Withheld once the lane has nothing pending: re-accepting would fire a
     // mutation with an empty payload and toast success for a no-op. It is
-    // also the only way the selected row/bar can show that the accept landed.
+    // also the only way the bar can show that the accept landed.
     onAcceptBoxes:
       object.workable && !isObjectLocalized(object)
         ? () => quickAcceptLane.mutate(object.laneSequenceId)
@@ -851,7 +852,6 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
         dimmed={object.isFalsePositive || (!object.workable && workableObjects.length > 0)}
         isActive={isActive}
         onActivate={() => handleObjectClick(object.laneSequenceId)}
-        {...objectActionProps(object)}
       />
     );
   };
@@ -863,8 +863,8 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   const activeObjectLabel = activeObject?.label ?? null;
 
   // Submit gate: every workable object must already have a committed box on
-  // every frame it appears on. An object is "accepted" either via its row's
-  // Accept-boxes action or by drawing its frames in the editor — submitting
+  // every frame it appears on. An object is "accepted" either via the CTA
+  // bar's Accept-boxes action or by drawing its frames in the editor — submitting
   // is the last step, not a shortcut past the per-object review.
   // Deliberately NOT the badge's count: submit only ships workable lanes, so
   // already-annotated objects must not satisfy (or block) the gate.
@@ -1309,7 +1309,6 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
               activeObject && (
                 <LocalizeObjectActions
                   label={activeObject.label}
-                  size="prominent"
                   {...objectActionProps(activeObject)}
                 />
               )

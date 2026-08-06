@@ -831,45 +831,6 @@ describe('LocalizeAlertPage', () => {
     );
   });
 
-  it("per-object quick-accept saves only that lane's frames, scoped per lane", async () => {
-    vi.mocked(apiClient.createDetectionAnnotation).mockImplementation(async payload => ({
-      id: 9100 + payload.detection_id,
-      detection_id: payload.detection_id,
-      annotation: payload.annotation,
-      processing_stage: payload.processing_stage,
-      created_at: '2026-01-01T00:00:00Z',
-      updated_at: null,
-    }));
-
-    await renderAndSettle(<LocalizeAlertPage />, { wrapper });
-
-    // The action lives on the selected row — and arrival auto-focus already
-    // selected Object 1, so it's reachable directly. Scoped to the row
-    // because the media column's CTA bar offers the same action for the
-    // same object.
-    fireEvent.click(
-      within(screen.getByTestId('localize-object-row-object-1')).getByRole('button', {
-        name: "Accept Object 1's boxes",
-      })
-    );
-
-    await waitFor(() => {
-      expect(apiClient.createDetectionAnnotation).toHaveBeenCalledWith(
-        expect.objectContaining({ detection_id: 1001 })
-      );
-    });
-
-    // Object 1's lane only has detection 1001 — Object 2's frames (1002, 1003)
-    // must never be touched by Object 1's quick-accept button.
-    expect(apiClient.createDetectionAnnotation).not.toHaveBeenCalledWith(
-      expect.objectContaining({ detection_id: 1002 })
-    );
-    expect(apiClient.createDetectionAnnotation).not.toHaveBeenCalledWith(
-      expect.objectContaining({ detection_id: 1003 })
-    );
-    expect(apiClient.updateDetectionAnnotation).not.toHaveBeenCalled();
-  });
-
   it('the S/M/L card-size control resizes the grid and persists to the key shared with the legacy page', async () => {
     const { container } = render(<LocalizeAlertPage />, { wrapper: wrapper });
     await waitFor(() => expect(screen.getByTestId('status-segment-0-0')).toBeInTheDocument());
@@ -2105,6 +2066,20 @@ describe('LocalizeAlertPage', () => {
       expect(screen.getByText(/Frames — Object 2/)).toBeInTheDocument();
     });
 
+    it('is the actions’ only home — the selected rail row keeps its metadata instead', async () => {
+      // The same pair used to also sit on the selected rail row, so every
+      // active object showed the buttons twice on one screen. The rail row
+      // now always reads as progress + status, buttons or no.
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      // Arrival auto-selects Object 1 — previously the trigger for the row's
+      // button swap.
+      const row = within(screen.getByTestId('localize-object-row-object-1'));
+      expect(row.queryAllByRole('button')).toHaveLength(0);
+      expect(row.getByText('0/1')).toBeInTheDocument();
+      expect(row.getByText('1 left')).toBeInTheDocument();
+    });
+
     it("accepts the active object's boxes from the header, then reports nothing left and drops the action", async () => {
       vi.mocked(apiClient.createDetectionAnnotation).mockImplementation(async payload => ({
         id: 9100 + payload.detection_id,
@@ -2124,7 +2099,8 @@ describe('LocalizeAlertPage', () => {
       );
 
       // Object 1's lane is detection 1001 only — the CTA acts on the active
-      // object, not on the alert.
+      // object, not on the alert. Object 2's frames (1002, 1003) must never
+      // be touched by Object 1's quick-accept.
       await waitFor(() => {
         expect(apiClient.createDetectionAnnotation).toHaveBeenCalledWith(
           expect.objectContaining({ detection_id: 1001 })
@@ -2132,6 +2108,9 @@ describe('LocalizeAlertPage', () => {
       });
       expect(apiClient.createDetectionAnnotation).not.toHaveBeenCalledWith(
         expect.objectContaining({ detection_id: 1002 })
+      );
+      expect(apiClient.createDetectionAnnotation).not.toHaveBeenCalledWith(
+        expect.objectContaining({ detection_id: 1003 })
       );
 
       expect(apiClient.updateDetectionAnnotation).not.toHaveBeenCalled();
@@ -2726,10 +2705,11 @@ describe('LocalizeAlertPage', () => {
     it("navigates to the row's OWN lane in classify done mode, carrying a return to this page", async () => {
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
-      // Reclassify is on the selected row only, so select Object 2 first.
+      // Reclassify sits in the CTA bar for the active object, so select
+      // Object 2 first.
       fireEvent.click(screen.getByTestId('localize-object-row-object-2'));
       fireEvent.click(
-        within(screen.getByTestId('localize-object-row-object-2')).getByRole('button', {
+        within(screen.getByTestId('localize-active-object-actions')).getByRole('button', {
           name: 'Reclassify Object 2',
         })
       );
@@ -2751,7 +2731,7 @@ describe('LocalizeAlertPage', () => {
 
       fireEvent.click(screen.getByTestId('localize-object-row-object-2'));
       fireEvent.click(
-        within(screen.getByTestId('localize-object-row-object-2')).getByRole('button', {
+        within(screen.getByTestId('localize-active-object-actions')).getByRole('button', {
           name: 'Reclassify Object 2',
         })
       );
@@ -2782,10 +2762,10 @@ describe('LocalizeAlertPage', () => {
       await renderAndSettle(<LocalizeAlertPage />, { wrapper });
 
       fireEvent.click(screen.getByTestId('localize-object-row-object-2'));
-      const contextRow = within(screen.getByTestId('localize-object-row-object-2'));
-      // Context rows carry no Accept boxes action, but stay correctable.
-      expect(contextRow.queryByRole('button', { name: /Accept/ })).not.toBeInTheDocument();
-      expect(contextRow.getByRole('button', { name: 'Reclassify Object 2' })).toBeInTheDocument();
+      const cta = within(screen.getByTestId('localize-active-object-actions'));
+      // Context objects carry no Accept boxes action, but stay correctable.
+      expect(cta.queryByRole('button', { name: /Accept/ })).not.toBeInTheDocument();
+      expect(cta.getByRole('button', { name: 'Reclassify Object 2' })).toBeInTheDocument();
     });
 
     it('offers Reclassify on a false-positive context row (FP -> smoke, issue #275)', async () => {
@@ -2815,9 +2795,9 @@ describe('LocalizeAlertPage', () => {
 
       // Still no localization action — but the classification is correctable.
       fireEvent.click(await screen.findByTestId('localize-object-row-object-2'));
-      const fpRow = within(screen.getByTestId('localize-object-row-object-2'));
-      expect(fpRow.queryByRole('button', { name: /Accept/ })).not.toBeInTheDocument();
-      fireEvent.click(fpRow.getByRole('button', { name: 'Reclassify Object 2' }));
+      const cta = within(screen.getByTestId('localize-active-object-actions'));
+      expect(cta.queryByRole('button', { name: /Accept/ })).not.toBeInTheDocument();
+      fireEvent.click(cta.getByRole('button', { name: 'Reclassify Object 2' }));
 
       // Same destination contract as smoke rows: the row's OWN lane, with a
       // return naming that object's selection URL. If the lane comes back
