@@ -37,17 +37,29 @@ function cellState(
 }
 
 // failed and missing share an appearance: both mean "we do not have this day".
-// The tooltip is what distinguishes them.
+// The tooltip is what distinguishes them. Signal is legitimate here — DESIGN.md
+// restricts it to "errors, destructive, attention only", and a hole in coverage
+// is exactly that. Same hatch treatment and rgb value as the "no source found"
+// hole in ObjectFilmstrip.tsx (signal token #B3261E → rgb(179,38,30)), not
+// Tailwind's default red.
 const HATCHED =
-  'bg-red-100 [background-image:repeating-linear-gradient(45deg,transparent,transparent_3px,rgba(220,38,38,0.55)_3px,rgba(220,38,38,0.55)_6px)]';
+  'bg-signal-soft [background-image:repeating-linear-gradient(45deg,transparent,transparent_3px,rgba(179,38,30,0.55)_3px,rgba(179,38,30,0.55)_6px)]';
 
 const STATE_CLASS: Record<CellState, string> = {
-  imported: 'bg-emerald-500',
-  partial: 'bg-emerald-500 ring-1 ring-amber-500',
-  empty: 'bg-gray-200',
+  // Positive state → pine (DESIGN.md palette row: "Localize lane identity,
+  // active nav, positive states").
+  imported: 'bg-pine',
+  // Some imported, some failed: pine fill with a signal ring marker rather
+  // than a second full-fill accent, keeping to "one accent per element"
+  // while still surfacing the attention-worthy part.
+  partial: 'bg-pine ring-2 ring-inset ring-signal',
+  // Covered with zero alerts carries no alert meaning, so it gets a neutral
+  // fill, not an accent — same treatment as the "absent" swatch in
+  // TimelineLegend.tsx (bg-ash + ring-line).
+  empty: 'bg-ash ring-1 ring-inset ring-line',
   failed: HATCHED,
   missing: HATCHED,
-  'not-enabled': 'border border-dashed border-gray-300',
+  'not-enabled': 'border border-dashed border-line',
 };
 
 function tooltip(
@@ -75,9 +87,12 @@ export function CoverageHeatmap({ organizations, cells, dateFrom, dateEnd }: Pro
         <tbody>
           {organizations.map(org => (
             <tr key={org.id}>
+              {/* Organization name, not a numeral — font-body per the "primary
+                  cell" table recipe, not font-data (that's for counts/dates/
+                  headers in a thead, which this table has none of). */}
               <th
                 scope="row"
-                className="whitespace-nowrap pr-3 text-right text-sm font-medium"
+                className="whitespace-nowrap pr-3 text-right font-body text-sm font-medium text-char"
               >
                 {org.name}
               </th>
