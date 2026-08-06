@@ -952,3 +952,43 @@ async def test_list_legacy_validated_group_has_null_reviewer(
     assert row["is_validated"] is True
     assert row["validated_by_username"] is None
     assert row["validated_at"] is None
+
+
+# ---------------------------------------------------------------------------
+# Thumbnails on the list endpoint
+# ---------------------------------------------------------------------------
+
+
+def test_crop_bbox_unions_valid_prediction_boxes():
+    from app.api.api_v1.endpoints.sequence_groups import _crop_bbox
+
+    algo = {
+        "predictions": [
+            {"xyxyn": [0.1, 0.2, 0.2, 0.3], "confidence": 0.8, "class_name": "smoke"},
+            {"xyxyn": [0.15, 0.1, 0.3, 0.25], "confidence": 0.7, "class_name": "smoke"},
+        ]
+    }
+    assert _crop_bbox(algo) == [0.1, 0.1, 0.3, 0.3]
+
+
+def test_crop_bbox_none_when_no_valid_boxes():
+    from app.api.api_v1.endpoints.sequence_groups import _crop_bbox
+
+    assert _crop_bbox(None) is None
+    assert _crop_bbox({}) is None
+    assert _crop_bbox({"predictions": []}) is None
+    # Degenerate box (zero width) is not a valid crop target.
+    assert (
+        _crop_bbox(
+            {
+                "predictions": [
+                    {
+                        "xyxyn": [0.5, 0.5, 0.5, 0.9],
+                        "confidence": 0.9,
+                        "class_name": "smoke",
+                    }
+                ]
+            }
+        )
+        is None
+    )

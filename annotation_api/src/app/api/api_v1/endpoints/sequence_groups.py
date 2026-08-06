@@ -51,6 +51,29 @@ class OrderDirection(str, Enum):
     desc = "desc"
 
 
+def _crop_bbox(algo_predictions: Optional[dict]) -> Optional[list[float]]:
+    """Union of a frame's valid prediction boxes, as a crop target for the
+    list page's thumbnails. Mirrors the frontend's cropBox math on the
+    group annotate page (union of valid boxes, else fall back)."""
+    predictions = (algo_predictions or {}).get("predictions") or []
+    boxes = [
+        p["xyxyn"]
+        for p in predictions
+        if isinstance(p.get("xyxyn"), list)
+        and len(p["xyxyn"]) == 4
+        and p["xyxyn"][2] > p["xyxyn"][0]
+        and p["xyxyn"][3] > p["xyxyn"][1]
+    ]
+    if not boxes:
+        return None
+    return [
+        min(b[0] for b in boxes),
+        min(b[1] for b in boxes),
+        max(b[2] for b in boxes),
+        max(b[3] for b in boxes),
+    ]
+
+
 @router.get(
     "/",
     response_model=Page[SequenceGroupListItem],
