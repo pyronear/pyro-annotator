@@ -829,9 +829,10 @@ async def add_object(
         )
     )
 
-    # Every frame starts pending bbox annotation — unlike a classify-time
-    # smoke lane (auto_create_detection_annotations' VISUAL_CHECK shortcut),
-    # this object has no AI-proposed box to confirm; the annotator draws it.
+    # Every frame starts pending bbox annotation: this object has no
+    # AI-proposed box to confirm, so the annotator draws each one. (These rows
+    # are seeded here rather than by auto_create_detection_annotations, which
+    # no longer seeds anything for a lane needing localization — issue #346.)
     session.add_all(
         DetectionAnnotation(
             detection_id=det.id,

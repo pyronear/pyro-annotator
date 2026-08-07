@@ -16,6 +16,7 @@ The two seeded sequences have non-overlapping bboxes, so they never share
 a group organically.
 """
 
+import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -893,6 +894,29 @@ async def test_propagation_skips_locked_members(
     seq 1 is saved in a validated group, propagation must not overwrite
     seq 2's reviewed work."""
     await _seed_two_member_group(sequence_session, [1, 2], is_validated=True)
+
+    # Seq 2's only frame (detection 3) is localized first: a smoke lane cannot
+    # be created at annotated without that (issue #346), and this lane is
+    # supposed to represent finished, reviewed work worth protecting.
+    localize = await authenticated_client.post(
+        "/annotations/detections/",
+        data={
+            "detection_id": "3",
+            "annotation": json.dumps(
+                {
+                    "annotation": [
+                        {
+                            "xyxyn": [0.1, 0.1, 0.4, 0.4],
+                            "class_name": "smoke",
+                            "smoke_type": "industrial",
+                        }
+                    ]
+                }
+            ),
+            "processing_stage": "annotated",
+        },
+    )
+    assert localize.status_code == 201, localize.text
 
     locked = _annotation_payload(stage="annotated", smoke_type="industrial")
     locked["sequence_id"] = 2
