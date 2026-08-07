@@ -697,10 +697,13 @@ def main() -> None:
         )
 
         alert_api_seq_results = []
+        annotation_auth_token = None
         if not args.dry_run:
             alert_api_seq_results = [
                 r for r in result.get("sequence_results", []) if not r.get("skipped")
             ]
+            # Captured here because the collection loop below rebinds `result`.
+            annotation_auth_token = result["auth_token"]
 
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=worker_config.annotation_processing
@@ -711,6 +714,7 @@ def main() -> None:
                     annotate_split_sequence,
                     seq_result=seq_result,
                     annotation_api_url=args.annotation_api_url,
+                    auth_token=annotation_auth_token,
                     dry_run=args.dry_run,
                 ): seq_result["sequence_id"]
                 for seq_result in alert_api_seq_results
