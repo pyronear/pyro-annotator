@@ -23,7 +23,10 @@ Alembic migration is required**.
 
 All insertions go after `cliff`, keeping the existing quasi-alphabetical
 order. Ordering is display/iteration order only; stored data uses the string
-values, so repositioning is safe.
+values, so repositioning is safe — with one exception: the YOLO import
+script (`scripts/data_transfer/ingestion/alert_api/import_yolo_sequence.py`)
+indexes `ALL_CLASSES` by YOLO `class_id`, so its list is positional and the
+new value is **appended** there, never inserted.
 
 ### Backend
 
