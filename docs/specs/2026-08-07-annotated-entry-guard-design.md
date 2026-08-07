@@ -140,7 +140,20 @@ This is a deliberate behaviour deletion, not a fixture repair. It is recorded
 here because a reader of the diff would otherwise see tests disappearing with
 no stated reason.
 
-### 4. Explicitly out of scope
+### 4. Operator scripts the guard now rejects
+
+`update_annotation_stage.py` is the intended target: bulk-rewriting lanes into
+`annotated` is exactly what this closes.
+
+`import_annotations.py` is collateral worth knowing about. It restores from a
+JSON backup and PATCHes `processing_stage` verbatim, so restoring a backup
+taken before this change will 422 on every smoke lane recorded at `annotated`
+whose frames lack annotated-stage detection annotations. The script counts the
+error and continues, leaving those lanes at their current stage rather than
+failing loudly. A restore of old data therefore needs either a localization
+pass first or a manual reconciliation afterwards.
+
+### 5. Explicitly out of scope
 
 - **"At least one non-empty box."** A lane where the annotator cleared every
   frame is a legitimate, supported state (`cleared`); requiring a box would

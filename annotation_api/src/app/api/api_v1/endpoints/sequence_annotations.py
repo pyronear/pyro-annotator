@@ -633,6 +633,12 @@ async def assert_localization_complete(sequence_id: int, session: AsyncSession) 
     This is the single definition of localization completeness, shared by
     every path that can move a lane into ANNOTATED (issue #346) — the update
     path and the create path. Two copies would drift.
+
+    A frameless sequence passes vacuously — "every frame is localized" is
+    trivially true with no frames. That is deliberate: whether a sequence may
+    exist without detections at all is a separate invariant from whether its
+    frames are localized, and enforcing it here would reject lanes this guard
+    has no opinion about.
     """
     unlocalized = (
         await session.execute(
@@ -1368,7 +1374,8 @@ async def localize_submit(
     """Atomically move every lane of one alert from seq_annotation_done to
     annotated (spec: smoke-localization entry point). Either every lane
     lands or none does — apply_annotation_update's localization exit guard
-    (`:637-688`), which fires per lane inside the loop, rolls back the whole
+    (`assert_localization_complete`), which fires per lane inside the loop,
+    rolls back the whole
     batch when any lane is missing an annotated-stage detection annotation.
 
     Post-commit effects (auto-create detection annotations) run afterwards,
@@ -1508,7 +1515,7 @@ async def localize_revert(
 
     Deliberately does NOT route through `apply_annotation_update`: this exact
     stage move on a lane needing localization is the FP->smoke promotion
-    predicate (`:742-753`), whose effects block 422s on any committed
+    predicate (`is_fp_promotion`), whose effects block 422s on any committed
     detection annotation and otherwise DELETES every DetectionAnnotation of
     the sequence. Here the boxes must survive — the annotator is fixing one
     frame, not starting over. Writing through the CRUD also keeps three other
