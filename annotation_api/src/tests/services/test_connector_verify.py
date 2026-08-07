@@ -198,6 +198,27 @@ async def test_malformed_probe_response_does_not_raise(
     assert connector.last_verified_at is None
 
 
+async def test_insufficient_scope_detail_reaches_the_operator(
+    async_session, alert_api, secret_key, monkeypatch
+):
+    """Connectors need an admin-scoped alert-API credential, and nothing in the
+    UI says so. A non-admin account authenticates fine and then gets
+    `{"detail": "Incompatible token scope."}` from `/organizations/` (verified
+    against the real alert API, 2026-08-07) — so that detail is the only signal
+    telling the operator which credential to swap in. Reporting a bare
+    "unexpected response shape" throws it away."""
+    monkeypatch.setattr(
+        connector_verify.alert_api_client,
+        "list_organizations",
+        lambda **kw: {"detail": "Incompatible token scope."},
+    )
+    connector = await _connector(async_session)
+    result = await verify_connector(async_session, connector, today=date(2026, 8, 6))
+
+    assert result.ok is False
+    assert "Incompatible token scope." in (result.error or "")
+
+
 async def test_probe_timeout_records_error_and_does_not_raise(
     async_session, alert_api, secret_key, monkeypatch
 ):

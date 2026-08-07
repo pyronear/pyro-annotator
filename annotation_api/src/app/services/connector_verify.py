@@ -94,12 +94,21 @@ async def verify_connector(
         # dict where a list is expected. Validate the shape explicitly so that
         # case fails the same way an auth failure does, instead of raising a
         # TypeError out of the loop below.
-        if (
-            not isinstance(organizations, list)
-            or not isinstance(cameras, list)
-            or not isinstance(sequences, list)
+        for call, response in (
+            ("organizations", organizations),
+            ("cameras", cameras),
+            ("sequences", sequences),
         ):
-            raise ValueError("alert API returned an unexpected response shape")
+            if not isinstance(response, list):
+                # Pass the alert API's own `detail` through: a non-admin
+                # credential authenticates fine and only fails here, with
+                # "Incompatible token scope." — the one hint that tells the
+                # operator to swap in an admin account.
+                detail = response.get("detail") if isinstance(response, dict) else None
+                raise ValueError(
+                    f"alert API returned an unexpected {call} response"
+                    + (f": {detail}" if detail else "")
+                )
 
         existing = {
             row.organization_id: row
