@@ -1,10 +1,15 @@
+import asyncio
 import json
 from datetime import datetime, timedelta, UTC
 
 import pytest
+import pytest_asyncio
 from httpx import AsyncClient
+from sqlalchemy.orm import sessionmaker
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.db import engine, get_session
+from app.main import app
 from app.services.storage import s3_service
 
 now = datetime.now(UTC)
@@ -562,3 +567,122 @@ async def test_create_duplicate_detection_returns_409(
         Bucket=bucket.name, Prefix="detections/sequence_1/"
     ).get("KeyCount", 0)
     assert objects_after_second == objects_after_first
+
+
+@pytest_asyncio.fixture
+async def concurrent_client(authenticated_client: AsyncClient):
+    """An authenticated client whose requests each get their own DB session.
+
+    conftest overrides get_session to hand every request the SAME session so
+    tests can inspect state. That is fine when requests are serialized, but an
+    AsyncSession is not safe for concurrent use, so concurrency tests driven
+    through it fail inside SQLAlchemy and tell you nothing about the code under
+    test. Production hands each request a fresh session from the pool; this
+    restores that, so the concurrency being tested is the real thing.
+    """
+    maker = sessionmaker(
+        bind=engine, class_=AsyncSession, expire_on_commit=False, autoflush=False
+    )
+
+    async def _fresh_session():
+        async with maker() as session:
+            yield session
+
+    previous = app.dependency_overrides.get(get_session)
+    app.dependency_overrides[get_session] = _fresh_session
+    try:
+        yield authenticated_client
+    finally:
+        if previous is not None:
+            app.dependency_overrides[get_session] = previous
+        else:
+            app.dependency_overrides.pop(get_session, None)
+
+
+def _reachable_source_url(mock_img: bytes, key: str) -> str:
+    """Put an image in the bucket and return a URL the API can actually fetch.
+
+    Presigned against S3_ENDPOINT_URL rather than S3_PROXY_URL: the proxy URL
+    is for browsers on the host, while the API resolves the in-network name.
+    """
+    bucket = s3_service.get_bucket(s3_service.resolve_bucket_name())
+    bucket.upload_file_bytes(mock_img, key, "image/jpeg")
+    return bucket._s3.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": bucket.name, "Key": key},
+        ExpiresIn=3600,
+    )
+
+
+@pytest.mark.asyncio
+async def test_concurrent_detection_creation_in_one_sequence(
+    concurrent_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+):
+    """Concurrent creation in one sequence must not duplicate or collide.
+
+    Storage work now runs in a threadpool, so these genuinely overlap. The
+    event loop used to serialize them, which meant the unique constraint and
+    the S3 rollback path were never exercised under real concurrency.
+    """
+    source_url = _reachable_source_url(mock_img, "concurrent-source.jpg")
+    payloads = [
+        {
+            "sequence_id": 1,
+            "alert_api_id": 9000 + i,
+            "recorded_at": (now - timedelta(days=2)).isoformat(),
+            "algo_predictions": {
+                "predictions": [
+                    {
+                        "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                        "confidence": 0.9,
+                        "class_name": "smoke",
+                    }
+                ]
+            },
+            "source_url": source_url,
+        }
+        for i in range(8)
+    ]
+
+    responses = await asyncio.gather(
+        *[concurrent_client.post("/detections/from-url", json=p) for p in payloads]
+    )
+
+    failures = [(r.status_code, r.text) for r in responses if r.status_code != 201]
+    assert not failures, failures
+    assert len({r.json()["id"] for r in responses}) == 8, "duplicate rows created"
+    assert (
+        len({r.json()["bucket_key"] for r in responses}) == 8
+    ), "detections collided on one bucket key"
+
+
+@pytest.mark.asyncio
+async def test_concurrent_duplicate_alert_api_id_admits_one(
+    concurrent_client: AsyncClient, sequence_session: AsyncSession, mock_img: bytes
+):
+    """The unique constraint must hold when duplicates race, not only serialized.
+
+    test_create_detection_duplicate_alert_api_id covers the sequential case;
+    this is the same invariant once the requests actually overlap.
+    """
+    source_url = _reachable_source_url(mock_img, "concurrent-dup-source.jpg")
+    payload = {
+        "sequence_id": 1,
+        "alert_api_id": 9500,
+        "recorded_at": (now - timedelta(days=2)).isoformat(),
+        "algo_predictions": {"predictions": []},
+        "source_url": source_url,
+    }
+
+    responses = await asyncio.gather(
+        *[
+            concurrent_client.post("/detections/from-url", json=payload)
+            for _ in range(4)
+        ]
+    )
+
+    created = [r for r in responses if r.status_code == 201]
+    assert len(created) == 1, (
+        f"expected exactly one winner, got {len(created)}: "
+        f"{[(r.status_code, r.text) for r in responses]}"
+    )
