@@ -103,7 +103,7 @@ function SidebarContent({ currentPath }: { currentPath: string }) {
           name: 'Recurring objects',
           href: ROUTES.CLASSIFY_GROUPS,
           badgeCount: groupCount,
-          badgeTitle: `${groupCount} recurring objects need validation`,
+          badgeTitle: `${groupCount} recurring objects need a label`,
         },
         { name: 'Alerts', href: ROUTES.CLASSIFY, badgeCount: sequenceCount },
         { name: 'Done', href: ROUTES.CLASSIFY_DONE },

@@ -737,6 +737,8 @@ def post_records_to_annotation_api(
             "total_detections": 0,
             "successful_sequence_ids": [],
             "sequence_results": [],
+            # No token was minted on this path; both returns share a shape.
+            "auth_token": None,
         }
 
     # Resolve credentials and get a single auth token up-front to avoid repeated logins
@@ -858,4 +860,6 @@ def post_records_to_annotation_api(
         "total_detections": len(records),
         "successful_sequence_ids": successful_sequence_ids,
         "sequence_results": sequence_results,
+        # Annotation creation reuses this instead of logging in once per lane.
+        "auth_token": auth_token,
     }

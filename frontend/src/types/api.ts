@@ -171,6 +171,16 @@ export interface LocalizeSubmitResponse {
   results: LocalizeSubmitResult[];
 }
 
+export interface LocalizeRevertResult {
+  annotation_id: number;
+  sequence_id: number;
+  processing_stage: ProcessingStage;
+}
+
+export interface LocalizeRevertResponse {
+  results: LocalizeRevertResult[];
+}
+
 export interface Detection {
   id: number;
   sequence_id: number;

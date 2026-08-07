@@ -40,6 +40,9 @@ from app.schemas.sequence_annotations import (
     ClassifySubmitRequest,
     ClassifySubmitResponse,
     ClassifySubmitResult,
+    LocalizeRevertRequest,
+    LocalizeRevertResponse,
+    LocalizeRevertResult,
     LocalizeSubmitRequest,
     LocalizeSubmitResponse,
     LocalizeSubmitResult,
@@ -56,6 +59,7 @@ from app.services.annotation_generation import (
     derive_group_label_from_annotation,
 )
 from app.services.alert_skip import alert_skip_exists_clause
+from app.services.auto_annotate_scheduling import DONE_STAGES
 from app.services.localization_rule import (
     needs_localization,
     unsettled_unsure_clause,
@@ -1446,6 +1450,188 @@ async def localize_submit(
         )
 
     return LocalizeSubmitResponse(results=results)
+
+
+@router.post(
+    "/localize-revert",
+    status_code=status.HTTP_200_OK,
+    response_model=LocalizeRevertResponse,
+    summary="Send a localized alert back to the localize queue",
+)
+async def localize_revert(
+    payload: LocalizeRevertRequest = Body(...),
+    annotations: SequenceAnnotationCRUD = Depends(get_sequence_annotation_crud),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> LocalizeRevertResponse:
+    """Atomically move every annotated smoke lane of one alert back to
+    seq_annotation_done (spec: 2026-08-07-localize-revert-to-queue). The alert
+    leaves /localize/done, re-enters /localize, and — because /export/alerts
+    admits an alert only when EVERY lane is annotated — drops out of the
+    export. Withdrawing bad data from the export is the point of the feature.
+
+    Deliberately does NOT route through `apply_annotation_update`: this exact
+    stage move on a lane needing localization is the FP->smoke promotion
+    predicate (`:742-753`), whose effects block 422s on any committed
+    detection annotation and otherwise DELETES every DetectionAnnotation of
+    the sequence. Here the boxes must survive — the annotator is fixing one
+    frame, not starting over. Writing through the CRUD also keeps three other
+    hooks from firing: auto_create_detection_annotations (only for lanes newly
+    reaching annotated), `_propagate_to_group_if_validated` (a revert is not a
+    new label and must not fan out to a validated group), and the contribution
+    insert (reverting is a correction, not authorship).
+    """
+    annotation_ids = payload.annotation_ids
+    rows = (
+        await session.execute(
+            select(SequenceAnnotation, Sequence)
+            .join(Sequence, Sequence.id == SequenceAnnotation.sequence_id)
+            .where(SequenceAnnotation.id.in_(annotation_ids))
+        )
+    ).all()
+    by_id = {ann.id: (ann, seq) for ann, seq in rows}
+
+    missing_ids = [aid for aid in annotation_ids if aid not in by_id]
+    if missing_ids:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Sequence annotation(s) {missing_ids} not found",
+        )
+
+    alert_keys = {(seq.source_api, seq.platform_alert_id) for _, seq in by_id.values()}
+    if len(alert_keys) > 1:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="All annotations must belong to sequences of the same alert",
+        )
+
+    wrong_stage_ids = [
+        aid
+        for aid, (ann, _seq) in by_id.items()
+        if ann.processing_stage != SequenceAnnotationProcessingStage.ANNOTATED
+    ]
+    if wrong_stage_ids:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Annotation(s) {sorted(wrong_stage_ids)} are not at annotated; "
+                "refresh the list and retry"
+            ),
+        )
+
+    # FP-only and deferred-unsure lanes exited the pipeline at classify and
+    # never carried localization work; demoting one would park it in a stage
+    # it never occupied.
+    not_localized_ids = [
+        aid
+        for aid, (ann, _seq) in by_id.items()
+        if not needs_localization(ann.has_smoke, ann.has_missed_smoke, ann.is_unsure)
+    ]
+    if not_localized_ids:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"Annotation(s) {sorted(not_localized_ids)} does not need "
+                "localization; only localized smoke lanes can be sent back"
+            ),
+        )
+
+    # The two lists disagree about alerts, and the gap can strand one. The
+    # done list admits an alert as soon as ONE lane is annotated and needs
+    # localization; the localize queue demands EVERY sibling sit at a done
+    # stage with none left undecided. So an alert can be listed as done while
+    # a sibling is still unfinished or unsure — and reverting it there would
+    # drop it from the done list without letting it into the queue, leaving
+    # the work unreachable from both. Mirror the queue's admission rule and
+    # refuse instead. (Such an alert is not in the export either — that needs
+    # every lane annotated — so nothing is being withheld by refusing.)
+    alert_source_api, alert_platform_id = next(iter(alert_keys))
+    blocking_siblings = (
+        await session.execute(
+            select(func.count(Sequence.id))
+            .outerjoin(
+                SequenceAnnotation, SequenceAnnotation.sequence_id == Sequence.id
+            )
+            .where(
+                Sequence.source_api == alert_source_api,
+                Sequence.platform_alert_id == alert_platform_id,
+                or_(
+                    SequenceAnnotation.id.is_(None),
+                    SequenceAnnotation.processing_stage.notin_(DONE_STAGES),
+                    unsettled_unsure_clause(SequenceAnnotation),
+                ),
+            )
+        )
+    ).scalar_one()
+    if blocking_siblings > 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"Cannot send back: {blocking_siblings} object(s) of this alert "
+                "are still unfinished or undecided, so the alert would not "
+                "re-enter the localize queue. Settle them in Classify first."
+            ),
+        )
+
+    # Sequences whose reference layer never landed: after the revert they
+    # would fail the queue's `_ready_smoke_lane` check (which requires
+    # auto_annotated_at) and sit in NEITHER queue. Read before the commit,
+    # deferred after it.
+    unreferenced_sequence_ids = [
+        seq.id for _, seq in by_id.values() if seq.auto_annotated_at is None
+    ]
+
+    updated: List[SequenceAnnotation] = []
+    try:
+        for annotation_id in annotation_ids:
+            updated_annotation = await annotations.update(
+                annotation_id,
+                SequenceAnnotationUpdate(
+                    processing_stage=(
+                        SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE
+                    )
+                ),
+                current_user.id,
+                commit=False,
+            )
+            if updated_annotation is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Sequence annotation with id {annotation_id} not found",
+                )
+            updated.append(updated_annotation)
+    except HTTPException:
+        await session.rollback()
+        raise
+
+    # The one atomic point: every lane's write lands together.
+    await session.commit()
+
+    # Post-commit so a lost defer can't strand the transaction. Failures are
+    # swallowed on purpose: the revert has already landed, and raising here
+    # would report failure for work that succeeded — the caller would retry
+    # and get a 409 "not at annotated", which reads as a contradiction. The
+    # periodic schedule_auto_annotate sweep re-enqueues stale lanes anyway,
+    # so a lost defer costs latency, not correctness.
+    for sequence_id in unreferenced_sequence_ids:
+        try:
+            await auto_annotate_sequence.defer_async(sequence_id=sequence_id)
+        except Exception:
+            logger.exception(
+                "localize-revert: failed to re-arm auto-annotate for sequence "
+                f"{sequence_id}; the periodic sweep will pick it up"
+            )
+
+    return LocalizeRevertResponse(
+        results=[
+            LocalizeRevertResult(
+                annotation_id=ann.id,
+                sequence_id=ann.sequence_id,
+                processing_stage=ann.processing_stage,
+            )
+            for ann in updated
+        ]
+    )
 
 
 @router.post(

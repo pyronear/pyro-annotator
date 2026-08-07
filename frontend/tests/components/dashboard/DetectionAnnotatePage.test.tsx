@@ -21,10 +21,14 @@ vi.mock('react-router-dom', async importOriginal => {
 
 import { apiClient } from '@/services/api';
 import DetectionAnnotatePage from '@/pages/DetectionAnnotatePage';
+import { QUEUE_COUNTS_KEY } from '@/hooks/useQueueTotals';
 import { formatDateTime } from '@/utils/datetime';
 
+// Hoisted so a test can spy on the client's invalidations; still a fresh
+// client per test (assigned in beforeEach).
+let client: QueryClient;
+
 function wrapper({ children }: { children: React.ReactNode }) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return (
     <QueryClientProvider client={client}>
       <MemoryRouter>{children}</MemoryRouter>
@@ -65,6 +69,7 @@ const queueItem = {
 
 describe('DetectionAnnotatePage (Localize queue)', () => {
   beforeEach(() => {
+    client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     navigateMock.mockClear();
     vi.mocked(apiClient.getLocalizationQueue).mockReset();
     // Skipped-aware default: the page also fires a skipped-count query on
@@ -212,6 +217,34 @@ describe('DetectionAnnotatePage (Localize queue)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Unskip' }));
     await waitFor(() => {
       expect(apiClient.unskipAlert).toHaveBeenCalledWith('pyronear_french', 170000);
+    });
+  });
+
+  // Own test so a failure names the cause. Mirrors the classify-side guard in
+  // tests/pages/SequencesPage.unskip.test.tsx: Localize · to do on the
+  // dashboard and the sidebar "Smoke" badge share one skip-excluding queue
+  // total, so an unskip has to refresh both.
+  it('invalidates the queue-count and dashboard keys so both Localize counts follow the unskip', async () => {
+    const skippedItem = {
+      ...queueItem,
+      skip: { skipped_at: '2026-08-05T10:00:00Z', skipped_by: 'annotator', note: 'cannot box' },
+    };
+    vi.mocked(apiClient.getLocalizationQueue).mockImplementation(async params =>
+      params?.skipped
+        ? { items: [skippedItem], page: 1, pages: 1, size: params.size ?? 50, total: 1 }
+        : { items: [queueItem], page: 1, pages: 1, size: 50, total: 1 }
+    );
+    const invalidateSpy = vi.spyOn(client, 'invalidateQueries');
+    render(<DetectionAnnotatePage />, { wrapper });
+
+    fireEvent.click(await screen.findByRole('button', { name: /Skipped/ }));
+    await waitFor(() => expect(screen.getByText('cannot box')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'Unskip' }));
+
+    await waitFor(() => {
+      const keys = invalidateSpy.mock.calls.map(([arg]) => String(arg?.queryKey?.[0]));
+      expect(keys).toContain(QUEUE_COUNTS_KEY);
+      expect(keys).toContain('pipeline-stats');
     });
   });
 });
