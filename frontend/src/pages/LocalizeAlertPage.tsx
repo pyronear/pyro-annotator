@@ -1106,6 +1106,33 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     },
   });
 
+  // Send back to queue (spec: 2026-08-07-localize-revert-to-queue): the
+  // alert's annotated smoke lanes return to seq_annotation_done, which pulls
+  // the alert out of /export/alerts until it is submitted again. Done mode
+  // only. Boxes are untouched — the next annotator fixes a frame, not the
+  // whole alert.
+  const revertAlertMutation = useMutation({
+    mutationFn: async () => apiClient.localizeRevert(revertableLanes.map(l => l.annotationId)),
+    onSuccess: () => {
+      setRevertConfirmOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['localization-queue'] });
+      queryClient.invalidateQueries({ queryKey: ['localize-done-queue'] });
+      queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.SEQUENCE_ANNOTATIONS });
+      queryClient.invalidateQueries({ queryKey: alertDetailQueryKey });
+      showToastNotification('Alert sent back to the queue', 'success');
+      navigate(listPath);
+    },
+    onError: err => {
+      const detail = (err as { detail?: string })?.detail || (err as Error)?.message || '';
+      showToastNotification(
+        detail ? `Send back failed: ${detail}` : 'Send back failed — try again',
+        'error'
+      );
+    },
+  });
+
   // The missed-smoke soft-confirm is the only gate left in front of submit:
   // flagged missed smoke can't be annotated yet, so it leads with Skip alert
   // before offering to submit anyway. The old two-step no-box warning went
@@ -1377,7 +1404,8 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
         (e.key === 'c' || e.key === 'C') &&
         detectionIdNum == null &&
         !showShortcutsModal &&
-        !skipConfirmOpen
+        !skipConfirmOpen &&
+        !revertConfirmOpen
       ) {
         setCropMode(prev => !prev);
         e.preventDefault();
@@ -1385,7 +1413,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [detectionIdNum, showShortcutsModal, skipConfirmOpen]);
+  }, [detectionIdNum, showShortcutsModal, skipConfirmOpen, revertConfirmOpen]);
 
   // Tab / Shift+Tab step the objects exactly as the rail displays them —
   // smoke first, false positives only while shown — wrapping at the ends
@@ -1403,7 +1431,8 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       // per-frame editor, the missed-smoke submit dialog, the skip confirm,
       // the shortcuts sheet, the accept popover — so their controls stay
       // keyboard-reachable (mirrors classify's modal guards).
-      if (detectionIdNum != null || missedSmokeConfirm || skipConfirmOpen) return;
+      if (detectionIdNum != null || missedSmokeConfirm || skipConfirmOpen || revertConfirmOpen)
+        return;
       if (showShortcutsModal || acceptPopoverOpen) return;
       if (orderedObjectRows.length === 0) return;
       e.preventDefault();
@@ -1434,7 +1463,8 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   // above: re-subscribing every render keeps the closure fresh.
   useEffect(() => {
     const handleShortcutKeys = (e: KeyboardEvent) => {
-      if (detectionIdNum != null || missedSmokeConfirm || skipConfirmOpen) return;
+      if (detectionIdNum != null || missedSmokeConfirm || skipConfirmOpen || revertConfirmOpen)
+        return;
       // Shift stays allowed: `?` requires it.
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const target = e.target;
@@ -2030,6 +2060,50 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                 className="inline-flex items-center rounded-lg bg-pine px-3 py-2 font-body text-sm font-semibold text-white hover:brightness-95 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Skip alert
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {revertConfirmOpen && (
+        <div
+          data-testid="revert-to-queue-confirm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-char/40 px-4"
+        >
+          <div className="w-full max-w-sm rounded-lg border border-line bg-paper p-5">
+            <div className="flex items-start justify-between">
+              <h2 className="font-body text-sm font-semibold text-char">
+                Send this alert back to the queue?
+              </h2>
+              <button
+                type="button"
+                onClick={() => setRevertConfirmOpen(false)}
+                aria-label="Close"
+                className="-mr-1.5 -mt-1.5 rounded-md p-1.5 hover:bg-ash"
+              >
+                <X className="h-4 w-4 text-haze" />
+              </button>
+            </div>
+            <p className="mt-1 font-body text-xs text-haze">
+              It returns to the Localize queue with all its boxes intact, and stops being exported
+              until someone submits it again.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setRevertConfirmOpen(false)}
+                className="inline-flex items-center rounded-lg px-3 py-2 font-body text-sm font-medium text-haze hover:text-char"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => revertAlertMutation.mutate()}
+                disabled={revertAlertMutation.isPending}
+                className="inline-flex items-center rounded-lg bg-ember px-3 py-2 font-body text-sm font-semibold text-white hover:brightness-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Send back to queue
               </button>
             </div>
           </div>

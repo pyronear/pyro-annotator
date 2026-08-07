@@ -1584,6 +1584,94 @@ describe('LocalizeAlertPage', () => {
 
       expect(screen.queryByTestId('revert-to-queue-button')).not.toBeInTheDocument();
     });
+
+    it('posts every annotated smoke lane and returns to the Done list', async () => {
+      mockDoneAlert();
+      vi.mocked(apiClient.localizeRevert).mockResolvedValue({
+        results: [
+          { annotation_id: 201, sequence_id: 101, processing_stage: 'seq_annotation_done' },
+          { annotation_id: 202, sequence_id: 102, processing_stage: 'seq_annotation_done' },
+        ],
+      });
+
+      await renderAndSettle(<LocalizeAlertPage mode="done" />, { wrapper: doneWrapper });
+
+      fireEvent.click(screen.getByTestId('revert-to-queue-button'));
+      expect(screen.getByTestId('revert-to-queue-confirm')).toBeInTheDocument();
+
+      fireEvent.click(
+        within(screen.getByTestId('revert-to-queue-confirm')).getByRole('button', {
+          name: 'Send back to queue',
+        })
+      );
+
+      await waitFor(() => {
+        expect(vi.mocked(apiClient.localizeRevert)).toHaveBeenCalledWith([201, 202]);
+      });
+      await waitFor(() => {
+        expect(screen.getByTestId('localize-done-landing')).toBeInTheDocument();
+      });
+    });
+
+    it('does nothing when the confirm is dismissed', async () => {
+      mockDoneAlert();
+      await renderAndSettle(<LocalizeAlertPage mode="done" />, { wrapper: doneWrapper });
+
+      fireEvent.click(screen.getByTestId('revert-to-queue-button'));
+      fireEvent.click(
+        within(screen.getByTestId('revert-to-queue-confirm')).getByRole('button', {
+          name: 'Cancel',
+        })
+      );
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('revert-to-queue-confirm')).not.toBeInTheDocument();
+      });
+      expect(vi.mocked(apiClient.localizeRevert)).not.toHaveBeenCalled();
+    });
+
+    it('keeps the alert on the page when the revert fails', async () => {
+      mockDoneAlert();
+      vi.mocked(apiClient.localizeRevert).mockRejectedValue({ detail: 'not at annotated' });
+
+      await renderAndSettle(<LocalizeAlertPage mode="done" />, { wrapper: doneWrapper });
+
+      fireEvent.click(screen.getByTestId('revert-to-queue-button'));
+      fireEvent.click(
+        within(screen.getByTestId('revert-to-queue-confirm')).getByRole('button', {
+          name: 'Send back to queue',
+        })
+      );
+
+      await waitFor(() => {
+        expect(vi.mocked(apiClient.localizeRevert)).toHaveBeenCalled();
+      });
+      expect(screen.queryByTestId('localize-done-landing')).not.toBeInTheDocument();
+    });
+
+    it('suspends the page shortcuts while the confirm is up', async () => {
+      // The confirm is a page overlay; leaving `c` live would toggle crop mode
+      // behind it. Crop state is observed exactly as the crop tests above do
+      // it: a zoomed cell carries a `scale(...)` transform on its image.
+      // A done alert has no workable object, so nothing auto-focuses and crop
+      // has nothing to zoom around. Activating a row puts it in focus mode,
+      // which forces crop on — that zoom is the state the guard must defend.
+      mockDoneAlert();
+      await renderAndSettle(<LocalizeAlertPage mode="done" />, { wrapper: doneWrapper });
+
+      fireEvent.click(screen.getByTestId('localize-object-row-object-1'));
+      await waitFor(() => {
+        const img = within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img');
+        expect(img.style.transform).toContain('scale(');
+      });
+
+      fireEvent.click(screen.getByTestId('revert-to-queue-button'));
+      fireEvent.keyDown(window, { key: 'c' });
+
+      // Still cropped: the second press was swallowed by the overlay guard.
+      const img = within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img');
+      expect(img.style.transform).toContain('scale(');
+    });
   });
 
   describe('false-positive context toggle', () => {
