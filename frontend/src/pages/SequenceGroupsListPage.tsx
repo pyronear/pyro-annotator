@@ -357,7 +357,7 @@ export default function SequenceGroupsListPage({
                       <Link
                         to={classifyGroup(g.id)}
                         onClick={e => e.stopPropagation()}
-                        className={`${PRIMARY_CELL_TEXT} hover:underline`}
+                        className={PRIMARY_CELL_TEXT}
                       >
                         {g.camera_name}
                       </Link>
