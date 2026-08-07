@@ -156,6 +156,24 @@ describe('DetectionReviewPage (/localize/done)', () => {
     );
   });
 
+  it('wires the Alert API annotation filter through to the endpoint', async () => {
+    mockedFilters = { is_wildfire_alertapi: 'other_smoke' };
+    render(<DetectionReviewPage />, { wrapper });
+    await waitFor(() => expect(apiClient.getLocalizeDoneQueue).toHaveBeenCalled());
+    expect(apiClient.getLocalizeDoneQueue).toHaveBeenCalledWith(
+      expect.objectContaining({ is_wildfire_alertapi: 'other_smoke' })
+    );
+  });
+
+  it('wires the Unclassified choice of the Alert API annotation filter through', async () => {
+    mockedFilters = { is_wildfire_alertapi: null };
+    render(<DetectionReviewPage />, { wrapper });
+    await waitFor(() => expect(apiClient.getLocalizeDoneQueue).toHaveBeenCalled());
+    expect(apiClient.getLocalizeDoneQueue).toHaveBeenCalledWith(
+      expect.objectContaining({ is_wildfire_alertapi: null })
+    );
+  });
+
   it('does not show the model-accuracy or annotation-type filter controls', async () => {
     render(<DetectionReviewPage />, { wrapper });
     await waitFor(() => expect(screen.getByText('CAM_01')).toBeTruthy());

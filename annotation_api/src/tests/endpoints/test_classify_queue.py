@@ -160,6 +160,81 @@ async def test_filters(authenticated_client: AsyncClient, async_session):
 
 
 @pytest.mark.asyncio
+async def test_is_wildfire_alertapi_filter(
+    authenticated_client: AsyncClient, async_session
+):
+    wildfire = await _lane(
+        async_session,
+        alert_api_id=822,
+        platform_alert_id=822,
+        stage=Stage.READY_TO_ANNOTATE,
+    )
+    wildfire.is_wildfire_alertapi = "wildfire_smoke"
+    async_session.add(wildfire)
+    await async_session.commit()
+    await _lane(
+        async_session,
+        alert_api_id=823,
+        platform_alert_id=823,
+        stage=Stage.READY_TO_ANNOTATE,
+    )
+
+    resp = await authenticated_client.get(
+        "/sequences/classify-queue", params={"is_wildfire_alertapi": "wildfire_smoke"}
+    )
+    assert [it["platform_alert_id"] for it in resp.json()["items"]] == [822]
+    assert resp.json()["total"] == 1
+
+    # "null" selects the alerts the platform left unclassified.
+    null_resp = await authenticated_client.get(
+        "/sequences/classify-queue", params={"is_wildfire_alertapi": "null"}
+    )
+    assert [it["platform_alert_id"] for it in null_resp.json()["items"]] == [823]
+    assert null_resp.json()["total"] == 1
+
+    # An unparseable value disables the filter rather than 422-ing.
+    junk_resp = await authenticated_client.get(
+        "/sequences/classify-queue", params={"is_wildfire_alertapi": "bogus"}
+    )
+    assert junk_resp.status_code == 200
+    assert junk_resp.json()["total"] == 2
+
+
+@pytest.mark.asyncio
+async def test_is_wildfire_alertapi_filter_keeps_sibling_lane_counts(
+    authenticated_client: AsyncClient, async_session
+):
+    # One alert, two lanes, deliberately disagreeing on the platform
+    # annotation. Real data can't produce this — both the importer and
+    # add_object copy the value onto every lane — but it's the only shape that
+    # tells candidate-level filtering apart from lane-level filtering: the
+    # filter selects the *alert*, so the row must still roll up both lanes.
+    # Filtering lanes directly would report total_objects == 1.
+    matching = await _lane(
+        async_session,
+        alert_api_id=824,
+        platform_alert_id=824,
+        stage=Stage.READY_TO_ANNOTATE,
+    )
+    matching.is_wildfire_alertapi = "other_smoke"
+    async_session.add(matching)
+    await _lane(
+        async_session,
+        alert_api_id=825,
+        platform_alert_id=824,
+        stage=Stage.READY_TO_ANNOTATE,
+    )
+    await async_session.commit()
+
+    resp = await authenticated_client.get(
+        "/sequences/classify-queue", params={"is_wildfire_alertapi": "other_smoke"}
+    )
+    items = resp.json()["items"]
+    assert len(items) == 1
+    assert items[0]["total_objects"] == 2
+
+
+@pytest.mark.asyncio
 async def test_empty_queue(authenticated_client: AsyncClient, async_session):
     resp = await authenticated_client.get("/sequences/classify-queue")
     assert resp.status_code == 200
