@@ -358,10 +358,10 @@ export default function SequencesPage({
               organizationsLoading={organizationsLoading}
               sourceApisLoading={sourceApisLoading}
               annotatorsLoading={annotatorsLoading}
-              showModelAccuracy={defaultProcessingStage === 'annotated'}
-              showFalsePositiveTypes={defaultProcessingStage === 'annotated'}
-              showSmokeTypes={defaultProcessingStage === 'annotated'}
-              showUnsureFilter={defaultProcessingStage === 'annotated'}
+              showModelAccuracy={isAnnotatedView}
+              showFalsePositiveTypes={isAnnotatedView}
+              showSmokeTypes={isAnnotatedView}
+              showUnsureFilter={isAnnotatedView}
               showAnnotatorFilter={isReviewPage}
             />
           </div>
