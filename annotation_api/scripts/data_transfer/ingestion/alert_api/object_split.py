@@ -33,6 +33,7 @@ from app.schemas.annotation_validation import (
     BoundingBox,
     SequenceAnnotationData,
     SequenceBBox,
+    union_xyxyn,
 )
 from .object_clustering import TrackedObject, cluster_objects, object_cone_azimuth
 from .shared import group_records_by_sequence
@@ -119,6 +120,16 @@ def synthetic_alert_api_id(
     return alert_id_base + alert_api_sequence_id * 1000 + object_index
 
 
+def union_boxes(boxes: List[List[float]]) -> List[float]:
+    """Enclosing box of several same-frame boxes of one object.
+
+    Carries the group's highest confidence. A third of real engine boxes have
+    confidence 0.0, so any confidence-weighted rule is degenerate on a large
+    slice of the data; max is the best-evidence reading and is stable.
+    """
+    return [*union_xyxyn(boxes), max(b[4] for b in boxes)]
+
+
 @dataclass
 class ObjectGroup:
     """One detected object, as rewritten alert-api records ready for posting."""
@@ -128,6 +139,8 @@ class ObjectGroup:
     is_primary: bool
     is_fallback: bool
     records: List[dict]
+    # Frames on which this object's boxes were collapsed into one union box.
+    same_frame_merges: int = 0
 
 
 def split_sequence_records(
@@ -179,6 +192,20 @@ def split_sequence_records(
         for member in obj.members:
             own_by_frame.setdefault(member.image_filename, []).append(member.box)
 
+        # One object, one box per frame. cluster_objects can attach two
+        # same-frame boxes to one object (it flattens to one item per box and
+        # never compares image_filename), but a plume the detector split into
+        # two overlapping boxes is still one plume — boxed as the box enclosing
+        # both, per the #286 modelling note. Deliberately here rather than in
+        # cluster_objects: select_primary_index has already run above and
+        # matches members by exact coordinates, so merging earlier would change
+        # which lane keeps the alert's real alert_api_id.
+        same_frame_merges = 0
+        for frame_key, frame_boxes in own_by_frame.items():
+            if len(frame_boxes) > 1:
+                own_by_frame[frame_key] = [union_boxes(frame_boxes)]
+                same_frame_merges += 1
+
         alert_id = (
             alert_api_sid
             if pos == 0
@@ -224,6 +251,7 @@ def split_sequence_records(
                 is_primary=(pos == 0),
                 is_fallback=False,
                 records=member_records,
+                same_frame_merges=same_frame_merges,
             )
         )
     return groups
@@ -274,6 +302,7 @@ def split_all_records(
         "sibling_objects": 0,
         "fallback_sequences": 0,
         "cross_deduped_siblings": 0,
+        "same_frame_merges": 0,
     }
 
     grouped = group_records_by_sequence(records)
@@ -309,6 +338,7 @@ def split_all_records(
             ]
         stats["alert_api_sequences"] += 1
         stats["fallback_sequences"] += sum(1 for g in groups if g.is_fallback)
+        stats["same_frame_merges"] += sum(g.same_frame_merges for g in groups)
         for group in groups:
             if not group.is_primary:
                 matched_sid = None
@@ -348,13 +378,24 @@ def build_single_track_annotation(
     auto-generation then runs as a harmless no-op on empty predictions).
     """
     ordered = sorted(detection_results, key=lambda r: _parse_dt(r["recorded_at"]))
+    # One object, one box per frame. split_sequence_records already unions an
+    # object's same-frame boxes, but its fallback path passes records through
+    # untouched, so a frame can still arrive with several boxes. This is one
+    # conservative track either way, so those boxes are already declared to be
+    # one object here — box them once.
+    by_detection: Dict[int, List[List[float]]] = {}
+    for r in ordered:
+        for xy in r.get("xyxyns", []):
+            if xy[0] < xy[2] and xy[1] < xy[3]:  # BoundingBox rejects zero-area boxes
+                by_detection.setdefault(r["annotation_detection_id"], []).append(
+                    [float(c) for c in xy[:4]]
+                )
     bboxes = [
         BoundingBox(
-            detection_id=r["annotation_detection_id"], xyxyn=[float(c) for c in xy[:4]]
+            detection_id=detection_id,
+            xyxyn=union_xyxyn(coords) if len(coords) > 1 else coords[0],
         )
-        for r in ordered
-        for xy in r.get("xyxyns", [])
-        if xy[0] < xy[2] and xy[1] < xy[3]  # BoundingBox rejects zero-area boxes
+        for detection_id, coords in by_detection.items()
     ]
     if not bboxes:
         return SequenceAnnotationData(sequences_bbox=[])

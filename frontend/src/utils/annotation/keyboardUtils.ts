@@ -251,8 +251,9 @@ export const createKeyboardHandler = (deps: KeyboardHandlerDependencies) => {
       }
     }
 
-    // False positive type shortcuts (various keys) - Only when false positive is selected
-    if (classificationType === 'false_positive') {
+    // False positive type shortcuts (various keys) - Only when false positive is selected.
+    // Modifier chords (Ctrl/Cmd/Alt + letter) are browser shortcuts, not annotations.
+    if (classificationType === 'false_positive' && !e.ctrlKey && !e.metaKey && !e.altKey) {
       const typeIndex = getTypeIndexForKey(e.key.toLowerCase());
       if (typeIndex !== -1) {
         toggleFalsePositiveType(activeDetectionIndex, typeIndex, bboxes, handleBboxChange);

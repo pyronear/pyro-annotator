@@ -112,6 +112,7 @@ class FalsePositiveType(str, Enum):
     CLIFF = (
         "cliff"  # Rock faces, cliffs, or geological features causing false detections
     )
+    COMBINE_HARVESTER = "combine_harvester"  # Harvest dust plumes kicked up by combine harvesters mistaken for smoke
     DARK = "dark"  # Dark shadows or areas with poor lighting causing detection errors
     DUST = "dust"  # Dust clouds from construction, vehicles, or natural sources
     HIGH_CLOUD = "high_cloud"  # High altitude clouds mistaken for smoke
@@ -254,8 +255,10 @@ class SequenceGroup(SQLModel, table=True):
     representative bbox overlaps the group's reference bbox enough.
 
     A group carries at most one label (smoke OR false positive, never both).
-    Once labeled, future sequences joining the group inherit the label
-    automatically (skip manual annotation).
+    Labels are only ever written by human actions (classify propagation,
+    bulk apply) — the assignment sweep manages membership only. Once a group
+    is validated its membership freezes: later matching sequences open a
+    fresh group instead.
     """
 
     __tablename__ = "sequence_groups"

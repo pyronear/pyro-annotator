@@ -294,10 +294,13 @@ async def test_create_sequence_annotation_unique_constraint_violation(
     annotation1 = response1.json()
     assert annotation1["sequence_id"] == 1
 
-    # Try to create second annotation for same sequence - should fail
+    # Try to create second annotation for same sequence - should fail.
+    # FP-only (no missed smoke): a lane needing localization cannot be created
+    # at ANNOTATED without its detection annotations (issue #346), and this
+    # test is about the unique constraint, not that guard.
     payload2 = {
         "sequence_id": 1,  # Same sequence_id
-        "has_missed_smoke": True,
+        "has_missed_smoke": False,
         "annotation": {
             "sequences_bbox": [
                 {
@@ -602,8 +605,8 @@ async def test_list_sequence_annotations_filter_by_processing_stage(
         "annotation": {
             "sequences_bbox": [
                 {
-                    "is_smoke": True,
-                    "false_positive_types": [],
+                    "is_smoke": False,
+                    "false_positive_types": [models.FalsePositiveType.ANTENNA.value],
                     "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
                 }
             ]
@@ -788,6 +791,31 @@ async def test_list_sequence_annotations_combined_filtering(
     authenticated_client: AsyncClient, sequence_session, detection_session
 ):
     """Test combined filtering by multiple parameters."""
+    # This lane is genuinely smoke AND at annotated — both are filtered on — so
+    # its localization has to be real: every detection of sequence 1 needs an
+    # annotated-stage detection annotation before the lane may be created there
+    # (issue #346).
+    for det_id in (1, 2):
+        localize = await authenticated_client.post(
+            "/annotations/detections/",
+            data={
+                "detection_id": str(det_id),
+                "annotation": json.dumps(
+                    {
+                        "annotation": [
+                            {
+                                "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                                "class_name": "smoke",
+                                "smoke_type": "wildfire",
+                            }
+                        ]
+                    }
+                ),
+                "processing_stage": "annotated",
+            },
+        )
+        assert localize.status_code == 201, localize.text
+
     # Create annotation with specific characteristics
     payload = {
         "sequence_id": 1,
@@ -1039,9 +1067,13 @@ async def test_update_sequence_annotation_without_annotation_field(
     assert create_response.status_code == 201
     annotation_id = create_response.json()["id"]
 
-    # Update only processing_stage (no annotation field)
+    # Update only processing_stage (no annotation field).
+    # Targets seq_annotation_done rather than annotated: this lane is smoke, and
+    # a smoke lane may only reach annotated once localization is complete
+    # (issue #346). The subject here is that omitting `annotation` needs no
+    # validation, which the stage choice does not affect.
     update_payload = {
-        "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
+        "processing_stage": models.SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE.value,
         "has_missed_smoke": True,
     }
 
@@ -1051,7 +1083,7 @@ async def test_update_sequence_annotation_without_annotation_field(
     )
     assert response.status_code == 200
     updated = response.json()
-    assert updated["processing_stage"] == "annotated"
+    assert updated["processing_stage"] == "seq_annotation_done"
     assert updated["has_missed_smoke"] is True
     # Original annotation should remain unchanged
     assert updated["has_smoke"] is True
@@ -1212,7 +1244,10 @@ async def test_list_sequence_annotations_filter_by_false_positive_types(
                     }
                 ]
             },
-            "processing_stage": "annotated",
+            # The smoke negative control: it must not match the FP filters.
+            # Its stage is incidental, and a smoke lane cannot sit at annotated
+            # without complete localization (issue #346).
+            "processing_stage": "ready_to_annotate",
         },
     ]
 
@@ -1407,7 +1442,7 @@ async def test_list_sequence_annotations_filter_by_smoke_types(
                     },
                 ]
             },
-            "processing_stage": "annotated",
+            "processing_stage": "ready_to_annotate",
         },
         {
             "sequence_id": sequence_ids[1],
@@ -1427,7 +1462,7 @@ async def test_list_sequence_annotations_filter_by_smoke_types(
                     }
                 ]
             },
-            "processing_stage": "annotated",
+            "processing_stage": "ready_to_annotate",
         },
         {
             "sequence_id": sequence_ids[2],
@@ -1805,296 +1840,6 @@ async def test_fp_auto_annotated_attribution_covers_every_detection(
 
 
 @pytest.mark.asyncio
-async def test_placeholder_detection_annotations_have_no_contributors(
-    authenticated_client: AsyncClient, sequence_session
-):
-    """Auto-created placeholder detection annotations (VISUAL_CHECK / BBOX_ANNOTATION)
-    carry no one's judgment yet, so they get no contribution row."""
-    detection_id = await _create_detection(authenticated_client, "2103")
-
-    true_positive_payload = {
-        "sequence_id": 1,
-        "has_missed_smoke": False,
-        "annotation": {
-            "sequences_bbox": [
-                {
-                    "is_smoke": True,
-                    "false_positive_types": [],
-                    "bboxes": [
-                        {"detection_id": detection_id, "xyxyn": [0.1, 0.1, 0.2, 0.2]}
-                    ],
-                }
-            ]
-        },
-        "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
-        "created_at": datetime.now(UTC).isoformat(),
-    }
-    response = await authenticated_client.post(
-        "/annotations/sequences/", json=true_positive_payload
-    )
-    assert response.status_code == 201
-
-    detection_annotation = await _get_detection_annotation(
-        authenticated_client, detection_id
-    )
-    assert detection_annotation["processing_stage"] == "visual_check"
-    assert detection_annotation["contributors"] == []
-
-
-@pytest.mark.asyncio
-async def test_true_positive_sequence_pre_populated_detection_annotations(
-    authenticated_client: AsyncClient, sequence_session
-):
-    """Test that true positive sequences (has smoke, no missed smoke, no false positives) create VISUAL_CHECK detection annotations with pre-populated predictions."""
-
-    # Create a detection with algo_predictions for the sequence
-    algo_predictions = {
-        "predictions": [
-            {"xyxyn": [0.1, 0.2, 0.4, 0.6], "confidence": 0.92, "class_name": "smoke"},
-            {"xyxyn": [0.5, 0.3, 0.8, 0.7], "confidence": 0.85, "class_name": "fire"},
-        ]
-    }
-
-    detection_payload = {
-        "sequence_id": "1",
-        "alert_api_id": "3001",
-        "recorded_at": "2024-01-15T10:25:00",
-        "algo_predictions": json.dumps(algo_predictions),
-    }
-
-    # Create test image
-    import io
-
-    img = Image.new("RGB", (100, 100), color="orange")
-    img_bytes = io.BytesIO()
-    img.save(img_bytes, format="JPEG")
-    img_bytes.seek(0)
-
-    files = {"file": ("test.jpg", img_bytes, "image/jpeg")}
-    response = await authenticated_client.post(
-        "/detections", data=detection_payload, files=files
-    )
-    assert response.status_code == 201
-    detection_id = response.json()["id"]
-
-    # Create a true positive sequence annotation (has smoke, no missed smoke, no false positives)
-    true_positive_payload = {
-        "sequence_id": 1,
-        "has_missed_smoke": False,
-        "annotation": {
-            "sequences_bbox": [
-                {
-                    "is_smoke": True,  # Has smoke
-                    "false_positive_types": [],  # No false positives
-                    "bboxes": [
-                        {"detection_id": detection_id, "xyxyn": [0.1, 0.1, 0.2, 0.2]}
-                    ],
-                }
-            ]
-        },
-        "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
-        "created_at": datetime.now(UTC).isoformat(),
-    }
-
-    # Create the sequence annotation - this should trigger auto-creation of detection annotations
-    response = await authenticated_client.post(
-        "/annotations/sequences/", json=true_positive_payload
-    )
-    assert response.status_code == 201
-    seq_annotation = response.json()
-
-    # Verify sequence annotation properties
-    assert seq_annotation["has_smoke"] is True
-    assert seq_annotation["has_false_positives"] is False
-    assert seq_annotation["has_missed_smoke"] is False
-
-    # Check that a detection annotation was automatically created
-    response = await authenticated_client.get("/annotations/detections/?sequence_id=1")
-    assert response.status_code == 200
-    detection_annotations = response.json()["items"]
-
-    # Should have detection annotations for our detection
-    detection_annotation = None
-    for ann in detection_annotations:
-        if ann["detection_id"] == detection_id:
-            detection_annotation = ann
-            break
-
-    assert (
-        detection_annotation is not None
-    ), "Detection annotation should be auto-created"
-    # For true positive sequences, detection annotations should be VISUAL_CHECK (ready for review)
-    assert detection_annotation["processing_stage"] == "visual_check"
-
-    # Reworked model: detection annotations are created EMPTY; the human ground
-    # truth is seeded at submit, not pre-filled from algo_predictions.
-    annotation_data = detection_annotation["annotation"]
-    assert annotation_data["annotation"] == []
-
-
-@pytest.mark.asyncio
-async def test_true_positive_sequence_empty_predictions_fallback(
-    authenticated_client: AsyncClient, sequence_session
-):
-    """Test that true positive sequences with no/invalid model predictions fall back to empty annotations."""
-
-    # Create a detection with empty algo_predictions
-    detection_payload = {
-        "sequence_id": "1",
-        "alert_api_id": "4001",
-        "recorded_at": "2024-01-15T10:25:00",
-        "algo_predictions": json.dumps({"predictions": []}),  # Empty predictions
-    }
-
-    # Create test image
-    import io
-
-    img = Image.new("RGB", (100, 100), color="green")
-    img_bytes = io.BytesIO()
-    img.save(img_bytes, format="JPEG")
-    img_bytes.seek(0)
-
-    files = {"file": ("test.jpg", img_bytes, "image/jpeg")}
-    response = await authenticated_client.post(
-        "/detections", data=detection_payload, files=files
-    )
-    assert response.status_code == 201
-    detection_id = response.json()["id"]
-
-    # Create a true positive sequence annotation
-    true_positive_payload = {
-        "sequence_id": 1,
-        "has_missed_smoke": False,
-        "annotation": {
-            "sequences_bbox": [
-                {
-                    "is_smoke": True,
-                    "false_positive_types": [],
-                    "bboxes": [
-                        {"detection_id": detection_id, "xyxyn": [0.1, 0.1, 0.2, 0.2]}
-                    ],
-                }
-            ]
-        },
-        "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
-        "created_at": datetime.now(UTC).isoformat(),
-    }
-
-    # Create the sequence annotation
-    response = await authenticated_client.post(
-        "/annotations/sequences/", json=true_positive_payload
-    )
-    assert response.status_code == 201
-
-    # Check the detection annotation
-    response = await authenticated_client.get("/annotations/detections/?sequence_id=1")
-    assert response.status_code == 200
-    detection_annotations = response.json()["items"]
-
-    detection_annotation = None
-    for ann in detection_annotations:
-        if ann["detection_id"] == detection_id:
-            detection_annotation = ann
-            break
-
-    assert detection_annotation is not None
-    assert detection_annotation["processing_stage"] == "visual_check"
-    # Should fall back to empty annotation when predictions are empty
-    assert detection_annotation["annotation"] == {"annotation": []}
-
-
-@pytest.mark.asyncio
-async def test_mixed_sequence_normal_bbox_annotation(
-    authenticated_client: AsyncClient, sequence_session
-):
-    """Test that mixed sequences (smoke + false positives or missed smoke) create BBOX_ANNOTATION detection annotations."""
-
-    # Create a detection for the sequence
-    detection_payload = {
-        "sequence_id": "1",
-        "alert_api_id": "5001",
-        "recorded_at": "2024-01-15T10:25:00",
-        "algo_predictions": json.dumps(
-            {
-                "predictions": [
-                    {
-                        "xyxyn": [0.1, 0.1, 0.3, 0.3],
-                        "confidence": 0.75,
-                        "class_name": "smoke",
-                    }
-                ]
-            }
-        ),
-    }
-
-    # Create test image
-    import io
-
-    img = Image.new("RGB", (100, 100), color="purple")
-    img_bytes = io.BytesIO()
-    img.save(img_bytes, format="JPEG")
-    img_bytes.seek(0)
-
-    files = {"file": ("test.jpg", img_bytes, "image/jpeg")}
-    response = await authenticated_client.post(
-        "/detections", data=detection_payload, files=files
-    )
-    assert response.status_code == 201
-    detection_id = response.json()["id"]
-
-    # Create a mixed sequence annotation (has smoke + has false positives)
-    mixed_payload = {
-        "sequence_id": 1,
-        "has_missed_smoke": False,
-        "annotation": {
-            "sequences_bbox": [
-                {
-                    "is_smoke": True,  # Has smoke
-                    "false_positive_types": ["antenna"],  # Also has false positives
-                    "bboxes": [
-                        {"detection_id": detection_id, "xyxyn": [0.1, 0.1, 0.2, 0.2]}
-                    ],
-                }
-            ]
-        },
-        "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
-        "created_at": datetime.now(UTC).isoformat(),
-    }
-
-    # Create the sequence annotation
-    response = await authenticated_client.post(
-        "/annotations/sequences/", json=mixed_payload
-    )
-    assert response.status_code == 201
-    seq_annotation = response.json()
-
-    # Verify sequence annotation properties
-    assert seq_annotation["has_smoke"] is True
-    assert seq_annotation["has_false_positives"] is True
-    assert seq_annotation["has_missed_smoke"] is False
-
-    # Check the detection annotation
-    response = await authenticated_client.get("/annotations/detections/?sequence_id=1")
-    assert response.status_code == 200
-    detection_annotations = response.json()["items"]
-
-    detection_annotation = None
-    for ann in detection_annotations:
-        if ann["detection_id"] == detection_id:
-            detection_annotation = ann
-            break
-
-    assert detection_annotation is not None
-    # Mixed sequences should use BBOX_ANNOTATION (manual drawing required)
-    assert detection_annotation["processing_stage"] == "bbox_annotation"
-    # Should have empty annotation (user needs to draw manually)
-    assert detection_annotation["annotation"] == {"annotation": []}
-
-
-# Contributor Tests
-
-
-@pytest.mark.asyncio
 async def test_get_sequence_annotation_includes_contributors(
     authenticated_client: AsyncClient, sequence_session, detection_session
 ):
@@ -2106,8 +1851,8 @@ async def test_get_sequence_annotation_includes_contributors(
         "annotation": {
             "sequences_bbox": [
                 {
-                    "is_smoke": True,
-                    "false_positive_types": [],
+                    "is_smoke": False,
+                    "false_positive_types": [models.FalsePositiveType.ANTENNA.value],
                     "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
                 }
             ]
@@ -2158,8 +1903,8 @@ async def test_get_sequence_annotation_multiple_contributors(
         "annotation": {
             "sequences_bbox": [
                 {
-                    "is_smoke": True,
-                    "false_positive_types": [],
+                    "is_smoke": False,
+                    "false_positive_types": [models.FalsePositiveType.ANTENNA.value],
                     "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
                 }
             ]
@@ -2175,9 +1920,11 @@ async def test_get_sequence_annotation_multiple_contributors(
     assert create_response.status_code == 201
     annotation_id = create_response.json()["id"]
 
-    # Update annotation (this will record another contribution from same user)
+    # Update annotation (this will record another contribution from same user).
+    # has_missed_smoke stays false: flagging it would make this an unlocalized
+    # lane needing localization, which may not reach annotated (issue #346),
+    # and this test is about contributor accumulation.
     update_payload = {
-        "has_missed_smoke": True,
         "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
     }
 
@@ -2219,8 +1966,8 @@ async def test_list_sequence_annotations_includes_contributors(
         "annotation": {
             "sequences_bbox": [
                 {
-                    "is_smoke": True,
-                    "false_positive_types": [],
+                    "is_smoke": False,
+                    "false_positive_types": [models.FalsePositiveType.ANTENNA.value],
                     "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
                 }
             ]
@@ -2365,8 +2112,8 @@ async def test_sequence_annotation_contributions_for_annotated_stage_only(
         "annotation": {
             "sequences_bbox": [
                 {
-                    "is_smoke": True,
-                    "false_positive_types": [],
+                    "is_smoke": False,
+                    "false_positive_types": [models.FalsePositiveType.ANTENNA.value],
                     "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
                 },
             ]
@@ -2423,8 +2170,8 @@ async def test_sequence_annotation_create_directly_in_annotated_stage(
         "annotation": {
             "sequences_bbox": [
                 {
-                    "is_smoke": True,
-                    "false_positive_types": [],
+                    "is_smoke": False,
+                    "false_positive_types": [models.FalsePositiveType.ANTENNA.value],
                     "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
                 },
             ]
@@ -2455,8 +2202,8 @@ async def test_sequence_annotation_list_endpoint_contribution_logic(
         "annotation": {
             "sequences_bbox": [
                 {
-                    "is_smoke": True,
-                    "false_positive_types": [],
+                    "is_smoke": False,
+                    "false_positive_types": [models.FalsePositiveType.ANTENNA.value],
                     "bboxes": [{"detection_id": 1, "xyxyn": [0.1, 0.1, 0.2, 0.2]}],
                 },
             ]
@@ -2476,7 +2223,11 @@ async def test_sequence_annotation_list_endpoint_contribution_logic(
         "has_missed_smoke": False,
         "annotation": {
             "sequences_bbox": [
-                {"is_smoke": True, "false_positive_types": [], "bboxes": []},
+                {
+                    "is_smoke": False,
+                    "false_positive_types": [models.FalsePositiveType.ANTENNA.value],
+                    "bboxes": [],
+                },
             ]
         },
         "processing_stage": models.SequenceAnnotationProcessingStage.ANNOTATED.value,
@@ -2545,6 +2296,31 @@ async def test_sequence_annotation_update_with_annotation_data_conversion(
     )
     assert create_response.status_code == 201
     annotation_id = create_response.json()["id"]
+
+    # The update below turns this into a smoke lane AND moves it to annotated,
+    # which requires its localization to be complete (issue #346) — the test
+    # asserts a contributor is recorded, so the annotated stage is load-bearing
+    # here and cannot simply be lowered.
+    for det_id in (1, 2):
+        localize = await authenticated_client.post(
+            "/annotations/detections/",
+            data={
+                "detection_id": str(det_id),
+                "annotation": json.dumps(
+                    {
+                        "annotation": [
+                            {
+                                "xyxyn": [0.1, 0.1, 0.2, 0.2],
+                                "class_name": "smoke",
+                                "smoke_type": "wildfire",
+                            }
+                        ]
+                    }
+                ),
+                "processing_stage": "annotated",
+            },
+        )
+        assert localize.status_code == 201, localize.text
 
     # Test updating annotation data - this would trigger the AttributeError bug
     update_payload = {

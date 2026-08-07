@@ -26,6 +26,7 @@ import { useCameras } from '@/hooks/useCameras';
 import { useOrganizations } from '@/hooks/useOrganizations';
 import { useSourceApis } from '@/hooks/useSourceApis';
 import { useAnnotators } from '@/hooks/useAnnotators';
+import { QUEUE_COUNTS_KEY } from '@/hooks/useQueueTotals';
 import { usePersistedFilters, createDefaultFilterState } from '@/hooks/usePersistedFilters';
 import { calculatePresetDateRange } from '@/components/filters/shared/dateRangeUtils';
 import { hasActiveUserFilters } from '@/utils/filterHelpers';
@@ -197,7 +198,10 @@ export default function SequencesPage({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['classify-queue'] });
       queryClient.invalidateQueries({ queryKey: ['classify-queue-skipped-count'] });
-      queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
+      // Carries the shared classify-queue total behind both the sidebar badge
+      // and the dashboard card, so both follow an unskip.
+      queryClient.invalidateQueries({ queryKey: [QUEUE_COUNTS_KEY] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });
     },
   });
 
@@ -354,10 +358,10 @@ export default function SequencesPage({
               organizationsLoading={organizationsLoading}
               sourceApisLoading={sourceApisLoading}
               annotatorsLoading={annotatorsLoading}
-              showModelAccuracy={defaultProcessingStage === 'annotated'}
-              showFalsePositiveTypes={defaultProcessingStage === 'annotated'}
-              showSmokeTypes={defaultProcessingStage === 'annotated'}
-              showUnsureFilter={defaultProcessingStage === 'annotated'}
+              showModelAccuracy={isAnnotatedView}
+              showFalsePositiveTypes={isAnnotatedView}
+              showSmokeTypes={isAnnotatedView}
+              showUnsureFilter={isAnnotatedView}
               showAnnotatorFilter={isReviewPage}
             />
           </div>

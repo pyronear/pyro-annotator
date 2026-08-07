@@ -40,6 +40,9 @@ from app.schemas.sequence_annotations import (
     ClassifySubmitRequest,
     ClassifySubmitResponse,
     ClassifySubmitResult,
+    LocalizeRevertRequest,
+    LocalizeRevertResponse,
+    LocalizeRevertResult,
     LocalizeSubmitRequest,
     LocalizeSubmitResponse,
     LocalizeSubmitResult,
@@ -56,6 +59,7 @@ from app.services.annotation_generation import (
     derive_group_label_from_annotation,
 )
 from app.services.alert_skip import alert_skip_exists_clause
+from app.services.auto_annotate_scheduling import DONE_STAGES
 from app.services.localization_rule import (
     needs_localization,
     unsettled_unsure_clause,
@@ -203,11 +207,18 @@ async def auto_create_detection_annotations(
     """
     Automatically create detection annotations for all detections in a sequence.
 
-    Business logic for detection annotation processing stages:
-    - If has_missed_smoke=false AND has_false_positives=true (only false positives)
-      → processing_stage = "visual_check"
-    - If has_smoke=true OR has_missed_smoke=true (smoke detected or missed smoke)
-      → processing_stage = "bbox_annotation"
+    Only lanes that never needed localization reach this with work to seed:
+
+    - FP-only (no smoke, no missed smoke, has false positives) → "annotated",
+      final content derived from the human's sequence-level judgment.
+    - An empty lane (nothing flagged at all) → "visual_check".
+
+    A lane matching the localization rule seeds nothing. It may only reach
+    ANNOTATED once every detection already carries an annotated-stage
+    annotation (issue #346), so there is nothing left to create — and the old
+    placeholder model this used to implement (smoke → visual_check, mixed →
+    bbox_annotation) is retired with it. See
+    docs/specs/2026-08-07-annotated-entry-guard-design.md.
 
     Args:
         sequence_id: ID of the sequence
@@ -217,18 +228,15 @@ async def auto_create_detection_annotations(
         session: Database session
         user_id: ID of the user whose save triggered the auto-creation
     """
-    # Determine the appropriate processing stage based on sequence annotation
-    if not has_missed_smoke and has_false_positives and not has_smoke:
-        # False positive only sequence (no smoke, no missed smoke, has false positives) → automatically annotated
+    if has_smoke or has_missed_smoke:
+        # Localization is already complete by the time such a lane is
+        # ANNOTATED, so every detection has its annotation. Returning early
+        # says that, rather than computing a stage no row will ever use.
+        return
+
+    if has_false_positives:
         processing_stage = DetectionAnnotationProcessingStage.ANNOTATED
-    elif has_smoke and not has_missed_smoke and not has_false_positives:
-        # True positive only sequence (has smoke, no missed smoke, no false positives) → visual check with pre-populated predictions
-        processing_stage = DetectionAnnotationProcessingStage.VISUAL_CHECK
-    elif has_smoke or has_missed_smoke:
-        # Mixed cases (smoke + false positives, or missed smoke + anything) → bbox annotation needed
-        processing_stage = DetectionAnnotationProcessingStage.BBOX_ANNOTATION
     else:
-        # Default case (no smoke, no false positives, no missed smoke) → visual check
         processing_stage = DetectionAnnotationProcessingStage.VISUAL_CHECK
 
     # Get all detections for this sequence
@@ -371,6 +379,22 @@ async def create_sequence_annotation(
 
     # Validate that all detection_ids exist in the database
     await validate_detection_ids(create_data.annotation, annotations.session)
+
+    # Same rule as the update path (issue #346): a lane may not be CREATED at
+    # ANNOTATED unless its localization is already complete. The flags come
+    # from the payload because the row does not exist yet. Runs before the
+    # write so a rejected create leaves nothing behind — and before
+    # auto_create_detection_annotations below, which would otherwise
+    # manufacture visual_check rows that still fail the check.
+    if create_data.processing_stage == SequenceAnnotationProcessingStage.ANNOTATED:
+        if needs_localization(
+            derive_has_smoke(create_data.annotation),
+            create_data.has_missed_smoke,
+            create_data.is_unsure,
+        ):
+            await assert_localization_complete(
+                create_data.sequence_id, annotations.session
+            )
 
     # Use CRUD method which handles contribution tracking with proper conditional logic
     sequence_annotation = await annotations.create(create_data, current_user.id)
@@ -602,6 +626,48 @@ async def get_sequence_annotation(
     return SequenceAnnotationRead(**annotation_dict)
 
 
+async def assert_localization_complete(sequence_id: int, session: AsyncSession) -> None:
+    """Raise 422 unless every detection of the sequence is localized.
+
+    "Localized" means it carries a DetectionAnnotation at stage `annotated`.
+    This is the single definition of localization completeness, shared by
+    every path that can move a lane into ANNOTATED (issue #346) — the update
+    path and the create path. Two copies would drift.
+
+    A frameless sequence passes vacuously — "every frame is localized" is
+    trivially true with no frames. That is deliberate: whether a sequence may
+    exist without detections at all is a separate invariant from whether its
+    frames are localized, and enforcing it here would reject lanes this guard
+    has no opinion about.
+    """
+    unlocalized = (
+        await session.execute(
+            select(func.count(Detection.id))
+            .outerjoin(
+                DetectionAnnotation,
+                and_(
+                    DetectionAnnotation.detection_id == Detection.id,
+                    DetectionAnnotation.processing_stage
+                    == DetectionAnnotationProcessingStage.ANNOTATED,
+                ),
+            )
+            .where(
+                Detection.sequence_id == sequence_id,
+                DetectionAnnotation.id.is_(None),
+            )
+        )
+    ).scalar_one()
+    if unlocalized > 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"Cannot mark annotated: {unlocalized} detection(s) of sequence "
+                f"{sequence_id} lack an annotated-stage detection "
+                "annotation (localization incomplete)"
+            ),
+        )
+
+
 async def apply_annotation_update(
     annotation_id: int,
     payload: SequenceAnnotationUpdate,
@@ -677,9 +743,9 @@ async def apply_annotation_update(
 
     # Smoke-localization exit guard (spec: smoke-localization entry point): a
     # lane matching the localization rule (see `localization_rule`; unsure lanes
-    # are exempt — they resolve through sequence review) may only be submitted
-    # seq_annotation_done -> annotated once every detection carries an
-    # annotated-stage detection annotation.
+    # are exempt — they resolve through sequence review) may only reach
+    # annotated once every detection carries an annotated-stage detection
+    # annotation.
     target_has_smoke = (
         derive_has_smoke(payload.annotation)
         if payload.annotation is not None
@@ -693,40 +759,20 @@ async def apply_annotation_update(
     target_is_unsure = (
         payload.is_unsure if payload.is_unsure is not None else existing.is_unsure
     )
+    # Guard every path into ANNOTATED, not just seq_annotation_done ->
+    # ANNOTATED (issue #346): a bulk stage rewrite or an ad-hoc PATCH from
+    # ready_to_annotate would otherwise slip an unlocalized smoke lane into
+    # the done list and into the export. The stage must actually be CHANGING
+    # — a lane already at ANNOTATED being edited for some other reason must
+    # not be re-guarded against data it did not create.
     if (
-        existing.processing_stage
-        == SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE
+        existing.processing_stage != SequenceAnnotationProcessingStage.ANNOTATED
         and target_processing_stage == SequenceAnnotationProcessingStage.ANNOTATED
         and needs_localization(
             target_has_smoke, target_has_missed_smoke, target_is_unsure
         )
     ):
-        unlocalized = (
-            await session.execute(
-                select(func.count(Detection.id))
-                .outerjoin(
-                    DetectionAnnotation,
-                    and_(
-                        DetectionAnnotation.detection_id == Detection.id,
-                        DetectionAnnotation.processing_stage
-                        == DetectionAnnotationProcessingStage.ANNOTATED,
-                    ),
-                )
-                .where(
-                    Detection.sequence_id == existing.sequence_id,
-                    DetectionAnnotation.id.is_(None),
-                )
-            )
-        ).scalar_one()
-        if unlocalized > 0:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=(
-                    f"Cannot submit: {unlocalized} detection(s) of sequence "
-                    f"{existing.sequence_id} lack an annotated-stage detection "
-                    "annotation (localization incomplete)"
-                ),
-            )
+        await assert_localization_complete(existing.sequence_id, session)
 
     # FP→smoke promotion (issue #275, spec: fp-promote-relocalize): an
     # annotated lane whose new flags need localization re-enters the
@@ -1328,7 +1374,8 @@ async def localize_submit(
     """Atomically move every lane of one alert from seq_annotation_done to
     annotated (spec: smoke-localization entry point). Either every lane
     lands or none does — apply_annotation_update's localization exit guard
-    (`:637-688`), which fires per lane inside the loop, rolls back the whole
+    (`assert_localization_complete`), which fires per lane inside the loop,
+    rolls back the whole
     batch when any lane is missing an annotated-stage detection annotation.
 
     Post-commit effects (auto-create detection annotations) run afterwards,
@@ -1446,6 +1493,188 @@ async def localize_submit(
         )
 
     return LocalizeSubmitResponse(results=results)
+
+
+@router.post(
+    "/localize-revert",
+    status_code=status.HTTP_200_OK,
+    response_model=LocalizeRevertResponse,
+    summary="Send a localized alert back to the localize queue",
+)
+async def localize_revert(
+    payload: LocalizeRevertRequest = Body(...),
+    annotations: SequenceAnnotationCRUD = Depends(get_sequence_annotation_crud),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> LocalizeRevertResponse:
+    """Atomically move every annotated smoke lane of one alert back to
+    seq_annotation_done (spec: 2026-08-07-localize-revert-to-queue). The alert
+    leaves /localize/done, re-enters /localize, and — because /export/alerts
+    admits an alert only when EVERY lane is annotated — drops out of the
+    export. Withdrawing bad data from the export is the point of the feature.
+
+    Deliberately does NOT route through `apply_annotation_update`: this exact
+    stage move on a lane needing localization is the FP->smoke promotion
+    predicate (`is_fp_promotion`), whose effects block 422s on any committed
+    detection annotation and otherwise DELETES every DetectionAnnotation of
+    the sequence. Here the boxes must survive — the annotator is fixing one
+    frame, not starting over. Writing through the CRUD also keeps three other
+    hooks from firing: auto_create_detection_annotations (only for lanes newly
+    reaching annotated), `_propagate_to_group_if_validated` (a revert is not a
+    new label and must not fan out to a validated group), and the contribution
+    insert (reverting is a correction, not authorship).
+    """
+    annotation_ids = payload.annotation_ids
+    rows = (
+        await session.execute(
+            select(SequenceAnnotation, Sequence)
+            .join(Sequence, Sequence.id == SequenceAnnotation.sequence_id)
+            .where(SequenceAnnotation.id.in_(annotation_ids))
+        )
+    ).all()
+    by_id = {ann.id: (ann, seq) for ann, seq in rows}
+
+    missing_ids = [aid for aid in annotation_ids if aid not in by_id]
+    if missing_ids:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Sequence annotation(s) {missing_ids} not found",
+        )
+
+    alert_keys = {(seq.source_api, seq.platform_alert_id) for _, seq in by_id.values()}
+    if len(alert_keys) > 1:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="All annotations must belong to sequences of the same alert",
+        )
+
+    wrong_stage_ids = [
+        aid
+        for aid, (ann, _seq) in by_id.items()
+        if ann.processing_stage != SequenceAnnotationProcessingStage.ANNOTATED
+    ]
+    if wrong_stage_ids:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Annotation(s) {sorted(wrong_stage_ids)} are not at annotated; "
+                "refresh the list and retry"
+            ),
+        )
+
+    # FP-only and deferred-unsure lanes exited the pipeline at classify and
+    # never carried localization work; demoting one would park it in a stage
+    # it never occupied.
+    not_localized_ids = [
+        aid
+        for aid, (ann, _seq) in by_id.items()
+        if not needs_localization(ann.has_smoke, ann.has_missed_smoke, ann.is_unsure)
+    ]
+    if not_localized_ids:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"Annotation(s) {sorted(not_localized_ids)} does not need "
+                "localization; only localized smoke lanes can be sent back"
+            ),
+        )
+
+    # The two lists disagree about alerts, and the gap can strand one. The
+    # done list admits an alert as soon as ONE lane is annotated and needs
+    # localization; the localize queue demands EVERY sibling sit at a done
+    # stage with none left undecided. So an alert can be listed as done while
+    # a sibling is still unfinished or unsure — and reverting it there would
+    # drop it from the done list without letting it into the queue, leaving
+    # the work unreachable from both. Mirror the queue's admission rule and
+    # refuse instead. (Such an alert is not in the export either — that needs
+    # every lane annotated — so nothing is being withheld by refusing.)
+    alert_source_api, alert_platform_id = next(iter(alert_keys))
+    blocking_siblings = (
+        await session.execute(
+            select(func.count(Sequence.id))
+            .outerjoin(
+                SequenceAnnotation, SequenceAnnotation.sequence_id == Sequence.id
+            )
+            .where(
+                Sequence.source_api == alert_source_api,
+                Sequence.platform_alert_id == alert_platform_id,
+                or_(
+                    SequenceAnnotation.id.is_(None),
+                    SequenceAnnotation.processing_stage.notin_(DONE_STAGES),
+                    unsettled_unsure_clause(SequenceAnnotation),
+                ),
+            )
+        )
+    ).scalar_one()
+    if blocking_siblings > 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"Cannot send back: {blocking_siblings} object(s) of this alert "
+                "are still unfinished or undecided, so the alert would not "
+                "re-enter the localize queue. Settle them in Classify first."
+            ),
+        )
+
+    # Sequences whose reference layer never landed: after the revert they
+    # would fail the queue's `_ready_smoke_lane` check (which requires
+    # auto_annotated_at) and sit in NEITHER queue. Read before the commit,
+    # deferred after it.
+    unreferenced_sequence_ids = [
+        seq.id for _, seq in by_id.values() if seq.auto_annotated_at is None
+    ]
+
+    updated: List[SequenceAnnotation] = []
+    try:
+        for annotation_id in annotation_ids:
+            updated_annotation = await annotations.update(
+                annotation_id,
+                SequenceAnnotationUpdate(
+                    processing_stage=(
+                        SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE
+                    )
+                ),
+                current_user.id,
+                commit=False,
+            )
+            if updated_annotation is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Sequence annotation with id {annotation_id} not found",
+                )
+            updated.append(updated_annotation)
+    except HTTPException:
+        await session.rollback()
+        raise
+
+    # The one atomic point: every lane's write lands together.
+    await session.commit()
+
+    # Post-commit so a lost defer can't strand the transaction. Failures are
+    # swallowed on purpose: the revert has already landed, and raising here
+    # would report failure for work that succeeded — the caller would retry
+    # and get a 409 "not at annotated", which reads as a contradiction. The
+    # periodic schedule_auto_annotate sweep re-enqueues stale lanes anyway,
+    # so a lost defer costs latency, not correctness.
+    for sequence_id in unreferenced_sequence_ids:
+        try:
+            await auto_annotate_sequence.defer_async(sequence_id=sequence_id)
+        except Exception:
+            logger.exception(
+                "localize-revert: failed to re-arm auto-annotate for sequence "
+                f"{sequence_id}; the periodic sweep will pick it up"
+            )
+
+    return LocalizeRevertResponse(
+        results=[
+            LocalizeRevertResult(
+                annotation_id=ann.id,
+                sequence_id=ann.sequence_id,
+                processing_stage=ann.processing_stage,
+            )
+            for ann in updated
+        ]
+    )
 
 
 @router.post(

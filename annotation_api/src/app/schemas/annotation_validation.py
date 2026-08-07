@@ -3,6 +3,7 @@
 # This program is licensed under the Apache License 2.0.
 # See LICENSE or go to <https://www.apache.org/licenses/LICENSE-2.0> for full license details.
 
+from collections import Counter
 from enum import Enum
 from typing import List, Optional
 
@@ -19,7 +20,39 @@ __all__ = [
     "AnnotationOrigin",
     "DetectionAnnotationItem",
     "DetectionAnnotationData",
+    "union_xyxyn",
 ]
+
+
+def union_xyxyn(boxes: List[List[float]]) -> List[float]:
+    """
+    Enclosing box of several bounding boxes, in normalized coordinates.
+
+    One object, one box per frame: a plume that visually forks into two strands
+    and rejoins is still one plume, boxed once (see #286).
+
+    Lives here rather than beside its callers in ``app.services`` so the
+    importer can share it: importing anything under ``app.services`` pulls
+    ``storage``, which probes S3 at module scope (see #336).
+
+    Args:
+        boxes: Non-empty list of [x1, y1, x2, y2] in normalized coordinates (0-1).
+               Extra elements past index 3 are ignored, so the importer's
+               [x1, y1, x2, y2, confidence] boxes can be passed directly.
+
+    Returns:
+        The smallest box enclosing all of them, as [x1, y1, x2, y2]
+
+    Example:
+        >>> union_xyxyn([[0.1, 0.2, 0.3, 0.4], [0.2, 0.1, 0.5, 0.35]])
+        [0.1, 0.1, 0.5, 0.4]
+    """
+    return [
+        min(b[0] for b in boxes),
+        min(b[1] for b in boxes),
+        max(b[2] for b in boxes),
+        max(b[3] for b in boxes),
+    ]
 
 
 class BoundingBox(BaseModel):
@@ -63,6 +96,27 @@ class SequenceBBox(BaseModel):
     smoke_type: Optional[SmokeType] = Field(default=None)
     false_positive_types: List[FalsePositiveType] = Field(default_factory=list)
     bboxes: List[BoundingBox]
+
+    @model_validator(mode="after")
+    def validate_one_box_per_detection(self) -> "SequenceBBox":
+        """One object, one box per frame.
+
+        A plume that visually forks into two strands and rejoins is still one
+        fire's smoke, boxed once — the same rule #286 enforces on detection
+        annotations. A persistent split is a second fire, so a second object
+        with its own annotation track.
+        """
+        counts = Counter(b.detection_id for b in self.bboxes)
+        repeated = sorted(d for d, n in counts.items() if n > 1)
+        if repeated:
+            raise ValueError(
+                f"At most one box is allowed per detection within a sequence "
+                f"bbox (detection_id repeated: {repeated}). A plume that forks "
+                "into two strands and rejoins is one object — box it once. A "
+                "persistent second plume is a separate object, with its own "
+                "annotation track."
+            )
+        return self
 
 
 class SequenceAnnotationData(BaseModel):

@@ -198,6 +198,7 @@ export const getKeyForFalsePositiveType = (type: string): string => {
     antenna: 'A',
     building: 'B',
     cliff: 'C',
+    combine_harvester: 'V',
     dark: 'D',
     dust: 'U',
     high_cloud: 'H',

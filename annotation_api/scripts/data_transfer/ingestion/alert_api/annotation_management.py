@@ -17,9 +17,7 @@ import logging
 from datetime import date, datetime
 from typing import Dict, Any, Optional
 
-from . import shared
 from app.clients.annotation_api import (
-    get_auth_token,
     list_sequence_annotations,
     create_sequence_annotation,
     update_sequence_annotation,
@@ -58,28 +56,32 @@ def valid_date(s: str) -> date:
         raise argparse.ArgumentTypeError(msg)
 
 
-def check_existing_annotation(base_url: str, sequence_id: int) -> Optional[int]:
+def check_existing_annotation(
+    base_url: str, sequence_id: int, auth_token: str
+) -> Optional[int]:
     """
     Check if a sequence already has an annotation.
 
     Args:
         base_url: Base URL of the annotation API
         sequence_id: ID of the sequence to check
+        auth_token: JWT held by the caller. This stage never mints its own —
+            a login costs ~143ms of bcrypt on the API's single event loop,
+            and it was previously paid once per sequence here.
 
     Returns:
         Annotation ID if found, None if no annotation exists
 
     Example:
-        >>> annotation_id = check_existing_annotation("http://localhost:5050", 123)
+        >>> annotation_id = check_existing_annotation(
+        ...     "http://localhost:5050", 123, auth_token
+        ... )
         >>> if annotation_id:
         ...     print(f"Found existing annotation with ID: {annotation_id}")
         >>> else:
         ...     print("No existing annotation found")
     """
     try:
-        # Get authentication token
-        login, password = shared.get_annotation_credentials(base_url)
-        auth_token = get_auth_token(base_url, login, password)
         response = list_sequence_annotations(
             base_url, auth_token, sequence_id=sequence_id
         )
@@ -104,6 +106,7 @@ def create_annotation_from_data(
     base_url: str,
     sequence_id: int,
     annotation_data: SequenceAnnotationData,
+    auth_token: str,
     dry_run: bool = False,
     existing_annotation_id: Optional[int] = None,
     processing_stage: SequenceAnnotationProcessingStage = SequenceAnnotationProcessingStage.READY_TO_ANNOTATE,
@@ -119,6 +122,9 @@ def create_annotation_from_data(
         base_url: Base URL of the annotation API
         sequence_id: ID of the sequence to annotate
         annotation_data: SequenceAnnotationData containing the annotation
+        auth_token: JWT held by the caller. This stage never mints its own —
+            a login costs ~143ms of bcrypt on the API's single event loop,
+            and it was previously paid once per sequence here.
         dry_run: If True, only log what would be done without making changes
         existing_annotation_id: ID of existing annotation to update (None to create new)
         processing_stage: Processing stage to set for the annotation
@@ -135,6 +141,7 @@ def create_annotation_from_data(
         ...     base_url="http://localhost:5050",
         ...     sequence_id=123,
         ...     annotation_data=annotation_data,
+        ...     auth_token=auth_token,
         ...     dry_run=False,
         ...     processing_stage=SequenceAnnotationProcessingStage.READY_TO_ANNOTATE
         ... )
@@ -144,15 +151,12 @@ def create_annotation_from_data(
         ...     base_url="http://localhost:5050",
         ...     sequence_id=123,
         ...     annotation_data=updated_data,
+        ...     auth_token=auth_token,
         ...     existing_annotation_id=456,
         ...     dry_run=False
         ... )
     """
     try:
-        # Get authentication token
-        login, password = shared.get_annotation_credentials(base_url)
-        auth_token = get_auth_token(base_url, login, password)
-
         if existing_annotation_id:
             # Update existing annotation (PATCH)
             update_dict = {
@@ -240,12 +244,12 @@ def create_annotation_from_data(
         return False
 
 
-def _rollback_sequence(sequence_id: int, annotation_api_url: str) -> None:
+def _rollback_sequence(
+    sequence_id: int, annotation_api_url: str, auth_token: str
+) -> None:
     """Delete a sequence as part of the `annotate_split_sequence` rollback path."""
-    login, password = shared.get_annotation_credentials(annotation_api_url)
     try:
-        token = get_auth_token(annotation_api_url, username=login, password=password)
-        delete_sequence(annotation_api_url, token, sequence_id)
+        delete_sequence(annotation_api_url, auth_token, sequence_id)
     except Exception as exc:
         logging.warning(f"Rollback delete of sequence {sequence_id} failed: {exc}")
 
@@ -253,6 +257,7 @@ def _rollback_sequence(sequence_id: int, annotation_api_url: str) -> None:
 def annotate_split_sequence(
     seq_result: Dict[str, Any],
     annotation_api_url: str,
+    auth_token: str,
     dry_run: bool = False,
 ) -> Dict[str, Any]:
     """Write the single-track annotation for one imported object sequence.
@@ -261,6 +266,10 @@ def annotate_split_sequence(
     the annotation fails outright, delete the sequence instead (a
     half-imported or annotation-less object would 409 on the next run and
     never be completed), and report the rollback as an error.
+
+    `auth_token` is the token the posting stage already holds. This stage runs
+    once per object lane, so minting one here cost two ~143ms bcrypt logins per
+    lane, serialized on the API's single event loop.
     """
     sequence_id = seq_result["sequence_id"]
     result: Dict[str, Any] = {
@@ -272,7 +281,7 @@ def annotate_split_sequence(
     }
 
     if seq_result["failed_detections"] > 0:
-        _rollback_sequence(sequence_id, annotation_api_url)
+        _rollback_sequence(sequence_id, annotation_api_url, auth_token)
         result["errors"].append(
             f"sequence {sequence_id} rolled back: "
             f"{seq_result['failed_detections']}/{seq_result['total_detections']} detections failed"
@@ -284,12 +293,13 @@ def annotate_split_sequence(
             seq_result.get("detection_results", [])
         )
         existing_annotation_id = check_existing_annotation(
-            annotation_api_url, sequence_id
+            annotation_api_url, sequence_id, auth_token
         )
         if create_annotation_from_data(
             annotation_api_url,
             sequence_id,
             annotation_data,
+            auth_token,
             dry_run,
             existing_annotation_id,
             SequenceAnnotationProcessingStage.READY_TO_ANNOTATE,
@@ -304,13 +314,13 @@ def annotate_split_sequence(
             )
         else:
             if not dry_run:
-                _rollback_sequence(sequence_id, annotation_api_url)
+                _rollback_sequence(sequence_id, annotation_api_url, auth_token)
             result["errors"].append(
                 f"sequence {sequence_id} rolled back: failed to create annotation"
             )
     except Exception as exc:
         if not dry_run:
-            _rollback_sequence(sequence_id, annotation_api_url)
+            _rollback_sequence(sequence_id, annotation_api_url, auth_token)
         result["errors"].append(
             f"sequence {sequence_id} rolled back: unexpected error building annotation: {exc}"
         )

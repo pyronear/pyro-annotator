@@ -61,7 +61,7 @@ export default function DashboardPage() {
             title="Localize smoke"
             description="Draw a tight box around the smoke in every image. Unlocked by Pass 01."
             todo={stats.localizeTodo}
-            done={stats.complete}
+            done={stats.localizeDone}
             doneNoun="localized"
             ctaLabel="Start localizing"
             ctaTo={ROUTES.LOCALIZE}

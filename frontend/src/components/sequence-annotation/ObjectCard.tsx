@@ -60,6 +60,7 @@ const getKeyForType = (type: string) => {
     antenna: 'A',
     building: 'B',
     cliff: 'C',
+    combine_harvester: 'V',
     dark: 'D',
     dust: 'J', // 'u' toggles Unsure in the shared keyboard handler
     high_cloud: 'H',

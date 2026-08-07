@@ -332,10 +332,10 @@ Creates a human annotation for a sequence.
 ```
 
 **False Positive Types:**
-- `"antenna"`, `"building"`, `"cliff"`, `"dark"`, `"dust"`
+- `"antenna"`, `"building"`, `"cliff"`, `"combine_harvester"`, `"dark"`, `"dust"`
 - `"high_cloud"`, `"low_cloud"`, `"lens_flare"`, `"lens_droplet"`  
 - `"light"`, `"rain"`, `"trail"`, `"road"`, `"sky"`, `"tree"`
-- `"water_body"`, `"other"`
+- `"water_body"`, `"other"`, `"unlabeled"`
 
 **Processing Stages:**
 - `"imported"`: Initially imported

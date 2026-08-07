@@ -31,6 +31,9 @@ __all__ = [
     "LocalizeSubmitRequest",
     "LocalizeSubmitResult",
     "LocalizeSubmitResponse",
+    "LocalizeRevertRequest",
+    "LocalizeRevertResult",
+    "LocalizeRevertResponse",
 ]
 
 
@@ -113,6 +116,24 @@ class LocalizeSubmitResult(BaseModel):
 
 class LocalizeSubmitResponse(BaseModel):
     results: List[LocalizeSubmitResult]
+
+
+class LocalizeRevertRequest(BaseModel):
+    """Send a localized alert back to the localize queue (spec:
+    2026-08-07-localize-revert-to-queue): every annotated lane of one alert
+    that needs localization returns to seq_annotation_done together."""
+
+    annotation_ids: List[int] = Field(..., min_length=1)
+
+
+class LocalizeRevertResult(BaseModel):
+    annotation_id: int
+    sequence_id: int
+    processing_stage: SequenceAnnotationProcessingStage
+
+
+class LocalizeRevertResponse(BaseModel):
+    results: List[LocalizeRevertResult]
 
 
 class SequenceAnnotationCreate(BaseModel):

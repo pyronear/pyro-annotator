@@ -6,20 +6,16 @@ import React from 'react';
 vi.mock('@/services/api', () => ({
   apiClient: {
     getSequences: vi.fn(),
-    getSequenceAnnotations: vi.fn(),
     getSequenceGroupStats: vi.fn(),
     getLocalizationQueue: vi.fn(),
+    getClassifyQueue: vi.fn(),
+    getClassifyDone: vi.fn(),
+    getLocalizeDoneQueue: vi.fn(),
   },
 }));
 
 import { apiClient } from '@/services/api';
 import { usePipelineStats } from '@/hooks/usePipelineStats';
-
-const stageTotals: Record<string, number> = {
-  ready_to_annotate: 57,
-  seq_annotation_done: 22,
-  annotated: 427,
-};
 
 function wrapper({ children }: { children: React.ReactNode }) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -36,12 +32,8 @@ describe('usePipelineStats', () => {
       Promise.resolve(
         page(params?.detection_annotation_completion === 'complete' ? 418 : 522)
       )) as unknown as typeof apiClient.getSequences);
-    vi.mocked(apiClient.getSequenceAnnotations).mockImplementation(((
-      params?: Record<string, unknown>
-    ) =>
-      Promise.resolve(
-        page(stageTotals[String(params?.processing_stage)] ?? 0)
-      )) as unknown as typeof apiClient.getSequenceAnnotations);
+    vi.mocked(apiClient.getClassifyDone).mockResolvedValue(page(449));
+    vi.mocked(apiClient.getLocalizeDoneQueue).mockResolvedValue(page(402));
     vi.mocked(apiClient.getSequenceGroupStats).mockResolvedValue({
       total: 40,
       validated: 20,
@@ -50,12 +42,17 @@ describe('usePipelineStats', () => {
       unlabeled: 12,
     });
     vi.mocked(apiClient.getLocalizationQueue).mockResolvedValue(page(9));
+    vi.mocked(apiClient.getClassifyQueue).mockResolvedValue(page(31));
   });
 
-  it('derives pipeline stats from the six count queries', async () => {
+  it('derives pipeline stats from the alert-grouped queues', async () => {
     const { result } = renderHook(() => usePipelineStats(), { wrapper });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
-    expect(result.current.classifyTodo).toBe(57);
+    // Every pass number is alert-grained, matching the page it links to.
+    expect(result.current.classifyTodo).toBe(31);
+    expect(apiClient.getClassifyQueue).toHaveBeenCalledWith({ size: 1 });
+    expect(result.current.classifyDone).toBe(449);
+    expect(result.current.localizeDone).toBe(402);
     // Localize · to do is the gated queue total (alerts ready), not the
     // seq_annotation_done proxy.
     expect(result.current.localizeTodo).toBe(9);

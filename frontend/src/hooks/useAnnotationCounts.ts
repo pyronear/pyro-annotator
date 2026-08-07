@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/services/api';
+import { useClassifyQueueTotal, useLocalizeQueueTotal } from '@/hooks/useQueueTotals';
 
 export interface AnnotationCounts {
   sequenceCount: number;
@@ -10,43 +11,24 @@ export interface AnnotationCounts {
 }
 
 export function useAnnotationCounts(): AnnotationCounts {
-  // Query for alerts awaiting classification (counts alerts from the classify queue)
+  // Alerts awaiting classification / ready for localization. Shared with the
+  // dashboard cards so a badge and its card can never disagree.
   const {
     data: sequenceData,
     isLoading: sequenceLoading,
     error: sequenceError,
-  } = useQuery({
-    queryKey: ['annotation-counts', 'sequences'],
-    queryFn: async () => {
-      const response = await apiClient.getClassifyQueue({
-        size: 1, // Only need the total count
-      });
-      return response.total;
-    },
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 10 * 60 * 1000, // 10 minutes
-    refetchOnWindowFocus: true,
-  });
+  } = useClassifyQueueTotal();
 
-  // Query for sequences needing detection-level annotation
   const {
     data: detectionData,
     isLoading: detectionLoading,
     error: detectionError,
-  } = useQuery({
-    queryKey: ['annotation-counts', 'detections'],
-    queryFn: async () => {
-      // Localize queue total: alerts ready for smoke localization (matches
-      // exactly what /localize shows).
-      const response = await apiClient.getLocalizationQueue({ size: 1 });
-      return response.total;
-    },
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 10 * 60 * 1000, // 10 minutes
-    refetchOnWindowFocus: true,
-  });
+  } = useLocalizeQueueTotal();
 
-  // Query for sequence groups awaiting validation
+  // Recurring objects still needing a label. Not `unvalidated`: the badge opens
+  // the recurring-objects list on its "To label" tab, which counts `unlabeled`,
+  // and label propagation is gated on is_validated — so a validated-but-
+  // unlabeled backlog always exists and the two numbers never converge.
   const {
     data: groupData,
     isLoading: groupLoading,
@@ -55,7 +37,7 @@ export function useAnnotationCounts(): AnnotationCounts {
     queryKey: ['annotation-counts', 'sequence-groups'],
     queryFn: async () => {
       const stats = await apiClient.getSequenceGroupStats();
-      return stats.unvalidated;
+      return stats.unlabeled;
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes

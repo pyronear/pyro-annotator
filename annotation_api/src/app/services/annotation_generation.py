@@ -37,6 +37,7 @@ from app.schemas.annotation_validation import (
     BoundingBox,
     SequenceBBox,
     SequenceAnnotationData,
+    union_xyxyn,
 )
 
 
@@ -482,17 +483,31 @@ class AnnotationGenerationService:
         sequences_bbox = []
 
         for cluster in bbox_clusters:
-            bboxes = []
+            # One object, one box per frame. cluster_boxes_by_iou never consults
+            # detection_id, so two overlapping predictions on the same frame land
+            # in one cluster — a plume that forks and rejoins is still one plume,
+            # boxed once (#286). Validate before unioning: merging a null
+            # [0,0,0,0] box with a real one would anchor the result at the origin.
+            valid: Dict[int, List[List[float]]] = {}
 
             for bbox_coords, detection_id in cluster:
                 try:
                     bbox = BoundingBox(detection_id=detection_id, xyxyn=bbox_coords)
-                    bboxes.append(bbox)
                 except Exception as e:
                     self.logger.debug(
                         f"Skipping invalid coordinates for detection {detection_id}: {e}"
                     )
                     continue
+                valid.setdefault(bbox.detection_id, []).append(bbox.xyxyn)
+
+            # A union of valid boxes is itself valid, so this cannot raise.
+            bboxes = [
+                BoundingBox(
+                    detection_id=detection_id,
+                    xyxyn=union_xyxyn(coords) if len(coords) > 1 else coords[0],
+                )
+                for detection_id, coords in valid.items()
+            ]
 
             # Only create SequenceBBox if we have valid bboxes
             if not bboxes:

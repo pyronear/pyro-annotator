@@ -156,14 +156,36 @@ describe('DetectionReviewPage (/localize/done)', () => {
     );
   });
 
+  it('wires the Alert API annotation filter through to the endpoint', async () => {
+    mockedFilters = { is_wildfire_alertapi: 'other_smoke' };
+    render(<DetectionReviewPage />, { wrapper });
+    await waitFor(() => expect(apiClient.getLocalizeDoneQueue).toHaveBeenCalled());
+    expect(apiClient.getLocalizeDoneQueue).toHaveBeenCalledWith(
+      expect.objectContaining({ is_wildfire_alertapi: 'other_smoke' })
+    );
+  });
+
+  it('wires the Unclassified choice of the Alert API annotation filter through', async () => {
+    mockedFilters = { is_wildfire_alertapi: null };
+    render(<DetectionReviewPage />, { wrapper });
+    await waitFor(() => expect(apiClient.getLocalizeDoneQueue).toHaveBeenCalled());
+    expect(apiClient.getLocalizeDoneQueue).toHaveBeenCalledWith(
+      expect.objectContaining({ is_wildfire_alertapi: null })
+    );
+  });
+
   it('does not show the model-accuracy or annotation-type filter controls', async () => {
     render(<DetectionReviewPage />, { wrapper });
     await waitFor(() => expect(screen.getByText('CAM_01')).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: /Filters/ }));
     fireEvent.click(screen.getByText(/More filters/));
-    expect(screen.queryByText('Model Accuracy')).toBeNull();
+    // The control is labelled "Result", not "Model Accuracy" — asserting on
+    // the latter could never fail. "Result" also names a table column here, so
+    // match the radiogroup rather than the text.
+    expect(screen.queryByRole('radiogroup', { name: 'Result' })).toBeNull();
     expect(screen.queryByText('False Positive Types')).toBeNull();
     expect(screen.queryByText('Smoke Types')).toBeNull();
+    expect(screen.queryByText('Certainty')).toBeNull();
   });
 
   it('shows an all-caught-up empty state when the queue is empty', async () => {

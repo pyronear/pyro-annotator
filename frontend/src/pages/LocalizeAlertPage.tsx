@@ -117,6 +117,7 @@ import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/rea
 import { ArrowLeft, Keyboard, PlayCircle, Upload, X } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { QUERY_KEYS } from '@/utils/constants';
+import { QUEUE_COUNTS_KEY } from '@/hooks/useQueueTotals';
 import {
   ApiError,
   Detection,
@@ -266,6 +267,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   // goes straight through instead of re-asking the same question).
   const [missedSmokeConfirm, setMissedSmokeConfirm] = useState(false);
   const [skipConfirmOpen, setSkipConfirmOpen] = useState(false);
+  const [revertConfirmOpen, setRevertConfirmOpen] = useState(false);
   const [skipNote, setSkipNote] = useState('');
   const [softConfirmResolved, setSoftConfirmResolved] = useState(false);
 
@@ -952,6 +954,26 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     );
   };
 
+  // Occupies the slot Skip alert holds in queue mode — same position, same
+  // outlined-ember treatment. Both footer branches use it, so a partially
+  // reverted alert opened from Done shows Submit AND this.
+  const renderRevertButton = () => (
+    <Tooltip placement="above" tip={revertTooltip}>
+      <button
+        type="button"
+        onClick={e => {
+          e.stopPropagation();
+          setRevertConfirmOpen(true);
+        }}
+        disabled={revertBlocked}
+        data-testid="revert-to-queue-button"
+        className="inline-flex items-center rounded-lg border border-ember bg-paper px-3 py-2.5 font-body text-sm font-medium text-ember hover:bg-ember-soft disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        Send back to queue
+      </button>
+    </Tooltip>
+  );
+
   // Names the media column: with an object active the grid shows that
   // object's detections, so the column header should say whose they are.
   // The color also outlines the frames it actually appears on.
@@ -1006,6 +1028,45 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       }),
     [workableObjects, alertDetail]
   );
+
+  // The mirror image of `workableLanes`: the alert's already-annotated smoke
+  // lanes, which are exactly what localize-revert takes. Mirrors the
+  // endpoint's guards client-side so a deep link to an unfinished alert never
+  // offers an action the server would 409.
+  const revertableLanes: { laneSequenceId: number; annotationId: number }[] = useMemo(
+    () =>
+      (alertDetail?.lanes ?? []).flatMap(lane => {
+        const annotation = lane.annotation;
+        if (!annotation) return [];
+        if (annotation.processing_stage !== 'annotated') return [];
+        if (!laneNeedsLocalization(annotation)) return [];
+        return [{ laneSequenceId: lane.sequence.id, annotationId: annotation.id }];
+      }),
+    [alertDetail]
+  );
+  const canRevert = mode === 'done' && revertableLanes.length > 0;
+
+  // The done list admits an alert on ONE annotated lane, but the queue demands
+  // every sibling be done and none undecided. Where they disagree the server
+  // refuses the revert (it would strand the alert in neither list), so say so
+  // on the button rather than letting a 422 explain it after the confirm.
+  const revertBlockingLanes = (alertDetail?.lanes ?? []).filter(lane => {
+    const annotation = lane.annotation;
+    if (!annotation) return true;
+    if (annotation.processing_stage === 'annotated') return false;
+    if (annotation.processing_stage !== 'seq_annotation_done') return true;
+    return annotation.is_unsure === true;
+  });
+  const revertBlocked = revertBlockingLanes.length > 0;
+  const revertTooltip = revertBlocked
+    ? `${revertBlockingLanes.length} object${
+        revertBlockingLanes.length === 1 ? '' : 's'
+      } of this alert ${
+        revertBlockingLanes.length === 1 ? 'is' : 'are'
+      } still unfinished or undecided, so it could not re-enter the Localize queue. Settle ${
+        revertBlockingLanes.length === 1 ? 'it' : 'them'
+      } in Classify first.`
+    : 'Spotted a mistake? This alert returns to the Localize queue with all its boxes intact, and stops being exported until it is submitted again.';
 
   // Submit: atomically ships the whole alert. No accept step of its own —
   // `allObjectsAccepted` gates the button, so every frame already carries a
@@ -1063,6 +1124,41 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     onError: err => {
       const detail = (err as { detail?: string })?.detail || (err as Error)?.message || '';
       showToastNotification(detail ? `Skip failed: ${detail}` : 'Skip failed — try again', 'error');
+    },
+  });
+
+  // Send back to queue (spec: 2026-08-07-localize-revert-to-queue): the
+  // alert's annotated smoke lanes return to seq_annotation_done, which pulls
+  // the alert out of /export/alerts until it is submitted again. Done mode
+  // only. Boxes are untouched — the next annotator fixes a frame, not the
+  // whole alert.
+  const revertAlertMutation = useMutation({
+    mutationFn: async () => apiClient.localizeRevert(revertableLanes.map(l => l.annotationId)),
+    onSuccess: () => {
+      setRevertConfirmOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['localization-queue'] });
+      queryClient.invalidateQueries({ queryKey: ['localize-done-queue'] });
+      // The alert moves BETWEEN the two queues, so the sidebar's Localize
+      // badge and the dashboard card behind the same total both have to
+      // follow. Imported rather than spelled out so renaming the hook's key
+      // fails the test instead of silently freezing the badge for the full
+      // 5-minute staleTime.
+      queryClient.invalidateQueries({ queryKey: [QUEUE_COUNTS_KEY] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.SEQUENCE_ANNOTATIONS });
+      queryClient.invalidateQueries({ queryKey: alertDetailQueryKey });
+      showToastNotification('Alert sent back to the queue', 'success');
+      // Delayed like the submit path: navigating unmounts this page and with
+      // it the NotificationSystem that owns the toast, so an immediate
+      // navigate would swallow the confirmation entirely.
+      setTimeout(() => navigate(listPath), 1000);
+    },
+    onError: err => {
+      const detail = (err as { detail?: string })?.detail || (err as Error)?.message || '';
+      showToastNotification(
+        detail ? `Send back failed: ${detail}` : 'Send back failed — try again',
+        'error'
+      );
     },
   });
 
@@ -1328,18 +1424,25 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   };
 
   // 'c' toggles crop mode, matching the legacy grid — inert while the modal
-  // is open (mirrors the legacy page's showModal guard) and while the
-  // shortcuts sheet is up (only `?`/Escape act there).
+  // is open (mirrors the legacy page's showModal guard), while the shortcuts
+  // sheet is up (only `?`/Escape act there), and while the skip confirm is
+  // up (its note is a free text field, so a typed "c" is a letter).
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.key === 'c' || e.key === 'C') && detectionIdNum == null && !showShortcutsModal) {
+      if (
+        (e.key === 'c' || e.key === 'C') &&
+        detectionIdNum == null &&
+        !showShortcutsModal &&
+        !skipConfirmOpen &&
+        !revertConfirmOpen
+      ) {
         setCropMode(prev => !prev);
         e.preventDefault();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [detectionIdNum, showShortcutsModal]);
+  }, [detectionIdNum, showShortcutsModal, skipConfirmOpen, revertConfirmOpen]);
 
   // Tab / Shift+Tab step the objects exactly as the rail displays them —
   // smoke first, false positives only while shown — wrapping at the ends
@@ -1357,7 +1460,8 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       // per-frame editor, the missed-smoke submit dialog, the skip confirm,
       // the shortcuts sheet, the accept popover — so their controls stay
       // keyboard-reachable (mirrors classify's modal guards).
-      if (detectionIdNum != null || missedSmokeConfirm || skipConfirmOpen) return;
+      if (detectionIdNum != null || missedSmokeConfirm || skipConfirmOpen || revertConfirmOpen)
+        return;
       if (showShortcutsModal || acceptPopoverOpen) return;
       if (orderedObjectRows.length === 0) return;
       e.preventDefault();
@@ -1388,7 +1492,8 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   // above: re-subscribing every render keeps the closure fresh.
   useEffect(() => {
     const handleShortcutKeys = (e: KeyboardEvent) => {
-      if (detectionIdNum != null || missedSmokeConfirm || skipConfirmOpen) return;
+      if (detectionIdNum != null || missedSmokeConfirm || skipConfirmOpen || revertConfirmOpen)
+        return;
       // Shift stays allowed: `?` requires it.
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const target = e.target;
@@ -1756,12 +1861,15 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
             }
             footer={
               workableObjects.length === 0 ? (
-                <p
-                  data-testid="all-objects-localized"
-                  className="text-center font-body text-detail text-haze"
-                >
-                  All objects localized
-                </p>
+                <div className="flex flex-col items-center gap-2.5">
+                  <p
+                    data-testid="all-objects-localized"
+                    className="text-center font-body text-detail text-haze"
+                  >
+                    All objects localized
+                  </p>
+                  {canRevert && renderRevertButton()}
+                </div>
               ) : (
                 <div>
                   {/* An undecided object holds the whole alert back. Say so
@@ -1837,6 +1945,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                         </button>
                       </Tooltip>
                     )}
+                    {canRevert && renderRevertButton()}
                   </div>
                 </div>
               )
@@ -1963,6 +2072,10 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
             </label>
             <textarea
               id="skip-note"
+              // Without this the caret stays on whatever opened the dialog —
+              // the rail's Skip trigger or the missed-smoke nudge — so a user
+              // who types straight away types into nothing.
+              autoFocus
               value={skipNote}
               onChange={e => setSkipNote(e.target.value)}
               rows={3}
@@ -1976,6 +2089,50 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                 className="inline-flex items-center rounded-lg bg-pine px-3 py-2 font-body text-sm font-semibold text-white hover:brightness-95 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Skip alert
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {revertConfirmOpen && (
+        <div
+          data-testid="revert-to-queue-confirm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-char/40 px-4"
+        >
+          <div className="w-full max-w-sm rounded-lg border border-line bg-paper p-5">
+            <div className="flex items-start justify-between">
+              <h2 className="font-body text-sm font-semibold text-char">
+                Send this alert back to the queue?
+              </h2>
+              <button
+                type="button"
+                onClick={() => setRevertConfirmOpen(false)}
+                aria-label="Close"
+                className="-mr-1.5 -mt-1.5 rounded-md p-1.5 hover:bg-ash"
+              >
+                <X className="h-4 w-4 text-haze" />
+              </button>
+            </div>
+            <p className="mt-1 font-body text-xs text-haze">
+              It returns to the Localize queue with all its boxes intact, and stops being exported
+              until someone submits it again.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setRevertConfirmOpen(false)}
+                className="inline-flex items-center rounded-lg px-3 py-2 font-body text-sm font-medium text-haze hover:text-char"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => revertAlertMutation.mutate()}
+                disabled={revertAlertMutation.isPending}
+                className="inline-flex items-center rounded-lg bg-ember px-3 py-2 font-body text-sm font-semibold text-white hover:brightness-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Send back to queue
               </button>
             </div>
           </div>

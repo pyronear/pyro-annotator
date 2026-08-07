@@ -998,7 +998,7 @@ async def test_list_sequences_filter_by_false_positive_types(
                     }
                 ]
             },
-            "processing_stage": "annotated",
+            "processing_stage": "ready_to_annotate",
         },
         {
             "sequence_id": sequence_ids[1],
@@ -1020,7 +1020,7 @@ async def test_list_sequences_filter_by_false_positive_types(
                     }
                 ]
             },
-            "processing_stage": "annotated",
+            "processing_stage": "ready_to_annotate",
         },
         {
             "sequence_id": sequence_ids[2],
@@ -1042,7 +1042,7 @@ async def test_list_sequences_filter_by_false_positive_types(
                     }
                 ]
             },
-            "processing_stage": "annotated",
+            "processing_stage": "ready_to_annotate",
         },
     ]
 
@@ -1235,7 +1235,7 @@ async def test_list_sequences_filter_by_smoke_types(
                     },
                 ]
             },
-            "processing_stage": "annotated",
+            "processing_stage": "ready_to_annotate",
         },
         {
             "sequence_id": sequence_ids[1],
@@ -1255,7 +1255,7 @@ async def test_list_sequences_filter_by_smoke_types(
                     }
                 ]
             },
-            "processing_stage": "annotated",
+            "processing_stage": "ready_to_annotate",
         },
         {
             "sequence_id": sequence_ids[2],
@@ -1274,7 +1274,7 @@ async def test_list_sequences_filter_by_smoke_types(
                     }
                 ]
             },
-            "processing_stage": "annotated",
+            "processing_stage": "ready_to_annotate",
         },
     ]
 

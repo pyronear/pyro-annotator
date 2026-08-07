@@ -107,6 +107,27 @@ def build_detection_stats_subquery():
     )
 
 
+PLATFORM_ANNOTATION_FILTER_DESC = (
+    "Filter by the alert platform's own annotation: 'wildfire_smoke', "
+    "'other_smoke', 'other', or 'null' for unclassified"
+)
+
+
+def platform_annotation_clause(seq, value: Optional[str]):
+    """WHERE clause for the alert platform's annotation filter, or None when
+    the filter doesn't apply. The literal string "null" selects unclassified
+    alerts (a bare null can't survive query-string encoding); an unparseable
+    value disables the filter rather than 422-ing the caller."""
+    if value is None:
+        return None
+    if value == "null":
+        return seq.is_wildfire_alertapi.is_(None)
+    try:
+        return seq.is_wildfire_alertapi == AnnotationType(value)
+    except ValueError:
+        return None
+
+
 class SequenceOrderByField(str, Enum):
     """Valid fields for ordering sequences."""
 
@@ -328,18 +349,9 @@ async def list_sequences(
     if organisation_name is not None:
         query = query.where(Sequence.organisation_name == organisation_name)
 
-    if is_wildfire_alertapi is not None:
-        # Special handling for filtering null values (sent as "null" string from frontend)
-        if is_wildfire_alertapi == "null":
-            query = query.where(Sequence.is_wildfire_alertapi.is_(None))
-        else:
-            # Validate that the value is a valid AnnotationType
-            try:
-                enum_value = AnnotationType(is_wildfire_alertapi)
-                query = query.where(Sequence.is_wildfire_alertapi == enum_value)
-            except ValueError:
-                # Invalid enum value, ignore filter (could also raise an error)
-                pass
+    wildfire_clause = platform_annotation_clause(Sequence, is_wildfire_alertapi)
+    if wildfire_clause is not None:
+        query = query.where(wildfire_clause)
 
     if has_annotation is not None:
         if has_annotation:
@@ -817,9 +829,10 @@ async def add_object(
         )
     )
 
-    # Every frame starts pending bbox annotation — unlike a classify-time
-    # smoke lane (auto_create_detection_annotations' VISUAL_CHECK shortcut),
-    # this object has no AI-proposed box to confirm; the annotator draws it.
+    # Every frame starts pending bbox annotation: this object has no
+    # AI-proposed box to confirm, so the annotator draws each one. (These rows
+    # are seeded here rather than by auto_create_detection_annotations, which
+    # no longer seeds anything for a lane needing localization — issue #346.)
     session.add_all(
         DetectionAnnotation(
             detection_id=det.id,
@@ -1328,6 +1341,9 @@ async def classify_queue(
     source_api: Optional[SourceApi] = Query(None),
     recorded_at_gte: Optional[datetime] = Query(None),
     recorded_at_lte: Optional[datetime] = Query(None),
+    is_wildfire_alertapi: Optional[str] = Query(
+        None, description=PLATFORM_ANNOTATION_FILTER_DESC
+    ),
     skipped: bool = Query(False),
     session: AsyncSession = Depends(get_session),
     params: Params = Depends(),
@@ -1359,6 +1375,9 @@ async def classify_queue(
         candidates = candidates.where(cand_seq.recorded_at >= recorded_at_gte)
     if recorded_at_lte is not None:
         candidates = candidates.where(cand_seq.recorded_at <= recorded_at_lte)
+    wildfire_clause = platform_annotation_clause(cand_seq, is_wildfire_alertapi)
+    if wildfire_clause is not None:
+        candidates = candidates.where(wildfire_clause)
 
     alerts = (
         select(
@@ -1435,6 +1454,9 @@ async def localize_done_queue(
     source_api: Optional[SourceApi] = Query(None),
     recorded_at_gte: Optional[datetime] = Query(None),
     recorded_at_lte: Optional[datetime] = Query(None),
+    is_wildfire_alertapi: Optional[str] = Query(
+        None, description=PLATFORM_ANNOTATION_FILTER_DESC
+    ),
     annotator_id: Optional[int] = Query(
         None, description="Alerts with any lane contributed to by this user"
     ),
@@ -1470,6 +1492,9 @@ async def localize_done_queue(
         candidates = candidates.where(cand_seq.recorded_at >= recorded_at_gte)
     if recorded_at_lte is not None:
         candidates = candidates.where(cand_seq.recorded_at <= recorded_at_lte)
+    wildfire_clause = platform_annotation_clause(cand_seq, is_wildfire_alertapi)
+    if wildfire_clause is not None:
+        candidates = candidates.where(wildfire_clause)
 
     alerts_query = (
         select(
@@ -1531,9 +1556,7 @@ async def classify_done(
     recorded_at_gte: Optional[datetime] = Query(None),
     recorded_at_lte: Optional[datetime] = Query(None),
     is_wildfire_alertapi: Optional[str] = Query(
-        None,
-        description="Filter by the alert platform's annotation: "
-        "'wildfire_smoke', 'other_smoke', 'other', or 'null' for unclassified",
+        None, description=PLATFORM_ANNOTATION_FILTER_DESC
     ),
     false_positive_types: Optional[List[FalsePositiveType]] = Query(
         None, description="Alerts with any lane matching one of these FP types"
@@ -1577,19 +1600,9 @@ async def classify_done(
         candidates = candidates.where(cand_seq.recorded_at >= recorded_at_gte)
     if recorded_at_lte is not None:
         candidates = candidates.where(cand_seq.recorded_at <= recorded_at_lte)
-    if is_wildfire_alertapi is not None:
-        # "null" selects unclassified alerts; invalid values disable the
-        # filter (same contract as the list-sequences endpoint).
-        if is_wildfire_alertapi == "null":
-            candidates = candidates.where(cand_seq.is_wildfire_alertapi.is_(None))
-        else:
-            try:
-                enum_value = AnnotationType(is_wildfire_alertapi)
-                candidates = candidates.where(
-                    cand_seq.is_wildfire_alertapi == enum_value
-                )
-            except ValueError:
-                pass
+    wildfire_clause = platform_annotation_clause(cand_seq, is_wildfire_alertapi)
+    if wildfire_clause is not None:
+        candidates = candidates.where(wildfire_clause)
 
     lane_done = case((SequenceAnnotation.processing_stage.in_(DONE_STAGES), 1), else_=0)
     alerts = (

@@ -333,6 +333,46 @@ async def test_filters(authenticated_client: AsyncClient, async_session):
 
 
 @pytest.mark.asyncio
+async def test_is_wildfire_alertapi_filter(
+    authenticated_client: AsyncClient, async_session
+):
+    wildfire = await _lane(
+        async_session,
+        alert_api_id=912,
+        platform_alert_id=912,
+        stage=Stage.ANNOTATED,
+        has_smoke=True,
+    )
+    wildfire.is_wildfire_alertapi = "wildfire_smoke"
+    async_session.add(wildfire)
+    await async_session.commit()
+    await _lane(
+        async_session,
+        alert_api_id=913,
+        platform_alert_id=913,
+        stage=Stage.ANNOTATED,
+        has_smoke=True,
+    )
+
+    resp = await authenticated_client.get(
+        "/sequences/localize-done-queue",
+        params={"is_wildfire_alertapi": "wildfire_smoke"},
+    )
+    assert [it["platform_alert_id"] for it in resp.json()["items"]] == [912]
+
+    null_resp = await authenticated_client.get(
+        "/sequences/localize-done-queue", params={"is_wildfire_alertapi": "null"}
+    )
+    assert [it["platform_alert_id"] for it in null_resp.json()["items"]] == [913]
+
+    junk_resp = await authenticated_client.get(
+        "/sequences/localize-done-queue", params={"is_wildfire_alertapi": "bogus"}
+    )
+    assert junk_resp.status_code == 200
+    assert junk_resp.json()["total"] == 2
+
+
+@pytest.mark.asyncio
 async def test_recorded_at_filters(authenticated_client: AsyncClient, async_session):
     await _lane(
         async_session,
