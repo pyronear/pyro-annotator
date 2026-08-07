@@ -366,6 +366,7 @@ export type FalsePositiveType =
   | 'antenna'
   | 'building'
   | 'cliff'
+  | 'combine_harvester'
   | 'dark'
   | 'dust'
   | 'high_cloud'

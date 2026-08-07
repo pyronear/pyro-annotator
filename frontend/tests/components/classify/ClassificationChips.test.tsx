@@ -68,13 +68,13 @@ describe('ClassificationChips', () => {
     expect(screen.queryByRole('checkbox', { name: 'High cloud' })).not.toBeInTheDocument();
   });
 
-  it('renders all 18 FP type chips for false_positive and toggles membership both ways', () => {
+  it('renders all 19 FP type chips for false_positive and toggles membership both ways', () => {
     const { onBboxChange } = renderChips({
       bbox: { ...baseBbox, false_positive_types: ['high_cloud'] },
       classification: 'false_positive',
     });
-    // 18 FP chips (Unsure is a radio in the exclusive classification group)
-    expect(screen.getAllByRole('checkbox')).toHaveLength(18);
+    // 19 FP chips (Unsure is a radio in the exclusive classification group)
+    expect(screen.getAllByRole('checkbox')).toHaveLength(19);
     expect(screen.getByRole('checkbox', { name: 'High cloud' })).toBeChecked();
     fireEvent.click(screen.getByRole('checkbox', { name: 'Antenna' }));
     expect(onBboxChange).toHaveBeenCalledWith('101:0', {
@@ -85,6 +85,15 @@ describe('ClassificationChips', () => {
     expect(onBboxChange).toHaveBeenCalledWith('101:0', {
       ...baseBbox,
       false_positive_types: [],
+    });
+  });
+
+  it('offers the combine_harvester FP chip and toggles it', () => {
+    const { onBboxChange } = renderChips({ classification: 'false_positive' });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Combine harvester' }));
+    expect(onBboxChange).toHaveBeenCalledWith('101:0', {
+      ...baseBbox,
+      false_positive_types: ['combine_harvester'],
     });
   });
 
