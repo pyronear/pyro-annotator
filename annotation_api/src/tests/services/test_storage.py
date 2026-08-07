@@ -207,6 +207,22 @@ def test_bucket_cache_is_per_thread():
     ), "bucket handed a thread another thread's boto3 client"
 
 
+def _forget_download_client():
+    """Drop the cached client without closing it.
+
+    A client must be closed on the loop that built it: aclose() on a pool
+    still holding live keep-alive connections from a finished loop raises
+    "Event loop is closed". Whatever is cached on entry to a test belongs to
+    an earlier test's loop, so it gets dropped rather than closed. It survives
+    here only because nothing else in the process reaches it.
+
+    The local test S3 happens to answer `Connection: close`, which empties the
+    pool and hides this -- don't let that become the reason it works.
+    """
+    storage._download_client = None
+    storage._download_client_loop = None
+
+
 @pytest_asyncio.fixture
 async def fresh_download_client():
     """Start and end with no cached download client.
@@ -214,8 +230,9 @@ async def fresh_download_client():
     The cache is process-wide, so a client built here -- especially one wired
     to a mock transport -- would otherwise be handed to later tests.
     """
-    await storage.close_download_client()
+    _forget_download_client()
     yield
+    # Always this test's own client, so closing it is safe.
     await storage.close_download_client()
 
 
@@ -267,12 +284,14 @@ def test_download_client_is_rebuilt_for_a_new_event_loop():
     connections whose loop is gone. The test suite runs one loop per test,
     which is exactly that situation.
     """
+    _forget_download_client()
+
     first = asyncio.run(_current_download_client())
     second = asyncio.run(_current_download_client())
 
     assert second is not first, "a new event loop was handed the old loop's client"
 
-    asyncio.run(storage.close_download_client())
+    _forget_download_client()
 
 
 async def _current_download_client():

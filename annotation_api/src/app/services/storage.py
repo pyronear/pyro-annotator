@@ -457,7 +457,12 @@ def _get_download_client() -> httpx.AsyncClient:
 
 
 async def close_download_client() -> None:
-    """Release the image-download client. Called from the app lifespan."""
+    """Release the image-download client. Called from the app lifespan.
+
+    Must be awaited on the loop that built the client: closing a pool that
+    still holds live keep-alive connections from a finished loop raises
+    "Event loop is closed". The lifespan satisfies this by construction.
+    """
     global _download_client, _download_client_loop
 
     client = _download_client
