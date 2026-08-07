@@ -27,6 +27,7 @@ from app.crud import UserCRUD
 from app.db import get_session
 from app.schemas.base import Status
 from app.schemas.user import UserCreate
+from app.services.storage import close_download_client
 from app.worker import app as procrastinate_app
 
 logger = logging.getLogger("uvicorn.error")
@@ -109,6 +110,7 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         await procrastinate_app.close_async()
+        await close_download_client()
 
 
 app = FastAPI(
