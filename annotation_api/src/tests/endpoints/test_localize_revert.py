@@ -4,9 +4,11 @@ alert return to seq_annotation_done, keeping every box they carry."""
 
 import json
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import func, select
 
 from app import models
 from app.api.api_v1.endpoints import sequence_annotations as ep
@@ -345,3 +347,205 @@ async def test_localize_revert_requires_auth(async_client: AsyncClient):
         "/annotations/sequences/localize-revert", json={"annotation_ids": [1]}
     )
     assert resp.status_code in (401, 403)
+
+
+@pytest.mark.asyncio
+async def test_localize_revert_withdraws_alert_from_export(
+    authenticated_client: AsyncClient, mock_img: bytes
+):
+    """The point of the feature: a reverted alert stops exporting, and the
+    corrected version re-exports with an advanced watermark."""
+    ann_ids, _, _ = await _seed_submitted_alert(
+        authenticated_client, mock_img, platform_alert_id=8810
+    )
+
+    def alert_ids(resp):
+        return [i["platform_alert_id"] for i in resp.json()["items"]]
+
+    resp = await authenticated_client.get("/export/alerts")
+    assert 8810 in alert_ids(resp), alert_ids(resp)
+    before = next(
+        i["last_annotated_at"]
+        for i in resp.json()["items"]
+        if i["platform_alert_id"] == 8810
+    )
+
+    revert = await authenticated_client.post(
+        "/annotations/sequences/localize-revert", json={"annotation_ids": ann_ids}
+    )
+    assert revert.status_code == 200, revert.text
+
+    resp = await authenticated_client.get("/export/alerts")
+    assert 8810 not in alert_ids(resp), f"still exported: {alert_ids(resp)}"
+
+    # Re-submitting the corrected alert puts it back, with a later watermark
+    # so an incremental consumer picks the correction up.
+    resubmit = await authenticated_client.post(
+        "/annotations/sequences/localize-submit", json={"annotation_ids": ann_ids}
+    )
+    assert resubmit.status_code == 200, resubmit.text
+
+    resp = await authenticated_client.get("/export/alerts")
+    assert 8810 in alert_ids(resp)
+    after = next(
+        i["last_annotated_at"]
+        for i in resp.json()["items"]
+        if i["platform_alert_id"] == 8810
+    )
+    assert after >= before
+
+
+@pytest.mark.asyncio
+async def test_localize_revert_moves_alert_between_the_two_queues(
+    authenticated_client: AsyncClient, mock_img: bytes, sequence_session
+):
+    ann_ids, seq_ids, _ = await _seed_submitted_alert(
+        authenticated_client, mock_img, platform_alert_id=8811
+    )
+    # The localize queue only offers a lane whose auto-annotate reference pass
+    # landed; no worker runs here, so stamp it as the worker would.
+    for sequence_id in seq_ids:
+        sequence = await sequence_session.get(models.Sequence, sequence_id)
+        sequence.auto_annotated_at = now
+        sequence_session.add(sequence)
+    await sequence_session.commit()
+
+    async def in_queue(path: str) -> bool:
+        resp = await authenticated_client.get(path)
+        assert resp.status_code == 200, resp.text
+        return any(i["platform_alert_id"] == 8811 for i in resp.json()["items"])
+
+    assert await in_queue("/sequences/localize-done-queue")
+    assert not await in_queue("/sequences/localization-queue")
+
+    revert = await authenticated_client.post(
+        "/annotations/sequences/localize-revert", json={"annotation_ids": ann_ids}
+    )
+    assert revert.status_code == 200, revert.text
+
+    assert not await in_queue("/sequences/localize-done-queue")
+    assert await in_queue("/sequences/localization-queue")
+
+
+@pytest.mark.asyncio
+async def test_localize_revert_preserves_the_localization_work(
+    authenticated_client: AsyncClient, mock_img: bytes
+):
+    """Boxes and per-frame acceptance survive — the annotator fixes one frame
+    and resubmits rather than redoing the alert. This is what separates the
+    revert from the FP-promote demotion, which deletes them."""
+    ann_ids, _, det_ids = await _seed_submitted_alert(
+        authenticated_client, mock_img, platform_alert_id=8812
+    )
+
+    async def frame_annotations():
+        out = []
+        for det_id in det_ids:
+            resp = await authenticated_client.get(
+                "/annotations/detections/", params={"detection_id": det_id}
+            )
+            out.extend(resp.json()["items"])
+        return out
+
+    before = await frame_annotations()
+    assert before and all(a["annotation"]["annotation"] for a in before)
+
+    revert = await authenticated_client.post(
+        "/annotations/sequences/localize-revert", json={"annotation_ids": ann_ids}
+    )
+    assert revert.status_code == 200, revert.text
+
+    after = await frame_annotations()
+    assert len(after) == len(before)
+    assert [a["annotation"] for a in after] == [a["annotation"] for a in before]
+    assert all(a["processing_stage"] == "annotated" for a in after)
+
+
+@pytest.mark.asyncio
+async def test_localize_revert_records_no_contribution(
+    authenticated_client: AsyncClient, mock_img: bytes, sequence_session
+):
+    """Reverting is a correction, not authorship: the reverter must not land
+    in the Annotators column. Contributions are append-only, so this can only
+    be prevented, never undone."""
+    ann_ids, _, _ = await _seed_submitted_alert(
+        authenticated_client, mock_img, platform_alert_id=8813
+    )
+
+    async def contribution_count() -> int:
+        return (
+            await sequence_session.execute(
+                select(func.count(models.SequenceAnnotationContribution.id)).where(
+                    models.SequenceAnnotationContribution.sequence_annotation_id.in_(
+                        ann_ids
+                    )
+                )
+            )
+        ).scalar_one()
+
+    before = await contribution_count()
+    # Non-vacuous: the submit that seeded this alert DID credit its annotator,
+    # so "unchanged" is a real constraint rather than 0 == 0.
+    assert before > 0
+
+    revert = await authenticated_client.post(
+        "/annotations/sequences/localize-revert", json={"annotation_ids": ann_ids}
+    )
+    assert revert.status_code == 200, revert.text
+
+    assert await contribution_count() == before
+
+
+@pytest.mark.asyncio
+async def test_localize_revert_leaves_fp_siblings_annotated(
+    authenticated_client: AsyncClient, mock_img: bytes
+):
+    ann_ids, _, _ = await _seed_submitted_alert(
+        authenticated_client, mock_img, platform_alert_id=8814
+    )
+    fp_seq = await _create_sequence(
+        authenticated_client, alert_api_id=88149, platform_alert_id=8814
+    )
+    fp_det = await _create_detection(
+        authenticated_client, mock_img, sequence_id=fp_seq, alert_api_id=9
+    )
+    fp_ann = await _annotate_lane(
+        authenticated_client,
+        sequence_id=fp_seq,
+        detection_id=fp_det,
+        is_smoke=False,
+        stage="annotated",
+    )
+
+    revert = await authenticated_client.post(
+        "/annotations/sequences/localize-revert", json={"annotation_ids": ann_ids}
+    )
+    assert revert.status_code == 200, revert.text
+
+    got = await authenticated_client.get(f"/annotations/sequences/{fp_ann}")
+    assert got.json()["processing_stage"] == "annotated"
+
+
+@pytest.mark.asyncio
+async def test_localize_revert_never_propagates_to_a_group(
+    authenticated_client: AsyncClient, mock_img: bytes
+):
+    """A revert reaches seq_annotation_done, which is exactly the stage the
+    group fan-out hooks on — but a revert is a correction, not a new label,
+    and must never rewrite a validated group's other members. Patching the
+    hook pins the intent directly, without seeding a whole group."""
+    ann_ids, _, _ = await _seed_submitted_alert(
+        authenticated_client, mock_img, platform_alert_id=8815
+    )
+
+    with patch(
+        "app.api.api_v1.endpoints.sequence_annotations."
+        "_propagate_to_group_if_validated",
+        new=AsyncMock(return_value=None),
+    ) as propagate:
+        resp = await authenticated_client.post(
+            "/annotations/sequences/localize-revert", json={"annotation_ids": ann_ids}
+        )
+        assert resp.status_code == 200, resp.text
+
+    propagate.assert_not_awaited()
