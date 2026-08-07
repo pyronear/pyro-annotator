@@ -446,6 +446,12 @@ def _get_download_client() -> httpx.AsyncClient:
     connections belong to the loop that opened them. Production has one loop
     per worker process and never rebuilds; the tests run one loop per test and
     must not be handed a dead loop's connections.
+
+    A rebuild abandons the previous client without closing it -- it cannot be
+    awaited from here, and closing it would have to happen on its own loop
+    anyway (see close_download_client). Its sockets are released when it is
+    collected. This only ever costs anything under the test harness, which is
+    the only thing that changes loops.
     """
     global _download_client, _download_client_loop
 
@@ -497,6 +503,16 @@ async def upload_file_from_url(
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Could not connect to source URL: {source_url}",
+        )
+    except httpx.RemoteProtocolError:
+        # Only reachable since the client became shared: a pooled connection
+        # can be handed out in the instant after the source closed it, and the
+        # request then hits EOF. Left unmapped this surfaces as a 500, which
+        # the importer does not retry (it retries 502/503/504) -- so a dropped
+        # connection would silently cost a detection.
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Source URL closed the connection before responding: {source_url}",
         )
     except httpx.HTTPStatusError as exc:
         code = exc.response.status_code

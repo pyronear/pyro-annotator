@@ -330,6 +330,11 @@ def _raising_handler(exc):
             502,
             "Could not connect to source URL",
         ),
+        (
+            _raising_handler(httpx.RemoteProtocolError("server disconnected")),
+            502,
+            "Source URL closed the connection",
+        ),
         (lambda request: httpx.Response(404), 422, "Source URL returned HTTP 404"),
         (lambda request: httpx.Response(503), 502, "Source URL server error: HTTP 503"),
         (
