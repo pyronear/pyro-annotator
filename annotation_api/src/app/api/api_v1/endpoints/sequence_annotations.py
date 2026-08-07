@@ -606,6 +606,42 @@ async def get_sequence_annotation(
     return SequenceAnnotationRead(**annotation_dict)
 
 
+async def assert_localization_complete(sequence_id: int, session: AsyncSession) -> None:
+    """Raise 422 unless every detection of the sequence is localized.
+
+    "Localized" means it carries a DetectionAnnotation at stage `annotated`.
+    This is the single definition of localization completeness, shared by
+    every path that can move a lane into ANNOTATED (issue #346) — the update
+    path and the create path. Two copies would drift.
+    """
+    unlocalized = (
+        await session.execute(
+            select(func.count(Detection.id))
+            .outerjoin(
+                DetectionAnnotation,
+                and_(
+                    DetectionAnnotation.detection_id == Detection.id,
+                    DetectionAnnotation.processing_stage
+                    == DetectionAnnotationProcessingStage.ANNOTATED,
+                ),
+            )
+            .where(
+                Detection.sequence_id == sequence_id,
+                DetectionAnnotation.id.is_(None),
+            )
+        )
+    ).scalar_one()
+    if unlocalized > 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"Cannot mark annotated: {unlocalized} detection(s) of sequence "
+                f"{sequence_id} lack an annotated-stage detection "
+                "annotation (localization incomplete)"
+            ),
+        )
+
+
 async def apply_annotation_update(
     annotation_id: int,
     payload: SequenceAnnotationUpdate,
@@ -705,32 +741,7 @@ async def apply_annotation_update(
             target_has_smoke, target_has_missed_smoke, target_is_unsure
         )
     ):
-        unlocalized = (
-            await session.execute(
-                select(func.count(Detection.id))
-                .outerjoin(
-                    DetectionAnnotation,
-                    and_(
-                        DetectionAnnotation.detection_id == Detection.id,
-                        DetectionAnnotation.processing_stage
-                        == DetectionAnnotationProcessingStage.ANNOTATED,
-                    ),
-                )
-                .where(
-                    Detection.sequence_id == existing.sequence_id,
-                    DetectionAnnotation.id.is_(None),
-                )
-            )
-        ).scalar_one()
-        if unlocalized > 0:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=(
-                    f"Cannot submit: {unlocalized} detection(s) of sequence "
-                    f"{existing.sequence_id} lack an annotated-stage detection "
-                    "annotation (localization incomplete)"
-                ),
-            )
+        await assert_localization_complete(existing.sequence_id, session)
 
     # FP→smoke promotion (issue #275, spec: fp-promote-relocalize): an
     # annotated lane whose new flags need localization re-enters the
