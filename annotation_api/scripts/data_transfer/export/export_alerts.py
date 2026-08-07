@@ -22,6 +22,7 @@ import argparse
 import json
 import logging
 import sys
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -233,13 +234,29 @@ def _fetch_page_impl(
     return fetch_page
 
 
+_thread_local = threading.local()
+
+
+def _download_session() -> requests.Session:
+    """One unauthenticated session per worker thread.
+
+    Unauthenticated because presigned S3 URLs reject an extra Authorization
+    header, so the API session must not be reused here. Per-thread rather
+    than shared because requests.Session is not thread-safe; pooling still
+    keeps a TCP+TLS handshake off all but the first image each thread pulls.
+    """
+    session: Optional[requests.Session] = getattr(_thread_local, "session", None)
+    if session is None:
+        session = requests.Session()
+        _thread_local.session = session
+    return session
+
+
 def _download_impl(url: str, dest: Path) -> None:
-    # Plain requests.get: presigned S3 URLs reject an extra Authorization
-    # header, so the authenticated session must not be used here.
     dest.parent.mkdir(parents=True, exist_ok=True)
     for attempt in range(DOWNLOAD_ATTEMPTS):
         try:
-            response = requests.get(url, timeout=DOWNLOAD_TIMEOUT_S)
+            response = _download_session().get(url, timeout=DOWNLOAD_TIMEOUT_S)
             response.raise_for_status()
             part = dest.with_suffix(dest.suffix + ".part")
             part.write_bytes(response.content)
