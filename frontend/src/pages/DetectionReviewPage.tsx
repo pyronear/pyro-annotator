@@ -101,6 +101,7 @@ export default function DetectionReviewPage() {
         source_api: filters.source_api,
         recorded_at_gte: filters.recorded_at_gte,
         recorded_at_lte: filters.recorded_at_lte,
+        is_wildfire_alertapi: filters.is_wildfire_alertapi,
         annotator_id: filters.annotator_id,
       }),
   });

@@ -41,6 +41,20 @@ import {
 } from '@/types/api';
 import { API_ENDPOINTS } from '@/utils/constants';
 
+/**
+ * The "Unclassified" choice of the alert-platform annotation filter is JS
+ * `null`, but the params serializer drops nulls, so it would never reach the
+ * server. Encode it as the literal "null" string the API expects for that
+ * case. Applied by every endpoint that accepts the filter.
+ */
+function encodePlatformAnnotationFilter<
+  T extends { is_wildfire_alertapi?: AnnotationType | 'null' | null },
+>(params: T): T {
+  return params.is_wildfire_alertapi === null
+    ? { ...params, is_wildfire_alertapi: 'null' as const }
+    : params;
+}
+
 class ApiClient {
   private client: AxiosInstance;
 
@@ -258,12 +272,13 @@ class ApiClient {
       source_api?: string;
       recorded_at_gte?: string;
       recorded_at_lte?: string;
+      is_wildfire_alertapi?: AnnotationType | 'null' | null;
       skipped?: boolean;
     } = {}
   ): Promise<PaginatedResponse<ClassifyQueueItem>> {
     const response: AxiosResponse<PaginatedResponse<ClassifyQueueItem>> = await this.client.get(
       `${API_ENDPOINTS.SEQUENCES}classify-queue`,
-      { params }
+      { params: encodePlatformAnnotationFilter(params) }
     );
     return response.data;
   }
@@ -278,12 +293,13 @@ class ApiClient {
       source_api?: string;
       recorded_at_gte?: string;
       recorded_at_lte?: string;
+      is_wildfire_alertapi?: AnnotationType | 'null' | null;
       annotator_id?: number;
     } = {}
   ): Promise<PaginatedResponse<LocalizeDoneQueueItem>> {
     const response: AxiosResponse<PaginatedResponse<LocalizeDoneQueueItem>> = await this.client.get(
       `${API_ENDPOINTS.SEQUENCES}localize-done-queue`,
-      { params }
+      { params: encodePlatformAnnotationFilter(params) }
     );
     return response.data;
   }
@@ -308,7 +324,7 @@ class ApiClient {
   ): Promise<PaginatedResponse<ClassifyDoneItem>> {
     const response: AxiosResponse<PaginatedResponse<ClassifyDoneItem>> = await this.client.get(
       `${API_ENDPOINTS.SEQUENCES}classify-done`,
-      { params }
+      { params: encodePlatformAnnotationFilter(params) }
     );
     return response.data;
   }

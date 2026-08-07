@@ -41,6 +41,16 @@ export function hasActiveUserFilters(
     return true;
   }
 
+  if (filters.source_api) {
+    return true;
+  }
+
+  // The alert-platform annotation filter is set whenever the key is present:
+  // its "Unclassified" choice is null, which is a selection, not an absence.
+  if (filters.is_wildfire_alertapi !== undefined) {
+    return true;
+  }
+
   // Check review-specific filters (only relevant on review pages)
   if (showModelAccuracy && selectedModelAccuracy !== 'all') {
     return true;
