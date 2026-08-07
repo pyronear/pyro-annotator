@@ -6,6 +6,7 @@ using the requests library for HTTP communication.
 """
 
 import json
+import threading
 from typing import Dict, Optional
 
 import requests
@@ -90,6 +91,26 @@ __all__ = [
 ]
 
 
+# -------------------- CONNECTION POOLING --------------------
+
+# The import script drives this client from a pool of threads (sequence workers
+# times detection workers), and `requests.Session` is not documented as
+# thread-safe, so each thread keeps its own. Same reasoning as the thread-local
+# boto3 client in `app/services/storage.py`. Without a session, every one of the
+# thousands of calls in an import re-does the TCP (and, against an HTTPS
+# deployment, TLS) handshake.
+_thread_local = threading.local()
+
+
+def _get_session() -> requests.Session:
+    """The calling thread's `requests.Session`, built on first use."""
+    session: Optional[requests.Session] = getattr(_thread_local, "session", None)
+    if session is None:
+        session = requests.Session()
+        _thread_local.session = session
+    return session
+
+
 # -------------------- AUTHENTICATION UTILITIES --------------------
 
 
@@ -112,7 +133,7 @@ def get_auth_token(base_url: str, username: str, password: str) -> str:
     login_data = {"username": username, "password": password}
 
     try:
-        response = requests.post(login_url, json=login_data, timeout=30)
+        response = _get_session().post(login_url, json=login_data, timeout=30)
         response.raise_for_status()
 
         token_data = response.json()
@@ -176,7 +197,7 @@ def _make_request(
         # forever. Callers may override by passing their own `timeout`.
         kwargs.setdefault("timeout", (10, 120))
 
-        response = requests.request(method, url, **kwargs)
+        response = _get_session().request(method, url, **kwargs)
 
         # Don't raise for status here - we'll handle it in _handle_response
         return response

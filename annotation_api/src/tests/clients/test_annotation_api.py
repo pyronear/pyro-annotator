@@ -5,17 +5,20 @@ This module tests all functionality of the synchronous annotation API client,
 including HTTP utilities, exception handling, and CRUD operations for all resource types.
 """
 
+import threading
 from unittest.mock import Mock
 
 import pytest
 import requests
 import requests_mock
 
+from app.clients import annotation_api
 from app.clients.annotation_api import (
     AnnotationAPIError,
     NotFoundError,
     ServerError,
     ValidationError,
+    _get_session,
     _handle_response,
     _make_request,
     create_detection,
@@ -26,6 +29,7 @@ from app.clients.annotation_api import (
     delete_detection_annotation,
     delete_sequence,
     delete_sequence_annotation,
+    get_auth_token,
     get_detection,
     get_detection_annotation,
     get_detection_url,
@@ -367,6 +371,72 @@ class TestHTTPUtilities:
         error = exc_info.value
         assert error.status_code == 400
         assert "Bad Request" in str(error)
+
+
+# ==================== CONNECTION REUSE TESTS ====================
+
+
+class TestConnectionReuse:
+    """Requests must go through a thread-local session so connections are pooled."""
+
+    def test_same_thread_reuses_one_session(self):
+        """A thread gets the same session object every time it asks."""
+        assert _get_session() is _get_session()
+
+    def test_each_thread_gets_its_own_session(self):
+        """Sessions are not shared across threads (requests.Session isn't thread-safe)."""
+        sessions = []
+        threads = [
+            threading.Thread(target=lambda: sessions.append(_get_session()))
+            for _ in range(2)
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        assert sessions[0] is not sessions[1]
+        assert _get_session() not in sessions
+
+    def test_make_request_goes_through_the_session(self, monkeypatch):
+        """_make_request must not use the connection-less module-level requests API."""
+        session = requests.Session()
+        calls = []
+        original_request = session.request
+
+        def spy(method, url, **kwargs):
+            calls.append((method, url))
+            return original_request(method, url, **kwargs)
+
+        monkeypatch.setattr(session, "request", spy)
+        monkeypatch.setattr(annotation_api, "_get_session", lambda: session)
+
+        with requests_mock.Mocker() as m:
+            m.get("http://example.com/test", json={"success": True})
+            response = _make_request("GET", "http://example.com/test", "test_token")
+
+        assert calls == [("GET", "http://example.com/test")]
+        assert response.json() == {"success": True}
+
+    def test_get_auth_token_goes_through_the_session(self, monkeypatch):
+        """The login call is on the same pooled connection as everything else."""
+        session = requests.Session()
+        calls = []
+        original_post = session.post
+
+        def spy(url, **kwargs):
+            calls.append(url)
+            return original_post(url, **kwargs)
+
+        monkeypatch.setattr(session, "post", spy)
+        monkeypatch.setattr(annotation_api, "_get_session", lambda: session)
+
+        with requests_mock.Mocker() as m:
+            m.post(f"{API_BASE}/auth/login", json={"access_token": "tok"})
+            token = get_auth_token(BASE_URL, "user", "password")
+
+        assert calls == [f"{API_BASE}/auth/login"]
+        assert token == "tok"
 
 
 # ==================== EXCEPTION TESTS ====================
