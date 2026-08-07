@@ -14,6 +14,7 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QUEUE_COUNTS_KEY } from '@/hooks/useQueueTotals';
 import {
   MemoryRouter,
   Routes,
@@ -42,6 +43,7 @@ vi.mock('@/services/api', () => ({
     updateDetectionAnnotation: vi.fn(),
     updateSequenceAnnotation: vi.fn(),
     localizeSubmit: vi.fn(),
+    localizeRevert: vi.fn(),
     addObject: vi.fn(),
     skipAlert: vi.fn(),
     materializeFrame: vi.fn(),
@@ -1517,6 +1519,278 @@ describe('LocalizeAlertPage', () => {
       await waitFor(() => expect(screen.getByTestId('localize-done-landing')).toBeInTheDocument(), {
         timeout: 2000,
       });
+    });
+  });
+
+  describe('send back to queue', () => {
+    /** Both lanes annotated — the state an alert is in on the Done list. */
+    function mockDoneAlert() {
+      vi.mocked(apiClient.getAlertDetail).mockResolvedValue({
+        ...makeTwoLaneAlertDetail(),
+        lanes: [
+          {
+            sequence: makeSequence({ id: 101, alert_api_id: 9001 }),
+            annotation: makeAnnotation({
+              id: 201,
+              sequence_id: 101,
+              processing_stage: 'annotated',
+            }),
+          },
+          {
+            sequence: makeSequence({ id: 102, alert_api_id: 9002 }),
+            annotation: makeAnnotation({
+              id: 202,
+              sequence_id: 102,
+              processing_stage: 'annotated',
+            }),
+          },
+        ],
+      });
+      mockAllFramesAccepted();
+    }
+
+    it('is absent in queue mode — that slot carries Skip alert', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      expect(screen.getByTestId('skip-alert-button')).toBeInTheDocument();
+      expect(screen.queryByTestId('revert-to-queue-button')).not.toBeInTheDocument();
+    });
+
+    it('takes the Skip slot in done mode', async () => {
+      mockDoneAlert();
+      await renderAndSettle(<LocalizeAlertPage mode="done" />, { wrapper: doneWrapper });
+
+      expect(screen.getByTestId('revert-to-queue-button')).toBeInTheDocument();
+      expect(screen.queryByTestId('skip-alert-button')).not.toBeInTheDocument();
+    });
+
+    it('is absent when no lane is annotated-and-needs-localization', async () => {
+      // A deep link to /localize/done/:id for an alert that never finished:
+      // offering an action the server would 409 is worse than offering none.
+      vi.mocked(apiClient.getAlertDetail).mockResolvedValue({
+        ...makeTwoLaneAlertDetail(),
+        lanes: [
+          {
+            sequence: makeSequence({ id: 101, alert_api_id: 9001 }),
+            annotation: makeAnnotation({
+              id: 201,
+              sequence_id: 101,
+              processing_stage: 'seq_annotation_done',
+            }),
+          },
+        ],
+      });
+
+      await renderAndSettle(<LocalizeAlertPage mode="done" />, { wrapper: doneWrapper });
+
+      expect(screen.queryByTestId('revert-to-queue-button')).not.toBeInTheDocument();
+    });
+
+    it('posts every annotated smoke lane and returns to the Done list', async () => {
+      mockDoneAlert();
+      vi.mocked(apiClient.localizeRevert).mockResolvedValue({
+        results: [
+          { annotation_id: 201, sequence_id: 101, processing_stage: 'seq_annotation_done' },
+          { annotation_id: 202, sequence_id: 102, processing_stage: 'seq_annotation_done' },
+        ],
+      });
+
+      await renderAndSettle(<LocalizeAlertPage mode="done" />, { wrapper: doneWrapper });
+
+      fireEvent.click(screen.getByTestId('revert-to-queue-button'));
+      expect(screen.getByTestId('revert-to-queue-confirm')).toBeInTheDocument();
+
+      fireEvent.click(
+        within(screen.getByTestId('revert-to-queue-confirm')).getByRole('button', {
+          name: 'Send back to queue',
+        })
+      );
+
+      await waitFor(() => {
+        expect(vi.mocked(apiClient.localizeRevert)).toHaveBeenCalledWith([201, 202]);
+      });
+      // The success toast has to be readable before the page goes away, so
+      // navigation is deliberately delayed — hence the widened timeout.
+      expect(await screen.findByText('Alert sent back to the queue')).toBeInTheDocument();
+      await waitFor(
+        () => {
+          expect(screen.getByTestId('localize-done-landing')).toBeInTheDocument();
+        },
+        { timeout: 2000 }
+      );
+    });
+
+    // Regression guard: a revert moves the alert BETWEEN the two localize
+    // queues, so the sidebar's Localize badge and the dashboard card behind
+    // the same total must follow it. Miss the invalidation and they under-
+    // count for the full 5-minute staleTime. QUEUE_COUNTS_KEY is imported
+    // rather than spelled out so renaming the hook's key fails here instead
+    // of silently freezing the badge.
+    it('invalidates both queues and the shared queue-count key', async () => {
+      mockDoneAlert();
+      vi.mocked(apiClient.localizeRevert).mockResolvedValue({
+        results: [
+          { annotation_id: 201, sequence_id: 101, processing_stage: 'seq_annotation_done' },
+          { annotation_id: 202, sequence_id: 102, processing_stage: 'seq_annotation_done' },
+        ],
+      });
+      // spyOn, not a bare stub: the real invalidation still runs, so a
+      // throwing or refetch-looping invalidation surfaces instead of being
+      // swallowed.
+      const invalidateSpy = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
+
+      await renderAndSettle(<LocalizeAlertPage mode="done" />, { wrapper: doneWrapper });
+
+      fireEvent.click(screen.getByTestId('revert-to-queue-button'));
+      fireEvent.click(
+        within(screen.getByTestId('revert-to-queue-confirm')).getByRole('button', {
+          name: 'Send back to queue',
+        })
+      );
+
+      await waitFor(() => {
+        expect(vi.mocked(apiClient.localizeRevert)).toHaveBeenCalled();
+      });
+      await waitFor(() => {
+        const keys = invalidateSpy.mock.calls.map(([arg]) => String(arg?.queryKey?.[0]));
+        // The revert handler's whole contract: the list it leaves, the list
+        // it joins, the shared queue totals (sidebar badge + dashboard card),
+        // and the dashboard's stage counts.
+        expect(keys).toContain('localize-done-queue');
+        expect(keys).toContain('localization-queue');
+        expect(keys).toContain(QUEUE_COUNTS_KEY);
+        expect(keys).toContain('pipeline-stats');
+      });
+
+      invalidateSpy.mockRestore();
+    });
+
+    it('is disabled when a sibling would keep the alert out of the queue', async () => {
+      // The done list admits this alert on lane 101 alone, but lane 102 is
+      // still unfinished — reverting would strand it in neither list, so the
+      // server refuses. Say so on the button instead of after the confirm.
+      vi.mocked(apiClient.getAlertDetail).mockResolvedValue({
+        ...makeTwoLaneAlertDetail(),
+        lanes: [
+          {
+            sequence: makeSequence({ id: 101, alert_api_id: 9001 }),
+            annotation: makeAnnotation({
+              id: 201,
+              sequence_id: 101,
+              processing_stage: 'annotated',
+            }),
+          },
+          {
+            sequence: makeSequence({ id: 102, alert_api_id: 9002 }),
+            annotation: makeAnnotation({
+              id: 202,
+              sequence_id: 102,
+              processing_stage: 'ready_to_annotate',
+            }),
+          },
+        ],
+      });
+      mockAllFramesAccepted();
+
+      await renderAndSettle(<LocalizeAlertPage mode="done" />, { wrapper: doneWrapper });
+
+      expect(screen.getByTestId('revert-to-queue-button')).toBeDisabled();
+
+      fireEvent.click(screen.getByTestId('revert-to-queue-button'));
+      expect(screen.queryByTestId('revert-to-queue-confirm')).not.toBeInTheDocument();
+      expect(vi.mocked(apiClient.localizeRevert)).not.toHaveBeenCalled();
+    });
+
+    it('stays enabled when the undecided sibling was deferred to annotated', async () => {
+      // A deferred-unsure lane settles at annotated: a done stage, and not
+      // "unsettled", so the queue would still take the alert.
+      vi.mocked(apiClient.getAlertDetail).mockResolvedValue({
+        ...makeTwoLaneAlertDetail(),
+        lanes: [
+          {
+            sequence: makeSequence({ id: 101, alert_api_id: 9001 }),
+            annotation: makeAnnotation({
+              id: 201,
+              sequence_id: 101,
+              processing_stage: 'annotated',
+            }),
+          },
+          {
+            sequence: makeSequence({ id: 102, alert_api_id: 9002 }),
+            annotation: makeAnnotation({
+              id: 202,
+              sequence_id: 102,
+              processing_stage: 'annotated',
+              is_unsure: true,
+            }),
+          },
+        ],
+      });
+      mockAllFramesAccepted();
+
+      await renderAndSettle(<LocalizeAlertPage mode="done" />, { wrapper: doneWrapper });
+
+      expect(screen.getByTestId('revert-to-queue-button')).toBeEnabled();
+    });
+
+    it('does nothing when the confirm is dismissed', async () => {
+      mockDoneAlert();
+      await renderAndSettle(<LocalizeAlertPage mode="done" />, { wrapper: doneWrapper });
+
+      fireEvent.click(screen.getByTestId('revert-to-queue-button'));
+      fireEvent.click(
+        within(screen.getByTestId('revert-to-queue-confirm')).getByRole('button', {
+          name: 'Cancel',
+        })
+      );
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('revert-to-queue-confirm')).not.toBeInTheDocument();
+      });
+      expect(vi.mocked(apiClient.localizeRevert)).not.toHaveBeenCalled();
+    });
+
+    it('keeps the alert on the page when the revert fails', async () => {
+      mockDoneAlert();
+      vi.mocked(apiClient.localizeRevert).mockRejectedValue({ detail: 'not at annotated' });
+
+      await renderAndSettle(<LocalizeAlertPage mode="done" />, { wrapper: doneWrapper });
+
+      fireEvent.click(screen.getByTestId('revert-to-queue-button'));
+      fireEvent.click(
+        within(screen.getByTestId('revert-to-queue-confirm')).getByRole('button', {
+          name: 'Send back to queue',
+        })
+      );
+
+      await waitFor(() => {
+        expect(vi.mocked(apiClient.localizeRevert)).toHaveBeenCalled();
+      });
+      expect(screen.queryByTestId('localize-done-landing')).not.toBeInTheDocument();
+    });
+
+    it('suspends the page shortcuts while the confirm is up', async () => {
+      // The confirm is a page overlay; leaving `c` live would toggle crop mode
+      // behind it. Crop state is observed exactly as the crop tests above do
+      // it: a zoomed cell carries a `scale(...)` transform on its image.
+      // A done alert has no workable object, so nothing auto-focuses and crop
+      // has nothing to zoom around. Activating a row puts it in focus mode,
+      // which forces crop on — that zoom is the state the guard must defend.
+      mockDoneAlert();
+      await renderAndSettle(<LocalizeAlertPage mode="done" />, { wrapper: doneWrapper });
+
+      fireEvent.click(screen.getByTestId('localize-object-row-object-1'));
+      await waitFor(() => {
+        const img = within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img');
+        expect(img.style.transform).toContain('scale(');
+      });
+
+      fireEvent.click(screen.getByTestId('revert-to-queue-button'));
+      fireEvent.keyDown(window, { key: 'c' });
+
+      // Still cropped: the second press was swallowed by the overlay guard.
+      const img = within(screen.getByTestId(`alert-frame-cell-${T1}`)).getByRole('img');
+      expect(img.style.transform).toContain('scale(');
     });
   });
 
