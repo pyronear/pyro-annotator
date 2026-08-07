@@ -39,6 +39,7 @@ const FP_TYPE_KEYS: Record<string, string> = {
   antenna: 'A',
   building: 'B',
   cliff: 'C',
+  combine_harvester: 'V',
   dark: 'D',
   dust: 'J',
   high_cloud: 'H',

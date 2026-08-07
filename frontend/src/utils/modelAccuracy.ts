@@ -267,6 +267,7 @@ export const getFalsePositiveEmoji = (type: string): string => {
     antenna: '📡',
     building: '🏢',
     cliff: '⛰️',
+    combine_harvester: 'V', // plain letter on purpose — no emoji for this type
     dark: '🌚',
     dust: '🌪️',
     high_cloud: '☁️',

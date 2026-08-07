@@ -200,6 +200,7 @@ export const getTypeIndexForKey = (key: string): number => {
     a: FALSE_POSITIVE_TYPES.indexOf('antenna'),
     b: FALSE_POSITIVE_TYPES.indexOf('building'),
     c: FALSE_POSITIVE_TYPES.indexOf('cliff'),
+    v: FALSE_POSITIVE_TYPES.indexOf('combine_harvester'), // 'c' taken by cliff, 'h' by high_cloud
     d: FALSE_POSITIVE_TYPES.indexOf('dark'),
     j: FALSE_POSITIVE_TYPES.indexOf('dust'), // 'd' taken by dark, 'u' by the Unsure toggle
     h: FALSE_POSITIVE_TYPES.indexOf('high_cloud'),
