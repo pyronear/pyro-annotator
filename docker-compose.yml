@@ -7,6 +7,11 @@ services:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    # The API runs several worker processes, each with its own connection
+    # pool, so the default max_connections=100 is tight. Keep this in step with
+    # POSTGRES_MAX_CONNECTIONS on annotation_api, which is what
+    # tests/test_pool_sizing.py checks the budget against.
+    command: postgres -c max_connections=150
     environment:
       - POSTGRES_USER=dummy_pg_user
       - POSTGRES_PASSWORD=dummy_pg_pwd
@@ -77,8 +82,23 @@ services:
       - AUTH_PASSWORD=admin12345
       - JWT_SECRET=your_jwt_secret_key_change_in_production_please
       - ACCESS_TOKEN_EXPIRE_HOURS=24
+      # Serving / pool sizing. UVICORN_WORKERS is read both by the command
+      # below and by app.core.config, so the process count and the connection
+      # budget can never drift apart.
+      # Budget: 2 workers x (10 + 10) = 40, plus the queue worker's 20, against
+      # max_connections=150 (less 3 reserved). See src/tests/test_pool_sizing.py.
+      #
+      # Deliberately 2, not one-per-core: each worker is a full Python process
+      # with the app loaded, and the host is memory-constrained. Two removes the
+      # single-process serialization, which is the point. Raise it here (and
+      # POSTGRES_MAX_CONNECTIONS with it) once memory headroom is known.
+      - UVICORN_WORKERS=2
+      - DB_POOL_SIZE=10
+      - DB_MAX_OVERFLOW=10
+      - POSTGRES_MAX_CONNECTIONS=150
     restart: unless-stopped
-    command: "sh -c 'alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 5050 --proxy-headers'"
+    # $$ escapes Compose interpolation so the shell expands it in-container.
+    command: "sh -c 'alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 5050 --proxy-headers --workers $${UVICORN_WORKERS:-2}'"
     healthcheck:
       test: ["CMD-SHELL", "curl http://localhost:5050/status"]
       interval: 10s
