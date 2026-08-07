@@ -6,6 +6,7 @@
 import hashlib
 import logging
 import os
+import threading
 from datetime import datetime, UTC
 from mimetypes import guess_extension
 from typing import Any, Dict, Optional, Union
@@ -180,8 +181,16 @@ class S3Service:
         secret_key: str,
         proxy_url: Union[str, None] = None,
     ) -> None:
-        _session = boto3.Session(access_key, secret_key, region_name=region)
-        self._s3 = _session.client("s3", endpoint_url=endpoint_url)
+        self._region = region
+        self._endpoint_url = endpoint_url
+        self._access_key = access_key
+        self._secret_key = secret_key
+        # Storage work runs in a threadpool (see the storage functions below),
+        # so a process-wide client would be used concurrently. boto3 Sessions
+        # are not documented as thread-safe, and upload_fileobj drives the
+        # transfer manager, which spawns threads of its own. Each thread builds
+        # and keeps its own client instead.
+        self._local = threading.local()
         # Probe with head_bucket on the configured destination bucket so least-
         # privilege credentials (without s3:ListAllMyBuckets) still validate.
         try:
@@ -194,6 +203,18 @@ class S3Service:
             raise ValueError(f"unable to access bucket {settings.S3_BUCKET_NAME} on S3")
         logger.info(f"S3 connected on {endpoint_url}")
         self.proxy_url = proxy_url
+
+    @property
+    def _s3(self) -> Any:
+        """The calling thread's boto3 client, built on first use."""
+        client = getattr(self._local, "client", None)
+        if client is None:
+            session = boto3.Session(
+                self._access_key, self._secret_key, region_name=self._region
+            )
+            client = session.client("s3", endpoint_url=self._endpoint_url)
+            self._local.client = client
+        return client
 
     def create_bucket(self, bucket_name: str) -> bool:
         """Create a new bucket in S3 storage"""

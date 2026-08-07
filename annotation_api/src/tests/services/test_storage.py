@@ -1,4 +1,5 @@
 import io
+import threading
 
 import boto3
 import pytest
@@ -101,3 +102,44 @@ async def test_s3_bucket(bucket_name, proxy_url, expected_error, mock_img):
     else:
         with pytest.raises(expected_error):
             S3Bucket(_s3, bucket_name, proxy_url)
+
+
+def _configured_service() -> S3Service:
+    return S3Service(
+        settings.S3_REGION,
+        settings.S3_ENDPOINT_URL,
+        settings.S3_ACCESS_KEY,
+        settings.S3_SECRET_KEY,
+        settings.S3_PROXY_URL,
+    )
+
+
+def test_s3_client_is_per_thread():
+    """Each thread gets its own boto3 client.
+
+    Storage work runs in a threadpool, so the process-wide client would
+    otherwise be used concurrently. boto3 Sessions are not documented as
+    thread-safe, and upload_fileobj drives the transfer manager, which spawns
+    threads of its own.
+    """
+    service = _configured_service()
+    # Keep the client OBJECTS alive, not their id()s: a thread's client is
+    # released when the thread dies, and CPython will happily hand the next
+    # allocation the same address. Comparing ids made this test pass alone and
+    # fail in a full run.
+    seen = {}
+
+    def record(name):
+        seen[name] = service._s3
+
+    threads = [
+        threading.Thread(target=record, args=("a",)),
+        threading.Thread(target=record, args=("b",)),
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert seen["a"] is not seen["b"], "two threads shared one boto3 client"
+    assert service._s3 is service._s3, "same thread rebuilt its client"
