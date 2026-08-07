@@ -11,7 +11,7 @@ from sqlmodel import select
 from app.core.config import settings
 from app.models import AlertApiConnector, AlertApiConnectorOrganization, SourceApi
 from app.services import connector_verify
-from app.services.connector_verify import verify_connector
+from app.services.connector_verify import check_connector_credentials, verify_connector
 from app.services.secrets import encrypt_secret
 
 ORGS = [
@@ -241,6 +241,57 @@ async def test_probe_timeout_records_error_and_does_not_raise(
     await async_session.refresh(connector)
     assert connector.last_verify_error
     assert connector.last_verified_at is None
+
+
+# --- check_connector_credentials: the stateless pre-save credential check ---
+
+
+async def test_credentials_ok_reports_organization_count(alert_api):
+    result = await check_connector_credentials("https://a.example", "admin", "good")
+    assert result.ok is True
+    assert result.error is None
+    assert result.organizations_total == 3
+
+
+async def test_credentials_bad_password_reports_error(alert_api):
+    result = await check_connector_credentials("https://a.example", "admin", "bad")
+    assert result.ok is False
+    assert "401" in (result.error or "")
+
+
+async def test_credentials_org_scoped_account_reports_scope_detail(
+    alert_api, monkeypatch
+):
+    """The failure mode operators actually hit (verified against production
+    2026-08-07): a non-admin credential authenticates, then /organizations/
+    answers {"detail": "Incompatible token scope."}. That detail must reach
+    the operator."""
+    monkeypatch.setattr(
+        connector_verify.alert_api_client,
+        "list_organizations",
+        lambda **kw: {"detail": "Incompatible token scope."},
+    )
+    result = await check_connector_credentials("https://a.example", "admin", "good")
+    assert result.ok is False
+    assert "Incompatible token scope." in (result.error or "")
+
+
+async def test_credentials_never_echo_the_password(alert_api):
+    result = await check_connector_credentials("https://a.example", "admin", "bad")
+    assert "bad" not in (result.error or "")
+
+
+async def test_credentials_timeout_is_bounded(alert_api, monkeypatch):
+    monkeypatch.setattr(connector_verify, "_TEST_TIMEOUT_SECONDS", 0.05)
+
+    def slow(**kw):
+        time.sleep(0.2)
+        return ORGS
+
+    monkeypatch.setattr(connector_verify.alert_api_client, "list_organizations", slow)
+    result = await check_connector_credentials("https://a.example", "admin", "good")
+    assert result.ok is False
+    assert "Timeout" in (result.error or "")
 
 
 async def test_connection_error_during_probe_does_not_raise(

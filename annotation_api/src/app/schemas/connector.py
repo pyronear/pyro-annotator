@@ -15,6 +15,8 @@ __all__ = [
     "ConnectorOrganizationRead",
     "ConnectorOrganizationUpdate",
     "ConnectorRead",
+    "ConnectorTestRequest",
+    "ConnectorTestResult",
     "ConnectorUpdate",
     "CoverageCellRead",
     "VerifyResult",
@@ -91,6 +93,21 @@ class CoverageCellRead(BaseModel):
     error: Optional[str]
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ConnectorTestRequest(BaseModel):
+    """Stateless pre-save credential check. The plaintext password lives only
+    in this request body — never logged, never persisted."""
+
+    base_url: str = Field(max_length=255)
+    login: str = Field(max_length=100)
+    password: str = Field(min_length=1)
+
+
+class ConnectorTestResult(BaseModel):
+    ok: bool
+    error: Optional[str] = None
+    organizations_total: int = 0
 
 
 class VerifyResult(BaseModel):

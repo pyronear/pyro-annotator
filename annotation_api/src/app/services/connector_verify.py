@@ -21,7 +21,11 @@ from sqlalchemy import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.models import AlertApiConnector, AlertApiConnectorOrganization
-from app.schemas.connector import ConnectorOrganizationRead, VerifyResult
+from app.schemas.connector import (
+    ConnectorOrganizationRead,
+    ConnectorTestResult,
+    VerifyResult,
+)
 from app.services.secrets import decrypt_secret
 from scripts.data_transfer.ingestion.alert_api import client as alert_api_client
 
@@ -38,7 +42,27 @@ _PROBE_LIMIT = 200
 # bounded here too.
 _PROBE_TIMEOUT_SECONDS = 100
 
-__all__ = ["verify_connector"]
+# The pre-save credential check makes 2 sequential HTTP calls (token exchange,
+# 5s bound; one list endpoint, 30s bound). 25s keeps the backend's answer
+# ahead of the frontend's global 30s axios timeout, so the browser never
+# gives up before the server has spoken.
+_TEST_TIMEOUT_SECONDS = 25
+
+__all__ = ["check_connector_credentials", "verify_connector"]
+
+
+def _require_list(call: str, response: Any) -> None:
+    """`api_get` only raises when the body fails to parse as JSON — a non-2xx
+    response with a valid JSON error body (e.g. {"detail": "..."}) comes back
+    as a dict where a list is expected. Fail with the alert API's own detail:
+    for a non-admin credential that detail is "Incompatible token scope.",
+    the one hint telling the operator to swap in an admin account."""
+    if not isinstance(response, list):
+        detail = response.get("detail") if isinstance(response, dict) else None
+        raise ValueError(
+            f"alert API returned an unexpected {call} response"
+            + (f": {detail}" if detail else "")
+        )
 
 
 def _probe(
@@ -67,6 +91,36 @@ def _probe(
     return organizations, cameras, sequences
 
 
+def _probe_credentials(base_url: str, login: str, password: str) -> int:
+    """Blocking: token exchange, then the organizations listing — the two
+    calls that cover both real failure modes (wrong password, org-scoped
+    credential). No sequence probe: that stays verify's job."""
+    token = alert_api_client.get_api_access_token(
+        api_endpoint=base_url, username=login, password=password
+    )
+    organizations = alert_api_client.list_organizations(
+        api_endpoint=base_url, access_token=token
+    )
+    _require_list("organizations", organizations)
+    return len(organizations)
+
+
+async def check_connector_credentials(
+    base_url: str, login: str, password: str
+) -> ConnectorTestResult:
+    """Stateless pre-save credential check: no DB, nothing persisted, never
+    raises for an unreachable or unauthorized alert API — this runs behind a
+    button a human is watching."""
+    try:
+        organizations_total = await asyncio.wait_for(
+            asyncio.to_thread(_probe_credentials, base_url, login, password),
+            timeout=_TEST_TIMEOUT_SECONDS,
+        )
+    except Exception as exc:  # noqa: BLE001 - surfaced to the operator verbatim
+        return ConnectorTestResult(ok=False, error=f"{type(exc).__name__}: {exc}")
+    return ConnectorTestResult(ok=True, organizations_total=organizations_total)
+
+
 async def verify_connector(
     session: AsyncSession,
     connector: AlertApiConnector,
@@ -88,27 +142,12 @@ async def verify_connector(
             ),
             timeout=_PROBE_TIMEOUT_SECONDS,
         )
-        # `api_get` (used for every call except the token exchange) only raises
-        # when the response body fails to parse as JSON — a non-2xx response
-        # with a valid JSON error body (e.g. {"detail": "..."}) comes back as a
-        # dict where a list is expected. Validate the shape explicitly so that
-        # case fails the same way an auth failure does, instead of raising a
-        # TypeError out of the loop below.
         for call, response in (
             ("organizations", organizations),
             ("cameras", cameras),
             ("sequences", sequences),
         ):
-            if not isinstance(response, list):
-                # Pass the alert API's own `detail` through: a non-admin
-                # credential authenticates fine and only fails here, with
-                # "Incompatible token scope." — the one hint that tells the
-                # operator to swap in an admin account.
-                detail = response.get("detail") if isinstance(response, dict) else None
-                raise ValueError(
-                    f"alert API returned an unexpected {call} response"
-                    + (f": {detail}" if detail else "")
-                )
+            _require_list(call, response)
 
         existing = {
             row.organization_id: row
