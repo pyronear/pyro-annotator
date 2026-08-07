@@ -20,6 +20,7 @@ from botocore.exceptions import (
     PartialCredentialsError,
 )
 from fastapi import HTTPException, UploadFile, status
+from starlette.concurrency import run_in_threadpool
 
 from app.core.config import settings
 
@@ -366,6 +367,65 @@ def _generate_detection_bucket_key(
     return f"detections/legacy/{timestamp_str}_{sha_hash}{extension}"
 
 
+def _store_downloaded_image(
+    image_bytes: bytes,
+    sequence_id: Optional[int],
+    detection_id: Optional[int],
+    recorded_at: Optional[datetime],
+) -> str:
+    """Hash, type-sniff, upload and verify image bytes. Returns the bucket key.
+
+    Blocking throughout: every step is either CPU over the full image or an S3
+    round trip. Run it in a thread — on the event loop it serialized every
+    other request behind it.
+    """
+    sha_hash = hashlib.sha256(image_bytes).hexdigest()
+    md5_hash = hashlib.md5(image_bytes).hexdigest()  # noqa: S324
+    content_type = magic.from_buffer(image_bytes, mime=True)
+    extension = guess_extension(content_type) or ""
+
+    bucket_key = _generate_detection_bucket_key(
+        sequence_id=sequence_id,
+        detection_id=detection_id,
+        recorded_at=recorded_at,
+        sha_hash=sha_hash[:8],
+        extension=extension,
+    )
+
+    bucket_name = s3_service.resolve_bucket_name()
+    bucket = s3_service.get_bucket(bucket_name)
+
+    if not bucket.upload_file_bytes(
+        image_bytes, bucket_key, content_type or "application/octet-stream"
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed upload",
+        )
+    logging.info("File uploaded to bucket %s with key %s.", bucket_name, bucket_key)
+
+    # Data integrity check
+    try:
+        file_meta = bucket.get_file_metadata(bucket_key)
+    except Exception as exc:
+        logging.warning("Could not retrieve file metadata for %s: %s", bucket_key, exc)
+    else:
+        etag = file_meta.get("ETag") or file_meta.get("etag")
+        if etag is not None and md5_hash != etag.replace('"', ""):
+            try:
+                bucket.delete_file(bucket_key)
+            except Exception as exc:
+                logging.warning(
+                    "Failed to delete corrupted file %s: %s", bucket_key, exc
+                )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Data was corrupted during upload",
+            )
+
+    return bucket_key
+
+
 async def upload_file_from_url(
     source_url: str,
     sequence_id: Optional[int] = None,
@@ -413,64 +473,29 @@ async def upload_file_from_url(
             detail="Source URL returned empty response",
         )
 
-    sha_hash = hashlib.sha256(image_bytes).hexdigest()
-    md5_hash = hashlib.md5(image_bytes).hexdigest()  # noqa: S324
-    extension = guess_extension(magic.from_buffer(image_bytes, mime=True)) or ""
-
-    bucket_key = _generate_detection_bucket_key(
-        sequence_id=sequence_id,
-        detection_id=detection_id,
-        recorded_at=recorded_at,
-        sha_hash=sha_hash[:8],
-        extension=extension,
+    return await run_in_threadpool(
+        _store_downloaded_image,
+        image_bytes,
+        sequence_id,
+        detection_id,
+        recorded_at,
     )
 
-    bucket_name = s3_service.resolve_bucket_name()
-    bucket = s3_service.get_bucket(bucket_name)
 
-    content_type = (
-        magic.from_buffer(image_bytes, mime=True) or "application/octet-stream"
-    )
-    if not bucket.upload_file_bytes(image_bytes, bucket_key, content_type):
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed upload",
-        )
-    logging.info("File uploaded to bucket %s with key %s.", bucket_name, bucket_key)
-
-    # Data integrity check
-    try:
-        file_meta = bucket.get_file_metadata(bucket_key)
-    except Exception as exc:
-        logging.warning("Could not retrieve file metadata for %s: %s", bucket_key, exc)
-    else:
-        etag = file_meta.get("ETag") or file_meta.get("etag")
-        if etag is not None and md5_hash != etag.replace('"', ""):
-            try:
-                bucket.delete_file(bucket_key)
-            except Exception as exc:
-                logging.warning(
-                    "Failed to delete corrupted file %s: %s", bucket_key, exc
-                )
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Data was corrupted during upload",
-            )
-
-    return bucket_key
-
-
-async def copy_file_from_bucket(
+def _copy_file_from_bucket_sync(
     source_bucket: str,
     source_key: str,
-    sequence_id: Optional[int] = None,
-    detection_id: Optional[int] = None,
-    recorded_at: Optional[datetime] = None,
+    sequence_id: Optional[int],
+    detection_id: Optional[int],
+    recorded_at: Optional[datetime],
 ) -> str:
     """Server-side copy from another bucket on the same S3 service.
 
     Returns the destination bucket key. Verifies the destination is non-empty
     via head_object and cleans up if the copy produced a zero-byte object.
+
+    Blocking: copy_object plus head_object, both S3 round trips. Callers reach
+    it through `copy_file_from_bucket`, which runs it in a thread.
     """
     extension = os.path.splitext(source_key)[1]
     sha_hash = hashlib.sha256(f"{source_bucket}/{source_key}".encode()).hexdigest()[:8]
@@ -537,6 +562,28 @@ async def copy_file_from_bucket(
         content_length,
     )
     return dest_key
+
+
+async def copy_file_from_bucket(
+    source_bucket: str,
+    source_key: str,
+    sequence_id: Optional[int] = None,
+    detection_id: Optional[int] = None,
+    recorded_at: Optional[datetime] = None,
+) -> str:
+    """Server-side copy from another bucket on the same S3 service.
+
+    Returns the destination bucket key. The boto3 work is blocking, so it runs
+    in a thread rather than stalling the event loop for every other request.
+    """
+    return await run_in_threadpool(
+        _copy_file_from_bucket_sync,
+        source_bucket,
+        source_key,
+        sequence_id,
+        detection_id,
+        recorded_at,
+    )
 
 
 s3_service = S3Service(
