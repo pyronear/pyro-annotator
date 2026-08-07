@@ -99,7 +99,48 @@ the sequence annotation (`:620`), so it satisfies the predicate as written. Its
 `--sequence-stage` defaults to `ready_to_annotate`, so the guarded path is
 opt-in. `batch_import_local_yolo.py` passes the flag through unchanged.
 
-### 3. Explicitly out of scope
+### 3. Retire the placeholder-seeding model
+
+*Added 2026-08-07 during implementation, after the create guard turned 32 tests
+red rather than the handful expected.*
+
+`auto_create_detection_annotations` (`sequence_annotations.py:199-296`) seeds
+**placeholder** detection annotations when a lane reaches `annotated`:
+
+| lane | seeded stage |
+| --- | --- |
+| FP-only | `annotated` (final content) |
+| smoke-only | `visual_check` |
+| mixed / missed-smoke | `bbox_annotation` |
+
+Its own comment describes the placeholders as rows that "carry no judgment
+yet; their annotator is credited when they submit". That is an older model in
+which marking a lane `annotated` *seeds work still to be done* — directly
+contradicting the smoke-localization model, where a smoke lane may only reach
+`annotated` once localization is already **complete**.
+
+The existing exit guard already enforced the new model on the
+`seq_annotation_done → annotated` transition. Extending it to every path
+finishes that migration and leaves the two smoke branches unreachable: a lane
+needing localization now always arrives with every detection already carrying
+an annotated-stage annotation, so there is nothing left to seed.
+
+**Decision: retire the old model rather than preserve dead branches.**
+
+- `auto_create_detection_annotations` returns early for any lane matching
+  `has_smoke or has_missed_smoke` — nothing to seed, by construction.
+- The FP-only → `annotated` branch stays: it is the classify FP exit, still
+  live and still the only path that writes final content plus contributions.
+- The empty-lane default (`visual_check`) stays unchanged.
+- The ~10 tests that describe placeholder seeding for smoke lanes are removed;
+  the behaviour they covered no longer exists, and the guard tests cover the
+  rejection that replaces it.
+
+This is a deliberate behaviour deletion, not a fixture repair. It is recorded
+here because a reader of the diff would otherwise see tests disappearing with
+no stated reason.
+
+### 4. Explicitly out of scope
 
 - **"At least one non-empty box."** A lane where the annotator cleared every
   frame is a legitimate, supported state (`cleared`); requiring a box would
