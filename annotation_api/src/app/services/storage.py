@@ -3,6 +3,7 @@
 # This program is licensed under the Apache License 2.0.
 # See LICENSE or go to <https://opensource.org/licenses/Apache-2.0> for full license details.
 
+import asyncio
 import hashlib
 import logging
 import os
@@ -12,6 +13,7 @@ from mimetypes import guess_extension
 from typing import Any, Dict, Optional, Union
 
 import boto3
+import httpx
 import magic
 from botocore.exceptions import (
     ClientError,
@@ -25,6 +27,7 @@ from starlette.concurrency import run_in_threadpool
 from app.core.config import settings
 
 __all__ = [
+    "close_download_client",
     "copy_file_from_bucket",
     "s3_service",
     "upload_file",
@@ -426,6 +429,44 @@ def _store_downloaded_image(
     return bucket_key
 
 
+_download_client: Optional[httpx.AsyncClient] = None
+_download_client_loop: Optional[asyncio.AbstractEventLoop] = None
+
+
+def _get_download_client() -> httpx.AsyncClient:
+    """The image-download client, built on first use.
+
+    One client for the whole process: with IMAGE_TRANSFER=url an import runs
+    the download below once per detection, and a client per call made every
+    one of those thousands of images pay a fresh TCP+TLS handshake to the
+    source S3 host. This is the download-leg counterpart of the per-thread
+    boto3 client above.
+
+    Rebuilt when the running loop changes, because a client's pooled
+    connections belong to the loop that opened them. Production has one loop
+    per worker process and never rebuilds; the tests run one loop per test and
+    must not be handed a dead loop's connections.
+    """
+    global _download_client, _download_client_loop
+
+    loop = asyncio.get_running_loop()
+    if _download_client is None or _download_client_loop is not loop:
+        _download_client = httpx.AsyncClient()
+        _download_client_loop = loop
+    return _download_client
+
+
+async def close_download_client() -> None:
+    """Release the image-download client. Called from the app lifespan."""
+    global _download_client, _download_client_loop
+
+    client = _download_client
+    _download_client = None
+    _download_client_loop = None
+    if client is not None:
+        await client.aclose()
+
+
 async def upload_file_from_url(
     source_url: str,
     sequence_id: Optional[int] = None,
@@ -438,13 +479,10 @@ async def upload_file_from_url(
     This avoids the client downloading the image and re-uploading it via
     multipart form, cutting out one full network round-trip per detection.
     """
-    import httpx
-
     try:
-        async with httpx.AsyncClient(timeout=download_timeout) as client:
-            resp = await client.get(source_url)
-            resp.raise_for_status()
-            image_bytes = resp.content
+        resp = await _get_download_client().get(source_url, timeout=download_timeout)
+        resp.raise_for_status()
+        image_bytes = resp.content
     except httpx.TimeoutException:
         raise HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,

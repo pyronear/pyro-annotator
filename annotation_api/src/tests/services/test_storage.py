@@ -1,10 +1,15 @@
+import asyncio
 import io
 import threading
 
 import boto3
+import httpx
 import pytest
+import pytest_asyncio
+from fastapi import HTTPException
 
 from app.core.config import settings
+from app.services import storage
 from app.services.storage import S3Bucket, S3Service
 
 
@@ -200,3 +205,129 @@ def test_bucket_cache_is_per_thread():
     assert (
         other["client"] is not mine._s3
     ), "bucket handed a thread another thread's boto3 client"
+
+
+@pytest_asyncio.fixture
+async def fresh_download_client():
+    """Start and end with no cached download client.
+
+    The cache is process-wide, so a client built here -- especially one wired
+    to a mock transport -- would otherwise be handed to later tests.
+    """
+    await storage.close_download_client()
+    yield
+    await storage.close_download_client()
+
+
+def _mock_download_client(handler):
+    """An httpx.AsyncClient factory that answers every request from `handler`."""
+    real_client = httpx.AsyncClient
+
+    def build(*args, **kwargs):
+        kwargs["transport"] = httpx.MockTransport(handler)
+        return real_client(*args, **kwargs)
+
+    return build
+
+
+@pytest.mark.asyncio
+async def test_upload_file_from_url_reuses_one_http_client(
+    monkeypatch, fresh_download_client
+):
+    """One client for all downloads, not one per detection.
+
+    With IMAGE_TRANSFER=url this path runs once per detection, so a per-call
+    client makes every one of an import's thousands of images pay a fresh
+    TCP+TLS handshake to the alert API's S3.
+    """
+    constructed = []
+    build = _mock_download_client(lambda request: httpx.Response(200, content=b"img"))
+
+    def counting_client(*args, **kwargs):
+        client = build(*args, **kwargs)
+        constructed.append(client)
+        return client
+
+    monkeypatch.setattr(storage.httpx, "AsyncClient", counting_client)
+    monkeypatch.setattr(storage, "_store_downloaded_image", lambda *args: "bucket-key")
+
+    for _ in range(3):
+        key = await storage.upload_file_from_url("https://example.invalid/a.jpg")
+        assert key == "bucket-key"
+
+    assert (
+        len(constructed) == 1
+    ), f"built {len(constructed)} clients for 3 downloads, expected 1"
+
+
+def test_download_client_is_rebuilt_for_a_new_event_loop():
+    """A client's pooled connections belong to the loop that opened them.
+
+    Handing a second loop the first loop's client would have it reuse
+    connections whose loop is gone. The test suite runs one loop per test,
+    which is exactly that situation.
+    """
+    first = asyncio.run(_current_download_client())
+    second = asyncio.run(_current_download_client())
+
+    assert second is not first, "a new event loop was handed the old loop's client"
+
+    asyncio.run(storage.close_download_client())
+
+
+async def _current_download_client():
+    return storage._get_download_client()
+
+
+@pytest.mark.asyncio
+async def test_close_download_client_closes_and_clears_it(fresh_download_client):
+    """Shutdown must actually release the client, not just drop the reference."""
+    client = storage._get_download_client()
+
+    await storage.close_download_client()
+
+    assert client.is_closed
+    assert storage._get_download_client() is not client
+
+
+def _raising_handler(exc):
+    def handler(request):
+        raise exc
+
+    return handler
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("handler", "expected_status", "expected_detail"),
+    [
+        (
+            _raising_handler(httpx.TimeoutException("slow")),
+            504,
+            "Timeout downloading image",
+        ),
+        (
+            _raising_handler(httpx.ConnectError("refused")),
+            502,
+            "Could not connect to source URL",
+        ),
+        (lambda request: httpx.Response(404), 422, "Source URL returned HTTP 404"),
+        (lambda request: httpx.Response(503), 502, "Source URL server error: HTTP 503"),
+        (
+            lambda request: httpx.Response(200, content=b""),
+            422,
+            "Source URL returned empty response",
+        ),
+    ],
+)
+async def test_upload_file_from_url_maps_download_failures(
+    monkeypatch, fresh_download_client, handler, expected_status, expected_detail
+):
+    """Sharing the client must not change what a failed download reports."""
+    monkeypatch.setattr(storage.httpx, "AsyncClient", _mock_download_client(handler))
+
+    with pytest.raises(HTTPException) as excinfo:
+        await storage.upload_file_from_url("https://example.invalid/a.jpg")
+
+    assert excinfo.value.status_code == expected_status
+    assert expected_detail in excinfo.value.detail
