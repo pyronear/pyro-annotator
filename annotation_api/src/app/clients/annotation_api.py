@@ -10,6 +10,7 @@ import threading
 from typing import Dict, Optional
 
 import requests
+from requests.adapters import HTTPAdapter, Retry
 
 # -------------------- CUSTOM EXCEPTIONS --------------------
 
@@ -93,13 +94,35 @@ __all__ = [
 
 # -------------------- CONNECTION POOLING --------------------
 
-# The import script drives this client from a pool of threads (sequence workers
-# times detection workers), and `requests.Session` is not documented as
-# thread-safe, so each thread keeps its own. Same reasoning as the thread-local
-# boto3 client in `app/services/storage.py`. Without a session, every one of the
-# thousands of calls in an import re-does the TCP (and, against an HTTPS
-# deployment, TLS) handshake.
+# The import script drives this client from several threads at once — a pool for
+# sequences, and a nested one per sequence for its detections — and
+# `requests.Session` is not documented as thread-safe, so each thread keeps its
+# own. Same reasoning as the thread-local boto3 client in
+# `app/services/storage.py`.
+#
+# Without a session every call re-does the TCP (and, against an HTTPS
+# deployment, TLS) handshake. How far one connection then stretches differs by
+# pool: the sequence pool is built once per import, so its sessions last the
+# whole run, while the detection pool is rebuilt for every sequence
+# (`shared.py`), so its sessions die with it. That still collapses a sequence's
+# ~20 detections onto one connection per worker instead of one each.
 _thread_local = threading.local()
+
+# Pooling introduces a failure that dialing fresh every time could not produce:
+# the server (or an intermediary) closes an idle keep-alive socket, and the next
+# request on it fails with RemoteDisconnected. urllib3 discards connections whose
+# close it has already noticed, but not one closed between that check and the
+# write, so a redial is still needed. The importer would not recover on its own —
+# its retry only matches 502/503/504, and a network error carries no status code.
+#
+# `read=1` is what covers this: a dropped connection is classified as a read
+# error, not a connection error. `allowed_methods=None` is required for it to
+# apply to POST, which urllib3 will not retry by default; that is safe here
+# because the import handles a duplicate create as 409. Statuses are left alone
+# (`status=0`) so the script's own 502/503/504 backoff stays the only one.
+_CONNECTION_RETRY = Retry(
+    total=2, connect=2, read=1, status=0, allowed_methods=None, backoff_factor=0.2
+)
 
 
 def _get_session() -> requests.Session:
@@ -107,6 +130,9 @@ def _get_session() -> requests.Session:
     session: Optional[requests.Session] = getattr(_thread_local, "session", None)
     if session is None:
         session = requests.Session()
+        adapter = HTTPAdapter(max_retries=_CONNECTION_RETRY)
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
         _thread_local.session = session
     return session
 

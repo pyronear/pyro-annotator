@@ -6,6 +6,7 @@ including HTTP utilities, exception handling, and CRUD operations for all resour
 """
 
 import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import Mock
 
 import pytest
@@ -376,8 +377,96 @@ class TestHTTPUtilities:
 # ==================== CONNECTION REUSE TESTS ====================
 
 
+class _CountingServer(ThreadingHTTPServer):
+    """A local HTTP server that counts accepted TCP connections."""
+
+    daemon_threads = True
+
+    def __init__(self, *args, **kwargs):
+        self.accepted = 0
+        super().__init__(*args, **kwargs)
+
+    def get_request(self):
+        # Called from the single-threaded accept loop, once per handshake.
+        request = super().get_request()
+        self.accepted += 1
+        return request
+
+
+class _KeepAliveHandler(BaseHTTPRequestHandler):
+    # HTTP/1.0 (the default) closes the connection after every response, which
+    # would make the reuse below impossible to observe.
+    protocol_version = "HTTP/1.1"
+
+    def _reply(self):
+        body = b'{"ok": true}'
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        self._reply()
+
+    def do_POST(self):
+        self._reply()
+
+    def log_message(self, *args):
+        """Silence the per-request stderr logging."""
+
+
+class _DropFirstConnectionHandler(_KeepAliveHandler):
+    """Answers nothing on the first connection, then serves normally.
+
+    Stands in for a pooled socket the server has already closed: the request
+    goes out fine and the read finds the connection gone.
+    """
+
+    def _reply(self):
+        if self.server.accepted == 1:
+            self.close_connection = True
+            return
+        super()._reply()
+
+
 class TestConnectionReuse:
     """Requests must go through a thread-local session so connections are pooled."""
+
+    def test_repeated_calls_share_one_tcp_connection(self):
+        """The whole point: N calls against one host cost one handshake, not N."""
+        server = _CountingServer(("127.0.0.1", 0), _KeepAliveHandler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        url = f"http://127.0.0.1:{server.server_address[1]}/detections"
+
+        try:
+            for _ in range(3):
+                response = _make_request("GET", url, "test_token")
+                assert response.json() == {"ok": True}
+        finally:
+            server.shutdown()
+            server.server_close()
+
+        assert server.accepted == 1
+
+    def test_a_dropped_pooled_connection_is_redialed(self):
+        """Pooling must not turn a closed keep-alive socket into a failed call.
+
+        Before pooling, every request dialed fresh, so this could not happen;
+        the importer's retry only matches 502/503/504 and would give up on it.
+        """
+        server = _CountingServer(("127.0.0.1", 0), _DropFirstConnectionHandler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        url = f"http://127.0.0.1:{server.server_address[1]}/detections"
+
+        try:
+            response = _make_request("POST", url, "test_token")
+            assert response.json() == {"ok": True}
+        finally:
+            server.shutdown()
+            server.server_close()
+
+        assert server.accepted == 2
 
     def test_same_thread_reuses_one_session(self):
         """A thread gets the same session object every time it asks."""
