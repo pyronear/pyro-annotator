@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.db import get_session
 from app.main import app
 from app.models import AlertApiConnector
+from app.services import connector_verify
 from app.services.secrets import decrypt_secret
 
 PAYLOAD = {
@@ -127,3 +128,67 @@ async def test_delete_removes_connector(authenticated_client, secret_key):
     deleted = await authenticated_client.delete(f"/connectors/{created['id']}")
     assert deleted.status_code == 204
     assert (await authenticated_client.get("/connectors/")).json() == []
+
+
+# --- POST /connectors/test: stateless pre-save credential check ---
+
+TEST_PAYLOAD = {
+    "base_url": "https://a.example",
+    "login": "admin",
+    "password": "good",
+}
+
+
+@pytest.fixture
+def stub_alert_api(monkeypatch):
+    def fake_token(api_endpoint, username, password):
+        if password != "good":
+            raise RuntimeError("401 Unauthorized")
+        return "tok"
+
+    monkeypatch.setattr(
+        connector_verify.alert_api_client, "get_api_access_token", fake_token
+    )
+    monkeypatch.setattr(
+        connector_verify.alert_api_client,
+        "list_organizations",
+        lambda **kw: [{"id": 1, "name": "Ardeche"}, {"id": 2, "name": "Gard"}],
+    )
+
+
+async def test_test_endpoint_ok(authenticated_client, stub_alert_api):
+    response = await authenticated_client.post("/connectors/test", json=TEST_PAYLOAD)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["organizations_total"] == 2
+    assert body["error"] is None
+
+
+async def test_test_endpoint_reports_auth_failure(authenticated_client, stub_alert_api):
+    response = await authenticated_client.post(
+        "/connectors/test", json={**TEST_PAYLOAD, "password": "bad"}
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is False
+    assert "401" in body["error"]
+    assert "bad" not in body["error"]
+
+
+async def test_test_endpoint_passes_scope_detail_through(
+    authenticated_client, stub_alert_api, monkeypatch
+):
+    monkeypatch.setattr(
+        connector_verify.alert_api_client,
+        "list_organizations",
+        lambda **kw: {"detail": "Incompatible token scope."},
+    )
+    response = await authenticated_client.post("/connectors/test", json=TEST_PAYLOAD)
+    assert response.json()["ok"] is False
+    assert "Incompatible token scope." in response.json()["error"]
+
+
+async def test_regular_user_cannot_test_credentials(regular_client, stub_alert_api):
+    response = await regular_client.post("/connectors/test", json=TEST_PAYLOAD)
+    assert response.status_code == 403

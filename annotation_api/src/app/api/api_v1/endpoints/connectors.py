@@ -23,11 +23,13 @@ from app.schemas.connector import (
     ConnectorOrganizationRead,
     ConnectorOrganizationUpdate,
     ConnectorRead,
+    ConnectorTestRequest,
+    ConnectorTestResult,
     ConnectorUpdate,
     CoverageCellRead,
     VerifyResult,
 )
-from app.services.connector_verify import verify_connector
+from app.services.connector_verify import check_connector_credentials, verify_connector
 from app.services.secrets import SecretKeyMissingError, encrypt_secret
 
 router = APIRouter()
@@ -129,6 +131,19 @@ async def create_connector(
         )
     await session.refresh(connector)
     return await _to_read(session, connector)
+
+
+@router.post("/test", response_model=ConnectorTestResult)
+async def test_credentials(
+    payload: ConnectorTestRequest,
+    current_user: User = Depends(get_current_superuser),
+) -> ConnectorTestResult:
+    """Stateless pre-save credential check: token exchange + organization
+    listing, nothing persisted. Catches both real failure modes — wrong
+    password, and an org-scoped credential ("Incompatible token scope.")."""
+    return await check_connector_credentials(
+        payload.base_url, payload.login, payload.password
+    )
 
 
 @router.patch("/{connector_id}", response_model=ConnectorRead)
