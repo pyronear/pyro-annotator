@@ -72,6 +72,11 @@ function wrapper({ children }: { children: React.ReactNode }) {
 
 const emptyPage = { items: [], page: 1, pages: 0, size: 50, total: 0 };
 
+// These are regression guards, not reproductions: SequencesPage already spread
+// the filter into both calls, and the mock bypasses serialization, so they would
+// have passed while the filter was broken. They exist because the sibling page
+// (DetectionReviewPage) enumerated its params and silently dropped this one —
+// the same mistake is easy to make here.
 describe('SequencesPage passes the Alert API annotation filter to the endpoint', () => {
   beforeEach(() => {
     mockedFilters = {};

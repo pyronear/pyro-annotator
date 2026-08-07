@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import type { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import { apiClient } from '@/services/api';
 
@@ -12,6 +12,13 @@ import { apiClient } from '@/services/api';
 const axiosInstance = (apiClient as unknown as { client: AxiosInstance }).client;
 
 let requestedUrls: string[] = [];
+const realAdapter = axiosInstance.defaults.adapter;
+
+// apiClient is a module singleton; put the real adapter back so swapping it
+// can't leak into another test file if module isolation is ever turned off.
+afterEach(() => {
+  axiosInstance.defaults.adapter = realAdapter;
+});
 
 beforeEach(() => {
   requestedUrls = [];

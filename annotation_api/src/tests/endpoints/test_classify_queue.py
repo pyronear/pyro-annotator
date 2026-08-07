@@ -204,18 +204,26 @@ async def test_is_wildfire_alertapi_filter(
 async def test_is_wildfire_alertapi_filter_keeps_sibling_lane_counts(
     authenticated_client: AsyncClient, async_session
 ):
-    # Two lanes of one alert, both carrying the platform's annotation (the
-    # importer copies it onto every object-split lane). The filter must not
-    # narrow the grouped row to the matching lanes only.
-    for alert_api_id in (824, 825):
-        lane = await _lane(
-            async_session,
-            alert_api_id=alert_api_id,
-            platform_alert_id=824,
-            stage=Stage.READY_TO_ANNOTATE,
-        )
-        lane.is_wildfire_alertapi = "other_smoke"
-        async_session.add(lane)
+    # One alert, two lanes, deliberately disagreeing on the platform
+    # annotation. Real data can't produce this — both the importer and
+    # add_object copy the value onto every lane — but it's the only shape that
+    # tells candidate-level filtering apart from lane-level filtering: the
+    # filter selects the *alert*, so the row must still roll up both lanes.
+    # Filtering lanes directly would report total_objects == 1.
+    matching = await _lane(
+        async_session,
+        alert_api_id=824,
+        platform_alert_id=824,
+        stage=Stage.READY_TO_ANNOTATE,
+    )
+    matching.is_wildfire_alertapi = "other_smoke"
+    async_session.add(matching)
+    await _lane(
+        async_session,
+        alert_api_id=825,
+        platform_alert_id=824,
+        stage=Stage.READY_TO_ANNOTATE,
+    )
     await async_session.commit()
 
     resp = await authenticated_client.get(
