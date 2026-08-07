@@ -22,6 +22,7 @@ help:
 	@echo ""
 	@echo "Other data commands:"
 	@echo "  import-alert-api     - (Admin) Import from alert API into annotation API"
+	@echo "  export-alerts        - Export annotated alerts (manifest + images) from annotation API"
 	@echo ""
 	@echo "Override variables inline, e.g.:"
 	@echo "  make import-alert-api DATE_FROM=2025-03-04 MAX_SEQUENCES=20"
@@ -117,6 +118,19 @@ import-alert-api:
 		$(if $(IMAGE_TRANSFER),--image-transfer $(IMAGE_TRANSFER)) \
 		--loglevel $(LOGLEVEL)
 
+# Pull annotated alerts from the annotation API's /export/alerts endpoint into
+# a dataset directory (manifest.jsonl + images/). Idempotent: re-runs rewrite
+# the manifest and only download missing images.
+# Requires MAIN_ANNOTATION_LOGIN/PASSWORD in .env for the default remote API.
+# Usage: make export-alerts [OUTPUT_DIR=outputs/alerts_export] [REMOTE_API=http://localhost:5050]
+export-alerts: OUTPUT_DIR ?= outputs/alerts_export
+export-alerts:
+	uv run python -m scripts.data_transfer.export.export_alerts \
+		--annotation-api-url $(REMOTE_API) \
+		--output-dir $(OUTPUT_DIR) \
+		--max-workers $(MAX_WORKERS) \
+		--loglevel $(LOGLEVEL)
+
 .PHONY: help lint fix docker-build start stop clean test test-specific \
 	migrate migrate-up \
-	import-alert-api
+	import-alert-api export-alerts

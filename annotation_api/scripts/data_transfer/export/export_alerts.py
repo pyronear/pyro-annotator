@@ -18,14 +18,31 @@ uv run python -m scripts.data_transfer.export.export_alerts \
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
+import sys
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
+import requests
+from dotenv import load_dotenv
+
+from app.clients.annotation_api import get_auth_token
+from scripts.data_transfer.ingestion.alert_api.shared import (
+    get_annotation_credentials,
+)
+
+load_dotenv()
+
 logger = logging.getLogger(__name__)
+
+DOWNLOAD_ATTEMPTS = 3
+DOWNLOAD_TIMEOUT_S = 30
+PAGE_TIMEOUT_S = 120
 
 
 def frame_rel_path(source_api: str, platform_alert_id: int, detection_id: int) -> str:
@@ -163,3 +180,112 @@ def run_export(
 
     tmp_manifest.replace(output_dir / "manifest.jsonl")
     return stats
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Export annotated alerts (manifest + images) from the "
+        "annotation API"
+    )
+    parser.add_argument(
+        "--annotation-api-url",
+        default="http://localhost:5050",
+        help="Base URL of the annotation API",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path("outputs/alerts_export"),
+        help="Dataset directory to write manifest.jsonl and images/ into",
+    )
+    parser.add_argument(
+        "--page-size",
+        type=int,
+        default=100,
+        help="Alerts per page (max 500); one page's downloads bound how old "
+        "a presigned image URL can get before use",
+    )
+    parser.add_argument(
+        "--max-workers", type=int, default=4, help="Concurrent image downloads"
+    )
+    parser.add_argument(
+        "--loglevel",
+        default="info",
+        choices=["debug", "info", "warning", "error"],
+        help="Logging level",
+    )
+    return parser.parse_args()
+
+
+def _fetch_page_impl(
+    session: requests.Session, api_url: str, page_size: int
+) -> FetchPage:
+    def fetch_page(cursor: Optional[str]) -> Dict[str, Any]:
+        params: Dict[str, Any] = {"limit": page_size}
+        if cursor is not None:
+            params["cursor"] = cursor
+        response = session.get(
+            f"{api_url}/api/v1/export/alerts", params=params, timeout=PAGE_TIMEOUT_S
+        )
+        response.raise_for_status()
+        return response.json()
+
+    return fetch_page
+
+
+def _download_impl(url: str, dest: Path) -> None:
+    # Plain requests.get: presigned S3 URLs reject an extra Authorization
+    # header, so the authenticated session must not be used here.
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    for attempt in range(DOWNLOAD_ATTEMPTS):
+        try:
+            response = requests.get(url, timeout=DOWNLOAD_TIMEOUT_S)
+            response.raise_for_status()
+            part = dest.with_suffix(dest.suffix + ".part")
+            part.write_bytes(response.content)
+            part.replace(dest)
+            return
+        except requests.RequestException:
+            if attempt == DOWNLOAD_ATTEMPTS - 1:
+                raise
+            time.sleep(2**attempt)
+
+
+def main() -> None:
+    args = parse_args()
+    logging.basicConfig(
+        level=args.loglevel.upper(),
+        format="%(asctime)s - %(levelname)s - %(message)s",
+    )
+
+    login, password = get_annotation_credentials(args.annotation_api_url)
+    token = get_auth_token(args.annotation_api_url, login, password)
+    session = requests.Session()
+    session.headers["Authorization"] = f"Bearer {token}"
+
+    stats = run_export(
+        _fetch_page_impl(session, args.annotation_api_url, args.page_size),
+        _download_impl,
+        args.output_dir,
+        args.max_workers,
+    )
+    logger.info(
+        "Exported %d alerts: %d images downloaded, %d already present, "
+        "%d failed, %d without URL",
+        stats.alerts,
+        stats.downloaded,
+        stats.skipped,
+        stats.failed,
+        stats.missing_url,
+    )
+    if stats.failed:
+        logger.error(
+            "%d image downloads failed (image_path null in manifest); "
+            "re-run to heal",
+            stats.failed,
+        )
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
