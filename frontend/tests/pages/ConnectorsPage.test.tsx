@@ -102,6 +102,14 @@ describe('ConnectorsPage', () => {
     renderPage();
     expect(screen.getByText(/no connectors/i)).toBeInTheDocument();
   });
+
+  it('lets the table span the full layout width like the groups list', () => {
+    vi.mocked(useConnectors).mockReturnValue({ data: [], isLoading: false } as never);
+    const { container } = renderPage();
+    // The width cap squeezed the 7-column table into horizontal scrolling;
+    // the reference table layout (SequenceGroupsListPage) has no cap.
+    expect(container.querySelector('.max-w-5xl')).toBeNull();
+  });
 });
 
 describe('create form — Test connection', () => {
