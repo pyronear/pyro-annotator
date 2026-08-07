@@ -41,6 +41,8 @@ import {
   Connector,
   ConnectorOrganization,
   ConnectorCreatePayload,
+  ConnectorTestPayload,
+  ConnectorTestResult,
   ConnectorUpdatePayload,
   CoverageCell,
   VerifyResult,
@@ -616,6 +618,14 @@ class ApiClient {
 
   async deleteConnector(id: number): Promise<void> {
     await this.client.delete(`/connectors/${id}`);
+  }
+
+  async testConnector(payload: ConnectorTestPayload): Promise<ConnectorTestResult> {
+    const response: AxiosResponse<ConnectorTestResult> = await this.client.post(
+      '/connectors/test',
+      payload
+    );
+    return response.data;
   }
 
   async verifyConnector(id: number): Promise<VerifyResult> {

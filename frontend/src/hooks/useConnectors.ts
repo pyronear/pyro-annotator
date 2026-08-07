@@ -6,6 +6,8 @@ import type {
   Connector,
   ConnectorCreatePayload,
   ConnectorOrganization,
+  ConnectorTestPayload,
+  ConnectorTestResult,
   ConnectorUpdatePayload,
   CoverageCell,
   VerifyResult,
@@ -23,6 +25,12 @@ export function useCreateConnector() {
   return useMutation({
     mutationFn: (payload: ConnectorCreatePayload) => apiClient.createConnector(payload),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CONNECTORS }),
+  });
+}
+
+export function useTestConnector() {
+  return useMutation<ConnectorTestResult, Error, ConnectorTestPayload>({
+    mutationFn: payload => apiClient.testConnector(payload),
   });
 }
 

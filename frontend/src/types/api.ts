@@ -619,3 +619,15 @@ export interface ConnectorCreatePayload {
 }
 
 export type ConnectorUpdatePayload = Partial<Omit<ConnectorCreatePayload, 'source_api'>>;
+
+export interface ConnectorTestPayload {
+  base_url: string;
+  login: string;
+  password: string;
+}
+
+export interface ConnectorTestResult {
+  ok: boolean;
+  error: string | null;
+  organizations_total: number;
+}
