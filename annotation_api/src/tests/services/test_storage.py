@@ -143,3 +143,60 @@ def test_s3_client_is_per_thread():
 
     assert seen["a"] is not seen["b"], "two threads shared one boto3 client"
     assert service._s3 is service._s3, "same thread rebuilt its client"
+
+
+def test_get_bucket_probes_once_per_thread(monkeypatch):
+    """head_bucket is a network round trip, and it ran on every request.
+
+    S3Bucket.__init__ probes the bucket purely to validate the handle it hands
+    back, and get_bucket runs on every request that touches storage -- so every
+    detection creation and every image URL paid for an extra S3 round trip.
+    """
+    service = _configured_service()
+    name = service.resolve_bucket_name()
+    probes = []
+    real_head = service._s3.head_bucket
+
+    def counting_head(**kwargs):
+        probes.append(kwargs)
+        return real_head(**kwargs)
+
+    monkeypatch.setattr(service._s3, "head_bucket", counting_head)
+
+    first = service.get_bucket(name)
+    for _ in range(5):
+        service.get_bucket(name)
+
+    assert len(probes) == 1, f"head_bucket ran {len(probes)} times, expected 1"
+    assert service.get_bucket(name) is first
+
+
+def test_bucket_cache_is_per_thread():
+    """The cache must not hand one thread a handle wrapping another's client.
+
+    It shares the thread-local with the client for exactly this reason; a
+    process-wide cache would silently undo the per-thread client.
+
+    Populate from THIS thread first, then read from another. Racing two fresh
+    threads instead would let both observe an empty cache and each build their
+    own handle, so a process-wide cache would pass by luck -- verified: it did.
+    """
+    service = _configured_service()
+    name = service.resolve_bucket_name()
+
+    mine = service.get_bucket(name)
+    other = {}
+
+    def record():
+        bucket = service.get_bucket(name)
+        other["bucket"] = bucket
+        other["client"] = bucket._s3
+
+    thread = threading.Thread(target=record)
+    thread.start()
+    thread.join()
+
+    assert other["bucket"] is not mine, "bucket handle leaked across threads"
+    assert (
+        other["client"] is not mine._s3
+    ), "bucket handed a thread another thread's boto3 client"

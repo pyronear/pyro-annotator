@@ -231,8 +231,25 @@ class S3Service:
             return False
 
     def get_bucket(self, bucket_name: str) -> S3Bucket:
-        """Get an existing bucket in S3 storage"""
-        return S3Bucket(self._s3, bucket_name, self.proxy_url)
+        """Get an existing bucket in S3 storage.
+
+        Cached per thread. S3Bucket.__init__ issues a head_bucket -- a network
+        round trip -- purely to validate the handle it returns, and get_bucket
+        runs on every request that touches storage, so this was an extra S3
+        call per detection creation and per image URL.
+
+        The cache lives in the same thread-local as the client so a thread can
+        never receive a handle wrapping another thread's client.
+        """
+        cache = getattr(self._local, "buckets", None)
+        if cache is None:
+            cache = {}
+            self._local.buckets = cache
+        bucket = cache.get(bucket_name)
+        if bucket is None:
+            bucket = S3Bucket(self._s3, bucket_name, self.proxy_url)
+            cache[bucket_name] = bucket
+        return bucket
 
     async def delete_bucket(self, bucket_name: str) -> bool:
         """Delete an existing bucket in S3 storage"""
