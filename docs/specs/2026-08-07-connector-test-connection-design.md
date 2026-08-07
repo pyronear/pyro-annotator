@@ -43,6 +43,15 @@ A "Test connection" button inside the create-connector form (`ConnectorsPage.tsx
 - The result clears whenever base URL, login, or password change, so a stale green
   cannot vouch for edited credentials.
 
+### Rider: full-width connectors table
+
+`ConnectorsPage` caps its root at `mx-auto max-w-5xl`, which squeezes the 7-column
+table into its `overflow-x-auto` fallback (horizontal scroll). The groups list page —
+the reference table layout — uses a full-width `space-y-6` root. Align the connectors
+page with it: drop the width cap and let the app layout's padding govern, keeping the
+`overflow-x-auto` wrapper as the narrow-viewport fallback. The create-form modal keeps
+its own `max-w-md`.
+
 ## Out of scope
 
 - No test button on the edit path — there, an omitted password means "keep the stored
@@ -57,3 +66,5 @@ A "Test connection" button inside the create-connector form (`ConnectorsPage.tsx
   detail passed through, timeout path.
 - Frontend form tests: button disabled until all three fields filled, pending state,
   success and error rendering, result cleared on credential edit.
+- Layout rider: assert the page root no longer carries the `max-w-5xl` cap (mirrors the
+  groups list page's root).
