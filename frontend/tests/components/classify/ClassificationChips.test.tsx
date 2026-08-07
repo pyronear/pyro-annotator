@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ClassificationChips, formatFalsePositiveLabel } from '@/components/classify';
 import type { SequenceBbox } from '@/types/api';
+import { FALSE_POSITIVE_TYPES } from '@/utils/constants';
 
 const baseBbox: SequenceBbox = { is_smoke: false, false_positive_types: [], bboxes: [] };
 
@@ -68,13 +69,13 @@ describe('ClassificationChips', () => {
     expect(screen.queryByRole('checkbox', { name: 'High cloud' })).not.toBeInTheDocument();
   });
 
-  it('renders all 19 FP type chips for false_positive and toggles membership both ways', () => {
+  it('renders all FP type chips for false_positive and toggles membership both ways', () => {
     const { onBboxChange } = renderChips({
       bbox: { ...baseBbox, false_positive_types: ['high_cloud'] },
       classification: 'false_positive',
     });
-    // 19 FP chips (Unsure is a radio in the exclusive classification group)
-    expect(screen.getAllByRole('checkbox')).toHaveLength(19);
+    // One chip per FP type (Unsure is a radio in the exclusive classification group)
+    expect(screen.getAllByRole('checkbox')).toHaveLength(FALSE_POSITIVE_TYPES.length);
     expect(screen.getByRole('checkbox', { name: 'High cloud' })).toBeChecked();
     fireEvent.click(screen.getByRole('checkbox', { name: 'Antenna' }));
     expect(onBboxChange).toHaveBeenCalledWith('101:0', {
