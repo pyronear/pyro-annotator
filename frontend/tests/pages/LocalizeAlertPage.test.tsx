@@ -14,6 +14,7 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QUEUE_COUNTS_KEY } from '@/hooks/useQueueTotals';
 import {
   MemoryRouter,
   Routes,
@@ -1617,6 +1618,51 @@ describe('LocalizeAlertPage', () => {
         },
         { timeout: 2000 }
       );
+    });
+
+    // Regression guard: a revert moves the alert BETWEEN the two localize
+    // queues, so the sidebar's Localize badge and the dashboard card behind
+    // the same total must follow it. Miss the invalidation and they under-
+    // count for the full 5-minute staleTime. QUEUE_COUNTS_KEY is imported
+    // rather than spelled out so renaming the hook's key fails here instead
+    // of silently freezing the badge.
+    it('invalidates both queues and the shared queue-count key', async () => {
+      mockDoneAlert();
+      vi.mocked(apiClient.localizeRevert).mockResolvedValue({
+        results: [
+          { annotation_id: 201, sequence_id: 101, processing_stage: 'seq_annotation_done' },
+          { annotation_id: 202, sequence_id: 102, processing_stage: 'seq_annotation_done' },
+        ],
+      });
+      // spyOn, not a bare stub: the real invalidation still runs, so a
+      // throwing or refetch-looping invalidation surfaces instead of being
+      // swallowed.
+      const invalidateSpy = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
+
+      await renderAndSettle(<LocalizeAlertPage mode="done" />, { wrapper: doneWrapper });
+
+      fireEvent.click(screen.getByTestId('revert-to-queue-button'));
+      fireEvent.click(
+        within(screen.getByTestId('revert-to-queue-confirm')).getByRole('button', {
+          name: 'Send back to queue',
+        })
+      );
+
+      await waitFor(() => {
+        expect(vi.mocked(apiClient.localizeRevert)).toHaveBeenCalled();
+      });
+      await waitFor(() => {
+        const keys = invalidateSpy.mock.calls.map(([arg]) => String(arg?.queryKey?.[0]));
+        // The revert handler's whole contract: the list it leaves, the list
+        // it joins, the shared queue totals (sidebar badge + dashboard card),
+        // and the dashboard's stage counts.
+        expect(keys).toContain('localize-done-queue');
+        expect(keys).toContain('localization-queue');
+        expect(keys).toContain(QUEUE_COUNTS_KEY);
+        expect(keys).toContain('pipeline-stats');
+      });
+
+      invalidateSpy.mockRestore();
     });
 
     it('is disabled when a sibling would keep the alert out of the queue', async () => {

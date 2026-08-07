@@ -117,6 +117,7 @@ import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/rea
 import { ArrowLeft, Keyboard, PlayCircle, Upload, X } from 'lucide-react';
 import { apiClient } from '@/services/api';
 import { QUERY_KEYS } from '@/utils/constants';
+import { QUEUE_COUNTS_KEY } from '@/hooks/useQueueTotals';
 import {
   ApiError,
   Detection,
@@ -1137,7 +1138,12 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       setRevertConfirmOpen(false);
       queryClient.invalidateQueries({ queryKey: ['localization-queue'] });
       queryClient.invalidateQueries({ queryKey: ['localize-done-queue'] });
-      queryClient.invalidateQueries({ queryKey: ['annotation-counts'] });
+      // The alert moves BETWEEN the two queues, so the sidebar's Localize
+      // badge and the dashboard card behind the same total both have to
+      // follow. Imported rather than spelled out so renaming the hook's key
+      // fails the test instead of silently freezing the badge for the full
+      // 5-minute staleTime.
+      queryClient.invalidateQueries({ queryKey: [QUEUE_COUNTS_KEY] });
       queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.SEQUENCE_ANNOTATIONS });
       queryClient.invalidateQueries({ queryKey: alertDetailQueryKey });
