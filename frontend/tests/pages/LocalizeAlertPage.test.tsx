@@ -42,6 +42,7 @@ vi.mock('@/services/api', () => ({
     updateDetectionAnnotation: vi.fn(),
     updateSequenceAnnotation: vi.fn(),
     localizeSubmit: vi.fn(),
+    localizeRevert: vi.fn(),
     addObject: vi.fn(),
     skipAlert: vi.fn(),
     materializeFrame: vi.fn(),
@@ -1517,6 +1518,71 @@ describe('LocalizeAlertPage', () => {
       await waitFor(() => expect(screen.getByTestId('localize-done-landing')).toBeInTheDocument(), {
         timeout: 2000,
       });
+    });
+  });
+
+  describe('send back to queue', () => {
+    /** Both lanes annotated — the state an alert is in on the Done list. */
+    function mockDoneAlert() {
+      vi.mocked(apiClient.getAlertDetail).mockResolvedValue({
+        ...makeTwoLaneAlertDetail(),
+        lanes: [
+          {
+            sequence: makeSequence({ id: 101, alert_api_id: 9001 }),
+            annotation: makeAnnotation({
+              id: 201,
+              sequence_id: 101,
+              processing_stage: 'annotated',
+            }),
+          },
+          {
+            sequence: makeSequence({ id: 102, alert_api_id: 9002 }),
+            annotation: makeAnnotation({
+              id: 202,
+              sequence_id: 102,
+              processing_stage: 'annotated',
+            }),
+          },
+        ],
+      });
+      mockAllFramesAccepted();
+    }
+
+    it('is absent in queue mode — that slot carries Skip alert', async () => {
+      await renderAndSettle(<LocalizeAlertPage />, { wrapper });
+
+      expect(screen.getByTestId('skip-alert-button')).toBeInTheDocument();
+      expect(screen.queryByTestId('revert-to-queue-button')).not.toBeInTheDocument();
+    });
+
+    it('takes the Skip slot in done mode', async () => {
+      mockDoneAlert();
+      await renderAndSettle(<LocalizeAlertPage mode="done" />, { wrapper: doneWrapper });
+
+      expect(screen.getByTestId('revert-to-queue-button')).toBeInTheDocument();
+      expect(screen.queryByTestId('skip-alert-button')).not.toBeInTheDocument();
+    });
+
+    it('is absent when no lane is annotated-and-needs-localization', async () => {
+      // A deep link to /localize/done/:id for an alert that never finished:
+      // offering an action the server would 409 is worse than offering none.
+      vi.mocked(apiClient.getAlertDetail).mockResolvedValue({
+        ...makeTwoLaneAlertDetail(),
+        lanes: [
+          {
+            sequence: makeSequence({ id: 101, alert_api_id: 9001 }),
+            annotation: makeAnnotation({
+              id: 201,
+              sequence_id: 101,
+              processing_stage: 'seq_annotation_done',
+            }),
+          },
+        ],
+      });
+
+      await renderAndSettle(<LocalizeAlertPage mode="done" />, { wrapper: doneWrapper });
+
+      expect(screen.queryByTestId('revert-to-queue-button')).not.toBeInTheDocument();
     });
   });
 

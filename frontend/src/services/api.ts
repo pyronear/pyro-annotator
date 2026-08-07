@@ -35,6 +35,7 @@ import {
   ClassifySubmitRequest,
   ClassifySubmitResponse,
   LocalizeSubmitResponse,
+  LocalizeRevertResponse,
   SequenceGroup,
   SequenceGroupListItem,
   SequenceGroupStats,
@@ -326,6 +327,14 @@ class ApiClient {
   async localizeSubmit(annotationIds: number[]): Promise<LocalizeSubmitResponse> {
     const response: AxiosResponse<LocalizeSubmitResponse> = await this.client.post(
       `${API_ENDPOINTS.SEQUENCE_ANNOTATIONS}localize-submit`,
+      { annotation_ids: annotationIds }
+    );
+    return response.data;
+  }
+
+  async localizeRevert(annotationIds: number[]): Promise<LocalizeRevertResponse> {
+    const response: AxiosResponse<LocalizeRevertResponse> = await this.client.post(
+      `${API_ENDPOINTS.SEQUENCE_ANNOTATIONS}localize-revert`,
       { annotation_ids: annotationIds }
     );
     return response.data;

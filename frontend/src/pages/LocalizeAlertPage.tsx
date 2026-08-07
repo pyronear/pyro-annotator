@@ -266,6 +266,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   // goes straight through instead of re-asking the same question).
   const [missedSmokeConfirm, setMissedSmokeConfirm] = useState(false);
   const [skipConfirmOpen, setSkipConfirmOpen] = useState(false);
+  const [revertConfirmOpen, setRevertConfirmOpen] = useState(false);
   const [skipNote, setSkipNote] = useState('');
   const [softConfirmResolved, setSoftConfirmResolved] = useState(false);
 
@@ -952,6 +953,28 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
     );
   };
 
+  // Occupies the slot Skip alert holds in queue mode — same position, same
+  // outlined-ember treatment. Both footer branches use it, so a partially
+  // reverted alert opened from Done shows Submit AND this.
+  const renderRevertButton = () => (
+    <Tooltip
+      placement="above"
+      tip="Spotted a mistake? This alert returns to the Localize queue with all its boxes intact, and stops being exported until it is submitted again."
+    >
+      <button
+        type="button"
+        onClick={e => {
+          e.stopPropagation();
+          setRevertConfirmOpen(true);
+        }}
+        data-testid="revert-to-queue-button"
+        className="inline-flex items-center rounded-lg border border-ember bg-paper px-3 py-2.5 font-body text-sm font-medium text-ember hover:bg-ember-soft"
+      >
+        Send back to queue
+      </button>
+    </Tooltip>
+  );
+
   // Names the media column: with an object active the grid shows that
   // object's detections, so the column header should say whose they are.
   // The color also outlines the frames it actually appears on.
@@ -1006,6 +1029,23 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       }),
     [workableObjects, alertDetail]
   );
+
+  // The mirror image of `workableLanes`: the alert's already-annotated smoke
+  // lanes, which are exactly what localize-revert takes. Mirrors the
+  // endpoint's guards client-side so a deep link to an unfinished alert never
+  // offers an action the server would 409.
+  const revertableLanes: { laneSequenceId: number; annotationId: number }[] = useMemo(
+    () =>
+      (alertDetail?.lanes ?? []).flatMap(lane => {
+        const annotation = lane.annotation;
+        if (!annotation) return [];
+        if (annotation.processing_stage !== 'annotated') return [];
+        if (!laneNeedsLocalization(annotation)) return [];
+        return [{ laneSequenceId: lane.sequence.id, annotationId: annotation.id }];
+      }),
+    [alertDetail]
+  );
+  const canRevert = mode === 'done' && revertableLanes.length > 0;
 
   // Submit: atomically ships the whole alert. No accept step of its own —
   // `allObjectsAccepted` gates the button, so every frame already carries a
@@ -1762,12 +1802,15 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
             }
             footer={
               workableObjects.length === 0 ? (
-                <p
-                  data-testid="all-objects-localized"
-                  className="text-center font-body text-detail text-haze"
-                >
-                  All objects localized
-                </p>
+                <div className="flex flex-col items-center gap-2.5">
+                  <p
+                    data-testid="all-objects-localized"
+                    className="text-center font-body text-detail text-haze"
+                  >
+                    All objects localized
+                  </p>
+                  {canRevert && renderRevertButton()}
+                </div>
               ) : (
                 <div>
                   {/* An undecided object holds the whole alert back. Say so
@@ -1843,6 +1886,7 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
                         </button>
                       </Tooltip>
                     )}
+                    {canRevert && renderRevertButton()}
                   </div>
                 </div>
               )
