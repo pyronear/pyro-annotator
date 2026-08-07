@@ -342,6 +342,100 @@ async def test_localize_revert_is_atomic(
 
 
 @pytest.mark.asyncio
+async def test_localize_revert_422_when_a_sibling_is_unfinished(
+    authenticated_client: AsyncClient, mock_img: bytes
+):
+    """The done list admits an alert on ONE annotated lane, but the localize
+    queue demands every sibling be done. Reverting past that mismatch would
+    strand the alert in NEITHER list, so the mismatch is refused."""
+    ann_ids, _, _ = await _seed_submitted_alert(
+        authenticated_client, mock_img, platform_alert_id=8816
+    )
+    unfinished_seq = await _create_sequence(
+        authenticated_client, alert_api_id=88169, platform_alert_id=8816
+    )
+    unfinished_det = await _create_detection(
+        authenticated_client, mock_img, sequence_id=unfinished_seq, alert_api_id=9
+    )
+    await _annotate_lane(
+        authenticated_client,
+        sequence_id=unfinished_seq,
+        detection_id=unfinished_det,
+        stage="ready_to_annotate",
+    )
+
+    resp = await authenticated_client.post(
+        "/annotations/sequences/localize-revert", json={"annotation_ids": ann_ids}
+    )
+    assert resp.status_code == 422, resp.text
+    assert "would not re-enter" in resp.json()["detail"]
+
+    # ...and nothing moved.
+    got = await authenticated_client.get(f"/annotations/sequences/{ann_ids[0]}")
+    assert got.json()["processing_stage"] == "annotated"
+
+
+@pytest.mark.asyncio
+async def test_localize_revert_422_when_a_sibling_is_undecided(
+    authenticated_client: AsyncClient, mock_img: bytes
+):
+    """Same stranding, via the other arm of the queue's rule: an unsure lane
+    parked at seq_annotation_done withholds the whole alert from localization.
+    localize-submit already guards this; so must revert."""
+    ann_ids, _, _ = await _seed_submitted_alert(
+        authenticated_client, mock_img, platform_alert_id=8817
+    )
+    unsure_seq = await _create_sequence(
+        authenticated_client, alert_api_id=88179, platform_alert_id=8817
+    )
+    unsure_det = await _create_detection(
+        authenticated_client, mock_img, sequence_id=unsure_seq, alert_api_id=9
+    )
+    await _annotate_lane(
+        authenticated_client,
+        sequence_id=unsure_seq,
+        detection_id=unsure_det,
+        is_unsure=True,
+        stage="seq_annotation_done",
+    )
+
+    resp = await authenticated_client.post(
+        "/annotations/sequences/localize-revert", json={"annotation_ids": ann_ids}
+    )
+    assert resp.status_code == 422, resp.text
+    assert "would not re-enter" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_localize_revert_allows_a_deferred_unsure_sibling(
+    authenticated_client: AsyncClient, mock_img: bytes
+):
+    """A DEFERRED unsure lane settles at annotated, which is a done stage and
+    is not 'unsettled' — it must not block the revert."""
+    ann_ids, _, _ = await _seed_submitted_alert(
+        authenticated_client, mock_img, platform_alert_id=8818
+    )
+    deferred_seq = await _create_sequence(
+        authenticated_client, alert_api_id=88189, platform_alert_id=8818
+    )
+    deferred_det = await _create_detection(
+        authenticated_client, mock_img, sequence_id=deferred_seq, alert_api_id=9
+    )
+    await _annotate_lane(
+        authenticated_client,
+        sequence_id=deferred_seq,
+        detection_id=deferred_det,
+        is_unsure=True,
+        stage="annotated",
+    )
+
+    resp = await authenticated_client.post(
+        "/annotations/sequences/localize-revert", json={"annotation_ids": ann_ids}
+    )
+    assert resp.status_code == 200, resp.text
+
+
+@pytest.mark.asyncio
 async def test_localize_revert_requires_auth(async_client: AsyncClient):
     resp = await async_client.post(
         "/annotations/sequences/localize-revert", json={"annotation_ids": [1]}

@@ -957,18 +957,16 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   // outlined-ember treatment. Both footer branches use it, so a partially
   // reverted alert opened from Done shows Submit AND this.
   const renderRevertButton = () => (
-    <Tooltip
-      placement="above"
-      tip="Spotted a mistake? This alert returns to the Localize queue with all its boxes intact, and stops being exported until it is submitted again."
-    >
+    <Tooltip placement="above" tip={revertTooltip}>
       <button
         type="button"
         onClick={e => {
           e.stopPropagation();
           setRevertConfirmOpen(true);
         }}
+        disabled={revertBlocked}
         data-testid="revert-to-queue-button"
-        className="inline-flex items-center rounded-lg border border-ember bg-paper px-3 py-2.5 font-body text-sm font-medium text-ember hover:bg-ember-soft"
+        className="inline-flex items-center rounded-lg border border-ember bg-paper px-3 py-2.5 font-body text-sm font-medium text-ember hover:bg-ember-soft disabled:cursor-not-allowed disabled:opacity-50"
       >
         Send back to queue
       </button>
@@ -1047,6 +1045,28 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
   );
   const canRevert = mode === 'done' && revertableLanes.length > 0;
 
+  // The done list admits an alert on ONE annotated lane, but the queue demands
+  // every sibling be done and none undecided. Where they disagree the server
+  // refuses the revert (it would strand the alert in neither list), so say so
+  // on the button rather than letting a 422 explain it after the confirm.
+  const revertBlockingLanes = (alertDetail?.lanes ?? []).filter(lane => {
+    const annotation = lane.annotation;
+    if (!annotation) return true;
+    if (annotation.processing_stage === 'annotated') return false;
+    if (annotation.processing_stage !== 'seq_annotation_done') return true;
+    return annotation.is_unsure === true;
+  });
+  const revertBlocked = revertBlockingLanes.length > 0;
+  const revertTooltip = revertBlocked
+    ? `${revertBlockingLanes.length} object${
+        revertBlockingLanes.length === 1 ? '' : 's'
+      } of this alert ${
+        revertBlockingLanes.length === 1 ? 'is' : 'are'
+      } still unfinished or undecided, so it could not re-enter the Localize queue. Settle ${
+        revertBlockingLanes.length === 1 ? 'it' : 'them'
+      } in Classify first.`
+    : 'Spotted a mistake? This alert returns to the Localize queue with all its boxes intact, and stops being exported until it is submitted again.';
+
   // Submit: atomically ships the whole alert. No accept step of its own —
   // `allObjectsAccepted` gates the button, so every frame already carries a
   // committed box by the time this can fire.
@@ -1122,7 +1142,10 @@ export default function LocalizeAlertPage({ mode }: LocalizeAlertPageProps = {})
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.SEQUENCE_ANNOTATIONS });
       queryClient.invalidateQueries({ queryKey: alertDetailQueryKey });
       showToastNotification('Alert sent back to the queue', 'success');
-      navigate(listPath);
+      // Delayed like the submit path: navigating unmounts this page and with
+      // it the NotificationSystem that owns the toast, so an immediate
+      // navigate would swallow the confirmation entirely.
+      setTimeout(() => navigate(listPath), 1000);
     },
     onError: err => {
       const detail = (err as { detail?: string })?.detail || (err as Error)?.message || '';

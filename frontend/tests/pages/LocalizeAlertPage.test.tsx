@@ -1608,9 +1608,83 @@ describe('LocalizeAlertPage', () => {
       await waitFor(() => {
         expect(vi.mocked(apiClient.localizeRevert)).toHaveBeenCalledWith([201, 202]);
       });
-      await waitFor(() => {
-        expect(screen.getByTestId('localize-done-landing')).toBeInTheDocument();
+      // The success toast has to be readable before the page goes away, so
+      // navigation is deliberately delayed — hence the widened timeout.
+      expect(await screen.findByText('Alert sent back to the queue')).toBeInTheDocument();
+      await waitFor(
+        () => {
+          expect(screen.getByTestId('localize-done-landing')).toBeInTheDocument();
+        },
+        { timeout: 2000 }
+      );
+    });
+
+    it('is disabled when a sibling would keep the alert out of the queue', async () => {
+      // The done list admits this alert on lane 101 alone, but lane 102 is
+      // still unfinished — reverting would strand it in neither list, so the
+      // server refuses. Say so on the button instead of after the confirm.
+      vi.mocked(apiClient.getAlertDetail).mockResolvedValue({
+        ...makeTwoLaneAlertDetail(),
+        lanes: [
+          {
+            sequence: makeSequence({ id: 101, alert_api_id: 9001 }),
+            annotation: makeAnnotation({
+              id: 201,
+              sequence_id: 101,
+              processing_stage: 'annotated',
+            }),
+          },
+          {
+            sequence: makeSequence({ id: 102, alert_api_id: 9002 }),
+            annotation: makeAnnotation({
+              id: 202,
+              sequence_id: 102,
+              processing_stage: 'ready_to_annotate',
+            }),
+          },
+        ],
       });
+      mockAllFramesAccepted();
+
+      await renderAndSettle(<LocalizeAlertPage mode="done" />, { wrapper: doneWrapper });
+
+      expect(screen.getByTestId('revert-to-queue-button')).toBeDisabled();
+
+      fireEvent.click(screen.getByTestId('revert-to-queue-button'));
+      expect(screen.queryByTestId('revert-to-queue-confirm')).not.toBeInTheDocument();
+      expect(vi.mocked(apiClient.localizeRevert)).not.toHaveBeenCalled();
+    });
+
+    it('stays enabled when the undecided sibling was deferred to annotated', async () => {
+      // A deferred-unsure lane settles at annotated: a done stage, and not
+      // "unsettled", so the queue would still take the alert.
+      vi.mocked(apiClient.getAlertDetail).mockResolvedValue({
+        ...makeTwoLaneAlertDetail(),
+        lanes: [
+          {
+            sequence: makeSequence({ id: 101, alert_api_id: 9001 }),
+            annotation: makeAnnotation({
+              id: 201,
+              sequence_id: 101,
+              processing_stage: 'annotated',
+            }),
+          },
+          {
+            sequence: makeSequence({ id: 102, alert_api_id: 9002 }),
+            annotation: makeAnnotation({
+              id: 202,
+              sequence_id: 102,
+              processing_stage: 'annotated',
+              is_unsure: true,
+            }),
+          },
+        ],
+      });
+      mockAllFramesAccepted();
+
+      await renderAndSettle(<LocalizeAlertPage mode="done" />, { wrapper: doneWrapper });
+
+      expect(screen.getByTestId('revert-to-queue-button')).toBeEnabled();
     });
 
     it('does nothing when the confirm is dismissed', async () => {

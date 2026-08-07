@@ -59,6 +59,7 @@ from app.services.annotation_generation import (
     derive_group_label_from_annotation,
 )
 from app.services.alert_skip import alert_skip_exists_clause
+from app.services.auto_annotate_scheduling import DONE_STAGES
 from app.services.localization_rule import (
     needs_localization,
     unsettled_unsure_clause,
@@ -1535,6 +1536,43 @@ async def localize_revert(
             ),
         )
 
+    # The two lists disagree about alerts, and the gap can strand one. The
+    # done list admits an alert as soon as ONE lane is annotated and needs
+    # localization; the localize queue demands EVERY sibling sit at a done
+    # stage with none left undecided. So an alert can be listed as done while
+    # a sibling is still unfinished or unsure — and reverting it there would
+    # drop it from the done list without letting it into the queue, leaving
+    # the work unreachable from both. Mirror the queue's admission rule and
+    # refuse instead. (Such an alert is not in the export either — that needs
+    # every lane annotated — so nothing is being withheld by refusing.)
+    alert_source_api, alert_platform_id = next(iter(alert_keys))
+    blocking_siblings = (
+        await session.execute(
+            select(func.count(Sequence.id))
+            .outerjoin(
+                SequenceAnnotation, SequenceAnnotation.sequence_id == Sequence.id
+            )
+            .where(
+                Sequence.source_api == alert_source_api,
+                Sequence.platform_alert_id == alert_platform_id,
+                or_(
+                    SequenceAnnotation.id.is_(None),
+                    SequenceAnnotation.processing_stage.notin_(DONE_STAGES),
+                    unsettled_unsure_clause(SequenceAnnotation),
+                ),
+            )
+        )
+    ).scalar_one()
+    if blocking_siblings > 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"Cannot send back: {blocking_siblings} object(s) of this alert "
+                "are still unfinished or undecided, so the alert would not "
+                "re-enter the localize queue. Settle them in Classify first."
+            ),
+        )
+
     # Sequences whose reference layer never landed: after the revert they
     # would fail the queue's `_ready_smoke_lane` check (which requires
     # auto_annotated_at) and sit in NEITHER queue. Read before the commit,
@@ -1569,10 +1607,20 @@ async def localize_revert(
     # The one atomic point: every lane's write lands together.
     await session.commit()
 
-    # Post-commit so a lost defer can't strand the transaction; the periodic
-    # schedule_auto_annotate sweep re-enqueues stale lanes anyway.
+    # Post-commit so a lost defer can't strand the transaction. Failures are
+    # swallowed on purpose: the revert has already landed, and raising here
+    # would report failure for work that succeeded — the caller would retry
+    # and get a 409 "not at annotated", which reads as a contradiction. The
+    # periodic schedule_auto_annotate sweep re-enqueues stale lanes anyway,
+    # so a lost defer costs latency, not correctness.
     for sequence_id in unreferenced_sequence_ids:
-        await auto_annotate_sequence.defer_async(sequence_id=sequence_id)
+        try:
+            await auto_annotate_sequence.defer_async(sequence_id=sequence_id)
+        except Exception:
+            logger.exception(
+                "localize-revert: failed to re-arm auto-annotate for sequence "
+                f"{sequence_id}; the periodic sweep will pick it up"
+            )
 
     return LocalizeRevertResponse(
         results=[
