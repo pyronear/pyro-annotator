@@ -376,6 +376,22 @@ async def create_sequence_annotation(
     # Validate that all detection_ids exist in the database
     await validate_detection_ids(create_data.annotation, annotations.session)
 
+    # Same rule as the update path (issue #346): a lane may not be CREATED at
+    # ANNOTATED unless its localization is already complete. The flags come
+    # from the payload because the row does not exist yet. Runs before the
+    # write so a rejected create leaves nothing behind — and before
+    # auto_create_detection_annotations below, which would otherwise
+    # manufacture visual_check rows that still fail the check.
+    if create_data.processing_stage == SequenceAnnotationProcessingStage.ANNOTATED:
+        if needs_localization(
+            derive_has_smoke(create_data.annotation),
+            create_data.has_missed_smoke,
+            create_data.is_unsure,
+        ):
+            await assert_localization_complete(
+                create_data.sequence_id, annotations.session
+            )
+
     # Use CRUD method which handles contribution tracking with proper conditional logic
     sequence_annotation = await annotations.create(create_data, current_user.id)
 

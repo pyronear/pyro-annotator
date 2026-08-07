@@ -252,3 +252,69 @@ async def test_editing_an_already_annotated_lane_is_not_re_guarded(
         f"/annotations/sequences/{ann}", json={"has_missed_smoke": True}
     )
     assert resp.status_code == 200, resp.text
+
+
+@pytest.mark.asyncio
+async def test_create_at_annotated_is_guarded(
+    authenticated_client: AsyncClient, mock_img: bytes
+):
+    """POST straight to annotated bypassed the guard entirely: create ran no
+    check at all."""
+    seq = await _create_sequence(
+        authenticated_client, alert_api_id=90070, platform_alert_id=9007
+    )
+    det = await _create_detection(
+        authenticated_client, mock_img, sequence_id=seq, alert_api_id=1
+    )
+
+    resp = await authenticated_client.post(
+        "/annotations/sequences/",
+        json=_lane_payload(seq, det, stage="annotated"),
+    )
+    assert resp.status_code == 422, resp.text
+    assert "localization incomplete" in resp.json()["detail"]
+
+    # Nothing was written.
+    listing = await authenticated_client.get(
+        "/annotations/sequences/", params={"sequence_id": seq}
+    )
+    assert listing.json()["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_create_at_annotated_passes_when_frames_are_localized(
+    authenticated_client: AsyncClient, mock_img: bytes
+):
+    """What import_yolo_sequence.py does: write an annotated-stage detection
+    annotation per frame FIRST, then create the lane at annotated."""
+    seq = await _create_sequence(
+        authenticated_client, alert_api_id=90080, platform_alert_id=9008
+    )
+    det = await _create_detection(
+        authenticated_client, mock_img, sequence_id=seq, alert_api_id=1
+    )
+    await _localize_frame(authenticated_client, detection_id=det)
+
+    resp = await authenticated_client.post(
+        "/annotations/sequences/",
+        json=_lane_payload(seq, det, stage="annotated"),
+    )
+    assert resp.status_code == 201, resp.text
+
+
+@pytest.mark.asyncio
+async def test_create_fp_lane_at_annotated_is_not_guarded(
+    authenticated_client: AsyncClient, mock_img: bytes
+):
+    seq = await _create_sequence(
+        authenticated_client, alert_api_id=90090, platform_alert_id=9009
+    )
+    det = await _create_detection(
+        authenticated_client, mock_img, sequence_id=seq, alert_api_id=1
+    )
+
+    resp = await authenticated_client.post(
+        "/annotations/sequences/",
+        json=_lane_payload(seq, det, is_smoke=False, stage="annotated"),
+    )
+    assert resp.status_code == 201, resp.text
