@@ -1,14 +1,23 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 
 import ConnectorsPage from '@/pages/ConnectorsPage';
 import { useConnectors } from '@/hooks/useConnectors';
 
+let testMutation: {
+  mutate: ReturnType<typeof vi.fn>;
+  reset: ReturnType<typeof vi.fn>;
+  isPending: boolean;
+  data: { ok: boolean; error: string | null; organizations_total: number } | undefined;
+  error: Error | null;
+};
+
 vi.mock('@/hooks/useConnectors', () => ({
   useConnectors: vi.fn(),
   useCreateConnector: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteConnector: () => ({ mutate: vi.fn(), isPending: false }),
+  useTestConnector: () => testMutation,
 }));
 
 let isSuperuserValue = true;
@@ -92,5 +101,85 @@ describe('ConnectorsPage', () => {
   it('shows an empty state when there are no connectors', () => {
     renderPage();
     expect(screen.getByText(/no connectors/i)).toBeInTheDocument();
+  });
+});
+
+describe('create form — Test connection', () => {
+  beforeEach(() => {
+    testMutation = {
+      mutate: vi.fn(),
+      reset: vi.fn(),
+      isPending: false,
+      data: undefined,
+      error: null,
+    };
+    vi.mocked(useConnectors).mockReturnValue({ data: [], isLoading: false } as never);
+  });
+
+  function openForm() {
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: /add connector/i }));
+  }
+
+  function fillCredentials() {
+    fireEvent.change(screen.getByLabelText(/base url/i), {
+      target: { value: 'https://alertapi.pyronear.org' },
+    });
+    fireEvent.change(screen.getByLabelText(/^login$/i), { target: { value: 'admin' } });
+    fireEvent.change(screen.getByLabelText(/^password$/i), { target: { value: 's3cret' } });
+  }
+
+  it('disables the button until base URL, login, and password are filled', () => {
+    openForm();
+    const button = screen.getByRole('button', { name: /test connection/i });
+    expect(button).toBeDisabled();
+    fillCredentials();
+    expect(button).toBeEnabled();
+  });
+
+  it('sends exactly the three credential fields', () => {
+    openForm();
+    fillCredentials();
+    fireEvent.click(screen.getByRole('button', { name: /test connection/i }));
+    expect(testMutation.mutate).toHaveBeenCalledWith({
+      base_url: 'https://alertapi.pyronear.org',
+      login: 'admin',
+      password: 's3cret',
+    });
+  });
+
+  it('shows a pending state while the test runs', () => {
+    testMutation.isPending = true;
+    openForm();
+    const button = screen.getByRole('button', { name: /testing/i });
+    expect(button).toBeDisabled();
+  });
+
+  it('renders a success result with the organization count', () => {
+    testMutation.data = { ok: true, error: null, organizations_total: 21 };
+    openForm();
+    expect(
+      screen.getByText(/connection ok — 21 organizations visible/i)
+    ).toBeInTheDocument();
+  });
+
+  it('renders the backend error verbatim on failure', () => {
+    testMutation.data = {
+      ok: false,
+      error:
+        'ValueError: alert API returned an unexpected organizations response: Incompatible token scope.',
+      organizations_total: 0,
+    };
+    openForm();
+    expect(screen.getByText(/incompatible token scope/i)).toBeInTheDocument();
+  });
+
+  it('clears a previous result when a credential field changes', () => {
+    testMutation.data = { ok: true, error: null, organizations_total: 21 };
+    openForm();
+    fireEvent.change(screen.getByLabelText(/^password$/i), {
+      target: { value: 'different' },
+    });
+    expect(testMutation.reset).toHaveBeenCalled();
   });
 });

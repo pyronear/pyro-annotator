@@ -3,7 +3,12 @@ import { Link } from 'react-router-dom';
 import { Plus, Plug, Trash2, X } from 'lucide-react';
 import { clsx } from 'clsx';
 
-import { useConnectors, useCreateConnector, useDeleteConnector } from '@/hooks/useConnectors';
+import {
+  useConnectors,
+  useCreateConnector,
+  useDeleteConnector,
+  useTestConnector,
+} from '@/hooks/useConnectors';
 import { useAuthStore } from '@/store/useAuthStore';
 import { formatDateTime } from '@/utils/datetime';
 import type { Connector, ConnectorCreatePayload } from '@/types/api';
@@ -217,6 +222,18 @@ function CreateConnectorModal({
     image_transfer: null,
   });
 
+  const testMutation = useTestConnector();
+  const canTest =
+    formData.base_url.trim() !== '' &&
+    formData.login.trim() !== '' &&
+    formData.password !== '' &&
+    !testMutation.isPending;
+
+  const setCredentialField = (field: 'base_url' | 'login' | 'password', value: string) => {
+    testMutation.reset(); // a stale result must not vouch for edited credentials
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSubmit(formData);
@@ -260,12 +277,15 @@ function CreateConnectorModal({
           </div>
 
           <div>
-            <label className={labelClass}>Base URL</label>
+            <label htmlFor="connector-base-url" className={labelClass}>
+              Base URL
+            </label>
             <input
+              id="connector-base-url"
               type="url"
               required
               value={formData.base_url}
-              onChange={e => setFormData(prev => ({ ...prev, base_url: e.target.value }))}
+              onChange={e => setCredentialField('base_url', e.target.value)}
               className={inputClass}
               placeholder="https://alertapi.example.org"
             />
@@ -287,25 +307,59 @@ function CreateConnectorModal({
           </div>
 
           <div>
-            <label className={labelClass}>Login</label>
+            <label htmlFor="connector-login" className={labelClass}>
+              Login
+            </label>
             <input
+              id="connector-login"
               type="text"
               required
               value={formData.login}
-              onChange={e => setFormData(prev => ({ ...prev, login: e.target.value }))}
+              onChange={e => setCredentialField('login', e.target.value)}
               className={inputClass}
             />
           </div>
 
           <div>
-            <label className={labelClass}>Password</label>
+            <label htmlFor="connector-password" className={labelClass}>
+              Password
+            </label>
             <input
+              id="connector-password"
               type="password"
               required
               value={formData.password}
-              onChange={e => setFormData(prev => ({ ...prev, password: e.target.value }))}
+              onChange={e => setCredentialField('password', e.target.value)}
               className={inputClass}
             />
+          </div>
+
+          <div>
+            <button
+              type="button"
+              onClick={() =>
+                testMutation.mutate({
+                  base_url: formData.base_url,
+                  login: formData.login,
+                  password: formData.password,
+                })
+              }
+              disabled={!canTest}
+              className="rounded-lg border border-line px-3 py-2 font-body text-sm text-char transition-colors hover:bg-ash disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {testMutation.isPending ? 'Testing…' : 'Test connection'}
+            </button>
+            {testMutation.data?.ok && (
+              <p className="mt-2 font-body text-sm text-pine">
+                Connection OK — {testMutation.data.organizations_total} organizations visible
+              </p>
+            )}
+            {testMutation.data && !testMutation.data.ok && (
+              <p className="mt-2 font-body text-sm text-signal">{testMutation.data.error}</p>
+            )}
+            {testMutation.error && (
+              <p className="mt-2 font-body text-sm text-signal">{testMutation.error.message}</p>
+            )}
           </div>
 
           <div>
