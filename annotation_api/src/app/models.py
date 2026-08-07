@@ -112,6 +112,7 @@ class FalsePositiveType(str, Enum):
     CLIFF = (
         "cliff"  # Rock faces, cliffs, or geological features causing false detections
     )
+    COMBINE_HARVESTER = "combine_harvester"  # Harvest dust plumes kicked up by combine harvesters mistaken for smoke
     DARK = "dark"  # Dark shadows or areas with poor lighting causing detection errors
     DUST = "dust"  # Dust clouds from construction, vehicles, or natural sources
     HIGH_CLOUD = "high_cloud"  # High altitude clouds mistaken for smoke
