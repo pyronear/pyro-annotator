@@ -179,9 +179,13 @@ describe('DetectionReviewPage (/localize/done)', () => {
     await waitFor(() => expect(screen.getByText('CAM_01')).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: /Filters/ }));
     fireEvent.click(screen.getByText(/More filters/));
-    expect(screen.queryByText('Model Accuracy')).toBeNull();
+    // The control is labelled "Result", not "Model Accuracy" — asserting on
+    // the latter could never fail. "Result" also names a table column here, so
+    // match the radiogroup rather than the text.
+    expect(screen.queryByRole('radiogroup', { name: 'Result' })).toBeNull();
     expect(screen.queryByText('False Positive Types')).toBeNull();
     expect(screen.queryByText('Smoke Types')).toBeNull();
+    expect(screen.queryByText('Certainty')).toBeNull();
   });
 
   it('shows an all-caught-up empty state when the queue is empty', async () => {

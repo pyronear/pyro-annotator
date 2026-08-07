@@ -132,6 +132,24 @@ describe('SequencesPage empty states', () => {
     expect(screen.getByRole('button', { name: 'Clear filters' })).toBeTruthy();
   });
 
+  it('empty done page keeps the annotated-only filter controls available', async () => {
+    // Regression: the empty state gated these on `defaultProcessingStage ===
+    // 'annotated'`, but /classify/done arrives with ALL_CLASSIFIED_STAGES (an
+    // array), so the condition was never true and the controls vanished
+    // exactly when a user needed them to widen a search that returned nothing.
+    render(<SequencesPage defaultProcessingStage={ALL_CLASSIFIED_STAGES} isReviewPage />, {
+      wrapper,
+    });
+    await waitFor(() => expect(screen.getByText('No classified alerts yet')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /Filters/ }));
+    fireEvent.click(screen.getByText(/More filters/));
+    // "Result" also names a table column, so match the radiogroup, not text.
+    expect(screen.getByRole('radiogroup', { name: 'Result' })).toBeTruthy();
+    expect(screen.getByText('Certainty')).toBeTruthy();
+    expect(screen.getByText('False Positive Types')).toBeTruthy();
+    expect(screen.getByText('Smoke Types')).toBeTruthy();
+  });
+
   it('review page on a specific stage scopes the headline to that stage', async () => {
     render(<SequencesPage defaultProcessingStage="seq_annotation_done" isReviewPage />, {
       wrapper,
