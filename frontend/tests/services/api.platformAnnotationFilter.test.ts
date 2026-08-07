@@ -59,6 +59,22 @@ describe('is_wildfire_alertapi on the wire', () => {
     expect(lastUrl()).toContain('is_wildfire_alertapi=null');
   });
 
+  // GET /sequences honors the same "null" contract, and SequenceFilters lets
+  // callers pass null — so the encoding has to reach these two as well, even
+  // though no current caller sets the filter here.
+  it('sends the filter on the plain sequences list', async () => {
+    await apiClient.getSequences({ is_wildfire_alertapi: null });
+    expect(lastUrl()).toContain('is_wildfire_alertapi=null');
+    await apiClient.getSequences({ is_wildfire_alertapi: 'other' });
+    expect(lastUrl()).toContain('is_wildfire_alertapi=other');
+  });
+
+  it('sends the filter on the sequences-with-annotations list', async () => {
+    await apiClient.getSequencesWithAnnotations({ is_wildfire_alertapi: null });
+    expect(lastUrl()).toContain('is_wildfire_alertapi=null');
+    expect(lastUrl()).toContain('include_annotation=true');
+  });
+
   it('sends the filter on the localize-done queue', async () => {
     await apiClient.getLocalizeDoneQueue({ is_wildfire_alertapi: 'other_smoke' });
     expect(lastUrl()).toContain('is_wildfire_alertapi=other_smoke');

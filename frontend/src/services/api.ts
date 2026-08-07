@@ -49,7 +49,7 @@ import { API_ENDPOINTS } from '@/utils/constants';
  */
 function encodePlatformAnnotationFilter<
   T extends { is_wildfire_alertapi?: AnnotationType | 'null' | null },
->(params: T): T {
+>(params: T): T | (Omit<T, 'is_wildfire_alertapi'> & { is_wildfire_alertapi: 'null' }) {
   return params.is_wildfire_alertapi === null
     ? { ...params, is_wildfire_alertapi: 'null' as const }
     : params;
@@ -119,7 +119,7 @@ class ApiClient {
     const response: AxiosResponse<PaginatedResponse<Sequence>> = await this.client.get(
       API_ENDPOINTS.SEQUENCES,
       {
-        params: filters,
+        params: encodePlatformAnnotationFilter(filters),
       }
     );
     return response.data;
@@ -174,7 +174,7 @@ class ApiClient {
     filters: ExtendedSequenceFilters = {}
   ): Promise<PaginatedResponse<SequenceWithAnnotation>> {
     const enhancedFilters = {
-      ...filters,
+      ...encodePlatformAnnotationFilter(filters),
       include_annotation: true, // Always include annotation data
     };
 
