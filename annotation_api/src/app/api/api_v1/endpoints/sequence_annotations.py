@@ -207,11 +207,18 @@ async def auto_create_detection_annotations(
     """
     Automatically create detection annotations for all detections in a sequence.
 
-    Business logic for detection annotation processing stages:
-    - If has_missed_smoke=false AND has_false_positives=true (only false positives)
-      → processing_stage = "visual_check"
-    - If has_smoke=true OR has_missed_smoke=true (smoke detected or missed smoke)
-      → processing_stage = "bbox_annotation"
+    Only lanes that never needed localization reach this with work to seed:
+
+    - FP-only (no smoke, no missed smoke, has false positives) → "annotated",
+      final content derived from the human's sequence-level judgment.
+    - An empty lane (nothing flagged at all) → "visual_check".
+
+    A lane matching the localization rule seeds nothing. It may only reach
+    ANNOTATED once every detection already carries an annotated-stage
+    annotation (issue #346), so there is nothing left to create — and the old
+    placeholder model this used to implement (smoke → visual_check, mixed →
+    bbox_annotation) is retired with it. See
+    docs/specs/2026-08-07-annotated-entry-guard-design.md.
 
     Args:
         sequence_id: ID of the sequence
@@ -221,18 +228,15 @@ async def auto_create_detection_annotations(
         session: Database session
         user_id: ID of the user whose save triggered the auto-creation
     """
-    # Determine the appropriate processing stage based on sequence annotation
-    if not has_missed_smoke and has_false_positives and not has_smoke:
-        # False positive only sequence (no smoke, no missed smoke, has false positives) → automatically annotated
+    if has_smoke or has_missed_smoke:
+        # Localization is already complete by the time such a lane is
+        # ANNOTATED, so every detection has its annotation. Returning early
+        # says that, rather than computing a stage no row will ever use.
+        return
+
+    if has_false_positives:
         processing_stage = DetectionAnnotationProcessingStage.ANNOTATED
-    elif has_smoke and not has_missed_smoke and not has_false_positives:
-        # True positive only sequence (has smoke, no missed smoke, no false positives) → visual check with pre-populated predictions
-        processing_stage = DetectionAnnotationProcessingStage.VISUAL_CHECK
-    elif has_smoke or has_missed_smoke:
-        # Mixed cases (smoke + false positives, or missed smoke + anything) → bbox annotation needed
-        processing_stage = DetectionAnnotationProcessingStage.BBOX_ANNOTATION
     else:
-        # Default case (no smoke, no false positives, no missed smoke) → visual check
         processing_stage = DetectionAnnotationProcessingStage.VISUAL_CHECK
 
     # Get all detections for this sequence
