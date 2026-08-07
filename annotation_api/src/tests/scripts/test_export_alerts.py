@@ -219,3 +219,19 @@ def test_run_export_failed_download_yields_null_path(tmp_path):
     frames = lines[0]["objects"][0]["frames"]
     assert frames[0]["image_path"] is not None
     assert frames[1]["image_path"] is None
+
+
+def test_run_export_frame_without_url_is_counted_not_downloaded(tmp_path):
+    # The endpoint sends image_url=None for a detection with no bucket_key.
+    pages = two_page_export()
+    pages[0]["items"][0]["objects"][0]["frames"][1]["image_url"] = None
+
+    calls: list[str] = []
+    stats = run_export(fake_pages(pages), make_download(calls), tmp_path, 2)
+    assert stats.missing_url == 1
+    assert calls == ["https://s3/10", "https://s3/20"]
+    lines = [
+        json.loads(line)
+        for line in (tmp_path / "manifest.jsonl").read_text().splitlines()
+    ]
+    assert lines[0]["objects"][0]["frames"][1]["image_path"] is None
