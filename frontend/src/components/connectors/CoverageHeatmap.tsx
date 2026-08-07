@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 import type { ConnectorOrganization, CoverageCell } from '@/types/api';
 
 type CellState = 'imported' | 'empty' | 'partial' | 'failed' | 'missing' | 'not-enabled';
@@ -60,10 +62,12 @@ const STATE_CLASS: Record<CellState, string> = {
   // than a second full-fill accent, keeping to "one accent per element"
   // while still surfacing the attention-worthy part.
   partial: 'bg-pine ring-2 ring-inset ring-signal',
-  // Covered with zero alerts carries no alert meaning, so it gets a neutral
-  // fill, not an accent — same treatment as the "absent" swatch in
-  // TimelineLegend.tsx (bg-ash + ring-line).
-  empty: 'bg-ash ring-1 ring-inset ring-line',
+  // Covered with zero alerts is a success state — the import ran, the day
+  // is covered, there was just nothing to fetch. Pale pine keeps it in the
+  // green family (a quiet cousin of imported) instead of reading as an
+  // absence: the previous ash square was indistinguishable from the dashed
+  // not-enabled outline at 16px, which is now the only grey state.
+  empty: 'bg-pine-soft ring-1 ring-inset ring-pine',
   failed: HATCHED,
   missing: HATCHED,
   'not-enabled': 'border border-dashed border-line',
@@ -82,6 +86,12 @@ function tooltip(state: CellState, day: string, orgName: string, cell?: Coverage
 export function CoverageHeatmap({ organizations, cells, dateFrom, dateEnd }: Props) {
   const days = isoDateRange(dateFrom, dateEnd);
   const byKey = new Map(cells.map(c => [`${c.organization_id}:${c.covered_date}`, c]));
+  // One shared hover tooltip, position: fixed. A per-cell CSS bubble would be
+  // clipped by the overflow-x-auto scroll container (which clips vertically
+  // too), and 16px cells leave no room inside it; fixed positioning escapes
+  // the container without a portal. Viewport coordinates come from the cell's
+  // own rect at mouseenter.
+  const [hover, setHover] = useState<{ text: string; x: number; y: number } | null>(null);
 
   return (
     <div className="overflow-x-auto">
@@ -101,13 +111,19 @@ export function CoverageHeatmap({ organizations, cells, dateFrom, dateEnd }: Pro
               {days.map(day => {
                 const cell = byKey.get(`${org.organization_id}:${day}`);
                 const state = cellState(cell, org.enabled_at, day);
+                const label = tooltip(state, day, org.name, cell);
                 return (
                   <td key={day}>
                     <div
                       role="gridcell"
                       data-testid={`coverage-cell-${org.organization_id}-${day}`}
                       data-state={state}
-                      title={tooltip(state, day, org.name, cell)}
+                      aria-label={label}
+                      onMouseEnter={e => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setHover({ text: label, x: rect.left + rect.width / 2, y: rect.top });
+                      }}
+                      onMouseLeave={() => setHover(null)}
                       className={`h-4 w-4 rounded-sm ${STATE_CLASS[state]}`}
                     />
                   </td>
@@ -117,6 +133,15 @@ export function CoverageHeatmap({ organizations, cells, dateFrom, dateEnd }: Pro
           ))}
         </tbody>
       </table>
+      {hover && (
+        <div
+          role="tooltip"
+          className="pointer-events-none fixed z-50 w-max max-w-[20rem] -translate-x-1/2 -translate-y-full rounded bg-char px-2 py-1 font-body text-xs text-white"
+          style={{ left: hover.x, top: hover.y - 4 }}
+        >
+          {hover.text}
+        </div>
+      )}
     </div>
   );
 }

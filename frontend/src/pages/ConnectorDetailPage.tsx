@@ -419,9 +419,10 @@ export default function ConnectorDetailPage() {
         </p>
 
         {/* Legend — the six cell states are unreadable without it. Swatches
-            mirror CoverageHeatmap's STATE_CLASS exactly (same pine / ash /
-            signal-hatch / dashed treatment), duplicated here rather than
-            imported since the component doesn't export its class constants. */}
+            mirror CoverageHeatmap's STATE_CLASS exactly (same pine /
+            pine-soft / signal-hatch / dashed treatment), duplicated here
+            rather than imported since the component doesn't export its class
+            constants. */}
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 font-body text-detail text-haze">
           <span className="flex items-center gap-1.5">
             <span aria-hidden className="h-3 w-3 rounded-sm bg-pine" />
@@ -435,7 +436,10 @@ export default function ConnectorDetailPage() {
             Partially failed
           </span>
           <span className="flex items-center gap-1.5">
-            <span aria-hidden className="h-3 w-3 rounded-sm bg-ash ring-1 ring-inset ring-line" />
+            <span
+              aria-hidden
+              className="h-3 w-3 rounded-sm bg-pine-soft ring-1 ring-inset ring-pine"
+            />
             Covered, no alerts
           </span>
           <span className="flex items-center gap-1.5">

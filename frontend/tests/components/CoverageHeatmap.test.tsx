@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 
 import { CoverageHeatmap } from '@/components/connectors/CoverageHeatmap';
 import type { ConnectorOrganization, CoverageCell } from '@/types/api';
@@ -94,7 +94,7 @@ describe('CoverageHeatmap', () => {
     ]);
     const target = screen.getByTestId('coverage-cell-10-2026-08-03');
     expect(target).toHaveAttribute('data-state', 'failed');
-    expect(target.getAttribute('title')).toContain('alert API down');
+    expect(target.getAttribute('aria-label')).toContain('alert API down');
   });
 
   it('marks partial days', () => {
@@ -158,10 +158,45 @@ describe('CoverageHeatmap', () => {
         alerts_skipped: 4,
       }),
     ]);
-    const title = screen
+    const label = screen
       .getByTestId('coverage-cell-10-2026-08-03')
-      .getAttribute('title');
-    expect(title).toContain('5 imported');
-    expect(title).toContain('4 skipped');
+      .getAttribute('aria-label');
+    expect(label).toContain('5 imported');
+    expect(label).toContain('4 skipped');
+  });
+
+  it('shows a styled tooltip on hover and removes it on unhover', () => {
+    renderHeatmap([
+      cell({
+        covered_date: '2026-08-03',
+        alerts_fetched: 9,
+        alerts_imported: 5,
+        alerts_skipped: 4,
+      }),
+    ]);
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    fireEvent.mouseEnter(screen.getByTestId('coverage-cell-10-2026-08-03'));
+    expect(screen.getByRole('tooltip')).toHaveTextContent('5 imported');
+    fireEvent.mouseLeave(screen.getByTestId('coverage-cell-10-2026-08-03'));
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+
+  it('surfaces the error in the hover tooltip for failed cells', () => {
+    renderHeatmap([
+      cell({ covered_date: '2026-08-03', status: 'failed', error: 'alert API down' }),
+    ]);
+    fireEvent.mouseEnter(screen.getByTestId('coverage-cell-10-2026-08-03'));
+    expect(screen.getByRole('tooltip')).toHaveTextContent('alert API down');
+  });
+
+  it('renders covered-but-quiet days as pale pine, distinct from not-enabled', () => {
+    // User feedback 2026-08-07: the ash "covered, 0 alerts" square and the
+    // dashed "not enabled yet" outline were indistinguishable at 16px. A
+    // zero-alert covered day is a success state — it joins the green family.
+    renderHeatmap([cell({ covered_date: '2026-08-03', alerts_fetched: 0 })]);
+    const quiet = screen.getByTestId('coverage-cell-10-2026-08-03');
+    expect(quiet).toHaveAttribute('data-state', 'empty');
+    expect(quiet.className).toContain('bg-pine-soft');
+    expect(quiet.className).not.toContain('bg-ash');
   });
 });
