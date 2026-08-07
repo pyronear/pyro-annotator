@@ -34,10 +34,19 @@ def seq_result(failed=0, detection_results=None):
 class TestAnnotateSplitSequence:
     def test_happy_path_creates_one_track_annotation(self, monkeypatch):
         captured = {}
-        monkeypatch.setattr(am, "check_existing_annotation", lambda url, sid: None)
+        monkeypatch.setattr(
+            am, "check_existing_annotation", lambda url, sid, token=None: None
+        )
 
         def fake_create(
-            url, sid, annotation_data, dry_run, existing_id, stage, config=None
+            url,
+            sid,
+            annotation_data,
+            dry_run,
+            existing_id,
+            stage,
+            config=None,
+            auth_token=None,
         ):
             captured.update(
                 sid=sid,
@@ -80,7 +89,9 @@ class TestAnnotateSplitSequence:
 
     def test_annotation_failure_reports_error(self, monkeypatch):
         deleted = []
-        monkeypatch.setattr(am, "check_existing_annotation", lambda url, sid: None)
+        monkeypatch.setattr(
+            am, "check_existing_annotation", lambda url, sid, token=None: None
+        )
         monkeypatch.setattr(
             am, "create_annotation_from_data", lambda *args, **kwargs: False
         )
@@ -100,7 +111,9 @@ class TestAnnotateSplitSequence:
 
     def test_annotation_failure_rolls_back_sequence(self, monkeypatch):
         deleted = []
-        monkeypatch.setattr(am, "check_existing_annotation", lambda url, sid: None)
+        monkeypatch.setattr(
+            am, "check_existing_annotation", lambda url, sid, token=None: None
+        )
         monkeypatch.setattr(
             am, "create_annotation_from_data", lambda *args, **kwargs: False
         )
@@ -116,6 +129,57 @@ class TestAnnotateSplitSequence:
         )
         assert deleted == [42]
         assert result["annotation_created"] is False
+        assert result["errors"] and "rolled back" in result["errors"][0]
+
+    def test_supplied_token_reaches_every_call_without_logging_in(self, monkeypatch):
+        # The worker self-mints its JWT so no plaintext annotation-API password
+        # has to exist in its environment: a token that silently fell back to an
+        # env-credential login would defeat that without failing anything.
+        def fail_login(*args, **kwargs):
+            raise AssertionError("must not log in when a token was supplied")
+
+        monkeypatch.setattr(am, "get_auth_token", fail_login)
+
+        tokens = []
+        monkeypatch.setattr(
+            am,
+            "list_sequence_annotations",
+            lambda url, token, **kw: tokens.append(token) or {"items": []},
+        )
+        monkeypatch.setattr(
+            am,
+            "create_sequence_annotation",
+            lambda url, token, payload: tokens.append(token) or {"id": 7},
+        )
+
+        result = am.annotate_split_sequence(
+            seq_result(),
+            "http://annotation.test",
+            dry_run=False,
+            auth_token="worker-jwt",
+        )
+        assert result["annotation_created"] is True
+        assert tokens == ["worker-jwt", "worker-jwt"]
+
+    def test_rollback_uses_the_supplied_token_without_logging_in(self, monkeypatch):
+        def fail_login(*args, **kwargs):
+            raise AssertionError("must not log in when a token was supplied")
+
+        monkeypatch.setattr(am, "get_auth_token", fail_login)
+        deleted = []
+        monkeypatch.setattr(
+            am,
+            "delete_sequence",
+            lambda url, token, sid: deleted.append((token, sid)),
+        )
+
+        result = am.annotate_split_sequence(
+            seq_result(failed=1),
+            "http://annotation.test",
+            dry_run=False,
+            auth_token="worker-jwt",
+        )
+        assert deleted == [("worker-jwt", 42)]
         assert result["errors"] and "rolled back" in result["errors"][0]
 
     def test_unexpected_error_building_annotation_rolls_back_sequence(

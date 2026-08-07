@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, date as date_type, datetime
 from enum import Enum
 from typing import List, Optional
 
@@ -454,6 +454,119 @@ class User(SQLModel, table=True):
     )
     updated_at: Optional[datetime] = Field(
         default=None, sa_column=Column(DateTime(timezone=True))
+    )
+
+
+class ImportCoverageStatus(str, Enum):
+    """Outcome of one (connector, organization, day) import attempt."""
+
+    OK = "ok"  # imported cleanly, including days with zero alerts
+    PARTIAL = "partial"  # some alerts failed, some succeeded or were skipped
+    FAILED = "failed"  # nothing imported: connector errored, or all alerts failed
+
+
+class AlertApiConnector(SQLModel, table=True):
+    """A credentialed link to one alert API, imported daily by the worker."""
+
+    __tablename__ = "alert_api_connectors"
+    __table_args__ = (
+        UniqueConstraint("base_url", name="uq_connector_base_url"),
+        # Sequence identity is (alert_api_id, source_api) and alert identity is
+        # (source_api, platform_alert_id). Two connectors sharing a source_api
+        # would let alert ids from different platforms collide.
+        UniqueConstraint("source_api", name="uq_connector_source_api"),
+    )
+
+    id: int = Field(
+        default=None, primary_key=True, sa_column_kwargs={"autoincrement": True}
+    )
+    name: str = Field(max_length=100)
+    base_url: str = Field(max_length=255)
+    source_api: SourceApi
+    login: str = Field(max_length=100)
+    # Fernet token — see app.services.secrets. Never serialized to clients.
+    password_encrypted: str
+    is_enabled: bool = Field(default=True)
+    # Days re-imported on every run. This is also the catch-up mechanism: a
+    # missed run is recovered by the next run's window.
+    trailing_days: int = Field(default=3)
+    # "url" / "bucket-copy" / None = the importer's per-source auto-detect.
+    image_transfer: Optional[str] = Field(default=None, max_length=20)
+    last_verified_at: Optional[datetime] = Field(
+        default=None, sa_column=Column(DateTime(timezone=True))
+    )
+    last_verify_error: Optional[str] = Field(default=None)
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        sa_column=Column(DateTime(timezone=True)),
+    )
+    updated_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), onupdate=lambda: datetime.now(UTC)),
+    )
+
+
+class AlertApiConnectorOrganization(SQLModel, table=True):
+    """An organization discovered on a connector's alert API."""
+
+    __tablename__ = "alert_api_connector_organizations"
+    __table_args__ = (
+        UniqueConstraint("connector_id", "organization_id", name="uq_connector_org"),
+    )
+
+    id: int = Field(
+        default=None, primary_key=True, sa_column_kwargs={"autoincrement": True}
+    )
+    connector_id: int = Field(
+        sa_column=Column(ForeignKey("alert_api_connectors.id", ondelete="CASCADE"))
+    )
+    # The organization's id on the REMOTE alert API, not a local FK.
+    organization_id: int
+    name: str = Field(max_length=200)
+    is_enabled: bool = Field(default=False)
+    enabled_at: Optional[datetime] = Field(
+        default=None, sa_column=Column(DateTime(timezone=True))
+    )
+
+
+class AlertApiImportCoverage(SQLModel, table=True):
+    """One row per heatmap cell: what a connector imported for one organization
+    on one day.
+
+    A day with zero alerts still gets a row (status ok, counts 0) — that is what
+    separates "we looked, nothing was there" from "we never got there".
+    """
+
+    __tablename__ = "alert_api_import_coverage"
+    __table_args__ = (
+        UniqueConstraint(
+            "connector_id",
+            "organization_id",
+            "covered_date",
+            name="uq_coverage_connector_org_date",
+        ),
+        Index("ix_coverage_connector_date", "connector_id", "covered_date"),
+    )
+
+    id: int = Field(
+        default=None, primary_key=True, sa_column_kwargs={"autoincrement": True}
+    )
+    connector_id: int = Field(
+        sa_column=Column(ForeignKey("alert_api_connectors.id", ondelete="CASCADE"))
+    )
+    organization_id: int
+    covered_date: date_type
+    status: ImportCoverageStatus
+    alerts_fetched: int = Field(default=0)
+    alerts_imported: int = Field(default=0)
+    alerts_skipped: int = Field(default=0)
+    alerts_failed: int = Field(default=0)
+    # Object-split fan-out: one alert can become several annotation sequences.
+    lanes_created: int = Field(default=0)
+    error: Optional[str] = Field(default=None)
+    last_attempt_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        sa_column=Column(DateTime(timezone=True)),
     )
 
 

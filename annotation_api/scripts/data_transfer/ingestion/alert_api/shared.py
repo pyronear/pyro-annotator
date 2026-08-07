@@ -704,6 +704,7 @@ def post_records_to_annotation_api(
     suppress_logs: bool = True,
     source_api: str = "pyronear_french",
     force_url: bool = False,
+    auth_token: Optional[str] = None,
 ) -> Dict:
     """
     Post multiple sequences and their detections to the annotation API.
@@ -715,6 +716,10 @@ def post_records_to_annotation_api(
         max_detection_workers: Maximum number of workers for detection creation within each sequence
         suppress_logs: Whether to suppress log output during progress display
         source_api: Source API enum value (pyronear_french, api_cenia, etc.)
+        auth_token: Annotation API token to post with. When None, credentials are
+            read from the environment and exchanged for a token — the worker
+            supplies its own self-minted token instead, so that no plaintext
+            annotation-API password has to exist in its environment.
 
     Returns:
         Dictionary with summary statistics including list of successfully imported sequence IDs
@@ -735,8 +740,11 @@ def post_records_to_annotation_api(
         }
 
     # Resolve credentials and get a single auth token up-front to avoid repeated logins
-    login, password = get_annotation_credentials(annotation_api_url)
-    auth_token = get_auth_token(annotation_api_url, username=login, password=password)
+    if auth_token is None:
+        login, password = get_annotation_credentials(annotation_api_url)
+        auth_token = get_auth_token(
+            annotation_api_url, username=login, password=password
+        )
 
     # Group records by sequence
     grouped_records = group_records_by_sequence(records)

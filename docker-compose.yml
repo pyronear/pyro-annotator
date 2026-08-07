@@ -77,6 +77,7 @@ services:
       - AUTH_PASSWORD=admin12345
       - JWT_SECRET=your_jwt_secret_key_change_in_production_please
       - ACCESS_TOKEN_EXPIRE_HOURS=24
+      - CONNECTOR_SECRET_KEY=${CONNECTOR_SECRET_KEY:-}
     restart: unless-stopped
     command: "sh -c 'alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 5050 --proxy-headers'"
     healthcheck:
@@ -109,6 +110,8 @@ services:
       - S3_REGION=us-east-1
       # Auto-annotate model (baked into the image)
       - AUTOANNOTATE_MODEL_PATH=/app/models
+      - CONNECTOR_SECRET_KEY=${CONNECTOR_SECRET_KEY:-}
+      - ANNOTATION_API_INTERNAL_URL=${ANNOTATION_API_INTERNAL_URL:-http://annotation_api:5050}
     restart: unless-stopped
     command: "procrastinate --app=app.worker.app worker"
     healthcheck:

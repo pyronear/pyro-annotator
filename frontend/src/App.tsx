@@ -12,6 +12,8 @@ import LocalizeAlertPage from '@/pages/LocalizeAlertPage';
 import SequenceGroupAnnotatePage from '@/pages/SequenceGroupAnnotatePage';
 import SequenceGroupsListPage from '@/pages/SequenceGroupsListPage';
 import UserManagementPage from '@/pages/UserManagementPage';
+import ConnectorsPage from '@/pages/ConnectorsPage';
+import ConnectorDetailPage from '@/pages/ConnectorDetailPage';
 import GuidePage from '@/pages/GuidePage';
 import LoginPage from '@/pages/LoginPage';
 import { legacyRedirectRoutes } from '@/components/routing/legacyRedirects';
@@ -151,6 +153,8 @@ function App() {
                   </Route>
                   {legacyRedirectRoutes}
                   <Route path="/users" element={<UserManagementPage />} />
+                  <Route path="/connectors" element={<ConnectorsPage />} />
+                  <Route path="/connectors/:connectorId" element={<ConnectorDetailPage />} />
                   <Route path="/guide" element={<GuidePage />} />
                 </Routes>
               </AppLayout>

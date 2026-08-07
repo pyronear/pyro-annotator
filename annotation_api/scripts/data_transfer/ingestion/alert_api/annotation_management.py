@@ -58,13 +58,30 @@ def valid_date(s: str) -> date:
         raise argparse.ArgumentTypeError(msg)
 
 
-def check_existing_annotation(base_url: str, sequence_id: int) -> Optional[int]:
+def resolve_auth_token(base_url: str, auth_token: Optional[str] = None) -> str:
+    """Return the caller's annotation API token, or log in to mint one.
+
+    Callers that already hold a token (the worker self-mints one so that no
+    plaintext annotation-API password has to exist in its environment) pass it
+    through; passing None keeps the historical behaviour of reading
+    ANNOTATOR_LOGIN/PASSWORD from the environment.
+    """
+    if auth_token is not None:
+        return auth_token
+    login, password = shared.get_annotation_credentials(base_url)
+    return get_auth_token(base_url, login, password)
+
+
+def check_existing_annotation(
+    base_url: str, sequence_id: int, auth_token: Optional[str] = None
+) -> Optional[int]:
     """
     Check if a sequence already has an annotation.
 
     Args:
         base_url: Base URL of the annotation API
         sequence_id: ID of the sequence to check
+        auth_token: Annotation API token to use (None logs in from the environment)
 
     Returns:
         Annotation ID if found, None if no annotation exists
@@ -78,8 +95,7 @@ def check_existing_annotation(base_url: str, sequence_id: int) -> Optional[int]:
     """
     try:
         # Get authentication token
-        login, password = shared.get_annotation_credentials(base_url)
-        auth_token = get_auth_token(base_url, login, password)
+        auth_token = resolve_auth_token(base_url, auth_token)
         response = list_sequence_annotations(
             base_url, auth_token, sequence_id=sequence_id
         )
@@ -108,6 +124,7 @@ def create_annotation_from_data(
     existing_annotation_id: Optional[int] = None,
     processing_stage: SequenceAnnotationProcessingStage = SequenceAnnotationProcessingStage.READY_TO_ANNOTATE,
     config: Optional[Dict[str, Any]] = None,
+    auth_token: Optional[str] = None,
 ) -> bool:
     """
     Create or update a sequence annotation from analyzed data.
@@ -122,6 +139,7 @@ def create_annotation_from_data(
         dry_run: If True, only log what would be done without making changes
         existing_annotation_id: ID of existing annotation to update (None to create new)
         processing_stage: Processing stage to set for the annotation
+        auth_token: Annotation API token to use (None logs in from the environment)
 
     Returns:
         True if annotation was created/updated successfully, False otherwise
@@ -150,8 +168,7 @@ def create_annotation_from_data(
     """
     try:
         # Get authentication token
-        login, password = shared.get_annotation_credentials(base_url)
-        auth_token = get_auth_token(base_url, login, password)
+        auth_token = resolve_auth_token(base_url, auth_token)
 
         if existing_annotation_id:
             # Update existing annotation (PATCH)
@@ -240,11 +257,12 @@ def create_annotation_from_data(
         return False
 
 
-def _rollback_sequence(sequence_id: int, annotation_api_url: str) -> None:
+def _rollback_sequence(
+    sequence_id: int, annotation_api_url: str, auth_token: Optional[str] = None
+) -> None:
     """Delete a sequence as part of the `annotate_split_sequence` rollback path."""
-    login, password = shared.get_annotation_credentials(annotation_api_url)
     try:
-        token = get_auth_token(annotation_api_url, username=login, password=password)
+        token = resolve_auth_token(annotation_api_url, auth_token)
         delete_sequence(annotation_api_url, token, sequence_id)
     except Exception as exc:
         logging.warning(f"Rollback delete of sequence {sequence_id} failed: {exc}")
@@ -254,6 +272,7 @@ def annotate_split_sequence(
     seq_result: Dict[str, Any],
     annotation_api_url: str,
     dry_run: bool = False,
+    auth_token: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Write the single-track annotation for one imported object sequence.
 
@@ -261,6 +280,9 @@ def annotate_split_sequence(
     the annotation fails outright, delete the sequence instead (a
     half-imported or annotation-less object would 409 on the next run and
     never be completed), and report the rollback as an error.
+
+    `auth_token` is threaded through to every annotation API call; None keeps
+    the historical behaviour of logging in from the environment.
     """
     sequence_id = seq_result["sequence_id"]
     result: Dict[str, Any] = {
@@ -272,7 +294,7 @@ def annotate_split_sequence(
     }
 
     if seq_result["failed_detections"] > 0:
-        _rollback_sequence(sequence_id, annotation_api_url)
+        _rollback_sequence(sequence_id, annotation_api_url, auth_token)
         result["errors"].append(
             f"sequence {sequence_id} rolled back: "
             f"{seq_result['failed_detections']}/{seq_result['total_detections']} detections failed"
@@ -284,7 +306,7 @@ def annotate_split_sequence(
             seq_result.get("detection_results", [])
         )
         existing_annotation_id = check_existing_annotation(
-            annotation_api_url, sequence_id
+            annotation_api_url, sequence_id, auth_token
         )
         if create_annotation_from_data(
             annotation_api_url,
@@ -294,6 +316,7 @@ def annotate_split_sequence(
             existing_annotation_id,
             SequenceAnnotationProcessingStage.READY_TO_ANNOTATE,
             config=None,
+            auth_token=auth_token,
         ):
             result["annotation_created"] = True
             result["annotation_id"] = (
@@ -304,13 +327,13 @@ def annotate_split_sequence(
             )
         else:
             if not dry_run:
-                _rollback_sequence(sequence_id, annotation_api_url)
+                _rollback_sequence(sequence_id, annotation_api_url, auth_token)
             result["errors"].append(
                 f"sequence {sequence_id} rolled back: failed to create annotation"
             )
     except Exception as exc:
         if not dry_run:
-            _rollback_sequence(sequence_id, annotation_api_url)
+            _rollback_sequence(sequence_id, annotation_api_url, auth_token)
         result["errors"].append(
             f"sequence {sequence_id} rolled back: unexpected error building annotation: {exc}"
         )

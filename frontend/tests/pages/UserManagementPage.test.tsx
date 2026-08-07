@@ -33,6 +33,26 @@ const localizer: User = {
   created_at: '2026-01-02T00:00:00Z',
 };
 
+const inactiveUser: User = {
+  id: 3,
+  username: 'benched',
+  is_active: false,
+  is_superuser: false,
+  can_localize: false,
+  is_system: false,
+  created_at: '2026-01-02T00:00:00Z',
+};
+
+const systemUser: User = {
+  id: 99,
+  username: 'worker',
+  is_active: true,
+  is_superuser: false,
+  can_localize: false,
+  is_system: true,
+  created_at: '2026-01-02T00:00:00Z',
+};
+
 const renderPage = () => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -145,5 +165,46 @@ describe('UserManagementPage can_localize', () => {
         expect.objectContaining({ can_localize: false })
       )
     );
+  });
+});
+
+describe('UserManagementPage status pill', () => {
+  it('shows a neutral Service pill for system users, not Active', async () => {
+    vi.mocked(apiClient.getUsers).mockResolvedValue({
+      items: [localizer, systemUser],
+      page: 1,
+      pages: 1,
+      size: 50,
+      total: 2,
+    });
+
+    renderPage();
+
+    const systemRow = (await screen.findByText('worker')).closest('tr') as HTMLElement;
+    expect(within(systemRow).getByText('Service')).toBeInTheDocument();
+    expect(within(systemRow).queryByText('Active')).not.toBeInTheDocument();
+    expect(within(systemRow).queryByText('Inactive')).not.toBeInTheDocument();
+  });
+
+  it('still shows Active for an ordinary active user', async () => {
+    renderPage();
+
+    const row = (await screen.findByText('scout')).closest('tr') as HTMLElement;
+    expect(within(row).getByText('Active')).toBeInTheDocument();
+  });
+
+  it('still shows Inactive for an ordinary inactive user', async () => {
+    vi.mocked(apiClient.getUsers).mockResolvedValue({
+      items: [inactiveUser],
+      page: 1,
+      pages: 1,
+      size: 50,
+      total: 1,
+    });
+
+    renderPage();
+
+    const row = (await screen.findByText('benched')).closest('tr') as HTMLElement;
+    expect(within(row).getByText('Inactive')).toBeInTheDocument();
   });
 });

@@ -63,7 +63,13 @@ def api_get(route: str, access_token: str):
     """
     headers = make_request_headers(access_token=access_token)
     logging.debug(f"Making an HTTP request to route {route}")
-    response = requests.get(route, headers=headers)
+    # 30s: these are list endpoints (sequences/cameras/organizations) that can
+    # legitimately take longer than the 5s token exchange under real load, but
+    # this now also runs on the worker's connector-verify path behind a button
+    # a human is watching (via asyncio.to_thread), so it must never hang
+    # forever on a black-holed connection — no timeout previously bounded this
+    # call at all.
+    response = requests.get(route, headers=headers, timeout=30)
     try:
         return response.json()
     except Exception:

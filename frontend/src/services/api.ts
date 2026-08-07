@@ -38,6 +38,12 @@ import {
   SequenceGroup,
   SequenceGroupListItem,
   SequenceGroupStats,
+  Connector,
+  ConnectorOrganization,
+  ConnectorCreatePayload,
+  ConnectorUpdatePayload,
+  CoverageCell,
+  VerifyResult,
 } from '@/types/api';
 import { API_ENDPOINTS } from '@/utils/constants';
 
@@ -603,6 +609,67 @@ class ApiClient {
 
   async deleteUser(id: number): Promise<void> {
     await this.client.delete(`/users/${id}`);
+  }
+
+  // Alert API Connectors
+  async getConnectors(): Promise<Connector[]> {
+    const response: AxiosResponse<Connector[]> = await this.client.get('/connectors/');
+    return response.data;
+  }
+
+  async createConnector(payload: ConnectorCreatePayload): Promise<Connector> {
+    const response: AxiosResponse<Connector> = await this.client.post('/connectors/', payload);
+    return response.data;
+  }
+
+  async updateConnector(id: number, payload: ConnectorUpdatePayload): Promise<Connector> {
+    const response: AxiosResponse<Connector> = await this.client.patch(
+      `/connectors/${id}`,
+      payload
+    );
+    return response.data;
+  }
+
+  async deleteConnector(id: number): Promise<void> {
+    await this.client.delete(`/connectors/${id}`);
+  }
+
+  async verifyConnector(id: number): Promise<VerifyResult> {
+    const response: AxiosResponse<VerifyResult> = await this.client.post(
+      `/connectors/${id}/verify`
+    );
+    return response.data;
+  }
+
+  async getConnectorOrganizations(id: number): Promise<ConnectorOrganization[]> {
+    const response: AxiosResponse<ConnectorOrganization[]> = await this.client.get(
+      `/connectors/${id}/organizations`
+    );
+    return response.data;
+  }
+
+  async toggleConnectorOrganization(
+    id: number,
+    organizationId: number,
+    isEnabled: boolean
+  ): Promise<ConnectorOrganization> {
+    const response: AxiosResponse<ConnectorOrganization> = await this.client.patch(
+      `/connectors/${id}/organizations/${organizationId}`,
+      { is_enabled: isEnabled }
+    );
+    return response.data;
+  }
+
+  async getConnectorCoverage(
+    id: number,
+    dateFrom: string,
+    dateEnd: string
+  ): Promise<CoverageCell[]> {
+    const response: AxiosResponse<CoverageCell[]> = await this.client.get(
+      `/connectors/${id}/coverage`,
+      { params: { date_from: dateFrom, date_end: dateEnd } }
+    );
+    return response.data;
   }
 
   // Health check

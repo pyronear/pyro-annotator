@@ -35,6 +35,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 COPY src/alembic.ini /app/alembic.ini
 COPY src/migrations /app/migrations
 COPY src/app /app/app
+# The worker imports the alert-API importer as a library (see app/worker.py).
+COPY scripts /app/scripts
 
 # Install project
 RUN --mount=type=cache,target=/root/.cache/uv \

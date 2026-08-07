@@ -8,6 +8,7 @@ from fastapi import APIRouter
 from app.api.api_v1.endpoints import (
     auto_annotate,
     cameras,
+    connectors,
     detection_annotations,
     detections,
     organizations,
@@ -27,6 +28,7 @@ api_router.include_router(auth.router, prefix="/auth", tags=["authentication"])
 
 # User management endpoints
 api_router.include_router(users.router, prefix="/users", tags=["users"])
+api_router.include_router(connectors.router, prefix="/connectors", tags=["connectors"])
 
 api_router.include_router(detections.router, prefix="/detections", tags=["detections"])
 api_router.include_router(
