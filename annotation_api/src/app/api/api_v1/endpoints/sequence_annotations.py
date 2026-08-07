@@ -717,9 +717,9 @@ async def apply_annotation_update(
 
     # Smoke-localization exit guard (spec: smoke-localization entry point): a
     # lane matching the localization rule (see `localization_rule`; unsure lanes
-    # are exempt — they resolve through sequence review) may only be submitted
-    # seq_annotation_done -> annotated once every detection carries an
-    # annotated-stage detection annotation.
+    # are exempt — they resolve through sequence review) may only reach
+    # annotated once every detection carries an annotated-stage detection
+    # annotation.
     target_has_smoke = (
         derive_has_smoke(payload.annotation)
         if payload.annotation is not None
@@ -733,9 +733,14 @@ async def apply_annotation_update(
     target_is_unsure = (
         payload.is_unsure if payload.is_unsure is not None else existing.is_unsure
     )
+    # Guard every path into ANNOTATED, not just seq_annotation_done ->
+    # ANNOTATED (issue #346): a bulk stage rewrite or an ad-hoc PATCH from
+    # ready_to_annotate would otherwise slip an unlocalized smoke lane into
+    # the done list and into the export. The stage must actually be CHANGING
+    # — a lane already at ANNOTATED being edited for some other reason must
+    # not be re-guarded against data it did not create.
     if (
-        existing.processing_stage
-        == SequenceAnnotationProcessingStage.SEQ_ANNOTATION_DONE
+        existing.processing_stage != SequenceAnnotationProcessingStage.ANNOTATED
         and target_processing_stage == SequenceAnnotationProcessingStage.ANNOTATED
         and needs_localization(
             target_has_smoke, target_has_missed_smoke, target_is_unsure
