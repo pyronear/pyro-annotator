@@ -314,6 +314,10 @@ async def test_wrong_stage_rejected(
         stage="seq_annotation_done",
     )
     # Already annotated — a race means the client's queue snapshot is stale.
+    # Its frame is localized first: a smoke lane cannot be created at annotated
+    # without that (issue #346), and this lane is meant to look genuinely
+    # finished rather than merely mis-staged.
+    await _annotate_detection(authenticated_client, det_b)
     ann_b = await _create_sequence_annotation(
         authenticated_client,
         seq_b.id,
