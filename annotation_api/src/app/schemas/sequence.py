@@ -5,6 +5,7 @@
 
 
 from datetime import datetime
+from enum import Enum
 from typing import List, Optional
 
 from pydantic import BaseModel, Field, ConfigDict
@@ -26,11 +27,19 @@ __all__ = [
     "LocalizationQueueItem",
     "LocalizationQueueLane",
     "MaterializeFrameRequest",
+    "QueueOrderByField",
     "SequenceCreate",
     "SequenceRead",
     "SequenceUpdateBboxAuto",
     "SequenceUpdateBboxVerified",
 ]
+
+
+class QueueOrderByField(str, Enum):
+    """Orderable columns of the alert-grouped queue endpoints."""
+
+    recorded_at = "recorded_at"
+    temporal_model_score = "temporal_model_score"
 
 
 class Azimuth(BaseModel):

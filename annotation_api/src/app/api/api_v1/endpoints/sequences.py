@@ -74,6 +74,7 @@ from app.schemas.sequence import (
     LocalizationQueueLane,
     LocalizeDoneQueueItem,
     MaterializeFrameRequest,
+    QueueOrderByField,
     SequenceCreate,
     SequenceRead,
     SequenceTemporalScoreUpdate,
@@ -1170,11 +1171,29 @@ async def unskip_alert(
     await session.commit()
 
 
+def _queue_order_clause(alerts, order_by: QueueOrderByField, direction: OrderDirection):
+    """ORDER BY for an alert-grouped queue subquery.
+
+    NULLs are placed last in BOTH directions on purpose: Postgres orders them
+    FIRST on DESC, which would fill the top of a score-descending queue with
+    alerts the platform never scored. An unscored alert is unmeasured, not
+    low-confidence, so it belongs at the bottom either way.
+    """
+    column = alerts.c[order_by.value]
+    ordered = desc(column) if direction == OrderDirection.desc else asc(column)
+    return ordered.nullslast()
+
+
 # NOTE: declared before GET /{sequence_id} — the int path converter would
 # otherwise turn /localization-queue into a 422.
 @router.get("/localization-queue")
 async def localization_queue(
     skipped: bool = Query(False),
+    order_by: QueueOrderByField = Query(
+        QueueOrderByField.recorded_at,
+        description="Column to order alerts by. Unscored alerts sort last either way.",
+    ),
+    order_direction: OrderDirection = Query(OrderDirection.desc),
     session: AsyncSession = Depends(get_session),
     params: Params = Depends(),
     current_user: User = Depends(get_current_user),
@@ -1243,7 +1262,7 @@ async def localization_queue(
     page_rows = (
         await session.execute(
             select(alerts)
-            .order_by(desc(alerts.c.recorded_at))
+            .order_by(_queue_order_clause(alerts, order_by, order_direction))
             .offset((params.page - 1) * params.size)
             .limit(params.size)
         )
@@ -1401,6 +1420,11 @@ async def classify_queue(
         None, description=PLATFORM_ANNOTATION_FILTER_DESC
     ),
     skipped: bool = Query(False),
+    order_by: QueueOrderByField = Query(
+        QueueOrderByField.recorded_at,
+        description="Column to order alerts by. Unscored alerts sort last either way.",
+    ),
+    order_direction: OrderDirection = Query(OrderDirection.desc),
     session: AsyncSession = Depends(get_session),
     params: Params = Depends(),
     current_user: User = Depends(get_current_user),
@@ -1463,7 +1487,7 @@ async def classify_queue(
     page_rows = (
         await session.execute(
             select(alerts)
-            .order_by(desc(alerts.c.recorded_at))
+            .order_by(_queue_order_clause(alerts, order_by, order_direction))
             .offset((params.page - 1) * params.size)
             .limit(params.size)
         )
@@ -1518,6 +1542,11 @@ async def localize_done_queue(
     annotator_id: Optional[int] = Query(
         None, description="Alerts with any lane contributed to by this user"
     ),
+    order_by: QueueOrderByField = Query(
+        QueueOrderByField.recorded_at,
+        description="Column to order alerts by. Unscored alerts sort last either way.",
+    ),
+    order_direction: OrderDirection = Query(OrderDirection.desc),
     session: AsyncSession = Depends(get_session),
     params: Params = Depends(),
     current_user: User = Depends(get_current_user),
@@ -1577,7 +1606,7 @@ async def localize_done_queue(
     page_rows = (
         await session.execute(
             select(alerts)
-            .order_by(desc(alerts.c.recorded_at))
+            .order_by(_queue_order_clause(alerts, order_by, order_direction))
             .offset((params.page - 1) * params.size)
             .limit(params.size)
         )
@@ -1635,6 +1664,11 @@ async def classify_done(
     annotator_id: Optional[int] = Query(
         None, description="Alerts with any lane contributed to by this user"
     ),
+    order_by: QueueOrderByField = Query(
+        QueueOrderByField.recorded_at,
+        description="Column to order alerts by. Unscored alerts sort last either way.",
+    ),
+    order_direction: OrderDirection = Query(OrderDirection.desc),
     session: AsyncSession = Depends(get_session),
     params: Params = Depends(),
     current_user: User = Depends(get_current_user),
@@ -1741,7 +1775,8 @@ async def classify_done(
             # platform_alert_id tie-break keeps page boundaries stable when
             # alerts share a recorded_at
             .order_by(
-                desc(alerts_sq.c.recorded_at), desc(alerts_sq.c.platform_alert_id)
+                _queue_order_clause(alerts_sq, order_by, order_direction),
+                desc(alerts_sq.c.platform_alert_id),
             )
             .offset((params.page - 1) * params.size)
             .limit(params.size)
