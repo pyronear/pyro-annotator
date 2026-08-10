@@ -89,6 +89,8 @@ model scored it low". It covers:
 - fail-opens — the model was unreachable or the job went stale;
 - sequences that never reached the model's `MIN_FRAMES`;
 - sequences the risk gate dropped;
+- **sibling lanes** — this object is not the one the model scored (see Object
+  attribution below);
 - everything imported before this change ships (no backfill — see Non-goals).
 
 This distinction is the whole value of the column, so it carries a SQL comment
@@ -115,21 +117,69 @@ directly and emitted under the module's existing `sequence_*` naming:
 **2. `shared.py`** (`transform_sequence_data`, line 173). Map the three record
 keys into the sequence-creation payload.
 
-**3. `object_split.py`** — **no change required.** `split_sequence_records`
-copies the whole record per member (`record = dict(records_by_key[key])`, line
-233), so the new keys reach every sibling automatically.
+**3. `object_split.py`** (`split_sequence_records`). `record =
+dict(records_by_key[key])` (line 233) copies the new keys to *every* member, so
+the three keys must be **cleared on non-primary members** — see below.
 
-### Sibling semantics
+### Object attribution: the score belongs to one object only
 
-Object-splitting turns one alert-API sequence into N annotator lanes. All N
-share one score, which is correct by construction: `platform_alert_id` is the
-alert-API *sequence* id (`object_split.py:322`), so a `platform_alert_id` group
-descends from exactly one scored sequence. Aggregating a score per alert is
-unambiguous — `MAX` and `ANY` are identical.
+The temporal model does not score a whole frame. `_sequence_frames_and_roi`
+(`validation.py:98-133`) builds an ROI and passes it to `predict()`:
 
-The consequence to remember downstream: **the score is an alert-level prior, not
-per-object truth**. An alert-sequence containing both a real plume and a cloud
-produces two lanes carrying the same high score.
+> "The ROI is the union envelope of the kept detections' **primary** bboxes …
+> scoping the temporal verdict to the tracked region so unrelated activity
+> elsewhere in the frame can't pollute it."
+
+It is built from `det.bbox` only, never `others_bboxes`. A pyro-api `Sequence`
+is therefore *already one tracked object*, and its score is that object's,
+computed on a crop that deliberately **excludes** the other boxes in the frame —
+`detections.py:648` states it plainly: "Only the primary bbox tracks the
+sequence; siblings in others_bboxes are unrelated detections."
+
+The annotator's object split, by contrast, builds lanes from both `bbox` and
+`others_bboxes`. So:
+
+| annotator lane | relationship to the score |
+|---|---|
+| **primary** (`alert_api_id == platform_alert_id`) | correct — the object the model scored |
+| **sibling** (synthetic `alert_api_id`) | **not scored** — the model's ROI was drawn to exclude this region |
+
+Propagating the score to siblings would assert a verdict about an object the
+model was specifically prevented from looking at: a cloud beside a real plume
+would inherit the plume's `0.87`, and that `0.87` exists *because* the cloud was
+excluded. **Only the primary lane carries the score; siblings are `NULL`.**
+
+Sibling objects generally do have a real score under a *different* alert-API
+sequence (each box in a multi-box frame spawns its own detection and joins its
+own sequence). Recovering that link is the known cross-alert sibling problem
+(#262) and is out of scope here.
+
+No new column is needed to tell them apart: primary lanes keep the real
+`alert_api_id`, siblings get synthetic ids
+(`alert_id_base + sid * 1000 + object_index`), so `alert_api_id ==
+platform_alert_id` identifies the primary.
+
+Two edge cases:
+
+- `select_primary_index` (`object_split.py:97-106`) picks the primary
+  heuristically ("most `bbox`-sourced boxes, earliest start on ties"). It is a
+  reconstruction of which object pyro-api tracked, not a guaranteed match.
+- **Fallback lanes** (`is_fallback`, emitted when clustering yields no objects)
+  keep the real `alert_api_id` and represent the sequence as a whole, so they
+  keep the score.
+
+### Consuming the score per alert
+
+All three queues are alert-shaped rows, so an alert's score is simply its
+primary lane's — no aggregate over a mix of real and inherited values:
+
+- `ClassifyQueueItem` (`schemas/sequence.py:191`) already carries
+  `primary_sequence_id` — a direct join.
+- `LocalizationQueueItem` / `LocalizeDoneQueueItem` (`:163`, `:177`) have no
+  such field, but embed `lanes`, and `LocalizationQueueLane` (`:148`) carries
+  `alert_api_id` — so the primary is identifiable without a schema change.
+
+Wiring any of this up belongs to the triage follow-up, not this spec.
 
 ### Staleness
 
@@ -153,8 +203,9 @@ Read-only exposure. No filtering, ordering, or mutation endpoints in this spec.
   carrying it; a sequence whose key is absent *or* explicitly `null` yields
   `None` — asserting `None` and not `0.0`, since that is the distinction the
   `NULL` semantics rest on.
-- **Object split**: every sibling produced from a split sequence carries the
-  parent's score and versions.
+- **Object split**: the primary lane of a split sequence carries the score and
+  versions; every sibling carries `None` for all three. A fallback lane keeps
+  the score.
 - **Endpoint round-trip**: `POST /sequences/` with the three fields returns them
   from `GET`; `POST` without them stores `None`.
 
@@ -170,6 +221,10 @@ Read-only exposure. No filtering, ordering, or mutation endpoints in this spec.
   score is a separate phase. Note that until the backfill lands, the column is
   `NULL` for existing rows, so a "hide below threshold" filter would empty the
   queue rather than narrow it.
+- **No per-object score badge in the UI** (decided 2026-08-10). Objects of an
+  alert are displayed exactly as today; nothing is hidden or reordered by this
+  change. Score-based triage, when built, acts on the alert row — opening an
+  alert still shows all of its objects, siblings included.
 - **Import-time filtering.** No `--confirmed-fires-only` flag. Storing the score
   supersedes filtering on it: the import stays lossless and triage becomes a
   reversible UI decision.
