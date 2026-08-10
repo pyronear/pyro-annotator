@@ -199,6 +199,9 @@ class LocalizationQueueItem(BaseModel):
     organisation_name: str
     azimuth: Optional[int]
     recorded_at: datetime
+    # The alert's platform temporal-model score: MAX over its lanes, which is
+    # exactly the primary lane's value because siblings are NULL (see #364).
+    temporal_model_score: Optional[float] = None
     lanes: List[LocalizationQueueLane]
     # Present only on skipped=true queue rows.
     skip: Optional[AlertSkipInfo] = None
@@ -214,6 +217,9 @@ class LocalizeDoneQueueItem(BaseModel):
     organisation_name: str
     azimuth: Optional[int]
     recorded_at: datetime
+    # The alert's platform temporal-model score: MAX over its lanes, which is
+    # exactly the primary lane's value because siblings are NULL (see #364).
+    temporal_model_score: Optional[float] = None
     lanes: List[LocalizationQueueLane]
     annotators: List[str] = []
 
@@ -227,6 +233,9 @@ class ClassifyQueueItem(BaseModel):
     organisation_name: str
     azimuth: Optional[float] = None
     recorded_at: datetime
+    # The alert's platform temporal-model score: MAX over its lanes, which is
+    # exactly the primary lane's value because siblings are NULL (see #364).
+    temporal_model_score: Optional[float] = None
     is_wildfire_alertapi: Optional[AnnotationType] = None
     primary_sequence_id: int
     total_objects: int
@@ -255,6 +264,9 @@ class ClassifyDoneItem(BaseModel):
     organisation_name: str
     azimuth: Optional[float] = None
     recorded_at: datetime
+    # The alert's platform temporal-model score: MAX over its lanes, which is
+    # exactly the primary lane's value because siblings are NULL (see #364).
+    temporal_model_score: Optional[float] = None
     is_wildfire_alertapi: Optional[AnnotationType] = None
     primary_sequence_id: int
     lanes: List[ClassifyDoneLane]

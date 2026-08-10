@@ -1204,6 +1204,7 @@ async def localization_queue(
             Sequence.source_api,
             Sequence.platform_alert_id,
             func.min(Sequence.recorded_at).label("recorded_at"),
+            func.max(Sequence.temporal_model_score).label("temporal_model_score"),
         )
         .outerjoin(SequenceAnnotation, SequenceAnnotation.sequence_id == Sequence.id)
         .where(
@@ -1249,7 +1250,11 @@ async def localization_queue(
     ).all()
     maybe_items = [
         await _build_queue_item(
-            session, row.source_api, row.platform_alert_id, row.recorded_at
+            session,
+            row.source_api,
+            row.platform_alert_id,
+            row.recorded_at,
+            temporal_model_score=row.temporal_model_score,
         )
         for row in page_rows
     ]
@@ -1310,6 +1315,7 @@ async def _build_queue_item(
     source_api: SourceApi,
     platform_alert_id: int,
     recorded_at: datetime,
+    temporal_model_score: Optional[float] = None,
     item_cls: type[LocalizationQueueItem]
     | type[LocalizeDoneQueueItem] = LocalizationQueueItem,
 ) -> Optional[LocalizationQueueItem | LocalizeDoneQueueItem]:
@@ -1359,6 +1365,7 @@ async def _build_queue_item(
         organisation_name=first_seq.organisation_name,
         azimuth=first_seq.azimuth,
         recorded_at=recorded_at,
+        temporal_model_score=temporal_model_score,
         lanes=[
             LocalizationQueueLane(
                 sequence_id=seq.id,
@@ -1433,6 +1440,7 @@ async def classify_queue(
             Sequence.source_api,
             Sequence.platform_alert_id,
             func.min(Sequence.recorded_at).label("recorded_at"),
+            func.max(Sequence.temporal_model_score).label("temporal_model_score"),
             func.count().label("total_objects"),
             func.sum(
                 case((SequenceAnnotation.processing_stage.in_(DONE_STAGES), 1), else_=0)
@@ -1483,6 +1491,7 @@ async def classify_queue(
                 organisation_name=primary.organisation_name,
                 azimuth=primary.azimuth,
                 recorded_at=row.recorded_at,
+                temporal_model_score=row.temporal_model_score,
                 is_wildfire_alertapi=primary.is_wildfire_alertapi,
                 primary_sequence_id=primary.id,
                 total_objects=row.total_objects,
@@ -1550,6 +1559,7 @@ async def localize_done_queue(
             Sequence.source_api,
             Sequence.platform_alert_id,
             func.min(Sequence.recorded_at).label("recorded_at"),
+            func.max(Sequence.temporal_model_score).label("temporal_model_score"),
         )
         .where(tuple_(Sequence.source_api, Sequence.platform_alert_id).in_(candidates))
         .group_by(Sequence.source_api, Sequence.platform_alert_id)
@@ -1578,6 +1588,7 @@ async def localize_done_queue(
             row.source_api,
             row.platform_alert_id,
             row.recorded_at,
+            temporal_model_score=row.temporal_model_score,
             item_cls=LocalizeDoneQueueItem,
         )
         for row in page_rows
@@ -1659,6 +1670,7 @@ async def classify_done(
             Sequence.source_api,
             Sequence.platform_alert_id,
             func.min(Sequence.recorded_at).label("recorded_at"),
+            func.max(Sequence.temporal_model_score).label("temporal_model_score"),
         )
         .outerjoin(SequenceAnnotation, SequenceAnnotation.sequence_id == Sequence.id)
         .where(tuple_(Sequence.source_api, Sequence.platform_alert_id).in_(candidates))
@@ -1768,6 +1780,7 @@ async def classify_done(
                 organisation_name=primary.organisation_name,
                 azimuth=primary.azimuth,
                 recorded_at=row.recorded_at,
+                temporal_model_score=row.temporal_model_score,
                 is_wildfire_alertapi=primary.is_wildfire_alertapi,
                 primary_sequence_id=primary.id,
                 lanes=[
