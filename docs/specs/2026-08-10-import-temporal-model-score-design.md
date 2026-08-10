@@ -159,14 +159,41 @@ No new column is needed to tell them apart: primary lanes keep the real
 (`alert_id_base + sid * 1000 + object_index`), so `alert_api_id ==
 platform_alert_id` identifies the primary.
 
-Two edge cases:
+### How the primary is identified
 
-- `select_primary_index` (`object_split.py:97-106`) picks the primary
-  heuristically ("most `bbox`-sourced boxes, earliest start on ties"). It is a
-  reconstruction of which object pyro-api tracked, not a guaranteed match.
-- **Fallback lanes** (`is_fallback`, emitted when clustering yields no objects)
-  keep the real `alert_api_id` and represent the sequence as a whole, so they
-  keep the score.
+Not by guessing which object looks like smoke — by a label the alert API already
+supplies. Each detection arrives with its tracking box in `detection_bboxes`
+(`det.bbox`) and everything else in `detection_others_bboxes`
+(`det.others_bboxes`). `build_frames` (`object_split.py:56-94`) merges both for
+clustering, but first records every `own` box as `(detection_id, coords)` in
+`primary_keys`. `select_primary_index` (`:97-112`) then picks the cluster with
+the **most `bbox`-sourced members**, earliest start on ties.
+
+Since a pyro-api sequence *is* the chain of `det.bbox` boxes, and the model's ROI
+is the union of exactly those boxes, the winning cluster is by construction the
+chain the model scored.
+
+Three edge cases:
+
+- **Clustering splits the tracked chain** (a drifting plume crossing the IoU
+  threshold): one fragment wins, the other is treated as a sibling and loses the
+  score. Conservative — `NULL`, not a wrong number.
+- **Clustering merges a sibling into the primary**: the sibling shares the lane
+  and inherits the score. Only occurs when clustering already judged them one
+  object.
+- **No `bbox`-sourced box in the imported window**: `bbox_sourced_count` is 0 for
+  every cluster, so the primary falls through to "earliest start" — arbitrary
+  with respect to the model's ROI. Reachable, because pyro-api writes continuity
+  rows with `bbox="[]"` and the importer only takes a 30-frame window, so a
+  window of continuity-only frames has no own boxes at all. **In this case no
+  lane gets the score**, since we cannot tell which object the ROI covered.
+
+That last rule is what keeps the column's guarantee exact: a non-`NULL` score
+always means *we know* this lane is the object the model scored.
+
+**Fallback lanes** (`is_fallback`, emitted when clustering yields no objects or
+splitting raises) keep the real `alert_api_id` and represent the sequence as a
+whole, so they keep the score.
 
 ### Consuming the score per alert
 
@@ -205,7 +232,8 @@ Read-only exposure. No filtering, ordering, or mutation endpoints in this spec.
   `NULL` semantics rest on.
 - **Object split**: the primary lane of a split sequence carries the score and
   versions; every sibling carries `None` for all three. A fallback lane keeps
-  the score.
+  the score. When no box in the imported window is `bbox`-sourced, *no* lane
+  carries the score.
 - **Endpoint round-trip**: `POST /sequences/` with the three fields returns them
   from `GET`; `POST` without them stores `None`.
 
