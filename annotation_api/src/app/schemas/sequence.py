@@ -117,6 +117,21 @@ class SequenceCreate(Azimuth):
     )
 
 
+class SequenceTemporalScoreUpdate(BaseModel):
+    """Natural-key targeted update of the platform temporal-model columns.
+
+    All three value fields are required but nullable. "Absent" and "null" must
+    not be conflated: a sibling lane's correct value is NULL, so a refresh has
+    to write NULL explicitly rather than leave the field untouched.
+    """
+
+    source_api: SourceApi
+    alert_api_id: int
+    temporal_model_score: Optional[float]
+    temporal_model_version: Optional[str] = Field(..., max_length=32)
+    temporal_api_version: Optional[str] = Field(..., max_length=32)
+
+
 class SequenceRead(Azimuth):
     id: int
     source_api: SourceApi = Field(
