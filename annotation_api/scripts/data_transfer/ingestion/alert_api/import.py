@@ -680,12 +680,32 @@ def main() -> None:
                     error_collector,
                 )
 
-            # Show final summary with zero processing and exit gracefully
+            # Show final summary with zero processing and exit gracefully.
+            # A pure backfill lands here: every sequence already existed, so
+            # nothing was "imported". This path exits before the detailed
+            # summary below, so the refresh counts must be reported here or
+            # they are invisible in exactly the run that produced them.
+            refresh_note = ""
+            title = f"⚠️ Processing Complete - {organization} - No Annotations Generated"
+            if stats["sequences_refreshed"] or stats["refresh_failures"]:
+                refresh_note = (
+                    f"\n\n[green]Temporal scores refreshed: "
+                    f"{stats['sequences_refreshed']}[/]"
+                )
+                if stats["refresh_failures"]:
+                    refresh_note += (
+                        f"\n[yellow]Refresh failures: {stats['refresh_failures']}[/]"
+                    )
+                title = (
+                    f"✅ Processing Complete - {organization} - "
+                    f"{stats['sequences_refreshed']} Temporal Score(s) Refreshed"
+                )
             console.print()
             panel = Panel(
                 f"[yellow]No sequences were successfully imported from {organization} alert API data.\n"
-                f"Check import statistics above for details (all sequences may already be imported — see Skipped).[/]",
-                title=f"⚠️ Processing Complete - {organization} - No Annotations Generated",
+                f"Check import statistics above for details (all sequences may already be imported — see Skipped).[/]"
+                + refresh_note,
+                title=title,
                 border_style="yellow",
                 padding=(1, 2),
             )
