@@ -14,6 +14,8 @@ import {
   THEAD_CLASSES,
 } from './tableStyles';
 import { formatDateTime } from '@/utils/datetime';
+import { TemporalScoreCell } from '@/components/sequences/TemporalScoreCell';
+import type { QueueOrderBy } from '@/types/api';
 
 interface ClassifyAlertQueueTableProps {
   items: ClassifyQueueItem[];
@@ -21,6 +23,12 @@ interface ClassifyAlertQueueTableProps {
   /** Skipped-backlog mode: rows carry skip metadata + an Unskip action and are not clickable. */
   skippedView?: boolean;
   onUnskip?: (item: ClassifyQueueItem) => void;
+  /** When supplied, the Score header becomes a sort control. */
+  sort?: {
+    orderBy: QueueOrderBy;
+    orderDirection: 'asc' | 'desc';
+    onSort: (field: QueueOrderBy) => void;
+  };
 }
 
 // "3 · 1 classified"; drops the classified suffix when nothing is
@@ -36,6 +44,7 @@ export function ClassifyAlertQueueTable({
   onAlertClick,
   skippedView = false,
   onUnskip,
+  sort,
 }: ClassifyAlertQueueTableProps) {
   return (
     <div className="overflow-x-auto">
@@ -47,9 +56,31 @@ export function ClassifyAlertQueueTable({
             </th>
             <ColumnHeader label="Camera" tip="Camera that recorded the alert" />
             <ColumnHeader label="Organisation" tip="Organisation operating the camera" />
-            <ColumnHeader label="Recorded" tip="When the alert was recorded" />
+            <ColumnHeader
+              label="Recorded"
+              tip="When the alert was recorded"
+              sort={
+                sort && {
+                  active: sort.orderBy === 'recorded_at',
+                  direction: sort.orderDirection,
+                  onSort: () => sort.onSort('recorded_at'),
+                }
+              }
+            />
             <ColumnHeader label="Source" tip="Alert API the alert was imported from" />
             <ColumnHeader label="Azimuth" tip="Camera viewing direction, in degrees" />
+            <ColumnHeader
+              label="Score"
+              tip="Alert API temporal-model confidence that this alert is smoke. — means the Alert API never scored it."
+              align="right"
+              sort={
+                sort && {
+                  active: sort.orderBy === 'temporal_model_score',
+                  direction: sort.orderDirection,
+                  onSort: () => sort.onSort('temporal_model_score'),
+                }
+              }
+            />
             <ColumnHeader label="Objects" tip="Objects to classify in this alert" align="right" />
             <ColumnHeader
               label="Alert API annotation"
@@ -89,6 +120,9 @@ export function ClassifyAlertQueueTable({
               <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>{item.source_api}</td>
               <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
                 {item.azimuth !== null && item.azimuth !== undefined ? `${item.azimuth}°` : ''}
+              </td>
+              <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
+                <TemporalScoreCell score={item.temporal_model_score} />
               </td>
               <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
                 {formatObjectsCell(item.total_objects, item.classified_objects)}

@@ -16,6 +16,8 @@ import {
   THEAD_CLASSES,
 } from './tableStyles';
 import { formatDateTime } from '@/utils/datetime';
+import { TemporalScoreCell } from '@/components/sequences/TemporalScoreCell';
+import type { QueueOrderBy } from '@/types/api';
 
 interface LocalizeQueueTableProps {
   items: LocalizationQueueItem[];
@@ -23,6 +25,12 @@ interface LocalizeQueueTableProps {
   /** Skipped-backlog mode: rows carry skip metadata + an Unskip action and are not clickable. */
   skippedView?: boolean;
   onUnskip?: (item: LocalizationQueueItem) => void;
+  /** When supplied, the Score header becomes a sort control. */
+  sort?: {
+    orderBy: QueueOrderBy;
+    orderDirection: 'asc' | 'desc';
+    onSort: (field: QueueOrderBy) => void;
+  };
 }
 
 // Objects the annotator will draw boxes on (smoke or missed smoke, not unsure).
@@ -62,6 +70,7 @@ export function LocalizeQueueTable({
   onItemClick,
   skippedView = false,
   onUnskip,
+  sort,
 }: LocalizeQueueTableProps) {
   return (
     <div className="overflow-x-auto">
@@ -73,9 +82,31 @@ export function LocalizeQueueTable({
             </th>
             <ColumnHeader label="Camera" tip="Camera that recorded the alert" />
             <ColumnHeader label="Organisation" tip="Organisation operating the camera" />
-            <ColumnHeader label="Recorded" tip="When the alert was recorded" />
+            <ColumnHeader
+              label="Recorded"
+              tip="When the alert was recorded"
+              sort={
+                sort && {
+                  active: sort.orderBy === 'recorded_at',
+                  direction: sort.orderDirection,
+                  onSort: () => sort.onSort('recorded_at'),
+                }
+              }
+            />
             <ColumnHeader label="Source" tip="Alert API the alert was imported from" />
             <ColumnHeader label="Azimuth" tip="Camera viewing direction, in degrees" />
+            <ColumnHeader
+              label="Score"
+              tip="Alert API temporal-model confidence that this alert is smoke. — means the Alert API never scored it."
+              align="right"
+              sort={
+                sort && {
+                  active: sort.orderBy === 'temporal_model_score',
+                  direction: sort.orderDirection,
+                  onSort: () => sort.onSort('temporal_model_score'),
+                }
+              }
+            />
             <ColumnHeader label="Smoke types" tip="Smoke types assigned during classification" />
             <ColumnHeader
               label="Objects"
@@ -127,6 +158,9 @@ export function LocalizeQueueTable({
                 <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>{item.source_api}</td>
                 <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
                   {item.azimuth !== null && item.azimuth !== undefined ? `${item.azimuth}°` : ''}
+                </td>
+                <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
+                  <TemporalScoreCell score={item.temporal_model_score} />
                 </td>
                 <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>
                   {smokeTypes(item).map(formatSmokeType).join(', ')}

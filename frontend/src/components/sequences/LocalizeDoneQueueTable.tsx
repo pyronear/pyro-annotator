@@ -16,10 +16,18 @@ import {
   THEAD_CLASSES,
 } from './tableStyles';
 import { formatDateTime } from '@/utils/datetime';
+import { TemporalScoreCell } from '@/components/sequences/TemporalScoreCell';
+import type { QueueOrderBy } from '@/types/api';
 
 interface LocalizeDoneQueueTableProps {
   items: LocalizeDoneQueueItem[];
   onItemClick: (item: LocalizeDoneQueueItem) => void;
+  /** When supplied, the Score header becomes a sort control. */
+  sort?: {
+    orderBy: QueueOrderBy;
+    orderDirection: 'asc' | 'desc';
+    onSort: (field: QueueOrderBy) => void;
+  };
 }
 
 // The alert's smoke objects (smoke or missed smoke, not unsure) — the ones
@@ -48,7 +56,7 @@ function alertOutcome(item: LocalizeDoneQueueItem) {
   );
 }
 
-export function LocalizeDoneQueueTable({ items, onItemClick }: LocalizeDoneQueueTableProps) {
+export function LocalizeDoneQueueTable({ items, onItemClick, sort }: LocalizeDoneQueueTableProps) {
   return (
     <div className="overflow-x-auto">
       <table className={TABLE_CLASSES}>
@@ -59,9 +67,31 @@ export function LocalizeDoneQueueTable({ items, onItemClick }: LocalizeDoneQueue
             </th>
             <ColumnHeader label="Camera" tip="Camera that recorded the alert" />
             <ColumnHeader label="Organisation" tip="Organisation operating the camera" />
-            <ColumnHeader label="Recorded" tip="When the alert was recorded" />
+            <ColumnHeader
+              label="Recorded"
+              tip="When the alert was recorded"
+              sort={
+                sort && {
+                  active: sort.orderBy === 'recorded_at',
+                  direction: sort.orderDirection,
+                  onSort: () => sort.onSort('recorded_at'),
+                }
+              }
+            />
             <ColumnHeader label="Source" tip="Alert API the alert was imported from" />
             <ColumnHeader label="Azimuth" tip="Camera viewing direction, in degrees" />
+            <ColumnHeader
+              label="Score"
+              tip="Alert API temporal-model confidence that this alert is smoke. — means the Alert API never scored it."
+              align="right"
+              sort={
+                sort && {
+                  active: sort.orderBy === 'temporal_model_score',
+                  direction: sort.orderDirection,
+                  onSort: () => sort.onSort('temporal_model_score'),
+                }
+              }
+            />
             <ColumnHeader
               label="Objects"
               tip="Smoke objects localized in this alert"
@@ -98,6 +128,9 @@ export function LocalizeDoneQueueTable({ items, onItemClick }: LocalizeDoneQueue
                 <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>{item.source_api}</td>
                 <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
                   {item.azimuth !== null && item.azimuth !== undefined ? `${item.azimuth}°` : ''}
+                </td>
+                <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
+                  <TemporalScoreCell score={item.temporal_model_score} />
                 </td>
                 <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>{objectsCell(item)}</td>
                 <td className={CELL_CLASSES}>

@@ -74,6 +74,7 @@ from app.schemas.sequence import (
     LocalizationQueueLane,
     LocalizeDoneQueueItem,
     MaterializeFrameRequest,
+    QueueOrderByField,
     SequenceCreate,
     SequenceRead,
     SequenceTemporalScoreUpdate,
@@ -1170,11 +1171,45 @@ async def unskip_alert(
     await session.commit()
 
 
+def _queue_order_clauses(
+    alerts, order_by: QueueOrderByField, direction: OrderDirection
+) -> list:
+    """ORDER BY clauses for an alert-grouped queue subquery.
+
+    NULLs are placed last in BOTH directions on purpose: Postgres orders them
+    FIRST on DESC, which would fill the top of a score-descending queue with
+    alerts the platform never scored. An unscored alert is unmeasured, not
+    low-confidence, so it belongs at the bottom either way.
+
+    Every ordering ends in the full alert key `(platform_alert_id, source_api)`
+    so page boundaries are stable. Scores tie constantly — and are entirely
+    NULL until a historical backfill runs — so without a deterministic final
+    key, paginating a score-ordered queue could repeat or skip alerts between
+    pages.
+    """
+    column = alerts.c[order_by.value]
+    primary = desc(column) if direction == OrderDirection.desc else asc(column)
+    clauses = [primary.nullslast()]
+    if order_by is not QueueOrderByField.recorded_at:
+        clauses.append(desc(alerts.c.recorded_at))
+    # The group key is the PAIR — each source API numbers its sequences
+    # independently, so platform_alert_id alone can collide across sources and
+    # would leave the very ties this exists to break unresolved.
+    clauses.append(desc(alerts.c.platform_alert_id))
+    clauses.append(desc(alerts.c.source_api))
+    return clauses
+
+
 # NOTE: declared before GET /{sequence_id} — the int path converter would
 # otherwise turn /localization-queue into a 422.
 @router.get("/localization-queue")
 async def localization_queue(
     skipped: bool = Query(False),
+    order_by: QueueOrderByField = Query(
+        QueueOrderByField.recorded_at,
+        description="Column to order alerts by. Unscored alerts sort last either way.",
+    ),
+    order_direction: OrderDirection = Query(OrderDirection.desc),
     session: AsyncSession = Depends(get_session),
     params: Params = Depends(),
     current_user: User = Depends(get_current_user),
@@ -1204,6 +1239,7 @@ async def localization_queue(
             Sequence.source_api,
             Sequence.platform_alert_id,
             func.min(Sequence.recorded_at).label("recorded_at"),
+            func.max(Sequence.temporal_model_score).label("temporal_model_score"),
         )
         .outerjoin(SequenceAnnotation, SequenceAnnotation.sequence_id == Sequence.id)
         .where(
@@ -1242,14 +1278,18 @@ async def localization_queue(
     page_rows = (
         await session.execute(
             select(alerts)
-            .order_by(desc(alerts.c.recorded_at))
+            .order_by(*_queue_order_clauses(alerts, order_by, order_direction))
             .offset((params.page - 1) * params.size)
             .limit(params.size)
         )
     ).all()
     maybe_items = [
         await _build_queue_item(
-            session, row.source_api, row.platform_alert_id, row.recorded_at
+            session,
+            row.source_api,
+            row.platform_alert_id,
+            row.recorded_at,
+            temporal_model_score=row.temporal_model_score,
         )
         for row in page_rows
     ]
@@ -1310,6 +1350,7 @@ async def _build_queue_item(
     source_api: SourceApi,
     platform_alert_id: int,
     recorded_at: datetime,
+    temporal_model_score: Optional[float] = None,
     item_cls: type[LocalizationQueueItem]
     | type[LocalizeDoneQueueItem] = LocalizationQueueItem,
 ) -> Optional[LocalizationQueueItem | LocalizeDoneQueueItem]:
@@ -1359,6 +1400,7 @@ async def _build_queue_item(
         organisation_name=first_seq.organisation_name,
         azimuth=first_seq.azimuth,
         recorded_at=recorded_at,
+        temporal_model_score=temporal_model_score,
         lanes=[
             LocalizationQueueLane(
                 sequence_id=seq.id,
@@ -1394,6 +1436,11 @@ async def classify_queue(
         None, description=PLATFORM_ANNOTATION_FILTER_DESC
     ),
     skipped: bool = Query(False),
+    order_by: QueueOrderByField = Query(
+        QueueOrderByField.recorded_at,
+        description="Column to order alerts by. Unscored alerts sort last either way.",
+    ),
+    order_direction: OrderDirection = Query(OrderDirection.desc),
     session: AsyncSession = Depends(get_session),
     params: Params = Depends(),
     current_user: User = Depends(get_current_user),
@@ -1433,6 +1480,7 @@ async def classify_queue(
             Sequence.source_api,
             Sequence.platform_alert_id,
             func.min(Sequence.recorded_at).label("recorded_at"),
+            func.max(Sequence.temporal_model_score).label("temporal_model_score"),
             func.count().label("total_objects"),
             func.sum(
                 case((SequenceAnnotation.processing_stage.in_(DONE_STAGES), 1), else_=0)
@@ -1455,7 +1503,7 @@ async def classify_queue(
     page_rows = (
         await session.execute(
             select(alerts)
-            .order_by(desc(alerts.c.recorded_at))
+            .order_by(*_queue_order_clauses(alerts, order_by, order_direction))
             .offset((params.page - 1) * params.size)
             .limit(params.size)
         )
@@ -1483,6 +1531,7 @@ async def classify_queue(
                 organisation_name=primary.organisation_name,
                 azimuth=primary.azimuth,
                 recorded_at=row.recorded_at,
+                temporal_model_score=row.temporal_model_score,
                 is_wildfire_alertapi=primary.is_wildfire_alertapi,
                 primary_sequence_id=primary.id,
                 total_objects=row.total_objects,
@@ -1509,6 +1558,11 @@ async def localize_done_queue(
     annotator_id: Optional[int] = Query(
         None, description="Alerts with any lane contributed to by this user"
     ),
+    order_by: QueueOrderByField = Query(
+        QueueOrderByField.recorded_at,
+        description="Column to order alerts by. Unscored alerts sort last either way.",
+    ),
+    order_direction: OrderDirection = Query(OrderDirection.desc),
     session: AsyncSession = Depends(get_session),
     params: Params = Depends(),
     current_user: User = Depends(get_current_user),
@@ -1550,6 +1604,7 @@ async def localize_done_queue(
             Sequence.source_api,
             Sequence.platform_alert_id,
             func.min(Sequence.recorded_at).label("recorded_at"),
+            func.max(Sequence.temporal_model_score).label("temporal_model_score"),
         )
         .where(tuple_(Sequence.source_api, Sequence.platform_alert_id).in_(candidates))
         .group_by(Sequence.source_api, Sequence.platform_alert_id)
@@ -1567,7 +1622,7 @@ async def localize_done_queue(
     page_rows = (
         await session.execute(
             select(alerts)
-            .order_by(desc(alerts.c.recorded_at))
+            .order_by(*_queue_order_clauses(alerts, order_by, order_direction))
             .offset((params.page - 1) * params.size)
             .limit(params.size)
         )
@@ -1578,6 +1633,7 @@ async def localize_done_queue(
             row.source_api,
             row.platform_alert_id,
             row.recorded_at,
+            temporal_model_score=row.temporal_model_score,
             item_cls=LocalizeDoneQueueItem,
         )
         for row in page_rows
@@ -1624,6 +1680,11 @@ async def classify_done(
     annotator_id: Optional[int] = Query(
         None, description="Alerts with any lane contributed to by this user"
     ),
+    order_by: QueueOrderByField = Query(
+        QueueOrderByField.recorded_at,
+        description="Column to order alerts by. Unscored alerts sort last either way.",
+    ),
+    order_direction: OrderDirection = Query(OrderDirection.desc),
     session: AsyncSession = Depends(get_session),
     params: Params = Depends(),
     current_user: User = Depends(get_current_user),
@@ -1659,6 +1720,7 @@ async def classify_done(
             Sequence.source_api,
             Sequence.platform_alert_id,
             func.min(Sequence.recorded_at).label("recorded_at"),
+            func.max(Sequence.temporal_model_score).label("temporal_model_score"),
         )
         .outerjoin(SequenceAnnotation, SequenceAnnotation.sequence_id == Sequence.id)
         .where(tuple_(Sequence.source_api, Sequence.platform_alert_id).in_(candidates))
@@ -1728,9 +1790,7 @@ async def classify_done(
             select(alerts_sq)
             # platform_alert_id tie-break keeps page boundaries stable when
             # alerts share a recorded_at
-            .order_by(
-                desc(alerts_sq.c.recorded_at), desc(alerts_sq.c.platform_alert_id)
-            )
+            .order_by(*_queue_order_clauses(alerts_sq, order_by, order_direction))
             .offset((params.page - 1) * params.size)
             .limit(params.size)
         )
@@ -1768,6 +1828,7 @@ async def classify_done(
                 organisation_name=primary.organisation_name,
                 azimuth=primary.azimuth,
                 recorded_at=row.recorded_at,
+                temporal_model_score=row.temporal_model_score,
                 is_wildfire_alertapi=primary.is_wildfire_alertapi,
                 primary_sequence_id=primary.id,
                 lanes=[

@@ -36,6 +36,7 @@ const createItem = (overrides: Partial<LocalizationQueueItem> = {}): Localizatio
   organisation_name: 'Test Org',
   azimuth: 180,
   recorded_at: '2024-01-01T10:00:00Z',
+  temporal_model_score: null,
   lanes: [createLane()],
   ...overrides,
 });

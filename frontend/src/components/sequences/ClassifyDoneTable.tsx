@@ -21,10 +21,18 @@ import {
   THEAD_CLASSES,
 } from './tableStyles';
 import { formatDateTime } from '@/utils/datetime';
+import { TemporalScoreCell } from '@/components/sequences/TemporalScoreCell';
+import type { QueueOrderBy } from '@/types/api';
 
 interface ClassifyDoneTableProps {
   items: ClassifyDoneItem[];
   onItemClick: (item: ClassifyDoneItem) => void;
+  /** When supplied, the Score header becomes a sort control. */
+  sort?: {
+    orderBy: QueueOrderBy;
+    orderDirection: 'asc' | 'desc';
+    onSort: (field: QueueOrderBy) => void;
+  };
 }
 
 // Alert-level rollup over every lane: dominant outcome + count of the others.
@@ -53,7 +61,7 @@ function alertDetail(lanes: ClassifyDoneLane[]): string {
   return parts.join(' · ');
 }
 
-export function ClassifyDoneTable({ items, onItemClick }: ClassifyDoneTableProps) {
+export function ClassifyDoneTable({ items, onItemClick, sort }: ClassifyDoneTableProps) {
   return (
     <div className="overflow-x-auto">
       <table className={TABLE_CLASSES}>
@@ -64,9 +72,31 @@ export function ClassifyDoneTable({ items, onItemClick }: ClassifyDoneTableProps
             </th>
             <ColumnHeader label="Camera" tip="Camera that recorded the alert" />
             <ColumnHeader label="Organisation" tip="Organisation operating the camera" />
-            <ColumnHeader label="Recorded" tip="When the alert was recorded" />
+            <ColumnHeader
+              label="Recorded"
+              tip="When the alert was recorded"
+              sort={
+                sort && {
+                  active: sort.orderBy === 'recorded_at',
+                  direction: sort.orderDirection,
+                  onSort: () => sort.onSort('recorded_at'),
+                }
+              }
+            />
             <ColumnHeader label="Source" tip="Alert API the alert was imported from" />
             <ColumnHeader label="Azimuth" tip="Camera viewing direction, in degrees" />
+            <ColumnHeader
+              label="Score"
+              tip="Alert API temporal-model confidence that this alert is smoke. — means the Alert API never scored it."
+              align="right"
+              sort={
+                sort && {
+                  active: sort.orderBy === 'temporal_model_score',
+                  direction: sort.orderDirection,
+                  onSort: () => sort.onSort('temporal_model_score'),
+                }
+              }
+            />
             <ColumnHeader
               label="Alert API annotation"
               tip="Annotation reported by the alert platform"
@@ -103,6 +133,9 @@ export function ClassifyDoneTable({ items, onItemClick }: ClassifyDoneTableProps
                 <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>{item.source_api}</td>
                 <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
                   {item.azimuth !== null && item.azimuth !== undefined ? `${item.azimuth}°` : ''}
+                </td>
+                <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
+                  <TemporalScoreCell score={item.temporal_model_score} />
                 </td>
                 <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>
                   <PlatformAnnotationLabel value={item.is_wildfire_alertapi} />

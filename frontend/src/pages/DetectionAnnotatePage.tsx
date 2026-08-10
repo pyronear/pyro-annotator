@@ -10,6 +10,7 @@ import { TABLE_CARD_CLASSES } from '@/components/sequences/tableStyles';
 import { pickNextLocalizeLane } from '@/utils/annotation/localizeUtils';
 import { localizeDetail, ROUTES } from '@/utils/routes';
 import { QUEUE_COUNTS_KEY } from '@/hooks/useQueueTotals';
+import type { QueueOrderBy } from '@/types/api';
 
 export default function DetectionAnnotatePage() {
   const navigate = useNavigate();
@@ -19,9 +20,33 @@ export default function DetectionAnnotatePage() {
   // persisted — the backlog is a place to visit, not a mode to stay in.
   const [showSkipped, setShowSkipped] = useState(false);
 
+  // The localize work queue leads with the platform's temporal score so the
+  // most likely fires are localized first.
+  const [orderBy, setOrderBy] = useState<QueueOrderBy>('temporal_model_score');
+  const [orderDirection, setOrderDirection] = useState<'asc' | 'desc'>('desc');
+
+  const handleSort = (field: QueueOrderBy) => {
+    if (field === orderBy) {
+      setOrderDirection(d => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setOrderBy(field);
+      setOrderDirection('desc');
+    }
+    // Back to the first page: re-sorting to surface the top alerts is
+    // pointless if the viewer stays on page 4 of the new ordering.
+    setPage(1);
+  };
+
   const { data, isLoading, error } = useQuery({
-    queryKey: ['localization-queue', page, showSkipped],
-    queryFn: () => apiClient.getLocalizationQueue({ page, size: 50, skipped: showSkipped }),
+    queryKey: ['localization-queue', page, showSkipped, orderBy, orderDirection],
+    queryFn: () =>
+      apiClient.getLocalizationQueue({
+        page,
+        size: 50,
+        skipped: showSkipped,
+        order_by: orderBy,
+        order_direction: orderDirection,
+      }),
   });
 
   // Count for the "Skipped (n)" toggle label, independent of the view shown.
@@ -149,6 +174,7 @@ export default function DetectionAnnotatePage() {
           <LocalizeQueueTable
             items={items}
             onItemClick={handleAlertClick}
+            sort={{ orderBy, orderDirection, onSort: handleSort }}
             skippedView={showSkipped}
             onUnskip={item => unskipMutation.mutate(item)}
           />
