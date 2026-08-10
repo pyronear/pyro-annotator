@@ -16,6 +16,7 @@ import {
   THEAD_CLASSES,
 } from './tableStyles';
 import { formatDateTime } from '@/utils/datetime';
+import { TemporalScoreCell } from '@/components/sequences/TemporalScoreCell';
 
 interface LocalizeQueueTableProps {
   items: LocalizationQueueItem[];
@@ -76,6 +77,11 @@ export function LocalizeQueueTable({
             <ColumnHeader label="Recorded" tip="When the alert was recorded" />
             <ColumnHeader label="Source" tip="Alert API the alert was imported from" />
             <ColumnHeader label="Azimuth" tip="Camera viewing direction, in degrees" />
+            <ColumnHeader
+              label="Score"
+              tip="Platform temporal-model confidence that this alert is smoke. — means the platform never scored it."
+              align="right"
+            />
             <ColumnHeader label="Smoke types" tip="Smoke types assigned during classification" />
             <ColumnHeader
               label="Objects"
@@ -127,6 +133,9 @@ export function LocalizeQueueTable({
                 <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>{item.source_api}</td>
                 <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
                   {item.azimuth !== null && item.azimuth !== undefined ? `${item.azimuth}°` : ''}
+                </td>
+                <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
+                  <TemporalScoreCell score={item.temporal_model_score} />
                 </td>
                 <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>
                   {smokeTypes(item).map(formatSmokeType).join(', ')}

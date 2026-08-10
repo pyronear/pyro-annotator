@@ -58,6 +58,7 @@ export interface LocalizationQueueItem {
   organisation_name: string;
   azimuth: number | null;
   recorded_at: string;
+  temporal_model_score: number | null;
   lanes: LocalizationQueueLane[];
   skip?: AlertSkipInfo | null;
 }
@@ -71,6 +72,7 @@ export interface LocalizeDoneQueueItem {
   organisation_name: string;
   azimuth: number | null;
   recorded_at: string;
+  temporal_model_score: number | null;
   lanes: LocalizationQueueLane[];
   annotators: string[];
 }
@@ -99,6 +101,7 @@ export interface ClassifyQueueItem {
   organisation_name: string;
   azimuth: number | null;
   recorded_at: string;
+  temporal_model_score: number | null;
   is_wildfire_alertapi: AnnotationType | null;
   primary_sequence_id: number;
   total_objects: number;
@@ -124,6 +127,7 @@ export interface ClassifyDoneItem {
   organisation_name: string;
   azimuth: number | null;
   recorded_at: string;
+  temporal_model_score: number | null;
   is_wildfire_alertapi: AnnotationType | null;
   primary_sequence_id: number;
   lanes: ClassifyDoneLane[];

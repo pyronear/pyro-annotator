@@ -21,6 +21,7 @@ import {
   THEAD_CLASSES,
 } from './tableStyles';
 import { formatDateTime } from '@/utils/datetime';
+import { TemporalScoreCell } from '@/components/sequences/TemporalScoreCell';
 
 interface ClassifyDoneTableProps {
   items: ClassifyDoneItem[];
@@ -68,6 +69,11 @@ export function ClassifyDoneTable({ items, onItemClick }: ClassifyDoneTableProps
             <ColumnHeader label="Source" tip="Alert API the alert was imported from" />
             <ColumnHeader label="Azimuth" tip="Camera viewing direction, in degrees" />
             <ColumnHeader
+              label="Score"
+              tip="Platform temporal-model confidence that this alert is smoke. — means the platform never scored it."
+              align="right"
+            />
+            <ColumnHeader
               label="Alert API annotation"
               tip="Annotation reported by the alert platform"
             />
@@ -103,6 +109,9 @@ export function ClassifyDoneTable({ items, onItemClick }: ClassifyDoneTableProps
                 <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>{item.source_api}</td>
                 <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
                   {item.azimuth !== null && item.azimuth !== undefined ? `${item.azimuth}°` : ''}
+                </td>
+                <td className={`${CELL_CLASSES} ${DATA_CELL_TEXT}`}>
+                  <TemporalScoreCell score={item.temporal_model_score} />
                 </td>
                 <td className={`${CELL_CLASSES} ${CELL_TEXT}`}>
                   <PlatformAnnotationLabel value={item.is_wildfire_alertapi} />
