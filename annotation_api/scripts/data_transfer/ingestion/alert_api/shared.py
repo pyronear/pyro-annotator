@@ -197,6 +197,11 @@ def transform_sequence_data(record: dict, source_api: str = "pyronear_french") -
         "is_wildfire_alertapi": record[
             "sequence_is_wildfire"
         ],  # Alert API enum: 'wildfire_smoke', 'other_smoke', 'other'
+        # None values are dropped from the form body by requests, so an
+        # unscored sequence simply omits these and the server stores NULL.
+        "temporal_model_score": record.get("sequence_temporal_model_score"),
+        "temporal_model_version": record.get("sequence_temporal_model_version"),
+        "temporal_api_version": record.get("sequence_temporal_api_version"),
         "lat": record["camera_lat"],
         "lon": record["camera_lon"],
         "azimuth": azimuth,
