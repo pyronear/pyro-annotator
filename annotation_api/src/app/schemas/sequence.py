@@ -103,6 +103,18 @@ class SequenceCreate(Azimuth):
         default=None,
         description="Platform alert grouping id. Defaults server-side: decoded from a synthetic alert_api_id when the primary exists (platform sources), else alert_api_id.",
     )
+    temporal_model_score: Optional[float] = Field(
+        default=None,
+        description="Alert-API temporal-model smoke probability for this object. NULL when the platform never scored it — not the same as a low score.",
+    )
+    temporal_model_version: Optional[str] = Field(
+        default=None,
+        description="Model release that produced temporal_model_score (e.g. '0.1.0').",
+    )
+    temporal_api_version: Optional[str] = Field(
+        default=None,
+        description="Temporal API serving-code version (image tag) that produced temporal_model_score.",
+    )
 
 
 class SequenceRead(Azimuth):
@@ -126,6 +138,9 @@ class SequenceRead(Azimuth):
     organisation_id: int
     platform_alert_id: int
     sequence_group_id: Optional[int] = None
+    temporal_model_score: Optional[float] = None
+    temporal_model_version: Optional[str] = None
+    temporal_api_version: Optional[str] = None
 
 
 class SequenceUpdateBboxAuto(BaseModel):
