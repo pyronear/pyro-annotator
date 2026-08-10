@@ -94,9 +94,12 @@ class Settings(BaseSettings):
         "PLATFORM_SERVER_NAME", "ovh-alert-api-prod-v2"
     )
 
-    # Auto-annotate model (baked into the image; see Dockerfile)
+    # Auto-annotate model. The Dockerfile extracts the release tarball straight
+    # into /app/models (it has no top-level directory), so the default must be
+    # that directory — not a subdirectory named after the model. Pinned by
+    # test_autoannotate_model_path_holds_the_weights, which globs this path.
     AUTOANNOTATE_MODEL_PATH: str = os.environ.get(
-        "AUTOANNOTATE_MODEL_PATH", "/app/models/yolo11s_sensitive-detector"
+        "AUTOANNOTATE_MODEL_PATH", "/app/models"
     )
     AUTOANNOTATE_MODEL_NAME: str = os.environ.get(
         "AUTOANNOTATE_MODEL_NAME", "yolo11s_sensitive-detector"

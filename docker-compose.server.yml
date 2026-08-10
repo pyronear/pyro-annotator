@@ -109,7 +109,6 @@ services:
       - S3_SECRET_KEY=${S3_SECRET_KEY}
       - S3_REGION=${S3_REGION}
       - S3_BUCKET_NAME=${S3_BUCKET_NAME}
-      - AUTOANNOTATE_MODEL_PATH=/app/models
     restart: unless-stopped
     command: "procrastinate --app=app.worker.app worker"
     healthcheck:
