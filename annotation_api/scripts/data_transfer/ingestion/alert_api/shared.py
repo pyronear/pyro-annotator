@@ -29,6 +29,7 @@ from rich.console import Console
 from app.clients.annotation_api import (
     get_auth_token,
     create_sequence,
+    update_sequence_temporal_score,
     create_detection_from_bucket_key,
     create_detection_from_url,
     list_detections,
@@ -584,6 +585,34 @@ def _process_single_detection(
     return result
 
 
+def _refresh_temporal_score(
+    annotation_api_url: str, auth_token: str, sequence_data: dict
+) -> bool:
+    """Update an existing sequence's temporal columns. Returns success.
+
+    Always sends all three values, including None: a sibling lane's correct
+    value is NULL, and omitting the field would let a stale score survive a
+    re-import. Never raises — a failed refresh degrades the run's usefulness
+    but must not abort an import.
+    """
+    payload = {
+        "source_api": sequence_data["source_api"],
+        "alert_api_id": sequence_data["alert_api_id"],
+        "temporal_model_score": sequence_data.get("temporal_model_score"),
+        "temporal_model_version": sequence_data.get("temporal_model_version"),
+        "temporal_api_version": sequence_data.get("temporal_api_version"),
+    }
+    try:
+        update_sequence_temporal_score(annotation_api_url, auth_token, payload)
+        return True
+    except AnnotationAPIError as exc:
+        logging.warning(
+            f"Temporal score refresh failed for alert_api_id="
+            f"{payload['alert_api_id']}: {exc}"
+        )
+        return False
+
+
 def post_sequence_to_annotation_api(
     annotation_api_url: str,
     sequence_records: List[dict],
@@ -623,10 +652,17 @@ def post_sequence_to_annotation_api(
         annotation_sequence_id = annotation_sequence["id"]
     except AnnotationAPIError as exc:
         if exc.status_code == 409:
+            # The row already exists, so this is a re-import: refresh the
+            # temporal columns rather than walking away. This is what makes
+            # `make import-alert-api` over a past range a backfill.
+            refreshed = _refresh_temporal_score(
+                annotation_api_url, auth_token, sequence_data
+            )
             return {
                 "success": False,
                 "skipped": True,
                 "skip_reason": "already exists",
+                "refreshed": refreshed,
                 "sequence_id": None,
                 "alert_api_sequence_id": first_record["sequence_id"],
                 "successful_detections": 0,
@@ -730,6 +766,8 @@ def post_records_to_annotation_api(
             "successful_sequences": 0,
             "failed_sequences": 0,
             "skipped_sequences": 0,
+            "refreshed_sequences": 0,
+            "refresh_failures": 0,
             "total_sequences": 0,
             "successful_detections": 0,
             "failed_detections": 0,
@@ -755,6 +793,8 @@ def post_records_to_annotation_api(
     successful_sequences = 0
     failed_sequences = 0
     skipped_sequences = 0
+    refreshed_sequences = 0
+    refresh_failures = 0
     total_successful_detections = 0
     total_failed_detections = 0
     total_skipped_detections = 0
@@ -798,6 +838,13 @@ def post_records_to_annotation_api(
                         if result.get("skipped"):
                             skipped_sequences += 1
                             total_skipped_detections += result["skipped_detections"]
+                            # Only the 409 branch sets this key, so its
+                            # presence marks a refresh attempt.
+                            if "refreshed" in result:
+                                if result["refreshed"]:
+                                    refreshed_sequences += 1
+                                else:
+                                    refresh_failures += 1
                             reason = result.get("skip_reason", "already exists")
                             logging.warning(
                                 f"⚠️ Sequence {alert_api_sequence_id} skipped ({reason})"
@@ -850,6 +897,8 @@ def post_records_to_annotation_api(
         "successful_sequences": successful_sequences,
         "failed_sequences": failed_sequences,
         "skipped_sequences": skipped_sequences,
+        "refreshed_sequences": refreshed_sequences,
+        "refresh_failures": refresh_failures,
         "total_sequences": len(grouped_records),
         "successful_detections": total_successful_detections,
         "failed_detections": total_failed_detections,

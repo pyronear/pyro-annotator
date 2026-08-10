@@ -387,6 +387,8 @@ def main() -> None:
         "sequences_import_successful": 0,
         "sequences_import_failed": 0,
         "sequences_skipped": 0,
+        "sequences_refreshed": 0,
+        "refresh_failures": 0,
         "detections_skipped": 0,
         "detections_attempted_import": 0,
         "detections_import_successful": 0,
@@ -604,6 +606,8 @@ def main() -> None:
                 stats["detections_import_successful"] = result["successful_detections"]
                 stats["detections_import_failed"] = result["failed_detections"]
                 stats["sequences_skipped"] = result.get("skipped_sequences", 0)
+                stats["sequences_refreshed"] = result.get("refreshed_sequences", 0)
+                stats["refresh_failures"] = result.get("refresh_failures", 0)
                 stats["detections_skipped"] = result.get("skipped_detections", 0)
                 successfully_imported_sequence_ids = result["successful_sequence_ids"]
 
@@ -837,6 +841,14 @@ def main() -> None:
 • Successfully imported: {stats['sequences_import_successful']}
 • Skipped (already imported): {stats['sequences_skipped']} sequences / {stats['detections_skipped']} detections
 • Failed: {stats['sequences_import_failed']}"""
+            if stats["sequences_refreshed"] or stats["refresh_failures"]:
+                import_section += (
+                    f"\n• Temporal scores refreshed: {stats['sequences_refreshed']}"
+                )
+            if stats["refresh_failures"]:
+                import_section += (
+                    f"\n• [yellow]Refresh failures: {stats['refresh_failures']}[/]"
+                )
             if stats["sequences_rolled_back"] > 0:
                 import_section += f"\n• Rolled back: {stats['sequences_rolled_back']}"
             summary_parts.append(import_section)

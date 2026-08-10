@@ -340,6 +340,39 @@ def create_sequence(base_url: str, auth_token: str, sequence_data: Dict) -> Dict
     return _handle_response(response, operation=operation)
 
 
+def update_sequence_temporal_score(
+    base_url: str, auth_token: str, update_data: Dict
+) -> Dict:
+    """
+    Refresh a sequence's platform temporal-model columns by natural key.
+
+    Args:
+        base_url: Base URL of the annotation API
+        auth_token: JWT authentication token
+        update_data: Dictionary containing:
+            - source_api: Source API enum value
+            - alert_api_id: Alert API sequence id identifying the row
+            - temporal_model_score: float or None
+            - temporal_model_version: str or None
+            - temporal_api_version: str or None
+
+    Returns:
+        Dictionary containing the updated sequence data
+
+    Raises:
+        NotFoundError: If no sequence matches (source_api, alert_api_id)
+        AnnotationAPIError: For other API errors
+    """
+    url = f"{base_url.rstrip('/')}/api/v1/sequences/temporal-score"
+    operation = (
+        f"refresh temporal score for alert_api_id={update_data.get('alert_api_id')}"
+    )
+    response = _make_request(
+        "PATCH", url, auth_token, operation=operation, json=update_data
+    )
+    return _handle_response(response, operation=operation)
+
+
 def get_sequence(base_url: str, auth_token: str, sequence_id: int) -> Dict:
     """
     Get a specific sequence by ID.
