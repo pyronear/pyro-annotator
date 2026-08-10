@@ -1171,17 +1171,28 @@ async def unskip_alert(
     await session.commit()
 
 
-def _queue_order_clause(alerts, order_by: QueueOrderByField, direction: OrderDirection):
-    """ORDER BY for an alert-grouped queue subquery.
+def _queue_order_clauses(
+    alerts, order_by: QueueOrderByField, direction: OrderDirection
+) -> list:
+    """ORDER BY clauses for an alert-grouped queue subquery.
 
     NULLs are placed last in BOTH directions on purpose: Postgres orders them
     FIRST on DESC, which would fill the top of a score-descending queue with
     alerts the platform never scored. An unscored alert is unmeasured, not
     low-confidence, so it belongs at the bottom either way.
+
+    Every ordering ends in `platform_alert_id` so page boundaries are stable.
+    Scores tie constantly — and are entirely NULL until a historical backfill
+    runs — so without a deterministic final key, paginating a score-ordered
+    queue could repeat or skip alerts between pages.
     """
     column = alerts.c[order_by.value]
-    ordered = desc(column) if direction == OrderDirection.desc else asc(column)
-    return ordered.nullslast()
+    primary = desc(column) if direction == OrderDirection.desc else asc(column)
+    clauses = [primary.nullslast()]
+    if order_by is not QueueOrderByField.recorded_at:
+        clauses.append(desc(alerts.c.recorded_at))
+    clauses.append(desc(alerts.c.platform_alert_id))
+    return clauses
 
 
 # NOTE: declared before GET /{sequence_id} — the int path converter would
@@ -1262,7 +1273,7 @@ async def localization_queue(
     page_rows = (
         await session.execute(
             select(alerts)
-            .order_by(_queue_order_clause(alerts, order_by, order_direction))
+            .order_by(*_queue_order_clauses(alerts, order_by, order_direction))
             .offset((params.page - 1) * params.size)
             .limit(params.size)
         )
@@ -1487,7 +1498,7 @@ async def classify_queue(
     page_rows = (
         await session.execute(
             select(alerts)
-            .order_by(_queue_order_clause(alerts, order_by, order_direction))
+            .order_by(*_queue_order_clauses(alerts, order_by, order_direction))
             .offset((params.page - 1) * params.size)
             .limit(params.size)
         )
@@ -1606,7 +1617,7 @@ async def localize_done_queue(
     page_rows = (
         await session.execute(
             select(alerts)
-            .order_by(_queue_order_clause(alerts, order_by, order_direction))
+            .order_by(*_queue_order_clauses(alerts, order_by, order_direction))
             .offset((params.page - 1) * params.size)
             .limit(params.size)
         )
@@ -1774,10 +1785,7 @@ async def classify_done(
             select(alerts_sq)
             # platform_alert_id tie-break keeps page boundaries stable when
             # alerts share a recorded_at
-            .order_by(
-                _queue_order_clause(alerts_sq, order_by, order_direction),
-                desc(alerts_sq.c.platform_alert_id),
-            )
+            .order_by(*_queue_order_clauses(alerts_sq, order_by, order_direction))
             .offset((params.page - 1) * params.size)
             .limit(params.size)
         )

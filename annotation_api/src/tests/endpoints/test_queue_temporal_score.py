@@ -137,6 +137,33 @@ async def test_sorting_by_score_asc_also_puts_nulls_last(
     assert scores == [0.10, 0.90, None]
 
 
+async def test_score_ordering_is_stable_when_every_score_is_null(
+    authenticated_client: AsyncClient,
+):
+    """Before a historical backfill every score is NULL, so the primary key
+    discriminates nothing. Without a deterministic tie-break, paginating a
+    score-ordered queue could repeat or skip alerts between pages."""
+    for alert_api_id in ("7300", "7301", "7302"):
+        await _scored_queue_alert(
+            authenticated_client, alert_api_id, None, "cam_stable"
+        )
+
+    params = {
+        "camera_name": "cam_stable",
+        "order_by": "temporal_model_score",
+        "order_direction": "desc",
+    }
+    first = await authenticated_client.get("/sequences/classify-queue", params=params)
+    second = await authenticated_client.get("/sequences/classify-queue", params=params)
+    assert first.status_code == 200 and second.status_code == 200
+
+    def ids(response):
+        return [item["platform_alert_id"] for item in response.json()["items"]]
+
+    assert ids(first) == ids(second)
+    assert ids(first) == sorted(ids(first), reverse=True)
+
+
 async def test_default_ordering_is_unchanged(authenticated_client: AsyncClient):
     """No order_by means recorded_at DESC, exactly as before this feature."""
     response = await authenticated_client.get("/sequences/classify-queue")
