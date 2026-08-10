@@ -273,6 +273,11 @@ def split_sequence_records(
             if pos != 0 or not primary_identified:
                 for temporal_key in TEMPORAL_RECORD_KEYS:
                     record[temporal_key] = None
+            if not primary_identified:
+                # A sibling's NULL is a known value, but this is ignorance: we
+                # cannot tell which lane the platform scored, so a refresh must
+                # not write NULL over whatever is already stored.
+                record["sequence_temporal_score_unknown"] = True
             member_records.append(record)
 
         groups.append(

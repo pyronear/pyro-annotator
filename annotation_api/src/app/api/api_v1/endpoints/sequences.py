@@ -76,6 +76,7 @@ from app.schemas.sequence import (
     MaterializeFrameRequest,
     SequenceCreate,
     SequenceRead,
+    SequenceTemporalScoreUpdate,
 )
 from app.services.alert_identity import ALERT_ID_BASE, resolve_platform_alert_id
 from app.services.auto_annotate_scheduling import DONE_STAGES
@@ -200,6 +201,45 @@ async def create_sequence(
         temporal_api_version=temporal_api_version,
     )
     return await sequences.create(payload)
+
+
+@router.patch("/temporal-score", status_code=status.HTTP_200_OK)
+async def update_sequence_temporal_score(
+    payload: SequenceTemporalScoreUpdate,
+    sequences: SequenceCRUD = Depends(get_sequence_crud),
+    current_user: User = Depends(get_current_user),
+) -> SequenceRead:
+    """Refresh the platform temporal-model columns of an existing sequence.
+
+    Keyed on (source_api, alert_api_id) because the importer knows only those
+    at 409 time, never the annotator's internal id. Deliberately narrow: no
+    other column is updatable here, and all three values are overwritten with
+    whatever was sent — including None, which is the correct value for an
+    object-split sibling lane.
+    """
+    stmt = (
+        select(Sequence)
+        .where(Sequence.source_api == payload.source_api)
+        .where(Sequence.alert_api_id == payload.alert_api_id)
+        .limit(1)
+    )
+    existing = (await sequences.session.execute(stmt)).scalars().first()
+    if existing is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                f"No sequence with alert_api_id={payload.alert_api_id} "
+                f"for source_api={payload.source_api.value}"
+            ),
+        )
+
+    existing.temporal_model_score = payload.temporal_model_score
+    existing.temporal_model_version = payload.temporal_model_version
+    existing.temporal_api_version = payload.temporal_api_version
+    sequences.session.add(existing)
+    await sequences.session.commit()
+    await sequences.session.refresh(existing)
+    return existing
 
 
 @router.get("/")

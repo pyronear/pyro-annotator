@@ -2343,3 +2343,137 @@ async def test_create_sequence_accepts_zero_score(authenticated_client: AsyncCli
     response = await authenticated_client.post("/sequences/", data=payload)
     assert response.status_code == 201
     assert response.json()["temporal_model_score"] == 0.0
+
+
+async def _create_scored_sequence(client: AsyncClient, alert_api_id: str, score=None):
+    """Create a sequence and return its JSON, optionally pre-scored."""
+    payload = {
+        "source_api": "pyronear_french",
+        "alert_api_id": alert_api_id,
+        "camera_name": "cam_refresh",
+        "camera_id": "1",
+        "organisation_name": "test_org",
+        "organisation_id": "1",
+        "azimuth": "90",
+        "lat": "0.0",
+        "lon": "0.0",
+        "created_at": (now - timedelta(days=1)).isoformat(),
+        "recorded_at": (now - timedelta(days=1)).isoformat(),
+        "last_seen_at": now.isoformat(),
+    }
+    if score is not None:
+        payload["temporal_model_score"] = score
+        payload["temporal_model_version"] = "0.1.0"
+        payload["temporal_api_version"] = "0.2.0"
+    response = await client.post("/sequences/", data=payload)
+    assert response.status_code == 201
+    return response.json()
+
+
+@pytest.mark.asyncio
+async def test_patch_temporal_score_updates_all_three_columns(
+    authenticated_client: AsyncClient,
+):
+    created = await _create_scored_sequence(authenticated_client, "400")
+    assert created["temporal_model_score"] is None
+
+    response = await authenticated_client.patch(
+        "/sequences/temporal-score",
+        json={
+            "source_api": "pyronear_french",
+            "alert_api_id": 400,
+            "temporal_model_score": 0.6905358697477871,
+            "temporal_model_version": "0.2.0",
+            "temporal_api_version": "0.3.1",
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] == created["id"]
+    assert body["temporal_model_score"] == 0.6905358697477871
+    assert body["temporal_model_version"] == "0.2.0"
+    assert body["temporal_api_version"] == "0.3.1"
+
+    fetched = await authenticated_client.get(f"/sequences/{created['id']}")
+    assert fetched.json()["temporal_model_score"] == 0.6905358697477871
+
+
+@pytest.mark.asyncio
+async def test_patch_temporal_score_explicit_null_resets(
+    authenticated_client: AsyncClient,
+):
+    """The sibling-reset case: a previously scored row must be clearable."""
+    created = await _create_scored_sequence(authenticated_client, "401", score="0.87")
+    assert created["temporal_model_score"] == 0.87
+
+    response = await authenticated_client.patch(
+        "/sequences/temporal-score",
+        json={
+            "source_api": "pyronear_french",
+            "alert_api_id": 401,
+            "temporal_model_score": None,
+            "temporal_model_version": None,
+            "temporal_api_version": None,
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["temporal_model_score"] is None
+
+    fetched = await authenticated_client.get(f"/sequences/{created['id']}")
+    assert fetched.json()["temporal_model_score"] is None
+
+
+@pytest.mark.asyncio
+async def test_patch_temporal_score_unknown_sequence_returns_404(
+    authenticated_client: AsyncClient,
+):
+    response = await authenticated_client.patch(
+        "/sequences/temporal-score",
+        json={
+            "source_api": "pyronear_french",
+            "alert_api_id": 999999999,
+            "temporal_model_score": 0.5,
+            "temporal_model_version": None,
+            "temporal_api_version": None,
+        },
+    )
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_patch_temporal_score_requires_all_three_fields(
+    authenticated_client: AsyncClient,
+):
+    """Absent must not be silently treated as null — that is how a stale
+    sibling score would survive a refresh."""
+    await _create_scored_sequence(authenticated_client, "402")
+
+    response = await authenticated_client.patch(
+        "/sequences/temporal-score",
+        json={
+            "source_api": "pyronear_french",
+            "alert_api_id": 402,
+            "temporal_model_score": 0.5,
+        },
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_patch_temporal_score_is_scoped_to_source_api(
+    authenticated_client: AsyncClient,
+):
+    """alert_api_id alone is not unique — the natural key is the pair."""
+    await _create_scored_sequence(authenticated_client, "403")
+
+    response = await authenticated_client.patch(
+        "/sequences/temporal-score",
+        json={
+            "source_api": "api_cenia",
+            "alert_api_id": 403,
+            "temporal_model_score": 0.5,
+            "temporal_model_version": None,
+            "temporal_api_version": None,
+        },
+    )
+    assert response.status_code == 404
